@@ -95,6 +95,42 @@ def build_parser() -> argparse.ArgumentParser:
         help="VoIP registration timeout in seconds (default: 10)",
     )
 
+    whisplay_parser = subparsers.add_parser(
+        "whisplay",
+        help="Run the Whisplay gesture-tuning helper remotely",
+    )
+    whisplay_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose tuner logging",
+    )
+    whisplay_parser.add_argument(
+        "--duration-seconds",
+        type=float,
+        default=30.0,
+        help="How long to monitor gestures before exiting (default: 30)",
+    )
+    whisplay_parser.add_argument(
+        "--debounce-ms",
+        type=int,
+        help="Temporary Whisplay debounce override in milliseconds",
+    )
+    whisplay_parser.add_argument(
+        "--double-tap-ms",
+        type=int,
+        help="Temporary Whisplay double-tap override in milliseconds",
+    )
+    whisplay_parser.add_argument(
+        "--long-hold-ms",
+        type=int,
+        help="Temporary Whisplay long-hold override in milliseconds",
+    )
+    whisplay_parser.add_argument(
+        "--no-display",
+        action="store_true",
+        help="Log events only without drawing tuner hints on the display",
+    )
+
     preflight_parser = subparsers.add_parser(
         "preflight",
         help="Run local checks, sync the Pi, and execute the Pi smoke pass",
@@ -258,6 +294,24 @@ def build_smoke_command(args: argparse.Namespace) -> str:
     return " ".join(parts)
 
 
+def build_whisplay_command(args: argparse.Namespace) -> str:
+    """Create the remote Whisplay tuning command."""
+    parts = ["uv run python scripts/whisplay_tune.py"]
+    if args.verbose:
+        parts.append("--verbose")
+    if args.no_display:
+        parts.append("--no-display")
+    if args.duration_seconds != 30.0:
+        parts.extend(["--duration-seconds", str(args.duration_seconds)])
+    if args.debounce_ms is not None:
+        parts.extend(["--debounce-ms", str(args.debounce_ms)])
+    if args.double_tap_ms is not None:
+        parts.extend(["--double-tap-ms", str(args.double_tap_ms)])
+    if args.long_hold_ms is not None:
+        parts.extend(["--long-hold-ms", str(args.long_hold_ms)])
+    return " ".join(parts)
+
+
 def build_run_command(args: argparse.Namespace) -> str:
     """Create the remote production-app command."""
     parts = ["uv run python yoyopod.py"]
@@ -281,6 +335,7 @@ def build_local_preflight_commands() -> list[tuple[str, list[str]]]:
                 "tests",
                 "scripts/pi_smoke.py",
                 "scripts/pi_remote.py",
+                "scripts/whisplay_tune.py",
             ],
         ),
         (
@@ -329,6 +384,9 @@ def main() -> int:
 
     if args.command == "smoke":
         return run_remote(config, build_smoke_command(args))
+
+    if args.command == "whisplay":
+        return run_remote(config, build_whisplay_command(args), tty=True)
 
     if args.command == "preflight":
         return run_preflight(config, args)

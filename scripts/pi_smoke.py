@@ -156,6 +156,7 @@ def input_check(display: Display, app_config: dict[str, Any]) -> CheckResult:
             )
 
         capabilities = sorted(action.value for action in input_manager.get_capabilities())
+        interaction_profile = input_manager.interaction_profile.value
         input_manager.start()
         time.sleep(0.1)
         input_manager.stop()
@@ -163,7 +164,10 @@ def input_check(display: Display, app_config: dict[str, Any]) -> CheckResult:
         return CheckResult(
             name="input",
             status="pass",
-            details=f"capabilities={', '.join(capabilities)}",
+            details=(
+                f"profile={interaction_profile}, "
+                f"capabilities={', '.join(capabilities)}"
+            ),
         )
     except Exception as exc:
         return CheckResult(name="input", status="fail", details=str(exc))

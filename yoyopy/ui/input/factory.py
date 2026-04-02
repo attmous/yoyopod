@@ -82,7 +82,7 @@ def get_input_manager(
             if enable_navigation:
                 logger.info("  -> Added one-button Whisplay navigation")
                 logger.info(
-                    "  -> Gesture timings: %dms debounce, %dms double tap, %dms hold",
+                    "  -> Gesture timings: {}ms debounce, {}ms double tap, {}ms hold",
                     int(debounce_time * 1000),
                     int(double_click_time * 1000),
                     int(long_press_time * 1000),

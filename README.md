@@ -75,6 +75,7 @@ Edit these in place for your environment:
 Important settings:
 
 - `config/yoyopod_config.yaml`: display hardware selection, Mopidy host/port, auto-resume behavior
+- `config/yoyopod_config.yaml`: Whisplay gesture tuning under `input.whisplay_*_ms`
 - `config/voip_config.yaml`: SIP account, transport, STUN, `linphonec` path
 - `config/contacts.yaml`: contact list and speed dial entries
 
@@ -100,6 +101,14 @@ uv run python scripts/pi_remote.py status
 uv run python scripts/pi_remote.py preflight --branch main --with-mopidy --with-voip
 uv run python scripts/pi_remote.py sync --branch main
 uv run python scripts/pi_remote.py smoke --with-mopidy --with-voip
+uv run python scripts/pi_remote.py whisplay --duration-seconds 45
+```
+
+Whisplay tuning on-device:
+
+```bash
+uv run python scripts/whisplay_tune.py
+uv run python scripts/whisplay_tune.py --double-tap-ms 240 --long-hold-ms 900
 ```
 
 ## Running

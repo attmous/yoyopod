@@ -32,7 +32,7 @@ What it checks:
 Expected result:
 
 - `display` should report a real hardware adapter, not simulation
-- `input` should report semantic capabilities for the attached hardware
+- `input` should report the active interaction profile plus semantic capabilities for the attached hardware
 
 ### 3. Raspberry Pi service smoke
 
@@ -90,6 +90,23 @@ uv run python test_hal_whisplay.py
 ```
 
 Use this only on a Pi with the Whisplay hardware attached. It is a manual hardware smoke script, not part of CI.
+
+### Whisplay gesture tuning
+
+```bash
+uv run python scripts/whisplay_tune.py
+uv run python scripts/whisplay_tune.py --double-tap-ms 240 --long-hold-ms 900
+```
+
+Use this when button feel needs tuning on the real device. It listens for the semantic Whisplay gestures, prints every detected `advance` / `select` / `back` event with timing detail, and can apply temporary timing overrides without editing `config/yoyopod_config.yaml`.
+
+Useful flags:
+
+- `--duration-seconds 45`
+- `--debounce-ms 75`
+- `--double-tap-ms 240`
+- `--long-hold-ms 900`
+- `--verbose`
 
 ## Suggested Order On Hardware
 

@@ -89,6 +89,15 @@ uv run python scripts/pi_remote.py smoke --with-mopidy --mopidy-timeout 10
 uv run python scripts/pi_remote.py smoke --with-voip --voip-timeout 15 --verbose
 ```
 
+### Run Whisplay gesture tuning remotely
+
+```bash
+uv run python scripts/pi_remote.py whisplay
+uv run python scripts/pi_remote.py whisplay --duration-seconds 45 --double-tap-ms 240 --long-hold-ms 900
+```
+
+Use this during on-device tuning when the Whisplay button feels too eager or too sluggish. The helper runs interactively over SSH, prints every semantic gesture event, and accepts temporary timing overrides without modifying the tracked config file.
+
 ### Run the full preflight in one command
 
 ```bash
