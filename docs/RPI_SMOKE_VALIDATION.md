@@ -70,7 +70,7 @@ Verify:
 ### VoIP registration drill
 
 ```bash
-uv run python tests/test_voip_registration.py
+uv run python scripts/check_voip_registration.py
 ```
 
 Use this when you want a registration-only pass with detailed logs.
@@ -78,7 +78,7 @@ Use this when you want a registration-only pass with detailed logs.
 ### Incoming call debug drill
 
 ```bash
-uv run python tests/test_incoming_call_debug.py
+uv run python scripts/debug_incoming_call.py
 ```
 
 Use this when SIP registration works but incoming-call parsing or callback delivery looks wrong.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Debug script to capture linphonec output during incoming call.
+Manual incoming-call debug drill.
 """
 
 import sys
@@ -19,7 +19,7 @@ from yoyopy.connectivity import VoIPManager, VoIPConfig
 from yoyopy.config import ConfigManager
 
 def main():
-    """Test incoming call detection with DEBUG logging."""
+    """Run verbose incoming-call debugging with raw linphone output."""
     logger.info("=" * 60)
     logger.info("Incoming Call Debug Test")
     logger.info("=" * 60)

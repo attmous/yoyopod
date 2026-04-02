@@ -1,6 +1,6 @@
 """VoIP screens for YoyoPod."""
 
-from yoyopy.ui.screens.voip.call import CallScreen
+from yoyopy.ui.screens.voip.hub import CallScreen
 from yoyopy.ui.screens.voip.incoming_call import IncomingCallScreen
 from yoyopy.ui.screens.voip.outgoing_call import OutgoingCallScreen
 from yoyopy.ui.screens.voip.in_call import InCallScreen

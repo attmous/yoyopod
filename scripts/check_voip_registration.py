@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for VoIP registration.
+Manual VoIP registration drill.
 
 Tests that VoIPManager can:
 1. Load configuration with HA1 hash
@@ -25,7 +25,7 @@ from yoyopy.connectivity import VoIPManager, VoIPConfig, RegistrationState
 from yoyopy.config import ConfigManager
 
 def main():
-    """Test VoIP registration."""
+    """Run a verbose SIP registration-only check."""
     logger.info("=" * 60)
     logger.info("VoIP Registration Test")
     logger.info("=" * 60)

@@ -17,7 +17,7 @@ python yoyopod.py --simulate   # Simulation mode (browser UI at localhost:5000)
 
 # Tests
 pytest
-pytest tests/test_phase1_state_machine.py
+pytest tests/test_fsm_runtime.py
 pytest -v
 
 # Code quality
@@ -95,6 +95,5 @@ ssh rpi-zero "killall -9 python linphonec"
 
 ## Current Gaps
 
-- VoIP status screen still has reserved actions for direct answer/hangup and dial-pad work
 - Settings UI is still not implemented
 - Hardware-required validation still needs real Pi coverage beyond CI and simulation
