@@ -13,7 +13,9 @@ The current codebase supports three display/input modes:
 - VoIP and music integration is implemented in the production app
 - The UI package has been refactored into display, input, and screen subpackages
 - Hardware abstraction layers exist for display and input
-- Some older demos and tests still need migration to the new UI/HAL APIs
+- Demo scripts and tests have been migrated to the current UI/HAL APIs
+- Background VoIP and Mopidy callbacks are coordinated through the app's main loop
+- GitHub Actions CI validates `uv sync --extra dev` and `uv run pytest -q`
 
 ## Main Runtime Components
 
@@ -29,22 +31,19 @@ The current codebase supports three display/input modes:
 
 ## Hardware Notes
 
-The current implementation assumes a Raspberry Pi environment and still contains some device-specific assumptions:
+The current implementation assumes a Raspberry Pi environment, but the main hardware-specific paths and audio devices can now be overridden:
 
-- Whisplay driver discovery currently checks `/home/tifo/Whisplay/Driver/WhisPlay.py`
-- Ring tone playback and Linphone audio default to `plughw:1`
+- Whisplay driver discovery can be overridden with `YOYOPOD_WHISPLAY_DRIVER`
+- Linphone audio devices can be overridden with `YOYOPOD_PLAYBACK_DEVICE`, `YOYOPOD_RINGER_DEVICE`, `YOYOPOD_CAPTURE_DEVICE`, and `YOYOPOD_MEDIA_DEVICE`
+- Ring tone output can be overridden with `YOYOPOD_RING_OUTPUT_DEVICE` or `config/yoyopod_config.yaml`
 - Simulation mode starts a Flask-SocketIO web server on `http://localhost:5000`
-
-These are known repo constraints, not hidden requirements.
 
 ## Installation
 
 ### Python Environment
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync --extra dev
 ```
 
 ### System Dependencies
@@ -75,6 +74,12 @@ Important settings:
 - `config/yoyopod_config.yaml`: display hardware selection, Mopidy host/port, auto-resume behavior
 - `config/voip_config.yaml`: SIP account, transport, STUN, `linphonec` path
 - `config/contacts.yaml`: contact list and speed dial entries
+
+### Verification
+
+```bash
+uv run pytest -q
+```
 
 ## Running
 
@@ -153,7 +158,5 @@ yoyopy/
 
 ## Current Gaps
 
-- Several demos still import removed pre-refactor UI modules
-- Some tests still target deleted interfaces
-- Screen code still relies partly on legacy `on_button_*` handlers through a compatibility bridge
-- Hardware paths and audio device selection still need to become more configurable
+- Full end-to-end validation still requires Raspberry Pi hardware, Mopidy, and a reachable SIP service
+- CI currently covers the Python test suite, not hardware-in-the-loop scenarios

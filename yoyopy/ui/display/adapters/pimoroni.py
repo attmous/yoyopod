@@ -24,9 +24,12 @@ from loguru import logger
 try:
     from displayhatmini import DisplayHATMini
     HAS_HARDWARE = True
-except ImportError:
+except Exception as e:
     HAS_HARDWARE = False
-    logger.warning("DisplayHATMini library not available - adapter will run in simulation mode")
+    logger.warning(
+        f"DisplayHATMini library unavailable or unusable ({e}) - "
+        "adapter will run in simulation mode"
+    )
 
 
 class PimoroniDisplayAdapter(DisplayHAL):

@@ -9,9 +9,6 @@ from typing import Dict, Any, Optional
 from loguru import logger
 
 from yoyopy.ui.input.input_manager import InputManager
-from yoyopy.ui.input.adapters.four_button import FourButtonInputAdapter
-from yoyopy.ui.input.adapters.ptt_button import PTTInputAdapter
-from yoyopy.ui.input.adapters.keyboard import get_keyboard_adapter
 
 
 def get_input_manager(
@@ -67,6 +64,8 @@ def get_input_manager(
 
         if display_device or simulate:
             # Create 4-button adapter
+            from yoyopy.ui.input.adapters.four_button import FourButtonInputAdapter
+
             button_adapter = FourButtonInputAdapter(
                 display_device=display_device,
                 simulate=simulate
@@ -88,6 +87,8 @@ def get_input_manager(
 
         if whisplay_device or simulate:
             # Create PTT button adapter
+            from yoyopy.ui.input.adapters.ptt_button import PTTInputAdapter
+
             ptt_adapter = PTTInputAdapter(
                 whisplay_device=whisplay_device,
                 enable_navigation=enable_navigation,
@@ -112,6 +113,8 @@ def get_input_manager(
         logger.info("  Detected Simulation Display Adapter")
 
         # Add keyboard input adapter
+        from yoyopy.ui.input.adapters.keyboard import get_keyboard_adapter
+
         keyboard_adapter = get_keyboard_adapter()
         manager.add_adapter(keyboard_adapter)
         logger.info("  → Added keyboard input (Enter, Esc, Arrow keys)")

@@ -14,13 +14,12 @@ Author: YoyoPod Team
 Date: 2025-11-30
 """
 
-from yoyopy.ui.display.display_hal import DisplayHAL
-from yoyopy.ui.display.adapters.pimoroni import PimoroniDisplayAdapter
-from yoyopy.ui.display.adapters.whisplay import WhisplayDisplayAdapter
-from yoyopy.ui.display.adapters.simulation import SimulationDisplayAdapter
-from yoyopy.ui.display.whisplay_paths import find_whisplay_driver
-from loguru import logger
 import os
+
+from loguru import logger
+
+from yoyopy.ui.display.display_hal import DisplayHAL
+from yoyopy.ui.display.whisplay_paths import find_whisplay_driver
 
 
 def detect_hardware() -> str:
@@ -62,8 +61,8 @@ def detect_hardware() -> str:
         import displayhatmini
         logger.info("Detected Pimoroni Display HAT Mini (library imported successfully)")
         return "pimoroni"
-    except ImportError:
-        pass
+    except Exception as e:
+        logger.debug(f"DisplayHATMini import failed during detection: {e}")
 
     # Priority 4: No hardware detected, default to simulation
     logger.warning("No display hardware detected - defaulting to simulation mode")
@@ -128,15 +127,21 @@ def get_display(hardware: str = "auto", simulate: bool = False) -> DisplayHAL:
     # Create appropriate adapter
     if hardware == "whisplay":
         logger.info("Creating Whisplay display adapter (240×280 portrait)")
+        from yoyopy.ui.display.adapters.whisplay import WhisplayDisplayAdapter
+
         return WhisplayDisplayAdapter(simulate=simulate)
 
     elif hardware == "pimoroni":
         logger.info("Creating Pimoroni display adapter (320×240 landscape)")
+        from yoyopy.ui.display.adapters.pimoroni import PimoroniDisplayAdapter
+
         return PimoroniDisplayAdapter(simulate=simulate)
 
     elif hardware == "simulation":
         logger.info("Creating simulation display adapter (240×280 portrait)")
         # Use dedicated simulation adapter with web server support
+        from yoyopy.ui.display.adapters.simulation import SimulationDisplayAdapter
+
         adapter = SimulationDisplayAdapter(simulate=True)
 
         # Start web server for browser display

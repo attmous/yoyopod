@@ -16,9 +16,12 @@ from yoyopy.ui.input.input_hal import InputHAL, InputAction
 try:
     from displayhatmini import DisplayHATMini
     HAS_BUTTONS = True
-except ImportError:
+except Exception as e:
     HAS_BUTTONS = False
-    logger.warning("DisplayHATMini not available - button input will be simulated")
+    logger.warning(
+        f"DisplayHATMini unavailable or unusable ({e}) - "
+        "button input will be simulated"
+    )
 
 
 class Button(Enum):

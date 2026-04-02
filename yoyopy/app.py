@@ -5,12 +5,15 @@ Main application coordinator that integrates VoIP calling and music streaming
 into a seamless iPod-inspired experience.
 """
 
+import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any
+from queue import Empty, Queue
+from typing import Any, Callable, Dict, Optional
+
 from loguru import logger
-import subprocess
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens import ScreenManager
@@ -89,6 +92,11 @@ class YoyoPodApp:
 
         # Configuration
         self.config: Dict[str, Any] = {}
+
+        # Coordinate callback work through the main app loop so UI and state
+        # changes do not run from background manager threads.
+        self._main_thread_id = threading.get_ident()
+        self._main_thread_actions: Queue[tuple[str, Callable[[], None]]] = Queue()
 
         logger.info("=" * 60)
         logger.info("YoyoPod Application Initializing")
@@ -440,9 +448,24 @@ class YoyoPodApp:
             logger.warning("  VoIPManager not available, skipping callbacks")
             return
 
-        self.voip_manager.on_incoming_call(self._handle_incoming_call)
-        self.voip_manager.on_call_state_change(self._handle_call_state_change)
-        self.voip_manager.on_registration_change(self._handle_registration_change)
+        self.voip_manager.on_incoming_call(
+            lambda caller_address, caller_name: self._run_on_main_thread(
+                f"incoming call from {caller_name or caller_address}",
+                lambda: self._handle_incoming_call(caller_address, caller_name),
+            )
+        )
+        self.voip_manager.on_call_state_change(
+            lambda state: self._run_on_main_thread(
+                f"call state change to {state.value}",
+                lambda: self._handle_call_state_change(state),
+            )
+        )
+        self.voip_manager.on_registration_change(
+            lambda state: self._run_on_main_thread(
+                f"registration state change to {state.value}",
+                lambda: self._handle_registration_change(state),
+            )
+        )
 
         logger.info("  ✓ VoIP callbacks registered")
 
@@ -454,8 +477,18 @@ class YoyoPodApp:
             logger.warning("  MopidyClient not available, skipping callbacks")
             return
 
-        self.mopidy_client.on_track_change(self._handle_track_change)
-        self.mopidy_client.on_playback_state_change(self._handle_playback_state_change)
+        self.mopidy_client.on_track_change(
+            lambda track: self._run_on_main_thread(
+                "track change",
+                lambda: self._handle_track_change(track),
+            )
+        )
+        self.mopidy_client.on_playback_state_change(
+            lambda playback_state: self._run_on_main_thread(
+                f"playback state change to {playback_state}",
+                lambda: self._handle_playback_state_change(playback_state),
+            )
+        )
 
         logger.info("  ✓ Music callbacks registered")
 
@@ -478,6 +511,52 @@ class YoyoPodApp:
     # ========================================================================
     # Helper Methods
     # ========================================================================
+
+    def _run_on_main_thread(
+        self,
+        description: str,
+        callback: Callable[[], None],
+    ) -> None:
+        """
+        Run work on the coordinator thread.
+
+        Background manager threads enqueue callbacks here so UI mutations and
+        state transitions happen from the main application loop.
+        """
+        if threading.get_ident() == self._main_thread_id:
+            callback()
+            return
+
+        self._main_thread_actions.put((description, callback))
+        logger.debug(f"Queued main-thread action: {description}")
+
+    def _process_pending_main_thread_actions(self, limit: Optional[int] = None) -> int:
+        """
+        Drain queued actions that were scheduled by background threads.
+
+        Args:
+            limit: Optional maximum number of actions to process.
+
+        Returns:
+            Number of processed actions.
+        """
+        processed = 0
+
+        while limit is None or processed < limit:
+            try:
+                description, callback = self._main_thread_actions.get_nowait()
+            except Empty:
+                break
+
+            try:
+                logger.debug(f"Processing main-thread action: {description}")
+                callback()
+            except Exception as e:
+                logger.error(f"Error processing main-thread action '{description}': {e}")
+
+            processed += 1
+
+        return processed
 
     def _pop_call_screens(self) -> None:
         """
@@ -911,6 +990,9 @@ class YoyoPodApp:
 
         try:
             # Main loop
+            last_screen_update = time.time()
+            screen_update_interval = 1.0  # Update every second
+
             if self.simulate:
                 # Simulation mode: just keep alive
                 logger.info("")
@@ -919,17 +1001,19 @@ class YoyoPodApp:
                 logger.info("")
 
                 while True:
-                    time.sleep(1)
-                    # Update NowPlayingScreen if visible to animate progress bar
-                    self._update_now_playing_if_needed()
+                    time.sleep(0.1)
+                    self._process_pending_main_thread_actions()
+
+                    current_time = time.time()
+                    if current_time - last_screen_update >= screen_update_interval:
+                        self._update_now_playing_if_needed()
+                        last_screen_update = current_time
             else:
                 # Hardware mode: input handler manages button events
                 # Also update NowPlayingScreen periodically for progress animation
-                last_screen_update = time.time()
-                screen_update_interval = 1.0  # Update every second
-
                 while True:
                     time.sleep(0.1)
+                    self._process_pending_main_thread_actions()
 
                     # Check if it's time to update the screen
                     current_time = time.time()
@@ -961,6 +1045,10 @@ class YoyoPodApp:
         if self.input_manager:
             logger.info("  - Stopping input manager")
             self.input_manager.stop()
+
+        pending_actions = self._process_pending_main_thread_actions()
+        if pending_actions:
+            logger.info(f"  - Processed {pending_actions} queued app events during shutdown")
 
         # Clear display
         if self.display:
