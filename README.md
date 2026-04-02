@@ -23,6 +23,7 @@ The current codebase supports three display/input modes:
 - `yoyopy/main.py`: package entry point for installed console scripts
 - `yoyopy/app.py`: `YoyoPodApp` coordinator
 - `scripts/pi_smoke.py`: Raspberry Pi smoke validator for hardware and optional service checks
+- `scripts/pi_remote.py`: SSH helper for Raspberry Pi sync, smoke, status, and run loops
 - `yoyopy/state_machine.py`: application state machine for music and call flows
 - `yoyopy/audio/mopidy_client.py`: Mopidy JSON-RPC client
 - `yoyopy/connectivity/voip_manager.py`: `linphonec` subprocess integration
@@ -89,6 +90,14 @@ Raspberry Pi smoke:
 ```bash
 uv run python scripts/pi_smoke.py
 uv run python scripts/pi_smoke.py --with-mopidy --with-voip
+```
+
+Remote Pi workflow:
+
+```bash
+uv run python scripts/pi_remote.py status
+uv run python scripts/pi_remote.py sync --branch main
+uv run python scripts/pi_remote.py smoke --with-mopidy --with-voip
 ```
 
 ## Running
@@ -164,6 +173,7 @@ yoyopy/
 - `docs/DISPLAY_HAL_ARCHITECTURE.md`: current display HAL design
 - `docs/INPUT_HAL_ARCHITECTURE.md`: current input HAL design and compatibility notes
 - `docs/RPI_SMOKE_VALIDATION.md`: Raspberry Pi smoke checklist and manual follow-up drills
+- `docs/PI_DEV_WORKFLOW.md`: SSH-based Raspberry Pi sync/run workflow and release checklist
 - `docs/UI_RESTRUCTURE_PROPOSAL.md`: refactor status and remaining cleanup
 - `docs/PHASE2_SUMMARY.md`: historical screen-integration summary, updated to current file paths
 
