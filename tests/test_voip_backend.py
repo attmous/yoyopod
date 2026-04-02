@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from yoyopy.connectivity import (
+    BackendStopped,
     CallState,
     CallStateChanged,
     IncomingCallDetected,
@@ -30,6 +31,14 @@ class FakeConfigManager:
         if contact_name is None:
             return None
         return SimpleNamespace(name=contact_name)
+
+
+class StopEmittingMockVoIPBackend(MockVoIPBackend):
+    """Backend double that emits a stop event while the manager is tearing down."""
+
+    def stop(self) -> None:
+        self.emit(BackendStopped(reason="process_terminated"))
+        super().stop()
 
 
 def build_config() -> VoIPConfig:
@@ -115,4 +124,30 @@ def test_voip_manager_resets_call_state_after_release() -> None:
     assert manager.call_state == CallState.RELEASED
     assert manager.call_start_time is None
     assert manager.call_duration == 0
+    assert manager.get_caller_info()["display_name"] == "Unknown"
+
+
+def test_voip_manager_stop_can_suppress_teardown_callbacks() -> None:
+    """Intentional shutdown should not emit release or availability callbacks."""
+    backend = StopEmittingMockVoIPBackend()
+    manager = VoIPManager(build_config(), backend=backend)
+    manager.running = True
+    manager.registered = True
+    manager.call_state = CallState.CONNECTED
+    manager.caller_address = "sip:bob@example.com"
+    manager.caller_name = "Bob"
+
+    call_states: list[CallState] = []
+    availability_events: list[tuple[bool, str]] = []
+    manager.on_call_state_change(call_states.append)
+    manager.on_availability_change(
+        lambda available, reason: availability_events.append((available, reason))
+    )
+
+    manager.stop(notify_events=False)
+
+    assert call_states == []
+    assert availability_events == []
+    assert manager.call_state == CallState.RELEASED
+    assert manager.call_start_time is None
     assert manager.get_caller_info()["display_name"] == "Unknown"

@@ -51,6 +51,7 @@ class VoIPManager:
 
         self.duration_thread: Optional[threading.Thread] = None
         self.duration_stop_event = threading.Event()
+        self._stopping = False
 
         self.backend.on_event(self._handle_backend_event)
         logger.info(f"VoIPManager initialized (server: {config.sip_server})")
@@ -68,16 +69,19 @@ class VoIPManager:
         self._notify_availability_change(self.running, "started" if self.running else "start_failed")
         return self.running
 
-    def stop(self) -> None:
-        """Stop the backend and clean up manager-owned state."""
+    def stop(self, notify_events: bool = True) -> None:
+        """Stop the backend and optionally suppress teardown callbacks."""
 
         logger.info("Stopping VoIP manager...")
-        self._stop_call_timer()
-        self.backend.stop()
-        if self.call_state not in (CallState.IDLE, CallState.RELEASED):
-            self._update_call_state(CallState.RELEASED)
-        self.running = False
-        self._notify_availability_change(False, "stopped")
+        self._stopping = True
+        try:
+            self._stop_call_timer()
+            self.backend.stop()
+            self._apply_stopped_state()
+            if notify_events:
+                self._notify_availability_change(False, "stopped")
+        finally:
+            self._stopping = False
         logger.info("VoIP manager stopped")
 
     def make_call(self, sip_address: str, contact_name: str | None = None) -> bool:
@@ -204,6 +208,9 @@ class VoIPManager:
 
     def _handle_backend_event(self, event: VoIPEvent) -> None:
         """Apply a typed backend event to the manager state and callbacks."""
+        if self._stopping:
+            logger.debug(f"Ignoring VoIP backend event during shutdown: {event!r}")
+            return
 
         if isinstance(event, RegistrationStateChanged):
             self._update_registration_state(event.state)
@@ -267,11 +274,7 @@ class VoIPManager:
         if state == CallState.CONNECTED and self.call_start_time is None:
             self._start_call_timer()
         elif state == CallState.RELEASED:
-            self._stop_call_timer()
-            self.current_call_id = None
-            self.caller_address = None
-            self.caller_name = None
-            self.is_muted = False
+            self._clear_call_session()
 
         for callback in self.call_state_callbacks:
             try:
@@ -326,6 +329,23 @@ class VoIPManager:
         self.call_start_time = None
         self.call_duration = 0
         logger.debug("Call duration timer stopped")
+
+    def _clear_call_session(self) -> None:
+        """Clear active call metadata without notifying callbacks."""
+        self._stop_call_timer()
+        self.current_call_id = None
+        self.caller_address = None
+        self.caller_name = None
+        self.is_muted = False
+
+    def _apply_stopped_state(self) -> None:
+        """Apply teardown state without emitting lifecycle callbacks."""
+        if self.call_state not in (CallState.IDLE, CallState.RELEASED):
+            self.call_state = CallState.RELEASED
+        self._clear_call_session()
+        self.running = False
+        self.registered = False
+        self.registration_state = RegistrationState.NONE
 
     def _track_duration(self) -> None:
         """Background loop that updates the active call duration."""

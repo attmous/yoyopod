@@ -5,7 +5,7 @@ Typed application events for YoyoPod orchestration.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 from yoyopy.audio.mopidy_client import MopidyTrack
 from yoyopy.connectivity.voip_manager import CallState, RegistrationState
@@ -45,6 +45,15 @@ class ScreenChangedEvent:
     """Published when the active screen route changes."""
 
     screen_name: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveryAttemptCompletedEvent:
+    """Published when a background backend recovery attempt finishes."""
+
+    manager: Literal["mopidy"]
+    recovered: bool
+    recovery_now: float
 
 
 @dataclass(frozen=True, slots=True)

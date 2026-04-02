@@ -16,6 +16,7 @@ from yoyopy.events import (
     IncomingCallEvent,
     MusicAvailabilityChangedEvent,
     PlaybackStateChangedEvent,
+    RecoveryAttemptCompletedEvent,
     RegistrationChangedEvent,
     TrackChangedEvent,
     VoIPAvailabilityChangedEvent,
@@ -120,6 +121,9 @@ class FakeRecoveringVoIPManager:
         self.running = self._start_results[result_index]
         return self.running
 
+    def stop(self, notify_events: bool = True) -> None:
+        self.running = False
+
 
 class FakeRecoveringMopidyClient:
     """Minimal Mopidy double for recovery backoff tests."""
@@ -140,6 +144,16 @@ class FakeRecoveringMopidyClient:
     def start_polling(self) -> None:
         self.polling = True
         self.start_polling_calls += 1
+
+
+class FakeStoppingVoIPManager:
+    """Minimal VoIP manager double for app shutdown tests."""
+
+    def __init__(self) -> None:
+        self.stop_notify_events: list[bool] = []
+
+    def stop(self, notify_events: bool = True) -> None:
+        self.stop_notify_events.append(notify_events)
 
 
 def _publish_from_worker(app: YoyoPodApp, event: object) -> None:
@@ -421,31 +435,63 @@ def test_call_end_restores_previous_screen_base_state() -> None:
     assert app.coordinator_runtime.current_app_state == AppRuntimeState.PLAYLIST_BROWSER
 
 
-def test_manager_recovery_uses_backoff_and_starts_polling_after_reconnect() -> None:
-    """Recovery attempts should back off after failure and restart healthy managers."""
+def test_manager_recovery_schedules_mopidy_reconnect_off_main_thread() -> None:
+    """Mopidy recovery should schedule work instead of blocking the coordinator loop."""
     app = YoyoPodApp(simulate=True)
     app.voip_manager = FakeRecoveringVoIPManager([False, True])
     app.mopidy_client = FakeRecoveringMopidyClient([False, True])
+    scheduled_attempts: list[float] = []
+
+    app._start_mopidy_recovery_worker = lambda recovery_now: scheduled_attempts.append(recovery_now)
 
     app._attempt_manager_recovery(now=0.0)
 
     assert app.voip_manager.start_calls == 1
-    assert app.mopidy_client.connect_calls == 1
-    assert app.mopidy_client.start_polling_calls == 0
+    assert app.mopidy_client.connect_calls == 0
+    assert scheduled_attempts == [0.0]
+    assert app._mopidy_recovery.in_flight
     assert app._voip_recovery.next_attempt_at == 1.0
+
+
+def test_mopidy_recovery_backoff_doubles_and_restarts_polling_after_success() -> None:
+    """Background Mopidy recovery results should update backoff and restart polling."""
+    app = YoyoPodApp(simulate=True)
+    app.mopidy_client = FakeRecoveringMopidyClient([False, True])
+
+    app._mopidy_recovery.in_flight = True
+    app._handle_recovery_attempt_completed_event(
+        RecoveryAttemptCompletedEvent(manager="mopidy", recovered=False, recovery_now=0.0)
+    )
+
+    assert app.mopidy_client.start_polling_calls == 0
     assert app._mopidy_recovery.next_attempt_at == 1.0
+    assert app._mopidy_recovery.delay_seconds == 2.0
 
-    app._attempt_manager_recovery(now=0.5)
+    app._mopidy_recovery.in_flight = True
+    app._handle_recovery_attempt_completed_event(
+        RecoveryAttemptCompletedEvent(manager="mopidy", recovered=False, recovery_now=1.0)
+    )
 
-    assert app.voip_manager.start_calls == 1
-    assert app.mopidy_client.connect_calls == 1
+    assert app._mopidy_recovery.next_attempt_at == 3.0
+    assert app._mopidy_recovery.delay_seconds == 4.0
 
-    app._attempt_manager_recovery(now=1.0)
+    app.mopidy_client.is_connected = True
+    app._mopidy_recovery.in_flight = True
+    app._handle_recovery_attempt_completed_event(
+        RecoveryAttemptCompletedEvent(manager="mopidy", recovered=True, recovery_now=3.0)
+    )
 
-    assert app.voip_manager.start_calls == 2
-    assert app.voip_manager.running
-    assert app.mopidy_client.connect_calls == 2
-    assert app.mopidy_client.is_connected
     assert app.mopidy_client.start_polling_calls == 1
-    assert app._voip_recovery.next_attempt_at == 0.0
     assert app._mopidy_recovery.next_attempt_at == 0.0
+    assert app._mopidy_recovery.delay_seconds == 1.0
+
+
+def test_app_stop_uses_silent_voip_teardown() -> None:
+    """App shutdown should suppress VoIP teardown callbacks that could restart playback."""
+    app, _, _ = _build_app(playback_state="paused", auto_resume=True)
+    app.voip_manager = FakeStoppingVoIPManager()
+    app.mopidy_client = None
+
+    app.stop()
+
+    assert app.voip_manager.stop_notify_events == [False]
