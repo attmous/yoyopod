@@ -54,6 +54,14 @@ def test_screen_router_covers_live_menu_labels() -> None:
         assert router.resolve("menu", "select", payload=label) == expected_request
 
 
+def test_screen_router_covers_call_hub_routes() -> None:
+    """The VoIP hub should resolve its quick-call routes through the router."""
+    router = ScreenRouter()
+
+    assert router.resolve("call", "browse_contacts") == NavigationRequest.push("contacts")
+    assert router.resolve("call", "call_started") == NavigationRequest.push("outgoing_call")
+
+
 def test_screen_manager_routes_menu_labels_through_stack(display: Display) -> None:
     """Menu labels should resolve through the router and preserve stack navigation."""
     context = AppContext()

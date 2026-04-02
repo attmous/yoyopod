@@ -92,6 +92,8 @@ class ScreenRouter:
             },
             "call": {
                 "back": NavigationRequest.pop(),
+                "browse_contacts": NavigationRequest.push("contacts"),
+                "call_started": NavigationRequest.push("outgoing_call"),
             },
             "contacts": {
                 "back": NavigationRequest.pop(),
