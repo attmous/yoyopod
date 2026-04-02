@@ -263,9 +263,7 @@ class ContactListScreen(Screen):
         # Make the call with contact name
         if self.voip_manager.make_call(contact.sip_address, contact_name=contact.name):
             logger.info(f"Call initiated to {contact.name}")
-            # Navigate to outgoing call screen
-            if self.screen_manager:
-                self.screen_manager.push_screen("outgoing_call")
+            self.request_route("call_started")
         else:
             logger.error(f"Failed to initiate call to {contact.name}")
 
@@ -275,8 +273,7 @@ class ContactListScreen(Screen):
 
     def on_back(self, data=None) -> None:
         """Go back to the previous screen."""
-        if self.screen_manager:
-            self.screen_manager.pop_screen()
+        self.request_route("back")
 
     def on_up(self, data=None) -> None:
         """Move selection up."""

@@ -196,8 +196,7 @@ class IncomingCallScreen(Screen):
         if self.voip_manager:
             if self.voip_manager.answer_call():
                 logger.info("Call answered, transitioning to InCall screen")
-                if self.screen_manager:
-                    self.screen_manager.push_screen("in_call")
+                self.request_route("call_answered")
             else:
                 logger.error("Failed to answer call")
 
@@ -207,8 +206,7 @@ class IncomingCallScreen(Screen):
         if self.voip_manager:
             if self.voip_manager.reject_call():
                 logger.info("Call rejected, going back")
-                if self.screen_manager:
-                    self.screen_manager.pop_screen()
+                self.request_route("call_rejected")
             else:
                 logger.error("Failed to reject call")
 

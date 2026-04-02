@@ -335,9 +335,7 @@ class PlaylistScreen(Screen):
         try:
             if self.mopidy_client.load_playlist(playlist.uri):
                 logger.info(f"Successfully loaded playlist: {playlist.name}")
-                # Navigate to now playing screen
-                if self.screen_manager:
-                    self.screen_manager.push_screen("now_playing")
+                self.request_route("playlist_loaded")
             else:
                 logger.error(f"Failed to load playlist: {playlist.name}")
                 self.error_message = "Failed to load"
@@ -353,8 +351,7 @@ class PlaylistScreen(Screen):
 
     def on_back(self, data=None) -> None:
         """Go back to the previous screen."""
-        if self.screen_manager:
-            self.screen_manager.pop_screen()
+        self.request_route("back")
 
     def on_up(self, data=None) -> None:
         """Move selection up."""

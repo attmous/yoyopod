@@ -249,8 +249,7 @@ class NowPlayingScreen(Screen):
 
     def on_back(self, data=None) -> None:
         """Go back to the previous screen."""
-        if self.screen_manager:
-            self.screen_manager.pop_screen()
+        self.request_route("back")
 
     def on_up(self, data=None) -> None:
         """Go to the previous track."""

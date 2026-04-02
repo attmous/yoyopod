@@ -99,6 +99,5 @@ class HomeScreen(Screen):
 
     def on_select(self, data=None) -> None:
         """Open the main menu."""
-        if self.screen_manager:
-            self.screen_manager.push_screen("menu")
+        self.request_route("select")
 

@@ -145,24 +145,14 @@ class MenuScreen(Screen):
         """Select the current item."""
         selected_item = self.get_selected()
         logger.info(f"Menu item selected: {selected_item}")
-
-        # Navigate to appropriate screen based on selection
-        if self.screen_manager:
-            if selected_item == "Music" or selected_item == "Podcasts" or selected_item == "Audiobooks":
-                self.screen_manager.push_screen("now_playing")
-            elif selected_item == "Browse Playlists" or selected_item == "Playlists":
-                self.screen_manager.push_screen("playlists")
-            elif selected_item == "Call Parent" or selected_item == "Call" or selected_item == "Call Contact":
-                self.screen_manager.push_screen("contacts")
-            elif selected_item == "VoIP Status":
-                self.screen_manager.push_screen("call")
-            elif selected_item == "Settings":
-                logger.info("Settings not implemented yet")
+        if selected_item == "Settings":
+            logger.info("Settings not implemented yet")
+            return
+        self.request_route("select", payload=selected_item)
 
     def on_back(self, data=None) -> None:
         """Go back to the previous screen."""
-        if self.screen_manager:
-            self.screen_manager.pop_screen()
+        self.request_route("back")
 
     def on_up(self, data=None) -> None:
         """Move selection up."""

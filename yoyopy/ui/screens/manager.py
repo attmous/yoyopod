@@ -1,14 +1,15 @@
 """
 Screen management and navigation for YoyoPod.
 
-Handles screen transitions and the navigation stack.
+Handles screen transitions, route resolution, and the navigation stack.
 """
 
-from typing import Optional, Dict, Type, TYPE_CHECKING
+from typing import Optional, Dict, TYPE_CHECKING
 from loguru import logger
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
+from yoyopy.ui.screens.router import NavigationRequest, ScreenRouter
 
 # Import InputManager from new input HAL
 if TYPE_CHECKING:
@@ -30,7 +31,12 @@ class ScreenManager:
     handles screen lifecycle (enter/exit).
     """
 
-    def __init__(self, display: Display, input_manager: Optional['InputManager'] = None) -> None:
+    def __init__(
+        self,
+        display: Display,
+        input_manager: Optional['InputManager'] = None,
+        router: Optional[ScreenRouter] = None,
+    ) -> None:
         """
         Initialize the screen manager.
 
@@ -43,6 +49,7 @@ class ScreenManager:
         self.current_screen: Optional[Screen] = None
         self.screen_stack: list[Screen] = []
         self.screens: Dict[str, Screen] = {}
+        self.router = router or ScreenRouter()
 
         logger.info("ScreenManager initialized")
 
@@ -56,6 +63,7 @@ class ScreenManager:
         """
         self.screens[name] = screen
         screen.set_screen_manager(self)
+        screen.set_route_name(name)
         logger.debug(f"Registered screen: {name}")
 
     def push_screen(self, screen_name: str) -> None:
@@ -146,6 +154,37 @@ class ScreenManager:
         if self.current_screen:
             self.current_screen.render()
 
+    def apply_navigation_request(
+        self,
+        request: NavigationRequest,
+        source_screen: Optional[Screen] = None,
+    ) -> bool:
+        """Apply a direct or routed navigation request."""
+        resolved_request = request
+        if request.operation == "route":
+            if source_screen is None or source_screen.route_name is None:
+                logger.warning("Cannot resolve route without a source screen")
+                return False
+            resolved_request = self.router.resolve(
+                source_screen.route_name,
+                request.route_name or "",
+                payload=request.payload,
+            )
+            if resolved_request is None:
+                return False
+
+        if resolved_request.operation == "push" and resolved_request.target:
+            self.push_screen(resolved_request.target)
+            return True
+        if resolved_request.operation == "replace" and resolved_request.target:
+            self.replace_screen(resolved_request.target)
+            return True
+        if resolved_request.operation == "pop":
+            return self.pop_screen()
+
+        logger.warning(f"Unsupported navigation request: {resolved_request}")
+        return False
+
     def _connect_inputs(self) -> None:
         """Connect input action handlers for the current screen."""
         if not self.current_screen:
@@ -161,44 +200,24 @@ class ScreenManager:
             logger.warning("InputAction not available - cannot connect inputs")
             return
 
-        # Helper function to wrap action handlers with auto-refresh
-        def wrap_with_refresh(handler):
+        # Helper function to dispatch an action and then refresh or route
+        def wrap_with_refresh(action: "InputAction"):
             """Wrap action handler to automatically refresh display after execution."""
             def wrapper(data=None):
                 previous_screen = self.current_screen
-                handler(data)
+                if previous_screen is None:
+                    return
+
+                previous_screen.handle_action(action, data)
+                navigation_request = previous_screen.consume_navigation_request()
+                if navigation_request is not None:
+                    self.apply_navigation_request(navigation_request, source_screen=previous_screen)
                 if self.current_screen is previous_screen:
                     self.refresh_current_screen()
             return wrapper
 
-        # Register semantic action callbacks with input manager
-        # These are hardware-independent actions that screens understand
-        # Each callback is wrapped to auto-refresh the display after execution
-        self.input_manager.on_action(InputAction.SELECT, wrap_with_refresh(self.current_screen.on_select))
-        self.input_manager.on_action(InputAction.BACK, wrap_with_refresh(self.current_screen.on_back))
-        self.input_manager.on_action(InputAction.UP, wrap_with_refresh(self.current_screen.on_up))
-        self.input_manager.on_action(InputAction.DOWN, wrap_with_refresh(self.current_screen.on_down))
-        self.input_manager.on_action(InputAction.LEFT, wrap_with_refresh(self.current_screen.on_left))
-        self.input_manager.on_action(InputAction.RIGHT, wrap_with_refresh(self.current_screen.on_right))
-        self.input_manager.on_action(InputAction.MENU, wrap_with_refresh(self.current_screen.on_menu))
-        self.input_manager.on_action(InputAction.HOME, wrap_with_refresh(self.current_screen.on_home))
-
-        # Playback actions
-        self.input_manager.on_action(InputAction.PLAY_PAUSE, wrap_with_refresh(self.current_screen.on_play_pause))
-        self.input_manager.on_action(InputAction.NEXT_TRACK, wrap_with_refresh(self.current_screen.on_next_track))
-        self.input_manager.on_action(InputAction.PREV_TRACK, wrap_with_refresh(self.current_screen.on_prev_track))
-
-        # VoIP actions
-        self.input_manager.on_action(InputAction.CALL_ANSWER, wrap_with_refresh(self.current_screen.on_call_answer))
-        self.input_manager.on_action(InputAction.CALL_REJECT, wrap_with_refresh(self.current_screen.on_call_reject))
-        self.input_manager.on_action(InputAction.CALL_HANGUP, wrap_with_refresh(self.current_screen.on_call_hangup))
-
-        # PTT actions
-        self.input_manager.on_action(InputAction.PTT_PRESS, wrap_with_refresh(self.current_screen.on_ptt_press))
-        self.input_manager.on_action(InputAction.PTT_RELEASE, wrap_with_refresh(self.current_screen.on_ptt_release))
-
-        # Voice actions
-        self.input_manager.on_action(InputAction.VOICE_COMMAND, wrap_with_refresh(self.current_screen.on_voice_command))
+        for action in InputAction:
+            self.input_manager.on_action(action, wrap_with_refresh(action))
 
         logger.debug(f"Connected input actions for {self.current_screen.name}")
 

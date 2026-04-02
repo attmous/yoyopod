@@ -224,8 +224,7 @@ class InCallScreen(Screen):
         if self.voip_manager:
             if self.voip_manager.hangup():
                 logger.info("Call ended, going back")
-                if self.screen_manager:
-                    self.screen_manager.pop_screen()
+                self.request_route("call_hangup")
             else:
                 logger.error("Failed to end call")
 

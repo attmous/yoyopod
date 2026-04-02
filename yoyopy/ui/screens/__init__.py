@@ -14,6 +14,7 @@ from yoyopy.ui.screens.base import Screen
 
 # Screen manager
 from yoyopy.ui.screens.manager import ScreenManager
+from yoyopy.ui.screens.router import NavigationRequest, ScreenRouter
 
 # Navigation screens
 from yoyopy.ui.screens.navigation import HomeScreen, MenuScreen
@@ -34,6 +35,8 @@ __all__ = [
     # Base & Manager
     'Screen',
     'ScreenManager',
+    'NavigationRequest',
+    'ScreenRouter',
     # Navigation
     'HomeScreen',
     'MenuScreen',

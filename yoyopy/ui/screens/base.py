@@ -10,10 +10,12 @@ from typing import Optional, Any, TYPE_CHECKING
 from loguru import logger
 
 from yoyopy.ui.display import Display
+from yoyopy.ui.screens.router import NavigationRequest
 
 if TYPE_CHECKING:
     from yoyopy.ui.screens.manager import ScreenManager
     from yoyopy.app_context import AppContext
+    from yoyopy.ui.input import InputAction
 
 
 class Screen(ABC):
@@ -42,15 +44,51 @@ class Screen(ABC):
         self.context = context
         self.name = name
         self.screen_manager: Optional['ScreenManager'] = None
+        self.route_name: Optional[str] = None
+        self._pending_navigation: Optional[NavigationRequest] = None
         logger.debug(f"Screen '{name}' initialized")
 
     def set_screen_manager(self, manager: 'ScreenManager') -> None:
         """Set the screen manager for navigation."""
         self.screen_manager = manager
 
+    def set_route_name(self, route_name: str) -> None:
+        """Set the registered route name for this screen."""
+        self.route_name = route_name
+
     def set_context(self, context: 'AppContext') -> None:
         """Set the application context."""
         self.context = context
+
+    def request_navigation(self, request: NavigationRequest) -> None:
+        """Queue a navigation request for the screen manager to resolve."""
+        self._pending_navigation = request
+
+    def request_route(self, route_name: str, payload: Optional[Any] = None) -> None:
+        """Request navigation via the declarative router."""
+        self.request_navigation(NavigationRequest.route(route_name, payload=payload))
+
+    def request_push(self, target: str) -> None:
+        """Request a direct push transition."""
+        self.request_navigation(NavigationRequest.push(target))
+
+    def request_pop(self) -> None:
+        """Request a stack pop."""
+        self.request_navigation(NavigationRequest.pop())
+
+    def consume_navigation_request(self) -> Optional[NavigationRequest]:
+        """Return and clear the current pending navigation request."""
+        request = self._pending_navigation
+        self._pending_navigation = None
+        return request
+
+    def handle_action(self, action: "InputAction", data: Optional[Any] = None) -> None:
+        """Dispatch a semantic input action to the matching handler method."""
+        handler = getattr(self, f"on_{action.value}", None)
+        if handler is None:
+            logger.debug(f"Screen '{self.name}' does not handle {action.value}")
+            return
+        handler(data)
 
     @abstractmethod
     def render(self) -> None:
