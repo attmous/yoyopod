@@ -1,4 +1,4 @@
-"""Coordinator tests for the Phase 1 event bus and split FSM refactor."""
+"""Coordinator tests for the event bus and split FSM orchestration path."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import pytest
 from yoyopy.app import YoyoPodApp
 from yoyopy.app_context import AppContext
 from yoyopy.connectivity import CallState, RegistrationState
+from yoyopy.coordinators.runtime import AppRuntimeState
 from yoyopy.events import (
     CallEndedEvent,
     CallStateChangedEvent,
@@ -17,8 +18,13 @@ from yoyopy.events import (
     RegistrationChangedEvent,
     TrackChangedEvent,
 )
-from yoyopy.fsm import CallSessionState, MusicState
-from yoyopy.state_machine import AppState, StateMachine
+from yoyopy.fsm import (
+    CallFSM,
+    CallInterruptionPolicy,
+    CallSessionState,
+    MusicFSM,
+    MusicState,
+)
 
 
 class FakeScreen:
@@ -96,10 +102,9 @@ def _build_app(playback_state: str = "stopped", auto_resume: bool = True) -> tup
 ]:
     app = YoyoPodApp(simulate=True)
     app.context = AppContext()
-    app.state_machine = StateMachine(app.context)
-    app.music_fsm = app.state_machine.music_fsm
-    app.call_fsm = app.state_machine.call_fsm
-    app.call_interruption_policy = app.state_machine.call_interruption_policy
+    app.music_fsm = MusicFSM()
+    app.call_fsm = CallFSM()
+    app.call_interruption_policy = CallInterruptionPolicy()
     app.auto_resume_after_call = auto_resume
     app.voip_registered = False
 
@@ -123,7 +128,7 @@ def _build_app(playback_state: str = "stopped", auto_resume: bool = True) -> tup
     )
     app.screen_manager = screen_manager
     app.screen_manager.push_screen("menu")
-    app.state_machine.set_ui_state(AppState.MENU, trigger="test_setup")
+    app._ui_state = AppRuntimeState.MENU
 
     app._setup_event_subscriptions()
     app.call_coordinator.start_ringing = lambda: None
@@ -135,7 +140,7 @@ def test_incoming_call_pauses_playing_music_once() -> None:
     """Incoming call events should pause active playback exactly once."""
     app, mopidy, screen_manager = _build_app(playback_state="playing")
     app.music_fsm.transition("play")
-    app.state_machine.sync_from_models("playback_playing")
+    app.coordinator_runtime.sync_app_state("playback_playing")
 
     _publish_from_worker(
         app,
@@ -167,6 +172,7 @@ def test_call_end_auto_resumes_only_when_enabled() -> None:
     app.music_fsm.sync(MusicState.PAUSED)
     app.call_fsm.sync(CallSessionState.ACTIVE)
     app.call_interruption_policy.music_interrupted_by_call = True
+    app.coordinator_runtime.sync_app_state("test_setup")
     screen_manager.push_screen("incoming_call")
     screen_manager.push_screen("in_call")
 
@@ -187,6 +193,7 @@ def test_call_end_keeps_music_paused_when_auto_resume_disabled() -> None:
     app.music_fsm.sync(MusicState.PAUSED)
     app.call_fsm.sync(CallSessionState.ACTIVE)
     app.call_interruption_policy.music_interrupted_by_call = True
+    app.coordinator_runtime.sync_app_state("test_setup")
     screen_manager.push_screen("incoming_call")
     screen_manager.push_screen("in_call")
 
@@ -214,6 +221,7 @@ def test_outgoing_call_does_not_change_idle_or_paused_music(
     """Outgoing call state changes should not mutate paused or idle music state."""
     app, _, _ = _build_app(playback_state=playback_state)
     app.music_fsm.sync(music_state)
+    app.coordinator_runtime.sync_app_state("test_setup")
 
     _publish_from_worker(app, CallStateChangedEvent(state=CallState.OUTGOING))
 
@@ -235,7 +243,7 @@ def test_background_events_wait_for_drain_before_mutating_state() -> None:
     assert app.event_bus.drain() == 2
     assert app.voip_registered
     assert app.music_fsm.state == MusicState.PLAYING
-    assert app.state_machine.current_state == AppState.PLAYING_WITH_VOIP
+    assert app.coordinator_runtime.current_app_state == AppRuntimeState.PLAYING_WITH_VOIP
 
 
 def test_track_event_refreshes_now_playing_screen_when_visible() -> None:
@@ -243,7 +251,7 @@ def test_track_event_refreshes_now_playing_screen_when_visible() -> None:
     app, _, screen_manager = _build_app(playback_state="playing")
     screen_manager.current_screen = app.now_playing_screen
     app.music_fsm.transition("play")
-    app.state_machine.sync_from_models("playback_playing")
+    app.coordinator_runtime.sync_app_state("playback_playing")
 
     _publish_from_worker(app, TrackChangedEvent(track=None))
 

@@ -1,8 +1,31 @@
-"""Tests for the split FSM orchestration layer and compatibility bridge."""
+"""Tests for the split FSM orchestration layer and derived runtime state."""
 
-from yoyopy.app_context import AppContext
-from yoyopy.fsm import CallFSM, CallInterruptionPolicy, CallSessionState, MusicFSM, MusicState
-from yoyopy.state_machine import AppState, StateMachine
+from yoyopy.coordinators.runtime import AppRuntimeState, CoordinatorRuntime
+from yoyopy.fsm import (
+    CallFSM,
+    CallInterruptionPolicy,
+    CallSessionState,
+    MusicFSM,
+    MusicState,
+)
+
+
+def _build_runtime() -> CoordinatorRuntime:
+    """Create a minimal coordinator runtime for state-derivation tests."""
+    return CoordinatorRuntime(
+        music_fsm=MusicFSM(),
+        call_fsm=CallFSM(),
+        call_interruption_policy=CallInterruptionPolicy(),
+        screen_manager=None,
+        mopidy_client=None,
+        now_playing_screen=None,
+        call_screen=None,
+        incoming_call_screen=None,
+        outgoing_call_screen=None,
+        in_call_screen=None,
+        config={},
+        config_manager=None,
+    )
 
 
 def test_music_fsm_transitions() -> None:
@@ -57,56 +80,58 @@ def test_call_interruption_policy_pauses_and_resumes_music() -> None:
     assert not policy.music_interrupted_by_call
 
 
-def test_compatibility_state_machine_derives_legacy_state_from_split_fsms() -> None:
-    """The compatibility facade should derive legacy AppState values from the new FSMs."""
-    state_machine = StateMachine(AppContext())
+def test_runtime_state_is_derived_from_split_fsms() -> None:
+    """CoordinatorRuntime should derive app state from music and call FSMs."""
+    runtime = _build_runtime()
 
-    state_machine.set_ui_state(AppState.MENU, trigger="test_menu")
-    assert state_machine.current_state == AppState.MENU
+    state_change = runtime.set_ui_state(AppRuntimeState.MENU, trigger="test_menu")
+    assert state_change.entered(AppRuntimeState.MENU)
+    assert runtime.current_app_state == AppRuntimeState.MENU
 
-    state_machine.music_fsm.transition("play")
-    state_machine.sync_from_models("playback_playing")
-    assert state_machine.current_state == AppState.PLAYING
+    runtime.music_fsm.transition("play")
+    state_change = runtime.sync_app_state("playback_playing")
+    assert state_change.entered(AppRuntimeState.PLAYING)
+    assert runtime.current_app_state == AppRuntimeState.PLAYING
 
-    state_machine.set_voip_ready(True)
-    assert state_machine.current_state == AppState.PLAYING_WITH_VOIP
-    assert state_machine.is_playing_with_voip()
+    state_change = runtime.set_voip_ready(True)
+    assert state_change.entered(AppRuntimeState.PLAYING_WITH_VOIP)
+    assert runtime.current_app_state == AppRuntimeState.PLAYING_WITH_VOIP
 
-    state_machine.call_interruption_policy.pause_for_call(state_machine.music_fsm)
-    state_machine.sync_from_models("auto_pause_for_call")
-    assert state_machine.current_state == AppState.PAUSED_BY_CALL
-    assert state_machine.is_music_paused_by_call()
+    runtime.call_interruption_policy.pause_for_call(runtime.music_fsm)
+    state_change = runtime.sync_app_state("auto_pause_for_call")
+    assert state_change.entered(AppRuntimeState.PAUSED_BY_CALL)
+    assert runtime.current_app_state == AppRuntimeState.PAUSED_BY_CALL
 
-    state_machine.call_fsm.transition("incoming")
-    state_machine.sync_from_models("incoming_call")
-    assert state_machine.current_state == AppState.CALL_INCOMING
-    assert state_machine.is_in_call()
+    runtime.call_fsm.transition("incoming")
+    state_change = runtime.sync_app_state("incoming_call")
+    assert state_change.entered(AppRuntimeState.CALL_INCOMING)
+    assert runtime.current_app_state == AppRuntimeState.CALL_INCOMING
 
-    state_machine.call_fsm.transition("connect")
-    state_machine.sync_from_models("call_connected")
-    assert state_machine.current_state == AppState.CALL_ACTIVE_MUSIC_PAUSED
-    assert state_machine.has_paused_music_for_call()
+    runtime.call_fsm.transition("connect")
+    state_change = runtime.sync_app_state("call_connected")
+    assert state_change.entered(AppRuntimeState.CALL_ACTIVE_MUSIC_PAUSED)
+    assert runtime.current_app_state == AppRuntimeState.CALL_ACTIVE_MUSIC_PAUSED
 
-    state_machine.call_fsm.transition("end")
-    state_machine.music_fsm.transition("play")
-    state_machine.call_interruption_policy.clear()
-    state_machine.sync_from_models("call_ended")
-    assert state_machine.current_state == AppState.PLAYING_WITH_VOIP
+    runtime.call_fsm.transition("end")
+    runtime.music_fsm.transition("play")
+    runtime.call_interruption_policy.clear()
+    state_change = runtime.sync_app_state("call_ended")
+    assert state_change.entered(AppRuntimeState.PLAYING_WITH_VOIP)
+    assert runtime.current_app_state == AppRuntimeState.PLAYING_WITH_VOIP
 
 
-def test_legacy_transition_api_still_supports_existing_phase1_flow() -> None:
-    """The old transition_to API should still work during the bridge period."""
-    state_machine = StateMachine(AppContext())
+def test_runtime_returns_to_base_ui_state_when_music_and_calls_are_idle() -> None:
+    """The derived app state should fall back to the current base UI state."""
+    runtime = _build_runtime()
 
-    assert state_machine.transition_to(AppState.MENU, "open_menu")
-    assert state_machine.transition_to(AppState.PLAYING_WITH_VOIP, "select_media_with_voip")
-    assert state_machine.transition_to(AppState.PAUSED_BY_CALL, "auto_pause_for_call")
-    assert state_machine.transition_to(AppState.CALL_INCOMING, "incoming_call_ringing")
-    assert state_machine.transition_to(
-        AppState.CALL_ACTIVE_MUSIC_PAUSED,
-        "answer_call_resume_after",
-    )
-    assert state_machine.transition_to(AppState.PLAYING_WITH_VOIP, "call_ended_auto_resume")
+    runtime.set_ui_state(AppRuntimeState.PLAYLIST_BROWSER, trigger="browse_playlists")
+    assert runtime.current_app_state == AppRuntimeState.PLAYLIST_BROWSER
 
-    assert state_machine.is_playing_with_voip()
-    assert state_machine.is_music_playing()
+    runtime.music_fsm.transition("play")
+    runtime.sync_app_state("load_playlist")
+    assert runtime.current_app_state == AppRuntimeState.PLAYING
+
+    runtime.music_fsm.transition("stop")
+    state_change = runtime.sync_app_state("stop")
+    assert state_change.entered(AppRuntimeState.PLAYLIST_BROWSER)
+    assert runtime.current_app_state == AppRuntimeState.PLAYLIST_BROWSER

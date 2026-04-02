@@ -7,7 +7,7 @@ from __future__ import annotations
 from loguru import logger
 
 from yoyopy.audio.mopidy_client import MopidyTrack
-from yoyopy.coordinators.runtime import CoordinatorRuntime
+from yoyopy.coordinators.runtime import AppRuntimeState, CoordinatorRuntime
 from yoyopy.coordinators.screen import ScreenCoordinator
 from yoyopy.event_bus import EventBus
 from yoyopy.events import PlaybackStateChangedEvent, TrackChangedEvent
@@ -68,7 +68,7 @@ class PlaybackCoordinator:
             logger.info("🎵 Playback stopped")
             if not self.runtime.call_fsm.is_active:
                 self.runtime.music_fsm.transition("stop")
-                self.runtime.state_machine.sync_from_models("track_stopped")
+                self.runtime.sync_app_state("track_stopped")
 
         self.screen_coordinator.refresh_now_playing_screen()
 
@@ -87,5 +87,7 @@ class PlaybackCoordinator:
         elif playback_state == "stopped":
             self.runtime.music_fsm.transition("stop")
 
-        self.runtime.state_machine.sync_from_models(f"playback_{playback_state}")
+        state_change = self.runtime.sync_app_state(f"playback_{playback_state}")
+        if state_change.entered(AppRuntimeState.PLAYING_WITH_VOIP):
+            logger.info("Music playing with VoIP ready")
         self.screen_coordinator.refresh_now_playing_screen()

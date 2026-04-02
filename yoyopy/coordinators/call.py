@@ -9,7 +9,7 @@ from typing import Optional
 
 from loguru import logger
 
-from yoyopy.coordinators.runtime import CoordinatorRuntime
+from yoyopy.coordinators.runtime import AppRuntimeState, CoordinatorRuntime
 from yoyopy.coordinators.screen import ScreenCoordinator
 from yoyopy.event_bus import EventBus
 from yoyopy.events import (
@@ -159,7 +159,7 @@ class CallCoordinator:
                 self.runtime.mopidy_client.pause()
 
         self.runtime.call_fsm.transition("incoming")
-        self.runtime.state_machine.sync_from_models("incoming_call")
+        self.runtime.sync_app_state("incoming_call")
 
         self.screen_coordinator.show_incoming_call(caller_address, caller_name)
         self.start_ringing()
@@ -175,17 +175,19 @@ class CallCoordinator:
             CallState.OUTGOING_EARLY_MEDIA,
         ):
             self.runtime.call_fsm.transition("dial")
-            self.runtime.state_machine.sync_from_models("call_outgoing")
+            self.runtime.sync_app_state("call_outgoing")
             return
 
         if state == CallState.INCOMING:
             self.runtime.call_fsm.transition("incoming")
-            self.runtime.state_machine.sync_from_models("call_incoming_state")
+            self.runtime.sync_app_state("call_incoming_state")
             return
 
         if state in (CallState.CONNECTED, CallState.STREAMS_RUNNING):
             self.runtime.call_fsm.transition("connect")
-            self.runtime.state_machine.sync_from_models("call_connected")
+            state_change = self.runtime.sync_app_state("call_connected")
+            if state_change.entered(AppRuntimeState.CALL_ACTIVE_MUSIC_PAUSED):
+                logger.info("In call (music paused in background)")
             self.screen_coordinator.show_in_call()
             self.stop_ringing()
 
@@ -215,14 +217,14 @@ class CallCoordinator:
             logger.info("  No music to resume")
 
         self.runtime.call_interruption_policy.clear()
-        self.runtime.state_machine.sync_from_models("call_ended")
+        self.runtime.sync_app_state("call_ended")
 
     def handle_registration_change(self, state: RegistrationState) -> None:
         """Coordinate registration updates and VoIP availability state."""
         logger.info(f"📞 VoIP registration: {state.value}")
 
         self.voip_registered = state == RegistrationState.OK
-        self.runtime.state_machine.set_voip_ready(self.voip_registered)
+        self.runtime.set_voip_ready(self.voip_registered)
 
         if state == RegistrationState.OK:
             logger.info("  ✓ VoIP ready to receive calls")

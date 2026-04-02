@@ -18,13 +18,14 @@ from yoyopy.audio.mopidy_client import MopidyClient
 from yoyopy.config import ConfigManager, YoyoPodConfig
 from yoyopy.connectivity import VoIPConfig, VoIPManager
 from yoyopy.coordinators import (
+    AppRuntimeState,
     CallCoordinator,
     CoordinatorRuntime,
     PlaybackCoordinator,
     ScreenCoordinator,
 )
 from yoyopy.event_bus import EventBus
-from yoyopy.state_machine import AppState, StateMachine
+from yoyopy.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
 from yoyopy.ui.display import Display
 from yoyopy.ui.input import InputManager, get_input_manager
 from yoyopy.ui.screens import (
@@ -66,7 +67,6 @@ class YoyoPodApp:
         self.context: Optional[AppContext] = None
         self.config_manager: Optional[ConfigManager] = None
         self.app_settings: Optional[YoyoPodConfig] = None
-        self.state_machine: Optional[StateMachine] = None
         self.screen_manager: Optional[ScreenManager] = None
         self.input_manager: Optional[InputManager] = None
 
@@ -86,13 +86,14 @@ class YoyoPodApp:
         self.in_call_screen: Optional[InCallScreen] = None
 
         # Split orchestration models
-        self.music_fsm = None
-        self.call_fsm = None
-        self.call_interruption_policy = None
+        self.music_fsm: Optional[MusicFSM] = None
+        self.call_fsm: Optional[CallFSM] = None
+        self.call_interruption_policy: Optional[CallInterruptionPolicy] = None
 
         # Integration state
         self.auto_resume_after_call = True
         self._voip_registered = False
+        self._ui_state = AppRuntimeState.IDLE
 
         # Configuration
         self.config: Dict[str, Any] = {}
@@ -151,10 +152,10 @@ class YoyoPodApp:
                 return False
 
             self._ensure_coordinators()
+            self.coordinator_runtime.set_ui_state(AppRuntimeState.MENU, trigger="initial_screen")
             self._setup_event_subscriptions()
             self._setup_voip_callbacks()
             self._setup_music_callbacks()
-            self._setup_state_callbacks()
 
             logger.info("✓ YoyoPod setup complete")
             return True
@@ -184,7 +185,7 @@ class YoyoPodApp:
             return False
 
     def _init_core_components(self) -> bool:
-        """Initialize display, context, state machine, input, and screen manager."""
+        """Initialize display, context, orchestration models, input, and screen manager."""
         logger.info("Initializing core components...")
 
         try:
@@ -210,11 +211,10 @@ class YoyoPodApp:
             logger.info("  - AppContext")
             self.context = AppContext()
 
-            logger.info("  - StateMachine")
-            self.state_machine = StateMachine(self.context)
-            self.music_fsm = self.state_machine.music_fsm
-            self.call_fsm = self.state_machine.call_fsm
-            self.call_interruption_policy = self.state_machine.call_interruption_policy
+            logger.info("  - Orchestration Models")
+            self.music_fsm = MusicFSM()
+            self.call_fsm = CallFSM()
+            self.call_interruption_policy = CallInterruptionPolicy()
 
             logger.info("  - InputManager")
             self.input_manager = get_input_manager(
@@ -348,7 +348,7 @@ class YoyoPodApp:
             logger.info("    - Navigation: home, menu")
 
             self.screen_manager.push_screen("menu")
-            self.state_machine.set_ui_state(AppState.MENU, trigger="initial_screen")
+            self._ui_state = AppRuntimeState.MENU
             logger.info("  ✓ Initial screen set to menu")
             return True
         except Exception as exc:
@@ -393,17 +393,8 @@ class YoyoPodApp:
         logger.info("  ✓ Event subscriptions registered")
 
     def _setup_state_callbacks(self) -> None:
-        """Register state-machine callbacks."""
-        logger.info("Setting up state callbacks...")
-        self._ensure_coordinators()
-        self.state_machine.on_enter(
-            AppState.PLAYING_WITH_VOIP,
-            self.playback_coordinator.on_enter_playing_with_voip,
-        )
-        self.state_machine.on_enter(
-            AppState.CALL_ACTIVE_MUSIC_PAUSED,
-            self.call_coordinator.on_enter_call_active_music_paused,
-        )
+        """Legacy no-op retained for compatibility."""
+        return None
         logger.info("  ✓ State callbacks registered")
 
     def _run_on_main_thread(self, description: str, callback: Callable[[], None]) -> None:
@@ -425,7 +416,6 @@ class YoyoPodApp:
             return
 
         self.coordinator_runtime = CoordinatorRuntime(
-            state_machine=self.state_machine,
             music_fsm=self.music_fsm,
             call_fsm=self.call_fsm,
             call_interruption_policy=self.call_interruption_policy,
@@ -438,6 +428,8 @@ class YoyoPodApp:
             in_call_screen=self.in_call_screen,
             config=self.config,
             config_manager=self.config_manager,
+            ui_state=self._ui_state,
+            voip_ready=self._voip_registered,
         )
         self.screen_coordinator = ScreenCoordinator(self.coordinator_runtime)
         self.call_coordinator = CallCoordinator(
@@ -477,8 +469,8 @@ class YoyoPodApp:
         logger.info("YoyoPod Running")
         logger.info("=" * 60)
         logger.info("")
-        logger.info("State Machine Status:")
-        logger.info(f"  Current state: {self.state_machine.get_state_name()}")
+        logger.info("Coordinator Status:")
+        logger.info(f"  Current state: {self.coordinator_runtime.get_state_name()}")
         logger.info("")
         logger.info("VoIP Status:")
         if self.voip_manager:
@@ -570,7 +562,7 @@ class YoyoPodApp:
     def get_status(self) -> Dict[str, Any]:
         """Return the current application status."""
         return {
-            "state": self.state_machine.get_state_name(),
+            "state": self.coordinator_runtime.get_state_name(),
             "voip_registered": self.voip_registered,
             "music_was_playing": self.call_interruption_policy.music_interrupted_by_call,
             "auto_resume": self.auto_resume_after_call,
