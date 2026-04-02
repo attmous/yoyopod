@@ -28,10 +28,11 @@ from yoyopy.event_bus import EventBus
 from yoyopy.events import RecoveryAttemptCompletedEvent, ScreenChangedEvent
 from yoyopy.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
 from yoyopy.ui.display import Display
-from yoyopy.ui.input import InputManager, get_input_manager
+from yoyopy.ui.input import InputManager, InteractionProfile, get_input_manager
 from yoyopy.ui.screens import (
     CallScreen,
     ContactListScreen,
+    HubScreen,
     HomeScreen,
     InCallScreen,
     IncomingCallScreen,
@@ -85,6 +86,7 @@ class YoyoPodApp:
         self.mopidy_client: Optional[MopidyClient] = None
 
         # Screen instances
+        self.hub_screen: Optional[HubScreen] = None
         self.home_screen: Optional[HomeScreen] = None
         self.menu_screen: Optional[MenuScreen] = None
         self.now_playing_screen: Optional[NowPlayingScreen] = None
@@ -171,7 +173,7 @@ class YoyoPodApp:
                 return False
 
             self._ensure_coordinators()
-            self.coordinator_runtime.set_ui_state(AppRuntimeState.MENU, trigger="initial_screen")
+            self.coordinator_runtime.set_ui_state(self._ui_state, trigger="initial_screen")
             self._setup_event_subscriptions()
             self._setup_voip_callbacks()
             self._setup_music_callbacks()
@@ -242,6 +244,7 @@ class YoyoPodApp:
                 simulate=self.simulate,
             )
             if self.input_manager:
+                self.context.interaction_profile = self.input_manager.interaction_profile
                 self.input_manager.start()
                 logger.info("    ✓ Input system initialized")
             else:
@@ -307,6 +310,12 @@ class YoyoPodApp:
                 "Call Contact",
                 "Back",
             ]
+            self.hub_screen = HubScreen(
+                self.display,
+                self.context,
+                mopidy_client=self.mopidy_client,
+                voip_manager=self.voip_manager,
+            )
             self.menu_screen = MenuScreen(self.display, self.context, items=menu_items)
             self.home_screen = HomeScreen(self.display, self.context)
             self.now_playing_screen = NowPlayingScreen(
@@ -351,6 +360,7 @@ class YoyoPodApp:
                 voip_manager=self.voip_manager,
             )
 
+            self.screen_manager.register_screen("hub", self.hub_screen)
             self.screen_manager.register_screen("home", self.home_screen)
             self.screen_manager.register_screen("menu", self.menu_screen)
             self.screen_manager.register_screen("now_playing", self.now_playing_screen)
@@ -360,19 +370,43 @@ class YoyoPodApp:
             self.screen_manager.register_screen("incoming_call", self.incoming_call_screen)
             self.screen_manager.register_screen("outgoing_call", self.outgoing_call_screen)
             self.screen_manager.register_screen("in_call", self.in_call_screen)
+            logger.info("    - Whisplay root: hub")
 
             logger.info("  ✓ All screens registered")
             logger.info("    - Music screens: now_playing, playlists")
             logger.info("    - VoIP screens: call, contacts, incoming_call, outgoing_call, in_call")
             logger.info("    - Navigation: home, menu")
 
-            self.screen_manager.push_screen("menu")
-            self._ui_state = AppRuntimeState.MENU
+            initial_screen = self._get_initial_screen_name()
+            self.screen_manager.push_screen(initial_screen)
+            self._ui_state = self._get_initial_ui_state()
+            logger.info(f"  Initial route resolved to {initial_screen}")
+            logger.info(f"  Initial screen confirmed as {initial_screen}")
             logger.info("  ✓ Initial screen set to menu")
             return True
         except Exception as exc:
             logger.error(f"Failed to setup screens: {exc}")
             return False
+
+    def _get_interaction_profile(self) -> InteractionProfile:
+        """Return the active hardware interaction profile."""
+        if self.input_manager is not None:
+            return self.input_manager.interaction_profile
+        if self.context is not None:
+            return self.context.interaction_profile
+        return InteractionProfile.STANDARD
+
+    def _get_initial_screen_name(self) -> str:
+        """Return the root screen for the active interaction profile."""
+        if self._get_interaction_profile() == InteractionProfile.ONE_BUTTON:
+            return "hub"
+        return "menu"
+
+    def _get_initial_ui_state(self) -> AppRuntimeState:
+        """Return the base runtime state for the active interaction profile."""
+        if self._get_interaction_profile() == InteractionProfile.ONE_BUTTON:
+            return AppRuntimeState.HUB
+        return AppRuntimeState.MENU
 
     def _setup_voip_callbacks(self) -> None:
         """Register VoIP event callbacks."""

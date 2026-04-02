@@ -10,6 +10,8 @@ from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from pathlib import Path
 from loguru import logger
 
+from yoyopy.ui.input.hal import InteractionProfile
+
 if TYPE_CHECKING:
     from yoyopy.audio.audio_manager import AudioManager
 
@@ -81,7 +83,11 @@ class AppContext:
     user settings, and system status.
     """
 
-    def __init__(self, audio_manager: Optional['AudioManager'] = None) -> None:
+    def __init__(
+        self,
+        audio_manager: Optional['AudioManager'] = None,
+        interaction_profile: InteractionProfile = InteractionProfile.STANDARD,
+    ) -> None:
         """
         Initialize application context.
 
@@ -93,6 +99,7 @@ class AppContext:
 
         # Audio manager (optional, for actual audio playback)
         self.audio_manager = audio_manager
+        self.interaction_profile = interaction_profile
 
         # Current playlist
         self.current_playlist: Optional[Playlist] = None

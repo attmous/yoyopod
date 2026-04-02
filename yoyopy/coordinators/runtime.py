@@ -35,6 +35,7 @@ class AppRuntimeState(Enum):
     """Derived application state used by the production coordinator path."""
 
     IDLE = "idle"
+    HUB = "hub"
     MENU = "menu"
     PLAYING = "playing"
     PAUSED = "paused"
@@ -94,6 +95,7 @@ class CoordinatorRuntime:
 
     _UI_STATES = {
         AppRuntimeState.IDLE,
+        AppRuntimeState.HUB,
         AppRuntimeState.MENU,
         AppRuntimeState.SETTINGS,
         AppRuntimeState.PLAYLIST,
@@ -183,6 +185,7 @@ class CoordinatorRuntime:
         """Update the base UI state for non-call overlay screens."""
         state_by_screen = {
             "home": AppRuntimeState.IDLE,
+            "hub": AppRuntimeState.HUB,
             "menu": AppRuntimeState.MENU,
             "playlists": AppRuntimeState.PLAYLIST_BROWSER,
             "call": AppRuntimeState.CALL_IDLE,

@@ -10,7 +10,7 @@ from collections import defaultdict
 from typing import List, Callable, Optional, Any, Dict
 from loguru import logger
 
-from yoyopy.ui.input.hal import InputAction, InputHAL
+from yoyopy.ui.input.hal import InputAction, InputHAL, InteractionProfile
 
 
 class InputManager:
@@ -33,12 +33,20 @@ class InputManager:
         manager.start()
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        interaction_profile: InteractionProfile = InteractionProfile.STANDARD,
+    ) -> None:
         """Initialize the input manager."""
         self.adapters: List[InputHAL] = []
         self.callbacks: Dict[InputAction, List[Callable]] = defaultdict(list)
+        self.interaction_profile = interaction_profile
         self.running = False
         logger.debug("InputManager initialized")
+
+    def set_interaction_profile(self, profile: InteractionProfile) -> None:
+        """Store the active interaction profile for the current hardware setup."""
+        self.interaction_profile = profile
 
     def add_adapter(self, adapter: InputHAL) -> None:
         """

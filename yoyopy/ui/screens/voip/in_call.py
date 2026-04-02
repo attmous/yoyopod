@@ -186,31 +186,41 @@ class InCallScreen(Screen):
         instructions_y = self.display.HEIGHT - 15
         instructions_size = 12
 
-        # Mute button (X)
-        mute_text = f"X: {'Unmute' if is_muted else 'Mute'}"
-        mute_width, _ = self.display.get_text_size(mute_text, instructions_size)
-        mute_x = 20
+        if self.is_one_button_mode():
+            instructions = f"Tap {'unmute' if is_muted else 'mute'} | Hold hang up"
+            instr_width, _ = self.display.get_text_size(instructions, instructions_size)
+            self.display.text(
+                instructions,
+                (self.display.WIDTH - instr_width) // 2,
+                instructions_y,
+                color=self.display.COLOR_GRAY,
+                font_size=instructions_size
+            )
+        else:
+            # Mute button (X)
+            mute_text = f"X: {'Unmute' if is_muted else 'Mute'}"
+            mute_x = 20
 
-        self.display.text(
-            mute_text,
-            mute_x,
-            instructions_y,
-            color=self.display.COLOR_YELLOW,
-            font_size=instructions_size
-        )
+            self.display.text(
+                mute_text,
+                mute_x,
+                instructions_y,
+                color=self.display.COLOR_YELLOW,
+                font_size=instructions_size
+            )
 
-        # End call button (B)
-        end_text = "B: End Call"
-        end_width, _ = self.display.get_text_size(end_text, instructions_size)
-        end_x = self.display.WIDTH - end_width - 20
+            # End call button (B)
+            end_text = "B: End Call"
+            end_width, _ = self.display.get_text_size(end_text, instructions_size)
+            end_x = self.display.WIDTH - end_width - 20
 
-        self.display.text(
-            end_text,
-            end_x,
-            instructions_y,
-            color=self.display.COLOR_RED,
-            font_size=instructions_size
-        )
+            self.display.text(
+                end_text,
+                end_x,
+                instructions_y,
+                color=self.display.COLOR_RED,
+                font_size=instructions_size
+            )
 
         # Update display
         self.display.update()
@@ -242,4 +252,8 @@ class InCallScreen(Screen):
 
     def on_up(self, data=None) -> None:
         """Toggle microphone mute."""
+        self._toggle_mute()
+
+    def on_advance(self, data=None) -> None:
+        """Toggle microphone mute for one-button navigation."""
         self._toggle_mute()

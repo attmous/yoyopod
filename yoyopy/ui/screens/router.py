@@ -64,6 +64,11 @@ class ScreenRouter:
     def _default_routes(self) -> Dict[str, Dict[str, NavigationRequest]]:
         """Return the default route map for current YoyoPod screens."""
         return {
+            "hub": {
+                "select:Now Playing": NavigationRequest.push("now_playing"),
+                "select:Playlists": NavigationRequest.push("playlists"),
+                "select:Calls": NavigationRequest.push("call"),
+            },
             "home": {
                 "select": NavigationRequest.push("menu"),
             },

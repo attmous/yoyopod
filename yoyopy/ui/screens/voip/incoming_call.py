@@ -161,31 +161,41 @@ class IncomingCallScreen(Screen):
         instructions_y = self.display.HEIGHT - 15
         instructions_size = 12
 
-        # Answer button (A)
-        answer_text = "A: Answer"
-        answer_width, _ = self.display.get_text_size(answer_text, instructions_size)
-        answer_x = 20
+        if self.is_one_button_mode():
+            instructions = "Double answer | Hold reject"
+            instr_width, _ = self.display.get_text_size(instructions, instructions_size)
+            self.display.text(
+                instructions,
+                (self.display.WIDTH - instr_width) // 2,
+                instructions_y,
+                color=self.display.COLOR_GRAY,
+                font_size=instructions_size
+            )
+        else:
+            # Answer button (A)
+            answer_text = "A: Answer"
+            answer_x = 20
 
-        self.display.text(
-            answer_text,
-            answer_x,
-            instructions_y,
-            color=self.display.COLOR_GREEN,
-            font_size=instructions_size
-        )
+            self.display.text(
+                answer_text,
+                answer_x,
+                instructions_y,
+                color=self.display.COLOR_GREEN,
+                font_size=instructions_size
+            )
 
-        # Reject button (B)
-        reject_text = "B: Reject"
-        reject_width, _ = self.display.get_text_size(reject_text, instructions_size)
-        reject_x = self.display.WIDTH - reject_width - 20
+            # Reject button (B)
+            reject_text = "B: Reject"
+            reject_width, _ = self.display.get_text_size(reject_text, instructions_size)
+            reject_x = self.display.WIDTH - reject_width - 20
 
-        self.display.text(
-            reject_text,
-            reject_x,
-            instructions_y,
-            color=self.display.COLOR_RED,
-            font_size=instructions_size
-        )
+            self.display.text(
+                reject_text,
+                reject_x,
+                instructions_y,
+                color=self.display.COLOR_RED,
+                font_size=instructions_size
+            )
 
         # Update display
         self.display.update()
@@ -213,6 +223,10 @@ class IncomingCallScreen(Screen):
     def on_select(self, data=None) -> None:
         """Answer the incoming call."""
         self._answer_call()
+
+    def on_advance(self, data=None) -> None:
+        """Incoming-call single tap is intentionally a no-op."""
+        return
 
     def on_call_answer(self, data=None) -> None:
         """Answer the incoming call from a dedicated VoIP action."""

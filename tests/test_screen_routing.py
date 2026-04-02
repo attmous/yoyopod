@@ -8,7 +8,15 @@ import pytest
 from yoyopy.app_context import AppContext
 from yoyopy.ui.display import Display
 from yoyopy.ui.input import InputAction, InputManager
-from yoyopy.ui.screens import HomeScreen, MenuScreen, NavigationRequest, Screen, ScreenManager, ScreenRouter
+from yoyopy.ui.screens import (
+    HubScreen,
+    HomeScreen,
+    MenuScreen,
+    NavigationRequest,
+    Screen,
+    ScreenManager,
+    ScreenRouter,
+)
 
 
 class RoutableStubScreen(Screen):
@@ -62,6 +70,15 @@ def test_screen_router_covers_call_hub_routes() -> None:
     assert router.resolve("call", "call_started") == NavigationRequest.push("outgoing_call")
 
 
+def test_screen_router_covers_whisplay_hub_routes() -> None:
+    """The Whisplay action hub should route each root card to the correct screen."""
+    router = ScreenRouter()
+
+    assert router.resolve("hub", "select", payload="Now Playing") == NavigationRequest.push("now_playing")
+    assert router.resolve("hub", "select", payload="Playlists") == NavigationRequest.push("playlists")
+    assert router.resolve("hub", "select", payload="Calls") == NavigationRequest.push("call")
+
+
 def test_screen_manager_routes_menu_labels_through_stack(display: Display) -> None:
     """Menu labels should resolve through the router and preserve stack navigation."""
     context = AppContext()
@@ -91,3 +108,36 @@ def test_screen_manager_routes_menu_labels_through_stack(display: Display) -> No
     menu.selected_index = 1
     input_manager.simulate_action(InputAction.SELECT)
     assert screen_manager.current_screen is home
+
+
+def test_screen_manager_routes_whisplay_hub_cards_through_stack(display: Display) -> None:
+    """The one-button hub should route its cards through the same declarative router."""
+    context = AppContext()
+    input_manager = InputManager()
+    screen_manager = ScreenManager(display, input_manager)
+
+    hub = HubScreen(display, context)
+    now_playing = RoutableStubScreen(display, context)
+    playlists = RoutableStubScreen(display, context)
+    call = RoutableStubScreen(display, context)
+
+    screen_manager.register_screen("hub", hub)
+    screen_manager.register_screen("now_playing", now_playing)
+    screen_manager.register_screen("playlists", playlists)
+    screen_manager.register_screen("call", call)
+
+    screen_manager.replace_screen("hub")
+    assert screen_manager.current_screen is hub
+
+    input_manager.simulate_action(InputAction.SELECT)
+    assert screen_manager.current_screen is now_playing
+
+    screen_manager.replace_screen("hub")
+    hub.selected_index = 1
+    input_manager.simulate_action(InputAction.SELECT)
+    assert screen_manager.current_screen is playlists
+
+    screen_manager.replace_screen("hub")
+    hub.selected_index = 2
+    input_manager.simulate_action(InputAction.SELECT)
+    assert screen_manager.current_screen is call

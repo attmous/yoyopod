@@ -177,6 +177,22 @@ class AppUiConfig:
 
 
 @dataclass(slots=True)
+class AppInputConfig:
+    """Input hardware and gesture timing settings."""
+
+    ptt_navigation: bool = config_value(default=True, env="YOYOPOD_PTT_NAVIGATION")
+    whisplay_debounce_ms: int = config_value(default=50, env="YOYOPOD_WHISPLAY_DEBOUNCE_MS")
+    whisplay_double_tap_ms: int = config_value(
+        default=300,
+        env="YOYOPOD_WHISPLAY_DOUBLE_TAP_MS",
+    )
+    whisplay_long_hold_ms: int = config_value(
+        default=800,
+        env="YOYOPOD_WHISPLAY_LONG_HOLD_MS",
+    )
+
+
+@dataclass(slots=True)
 class AppDisplayConfig:
     """Display hardware configuration."""
 
@@ -204,6 +220,7 @@ class YoyoPodConfig:
     audio: AppAudioConfig = config_value(default_factory=AppAudioConfig)
     voip: AppVoIPConfig = config_value(default_factory=AppVoIPConfig)
     ui: AppUiConfig = config_value(default_factory=AppUiConfig)
+    input: AppInputConfig = config_value(default_factory=AppInputConfig)
     display: AppDisplayConfig = config_value(default_factory=AppDisplayConfig)
     logging: AppLoggingConfig = config_value(default_factory=AppLoggingConfig)
 

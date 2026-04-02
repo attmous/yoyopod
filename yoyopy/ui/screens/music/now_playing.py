@@ -217,6 +217,17 @@ class NowPlayingScreen(Screen):
                 fill=self.display.COLOR_YELLOW
             )
 
+        if self.is_one_button_mode():
+            help_text = "Tap next | Double play | Hold back"
+            help_width, _ = self.display.get_text_size(help_text, 9)
+            self.display.text(
+                help_text,
+                (self.display.WIDTH - help_width) // 2,
+                self.display.HEIGHT - 10,
+                color=self.display.COLOR_GRAY,
+                font_size=9
+            )
+
         # Update display
         self.display.update()
 
@@ -262,6 +273,10 @@ class NowPlayingScreen(Screen):
     def on_back(self, data=None) -> None:
         """Go back to the previous screen."""
         self.request_route("back")
+
+    def on_advance(self, data=None) -> None:
+        """Advance to the next track for one-button navigation."""
+        self._next_track()
 
     def on_up(self, data=None) -> None:
         """Go to the previous track."""

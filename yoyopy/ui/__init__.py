@@ -8,7 +8,7 @@ Provides display management, input handling, and screen navigation.
 from yoyopy.ui.display import Display, DisplayHAL
 
 # Input module
-from yoyopy.ui.input import InputManager, InputAction
+from yoyopy.ui.input import InputManager, InputAction, InteractionProfile
 
 # Screens module
 from yoyopy.ui.screens import (
@@ -32,6 +32,7 @@ __all__ = [
     # Input
     'InputManager',
     'InputAction',
+    'InteractionProfile',
     # Screens
     'Screen',
     'ScreenManager',

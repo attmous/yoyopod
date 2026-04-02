@@ -134,6 +134,17 @@ class CallScreen(Screen):
             font_size=title_size,
         )
 
+        if self.is_one_button_mode() and self.quick_targets:
+            position_text = f"{self.selected_index + 1}/{len(self.quick_targets)}"
+            position_width, _ = self.display.get_text_size(position_text, 11)
+            self.display.text(
+                position_text,
+                self.display.WIDTH - position_width - 18,
+                title_y + 4,
+                color=self.display.COLOR_GRAY,
+                font_size=11,
+            )
+
         separator_y = title_y + title_height + 8
         self.display.line(
             20,
@@ -258,7 +269,7 @@ class CallScreen(Screen):
 
                 title_text = target.title
                 if target.favorite:
-                    title_text = f"{target.title} [Fav]"
+                    title_text = f"* {target.title}"
 
                 title_color = self.display.COLOR_WHITE
                 if target.favorite and not selected:
@@ -357,6 +368,18 @@ class CallScreen(Screen):
 
     def _instruction_text(self) -> str:
         """Return the footer instructions for the current selection and state."""
+        if self.is_one_button_mode():
+            if not self.quick_targets:
+                return "Hold back"
+
+            selected_target = self._selected_target()
+            if selected_target is None:
+                return "Hold back"
+
+            if selected_target.kind == "browse_contacts" or not self._is_ready_to_call():
+                return "Tap next | Double open | Hold back"
+            return "Tap next | Double call | Hold back"
+
         if not self.quick_targets:
             return "B: Back"
 
@@ -441,3 +464,10 @@ class CallScreen(Screen):
         if self.selected_index < len(self.quick_targets) - 1:
             self.selected_index += 1
             self._ensure_selection_visible()
+
+    def on_advance(self, data=None) -> None:
+        """Move through quick-call targets with wraparound for one-button UX."""
+        if not self.quick_targets:
+            return
+        self.selected_index = (self.selected_index + 1) % len(self.quick_targets)
+        self._ensure_selection_visible()

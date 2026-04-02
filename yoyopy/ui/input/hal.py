@@ -10,6 +10,18 @@ from typing import Callable, List, Optional, Any
 from loguru import logger
 
 
+class InteractionProfile(Enum):
+    """
+    High-level interaction profiles derived from available hardware.
+
+    STANDARD covers multi-button devices and simulation, while ONE_BUTTON is
+    the Whisplay-native single-button navigation model.
+    """
+
+    STANDARD = "standard"
+    ONE_BUTTON = "one_button"
+
+
 class InputAction(Enum):
     """
     Semantic input actions independent of hardware.
@@ -19,6 +31,7 @@ class InputAction(Enum):
     """
 
     # Navigation actions
+    ADVANCE = "advance"         # Move to the next item in a one-button flow
     SELECT = "select"           # Select/Confirm current item
     BACK = "back"               # Go back/Cancel
     UP = "up"                   # Navigate up in lists

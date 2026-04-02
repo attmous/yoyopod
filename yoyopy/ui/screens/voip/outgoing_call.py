@@ -196,8 +196,10 @@ class OutgoingCallScreen(Screen):
         instructions_y = self.display.HEIGHT - 15
         instructions_size = 12
 
-        # Cancel button (B)
-        cancel_text = "B: Cancel"
+        if self.is_one_button_mode():
+            cancel_text = "Hold cancel"
+        else:
+            cancel_text = "B: Cancel"
         cancel_width, _ = self.display.get_text_size(cancel_text, instructions_size)
         cancel_x = (self.display.WIDTH - cancel_width) // 2
 
@@ -225,6 +227,14 @@ class OutgoingCallScreen(Screen):
     def on_back(self, data=None) -> None:
         """Cancel the outgoing call."""
         self._cancel_call()
+
+    def on_advance(self, data=None) -> None:
+        """Outgoing-call single tap is intentionally a no-op."""
+        return
+
+    def on_select(self, data=None) -> None:
+        """Outgoing-call double tap is intentionally a no-op."""
+        return
 
     def on_call_hangup(self, data=None) -> None:
         """Cancel the outgoing call from a dedicated VoIP action."""

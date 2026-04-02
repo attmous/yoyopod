@@ -96,6 +96,17 @@ class ContactListScreen(Screen):
             font_size=title_size
         )
 
+        if self.is_one_button_mode() and self.contacts:
+            position_text = f"{self.selected_index + 1}/{len(self.contacts)}"
+            position_width, _ = self.display.get_text_size(position_text, 11)
+            self.display.text(
+                position_text,
+                self.display.WIDTH - position_width - 18,
+                title_y + 4,
+                color=self.display.COLOR_GRAY,
+                font_size=11
+            )
+
         # Draw separator line
         separator_y = title_y + title_height + 10
         self.display.line(
@@ -220,7 +231,10 @@ class ContactListScreen(Screen):
         # Draw instructions at bottom
         instructions_y = self.display.HEIGHT - 15
         instructions_size = 10
-        instructions = "A: Call | B: Back | X/Y: Navigate"
+        if self.is_one_button_mode():
+            instructions = "Tap next | Double call | Hold back"
+        else:
+            instructions = "A: Call | B: Back | X/Y: Navigate"
         instr_width, _ = self.display.get_text_size(instructions, instructions_size)
         instr_x = (self.display.WIDTH - instr_width) // 2
 
@@ -240,6 +254,13 @@ class ContactListScreen(Screen):
         if self.contacts and self.selected_index < len(self.contacts) - 1:
             self.selected_index += 1
             logger.debug(f"Selected: {self.contacts[self.selected_index].name}")
+
+    def select_next_wrapped(self) -> None:
+        """Move selection to next contact with wraparound."""
+        if not self.contacts:
+            return
+        self.selected_index = (self.selected_index + 1) % len(self.contacts)
+        logger.debug(f"Selected: {self.contacts[self.selected_index].name}")
 
     def select_previous(self) -> None:
         """Move selection to previous contact."""
@@ -274,6 +295,10 @@ class ContactListScreen(Screen):
     def on_back(self, data=None) -> None:
         """Go back to the previous screen."""
         self.request_route("back")
+
+    def on_advance(self, data=None) -> None:
+        """Move to the next contact for one-button navigation."""
+        self.select_next_wrapped()
 
     def on_up(self, data=None) -> None:
         """Move selection up."""

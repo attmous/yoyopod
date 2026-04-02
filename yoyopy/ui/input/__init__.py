@@ -9,12 +9,13 @@ Provides hardware abstraction for various input methods:
 """
 
 from yoyopy.ui.input.factory import get_input_manager
-from yoyopy.ui.input.hal import InputAction, InputHAL
+from yoyopy.ui.input.hal import InputAction, InputHAL, InteractionProfile
 from yoyopy.ui.input.manager import InputManager
 
 __all__ = [
     'InputHAL',
     'InputAction',
+    'InteractionProfile',
     'InputManager',
     'get_input_manager',
 ]

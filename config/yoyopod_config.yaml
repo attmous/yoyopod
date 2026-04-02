@@ -29,6 +29,13 @@ ui:
   screen_timeout_seconds: 300     # Dim screen after 5 minutes
   button_debounce_ms: 50          # Button debounce time
 
+# Input Settings
+input:
+  ptt_navigation: true            # Single-button Whisplay navigation mode
+  whisplay_debounce_ms: 50        # Debounce for the hardware button
+  whisplay_double_tap_ms: 300     # Max gap between taps for confirm
+  whisplay_long_hold_ms: 800      # Hold time for back/cancel
+
 # Display Settings
 display:
   hardware: "auto"                # auto, whisplay, pimoroni, simulation

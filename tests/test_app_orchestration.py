@@ -28,6 +28,7 @@ from yoyopy.fsm import (
     MusicFSM,
     MusicState,
 )
+from yoyopy.ui.input import InputManager, InteractionProfile
 
 
 class FakeScreen:
@@ -495,3 +496,23 @@ def test_app_stop_uses_silent_voip_teardown() -> None:
     app.stop()
 
     assert app.voip_manager.stop_notify_events == [False]
+
+
+def test_standard_profile_starts_on_menu() -> None:
+    """Standard multi-button devices should keep the existing menu root."""
+    app = YoyoPodApp(simulate=True)
+    app.context = AppContext()
+    app.input_manager = InputManager(interaction_profile=InteractionProfile.STANDARD)
+
+    assert app._get_initial_screen_name() == "menu"
+    assert app._get_initial_ui_state() == AppRuntimeState.MENU
+
+
+def test_one_button_profile_starts_on_hub() -> None:
+    """Whisplay one-button devices should use the new hub root."""
+    app = YoyoPodApp(simulate=True)
+    app.context = AppContext(interaction_profile=InteractionProfile.ONE_BUTTON)
+    app.input_manager = InputManager(interaction_profile=InteractionProfile.ONE_BUTTON)
+
+    assert app._get_initial_screen_name() == "hub"
+    assert app._get_initial_ui_state() == AppRuntimeState.HUB

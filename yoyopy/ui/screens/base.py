@@ -10,6 +10,7 @@ from typing import Optional, Any, TYPE_CHECKING
 from loguru import logger
 
 from yoyopy.ui.display import Display
+from yoyopy.ui.input.hal import InteractionProfile
 from yoyopy.ui.screens.router import NavigationRequest
 
 if TYPE_CHECKING:
@@ -82,6 +83,16 @@ class Screen(ABC):
         self._pending_navigation = None
         return request
 
+    def get_interaction_profile(self) -> InteractionProfile:
+        """Return the current interaction profile for the active device."""
+        if self.context is None:
+            return InteractionProfile.STANDARD
+        return getattr(self.context, "interaction_profile", InteractionProfile.STANDARD)
+
+    def is_one_button_mode(self) -> bool:
+        """Return True when the screen should render Whisplay-first hints."""
+        return self.get_interaction_profile() == InteractionProfile.ONE_BUTTON
+
     def handle_action(self, action: "InputAction", data: Optional[Any] = None) -> None:
         """Dispatch a semantic input action to the matching handler method."""
         handler = getattr(self, f"on_{action.value}", None)
@@ -119,6 +130,10 @@ class Screen(ABC):
     # ===== SEMANTIC ACTION HANDLERS =====
     # These are hardware-independent input actions that screens can respond to.
     # Screens override these methods based on their functionality.
+
+    def on_advance(self, data: Optional[Any] = None) -> None:
+        """Handle ADVANCE action for one-button navigation flows."""
+        pass
 
     def on_select(self, data: Optional[Any] = None) -> None:
         """Handle SELECT action (confirm/accept current item)."""
