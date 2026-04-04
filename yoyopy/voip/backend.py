@@ -304,11 +304,11 @@ class LinphonecBackend:
 
         card = "1"
         speaker_pct = min(100, max(0, self.config.speaker_volume))
-        # Map 0-100 to 75-110 range (capped to reduce speaker-to-mic echo)
-        speaker_raw = int(75 + speaker_pct * 0.35)
+        # Map 0-100 to 90-125 range
+        speaker_raw = int(90 + speaker_pct * 0.35)
         capture_pct = min(100, max(0, self.config.mic_gain))
-        # Map 0-100 to 20-45 range for capture volume (avoid noise from over-amplification)
-        capture_raw = int(20 + capture_pct * 0.25)
+        # Map 0-100 to 16-35 range for capture volume (low to reduce speaker-mic echo)
+        capture_raw = int(16 + capture_pct * 0.19)
 
         commands = [
             f"amixer -c {card} sset 'Speaker' {speaker_raw}",
@@ -403,18 +403,19 @@ ringer_dev_id={self.config.ringer_dev_id}
 capture_dev_id={self.config.capture_dev_id}
 media_dev_id={self.config.media_dev_id}
 echocancellation=1
-ec_tail_len=200
-ec_delay=50
+ec_tail_len=300
+ec_delay=80
 ec_framesize=128
 echolimiter=1
 el_type=mic
-el_thres=0.02
-el_force=10
-el_sustain=100
+el_thres=0.01
+el_force=25
+el_sustain=50
+el_transmit_thres=4
 mic_gain_db={self.config.mic_gain * 0.3:.1f}
 playback_gain_db={self.config.speaker_volume * 0.12 - 6:.1f}
-ng_thres=0.02
-ng_floorgain=0.005
+ng_thres=0.05
+ng_floorgain=0.001
 """
 
             with open(linphonerc_path, "w", encoding="utf-8") as handle:
