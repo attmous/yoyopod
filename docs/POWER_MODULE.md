@@ -264,8 +264,8 @@ Current controls:
   - `hold`: back
 
 Note:
-- the Whisplay root hub is intentionally still only `Now Playing`, `Playlists`, and `Calls`
-- power status is part of the standard menu flow, not the 3-card Whisplay hub
+- the Whisplay root hub now includes `Power` as a 4th card beside `Now Playing`, `Playlists`, and `Calls`
+- the same `Power Status` screen is still available from the standard menu flow on multi-button devices
 
 ## Diagnostics And Validation
 

@@ -63,6 +63,7 @@ class HubScreen(Screen):
             HubCard(title="Now Playing", subtitle=self._music_subtitle()),
             HubCard(title="Playlists", subtitle=self._playlist_subtitle()),
             HubCard(title="Calls", subtitle=self._calls_subtitle()),
+            HubCard(title="Power", subtitle=self._power_subtitle()),
         ]
 
     def _music_subtitle(self) -> str:
@@ -115,6 +116,16 @@ class HubScreen(Screen):
         if registration_state == "failed":
             return "Registration failed"
         return "VoIP unavailable"
+
+    def _power_subtitle(self) -> str:
+        """Return the compact power status subtitle."""
+        if self.context is None or not self.context.power_available:
+            return "Power offline"
+
+        battery = f"{self.context.battery_percent}%"
+        if self.context.external_power or self.context.battery_charging:
+            return f"{battery} charging"
+        return f"{battery} battery"
 
     def render(self) -> None:
         """Render the Whisplay-first root carousel."""
@@ -253,6 +264,7 @@ class HubScreen(Screen):
             "Now Playing": "N",
             "Playlists": "P",
             "Calls": "C",
+            "Power": "B",
         }.get(title, "?")
 
     @staticmethod

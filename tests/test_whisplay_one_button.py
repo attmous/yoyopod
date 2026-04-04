@@ -189,10 +189,28 @@ def test_hub_advance_wraps_from_last_card_to_first(
         voip_manager=FakeVoIPManager(),
     )
 
-    hub.selected_index = 2
+    hub.selected_index = 3
     hub.on_advance()
 
     assert hub.selected_index == 0
+
+
+def test_hub_select_requests_power_route_for_power_card(
+    display: Display,
+    one_button_context: AppContext,
+) -> None:
+    """The Whisplay hub should open the power screen from its new Power card."""
+    hub = HubScreen(
+        display,
+        one_button_context,
+        mopidy_client=FakeMopidyClient(),
+        voip_manager=FakeVoIPManager(),
+    )
+
+    hub.selected_index = 3
+    hub.on_select()
+
+    assert hub.consume_navigation_request() == NavigationRequest.route("select", payload="Power")
 
 
 def test_now_playing_advance_and_select_follow_one_button_mapping(

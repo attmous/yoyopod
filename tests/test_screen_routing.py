@@ -78,6 +78,7 @@ def test_screen_router_covers_whisplay_hub_routes() -> None:
     assert router.resolve("hub", "select", payload="Now Playing") == NavigationRequest.push("now_playing")
     assert router.resolve("hub", "select", payload="Playlists") == NavigationRequest.push("playlists")
     assert router.resolve("hub", "select", payload="Calls") == NavigationRequest.push("call")
+    assert router.resolve("hub", "select", payload="Power") == NavigationRequest.push("power")
 
 
 def test_screen_manager_routes_menu_labels_through_stack(display: Display) -> None:
@@ -141,11 +142,13 @@ def test_screen_manager_routes_whisplay_hub_cards_through_stack(display: Display
     now_playing = RoutableStubScreen(display, context)
     playlists = RoutableStubScreen(display, context)
     call = RoutableStubScreen(display, context)
+    power = RoutableStubScreen(display, context)
 
     screen_manager.register_screen("hub", hub)
     screen_manager.register_screen("now_playing", now_playing)
     screen_manager.register_screen("playlists", playlists)
     screen_manager.register_screen("call", call)
+    screen_manager.register_screen("power", power)
 
     screen_manager.replace_screen("hub")
     assert screen_manager.current_screen is hub
@@ -162,3 +165,8 @@ def test_screen_manager_routes_whisplay_hub_cards_through_stack(display: Display
     hub.selected_index = 2
     input_manager.simulate_action(InputAction.SELECT)
     assert screen_manager.current_screen is call
+
+    screen_manager.replace_screen("hub")
+    hub.selected_index = 3
+    input_manager.simulate_action(InputAction.SELECT)
+    assert screen_manager.current_screen is power

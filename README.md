@@ -8,6 +8,12 @@ The current codebase supports three display/input modes:
 - PiSugar Whisplay HAT: 240x280 portrait display with a single PTT-style button
 - Simulation mode: browser display plus keyboard and web-button input
 
+On Whisplay, the one-button root hub currently exposes four cards:
+- `Now Playing`
+- `Playlists`
+- `Calls`
+- `Power`
+
 ## Current Status
 
 - VoIP and music integration is implemented in the production app

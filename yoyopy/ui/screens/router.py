@@ -68,6 +68,7 @@ class ScreenRouter:
                 "select:Now Playing": NavigationRequest.push("now_playing"),
                 "select:Playlists": NavigationRequest.push("playlists"),
                 "select:Calls": NavigationRequest.push("call"),
+                "select:Power": NavigationRequest.push("power"),
             },
             "home": {
                 "select": NavigationRequest.push("menu"),
