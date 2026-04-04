@@ -304,8 +304,8 @@ class LinphonecBackend:
 
         card = "1"
         speaker_pct = min(100, max(0, self.config.speaker_volume))
-        # Map 0-100 to 95-125 range
-        speaker_raw = int(95 + speaker_pct * 0.30)
+        # Map 0-100 to 85-115 range
+        speaker_raw = int(85 + speaker_pct * 0.30)
         capture_pct = min(100, max(0, self.config.mic_gain))
         # Map 0-100 to 14-30 range for capture volume (low to reduce speaker-mic echo)
         capture_raw = int(14 + capture_pct * 0.16)
