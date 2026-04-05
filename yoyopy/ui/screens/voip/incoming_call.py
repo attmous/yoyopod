@@ -8,10 +8,12 @@ from loguru import logger
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
+from yoyopy.ui.screens.voip.lvgl import LvglIncomingCallView
 from yoyopy.ui.screens.theme import INK, MUTED, TALK, draw_icon, render_footer, render_header, rounded_panel, text_fit, wrap_text
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
+    from yoyopy.ui.screens import ScreenView
 
 
 class IncomingCallScreen(Screen):
@@ -30,14 +32,48 @@ class IncomingCallScreen(Screen):
         self.caller_address = caller_address
         self.caller_name = caller_name
         self.ring_animation_frame = 0
+        self._lvgl_view: "ScreenView | None" = None
+
+    def enter(self) -> None:
+        """Create the LVGL view when the screen becomes active."""
+        super().enter()
+        self._ensure_lvgl_view()
+
+    def exit(self) -> None:
+        """Tear down any active LVGL view when leaving incoming call."""
+        if self._lvgl_view is not None:
+            self._lvgl_view.destroy()
+            self._lvgl_view = None
+        super().exit()
+
+    def _ensure_lvgl_view(self) -> "ScreenView | None":
+        """Create an LVGL view when the Whisplay renderer is active."""
+        if self._lvgl_view is not None:
+            return self._lvgl_view
+
+        if getattr(self.display, "backend_kind", "pil") != "lvgl":
+            return None
+
+        ui_backend = self.display.get_ui_backend() if hasattr(self.display, "get_ui_backend") else None
+        if ui_backend is None or not getattr(ui_backend, "initialized", False):
+            return None
+
+        self._lvgl_view = LvglIncomingCallView(self, ui_backend)
+        self._lvgl_view.build()
+        return self._lvgl_view
 
     def render(self) -> None:
         """Render the incoming call screen."""
+        lvgl_view = self._ensure_lvgl_view()
+        if lvgl_view is not None:
+            lvgl_view.sync()
+            return
+
         content_top = render_header(
             self.display,
             self.context,
             mode="talk",
-            title="Incoming call",
+            title="Incoming",
             show_time=False,
             show_mode_chip=False,
         )
@@ -65,28 +101,15 @@ class IncomingCallScreen(Screen):
         name_width, name_height = self.display.get_text_size(display_name, 20)
         self.display.text(display_name, (self.display.WIDTH - name_width) // 2, panel_top + 76, color=INK, font_size=20)
 
-        lines = wrap_text(self.display, self.caller_address or "Unknown address", self.display.WIDTH - 56, 11, max_lines=2)
+        lines = wrap_text(self.display, self.caller_address or "Unknown", self.display.WIDTH - 56, 11, max_lines=1)
         line_y = panel_top + 106
         for line in lines:
             width, _ = self.display.get_text_size(line, 11)
             self.display.text(line, (self.display.WIDTH - width) // 2, line_y, color=MUTED, font_size=11)
             line_y += 13
 
-        rounded_panel(
-            self.display,
-            28,
-            panel_bottom - 58,
-            self.display.WIDTH - 28,
-            panel_bottom - 18,
-            fill=(24, 27, 33),
-            outline=None,
-            radius=18,
-        )
-        answer_line = "Double answer" if self.is_one_button_mode() else "A answer"
-        reject_line = "Hold reject" if self.is_one_button_mode() else "B reject"
-        self.display.text(answer_line, 40, panel_bottom - 48, color=TALK.accent, font_size=12)
-        self.display.text(reject_line, 40, panel_bottom - 32, color=(255, 103, 93), font_size=12)
-
+        footer = "Open answer / Hold reject" if self.is_one_button_mode() else "A answer | B reject"
+        render_footer(self.display, footer, mode="talk")
         self.display.update()
 
     def _answer_call(self) -> None:

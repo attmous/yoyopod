@@ -115,6 +115,20 @@ int yoyopy_lvgl_now_playing_sync(
     uint8_t accent_b
 );
 void yoyopy_lvgl_now_playing_destroy(void);
+int yoyopy_lvgl_incoming_call_build(void);
+int yoyopy_lvgl_incoming_call_sync(
+    const char * caller_name,
+    const char * caller_address,
+    const char * footer,
+    int32_t voip_state,
+    int32_t battery_percent,
+    int32_t charging,
+    int32_t power_available,
+    uint8_t accent_r,
+    uint8_t accent_g,
+    uint8_t accent_b
+);
+void yoyopy_lvgl_incoming_call_destroy(void);
 void yoyopy_lvgl_clear_screen(void);
 const char * yoyopy_lvgl_last_error(void);
 const char * yoyopy_lvgl_version(void);
@@ -457,6 +471,44 @@ class LvglBinding:
 
     def now_playing_destroy(self) -> None:
         self.lib.yoyopy_lvgl_now_playing_destroy()
+
+    def incoming_call_build(self) -> None:
+        if self.lib.yoyopy_lvgl_incoming_call_build() != 0:
+            raise LvglBindingError(self.last_error())
+
+    def incoming_call_sync(
+        self,
+        *,
+        caller_name: str,
+        caller_address: str,
+        footer: str,
+        voip_state: int,
+        battery_percent: int,
+        charging: bool,
+        power_available: bool,
+        accent: tuple[int, int, int],
+    ) -> None:
+        caller_name_raw = self.ffi.new("char[]", caller_name.encode("utf-8"))
+        caller_address_raw = self.ffi.new("char[]", caller_address.encode("utf-8"))
+        footer_raw = self.ffi.new("char[]", footer.encode("utf-8"))
+
+        result = self.lib.yoyopy_lvgl_incoming_call_sync(
+            caller_name_raw,
+            caller_address_raw,
+            footer_raw,
+            voip_state,
+            battery_percent,
+            1 if charging else 0,
+            1 if power_available else 0,
+            accent[0],
+            accent[1],
+            accent[2],
+        )
+        if result != 0:
+            raise LvglBindingError(self.last_error())
+
+    def incoming_call_destroy(self) -> None:
+        self.lib.yoyopy_lvgl_incoming_call_destroy()
 
     def clear_screen(self) -> None:
         self.lib.yoyopy_lvgl_clear_screen()

@@ -90,6 +90,22 @@ typedef struct {
     lv_obj_t * footer_label;
 } yoyopy_now_playing_scene_t;
 
+typedef struct {
+    int built;
+    lv_obj_t * screen;
+    lv_obj_t * voip_dot;
+    lv_obj_t * battery_outline;
+    lv_obj_t * battery_fill;
+    lv_obj_t * battery_tip;
+    lv_obj_t * panel;
+    lv_obj_t * icon_halo;
+    lv_obj_t * icon_label;
+    lv_obj_t * state_label;
+    lv_obj_t * caller_name_label;
+    lv_obj_t * caller_address_label;
+    lv_obj_t * footer_label;
+} yoyopy_incoming_call_scene_t;
+
 static int g_initialized = 0;
 static lv_display_t * g_display = NULL;
 static lv_indev_t * g_indev = NULL;
@@ -107,6 +123,7 @@ static yoyopy_hub_scene_t g_hub_scene = {0};
 static yoyopy_listen_scene_t g_listen_scene = {0};
 static yoyopy_playlist_scene_t g_playlist_scene = {0};
 static yoyopy_now_playing_scene_t g_now_playing_scene = {0};
+static yoyopy_incoming_call_scene_t g_incoming_call_scene = {0};
 
 static lv_color_t yoyopy_color_rgb(uint8_t red, uint8_t green, uint8_t blue) {
     uint32_t raw = ((uint32_t)red << 16) | ((uint32_t)green << 8) | (uint32_t)blue;
@@ -145,11 +162,16 @@ static void yoyopy_reset_now_playing_scene_refs(void) {
     memset(&g_now_playing_scene, 0, sizeof(g_now_playing_scene));
 }
 
+static void yoyopy_reset_incoming_call_scene_refs(void) {
+    memset(&g_incoming_call_scene, 0, sizeof(g_incoming_call_scene));
+}
+
 static void yoyopy_reset_scene_refs(void) {
     yoyopy_reset_hub_scene_refs();
     yoyopy_reset_listen_scene_refs();
     yoyopy_reset_playlist_scene_refs();
     yoyopy_reset_now_playing_scene_refs();
+    yoyopy_reset_incoming_call_scene_refs();
 }
 
 static void yoyopy_set_error(const char * message) {
@@ -1400,6 +1422,178 @@ void yoyopy_lvgl_now_playing_destroy(void) {
     }
     yoyopy_clear_group();
     yoyopy_reset_now_playing_scene_refs();
+}
+
+int yoyopy_lvgl_incoming_call_build(void) {
+    if(!g_initialized || g_display == NULL) {
+        yoyopy_set_error("display must be registered before building the incoming-call scene");
+        return -1;
+    }
+
+    if(g_incoming_call_scene.built) {
+        return 0;
+    }
+
+    yoyopy_prepare_active_screen();
+
+    g_incoming_call_scene.screen = lv_screen_active();
+    lv_obj_set_style_bg_color(g_incoming_call_scene.screen, yoyopy_color_rgb(18, 21, 28), 0);
+    lv_obj_set_style_bg_opa(g_incoming_call_scene.screen, LV_OPA_COVER, 0);
+
+    g_incoming_call_scene.voip_dot = lv_obj_create(g_incoming_call_scene.screen);
+    lv_obj_remove_style_all(g_incoming_call_scene.voip_dot);
+    lv_obj_set_size(g_incoming_call_scene.voip_dot, 8, 8);
+    lv_obj_set_style_radius(g_incoming_call_scene.voip_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_pos(g_incoming_call_scene.voip_dot, 16, 10);
+
+    g_incoming_call_scene.battery_outline = lv_obj_create(g_incoming_call_scene.screen);
+    lv_obj_remove_style_all(g_incoming_call_scene.battery_outline);
+    lv_obj_set_size(g_incoming_call_scene.battery_outline, 20, 10);
+    lv_obj_set_pos(g_incoming_call_scene.battery_outline, 202, 6);
+    lv_obj_set_style_border_width(g_incoming_call_scene.battery_outline, 1, 0);
+    lv_obj_set_style_border_color(g_incoming_call_scene.battery_outline, yoyopy_color_rgb(153, 160, 173), 0);
+    lv_obj_set_style_radius(g_incoming_call_scene.battery_outline, 2, 0);
+    lv_obj_set_style_bg_opa(g_incoming_call_scene.battery_outline, LV_OPA_TRANSP, 0);
+
+    g_incoming_call_scene.battery_fill = lv_obj_create(g_incoming_call_scene.battery_outline);
+    lv_obj_remove_style_all(g_incoming_call_scene.battery_fill);
+    lv_obj_set_pos(g_incoming_call_scene.battery_fill, 1, 1);
+    lv_obj_set_size(g_incoming_call_scene.battery_fill, 18, 8);
+    lv_obj_set_style_radius(g_incoming_call_scene.battery_fill, 1, 0);
+    lv_obj_set_style_bg_opa(g_incoming_call_scene.battery_fill, LV_OPA_COVER, 0);
+
+    g_incoming_call_scene.battery_tip = lv_obj_create(g_incoming_call_scene.screen);
+    lv_obj_remove_style_all(g_incoming_call_scene.battery_tip);
+    lv_obj_set_size(g_incoming_call_scene.battery_tip, 2, 4);
+    lv_obj_set_pos(g_incoming_call_scene.battery_tip, 222, 9);
+    lv_obj_set_style_bg_color(g_incoming_call_scene.battery_tip, yoyopy_color_rgb(153, 160, 173), 0);
+    lv_obj_set_style_bg_opa(g_incoming_call_scene.battery_tip, LV_OPA_COVER, 0);
+
+    g_incoming_call_scene.panel = lv_obj_create(g_incoming_call_scene.screen);
+    lv_obj_set_size(g_incoming_call_scene.panel, 208, 194);
+    lv_obj_set_pos(g_incoming_call_scene.panel, 16, 42);
+    lv_obj_set_style_radius(g_incoming_call_scene.panel, 28, 0);
+    lv_obj_set_style_border_width(g_incoming_call_scene.panel, 2, 0);
+    lv_obj_set_style_pad_all(g_incoming_call_scene.panel, 0, 0);
+    lv_obj_set_style_shadow_width(g_incoming_call_scene.panel, 0, 0);
+    lv_obj_set_style_outline_width(g_incoming_call_scene.panel, 0, 0);
+    lv_obj_set_scrollbar_mode(g_incoming_call_scene.panel, LV_SCROLLBAR_MODE_OFF);
+
+    g_incoming_call_scene.icon_halo = lv_obj_create(g_incoming_call_scene.panel);
+    lv_obj_set_size(g_incoming_call_scene.icon_halo, 76, 58);
+    lv_obj_set_pos(g_incoming_call_scene.icon_halo, 66, 18);
+    lv_obj_set_style_radius(g_incoming_call_scene.icon_halo, 20, 0);
+    lv_obj_set_style_border_width(g_incoming_call_scene.icon_halo, 2, 0);
+    lv_obj_set_style_shadow_width(g_incoming_call_scene.icon_halo, 0, 0);
+    lv_obj_set_style_outline_width(g_incoming_call_scene.icon_halo, 0, 0);
+    lv_obj_set_scrollbar_mode(g_incoming_call_scene.icon_halo, LV_SCROLLBAR_MODE_OFF);
+
+    g_incoming_call_scene.icon_label = lv_label_create(g_incoming_call_scene.icon_halo);
+    lv_label_set_text(g_incoming_call_scene.icon_label, LV_SYMBOL_CALL);
+    lv_obj_set_style_text_font(g_incoming_call_scene.icon_label, &lv_font_montserrat_24, 0);
+    lv_obj_center(g_incoming_call_scene.icon_label);
+
+    g_incoming_call_scene.state_label = lv_label_create(g_incoming_call_scene.panel);
+    lv_label_set_text(g_incoming_call_scene.state_label, "Incoming");
+    lv_obj_set_width(g_incoming_call_scene.state_label, 160);
+    lv_obj_set_pos(g_incoming_call_scene.state_label, 24, 88);
+    lv_obj_set_style_text_font(g_incoming_call_scene.state_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_align(g_incoming_call_scene.state_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    g_incoming_call_scene.caller_name_label = lv_label_create(g_incoming_call_scene.panel);
+    lv_obj_set_width(g_incoming_call_scene.caller_name_label, 176);
+    lv_obj_set_pos(g_incoming_call_scene.caller_name_label, 16, 114);
+    lv_label_set_long_mode(g_incoming_call_scene.caller_name_label, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_set_style_text_font(g_incoming_call_scene.caller_name_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_align(g_incoming_call_scene.caller_name_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    g_incoming_call_scene.caller_address_label = lv_label_create(g_incoming_call_scene.panel);
+    lv_obj_set_width(g_incoming_call_scene.caller_address_label, 176);
+    lv_obj_set_pos(g_incoming_call_scene.caller_address_label, 16, 148);
+    lv_label_set_long_mode(g_incoming_call_scene.caller_address_label, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_set_style_text_font(g_incoming_call_scene.caller_address_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_align(g_incoming_call_scene.caller_address_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    g_incoming_call_scene.footer_label = lv_label_create(g_incoming_call_scene.screen);
+    lv_obj_set_style_text_font(g_incoming_call_scene.footer_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_align(g_incoming_call_scene.footer_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(g_incoming_call_scene.footer_label, LV_ALIGN_BOTTOM_MID, 0, -5);
+
+    g_incoming_call_scene.built = 1;
+    return 0;
+}
+
+int yoyopy_lvgl_incoming_call_sync(
+    const char * caller_name,
+    const char * caller_address,
+    const char * footer,
+    int32_t voip_state,
+    int32_t battery_percent,
+    int32_t charging,
+    int32_t power_available,
+    uint8_t accent_r,
+    uint8_t accent_g,
+    uint8_t accent_b
+) {
+    if(!g_incoming_call_scene.built) {
+        yoyopy_set_error("incoming-call scene must be built before sync");
+        return -1;
+    }
+
+    const lv_color_t background = yoyopy_color_rgb(18, 21, 28);
+    const lv_color_t surface = yoyopy_color_rgb(32, 35, 42);
+    const lv_color_t ink = yoyopy_color_rgb(243, 247, 250);
+    const lv_color_t muted = yoyopy_color_rgb(153, 160, 173);
+    const lv_color_t accent = yoyopy_color_rgb(accent_r, accent_g, accent_b);
+    const lv_color_t accent_dim = yoyopy_mix_rgb(accent_r, accent_g, accent_b, 18, 21, 28, 65);
+    const lv_color_t halo_fill = yoyopy_mix_rgb(accent_r, accent_g, accent_b, 18, 21, 28, 80);
+    const lv_color_t halo_border = yoyopy_mix_rgb(accent_r, accent_g, accent_b, 18, 21, 28, 60);
+
+    lv_obj_set_style_bg_color(g_incoming_call_scene.screen, background, 0);
+    lv_obj_set_style_bg_opa(g_incoming_call_scene.screen, LV_OPA_COVER, 0);
+    yoyopy_apply_voip_dot(g_incoming_call_scene.voip_dot, voip_state);
+    yoyopy_apply_battery(
+        g_incoming_call_scene.battery_outline,
+        g_incoming_call_scene.battery_fill,
+        g_incoming_call_scene.battery_tip,
+        battery_percent,
+        charging,
+        power_available
+    );
+
+    lv_obj_set_style_bg_color(g_incoming_call_scene.panel, surface, 0);
+    lv_obj_set_style_bg_opa(g_incoming_call_scene.panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(g_incoming_call_scene.panel, accent_dim, 0);
+
+    lv_obj_set_style_bg_color(g_incoming_call_scene.icon_halo, halo_fill, 0);
+    lv_obj_set_style_bg_opa(g_incoming_call_scene.icon_halo, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(g_incoming_call_scene.icon_halo, halo_border, 0);
+    lv_obj_set_style_text_color(g_incoming_call_scene.icon_label, accent, 0);
+    lv_obj_center(g_incoming_call_scene.icon_label);
+
+    lv_obj_set_style_text_color(g_incoming_call_scene.state_label, accent, 0);
+    lv_label_set_text(g_incoming_call_scene.caller_name_label, caller_name != NULL ? caller_name : "");
+    lv_obj_set_style_text_color(g_incoming_call_scene.caller_name_label, ink, 0);
+    lv_label_set_text(g_incoming_call_scene.caller_address_label, caller_address != NULL ? caller_address : "");
+    lv_obj_set_style_text_color(g_incoming_call_scene.caller_address_label, muted, 0);
+
+    lv_label_set_text(g_incoming_call_scene.footer_label, footer != NULL ? footer : "");
+    lv_obj_set_style_text_color(g_incoming_call_scene.footer_label, accent_dim, 0);
+    lv_obj_align(g_incoming_call_scene.footer_label, LV_ALIGN_BOTTOM_MID, 0, -5);
+
+    return 0;
+}
+
+void yoyopy_lvgl_incoming_call_destroy(void) {
+    if(!g_incoming_call_scene.built) {
+        return;
+    }
+
+    if(g_incoming_call_scene.screen != NULL) {
+        lv_obj_clean(g_incoming_call_scene.screen);
+    }
+    yoyopy_clear_group();
+    yoyopy_reset_incoming_call_scene_refs();
 }
 
 int yoyopy_lvgl_init(void) {
