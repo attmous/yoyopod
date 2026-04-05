@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
-from yoyopy.ui.screens.theme import INK, draw_icon, format_battery_compact, render_backdrop, render_footer, render_status_bar, rounded_panel, text_fit
+from yoyopy.ui.screens.theme import BACKGROUND, INK, SURFACE, draw_icon, format_battery_compact, mix, render_backdrop, render_footer, render_status_bar, rounded_panel, text_fit, theme_for
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -117,6 +117,24 @@ class HubScreen(Screen):
         """Return the compact Setup card subtitle."""
         return format_battery_compact(self.context)
 
+    @staticmethod
+    def _card_fill_color(mode: str) -> tuple[int, int, int]:
+        """Return a low-opacity mode tint for the hub card surface."""
+        theme = theme_for(mode)
+        return mix(theme.accent, SURFACE, 0.9)
+
+    @staticmethod
+    def _icon_halo_fill(mode: str) -> tuple[int, int, int]:
+        """Return a darker mode tint for the icon halo."""
+        theme = theme_for(mode)
+        return mix(theme.accent, BACKGROUND, 0.8)
+
+    @staticmethod
+    def _icon_halo_outline(mode: str) -> tuple[int, int, int]:
+        """Return a subtle outline for the icon halo."""
+        theme = theme_for(mode)
+        return mix(theme.accent, BACKGROUND, 0.6)
+
     def render(self) -> None:
         """Render the selected root card."""
         cards = self._cards()
@@ -135,10 +153,26 @@ class HubScreen(Screen):
             card_top,
             card_right,
             card_bottom,
-            fill=(29, 33, 40),
+            fill=self._card_fill_color(selected_card.mode),
             outline=theme.accent_dim,
             radius=28,
             shadow=True,
+        )
+
+        halo_left = (self.display.WIDTH // 2) - 42
+        halo_top = card_top + 18
+        halo_right = (self.display.WIDTH // 2) + 42
+        halo_bottom = halo_top + 64
+        rounded_panel(
+            self.display,
+            halo_left,
+            halo_top,
+            halo_right,
+            halo_bottom,
+            fill=self._icon_halo_fill(selected_card.mode),
+            outline=self._icon_halo_outline(selected_card.mode),
+            radius=22,
+            shadow=False,
         )
 
         draw_icon(self.display, selected_card.icon, (self.display.WIDTH // 2) - 30, card_top + 24, 60, theme.accent)

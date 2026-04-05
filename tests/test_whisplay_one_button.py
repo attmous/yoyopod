@@ -238,6 +238,29 @@ def test_hub_select_requests_setup_route_for_setup_card(
     assert hub.consume_navigation_request() == NavigationRequest.route("select", payload="Setup")
 
 
+def test_hub_cards_use_mode_tinted_surfaces(
+    display: Display,
+    one_button_context: AppContext,
+) -> None:
+    """The root cards should tint their surface differently per mode."""
+    hub = HubScreen(
+        display,
+        one_button_context,
+        mopidy_client=FakeMopidyClient(),
+        voip_manager=FakeVoIPManager(),
+    )
+
+    hub.selected_index = 0
+    hub.render()
+    listen_fill = display.get_adapter().buffer.getpixel((40, 84))
+
+    hub.selected_index = 1
+    hub.render()
+    talk_fill = display.get_adapter().buffer.getpixel((40, 84))
+
+    assert listen_fill != talk_fill
+
+
 def test_now_playing_advance_and_select_follow_one_button_mapping(
     display: Display,
     one_button_context: AppContext,
