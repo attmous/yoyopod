@@ -3,6 +3,7 @@ project(yoyopy_lvgl_binding C)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(LVGL_SOURCE_DIR "" CACHE PATH "Path to a checked-out LVGL source tree")
 
