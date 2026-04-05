@@ -54,6 +54,7 @@ class PTTInputAdapter(InputHAL):
         self.poll_rate = self.DEFAULT_POLL_RATE
 
         self.callbacks: Dict[InputAction, List[Callable]] = defaultdict(list)
+        self.activity_callbacks: List[Callable[[Optional[Any]], None]] = []
         self.running = False
         self.poll_thread: Optional[Thread] = None
         self.stop_event = Event()
@@ -104,6 +105,11 @@ class PTTInputAdapter(InputHAL):
         self.callbacks.clear()
         logger.debug("Cleared all PTT callbacks")
 
+    def on_activity(self, callback: Callable[[Optional[Any]], None]) -> None:
+        """Register a callback fired on raw physical button activity."""
+        self.activity_callbacks.append(callback)
+        logger.debug("Registered PTT raw activity callback")
+
     def get_capabilities(self) -> List[InputAction]:
         """Return supported actions for the current mode."""
         if self.enable_navigation:
@@ -152,8 +158,22 @@ class PTTInputAdapter(InputHAL):
             except Exception as exc:
                 logger.error(f"Error in PTT callback: {exc}")
 
+    def _fire_activity(self, data: Optional[Any] = None) -> None:
+        """Fire raw button activity callbacks."""
+        for callback in self.activity_callbacks:
+            try:
+                callback(data)
+            except Exception as exc:
+                logger.error(f"Error in PTT activity callback: {exc}")
+
     def _handle_button_press(self, current_time: float) -> None:
         """Record a physical button press."""
+        self._fire_activity(
+            {
+                "timestamp": current_time,
+                "pressed": True,
+            }
+        )
         self.double_tap_candidate = (
             self.enable_navigation
             and self.pending_single_tap_time is not None

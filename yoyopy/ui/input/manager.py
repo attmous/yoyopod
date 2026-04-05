@@ -40,7 +40,7 @@ class InputManager:
         """Initialize the input manager."""
         self.adapters: List[InputHAL] = []
         self.callbacks: Dict[InputAction, List[Callable]] = defaultdict(list)
-        self.activity_callbacks: List[Callable[[InputAction, Optional[Any]], None]] = []
+        self.activity_callbacks: List[Callable[[InputAction | None, Optional[Any]], None]] = []
         self.interaction_profile = interaction_profile
         self.running = False
         logger.debug("InputManager initialized")
@@ -73,6 +73,9 @@ class InputManager:
                 lambda data, a=action: self._fire_action(a, data)
             )
 
+        if hasattr(adapter, "on_activity"):
+            adapter.on_activity(lambda data=None: self._notify_activity_callbacks(None, data))
+
         adapter_name = adapter.__class__.__name__
         capabilities = adapter.get_capabilities()
         if capabilities:
@@ -104,11 +107,24 @@ class InputManager:
 
     def on_activity(
         self,
-        callback: Callable[[InputAction, Optional[Any]], None],
+        callback: Callable[[InputAction | None, Optional[Any]], None],
     ) -> None:
         """Register a callback fired whenever any semantic action occurs."""
         self.activity_callbacks.append(callback)
         logger.debug("Registered input activity callback")
+
+    def _notify_activity_callbacks(
+        self,
+        action: InputAction | None,
+        data: Optional[Any] = None,
+    ) -> None:
+        """Fire activity callbacks for semantic or raw input activity."""
+        for callback in self.activity_callbacks:
+            try:
+                callback(action, data)
+            except Exception as e:
+                action_name = action.value if action is not None else "raw_activity"
+                logger.error(f"Error in activity callback for {action_name}: {e}")
 
     def clear_callbacks(self) -> None:
         """
@@ -197,11 +213,7 @@ class InputManager:
             action: Action that occurred
             data: Optional data dict with action-specific information
         """
-        for callback in self.activity_callbacks:
-            try:
-                callback(action, data)
-            except Exception as e:
-                logger.error(f"Error in activity callback for {action.value}: {e}")
+        self._notify_activity_callbacks(action, data)
 
         callbacks = self.callbacks.get(action, [])
         if callbacks:

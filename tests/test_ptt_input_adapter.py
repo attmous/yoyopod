@@ -83,6 +83,17 @@ def test_long_hold_suppresses_pending_single_tap() -> None:
     assert actions == [InputAction.BACK]
 
 
+def test_button_press_fires_raw_activity_immediately() -> None:
+    """Physical button presses should emit wake-worthy activity before gesture resolution."""
+    adapter = PTTInputAdapter(simulate=True, enable_navigation=True)
+    activity_events: list[dict] = []
+    adapter.on_activity(lambda data=None: activity_events.append(data or {}))
+
+    adapter._handle_button_press(0.25)
+
+    assert activity_events == [{"timestamp": 0.25, "pressed": True}]
+
+
 def test_poll_loop_preserves_double_tap_window_across_debounce(monkeypatch) -> None:
     """A second tap near the timeout should still resolve to SELECT, not ADVANCE."""
     adapter = PTTInputAdapter(
