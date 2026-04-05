@@ -9,18 +9,7 @@ from loguru import logger
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
-from yoyopy.ui.screens.theme import (
-    INK,
-    MUTED,
-    SURFACE,
-    TALK,
-    draw_empty_state,
-    draw_list_item,
-    render_footer,
-    render_header,
-    rounded_panel,
-    text_fit,
-)
+from yoyopy.ui.screens.theme import INK, MUTED, SURFACE, TALK, draw_empty_state, draw_list_item, render_footer, render_header, rounded_panel, text_fit
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -57,7 +46,7 @@ class CallScreen(Screen):
         self.quick_targets: list[QuickCallTarget] = []
         self.selected_index = 0
         self.scroll_offset = 0
-        self.max_visible_items = 4 if display.is_portrait() else 4
+        self.max_visible_items = 3 if display.is_portrait() else 4
 
     def enter(self) -> None:
         """Refresh quick-call shortcuts whenever the screen becomes active."""
@@ -112,26 +101,20 @@ class CallScreen(Screen):
     def render(self) -> None:
         """Render the Talk hub with status and quick-call cards."""
         status = self._get_status_snapshot()
-        status_text, _status_color, detail_text = self._status_lines(status)
+        status_text, _status_color, _detail_text = self._status_lines(status)
         call_state_text, caller_text = self._call_context_lines(status)
         position_text = None
         if self.quick_targets:
             position_text = f"{self.selected_index + 1}/{len(self.quick_targets)}"
-
-        subtitle_parts = [status_text]
-        if detail_text:
-            subtitle_parts.append(detail_text)
-        subtitle_parts.append("Voice notes soon")
 
         content_top = render_header(
             self.display,
             self.context,
             mode="talk",
             title="Talk",
-            subtitle=" · ".join(part for part in subtitle_parts if part),
-            icon="talk",
             page_text=position_text,
             show_time=False,
+            show_mode_chip=False,
         )
 
         panel_top = content_top + 6
@@ -147,20 +130,19 @@ class CallScreen(Screen):
             radius=24,
         )
 
-        header_text = call_state_text or "Quick calls"
-        header_width, _ = self.display.get_text_size(header_text, 13)
+        header_text = call_state_text or status_text or "Quick calls"
         self.display.text(header_text, 22, panel_top + 10, color=TALK.accent, font_size=13)
         if caller_text:
             caller_text = text_fit(self.display, caller_text, self.display.WIDTH - 120, 10)
             self.display.text(caller_text, 22, panel_top + 28, color=INK, font_size=10)
         else:
-            self.display.text("Favorite contacts first", 22, panel_top + 28, color=MUTED, font_size=10)
+            self.display.text("Favorites", 22, panel_top + 28, color=MUTED, font_size=10)
 
         if not self.quick_targets:
             draw_empty_state(
                 self.display,
                 mode="talk",
-                title="No contacts yet",
+                title="No contacts",
                 subtitle="Add favorite people to make Talk feel instant.",
                 icon="talk",
                 top=content_top + 12,
@@ -172,7 +154,7 @@ class CallScreen(Screen):
         visible_items = max(1, min(self.max_visible_items, len(self.quick_targets)))
         self._ensure_selection_visible(visible_items)
 
-        item_height = 52
+        item_height = 50
         list_top = panel_top + 48
         for row in range(visible_items):
             target_index = self.scroll_offset + row
@@ -182,7 +164,7 @@ class CallScreen(Screen):
             target = self.quick_targets[target_index]
             y1 = list_top + (row * item_height)
             y2 = y1 + 42
-            badge = "FAV" if target.favorite else "OPEN" if target.kind == "browse_contacts" else None
+            badge = "ALL" if target.kind == "browse_contacts" else "FAV" if target.favorite else None
             draw_list_item(
                 self.display,
                 x1=20,
@@ -190,14 +172,13 @@ class CallScreen(Screen):
                 x2=self.display.WIDTH - 20,
                 y2=y2,
                 title=target.title,
-                subtitle=text_fit(self.display, target.subtitle, self.display.WIDTH - 110, 10),
+                subtitle="",
                 mode="talk",
                 selected=target_index == self.selected_index,
                 badge=badge,
             )
 
-        instructions = self._instruction_text()
-        render_footer(self.display, instructions, mode="talk")
+        render_footer(self.display, self._instruction_text(), mode="talk")
         self.display.update()
 
     def _get_status_snapshot(self) -> dict:
@@ -216,16 +197,16 @@ class CallScreen(Screen):
         registration_state = status.get("registration_state", "none")
 
         if not status.get("sip_identity"):
-            return ("Talk not set up", self.display.COLOR_GRAY, "Calls need SIP setup")
+            return ("Not set up", self.display.COLOR_GRAY, "")
         if not running:
-            return ("Recovering", self.display.COLOR_YELLOW, "Trying again")
+            return ("Recovering", self.display.COLOR_YELLOW, "")
         if registered:
-            return ("Ready", self.display.COLOR_GREEN, "Calls are open")
+            return ("Calls ready", self.display.COLOR_GREEN, "")
         if registration_state == "progress":
-            return ("Connecting", self.display.COLOR_YELLOW, "Signing in")
+            return ("Connecting", self.display.COLOR_YELLOW, "")
         if registration_state == "failed":
-            return ("Offline", self.display.COLOR_RED, "Check network or SIP")
-        return ("Offline", self.display.COLOR_GRAY, "Talk is paused")
+            return ("Offline", self.display.COLOR_RED, "")
+        return ("Offline", self.display.COLOR_GRAY, "")
 
     def _call_context_lines(self, status: dict) -> tuple[str, str]:
         """Return the current call-state summary if the backend is mid-call."""
@@ -233,7 +214,7 @@ class CallScreen(Screen):
             return ("", "")
 
         call_state = status.get("call_state", "idle")
-        if call_state == "idle":
+        if call_state in {"idle", "released"}:
             return ("", "")
 
         state_labels = {
@@ -244,7 +225,6 @@ class CallScreen(Screen):
             "outgoing_early_media": "Connecting audio",
             "connected": "Call connected",
             "streams_running": "Call connected",
-            "released": "Call ended",
         }
         caller_info = self.voip_manager.get_caller_info()
         caller_text = caller_info.get("display_name") or caller_info.get("address") or ""
@@ -272,8 +252,8 @@ class CallScreen(Screen):
                 return "Hold back"
 
             if selected_target.kind == "browse_contacts" or not self._is_ready_to_call():
-                return "Tap next | Double open | Hold back"
-            return "Tap next | Double call | Hold back"
+                return "Tap next / Open / Hold back"
+            return "Tap next / Call / Hold back"
 
         if not self.quick_targets:
             return "B back"

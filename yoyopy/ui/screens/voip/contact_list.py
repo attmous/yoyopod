@@ -8,7 +8,7 @@ from loguru import logger
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
-from yoyopy.ui.screens.theme import SURFACE, TALK, draw_empty_state, draw_list_item, render_footer, render_header, rounded_panel, text_fit
+from yoyopy.ui.screens.theme import SURFACE, draw_empty_state, draw_list_item, render_footer, render_header, rounded_panel, text_fit
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -30,7 +30,7 @@ class ContactListScreen(Screen):
         self.contacts = []
         self.selected_index = 0
         self.scroll_offset = 0
-        self.max_visible_items = 4 if display.is_portrait() else 4
+        self.max_visible_items = 4 if display.is_portrait() else 5
 
     def enter(self) -> None:
         """Load contacts when the screen becomes active."""
@@ -57,18 +57,17 @@ class ContactListScreen(Screen):
             self.display,
             self.context,
             mode="talk",
-            title="Call",
-            subtitle="All contacts",
-            icon="talk",
+            title="Contacts",
             page_text=page_text,
             show_time=False,
+            show_mode_chip=False,
         )
 
         if not self.contacts:
             draw_empty_state(
                 self.display,
                 mode="talk",
-                title="No contacts found",
+                title="No contacts",
                 subtitle="Add people in contacts config to call them here.",
                 icon="talk",
                 top=content_top,
@@ -95,7 +94,7 @@ class ContactListScreen(Screen):
             radius=24,
         )
 
-        item_height = 52
+        item_height = 46
         for row in range(self.max_visible_items):
             contact_index = self.scroll_offset + row
             if contact_index >= len(self.contacts):
@@ -103,7 +102,7 @@ class ContactListScreen(Screen):
 
             contact = self.contacts[contact_index]
             y1 = panel_top + 10 + (row * item_height)
-            y2 = y1 + 42
+            y2 = y1 + 38
             badge = "FAV" if contact.favorite else None
             draw_list_item(
                 self.display,
@@ -112,13 +111,13 @@ class ContactListScreen(Screen):
                 x2=self.display.WIDTH - 20,
                 y2=y2,
                 title=text_fit(self.display, contact.name, self.display.WIDTH - 90, 15),
-                subtitle=text_fit(self.display, contact.sip_address, self.display.WIDTH - 92, 10),
+                subtitle="",
                 mode="talk",
                 selected=contact_index == self.selected_index,
                 badge=badge,
             )
 
-        help_text = "Tap next | Double call | Hold back" if self.is_one_button_mode() else "A call | B back | X/Y move"
+        help_text = "Tap next / Call / Hold back" if self.is_one_button_mode() else "A call | B back | X/Y move"
         render_footer(self.display, help_text, mode="talk")
         self.display.update()
 

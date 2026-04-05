@@ -48,9 +48,8 @@ class InCallScreen(Screen):
             self.context,
             mode="talk",
             title="On call",
-            subtitle="Stay connected without the phone chaos.",
-            icon="live",
             show_time=False,
+            show_mode_chip=False,
         )
 
         panel_top = content_top + 8
@@ -92,7 +91,7 @@ class InCallScreen(Screen):
         self.display.text(mute_label, (self.display.WIDTH - mute_width) // 2, panel_top + 154, color=INK if is_muted else TALK.accent, font_size=12)
 
         footer = (
-            f"Tap {'unmute' if is_muted else 'mute'} | Hold hang up"
+            f"Tap {'unmute' if is_muted else 'mute'} / Hold end"
             if self.is_one_button_mode()
             else f"X {'unmute' if is_muted else 'mute'} | B end call"
         )

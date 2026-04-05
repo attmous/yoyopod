@@ -38,9 +38,8 @@ class IncomingCallScreen(Screen):
             self.context,
             mode="talk",
             title="Incoming call",
-            subtitle="Someone is trying to reach you.",
-            icon="incoming",
             show_time=False,
+            show_mode_chip=False,
         )
 
         panel_top = content_top + 8
@@ -88,8 +87,6 @@ class IncomingCallScreen(Screen):
         self.display.text(answer_line, 40, panel_bottom - 48, color=TALK.accent, font_size=12)
         self.display.text(reject_line, 40, panel_bottom - 32, color=(255, 103, 93), font_size=12)
 
-        footer = "Double answer | Hold reject" if self.is_one_button_mode() else "A answer | B reject"
-        render_footer(self.display, footer, mode="talk")
         self.display.update()
 
     def _answer_call(self) -> None:

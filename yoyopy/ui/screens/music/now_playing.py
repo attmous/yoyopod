@@ -6,18 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
-from yoyopy.ui.screens.theme import (
-    INK,
-    LISTEN,
-    MUTED,
-    SURFACE,
-    audio_source_label,
-    draw_icon,
-    render_footer,
-    render_header,
-    rounded_panel,
-    text_fit,
-)
+from yoyopy.ui.screens.theme import INK, LISTEN, MUTED, SURFACE, draw_icon, render_footer, render_header, rounded_panel, text_fit
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -37,17 +26,15 @@ class NowPlayingScreen(Screen):
 
     def render(self) -> None:
         """Render the now-playing view."""
-        track_title, artist, progress, state_label, is_playing = self._track_snapshot()
-        source_label = audio_source_label(getattr(self.context, "current_audio_source", "local"))
+        track_title, artist, progress, state_label, _is_playing = self._track_snapshot()
 
         content_top = render_header(
             self.display,
             self.context,
             mode="listen",
             title="Listen",
-            subtitle=f"{source_label} now playing",
-            icon="listen",
             show_time=False,
+            show_mode_chip=False,
         )
 
         panel_top = content_top + 8
@@ -96,7 +83,7 @@ class NowPlayingScreen(Screen):
         if fill_width > 0:
             self.display.rectangle(progress_x, progress_y, progress_x + fill_width, progress_y + 8, fill=LISTEN.accent)
 
-        hint = "Tap skip | Double play | Hold back" if self.is_one_button_mode() else "A play | B back | X/Y tracks"
+        hint = "Tap skip / Play / Hold back" if self.is_one_button_mode() else "A play | B back | X/Y tracks"
         render_footer(self.display, hint, mode="listen")
         self.display.update()
 

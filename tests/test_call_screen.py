@@ -198,3 +198,23 @@ def test_call_screen_render_smoke_includes_active_call_context(display: Display)
         "Call connected",
         "Alice",
     )
+
+
+def test_call_screen_hides_released_call_context(display: Display) -> None:
+    """Released calls should not leave stale context copy on the Talk hub."""
+    screen = CallScreen(
+        display,
+        AppContext(),
+        voip_manager=FakeVoIPManager(
+            running=True,
+            registered=True,
+            call_state="released",
+            caller_name="Alice",
+            caller_address="sip:alice@example.com",
+        ),
+        config_manager=FakeConfigManager([]),
+    )
+
+    screen.enter()
+
+    assert screen._call_context_lines(screen.voip_manager.get_status()) == ("", "")

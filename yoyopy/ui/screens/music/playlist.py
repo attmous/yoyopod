@@ -8,19 +8,7 @@ from loguru import logger
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
-from yoyopy.ui.screens.theme import (
-    INK,
-    LISTEN,
-    MUTED,
-    SURFACE,
-    audio_source_label,
-    draw_empty_state,
-    draw_list_item,
-    render_footer,
-    render_header,
-    rounded_panel,
-    text_fit,
-)
+from yoyopy.ui.screens.theme import LISTEN, MUTED, SURFACE, audio_source_label, draw_empty_state, draw_list_item, render_footer, render_header, rounded_panel, text_fit
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -40,7 +28,7 @@ class PlaylistScreen(Screen):
         self.playlists = []
         self.selected_index = 0
         self.scroll_offset = 0
-        self.max_visible_items = 4 if display.is_portrait() else 4
+        self.max_visible_items = 3 if display.is_portrait() else 4
         self.loading = False
         self.error_message: str | None = None
 
@@ -86,11 +74,10 @@ class PlaylistScreen(Screen):
             self.display,
             self.context,
             mode="listen",
-            title="Listen",
-            subtitle=f"{source_label} playlists",
-            icon="playlist",
+            title=source_label,
             page_text=page_text,
             show_time=False,
+            show_mode_chip=False,
         )
 
         if self.loading:
@@ -123,7 +110,7 @@ class PlaylistScreen(Screen):
             draw_empty_state(
                 self.display,
                 mode="listen",
-                title="No playlists yet",
+                title="No playlists",
                 subtitle="Add playlists to see them here.",
                 icon="playlist",
                 top=content_top,
@@ -150,7 +137,7 @@ class PlaylistScreen(Screen):
             radius=24,
         )
 
-        item_height = 52
+        item_height = 50
         for row in range(self.max_visible_items):
             playlist_index = self.scroll_offset + row
             if playlist_index >= len(self.playlists):
@@ -167,13 +154,13 @@ class PlaylistScreen(Screen):
                 x2=self.display.WIDTH - 20,
                 y2=y2,
                 title=text_fit(self.display, playlist.name, self.display.WIDTH - 92, 15),
-                subtitle=f"{playlist.track_count} tracks" if getattr(playlist, "track_count", 0) else source_label,
+                subtitle="",
                 mode="listen",
                 selected=playlist_index == self.selected_index,
                 badge=badge,
             )
 
-        help_text = "Tap next | Double load | Hold back" if self.is_one_button_mode() else "A load | B back | X/Y move"
+        help_text = "Tap next / Load / Hold back" if self.is_one_button_mode() else "A load | B back | X/Y move"
         render_footer(self.display, help_text, mode="listen")
         self.display.update()
 

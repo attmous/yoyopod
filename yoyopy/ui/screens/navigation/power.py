@@ -53,10 +53,9 @@ class PowerScreen(Screen):
             self.context,
             mode="setup",
             title="Setup",
-            subtitle="Power, sleep, and device care.",
-            icon="setup",
             page_text=page_text,
             show_time=False,
+            show_mode_chip=False,
         )
 
         panel_top = content_top + 8
@@ -95,7 +94,7 @@ class PowerScreen(Screen):
             self.display.text(value_text, self.display.WIDTH - value_width - 22, row_y, color=INK, font_size=12)
             row_y += row_gap
 
-        help_text = "Tap page | Double page | Hold back" if self.is_one_button_mode() else "A page | B back | X/Y page"
+        help_text = "Tap page / Hold back" if self.is_one_button_mode() else "A page | B back | X/Y page"
         render_footer(self.display, help_text, mode="setup")
         self.display.update()
 

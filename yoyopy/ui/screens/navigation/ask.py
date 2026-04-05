@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
-from yoyopy.ui.screens.theme import ASK, INK, MUTED, render_footer, render_header, rounded_panel, wrap_text, draw_icon
+from yoyopy.ui.screens.theme import ASK, INK, MUTED, draw_icon, render_footer, render_header, rounded_panel, wrap_text
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -25,9 +25,8 @@ class AskScreen(Screen):
             self.context,
             mode="ask",
             title="Ask",
-            subtitle="A safe question mode for curious kids is coming next.",
-            icon="ask",
             show_time=False,
+            show_mode_chip=False,
         )
 
         panel_top = content_top + 8
@@ -45,16 +44,16 @@ class AskScreen(Screen):
 
         draw_icon(self.display, "ask", (self.display.WIDTH // 2) - 24, panel_top + 18, 48, ASK.accent)
 
-        headline = "Future mode"
+        headline = "Coming soon"
         headline_width, _ = self.display.get_text_size(headline, 18)
         self.display.text(headline, (self.display.WIDTH - headline_width) // 2, panel_top + 78, color=ASK.accent, font_size=18)
 
         copy_lines = wrap_text(
             self.display,
-            "Kids will be able to ask questions and get calm, parent-safe answers here.",
+            "Safe questions and calm answers will live here soon.",
             self.display.WIDTH - 52,
             12,
-            max_lines=3,
+            max_lines=2,
         )
         line_y = panel_top + 108
         for line in copy_lines:
@@ -64,12 +63,12 @@ class AskScreen(Screen):
 
         note_lines = wrap_text(
             self.display,
-            "Voice commands, guided prompts, and curiosity cards will live here later.",
+            "Voice prompts and guided asks are next.",
             self.display.WIDTH - 56,
             10,
-            max_lines=3,
+            max_lines=2,
         )
-        line_y += 12
+        line_y += 10
         for line in note_lines:
             line_width, _ = self.display.get_text_size(line, 10)
             self.display.text(line, (self.display.WIDTH - line_width) // 2, line_y, color=MUTED, font_size=10)

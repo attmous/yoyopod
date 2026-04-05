@@ -45,9 +45,8 @@ class OutgoingCallScreen(Screen):
             self.context,
             mode="talk",
             title="Calling",
-            subtitle="Waiting for the other side to pick up.",
-            icon="outgoing",
             show_time=False,
+            show_mode_chip=False,
         )
 
         panel_top = content_top + 8

@@ -7,18 +7,7 @@ from typing import TYPE_CHECKING, Optional
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
-from yoyopy.ui.screens.theme import (
-    LISTEN,
-    MUTED,
-    SURFACE,
-    audio_source_label,
-    audio_source_subtitle,
-    draw_empty_state,
-    draw_list_item,
-    render_footer,
-    render_header,
-    rounded_panel,
-)
+from yoyopy.ui.screens.theme import LISTEN, MUTED, SURFACE, audio_source_label, audio_source_subtitle, draw_empty_state, draw_list_item, render_footer, render_header, rounded_panel
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -98,17 +87,16 @@ class ListenScreen(Screen):
             self.context,
             mode="listen",
             title="Listen",
-            subtitle="Pick a sound source and jump into playlists.",
-            icon="listen",
             page_text=position_text,
             show_time=False,
+            show_mode_chip=False,
         )
 
         if not self.sources:
             draw_empty_state(
                 self.display,
                 mode="listen",
-                title="No sources yet",
+                title="No sources",
                 subtitle="Add music sources in config to fill this page.",
                 icon="listen",
                 top=content_top,
@@ -126,15 +114,15 @@ class ListenScreen(Screen):
             self.display.WIDTH - 12,
             panel_bottom,
             fill=SURFACE,
-            outline=LISTEN.accent_dim,
+            outline=None,
             radius=22,
         )
 
         list_top = panel_top + 10
-        item_height = 56
+        item_height = 46
         for index, source in enumerate(self.sources):
             y1 = list_top + (index * item_height)
-            y2 = y1 + 46
+            y2 = y1 + 40
             if y2 > panel_bottom - 8:
                 break
 
@@ -145,7 +133,7 @@ class ListenScreen(Screen):
                 x2=self.display.WIDTH - 20,
                 y2=y2,
                 title=source.title,
-                subtitle=source.subtitle,
+                subtitle="",
                 mode="listen",
                 selected=index == self.selected_index,
             )
@@ -158,7 +146,7 @@ class ListenScreen(Screen):
                 color = LISTEN.accent if index == self.selected_index else MUTED
                 self.display.circle(dots_x + (index * 16), dots_y, 3, fill=color)
 
-        help_text = "Tap next | Double open | Hold back" if self.is_one_button_mode() else "A open | B back | X/Y move"
+        help_text = "Tap next / Open / Hold back" if self.is_one_button_mode() else "A open | B back | X/Y move"
         render_footer(self.display, help_text, mode="listen")
         self.display.update()
 
