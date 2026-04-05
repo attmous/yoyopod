@@ -90,7 +90,7 @@ THEMES = {
 ICON_ASSET_DIR = Path(__file__).resolve().parent / "assets" / "phosphor"
 PHOSPHOR_ICON_FILES = {
     "listen": "headphones.png",
-    "talk": "chat-circle-dots.png",
+    "talk": "phone-call.png",
     "ask": "microphone.png",
     "setup": "gear-six.png",
     "power": "gear-six.png",

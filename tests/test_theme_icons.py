@@ -12,7 +12,7 @@ def test_phosphor_icon_assets_exist_and_are_64px() -> None:
     """The checked-in Phosphor PNG assets should be present at the expected size."""
     expected_files = [
         "headphones.png",
-        "chat-circle-dots.png",
+        "phone-call.png",
         "microphone.png",
         "gear-six.png",
     ]
