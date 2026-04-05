@@ -21,6 +21,11 @@ On Whisplay, the one-button root hub currently exposes four cards:
 - Hardware abstraction layers exist for display and input
 - Demo scripts and tests have been migrated to the current UI/HAL APIs
 - Background VoIP and Mopidy callbacks are coordinated through the app's main loop
+- The production UI now uses the Graffiti Buddy visual system with a fixed root IA:
+  - `Listen`
+  - `Talk`
+  - `Ask`
+  - `Setup`
 - GitHub Actions CI validates `uv sync --extra dev` and `uv run pytest -q`
 
 ## Main Runtime Components
@@ -86,6 +91,7 @@ Edit these in place for your environment:
 Important settings:
 
 - `config/yoyopod_config.yaml`: display hardware selection, Mopidy host/port, auto-resume behavior
+- `config/yoyopod_config.yaml`: `audio.listen_sources` controls which source cards appear under `Listen`
 - `config/yoyopod_config.yaml`: Whisplay gesture tuning under `input.whisplay_*_ms`
 - `config/yoyopod_config.yaml`: `input.ptt_navigation=false` is reserved for future voice/PTT work and is currently experimental
 - `config/yoyopod_config.yaml`: `power.watchdog_*` controls the PiSugar app heartbeat watchdog

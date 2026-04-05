@@ -1,44 +1,30 @@
-"""Incoming_call screen for YoyoPod VoIP functionality."""
+"""Incoming call screen for the Talk flow."""
 
-from yoyopy.ui.screens.base import Screen
-from yoyopy.ui.display import Display
-from typing import Optional, TYPE_CHECKING
-from datetime import datetime
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
+
 from loguru import logger
+
+from yoyopy.ui.display import Display
+from yoyopy.ui.screens.base import Screen
+from yoyopy.ui.screens.theme import INK, MUTED, TALK, draw_icon, render_footer, render_header, rounded_panel, text_fit, wrap_text
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
 
 
 class IncomingCallScreen(Screen):
-    """
-    Incoming call screen showing caller information.
-
-    Displays incoming call with caller name/address and answer/reject options.
-
-    Button mapping:
-    - Button A: Answer call
-    - Button B: Reject call
-    """
+    """Incoming call surface with answer and reject actions."""
 
     def __init__(
         self,
         display: Display,
-        context: Optional['AppContext'] = None,
+        context: Optional["AppContext"] = None,
         voip_manager=None,
         caller_address: str = "",
-        caller_name: str = "Unknown"
+        caller_name: str = "Unknown",
     ) -> None:
-        """
-        Initialize incoming call screen.
-
-        Args:
-            display: Display controller
-            context: Application context
-            voip_manager: VoIPManager instance
-            caller_address: SIP address of caller
-            caller_name: Display name of caller
-        """
         super().__init__(display, context, "IncomingCall")
         self.voip_manager = voip_manager
         self.caller_address = caller_address
@@ -47,184 +33,76 @@ class IncomingCallScreen(Screen):
 
     def render(self) -> None:
         """Render the incoming call screen."""
-        # Clear display
-        self.display.clear(self.display.COLOR_BLACK)
-
-        # Draw status bar
-        current_time = datetime.now().strftime("%H:%M")
-        battery = self.context.battery_percent if self.context else 100
-        charging = self.context.battery_charging if self.context else False
-        external_power = self.context.external_power if self.context else False
-        power_available = self.context.power_available if self.context else True
-        signal = self.context.signal_strength if self.context else 4
-
-        self.display.status_bar(
-            time_str=current_time,
-            battery_percent=battery,
-            signal_strength=signal,
-            charging=charging,
-            external_power=external_power,
-            power_available=power_available,
+        content_top = render_header(
+            self.display,
+            self.context,
+            mode="talk",
+            title="Incoming call",
+            subtitle="Someone is trying to reach you.",
+            icon="incoming",
+            show_time=False,
         )
 
-        # Draw "Incoming Call" title
-        title = "Incoming Call"
-        title_size = 20
-        title_width, title_height = self.display.get_text_size(title, title_size)
-        title_x = (self.display.WIDTH - title_width) // 2
-        title_y = self.display.STATUS_BAR_HEIGHT + 15
-
-        self.display.text(
-            title,
-            title_x,
-            title_y,
-            color=self.display.COLOR_CYAN,
-            font_size=title_size
+        panel_top = content_top + 8
+        panel_bottom = self.display.HEIGHT - 28
+        rounded_panel(
+            self.display,
+            16,
+            panel_top,
+            self.display.WIDTH - 16,
+            panel_bottom,
+            fill=(32, 35, 42),
+            outline=TALK.accent_dim,
+            radius=28,
+            shadow=True,
         )
 
-        # Draw separator line
-        separator_y = title_y + title_height + 10
-        self.display.line(
-            20, separator_y,
-            self.display.WIDTH - 20, separator_y,
-            color=self.display.COLOR_GRAY,
-            width=2
-        )
-
-        content_y = separator_y + 30
-
-        # Draw caller icon (phone with ringing animation)
-        icon_x = self.display.WIDTH // 2
-        icon_y = content_y + 20
-        icon_radius = 25
-
-        # Animate ring (pulsing circle)
-        ring_color = self.display.COLOR_GREEN if self.ring_animation_frame % 2 == 0 else self.display.COLOR_CYAN
-        self.display.circle(
-            icon_x,
-            icon_y,
-            icon_radius,
-            outline=ring_color,
-            width=3
-        )
-
-        # Inner phone icon
-        self.display.text(
-            "☎",
-            icon_x - 10,
-            icon_y - 10,
-            color=self.display.COLOR_WHITE,
-            font_size=20
-        )
-
-        # Update animation frame for next render
+        pulse_color = TALK.accent if self.ring_animation_frame % 2 == 0 else TALK.accent_soft
+        self.display.circle(self.display.WIDTH // 2, panel_top + 34, 24, outline=pulse_color, width=3)
+        draw_icon(self.display, "incoming", (self.display.WIDTH // 2) - 20, panel_top + 14, 40, TALK.accent)
         self.ring_animation_frame += 1
 
-        # Draw caller name
-        name_y = icon_y + icon_radius + 30
-        name_size = 18
+        display_name = text_fit(self.display, self.caller_name, self.display.WIDTH - 52, 20)
+        name_width, name_height = self.display.get_text_size(display_name, 20)
+        self.display.text(display_name, (self.display.WIDTH - name_width) // 2, panel_top + 76, color=INK, font_size=20)
 
-        # Truncate if too long
-        max_name_length = 20
-        display_name = self.caller_name[:max_name_length]
-        if len(self.caller_name) > max_name_length:
-            display_name = display_name[:-3] + "..."
+        lines = wrap_text(self.display, self.caller_address or "Unknown address", self.display.WIDTH - 56, 11, max_lines=2)
+        line_y = panel_top + 106
+        for line in lines:
+            width, _ = self.display.get_text_size(line, 11)
+            self.display.text(line, (self.display.WIDTH - width) // 2, line_y, color=MUTED, font_size=11)
+            line_y += 13
 
-        name_width, _ = self.display.get_text_size(display_name, name_size)
-        name_x = (self.display.WIDTH - name_width) // 2
-
-        self.display.text(
-            display_name,
-            name_x,
-            name_y,
-            color=self.display.COLOR_WHITE,
-            font_size=name_size
+        rounded_panel(
+            self.display,
+            28,
+            panel_bottom - 58,
+            self.display.WIDTH - 28,
+            panel_bottom - 18,
+            fill=(24, 27, 33),
+            outline=None,
+            radius=18,
         )
+        answer_line = "Double answer" if self.is_one_button_mode() else "A answer"
+        reject_line = "Hold reject" if self.is_one_button_mode() else "B reject"
+        self.display.text(answer_line, 40, panel_bottom - 48, color=TALK.accent, font_size=12)
+        self.display.text(reject_line, 40, panel_bottom - 32, color=(255, 103, 93), font_size=12)
 
-        # Draw caller address (smaller, below name)
-        if self.caller_address:
-            address_y = name_y + 25
-            address_size = 12
-
-            # Truncate long address
-            max_addr_length = 30
-            display_addr = self.caller_address[:max_addr_length]
-            if len(self.caller_address) > max_addr_length:
-                display_addr = display_addr[:-3] + "..."
-
-            addr_width, _ = self.display.get_text_size(display_addr, address_size)
-            addr_x = (self.display.WIDTH - addr_width) // 2
-
-            self.display.text(
-                display_addr,
-                addr_x,
-                address_y,
-                color=self.display.COLOR_GRAY,
-                font_size=address_size
-            )
-
-        # Draw button instructions at bottom
-        instructions_y = self.display.HEIGHT - 15
-        instructions_size = 12
-
-        if self.is_one_button_mode():
-            instructions = "Double answer | Hold reject"
-            instr_width, _ = self.display.get_text_size(instructions, instructions_size)
-            self.display.text(
-                instructions,
-                (self.display.WIDTH - instr_width) // 2,
-                instructions_y,
-                color=self.display.COLOR_GRAY,
-                font_size=instructions_size
-            )
-        else:
-            # Answer button (A)
-            answer_text = "A: Answer"
-            answer_x = 20
-
-            self.display.text(
-                answer_text,
-                answer_x,
-                instructions_y,
-                color=self.display.COLOR_GREEN,
-                font_size=instructions_size
-            )
-
-            # Reject button (B)
-            reject_text = "B: Reject"
-            reject_width, _ = self.display.get_text_size(reject_text, instructions_size)
-            reject_x = self.display.WIDTH - reject_width - 20
-
-            self.display.text(
-                reject_text,
-                reject_x,
-                instructions_y,
-                color=self.display.COLOR_RED,
-                font_size=instructions_size
-            )
-
-        # Update display
+        footer = "Double answer | Hold reject" if self.is_one_button_mode() else "A answer | B reject"
+        render_footer(self.display, footer, mode="talk")
         self.display.update()
 
     def _answer_call(self) -> None:
         """Answer the incoming call."""
         logger.info("Answering incoming call")
-        if self.voip_manager:
-            if self.voip_manager.answer_call():
-                logger.info("Call answered, transitioning to InCall screen")
-                self.request_route("call_answered")
-            else:
-                logger.error("Failed to answer call")
+        if self.voip_manager and self.voip_manager.answer_call():
+            self.request_route("call_answered")
 
     def _reject_call(self) -> None:
         """Reject the incoming call."""
         logger.info("Rejecting incoming call")
-        if self.voip_manager:
-            if self.voip_manager.reject_call():
-                logger.info("Call rejected, going back")
-                self.request_route("call_rejected")
-            else:
-                logger.error("Failed to reject call")
+        if self.voip_manager and self.voip_manager.reject_call():
+            self.request_route("call_rejected")
 
     def on_select(self, data=None) -> None:
         """Answer the incoming call."""
@@ -235,7 +113,7 @@ class IncomingCallScreen(Screen):
         return
 
     def on_call_answer(self, data=None) -> None:
-        """Answer the incoming call from a dedicated VoIP action."""
+        """Answer from a dedicated call action."""
         self._answer_call()
 
     def on_back(self, data=None) -> None:
@@ -243,5 +121,5 @@ class IncomingCallScreen(Screen):
         self._reject_call()
 
     def on_call_reject(self, data=None) -> None:
-        """Reject the incoming call from a dedicated VoIP action."""
+        """Reject from a dedicated call action."""
         self._reject_call()

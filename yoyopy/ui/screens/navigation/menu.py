@@ -1,165 +1,112 @@
-"""MenuScreen - Main navigation menu for YoyoPod."""
+"""Graffiti Buddy standard-device menu."""
 
-from yoyopy.ui.screens.base import Screen
-from yoyopy.ui.display import Display
-from typing import Optional, List, TYPE_CHECKING
-from datetime import datetime
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, List, Optional
+
 from loguru import logger
+
+from yoyopy.ui.display import Display
+from yoyopy.ui.screens.base import Screen
+from yoyopy.ui.screens.theme import MUTED, draw_icon, draw_list_item, render_footer, render_header, rounded_panel
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
 
 
+ITEM_MODES = {
+    "Listen": ("listen", "listen", "Music and playlists"),
+    "Talk": ("talk", "talk", "Calls and voice notes"),
+    "Ask": ("ask", "ask", "Future safe AI mode"),
+    "Setup": ("setup", "setup", "Power and device care"),
+}
+
+
 class MenuScreen(Screen):
-    """
-    Menu screen for navigation.
-
-    Displays a list of menu options with selection indicator.
-
-    Button mapping:
-    - Button A: Select current item
-    - Button B: Go back to home screen
-    - Button X: Move selection up
-    - Button Y: Move selection down
-    """
+    """Standard multi-button menu matching the new root IA."""
 
     def __init__(
         self,
         display: Display,
-        context: Optional['AppContext'] = None,
+        context: Optional["AppContext"] = None,
         items: Optional[List[str]] = None,
-        selected_index: int = 0
+        selected_index: int = 0,
     ) -> None:
-        """
-        Initialize menu screen.
-
-        Args:
-            display: Display controller
-            context: Application context
-            items: List of menu items
-            selected_index: Currently selected item index
-        """
         super().__init__(display, context, "Menu")
-
-        if items is None:
-            items = ["Music", "Podcasts", "Audiobooks", "Settings"]
-
-        self.items = items
+        self.items = items or ["Listen", "Talk", "Ask", "Setup"]
         self.selected_index = selected_index
 
     def render(self) -> None:
-        """Render the menu screen."""
-        # Clear display
-        self.display.clear(self.display.COLOR_BLACK)
-
-        # Draw status bar
-        current_time = datetime.now().strftime("%H:%M")
-        battery = self.context.battery_percent if self.context else 85
-        charging = self.context.battery_charging if self.context else False
-        external_power = self.context.external_power if self.context else False
-        power_available = self.context.power_available if self.context else True
-        signal = self.context.signal_strength if self.context else 3
-        self.display.status_bar(
-            time_str=current_time,
-            battery_percent=battery,
-            signal_strength=signal,
-            charging=charging,
-            external_power=external_power,
-            power_available=power_available,
+        """Render the standard menu with the new branded list treatment."""
+        selected_item = self.get_selected()
+        selected_mode, selected_icon, _ = ITEM_MODES.get(selected_item, ("setup", "setup", "Browse the device"))
+        content_top = render_header(
+            self.display,
+            self.context,
+            mode=selected_mode,
+            title="YoyoPod",
+            subtitle="Pick a mode for this adventure.",
+            icon=selected_icon,
+            show_time=False,
         )
 
-        # Draw menu title
-        title = "Main Menu"
-        title_size = 20
-        title_width, title_height = self.display.get_text_size(title, title_size)
-        title_x = (self.display.WIDTH - title_width) // 2
-        title_y = self.display.STATUS_BAR_HEIGHT + 15
-
-        self.display.text(
-            title,
-            title_x,
-            title_y,
-            color=self.display.COLOR_WHITE,
-            font_size=title_size
+        panel_top = content_top + 4
+        panel_bottom = self.display.HEIGHT - 28
+        rounded_panel(
+            self.display,
+            12,
+            panel_top,
+            self.display.WIDTH - 12,
+            panel_bottom,
+            fill=(30, 34, 41),
+            outline=None,
+            radius=24,
         )
 
-        # Draw separator line
-        separator_y = title_y + title_height + 10
-        self.display.line(
-            20, separator_y,
-            self.display.WIDTH - 20, separator_y,
-            color=self.display.COLOR_GRAY,
-            width=2
-        )
+        item_height = 54
+        for index, item in enumerate(self.items):
+            y1 = panel_top + 10 + (index * item_height)
+            y2 = y1 + 44
+            if y2 > panel_bottom - 8:
+                break
 
-        # Draw menu items
-        item_y_start = separator_y + 20
-        item_height = 35
-        item_font_size = 16
-
-        for i, item in enumerate(self.items):
-            y_pos = item_y_start + (i * item_height)
-
-            # Draw selection indicator
-            if i == self.selected_index:
-                # Highlight selected item
-                self.display.rectangle(
-                    10, y_pos - 5,
-                    self.display.WIDTH - 10, y_pos + item_height - 10,
-                    fill=self.display.COLOR_DARK_GRAY,
-                    outline=self.display.COLOR_CYAN,
-                    width=2
-                )
-
-                # Draw arrow
-                self.display.text(
-                    ">",
-                    20,
-                    y_pos,
-                    color=self.display.COLOR_CYAN,
-                    font_size=item_font_size
-                )
-
-            # Draw item text
-            text_x = 45 if i == self.selected_index else 30
-            text_color = self.display.COLOR_WHITE if i == self.selected_index else self.display.COLOR_GRAY
-
-            self.display.text(
-                item,
-                text_x,
-                y_pos,
-                color=text_color,
-                font_size=item_font_size
+            mode, icon, subtitle = ITEM_MODES.get(item, ("setup", "setup", "Mode"))
+            draw_list_item(
+                self.display,
+                x1=20,
+                y1=y1,
+                x2=self.display.WIDTH - 20,
+                y2=y2,
+                title=item,
+                subtitle=subtitle,
+                mode=mode,
+                selected=index == self.selected_index,
             )
+            draw_icon(self.display, icon, self.display.WIDTH - 58, y1 + 7, 24, MUTED if index != self.selected_index else (245, 247, 250))
 
-        # Update display
+        render_footer(self.display, "A open | B back | X/Y move", mode=selected_mode)
         self.display.update()
 
     def select_next(self) -> None:
-        """Move selection to next item."""
+        """Move selection to the next item."""
         self.selected_index = (self.selected_index + 1) % len(self.items)
         logger.debug(f"Selected: {self.items[self.selected_index]}")
 
     def select_previous(self) -> None:
-        """Move selection to previous item."""
+        """Move selection to the previous item."""
         self.selected_index = (self.selected_index - 1) % len(self.items)
         logger.debug(f"Selected: {self.items[self.selected_index]}")
 
     def get_selected(self) -> str:
-        """Get currently selected item."""
+        """Get the selected menu item."""
         return self.items[self.selected_index]
 
     def on_select(self, data=None) -> None:
-        """Select the current item."""
-        selected_item = self.get_selected()
-        logger.info(f"Menu item selected: {selected_item}")
-        if selected_item == "Settings":
-            logger.info("Settings not implemented yet")
-            return
-        self.request_route("select", payload=selected_item)
+        """Open the selected mode."""
+        self.request_route("select", payload=self.get_selected())
 
     def on_back(self, data=None) -> None:
-        """Go back to the previous screen."""
+        """Return to the previous screen."""
         self.request_route("back")
 
     def on_up(self, data=None) -> None:

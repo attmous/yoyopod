@@ -48,8 +48,12 @@ def test_screen_router_covers_live_menu_labels() -> None:
     router = ScreenRouter()
     expected_routes = {
         "Back": NavigationRequest.pop(),
+        "Listen": NavigationRequest.push("listen"),
+        "Talk": NavigationRequest.push("call"),
+        "Ask": NavigationRequest.push("ask"),
+        "Setup": NavigationRequest.push("power"),
         "Load Playlist": NavigationRequest.push("playlists"),
-        "Music": NavigationRequest.push("now_playing"),
+        "Music": NavigationRequest.push("listen"),
         "Now Playing": NavigationRequest.push("now_playing"),
         "Browse Playlists": NavigationRequest.push("playlists"),
         "Playlists": NavigationRequest.push("playlists"),
@@ -75,9 +79,10 @@ def test_screen_router_covers_whisplay_hub_routes() -> None:
     """The Whisplay action hub should route each root card to the correct screen."""
     router = ScreenRouter()
 
-    assert router.resolve("hub", "select", payload="Now Playing") == NavigationRequest.push("now_playing")
-    assert router.resolve("hub", "select", payload="Playlists") == NavigationRequest.push("playlists")
-    assert router.resolve("hub", "select", payload="Calls") == NavigationRequest.push("call")
+    assert router.resolve("hub", "select", payload="Listen") == NavigationRequest.push("listen")
+    assert router.resolve("hub", "select", payload="Talk") == NavigationRequest.push("call")
+    assert router.resolve("hub", "select", payload="Ask") == NavigationRequest.push("ask")
+    assert router.resolve("hub", "select", payload="Setup") == NavigationRequest.push("power")
     assert router.resolve("hub", "select", payload="Power") == NavigationRequest.push("power")
 
 
@@ -139,32 +144,32 @@ def test_screen_manager_routes_whisplay_hub_cards_through_stack(display: Display
     screen_manager = ScreenManager(display, input_manager)
 
     hub = HubScreen(display, context)
-    now_playing = RoutableStubScreen(display, context)
-    playlists = RoutableStubScreen(display, context)
+    listen = RoutableStubScreen(display, context)
     call = RoutableStubScreen(display, context)
+    ask = RoutableStubScreen(display, context)
     power = RoutableStubScreen(display, context)
 
     screen_manager.register_screen("hub", hub)
-    screen_manager.register_screen("now_playing", now_playing)
-    screen_manager.register_screen("playlists", playlists)
+    screen_manager.register_screen("listen", listen)
     screen_manager.register_screen("call", call)
+    screen_manager.register_screen("ask", ask)
     screen_manager.register_screen("power", power)
 
     screen_manager.replace_screen("hub")
     assert screen_manager.current_screen is hub
 
     input_manager.simulate_action(InputAction.SELECT)
-    assert screen_manager.current_screen is now_playing
+    assert screen_manager.current_screen is listen
 
     screen_manager.replace_screen("hub")
     hub.selected_index = 1
     input_manager.simulate_action(InputAction.SELECT)
-    assert screen_manager.current_screen is playlists
+    assert screen_manager.current_screen is call
 
     screen_manager.replace_screen("hub")
     hub.selected_index = 2
     input_manager.simulate_action(InputAction.SELECT)
-    assert screen_manager.current_screen is call
+    assert screen_manager.current_screen is ask
 
     screen_manager.replace_screen("hub")
     hub.selected_index = 3

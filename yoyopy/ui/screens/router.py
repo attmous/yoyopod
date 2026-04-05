@@ -65,6 +65,11 @@ class ScreenRouter:
         """Return the default route map for current YoyoPod screens."""
         return {
             "hub": {
+                "select:Listen": NavigationRequest.push("listen"),
+                "select:Talk": NavigationRequest.push("call"),
+                "select:Ask": NavigationRequest.push("ask"),
+                "select:Setup": NavigationRequest.push("power"),
+                # Legacy aliases from the pre-overhaul Whisplay hub.
                 "select:Now Playing": NavigationRequest.push("now_playing"),
                 "select:Playlists": NavigationRequest.push("playlists"),
                 "select:Calls": NavigationRequest.push("call"),
@@ -76,19 +81,32 @@ class ScreenRouter:
             "menu": {
                 "back": NavigationRequest.pop(),
                 "select:Back": NavigationRequest.pop(),
+                "select:Listen": NavigationRequest.push("listen"),
+                "select:Talk": NavigationRequest.push("call"),
+                "select:Ask": NavigationRequest.push("ask"),
+                "select:Setup": NavigationRequest.push("power"),
+                "select:Settings": NavigationRequest.push("power"),
                 "select:Load Playlist": NavigationRequest.push("playlists"),
-                "select:Music": NavigationRequest.push("now_playing"),
-                "select:Podcasts": NavigationRequest.push("now_playing"),
-                "select:Audiobooks": NavigationRequest.push("now_playing"),
+                "select:Music": NavigationRequest.push("listen"),
+                "select:Podcasts": NavigationRequest.push("listen"),
+                "select:Audiobooks": NavigationRequest.push("listen"),
                 "select:Now Playing": NavigationRequest.push("now_playing"),
                 "select:Browse Playlists": NavigationRequest.push("playlists"),
                 "select:Playlists": NavigationRequest.push("playlists"),
                 "select:VoIP Status": NavigationRequest.push("call"),
+                "select:Talk Hub": NavigationRequest.push("call"),
                 "select:Call Parent": NavigationRequest.push("contacts"),
                 "select:Call": NavigationRequest.push("contacts"),
                 "select:Call Contact": NavigationRequest.push("contacts"),
                 "select:Contacts": NavigationRequest.push("contacts"),
                 "select:Power Status": NavigationRequest.push("power"),
+            },
+            "listen": {
+                "back": NavigationRequest.pop(),
+                "source_selected": NavigationRequest.push("playlists"),
+            },
+            "ask": {
+                "back": NavigationRequest.pop(),
             },
             "power": {
                 "back": NavigationRequest.pop(),

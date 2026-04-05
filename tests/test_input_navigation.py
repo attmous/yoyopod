@@ -18,7 +18,7 @@ def test_semantic_input_navigation() -> None:
     context.set_playlist(playlist)
 
     home = HomeScreen(display, context)
-    menu = MenuScreen(display, context)
+    menu = MenuScreen(display, context, items=["Now Playing", "Back"])
     now_playing = NowPlayingScreen(display, context)
 
     screen_manager.register_screen("home", home)

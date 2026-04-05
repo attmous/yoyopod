@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YoyoPod Design Preview - Pocket Arcade</title>
+  <style>
+    :root {
+      --shell: #3551ff;
+      --screen: #fdfcff;
+      --ink: #1b2451;
+      --muted: #6070aa;
+      --line: rgba(27, 36, 81, 0.12);
+      --blue: #00c8ff;
+      --yellow: #ffe34c;
+      --red: #ff5c39;
+      --green: #45d96f;
+      --purple: #8a6cff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Trebuchet MS", "Arial Rounded MT Bold", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(255,255,255,0.84), transparent 26rem),
+        linear-gradient(180deg, #fff06a 0%, #fff6b9 40%, #fffdf4 100%);
+    }
+    main {
+      width: min(1320px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 2rem 0 4rem;
+      display: grid;
+      gap: 1.4rem;
+    }
+    .topbar, .sidebar, .gallery {
+      border: 2px solid var(--line);
+      border-radius: 30px;
+      background: rgba(255,255,255,0.72);
+      box-shadow: 0 18px 42px rgba(110, 96, 16, 0.1);
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.2rem 1.4rem;
+    }
+    .topbar a { color: var(--ink); text-decoration: none; font-weight: 900; }
+    .tag {
+      display: inline-flex;
+      padding: 0.38rem 0.72rem;
+      border-radius: 999px;
+      background: rgba(53,81,255,0.12);
+      color: #3350d4;
+      font-size: 0.76rem;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(2.1rem, 4vw, 3.6rem);
+      line-height: 0.93;
+      letter-spacing: -0.04em;
+    }
+    p, li { color: var(--muted); line-height: 1.6; }
+    .layout { display: grid; grid-template-columns: 320px 1fr; gap: 1.25rem; }
+    .sidebar { padding: 1.25rem; display: grid; gap: 1rem; align-content: start; }
+    .gallery { padding: 1.25rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; }
+    .swatch { display: grid; grid-template-columns: 1.15rem 1fr auto; gap: 0.55rem; align-items: center; }
+    .dot { width: 1.15rem; height: 1.15rem; border-radius: 999px; border: 2px solid rgba(27,36,81,0.12); }
+    ul { margin: 0; padding-left: 1rem; }
+
+    .device {
+      border-radius: 34px;
+      background: linear-gradient(180deg, #3d57ff 0%, #2436c7 100%);
+      border: 2px solid rgba(16, 29, 115, 0.18);
+      padding: 0.85rem;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.22);
+      position: relative;
+      overflow: hidden;
+    }
+    .device::before {
+      content: "";
+      position: absolute;
+      inset: auto 1rem 0.7rem auto;
+      width: 2.2rem;
+      height: 0.7rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.22);
+    }
+    .screen {
+      aspect-ratio: 240 / 280;
+      border-radius: 26px;
+      background:
+        radial-gradient(circle at top right, rgba(0,200,255,0.12), transparent 8rem),
+        radial-gradient(circle at bottom left, rgba(255,227,76,0.16), transparent 8rem),
+        var(--screen);
+      border: 2px solid rgba(27,36,81,0.08);
+      padding: 0.9rem;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 0.75rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .screen::after {
+      content: "";
+      position: absolute;
+      inset: 1rem auto auto -1rem;
+      width: 4rem;
+      height: 4rem;
+      background: rgba(69,217,111,0.12);
+      border-radius: 1rem;
+      transform: rotate(18deg);
+    }
+    .status, .footer, .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.4rem;
+      position: relative;
+      z-index: 1;
+    }
+    .status {
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #2c79d7;
+    }
+    .footer {
+      font-size: 0.76rem;
+      font-weight: 900;
+      color: var(--muted);
+    }
+    .stack { display: grid; gap: 0.75rem; align-content: start; position: relative; z-index: 1; }
+    .hero { display: grid; grid-template-columns: 1fr auto; gap: 0.75rem; align-items: center; }
+    .mode {
+      width: fit-content;
+      padding: 0.32rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: rgba(27,36,81,0.06);
+    }
+    .title {
+      margin: 0;
+      font-size: 1.7rem;
+      line-height: 0.9;
+      letter-spacing: -0.04em;
+      font-weight: 900;
+    }
+    .subtitle { margin: 0; color: var(--muted); line-height: 1.45; font-size: 0.92rem; }
+    .console-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.55rem;
+    }
+    .tile {
+      padding: 0.72rem;
+      border-radius: 20px;
+      border: 2px solid rgba(27,36,81,0.08);
+      background: rgba(255,255,255,0.88);
+      font-weight: 900;
+      display: grid;
+      gap: 0.25rem;
+      justify-items: start;
+    }
+    .active-listen { background: rgba(0,200,255,0.16); }
+    .active-talk { background: rgba(255,92,57,0.16); }
+    .active-ask { background: rgba(138,108,255,0.18); }
+    .active-settings { background: rgba(255,227,76,0.24); }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+    .chip {
+      padding: 0.36rem 0.62rem;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 900;
+      border: 2px solid rgba(27,36,81,0.08);
+    }
+    .spotify { background: rgba(69,217,111,0.16); color: #228649; }
+    .amazon { background: rgba(255,227,76,0.22); color: #8a6517; }
+    .youtube { background: rgba(255,92,57,0.18); color: #c2472d; }
+    .local { background: rgba(0,200,255,0.16); color: #1d79b4; }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+    .action {
+      padding: 0.82rem 0.65rem;
+      border-radius: 18px;
+      border: 2px solid rgba(27,36,81,0.08);
+      font-weight: 900;
+      text-align: center;
+      background: rgba(255,255,255,0.9);
+    }
+    .call { background: rgba(69,217,111,0.16); color: #2b8650; }
+    .note { background: rgba(255,92,57,0.16); color: #c44a31; }
+    .people, .setting-list { display: grid; gap: 0.5rem; }
+    .row-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.68rem 0.72rem;
+      border-radius: 18px;
+      border: 2px solid rgba(27,36,81,0.08);
+      background: rgba(255,255,255,0.9);
+    }
+    .avatar {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 0.75rem;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      color: white;
+    }
+    .future-box {
+      padding: 0.9rem;
+      border-radius: 20px;
+      border: 2px dashed rgba(138,108,255,0.3);
+      background: linear-gradient(180deg, rgba(138,108,255,0.14), rgba(255,255,255,0.92));
+    }
+    svg.icon { width: 5.2rem; height: 5.2rem; flex: none; }
+    @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="topbar">
+      <div>
+        <span class="tag">Balanced Direction</span>
+        <h1>Pocket Arcade</h1>
+        <p>The cleanest of the joyful directions: strong color blocks, big mode tiles, and enough personality without drifting into chaos.</p>
+      </div>
+      <a href="./round-two.html">Back to round two</a>
+    </section>
+
+    <section class="layout">
+      <aside class="sidebar">
+        <div>
+          <h2>Vibe</h2>
+          <p>Mini game console energy. Bright, crisp, iconic, and easier to imagine as a real production UI across the whole product.</p>
+        </div>
+        <div>
+          <h2>Palette</h2>
+          <div class="swatch"><span class="dot" style="background:#3551ff;"></span><span>Console blue</span><code>#3551FF</code></div>
+          <div class="swatch"><span class="dot" style="background:#00c8ff;"></span><span>Arcade cyan</span><code>#00C8FF</code></div>
+          <div class="swatch"><span class="dot" style="background:#ffe34c;"></span><span>Pixel yellow</span><code>#FFE34C</code></div>
+          <div class="swatch"><span class="dot" style="background:#ff5c39;"></span><span>Play red</span><code>#FF5C39</code></div>
+          <div class="swatch"><span class="dot" style="background:#45d96f;"></span><span>Level green</span><code>#45D96F</code></div>
+          <div class="swatch"><span class="dot" style="background:#8a6cff;"></span><span>Quest purple</span><code>#8A6CFF</code></div>
+        </div>
+        <div>
+          <h2>What works</h2>
+          <ul>
+            <li>Feels joyful without relying on scribbles or cuteness.</li>
+            <li>The four-card home becomes very legible and iconic.</li>
+            <li>Best bridge between kid delight and production discipline.</li>
+            <li>Easiest to extend later to GPS, 4G, and Ask-mode surfaces.</li>
+          </ul>
+        </div>
+      </aside>
+
+      <section class="gallery">
+        <article class="device">
+          <div class="screen">
+            <div class="status"><span>23:31</span><span>4G · Wi-Fi · 56%</span></div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="mode" style="background:rgba(0,200,255,0.18); color:#1a84ad;">Home</div>
+                  <h2 class="title">Listen</h2>
+                  <p class="subtitle">The home becomes a set of strong mode tiles, almost like picking a game.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 80 80" fill="none" stroke="#45d96f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="40" cy="42" r="12"></circle>
+                  <path d="M23 34c0-9 7-16 17-16s17 7 17 16"></path>
+                  <path d="M23 34v12M57 34v12"></path>
+                  <path d="M58 20l7-5M64 32h8"></path>
+                </svg>
+              </div>
+              <div class="console-grid">
+                <div class="tile active-listen">Listen</div>
+                <div class="tile active-talk">Talk</div>
+                <div class="tile active-ask">Ask</div>
+                <div class="tile active-settings">Settings</div>
+              </div>
+            </div>
+            <div class="footer"><span>Tap: Next</span><span>Double: Open</span></div>
+          </div>
+        </article>
+
+        <article class="device">
+          <div class="screen">
+            <div class="status"><span>23:31</span><span>Listen · Ready</span></div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="mode" style="background:rgba(69,217,111,0.16); color:#2b8650;">Listen</div>
+                  <h2 class="title">Pick sound</h2>
+                  <p class="subtitle">Each source can feel like a bright level or channel instead of a settings list.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 80 80" fill="none" stroke="#00c8ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M28 22v34"></path>
+                  <path d="M28 28l24-6v28"></path>
+                  <circle cx="26" cy="58" r="8"></circle>
+                  <circle cx="50" cy="52" r="8"></circle>
+                </svg>
+              </div>
+              <div class="chip-row">
+                <span class="chip spotify">Spotify</span>
+                <span class="chip amazon">Amazon</span>
+                <span class="chip youtube">YouTube</span>
+                <span class="chip local">Local</span>
+              </div>
+              <div class="row-card"><strong>Adventure Mix</strong><span>12 playlists</span></div>
+            </div>
+            <div class="footer"><span>Tap: Next source</span><span>Double: Enter</span></div>
+          </div>
+        </article>
+
+        <article class="device">
+          <div class="screen">
+            <div class="status"><span>23:31</span><span>Talk · Ready</span></div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="mode" style="background:rgba(255,92,57,0.16); color:#c44a31;">Talk</div>
+                  <h2 class="title">Reach out</h2>
+                  <p class="subtitle">Call and voice note become equal, friendly action buttons.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 80 80" fill="none" stroke="#ff5c39" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 28h29a10 10 0 0 1 10 10v4a10 10 0 0 1-10 10H31l-9 8v-8h-6A10 10 0 0 1 6 42v-4a10 10 0 0 1 10-10Z"></path>
+                  <path d="M50 22h12a10 10 0 0 1 10 10v2a10 10 0 0 1-10 10h-2l-8 7v-7"></path>
+                </svg>
+              </div>
+              <div class="actions">
+                <div class="action call">Call</div>
+                <div class="action note">Voice Note</div>
+              </div>
+              <div class="people">
+                <div class="row-card"><div class="avatar" style="background:#ff5c39;">M</div><strong>Mom</strong><span>Ready</span></div>
+                <div class="row-card"><div class="avatar" style="background:#00c8ff;">D</div><strong>Dad</strong><span>Ready</span></div>
+              </div>
+            </div>
+            <div class="footer"><span>Tap: Next person</span><span>Double: Go</span></div>
+          </div>
+        </article>
+
+        <article class="device">
+          <div class="screen">
+            <div class="status"><span>23:31</span><span>Ask · Future</span></div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="mode" style="background:rgba(138,108,255,0.16); color:#6148d0;">Ask</div>
+                  <h2 class="title">Ask away</h2>
+                  <p class="subtitle">Feels playful and curious, but controlled and obviously safe.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 80 80" fill="none" stroke="#8a6cff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M23 18h34a12 12 0 0 1 12 12v5a12 12 0 0 1-12 12H43l-11 10v-10H23A12 12 0 0 1 11 35v-5a12 12 0 0 1 12-12Z"></path>
+                  <path d="M36 32c1.5-3 4-4.5 7-4.5 4 0 6.5 2 6.5 5 0 5-7.5 5-7.5 10"></path>
+                  <circle cx="40" cy="58" r="2" fill="#8a6cff"></circle>
+                </svg>
+              </div>
+              <div class="future-box">
+                <strong>Future mode</strong>
+                <p class="subtitle">Safe answers, voice-first, and easy for a kid to understand.</p>
+              </div>
+            </div>
+            <div class="footer"><span>Curious mode</span><span>Future safe</span></div>
+          </div>
+        </article>
+
+        <article class="device">
+          <div class="screen">
+            <div class="status"><span>23:31</span><span>Settings · Power</span></div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="mode" style="background:rgba(255,227,76,0.26); color:#8e6d11;">Settings</div>
+                  <h2 class="title">Tune up</h2>
+                  <p class="subtitle">Settings stays simple and bright, with power as a first-class part of the device story.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 80 80" fill="none" stroke="#ffe34c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="40" cy="40" r="10"></circle>
+                  <path d="M40 16v8M40 56v8M24 24l6 6M50 50l6 6M16 40h8M56 40h8M24 56l6-6M50 30l6-6"></path>
+                </svg>
+              </div>
+              <div class="setting-list">
+                <div class="row-card"><strong>Battery</strong><span>56%</span></div>
+                <div class="row-card"><strong>Sleep</strong><span>1 min</span></div>
+                <div class="row-card"><strong>Volume</strong><span>Mid</span></div>
+              </div>
+            </div>
+            <div class="footer"><span>Power + controls</span><span>Simple by design</span></div>
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

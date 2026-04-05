@@ -237,6 +237,11 @@ class CallCoordinator:
 
         self.voip_registered = state == RegistrationState.OK
         self.runtime.set_voip_ready(self.voip_registered)
+        if self.runtime.context is not None:
+            self.runtime.context.update_voip_status(
+                configured=self._is_voip_configured(),
+                ready=self.voip_registered,
+            )
 
         if state == RegistrationState.OK:
             logger.info("  ✓ VoIP ready to receive calls")
@@ -249,14 +254,36 @@ class CallCoordinator:
         """Coordinate backend availability changes and forced call cleanup."""
         if available:
             logger.info(f"VoIP backend available ({reason or 'ready'})")
+            if self.runtime.context is not None:
+                self.runtime.context.update_voip_status(
+                    configured=self._is_voip_configured(),
+                    ready=self.voip_registered,
+                )
             self.screen_coordinator.refresh_call_screen_if_visible()
             return
 
         logger.warning(f"VoIP backend unavailable ({reason or 'unknown'})")
         self.voip_registered = False
         self.runtime.set_voip_ready(False, trigger=f"voip_{reason or 'unavailable'}")
+        if self.runtime.context is not None:
+            self.runtime.context.update_voip_status(
+                configured=self._is_voip_configured(),
+                ready=False,
+            )
         self.stop_ringing()
         self.screen_coordinator.refresh_call_screen_if_visible()
 
         if self.runtime.call_fsm.is_active:
             self.handle_call_ended()
+
+    def _is_voip_configured(self) -> bool:
+        """Return whether the app has meaningful SIP identity data configured."""
+
+        if self.runtime.config_manager is not None:
+            if self.runtime.config_manager.get_sip_identity().strip():
+                return True
+            if self.runtime.config_manager.get_sip_username().strip():
+                return True
+
+        config_file = self.runtime.config.get("voip", {}).get("config_file")
+        return bool(config_file)

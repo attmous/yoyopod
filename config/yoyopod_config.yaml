@@ -10,6 +10,9 @@ app:
 audio:
   mopidy_host: "localhost"
   mopidy_port: 6680
+  listen_sources:               # Appears in Listen only when configured
+    - "spotify"
+    - "local"
   auto_resume_after_call: true    # Resume music after call ends
   fade_out_duration_ms: 0         # Fade out before call (0 = instant)
   fade_in_duration_ms: 0          # Fade in after call (0 = instant)

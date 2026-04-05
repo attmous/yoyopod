@@ -42,12 +42,14 @@ from yoyopy.power import (
 from yoyopy.ui.display import Display
 from yoyopy.ui.input import InputManager, InteractionProfile, get_input_manager
 from yoyopy.ui.screens import (
+    AskScreen,
     CallScreen,
     ContactListScreen,
     HubScreen,
     HomeScreen,
     InCallScreen,
     IncomingCallScreen,
+    ListenScreen,
     MenuScreen,
     NowPlayingScreen,
     OutgoingCallScreen,
@@ -124,6 +126,8 @@ class YoyoPodApp:
         self.hub_screen: Optional[HubScreen] = None
         self.home_screen: Optional[HomeScreen] = None
         self.menu_screen: Optional[MenuScreen] = None
+        self.listen_screen: Optional[ListenScreen] = None
+        self.ask_screen: Optional[AskScreen] = None
         self.power_screen: Optional[PowerScreen] = None
         self.now_playing_screen: Optional[NowPlayingScreen] = None
         self.playlist_screen: Optional[PlaylistScreen] = None
@@ -338,6 +342,17 @@ class YoyoPodApp:
 
             logger.info("  - AppContext")
             self.context = AppContext()
+            if self.config_manager is not None:
+                listen_sources = self.config_manager.get_listen_sources()
+                if listen_sources:
+                    self.context.current_audio_source = listen_sources[0]
+                self.context.update_voip_status(
+                    configured=bool(
+                        self.config_manager.get_sip_identity().strip()
+                        or self.config_manager.get_sip_username().strip()
+                    ),
+                    ready=False,
+                )
             self._update_screen_runtime_metrics(time.monotonic())
 
             logger.info("  - Orchestration Models")
@@ -389,6 +404,14 @@ class YoyoPodApp:
                 logger.info("    ✓ VoIP started successfully")
             else:
                 logger.warning("    ⚠ VoIP failed to start (music-only mode)")
+            if self.context is not None and self.config_manager is not None:
+                self.context.update_voip_status(
+                    configured=bool(
+                        self.config_manager.get_sip_identity().strip()
+                        or self.config_manager.get_sip_username().strip()
+                    ),
+                    ready=False,
+                )
 
             logger.info("  - MopidyClient")
             mopidy_host = (
@@ -423,11 +446,10 @@ class YoyoPodApp:
 
         try:
             menu_items = [
-                "Now Playing",
-                "Browse Playlists",
-                "VoIP Status",
-                "Call Contact",
-                "Power Status",
+                "Listen",
+                "Talk",
+                "Ask",
+                "Setup",
             ]
             self.hub_screen = HubScreen(
                 self.display,
@@ -437,6 +459,12 @@ class YoyoPodApp:
             )
             self.menu_screen = MenuScreen(self.display, self.context, items=menu_items)
             self.home_screen = HomeScreen(self.display, self.context)
+            self.listen_screen = ListenScreen(
+                self.display,
+                self.context,
+                config_manager=self.config_manager,
+            )
+            self.ask_screen = AskScreen(self.display, self.context)
             self.power_screen = PowerScreen(
                 self.display,
                 self.context,
@@ -488,6 +516,8 @@ class YoyoPodApp:
             self.screen_manager.register_screen("hub", self.hub_screen)
             self.screen_manager.register_screen("home", self.home_screen)
             self.screen_manager.register_screen("menu", self.menu_screen)
+            self.screen_manager.register_screen("listen", self.listen_screen)
+            self.screen_manager.register_screen("ask", self.ask_screen)
             self.screen_manager.register_screen("power", self.power_screen)
             self.screen_manager.register_screen("now_playing", self.now_playing_screen)
             self.screen_manager.register_screen("playlists", self.playlist_screen)
@@ -499,7 +529,8 @@ class YoyoPodApp:
             logger.info("    - Whisplay root: hub")
 
             logger.info("  ✓ All screens registered")
-            logger.info("    - Music screens: now_playing, playlists")
+            logger.info("    - Listen flow: listen, playlists, now_playing")
+            logger.info("    - Ask flow: ask")
             logger.info("    - Power screen: power")
             logger.info("    - VoIP screens: call, contacts, incoming_call, outgoing_call, in_call")
             logger.info("    - Navigation: home, menu")
@@ -750,6 +781,7 @@ class YoyoPodApp:
             in_call_screen=self.in_call_screen,
             config=self.config,
             config_manager=self.config_manager,
+            context=self.context,
             ui_state=self._ui_state,
             voip_ready=self._voip_registered,
         )

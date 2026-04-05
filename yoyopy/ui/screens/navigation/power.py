@@ -1,4 +1,4 @@
-"""Power status screen for PiSugar-backed telemetry and policies."""
+"""Setup screen for power, runtime, and device care."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
+from yoyopy.ui.screens.theme import INK, MUTED, SETUP, SURFACE, render_footer, render_header, rounded_panel, text_fit
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -16,14 +17,14 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class PowerPage:
-    """One page of compact power/status rows."""
+    """One setup page made of compact rows."""
 
     title: str
     rows: list[tuple[str, str]]
 
 
 class PowerScreen(Screen):
-    """Compact multi-page power and runtime status screen."""
+    """Compact Setup screen for power and device care state."""
 
     def __init__(
         self,
@@ -39,86 +40,63 @@ class PowerScreen(Screen):
         self.page_index = 0
 
     def render(self) -> None:
-        """Render the active power page."""
+        """Render the active Setup page."""
         snapshot = self._get_snapshot()
         status = self._get_status()
         pages = self.build_pages(snapshot=snapshot, status=status)
         self.page_index %= len(pages)
         active_page = pages[self.page_index]
-
-        self.display.clear(self.display.COLOR_BLACK)
-        self._render_status_bar()
-
-        title = active_page.title
-        title_size = 18
-        title_width, title_height = self.display.get_text_size(title, title_size)
-        title_x = (self.display.WIDTH - title_width) // 2
-        title_y = self.display.STATUS_BAR_HEIGHT + 12
-        self.display.text(
-            title,
-            title_x,
-            title_y,
-            color=self.display.COLOR_WHITE,
-            font_size=title_size,
-        )
-
         page_text = f"{self.page_index + 1}/{len(pages)}"
-        page_width, _ = self.display.get_text_size(page_text, 11)
-        self.display.text(
-            page_text,
-            self.display.WIDTH - page_width - 18,
-            title_y + 3,
-            color=self.display.COLOR_GRAY,
-            font_size=11,
+
+        content_top = render_header(
+            self.display,
+            self.context,
+            mode="setup",
+            title="Setup",
+            subtitle="Power, sleep, and device care.",
+            icon="setup",
+            page_text=page_text,
+            show_time=False,
         )
 
-        separator_y = title_y + title_height + 8
-        self.display.line(
-            18,
-            separator_y,
-            self.display.WIDTH - 18,
-            separator_y,
-            color=self.display.COLOR_GRAY,
-            width=2,
+        panel_top = content_top + 8
+        panel_bottom = self.display.HEIGHT - 28
+        rounded_panel(
+            self.display,
+            12,
+            panel_top,
+            self.display.WIDTH - 12,
+            panel_bottom,
+            fill=SURFACE,
+            outline=None,
+            radius=24,
         )
 
-        row_y = separator_y + 14
-        row_gap = 23 if self.display.is_portrait() else 21
-        label_size = 12
-        value_size = 13
+        pill_width, _ = self.display.get_text_size(active_page.title.upper(), 10)
+        rounded_panel(
+            self.display,
+            22,
+            panel_top + 10,
+            22 + pill_width + 18,
+            panel_top + 32,
+            fill=SETUP.accent_dim,
+            outline=None,
+            radius=12,
+        )
+        self.display.text(active_page.title.upper(), 31, panel_top + 16, color=SETUP.accent, font_size=10)
 
+        row_y = panel_top + 46
+        row_gap = 24 if self.display.is_portrait() else 22
         for label, value in active_page.rows:
-            self.display.text(
-                label,
-                16,
-                row_y,
-                color=self.display.COLOR_GRAY,
-                font_size=label_size,
-            )
-            value_width, _ = self.display.get_text_size(value, value_size)
-            value_x = max(90, self.display.WIDTH - value_width - 16)
-            self.display.text(
-                value,
-                value_x,
-                row_y,
-                color=self.display.COLOR_WHITE,
-                font_size=value_size,
-            )
+            label_text = text_fit(self.display, label, 90, 11)
+            value_text = text_fit(self.display, value, self.display.WIDTH - 120, 12)
+            self.display.text(label_text, 22, row_y, color=MUTED, font_size=11)
+            value_width, _ = self.display.get_text_size(value_text, 12)
+            self.display.text(value_text, self.display.WIDTH - value_width - 22, row_y, color=INK, font_size=12)
             row_y += row_gap
 
-        help_text = (
-            "Tap page | Double page | Hold back"
-            if self.is_one_button_mode()
-            else "X/Y page | A page | B back"
-        )
-        help_width, _ = self.display.get_text_size(help_text, 10)
-        self.display.text(
-            help_text,
-            (self.display.WIDTH - help_width) // 2,
-            self.display.HEIGHT - 15,
-            color=self.display.COLOR_GRAY,
-            font_size=10,
-        )
+        help_text = "Tap page | Double page | Hold back" if self.is_one_button_mode() else "A page | B back | X/Y page"
+        render_footer(self.display, help_text, mode="setup")
         self.display.update()
 
     def build_pages(
@@ -127,33 +105,14 @@ class PowerScreen(Screen):
         snapshot: Optional["PowerSnapshot"],
         status: dict[str, object],
     ) -> list[PowerPage]:
-        """Build the current compact pages for rendering and tests."""
-        battery_rows = self._build_battery_rows(snapshot=snapshot)
-        runtime_rows = self._build_runtime_rows(snapshot=snapshot, status=status)
+        """Build compact setup pages for rendering and tests."""
         return [
-            PowerPage(title="Power Status", rows=battery_rows),
-            PowerPage(title="Runtime & Safety", rows=runtime_rows),
+            PowerPage(title="Power", rows=self._build_battery_rows(snapshot=snapshot)),
+            PowerPage(title="Care", rows=self._build_runtime_rows(snapshot=snapshot, status=status)),
         ]
 
-    def _render_status_bar(self) -> None:
-        """Render the shared status bar using cached context telemetry."""
-        current_time = datetime.now().strftime("%H:%M")
-        battery = self.context.battery_percent if self.context else 100
-        charging = self.context.battery_charging if self.context else False
-        external_power = self.context.external_power if self.context else False
-        power_available = self.context.power_available if self.context else False
-        signal = self.context.signal_strength if self.context else 4
-        self.display.status_bar(
-            time_str=current_time,
-            battery_percent=battery,
-            signal_strength=signal,
-            charging=charging,
-            external_power=external_power,
-            power_available=power_available,
-        )
-
     def _get_snapshot(self) -> Optional["PowerSnapshot"]:
-        """Return the latest cached power snapshot."""
+        """Return the latest power snapshot."""
         if self.power_manager is None:
             return None
         return self.power_manager.get_snapshot()
@@ -166,13 +125,12 @@ class PowerScreen(Screen):
             return {}
 
     def _build_battery_rows(self, *, snapshot: Optional["PowerSnapshot"]) -> list[tuple[str, str]]:
-        """Build the first page focused on PiSugar telemetry."""
+        """Build the power-focused page."""
         if snapshot is None:
             return [
                 ("Source", "Unavailable"),
                 ("Battery", "Unknown"),
                 ("Charging", "Unknown"),
-                ("External", "Unknown"),
                 ("RTC", "Unknown"),
                 ("Alarm", "Unknown"),
             ]
@@ -204,7 +162,7 @@ class PowerScreen(Screen):
         snapshot: Optional["PowerSnapshot"],
         status: dict[str, object],
     ) -> list[tuple[str, str]]:
-        """Build the second page for runtime, watchdog, and shutdown state."""
+        """Build the care/runtime page."""
         warning_percent = self._format_percent(status.get("warning_threshold_percent"))
         critical_percent = self._format_percent(status.get("critical_shutdown_percent"))
         delay_seconds = self._format_duration_short(status.get("shutdown_delay_seconds"))
@@ -230,7 +188,7 @@ class PowerScreen(Screen):
         return rows
 
     def _format_battery(self, snapshot: "PowerSnapshot") -> str:
-        """Format the battery percentage with a compact status suffix."""
+        """Format battery percentage with a compact suffix."""
         level = snapshot.battery.level_percent
         if level is None:
             return "Unknown"
@@ -238,7 +196,7 @@ class PowerScreen(Screen):
         return f"{round(level)}%{suffix}"
 
     def _format_charging(self, snapshot: "PowerSnapshot") -> str:
-        """Format the charging state."""
+        """Format charging state."""
         charging = snapshot.battery.charging
         if charging is None:
             return "Unknown"
@@ -252,7 +210,7 @@ class PowerScreen(Screen):
         return "Plugged" if plugged else "Battery"
 
     def _format_voltage(self, snapshot: "PowerSnapshot") -> str:
-        """Format battery voltage with optional temperature hint."""
+        """Format voltage with optional temperature hint."""
         voltage = snapshot.battery.voltage_volts
         temperature = snapshot.battery.temperature_celsius
         if voltage is None and temperature is None:
@@ -301,11 +259,11 @@ class PowerScreen(Screen):
 
     @staticmethod
     def _format_watchdog(status: dict[str, object]) -> str:
-        """Format the current watchdog state from app status."""
+        """Format the current watchdog state."""
         if not status.get("watchdog_enabled"):
             return "Off"
         if status.get("watchdog_feed_suppressed"):
-            return "Suppressed"
+            return "Paused"
         if status.get("watchdog_active"):
             return "Active"
         return "Ready"
@@ -325,11 +283,11 @@ class PowerScreen(Screen):
         return text[: max_length - 3] + "..."
 
     def _next_page(self) -> None:
-        """Advance to the next power page with wraparound."""
+        """Advance to the next page with wraparound."""
         self.page_index = (self.page_index + 1) % 2
 
     def _previous_page(self) -> None:
-        """Return to the previous power page with wraparound."""
+        """Return to the previous page with wraparound."""
         self.page_index = (self.page_index - 1) % 2
 
     def on_advance(self, data=None) -> None:
@@ -337,7 +295,7 @@ class PowerScreen(Screen):
         self._next_page()
 
     def on_select(self, data=None) -> None:
-        """Double tap or standard select also cycles pages."""
+        """Select also cycles pages."""
         self._next_page()
 
     def on_back(self, data=None) -> None:
@@ -345,17 +303,17 @@ class PowerScreen(Screen):
         self.request_route("back")
 
     def on_up(self, data=None) -> None:
-        """Standard up goes to the previous page."""
+        """Up goes to the previous page."""
         self._previous_page()
 
     def on_down(self, data=None) -> None:
-        """Standard down goes to the next page."""
+        """Down goes to the next page."""
         self._next_page()
 
     def on_left(self, data=None) -> None:
-        """Standard left goes to the previous page."""
+        """Left goes to the previous page."""
         self._previous_page()
 
     def on_right(self, data=None) -> None:
-        """Standard right goes to the next page."""
+        """Right goes to the next page."""
         self._next_page()

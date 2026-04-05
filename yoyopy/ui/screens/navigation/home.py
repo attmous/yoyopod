@@ -1,109 +1,59 @@
-"""HomeScreen - Initial landing screen for YoyoPod."""
+"""Graffiti Buddy home splash for standard devices."""
 
-from yoyopy.ui.screens.base import Screen
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
+
 from yoyopy.ui.display import Display
-from typing import Optional, TYPE_CHECKING
-from datetime import datetime
+from yoyopy.ui.screens.base import Screen
+from yoyopy.ui.screens.theme import ASK, INK, LISTEN, MUTED, SETUP, TALK, draw_icon, render_footer, render_status_bar, render_backdrop, rounded_panel
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
 
 
 class HomeScreen(Screen):
-    """
-    Home screen displaying YoyoPod logo and status.
+    """A playful splash screen before entering the standard menu."""
 
-    Shows the main branding and current device status including
-    battery, time, and signal strength.
-
-    Button mapping:
-    - Button A: Open main menu
-    """
-
-    def __init__(self, display: Display, context: Optional['AppContext'] = None) -> None:
+    def __init__(self, display: Display, context: Optional["AppContext"] = None) -> None:
         super().__init__(display, context, "Home")
 
     def render(self) -> None:
-        """Render the home screen."""
-        # Clear display
-        self.display.clear(self.display.COLOR_BLACK)
+        """Render the YoyoPod splash screen."""
+        render_backdrop(self.display, "setup")
+        render_status_bar(self.display, self.context, show_time=False)
 
-        # Draw status bar
-        current_time = datetime.now().strftime("%H:%M")
-        battery = self.context.battery_percent if self.context else 100
-        charging = self.context.battery_charging if self.context else False
-        external_power = self.context.external_power if self.context else False
-        power_available = self.context.power_available if self.context else True
-        signal = self.context.signal_strength if self.context else 4
+        title = "YoyoPod"
+        subtitle = "Tiny talk. Big adventures."
+        title_width, title_height = self.display.get_text_size(title, 30)
+        self.display.text(title, (self.display.WIDTH - title_width) // 2, 54, color=INK, font_size=30)
+        subtitle_width, _ = self.display.get_text_size(subtitle, 13)
+        self.display.text(subtitle, (self.display.WIDTH - subtitle_width) // 2, 88, color=MUTED, font_size=13)
 
-        self.display.status_bar(
-            time_str=current_time,
-            battery_percent=battery,
-            signal_strength=signal,
-            charging=charging,
-            external_power=external_power,
-            power_available=power_available,
+        rounded_panel(
+            self.display,
+            24,
+            122,
+            self.display.WIDTH - 24,
+            206,
+            fill=(31, 34, 40),
+            outline=SETUP.accent_dim,
+            radius=28,
+            shadow=True,
         )
 
-        # Draw YoyoPod logo text
-        logo_text = "YoyoPod"
-        logo_size = 32
-        text_width, text_height = self.display.get_text_size(logo_text, logo_size)
-        logo_x = (self.display.WIDTH - text_width) // 2
-        logo_y = 60
+        draw_icon(self.display, "listen", 42, 140, 30, LISTEN.accent)
+        draw_icon(self.display, "talk", 90, 140, 30, TALK.accent)
+        draw_icon(self.display, "ask", 138, 140, 30, ASK.accent)
+        draw_icon(self.display, "setup", 186, 140, 30, SETUP.accent)
 
-        self.display.text(
-            logo_text,
-            logo_x,
-            logo_y,
-            color=self.display.COLOR_CYAN,
-            font_size=logo_size
-        )
+        mini_text = "Listen · Talk · Ask · Setup"
+        mini_width, _ = self.display.get_text_size(mini_text, 12)
+        self.display.text(mini_text, (self.display.WIDTH - mini_width) // 2, 182, color=INK, font_size=12)
 
-        # Draw subtitle
-        subtitle = "Connect"
-        subtitle_size = 16
-        sub_width, sub_height = self.display.get_text_size(subtitle, subtitle_size)
-        sub_x = (self.display.WIDTH - sub_width) // 2
-        sub_y = logo_y + text_height + 10
-
-        self.display.text(
-            subtitle,
-            sub_x,
-            sub_y,
-            color=self.display.COLOR_WHITE,
-            font_size=subtitle_size
-        )
-
-        # Draw decorative circle
-        circle_y = logo_y + text_height + sub_height + 40
-        self.display.circle(
-            self.display.WIDTH // 2,
-            circle_y,
-            30,
-            outline=self.display.COLOR_CYAN,
-            width=3
-        )
-
-        # Draw status text
-        status_text = "Ready to Play"
-        status_size = 14
-        status_width, _ = self.display.get_text_size(status_text, status_size)
-        status_x = (self.display.WIDTH - status_width) // 2
-        status_y = self.display.HEIGHT - 40
-
-        self.display.text(
-            status_text,
-            status_x,
-            status_y,
-            color=self.display.COLOR_GREEN,
-            font_size=status_size
-        )
-
-        # Update display
+        render_footer(self.display, "Press A to open", mode="setup")
         self.display.update()
 
     def on_select(self, data=None) -> None:
-        """Open the main menu."""
+        """Open the standard menu."""
         self.request_route("select")
-

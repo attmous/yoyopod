@@ -13,6 +13,7 @@ from yoyopy.ui.screens import (
     HubScreen,
     InCallScreen,
     IncomingCallScreen,
+    ListenScreen,
     NavigationRequest,
     NowPlayingScreen,
     OutgoingCallScreen,
@@ -109,6 +110,9 @@ class FakeConfigManager:
     def get_contacts(self) -> list[FakeContact]:
         return list(self._contacts)
 
+    def get_listen_sources(self) -> list[str]:
+        return ["spotify", "local"]
+
 
 class FakeVoIPManager:
     """Minimal VoIP double for one-button screen tests."""
@@ -195,11 +199,32 @@ def test_hub_advance_wraps_from_last_card_to_first(
     assert hub.selected_index == 0
 
 
-def test_hub_select_requests_power_route_for_power_card(
+def test_listen_screen_select_sets_source_and_routes_to_playlists(
     display: Display,
     one_button_context: AppContext,
 ) -> None:
-    """The Whisplay hub should open the power screen from its new Power card."""
+    """Listen should keep the chosen source and route into playlists."""
+    screen = ListenScreen(
+        display,
+        one_button_context,
+        config_manager=FakeConfigManager([]),
+    )
+
+    screen.enter()
+    screen.selected_index = 1
+    screen.on_select()
+
+    assert one_button_context.current_audio_source == "local"
+    assert screen.consume_navigation_request() == NavigationRequest.route(
+        "source_selected",
+        payload="local",
+    )
+
+def test_hub_select_requests_setup_route_for_setup_card(
+    display: Display,
+    one_button_context: AppContext,
+) -> None:
+    """The Whisplay hub should open Setup from its fourth root card."""
     hub = HubScreen(
         display,
         one_button_context,
@@ -210,7 +235,7 @@ def test_hub_select_requests_power_route_for_power_card(
     hub.selected_index = 3
     hub.on_select()
 
-    assert hub.consume_navigation_request() == NavigationRequest.route("select", payload="Power")
+    assert hub.consume_navigation_request() == NavigationRequest.route("select", payload="Setup")
 
 
 def test_now_playing_advance_and_select_follow_one_button_mapping(

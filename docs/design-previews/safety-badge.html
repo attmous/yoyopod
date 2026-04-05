@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YoyoPod Design Preview - Safety Badge</title>
+  <style>
+    :root {
+      --bg: #e9eef0;
+      --panel: #f7fafb;
+      --ink: #24333b;
+      --muted: #60727a;
+      --line: rgba(36, 51, 59, 0.15);
+      --teal: #2e8b7a;
+      --sky: #6ea7d8;
+      --orange: #e38a43;
+      --lime: #a6c66b;
+      --rose: #c65d6d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Nunito", "Trebuchet MS", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(255,255,255,0.8), transparent 25rem),
+        linear-gradient(180deg, #dde6ea 0%, var(--bg) 100%);
+      color: var(--ink);
+    }
+    main {
+      width: min(1280px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 2rem 0 4rem;
+      display: grid;
+      gap: 1.5rem;
+    }
+    .topbar,.sidebar,.gallery {
+      border: 2px solid var(--line);
+      background: rgba(250, 252, 253, 0.78);
+      box-shadow: 0 18px 38px rgba(44, 58, 64, 0.08);
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.2rem 1.4rem;
+      border-radius: 28px;
+    }
+    .topbar a { color: var(--ink); text-decoration: none; font-weight: 700; }
+    .tag {
+      display: inline-flex;
+      padding: 0.35rem 0.65rem;
+      border-radius: 999px;
+      background: rgba(46,139,122,0.14);
+      color: #1f6256;
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; font-size: clamp(2rem, 4vw, 3.5rem); line-height: 0.94; letter-spacing: -0.04em; }
+    p, li { color: var(--muted); line-height: 1.6; }
+    .layout { display: grid; grid-template-columns: 320px 1fr; gap: 1.25rem; }
+    .sidebar { padding: 1.25rem; border-radius: 30px; display: grid; gap: 1rem; }
+    .gallery { padding: 1.25rem; border-radius: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+    .swatch { display: grid; grid-template-columns: 1.2rem 1fr auto; gap: 0.6rem; align-items: center; }
+    .dot { width: 1.2rem; height: 1.2rem; border-radius: 999px; border: 2px solid rgba(36,51,59,0.12); }
+    ul { margin: 0; padding-left: 1rem; }
+    .device {
+      border-radius: 34px;
+      border: 2px solid rgba(36, 51, 59, 0.18);
+      background: linear-gradient(180deg, #eef4f6 0%, #dde7ea 100%);
+      padding: 0.8rem;
+    }
+    .screen {
+      aspect-ratio: 240 / 280;
+      border-radius: 24px;
+      background: var(--panel);
+      border: 2px solid rgba(36, 51, 59, 0.1);
+      padding: 0.9rem;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 0.75rem;
+    }
+    .status,.footer,.row { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; }
+    .status { font-size: 0.74rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+    .footer { font-size: 0.78rem; font-weight: 800; color: var(--muted); }
+    .pill { padding: 0.22rem 0.44rem; border-radius: 999px; background: rgba(36,51,59,0.08); }
+    .panel {
+      border-radius: 20px;
+      border: 2px solid rgba(36,51,59,0.12);
+      padding: 0.95rem;
+      background: linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.68));
+      display: grid;
+      gap: 0.7rem;
+      align-content: start;
+    }
+    .eyebrow { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .title { font-size: 1.48rem; line-height: 0.98; font-weight: 900; letter-spacing: -0.03em; }
+    .subtitle { color: var(--muted); line-height: 1.46; font-size: 0.94rem; }
+    .cards { display: grid; gap: 0.55rem; }
+    .card {
+      border-radius: 14px;
+      padding: 0.78rem;
+      border: 2px solid rgba(36,51,59,0.1);
+      background: rgba(255,255,255,0.84);
+    }
+    .active { border-color: rgba(46,139,122,0.4); background: rgba(46,139,122,0.12); }
+    .sky { border-color: rgba(110,167,216,0.36); background: rgba(110,167,216,0.12); }
+    .orange { border-color: rgba(227,138,67,0.36); background: rgba(227,138,67,0.12); }
+    .alert { background: linear-gradient(180deg, rgba(198,93,109,0.16), rgba(255,255,255,0.78)); }
+    .metric {
+      display: grid;
+      gap: 0.2rem;
+      padding: 0.75rem;
+      border-radius: 14px;
+      background: rgba(36,51,59,0.04);
+    }
+    .metric strong { font-size: 1.18rem; line-height: 1; }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; }
+    .button {
+      padding: 0.7rem;
+      border-radius: 14px;
+      text-align: center;
+      font-weight: 900;
+      border: 2px solid rgba(36,51,59,0.08);
+      background: rgba(255,255,255,0.88);
+    }
+    .accept { background: rgba(46,139,122,0.18); color: #1d5c50; }
+    .reject { background: rgba(198,93,109,0.18); color: #7e3441; }
+    @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="topbar">
+      <div>
+        <span class="tag">Utility Direction</span>
+        <h1>Safety Badge</h1>
+        <p>Cleaner, more formal, and highly trustable. This leans strongest toward “safe communication device” rather than “music gadget.”</p>
+      </div>
+      <a href="./index.html">Back to all directions</a>
+    </section>
+    <section class="layout">
+      <aside class="sidebar">
+        <div>
+          <h2>Palette</h2>
+          <div class="swatch"><span class="dot" style="background:#e9eef0;"></span><span>Fog</span><code>#E9EEF0</code></div>
+          <div class="swatch"><span class="dot" style="background:#24333b;"></span><span>Ink</span><code>#24333B</code></div>
+          <div class="swatch"><span class="dot" style="background:#2e8b7a;"></span><span>Teal</span><code>#2E8B7A</code></div>
+          <div class="swatch"><span class="dot" style="background:#6ea7d8;"></span><span>Sky</span><code>#6EA7D8</code></div>
+          <div class="swatch"><span class="dot" style="background:#e38a43;"></span><span>Orange</span><code>#E38A43</code></div>
+          <div class="swatch"><span class="dot" style="background:#a6c66b;"></span><span>Lime</span><code>#A6C66B</code></div>
+          <div class="swatch"><span class="dot" style="background:#c65d6d;"></span><span>Rose</span><code>#C65D6D</code></div>
+        </div>
+        <div>
+          <h2>Why it fits</h2>
+          <ul>
+            <li>Best if parent trust and clarity are the top priority.</li>
+            <li>Feels closer to a field device or safety companion.</li>
+            <li>Less magical than the other directions, but very production-safe.</li>
+          </ul>
+        </div>
+      </aside>
+      <section class="gallery">
+        <article class="device"><div class="screen"><div class="status"><span>10:24</span><div><span class="pill">4G</span> <span class="pill">56%</span></div></div><div class="panel"><div class="eyebrow">Action Hub</div><div class="title">Calls</div><div class="subtitle">The hub feels more badge-like and supervised, with cleaner hierarchy and stronger status framing.</div><div class="cards"><div class="card active"><div class="row"><strong>Calls</strong><span>Connected</span></div></div><div class="card sky"><div class="row"><strong>Playlists</strong><span>14 ready</span></div></div><div class="card orange"><div class="row"><strong>Power</strong><span>56%</span></div></div></div></div><div class="footer"><span>Tap: Next</span><span>Double: Open</span></div></div></article>
+        <article class="device"><div class="screen"><div class="status"><span>10:24</span><div><span class="pill">Music</span> <span class="pill">Ready</span></div></div><div class="panel"><div class="eyebrow">Playlists</div><div class="title">Quiet Wind Down</div><div class="subtitle">This direction keeps things extremely structured and legible, with less whimsy.</div><div class="card active"><div class="row"><strong>Quiet Wind Down</strong><span>9 tracks</span></div></div><div class="card"><div class="row"><strong>Adventure Songs</strong><span>42 tracks</span></div></div><div class="card"><div class="row"><strong>Story Time</strong><span>12 tracks</span></div></div><div class="metric"><span class="eyebrow">Playback</span><strong>Paused</strong></div></div><div class="footer"><span>Tap: Next</span><span>Double: Load</span><span>Hold: Back</span></div></div></article>
+        <article class="device"><div class="screen"><div class="status"><span>10:24</span><div><span class="pill">Calls</span> <span class="pill">Mom</span></div></div><div class="panel alert"><div class="eyebrow">Incoming Call</div><div class="title">Mom is calling</div><div class="subtitle">A more safety-device interpretation of the alert surface, with restrained but strong urgency.</div><div class="actions"><div class="button accept">Answer</div><div class="button reject">Reject</div></div><div class="metric"><span class="eyebrow">Caller</span><strong>Trusted Contact</strong></div></div><div class="footer"><span>Very clear</span><span>Low distraction</span></div></div></article>
+        <article class="device"><div class="screen"><div class="status"><span>10:24</span><div><span class="pill">Power</span> <span class="pill">USB-C</span></div></div><div class="panel"><div class="eyebrow">Power Status</div><div class="title">Battery healthy</div><div class="subtitle">The power view becomes a dashboard card rather than a playful status page.</div><div class="metric"><span class="eyebrow">Battery</span><strong>56%</strong></div><div class="metric"><span class="eyebrow">External Power</span><strong>Connected</strong></div><div class="metric"><span class="eyebrow">Screen Time</span><strong>42 min</strong></div></div><div class="footer"><span>Parent-first clarity</span><span>Strong trust signal</span></div></div></article>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

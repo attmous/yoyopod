@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YoyoPod Design Preview - Toy Radio</title>
+  <style>
+    :root {
+      --bg: #fff6e8;
+      --panel: #fffdf8;
+      --ink: #1f2b3a;
+      --muted: #5d6874;
+      --line: rgba(31, 43, 58, 0.14);
+      --navy: #25435f;
+      --mint: #7cc8b8;
+      --orange: #e9824a;
+      --yellow: #e5b93d;
+      --red: #c95b52;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Nunito", "Trebuchet MS", sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(255,255,255,0.8), transparent 25rem),
+        linear-gradient(180deg, #ffeccf 0%, var(--bg) 100%);
+      color: var(--ink);
+    }
+    main {
+      width: min(1280px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 2rem 0 4rem;
+      display: grid;
+      gap: 1.5rem;
+    }
+    .topbar,.sidebar,.gallery {
+      border: 2px solid var(--line);
+      background: rgba(255, 252, 245, 0.72);
+      box-shadow: 0 18px 38px rgba(80, 54, 28, 0.08);
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1.2rem 1.4rem;
+      border-radius: 28px;
+    }
+    .topbar a { color: var(--ink); text-decoration: none; font-weight: 700; }
+    .tag {
+      display: inline-flex;
+      padding: 0.35rem 0.65rem;
+      border-radius: 999px;
+      background: rgba(233, 130, 74, 0.16);
+      color: #9a4f27;
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; font-size: clamp(2rem, 4vw, 3.5rem); line-height: 0.94; letter-spacing: -0.04em; }
+    p, li { color: var(--muted); line-height: 1.6; }
+    .layout { display: grid; grid-template-columns: 320px 1fr; gap: 1.25rem; }
+    .sidebar { padding: 1.25rem; border-radius: 30px; display: grid; gap: 1rem; }
+    .gallery { padding: 1.25rem; border-radius: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+    .swatch { display: grid; grid-template-columns: 1.2rem 1fr auto; gap: 0.6rem; align-items: center; }
+    .dot { width: 1.2rem; height: 1.2rem; border-radius: 999px; border: 2px solid rgba(31,43,58,0.12); }
+    ul { margin: 0; padding-left: 1rem; }
+    .device {
+      border-radius: 38px;
+      border: 2px solid rgba(31, 43, 58, 0.18);
+      background: linear-gradient(180deg, #ffe9c1 0%, #ffd8b4 100%);
+      padding: 0.8rem;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
+    }
+    .screen {
+      aspect-ratio: 240 / 280;
+      border-radius: 26px;
+      background: var(--panel);
+      border: 2px solid rgba(31, 43, 58, 0.1);
+      padding: 0.9rem;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 0.75rem;
+    }
+    .status,.footer,.row { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; }
+    .status { font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+    .footer { font-size: 0.78rem; font-weight: 800; color: var(--muted); }
+    .pill { padding: 0.22rem 0.44rem; border-radius: 999px; background: rgba(31,43,58,0.08); }
+    .panel {
+      border-radius: 24px;
+      border: 2px solid rgba(31,43,58,0.1);
+      padding: 0.95rem;
+      background: linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.62));
+      display: grid;
+      gap: 0.75rem;
+      align-content: start;
+    }
+    .hero-card {
+      background:
+        radial-gradient(circle at top right, rgba(229,185,61,0.28), transparent 8rem),
+        linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.62));
+    }
+    .eyebrow { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+    .title { font-size: 1.56rem; line-height: 0.94; font-weight: 900; letter-spacing: -0.04em; }
+    .cards { display: grid; gap: 0.6rem; }
+    .card {
+      border-radius: 18px;
+      padding: 0.8rem;
+      border: 2px solid rgba(31,43,58,0.08);
+      background: rgba(255,255,255,0.72);
+    }
+    .card.active {
+      border-color: rgba(233,130,74,0.42);
+      background: linear-gradient(180deg, rgba(233,130,74,0.22), rgba(255,255,255,0.84));
+      box-shadow: 0 10px 18px rgba(233,130,74,0.18);
+    }
+    .card.mint { border-color: rgba(124,200,184,0.4); background: rgba(124,200,184,0.16); }
+    .card.yellow { border-color: rgba(229,185,61,0.4); background: rgba(229,185,61,0.16); }
+    .subtitle { color: var(--muted); line-height: 1.48; font-size: 0.94rem; }
+    .bar { height: 0.72rem; border-radius: 999px; background: rgba(31,43,58,0.08); }
+    .wave {
+      height: 4.6rem;
+      border-radius: 18px;
+      background:
+        linear-gradient(90deg,
+          rgba(233,130,74,0.18) 0 10%,
+          transparent 10% 18%,
+          rgba(124,200,184,0.34) 18% 26%,
+          transparent 26% 32%,
+          rgba(229,185,61,0.24) 32% 44%,
+          transparent 44% 50%,
+          rgba(37,67,95,0.36) 50% 60%,
+          transparent 60% 67%,
+          rgba(233,130,74,0.3) 67% 78%,
+          transparent 78% 84%,
+          rgba(124,200,184,0.42) 84% 100%);
+    }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+    .button {
+      padding: 0.72rem;
+      border-radius: 16px;
+      text-align: center;
+      font-weight: 900;
+      border: 2px solid rgba(31,43,58,0.08);
+      background: rgba(255,255,255,0.86);
+    }
+    .accept { background: rgba(124,200,184,0.26); color: #245f52; }
+    .reject { background: rgba(201,91,82,0.22); color: #823934; }
+    @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="topbar">
+      <div>
+        <span class="tag">Playful Direction</span>
+        <h1>Toy Radio</h1>
+        <p>Bright, collectible, and more toy-like, while still staying readable and structured.</p>
+      </div>
+      <a href="./index.html">Back to all directions</a>
+    </section>
+    <section class="layout">
+      <aside class="sidebar">
+        <div>
+          <h2>Palette</h2>
+          <div class="swatch"><span class="dot" style="background:#fff6e8;"></span><span>Cream</span><code>#FFF6E8</code></div>
+          <div class="swatch"><span class="dot" style="background:#25435f;"></span><span>Navy</span><code>#25435F</code></div>
+          <div class="swatch"><span class="dot" style="background:#7cc8b8;"></span><span>Mint</span><code>#7CC8B8</code></div>
+          <div class="swatch"><span class="dot" style="background:#e9824a;"></span><span>Orange</span><code>#E9824A</code></div>
+          <div class="swatch"><span class="dot" style="background:#e5b93d;"></span><span>Yellow</span><code>#E5B93D</code></div>
+          <div class="swatch"><span class="dot" style="background:#c95b52;"></span><span>Alert Red</span><code>#C95B52</code></div>
+        </div>
+        <div>
+          <h2>Why it fits</h2>
+          <ul>
+            <li>Feels the most fun and collectible for kids.</li>
+            <li>Would pair well with colorful industrial design and accessories.</li>
+            <li>Stronger identity, but easier to overdo if we add too many accents.</li>
+          </ul>
+        </div>
+      </aside>
+      <section class="gallery">
+        <article class="device"><div class="screen"><div class="status"><span>10:24</span><div><span class="pill">4G</span> <span class="pill">56%</span></div></div><div class="panel hero-card"><div class="eyebrow">Action Hub</div><div class="title">Calls</div><div class="subtitle">The root hub feels more like a friendly toy menu than a utility stack.</div><div class="cards"><div class="card active"><div class="row"><strong>Calls</strong><span>Ready</span></div></div><div class="card mint"><div class="row"><strong>Playlists</strong><span>14</span></div></div><div class="card yellow"><div class="row"><strong>Power</strong><span>56%</span></div></div></div></div><div class="footer"><span>Tap: Next</span><span>Double: Open</span></div></div></article>
+        <article class="device"><div class="screen"><div class="status"><span>10:24</span><div><span class="pill">Music</span> <span class="pill">Mix</span></div></div><div class="panel"><div class="eyebrow">Playlist</div><div class="title">Rainbow Radio</div><div class="subtitle">A bolder music surface with more visible energy and stronger category color.</div><div class="card active"><div class="row"><strong>Rainbow Radio</strong><span>28 tracks</span></div></div><div class="card"><div class="row"><strong>Bedtime Stories</strong><span>9 tracks</span></div></div><div class="card"><div class="row"><strong>Weekend Dance</strong><span>17 tracks</span></div></div><div class="wave"></div></div><div class="footer"><span>Tap: Next</span><span>Double: Load</span><span>Hold: Back</span></div></div></article>
+        <article class="device"><div class="screen"><div class="status"><span>10:24</span><div><span class="pill">Calls</span> <span class="pill">Mom</span></div></div><div class="panel" style="background:linear-gradient(180deg, rgba(201,91,82,0.18), rgba(255,255,255,0.76));"><div class="eyebrow">Incoming Call</div><div class="title">Mom is calling</div><div class="subtitle">This version makes call actions feel more vivid and toy-like.</div><div class="bar" style="background:rgba(201,91,82,0.18); width:70%;"></div><div class="bar" style="width:48%;"></div><div class="actions"><div class="button accept">Answer</div><div class="button reject">Reject</div></div></div><div class="footer"><span>Fast read</span><span>High energy</span></div></div></article>
+        <article class="device"><div class="screen"><div class="status"><span>10:24</span><div><span class="pill">Power</span> <span class="pill">USB-C</span></div></div><div class="panel"><div class="eyebrow">Power Status</div><div class="title">Battery okay</div><div class="subtitle">Still clear, but warmer and more playful than the calmer alternatives.</div><div class="card yellow"><div class="row"><strong>56%</strong><span>Charging</span></div></div><div class="card"><div class="row"><strong>Screen time</strong><span>42 min</span></div></div><div class="card"><div class="row"><strong>RTC</strong><span>Synced</span></div></div></div><div class="footer"><span>Bright status</span><span>Collectible feel</span></div></div></article>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

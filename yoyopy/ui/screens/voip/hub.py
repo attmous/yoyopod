@@ -1,15 +1,26 @@
-"""Call screen for YoyoPod VoIP functionality."""
+"""Talk hub screen for YoyoPod VoIP functionality."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Optional
 
 from loguru import logger
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
+from yoyopy.ui.screens.theme import (
+    INK,
+    MUTED,
+    SURFACE,
+    TALK,
+    draw_empty_state,
+    draw_list_item,
+    render_footer,
+    render_header,
+    rounded_panel,
+    text_fit,
+)
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -19,7 +30,7 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class QuickCallTarget:
-    """Represents one selectable quick action on the VoIP hub screen."""
+    """Represents one selectable quick action on the Talk screen."""
 
     kind: Literal["contact", "browse_contacts"]
     title: str
@@ -29,15 +40,7 @@ class QuickCallTarget:
 
 
 class CallScreen(Screen):
-    """
-    VoIP hub screen showing registration status and quick-call actions.
-
-    Button mapping:
-    - Button A: Call selected quick contact or open contacts
-    - Button B: Back to menu
-    - Button X: Move selection up
-    - Button Y: Move selection down
-    """
+    """Talk screen showing call readiness and favorite contacts."""
 
     _MAX_QUICK_CONTACTS = 6
 
@@ -48,14 +51,13 @@ class CallScreen(Screen):
         voip_manager: Optional["VoIPManager"] = None,
         config_manager: Optional["ConfigManager"] = None,
     ) -> None:
-        """Initialize the VoIP hub screen."""
         super().__init__(display, context, "Call")
         self.voip_manager = voip_manager
         self.config_manager = config_manager
         self.quick_targets: list[QuickCallTarget] = []
         self.selected_index = 0
         self.scroll_offset = 0
-        self.max_visible_items = 4 if display.is_portrait() else 3
+        self.max_visible_items = 4 if display.is_portrait() else 4
 
     def enter(self) -> None:
         """Refresh quick-call shortcuts whenever the screen becomes active."""
@@ -63,7 +65,7 @@ class CallScreen(Screen):
         self._load_quick_targets()
 
     def _load_quick_targets(self) -> None:
-        """Load favorite or recent contacts for quick calling."""
+        """Load favorite or regular contacts for quick calling."""
         contacts: list["Contact"] = []
         if self.config_manager is not None:
             contacts = sorted(
@@ -95,7 +97,7 @@ class CallScreen(Screen):
                 QuickCallTarget(
                     kind="browse_contacts",
                     title="All Contacts",
-                    subtitle="Open the full contact list",
+                    subtitle="See the full list",
                 )
             )
 
@@ -108,208 +110,94 @@ class CallScreen(Screen):
         self._ensure_selection_visible()
 
     def render(self) -> None:
-        """Render the VoIP hub with status details and quick-call shortcuts."""
-        self.display.clear(self.display.COLOR_BLACK)
-
-        current_time = datetime.now().strftime("%H:%M")
-        battery = self.context.battery_percent if self.context else 100
-        charging = self.context.battery_charging if self.context else False
-        external_power = self.context.external_power if self.context else False
-        power_available = self.context.power_available if self.context else True
-        signal = self.context.signal_strength if self.context else 4
-
-        self.display.status_bar(
-            time_str=current_time,
-            battery_percent=battery,
-            signal_strength=signal,
-            charging=charging,
-            external_power=external_power,
-            power_available=power_available,
-        )
-
-        title = "VoIP"
-        title_size = 20
-        title_width, title_height = self.display.get_text_size(title, title_size)
-        title_x = (self.display.WIDTH - title_width) // 2
-        title_y = self.display.STATUS_BAR_HEIGHT + 10
-        self.display.text(
-            title,
-            title_x,
-            title_y,
-            color=self.display.COLOR_WHITE,
-            font_size=title_size,
-        )
-
-        if self.is_one_button_mode() and self.quick_targets:
-            position_text = f"{self.selected_index + 1}/{len(self.quick_targets)}"
-            position_width, _ = self.display.get_text_size(position_text, 11)
-            self.display.text(
-                position_text,
-                self.display.WIDTH - position_width - 18,
-                title_y + 4,
-                color=self.display.COLOR_GRAY,
-                font_size=11,
-            )
-
-        separator_y = title_y + title_height + 8
-        self.display.line(
-            20,
-            separator_y,
-            self.display.WIDTH - 20,
-            separator_y,
-            color=self.display.COLOR_GRAY,
-            width=2,
-        )
-
+        """Render the Talk hub with status and quick-call cards."""
         status = self._get_status_snapshot()
-        status_text, status_color, detail_text = self._status_lines(status)
-        detail_y = separator_y + 14
-
-        status_size = 18
-        status_width, status_height = self.display.get_text_size(status_text, status_size)
-        status_x = (self.display.WIDTH - status_width) // 2
-        self.display.text(
-            status_text,
-            status_x,
-            detail_y,
-            color=status_color,
-            font_size=status_size,
-        )
-
-        secondary_y = detail_y + status_height + 8
-        if detail_text:
-            detail_size = 12
-            detail_width, detail_height = self.display.get_text_size(detail_text, detail_size)
-            detail_x = (self.display.WIDTH - detail_width) // 2
-            self.display.text(
-                detail_text,
-                detail_x,
-                secondary_y,
-                color=self.display.COLOR_GRAY,
-                font_size=detail_size,
-            )
-            secondary_y += detail_height + 6
-
+        status_text, _status_color, detail_text = self._status_lines(status)
         call_state_text, caller_text = self._call_context_lines(status)
-        if call_state_text:
-            context_size = 13
-            context_width, context_height = self.display.get_text_size(call_state_text, context_size)
-            context_x = (self.display.WIDTH - context_width) // 2
-            self.display.text(
-                call_state_text,
-                context_x,
-                secondary_y,
-                color=self.display.COLOR_CYAN,
-                font_size=context_size,
-            )
-            secondary_y += context_height + 4
+        position_text = None
+        if self.quick_targets:
+            position_text = f"{self.selected_index + 1}/{len(self.quick_targets)}"
 
-        if caller_text:
-            caller_size = 11
-            display_caller = self._truncate(caller_text, 34)
-            caller_width, caller_height = self.display.get_text_size(display_caller, caller_size)
-            caller_x = (self.display.WIDTH - caller_width) // 2
-            self.display.text(
-                display_caller,
-                caller_x,
-                secondary_y,
-                color=self.display.COLOR_GRAY,
-                font_size=caller_size,
-            )
-            secondary_y += caller_height + 8
+        subtitle_parts = [status_text]
+        if detail_text:
+            subtitle_parts.append(detail_text)
+        subtitle_parts.append("Voice notes soon")
 
-        hub_title = "Quick Calls"
-        hub_size = 14
-        _, hub_height = self.display.get_text_size(hub_title, hub_size)
-        hub_x = 20
-        hub_y = secondary_y + 6
-        self.display.text(
-            hub_title,
-            hub_x,
-            hub_y,
-            color=self.display.COLOR_WHITE,
-            font_size=hub_size,
+        content_top = render_header(
+            self.display,
+            self.context,
+            mode="talk",
+            title="Talk",
+            subtitle=" · ".join(part for part in subtitle_parts if part),
+            icon="talk",
+            page_text=position_text,
+            show_time=False,
         )
 
-        footer_y = self.display.HEIGHT - 15
-        list_top = hub_y + hub_height + 10
-        list_bottom = footer_y - 16
+        panel_top = content_top + 6
+        panel_bottom = self.display.HEIGHT - 28
+        rounded_panel(
+            self.display,
+            12,
+            panel_top,
+            self.display.WIDTH - 12,
+            panel_bottom,
+            fill=SURFACE,
+            outline=None,
+            radius=24,
+        )
+
+        header_text = call_state_text or "Quick calls"
+        header_width, _ = self.display.get_text_size(header_text, 13)
+        self.display.text(header_text, 22, panel_top + 10, color=TALK.accent, font_size=13)
+        if caller_text:
+            caller_text = text_fit(self.display, caller_text, self.display.WIDTH - 120, 10)
+            self.display.text(caller_text, 22, panel_top + 28, color=INK, font_size=10)
+        else:
+            self.display.text("Favorite contacts first", 22, panel_top + 28, color=MUTED, font_size=10)
 
         if not self.quick_targets:
-            empty_text = "No contacts configured"
-            empty_size = 14
-            empty_width, _ = self.display.get_text_size(empty_text, empty_size)
-            empty_x = (self.display.WIDTH - empty_width) // 2
-            empty_y = list_top + ((list_bottom - list_top) // 2)
-            self.display.text(
-                empty_text,
-                empty_x,
-                empty_y,
-                color=self.display.COLOR_GRAY,
-                font_size=empty_size,
+            draw_empty_state(
+                self.display,
+                mode="talk",
+                title="No contacts yet",
+                subtitle="Add favorite people to make Talk feel instant.",
+                icon="talk",
+                top=content_top + 12,
             )
-        else:
-            item_height = 34
-            visible_items = max(1, min(self.max_visible_items, (list_bottom - list_top) // item_height))
-            self._ensure_selection_visible(visible_items)
+            render_footer(self.display, "Hold back", mode="talk")
+            self.display.update()
+            return
 
-            for row in range(visible_items):
-                target_index = self.scroll_offset + row
-                if target_index >= len(self.quick_targets):
-                    break
+        visible_items = max(1, min(self.max_visible_items, len(self.quick_targets)))
+        self._ensure_selection_visible(visible_items)
 
-                target = self.quick_targets[target_index]
-                y_pos = list_top + (row * item_height)
-                selected = target_index == self.selected_index
+        item_height = 52
+        list_top = panel_top + 48
+        for row in range(visible_items):
+            target_index = self.scroll_offset + row
+            if target_index >= len(self.quick_targets):
+                break
 
-                if selected:
-                    self.display.rectangle(
-                        10,
-                        y_pos - 2,
-                        self.display.WIDTH - 10,
-                        y_pos + item_height - 4,
-                        fill=self.display.COLOR_DARK_GRAY,
-                        outline=self.display.COLOR_CYAN,
-                        width=2,
-                    )
-
-                title_text = target.title
-                if target.favorite:
-                    title_text = f"* {target.title}"
-
-                title_color = self.display.COLOR_WHITE
-                if target.favorite and not selected:
-                    title_color = self.display.COLOR_YELLOW
-                if target.kind == "browse_contacts":
-                    title_color = self.display.COLOR_CYAN if selected else self.display.COLOR_WHITE
-
-                self.display.text(
-                    self._truncate(title_text, 24),
-                    18,
-                    y_pos,
-                    color=title_color,
-                    font_size=14,
-                )
-                self.display.text(
-                    self._truncate(target.subtitle, 38),
-                    18,
-                    y_pos + 16,
-                    color=self.display.COLOR_GRAY,
-                    font_size=10,
-                )
+            target = self.quick_targets[target_index]
+            y1 = list_top + (row * item_height)
+            y2 = y1 + 42
+            badge = "FAV" if target.favorite else "OPEN" if target.kind == "browse_contacts" else None
+            draw_list_item(
+                self.display,
+                x1=20,
+                y1=y1,
+                x2=self.display.WIDTH - 20,
+                y2=y2,
+                title=target.title,
+                subtitle=text_fit(self.display, target.subtitle, self.display.WIDTH - 110, 10),
+                mode="talk",
+                selected=target_index == self.selected_index,
+                badge=badge,
+            )
 
         instructions = self._instruction_text()
-        instructions_size = 10
-        instructions_width, _ = self.display.get_text_size(instructions, instructions_size)
-        instructions_x = (self.display.WIDTH - instructions_width) // 2
-        self.display.text(
-            instructions,
-            instructions_x,
-            footer_y,
-            color=self.display.COLOR_GRAY,
-            font_size=instructions_size,
-        )
-
+        render_footer(self.display, instructions, mode="talk")
         self.display.update()
 
     def _get_status_snapshot(self) -> dict:
@@ -319,27 +207,28 @@ class CallScreen(Screen):
         return self.voip_manager.get_status()
 
     def _status_lines(self, status: dict) -> tuple[str, tuple[int, int, int], str]:
-        """Return the primary VoIP availability text for the screen header."""
+        """Return the primary Talk availability copy."""
         if not self.voip_manager:
-            return ("VoIP Unavailable", self.display.COLOR_RED, "Manager not initialized")
+            return ("Talk offline", self.display.COLOR_RED, "Manager not initialized")
 
         running = status.get("running", False)
         registered = status.get("registered", False)
         registration_state = status.get("registration_state", "none")
-        identity = status.get("sip_identity", "")
 
+        if not status.get("sip_identity"):
+            return ("Talk not set up", self.display.COLOR_GRAY, "Calls need SIP setup")
         if not running:
-            return ("VoIP Recovering...", self.display.COLOR_YELLOW, "Retrying in background")
+            return ("Recovering", self.display.COLOR_YELLOW, "Trying again")
         if registered:
-            return ("VoIP Ready", self.display.COLOR_GREEN, self._truncate(identity, 32))
+            return ("Ready", self.display.COLOR_GREEN, "Calls are open")
         if registration_state == "progress":
-            return ("Connecting...", self.display.COLOR_YELLOW, self._truncate(identity, 32))
+            return ("Connecting", self.display.COLOR_YELLOW, "Signing in")
         if registration_state == "failed":
-            return ("Registration Failed", self.display.COLOR_RED, "Check SIP settings or network")
-        return ("VoIP Disconnected", self.display.COLOR_GRAY, self._truncate(identity, 32))
+            return ("Offline", self.display.COLOR_RED, "Check network or SIP")
+        return ("Offline", self.display.COLOR_GRAY, "Talk is paused")
 
     def _call_context_lines(self, status: dict) -> tuple[str, str]:
-        """Return the current call state summary if the backend is mid-call."""
+        """Return the current call-state summary if the backend is mid-call."""
         if not self.voip_manager:
             return ("", "")
 
@@ -349,10 +238,10 @@ class CallScreen(Screen):
 
         state_labels = {
             "incoming": "Incoming call",
-            "outgoing": "Dialing",
-            "outgoing_progress": "Dialing",
-            "outgoing_ringing": "Ringing",
-            "outgoing_early_media": "Connecting media",
+            "outgoing": "Calling...",
+            "outgoing_progress": "Calling...",
+            "outgoing_ringing": "Ringing...",
+            "outgoing_early_media": "Connecting audio",
             "connected": "Call connected",
             "streams_running": "Call connected",
             "released": "Call ended",
@@ -373,7 +262,7 @@ class CallScreen(Screen):
         return bool(status.get("running")) and bool(status.get("registered"))
 
     def _instruction_text(self) -> str:
-        """Return the footer instructions for the current selection and state."""
+        """Return footer hints for the current selection and state."""
         if self.is_one_button_mode():
             if not self.quick_targets:
                 return "Hold back"
@@ -387,23 +276,17 @@ class CallScreen(Screen):
             return "Tap next | Double call | Hold back"
 
         if not self.quick_targets:
-            return "B: Back"
+            return "B back"
 
         selected_target = self._selected_target()
         if selected_target is None:
-            return "B: Back"
+            return "B back"
 
-        if selected_target.kind == "browse_contacts" or not self._is_ready_to_call():
-            primary_text = "A: Open"
-        else:
-            primary_text = "A: Call"
-
-        if len(self.quick_targets) > 1:
-            return f"{primary_text} | B: Back | X/Y: Move"
-        return f"{primary_text} | B: Back"
+        primary_text = "A open" if selected_target.kind == "browse_contacts" or not self._is_ready_to_call() else "A call"
+        return f"{primary_text} | B back | X/Y move"
 
     def _ensure_selection_visible(self, visible_items: Optional[int] = None) -> None:
-        """Adjust scroll offset to keep the selected quick target on screen."""
+        """Adjust scroll offset to keep the selected target on screen."""
         if not self.quick_targets:
             self.scroll_offset = 0
             return
@@ -414,23 +297,16 @@ class CallScreen(Screen):
         elif self.selected_index >= self.scroll_offset + visible:
             self.scroll_offset = self.selected_index - visible + 1
 
-    @staticmethod
-    def _truncate(text: str, max_length: int) -> str:
-        """Truncate a string for compact display."""
-        if len(text) <= max_length:
-            return text
-        return text[: max_length - 3] + "..."
-
     def _browse_contacts(self) -> None:
         """Open the full contact list."""
-        logger.info("Opening full contact list from VoIP hub")
+        logger.info("Opening full contact list from Talk")
         self.request_route("browse_contacts")
 
     def _call_selected_target(self) -> None:
-        """Place a call to the currently selected quick contact."""
+        """Place a call to the currently selected contact."""
         selected_target = self._selected_target()
         if selected_target is None:
-            logger.debug("No quick-call target selected")
+            logger.debug("No Talk target selected")
             return
 
         if selected_target.kind == "browse_contacts" or not self._is_ready_to_call():
@@ -442,17 +318,14 @@ class CallScreen(Screen):
             return
 
         logger.info(f"Calling quick contact: {selected_target.title} ({selected_target.sip_address})")
-        if self.voip_manager.make_call(
-            selected_target.sip_address,
-            contact_name=selected_target.title,
-        ):
+        if self.voip_manager.make_call(selected_target.sip_address, contact_name=selected_target.title):
             self.request_route("call_started")
             return
 
         logger.error(f"Failed to initiate quick call to {selected_target.title}")
 
     def on_select(self, data=None) -> None:
-        """Call the selected quick contact or open contacts when unavailable."""
+        """Call the selected person or open contacts."""
         self._call_selected_target()
 
     def on_back(self, data=None) -> None:
@@ -460,19 +333,19 @@ class CallScreen(Screen):
         self.request_route("back")
 
     def on_up(self, data=None) -> None:
-        """Move the quick-call selection upward."""
+        """Move selection upward."""
         if self.selected_index > 0:
             self.selected_index -= 1
             self._ensure_selection_visible()
 
     def on_down(self, data=None) -> None:
-        """Move the quick-call selection downward."""
+        """Move selection downward."""
         if self.selected_index < len(self.quick_targets) - 1:
             self.selected_index += 1
             self._ensure_selection_visible()
 
     def on_advance(self, data=None) -> None:
-        """Move through quick-call targets with wraparound for one-button UX."""
+        """Move through quick-call targets with wraparound."""
         if not self.quick_targets:
             return
         self.selected_index = (self.selected_index + 1) % len(self.quick_targets)

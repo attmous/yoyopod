@@ -71,11 +71,11 @@ def test_power_screen_builds_battery_and_runtime_pages() -> None:
 
         pages = screen.build_pages(snapshot=screen.power_manager.get_snapshot(), status=status)
 
-        assert pages[0].title == "Power Status"
+        assert pages[0].title == "Power"
         assert ("Model", "PiSugar 3") in pages[0].rows
         assert ("Battery", "55% chg") in pages[0].rows
         assert ("Alarm", "07:30") in pages[0].rows
-        assert pages[1].title == "Runtime & Safety"
+        assert pages[1].title == "Care"
         assert ("Uptime", "1h01m") in pages[1].rows
         assert ("Watchdog", "Active") in pages[1].rows
     finally:

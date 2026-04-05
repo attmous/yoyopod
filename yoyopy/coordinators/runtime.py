@@ -19,6 +19,7 @@ from yoyopy.fsm import (
 )
 
 if TYPE_CHECKING:
+    from yoyopy.app_context import AppContext
     from yoyopy.audio.mopidy_client import MopidyClient
     from yoyopy.config import ConfigManager
     from yoyopy.power import PowerManager, PowerSnapshot
@@ -92,6 +93,7 @@ class CoordinatorRuntime:
     in_call_screen: InCallScreen | None
     config: dict[str, Any]
     config_manager: ConfigManager | None
+    context: AppContext | None = None
     ui_state: AppRuntimeState = AppRuntimeState.IDLE
     voip_ready: bool = False
     power_available: bool = False
@@ -204,6 +206,8 @@ class CoordinatorRuntime:
             "home": AppRuntimeState.IDLE,
             "hub": AppRuntimeState.HUB,
             "menu": AppRuntimeState.MENU,
+            "listen": AppRuntimeState.PLAYLIST_BROWSER,
+            "ask": AppRuntimeState.SETTINGS,
             "playlists": AppRuntimeState.PLAYLIST_BROWSER,
             "power": AppRuntimeState.POWER,
             "call": AppRuntimeState.CALL_IDLE,

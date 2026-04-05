@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YoyoPod Design Preview - Graffiti Buddy</title>
+  <style>
+    :root {
+      --shell: #ffde3a;
+      --screen: #11151b;
+      --panel: #171d25;
+      --ink: #f2f6fb;
+      --muted: #8e9cb0;
+      --listen: #8cff3f;
+      --talk: #24d6ff;
+      --ask: #ffe34c;
+      --setup: #a0a7b6;
+      --danger: #ff646d;
+      --line: rgba(255, 255, 255, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Trebuchet MS", "Arial Rounded MT Bold", sans-serif;
+      color: #1b2230;
+      background:
+        radial-gradient(circle at top left, rgba(255, 255, 255, 0.78), transparent 22rem),
+        linear-gradient(180deg, #ffe95d 0%, #ffe15b 45%, #fff5c8 100%);
+    }
+
+    main {
+      width: min(1320px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 2rem 0 4rem;
+      display: grid;
+      gap: 1.4rem;
+    }
+
+    .topbar,
+    .sidebar,
+    .gallery {
+      border: 2px solid rgba(27, 34, 48, 0.12);
+      border-radius: 30px;
+      background: rgba(255, 255, 255, 0.74);
+      box-shadow: 0 18px 42px rgba(87, 77, 17, 0.12);
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.2rem 1.4rem;
+    }
+
+    .topbar a {
+      color: #1b2230;
+      text-decoration: none;
+      font-weight: 900;
+    }
+
+    .tag {
+      display: inline-flex;
+      padding: 0.38rem 0.72rem;
+      border-radius: 999px;
+      background: rgba(36, 214, 255, 0.14);
+      color: #116f88;
+      font-size: 0.76rem;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2.1rem, 4vw, 3.6rem);
+      line-height: 0.93;
+      letter-spacing: -0.04em;
+    }
+
+    h2 {
+      margin: 0;
+    }
+
+    p,
+    li {
+      color: #6b7487;
+      line-height: 1.6;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 1.25rem;
+    }
+
+    .sidebar {
+      padding: 1.25rem;
+      display: grid;
+      gap: 1rem;
+      align-content: start;
+    }
+
+    .gallery {
+      padding: 1.25rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 1rem;
+    }
+
+    .swatch {
+      display: grid;
+      grid-template-columns: 1.15rem 1fr auto;
+      gap: 0.55rem;
+      align-items: center;
+    }
+
+    .dot {
+      width: 1.15rem;
+      height: 1.15rem;
+      border-radius: 999px;
+      border: 2px solid rgba(27, 34, 48, 0.12);
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 1rem;
+    }
+
+    .device {
+      border-radius: 34px;
+      background: linear-gradient(180deg, #f5db37 0%, #e2c726 100%);
+      border: 2px solid rgba(115, 95, 7, 0.22);
+      padding: 0.85rem;
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    }
+
+    .device::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0.16), transparent 2.5rem),
+        radial-gradient(circle at 86% 26%, rgba(255, 255, 255, 0.14), transparent 2.5rem),
+        radial-gradient(circle at 18% 82%, rgba(255, 255, 255, 0.12), transparent 2.8rem);
+      pointer-events: none;
+    }
+
+    .screen {
+      aspect-ratio: 240 / 280;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 12% 18%, rgba(140, 255, 63, 0.06), transparent 6rem),
+        radial-gradient(circle at 86% 82%, rgba(36, 214, 255, 0.06), transparent 7rem),
+        linear-gradient(180deg, #181d25 0%, #10141a 100%);
+      border: 2px solid rgba(255, 255, 255, 0.06);
+      padding: 0.9rem;
+      display: grid;
+      grid-template-rows: 20px 1fr auto;
+      gap: 0.85rem;
+      color: var(--ink);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .screen::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(transparent 96%, rgba(255, 255, 255, 0.02) 96%),
+        linear-gradient(90deg, transparent 96%, rgba(255, 255, 255, 0.02) 96%);
+      background-size: 100% 0.7rem, 0.7rem 100%;
+      opacity: 0.15;
+      pointer-events: none;
+    }
+
+    .status {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      z-index: 1;
+      min-height: 20px;
+    }
+
+    .status-left,
+    .status-right {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .time {
+      color: var(--talk);
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .voip-dot {
+      width: 0.65rem;
+      height: 0.65rem;
+      border-radius: 999px;
+      box-shadow: 0 0 12px currentColor;
+    }
+
+    .voip-ready { color: var(--listen); background: var(--listen); }
+    .voip-offline { color: var(--danger); background: var(--danger); }
+
+    .battery {
+      width: 1.95rem;
+      height: 0.9rem;
+      border: 2px solid rgba(255, 255, 255, 0.22);
+      border-radius: 0.28rem;
+      padding: 0.09rem;
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.1rem;
+    }
+
+    .battery::after {
+      content: "";
+      position: absolute;
+      right: -0.3rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0.16rem;
+      height: 0.42rem;
+      border-radius: 0.2rem;
+      background: rgba(255, 255, 255, 0.28);
+    }
+
+    .battery span {
+      border-radius: 0.08rem;
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    .battery span.on {
+      background: var(--ink);
+      opacity: 0.95;
+    }
+
+    .stack {
+      display: grid;
+      gap: 0.75rem;
+      align-content: start;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 1.76rem;
+      line-height: 0.9;
+      letter-spacing: -0.04em;
+      font-weight: 900;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 0.92rem;
+    }
+
+    .spray {
+      width: fit-content;
+      padding: 0.28rem 0.58rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border: 2px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 8px 14px rgba(0, 0, 0, 0.18);
+    }
+
+    .listen-bg { background: rgba(140, 255, 63, 0.12); color: var(--listen); }
+    .talk-bg { background: rgba(36, 214, 255, 0.12); color: var(--talk); }
+    .ask-bg { background: rgba(255, 227, 76, 0.14); color: var(--ask); }
+    .setup-bg { background: rgba(160, 167, 182, 0.14); color: #d5d9e3; }
+
+    .mode-rail {
+      display: grid;
+      gap: 0.45rem;
+      padding: 0.35rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 2px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .mode-dot {
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: rgba(255, 255, 255, 0.03);
+      border: 2px solid rgba(255, 255, 255, 0.02);
+    }
+
+    .mode-dot.active {
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.05), 0 0 14px currentColor;
+    }
+
+    .listen-color { color: var(--listen); }
+    .talk-color { color: var(--talk); }
+    .ask-color { color: var(--ask); }
+    .setup-color { color: var(--setup); }
+
+    .panel-card {
+      padding: 0.8rem;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 2px dashed rgba(255, 255, 255, 0.08);
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+    }
+
+    .chip {
+      padding: 0.35rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 900;
+      border: 2px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .listen-chip { color: var(--listen); }
+    .talk-chip { color: var(--talk); }
+    .ask-chip { color: var(--ask); }
+    .setup-chip { color: #d5d9e3; }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
+    }
+
+    .action {
+      padding: 0.82rem 0.65rem;
+      border-radius: 18px;
+      font-weight: 900;
+      text-align: center;
+      border: 2px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .action.call { color: var(--talk); }
+    .action.note { color: var(--listen); }
+
+    .list {
+      display: grid;
+      gap: 0.5rem;
+    }
+
+    .list-item {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 0.55rem;
+      align-items: center;
+      padding: 0.62rem;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 2px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .avatar {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      color: #11151b;
+    }
+
+    .setting-list {
+      display: grid;
+      gap: 0.5rem;
+    }
+
+    .setting {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.68rem 0.72rem;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.4rem;
+      position: relative;
+      z-index: 1;
+      font-size: 0.76rem;
+      font-weight: 900;
+      color: var(--muted);
+    }
+
+    svg.icon {
+      width: 5.2rem;
+      height: 5.2rem;
+      flex: none;
+    }
+
+    svg.small-icon {
+      width: 1.05rem;
+      height: 1.05rem;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="topbar">
+      <div>
+        <span class="tag">Chosen Direction</span>
+        <h1>Graffiti Buddy</h1>
+        <p>Now tuned to your product rules: four fixed modes, one color per mode, and a tiny status bar that only keeps what matters.</p>
+      </div>
+      <a href="./round-two.html">Back to round two</a>
+    </section>
+
+    <section class="layout">
+      <aside class="sidebar">
+        <div>
+          <h2>Locked rules</h2>
+          <ul>
+            <li>Listen is green.</li>
+            <li>Talk is cyan.</li>
+            <li>Ask is yellow.</li>
+            <li>Setup is gray and parent-facing.</li>
+          </ul>
+        </div>
+        <div>
+          <h2>Status bar</h2>
+          <ul>
+            <li>VoIP dot on the left.</li>
+            <li>Battery only on the right.</li>
+            <li>Time only on the hub.</li>
+            <li>No signal icons, no battery percent.</li>
+          </ul>
+        </div>
+        <div>
+          <h2>Icon language</h2>
+          <div class="swatch"><span class="dot" style="background:#8cff3f;"></span><span>Listen</span><code>headphones</code></div>
+          <div class="swatch"><span class="dot" style="background:#24d6ff;"></span><span>Talk</span><code>phone-call</code></div>
+          <div class="swatch"><span class="dot" style="background:#ffe34c;"></span><span>Ask</span><code>microphone</code></div>
+          <div class="swatch"><span class="dot" style="background:#a0a7b6;"></span><span>Setup</span><code>gear-six</code></div>
+        </div>
+      </aside>
+
+      <section class="gallery">
+        <article class="device">
+          <div class="screen">
+            <div class="status">
+              <div class="status-left">
+                <span class="voip-dot voip-ready"></span>
+                <span class="time">23:31</span>
+              </div>
+              <div class="status-right">
+                <div class="battery">
+                  <span class="on"></span><span class="on"></span><span class="on"></span><span></span>
+                </div>
+              </div>
+            </div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="spray talk-bg">Home</div>
+                  <h2 class="title listen-color">Listen</h2>
+                  <p class="subtitle">A big mode word, one big icon, and a side rail that makes the four-card system feel iconic.</p>
+                </div>
+                <div class="mode-rail">
+                  <div class="mode-dot active listen-color">
+                    <svg class="small-icon" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M80 184V120a48 48 0 0 1 96 0v64"></path>
+                      <path d="M80 184a24 24 0 0 1-24-24v-24a24 24 0 0 1 24-24h0"></path>
+                      <path d="M176 184a24 24 0 0 0 24-24v-24a24 24 0 0 0-24-24h0"></path>
+                    </svg>
+                  </div>
+                  <div class="mode-dot talk-color">
+                    <svg class="small-icon" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M80 40h96a40 40 0 0 1 40 40v48a40 40 0 0 1-40 40h-36l-44 32v-32H80a40 40 0 0 1-40-40V80a40 40 0 0 1 40-40Z"></path>
+                      <path d="M156 76a44 44 0 0 1 24 24"></path>
+                    </svg>
+                  </div>
+                  <div class="mode-dot ask-color">
+                    <svg class="small-icon" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M128 168a40 40 0 0 0 40-40V88a40 40 0 0 0-80 0v40a40 40 0 0 0 40 40Z"></path>
+                      <path d="M72 120a56 56 0 0 0 112 0"></path>
+                      <path d="M128 176v32"></path>
+                    </svg>
+                  </div>
+                  <div class="mode-dot setup-color">
+                    <svg class="small-icon" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="128" cy="128" r="32"></circle>
+                      <path d="M128 56V32M128 224v-24M179 77l17-17M60 196l17-17M200 128h24M32 128h24M179 179l17 17M60 60l17 17"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              <div class="panel-card">
+                <div class="hero">
+                  <svg class="icon" viewBox="0 0 256 256" fill="none" stroke="var(--listen)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M80 184V120a48 48 0 0 1 96 0v64"></path>
+                    <path d="M80 184a24 24 0 0 1-24-24v-24a24 24 0 0 1 24-24h0"></path>
+                    <path d="M176 184a24 24 0 0 0 24-24v-24a24 24 0 0 0-24-24h0"></path>
+                  </svg>
+                  <div>
+                    <strong class="listen-color">Listen</strong>
+                    <p class="subtitle">Short labels, bold symbol, no clutter.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="footer"><span>Tap: Next</span><span>Double: Open</span></div>
+          </div>
+        </article>
+
+        <article class="device">
+          <div class="screen">
+            <div class="status">
+              <div class="status-left"><span class="voip-dot voip-ready"></span></div>
+              <div class="status-right"><div class="battery"><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div></div>
+            </div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="spray listen-bg">Listen</div>
+                  <h2 class="title listen-color">Pick sound</h2>
+                  <p class="subtitle">Configured sources only. The mode still feels playful, but the choices are obvious.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 256 256" fill="none" stroke="var(--listen)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M80 184V120a48 48 0 0 1 96 0v64"></path>
+                  <path d="M80 184a24 24 0 0 1-24-24v-24a24 24 0 0 1 24-24h0"></path>
+                  <path d="M176 184a24 24 0 0 0 24-24v-24a24 24 0 0 0-24-24h0"></path>
+                </svg>
+              </div>
+              <div class="chip-row">
+                <span class="chip listen-chip">Spotify</span>
+                <span class="chip talk-chip">Amazon</span>
+                <span class="chip ask-chip">YouTube</span>
+                <span class="chip setup-chip">Local</span>
+              </div>
+              <div class="panel-card">
+                <strong class="listen-color">Adventure Mix</strong>
+                <p class="subtitle">Local playlists, safe picks, and streaming all live under the same calm green mode.</p>
+              </div>
+            </div>
+            <div class="footer"><span>Tap: Next source</span><span>Double: Enter</span></div>
+          </div>
+        </article>
+
+        <article class="device">
+          <div class="screen">
+            <div class="status">
+              <div class="status-left"><span class="voip-dot voip-ready"></span></div>
+              <div class="status-right"><div class="battery"><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div></div>
+            </div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="spray talk-bg">Talk</div>
+                  <h2 class="title talk-color">Say hi</h2>
+                  <p class="subtitle">Connection is cyan. Calls and voice notes belong together and feel like reaching out.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 256 256" fill="none" stroke="var(--talk)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M80 40h96a40 40 0 0 1 40 40v48a40 40 0 0 1-40 40h-36l-44 32v-32H80a40 40 0 0 1-40-40V80a40 40 0 0 1 40-40Z"></path>
+                  <path d="M156 76a44 44 0 0 1 24 24"></path>
+                </svg>
+              </div>
+              <div class="actions">
+                <div class="action call">Call</div>
+                <div class="action note">Voice Note</div>
+              </div>
+              <div class="list">
+                <div class="list-item"><div class="avatar" style="background:var(--talk);">M</div><strong>Mom</strong><span class="talk-color">Ready</span></div>
+                <div class="list-item"><div class="avatar" style="background:var(--listen);">D</div><strong>Dad</strong><span class="talk-color">Ready</span></div>
+              </div>
+            </div>
+            <div class="footer"><span>Tap: Next person</span><span>Double: Go</span></div>
+          </div>
+        </article>
+
+        <article class="device">
+          <div class="screen">
+            <div class="status">
+              <div class="status-left"><span class="voip-dot voip-ready"></span></div>
+              <div class="status-right"><div class="battery"><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div></div>
+            </div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="spray ask-bg">Ask</div>
+                  <h2 class="title ask-color">Ask me</h2>
+                  <p class="subtitle">Curiosity gets warmth, not danger. Yellow makes the future mode inviting and playful.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 256 256" fill="none" stroke="var(--ask)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M128 168a40 40 0 0 0 40-40V88a40 40 0 0 0-80 0v40a40 40 0 0 0 40 40Z"></path>
+                  <path d="M72 120a56 56 0 0 0 112 0"></path>
+                  <path d="M128 176v32"></path>
+                </svg>
+              </div>
+              <div class="panel-card" style="border-color:rgba(255, 227, 76, 0.22);">
+                <strong class="ask-color">Future mode</strong>
+                <p class="subtitle">Safe AI, voice-first, and easy for a kid to understand. The mic becomes the magic trigger here, not on Talk.</p>
+              </div>
+            </div>
+            <div class="footer"><span>Warm and curious</span><span>Future-safe</span></div>
+          </div>
+        </article>
+
+        <article class="device">
+          <div class="screen">
+            <div class="status">
+              <div class="status-left"><span class="voip-dot voip-ready"></span></div>
+              <div class="status-right"><div class="battery"><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div></div>
+            </div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="spray setup-bg">Setup</div>
+                  <h2 class="title setup-color">Tune it</h2>
+                  <p class="subtitle">Neutral, quieter, and parent-facing. This mode should step back while still feeling part of the same toy.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 256 256" fill="none" stroke="var(--setup)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="128" cy="128" r="32"></circle>
+                  <path d="M128 56V32M128 224v-24M179 77l17-17M60 196l17-17M200 128h24M32 128h24M179 179l17 17M60 60l17 17"></path>
+                </svg>
+              </div>
+              <div class="setting-list">
+                <div class="setting"><strong>Battery</strong><span class="setup-color">Power</span></div>
+                <div class="setting"><strong>Sleep</strong><span class="setup-color">1 min</span></div>
+                <div class="setting"><strong>Volume</strong><span class="setup-color">Mid</span></div>
+              </div>
+            </div>
+            <div class="footer"><span>Power lives here</span><span>Quiet by design</span></div>
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

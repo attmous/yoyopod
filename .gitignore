@@ -69,6 +69,7 @@ config/config.json
 *.bak
 *.swp
 .cache/
+data/*.json
 
 # OS files
 .DS_Store

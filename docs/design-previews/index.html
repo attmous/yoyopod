@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YoyoPod Design Previews</title>
+  <style>
+    :root {
+      --paper: #f4efe6;
+      --ink: #223037;
+      --muted: #66757d;
+      --card: rgba(255, 255, 255, 0.72);
+      --line: rgba(34, 48, 55, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Nunito", "Trebuchet MS", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(255, 255, 255, 0.82), transparent 28rem),
+        linear-gradient(180deg, #efe5d7 0%, #f8f4ec 100%);
+      color: var(--ink);
+    }
+    main {
+      width: min(1120px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 3rem 0 4rem;
+    }
+    .hero {
+      display: grid;
+      gap: 1.25rem;
+      padding: 1.75rem;
+      border: 2px solid rgba(34, 48, 55, 0.12);
+      border-radius: 28px;
+      background: rgba(255, 251, 245, 0.72);
+      box-shadow: 0 20px 40px rgba(50, 56, 53, 0.08);
+    }
+    .eyebrow {
+      display: inline-flex;
+      width: fit-content;
+      padding: 0.45rem 0.75rem;
+      border-radius: 999px;
+      background: rgba(34, 48, 55, 0.08);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 4vw, 3.6rem);
+      line-height: 0.96;
+      letter-spacing: -0.04em;
+    }
+    .hero p, .option p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.25rem;
+      margin-top: 1.5rem;
+    }
+    .option {
+      display: grid;
+      gap: 1rem;
+      padding: 1.2rem;
+      border: 2px solid var(--line);
+      border-radius: 26px;
+      background: var(--card);
+      text-decoration: none;
+      color: inherit;
+      box-shadow: 0 16px 32px rgba(50, 56, 53, 0.08);
+      transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+    }
+    .option:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 24px 44px rgba(50, 56, 53, 0.12);
+      border-color: rgba(34, 48, 55, 0.22);
+    }
+    .option h2 {
+      margin: 0;
+      font-size: 1.5rem;
+    }
+    .swatches {
+      display: flex;
+      gap: 0.55rem;
+    }
+    .swatch {
+      width: 1.5rem;
+      height: 1.5rem;
+      border-radius: 999px;
+      border: 2px solid rgba(34, 48, 55, 0.12);
+    }
+    .mini-board {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.6rem;
+    }
+    .mini-device {
+      aspect-ratio: 240 / 280;
+      padding: 0.75rem;
+      border-radius: 24px;
+      border: 2px solid rgba(34, 48, 55, 0.16);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.55));
+    }
+    .mini-card {
+      height: 100%;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.6);
+      border: 2px solid rgba(34, 48, 55, 0.08);
+      padding: 0.7rem;
+    }
+    .mini-title {
+      font-size: 0.85rem;
+      font-weight: 800;
+      margin-bottom: 0.4rem;
+    }
+    .mini-bar {
+      height: 0.55rem;
+      margin-bottom: 0.35rem;
+      border-radius: 999px;
+      background: rgba(34, 48, 55, 0.09);
+    }
+    .recommend {
+      display: inline-flex;
+      width: fit-content;
+      padding: 0.35rem 0.65rem;
+      border-radius: 999px;
+      background: rgba(79, 138, 111, 0.14);
+      color: #2f6149;
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <span class="eyebrow">YoyoPod Visual Directions</span>
+      <h1>Three small HTML previews for the next production look.</h1>
+      <p>
+        Each concept uses the same device moments so you can compare feel rather than layout changes:
+        Whisplay hub, a music/list screen, a live call state, and the power/status surface.
+      </p>
+    </section>
+    <section class="grid">
+      <a class="option" href="./field-notes.html">
+        <div>
+          <span class="recommend">Recommended</span>
+          <h2>Field Notes</h2>
+        </div>
+        <p>Calm, outdoorsy, and trustworthy. This feels like a real kid-safe appliance instead of a stripped-down phone.</p>
+        <div class="swatches">
+          <span class="swatch" style="background:#f6f1e7;"></span>
+          <span class="swatch" style="background:#223037;"></span>
+          <span class="swatch" style="background:#5e9fd6;"></span>
+          <span class="swatch" style="background:#4f8a6f;"></span>
+          <span class="swatch" style="background:#d9a441;"></span>
+        </div>
+        <div class="mini-board">
+          <div class="mini-device"><div class="mini-card"><div class="mini-title">Hub</div><div class="mini-bar" style="background:#5e9fd6;"></div><div class="mini-bar"></div><div class="mini-bar" style="width:72%;"></div></div></div>
+          <div class="mini-device"><div class="mini-card"><div class="mini-title">Power</div><div class="mini-bar" style="background:#d9a441;"></div><div class="mini-bar"></div><div class="mini-bar" style="width:66%;"></div></div></div>
+        </div>
+      </a>
+      <a class="option" href="./toy-radio.html">
+        <div><h2>Toy Radio</h2></div>
+        <p>More playful and collectible. Warm plastics, stronger accents, and a more energetic toy-product personality.</p>
+        <div class="swatches">
+          <span class="swatch" style="background:#fff6e8;"></span>
+          <span class="swatch" style="background:#25435f;"></span>
+          <span class="swatch" style="background:#7cc8b8;"></span>
+          <span class="swatch" style="background:#e9824a;"></span>
+          <span class="swatch" style="background:#e5b93d;"></span>
+        </div>
+        <div class="mini-board">
+          <div class="mini-device" style="background:linear-gradient(180deg,#fff0d6,#ffe6cc);"><div class="mini-card"><div class="mini-title">Calls</div><div class="mini-bar" style="background:#7cc8b8;"></div><div class="mini-bar"></div><div class="mini-bar" style="width:58%;"></div></div></div>
+          <div class="mini-device" style="background:linear-gradient(180deg,#fff0d6,#ffe6cc);"><div class="mini-card"><div class="mini-title">Music</div><div class="mini-bar" style="background:#e9824a;"></div><div class="mini-bar"></div><div class="mini-bar" style="width:70%;"></div></div></div>
+        </div>
+      </a>
+      <a class="option" href="./safety-badge.html">
+        <div><h2>Safety Badge</h2></div>
+        <p>The most utility-driven direction. More grown-up, very clear, and easy for parents to trust at a glance.</p>
+        <div class="swatches">
+          <span class="swatch" style="background:#e9eef0;"></span>
+          <span class="swatch" style="background:#24333b;"></span>
+          <span class="swatch" style="background:#2e8b7a;"></span>
+          <span class="swatch" style="background:#6ea7d8;"></span>
+          <span class="swatch" style="background:#e38a43;"></span>
+        </div>
+        <div class="mini-board">
+          <div class="mini-device" style="background:linear-gradient(180deg,#edf4f7,#e1eaee);"><div class="mini-card"><div class="mini-title">Status</div><div class="mini-bar" style="background:#2e8b7a;"></div><div class="mini-bar"></div><div class="mini-bar" style="width:62%;"></div></div></div>
+          <div class="mini-device" style="background:linear-gradient(180deg,#edf4f7,#e1eaee);"><div class="mini-card"><div class="mini-title">Alert</div><div class="mini-bar" style="background:#c65d6d;"></div><div class="mini-bar"></div><div class="mini-bar" style="width:68%;"></div></div></div>
+        </div>
+      </a>
+    </section>
+  </main>
+</body>
+</html>

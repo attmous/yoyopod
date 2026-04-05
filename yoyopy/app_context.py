@@ -124,6 +124,8 @@ class AppContext:
         self.external_power: bool = False
         self.power_available: bool = False
         self.power_error: str = ""
+        self.voip_configured: bool = False
+        self.voip_ready: bool = False
         self.screen_awake: bool = True
         self.screen_idle_seconds: int = 0
         self.screen_on_seconds: int = 0
@@ -131,6 +133,7 @@ class AppContext:
         self.signal_strength: int = 4  # 0-4 bars
         self.is_connected: bool = False
         self.connection_type: str = "none"  # wifi, 4g, none
+        self.current_audio_source: str = "local"
 
         # Navigation history for back button
         self.navigation_history: List[str] = []
@@ -354,6 +357,12 @@ class AppContext:
 
         if snapshot.battery.power_plugged is not None:
             self.external_power = snapshot.battery.power_plugged
+
+    def update_voip_status(self, *, configured: bool, ready: bool) -> None:
+        """Update cached VoIP availability used by the simplified chrome."""
+
+        self.voip_configured = configured
+        self.voip_ready = ready
 
     def update_screen_runtime(
         self,

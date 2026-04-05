@@ -131,8 +131,11 @@ Key design points:
 - `yoyopy/ui/input/` - input HAL, factory, manager, and adapters
 - `yoyopy/ui/screens/manager.py` - stack navigation and input binding
 - `yoyopy/ui/screens/router.py` - declarative route resolution
-- `yoyopy/ui/screens/navigation/power.py` - two-page power and runtime status screen
-- `yoyopy/ui/screens/voip/hub.py` - VoIP hub / quick-call screen
+- `yoyopy/ui/screens/theme.py` - Graffiti Buddy shared chrome, colors, icons, and status-bar renderer
+- `yoyopy/ui/screens/navigation/listen.py` - source chooser for the `Listen` root mode
+- `yoyopy/ui/screens/navigation/ask.py` - future-safe `Ask` mode placeholder
+- `yoyopy/ui/screens/navigation/power.py` - `Setup` screen with power and care pages
+- `yoyopy/ui/screens/voip/hub.py` - `Talk` quick-call hub
 
 ### Configuration
 

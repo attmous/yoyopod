@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YoyoPod Design Preview - Sticker Glow</title>
+  <style>
+    :root {
+      --paper: #fff8ea;
+      --shell: #ffe05f;
+      --screen: #fffef8;
+      --ink: #243056;
+      --muted: #6f78a0;
+      --pink: #ff7aa2;
+      --blue: #56c6ff;
+      --green: #83e87c;
+      --orange: #ffb845;
+      --purple: #8369ff;
+      --line: rgba(36, 48, 86, 0.14);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Trebuchet MS", "Arial Rounded MT Bold", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top right, rgba(255,255,255,0.78), transparent 26rem),
+        linear-gradient(180deg, #ffe56f 0%, #fff2b0 46%, #fff9ef 100%);
+    }
+    main {
+      width: min(1320px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 2rem 0 4rem;
+      display: grid;
+      gap: 1.4rem;
+    }
+    .topbar, .sidebar, .gallery {
+      border: 2px solid var(--line);
+      border-radius: 30px;
+      background: rgba(255,255,255,0.7);
+      box-shadow: 0 20px 42px rgba(136, 108, 17, 0.12);
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.2rem 1.4rem;
+    }
+    .topbar a { color: var(--ink); text-decoration: none; font-weight: 900; }
+    .tag {
+      display: inline-flex;
+      padding: 0.4rem 0.75rem;
+      border-radius: 999px;
+      background: rgba(255,122,162,0.16);
+      color: #b93b67;
+      font-size: 0.76rem;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(2.1rem, 4vw, 3.6rem);
+      line-height: 0.93;
+      letter-spacing: -0.04em;
+    }
+    p, li { color: var(--muted); line-height: 1.6; }
+    .layout { display: grid; grid-template-columns: 320px 1fr; gap: 1.25rem; }
+    .sidebar { padding: 1.25rem; display: grid; gap: 1rem; align-content: start; }
+    .gallery { padding: 1.25rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; }
+    .palette { display: grid; gap: 0.55rem; }
+    .swatch { display: grid; grid-template-columns: 1.15rem 1fr auto; gap: 0.55rem; align-items: center; }
+    .dot { width: 1.15rem; height: 1.15rem; border-radius: 999px; border: 2px solid rgba(36,48,86,0.1); }
+    ul { margin: 0; padding-left: 1rem; }
+    .device {
+      border-radius: 34px;
+      background: linear-gradient(180deg, #fff17f 0%, #ffd94d 100%);
+      border: 2px solid rgba(144, 113, 16, 0.2);
+      padding: 0.85rem;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+      position: relative;
+    }
+    .device::before, .device::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.45);
+      filter: blur(2px);
+    }
+    .device::before { width: 3rem; height: 0.75rem; top: 0.55rem; left: 1rem; }
+    .device::after { width: 2.2rem; height: 0.65rem; bottom: 0.7rem; right: 1rem; }
+    .screen {
+      aspect-ratio: 240 / 280;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at top right, rgba(255,122,162,0.12), transparent 9rem),
+        radial-gradient(circle at bottom left, rgba(86,198,255,0.14), transparent 10rem),
+        var(--screen);
+      border: 2px solid rgba(36,48,86,0.1);
+      padding: 0.9rem;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 0.75rem;
+      overflow: hidden;
+      position: relative;
+    }
+    .screen::before {
+      content: "";
+      position: absolute;
+      inset: auto auto 1.1rem -1rem;
+      width: 5rem;
+      height: 5rem;
+      border-radius: 50%;
+      background: rgba(131,232,124,0.18);
+    }
+    .status, .footer, .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .status {
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #24a7ff;
+    }
+    .footer {
+      font-size: 0.76rem;
+      font-weight: 900;
+      color: var(--muted);
+    }
+    .stack {
+      display: grid;
+      gap: 0.7rem;
+      align-content: start;
+      position: relative;
+      z-index: 1;
+    }
+    .title {
+      font-size: 1.65rem;
+      line-height: 0.92;
+      letter-spacing: -0.04em;
+      font-weight: 900;
+      margin: 0;
+    }
+    .subtitle {
+      font-size: 0.94rem;
+      line-height: 1.45;
+      color: var(--muted);
+      margin: 0;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.7rem;
+      align-items: center;
+    }
+    .sticker {
+      border-radius: 24px;
+      border: 2px solid rgba(36,48,86,0.12);
+      background: rgba(255,255,255,0.9);
+      box-shadow: 0 10px 18px rgba(68, 69, 97, 0.1);
+      padding: 0.8rem;
+    }
+    .sticker.active-listen { background: linear-gradient(180deg, rgba(86,198,255,0.24), rgba(255,255,255,0.9)); }
+    .sticker.active-talk { background: linear-gradient(180deg, rgba(255,122,162,0.22), rgba(255,255,255,0.9)); }
+    .sticker.active-ask { background: linear-gradient(180deg, rgba(131,105,255,0.22), rgba(255,255,255,0.9)); }
+    .sticker.active-settings { background: linear-gradient(180deg, rgba(255,184,69,0.22), rgba(255,255,255,0.9)); }
+    .mini-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+    .mode-chip {
+      padding: 0.38rem 0.62rem;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 900;
+      background: rgba(36,48,86,0.07);
+      width: fit-content;
+    }
+    .pill-row, .source-row { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+    .pill {
+      padding: 0.36rem 0.62rem;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 900;
+      border: 2px solid rgba(36,48,86,0.08);
+      background: rgba(255,255,255,0.92);
+    }
+    .pill.spotify { color: #128f4c; background: rgba(131,232,124,0.2); }
+    .pill.amazon { color: #a16000; background: rgba(255,184,69,0.22); }
+    .pill.youtube { color: #c44343; background: rgba(255,122,162,0.18); }
+    .pill.local { color: #3652d8; background: rgba(86,198,255,0.18); }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+    .action {
+      padding: 0.85rem 0.7rem;
+      border-radius: 20px;
+      font-weight: 900;
+      text-align: center;
+      border: 2px solid rgba(36,48,86,0.1);
+      background: rgba(255,255,255,0.92);
+    }
+    .call { background: rgba(131,232,124,0.24); color: #26763d; }
+    .note { background: rgba(255,122,162,0.2); color: #9b2f59; }
+    .friends { display: grid; gap: 0.5rem; }
+    .friend {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 0.6rem;
+      align-items: center;
+      padding: 0.62rem;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.88);
+      border: 2px solid rgba(36,48,86,0.08);
+    }
+    .avatar {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      color: white;
+    }
+    .star-box {
+      padding: 0.9rem;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(131,105,255,0.18), rgba(255,255,255,0.95));
+      border: 2px dashed rgba(131,105,255,0.35);
+    }
+    .setting-list { display: grid; gap: 0.5rem; }
+    .setting-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.68rem 0.72rem;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.9);
+      border: 2px solid rgba(36,48,86,0.08);
+    }
+    svg.icon {
+      width: 5.2rem;
+      height: 5.2rem;
+      flex: none;
+    }
+    @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="topbar">
+      <div>
+        <span class="tag">Joyful Direction</span>
+        <h1>Sticker Glow</h1>
+        <p>Soft toy energy, chunky sticker shapes, happy icons, and very simple words. This one feels the most like a lovable companion.</p>
+      </div>
+      <a href="./round-two.html">Back to round two</a>
+    </section>
+
+    <section class="layout">
+      <aside class="sidebar">
+        <div>
+          <h2>Vibe</h2>
+          <p>Collectible, warm, bright, and a little magical. More like a sticker-book gadget than a safety dashboard.</p>
+        </div>
+        <div class="palette">
+          <div class="swatch"><span class="dot" style="background:#ffe05f;"></span><span>Shell yellow</span><code>#FFE05F</code></div>
+          <div class="swatch"><span class="dot" style="background:#ff7aa2;"></span><span>Bubblegum</span><code>#FF7AA2</code></div>
+          <div class="swatch"><span class="dot" style="background:#56c6ff;"></span><span>Sky pop</span><code>#56C6FF</code></div>
+          <div class="swatch"><span class="dot" style="background:#83e87c;"></span><span>Leaf green</span><code>#83E87C</code></div>
+          <div class="swatch"><span class="dot" style="background:#ffb845;"></span><span>Mango</span><code>#FFB845</code></div>
+          <div class="swatch"><span class="dot" style="background:#8369ff;"></span><span>Ask purple</span><code>#8369FF</code></div>
+        </div>
+        <div>
+          <h2>What works</h2>
+          <ul>
+            <li>Very short titles feel natural here.</li>
+            <li>Easy to make the device feel loved, not just useful.</li>
+            <li>Listen and Talk can each get a distinct sticker personality.</li>
+            <li>Strong fit for younger kids without feeling boring for older ones.</li>
+          </ul>
+        </div>
+      </aside>
+
+      <section class="gallery">
+        <article class="device">
+          <div class="screen">
+            <div class="status"><span>23:31</span><span>BT · Wi-Fi · 56%</span></div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="mode-chip" style="background:rgba(86,198,255,0.2); color:#2b6ea1;">Home</div>
+                  <h2 class="title">Listen</h2>
+                  <p class="subtitle">A big friendly mode card instead of a listy menu.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 80 80" fill="none" stroke="#6adf5e" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="40" cy="42" r="12"></circle>
+                  <path d="M23 34c0-9 7-16 17-16s17 7 17 16"></path>
+                  <path d="M23 34v12M57 34v12"></path>
+                  <path d="M58 20l7-6M64 32h8"></path>
+                </svg>
+              </div>
+              <div class="mini-grid">
+                <div class="sticker active-listen"><strong>Listen</strong></div>
+                <div class="sticker active-talk"><strong>Talk</strong></div>
+                <div class="sticker active-ask"><strong>Ask</strong></div>
+                <div class="sticker active-settings"><strong>Settings</strong></div>
+              </div>
+            </div>
+            <div class="footer"><span>Tap: Next</span><span>Double: Open</span></div>
+          </div>
+        </article>
+
+        <article class="device">
+          <div class="screen">
+            <div class="status"><span>23:31</span><span>Listen · Ready</span></div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="mode-chip" style="background:rgba(131,232,124,0.22); color:#2e7f3d;">Listen</div>
+                  <h2 class="title">Pick sound</h2>
+                  <p class="subtitle">Only the sources you actually turn on appear here.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 80 80" fill="none" stroke="#56c6ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M28 22v34"></path>
+                  <path d="M28 28l24-6v28"></path>
+                  <circle cx="26" cy="58" r="8"></circle>
+                  <circle cx="50" cy="52" r="8"></circle>
+                </svg>
+              </div>
+              <div class="source-row">
+                <span class="pill spotify">Spotify</span>
+                <span class="pill amazon">Amazon</span>
+                <span class="pill youtube">YouTube</span>
+                <span class="pill local">Local</span>
+              </div>
+              <div class="sticker active-listen"><div class="row"><strong>Adventure Mix</strong><span>12 playlists</span></div></div>
+            </div>
+            <div class="footer"><span>Tap: Next source</span><span>Double: Enter</span></div>
+          </div>
+        </article>
+
+        <article class="device">
+          <div class="screen">
+            <div class="status"><span>23:31</span><span>Talk · Ready</span></div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="mode-chip" style="background:rgba(255,122,162,0.22); color:#af3f69;">Talk</div>
+                  <h2 class="title">Say hi</h2>
+                  <p class="subtitle">Calls and voice notes live together in one warm place.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 80 80" fill="none" stroke="#69da4e" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M15 26h28a10 10 0 0 1 10 10v3a10 10 0 0 1-10 10H29l-8 8v-8h-6A10 10 0 0 1 5 39v-3a10 10 0 0 1 10-10Z"></path>
+                  <path d="M49 20h15a10 10 0 0 1 10 10v2a10 10 0 0 1-10 10h-2l-8 7v-7"></path>
+                </svg>
+              </div>
+              <div class="actions">
+                <div class="action call">Call</div>
+                <div class="action note">Voice Note</div>
+              </div>
+              <div class="friends">
+                <div class="friend"><div class="avatar" style="background:#ff7aa2;">M</div><strong>Mom</strong><span>Ready</span></div>
+                <div class="friend"><div class="avatar" style="background:#56c6ff;">D</div><strong>Dad</strong><span>Ready</span></div>
+              </div>
+            </div>
+            <div class="footer"><span>Tap: Next person</span><span>Double: Go</span></div>
+          </div>
+        </article>
+
+        <article class="device">
+          <div class="screen">
+            <div class="status"><span>23:31</span><span>Ask · Future</span></div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="mode-chip" style="background:rgba(131,105,255,0.22); color:#5c49c9;">Ask</div>
+                  <h2 class="title">Ask me</h2>
+                  <p class="subtitle">Safe questions, calm answers, and a future mode that still feels magical.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 80 80" fill="none" stroke="#8369ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M23 18h34a12 12 0 0 1 12 12v5a12 12 0 0 1-12 12H43l-11 10v-10H23A12 12 0 0 1 11 35v-5a12 12 0 0 1 12-12Z"></path>
+                  <path d="M36 32c1.5-3 4-4.5 7-4.5 4 0 6.5 2 6.5 5 0 5-7.5 5-7.5 10"></path>
+                  <circle cx="40" cy="58" r="2" fill="#8369ff"></circle>
+                </svg>
+              </div>
+              <div class="star-box">
+                <strong>Future mode</strong>
+                <p class="subtitle">Kid-safe AI, voice-first, no open web feel.</p>
+              </div>
+            </div>
+            <div class="footer"><span>Soft future teaser</span><span>Not scary</span></div>
+          </div>
+        </article>
+
+        <article class="device">
+          <div class="screen">
+            <div class="status"><span>23:31</span><span>Settings · Power</span></div>
+            <div class="stack">
+              <div class="hero">
+                <div>
+                  <div class="mode-chip" style="background:rgba(255,184,69,0.24); color:#a76a12;">Settings</div>
+                  <h2 class="title">Tidy up</h2>
+                  <p class="subtitle">This is where power, sleep, and future controls can live without feeling boring.</p>
+                </div>
+                <svg class="icon" viewBox="0 0 80 80" fill="none" stroke="#ffb845" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="40" cy="40" r="10"></circle>
+                  <path d="M40 16v8M40 56v8M24 24l6 6M50 50l6 6M16 40h8M56 40h8M24 56l6-6M50 30l6-6"></path>
+                </svg>
+              </div>
+              <div class="setting-list">
+                <div class="setting-item"><strong>Battery</strong><span>56%</span></div>
+                <div class="setting-item"><strong>Sleep</strong><span>1 min</span></div>
+                <div class="setting-item"><strong>Volume</strong><span>Mid</span></div>
+              </div>
+            </div>
+            <div class="footer"><span>Power lives here</span><span>Future-safe</span></div>
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+</body>
+</html>
