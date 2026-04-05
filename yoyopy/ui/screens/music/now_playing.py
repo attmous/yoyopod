@@ -6,10 +6,12 @@ from typing import TYPE_CHECKING, Optional
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
+from yoyopy.ui.screens.music.lvgl import LvglNowPlayingView
 from yoyopy.ui.screens.theme import INK, LISTEN, MUTED, SURFACE, draw_icon, render_footer, render_header, rounded_panel, text_fit
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
+    from yoyopy.ui.screens import ScreenView
 
 
 class NowPlayingScreen(Screen):
@@ -23,9 +25,43 @@ class NowPlayingScreen(Screen):
     ) -> None:
         super().__init__(display, context, "NowPlaying")
         self.mopidy_client = mopidy_client
+        self._lvgl_view: "ScreenView | None" = None
+
+    def enter(self) -> None:
+        """Create the LVGL view when the screen becomes active."""
+        super().enter()
+        self._ensure_lvgl_view()
+
+    def exit(self) -> None:
+        """Tear down any active LVGL view when leaving now playing."""
+        if self._lvgl_view is not None:
+            self._lvgl_view.destroy()
+            self._lvgl_view = None
+        super().exit()
+
+    def _ensure_lvgl_view(self) -> "ScreenView | None":
+        """Create an LVGL view when the Whisplay renderer is active."""
+        if self._lvgl_view is not None:
+            return self._lvgl_view
+
+        if getattr(self.display, "backend_kind", "pil") != "lvgl":
+            return None
+
+        ui_backend = self.display.get_ui_backend() if hasattr(self.display, "get_ui_backend") else None
+        if ui_backend is None or not getattr(ui_backend, "initialized", False):
+            return None
+
+        self._lvgl_view = LvglNowPlayingView(self, ui_backend)
+        self._lvgl_view.build()
+        return self._lvgl_view
 
     def render(self) -> None:
         """Render the now-playing view."""
+        lvgl_view = self._ensure_lvgl_view()
+        if lvgl_view is not None:
+            lvgl_view.sync()
+            return
+
         track_title, artist, progress, state_label, _is_playing = self._track_snapshot()
 
         content_top = render_header(

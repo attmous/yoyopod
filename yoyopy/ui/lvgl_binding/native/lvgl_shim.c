@@ -71,6 +71,25 @@ typedef struct {
     lv_obj_t * footer_label;
 } yoyopy_playlist_scene_t;
 
+typedef struct {
+    int built;
+    lv_obj_t * screen;
+    lv_obj_t * voip_dot;
+    lv_obj_t * battery_outline;
+    lv_obj_t * battery_fill;
+    lv_obj_t * battery_tip;
+    lv_obj_t * panel;
+    lv_obj_t * icon_halo;
+    lv_obj_t * icon_label;
+    lv_obj_t * state_chip;
+    lv_obj_t * state_label;
+    lv_obj_t * title_label;
+    lv_obj_t * artist_label;
+    lv_obj_t * progress_track;
+    lv_obj_t * progress_fill;
+    lv_obj_t * footer_label;
+} yoyopy_now_playing_scene_t;
+
 static int g_initialized = 0;
 static lv_display_t * g_display = NULL;
 static lv_indev_t * g_indev = NULL;
@@ -87,6 +106,7 @@ static int g_key_count = 0;
 static yoyopy_hub_scene_t g_hub_scene = {0};
 static yoyopy_listen_scene_t g_listen_scene = {0};
 static yoyopy_playlist_scene_t g_playlist_scene = {0};
+static yoyopy_now_playing_scene_t g_now_playing_scene = {0};
 
 static lv_color_t yoyopy_color_rgb(uint8_t red, uint8_t green, uint8_t blue) {
     uint32_t raw = ((uint32_t)red << 16) | ((uint32_t)green << 8) | (uint32_t)blue;
@@ -121,10 +141,15 @@ static void yoyopy_reset_playlist_scene_refs(void) {
     memset(&g_playlist_scene, 0, sizeof(g_playlist_scene));
 }
 
+static void yoyopy_reset_now_playing_scene_refs(void) {
+    memset(&g_now_playing_scene, 0, sizeof(g_now_playing_scene));
+}
+
 static void yoyopy_reset_scene_refs(void) {
     yoyopy_reset_hub_scene_refs();
     yoyopy_reset_listen_scene_refs();
     yoyopy_reset_playlist_scene_refs();
+    yoyopy_reset_now_playing_scene_refs();
 }
 
 static void yoyopy_set_error(const char * message) {
@@ -1146,6 +1171,235 @@ void yoyopy_lvgl_playlist_destroy(void) {
     }
     yoyopy_clear_group();
     yoyopy_reset_playlist_scene_refs();
+}
+
+int yoyopy_lvgl_now_playing_build(void) {
+    if(!g_initialized || g_display == NULL) {
+        yoyopy_set_error("display must be registered before building the now-playing scene");
+        return -1;
+    }
+
+    if(g_now_playing_scene.built) {
+        return 0;
+    }
+
+    yoyopy_prepare_active_screen();
+
+    g_now_playing_scene.screen = lv_screen_active();
+    lv_obj_set_style_bg_color(g_now_playing_scene.screen, yoyopy_color_rgb(18, 21, 28), 0);
+    lv_obj_set_style_bg_opa(g_now_playing_scene.screen, LV_OPA_COVER, 0);
+
+    g_now_playing_scene.voip_dot = lv_obj_create(g_now_playing_scene.screen);
+    lv_obj_remove_style_all(g_now_playing_scene.voip_dot);
+    lv_obj_set_size(g_now_playing_scene.voip_dot, 8, 8);
+    lv_obj_set_style_radius(g_now_playing_scene.voip_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_pos(g_now_playing_scene.voip_dot, 16, 10);
+
+    g_now_playing_scene.battery_outline = lv_obj_create(g_now_playing_scene.screen);
+    lv_obj_remove_style_all(g_now_playing_scene.battery_outline);
+    lv_obj_set_size(g_now_playing_scene.battery_outline, 20, 10);
+    lv_obj_set_pos(g_now_playing_scene.battery_outline, 202, 6);
+    lv_obj_set_style_border_width(g_now_playing_scene.battery_outline, 1, 0);
+    lv_obj_set_style_border_color(g_now_playing_scene.battery_outline, yoyopy_color_rgb(153, 160, 173), 0);
+    lv_obj_set_style_radius(g_now_playing_scene.battery_outline, 2, 0);
+    lv_obj_set_style_bg_opa(g_now_playing_scene.battery_outline, LV_OPA_TRANSP, 0);
+
+    g_now_playing_scene.battery_fill = lv_obj_create(g_now_playing_scene.battery_outline);
+    lv_obj_remove_style_all(g_now_playing_scene.battery_fill);
+    lv_obj_set_pos(g_now_playing_scene.battery_fill, 1, 1);
+    lv_obj_set_size(g_now_playing_scene.battery_fill, 18, 8);
+    lv_obj_set_style_radius(g_now_playing_scene.battery_fill, 1, 0);
+    lv_obj_set_style_bg_opa(g_now_playing_scene.battery_fill, LV_OPA_COVER, 0);
+
+    g_now_playing_scene.battery_tip = lv_obj_create(g_now_playing_scene.screen);
+    lv_obj_remove_style_all(g_now_playing_scene.battery_tip);
+    lv_obj_set_size(g_now_playing_scene.battery_tip, 2, 4);
+    lv_obj_set_pos(g_now_playing_scene.battery_tip, 222, 9);
+    lv_obj_set_style_bg_color(g_now_playing_scene.battery_tip, yoyopy_color_rgb(153, 160, 173), 0);
+    lv_obj_set_style_bg_opa(g_now_playing_scene.battery_tip, LV_OPA_COVER, 0);
+
+    g_now_playing_scene.panel = lv_obj_create(g_now_playing_scene.screen);
+    lv_obj_set_size(g_now_playing_scene.panel, 208, 194);
+    lv_obj_set_pos(g_now_playing_scene.panel, 16, 42);
+    lv_obj_set_style_radius(g_now_playing_scene.panel, 28, 0);
+    lv_obj_set_style_border_width(g_now_playing_scene.panel, 2, 0);
+    lv_obj_set_style_pad_all(g_now_playing_scene.panel, 0, 0);
+    lv_obj_set_style_shadow_width(g_now_playing_scene.panel, 0, 0);
+    lv_obj_set_style_outline_width(g_now_playing_scene.panel, 0, 0);
+    lv_obj_set_scrollbar_mode(g_now_playing_scene.panel, LV_SCROLLBAR_MODE_OFF);
+
+    g_now_playing_scene.icon_halo = lv_obj_create(g_now_playing_scene.panel);
+    lv_obj_set_size(g_now_playing_scene.icon_halo, 76, 58);
+    lv_obj_set_pos(g_now_playing_scene.icon_halo, 66, 16);
+    lv_obj_set_style_radius(g_now_playing_scene.icon_halo, 20, 0);
+    lv_obj_set_style_border_width(g_now_playing_scene.icon_halo, 2, 0);
+    lv_obj_set_style_shadow_width(g_now_playing_scene.icon_halo, 0, 0);
+    lv_obj_set_style_outline_width(g_now_playing_scene.icon_halo, 0, 0);
+    lv_obj_set_scrollbar_mode(g_now_playing_scene.icon_halo, LV_SCROLLBAR_MODE_OFF);
+
+    g_now_playing_scene.icon_label = lv_label_create(g_now_playing_scene.icon_halo);
+    lv_label_set_text(g_now_playing_scene.icon_label, LV_SYMBOL_AUDIO);
+    lv_obj_set_style_text_font(g_now_playing_scene.icon_label, &lv_font_montserrat_24, 0);
+    lv_obj_center(g_now_playing_scene.icon_label);
+
+    g_now_playing_scene.state_chip = lv_obj_create(g_now_playing_scene.panel);
+    lv_obj_set_size(g_now_playing_scene.state_chip, 92, 24);
+    lv_obj_set_pos(g_now_playing_scene.state_chip, 58, 84);
+    lv_obj_set_style_radius(g_now_playing_scene.state_chip, 12, 0);
+    lv_obj_set_style_border_width(g_now_playing_scene.state_chip, 0, 0);
+    lv_obj_set_style_pad_all(g_now_playing_scene.state_chip, 0, 0);
+    lv_obj_set_style_shadow_width(g_now_playing_scene.state_chip, 0, 0);
+    lv_obj_set_style_outline_width(g_now_playing_scene.state_chip, 0, 0);
+    lv_obj_set_scrollbar_mode(g_now_playing_scene.state_chip, LV_SCROLLBAR_MODE_OFF);
+
+    g_now_playing_scene.state_label = lv_label_create(g_now_playing_scene.state_chip);
+    lv_obj_set_style_text_font(g_now_playing_scene.state_label, &lv_font_montserrat_12, 0);
+    lv_obj_center(g_now_playing_scene.state_label);
+
+    g_now_playing_scene.title_label = lv_label_create(g_now_playing_scene.panel);
+    lv_obj_set_width(g_now_playing_scene.title_label, 176);
+    lv_obj_set_pos(g_now_playing_scene.title_label, 16, 118);
+    lv_label_set_long_mode(g_now_playing_scene.title_label, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_set_style_text_font(g_now_playing_scene.title_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_align(g_now_playing_scene.title_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    g_now_playing_scene.artist_label = lv_label_create(g_now_playing_scene.panel);
+    lv_obj_set_width(g_now_playing_scene.artist_label, 176);
+    lv_obj_set_pos(g_now_playing_scene.artist_label, 16, 148);
+    lv_label_set_long_mode(g_now_playing_scene.artist_label, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_set_style_text_font(g_now_playing_scene.artist_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_align(g_now_playing_scene.artist_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    g_now_playing_scene.progress_track = lv_obj_create(g_now_playing_scene.panel);
+    lv_obj_set_size(g_now_playing_scene.progress_track, 156, 8);
+    lv_obj_set_pos(g_now_playing_scene.progress_track, 26, 174);
+    lv_obj_set_style_radius(g_now_playing_scene.progress_track, 4, 0);
+    lv_obj_set_style_border_width(g_now_playing_scene.progress_track, 0, 0);
+    lv_obj_set_style_pad_all(g_now_playing_scene.progress_track, 0, 0);
+    lv_obj_set_style_shadow_width(g_now_playing_scene.progress_track, 0, 0);
+    lv_obj_set_style_outline_width(g_now_playing_scene.progress_track, 0, 0);
+    lv_obj_set_scrollbar_mode(g_now_playing_scene.progress_track, LV_SCROLLBAR_MODE_OFF);
+
+    g_now_playing_scene.progress_fill = lv_obj_create(g_now_playing_scene.progress_track);
+    lv_obj_set_size(g_now_playing_scene.progress_fill, 0, 8);
+    lv_obj_set_pos(g_now_playing_scene.progress_fill, 0, 0);
+    lv_obj_set_style_radius(g_now_playing_scene.progress_fill, 4, 0);
+    lv_obj_set_style_border_width(g_now_playing_scene.progress_fill, 0, 0);
+    lv_obj_set_style_pad_all(g_now_playing_scene.progress_fill, 0, 0);
+    lv_obj_set_style_shadow_width(g_now_playing_scene.progress_fill, 0, 0);
+    lv_obj_set_style_outline_width(g_now_playing_scene.progress_fill, 0, 0);
+    lv_obj_set_scrollbar_mode(g_now_playing_scene.progress_fill, LV_SCROLLBAR_MODE_OFF);
+
+    g_now_playing_scene.footer_label = lv_label_create(g_now_playing_scene.screen);
+    lv_obj_set_style_text_font(g_now_playing_scene.footer_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_align(g_now_playing_scene.footer_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(g_now_playing_scene.footer_label, LV_ALIGN_BOTTOM_MID, 0, -5);
+
+    g_now_playing_scene.built = 1;
+    return 0;
+}
+
+int yoyopy_lvgl_now_playing_sync(
+    const char * title_text,
+    const char * artist_text,
+    const char * state_text,
+    const char * footer,
+    int32_t progress_permille,
+    int32_t voip_state,
+    int32_t battery_percent,
+    int32_t charging,
+    int32_t power_available,
+    uint8_t accent_r,
+    uint8_t accent_g,
+    uint8_t accent_b
+) {
+    if(!g_now_playing_scene.built) {
+        yoyopy_set_error("now-playing scene must be built before sync");
+        return -1;
+    }
+
+    const lv_color_t background = yoyopy_color_rgb(18, 21, 28);
+    const lv_color_t surface = yoyopy_color_rgb(28, 33, 42);
+    const lv_color_t ink = yoyopy_color_rgb(243, 247, 250);
+    const lv_color_t muted = yoyopy_color_rgb(153, 160, 173);
+    const lv_color_t progress_bg = yoyopy_color_rgb(22, 25, 32);
+    const lv_color_t accent = yoyopy_color_rgb(accent_r, accent_g, accent_b);
+    const lv_color_t accent_dim = yoyopy_mix_rgb(accent_r, accent_g, accent_b, 18, 21, 28, 65);
+    const lv_color_t accent_soft = yoyopy_mix_rgb(accent_r, accent_g, accent_b, 28, 33, 42, 55);
+    const lv_color_t halo_fill = yoyopy_mix_rgb(accent_r, accent_g, accent_b, 18, 21, 28, 80);
+    const lv_color_t halo_border = yoyopy_mix_rgb(accent_r, accent_g, accent_b, 18, 21, 28, 60);
+
+    if(progress_permille < 0) {
+        progress_permille = 0;
+    }
+    if(progress_permille > 1000) {
+        progress_permille = 1000;
+    }
+
+    lv_obj_set_style_bg_color(g_now_playing_scene.screen, background, 0);
+    lv_obj_set_style_bg_opa(g_now_playing_scene.screen, LV_OPA_COVER, 0);
+    yoyopy_apply_voip_dot(g_now_playing_scene.voip_dot, voip_state);
+    yoyopy_apply_battery(
+        g_now_playing_scene.battery_outline,
+        g_now_playing_scene.battery_fill,
+        g_now_playing_scene.battery_tip,
+        battery_percent,
+        charging,
+        power_available
+    );
+
+    lv_obj_set_style_bg_color(g_now_playing_scene.panel, surface, 0);
+    lv_obj_set_style_bg_opa(g_now_playing_scene.panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(g_now_playing_scene.panel, accent_dim, 0);
+
+    lv_obj_set_style_bg_color(g_now_playing_scene.icon_halo, halo_fill, 0);
+    lv_obj_set_style_bg_opa(g_now_playing_scene.icon_halo, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(g_now_playing_scene.icon_halo, halo_border, 0);
+    lv_obj_set_style_text_color(g_now_playing_scene.icon_label, accent, 0);
+    lv_obj_center(g_now_playing_scene.icon_label);
+
+    lv_obj_set_style_bg_color(g_now_playing_scene.state_chip, accent_dim, 0);
+    lv_obj_set_style_bg_opa(g_now_playing_scene.state_chip, LV_OPA_COVER, 0);
+    lv_label_set_text(g_now_playing_scene.state_label, state_text != NULL ? state_text : "");
+    lv_obj_set_style_text_color(g_now_playing_scene.state_label, accent, 0);
+    lv_obj_center(g_now_playing_scene.state_label);
+
+    lv_label_set_text(g_now_playing_scene.title_label, title_text != NULL ? title_text : "");
+    lv_obj_set_style_text_color(g_now_playing_scene.title_label, ink, 0);
+
+    lv_label_set_text(g_now_playing_scene.artist_label, artist_text != NULL ? artist_text : "");
+    lv_obj_set_style_text_color(g_now_playing_scene.artist_label, muted, 0);
+
+    lv_obj_set_style_bg_color(g_now_playing_scene.progress_track, progress_bg, 0);
+    lv_obj_set_style_bg_opa(g_now_playing_scene.progress_track, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(g_now_playing_scene.progress_fill, accent, 0);
+    lv_obj_set_style_bg_opa(g_now_playing_scene.progress_fill, LV_OPA_COVER, 0);
+
+    int fill_width = (156 * progress_permille) / 1000;
+    if(fill_width <= 0) {
+        lv_obj_add_flag(g_now_playing_scene.progress_fill, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_clear_flag(g_now_playing_scene.progress_fill, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_size(g_now_playing_scene.progress_fill, fill_width, 8);
+    }
+
+    lv_label_set_text(g_now_playing_scene.footer_label, footer != NULL ? footer : "");
+    lv_obj_set_style_text_color(g_now_playing_scene.footer_label, accent_soft, 0);
+    lv_obj_align(g_now_playing_scene.footer_label, LV_ALIGN_BOTTOM_MID, 0, -5);
+
+    return 0;
+}
+
+void yoyopy_lvgl_now_playing_destroy(void) {
+    if(!g_now_playing_scene.built) {
+        return;
+    }
+
+    if(g_now_playing_scene.screen != NULL) {
+        lv_obj_clean(g_now_playing_scene.screen);
+    }
+    yoyopy_clear_group();
+    yoyopy_reset_now_playing_scene_refs();
 }
 
 int yoyopy_lvgl_init(void) {

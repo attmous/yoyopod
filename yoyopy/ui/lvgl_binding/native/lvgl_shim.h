@@ -111,6 +111,22 @@ int yoyopy_lvgl_playlist_sync(
     const char * empty_icon_key
 );
 void yoyopy_lvgl_playlist_destroy(void);
+int yoyopy_lvgl_now_playing_build(void);
+int yoyopy_lvgl_now_playing_sync(
+    const char * title_text,
+    const char * artist_text,
+    const char * state_text,
+    const char * footer,
+    int32_t progress_permille,
+    int32_t voip_state,
+    int32_t battery_percent,
+    int32_t charging,
+    int32_t power_available,
+    uint8_t accent_r,
+    uint8_t accent_g,
+    uint8_t accent_b
+);
+void yoyopy_lvgl_now_playing_destroy(void);
 void yoyopy_lvgl_clear_screen(void);
 const char * yoyopy_lvgl_last_error(void);
 const char * yoyopy_lvgl_version(void);

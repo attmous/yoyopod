@@ -99,6 +99,22 @@ int yoyopy_lvgl_playlist_sync(
     const char * empty_icon_key
 );
 void yoyopy_lvgl_playlist_destroy(void);
+int yoyopy_lvgl_now_playing_build(void);
+int yoyopy_lvgl_now_playing_sync(
+    const char * title_text,
+    const char * artist_text,
+    const char * state_text,
+    const char * footer,
+    int32_t progress_permille,
+    int32_t voip_state,
+    int32_t battery_percent,
+    int32_t charging,
+    int32_t power_available,
+    uint8_t accent_r,
+    uint8_t accent_g,
+    uint8_t accent_b
+);
+void yoyopy_lvgl_now_playing_destroy(void);
 void yoyopy_lvgl_clear_screen(void);
 const char * yoyopy_lvgl_last_error(void);
 const char * yoyopy_lvgl_version(void);
@@ -398,6 +414,49 @@ class LvglBinding:
 
     def playlist_destroy(self) -> None:
         self.lib.yoyopy_lvgl_playlist_destroy()
+
+    def now_playing_build(self) -> None:
+        if self.lib.yoyopy_lvgl_now_playing_build() != 0:
+            raise LvglBindingError(self.last_error())
+
+    def now_playing_sync(
+        self,
+        *,
+        title_text: str,
+        artist_text: str,
+        state_text: str,
+        footer: str,
+        progress_permille: int,
+        voip_state: int,
+        battery_percent: int,
+        charging: bool,
+        power_available: bool,
+        accent: tuple[int, int, int],
+    ) -> None:
+        title_raw = self.ffi.new("char[]", title_text.encode("utf-8"))
+        artist_raw = self.ffi.new("char[]", artist_text.encode("utf-8"))
+        state_raw = self.ffi.new("char[]", state_text.encode("utf-8"))
+        footer_raw = self.ffi.new("char[]", footer.encode("utf-8"))
+
+        result = self.lib.yoyopy_lvgl_now_playing_sync(
+            title_raw,
+            artist_raw,
+            state_raw,
+            footer_raw,
+            max(0, min(1000, int(progress_permille))),
+            voip_state,
+            battery_percent,
+            1 if charging else 0,
+            1 if power_available else 0,
+            accent[0],
+            accent[1],
+            accent[2],
+        )
+        if result != 0:
+            raise LvglBindingError(self.last_error())
+
+    def now_playing_destroy(self) -> None:
+        self.lib.yoyopy_lvgl_now_playing_destroy()
 
     def clear_screen(self) -> None:
         self.lib.yoyopy_lvgl_clear_screen()
