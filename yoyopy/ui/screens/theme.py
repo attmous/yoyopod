@@ -27,6 +27,10 @@ SUCCESS: Color = (61, 221, 83)
 ERROR: Color = (255, 103, 93)
 FOOTER_SAFE_HEIGHT_PORTRAIT = 20
 FOOTER_SAFE_HEIGHT_LANDSCAPE = 18
+STATUS_SIDE_INSET_PORTRAIT = 16
+STATUS_SIDE_INSET_LANDSCAPE = 10
+HEADER_SIDE_INSET_PORTRAIT = 18
+HEADER_SIDE_INSET_LANDSCAPE = 16
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,11 +267,6 @@ def render_backdrop(display: Display, mode: str) -> ModeTheme:
 
     theme = theme_for(mode)
     display.clear(BACKGROUND)
-
-    accent_wash = mix(theme.accent, BACKGROUND, 0.88)
-    display.line(18, 42, 68, 22, color=accent_wash, width=2)
-    display.line(display.WIDTH - 84, 28, display.WIDTH - 24, 46, color=accent_wash, width=2)
-    display.circle(display.WIDTH - 28, 38, 7, outline=theme.accent_dim, width=2)
     return theme
 
 
@@ -281,9 +280,10 @@ def render_status_bar(
 
     bar_height = display.STATUS_BAR_HEIGHT
     display.rectangle(0, 0, display.WIDTH, bar_height, fill=BACKGROUND)
+    side_inset = STATUS_SIDE_INSET_PORTRAIT if display.is_portrait() else STATUS_SIDE_INSET_LANDSCAPE
 
     voip_state = _voip_state(context)
-    dot_x = 10
+    dot_x = side_inset
     dot_y = (bar_height // 2) + 1
     if voip_state == "ready":
         display.circle(dot_x, dot_y, 4, fill=SUCCESS)
@@ -292,14 +292,14 @@ def render_status_bar(
 
     if show_time:
         time_text = datetime.now().strftime("%H:%M")
-        time_x = 20 if voip_state != "none" else 8
+        time_x = side_inset + (10 if voip_state != "none" else 0)
         display.text(time_text, time_x, 4, color=INK, font_size=13)
 
     battery_level = 100 if context is None else context.battery_percent
     charging = False if context is None else context.battery_charging
     power_available = True if context is None else context.power_available
 
-    battery_x = display.WIDTH - 31
+    battery_x = display.WIDTH - side_inset - 22
     battery_y = 6
     display.rectangle(
         battery_x,
@@ -353,6 +353,7 @@ def render_header(
 
     theme = render_backdrop(display, mode)
     render_status_bar(display, context, show_time=show_time)
+    side_inset = HEADER_SIDE_INSET_PORTRAIT if display.is_portrait() else HEADER_SIDE_INSET_LANDSCAPE
 
     chip_y = display.STATUS_BAR_HEIGHT + 10
     title_font_size = 28 if display.is_portrait() else 24
@@ -361,7 +362,7 @@ def render_header(
     if show_mode_chip:
         _pill(
             display,
-            16,
+            side_inset,
             chip_y,
             theme.label.upper(),
             fill=theme.accent_dim,
@@ -369,33 +370,33 @@ def render_header(
         )
         if page_text:
             width, _ = display.get_text_size(page_text, 10)
-            display.text(page_text, display.WIDTH - width - 16, chip_y + 4, color=MUTED, font_size=10)
+            display.text(page_text, display.WIDTH - width - side_inset, chip_y + 4, color=MUTED, font_size=10)
     else:
         title_font_size = 24 if display.is_portrait() else 22
         title_y = chip_y + 6
         if page_text:
             width, _ = display.get_text_size(page_text, 10)
-            display.text(page_text, display.WIDTH - width - 16, chip_y + 2, color=MUTED, font_size=10)
+            display.text(page_text, display.WIDTH - width - side_inset, chip_y + 2, color=MUTED, font_size=10)
 
-    max_title_width = display.WIDTH - 96
+    max_title_width = display.WIDTH - (side_inset * 2) - 60
     display_title = text_fit(display, title, max_title_width, title_font_size)
-    display.text(display_title, 18, title_y, color=INK, font_size=title_font_size)
+    display.text(display_title, side_inset, title_y, color=INK, font_size=title_font_size)
 
     title_width, title_height = display.get_text_size(display_title, title_font_size)
-    display.line(18, title_y + title_height + 6, 18 + min(title_width + 10, 126), title_y + title_height + 6, color=theme.accent, width=3)
+    display.line(side_inset, title_y + title_height + 6, side_inset + min(title_width + 10, 126), title_y + title_height + 6, color=theme.accent, width=3)
 
     if subtitle:
         subtitle_y = title_y + title_height + 14
-        subtitle_width = display.WIDTH - 34 - (62 if icon else 0)
+        subtitle_width = display.WIDTH - (side_inset * 2) - (62 if icon else 0)
         lines = wrap_text(display, subtitle, subtitle_width, 12, max_lines=2)
         for line_index, line in enumerate(lines):
-            display.text(line, 18, subtitle_y + (line_index * 14), color=MUTED, font_size=12)
+            display.text(line, side_inset, subtitle_y + (line_index * 14), color=MUTED, font_size=12)
         bottom_y = subtitle_y + (len(lines) * 14)
     else:
         bottom_y = title_y + title_height + 10
 
     if icon:
-        draw_icon(display, icon, display.WIDTH - 72, display.STATUS_BAR_HEIGHT + 18, 44, theme.accent)
+        draw_icon(display, icon, display.WIDTH - side_inset - 44, display.STATUS_BAR_HEIGHT + 18, 44, theme.accent)
 
     return bottom_y + 10
 

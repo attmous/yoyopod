@@ -45,7 +45,7 @@ def _snapshot() -> PowerSnapshot:
 
 
 def test_power_screen_builds_battery_and_runtime_pages() -> None:
-    """The power screen should expose both telemetry and runtime/safety pages."""
+    """The power screen should split telemetry and care info into portrait-safe pages."""
     display = Display(simulate=True)
     try:
         status = {
@@ -71,13 +71,14 @@ def test_power_screen_builds_battery_and_runtime_pages() -> None:
 
         pages = screen.build_pages(snapshot=screen.power_manager.get_snapshot(), status=status)
 
-        assert pages[0].title == "Power"
+        assert [page.title for page in pages] == ["Power", "Time", "Care"]
         assert ("Model", "PiSugar 3") in pages[0].rows
         assert ("Battery", "55% chg") in pages[0].rows
-        assert ("Alarm", "07:30") in pages[0].rows
-        assert pages[1].title == "Care"
+        assert ("RTC", "04-05 13:30") in pages[1].rows
         assert ("Uptime", "1h01m") in pages[1].rows
-        assert ("Watchdog", "Active") in pages[1].rows
+        assert ("Timeout", "30s") in pages[2].rows
+        assert ("Watchdog", "Active") in pages[2].rows
+        assert all(len(page.rows) <= 5 for page in pages)
     finally:
         display.cleanup()
 
@@ -100,8 +101,9 @@ def test_power_screen_formats_unavailable_snapshot() -> None:
 
         pages = screen.build_pages(snapshot=snapshot, status={})
 
+        assert [page.title for page in pages] == ["Power", "Time", "Care"]
         assert ("Status", "Offline") in pages[0].rows
         assert ("Reason", "I2C not connected") in pages[0].rows
-        assert ("Watchdog", "Off") in pages[1].rows
+        assert ("Watchdog", "Off") in pages[2].rows
     finally:
         display.cleanup()

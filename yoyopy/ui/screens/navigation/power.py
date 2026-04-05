@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
-from yoyopy.ui.screens.theme import INK, MUTED, SETUP, SURFACE, render_footer, render_header, rounded_panel, text_fit
+from yoyopy.ui.screens.theme import INK, MUTED, SETUP, SURFACE_RAISED, render_footer, render_header, rounded_panel, text_fit
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -59,16 +59,17 @@ class PowerScreen(Screen):
         )
 
         panel_top = content_top + 8
-        panel_bottom = self.display.HEIGHT - 28
+        panel_bottom = self.display.HEIGHT - 26
         rounded_panel(
             self.display,
             12,
             panel_top,
             self.display.WIDTH - 12,
             panel_bottom,
-            fill=SURFACE,
-            outline=None,
+            fill=SURFACE_RAISED,
+            outline=SETUP.accent_dim,
             radius=24,
+            shadow=True,
         )
 
         pill_width, _ = self.display.get_text_size(active_page.title.upper(), 10)
@@ -85,7 +86,7 @@ class PowerScreen(Screen):
         self.display.text(active_page.title.upper(), 31, panel_top + 16, color=SETUP.accent, font_size=10)
 
         row_y = panel_top + 46
-        row_gap = 24 if self.display.is_portrait() else 22
+        row_gap = 20 if self.display.is_portrait() else 22
         for label, value in active_page.rows:
             label_text = text_fit(self.display, label, 90, 11)
             value_text = text_fit(self.display, value, self.display.WIDTH - 120, 12)
@@ -105,9 +106,13 @@ class PowerScreen(Screen):
         status: dict[str, object],
     ) -> list[PowerPage]:
         """Build compact setup pages for rendering and tests."""
+        battery_rows = self._build_battery_rows(snapshot=snapshot)
+        runtime_rows = self._build_runtime_rows(snapshot=snapshot, status=status)
+
         return [
-            PowerPage(title="Power", rows=self._build_battery_rows(snapshot=snapshot)),
-            PowerPage(title="Care", rows=self._build_runtime_rows(snapshot=snapshot, status=status)),
+            PowerPage(title="Power", rows=battery_rows[:4]),
+            PowerPage(title="Time", rows=battery_rows[4:6] + runtime_rows[:2]),
+            PowerPage(title="Care", rows=runtime_rows[2:]),
         ]
 
     def _get_snapshot(self) -> Optional["PowerSnapshot"]:
