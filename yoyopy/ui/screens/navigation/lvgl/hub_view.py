@@ -45,7 +45,7 @@ class LvglHubView:
             icon_key=selected_card.icon,
             title=selected_card.title,
             subtitle=selected_card.subtitle,
-            footer="Tap next / Open",
+            footer="Tap next / Double open",
             time_text=datetime.now().strftime("%H:%M"),
             accent=theme.accent,
             selected_index=self.screen.selected_index,

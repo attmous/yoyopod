@@ -226,7 +226,7 @@ class HubScreen(Screen):
             radius = 4 if index == self.selected_index else 3
             self.display.circle(dots_x + (index * 18), dots_y, radius, fill=dot_color)
 
-        render_footer(self.display, "Tap next / Open", mode=selected_card.mode)
+        render_footer(self.display, "Tap next / Double open", mode=selected_card.mode)
         self.display.update()
 
     def on_advance(self, data=None) -> None:

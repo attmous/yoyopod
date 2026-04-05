@@ -76,6 +76,8 @@ int yoyopy_lvgl_playlist_build(void);
 int yoyopy_lvgl_playlist_sync(
     const char * title_text,
     const char * page_text,
+    const char * status_chip_text,
+    int32_t status_chip_kind,
     const char * footer,
     const char * item_0,
     const char * item_1,
@@ -421,6 +423,8 @@ class LvglBinding:
         *,
         title_text: str,
         page_text: str | None,
+        status_chip_text: str | None = None,
+        status_chip_kind: int = 0,
         footer: str,
         items: list[str],
         badges: list[str],
@@ -448,6 +452,11 @@ class LvglBinding:
             if page_text
             else self.ffi.NULL
         )
+        status_chip_text_raw = (
+            self.ffi.new("char[]", status_chip_text.encode("utf-8"))
+            if status_chip_text
+            else self.ffi.NULL
+        )
         footer_raw = self.ffi.new("char[]", footer.encode("utf-8"))
         item_0_raw = self.ffi.new("char[]", normalized_items[0].encode("utf-8"))
         item_1_raw = self.ffi.new("char[]", normalized_items[1].encode("utf-8"))
@@ -464,6 +473,8 @@ class LvglBinding:
         result = self.lib.yoyopy_lvgl_playlist_sync(
             title_raw,
             page_text_raw,
+            status_chip_text_raw,
+            int(status_chip_kind),
             footer_raw,
             item_0_raw,
             item_1_raw,

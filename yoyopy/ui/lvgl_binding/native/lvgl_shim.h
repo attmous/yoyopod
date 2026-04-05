@@ -88,6 +88,8 @@ int yoyopy_lvgl_playlist_build(void);
 int yoyopy_lvgl_playlist_sync(
     const char * title_text,
     const char * page_text,
+    const char * status_chip_text,
+    int32_t status_chip_kind,
     const char * footer,
     const char * item_0,
     const char * item_1,

@@ -37,9 +37,14 @@ class LvglCallView:
         call_state_text, _caller_text = self.screen._call_context_lines(status)
         context = self.screen.context
 
+        title_text = call_state_text or "Calls"
+        status_chip_text, status_chip_kind = self._status_chip(status_text, call_state_text)
+
         self.backend.binding.playlist_sync(
-            title_text=call_state_text or status_text or "Talk",
-            page_text=self.screen.get_page_text(),
+            title_text=title_text,
+            page_text=None,
+            status_chip_text=status_chip_text,
+            status_chip_kind=status_chip_kind,
             footer=self.screen._instruction_text(),
             items=visible_items,
             badges=visible_badges,
@@ -59,6 +64,20 @@ class LvglCallView:
             return
         self.backend.binding.playlist_destroy()
         self._built = False
+
+    @staticmethod
+    def _status_chip(status_text: str, call_state_text: str) -> tuple[str | None, int]:
+        if call_state_text:
+            return None, 0
+        if status_text == "Calls ready":
+            return "Ready", 1
+        if status_text in {"Recovering", "Connecting"}:
+            return status_text, 2
+        if status_text == "Offline":
+            return "Offline", 3
+        if status_text == "Not set up":
+            return "Setup", 4
+        return None, 0
 
     @staticmethod
     def _battery_percent(context: "AppContext | None") -> int:

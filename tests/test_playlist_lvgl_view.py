@@ -97,7 +97,7 @@ def test_playlist_screen_builds_syncs_and_destroys_lvgl_view() -> None:
 
     final_payload = binding.playlist_sync_payloads[-1]
     assert final_payload["title_text"] == "Spotify"
-    assert final_payload["page_text"] == "1/4"
+    assert final_payload["page_text"] is None
     assert final_payload["items"] == ["Alpha", "Beta", "Gamma"]
     assert final_payload["badges"] == ["12", "4", ""]
     assert final_payload["selected_visible_index"] == 0
@@ -108,7 +108,7 @@ def test_playlist_screen_builds_syncs_and_destroys_lvgl_view() -> None:
     screen.render()
 
     scrolled_payload = binding.playlist_sync_payloads[-1]
-    assert scrolled_payload["page_text"] == "4/4"
+    assert scrolled_payload["page_text"] is None
     assert scrolled_payload["items"] == ["Beta", "Gamma", "Delta"]
     assert scrolled_payload["badges"] == ["4", "", "9"]
     assert scrolled_payload["selected_visible_index"] == 2

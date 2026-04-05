@@ -45,7 +45,7 @@ class LvglPlaylistView:
 
         self.backend.binding.playlist_sync(
             title_text=title_text,
-            page_text=self.screen.get_page_text(),
+            page_text=None,
             footer=footer,
             items=visible_items,
             badges=visible_badges,

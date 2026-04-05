@@ -34,7 +34,7 @@ class LvglAskView:
         context = self.screen.context
         self.backend.binding.ask_sync(
             title_text="Coming soon",
-            subtitle_text="Safe questions later.",
+            subtitle_text="Safe AI later.",
             footer="Hold back" if self.screen.is_one_button_mode() else "B back",
             voip_state=self._voip_state(context),
             battery_percent=self._battery_percent(context),

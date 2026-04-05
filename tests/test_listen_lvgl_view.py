@@ -79,7 +79,7 @@ def test_listen_screen_builds_syncs_and_destroys_lvgl_view() -> None:
     assert binding.listen_build_calls == 1
     assert len(binding.listen_sync_payloads) == 1
     first_payload = binding.listen_sync_payloads[-1]
-    assert first_payload["page_text"] == "2/3"
+    assert first_payload["page_text"] is None
     assert first_payload["items"] == ["Spotify", "YouTube", "Local"]
     assert first_payload["selected_index"] == 1
     assert first_payload["voip_state"] == 2
@@ -89,7 +89,7 @@ def test_listen_screen_builds_syncs_and_destroys_lvgl_view() -> None:
     screen.render()
 
     second_payload = binding.listen_sync_payloads[-1]
-    assert second_payload["page_text"] == "3/3"
+    assert second_payload["page_text"] is None
     assert second_payload["selected_index"] == 2
 
     screen.exit()
