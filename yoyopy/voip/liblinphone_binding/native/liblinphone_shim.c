@@ -1141,6 +1141,7 @@ int yoyopy_liblinphone_start_voice_recording(const char *file_path) {
         yoyopy_set_error("Failed to create Liblinphone recorder params");
         return -1;
     }
+    linphone_recorder_params_set_file_format(params, LinphoneRecorderFileFormatWav);
 
     g_state.current_recorder = linphone_core_create_recorder(g_state.core, params);
     linphone_recorder_params_unref(params);

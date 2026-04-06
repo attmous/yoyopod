@@ -374,6 +374,16 @@ def test_voip_manager_builds_message_store_under_directory(tmp_path: Path) -> No
     assert manager._message_store.index_file == tmp_path / "messages" / "messages.json"
 
 
+def test_liblinphone_shim_records_voice_notes_as_wav() -> None:
+    """The native recorder shim should explicitly match the .wav files used by the app."""
+
+    shim_source = Path("yoyopy/voip/liblinphone_binding/native/liblinphone_shim.c").read_text(
+        encoding="utf-8"
+    )
+
+    assert "linphone_recorder_params_set_file_format(params, LinphoneRecorderFileFormatWav);" in shim_source
+
+
 def test_voip_manager_handles_backend_stop_event() -> None:
     """Unexpected backend stop should clear availability and registration state."""
 
