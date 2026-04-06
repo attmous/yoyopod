@@ -276,6 +276,32 @@ def test_voice_note_screen_reopens_clean_after_terminal_draft(display: Display) 
     assert context.voice_note_send_state == "idle"
 
 
+def test_voice_note_screen_render_syncs_manager_terminal_state(display: Display) -> None:
+    """Render should reflect async manager state changes such as send failure or success."""
+
+    context = AppContext()
+    voip_manager = FakeVoIPManager()
+    voip_manager.active_voice_note = VoiceNoteDraft(
+        recipient_address="sip:alice@example.com",
+        recipient_name="Mama",
+        file_path="data/voice_notes/test.wav",
+        send_state="sending",
+        status_text="Sending...",
+        message_id="note-1",
+        duration_ms=3200,
+    )
+    context.set_voice_note_recipient(name="Mama", sip_address="sip:alice@example.com")
+    screen = VoiceNoteScreen(display, context, voip_manager=voip_manager)
+
+    screen.enter()
+    voip_manager.active_voice_note.send_state = "failed"
+    voip_manager.active_voice_note.status_text = "Voice notes unavailable"
+    screen.render()
+
+    assert screen.current_view_model()[0] == "Couldn't Send"
+    assert context.voice_note_status_text == "Voice notes unavailable"
+
+
 def test_voice_note_screen_ignores_stale_draft_for_different_recipient(display: Display) -> None:
     """Opening voice notes for contact B should not inherit contact A's stale draft state."""
 

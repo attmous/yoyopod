@@ -46,6 +46,10 @@ class VoiceNoteDraft:
     message_id: str = ""
     send_state: str = "idle"
     status_text: str = ""
+    send_started_at: float = 0.0
+
+
+VOICE_NOTE_SEND_TIMEOUT_SECONDS = 15.0
 
 
 class VoIPManager:
@@ -124,6 +128,7 @@ class VoIPManager:
     def iterate(self) -> None:
         if self.running:
             self.backend.iterate()
+        self._check_active_voice_note_timeout()
 
     def make_call(self, sip_address: str, contact_name: str | None = None) -> bool:
         if not self.registered:
@@ -241,8 +246,13 @@ class VoIPManager:
             return False
 
         draft = self._active_voice_note
+        if not self.config.file_transfer_server_url.strip():
+            draft.send_state = "failed"
+            draft.status_text = "Voice notes unavailable"
+            return False
         draft.send_state = "sending"
         draft.status_text = "Sending..."
+        draft.send_started_at = time.monotonic()
         message_id = self.backend.send_voice_note(
             draft.recipient_address,
             file_path=draft.file_path,
@@ -252,6 +262,7 @@ class VoIPManager:
         if not message_id:
             draft.send_state = "failed"
             draft.status_text = "Couldn't send"
+            draft.send_started_at = 0.0
             return False
 
         draft.message_id = message_id
@@ -442,9 +453,11 @@ class VoIPManager:
                 self._active_voice_note.status_text = (
                     "Delivered" if event.delivery_state == MessageDeliveryState.DELIVERED else "Sent"
                 )
+                self._active_voice_note.send_started_at = 0.0
             elif event.delivery_state == MessageDeliveryState.FAILED:
                 self._active_voice_note.send_state = "failed"
                 self._active_voice_note.status_text = event.error or "Couldn't send"
+                self._active_voice_note.send_started_at = 0.0
 
         for callback in self.message_delivery_callbacks:
             try:
@@ -476,6 +489,7 @@ class VoIPManager:
         if self._active_voice_note is not None and self._active_voice_note.message_id == event.message_id:
             self._active_voice_note.send_state = "failed"
             self._active_voice_note.status_text = event.reason or "Couldn't send"
+            self._active_voice_note.send_started_at = 0.0
         for callback in self.message_failure_callbacks:
             try:
                 callback(event.message_id, event.reason)
@@ -615,6 +629,20 @@ class VoIPManager:
                 pass
         finally:
             self._playback_process = None
+
+    def _check_active_voice_note_timeout(self) -> None:
+        draft = self._active_voice_note
+        if draft is None or draft.send_state != "sending" or draft.send_started_at <= 0.0:
+            return
+        if (time.monotonic() - draft.send_started_at) < VOICE_NOTE_SEND_TIMEOUT_SECONDS:
+            return
+
+        draft.send_state = "failed"
+        draft.status_text = "Send timed out"
+        draft.send_started_at = 0.0
+        if draft.message_id:
+            self._message_store.update_delivery(draft.message_id, MessageDeliveryState.FAILED)
+        self._notify_message_summary_change()
 
     @staticmethod
     def _iso_now() -> str:

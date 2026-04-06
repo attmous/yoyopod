@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -117,6 +118,7 @@ def build_config() -> VoIPConfig:
         sip_username="alice",
         sip_password_ha1="hash",
         sip_identity="sip:alice@sip.example.com",
+        file_transfer_server_url="https://transfer.example.com",
         message_store_dir="data/test_messages",
         voice_note_store_dir="data/test_voice_notes",
     )
@@ -268,6 +270,43 @@ def test_voip_manager_tracks_voice_note_send_and_delivery() -> None:
     )
 
     assert manager.get_active_voice_note().send_state == "sent"
+
+
+def test_voip_manager_fails_voice_note_send_without_transfer_server() -> None:
+    """Voice-note sending should fail immediately when file transfer is not configured."""
+
+    backend = MockVoIPBackend()
+    config = build_config()
+    config.file_transfer_server_url = ""
+    manager = VoIPManager(config, backend=backend)
+
+    assert manager.start()
+    assert manager.start_voice_note_recording("sip:mom@example.com", recipient_name="Mom")
+    assert manager.stop_voice_note_recording() is not None
+
+    assert manager.send_active_voice_note() is False
+    assert manager.get_active_voice_note().send_state == "failed"
+    assert manager.get_active_voice_note().status_text == "Voice notes unavailable"
+
+
+def test_voip_manager_times_out_stuck_voice_note_send() -> None:
+    """Voice-note sends should not remain in sending forever without delivery callbacks."""
+
+    backend = MockVoIPBackend()
+    config = build_config()
+    config.file_transfer_server_url = "https://transfer.example.com"
+    manager = VoIPManager(config, backend=backend)
+
+    assert manager.start()
+    assert manager.start_voice_note_recording("sip:mom@example.com", recipient_name="Mom")
+    assert manager.stop_voice_note_recording() is not None
+    assert manager.send_active_voice_note() is True
+
+    manager.get_active_voice_note().send_started_at = time.monotonic() - 30.0
+    manager.iterate()
+
+    assert manager.get_active_voice_note().send_state == "failed"
+    assert manager.get_active_voice_note().status_text == "Send timed out"
 
 
 def test_voip_manager_surfaces_voice_note_failure_reason() -> None:

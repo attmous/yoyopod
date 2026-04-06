@@ -256,6 +256,7 @@ class VoiceNoteScreen(Screen):
     def render(self) -> None:
         """Render the current voice-note flow state."""
 
+        self._sync_state_from_manager(default_state=self._state)
         lvgl_view = self._ensure_lvgl_view()
         if lvgl_view is not None:
             lvgl_view.sync()
