@@ -24,6 +24,7 @@
 #include <linphone/api/c-chat-room.h>
 #include <linphone/api/c-content.h>
 #include <linphone/api/c-factory.h>
+#include <linphone/api/c-nat-policy.h>
 #include <linphone/api/c-recorder.h>
 #include <linphone/buffer.h>
 #include <linphone/core.h>
@@ -552,6 +553,35 @@ static int yoyopy_configure_media_policy(LinphoneCore *core, LinphoneFactory *fa
     return 0;
 }
 
+static int yoyopy_configure_network_media_defaults(LinphoneCore *core, const char *stun_server) {
+    LinphoneNatPolicy *nat_policy = NULL;
+
+    if (core == NULL) {
+        yoyopy_set_error("Cannot configure Liblinphone network defaults without a core");
+        return -1;
+    }
+
+    linphone_core_set_media_encryption(core, LinphoneMediaEncryptionSRTP);
+    linphone_core_set_media_encryption_mandatory(core, FALSE);
+    linphone_core_set_audio_port_range(core, 7076, 7100);
+    linphone_core_set_video_port_range(core, 9076, 9100);
+
+    nat_policy = linphone_core_create_nat_policy(core);
+    if (nat_policy == NULL) {
+        yoyopy_set_error("Failed to create Liblinphone NAT policy");
+        return -1;
+    }
+
+    linphone_nat_policy_enable_stun(nat_policy, TRUE);
+    linphone_nat_policy_enable_ice(nat_policy, TRUE);
+    if (stun_server != NULL && stun_server[0] != '\0') {
+        linphone_nat_policy_set_stun_server(nat_policy, stun_server);
+    }
+    linphone_core_set_nat_policy(core, nat_policy);
+    linphone_nat_policy_unref(nat_policy);
+    return 0;
+}
+
 static void yoyopy_queue_message_received_event(LinphoneChatMessage *message) {
     yoyopy_liblinphone_event_t event_value;
     memset(&event_value, 0, sizeof(event_value));
@@ -864,6 +894,10 @@ int yoyopy_liblinphone_start(
     linphone_core_set_mic_gain_db(g_state.core, ((float)mic_gain * 0.3f));
     linphone_core_set_playback_gain_db(g_state.core, ((float)speaker_volume * 0.12f) - 6.0f);
     if (yoyopy_configure_media_policy(g_state.core, g_state.factory) != 0) {
+        yoyopy_liblinphone_stop();
+        return -1;
+    }
+    if (yoyopy_configure_network_media_defaults(g_state.core, stun_server) != 0) {
         yoyopy_liblinphone_stop();
         return -1;
     }
