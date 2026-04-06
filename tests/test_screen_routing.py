@@ -90,6 +90,15 @@ def test_screen_router_covers_whisplay_hub_routes() -> None:
     assert router.resolve("hub", "select", payload="Power") == NavigationRequest.push("power")
 
 
+def test_screen_router_covers_local_listen_routes() -> None:
+    """The local-first Listen menu should route into playlists, recents, and shuffle."""
+    router = ScreenRouter()
+
+    assert router.resolve("listen", "open_playlists") == NavigationRequest.push("playlists")
+    assert router.resolve("listen", "open_recent") == NavigationRequest.push("recent_tracks")
+    assert router.resolve("listen", "shuffle_started") == NavigationRequest.push("now_playing")
+
+
 def test_screen_manager_routes_menu_labels_through_stack(display: Display) -> None:
     """Menu labels should resolve through the router and preserve stack navigation."""
     context = AppContext()

@@ -134,7 +134,7 @@ def main() -> int:
         app_log.info("=" * 60)
         app_log.info("")
         app_log.info("Available Features:")
-        app_log.info("  - Music streaming (Mopidy/Spotify)")
+        app_log.info("  - Local music playback (Mopidy)")
         app_log.info("  - VoIP calling and messaging (Liblinphone)")
         app_log.info("  - Auto-pause music on calls")
         app_log.info("  - Auto-resume after calls")

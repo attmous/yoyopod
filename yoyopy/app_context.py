@@ -133,7 +133,6 @@ class AppContext:
         self.signal_strength: int = 4  # 0-4 bars
         self.is_connected: bool = False
         self.connection_type: str = "none"  # wifi, 4g, none
-        self.current_audio_source: str = "local"
         self.missed_calls: int = 0
         self.recent_calls: List[str] = []
         self.unread_voice_notes: int = 0

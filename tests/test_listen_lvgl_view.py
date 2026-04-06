@@ -1,8 +1,9 @@
-"""Focused tests for the LVGL-backed Listen screen delegation."""
+"""Focused tests for the LVGL-backed Listen menu delegation."""
 
 from __future__ import annotations
 
 from yoyopy.app_context import AppContext
+from yoyopy.audio import LocalMusicService
 from yoyopy.ui.input import InteractionProfile
 from yoyopy.ui.screens import ListenScreen
 
@@ -45,16 +46,6 @@ class FakeLvglDisplay:
         return self._ui_backend
 
 
-class FakeConfigManager:
-    """Minimal config manager returning a stable source list."""
-
-    def __init__(self, sources: list[str]) -> None:
-        self.sources = sources
-
-    def get_listen_sources(self) -> list[str]:
-        return list(self.sources)
-
-
 def test_listen_screen_builds_syncs_and_destroys_lvgl_view() -> None:
     """ListenScreen should delegate its lifecycle to an LVGL view when available."""
 
@@ -65,12 +56,11 @@ def test_listen_screen_builds_syncs_and_destroys_lvgl_view() -> None:
     context.battery_percent = 58
     context.battery_charging = False
     context.power_available = True
-    context.current_audio_source = "youtube"
 
     screen = ListenScreen(
         display,
         context,
-        config_manager=FakeConfigManager(["spotify", "youtube", "local"]),
+        music_service=LocalMusicService(None),
     )
 
     screen.enter()
@@ -80,8 +70,8 @@ def test_listen_screen_builds_syncs_and_destroys_lvgl_view() -> None:
     assert len(binding.listen_sync_payloads) == 1
     first_payload = binding.listen_sync_payloads[-1]
     assert first_payload["page_text"] is None
-    assert first_payload["items"] == ["Spotify", "YouTube", "Local"]
-    assert first_payload["selected_index"] == 1
+    assert first_payload["items"] == ["Playlists", "Recent", "Shuffle"]
+    assert first_payload["selected_index"] == 0
     assert first_payload["voip_state"] == 2
     assert first_payload["battery_percent"] == 58
 
@@ -90,29 +80,7 @@ def test_listen_screen_builds_syncs_and_destroys_lvgl_view() -> None:
 
     second_payload = binding.listen_sync_payloads[-1]
     assert second_payload["page_text"] is None
-    assert second_payload["selected_index"] == 2
+    assert second_payload["selected_index"] == 1
 
     screen.exit()
     assert binding.listen_destroy_calls == 1
-
-
-def test_listen_screen_syncs_empty_state_through_lvgl() -> None:
-    """ListenScreen should send an empty-state payload when no sources are configured."""
-
-    binding = FakeLvglBinding()
-    display = FakeLvglDisplay(binding)
-    context = AppContext(interaction_profile=InteractionProfile.ONE_BUTTON)
-    screen = ListenScreen(
-        display,
-        context,
-        config_manager=FakeConfigManager([]),
-    )
-
-    screen.enter()
-    screen.render()
-
-    payload = binding.listen_sync_payloads[-1]
-    assert payload["page_text"] is None
-    assert payload["items"] == []
-    assert payload["selected_index"] == 0
-    assert payload["empty_title"] == "No sources"

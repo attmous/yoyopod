@@ -697,32 +697,6 @@ def _voip_state(context: AppContext | None) -> str:
     return "ready" if getattr(context, "voip_ready", False) else "offline"
 
 
-def audio_source_label(source: str | None) -> str:
-    """Format a human-readable audio source label."""
-
-    if not source:
-        return "Local"
-    normalized = source.strip().lower()
-    return {
-        "spotify": "Spotify",
-        "amazon": "Amazon",
-        "youtube": "YouTube",
-        "local": "Local",
-    }.get(normalized, normalized.title())
-
-
-def audio_source_subtitle(source: str | None) -> str:
-    """Return a playful source subtitle."""
-
-    normalized = (source or "local").strip().lower()
-    return {
-        "spotify": "Mixes and streaming picks",
-        "amazon": "Albums and family playlists",
-        "youtube": "Videos and saved clips",
-        "local": "On-device playlists",
-    }.get(normalized, "Configured music source")
-
-
 def format_battery_compact(context: AppContext | None) -> str:
     """Return a tiny battery summary for cards."""
 

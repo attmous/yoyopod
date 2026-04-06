@@ -1,5 +1,5 @@
 """
-YoyoPod - Unified VoIP + Music Streaming Application
+YoyoPod - Unified VoIP + Local Music Application
 
 Main application bootstrap and lifecycle coordinator.
 """
@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, Optional
 from loguru import logger
 
 from yoyopy.app_context import AppContext
-from yoyopy.audio.mopidy_client import MopidyClient
+from yoyopy.audio import LocalMusicService, MopidyClient, RecentTrackHistoryStore
 from yoyopy.config import ConfigManager, YoyoPodConfig
 from yoyopy.coordinators import (
     AppRuntimeState,
@@ -58,6 +58,7 @@ from yoyopy.ui.screens import (
     OutgoingCallScreen,
     PlaylistScreen,
     PowerScreen,
+    RecentTracksScreen,
     ScreenManager,
     TalkContactScreen,
     VoiceNoteScreen,
@@ -125,8 +126,10 @@ class YoyoPodApp:
         # Manager components
         self.voip_manager: Optional[VoIPManager] = None
         self.mopidy_client: Optional[MopidyClient] = None
+        self.local_music_service: Optional[LocalMusicService] = None
         self.power_manager: Optional[PowerManager] = None
         self.call_history_store: Optional[CallHistoryStore] = None
+        self.recent_track_store: Optional[RecentTrackHistoryStore] = None
 
         # Screen instances
         self.hub_screen: Optional[HubScreen] = None
@@ -137,6 +140,7 @@ class YoyoPodApp:
         self.power_screen: Optional[PowerScreen] = None
         self.now_playing_screen: Optional[NowPlayingScreen] = None
         self.playlist_screen: Optional[PlaylistScreen] = None
+        self.recent_tracks_screen: Optional[RecentTracksScreen] = None
         self.call_screen: Optional[CallScreen] = None
         self.talk_contact_screen: Optional[TalkContactScreen] = None
         self.call_history_screen: Optional[CallHistoryScreen] = None
@@ -283,6 +287,9 @@ class YoyoPodApp:
             self.call_history_store = CallHistoryStore(
                 self.config_manager.config_dir / "call_history.json"
             )
+            self.recent_track_store = RecentTrackHistoryStore(
+                self.config_manager.config_dir / "recent_tracks.json"
+            )
 
             if self.config_manager.app_config_loaded:
                 logger.info(f"Loaded configuration from {self.config_manager.app_config_file}")
@@ -396,9 +403,6 @@ class YoyoPodApp:
             logger.info("  - AppContext")
             self.context = AppContext()
             if self.config_manager is not None:
-                listen_sources = self.config_manager.get_listen_sources()
-                if listen_sources:
-                    self.context.current_audio_source = listen_sources[0]
                 self.context.update_voip_status(
                     configured=bool(
                         self.config_manager.get_sip_identity().strip()
@@ -489,6 +493,10 @@ class YoyoPodApp:
             )
             mopidy_port = self.app_settings.audio.mopidy_port if self.app_settings else 6680
             self.mopidy_client = MopidyClient(host=mopidy_host, port=mopidy_port)
+            self.local_music_service = LocalMusicService(
+                self.mopidy_client,
+                recent_store=self.recent_track_store,
+            )
             if self.mopidy_client.connect():
                 logger.info("    ✓ Mopidy connected successfully")
                 self.mopidy_client.start_polling()
@@ -525,6 +533,7 @@ class YoyoPodApp:
                 self.display,
                 self.context,
                 mopidy_client=self.mopidy_client,
+                local_music_service=self.local_music_service,
                 voip_manager=self.voip_manager,
             )
             self.menu_screen = MenuScreen(self.display, self.context, items=menu_items)
@@ -532,7 +541,7 @@ class YoyoPodApp:
             self.listen_screen = ListenScreen(
                 self.display,
                 self.context,
-                config_manager=self.config_manager,
+                music_service=self.local_music_service,
             )
             self.ask_screen = AskScreen(self.display, self.context)
             self.power_screen = PowerScreen(
@@ -549,7 +558,12 @@ class YoyoPodApp:
             self.playlist_screen = PlaylistScreen(
                 self.display,
                 self.context,
-                mopidy_client=self.mopidy_client,
+                music_service=self.local_music_service,
+            )
+            self.recent_tracks_screen = RecentTracksScreen(
+                self.display,
+                self.context,
+                music_service=self.local_music_service,
             )
             self.call_screen = CallScreen(
                 self.display,
@@ -608,6 +622,7 @@ class YoyoPodApp:
             self.screen_manager.register_screen("power", self.power_screen)
             self.screen_manager.register_screen("now_playing", self.now_playing_screen)
             self.screen_manager.register_screen("playlists", self.playlist_screen)
+            self.screen_manager.register_screen("recent_tracks", self.recent_tracks_screen)
             self.screen_manager.register_screen("call", self.call_screen)
             self.screen_manager.register_screen("talk_contact", self.talk_contact_screen)
             self.screen_manager.register_screen("call_history", self.call_history_screen)
@@ -619,7 +634,7 @@ class YoyoPodApp:
             logger.info("    - Whisplay root: hub")
 
             logger.info("  ✓ All screens registered")
-            logger.info("    - Listen flow: listen, playlists, now_playing")
+            logger.info("    - Listen flow: listen, playlists, recent_tracks, now_playing")
             logger.info("    - Ask flow: ask")
             logger.info("    - Power screen: power")
             logger.info("    - VoIP screens: call, talk_contact, call_history, contacts, voice_note, incoming_call, outgoing_call, in_call")
@@ -1005,6 +1020,7 @@ class YoyoPodApp:
         self.playback_coordinator = PlaybackCoordinator(
             runtime=self.coordinator_runtime,
             screen_coordinator=self.screen_coordinator,
+            local_music_service=self.local_music_service,
         )
         self.power_coordinator = PowerCoordinator(
             runtime=self.coordinator_runtime,

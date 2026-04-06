@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from yoyopy.app_context import AppContext
+from yoyopy.audio import LocalMusicService
 from yoyopy.ui.input import InteractionProfile
 from yoyopy.ui.screens import PlaylistScreen
 
@@ -67,6 +68,9 @@ class FakeMopidyClient:
     def get_playlists(self, fetch_track_counts: bool = True) -> list[FakePlaylist]:
         return list(self.playlists)
 
+    def load_playlist(self, playlist_uri: str) -> bool:
+        return True
+
 
 def test_playlist_screen_builds_syncs_and_destroys_lvgl_view() -> None:
     """PlaylistScreen should delegate lifecycle and visible-window state to LVGL."""
@@ -78,17 +82,17 @@ def test_playlist_screen_builds_syncs_and_destroys_lvgl_view() -> None:
     context.battery_percent = 61
     context.battery_charging = False
     context.power_available = True
-    context.current_audio_source = "spotify"
 
     mopidy = FakeMopidyClient(
         [
-            FakePlaylist("Alpha", "playlist:alpha", 12),
-            FakePlaylist("Beta", "playlist:beta", 4),
-            FakePlaylist("Gamma", "playlist:gamma", 0),
-            FakePlaylist("Delta", "playlist:delta", 9),
+            FakePlaylist("Alpha", "m3u:alpha", 12),
+            FakePlaylist("Beta", "m3u:beta", 4),
+            FakePlaylist("Gamma", "m3u:gamma", 0),
+            FakePlaylist("Cloud", "spotify:cloud", 99),
+            FakePlaylist("Delta", "m3u:delta", 9),
         ]
     )
-    screen = PlaylistScreen(display, context, mopidy_client=mopidy)
+    screen = PlaylistScreen(display, context, music_service=LocalMusicService(mopidy))
 
     screen.enter()
 
@@ -96,7 +100,7 @@ def test_playlist_screen_builds_syncs_and_destroys_lvgl_view() -> None:
     assert len(binding.playlist_sync_payloads) >= 2
 
     final_payload = binding.playlist_sync_payloads[-1]
-    assert final_payload["title_text"] == "Spotify"
+    assert final_payload["title_text"] == "Playlists"
     assert final_payload["page_text"] is None
     assert final_payload["items"] == ["Alpha", "Beta", "Gamma"]
     assert final_payload["badges"] == ["12", "4", ""]
@@ -126,7 +130,7 @@ def test_playlist_screen_syncs_error_state_through_lvgl() -> None:
     screen = PlaylistScreen(
         display,
         context,
-        mopidy_client=FakeMopidyClient([], is_connected=False),
+        music_service=LocalMusicService(FakeMopidyClient([], is_connected=False)),
     )
 
     screen.enter()

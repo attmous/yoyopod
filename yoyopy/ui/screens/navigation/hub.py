@@ -12,6 +12,7 @@ from yoyopy.ui.screens.theme import BACKGROUND, INK, SURFACE, draw_icon, format_
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
+    from yoyopy.audio import LocalMusicService
     from yoyopy.audio.mopidy_client import MopidyClient
     from yoyopy.voip import VoIPManager
     from yoyopy.ui.screens import ScreenView
@@ -35,10 +36,12 @@ class HubScreen(Screen):
         display: Display,
         context: Optional["AppContext"] = None,
         mopidy_client: Optional["MopidyClient"] = None,
+        local_music_service: Optional["LocalMusicService"] = None,
         voip_manager: Optional["VoIPManager"] = None,
     ) -> None:
         super().__init__(display, context, "ActionHub")
         self.mopidy_client = mopidy_client
+        self.local_music_service = local_music_service
         self.voip_manager = voip_manager
         self.selected_index = 0
         self._playlist_count: int | None = None
@@ -75,12 +78,12 @@ class HubScreen(Screen):
 
     def _refresh_playlist_count(self) -> None:
         """Refresh the cached playlist count for the Listen card."""
-        if self.mopidy_client is None or not self.mopidy_client.is_connected:
+        if self.local_music_service is None or not self.local_music_service.is_available:
             self._playlist_count = None
             return
 
         try:
-            self._playlist_count = len(self.mopidy_client.get_playlists(fetch_track_counts=False))
+            self._playlist_count = self.local_music_service.playlist_count()
         except Exception:
             self._playlist_count = None
 
@@ -100,21 +103,13 @@ class HubScreen(Screen):
         if not self.mopidy_client.is_connected:
             return "Reconnect"
 
-        current_source = getattr(self.context, "current_audio_source", "local").strip().lower()
-        source_label = {
-            "spotify": "Spotify",
-            "amazon": "Amazon",
-            "youtube": "YouTube",
-            "local": "Local",
-        }.get(current_source, "Music")
-
         track = self.mopidy_client.get_current_track()
         playback_state = self.mopidy_client.get_playback_state()
         if track is None:
             if self._playlist_count:
                 label = "playlist" if self._playlist_count == 1 else "playlists"
                 return f"{self._playlist_count} {label}"
-            return source_label
+            return "On-device music"
 
         artist = track.get_artist_string() or "Unknown"
         artist = artist.split(",")[0]
@@ -122,7 +117,7 @@ class HubScreen(Screen):
             return text_fit(self.display, f"Playing {artist}", 134, 12)
         if playback_state == "paused":
             return "Paused"
-        return source_label
+        return "On-device music"
 
     def _talk_subtitle(self) -> str:
         """Return the compact Talk card subtitle."""

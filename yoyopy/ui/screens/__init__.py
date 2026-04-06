@@ -23,7 +23,7 @@ from yoyopy.ui.screens.navigation import AskScreen, HubScreen, HomeScreen, Liste
 from yoyopy.ui.screens.system import PowerScreen
 
 # Music screens
-from yoyopy.ui.screens.music import NowPlayingScreen, PlaylistScreen
+from yoyopy.ui.screens.music import NowPlayingScreen, PlaylistScreen, RecentTracksScreen
 
 # VoIP screens
 from yoyopy.ui.screens.voip import (
@@ -54,6 +54,7 @@ __all__ = [
     # Music
     'NowPlayingScreen',
     'PlaylistScreen',
+    'RecentTracksScreen',
     # VoIP
     'CallScreen',
     'CallHistoryScreen',

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from yoyopy.app_context import AppContext
+from yoyopy.audio import LocalMusicService, RecentTrackHistoryStore
 from yoyopy.ui.display import Display
 from yoyopy.ui.input import InteractionProfile
 from yoyopy.ui.screens import (
@@ -18,6 +19,7 @@ from yoyopy.ui.screens import (
     NowPlayingScreen,
     OutgoingCallScreen,
     PlaylistScreen,
+    RecentTracksScreen,
     TalkContactScreen,
     VoiceNoteScreen,
 )
@@ -56,8 +58,8 @@ class FakeMopidyClient:
         self.play_calls = 0
         self.pause_calls = 0
         self.playlists = [
-            FakePlaylist("Alpha", "playlist:alpha"),
-            FakePlaylist("Beta", "playlist:beta"),
+            FakePlaylist("Alpha", "m3u:alpha"),
+            FakePlaylist("Beta", "m3u:beta"),
         ]
         self.loaded_playlists: list[str] = []
 
@@ -94,6 +96,11 @@ class FakeMopidyClient:
         self.loaded_playlists.append(playlist_uri)
         return True
 
+    def load_track_uris(self, track_uris: list[str]) -> bool:
+        if track_uris:
+            self.playback_state = "playing"
+        return True
+
 
 class FakeContact:
     """Minimal contact record for VoIP screen tests."""
@@ -117,9 +124,6 @@ class FakeConfigManager:
 
     def get_contacts(self) -> list[FakeContact]:
         return list(self._contacts)
-
-    def get_listen_sources(self) -> list[str]:
-        return ["spotify", "local"]
 
 
 class FakeVoIPManager:
@@ -244,10 +248,12 @@ def test_hub_advance_wraps_from_last_card_to_first(
     one_button_context: AppContext,
 ) -> None:
     """The Whisplay root hub should wrap its carousel on ADVANCE."""
+    music_service = LocalMusicService(FakeMopidyClient())
     hub = HubScreen(
         display,
         one_button_context,
         mopidy_client=FakeMopidyClient(),
+        local_music_service=music_service,
         voip_manager=FakeVoIPManager(),
     )
 
@@ -257,26 +263,40 @@ def test_hub_advance_wraps_from_last_card_to_first(
     assert hub.selected_index == 0
 
 
-def test_listen_screen_select_sets_source_and_routes_to_playlists(
+def test_listen_screen_select_opens_local_playlist_flow(
     display: Display,
     one_button_context: AppContext,
 ) -> None:
-    """Listen should keep the chosen source and route into playlists."""
+    """Listen should route its Playlists row into the playlist browser."""
     screen = ListenScreen(
         display,
         one_button_context,
-        config_manager=FakeConfigManager([]),
+        music_service=LocalMusicService(FakeMopidyClient()),
+    )
+
+    screen.enter()
+    screen.selected_index = 0
+    screen.on_select()
+
+    assert screen.consume_navigation_request() == NavigationRequest.route("open_playlists")
+
+
+def test_listen_screen_select_opens_recent_tracks(
+    display: Display,
+    one_button_context: AppContext,
+) -> None:
+    """Listen should route its Recent row into the recent-tracks browser."""
+    screen = ListenScreen(
+        display,
+        one_button_context,
+        music_service=LocalMusicService(FakeMopidyClient()),
     )
 
     screen.enter()
     screen.selected_index = 1
     screen.on_select()
 
-    assert one_button_context.current_audio_source == "local"
-    assert screen.consume_navigation_request() == NavigationRequest.route(
-        "source_selected",
-        payload="local",
-    )
+    assert screen.consume_navigation_request() == NavigationRequest.route("open_recent")
 
 def test_hub_select_requests_setup_route_for_setup_card(
     display: Display,
@@ -287,6 +307,7 @@ def test_hub_select_requests_setup_route_for_setup_card(
         display,
         one_button_context,
         mopidy_client=FakeMopidyClient(),
+        local_music_service=LocalMusicService(FakeMopidyClient()),
         voip_manager=FakeVoIPManager(),
     )
 
@@ -305,6 +326,7 @@ def test_hub_cards_use_mode_tinted_surfaces(
         display,
         one_button_context,
         mopidy_client=FakeMopidyClient(),
+        local_music_service=LocalMusicService(FakeMopidyClient()),
         voip_manager=FakeVoIPManager(),
     )
 
@@ -344,7 +366,7 @@ def test_playlist_advance_wraps_and_select_loads_playlist(
 ) -> None:
     """Playlists should wrap on ADVANCE and load the current selection on SELECT."""
     mopidy = FakeMopidyClient()
-    screen = PlaylistScreen(display, one_button_context, mopidy_client=mopidy)
+    screen = PlaylistScreen(display, one_button_context, music_service=LocalMusicService(mopidy))
 
     screen.enter()
     screen.selected_index = len(screen.playlists) - 1
@@ -352,8 +374,33 @@ def test_playlist_advance_wraps_and_select_loads_playlist(
     screen.on_select()
 
     assert screen.selected_index == 0
-    assert mopidy.loaded_playlists == ["playlist:alpha"]
+    assert mopidy.loaded_playlists == ["m3u:alpha"]
     assert screen.consume_navigation_request() == NavigationRequest.route("playlist_loaded")
+
+
+def test_recent_tracks_select_routes_to_now_playing(
+    display: Display,
+    one_button_context: AppContext,
+    tmp_path,
+) -> None:
+    """Recent track playback should route into Now Playing once the track is queued."""
+    mopidy = FakeMopidyClient()
+    service = LocalMusicService(
+        mopidy,
+        recent_store=RecentTrackHistoryStore(tmp_path / "recent_tracks.json"),
+    )
+    service.record_recent_track(type("Track", (), {
+        "uri": "local:track:1",
+        "name": "Alpha Song",
+        "album": "Album",
+        "get_artist_string": lambda self: "Artist",
+    })())
+    screen = RecentTracksScreen(display, one_button_context, music_service=service)
+
+    screen.enter()
+    screen.on_select()
+
+    assert screen.consume_navigation_request() == NavigationRequest.route("track_loaded")
 
 
 def test_call_screen_advance_wraps_through_contacts(

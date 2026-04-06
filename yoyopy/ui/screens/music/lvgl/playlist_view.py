@@ -1,4 +1,4 @@
-"""LVGL-backed view for the playlist browser."""
+"""LVGL-backed view for list-style music browsers."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from yoyopy.ui.lvgl_binding import LvglDisplayBackend
-from yoyopy.ui.screens.theme import LISTEN, audio_source_label
+from yoyopy.ui.screens.theme import LISTEN
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -35,8 +35,10 @@ class LvglPlaylistView:
         if not self._built or self.backend.binding is None:
             return
 
-        title_text = audio_source_label(getattr(self.screen.context, "current_audio_source", "local"))
-        footer = "Tap next / Load" if self.screen.is_one_button_mode() else "A load | B back | X/Y move"
+        title_text = self.screen.get_title_text() if hasattr(self.screen, "get_title_text") else "Playlists"
+        footer = self.screen.get_footer_text() if hasattr(self.screen, "get_footer_text") else (
+            "Tap next / Load" if self.screen.is_one_button_mode() else "A load | B back | X/Y move"
+        )
         context = self.screen.context
 
         visible_items, visible_badges, selected_visible_index = self.screen.get_visible_window()
@@ -69,6 +71,8 @@ class LvglPlaylistView:
         self._built = False
 
     def _empty_state_copy(self) -> tuple[str, str]:
+        if hasattr(self.screen, "get_empty_state_copy"):
+            return self.screen.get_empty_state_copy()
         if self.screen.loading:
             return ("Loading playlists", "Hold on while your lists come in.")
         if self.screen.error_message:

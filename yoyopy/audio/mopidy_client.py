@@ -1,7 +1,7 @@
 """
 Mopidy client for YoyoPod.
 
-Provides interface to Mopidy music server for Spotify streaming
+Provides interface to Mopidy music server for local playback
 and playlist management via HTTP JSON-RPC API.
 """
 
@@ -335,6 +335,48 @@ class MopidyClient:
         except Exception as e:
             logger.error(f"Failed to get time position: {e}")
             return 0
+
+    def browse_library(self, uri: str | None = None) -> List[Dict[str, Any]]:
+        """
+        Browse the Mopidy library for one URI root.
+
+        Args:
+            uri: Library URI to browse, such as ``file:`` or ``local:directory``
+
+        Returns:
+            List of Mopidy Ref dictionaries
+        """
+        try:
+            params = {"uri": uri} if uri is not None else {}
+            refs = self._rpc_call("core.library.browse", params)
+            return refs or []
+        except Exception as e:
+            logger.error(f"Failed to browse library {uri!r}: {e}")
+            return []
+
+    def load_track_uris(self, track_uris: List[str]) -> bool:
+        """
+        Replace the current tracklist with explicit track URIs and start playback.
+
+        Args:
+            track_uris: Ordered list of track URIs to enqueue
+
+        Returns:
+            True if the tracklist was replaced successfully
+        """
+        if not track_uris:
+            logger.warning("No track URIs provided for playback")
+            return False
+
+        try:
+            self._rpc_call("core.tracklist.clear")
+            self._rpc_call("core.tracklist.add", {"uris": track_uris})
+            self.play()
+            logger.info(f"Loaded {len(track_uris)} track(s) into Mopidy")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to load track URIs: {e}")
+            return False
 
     def get_playlists(self, fetch_track_counts: bool = False) -> List[MopidyPlaylist]:
         """

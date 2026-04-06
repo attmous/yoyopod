@@ -1,50 +1,48 @@
-"""Listen source browser for the Graffiti Buddy redesign."""
+"""Tangara-inspired local library menu for Listen."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
+from yoyopy.audio.local_service import LocalLibraryItem, LocalMusicService
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
 from yoyopy.ui.screens.navigation.lvgl import LvglListenView
-from yoyopy.ui.screens.theme import LISTEN, MUTED, SURFACE, audio_source_label, audio_source_subtitle, draw_empty_state, draw_list_item, render_footer, render_header, rounded_panel
+from yoyopy.ui.screens.theme import (
+    LISTEN,
+    MUTED,
+    SURFACE,
+    draw_list_item,
+    render_footer,
+    render_header,
+    rounded_panel,
+)
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
-    from yoyopy.config import ConfigManager
     from yoyopy.ui.screens import ScreenView
 
 
-@dataclass(frozen=True, slots=True)
-class ListenSource:
-    """One configured source in the Listen browser."""
-
-    key: str
-    title: str
-    subtitle: str
-
-
 class ListenScreen(Screen):
-    """Source chooser for the new Listen root mode."""
+    """Local music landing screen for Playlists, Recent, and Shuffle."""
 
     def __init__(
         self,
         display: Display,
         context: Optional["AppContext"] = None,
         *,
-        config_manager: Optional["ConfigManager"] = None,
+        music_service: Optional[LocalMusicService] = None,
     ) -> None:
         super().__init__(display, context, "Listen")
-        self.config_manager = config_manager
-        self.sources: list[ListenSource] = []
+        self.music_service = music_service
+        self.items: list[LocalLibraryItem] = []
         self.selected_index = 0
         self._lvgl_view: "ScreenView | None" = None
 
     def enter(self) -> None:
-        """Refresh configured sources when entering the screen."""
+        """Refresh the local library menu when entering Listen."""
         super().enter()
-        self._load_sources()
+        self._load_items()
         self._ensure_lvgl_view()
 
     def exit(self) -> None:
@@ -70,72 +68,37 @@ class ListenScreen(Screen):
         self._lvgl_view.build()
         return self._lvgl_view
 
-    def _load_sources(self) -> None:
-        """Load configured music sources from the app config."""
-        configured = ["local"]
-        if self.config_manager is not None:
-            configured = self.config_manager.get_listen_sources()
-
-        normalized: list[str] = []
-        for source in configured:
-            source_key = source.strip().lower()
-            if source_key and source_key not in normalized:
-                normalized.append(source_key)
-
-        self.sources = [
-            ListenSource(
-                key=source_key,
-                title=audio_source_label(source_key),
-                subtitle=audio_source_subtitle(source_key),
-            )
-            for source_key in normalized
-        ]
-
-        if self.context is not None and self.sources:
-            current_key = getattr(self.context, "current_audio_source", self.sources[0].key)
-            for index, source in enumerate(self.sources):
-                if source.key == current_key:
-                    self.selected_index = index
-                    break
-
-        if self.sources:
-            self.selected_index = min(self.selected_index, len(self.sources) - 1)
+    def _load_items(self) -> None:
+        """Load the fixed local-first Listen menu items."""
+        if self.music_service is not None:
+            self.items = self.music_service.menu_items()
+        else:
+            self.items = [
+                LocalLibraryItem("playlists", "Playlists", "Saved mixes"),
+                LocalLibraryItem("recent", "Recent", "Played lately"),
+                LocalLibraryItem("shuffle", "Shuffle", "Start something fun"),
+            ]
+        if self.items:
+            self.selected_index = min(self.selected_index, len(self.items) - 1)
         else:
             self.selected_index = 0
 
     def render(self) -> None:
-        """Render the configured Listen sources."""
+        """Render the local library menu."""
         lvgl_view = self._ensure_lvgl_view()
         if lvgl_view is not None:
             lvgl_view.sync()
             return
-
-        position_text = None
-        if self.sources:
-            position_text = f"{self.selected_index + 1}/{len(self.sources)}"
 
         content_top = render_header(
             self.display,
             self.context,
             mode="listen",
             title="Listen",
-            page_text=position_text,
+            page_text=None,
             show_time=False,
             show_mode_chip=False,
         )
-
-        if not self.sources:
-            draw_empty_state(
-                self.display,
-                mode="listen",
-                title="No sources",
-                subtitle="Add music sources in config to fill this page.",
-                icon="listen",
-                top=content_top,
-            )
-            render_footer(self.display, "Hold back", mode="listen")
-            self.display.update()
-            return
 
         panel_top = content_top + 4
         panel_bottom = self.display.HEIGHT - 26
@@ -152,7 +115,7 @@ class ListenScreen(Screen):
 
         list_top = panel_top + 10
         item_height = 46
-        for index, source in enumerate(self.sources):
+        for index, item in enumerate(self.items):
             y1 = list_top + (index * item_height)
             y2 = y1 + 40
             if y2 > panel_bottom - 8:
@@ -164,49 +127,55 @@ class ListenScreen(Screen):
                 y1=y1,
                 x2=self.display.WIDTH - 20,
                 y2=y2,
-                title=source.title,
-                subtitle="",
+                title=item.title,
+                subtitle=item.subtitle,
                 mode="listen",
                 selected=index == self.selected_index,
             )
 
-        if len(self.sources) > 1:
-            dots_y = panel_bottom - 12
-            dots_width = 16 * len(self.sources)
-            dots_x = (self.display.WIDTH - dots_width) // 2
-            for index in range(len(self.sources)):
-                color = LISTEN.accent if index == self.selected_index else MUTED
-                self.display.circle(dots_x + (index * 16), dots_y, 3, fill=color)
+        dots_y = panel_bottom - 12
+        dots_width = 16 * len(self.items)
+        dots_x = (self.display.WIDTH - dots_width) // 2
+        for index in range(len(self.items)):
+            color = LISTEN.accent if index == self.selected_index else MUTED
+            self.display.circle(dots_x + (index * 16), dots_y, 3, fill=color)
 
         help_text = "Tap next / Open / Hold back" if self.is_one_button_mode() else "A open | B back | X/Y move"
         render_footer(self.display, help_text, mode="listen")
         self.display.update()
 
     def on_select(self, data=None) -> None:
-        """Open the playlist flow for the selected source."""
-        if not self.sources:
+        """Open the selected local library action."""
+        if not self.items:
             return
 
-        source = self.sources[self.selected_index]
-        if self.context is not None:
-            self.context.current_audio_source = source.key
-        self.request_route("source_selected", payload=source.key)
+        selected = self.items[self.selected_index]
+        if selected.key == "playlists":
+            self.request_route("open_playlists")
+            return
+        if selected.key == "recent":
+            self.request_route("open_recent")
+            return
+        if selected.key == "shuffle" and self.music_service is not None:
+            if self.music_service.shuffle_all():
+                self.request_route("shuffle_started")
+            return
 
     def on_back(self, data=None) -> None:
         """Return to the previous screen."""
         self.request_route("back")
 
     def on_advance(self, data=None) -> None:
-        """Advance through sources with wraparound."""
-        if not self.sources:
+        """Advance through the local music menu with wraparound."""
+        if not self.items:
             return
-        self.selected_index = (self.selected_index + 1) % len(self.sources)
+        self.selected_index = (self.selected_index + 1) % len(self.items)
 
     def on_up(self, data=None) -> None:
         """Move selection up."""
-        if not self.sources:
+        if not self.items:
             return
-        self.selected_index = (self.selected_index - 1) % len(self.sources)
+        self.selected_index = (self.selected_index - 1) % len(self.items)
 
     def on_down(self, data=None) -> None:
         """Move selection down."""

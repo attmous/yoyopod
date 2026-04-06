@@ -68,7 +68,7 @@ class NowPlayingScreen(Screen):
             self.display,
             self.context,
             mode="listen",
-            title="Listen",
+            title="Now Playing",
             show_time=False,
             show_mode_chip=False,
         )
@@ -144,11 +144,11 @@ class NowPlayingScreen(Screen):
                     playback_state == "playing",
                 )
 
-            return ("No Track Yet", "Pick a playlist to begin", 0.0, "READY", False)
+            return ("No Track Yet", "Pick local music to begin", 0.0, "READY", False)
 
         track = self.context.get_current_track() if self.context else None
         if track is None:
-            return ("No Track Yet", "Pick a playlist to begin", 0.0, "READY", False)
+            return ("No Track Yet", "Pick local music to begin", 0.0, "READY", False)
 
         return (
             track.title,

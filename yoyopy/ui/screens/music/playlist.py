@@ -1,4 +1,4 @@
-"""Graffiti Buddy playlist browser."""
+"""Graffiti Buddy local playlist browser."""
 
 from __future__ import annotations
 
@@ -6,10 +6,19 @@ from typing import TYPE_CHECKING, Optional
 
 from loguru import logger
 
+from yoyopy.audio.local_service import LocalMusicService
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
 from yoyopy.ui.screens.music.lvgl import LvglPlaylistView
-from yoyopy.ui.screens.theme import LISTEN, MUTED, SURFACE, audio_source_label, draw_empty_state, draw_list_item, render_footer, render_header, rounded_panel, text_fit
+from yoyopy.ui.screens.theme import (
+    SURFACE,
+    draw_empty_state,
+    draw_list_item,
+    render_footer,
+    render_header,
+    rounded_panel,
+    text_fit,
+)
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -17,16 +26,17 @@ if TYPE_CHECKING:
 
 
 class PlaylistScreen(Screen):
-    """Playlist browser for configured Listen sources."""
+    """Browse local playlists exposed by Mopidy."""
 
     def __init__(
         self,
         display: Display,
         context: Optional["AppContext"] = None,
-        mopidy_client=None,
+        *,
+        music_service: Optional[LocalMusicService] = None,
     ) -> None:
         super().__init__(display, context, "PlaylistBrowser")
-        self.mopidy_client = mopidy_client
+        self.music_service = music_service
         self.playlists = []
         self.selected_index = 0
         self.scroll_offset = 0
@@ -71,14 +81,28 @@ class PlaylistScreen(Screen):
         elif self.selected_index >= self.scroll_offset + self.max_visible_items:
             self.scroll_offset = self.selected_index - self.max_visible_items + 1
 
-    def get_page_text(self) -> str | None:
-        """Return the compact page indicator for the current playlist selection."""
-        if not self.playlists:
-            return None
-        return f"{self.selected_index + 1}/{len(self.playlists)}"
+    @staticmethod
+    def get_title_text() -> str:
+        """Return the compact title used by the LVGL list scene."""
+
+        return "Playlists"
+
+    def get_footer_text(self) -> str:
+        """Return the list footer hint for the active interaction mode."""
+
+        return "Tap next / Load" if self.is_one_button_mode() else "A load | B back | X/Y move"
+
+    def get_empty_state_copy(self) -> tuple[str, str]:
+        """Return the title/subtitle pair for the current empty/error state."""
+
+        if self.loading:
+            return ("Loading playlists", "Hold on while your mixes come in.")
+        if self.error_message:
+            return ("Music hiccup", self.error_message)
+        return ("No playlists", "Add local playlists to see them here.")
 
     def get_visible_window(self) -> tuple[list[str], list[str], int]:
-        """Return the visible playlist titles, badges, and selected row index."""
+        """Return visible playlist titles, badges, and the selected row index."""
         if not self.playlists:
             return [], [], 0
 
@@ -103,13 +127,13 @@ class PlaylistScreen(Screen):
         return visible_titles, visible_badges, selected_visible_index
 
     def fetch_playlists(self) -> None:
-        """Fetch playlists from Mopidy."""
-        if not self.mopidy_client:
+        """Fetch local playlists from the app-facing local music service."""
+        if self.music_service is None:
             self.error_message = "No music backend"
-            logger.error("Cannot fetch playlists: no Mopidy client")
+            logger.error("Cannot fetch playlists: no local music service")
             return
 
-        if not self.mopidy_client.is_connected:
+        if not self.music_service.is_available:
             self.error_message = "Music offline"
             logger.error("Cannot fetch playlists: Mopidy is offline")
             return
@@ -118,32 +142,28 @@ class PlaylistScreen(Screen):
         self.render()
 
         try:
-            self.playlists = self.mopidy_client.get_playlists(fetch_track_counts=True)
+            self.playlists = self.music_service.list_playlists(fetch_track_counts=True)
             self.error_message = None
-            logger.info(f"Fetched {len(self.playlists)} playlists")
+            logger.info(f"Fetched {len(self.playlists)} local playlists")
         except Exception as exc:
             self.error_message = f"Oops: {str(exc)[:24]}"
-            logger.error(f"Failed to fetch playlists: {exc}")
+            logger.error(f"Failed to fetch local playlists: {exc}")
         finally:
             self.loading = False
             self.render()
 
     def render(self) -> None:
-        """Render the source-themed playlist browser."""
+        """Render the local playlist browser."""
         lvgl_view = self._ensure_lvgl_view()
         if lvgl_view is not None:
             lvgl_view.sync()
             return
 
-        source_label = audio_source_label(getattr(self.context, "current_audio_source", "local"))
-        page_text = self.get_page_text()
-
         content_top = render_header(
             self.display,
             self.context,
             mode="listen",
-            title=source_label,
-            page_text=page_text,
+            title="Playlists",
             show_time=False,
             show_mode_chip=False,
         )
@@ -153,7 +173,7 @@ class PlaylistScreen(Screen):
                 self.display,
                 mode="listen",
                 title="Loading playlists",
-                subtitle="Hold on while your lists come in.",
+                subtitle="Hold on while your mixes come in.",
                 icon="playlist",
                 top=content_top,
             )
@@ -179,7 +199,7 @@ class PlaylistScreen(Screen):
                 self.display,
                 mode="listen",
                 title="No playlists",
-                subtitle="Add playlists to see them here.",
+                subtitle="Add local playlists to see them here.",
                 icon="playlist",
                 top=content_top,
             )
@@ -225,7 +245,7 @@ class PlaylistScreen(Screen):
                 badge=badge,
             )
 
-        help_text = "Tap next / Load / Hold back" if self.is_one_button_mode() else "A load | B back | X/Y move"
+        help_text = f"{self.get_footer_text()} / Hold back" if self.is_one_button_mode() else self.get_footer_text()
         render_footer(self.display, help_text, mode="listen")
         self.display.update()
 
@@ -251,15 +271,15 @@ class PlaylistScreen(Screen):
             logger.warning("No playlist selected")
             return
 
-        if not self.mopidy_client:
-            logger.error("Cannot load playlist: no Mopidy client")
+        if self.music_service is None:
+            logger.error("Cannot load playlist: no local music service")
             return
 
         playlist = self.playlists[self.selected_index]
-        logger.info(f"Loading playlist: {playlist.name}")
+        logger.info(f"Loading local playlist: {playlist.name}")
 
         try:
-            if self.mopidy_client.load_playlist(playlist.uri):
+            if self.music_service.load_playlist(playlist.uri):
                 self.request_route("playlist_loaded")
             else:
                 self.error_message = "Load failed"

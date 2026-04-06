@@ -147,7 +147,6 @@ class AppAudioConfig:
 
     mopidy_host: str = config_value(default="localhost", env="YOYOPOD_MOPIDY_HOST")
     mopidy_port: int = config_value(default=6680, env="YOYOPOD_MOPIDY_PORT")
-    listen_sources: list[str] = config_value(default_factory=lambda: ["local"])
     auto_resume_after_call: bool = config_value(
         default=True,
         env="YOYOPOD_AUTO_RESUME_AFTER_CALL",

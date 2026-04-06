@@ -89,6 +89,7 @@ When in doubt, trust these files first:
 - `docs/SYSTEM_ARCHITECTURE.md`
 - `docs/POWER_MODULE.md`
 - `docs/LVGL_MIGRATION_PLAN.md`
+- `docs/LOCAL_FIRST_MUSIC_PLAN.md`
 
 ---
 
@@ -177,7 +178,8 @@ Key design points:
 - `yoyopy/ui/screens/manager.py` - stack navigation and input binding
 - `yoyopy/ui/screens/router.py` - declarative route resolution
 - `yoyopy/ui/screens/theme.py` - Graffiti Buddy shared chrome, colors, icons, and status-bar renderer
-- `yoyopy/ui/screens/navigation/listen.py` - source chooser for the `Listen` root mode
+- `yoyopy/ui/screens/navigation/listen.py` - local-first library menu for `Playlists`, `Recent`, and `Shuffle`
+- `yoyopy/ui/screens/music/recent.py` - recent local tracks browser
 - `yoyopy/ui/screens/navigation/ask.py` - staged `Ask` shell with idle/listening/thinking/response states
 - `yoyopy/ui/screens/system/power.py` - `Setup` screen with power and care pages
 - `yoyopy/ui/screens/voip/quick_call.py` - `Talk` people-first contact deck for calls and voice notes
@@ -344,6 +346,7 @@ If an old doc mentions combined VoIP/music states as the implementation model, t
 The architecture cleanup is largely done. The remaining work is more product-facing:
 
 - dial pad / manual SIP entry
+- fuller local library browse (`Artists` / `Albums`)
 - fuller settings UI
 - additional hardware-in-the-loop validation on Raspberry Pi
 

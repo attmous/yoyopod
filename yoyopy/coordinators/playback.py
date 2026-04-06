@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from loguru import logger
 
+from yoyopy.audio.local_service import LocalMusicService
 from yoyopy.audio.mopidy_client import MopidyTrack
 from yoyopy.coordinators.runtime import AppRuntimeState, CoordinatorRuntime
 from yoyopy.coordinators.screen import ScreenCoordinator
@@ -20,9 +21,15 @@ from yoyopy.events import (
 class PlaybackCoordinator:
     """Own playback event publishing, state sync, and screen refresh behavior."""
 
-    def __init__(self, runtime: CoordinatorRuntime, screen_coordinator: ScreenCoordinator) -> None:
+    def __init__(
+        self,
+        runtime: CoordinatorRuntime,
+        screen_coordinator: ScreenCoordinator,
+        local_music_service: LocalMusicService | None = None,
+    ) -> None:
         self.runtime = runtime
         self.screen_coordinator = screen_coordinator
+        self.local_music_service = local_music_service
         self._event_bus: EventBus | None = None
         self._bound = False
 
@@ -64,7 +71,7 @@ class PlaybackCoordinator:
 
     def on_enter_playing_with_voip(self) -> None:
         """Log entry into the playing-with-VoIP-ready state."""
-        logger.info("🎵 → Music playing with VoIP ready")
+        logger.info("Music playing with VoIP ready")
 
     def _on_track_changed_event(self, event: TrackChangedEvent) -> None:
         self.handle_track_change(event.track)
@@ -78,9 +85,11 @@ class PlaybackCoordinator:
     def handle_track_change(self, track: MopidyTrack | None) -> None:
         """Handle track changes and refresh the active screen when needed."""
         if track:
-            logger.info(f"🎵 Track changed: {track.name} - {track.get_artist_string()}")
+            logger.info(f"Track changed: {track.name} - {track.get_artist_string()}")
+            if self.local_music_service is not None:
+                self.local_music_service.record_recent_track(track)
         else:
-            logger.info("🎵 Playback stopped")
+            logger.info("Playback stopped")
             if not self.runtime.call_fsm.is_active:
                 self.runtime.music_fsm.transition("stop")
                 self.runtime.sync_app_state("track_stopped")
@@ -89,10 +98,10 @@ class PlaybackCoordinator:
 
     def handle_playback_state_change(self, playback_state: str) -> None:
         """Sync the playback FSM with Mopidy state when not in a call."""
-        logger.info(f"🎵 Playback state changed: {playback_state}")
+        logger.info(f"Playback state changed: {playback_state}")
 
         if self.runtime.call_fsm.is_active:
-            logger.debug("  → In call, state machine managed by call logic")
+            logger.debug("In call, state machine managed by call logic")
             return
 
         if playback_state == "playing":

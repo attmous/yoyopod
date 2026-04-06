@@ -421,16 +421,16 @@ static void yoyopy_build_list_scene(void) {
 
     lv_obj_t * button = NULL;
 
-    button = lv_list_add_button(list, NULL, "Spotify");
+    button = lv_list_add_button(list, NULL, "Playlists");
     if(g_group != NULL) lv_group_add_obj(g_group, button);
 
-    button = lv_list_add_button(list, NULL, "Amazon");
+    button = lv_list_add_button(list, NULL, "Recent");
     if(g_group != NULL) lv_group_add_obj(g_group, button);
 
-    button = lv_list_add_button(list, NULL, "YouTube");
+    button = lv_list_add_button(list, NULL, "Shuffle");
     if(g_group != NULL) lv_group_add_obj(g_group, button);
 
-    button = lv_list_add_button(list, NULL, "Local");
+    button = lv_list_add_button(list, NULL, "Local Files");
     if(g_group != NULL) lv_group_add_obj(g_group, button);
 }
 

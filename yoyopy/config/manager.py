@@ -376,12 +376,6 @@ class ConfigManager:
             return [contact for contact in self.contacts if contact.favorite]
         return self.contacts
 
-    def get_listen_sources(self) -> list[str]:
-        """Return the configured music sources for the Listen browser."""
-
-        sources = self.app_settings.audio.listen_sources
-        return list(sources) if sources else ["local"]
-
     def get_contact_by_name(self, name: str) -> Optional[Contact]:
         """Get a contact by display name."""
 

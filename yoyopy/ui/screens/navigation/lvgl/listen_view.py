@@ -1,4 +1,4 @@
-"""LVGL-backed view for the Listen source screen."""
+"""LVGL-backed view for the local Listen menu."""
 
 from __future__ import annotations
 
@@ -35,8 +35,7 @@ class LvglListenView:
         if not self._built or self.backend.binding is None:
             return
 
-        sources = self.screen.sources
-        items = [source.title for source in sources[:4]]
+        items = [item.title for item in self.screen.items[:4]]
 
         footer = "Tap next / Open" if self.screen.is_one_button_mode() else "A open | B back | X/Y move"
 
@@ -51,8 +50,8 @@ class LvglListenView:
             charging=bool(getattr(context, "battery_charging", False)) if context is not None else False,
             power_available=bool(getattr(context, "power_available", True)) if context is not None else True,
             accent=LISTEN.accent,
-            empty_title="No sources",
-            empty_subtitle="Add music sources in config to fill this page.",
+            empty_title="No music items",
+            empty_subtitle="Add local music actions to fill this page.",
         )
 
     def destroy(self) -> None:

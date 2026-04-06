@@ -24,7 +24,6 @@ def test_app_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> Non
     assert not config_file.exists()
     assert settings.audio.mopidy_host == "localhost"
     assert settings.audio.mopidy_port == 6680
-    assert settings.audio.listen_sources == ["local"]
     assert settings.audio.auto_resume_after_call is True
     assert settings.audio.speaker_test_path == "speaker-test"
     assert settings.input.ptt_navigation is True
@@ -72,7 +71,6 @@ def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) ->
                 "audio": {
                     "mopidy_host": "mopidy.local",
                     "mopidy_port": 7000,
-                    "listen_sources": ["spotify", "local"],
                     "auto_resume_after_call": True,
                 },
                 "display": {
@@ -116,8 +114,8 @@ def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) ->
     assert config_manager.app_config_loaded is True
     assert settings.audio.mopidy_host == "mopidy.local"
     assert settings.audio.mopidy_port == 7788
-    assert settings.audio.listen_sources == ["spotify", "local"]
     assert settings.audio.auto_resume_after_call is False
+    assert not hasattr(settings.audio, "listen_sources")
     assert settings.input.whisplay_double_tap_ms == 260
     assert settings.input.whisplay_long_hold_ms == 900
     assert settings.power.transport == "tcp"
@@ -139,6 +137,7 @@ def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) ->
     assert settings.logging.pid_file == "/run/yoyopod.pid"
     assert settings.logging.enqueue is True
     assert config_dict["audio"]["mopidy_port"] == 7788
+    assert "listen_sources" not in config_dict["audio"]
     assert config_dict["display"]["hardware"] == "whisplay"
     assert config_dict["display"]["whisplay_renderer"] == "lvgl"
     assert config_dict["display"]["lvgl_buffer_lines"] == 24

@@ -103,7 +103,9 @@ class ScreenRouter:
             },
             "listen": {
                 "back": NavigationRequest.pop(),
-                "source_selected": NavigationRequest.push("playlists"),
+                "open_playlists": NavigationRequest.push("playlists"),
+                "open_recent": NavigationRequest.push("recent_tracks"),
+                "shuffle_started": NavigationRequest.push("now_playing"),
             },
             "ask": {
                 "back": NavigationRequest.pop(),
@@ -117,6 +119,10 @@ class ScreenRouter:
             "playlists": {
                 "back": NavigationRequest.pop(),
                 "playlist_loaded": NavigationRequest.push("now_playing"),
+            },
+            "recent_tracks": {
+                "back": NavigationRequest.pop(),
+                "track_loaded": NavigationRequest.push("now_playing"),
             },
             "call": {
                 "back": NavigationRequest.pop(),
