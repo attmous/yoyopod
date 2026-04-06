@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-YoyoPod is an iPod-inspired Raspberry Pi application combining SIP calling (VoIP via linphonec) and Mopidy-based music playback behind a small-screen, button-driven UI. Target hardware is Raspberry Pi Zero 2W (416 MB RAM).
+YoyoPod is an iPod-inspired Raspberry Pi application combining SIP calling and messaging (VoIP via Liblinphone) and Mopidy-based music playback behind a small-screen, button-driven UI. Target hardware is Raspberry Pi Zero 2W (416 MB RAM).
 
 Three display/input modes: Pimoroni DisplayHATMini, PiSugar Whisplay, and browser-based simulation.
 
@@ -39,7 +39,7 @@ yoyopod.py / yoyopy/main.py  (entry points)
     |- CoordinatorRuntime (coordinators/runtime.py) -- derived app state
     |- AppContext (app_context.py) -- shared state
     |- MopidyClient (audio/mopidy_client.py) -- Mopidy JSON-RPC
-    |- VoIPManager (voip/manager.py) -- linphonec subprocess
+    |- VoIPManager (voip/manager.py) -- Liblinphone backend
     |- Display HAL (ui/display/) -- factory pattern, 3 adapters
     |- Input HAL (ui/input/) -- semantic actions, 3 adapters
     `- ScreenManager (ui/screens/manager.py) -- stack-based navigation
@@ -53,7 +53,7 @@ yoyopod.py / yoyopy/main.py  (entry points)
 
 **State orchestration**: `MusicFSM` and `CallFSM` stay independent, while `CoordinatorRuntime` derives combined runtime states such as `PLAYING_WITH_VOIP`, `PAUSED_BY_CALL`, and `CALL_ACTIVE_MUSIC_PAUSED`. Auto-pauses music on incoming calls and auto-resumes after call ends (configurable).
 
-**VoIP**: Wraps `linphonec` CLI subprocess. Parses stdout for call state changes. Linphone 5.x uses case-insensitive patterns, square brackets for SIP addresses (`[sip:user@domain]`), and `"CallSession"` not `"Call"`.
+**VoIP**: Uses a native Liblinphone shim plus `cffi` binding. The app drives backend iteration on the coordinator thread and consumes typed call/message events through `VoIPManager`.
 
 ## Configuration
 
@@ -73,7 +73,7 @@ All config in `config/` directory (tracked in repo):
 
 - Ring tone generated via `speaker-test` subprocess (800Hz on `plughw:1`)
 - Screen stack: incoming call pushes screens, `_pop_call_screens()` pops all call screens on hangup to prevent stack overflow
-- VoIP monitor thread reads linphonec output continuously; callbacks fire on the coordinator thread for UI updates
+- VoIP backend iteration runs on the coordinator thread; native Liblinphone callbacks enqueue events into the shim and Python drains them as typed events
 - EventBus serializes typed app events on the coordinator thread
 
 ## Deploy Workflow
@@ -90,7 +90,7 @@ ssh rpi-zero "cd yoyo-py && source .venv/bin/activate && python yoyopod.py"
 Kill stuck processes before restarting (Python caches modules):
 
 ```bash
-ssh rpi-zero "killall -9 python linphonec"
+ssh rpi-zero "killall -9 python"
 ```
 
 ## Current Gaps

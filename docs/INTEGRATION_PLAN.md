@@ -1,9 +1,11 @@
 # YoyoPod VoIP + Music Integration Plan
 
-**Last updated:** 2026-04-02
+**Last updated:** 2026-04-06
 **Status:** Implemented
 
 This document started as a plan and now serves as the completion record for the VoIP + Mopidy integration.
+
+The current backend is Liblinphone. Older references to `linphonec` in this document are historical only.
 
 ## What Is Implemented
 
@@ -46,9 +48,9 @@ Responsibilities:
 
 Responsibilities:
 
-- `linphonec` lifecycle
+- Liblinphone lifecycle and iterate loop
 - registration state tracking
-- call state parsing
+- typed call/message event translation
 - caller lookup and callback dispatch
 
 ### UI Layer
@@ -77,7 +79,7 @@ See `yoyopy/fsm.py` for the music/call transitions and `yoyopy/coordinators/runt
 
 ## Incoming Call Flow
 
-1. `VoIPManager` detects an incoming call from `linphonec` output
+1. `VoIPManager` receives an incoming call event from the Liblinphone backend
 2. `YoyoPodApp` pauses music if playback is active
 3. state changes to `CALL_INCOMING`
 4. `IncomingCallScreen` is pushed
@@ -87,8 +89,8 @@ See `yoyopy/fsm.py` for the music/call transitions and `yoyopy/coordinators/runt
 ## Outgoing Call Flow
 
 1. user navigates to contacts
-2. `VoIPManager.make_call()` sends the SIP call command
-3. outgoing and in-call screens are pushed as call state changes arrive
+2. `VoIPManager.make_call()` issues the SIP call through Liblinphone
+3. outgoing and in-call screens are pushed as typed call state changes arrive
 4. call end pops call screens and returns the app to the prior playback state
 
 ## What Changed After The Original Plan
