@@ -2,17 +2,32 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
-from yoyopy.ui.screens.theme import TALK, INK, draw_icon, render_footer, render_status_bar, rounded_panel, wrap_text
+from yoyopy.ui.screens.theme import (
+    draw_empty_state,
+    draw_list_item,
+    render_footer,
+    render_header,
+)
 from yoyopy.ui.screens.voip.lvgl.voice_note_view import LvglVoiceNoteView
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
     from yoyopy.ui.screens import ScreenView
     from yoyopy.voip import VoIPManager
+
+
+@dataclass(frozen=True, slots=True)
+class VoiceNoteAction:
+    """One selectable action in the voice-note flow."""
+
+    key: str
+    title: str
+    badge: str = ""
 
 
 class VoiceNoteScreen(Screen):
@@ -27,15 +42,16 @@ class VoiceNoteScreen(Screen):
         super().__init__(display, context, "VoiceNote")
         self.voip_manager = voip_manager
         self._state = "ready"
-        self._review_index = 0
+        self._selected_action_index = 0
         self._lvgl_view: "ScreenView | None" = None
 
     def enter(self) -> None:
         """Reset the voice-note flow when opened."""
 
         super().enter()
+        self._discard_terminal_draft_for_recipient()
         self._sync_state_from_manager(default_state="ready")
-        self._review_index = 0
+        self._selected_action_index = 0
         self._ensure_lvgl_view()
 
     def exit(self) -> None:
@@ -107,6 +123,29 @@ class VoiceNoteScreen(Screen):
                 file_path=draft.file_path,
                 duration_ms=draft.duration_ms,
             )
+        if self._state not in {"review", "failed"}:
+            self._selected_action_index = 0
+
+    def _discard_terminal_draft_for_recipient(self) -> None:
+        """Start fresh when reopening a terminal draft for the same recipient."""
+
+        if self.voip_manager is None:
+            return
+
+        draft = self.voip_manager.get_active_voice_note()
+        recipient_address = self.recipient_address()
+        if draft is None:
+            return
+        if (
+            recipient_address
+            and draft.recipient_address
+            and draft.recipient_address != recipient_address
+        ):
+            return
+        if draft.send_state in {"sent", "failed"}:
+            self.voip_manager.discard_active_voice_note()
+            if self.context is not None:
+                self.context.update_active_voice_note(send_state="idle")
 
     def _refresh_input_mode(self) -> None:
         """Rebind active input handlers when the voice-note interaction mode changes."""
@@ -125,6 +164,49 @@ class VoiceNoteScreen(Screen):
         seconds = max(1, round(self.context.voice_note_duration_ms / 1000))
         return f"{seconds}s"
 
+    def actions(self) -> list[VoiceNoteAction]:
+        """Return the selectable actions for the current voice-note state."""
+
+        duration_badge = self._duration_label()
+        if self._state == "review":
+            return [
+                VoiceNoteAction("send", "Send", duration_badge),
+                VoiceNoteAction("play", "Play"),
+                VoiceNoteAction("again", "Again"),
+            ]
+        if self._state == "failed":
+            return [
+                VoiceNoteAction("retry", "Retry"),
+                VoiceNoteAction("again", "Again"),
+            ]
+        return []
+
+    def current_actions_for_view(self) -> tuple[list[str], list[str], int]:
+        """Return visible action rows for the current state."""
+
+        actions = self.actions()
+        return (
+            [action.title for action in actions],
+            [action.badge for action in actions],
+            min(self._selected_action_index, max(0, len(actions) - 1)),
+        )
+
+    def current_status_chip(self) -> tuple[str | None, int]:
+        """Return the current state-chip label and style kind."""
+
+        duration_badge = self._duration_label()
+        if self._state == "recording":
+            return (duration_badge or "Recording", 2)
+        if self._state == "review":
+            return (duration_badge or "Ready", 4)
+        if self._state == "sending":
+            return ("Sending", 4)
+        if self._state == "sent":
+            return ("Sent", 1)
+        if self._state == "failed":
+            return ("Failed", 3)
+        return ("Ready", 4)
+
     def current_view_model(self) -> tuple[str, str, str, str]:
         """Return title, subtitle, footer, and icon for the current voice-note state."""
 
@@ -132,37 +214,36 @@ class VoiceNoteScreen(Screen):
         if self._state == "recording":
             return (
                 "Recording",
-                f"Release to stop for {recipient}.",
+                f"Release to stop your note for {recipient}.",
                 "Release to stop" if self.is_one_button_mode() else "Select stop / Back cancel",
                 "voice_note",
             )
         if self._state == "review":
-            action_label = "Send" if self._review_index == 0 else "Again"
             return (
-                action_label,
-                f"Choose what to do with {recipient}'s note.",
+                "Review",
+                self.context.voice_note_status_text or f"Listen, send, or record again for {recipient}.",
                 "Tap next / Double choose" if self.is_one_button_mode() else "Select choose / Back",
                 "voice_note",
             )
         if self._state == "sending":
             return (
                 "Sending",
-                f"Sending your note to {recipient}.",
+                self.context.voice_note_status_text or f"Sending your note to {recipient}.",
                 "Please wait",
                 "voice_note",
             )
         if self._state == "sent":
             return (
                 "Sent",
-                f"Your note reached {recipient}.",
-                "Double back" if self.is_one_button_mode() else "Back",
+                self.context.voice_note_status_text or f"Your note reached {recipient}.",
+                "Double done / Hold back" if self.is_one_button_mode() else "Back",
                 "voice_note",
             )
         if self._state == "failed":
             return (
                 "Couldn't Send",
                 self.context.voice_note_status_text or f"Try {recipient}'s note again.",
-                "Double retry / Hold back" if self.is_one_button_mode() else "Select retry / Back",
+                "Tap next / Double choose" if self.is_one_button_mode() else "Select retry / Back",
                 "voice_note",
             )
         return (
@@ -181,59 +262,98 @@ class VoiceNoteScreen(Screen):
             return
 
         title_text, subtitle_text, footer_text, icon_key = self.current_view_model()
-        render_status_bar(self.display, self.context, show_time=False)
-
-        panel_top = self.display.STATUS_BAR_HEIGHT + 18
-        panel_bottom = self.display.HEIGHT - 28
-        rounded_panel(
+        content_top = render_header(
             self.display,
-            16,
-            panel_top,
-            self.display.WIDTH - 16,
-            panel_bottom,
-            fill=(31, 34, 40),
-            outline=TALK.accent_dim,
-            radius=24,
-            shadow=True,
+            self.context,
+            mode="talk",
+            title=self.recipient_name(),
+            subtitle=subtitle_text,
+            icon=icon_key,
+            show_time=False,
+            show_mode_chip=False,
         )
 
-        draw_icon(self.display, icon_key, (self.display.WIDTH // 2) - 24, panel_top + 18, 48, TALK.accent)
-
-        headline_width, headline_height = self.display.get_text_size(title_text, 18)
-        self.display.text(
-            title_text,
-            (self.display.WIDTH - headline_width) // 2,
-            panel_top + 78,
-            color=TALK.accent,
-            font_size=18,
-        )
-
-        copy_lines = wrap_text(
-            self.display,
-            subtitle_text,
-            self.display.WIDTH - 52,
-            12,
-            max_lines=2,
-        )
-        line_y = panel_top + 108
-        for line in copy_lines:
-            line_width, _ = self.display.get_text_size(line, 12)
-            self.display.text(line, (self.display.WIDTH - line_width) // 2, line_y, color=INK, font_size=12)
-            line_y += 15
-
-        duration_label = self._duration_label()
-        if duration_label:
-            duration_width, _ = self.display.get_text_size(duration_label, 12)
-            self.display.text(
-                duration_label,
-                (self.display.WIDTH - duration_width) // 2,
-                line_y + 4,
-                color=TALK.accent,
-                font_size=12,
+        items, badges, selected_index = self.current_actions_for_view()
+        if items:
+            panel_top = content_top + 8
+            for row, item_title in enumerate(items):
+                y1 = panel_top + (row * 48)
+                y2 = y1 + 40
+                draw_list_item(
+                    self.display,
+                    x1=18,
+                    y1=y1,
+                    x2=self.display.WIDTH - 18,
+                    y2=y2,
+                    title=item_title,
+                    subtitle="",
+                    mode="talk",
+                    selected=row == selected_index,
+                    badge=badges[row] or None,
+                )
+        else:
+            draw_empty_state(
+                self.display,
+                mode="talk",
+                title=title_text,
+                subtitle=subtitle_text,
+                icon=icon_key,
+                top=content_top,
             )
 
         render_footer(self.display, footer_text, mode="talk")
         self.display.update()
+
+    def _selected_action(self) -> VoiceNoteAction | None:
+        """Return the currently highlighted voice-note action."""
+
+        actions = self.actions()
+        if not actions:
+            return None
+        return actions[self._selected_action_index % len(actions)]
+
+    def _close_to_talk_contact(self) -> None:
+        """Clear terminal draft state and return to the selected contact."""
+
+        if self.voip_manager is not None:
+            self.voip_manager.discard_active_voice_note()
+        if self.context is not None:
+            self.context.update_active_voice_note(send_state="idle")
+        self._state = "ready"
+        self._selected_action_index = 0
+        self.request_route("back")
+
+    def _preview_active_voice_note(self) -> None:
+        """Play the current draft locally before sending it."""
+
+        if self.voip_manager is None or self.context is None:
+            return
+
+        file_path = self.context.voice_note_file_path
+        if not file_path:
+            return
+
+        if self.voip_manager.play_voice_note(file_path):
+            draft = self.voip_manager.get_active_voice_note()
+            if draft is not None:
+                draft.status_text = "Playing preview"
+            self.context.update_active_voice_note(
+                send_state="review",
+                status_text="Playing preview",
+                file_path=file_path,
+                duration_ms=self.context.voice_note_duration_ms,
+            )
+            return
+
+        draft = self.voip_manager.get_active_voice_note()
+        if draft is not None:
+            draft.status_text = "Couldn't play note"
+        self.context.update_active_voice_note(
+            send_state="review",
+            status_text="Couldn't play note",
+            file_path=file_path,
+            duration_ms=self.context.voice_note_duration_ms,
+        )
 
     def on_select(self, data=None) -> None:
         """Advance the voice-note flow."""
@@ -248,31 +368,49 @@ class VoiceNoteScreen(Screen):
             self._stop_recording()
             return
         if self._state == "review":
-            if self._review_index == 0:
+            selected_action = self._selected_action()
+            if selected_action is None:
+                return
+            if selected_action.key == "send":
                 self._send_active_voice_note()
+                return
+            if selected_action.key == "play":
+                self._preview_active_voice_note()
                 return
             self._discard_and_reset()
             return
         if self._state == "failed":
-            self._send_active_voice_note()
+            selected_action = self._selected_action()
+            if selected_action is None or selected_action.key == "retry":
+                self._send_active_voice_note()
+                return
+            self._discard_and_reset()
             return
         if self._state == "sent":
-            self.request_route("back")
+            self._close_to_talk_contact()
+            return
+        if self._state == "sending":
             return
         self.request_route("back")
 
     def on_advance(self, data=None) -> None:
-        """Cycle review actions in one-button mode."""
+        """Cycle selectable actions in one-button mode."""
 
-        if self._state != "review":
+        actions = self.actions()
+        if not actions:
             return
-        self._review_index = (self._review_index + 1) % 2
+        self._selected_action_index = (self._selected_action_index + 1) % len(actions)
 
     def on_back(self, data=None) -> None:
         """Return to the previous Talk screen."""
 
         if self._state == "recording":
             self._cancel_recording()
+            return
+        if self._state == "sending":
+            return
+        if self._state in {"review", "failed", "sent"}:
+            self._close_to_talk_contact()
             return
         self.request_route("back")
 
@@ -311,6 +449,7 @@ class VoiceNoteScreen(Screen):
                     status_text="Couldn't start recorder",
                 )
             return
+        self._selected_action_index = 0
         self._sync_state_from_manager(default_state="recording")
         self._refresh_input_mode()
 
@@ -329,7 +468,7 @@ class VoiceNoteScreen(Screen):
                 )
         else:
             self._state = "review"
-            self._review_index = 0
+            self._selected_action_index = 0
             self._sync_state_from_manager(default_state="review")
         self._refresh_input_mode()
 
@@ -339,6 +478,7 @@ class VoiceNoteScreen(Screen):
         if self.voip_manager is not None:
             self.voip_manager.cancel_voice_note_recording()
         self._state = "ready"
+        self._selected_action_index = 0
         if self.context is not None:
             self.context.update_active_voice_note(send_state="idle")
         self._refresh_input_mode()
@@ -349,7 +489,7 @@ class VoiceNoteScreen(Screen):
         if self.voip_manager is not None:
             self.voip_manager.discard_active_voice_note()
         self._state = "ready"
-        self._review_index = 0
+        self._selected_action_index = 0
         if self.context is not None:
             self.context.update_active_voice_note(send_state="idle")
         self._refresh_input_mode()

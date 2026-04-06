@@ -151,6 +151,8 @@ class CallScreen(Screen):
             latest_note = self.context.latest_voice_note_by_contact.get(selected_person.sip_address, {})
             if latest_note.get("unread"):
                 subtitle = "New voice note"
+            elif latest_note.get("direction") == "outgoing" and latest_note.get("delivery_state") in {"sent", "delivered"}:
+                subtitle = "Latest note sent"
             elif latest_note.get("local_file_path"):
                 subtitle = "Play latest note"
         return (

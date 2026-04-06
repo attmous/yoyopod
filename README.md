@@ -27,6 +27,7 @@ On Whisplay, the one-button root hub currently exposes four cards:
   - `Ask`
   - `Setup`
 - `Talk` now opens as a people-first contact deck: pick a person, then choose `Call` or `Voice Note`
+- `Voice Note` now supports hold-to-record, review, local preview playback, send, and sent/failed feedback in the Talk flow
 - `Ask` is now a staged shell with idle, listening, thinking, and response states
 - Whisplay production rendering now runs on the LVGL backend by default
 - GitHub Actions CI validates `uv sync --extra dev` and `uv run pytest -q`

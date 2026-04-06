@@ -51,6 +51,10 @@ class FakeVoIPManager:
         self.played_notes.append(sip_address)
         return True
 
+    def play_voice_note(self, file_path: str) -> bool:
+        self.played_notes.append(file_path)
+        return True
+
     def mark_voice_notes_seen(self, sip_address: str) -> None:
         self.seen_contacts.append(sip_address)
 
@@ -222,12 +226,54 @@ def test_voice_note_screen_records_reviews_and_sends(display: Display) -> None:
     assert voip_manager.started_recordings == [("sip:alice@example.com", "Mama")]
 
     screen.on_ptt_release({"hold_started": True})
-    assert screen.current_view_model()[0] == "Send"
+    assert screen.current_view_model()[0] == "Review"
     assert context.voice_note_duration_ms == 3200
 
     screen.on_select()
     assert screen.current_view_model()[0] == "Sending"
     assert voip_manager.send_attempts == 1
+
+
+def test_voice_note_screen_can_preview_before_sending(display: Display) -> None:
+    """Review mode should let the child preview the recorded note before sending it."""
+
+    context = AppContext()
+    voip_manager = FakeVoIPManager()
+    context.set_voice_note_recipient(name="Mama", sip_address="sip:alice@example.com")
+    screen = VoiceNoteScreen(display, context, voip_manager=voip_manager)
+
+    screen.enter()
+    screen.on_ptt_press({"stage": "hold_started"})
+    screen.on_ptt_release({"hold_started": True})
+    screen.on_advance()
+    screen.on_select()
+
+    assert voip_manager.played_notes == ["data/voice_notes/test.wav"]
+    assert context.voice_note_status_text == "Playing preview"
+
+
+def test_voice_note_screen_reopens_clean_after_terminal_draft(display: Display) -> None:
+    """Finished drafts for the same contact should not block starting a new note later."""
+
+    context = AppContext()
+    voip_manager = FakeVoIPManager()
+    voip_manager.active_voice_note = VoiceNoteDraft(
+        recipient_address="sip:alice@example.com",
+        recipient_name="Mama",
+        file_path="data/voice_notes/test.wav",
+        send_state="sent",
+        status_text="Sent",
+        message_id="note-1",
+        duration_ms=3200,
+    )
+    context.set_voice_note_recipient(name="Mama", sip_address="sip:alice@example.com")
+    screen = VoiceNoteScreen(display, context, voip_manager=voip_manager)
+
+    screen.enter()
+
+    assert screen.current_view_model()[0] == "Voice Note"
+    assert voip_manager.active_voice_note is None
+    assert context.voice_note_send_state == "idle"
 
 
 def test_voice_note_screen_ignores_stale_draft_for_different_recipient(display: Display) -> None:

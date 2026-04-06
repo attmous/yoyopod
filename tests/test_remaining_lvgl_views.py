@@ -389,8 +389,8 @@ def test_ask_screen_syncs_staged_shell_through_lvgl() -> None:
     assert binding.ask_destroy_calls == 1
 
 
-def test_voice_note_screen_reuses_lvgl_card_scene_with_talk_copy() -> None:
-    """VoiceNoteScreen should reuse the compact LVGL card scene with Talk copy."""
+def test_voice_note_screen_uses_playlist_scene_with_talk_voice_note_copy() -> None:
+    """VoiceNoteScreen should use the richer playlist-style LVGL scene for review states."""
 
     from yoyopy.ui.screens.voip.voice_note import VoiceNoteScreen
 
@@ -402,13 +402,16 @@ def test_voice_note_screen_reuses_lvgl_card_scene_with_talk_copy() -> None:
     screen.enter()
     screen.render()
 
-    payload = binding.ask_sync_payloads[-1]
-    assert payload["icon_key"] == "voice_note"
-    assert payload["title_text"] == "Voice Note"
-    assert payload["subtitle_text"] == "Hold to record for Hagar."
+    payload = binding.playlist_sync_payloads[-1]
+    assert payload["title_text"] == "Hagar"
+    assert payload["status_chip_text"] == "Ready"
+    assert payload["empty_title"] == "Voice Note"
+    assert payload["empty_subtitle"] == "Hold to record for Hagar."
     assert payload["footer"] == "Hold record / Double back"
+    assert payload["empty_icon_key"] == "voice_note"
 
     screen.exit()
+    assert binding.playlist_destroy_calls == 1
 
 
 def test_power_screen_cycles_three_lvgl_pages() -> None:

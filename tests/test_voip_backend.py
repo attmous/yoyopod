@@ -16,6 +16,7 @@ from yoyopy.voip import (
     MessageDeliveryChanged,
     MessageDeliveryState,
     MessageDirection,
+    MessageFailed,
     MessageKind,
     MessageReceived,
     MockVoIPBackend,
@@ -267,6 +268,23 @@ def test_voip_manager_tracks_voice_note_send_and_delivery() -> None:
     )
 
     assert manager.get_active_voice_note().send_state == "sent"
+
+
+def test_voip_manager_surfaces_voice_note_failure_reason() -> None:
+    """Voice-note send failures should preserve the backend reason for the UI."""
+
+    backend = MockVoIPBackend()
+    manager = VoIPManager(build_config(), backend=backend)
+
+    assert manager.start()
+    assert manager.start_voice_note_recording("sip:mom@example.com", recipient_name="Mom")
+    assert manager.stop_voice_note_recording() is not None
+    assert manager.send_active_voice_note()
+
+    backend.emit(MessageFailed(message_id="mock-note-1", reason="Upload failed"))
+
+    assert manager.get_active_voice_note().send_state == "failed"
+    assert manager.get_active_voice_note().status_text == "Upload failed"
 
 
 def test_voip_manager_receives_incoming_voice_note_and_updates_summary() -> None:

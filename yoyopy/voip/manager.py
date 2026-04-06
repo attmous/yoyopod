@@ -209,7 +209,7 @@ class VoIPManager:
             recipient_name=recipient_name or self._lookup_contact_name(recipient_address),
             file_path=file_path,
             send_state="recording",
-            status_text="Recording…",
+            status_text="Recording...",
         )
         return True
 
@@ -242,7 +242,7 @@ class VoIPManager:
 
         draft = self._active_voice_note
         draft.send_state = "sending"
-        draft.status_text = "Sending…"
+        draft.status_text = "Sending..."
         message_id = self.backend.send_voice_note(
             draft.recipient_address,
             file_path=draft.file_path,
@@ -439,10 +439,12 @@ class VoIPManager:
         if self._active_voice_note is not None and self._active_voice_note.message_id == event.message_id:
             if event.delivery_state in (MessageDeliveryState.SENT, MessageDeliveryState.DELIVERED):
                 self._active_voice_note.send_state = "sent"
-                self._active_voice_note.status_text = "Sent"
+                self._active_voice_note.status_text = (
+                    "Delivered" if event.delivery_state == MessageDeliveryState.DELIVERED else "Sent"
+                )
             elif event.delivery_state == MessageDeliveryState.FAILED:
                 self._active_voice_note.send_state = "failed"
-                self._active_voice_note.status_text = "Couldn't send"
+                self._active_voice_note.status_text = event.error or "Couldn't send"
 
         for callback in self.message_delivery_callbacks:
             try:
@@ -473,7 +475,7 @@ class VoIPManager:
         self._message_store.update_delivery(event.message_id, MessageDeliveryState.FAILED)
         if self._active_voice_note is not None and self._active_voice_note.message_id == event.message_id:
             self._active_voice_note.send_state = "failed"
-            self._active_voice_note.status_text = "Couldn't send"
+            self._active_voice_note.status_text = event.reason or "Couldn't send"
         for callback in self.message_failure_callbacks:
             try:
                 callback(event.message_id, event.reason)

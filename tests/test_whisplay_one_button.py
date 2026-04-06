@@ -440,7 +440,7 @@ def test_voice_note_screen_uses_hold_to_record_in_one_button_mode(
     assert screen.current_view_model()[0] == "Recording"
 
     screen.on_ptt_release({"hold_started": True})
-    assert screen.current_view_model()[0] == "Send"
+    assert screen.current_view_model()[0] == "Review"
 
     screen.on_select()
     assert screen.current_view_model()[0] == "Sending"
