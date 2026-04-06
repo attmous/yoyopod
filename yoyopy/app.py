@@ -692,7 +692,10 @@ class YoyoPodApp:
         processed = 0
         while not self._pending_main_thread_callbacks.empty():
             callback = self._pending_main_thread_callbacks.get()
-            callback()
+            try:
+                callback()
+            except Exception as exc:
+                logger.error(f"Error handling scheduled main-thread callback: {exc}")
             processed += 1
             if limit is not None and processed >= limit:
                 return processed

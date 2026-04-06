@@ -613,6 +613,27 @@ def test_worker_navigation_waits_for_coordinator_drain_before_syncing_state() ->
     assert app.coordinator_runtime.current_app_state == AppRuntimeState.CALL_IDLE
 
 
+def test_main_thread_callback_errors_are_contained_and_drain_continues() -> None:
+    """Scheduled UI callbacks should not abort later callbacks or queued app events."""
+
+    app, _, _ = _build_app(playback_state="stopped")
+    callback_order: list[str] = []
+
+    def bad_callback() -> None:
+        callback_order.append("bad")
+        raise RuntimeError("boom")
+
+    def good_callback() -> None:
+        callback_order.append("good")
+
+    app._queue_main_thread_callback(bad_callback)
+    app._queue_main_thread_callback(good_callback)
+    _publish_from_worker(app, UserActivityEvent(action_name="select"))
+
+    assert app._process_pending_main_thread_actions() == 3
+    assert callback_order == ["bad", "good"]
+
+
 def test_call_end_restores_previous_screen_base_state() -> None:
     """Ending a call should restore the derived state for the screen the user returns to."""
     app, _, screen_manager = _build_app(playback_state="stopped")
