@@ -1395,7 +1395,7 @@ int yoyopy_lvgl_now_playing_build(void) {
 
     g_now_playing_scene.icon_label = lv_label_create(g_now_playing_scene.icon_halo);
     lv_label_set_text(g_now_playing_scene.icon_label, LV_SYMBOL_AUDIO);
-    lv_obj_set_style_text_font(g_now_playing_scene.icon_label, &lv_font_montserrat_22, 0);
+    lv_obj_set_style_text_font(g_now_playing_scene.icon_label, &lv_font_montserrat_24, 0);
     lv_obj_center(g_now_playing_scene.icon_label);
 
     g_now_playing_scene.state_chip = lv_obj_create(g_now_playing_scene.panel);
@@ -1416,7 +1416,7 @@ int yoyopy_lvgl_now_playing_build(void) {
     lv_obj_set_size(g_now_playing_scene.title_label, 176, 44);
     lv_obj_set_pos(g_now_playing_scene.title_label, 16, 106);
     lv_label_set_long_mode(g_now_playing_scene.title_label, LV_LABEL_LONG_MODE_DOTS);
-    lv_obj_set_style_text_font(g_now_playing_scene.title_label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(g_now_playing_scene.title_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_align(g_now_playing_scene.title_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_line_space(g_now_playing_scene.title_label, -2, 0);
 
