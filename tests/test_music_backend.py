@@ -151,3 +151,80 @@ def test_mpv_backend_waits_for_delayed_ipc_ready(monkeypatch) -> None:
     assert backend.start() is True
     assert fake_ipc.connect_calls == 13
     assert backend.is_connected is True
+
+
+def test_mpv_backend_builds_track_from_property_events() -> None:
+    backend = MpvBackend(MusicConfig())
+
+    backend._handle_mpv_event(
+        {
+            "event": "property-change",
+            "name": "path",
+            "data": "/music/alpha.ogg",
+        }
+    )
+    backend._handle_mpv_event(
+        {
+            "event": "property-change",
+            "name": "metadata",
+            "data": {
+                "title": "Alpha",
+                "artist": "Artist",
+                "album": "Sampler",
+            },
+        }
+    )
+    backend._handle_mpv_event(
+        {
+            "event": "property-change",
+            "name": "duration",
+            "data": 12.5,
+        }
+    )
+
+    track = backend.get_current_track()
+
+    assert track is not None
+    assert track.uri == "/music/alpha.ogg"
+    assert track.name == "Alpha"
+    assert track.artists == ["Artist"]
+    assert track.album == "Sampler"
+    assert track.length == 12500
+
+
+def test_mpv_backend_get_current_track_refreshes_snapshot_when_cache_empty() -> None:
+    class FakeIpc:
+        connected = True
+
+        def __init__(self) -> None:
+            self.responses = {
+                "path": "/music/beta.ogg",
+                "metadata": {"artist": "Composer"},
+                "duration": 9.0,
+                "media-title": "Beta",
+            }
+
+        def send_command(self, args: list[object]) -> dict[str, object]:
+            return {"error": "success", "data": self.responses[str(args[1])]}
+
+        def disconnect(self) -> None:
+            return None
+
+    class FakeProcess:
+        def is_alive(self) -> bool:
+            return True
+
+        def kill(self) -> None:
+            return None
+
+    backend = MpvBackend(MusicConfig())
+    backend._connected = True
+    backend._ipc = FakeIpc()
+    backend._process = FakeProcess()
+
+    track = backend.get_current_track()
+
+    assert track is not None
+    assert track.name == "Beta"
+    assert track.artists == ["Composer"]
+    assert track.length == 9000
