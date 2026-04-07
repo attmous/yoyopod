@@ -299,8 +299,9 @@ class MopidyClient:
         try:
             tl_track = self._rpc_call("core.playback.get_current_tl_track")
 
-            if tl_track and "track" in tl_track:
-                track = MopidyTrack.from_mopidy(tl_track["track"])
+            track_data = tl_track.get("track") if isinstance(tl_track, dict) else None
+            if track_data:
+                track = MopidyTrack.from_mopidy(track_data)
                 return track
 
             queued_track = self._fallback_track_from_tracklist()

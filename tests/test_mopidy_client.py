@@ -78,6 +78,31 @@ def test_get_current_track_skips_null_tracklist_entries() -> None:
     assert track.get_artist_string() == "Sampler"
 
 
+def test_get_current_track_ignores_null_track_payload_before_falling_back() -> None:
+    """A null current_tl_track payload should not raise or mask a valid fallback track."""
+
+    client = StubMopidyClient(
+        {
+            "core.playback.get_current_tl_track": {"track": None},
+            "core.tracklist.index": 0,
+            "core.tracklist.get_tl_tracks": [
+                {
+                    "track": {
+                        "uri": "file:///music/fallback.ogg",
+                        "name": "Fallback.ogg",
+                        "artists": [],
+                    }
+                }
+            ],
+        }
+    )
+
+    track = client.get_current_track()
+
+    assert track is not None
+    assert track.uri == "file:///music/fallback.ogg"
+
+
 def test_get_current_track_uses_cached_track_when_rpc_and_tracklist_are_empty() -> None:
     """A previously known track should survive one empty RPC cycle."""
 
