@@ -7,6 +7,7 @@ and playlist management via HTTP JSON-RPC API.
 
 import requests
 import time
+from pathlib import Path
 from typing import Optional, List, Dict, Any, Callable
 from dataclasses import dataclass
 from threading import Thread, Event
@@ -34,12 +35,23 @@ class MopidyTrack:
         Returns:
             MopidyTrack instance
         """
-        artists = [artist.get('name', 'Unknown') for artist in track_data.get('artists', [])]
-        album = track_data.get('album', {}).get('name', '')
+        raw_artists = track_data.get('artists') or []
+        artists = [
+            str(artist.get('name') or 'Unknown')
+            for artist in raw_artists
+            if isinstance(artist, dict)
+        ]
+
+        raw_album = track_data.get('album')
+        album = raw_album.get('name', '') if isinstance(raw_album, dict) else ''
+        uri = track_data.get('uri', '')
+        name = track_data.get('name') or 'Unknown Track'
+        if isinstance(name, str) and uri.startswith('file://'):
+            name = Path(name).stem or name
 
         return cls(
-            uri=track_data.get('uri', ''),
-            name=track_data.get('name', 'Unknown Track'),
+            uri=uri,
+            name=name,
             artists=artists,
             album=album,
             length=track_data.get('length', 0),

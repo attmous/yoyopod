@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from yoyopy.audio.mopidy_client import MopidyClient
+from yoyopy.audio.mopidy_client import MopidyClient, MopidyTrack
 
 
 class StubMopidyClient(MopidyClient):
@@ -47,7 +47,7 @@ def test_get_current_track_falls_back_to_tracklist_when_current_tl_track_is_miss
 
     assert track is not None
     assert track.uri == "file:///music/main-theme.ogg"
-    assert track.name == "Main Theme.ogg"
+    assert track.name == "Main Theme"
     assert track.get_artist_string() == "Open Orchestra"
 
 
@@ -126,3 +126,21 @@ def test_get_current_track_uses_cached_track_when_rpc_and_tracklist_are_empty() 
     track = client.get_current_track()
 
     assert track is client.current_track
+
+
+def test_mopidy_track_from_mopidy_handles_sparse_metadata_and_strips_file_extensions() -> None:
+    """Local file tracks should tolerate null metadata and present a cleaner title."""
+
+    track = MopidyTrack.from_mopidy(
+        {
+            "uri": "file:///music/OpenSampler/02-Moonlight-Sonata.ogg",
+            "name": "02-Moonlight-Sonata.ogg",
+            "artists": [None, {"name": "Sampler"}],
+            "album": None,
+            "length": 123456,
+        }
+    )
+
+    assert track.name == "02-Moonlight-Sonata"
+    assert track.artists == ["Sampler"]
+    assert track.album == ""
