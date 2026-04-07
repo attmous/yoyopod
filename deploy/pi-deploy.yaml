@@ -1,8 +1,11 @@
 # Raspberry Pi deploy contract for YoyoPod.
-# This is the single source of truth for scripts/pi_remote.py and Pi skills.
+# This is the shared source of truth for scripts/pi_remote.py and Pi skills.
+# Machine-specific connection overrides belong in deploy/pi-deploy.local.yaml.
+# Create or edit that file with:
+#   uv run python scripts/pi_remote.py config edit
 
-host: rpi-zero
-user: pi
+host: ""
+user: ""
 project_dir: ~/yoyo-py
 branch: main
 venv: .venv

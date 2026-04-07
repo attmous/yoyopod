@@ -1,1 +1,1 @@
-../../skills/sync.md
+../../skills/sync/SKILL.md

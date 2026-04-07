@@ -1,1 +1,1 @@
-../../skills/logs.md
+../../skills/logs/SKILL.md

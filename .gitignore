@@ -52,9 +52,12 @@ dmypy.json
 # Logs
 logs/
 *.log
+!skills/logs/
+!skills/logs/SKILL.md
 
 # Configuration
 config/config.json
+deploy/pi-deploy.local.yaml
 
 # Assets (exclude large binaries, include via Git LFS if needed)
 *.mp3

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -13,6 +14,11 @@ from pathlib import Path
 from typing import Sequence
 
 import yaml
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEPLOY_CONFIG_PATH = REPO_ROOT / "deploy" / "pi-deploy.yaml"
+LOCAL_DEPLOY_CONFIG_PATH = REPO_ROOT / "deploy" / "pi-deploy.local.yaml"
 
 
 @dataclass
@@ -59,12 +65,29 @@ class PiDeployConfig:
     )
 
 
-def load_pi_deploy_config() -> PiDeployConfig:
-    """Load the checked-in Raspberry Pi deploy contract."""
+def load_yaml_mapping(path: Path) -> dict[str, object]:
+    """Load one YAML mapping from disk."""
 
-    config_path = Path(__file__).resolve().parent.parent / "deploy" / "pi-deploy.yaml"
-    with open(config_path, "r", encoding="utf-8") as handle:
+    with open(path, "r", encoding="utf-8") as handle:
         data = yaml.safe_load(handle) or {}
+    if not isinstance(data, dict):
+        raise SystemExit(f"Expected a YAML mapping in {path}")
+    return data
+
+
+def merge_pi_deploy_layers(*layers: dict[str, object]) -> dict[str, object]:
+    """Merge deploy config layers from lowest to highest precedence."""
+
+    merged: dict[str, object] = {}
+    for layer in layers:
+        for key, value in layer.items():
+            if value is not None:
+                merged[key] = value
+    return merged
+
+
+def parse_pi_deploy_config(data: dict[str, object]) -> PiDeployConfig:
+    """Normalize raw YAML data into a deploy config object."""
 
     return PiDeployConfig(
         host=str(data.get("host", "")).strip(),
@@ -109,14 +132,120 @@ def load_pi_deploy_config() -> PiDeployConfig:
     )
 
 
+def load_pi_deploy_config(
+    *,
+    config_path: Path | None = None,
+    local_override_path: Path | None = None,
+) -> PiDeployConfig:
+    """Load the shared deploy config with an optional local override layer."""
+
+    base_path = config_path or DEPLOY_CONFIG_PATH
+    local_path = local_override_path or LOCAL_DEPLOY_CONFIG_PATH
+
+    merged_data = load_yaml_mapping(base_path)
+    if local_path.exists():
+        merged_data = merge_pi_deploy_layers(
+            merged_data,
+            load_yaml_mapping(local_path),
+        )
+
+    return parse_pi_deploy_config(merged_data)
+
+
+def pi_deploy_config_to_dict(config: PiDeployConfig) -> dict[str, object]:
+    """Convert one deploy config object back into a YAML-friendly mapping."""
+
+    return {
+        "host": config.host,
+        "user": config.user,
+        "project_dir": config.project_dir,
+        "branch": config.branch,
+        "venv": config.venv,
+        "start_cmd": config.start_cmd,
+        "kill_processes": list(config.kill_processes),
+        "log_file": config.log_file,
+        "error_log_file": config.error_log_file,
+        "pid_file": config.pid_file,
+        "startup_marker": config.startup_marker,
+        "screenshot_path": config.screenshot_path,
+        "rsync_exclude": list(config.rsync_exclude),
+    }
+
+
+def build_local_override_template(base_config: PiDeployConfig) -> str:
+    """Create the starter template for the gitignored local override file."""
+
+    host = base_config.host or "rpi-zero"
+    user = base_config.user or "pi"
+    body = yaml.safe_dump(
+        {
+            "host": host,
+            "user": user,
+            "project_dir": base_config.project_dir,
+            "branch": base_config.branch,
+        },
+        sort_keys=False,
+    ).rstrip()
+    return (
+        "# Local Raspberry Pi overrides for this workstation.\n"
+        "# This file is gitignored. Only machine-specific defaults belong here.\n"
+        "# Precedence is: deploy/pi-deploy.yaml -> deploy/pi-deploy.local.yaml -> env -> CLI.\n"
+        f"{body}\n"
+    )
+
+
+def ensure_local_pi_deploy_config(
+    base_config: PiDeployConfig,
+    *,
+    local_override_path: Path | None = None,
+) -> tuple[Path, bool]:
+    """Create the gitignored local override file when it does not exist yet."""
+
+    local_path = local_override_path or LOCAL_DEPLOY_CONFIG_PATH
+    if local_path.exists():
+        return local_path, False
+
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_text(
+        build_local_override_template(base_config),
+        encoding="utf-8",
+    )
+    return local_path, True
+
+
+def build_config_editor_command(
+    config_path: Path,
+    *,
+    editor: str | None = None,
+) -> list[str]:
+    """Resolve the best local editor command for the override file."""
+
+    configured_editor = editor or os.getenv("VISUAL") or os.getenv("EDITOR")
+    if configured_editor:
+        return [*shlex.split(configured_editor), str(config_path)]
+
+    if sys.platform.startswith("win"):
+        return ["notepad", str(config_path)]
+
+    if sys.platform == "darwin":
+        return ["open", "-W", "-t", str(config_path)]
+
+    for candidate in ("sensible-editor", "nano", "vi", "xdg-open"):
+        if shutil.which(candidate):
+            return [candidate, str(config_path)]
+
+    return ["xdg-open", str(config_path)]
+
+
 def build_parser(deploy_config: PiDeployConfig) -> argparse.ArgumentParser:
     """Create the command-line parser."""
     parser = argparse.ArgumentParser(
         description=(
             "Run common YoyoPod Raspberry Pi development tasks over SSH. "
             "Defaults can be provided with YOYOPOD_PI_HOST, "
-            "YOYOPOD_PI_PROJECT_DIR, and YOYOPOD_PI_BRANCH, or "
-            "through deploy/pi-deploy.yaml."
+            "YOYOPOD_PI_USER, YOYOPOD_PI_PROJECT_DIR, and YOYOPOD_PI_BRANCH, "
+            "or through deploy/pi-deploy.yaml plus the optional "
+            "deploy/pi-deploy.local.yaml override."
         )
     )
     parser.add_argument(
@@ -141,6 +270,22 @@ def build_parser(deploy_config: PiDeployConfig) -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Show or edit the merged Raspberry Pi deploy config",
+    )
+    config_parser.add_argument(
+        "config_action",
+        nargs="?",
+        default="show",
+        choices=["show", "paths", "init-local", "edit"],
+        help="Config action to run locally (default: show)",
+    )
+    config_parser.add_argument(
+        "--editor",
+        help="Override the editor command for `config edit`",
+    )
 
     subparsers.add_parser(
         "status",
@@ -462,7 +607,8 @@ def validate_config(config: RemoteConfig) -> None:
     """Ensure required connection details are present."""
     if not config.host:
         raise SystemExit(
-            "Missing Raspberry Pi host. Set it in deploy/pi-deploy.yaml, "
+            "Missing Raspberry Pi host. Set it with "
+            "`uv run python scripts/pi_remote.py config edit`, "
             "pass --host, or set YOYOPOD_PI_HOST."
         )
 
@@ -955,11 +1101,61 @@ def run_preflight(config: RemoteConfig, args: argparse.Namespace) -> int:
     return run_remote(config, build_smoke_command(args))
 
 
+def run_config_command(
+    args: argparse.Namespace,
+    deploy_config: PiDeployConfig,
+    *,
+    config_path: Path | None = None,
+    local_override_path: Path | None = None,
+) -> int:
+    """Show, create, or edit the local deploy config layers."""
+
+    base_path = config_path or DEPLOY_CONFIG_PATH
+    local_path = local_override_path or LOCAL_DEPLOY_CONFIG_PATH
+
+    if args.config_action == "show":
+        print(yaml.safe_dump(pi_deploy_config_to_dict(deploy_config), sort_keys=False).rstrip())
+        return 0
+
+    if args.config_action == "paths":
+        print(f"base: {base_path}")
+        print(f"local: {local_path}")
+        print(f"local_exists: {'yes' if local_path.exists() else 'no'}")
+        return 0
+
+    ensured_path, created = ensure_local_pi_deploy_config(
+        deploy_config,
+        local_override_path=local_path,
+    )
+
+    if args.config_action == "init-local":
+        state = "Created" if created else "Already exists"
+        print(f"{state}: {ensured_path}")
+        return 0
+
+    if args.config_action == "edit":
+        command = build_config_editor_command(
+            ensured_path,
+            editor=args.editor,
+        )
+        print("")
+        print(f"[pi-remote] local={'config-init' if created else 'config-edit'}")
+        print(f"[pi-remote] file={ensured_path}")
+        print(f"[pi-remote] cmd={shlex.join(command)}")
+        print("")
+        return subprocess.run(command, check=False).returncode
+
+    raise SystemExit(f"Unsupported config action: {args.config_action}")
+
+
 def main() -> int:
     """Program entry point."""
     deploy_config = load_pi_deploy_config()
     parser = build_parser(deploy_config)
     args = parser.parse_args()
+
+    if args.command == "config":
+        return run_config_command(args, deploy_config)
 
     config = RemoteConfig(
         host=args.host,

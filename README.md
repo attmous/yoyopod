@@ -44,7 +44,8 @@ On Whisplay, the one-button root hub currently exposes four cards:
 - `scripts/pisugar_power.py`: PiSugar battery, shutdown, and watchdog helper
 - `scripts/pisugar_rtc.py`: PiSugar RTC status, sync, and alarm helper
 - `deploy/systemd/yoyopod@.service`: production systemd unit for boot-time app supervision
-- `deploy/pi-deploy.yaml`: single source of truth for Raspberry Pi connection, runtime, log, screenshot, and rsync settings
+- `deploy/pi-deploy.yaml`: shared source of truth for Raspberry Pi runtime, log, screenshot, and rsync settings
+- `deploy/pi-deploy.local.yaml`: optional gitignored override for machine-specific Pi host, SSH user, project dir, and branch defaults
 - `yoyopy/fsm.py`: split `MusicFSM`, `CallFSM`, and call interruption policy
 - `yoyopy/coordinators/runtime.py`: derived `AppRuntimeState` over music, call, and UI state
 - `yoyopy/audio/mopidy_client.py`: Mopidy JSON-RPC client
@@ -132,6 +133,8 @@ uv run python scripts/pi_smoke.py --with-lvgl-soak
 Remote Pi workflow:
 
 ```bash
+uv run python scripts/pi_remote.py config show
+uv run python scripts/pi_remote.py config edit
 uv run python scripts/pi_remote.py status
 uv run python scripts/pi_remote.py preflight --branch main --with-mopidy --with-voip
 uv run python scripts/pi_remote.py sync --branch main
@@ -179,7 +182,14 @@ The production app now writes two rotating files in `logs/`:
 - `logs/yoyopod.log`: main structured log with timestamps, subsystem tag, module/function/line, and message
 - `logs/yoyopod_errors.log`: errors-only companion log
 
-The checked-in deploy contract at `deploy/pi-deploy.yaml` is the single source of truth for remote tooling defaults, including host, project directory, branch, process names, screenshot path, and these project-relative log paths:
+The checked-in deploy contract at `deploy/pi-deploy.yaml` defines the shared remote tooling defaults. `deploy/pi-deploy.local.yaml` is the gitignored machine-local override for host, SSH user, project directory, and branch. Manage them with:
+
+```bash
+uv run python scripts/pi_remote.py config show
+uv run python scripts/pi_remote.py config edit
+```
+
+The merged config controls process names, screenshot path, and these project-relative log paths:
 
 - `<project-dir>/logs/yoyopod.log`
 - `<project-dir>/logs/yoyopod_errors.log`

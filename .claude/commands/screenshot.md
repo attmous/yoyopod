@@ -1,1 +1,1 @@
-../../skills/screenshot.md
+../../skills/screenshot/SKILL.md

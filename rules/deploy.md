@@ -32,7 +32,14 @@ The `rpi-deploy` Claude Code plugin automates the deploy cycle with slash comman
 | `/pi-status` | Health check dashboard (connectivity, memory, processes) |
 | `/screenshot [--readback]` | Capture display output as PNG |
 
-Config: `deploy/pi-deploy.yaml`. Plugin repo: https://github.com/moustafattia/rpi-deploy
+Config: `deploy/pi-deploy.yaml` plus optional `deploy/pi-deploy.local.yaml` for machine-specific host/user overrides. Preferred edit flow:
+
+```bash
+uv run python scripts/pi_remote.py config show
+uv run python scripts/pi_remote.py config edit
+```
+
+Plugin repo: https://github.com/moustafattia/rpi-deploy
 
 ## Target Hardware
 

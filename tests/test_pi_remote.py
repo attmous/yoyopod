@@ -3,7 +3,9 @@
 from scripts.pi_remote import (
     PiDeployConfig,
     RemoteConfig,
+    build_config_editor_command,
     build_local_preflight_commands,
+    build_local_override_template,
     build_logs_command,
     build_lvgl_soak_command,
     build_power_command,
@@ -16,6 +18,7 @@ from scripts.pi_remote import (
     build_status_command,
     build_sync_command,
     build_whisplay_command,
+    load_pi_deploy_config,
     quote_remote_project_dir,
 )
 from argparse import Namespace
@@ -46,6 +49,74 @@ def test_quote_remote_project_dir_preserves_home_expansion() -> None:
 def test_quote_remote_project_dir_quotes_plain_paths() -> None:
     """Non-tilde paths should still be shell-escaped safely."""
     assert quote_remote_project_dir("/home/tifo/yoyo py") == "'/home/tifo/yoyo py'"
+
+
+def test_load_pi_deploy_config_merges_local_override(tmp_path) -> None:
+    """Machine-local config should override the shared defaults cleanly."""
+
+    base_path = tmp_path / "pi-deploy.yaml"
+    local_path = tmp_path / "pi-deploy.local.yaml"
+    base_path.write_text(
+        "\n".join(
+            [
+                'host: ""',
+                "user: \"\"",
+                "project_dir: ~/yoyo-py",
+                "branch: main",
+                "venv: .venv",
+                "start_cmd: python yoyopod.py",
+                "kill_processes: [python, linphonec]",
+                "log_file: logs/yoyopod.log",
+                "error_log_file: logs/yoyopod_errors.log",
+                "pid_file: /tmp/yoyopod.pid",
+                'startup_marker: "YoyoPod starting"',
+                "screenshot_path: /tmp/yoyopod_screenshot.png",
+                "rsync_exclude: [.git/, logs/]",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    local_path.write_text(
+        "\n".join(
+            [
+                "host: 192.168.1.55",
+                "user: pi",
+                "project_dir: ~/custom-yoyo",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_pi_deploy_config(
+        config_path=base_path,
+        local_override_path=local_path,
+    )
+
+    assert config.host == "192.168.1.55"
+    assert config.user == "pi"
+    assert config.project_dir == "~/custom-yoyo"
+    assert config.branch == "main"
+
+
+def test_build_local_override_template_targets_machine_specific_fields() -> None:
+    """The local override starter should focus on connection defaults."""
+
+    template = build_local_override_template(DEPLOY_CONFIG)
+
+    assert "machine-specific defaults" in template
+    assert "host: rpi-zero" in template
+    assert "user: pi" in template
+    assert "project_dir: ~/yoyo-py" in template
+    assert "branch: main" in template
+
+
+def test_build_config_editor_command_prefers_explicit_editor(tmp_path) -> None:
+    """An explicit editor command should override platform defaults."""
+
+    config_path = tmp_path / "pi-deploy.local.yaml"
+    command = build_config_editor_command(config_path, editor="code --wait")
+
+    assert command == ["code", "--wait", str(config_path)]
 
 
 def test_build_sync_command_includes_uv_sync_by_default() -> None:

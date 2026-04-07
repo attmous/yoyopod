@@ -1,1 +1,1 @@
-../../skills/restart.md
+../../skills/restart/SKILL.md
