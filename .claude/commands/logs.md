@@ -1,1 +1,0 @@
-../../skills/logs/SKILL.md

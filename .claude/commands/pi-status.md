@@ -1,1 +1,0 @@
-../../skills/pi-status/SKILL.md

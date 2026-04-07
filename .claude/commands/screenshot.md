@@ -1,1 +1,0 @@
-../../skills/screenshot/SKILL.md
