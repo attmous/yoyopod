@@ -58,6 +58,7 @@ class MpvBackend:
         self._connected = False
         self._current_track: Track | None = None
         self._playback_state = "stopped"
+        self._event_handler_registered = False
         self._cached_path: str | None = None
         self._cached_metadata: dict[str, object] = {}
         self._cached_duration: object | None = None
@@ -81,7 +82,9 @@ class MpvBackend:
             self._process.kill()
             return False
 
-        self._ipc.on_event(self._handle_mpv_event)
+        if not self._event_handler_registered:
+            self._ipc.on_event(self._handle_mpv_event)
+            self._event_handler_registered = True
         self._ipc.start_reader()
 
         try:

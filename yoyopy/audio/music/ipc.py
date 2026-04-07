@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import queue
 import socket
 import threading
 from typing import Any, BinaryIO, Callable
@@ -18,11 +19,13 @@ class MpvIpcClient:
         self._sock: socket.socket | BinaryIO | None = None
         self._lock = threading.Lock()
         self._reader_thread: threading.Thread | None = None
+        self._dispatch_thread: threading.Thread | None = None
         self._reader_stop = threading.Event()
         self._request_id = 0
         self._pending: dict[int, threading.Event] = {}
         self._responses: dict[int, dict[str, Any]] = {}
         self._event_callbacks: list[Callable[[dict[str, Any]], None]] = []
+        self._event_queue: queue.Queue[dict[str, Any] | None] | None = None
 
     def connect(self) -> bool:
         """Connect to the mpv IPC socket."""
@@ -59,6 +62,18 @@ class MpvIpcClient:
         if self._reader_thread is not None:
             self._reader_thread.join(timeout=2.0)
             self._reader_thread = None
+
+        event_queue = self._event_queue
+        self._event_queue = None
+        if event_queue is not None:
+            try:
+                event_queue.put_nowait(None)
+            except Exception:
+                pass
+
+        if self._dispatch_thread is not None:
+            self._dispatch_thread.join(timeout=2.0)
+            self._dispatch_thread = None
 
     @property
     def connected(self) -> bool:
@@ -97,19 +112,27 @@ class MpvIpcClient:
 
     def on_event(self, callback: Callable[[dict[str, Any]], None]) -> None:
         """Register a callback for mpv events."""
-        self._event_callbacks.append(callback)
+        if callback not in self._event_callbacks:
+            self._event_callbacks.append(callback)
 
     def start_reader(self) -> None:
         """Start the background thread that reads responses and events."""
         if self._reader_thread is not None:
             return
         self._reader_stop.clear()
+        self._event_queue = queue.Queue()
         self._reader_thread = threading.Thread(
             target=self._reader_loop,
             daemon=True,
             name="mpv-ipc-reader",
         )
         self._reader_thread.start()
+        self._dispatch_thread = threading.Thread(
+            target=self._dispatch_loop,
+            daemon=True,
+            name="mpv-ipc-dispatch",
+        )
+        self._dispatch_thread.start()
 
     def _send_data(self, data: bytes) -> None:
         """Write raw bytes to the connected transport."""
@@ -156,14 +179,33 @@ class MpvIpcClient:
                         if event is not None:
                             event.set()
                     elif "event" in msg:
-                        for cb in self._event_callbacks:
-                            try:
-                                cb(msg)
-                            except Exception as exc:
-                                logger.error("mpv event callback error: {}", exc)
+                        event_queue = self._event_queue
+                        if event_queue is not None:
+                            event_queue.put(msg)
             except socket.timeout:
                 continue
             except Exception:
                 if not self._reader_stop.is_set():
                     logger.warning("mpv IPC reader disconnected")
                 break
+
+    def _dispatch_loop(self) -> None:
+        """Invoke event callbacks outside the socket reader thread."""
+        event_queue = self._event_queue
+        if event_queue is None:
+            return
+
+        while not self._reader_stop.is_set():
+            try:
+                event = event_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+
+            if event is None:
+                break
+
+            for cb in list(self._event_callbacks):
+                try:
+                    cb(event)
+                except Exception as exc:
+                    logger.error("mpv event callback error: {}", exc)

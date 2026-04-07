@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import queue
 import socket
 import threading
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -62,6 +64,28 @@ class _FakeEventSocket(_FakeSocket):
             self._event_sent = True
             return (json.dumps({"event": "file-loaded"}) + "\n").encode()
         return b""
+
+
+class _FakeEventThenResponseSocket(_FakeSocket):
+    def __init__(self) -> None:
+        super().__init__()
+        self._responses: queue.Queue[bytes] = queue.Queue()
+        self._responses.put((json.dumps({"event": "file-loaded"}) + "\n").encode())
+
+    def sendall(self, data: bytes) -> None:
+        request = json.loads(data.decode().strip())
+        response = {
+            "request_id": request["request_id"],
+            "error": "success",
+            "data": "/music/alpha.ogg",
+        }
+        self._responses.put((json.dumps(response) + "\n").encode())
+
+    def recv(self, size: int) -> bytes:
+        try:
+            return self._responses.get(timeout=1.0)
+        except queue.Empty:
+            return b""
 
 
 def test_connect_and_send_command(tmp_path: Path) -> None:
@@ -155,6 +179,32 @@ def test_event_callback_fires(tmp_path: Path) -> None:
 
     assert len(events_received) >= 1
     assert events_received[0]["event"] == "file-loaded"
+
+
+def test_event_callback_can_send_command_without_blocking_reader_thread(tmp_path: Path) -> None:
+    fake_socket = _FakeEventThenResponseSocket()
+    callback_results: list[str] = []
+
+    with patch.object(socket, "AF_UNIX", 1, create=True), patch(
+        "yoyopy.audio.music.ipc.socket.socket",
+        return_value=fake_socket,
+    ):
+        client = MpvIpcClient(str(tmp_path / "test-mpv.sock"))
+
+        def handle_event(_event: dict[str, object]) -> None:
+            result = client.send_command(["get_property", "path"], timeout=0.5)
+            callback_results.append(str(result["data"]))
+
+        client.on_event(handle_event)
+        assert client.connect() is True
+
+        deadline = time.time() + 1.0
+        while time.time() < deadline and not callback_results:
+            time.sleep(0.01)
+
+        client.disconnect()
+
+    assert callback_results == ["/music/alpha.ogg"]
 
 
 def test_disconnect_is_safe_when_not_connected(tmp_path: Path) -> None:

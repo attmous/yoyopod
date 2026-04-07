@@ -228,3 +228,54 @@ def test_mpv_backend_get_current_track_refreshes_snapshot_when_cache_empty() -> 
     assert track.name == "Beta"
     assert track.artists == ["Composer"]
     assert track.length == 9000
+
+
+def test_mpv_backend_registers_mpv_event_handler_only_once_across_restarts() -> None:
+    class FakeIpc:
+        def __init__(self) -> None:
+            self.connected = False
+            self.callbacks: list[object] = []
+
+        def connect(self) -> bool:
+            self.connected = True
+            return True
+
+        def on_event(self, callback) -> None:
+            self.callbacks.append(callback)
+
+        def start_reader(self) -> None:
+            return None
+
+        def observe_property(self, name: str, observe_id: int) -> None:
+            return None
+
+        def send_command(self, args: list[object]) -> dict[str, object]:
+            return {"error": "success"}
+
+        def disconnect(self) -> None:
+            self.connected = False
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.alive = False
+
+        def spawn(self) -> bool:
+            self.alive = True
+            return True
+
+        def kill(self) -> None:
+            self.alive = False
+
+        def is_alive(self) -> bool:
+            return self.alive
+
+    backend = MpvBackend(MusicConfig())
+    fake_ipc = FakeIpc()
+    backend._ipc = fake_ipc
+    backend._process = FakeProcess()
+
+    assert backend.start() is True
+    backend.stop()
+    assert backend.start() is True
+
+    assert len(fake_ipc.callbacks) == 1
