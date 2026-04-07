@@ -25,12 +25,12 @@ The `rpi-deploy` Claude Code plugin automates the deploy cycle with slash comman
 
 | Command | Purpose |
 |---|---|
-| `/deploy` | Git push, SSH pull, kill, restart, verify |
-| `/sync` | Rsync dirty tree (no commit), kill, restart |
-| `/logs [N] [--errors] [--filter <sub>]` | Tail app logs from Pi |
-| `/restart` | Kill processes and relaunch |
-| `/pi-status` | Health check dashboard (connectivity, memory, processes) |
-| `/screenshot [--readback]` | Capture display output as PNG |
+| `/yoyopod-deploy` | Git push, SSH pull, kill, restart, verify |
+| `/yoyopod-sync` | Rsync dirty tree (no commit), kill, restart |
+| `/yoyopod-logs [N] [--errors] [--filter <sub>]` | Tail app logs from Pi |
+| `/yoyopod-restart` | Kill processes and relaunch |
+| `/yoyopod-status` | Health check dashboard (connectivity, memory, processes) |
+| `/yoyopod-screenshot [--readback]` | Capture display output as PNG |
 
 Config: `deploy/pi-deploy.yaml` plus optional `deploy/pi-deploy.local.yaml` for machine-specific host/user overrides. Preferred edit flow:
 

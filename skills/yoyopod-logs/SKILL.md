@@ -1,5 +1,5 @@
 ---
-name: logs
+name: yoyopod-logs
 description: Tail application logs from Raspberry Pi
 disable-model-invocation: true
 allowed-tools:
@@ -16,9 +16,9 @@ If the file does not exist, stop and tell the user to create it.
 
 ## Argument Parsing
 
-Parse the arguments string provided after `/logs`:
+Parse the arguments string provided after `/yoyopod-logs`:
 
-- **Line count:** If a bare number is present (for example `/logs 100`), map it to `--lines <count>`. Default: 100.
+- **Line count:** If a bare number is present (for example `/yoyopod-logs 100`), map it to `--lines <count>`. Default: 100.
 - **--errors flag:** Pass through to `scripts/pi_remote.py logs --errors`.
 - **--filter value:** Pass through to `scripts/pi_remote.py logs --filter <value>`.
 - **--follow flag:** Pass through to `scripts/pi_remote.py logs --follow`.

@@ -1,5 +1,5 @@
 ---
-name: screenshot
+name: yoyopod-screenshot
 description: Capture a screenshot of the app's display from Raspberry Pi
 disable-model-invocation: true
 allowed-tools:
@@ -16,7 +16,7 @@ If the file does not exist, stop and tell the user to create it.
 
 ## Argument Parsing
 
-Parse the arguments string provided after `/screenshot`:
+Parse the arguments string provided after `/yoyopod-screenshot`:
 
 - **--readback flag:** If `--readback` is present, use LVGL readback. Otherwise use the shadow buffer.
 

@@ -1,5 +1,5 @@
 ---
-name: restart
+name: yoyopod-restart
 description: Kill and relaunch the app on Raspberry Pi
 disable-model-invocation: true
 allowed-tools:

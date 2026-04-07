@@ -52,8 +52,6 @@ dmypy.json
 # Logs
 logs/
 *.log
-!skills/logs/
-!skills/logs/SKILL.md
 
 # Configuration
 config/config.json

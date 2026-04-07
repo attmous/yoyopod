@@ -30,7 +30,7 @@ Both use gzip compression, UTF-8 encoding, synchronous writes (`enqueue=False`).
 
 ## PID File
 
-Written to `/tmp/yoyopod.pid` on startup, cleaned up via `atexit`. Used by `/restart`, `/deploy`, `/pi-status` commands for process management.
+Written to `/tmp/yoyopod.pid` on startup, cleaned up via `atexit`. Used by `/yoyopod-restart`, `/yoyopod-deploy`, and `/yoyopod-status` for process management.
 
 ## Startup/Shutdown Markers
 

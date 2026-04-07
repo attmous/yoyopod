@@ -23,12 +23,12 @@ Workflow instructions for deploying and debugging on Raspberry Pi are in `skills
 
 | Skill | File | Purpose |
 |---|---|---|
-| deploy | `skills/deploy/SKILL.md` | Git push, remote branch sync, restart, verify |
-| sync | `skills/sync/SKILL.md` | Rsync dirty tree (no commit), restart |
-| logs | `skills/logs/SKILL.md` | Tail app logs with filtering |
-| restart | `skills/restart/SKILL.md` | Kill processes and relaunch |
-| pi-status | `skills/pi-status/SKILL.md` | Health check dashboard |
-| screenshot | `skills/screenshot/SKILL.md` | Capture display (shadow buffer or LVGL readback) |
+| yoyopod-deploy | `skills/yoyopod-deploy/SKILL.md` | Git push, remote branch sync, restart, verify |
+| yoyopod-sync | `skills/yoyopod-sync/SKILL.md` | Rsync dirty tree (no commit), restart |
+| yoyopod-logs | `skills/yoyopod-logs/SKILL.md` | Tail app logs with filtering |
+| yoyopod-restart | `skills/yoyopod-restart/SKILL.md` | Kill processes and relaunch |
+| yoyopod-status | `skills/yoyopod-status/SKILL.md` | Health check dashboard |
+| yoyopod-screenshot | `skills/yoyopod-screenshot/SKILL.md` | Capture display (shadow buffer or LVGL readback) |
 
 When asked to deploy, sync, restart, check status, view logs, or take a screenshot on the Pi, read the matching file from `skills/` and follow its Steps section. The shared config contract lives in `deploy/pi-deploy.yaml`, machine-specific overrides belong in `deploy/pi-deploy.local.yaml`, and `uv run python scripts/pi_remote.py config edit` is the preferred way to create or update the local override. All skills should prefer `scripts/pi_remote.py` over duplicating SSH workflow steps.
 

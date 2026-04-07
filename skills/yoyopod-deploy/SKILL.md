@@ -1,5 +1,5 @@
 ---
-name: deploy
+name: yoyopod-deploy
 description: Git-based deploy to Raspberry Pi (push, pull, restart)
 disable-model-invocation: true
 allowed-tools:
@@ -18,7 +18,7 @@ If the file does not exist, stop and tell the user to create it.
 
 ## Steps
 
-1. **Check local git status.** Run `git status --short`. If there are uncommitted or unstaged changes, stop and tell the user: "You have uncommitted changes. Use `/sync` for a dirty-tree deploy, or commit first."
+1. **Check local git status.** Run `git status --short`. If there are uncommitted or unstaged changes, stop and tell the user: "You have uncommitted changes. Use `/yoyopod-sync` for a dirty-tree deploy, or commit first."
 
 2. **Resolve the branch.** Run `git branch --show-current` and deploy that branch.
 

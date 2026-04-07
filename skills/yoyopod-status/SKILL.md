@@ -1,5 +1,5 @@
 ---
-name: pi-status
+name: yoyopod-status
 description: Health check for Raspberry Pi - connectivity, processes, memory, recent logs
 disable-model-invocation: true
 allowed-tools:
@@ -31,5 +31,5 @@ If the file does not exist, stop and tell the user to create it.
 
 3. **If the app is not running,** explicitly suggest:
    ```text
-   Run /restart to start the app.
+   Run /yoyopod-restart to start the app.
    ```

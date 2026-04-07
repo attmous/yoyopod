@@ -1,5 +1,5 @@
 ---
-name: sync
+name: yoyopod-sync
 description: Quick rsync deploy to Raspberry Pi (no commit needed)
 disable-model-invocation: true
 allowed-tools:
