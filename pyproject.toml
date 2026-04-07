@@ -1,13 +1,13 @@
 [project]
 name = "yoyopy"
 version = "0.1.0"
-description = "YoyoPod integrated VoIP and Mopidy player for Raspberry Pi"
+description = "YoyoPod integrated VoIP and local-first mpv player for Raspberry Pi"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [
     { name = "YoyoPod Team" }
 ]
-keywords = ["yoyopod", "yoyopy", "raspberry-pi", "voip", "mopidy", "audio-player"]
+keywords = ["yoyopod", "yoyopy", "raspberry-pi", "voip", "mpv", "audio-player", "local-first"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",

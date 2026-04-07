@@ -8,7 +8,7 @@
 
 **Tech Stack:** mpv (C + ffmpeg), Unix sockets (AF_UNIX / named pipes on Windows), tinytag (pure Python tag reader), existing YoyoPod event bus and coordinator pattern.
 
-**Spec:** `docs/superpowers/specs/2026-04-07-mpv-music-backend-design.md`
+**Spec:** `docs/archive/superpowers/specs/2026-04-07-mpv-music-backend-design.md`
 
 ---
 
