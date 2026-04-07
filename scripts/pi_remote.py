@@ -20,18 +20,43 @@ class RemoteConfig:
     """Connection details for the Raspberry Pi host."""
 
     host: str
+    user: str
     project_dir: str
     branch: str
+
+    @property
+    def ssh_target(self) -> str:
+        """Return the SSH target in user@host form when a user is configured."""
+        if self.user:
+            return f"{self.user}@{self.host}"
+        return self.host
 
 
 @dataclass(frozen=True)
 class PiDeployConfig:
     """Stable runtime paths used by the Pi deploy/debugging workflow."""
 
-    log_file: str
-    error_log_file: str
-    pid_file: str
-    startup_marker: str
+    host: str = ""
+    user: str = ""
+    project_dir: str = "~/yoyo-py"
+    branch: str = "main"
+    venv: str = ".venv"
+    start_cmd: str = "python yoyopod.py"
+    kill_processes: tuple[str, ...] = ("python", "linphonec")
+    log_file: str = "logs/yoyopod.log"
+    error_log_file: str = "logs/yoyopod_errors.log"
+    pid_file: str = "/tmp/yoyopod.pid"
+    startup_marker: str = "YoyoPod starting"
+    screenshot_path: str = "/tmp/yoyopod_screenshot.png"
+    rsync_exclude: tuple[str, ...] = (
+        ".git/",
+        "__pycache__/",
+        "*.pyc",
+        ".venv/",
+        "logs/",
+        "node_modules/",
+        "*.egg-info/",
+    )
 
 
 def load_pi_deploy_config() -> PiDeployConfig:
@@ -42,35 +67,76 @@ def load_pi_deploy_config() -> PiDeployConfig:
         data = yaml.safe_load(handle) or {}
 
     return PiDeployConfig(
-        log_file=data["log_file"],
-        error_log_file=data["error_log_file"],
-        pid_file=data["pid_file"],
-        startup_marker=data["startup_marker"],
+        host=str(data.get("host", "")).strip(),
+        user=str(data.get("user", "")).strip(),
+        project_dir=str(
+            data.get("project_dir", data.get("remote_dir", "~/yoyo-py"))
+        ).strip()
+        or "~/yoyo-py",
+        branch=str(data.get("branch", "main")).strip() or "main",
+        venv=str(data.get("venv", ".venv")).strip() or ".venv",
+        start_cmd=str(data.get("start_cmd", "python yoyopod.py")).strip()
+        or "python yoyopod.py",
+        kill_processes=tuple(
+            str(process).strip()
+            for process in data.get("kill_processes", ("python", "linphonec"))
+            if str(process).strip()
+        )
+        or ("python", "linphonec"),
+        log_file=str(data["log_file"]).strip(),
+        error_log_file=str(data["error_log_file"]).strip(),
+        pid_file=str(data["pid_file"]).strip(),
+        startup_marker=str(data["startup_marker"]).strip(),
+        screenshot_path=str(
+            data.get("screenshot_path", "/tmp/yoyopod_screenshot.png")
+        ).strip()
+        or "/tmp/yoyopod_screenshot.png",
+        rsync_exclude=tuple(
+            str(pattern)
+            for pattern in data.get(
+                "rsync_exclude",
+                (
+                    ".git/",
+                    "__pycache__/",
+                    "*.pyc",
+                    ".venv/",
+                    "logs/",
+                    "node_modules/",
+                    "*.egg-info/",
+                ),
+            )
+        ),
     )
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(deploy_config: PiDeployConfig) -> argparse.ArgumentParser:
     """Create the command-line parser."""
     parser = argparse.ArgumentParser(
         description=(
             "Run common YoyoPod Raspberry Pi development tasks over SSH. "
             "Defaults can be provided with YOYOPOD_PI_HOST, "
-            "YOYOPOD_PI_PROJECT_DIR, and YOYOPOD_PI_BRANCH."
+            "YOYOPOD_PI_PROJECT_DIR, and YOYOPOD_PI_BRANCH, or "
+            "through deploy/pi-deploy.yaml."
         )
     )
     parser.add_argument(
         "--host",
-        default=os.getenv("YOYOPOD_PI_HOST", ""),
+        default=os.getenv("YOYOPOD_PI_HOST", deploy_config.host),
         help="SSH host or alias for the Raspberry Pi",
     )
     parser.add_argument(
+        "--user",
+        default=os.getenv("YOYOPOD_PI_USER", deploy_config.user),
+        help="SSH user for the Raspberry Pi (optional)",
+    )
+    parser.add_argument(
         "--project-dir",
-        default=os.getenv("YOYOPOD_PI_PROJECT_DIR", "~/yoyo-py"),
+        default=os.getenv("YOYOPOD_PI_PROJECT_DIR", deploy_config.project_dir),
         help="Project directory on the Raspberry Pi (default: ~/yoyo-py)",
     )
     parser.add_argument(
         "--branch",
-        default=os.getenv("YOYOPOD_PI_BRANCH", "main"),
+        default=os.getenv("YOYOPOD_PI_BRANCH", deploy_config.branch),
         help="Git branch to sync on the Raspberry Pi (default: main)",
     )
 
@@ -89,6 +155,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-uv-sync",
         action="store_true",
         help="Skip `uv sync --extra dev` after pulling",
+    )
+
+    rsync_parser = subparsers.add_parser(
+        "rsync",
+        help="Rsync the local working tree to the Raspberry Pi and restart the app",
+    )
+    rsync_parser.add_argument(
+        "--skip-restart",
+        action="store_true",
+        help="Only rsync files without restarting the app afterward",
+    )
+
+    restart_parser = subparsers.add_parser(
+        "restart",
+        help="Kill and relaunch the production app on the Raspberry Pi",
+    )
+
+    screenshot_parser = subparsers.add_parser(
+        "screenshot",
+        help="Capture a screenshot from the running app on the Raspberry Pi",
+    )
+    screenshot_parser.add_argument(
+        "--readback",
+        action="store_true",
+        help="Use LVGL readback (SIGUSR2) instead of the shadow buffer (SIGUSR1)",
+    )
+    screenshot_parser.add_argument(
+        "--output",
+        default="pi_screenshot.png",
+        help="Local path for the downloaded screenshot (default: ./pi_screenshot.png)",
     )
 
     smoke_parser = subparsers.add_parser(
@@ -366,7 +462,8 @@ def validate_config(config: RemoteConfig) -> None:
     """Ensure required connection details are present."""
     if not config.host:
         raise SystemExit(
-            "Missing Raspberry Pi host. Pass --host or set YOYOPOD_PI_HOST."
+            "Missing Raspberry Pi host. Set it in deploy/pi-deploy.yaml, "
+            "pass --host, or set YOYOPOD_PI_HOST."
         )
 
 
@@ -382,24 +479,49 @@ def quote_remote_project_dir(project_dir: str) -> str:
     return shlex.quote(project_dir)
 
 
-def run_remote(config: RemoteConfig, remote_command: str, tty: bool = False) -> int:
-    """Execute one command on the Raspberry Pi via SSH."""
+def build_ssh_command(
+    config: RemoteConfig,
+    remote_command: str,
+    *,
+    tty: bool = False,
+) -> list[str]:
+    """Build one SSH command targeting the Raspberry Pi."""
     wrapped_command = (
         f"cd {quote_remote_project_dir(config.project_dir)} && {remote_command}"
     )
     ssh_command = ["ssh"]
     if tty:
         ssh_command.append("-t")
-    ssh_command.extend([config.host, f"bash -lc {shlex.quote(wrapped_command)}"])
+    ssh_command.extend([config.ssh_target, f"bash -lc {shlex.quote(wrapped_command)}"])
+    return ssh_command
+
+
+def run_remote(config: RemoteConfig, remote_command: str, tty: bool = False) -> int:
+    """Execute one command on the Raspberry Pi via SSH."""
+    ssh_command = build_ssh_command(config, remote_command, tty=tty)
 
     print("")
-    print(f"[pi-remote] host={config.host}")
+    print(f"[pi-remote] host={config.ssh_target}")
     print(f"[pi-remote] dir={config.project_dir}")
     print(f"[pi-remote] cmd={remote_command}")
     print("")
 
     completed = subprocess.run(ssh_command, check=False)
     return completed.returncode
+
+
+def run_remote_capture(
+    config: RemoteConfig,
+    remote_command: str,
+) -> subprocess.CompletedProcess[str]:
+    """Execute one SSH command and capture its stdout/stderr."""
+    ssh_command = build_ssh_command(config, remote_command)
+    return subprocess.run(
+        ssh_command,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
 
 def run_local(command: Sequence[str], label: str) -> int:
@@ -413,10 +535,28 @@ def run_local(command: Sequence[str], label: str) -> int:
     return completed.returncode
 
 
+def run_local_capture(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    """Execute one local command and capture its stdout/stderr."""
+    return subprocess.run(
+        list(command),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
 def shell_quote(value: str) -> str:
     """Shell-escape one literal value for the remote command string."""
 
     return shlex.quote(value)
+
+
+def _activate_script_path(venv: str) -> str:
+    """Return the shell path for activating the configured virtualenv."""
+    normalized = venv.rstrip("/")
+    if normalized.endswith("/bin/activate"):
+        return normalized
+    return f"{normalized}/bin/activate"
 
 
 def build_status_command(deploy_config: PiDeployConfig | None = None) -> str:
@@ -467,6 +607,40 @@ def build_sync_command(config: RemoteConfig, skip_uv_sync: bool) -> str:
     ]
     if not skip_uv_sync:
         commands.append("uv sync --extra dev")
+    return " && ".join(commands)
+
+
+def build_rsync_command(
+    config: RemoteConfig,
+    deploy_config: PiDeployConfig,
+) -> list[str]:
+    """Create the local rsync command for a dirty-tree sync."""
+    command = ["rsync", "-avz", "--delete"]
+    for pattern in deploy_config.rsync_exclude:
+        command.extend(["--exclude", pattern])
+
+    remote_dir = config.project_dir.rstrip("/")
+    command.extend(["./", f"{config.ssh_target}:{remote_dir}/"])
+    return command
+
+
+def build_restart_command(deploy_config: PiDeployConfig) -> str:
+    """Create the remote restart command for the production app."""
+    pid_file = shell_quote(deploy_config.pid_file)
+    activate_script = shell_quote(_activate_script_path(deploy_config.venv))
+
+    commands = [
+        f"(test -f {pid_file} && kill -9 $(cat {pid_file}) 2>/dev/null) || true",
+    ]
+    for process_name in deploy_config.kill_processes:
+        commands.append(f"killall -9 {shell_quote(process_name)} 2>/dev/null || true")
+
+    commands.extend(
+        [
+            f"source {activate_script} && nohup {deploy_config.start_cmd} > /dev/null 2>&1 &",
+            build_startup_verification_command(deploy_config),
+        ]
+    )
     return " && ".join(commands)
 
 
@@ -688,6 +862,80 @@ def build_local_preflight_commands() -> list[tuple[str, list[str]]]:
     ]
 
 
+def run_rsync_deploy(
+    config: RemoteConfig,
+    deploy_config: PiDeployConfig,
+    *,
+    skip_restart: bool,
+) -> int:
+    """Rsync the local working tree to the Pi and optionally restart the app."""
+    exit_code = run_local(build_rsync_command(config, deploy_config), "rsync")
+    if exit_code != 0 or skip_restart:
+        return exit_code
+
+    return run_remote(config, build_restart_command(deploy_config))
+
+
+def run_screenshot(
+    config: RemoteConfig,
+    deploy_config: PiDeployConfig,
+    args: argparse.Namespace,
+) -> int:
+    """Capture a screenshot from the remote app and copy it locally."""
+    pid_file = shell_quote(deploy_config.pid_file)
+    screenshot_path = shell_quote(deploy_config.screenshot_path)
+
+    alive_result = run_remote_capture(
+        config,
+        f"test -f {pid_file} && kill -0 $(cat {pid_file}) 2>/dev/null && echo ALIVE || echo DEAD",
+    )
+    if alive_result.returncode != 0 or alive_result.stdout.strip() != "ALIVE":
+        print("Remote app is not running; restart it before requesting a screenshot.")
+        if alive_result.stderr.strip():
+            print(alive_result.stderr.strip())
+        return 1
+
+    signal_name = "USR2" if args.readback else "USR1"
+    signal_result = run_remote_capture(
+        config,
+        f"kill -{signal_name} $(cat {pid_file})",
+    )
+    if signal_result.returncode != 0:
+        print("Failed to trigger screenshot capture on the Raspberry Pi.")
+        if signal_result.stderr.strip():
+            print(signal_result.stderr.strip())
+        return signal_result.returncode
+
+    verify_result = run_remote_capture(
+        config,
+        f"sleep 1 && test -f {screenshot_path} && echo READY || echo MISSING",
+    )
+    if verify_result.returncode != 0 or verify_result.stdout.strip() != "READY":
+        print(
+            "Screenshot was not created on the Raspberry Pi. "
+            "Confirm the app is running and screenshot handlers are installed."
+        )
+        if verify_result.stderr.strip():
+            print(verify_result.stderr.strip())
+        return 1
+
+    output_path = Path(args.output).expanduser().resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    scp_command = [
+        "scp",
+        f"{config.ssh_target}:{deploy_config.screenshot_path}",
+        str(output_path),
+    ]
+    print("")
+    print(f"[pi-remote] local=screenshot-copy")
+    print(f"[pi-remote] cmd={shlex.join(scp_command)}")
+    print("")
+    copy_result = subprocess.run(scp_command, check=False)
+    if copy_result.returncode == 0:
+        print(f"Saved screenshot to {output_path}")
+    return copy_result.returncode
+
+
 def run_preflight(config: RemoteConfig, args: argparse.Namespace) -> int:
     """Run the combined local + remote preflight flow."""
     if not args.skip_local:
@@ -709,12 +957,13 @@ def run_preflight(config: RemoteConfig, args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Program entry point."""
-    parser = build_parser()
-    args = parser.parse_args()
     deploy_config = load_pi_deploy_config()
+    parser = build_parser(deploy_config)
+    args = parser.parse_args()
 
     config = RemoteConfig(
         host=args.host,
+        user=args.user,
         project_dir=args.project_dir,
         branch=args.branch,
     )
@@ -725,6 +974,13 @@ def main() -> int:
 
     if args.command == "sync":
         return run_remote(config, build_sync_command(config, args.skip_uv_sync))
+
+    if args.command == "rsync":
+        return run_rsync_deploy(
+            config,
+            deploy_config,
+            skip_restart=args.skip_restart,
+        )
 
     if args.command == "smoke":
         return run_remote(config, build_smoke_command(args))
@@ -743,6 +999,12 @@ def main() -> int:
 
     if args.command == "logs":
         return run_remote(config, build_logs_command(args, deploy_config), tty=args.follow)
+
+    if args.command == "restart":
+        return run_remote(config, build_restart_command(deploy_config))
+
+    if args.command == "screenshot":
+        return run_screenshot(config, deploy_config, args)
 
     if args.command == "service":
         return run_remote(config, build_service_command(args, deploy_config))

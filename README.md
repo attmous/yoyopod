@@ -37,12 +37,12 @@ On Whisplay, the one-button root hub currently exposes four cards:
 - `yoyopy/main.py`: package entry point for installed console scripts
 - `yoyopy/app.py`: `YoyoPodApp` coordinator
 - `scripts/pi_smoke.py`: Raspberry Pi smoke validator for hardware and optional service checks
-- `scripts/pi_remote.py`: SSH helper for Raspberry Pi sync, smoke, status, and run loops
+- `scripts/pi_remote.py`: SSH helper for Raspberry Pi deploy, rsync, restart, logs, status, screenshots, smoke, and run loops
 - `scripts/lvgl_soak.py`: LVGL transition and sleep/wake soak helper for Whisplay
 - `scripts/pisugar_power.py`: PiSugar battery, shutdown, and watchdog helper
 - `scripts/pisugar_rtc.py`: PiSugar RTC status, sync, and alarm helper
 - `deploy/systemd/yoyopod@.service`: production systemd unit for boot-time app supervision
-- `deploy/pi-deploy.yaml`: stable Pi log/PID contract for remote tooling and future automation
+- `deploy/pi-deploy.yaml`: single source of truth for Raspberry Pi connection, runtime, log, screenshot, and rsync settings
 - `yoyopy/fsm.py`: split `MusicFSM`, `CallFSM`, and call interruption policy
 - `yoyopy/coordinators/runtime.py`: derived `AppRuntimeState` over music, call, and UI state
 - `yoyopy/audio/mopidy_client.py`: Mopidy JSON-RPC client
@@ -128,12 +128,15 @@ Remote Pi workflow:
 uv run python scripts/pi_remote.py status
 uv run python scripts/pi_remote.py preflight --branch main --with-mopidy --with-voip
 uv run python scripts/pi_remote.py sync --branch main
+uv run python scripts/pi_remote.py rsync
+uv run python scripts/pi_remote.py restart
 uv run python scripts/pi_remote.py smoke --with-mopidy --with-voip
 uv run python scripts/pi_remote.py power
 uv run python scripts/pi_remote.py rtc status
 uv run python scripts/pi_remote.py rtc sync-to-rtc
 uv run python scripts/pi_remote.py logs --lines 200
 uv run python scripts/pi_remote.py logs --errors --filter voip
+uv run python scripts/pi_remote.py screenshot --output ./pi_screenshot.png
 uv run python scripts/pi_remote.py lvgl-soak --cycles 2
 uv run python scripts/pi_remote.py service status
 uv run python scripts/pi_remote.py service install
@@ -169,7 +172,7 @@ The production app now writes two rotating files in `logs/`:
 - `logs/yoyopod.log`: main structured log with timestamps, subsystem tag, module/function/line, and message
 - `logs/yoyopod_errors.log`: errors-only companion log
 
-On the Pi, the checked-in deploy contract at `deploy/pi-deploy.yaml` pins the default project-relative paths used by remote tooling:
+The checked-in deploy contract at `deploy/pi-deploy.yaml` is the single source of truth for remote tooling defaults, including host, project directory, branch, process names, screenshot path, and these project-relative log paths:
 
 - `<project-dir>/logs/yoyopod.log`
 - `<project-dir>/logs/yoyopod_errors.log`

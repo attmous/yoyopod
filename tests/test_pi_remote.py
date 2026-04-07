@@ -7,7 +7,9 @@ from scripts.pi_remote import (
     build_logs_command,
     build_lvgl_soak_command,
     build_power_command,
+    build_restart_command,
     build_rtc_command,
+    build_rsync_command,
     build_service_command,
     build_smoke_command,
     build_startup_verification_command,
@@ -19,10 +21,19 @@ from scripts.pi_remote import (
 from argparse import Namespace
 
 DEPLOY_CONFIG = PiDeployConfig(
+    host="rpi-zero",
+    user="pi",
+    project_dir="~/yoyo-py",
+    branch="main",
+    venv=".venv",
+    start_cmd="python yoyopod.py",
+    kill_processes=("python", "linphonec"),
     log_file="logs/yoyopod.log",
     error_log_file="logs/yoyopod_errors.log",
     pid_file="/tmp/yoyopod.pid",
     startup_marker="YoyoPod starting",
+    screenshot_path="/tmp/yoyopod_screenshot.png",
+    rsync_exclude=(".git/", "logs/"),
 )
 
 
@@ -41,12 +52,31 @@ def test_build_sync_command_includes_uv_sync_by_default() -> None:
     """Remote sync should refresh dependencies unless explicitly skipped."""
     config = RemoteConfig(
         host="rpi-zero",
+        user="pi",
         project_dir="~/yoyo-py",
         branch="main",
     )
 
     assert "uv sync --extra dev" in build_sync_command(config, skip_uv_sync=False)
     assert "uv sync --extra dev" not in build_sync_command(config, skip_uv_sync=True)
+
+
+def test_build_rsync_command_uses_excludes_and_remote_target() -> None:
+    """Dirty-tree sync should use rsync excludes from the deploy config."""
+    config = RemoteConfig(
+        host="rpi-zero",
+        user="pi",
+        project_dir="~/yoyo-py",
+        branch="main",
+    )
+
+    command = build_rsync_command(config, DEPLOY_CONFIG)
+
+    assert command[:3] == ["rsync", "-avz", "--delete"]
+    assert command[-2:] == ["./", "pi@rpi-zero:~/yoyo-py/"]
+    assert "--exclude" in command
+    assert ".git/" in command
+    assert "logs/" in command
 
 
 def test_build_smoke_command_adds_optional_checks() -> None:
@@ -170,6 +200,18 @@ def test_build_status_command_reports_yoyopod_service_and_pisugar_server() -> No
     assert "systemctl is-active pisugar-server || true" in command
     assert "/tmp/yoyopod.pid" in command
     assert "YoyoPod starting" in command
+
+
+def test_build_restart_command_reuses_pid_and_startup_contract() -> None:
+    """Restart should kill stale processes, relaunch the app, and verify startup."""
+
+    command = build_restart_command(DEPLOY_CONFIG)
+
+    assert "kill -9 $(cat /tmp/yoyopod.pid)" in command
+    assert "killall -9 python" in command
+    assert "killall -9 linphonec" in command
+    assert "source .venv/bin/activate && nohup python yoyopod.py > /dev/null 2>&1 &" in command
+    assert "grep -F 'YoyoPod starting' logs/yoyopod.log" in command
 
 
 def test_build_service_command_supports_install_and_logs() -> None:

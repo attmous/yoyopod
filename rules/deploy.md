@@ -1,6 +1,6 @@
 # Deploy Workflow
 
-Applies to: `pi-deploy.yaml`, deployment and debugging on Raspberry Pi
+Applies to: `deploy/pi-deploy.yaml`, deployment and debugging on Raspberry Pi
 
 ## Manual Deploy
 
@@ -21,7 +21,7 @@ ssh rpi-zero "killall -9 python linphonec"
 
 ## rpi-deploy Plugin
 
-The `rpi-deploy` Claude Code plugin automates the deploy cycle with slash commands:
+The `rpi-deploy` Claude Code plugin automates the deploy cycle with slash commands. In this repo, prefer `scripts/pi_remote.py` as the executable implementation for these workflows and keep the skills as thin wrappers around it.
 
 | Command | Purpose |
 |---|---|
@@ -32,7 +32,7 @@ The `rpi-deploy` Claude Code plugin automates the deploy cycle with slash comman
 | `/pi-status` | Health check dashboard (connectivity, memory, processes) |
 | `/screenshot [--readback]` | Capture display output as PNG |
 
-Config: `pi-deploy.yaml` in project root. Plugin repo: https://github.com/moustafattia/rpi-deploy
+Config: `deploy/pi-deploy.yaml`. Plugin repo: https://github.com/moustafattia/rpi-deploy
 
 ## Target Hardware
 
