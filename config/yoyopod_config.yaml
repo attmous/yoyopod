@@ -8,8 +8,10 @@ app:
 
 # Audio / Music Settings
 audio:
-  mopidy_host: "localhost"
-  mopidy_port: 6680
+  music_dir: "/home/tifo/Music"
+  mpv_socket: "/tmp/yoyopod-mpv.sock"
+  mpv_binary: "mpv"
+  alsa_device: "default"
   auto_resume_after_call: true    # Resume music after call ends
   fade_out_duration_ms: 0         # Fade out before call (0 = instant)
   fade_in_duration_ms: 0          # Fade in after call (0 = instant)
