@@ -405,6 +405,30 @@ def test_apply_default_music_volume_updates_backend_and_context() -> None:
     assert app.music_backend.commands[-1] == "volume:100"
 
 
+def test_music_connect_reapplies_shared_output_volume() -> None:
+    """mpv reconnects should inherit the current shared output volume."""
+    app = YoyoPodApp(simulate=True)
+    app.context = AppContext()
+
+    class FakeOutputVolume:
+        def __init__(self) -> None:
+            self.synced: list[int] = []
+
+        def get_volume(self) -> int:
+            return 82
+
+        def sync_music_backend(self, volume: int) -> bool:
+            self.synced.append(volume)
+            return True
+
+    app.output_volume = FakeOutputVolume()
+
+    app._sync_output_volume_on_music_connect(True, "connected")
+
+    assert app.output_volume.synced == [82]
+    assert app.context.playback.volume == 82
+
+
 def test_incoming_call_pauses_playing_music_once() -> None:
     """Incoming call events should pause active playback exactly once."""
     app, music_backend, screen_manager = _build_app(playback_state="playing")

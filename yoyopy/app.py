@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, Optional
 from loguru import logger
 
 from yoyopy.app_context import AppContext
-from yoyopy.audio import LocalMusicService, RecentTrackHistoryStore
+from yoyopy.audio import LocalMusicService, OutputVolumeController, RecentTrackHistoryStore
 from yoyopy.audio.music import MpvBackend, MusicConfig
 from yoyopy.config import ConfigManager, YoyoPodConfig
 from yoyopy.coordinators import (
@@ -128,6 +128,7 @@ class YoyoPodApp:
         self.voip_manager: Optional[VoIPManager] = None
         self.music_backend: Optional[MpvBackend] = None
         self.local_music_service: Optional[LocalMusicService] = None
+        self.output_volume: Optional[OutputVolumeController] = None
         self.power_manager: Optional[PowerManager] = None
         self.call_history_store: Optional[CallHistoryStore] = None
         self.recent_track_store: Optional[RecentTrackHistoryStore] = None
@@ -502,6 +503,10 @@ class YoyoPodApp:
                 music_dir=music_config.music_dir,
                 recent_store=self.recent_track_store,
             )
+            if self.output_volume is None:
+                self.output_volume = OutputVolumeController(self.music_backend)
+            else:
+                self.output_volume.attach_music_backend(self.music_backend)
             if self.music_backend.start():
                 logger.info("    ✓ Music backend started successfully")
             else:
@@ -531,8 +536,17 @@ class YoyoPodApp:
         return max(0, min(100, int(raw_volume)))
 
     def _apply_default_music_volume(self) -> None:
-        """Apply the configured startup volume to context and the live music backend."""
+        """Apply the configured startup volume to ALSA and the live music backend."""
         volume = self._resolve_default_music_volume()
+
+        if self.output_volume is not None:
+            if self.output_volume.set_volume(volume):
+                resolved = self.output_volume.get_volume()
+                if self.context is not None and resolved is not None:
+                    self.context.playback.volume = resolved
+                logger.info("    Startup output volume set to {}%", resolved or volume)
+                return
+            logger.warning("    Failed to set startup output volume to {}%", volume)
 
         if self.context is not None:
             self.context.playback.volume = volume
@@ -544,6 +558,59 @@ class YoyoPodApp:
             logger.info("    Startup music volume set to {}%", volume)
         else:
             logger.warning("    Failed to set startup music volume to {}%", volume)
+
+    def get_output_volume(self) -> int | None:
+        """Return the current shared output volume."""
+        if self.output_volume is not None:
+            volume = self.output_volume.get_volume()
+            if self.context is not None and volume is not None:
+                self.context.playback.volume = volume
+            return volume
+        if self.context is not None:
+            return self.context.playback.volume
+        return None
+
+    def set_output_volume(self, volume: int) -> bool:
+        """Set the shared output volume across ALSA and the music backend."""
+        target = max(0, min(100, int(volume)))
+
+        applied = False
+        if self.output_volume is not None:
+            applied = self.output_volume.set_volume(target)
+        elif self.music_backend is not None and self.music_backend.is_connected:
+            applied = self.music_backend.set_volume(target)
+
+        if self.context is not None:
+            resolved = self.get_output_volume()
+            self.context.playback.volume = resolved if resolved is not None else target
+
+        return applied
+
+    def volume_up(self, step: int = 5) -> int | None:
+        """Increase shared output volume."""
+        current = self.get_output_volume()
+        target = (current if current is not None else 0) + step
+        self.set_output_volume(target)
+        return self.get_output_volume()
+
+    def volume_down(self, step: int = 5) -> int | None:
+        """Decrease shared output volume."""
+        current = self.get_output_volume()
+        target = (current if current is not None else 0) - step
+        self.set_output_volume(target)
+        return self.get_output_volume()
+
+    def _sync_output_volume_on_music_connect(self, connected: bool, _reason: str) -> None:
+        """Reapply the current shared volume whenever mpv reconnects."""
+        if not connected or self.output_volume is None:
+            return
+
+        volume = self.output_volume.get_volume()
+        if volume is None:
+            volume = self._resolve_default_music_volume()
+
+        if self.output_volume.sync_music_backend(volume) and self.context is not None:
+            self.context.playback.volume = volume
 
     def _setup_screens(self) -> bool:
         """Create and register all screens."""
@@ -789,6 +856,7 @@ class YoyoPodApp:
         self.music_backend.on_playback_state_change(
             self.playback_coordinator.publish_playback_state_change
         )
+        self.music_backend.on_connection_change(self._sync_output_volume_on_music_connect)
         self.music_backend.on_connection_change(
             self.playback_coordinator.publish_availability_change
         )
@@ -1664,6 +1732,7 @@ class YoyoPodApp:
             "auto_resume": self.auto_resume_after_call,
             "voip_available": self.voip_manager is not None and self.voip_manager.running,
             "music_available": self.music_backend is not None and self.music_backend.is_connected,
+            "volume": self.get_output_volume(),
             "power_available": power_snapshot.available if power_snapshot is not None else False,
             "battery_percent": self.context.battery_percent if self.context else None,
             "battery_charging": self.context.battery_charging if self.context else None,
