@@ -15,7 +15,7 @@ audio:
   auto_resume_after_call: true    # Resume music after call ends
   fade_out_duration_ms: 0         # Fade out before call (0 = instant)
   fade_in_duration_ms: 0          # Fade in after call (0 = instant)
-  default_volume: 70              # 0-100
+  default_volume: 100             # 0-100
 
 # VoIP Settings (reference to voip_config.yaml)
 voip:

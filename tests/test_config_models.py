@@ -28,6 +28,7 @@ def test_app_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> Non
     assert settings.audio.mpv_socket == ""
     assert settings.audio.mpv_binary == "mpv"
     assert settings.audio.alsa_device == "default"
+    assert settings.audio.default_volume == 100
     assert settings.audio.auto_resume_after_call is True
     assert settings.audio.speaker_test_path == "speaker-test"
     assert settings.input.ptt_navigation is True

@@ -155,7 +155,7 @@ class AppAudioConfig:
     )
     fade_out_duration_ms: int = config_value(default=0, env="YOYOPOD_FADE_OUT_DURATION_MS")
     fade_in_duration_ms: int = config_value(default=0, env="YOYOPOD_FADE_IN_DURATION_MS")
-    default_volume: int = config_value(default=70, env="YOYOPOD_DEFAULT_VOLUME")
+    default_volume: int = config_value(default=100, env="YOYOPOD_DEFAULT_VOLUME")
     ring_output_device: str = config_value(default="", env="YOYOPOD_RING_OUTPUT_DEVICE")
     speaker_test_path: str = config_value(default="speaker-test", env="YOYOPOD_SPEAKER_TEST_PATH")
 

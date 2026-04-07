@@ -390,6 +390,21 @@ def _build_app_with_power(
     return app, music_backend, screen_manager
 
 
+def test_apply_default_music_volume_updates_backend_and_context() -> None:
+    """Startup should push the configured music volume into mpv and app context."""
+    app = YoyoPodApp(simulate=True)
+    app.context = AppContext()
+    app.app_settings = SimpleNamespace(audio=SimpleNamespace(default_volume=100))
+    app.music_backend = MockMusicBackend()
+    app.music_backend.start()
+
+    app._apply_default_music_volume()
+
+    assert app.context.playback.volume == 100
+    assert app.music_backend.get_volume() == 100
+    assert app.music_backend.commands[-1] == "volume:100"
+
+
 def test_incoming_call_pauses_playing_music_once() -> None:
     """Incoming call events should pause active playback exactly once."""
     app, music_backend, screen_manager = _build_app(playback_state="playing")

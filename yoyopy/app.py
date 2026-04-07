@@ -507,6 +507,8 @@ class YoyoPodApp:
             else:
                 logger.warning("    ⚠ Music backend failed to start (VoIP-only mode)")
 
+            self._apply_default_music_volume()
+
             logger.info("  - PowerManager")
             self.power_manager = PowerManager.from_config_manager(self.config_manager)
             if self.power_manager.config.enabled:
@@ -521,6 +523,27 @@ class YoyoPodApp:
         except Exception:
             logger.exception("Failed to initialize managers")
             return False
+
+    def _resolve_default_music_volume(self) -> int:
+        """Return the configured startup volume for the music backend."""
+        audio_cfg = self.app_settings.audio if self.app_settings else None
+        raw_volume = audio_cfg.default_volume if audio_cfg else 100
+        return max(0, min(100, int(raw_volume)))
+
+    def _apply_default_music_volume(self) -> None:
+        """Apply the configured startup volume to context and the live music backend."""
+        volume = self._resolve_default_music_volume()
+
+        if self.context is not None:
+            self.context.playback.volume = volume
+
+        if self.music_backend is None or not self.music_backend.is_connected:
+            return
+
+        if self.music_backend.set_volume(volume):
+            logger.info("    Startup music volume set to {}%", volume)
+        else:
+            logger.warning("    Failed to set startup music volume to {}%", volume)
 
     def _setup_screens(self) -> bool:
         """Create and register all screens."""
