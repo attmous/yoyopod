@@ -1,1 +1,0 @@
-yoyopod-deploy/SKILL.md

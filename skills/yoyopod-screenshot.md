@@ -1,1 +1,0 @@
-yoyopod-screenshot/SKILL.md

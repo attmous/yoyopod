@@ -1,1 +1,0 @@
-yoyopod-status/SKILL.md

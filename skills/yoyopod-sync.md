@@ -1,1 +1,0 @@
-yoyopod-sync/SKILL.md
