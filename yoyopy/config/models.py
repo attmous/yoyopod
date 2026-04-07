@@ -145,6 +145,10 @@ class AppMetadataConfig:
 class AppAudioConfig:
     """Audio and Mopidy integration settings."""
 
+    music_dir: str = config_value(default="/home/pi/Music", env="YOYOPOD_MUSIC_DIR")
+    mpv_socket: str = config_value(default="", env="YOYOPOD_MPV_SOCKET")
+    mpv_binary: str = config_value(default="mpv", env="YOYOPOD_MPV_BINARY")
+    alsa_device: str = config_value(default="default", env="YOYOPOD_ALSA_DEVICE")
     mopidy_host: str = config_value(default="localhost", env="YOYOPOD_MOPIDY_HOST")
     mopidy_port: int = config_value(default=6680, env="YOYOPOD_MOPIDY_PORT")
     auto_resume_after_call: bool = config_value(

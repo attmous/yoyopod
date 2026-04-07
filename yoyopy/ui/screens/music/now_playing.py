@@ -21,10 +21,12 @@ class NowPlayingScreen(Screen):
         self,
         display: Display,
         context: Optional["AppContext"] = None,
+        music_backend=None,
         mopidy_client=None,
     ) -> None:
         super().__init__(display, context, "NowPlaying")
-        self.mopidy_client = mopidy_client
+        self.music_backend = music_backend or mopidy_client
+        self.mopidy_client = self.music_backend
         self._lvgl_view: "ScreenView | None" = None
 
     def enter(self) -> None:
@@ -147,20 +149,24 @@ class NowPlayingScreen(Screen):
 
     def _track_snapshot(self) -> tuple[str, str, float, str, bool]:
         """Return current track, artist, progress and state label."""
-        if self.mopidy_client:
-            if not self.mopidy_client.is_connected:
+        if self.music_backend:
+            if not self.music_backend.is_connected:
                 return ("Music Offline", "Trying to reconnect", 0.0, "OFFLINE", False)
 
-            mopidy_track = self.mopidy_client.get_current_track()
-            playback_state = self.mopidy_client.get_playback_state()
-            if mopidy_track:
+            current_track = self.music_backend.get_current_track()
+            playback_state = self.music_backend.get_playback_state()
+            if current_track:
                 progress = 0.0
-                if mopidy_track.length > 0:
-                    progress = self.mopidy_client.get_time_position() / mopidy_track.length
-                state_label = "PLAYING" if playback_state == "playing" else "PAUSED" if playback_state == "paused" else "READY"
+                if current_track.length > 0:
+                    progress = self.music_backend.get_time_position() / current_track.length
+                state_label = (
+                    "PLAYING"
+                    if playback_state == "playing"
+                    else "PAUSED" if playback_state == "paused" else "READY"
+                )
                 return (
-                    mopidy_track.name,
-                    mopidy_track.get_artist_string() or "Unknown artist",
+                    current_track.name,
+                    current_track.get_artist_string() or "Unknown artist",
                     progress,
                     state_label,
                     playback_state == "playing",
@@ -182,14 +188,14 @@ class NowPlayingScreen(Screen):
 
     def _toggle_playback(self) -> None:
         """Toggle playback via Mopidy or the local app context."""
-        if self.mopidy_client:
-            if not self.mopidy_client.is_connected:
+        if self.music_backend:
+            if not self.music_backend.is_connected:
                 return
-            state = self.mopidy_client.get_playback_state()
+            state = self.music_backend.get_playback_state()
             if state == "playing":
-                self.mopidy_client.pause()
+                self.music_backend.pause()
             else:
-                self.mopidy_client.play()
+                self.music_backend.play()
             return
 
         if self.context:
@@ -197,18 +203,18 @@ class NowPlayingScreen(Screen):
 
     def _previous_track(self) -> None:
         """Go to the previous track."""
-        if self.mopidy_client:
-            if self.mopidy_client.is_connected:
-                self.mopidy_client.previous_track()
+        if self.music_backend:
+            if self.music_backend.is_connected:
+                self.music_backend.previous_track()
             return
         if self.context:
             self.context.previous_track()
 
     def _next_track(self) -> None:
         """Go to the next track."""
-        if self.mopidy_client:
-            if self.mopidy_client.is_connected:
-                self.mopidy_client.next_track()
+        if self.music_backend:
+            if self.music_backend.is_connected:
+                self.music_backend.next_track()
             return
         if self.context:
             self.context.next_track()

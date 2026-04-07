@@ -13,7 +13,7 @@ from yoyopy.ui.screens.theme import BACKGROUND, INK, SURFACE, draw_icon, format_
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
     from yoyopy.audio import LocalMusicService
-    from yoyopy.audio.mopidy_client import MopidyClient
+    from yoyopy.audio.music.backend import MusicBackend
     from yoyopy.voip import VoIPManager
     from yoyopy.ui.screens import ScreenView
 
@@ -35,12 +35,14 @@ class HubScreen(Screen):
         self,
         display: Display,
         context: Optional["AppContext"] = None,
-        mopidy_client: Optional["MopidyClient"] = None,
+        music_backend: Optional["MusicBackend"] = None,
         local_music_service: Optional["LocalMusicService"] = None,
         voip_manager: Optional["VoIPManager"] = None,
+        mopidy_client: Optional["MusicBackend"] = None,
     ) -> None:
         super().__init__(display, context, "ActionHub")
-        self.mopidy_client = mopidy_client
+        self.music_backend = music_backend or mopidy_client
+        self.mopidy_client = self.music_backend
         self.local_music_service = local_music_service
         self.voip_manager = voip_manager
         self.selected_index = 0
@@ -98,13 +100,13 @@ class HubScreen(Screen):
 
     def _listen_subtitle(self) -> str:
         """Return the compact Listen card subtitle."""
-        if self.mopidy_client is None:
+        if self.music_backend is None:
             return "Music offline"
-        if not self.mopidy_client.is_connected:
+        if not self.music_backend.is_connected:
             return "Reconnect"
 
-        track = self.mopidy_client.get_current_track()
-        playback_state = self.mopidy_client.get_playback_state()
+        track = self.music_backend.get_current_track()
+        playback_state = self.music_backend.get_playback_state()
         if track is None:
             if self._playlist_count:
                 label = "playlist" if self._playlist_count == 1 else "playlists"

@@ -180,16 +180,16 @@ class CallCoordinator:
         )
 
         playback_state = (
-            self.runtime.mopidy_client.get_playback_state()
-            if self.runtime.mopidy_client and self.runtime.mopidy_client.is_connected
+            self.runtime.music_backend.get_playback_state()
+            if self.runtime.music_backend and self.runtime.music_backend.is_connected
             else "stopped"
         )
 
         if playback_state == "playing":
             logger.info("Auto-pausing music for incoming call")
             self.runtime.call_interruption_policy.pause_for_call(self.runtime.music_fsm)
-            if self.runtime.mopidy_client:
-                self.runtime.mopidy_client.pause()
+            if self.runtime.music_backend:
+                self.runtime.music_backend.pause()
 
         self.runtime.call_fsm.transition("incoming")
         self.runtime.sync_app_state("incoming_call")
@@ -244,8 +244,8 @@ class CallCoordinator:
 
         if should_resume:
             logger.info("Auto-resuming music after call")
-            if self.runtime.mopidy_client:
-                self.runtime.mopidy_client.play()
+            if self.runtime.music_backend:
+                self.runtime.music_backend.play()
             self.runtime.music_fsm.transition("play")
             self.screen_coordinator.refresh_now_playing_screen()
         elif self.runtime.call_interruption_policy.music_interrupted_by_call:
