@@ -34,6 +34,7 @@ python yoyopod.py
 - [Pi Dev Workflow](docs/PI_DEV_WORKFLOW.md)
 - [Pi Smoke Validation](docs/RPI_SMOKE_VALIDATION.md)
 - [Power Module](docs/POWER_MODULE.md)
+- [Audio Stack](docs/AUDIO_STACK.md)
 - [Local-First Music Plan](docs/LOCAL_FIRST_MUSIC_PLAN.md)
 - [mpv Dependencies](docs/MPV_DEPENDENCIES.md)
 - [LVGL Migration Plan](docs/LVGL_MIGRATION_PLAN.md)
