@@ -306,6 +306,31 @@ def test_hub_cards_use_mode_specific_hero_tiles(
     assert listen_fill != talk_fill
 
 
+def test_hub_listen_subtitle_handles_active_track_without_crashing(
+    display: Display,
+    one_button_context: AppContext,
+) -> None:
+    """The Hub should summarize an active track without raising at render time."""
+
+    backend = FakeMusicBackend()
+    backend.current_track = Track(
+        uri="/music/golden-hour.mp3",
+        name="Golden Hour",
+        artists=["Kacey Musgraves"],
+        length=214000,
+    )
+    backend.play()
+    hub = HubScreen(
+        display,
+        one_button_context,
+        music_backend=backend,
+        local_music_service=LocalMusicService(FakeMusicBackend()),
+        voip_manager=FakeVoIPManager(),
+    )
+
+    assert hub._listen_subtitle().startswith("Playing ")
+
+
 def test_now_playing_advance_and_select_follow_one_button_mapping(
     display: Display,
     one_button_context: AppContext,

@@ -77,7 +77,7 @@ def test_now_playing_screen_builds_syncs_and_destroys_lvgl_view() -> None:
     payload = binding.now_playing_sync_payloads[-1]
     assert payload["title_text"] == "Adventure Song"
     assert payload["artist_text"] == "Kid Band"
-    assert payload["state_text"] == "PLAYING"
+    assert payload["state_text"] == "Playing"
     assert payload["footer"] == "Tap skip / Double pause"
     assert payload["progress_permille"] == 250
     assert payload["voip_state"] == 1
@@ -107,6 +107,37 @@ def test_now_playing_screen_syncs_offline_state_through_lvgl() -> None:
     payload = binding.now_playing_sync_payloads[-1]
     assert payload["title_text"] == "Music Offline"
     assert payload["artist_text"] == "Trying to reconnect"
-    assert payload["state_text"] == "OFFLINE"
-    assert payload["footer"] == "Tap skip / Double play"
+    assert payload["state_text"] == "Offline"
+    assert payload["footer"] == "Hold back"
     assert payload["progress_permille"] == 0
+
+
+def test_now_playing_screen_syncs_paused_state_through_lvgl() -> None:
+    """NowPlayingScreen should expose the paused state through LVGL."""
+
+    binding = FakeLvglBinding()
+    display = FakeLvglDisplay(binding)
+    context = AppContext(interaction_profile=InteractionProfile.ONE_BUTTON)
+
+    backend = MockMusicBackend()
+    backend.start()
+    backend.current_track = Track(
+        uri="/music/golden-hour.mp3",
+        name="Golden Hour",
+        artists=["Kacey Musgraves"],
+        length=214000,
+    )
+    backend.time_position = 74000
+    backend.pause()
+
+    screen = NowPlayingScreen(display, context, music_backend=backend)
+
+    screen.enter()
+    screen.render()
+
+    payload = binding.now_playing_sync_payloads[-1]
+    assert payload["title_text"] == "Golden Hour"
+    assert payload["artist_text"] == "Kacey Musgraves"
+    assert payload["state_text"] == "Paused"
+    assert payload["footer"] == "Tap skip / Double play"
+    assert payload["progress_permille"] == 345

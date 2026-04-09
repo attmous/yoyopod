@@ -19,6 +19,7 @@ from yoyopy.ui.screens.theme import (
     render_backdrop,
     render_status_bar,
     rounded_panel,
+    text_fit,
     theme_for,
 )
 

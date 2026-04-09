@@ -7,7 +7,23 @@ from typing import TYPE_CHECKING, Optional
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
 from yoyopy.ui.screens.music.lvgl import LvglNowPlayingView
-from yoyopy.ui.screens.theme import INK, LISTEN, MUTED, SURFACE, draw_icon, render_footer, render_header, rounded_panel, text_fit, wrap_text
+from yoyopy.ui.screens.theme import (
+    BACKGROUND,
+    ERROR,
+    INK,
+    LISTEN,
+    MUTED,
+    MUTED_DIM,
+    SURFACE_RAISED,
+    draw_icon,
+    mix,
+    render_backdrop,
+    render_footer,
+    render_status_bar,
+    rounded_panel,
+    text_fit,
+    wrap_text,
+)
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -64,53 +80,44 @@ class NowPlayingScreen(Screen):
             return
 
         track_title, artist, progress, state_label, is_playing = self._track_snapshot()
+        state_text = self._display_state_text(state_label)
+        footer = self.get_footer_text(is_playing=is_playing, state_label=state_label)
+        visuals = self._state_visuals(state_label)
 
-        content_top = render_header(
-            self.display,
-            self.context,
-            mode="listen",
-            title="Now Playing",
-            show_time=False,
-            show_mode_chip=False,
-        )
+        render_backdrop(self.display, "listen")
+        render_status_bar(self.display, self.context, show_time=True)
 
-        panel_top = content_top + 8
-        panel_bottom = self.display.HEIGHT - 30
+        halo_width = 92
+        halo_height = 66
+        halo_left = (self.display.WIDTH - halo_width) // 2
+        halo_top = self.display.STATUS_BAR_HEIGHT + 16
         rounded_panel(
             self.display,
-            14,
-            panel_top,
-            self.display.WIDTH - 14,
-            panel_bottom,
-            fill=SURFACE,
-            outline=None,
-            radius=26,
-            shadow=True,
+            halo_left,
+            halo_top,
+            halo_left + halo_width,
+            halo_top + halo_height,
+            fill=visuals["icon_fill"],
+            outline=visuals["icon_outline"],
+            radius=20,
         )
-
-        draw_icon(self.display, "listen", (self.display.WIDTH // 2) - 22, panel_top + 14, 44, LISTEN.accent)
-
-        state_width, _ = self.display.get_text_size(state_label, 10)
-        rounded_panel(
+        draw_icon(
             self.display,
-            (self.display.WIDTH - state_width - 22) // 2,
-            panel_top + 64,
-            (self.display.WIDTH + state_width + 22) // 2,
-            panel_top + 86,
-            fill=LISTEN.accent_dim,
-            outline=None,
-            radius=12,
+            "music_note",
+            halo_left + 24,
+            halo_top + 13,
+            42,
+            visuals["icon_color"],
         )
-        self.display.text(state_label, (self.display.WIDTH - state_width) // 2, panel_top + 70, color=LISTEN.accent, font_size=10)
 
-        title_y = panel_top + 102
+        title_y = halo_top + halo_height + 18
         title_lines = wrap_text(
             self.display,
             track_title,
-            self.display.WIDTH - 64,
+            self.display.WIDTH - 32,
             18,
             max_lines=2,
-        ) or [text_fit(self.display, track_title, self.display.WIDTH - 64, 18)]
+        ) or [text_fit(self.display, track_title, self.display.WIDTH - 32, 18)]
         title_line_height = self.display.get_text_size("Ag", 18)[1]
         for index, line in enumerate(title_lines):
             title_width, _ = self.display.get_text_size(line, 18)
@@ -122,29 +129,102 @@ class NowPlayingScreen(Screen):
                 font_size=18,
             )
 
-        artist_y = title_y + (len(title_lines) * title_line_height) + 4
-        artist_text = text_fit(self.display, artist, self.display.WIDTH - 64, 11)
+        title_bottom = title_y + (len(title_lines) * title_line_height)
+        artist_y = title_bottom + 8
+        artist_text = text_fit(self.display, artist, self.display.WIDTH - 36, 11)
         artist_width, _ = self.display.get_text_size(artist_text, 11)
         self.display.text(artist_text, (self.display.WIDTH - artist_width) // 2, artist_y, color=MUTED, font_size=11)
 
-        progress_x = 28
-        progress_y = panel_bottom - 40
-        progress_width = self.display.WIDTH - 56
-        self.display.rectangle(progress_x, progress_y, progress_x + progress_width, progress_y + 8, fill=(22, 25, 32))
+        state_width, state_height = self.display.get_text_size(state_text, 10)
+        chip_width = state_width + 26
+        chip_left = (self.display.WIDTH - chip_width) // 2
+        chip_top = artist_y + 22
+        rounded_panel(
+            self.display,
+            chip_left,
+            chip_top,
+            chip_left + chip_width,
+            chip_top + state_height + 10,
+            fill=visuals["chip_fill"],
+            outline=None,
+            radius=12,
+        )
+        self.display.text(
+            state_text,
+            (self.display.WIDTH - state_width) // 2,
+            chip_top + 4,
+            color=visuals["chip_text"],
+            font_size=10,
+        )
+
+        progress_width = 168
+        progress_x = (self.display.WIDTH - progress_width) // 2
+        progress_y = min(self.display.HEIGHT - 52, chip_top + state_height + 18)
+        self.display.rectangle(
+            progress_x,
+            progress_y,
+            progress_x + progress_width,
+            progress_y + 8,
+            fill=mix(BACKGROUND, SURFACE_RAISED, 0.5),
+        )
         fill_width = max(0, min(progress_width, int(progress_width * progress)))
         if fill_width > 0:
-            self.display.rectangle(progress_x, progress_y, progress_x + fill_width, progress_y + 8, fill=LISTEN.accent)
+            self.display.rectangle(
+                progress_x,
+                progress_y,
+                progress_x + fill_width,
+                progress_y + 8,
+                fill=visuals["progress_fill"],
+            )
 
-        hint = self.get_footer_text(is_playing=is_playing)
-        render_footer(self.display, hint, mode="listen")
+        render_footer(self.display, footer, mode="listen")
         self.display.update()
 
-    def get_footer_text(self, *, is_playing: bool) -> str:
+    def get_footer_text(self, *, is_playing: bool, state_label: str | None = None) -> str:
         """Return the gesture hint for the active playback state."""
 
         if self.is_one_button_mode():
+            if state_label in {"OFFLINE", "READY"}:
+                return "Hold back"
             return "Tap skip / Double pause" if is_playing else "Tap skip / Double play"
         return "A play | B back | X/Y tracks"
+
+    @staticmethod
+    def _display_state_text(state_label: str) -> str:
+        """Return the human-facing chip label for the current playback state."""
+
+        return state_label.title()
+
+    @staticmethod
+    def _state_visuals(state_label: str) -> dict[str, tuple[int, int, int]]:
+        """Return the compact now-playing palette for one playback state."""
+
+        if state_label == "PAUSED":
+            return {
+                "icon_fill": mix(SURFACE_RAISED, BACKGROUND, 0.2),
+                "icon_outline": mix(MUTED, BACKGROUND, 0.55),
+                "icon_color": MUTED,
+                "chip_fill": SURFACE_RAISED,
+                "chip_text": MUTED,
+                "progress_fill": MUTED_DIM,
+            }
+        if state_label == "OFFLINE":
+            return {
+                "icon_fill": mix(ERROR, BACKGROUND, 0.82),
+                "icon_outline": mix(ERROR, BACKGROUND, 0.55),
+                "icon_color": INK,
+                "chip_fill": mix(ERROR, BACKGROUND, 0.78),
+                "chip_text": ERROR,
+                "progress_fill": MUTED_DIM,
+            }
+        return {
+            "icon_fill": mix(LISTEN.accent, BACKGROUND, 0.82),
+            "icon_outline": mix(LISTEN.accent, BACKGROUND, 0.58),
+            "icon_color": LISTEN.accent,
+            "chip_fill": LISTEN.accent_dim,
+            "chip_text": LISTEN.accent,
+            "progress_fill": LISTEN.accent,
+        }
 
     def _track_snapshot(self) -> tuple[str, str, float, str, bool]:
         """Return current track, artist, progress and state label."""

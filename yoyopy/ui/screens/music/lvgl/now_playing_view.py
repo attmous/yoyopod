@@ -36,13 +36,13 @@ class LvglNowPlayingView:
             return
 
         track_title, artist, progress, state_label, is_playing = self.screen._track_snapshot()
-        footer = self.screen.get_footer_text(is_playing=is_playing)
+        footer = self.screen.get_footer_text(is_playing=is_playing, state_label=state_label)
         context = self.screen.context
 
         self.backend.binding.now_playing_sync(
             title_text=track_title,
             artist_text=artist,
-            state_text=state_label,
+            state_text=self.screen._display_state_text(state_label),
             footer=footer,
             progress_permille=max(0, min(1000, int(progress * 1000))),
             voip_state=self._voip_state(context),

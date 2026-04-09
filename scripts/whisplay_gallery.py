@@ -17,7 +17,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from yoyopy.app_context import AppContext, Playlist, Track
+from yoyopy.app_context import AppContext, Playlist, Track as ContextTrack
+from yoyopy.audio import MockMusicBackend, Track as PlaybackTrack
 from yoyopy.audio.history import RecentTrackEntry
 from yoyopy.power import BatteryState, PowerDeviceInfo, PowerSnapshot, RTCState, ShutdownState
 from yoyopy.ui.display import Display
@@ -370,8 +371,8 @@ def _build_context() -> AppContext:
     demo_playlist = Playlist(
         name="Road Trip",
         tracks=[
-            Track(title="Golden Hour", artist="Kacey Musgraves", duration=214.0),
-            Track(title="Midnight Train", artist="Sam Smith", duration=198.0),
+            ContextTrack(title="Golden Hour", artist="Kacey Musgraves", duration=214.0),
+            ContextTrack(title="Midnight Train", artist="Sam Smith", duration=198.0),
         ],
     )
     context.set_playlist(demo_playlist)
@@ -520,6 +521,26 @@ def _build_voice_note_review_screen(display: Display) -> VoiceNoteScreen:
     )
 
 
+def _build_now_playing_backend(*, playback_state: str) -> MockMusicBackend:
+    """Return a deterministic backend state for now-playing captures."""
+
+    backend = MockMusicBackend()
+    if playback_state != "offline":
+        backend.start()
+        backend.current_track = PlaybackTrack(
+            uri="/music/golden-hour.mp3",
+            name="Golden Hour",
+            artists=["Kacey Musgraves"],
+            length=214000,
+        )
+        backend.time_position = 74000
+        if playback_state == "playing":
+            backend.play()
+        elif playback_state == "paused":
+            backend.pause()
+    return backend
+
+
 def _advance_ask_to_response(screen: object) -> None:
     """Drive AskScreen into its response state for a second capture."""
 
@@ -554,7 +575,27 @@ def build_capture_specs(display: Display) -> list[CaptureSpec]:
         ),
         CaptureSpec(
             "04_now_playing",
-            lambda: NowPlayingScreen(display, _build_context(), music_backend=None),
+            lambda: NowPlayingScreen(
+                display,
+                _build_context(),
+                music_backend=_build_now_playing_backend(playback_state="playing"),
+            ),
+        ),
+        CaptureSpec(
+            "04b_now_playing_paused",
+            lambda: NowPlayingScreen(
+                display,
+                _build_context(),
+                music_backend=_build_now_playing_backend(playback_state="paused"),
+            ),
+        ),
+        CaptureSpec(
+            "04c_now_playing_offline",
+            lambda: NowPlayingScreen(
+                display,
+                _build_context(),
+                music_backend=_build_now_playing_backend(playback_state="offline"),
+            ),
         ),
         CaptureSpec(
             "05_talk",
