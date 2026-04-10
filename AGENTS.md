@@ -177,7 +177,7 @@ Key design points:
 - `yoyopy/power/watchdog.py` - PiSugar software watchdog controller over `i2cget`/`i2cset`
 - `yoyopy/power/manager.py` - app-facing power facade
 - `yoyopy/power/policies.py` - low-battery safety policy
-- `yoyopy/cli/pi/power.py` - battery, charging, shutdown, watchdog, and RTC helpers (`yoyoctl pi power`, `yoyoctl pi rtc`)
+- `yoyopy/cli/pi/power.py` - battery, charging, shutdown, watchdog, and RTC helpers (`yoyoctl pi power battery`, `yoyoctl pi power rtc`)
 - `deploy/systemd/yoyopod@.service` - production boot-time service unit
 
 ### UI
@@ -364,8 +364,8 @@ These old names are no longer correct:
 - `scripts/pi_smoke.py` -> use `yoyoctl pi smoke`
 - `scripts/check_voip_registration.py` -> use `yoyoctl pi voip check`
 - `scripts/debug_incoming_call.py` -> use `yoyoctl pi voip debug`
-- `scripts/pisugar_power.py` -> use `yoyoctl pi power`
-- `scripts/pisugar_rtc.py` -> use `yoyoctl pi rtc`
+- `scripts/pisugar_power.py` -> use `yoyoctl pi power battery`
+- `scripts/pisugar_rtc.py` -> use `yoyoctl pi power rtc`
 - `scripts/lvgl_build.py` -> use `yoyoctl build lvgl`
 - `scripts/liblinphone_build.py` -> use `yoyoctl build liblinphone`
 - `scripts/lvgl_soak.py` -> use `yoyoctl pi lvgl soak`

@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-import typer
+try:
+    import typer
+except ImportError:
+    import sys
+
+    print(
+        "yoyoctl requires dev dependencies. Install with:\n"
+        "  uv sync --extra dev",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
 
 app = typer.Typer(
     name="yoyoctl",

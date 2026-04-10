@@ -180,3 +180,14 @@ def test_remote_screenshot_help():
 def test_remote_rsync_help():
     result = runner.invoke(app, ["remote", "rsync", "--help"])
     assert result.exit_code == 0
+
+
+def test_remote_whisplay_help():
+    result = runner.invoke(app, ["remote", "whisplay", "--help"])
+    assert result.exit_code == 0
+    assert "--debounce-ms" in _plain(result.output)
+
+
+def test_remote_rtc_help():
+    result = runner.invoke(app, ["remote", "rtc", "--help"])
+    assert result.exit_code == 0

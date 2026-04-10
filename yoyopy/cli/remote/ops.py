@@ -1036,6 +1036,58 @@ def rsync(
         raise typer.Exit(code=rc)
 
 
+def whisplay(
+    host: Annotated[str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")] = "",
+    user: Annotated[str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")] = "",
+    project_dir: Annotated[str, typer.Option("--project-dir", help="Project directory on the Raspberry Pi.")] = "",
+    branch: Annotated[str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")] = "",
+    duration_seconds: Annotated[float, typer.Option("--duration-seconds", help="Session duration in seconds.")] = 30.0,
+    debounce_ms: Annotated[Optional[int], typer.Option("--debounce-ms", help="Debounce threshold in ms.")] = None,
+    double_tap_ms: Annotated[Optional[int], typer.Option("--double-tap-ms", help="Double-tap window in ms.")] = None,
+    long_hold_ms: Annotated[Optional[int], typer.Option("--long-hold-ms", help="Long-hold threshold in ms.")] = None,
+    no_display: Annotated[bool, typer.Option("--no-display", help="Disable display rendering.")] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", help="Enable debug logging.")] = False,
+) -> None:
+    """Run the Whisplay gesture-tuning helper remotely."""
+    config = _resolve_remote_config(host, user, project_dir, branch)
+    validate_config(config)
+    args = argparse.Namespace(
+        verbose=verbose,
+        no_display=no_display,
+        duration_seconds=duration_seconds,
+        debounce_ms=debounce_ms,
+        double_tap_ms=double_tap_ms,
+        long_hold_ms=long_hold_ms,
+    )
+    rc = run_remote(config, build_whisplay_command(args), tty=True)
+    if rc != 0:
+        raise typer.Exit(code=rc)
+
+
+def rtc(
+    host: Annotated[str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")] = "",
+    user: Annotated[str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")] = "",
+    project_dir: Annotated[str, typer.Option("--project-dir", help="Project directory on the Raspberry Pi.")] = "",
+    branch: Annotated[str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")] = "",
+    action: Annotated[str, typer.Argument(help="RTC action: status, sync-to-rtc, sync-from-rtc, set-alarm, disable-alarm.")] = "status",
+    time: Annotated[Optional[str], typer.Option("--time", help="Alarm time in ISO 8601 format (for set-alarm).")] = None,
+    repeat_mask: Annotated[int, typer.Option("--repeat-mask", help="Repeat bitmask (default: every day).")] = 127,
+    verbose: Annotated[bool, typer.Option("--verbose", help="Enable debug logging.")] = False,
+) -> None:
+    """Inspect or control PiSugar RTC state remotely."""
+    config = _resolve_remote_config(host, user, project_dir, branch)
+    validate_config(config)
+    args = argparse.Namespace(
+        verbose=verbose,
+        rtc_action=action,
+        time=time,
+        repeat_mask=repeat_mask,
+    )
+    rc = run_remote(config, build_rtc_command(args))
+    if rc != 0:
+        raise typer.Exit(code=rc)
+
+
 # ---------------------------------------------------------------------------
 # Compat builder functions (argparse.Namespace-based, used by tests and legacy
 # callers; these mirror the old scripts/pi_remote.py builder API)
