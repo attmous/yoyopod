@@ -65,6 +65,7 @@ class PTTInputAdapter(InputHAL):
         self.double_tap_candidate = False
         self.raw_ptt_passthrough = False
         self.raw_hold_started = False
+        self._hold_back_fired = False
 
         logger.debug(f"PTTInputAdapter initialized (navigation: {enable_navigation})")
 
@@ -178,6 +179,25 @@ class PTTInputAdapter(InputHAL):
             except Exception as exc:
                 logger.error(f"Error in PTT activity callback: {exc}")
 
+    def _check_hold_threshold(self, current_time: float) -> None:
+        """Fire BACK at the hold threshold while the button is still pressed."""
+        if (
+            not self.enable_navigation
+            or self._hold_back_fired
+            or self.press_start_time is None
+            or self.raw_ptt_passthrough
+        ):
+            return
+        if (current_time - self.press_start_time) >= self.long_press_time:
+            self._hold_back_fired = True
+            self._fire_action(
+                InputAction.BACK,
+                {
+                    "method": "long_hold",
+                    "duration": current_time - self.press_start_time,
+                },
+            )
+
     def _handle_button_press(self, current_time: float) -> None:
         """Record a physical button press."""
         self._fire_activity(
@@ -196,6 +216,7 @@ class PTTInputAdapter(InputHAL):
         self.button_pressed = True
         self.press_start_time = current_time
         self.raw_hold_started = False
+        self._hold_back_fired = False
 
         if self.raw_ptt_passthrough:
             self._fire_action(
@@ -244,6 +265,22 @@ class PTTInputAdapter(InputHAL):
             self.pending_single_tap_time = None
             self.double_tap_candidate = False
             self.press_start_time = None
+            self.raw_hold_started = False
+            return
+
+        if self._hold_back_fired:
+            self._hold_back_fired = False
+            self._fire_action(
+                InputAction.PTT_RELEASE,
+                {
+                    "timestamp": current_time,
+                    "duration": press_duration,
+                    "after_hold": True,
+                },
+            )
+            self.press_start_time = None
+            self.pending_single_tap_time = None
+            self.double_tap_candidate = False
             self.raw_hold_started = False
             return
 
@@ -321,20 +358,25 @@ class PTTInputAdapter(InputHAL):
             elif (
                 current_state
                 and previous_state
-                and self.raw_ptt_passthrough
-                and not self.raw_hold_started
                 and self.press_start_time is not None
                 and (current_time - self.press_start_time) >= self.long_press_time
             ):
-                self.raw_hold_started = True
-                self._fire_action(
-                    InputAction.PTT_PRESS,
-                    {
-                        "timestamp": current_time,
-                        "stage": "hold_started",
-                        "duration": current_time - self.press_start_time,
-                    },
-                )
+                # existing raw_ptt_passthrough logic stays here
+                if (
+                    self.raw_ptt_passthrough
+                    and not self.raw_hold_started
+                ):
+                    self.raw_hold_started = True
+                    self._fire_action(
+                        InputAction.PTT_PRESS,
+                        {
+                            "timestamp": current_time,
+                            "stage": "hold_started",
+                            "duration": current_time - self.press_start_time,
+                        },
+                    )
+                # fire BACK at threshold for navigation mode
+                self._check_hold_threshold(current_time)
 
             elif not current_state and previous_state:
                 self._handle_button_release(time.time())
