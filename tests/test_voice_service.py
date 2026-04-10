@@ -7,6 +7,7 @@ import math
 import struct
 from pathlib import Path
 import subprocess
+import threading
 
 from yoyopy.voice import (
     AlsaOutputPlayer,
@@ -215,6 +216,33 @@ class _CountingPopen(_FakePopen):
         self.stdout = _CountingStdout(data)
 
 
+class _SelectableStdout:
+    """Pipe-like stdout double that can be polled with select()."""
+
+    def fileno(self) -> int:
+        return 42
+
+
+class _SelectablePopen:
+    """Popen double for idle-pipe cancellation tests."""
+
+    def __init__(self, args: list[str]) -> None:
+        self.args = args
+        self.returncode = 0
+        self.stdout = _SelectableStdout()
+        self.stderr = io.BytesIO(b"")
+        self.terminated = False
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+    def kill(self) -> None:
+        pass
+
+
 def test_subprocess_audio_capture_backend_builds_arecord_command(monkeypatch) -> None:
     """Capture should invoke arecord in raw streaming mode on the correct device."""
 
@@ -360,6 +388,55 @@ def test_subprocess_audio_capture_backend_hard_timeout_stays_within_requested_wi
 
     assert result.recorded is True
     assert popens[0].stdout.read_calls <= math.ceil((4.0 + 1.0) * 1000 / 80)
+
+
+def test_subprocess_audio_capture_backend_ptt_cancel_interrupts_idle_pipe(monkeypatch) -> None:
+    """PTT release should stop capture even if arecord is not yielding bytes yet."""
+
+    cancel_event = threading.Event()
+    popens: list[_SelectablePopen] = []
+    os_read_calls = 0
+
+    def fake_popen(args: list[str], **_kwargs) -> _SelectablePopen:
+        proc = _SelectablePopen(args)
+        popens.append(proc)
+        return proc
+
+    def fake_select(_readers, _writers, _errors, _timeout=None):
+        cancel_event.set()
+        return [], [], []
+
+    def fake_os_read(_fd: int, _size: int) -> bytes:
+        nonlocal os_read_calls
+        os_read_calls += 1
+        return b""
+
+    monkeypatch.setattr(
+        "yoyopy.voice.capture.shutil.which",
+        lambda b: "/usr/bin/arecord" if b == "arecord" else None,
+    )
+    monkeypatch.setattr(
+        "yoyopy.voice.capture.subprocess.run",
+        lambda args, **_kw: subprocess.CompletedProcess(args, 0, "", ""),
+    )
+    monkeypatch.setattr("yoyopy.voice.capture.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("yoyopy.voice.capture.select.select", fake_select)
+    monkeypatch.setattr("yoyopy.voice.capture.os.read", fake_os_read)
+
+    backend = SubprocessAudioCaptureBackend()
+    result = backend.capture(
+        VoiceCaptureRequest(
+            mode="voice_commands_ptt",
+            timeout_seconds=2.0,
+            cancel_event=cancel_event,
+        ),
+        VoiceSettings(),
+    )
+
+    assert result.recorded is False
+    assert result.audio_path is None
+    assert popens[0].terminated is True
+    assert os_read_calls == 0
 
 
 def test_espeak_backend_builds_expected_command(monkeypatch) -> None:

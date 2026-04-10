@@ -14,6 +14,7 @@ from loguru import logger
 
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
+from yoyopy.ui.screens.navigation.lvgl import LvglAskView
 from yoyopy.ui.screens.theme import (
     ASK,
     INK,
@@ -32,6 +33,7 @@ from yoyopy.voice.output import AlsaOutputPlayer
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
     from yoyopy.config import ConfigManager, Contact
+    from yoyopy.ui.screens import ScreenView
     from yoyopy.voip import VoIPManager
 
 
@@ -93,6 +95,7 @@ class AskScreen(Screen):
         self._quick_command = False
         self._ptt_active = False
         self._auto_return_timer: threading.Timer | None = None
+        self._lvgl_view: "ScreenView | None" = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -117,6 +120,7 @@ class AskScreen(Screen):
             self._headline = "Ask"
             self._body = "Ask me anything..."
             self._begin_listening_on_entry()
+        self._ensure_lvgl_view()
 
     def exit(self) -> None:
         """Invalidate any in-flight result before leaving the screen."""
@@ -124,6 +128,9 @@ class AskScreen(Screen):
         self._cancel_listening_cycle()
         self._cancel_auto_return()
         self._quick_command = False
+        if self._lvgl_view is not None:
+            self._lvgl_view.destroy()
+            self._lvgl_view = None
         super().exit()
 
     # ------------------------------------------------------------------
@@ -134,6 +141,11 @@ class AskScreen(Screen):
         """Enable or disable quick-command mode for one-shot entry."""
 
         self._quick_command = enabled
+
+    def wants_ptt_passthrough(self) -> bool:
+        """Return True when Ask should receive raw PTT release events."""
+
+        return self.is_one_button_mode() and self._quick_command
 
     # ------------------------------------------------------------------
     # State helpers
@@ -153,12 +165,42 @@ class AskScreen(Screen):
         self._headline = headline
         self._body = body
 
+    def _ensure_lvgl_view(self) -> "ScreenView | None":
+        """Create an LVGL view when the Whisplay renderer is active."""
+
+        if self._lvgl_view is not None:
+            return self._lvgl_view
+
+        if getattr(self.display, "backend_kind", "pil") != "lvgl":
+            return None
+
+        ui_backend = self.display.get_ui_backend() if hasattr(self.display, "get_ui_backend") else None
+        if ui_backend is None or not getattr(ui_backend, "initialized", False):
+            return None
+
+        self._lvgl_view = LvglAskView(self, ui_backend)
+        self._lvgl_view.build()
+        return self._lvgl_view
+
+    def current_view_model(self) -> tuple[str, str, str, str]:
+        """Return title, subtitle, footer, and icon for the current Ask state."""
+
+        icon_key = "ask"
+        if self._headline in {"Mic Muted", "Mic Unavailable", "Voice Off"}:
+            icon_key = "mic_off"
+        return (self._headline, self._body, self._render_hint_bar(), icon_key)
+
     # ------------------------------------------------------------------
     # Rendering
     # ------------------------------------------------------------------
 
     def render(self) -> None:
         """Render the current Ask state."""
+
+        lvgl_view = self._ensure_lvgl_view()
+        if lvgl_view is not None:
+            lvgl_view.sync()
+            return
 
         if self._state == "reply":
             self._render_reply()
@@ -276,10 +318,14 @@ class AskScreen(Screen):
                 return "Double listen / Hold back"
             return "A listen | B back"
         if self._state == "listening":
+            if self._quick_command and self.is_one_button_mode():
+                return "Speaking..."
             return "Listening..."
         if self._state == "thinking":
             return "Processing..."
         # reply
+        if self._quick_command:
+            return "Returning soon"
         if self.is_one_button_mode():
             return "Double ask again / Hold back"
         return "A ask again | B back"
@@ -540,6 +586,7 @@ class AskScreen(Screen):
                 return
             self._active_capture_cancel = None
             self._capture_in_flight = False
+            navigated = False
             if capture_failed:
                 self._set_response(
                     "Mic Unavailable", "The Pi microphone input is busy or unavailable."
@@ -548,8 +595,11 @@ class AskScreen(Screen):
                 self._set_state("thinking", "Thinking", "Just a moment...")
                 self._refresh_after_state_change()
                 self.on_voice_command({"transcript": transcript})
+                navigated = self._apply_pending_navigation_request()
             else:
                 self._set_response("No Speech", "I did not catch a command.")
+            if navigated:
+                return
             self._refresh_after_state_change()
             self._schedule_auto_return()
 
@@ -568,6 +618,19 @@ class AskScreen(Screen):
 
         if self.screen_manager is not None and self.screen_manager.get_current_screen() is self:
             self.screen_manager.refresh_current_screen()
+
+    def _apply_pending_navigation_request(self) -> bool:
+        """Apply any queued navigation immediately when Ask triggers it off-input-path."""
+
+        if self.screen_manager is None:
+            return False
+        navigation_request = self.consume_navigation_request()
+        if navigation_request is None:
+            return False
+        return self.screen_manager.apply_navigation_request(
+            navigation_request,
+            source_screen=self,
+        )
 
     def _cancel_listening_cycle(self) -> None:
         """Invalidate the current listen cycle and request capture cancellation."""
@@ -588,16 +651,24 @@ class AskScreen(Screen):
         if self.context is not None and not self.context.voice.commands_enabled:
             self._set_response("Voice Off", "Turn voice commands on in Setup first.")
             self._refresh_after_state_change()
+            self._schedule_auto_return()
             return
         if self.context is not None and self.context.voice.mic_muted:
             self._set_response("Mic Muted", "Unmute the microphone first.")
             self._refresh_after_state_change()
+            self._schedule_auto_return()
             return
 
         voice_service = self._voice_service()
-        if not voice_service.capture_available() or not voice_service.stt_available():
+        if not voice_service.capture_available():
             self._set_response("Mic Unavailable", "Voice capture is not ready on this device.")
             self._refresh_after_state_change()
+            self._schedule_auto_return()
+            return
+        if not voice_service.stt_available():
+            self._set_response("Speech Offline", "The offline speech model is not installed yet.")
+            self._refresh_after_state_change()
+            self._schedule_auto_return()
             return
 
         self._capture_in_flight = True
@@ -608,6 +679,7 @@ class AskScreen(Screen):
         generation = self._listen_generation
         cancel_event = threading.Event()
         self._active_capture_cancel = cancel_event
+        logger.info("PTT capture started (generation={})", generation)
 
         self._play_attention_tone()
 
@@ -627,19 +699,35 @@ class AskScreen(Screen):
         """Record until cancel_event is set (by PTT_RELEASE), then transcribe."""
 
         request = VoiceCaptureRequest(
-            mode="voice_commands",
+            mode="voice_commands_ptt",
             timeout_seconds=30.0,
             cancel_event=cancel_event,
         )
         capture_result = voice_service.capture_audio(request)
+        logger.info(
+            "PTT capture finished (generation={}, recorded={}, audio_path={})",
+            generation,
+            capture_result.recorded,
+            capture_result.audio_path is not None,
+        )
 
         if generation != self._listen_generation:
             if capture_result.audio_path is not None:
                 capture_result.audio_path.unlink(missing_ok=True)
             return
 
-        # If PTT was released (not cancelled by back/exit), process the audio
-        if not self._ptt_active and capture_result.audio_path is not None:
+        if capture_result.audio_path is None:
+            if not self._ptt_active:
+                logger.info("PTT capture ended without audio; treating the release as no speech")
+                self._dispatch_listen_result("", capture_failed=False, generation=generation)
+            else:
+                logger.warning("PTT capture ended without audio while hold was still active")
+                self._dispatch_listen_result("", capture_failed=True, generation=generation)
+            return
+
+        # If PTT was released (not cancelled by back/exit), process the audio.
+        if not self._ptt_active:
+            logger.info("PTT release finalized capture; starting transcription (generation={})", generation)
             try:
                 transcript = voice_service.transcribe(capture_result.audio_path)
             except Exception as exc:
@@ -652,6 +740,11 @@ class AskScreen(Screen):
             self._dispatch_listen_result(
                 transcript.text.strip(), capture_failed=False, generation=generation,
             )
+            logger.info(
+                "PTT transcription complete (generation={}, transcript_chars={})",
+                generation,
+                len(transcript.text.strip()),
+            )
         elif capture_result.audio_path is not None:
             capture_result.audio_path.unlink(missing_ok=True)
 
@@ -660,6 +753,9 @@ class AskScreen(Screen):
 
         if self._ptt_active and self._active_capture_cancel is not None:
             self._ptt_active = False
+            logger.info("PTT release received (generation={})", self._listen_generation)
+            self._set_state("thinking", "Thinking", "Just a moment...")
+            self._refresh_after_state_change()
             self._active_capture_cancel.set()
 
     # ------------------------------------------------------------------
@@ -680,15 +776,20 @@ class AskScreen(Screen):
         """Return to the previous screen via the action scheduler."""
 
         self._auto_return_timer = None
+
+        def apply_pop() -> None:
+            self.request_route("back")
+            self._apply_pending_navigation_request()
+
         scheduler = (
             getattr(self.screen_manager, "action_scheduler", None)
             if self.screen_manager is not None
             else None
         )
         if scheduler is not None:
-            scheduler(lambda: self.request_route("back"))
+            scheduler(apply_pop)
         else:
-            self.request_route("back")
+            apply_pop()
 
     def _cancel_auto_return(self) -> None:
         """Cancel any pending auto-return timer."""

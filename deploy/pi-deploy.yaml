@@ -27,5 +27,6 @@ rsync_exclude:
   - .venv/
   - build/
   - logs/
+  - models/
   - node_modules/
   - "*.egg-info/"

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import math
+import os
+import select
 import shutil
 import struct
 import subprocess
@@ -24,6 +27,7 @@ _SPEECH_CONFIRM_CHUNKS = 2  # consecutive speech chunks required (filters startu
 _SILENCE_AFTER_SPEECH_MS = 400  # stop after this much silence post-speech
 _PRE_SPEECH_TIMEOUT_MS = 3500  # give up if no speech within this window
 _HARD_TIMEOUT_EXTRA_S = 1  # extra seconds on top of request timeout
+_PIPE_POLL_INTERVAL_S = 0.05
 
 
 def _rms(chunk: bytes) -> float:
@@ -33,6 +37,20 @@ def _rms(chunk: bytes) -> float:
         return 0.0
     samples = struct.unpack(f"<{n}h", chunk[: n * 2])
     return math.sqrt(sum(s * s for s in samples) / n)
+
+
+def _stream_fileno(stream: object | None) -> int | None:
+    """Return a file descriptor for select-based polling when available."""
+
+    if stream is None:
+        return None
+    fileno = getattr(stream, "fileno", None)
+    if fileno is None:
+        return None
+    try:
+        return int(fileno())
+    except (AttributeError, io.UnsupportedOperation, OSError, ValueError):
+        return None
 
 
 class AudioCaptureBackend(Protocol):
@@ -79,6 +97,7 @@ class SubprocessAudioCaptureBackend:
             audio_path = Path(handle.name)
 
         max_seconds = float(request.timeout_seconds or settings.record_seconds)
+        stop_on_voice_activity = request.mode != "voice_commands_ptt"
 
         for device in self._device_candidates(settings):
             try:
@@ -88,6 +107,7 @@ class SubprocessAudioCaptureBackend:
                     sample_rate_hz=settings.sample_rate_hz,
                     max_seconds=max_seconds,
                     cancel_event=request.cancel_event,
+                    stop_on_voice_activity=stop_on_voice_activity,
                 )
             except Exception as exc:
                 logger.warning("VAD capture failed on device {}: {}", device, exc)
@@ -109,6 +129,7 @@ class SubprocessAudioCaptureBackend:
         sample_rate_hz: int,
         max_seconds: float,
         cancel_event: Event | None,
+        stop_on_voice_activity: bool,
     ) -> bool:
         """Stream raw PCM from arecord, stop on silence after speech, write WAV.
 
@@ -155,7 +176,11 @@ class SubprocessAudioCaptureBackend:
             for _chunk_idx in range(hard_max_chunks):
                 if cancel_event is not None and cancel_event.is_set():
                     break
-                raw = proc.stdout.read(chunk_bytes)  # type: ignore[union-attr]
+                raw = self._read_capture_chunk(
+                    stdout=proc.stdout,
+                    chunk_bytes=chunk_bytes,
+                    cancel_event=cancel_event,
+                )
                 if not raw:
                     break
                 frames.extend(raw)
@@ -169,12 +194,13 @@ class SubprocessAudioCaptureBackend:
                             silence_run = 0
                     else:
                         speech_run = 0
-                        pre_speech_chunk_count += 1
-                        if pre_speech_chunk_count >= pre_speech_chunks_max:
+                        if stop_on_voice_activity:
+                            pre_speech_chunk_count += 1
+                        if stop_on_voice_activity and pre_speech_chunk_count >= pre_speech_chunks_max:
                             # No confirmed speech in the pre-speech window.
                             break
                 else:
-                    if rms < _SILENCE_RMS_THRESHOLD:
+                    if stop_on_voice_activity and rms < _SILENCE_RMS_THRESHOLD:
                         silence_run += 1
                         if silence_run >= silence_chunks_needed:
                             break
@@ -200,6 +226,35 @@ class SubprocessAudioCaptureBackend:
             wf.writeframes(bytes(frames))
 
         return True
+
+    def _read_capture_chunk(
+        self,
+        *,
+        stdout: object | None,
+        chunk_bytes: int,
+        cancel_event: Event | None,
+    ) -> bytes:
+        """Read one PCM chunk while still allowing PTT cancellation to interrupt."""
+
+        if stdout is None:
+            return b""
+
+        fileno = _stream_fileno(stdout)
+        if fileno is None:
+            return stdout.read(chunk_bytes)  # type: ignore[union-attr]
+
+        buffer = bytearray()
+        while len(buffer) < chunk_bytes:
+            if cancel_event is not None and cancel_event.is_set():
+                break
+            ready, _, _ = select.select([fileno], [], [], _PIPE_POLL_INTERVAL_S)
+            if not ready:
+                continue
+            chunk = os.read(fileno, chunk_bytes - len(buffer))
+            if not chunk:
+                break
+            buffer.extend(chunk)
+        return bytes(buffer)
 
     def _device_candidates(self, settings: VoiceSettings) -> list[str | None]:
         """Return capture-device candidates, prioritizing any known-good device."""
