@@ -85,3 +85,26 @@ def test_pi_lvgl_probe_help():
     assert "--scene" in result.output
     assert "--duration-seconds" in result.output
     assert "--simulate" in result.output
+
+
+def test_pi_smoke_help():
+    result = runner.invoke(app, ["pi", "smoke", "--help"])
+    assert result.exit_code == 0
+    assert "--with-music" in result.output
+    assert "--with-voip" in result.output
+    assert "--with-power" in result.output
+    assert "--with-lvgl-soak" in result.output
+
+
+def test_pi_tune_help():
+    result = runner.invoke(app, ["pi", "tune", "--help"])
+    assert result.exit_code == 0
+    assert "--debounce-ms" in result.output
+    assert "--hardware" in result.output
+
+
+def test_pi_gallery_help():
+    result = runner.invoke(app, ["pi", "gallery", "--help"])
+    assert result.exit_code == 0
+    assert "--output-dir" in result.output
+    assert "--simulate" in result.output
