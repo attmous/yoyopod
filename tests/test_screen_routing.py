@@ -107,23 +107,20 @@ def test_screen_router_covers_local_listen_routes() -> None:
     assert router.resolve("listen", "shuffle_started") == NavigationRequest.push("now_playing")
 
 
-def test_screen_router_covers_ask_subroutes() -> None:
-    """The Ask submenu should route into voice commands and AI requests."""
-
+def test_screen_router_covers_ask_routes() -> None:
+    """The unified Ask screen should route call_started and shuffle_started."""
     router = ScreenRouter()
 
-    assert router.resolve("ask", "select", payload="Voice Commands") == NavigationRequest.push(
-        "voice_commands"
-    )
-    assert router.resolve("ask", "select", payload="AI Requests") == NavigationRequest.push(
-        "ai_requests"
-    )
-    assert router.resolve("voice_commands", "call_started") == NavigationRequest.push(
-        "outgoing_call"
-    )
-    assert router.resolve("voice_commands", "shuffle_started") == NavigationRequest.push(
-        "now_playing"
-    )
+    assert router.resolve("ask", "back") == NavigationRequest.pop()
+    assert router.resolve("ask", "call_started") == NavigationRequest.push("outgoing_call")
+    assert router.resolve("ask", "shuffle_started") == NavigationRequest.push("now_playing")
+
+
+def test_screen_router_covers_hub_hold_ask() -> None:
+    """Hold on the Hub should route to the Ask screen."""
+    router = ScreenRouter()
+
+    assert router.resolve("hub", "hold_ask") == NavigationRequest.push("ask")
 
 
 def test_screen_manager_routes_menu_labels_through_stack(display: Display) -> None:
