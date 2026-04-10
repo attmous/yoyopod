@@ -4,7 +4,8 @@
 import pytest
 
 from yoyopy.app_context import AppContext
-from yoyopy.ui.display import Display
+from yoyopy.ui.display import Display, get_hardware_info
+from yoyopy.ui.display.adapters.pimoroni import PimoroniDisplayAdapter
 from yoyopy.ui.screens import HomeScreen, MenuScreen, NowPlayingScreen
 
 
@@ -146,3 +147,15 @@ def test_simulation_display_update_pushes_browser_preview() -> None:
         assert fake_server.images[0]
     finally:
         display.cleanup()
+
+
+def test_pimoroni_hardware_info_reports_explicit_display_type() -> None:
+    """Display info should expose Pimoroni's typed adapter identity."""
+
+    adapter = PimoroniDisplayAdapter(simulate=True)
+    try:
+        info = get_hardware_info(adapter)
+        assert info["display_type"] == "pimoroni"
+        assert info["simulated_hardware"] is None
+    finally:
+        adapter.cleanup()

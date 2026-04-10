@@ -16,14 +16,14 @@ Author: YoyoPod Team
 Date: 2025-11-30
 """
 
-from yoyopy.ui.display.hal import DisplayHAL
-from yoyopy.ui.display.adapters.whisplay_paths import ensure_whisplay_driver_on_path
-from typing import Optional, Tuple
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
+from typing import Optional, Tuple
+
 from loguru import logger
-import base64
-import io
+from PIL import Image, ImageDraw, ImageFont
+
+from yoyopy.ui.display.adapters.whisplay_paths import ensure_whisplay_driver_on_path
+from yoyopy.ui.display.hal import DisplayHAL
 
 DRIVER_PATH = ensure_whisplay_driver_on_path()
 
@@ -143,15 +143,6 @@ class WhisplayDisplayAdapter(DisplayHAL):
         """Create a new PIL drawing buffer."""
         self.buffer = Image.new("RGB", (self.WIDTH, self.HEIGHT), self.COLOR_BLACK)
         self.draw = ImageDraw.Draw(self.buffer)
-
-    def get_buffer_as_png_base64(self) -> str:
-        """Convert the current PIL buffer to base64 PNG for browser simulation."""
-        if self.buffer is None:
-            self._create_buffer()
-
-        buffered = io.BytesIO()
-        self.buffer.save(buffered, format="PNG")
-        return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
     def _convert_to_rgb565(self) -> bytes:
         """
