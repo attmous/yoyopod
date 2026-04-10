@@ -1,0 +1,184 @@
+# Deployed Pi Dependency Snapshot
+
+**Last Verified:** 2026-04-10  
+**Target Device:** `rpi-zero`  
+**SSH User:** `tifo`
+
+This document is a live deployment snapshot of the Raspberry Pi environment currently running YoyoPod. It complements the architecture docs by showing the actual services, processes, packages, and native libraries the production device depends on today.
+
+## Active Services
+
+These services were running when this snapshot was taken:
+
+- `yoyopod@tifo.service`
+- `pisugar-server.service`
+
+What that means in practice:
+
+- YoyoPod itself is a systemd-managed application service
+- PiSugar power telemetry, RTC, and watchdog transport come from the standalone `pisugar-server` system service
+
+## Active Runtime Processes
+
+The live process tree for YoyoPod was:
+
+```text
+uv run python yoyopod.py
+  -> python3 yoyopod.py
+     -> mpv --idle --no-video --input-ipc-server=/tmp/yoyopod-mpv.sock --audio-device=alsa/default
+```
+
+No separate Mopidy process or music daemon is part of the stack anymore.
+
+## Core Functional Dependencies
+
+### Application runtime
+
+- `python3`
+- `uv`
+- YoyoPod virtual environment under `/home/tifo/yoyo-py/.venv`
+
+### Music playback
+
+- `mpv`
+- `ffmpeg`
+- ALSA runtime:
+  - `libasound2`
+  - `libasound2-data`
+  - `libasound2-plugins`
+- `alsa-utils`
+
+### VoIP and voice notes
+
+- `liblinphone12`
+- `liblinphone++12`
+- `libmediastreamer2-14`
+- `libbctoolbox2`
+
+### Power management
+
+- `pisugar-server`
+- `i2c-tools`
+
+### Display / native UI
+
+- vendored `liblvgl.so.9`
+- `libyoyopy_lvgl_shim.so`
+
+### Native VoIP bridge
+
+- `libyoyopy_liblinphone_shim.so`
+
+## Python-Level Dependencies Used By The App
+
+These are the declared application-level Python dependencies relevant to the current product:
+
+- `cffi`
+- `pillow`
+- `requests`
+- `loguru`
+- `pyyaml`
+- `tinytag`
+
+Present in the project but not central to the current Whisplay Pi runtime:
+
+- `displayhatmini` for Pimoroni hardware mode
+- `flask`
+- `flask-socketio`
+- `flask-cors`
+- `python-socketio`
+- `pynput`
+- `pygame` appears to be legacy and is not the production music path
+
+## Hardware-Coupled Dependencies
+
+### Audio hardware
+
+Live ALSA playback devices on the Pi:
+
+- `card 0`: `wm8960-soundcard`
+- `card 1`: `vc4-hdmi`
+
+Current YoyoPod playback is using:
+
+```text
+mpv -> ALSA default -> wm8960-soundcard -> bcm2835 I2S -> WM8960 codec
+```
+
+### Display hardware
+
+Production rendering path on this device is:
+
+```text
+YoyoPodApp -> LVGL backend -> Whisplay adapter -> SPI display
+```
+
+### Power hardware
+
+Current power path is:
+
+```text
+YoyoPodApp -> PowerManager -> PiSugar backend -> /tmp/pisugar-server.sock or local PiSugar TCP/socket transport
+```
+
+## Native Library Dependencies Seen On The Device
+
+### LVGL shim
+
+The LVGL shim currently links against:
+
+- `liblvgl.so.9`
+- `libc`
+
+### Liblinphone shim
+
+The Liblinphone shim currently links against:
+
+- `liblinphone.so.12`
+- `libmediastreamer2.so.14`
+- `libbelle-sip.so.3`
+- `libbctoolbox.so.2`
+- `libasound.so.2`
+- `libpulse.so.0`
+- codec / media support libraries pulled through Liblinphone and FFmpeg
+
+Important note:
+
+- there is **no PulseAudio daemon dependency in the current YoyoPod service flow**
+- but `libpulse.so.0` still appears as a transitive shared-library dependency of Liblinphone on this Pi
+
+## What Is No Longer Part Of The Stack
+
+Removed from the live Pi:
+
+- Mopidy
+- GStreamer
+- `mopidy.service`
+- provider-driven music playback infrastructure
+
+Current product direction is local-first music via `mpv`, not a general music-server stack.
+
+## Operational Observations
+
+At the time of capture:
+
+- `yoyopod@tifo.service` was healthy
+- `pisugar-server.service` was healthy
+- memory usage was approximately `231 MB / 416 MB`
+- YoyoPod had one long-lived `python3` process and one long-lived `mpv` child
+
+## Source Of Truth For This Snapshot
+
+This snapshot was built from:
+
+- live SSH inspection of `rpi-zero`
+- `systemctl status`
+- `ps` / `pstree`
+- `aplay -l`
+- `amixer`
+- `dpkg -l`
+- `ldd` on the two native shims
+- repo config in:
+  - `config/yoyopod_config.yaml`
+  - `config/voip_config.yaml`
+  - `deploy/pi-deploy.yaml`

@@ -1,6 +1,7 @@
 # Raspberry Pi deploy contract for YoyoPod.
 # This is the shared source of truth for scripts/pi_remote.py and Pi skills.
 # Machine-specific connection overrides belong in deploy/pi-deploy.local.yaml.
+# Leave host/user blank in the tracked file; do not commit personal Pi values here.
 # Create or edit that file with:
 #   uv run python scripts/pi_remote.py config edit
 

@@ -20,6 +20,16 @@ Use `scripts/pi_remote.py` for that loop.
 
 Make sure your dev machine can SSH into the Raspberry Pi with an alias or reachable host name.
 
+The repo-tracked deploy contract lives in `deploy/pi-deploy.yaml`.
+
+- keep `host` and `user` blank there
+- put your real machine-specific values in `deploy/pi-deploy.local.yaml`
+- create or update that file with:
+
+```bash
+uv run python scripts/pi_remote.py config edit
+```
+
 Examples:
 
 ```bash
