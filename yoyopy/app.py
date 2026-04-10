@@ -45,7 +45,6 @@ from yoyopy.ui.display import Display
 from yoyopy.ui.input import InputManager, InteractionProfile, get_input_manager
 from yoyopy.ui.lvgl_binding import LvglDisplayBackend, LvglInputBridge
 from yoyopy.ui.screens import (
-    AIRequestsScreen,
     AskScreen,
     CallScreen,
     CallHistoryScreen,
@@ -63,7 +62,6 @@ from yoyopy.ui.screens import (
     RecentTracksScreen,
     ScreenManager,
     TalkContactScreen,
-    VoiceCommandsScreen,
     VoiceNoteScreen,
 )
 from yoyopy.voice import VoiceSettings
@@ -142,8 +140,6 @@ class YoyoPodApp:
         self.menu_screen: Optional[MenuScreen] = None
         self.listen_screen: Optional[ListenScreen] = None
         self.ask_screen: Optional[AskScreen] = None
-        self.voice_commands_screen: Optional[VoiceCommandsScreen] = None
-        self.ai_requests_screen: Optional[AIRequestsScreen] = None
         self.power_screen: Optional[PowerScreen] = None
         self.now_playing_screen: Optional[NowPlayingScreen] = None
         self.playlist_screen: Optional[PlaylistScreen] = None
@@ -656,9 +652,8 @@ class YoyoPodApp:
                 self.context,
                 music_service=self.local_music_service,
             )
-            self.ask_screen = AskScreen(self.display, self.context)
             voice_cfg = self.app_settings.voice if self.app_settings is not None else None
-            self.voice_commands_screen = VoiceCommandsScreen(
+            self.ask_screen = AskScreen(
                 self.display,
                 self.context,
                 config_manager=self.config_manager,
@@ -711,7 +706,6 @@ class YoyoPodApp:
                     tts_voice=voice_cfg.tts_voice if voice_cfg is not None else "en",
                 ),
             )
-            self.ai_requests_screen = AIRequestsScreen(self.display, self.context)
             self.power_screen = PowerScreen(
                 self.display,
                 self.context,
@@ -791,8 +785,6 @@ class YoyoPodApp:
             self.screen_manager.register_screen("menu", self.menu_screen)
             self.screen_manager.register_screen("listen", self.listen_screen)
             self.screen_manager.register_screen("ask", self.ask_screen)
-            self.screen_manager.register_screen("voice_commands", self.voice_commands_screen)
-            self.screen_manager.register_screen("ai_requests", self.ai_requests_screen)
             self.screen_manager.register_screen("power", self.power_screen)
             self.screen_manager.register_screen("now_playing", self.now_playing_screen)
             self.screen_manager.register_screen("playlists", self.playlist_screen)
@@ -809,7 +801,7 @@ class YoyoPodApp:
 
             logger.info("  ✓ All screens registered")
             logger.info("    - Listen flow: listen, playlists, recent_tracks, now_playing")
-            logger.info("    - Ask flow: ask, voice_commands, ai_requests")
+            logger.info("    - Ask flow: ask")
             logger.info("    - Power screen: power")
             logger.info(
                 "    - VoIP screens: call, talk_contact, call_history, contacts, voice_note, incoming_call, outgoing_call, in_call"

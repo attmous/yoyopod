@@ -19,7 +19,7 @@ from yoyopy.ui.screens.manager import ScreenManager
 from yoyopy.ui.screens.router import NavigationRequest, ScreenRouter
 
 # Navigation and system screens
-from yoyopy.ui.screens.navigation import AIRequestsScreen, AskScreen, HubScreen, HomeScreen, ListenScreen, MenuScreen, VoiceCommandsScreen
+from yoyopy.ui.screens.navigation import AskScreen, HubScreen, HomeScreen, ListenScreen, MenuScreen
 from yoyopy.ui.screens.system import PowerScreen
 
 # Music screens
@@ -50,8 +50,6 @@ __all__ = [
     'ListenScreen',
     'MenuScreen',
     'AskScreen',
-    'VoiceCommandsScreen',
-    'AIRequestsScreen',
     'PowerScreen',
     # Music
     'NowPlayingScreen',
