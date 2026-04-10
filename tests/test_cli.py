@@ -52,3 +52,20 @@ def test_pi_voip_check_help():
 def test_pi_voip_debug_help():
     result = runner.invoke(app, ["pi", "voip", "debug", "--help"])
     assert result.exit_code == 0
+
+
+def test_pi_power_battery_help():
+    result = runner.invoke(app, ["pi", "power", "battery", "--help"])
+    assert result.exit_code == 0
+    assert "--config-dir" in result.output
+    assert "--verbose" in result.output
+
+
+def test_pi_power_rtc_help():
+    result = runner.invoke(app, ["pi", "power", "rtc", "--help"])
+    assert result.exit_code == 0
+
+
+def test_pi_power_rtc_status_help():
+    result = runner.invoke(app, ["pi", "power", "rtc", "status", "--help"])
+    assert result.exit_code == 0
