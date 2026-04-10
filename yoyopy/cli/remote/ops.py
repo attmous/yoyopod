@@ -70,6 +70,7 @@ class PiDeployConfig:
         ".venv/",
         "build/",
         "logs/",
+        "models/",
         "node_modules/",
         "*.egg-info/",
     )
@@ -137,6 +138,7 @@ def parse_pi_deploy_config(data: dict[str, object]) -> PiDeployConfig:
                     ".venv/",
                     "build/",
                     "logs/",
+                    "models/",
                     "node_modules/",
                     "*.egg-info/",
                 ),
