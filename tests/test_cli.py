@@ -42,3 +42,13 @@ def test_build_liblinphone_help():
     result = runner.invoke(app, ["build", "liblinphone", "--help"])
     assert result.exit_code == 0
     assert "--build-dir" in result.output
+
+
+def test_pi_voip_check_help():
+    result = runner.invoke(app, ["pi", "voip", "check", "--help"])
+    assert result.exit_code == 0
+
+
+def test_pi_voip_debug_help():
+    result = runner.invoke(app, ["pi", "voip", "debug", "--help"])
+    assert result.exit_code == 0

@@ -11,7 +11,7 @@ app = typer.Typer(
 )
 
 # -- pi group (on-device commands) -----------------------------------------
-pi_app = typer.Typer(name="pi", help="Commands that run ON the Raspberry Pi.", no_args_is_help=True)
+from yoyopy.cli.pi import pi_app  # noqa: E402
 app.add_typer(pi_app)
 
 # -- remote group (SSH wrapper commands) ------------------------------------
