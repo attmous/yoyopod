@@ -69,3 +69,19 @@ def test_pi_power_rtc_help():
 def test_pi_power_rtc_status_help():
     result = runner.invoke(app, ["pi", "power", "rtc", "status", "--help"])
     assert result.exit_code == 0
+
+
+def test_pi_lvgl_soak_help():
+    result = runner.invoke(app, ["pi", "lvgl", "soak", "--help"])
+    assert result.exit_code == 0
+    assert "--cycles" in result.output
+    assert "--simulate" in result.output
+    assert "--hold-seconds" in result.output
+
+
+def test_pi_lvgl_probe_help():
+    result = runner.invoke(app, ["pi", "lvgl", "probe", "--help"])
+    assert result.exit_code == 0
+    assert "--scene" in result.output
+    assert "--duration-seconds" in result.output
+    assert "--simulate" in result.output
