@@ -79,7 +79,7 @@ power:
 
 # Display Settings
 display:
-  hardware: "auto"                # auto, whisplay, pimoroni, simulation
+  hardware: "auto"                # auto, whisplay, pimoroni, simulation (Whisplay-like preview)
   whisplay_renderer: "lvgl"       # pil, lvgl (Whisplay defaults to LVGL; PIL remains for fallback/debug)
   lvgl_buffer_lines: 40           # Partial flush buffer height in lines for Whisplay LVGL
   brightness: 80                  # 0-100

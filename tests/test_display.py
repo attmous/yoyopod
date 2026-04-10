@@ -58,8 +58,9 @@ def test_rendering_still_works_after_state_changes(display: Display, context: Ap
     now_playing_screen.render()
 
 
-def test_simulate_mode_uses_generic_simulation_adapter() -> None:
-    """Generic simulation should keep using the dedicated simulation adapter."""
+def test_simulate_mode_uses_whisplay_sized_simulation_adapter() -> None:
+    """Simulation mode should use the dedicated Whisplay-like simulation adapter."""
+
     class FakeServer:
         def start(self) -> None:
             pass
@@ -74,7 +75,9 @@ def test_simulate_mode_uses_generic_simulation_adapter() -> None:
         web_server.get_server = original_get_server
 
     try:
-        assert display.get_adapter().__class__.__name__ == "SimulationDisplayAdapter"
+        adapter = display.get_adapter()
+        assert adapter.DISPLAY_TYPE == "simulation"
+        assert adapter.SIMULATED_HARDWARE == "whisplay"
         assert display.WIDTH == 240
         assert display.HEIGHT == 280
         assert display.ORIENTATION == "portrait"
@@ -82,8 +85,8 @@ def test_simulate_mode_uses_generic_simulation_adapter() -> None:
         display.cleanup()
 
 
-def test_explicit_simulated_whisplay_profile_preserves_whisplay_adapter() -> None:
-    """An explicit Whisplay simulation request should keep the Whisplay profile."""
+def test_simulate_flag_overrides_explicit_hardware_to_simulation_adapter() -> None:
+    """The simulate flag should override the configured hardware selection."""
 
     class FakeServer:
         def start(self) -> None:
@@ -99,9 +102,47 @@ def test_explicit_simulated_whisplay_profile_preserves_whisplay_adapter() -> Non
         web_server.get_server = original_get_server
 
     try:
-        assert display.get_adapter().__class__.__name__ == "WhisplayDisplayAdapter"
+        adapter = display.get_adapter()
+        assert adapter.DISPLAY_TYPE == "simulation"
+        assert adapter.SIMULATED_HARDWARE == "whisplay"
         assert display.WIDTH == 240
         assert display.HEIGHT == 280
         assert display.ORIENTATION == "portrait"
+    finally:
+        display.cleanup()
+
+
+def test_simulation_display_update_pushes_browser_preview() -> None:
+    """The simulation adapter should remain the only browser-preview owner."""
+
+    class FakeServer:
+        def __init__(self) -> None:
+            self.started = False
+            self.images: list[str] = []
+
+        def start(self) -> None:
+            self.started = True
+
+        def send_display_update(self, image: str) -> None:
+            self.images.append(image)
+
+    fake_server = FakeServer()
+
+    import yoyopy.ui.web_server as web_server
+
+    original_get_server = web_server.get_server
+    web_server.get_server = lambda *args, **kwargs: fake_server
+    try:
+        display = Display(simulate=True)
+    finally:
+        web_server.get_server = original_get_server
+
+    try:
+        display.clear()
+        display.update()
+
+        assert fake_server.started is True
+        assert len(fake_server.images) == 1
+        assert fake_server.images[0]
     finally:
         display.cleanup()

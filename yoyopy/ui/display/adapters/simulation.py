@@ -39,7 +39,9 @@ class SimulationDisplayAdapter(DisplayHAL):
     - WebSocket connection managed by web server module
     """
 
-    # Display configuration (match Whisplay HAT)
+    # Display configuration (match the Whisplay profile)
+    DISPLAY_TYPE = "simulation"
+    SIMULATED_HARDWARE = "whisplay"
     WIDTH = 240
     HEIGHT = 280
     ORIENTATION = "portrait"
@@ -60,12 +62,12 @@ class SimulationDisplayAdapter(DisplayHAL):
         # Create PIL drawing buffer
         self._create_buffer()
 
-        logger.info("Simulation display adapter initialized (240×280 portrait)")
+        logger.info("Simulation display adapter initialized (240x280 portrait, Whisplay profile)")
         logger.info("Display will be available at http://localhost:5000")
 
     def _create_buffer(self) -> None:
         """Create a new PIL drawing buffer."""
-        self.buffer = Image.new('RGB', (self.WIDTH, self.HEIGHT), self.COLOR_BLACK)
+        self.buffer = Image.new("RGB", (self.WIDTH, self.HEIGHT), self.COLOR_BLACK)
         self.draw = ImageDraw.Draw(self.buffer)
 
     def get_buffer_as_png_base64(self) -> str:
@@ -91,7 +93,7 @@ class SimulationDisplayAdapter(DisplayHAL):
         png_bytes = buffered.getvalue()
 
         # Encode as base64
-        b64_str = base64.b64encode(png_bytes).decode('utf-8')
+        b64_str = base64.b64encode(png_bytes).decode("utf-8")
         return b64_str
 
     def clear(self, color: Optional[Tuple[int, int, int]] = None) -> None:
@@ -106,10 +108,7 @@ class SimulationDisplayAdapter(DisplayHAL):
             color = self.COLOR_BLACK
 
         if self.draw:
-            self.draw.rectangle(
-                [(0, 0), (self.WIDTH, self.HEIGHT)],
-                fill=color
-            )
+            self.draw.rectangle([(0, 0), (self.WIDTH, self.HEIGHT)], fill=color)
 
     def text(
         self,
@@ -118,7 +117,7 @@ class SimulationDisplayAdapter(DisplayHAL):
         y: int,
         color: Optional[Tuple[int, int, int]] = None,
         font_size: int = 16,
-        font_path: Optional[Path] = None
+        font_path: Optional[Path] = None,
     ) -> None:
         """
         Draw text at the specified position.
@@ -144,8 +143,10 @@ class SimulationDisplayAdapter(DisplayHAL):
             else:
                 # Try to load default font, fall back to PIL default
                 try:
-                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
-                except:
+                    font = ImageFont.truetype(
+                        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size
+                    )
+                except Exception:
                     font = ImageFont.load_default()
 
             # Draw text
@@ -162,7 +163,7 @@ class SimulationDisplayAdapter(DisplayHAL):
         y2: int,
         fill: Optional[Tuple[int, int, int]] = None,
         outline: Optional[Tuple[int, int, int]] = None,
-        width: int = 1
+        width: int = 1,
     ) -> None:
         """
         Draw a rectangle.
@@ -179,12 +180,7 @@ class SimulationDisplayAdapter(DisplayHAL):
         if self.draw is None:
             return
 
-        self.draw.rectangle(
-            [(x1, y1), (x2, y2)],
-            fill=fill,
-            outline=outline,
-            width=width
-        )
+        self.draw.rectangle([(x1, y1), (x2, y2)], fill=fill, outline=outline, width=width)
 
     def circle(
         self,
@@ -193,7 +189,7 @@ class SimulationDisplayAdapter(DisplayHAL):
         radius: int,
         fill: Optional[Tuple[int, int, int]] = None,
         outline: Optional[Tuple[int, int, int]] = None,
-        width: int = 1
+        width: int = 1,
     ) -> None:
         """
         Draw a circle.
@@ -209,19 +205,9 @@ class SimulationDisplayAdapter(DisplayHAL):
         if self.draw is None:
             return
 
-        bbox = [
-            x - radius,
-            y - radius,
-            x + radius,
-            y + radius
-        ]
+        bbox = [x - radius, y - radius, x + radius, y + radius]
 
-        self.draw.ellipse(
-            bbox,
-            fill=fill,
-            outline=outline,
-            width=width
-        )
+        self.draw.ellipse(bbox, fill=fill, outline=outline, width=width)
 
     def line(
         self,
@@ -230,7 +216,7 @@ class SimulationDisplayAdapter(DisplayHAL):
         x2: int,
         y2: int,
         color: Optional[Tuple[int, int, int]] = None,
-        width: int = 1
+        width: int = 1,
     ) -> None:
         """
         Draw a line.
@@ -249,18 +235,14 @@ class SimulationDisplayAdapter(DisplayHAL):
         if self.draw is None:
             return
 
-        self.draw.line(
-            [(x1, y1), (x2, y2)],
-            fill=color,
-            width=width
-        )
+        self.draw.line([(x1, y1), (x2, y2)], fill=color, width=width)
 
     def polygon(
         self,
         points: list,
         fill: Optional[Tuple[int, int, int]] = None,
         outline: Optional[Tuple[int, int, int]] = None,
-        width: int = 1
+        width: int = 1,
     ) -> None:
         """
         Draw a polygon.
@@ -274,12 +256,7 @@ class SimulationDisplayAdapter(DisplayHAL):
         if self.draw is None:
             return
 
-        self.draw.polygon(
-            points,
-            fill=fill,
-            outline=outline,
-            width=width
-        )
+        self.draw.polygon(points, fill=fill, outline=outline, width=width)
 
     def image(
         self,
@@ -287,7 +264,7 @@ class SimulationDisplayAdapter(DisplayHAL):
         x: int,
         y: int,
         width: Optional[int] = None,
-        height: Optional[int] = None
+        height: Optional[int] = None,
     ) -> None:
         """
         Draw an image from file.
@@ -325,10 +302,7 @@ class SimulationDisplayAdapter(DisplayHAL):
             logger.warning(f"Failed to draw image {image_path}: {e}")
 
     def get_text_size(
-        self,
-        text: str,
-        font_size: int = 16,
-        font_path: Optional[Path] = None
+        self, text: str, font_size: int = 16, font_path: Optional[Path] = None
     ) -> Tuple[int, int]:
         """
         Get the dimensions of rendered text.
@@ -350,8 +324,10 @@ class SimulationDisplayAdapter(DisplayHAL):
                 font = ImageFont.truetype(str(font_path), font_size)
             else:
                 try:
-                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
-                except:
+                    font = ImageFont.truetype(
+                        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size
+                    )
+                except Exception:
                     font = ImageFont.load_default()
 
             # Get text bounding box
@@ -368,9 +344,9 @@ class SimulationDisplayAdapter(DisplayHAL):
 
     def status_bar(
         self,
-        time_str: str,
-        battery_percent: int,
-        signal_strength: int,
+        time_str: str = "--:--",
+        battery_percent: int = 100,
+        signal_strength: int = 4,
         charging: bool = False,
         external_power: bool = False,
         power_available: bool = True,
@@ -383,42 +359,43 @@ class SimulationDisplayAdapter(DisplayHAL):
             battery_percent: Battery level 0-100
             signal_strength: Signal bars 0-4
         """
-        # Clear status bar area
+        # Match the Whisplay portrait status-bar layout for simulation fidelity.
+        self.rectangle(0, 0, self.WIDTH, self.STATUS_BAR_HEIGHT, fill=self.COLOR_DARK_GRAY)
+
+        time_x = (self.WIDTH - len(time_str) * 7) // 2
+        self.text(time_str, time_x, 4, color=self.COLOR_WHITE, font_size=14)
+
+        battery_x = self.WIDTH - 45
+        battery_y = 6
+        battery_width = 35
+        battery_height = 12
+
         self.rectangle(
-            0, 0, self.WIDTH, self.STATUS_BAR_HEIGHT,
-            fill=self.COLOR_BLACK
-        )
-
-        # Draw time (left side)
-        self.text(time_str, 5, 5, color=self.COLOR_WHITE, font_size=14)
-
-        # Draw battery (right side)
-        battery_x = self.WIDTH - 50
-        battery_y = 7
-
-        # Battery outline
-        self.rectangle(
-            battery_x, battery_y,
-            battery_x + 30, battery_y + 12,
+            battery_x,
+            battery_y,
+            battery_x + battery_width,
+            battery_y + battery_height,
             outline=self.COLOR_WHITE,
-            width=1
+            width=1,
         )
 
-        # Battery tip
         self.rectangle(
-            battery_x + 30, battery_y + 3,
-            battery_x + 32, battery_y + 9,
-            fill=self.COLOR_WHITE
+            battery_x + battery_width,
+            battery_y + 3,
+            battery_x + battery_width + 3,
+            battery_y + battery_height - 3,
+            fill=self.COLOR_WHITE,
         )
 
-        # Battery fill (based on percentage)
-        if battery_percent > 0:
-            fill_width = int(28 * battery_percent / 100)
+        fill_width = int((battery_width - 4) * (battery_percent / 100))
+        if fill_width > 0:
             fill_color = self.COLOR_GREEN if battery_percent > 20 else self.COLOR_RED
             self.rectangle(
-                battery_x + 1, battery_y + 1,
-                battery_x + 1 + fill_width, battery_y + 11,
-                fill=fill_color
+                battery_x + 2,
+                battery_y + 2,
+                battery_x + 2 + fill_width,
+                battery_y + battery_height - 2,
+                fill=fill_color,
             )
 
         indicator = ""
@@ -438,15 +415,19 @@ class SimulationDisplayAdapter(DisplayHAL):
                 font_size=12,
             )
 
-        # Draw signal strength (signal bars)
-        signal_x = self.WIDTH - 80
+        signal_x = 5
+        signal_y = 10
+        bar_width = 3
+        bar_spacing = 2
         for i in range(4):
-            bar_height = 4 + (i * 3)
+            bar_height = 4 + (i * 2)
             bar_color = self.COLOR_WHITE if i < signal_strength else self.COLOR_DARK_GRAY
             self.rectangle(
-                signal_x + (i * 5), self.STATUS_BAR_HEIGHT - bar_height - 2,
-                signal_x + (i * 5) + 3, self.STATUS_BAR_HEIGHT - 2,
-                fill=bar_color
+                signal_x + (i * (bar_width + bar_spacing)),
+                signal_y + (12 - bar_height),
+                signal_x + (i * (bar_width + bar_spacing)) + bar_width,
+                signal_y + 12,
+                fill=bar_color,
             )
 
     def update(self) -> None:

@@ -10,8 +10,17 @@ from yoyopy.ui.input.adapters.ptt_button import PTTInputAdapter
 class WhisplayDisplayAdapter:
     """Minimal Whisplay display-adapter double for factory tests."""
 
+    DISPLAY_TYPE = "whisplay"
+
     def __init__(self) -> None:
         self.device = None
+
+
+class SimulationDisplayAdapter:
+    """Minimal simulation display-adapter double mirroring Whisplay."""
+
+    DISPLAY_TYPE = "simulation"
+    SIMULATED_HARDWARE = "whisplay"
 
 
 def test_whisplay_factory_applies_one_button_profile_and_custom_timings() -> None:
@@ -58,8 +67,8 @@ def test_whisplay_factory_keeps_standard_profile_when_navigation_disabled() -> N
     assert adapter.enable_navigation is False
 
 
-def test_simulated_whisplay_factory_wires_browser_buttons(monkeypatch) -> None:
-    """Browser controls should remain active when simulating the Whisplay profile."""
+def test_simulation_factory_uses_whisplay_profile_and_browser_buttons(monkeypatch) -> None:
+    """Simulation should expose the same one-button browser controls as Whisplay."""
 
     class FakeServer:
         def __init__(self) -> None:
@@ -75,13 +84,14 @@ def test_simulated_whisplay_factory_wires_browser_buttons(monkeypatch) -> None:
     monkeypatch.setattr(web_server, "get_server", lambda *args, **kwargs: server)
 
     manager = get_input_manager(
-        WhisplayDisplayAdapter(),
+        SimulationDisplayAdapter(),
         config={"input": {"ptt_navigation": True}},
-        simulate=True,
+        simulate=False,
     )
 
     observed: list[InputAction] = []
     assert manager is not None
+    assert manager.interaction_profile == InteractionProfile.ONE_BUTTON
     manager.on_action(InputAction.ADVANCE, lambda data=None: observed.append(InputAction.ADVANCE))
     manager.on_action(InputAction.SELECT, lambda data=None: observed.append(InputAction.SELECT))
     manager.on_action(InputAction.BACK, lambda data=None: observed.append(InputAction.BACK))

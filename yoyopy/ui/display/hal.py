@@ -33,6 +33,8 @@ class DisplayHAL(ABC):
     """
 
     # Display dimensions (must be set by subclass)
+    DISPLAY_TYPE: str = "unknown"
+    SIMULATED_HARDWARE: str | None = None
     WIDTH: int = 0
     HEIGHT: int = 0
     ORIENTATION: str = "landscape"  # "landscape" or "portrait"
@@ -79,7 +81,7 @@ class DisplayHAL(ABC):
         y: int,
         color: Optional[Tuple[int, int, int]] = None,
         font_size: int = 16,
-        font_path: Optional[Path] = None
+        font_path: Optional[Path] = None,
     ) -> None:
         """
         Draw text at the specified position.
@@ -103,7 +105,7 @@ class DisplayHAL(ABC):
         y2: int,
         fill: Optional[Tuple[int, int, int]] = None,
         outline: Optional[Tuple[int, int, int]] = None,
-        width: int = 1
+        width: int = 1,
     ) -> None:
         """
         Draw a rectangle.
@@ -125,7 +127,7 @@ class DisplayHAL(ABC):
         radius: int,
         fill: Optional[Tuple[int, int, int]] = None,
         outline: Optional[Tuple[int, int, int]] = None,
-        width: int = 1
+        width: int = 1,
     ) -> None:
         """
         Draw a circle.
@@ -147,7 +149,7 @@ class DisplayHAL(ABC):
         x2: int,
         y2: int,
         color: Optional[Tuple[int, int, int]] = None,
-        width: int = 1
+        width: int = 1,
     ) -> None:
         """
         Draw a line.
@@ -167,7 +169,7 @@ class DisplayHAL(ABC):
         x: int,
         y: int,
         width: Optional[int] = None,
-        height: Optional[int] = None
+        height: Optional[int] = None,
     ) -> None:
         """
         Draw an image from file.
