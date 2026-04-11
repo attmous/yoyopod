@@ -6,8 +6,11 @@ without ALSA utilities (for example the Windows simulator).
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
+from functools import lru_cache
+from pathlib import Path
 
 from loguru import logger
 
@@ -49,59 +52,168 @@ def _run_list(binary: str) -> list[str]:
     return devices
 
 
+@lru_cache(maxsize=1)
+def _asound_card_aliases() -> dict[str, str]:
+    """Return ALSA card-id -> friendly name mapping when available."""
+
+    cards_path = Path("/proc/asound/cards")
+    if not cards_path.exists():
+        return {}
+
+    try:
+        text = cards_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return {}
+
+    aliases: dict[str, str] = {}
+    for line in text.splitlines():
+        # Example:
+        #  1 [SE             ]: USB-Audio - Jabra Evolve 75 SE
+        match = re.match(r"^\s*\d+\s+\[([^\]]+)\]:\s*(.+?)\s*$", line)
+        if not match:
+            continue
+        card_id = match.group(1).strip()
+        rest = match.group(2).strip()
+        if not card_id or not rest:
+            continue
+        friendly = rest
+        if " - " in rest:
+            friendly = rest.split(" - ", 1)[1].strip() or rest
+        aliases[card_id] = friendly
+    return aliases
+
+
+def _friendly_card_name(card_id: str) -> str:
+    return _asound_card_aliases().get(card_id, card_id)
+
+
+def _parse_card_dev(device: str) -> tuple[str | None, int | None]:
+    """Extract CARD and DEV fields from an ALSA selector string."""
+
+    upper = device.upper()
+    card = None
+    dev = None
+    if "CARD=" in upper:
+        start = upper.index("CARD=") + len("CARD=")
+        end = device.find(",", start)
+        card = (device[start:] if end == -1 else device[start:end]).strip() or None
+    if "DEV=" in upper:
+        start = upper.index("DEV=") + len("DEV=")
+        end = device.find(",", start)
+        raw = (device[start:] if end == -1 else device[start:end]).strip()
+        try:
+            dev = int(raw)
+        except Exception:
+            dev = None
+    return card, dev
+
+
+def _route_name(device: str) -> str:
+    return device.split(":", 1)[0].strip().lower() if ":" in device else device.strip().lower()
+
+
 def list_playback_devices(*, aplay_binary: str = "aplay") -> list[str]:
     """Return ALSA playback devices in a stable, UI-friendly order."""
 
     parsed = _run_list(aplay_binary)
-    filtered: list[str] = []
+    candidates: list[str] = []
     for device in parsed:
-        # Skip common aliases that don't help selection.
-        if device in {"default", "sysdefault"}:
+        if device in {"default", "sysdefault", "null"}:
             continue
-        if "vc4hdmi" in device.lower():
+        route = _route_name(device)
+        # Keep only "physical" options: one per card, prefer plughw; keep HDMI explicitly.
+        if route not in {"plughw", "hw", "hdmi"}:
             continue
-        filtered.append(device)
+        card, _ = _parse_card_dev(device)
+        if not card:
+            continue
+        candidates.append(device)
+
+    # Choose one best route per card.
+    by_card: dict[str, list[str]] = {}
+    for device in candidates:
+        card, _ = _parse_card_dev(device)
+        if not card:
+            continue
+        by_card.setdefault(card, []).append(device)
+
+    chosen: list[str] = []
+    for card, devices in by_card.items():
+        # Prefer hdmi for HDMI cards, otherwise plughw then hw.
+        priority = ["plughw", "hw"]
+        if card.lower() in {"vc4hdmi"}:
+            priority = ["hdmi", "plughw", "hw"]
+        best: str | None = None
+        for route in priority:
+            matches = [d for d in devices if _route_name(d) == route]
+            if matches:
+                # Prefer lowest DEV if multiple.
+                matches.sort(key=lambda d: (_parse_card_dev(d)[1] or 0, d))
+                best = matches[0]
+                break
+        if best is not None:
+            chosen.append(best)
 
     def sort_key(value: str) -> tuple[int, str]:
-        lowered = value.lower()
-        if "card=se" in lowered or "usb" in lowered:
-            return (0, value)
-        if value.startswith("plughw:"):
-            return (1, value)
-        if value.startswith("default:card="):
-            return (2, value)
-        if value.startswith("sysdefault:card="):
-            return (3, value)
-        return (4, value)
+        card, _ = _parse_card_dev(value)
+        route = _route_name(value)
+        friendly = _friendly_card_name(card or "").lower()
+        if route == "hdmi" or (card or "").lower() == "vc4hdmi":
+            return (2, friendly)
+        # Rough heuristics: keep USB-ish headsets first.
+        if "usb" in friendly or "jabra" in friendly:
+            return (0, friendly)
+        if "blue" in friendly:
+            return (1, friendly)
+        return (3, friendly)
 
-    return sorted(dict.fromkeys(filtered), key=sort_key)
+    chosen = sorted(dict.fromkeys(chosen), key=sort_key)
+    return chosen
 
 
 def list_capture_devices(*, arecord_binary: str = "arecord") -> list[str]:
     """Return ALSA capture devices in a stable, UI-friendly order."""
 
     parsed = _run_list(arecord_binary)
-    filtered: list[str] = []
+    candidates: list[str] = []
     for device in parsed:
-        if device in {"default", "sysdefault"}:
+        if device in {"default", "sysdefault", "null"}:
             continue
-        filtered.append(device)
+        route = _route_name(device)
+        if route not in {"plughw", "hw"}:
+            continue
+        card, _ = _parse_card_dev(device)
+        if not card:
+            continue
+        candidates.append(device)
+
+    by_card: dict[str, list[str]] = {}
+    for device in candidates:
+        card, _ = _parse_card_dev(device)
+        if not card:
+            continue
+        by_card.setdefault(card, []).append(device)
+
+    chosen: list[str] = []
+    for card, devices in by_card.items():
+        for route in ("plughw", "hw"):
+            matches = [d for d in devices if _route_name(d) == route]
+            if matches:
+                matches.sort(key=lambda d: (_parse_card_dev(d)[1] or 0, d))
+                chosen.append(matches[0])
+                break
 
     def sort_key(value: str) -> tuple[int, str]:
-        lowered = value.lower()
-        if "card=se" in lowered or "usb" in lowered:
-            return (0, value)
-        if value.startswith("plughw:"):
-            return (1, value)
-        if value.startswith("front:card="):
-            return (2, value)
-        if value.startswith("dsnoop:card="):
-            return (3, value)
-        if value.startswith("hw:"):
-            return (4, value)
-        return (5, value)
+        card, _ = _parse_card_dev(value)
+        friendly = _friendly_card_name(card or "").lower()
+        if "usb" in friendly or "jabra" in friendly:
+            return (0, friendly)
+        if "blue" in friendly:
+            return (1, friendly)
+        return (2, friendly)
 
-    return sorted(dict.fromkeys(filtered), key=sort_key)
+    chosen = sorted(dict.fromkeys(chosen), key=sort_key)
+    return chosen
 
 
 def format_device_label(device_id: str | None) -> str:
@@ -112,35 +224,16 @@ def format_device_label(device_id: str | None) -> str:
 
     normalized = _normalize_alsa_selector(device_id)
 
-    # If the selector is of the form "<route>:CARD=XYZ,DEV=0", prefer showing the
-    # card (and dev) with a route suffix. This reads much better than raw ALSA
-    # strings like "iec958:CARD=SE,DEV=0".
-    route = ""
-    spec = normalized
-    if ":" in normalized:
-        route, spec = normalized.split(":", 1)
-        route = route.strip()
-        spec = spec.strip()
-
-    card = ""
-    dev = ""
-    upper_spec = spec.upper()
-    if "CARD=" in upper_spec:
-        start = upper_spec.index("CARD=") + len("CARD=")
-        end = spec.find(",", start)
-        card = spec[start:] if end == -1 else spec[start:end]
-        card = card.strip()
-    if "DEV=" in upper_spec:
-        start = upper_spec.index("DEV=") + len("DEV=")
-        end = spec.find(",", start)
-        dev = spec[start:] if end == -1 else spec[start:end]
-        dev = dev.strip()
-
+    route = _route_name(normalized)
+    card, dev = _parse_card_dev(normalized)
     if card:
-        label = card
-        if route:
-            label = f"{label} {route}"
-        if dev:
+        friendly = _friendly_card_name(card)
+        # Special-case HDMI for readability.
+        if route == "hdmi" or card.lower() == "vc4hdmi":
+            label = "HDMI"
+        else:
+            label = friendly
+        if dev not in (None, 0) and len(label) <= 14:
             label = f"{label} {dev}"
         label = label.strip()
         if len(label) > 18:
