@@ -256,3 +256,15 @@ class CallHistoryScreen(Screen):
         if not self.entries:
             return
         self.selected_index = (self.selected_index + 1) % len(self.entries)
+
+    def on_down(self, data=None) -> None:
+        """Move to the next recent entry."""
+        if not self.entries:
+            return
+        self.selected_index = (self.selected_index + 1) % len(self.entries)
+
+    def on_up(self, data=None) -> None:
+        """Move to the previous recent entry."""
+        if not self.entries:
+            return
+        self.selected_index = (self.selected_index - 1) % len(self.entries)

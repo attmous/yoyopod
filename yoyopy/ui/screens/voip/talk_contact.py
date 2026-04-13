@@ -264,3 +264,13 @@ class TalkContactScreen(Screen):
         """Move to the next action."""
 
         self.selected_index = (self.selected_index + 1) % len(self.actions())
+
+    def on_down(self, data=None) -> None:
+        """Move to the next action."""
+
+        self.selected_index = (self.selected_index + 1) % len(self.actions())
+
+    def on_up(self, data=None) -> None:
+        """Move to the previous action."""
+
+        self.selected_index = (self.selected_index - 1) % len(self.actions())

@@ -130,6 +130,14 @@ class OutgoingCallScreen(Screen):
         """Outgoing-call single tap is intentionally a no-op."""
         return
 
+    def on_down(self, data=None) -> None:
+        """Outgoing-call down is intentionally a no-op."""
+        return
+
+    def on_up(self, data=None) -> None:
+        """Outgoing-call up is intentionally a no-op."""
+        return
+
     def on_select(self, data=None) -> None:
         """Outgoing-call double tap is intentionally a no-op."""
         return

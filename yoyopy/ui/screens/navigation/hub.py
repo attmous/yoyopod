@@ -254,8 +254,16 @@ class HubScreen(Screen):
         self.display.update()
 
     def on_advance(self, data=None) -> None:
-        """Cycle to the next card."""
+        """Cycle to the next card (one-button navigation)."""
         self.selected_index = (self.selected_index + 1) % len(self._cards())
+
+    def on_down(self, data=None) -> None:
+        """Move to the next card (4-button: Y = down/next)."""
+        self.selected_index = (self.selected_index + 1) % len(self._cards())
+
+    def on_up(self, data=None) -> None:
+        """Move to the previous card (4-button: X = up/prev)."""
+        self.selected_index = (self.selected_index - 1) % len(self._cards())
 
     def on_select(self, data=None) -> None:
         """Open the selected root card."""

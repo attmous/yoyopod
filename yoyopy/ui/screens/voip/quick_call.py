@@ -345,3 +345,17 @@ class CallScreen(Screen):
         if not self.deck_cards:
             return
         self.selected_index = (self.selected_index + 1) % len(self.deck_cards)
+
+    def on_down(self, data=None) -> None:
+        """Move to the next contact card."""
+
+        if not self.deck_cards:
+            return
+        self.selected_index = (self.selected_index + 1) % len(self.deck_cards)
+
+    def on_up(self, data=None) -> None:
+        """Move to the previous contact card."""
+
+        if not self.deck_cards:
+            return
+        self.selected_index = (self.selected_index - 1) % len(self.deck_cards)

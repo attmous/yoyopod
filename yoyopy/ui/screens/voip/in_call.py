@@ -166,6 +166,11 @@ class InCallScreen(Screen):
 
         self._toggle_mute()
 
+    def on_down(self, data=None) -> None:
+        """Toggle microphone mute."""
+
+        self._toggle_mute()
+
     def on_advance(self, data=None) -> None:
         """Toggle microphone mute in one-button mode."""
 

@@ -128,6 +128,14 @@ class IncomingCallScreen(Screen):
         """Incoming-call single tap is intentionally a no-op."""
         return
 
+    def on_down(self, data=None) -> None:
+        """Incoming-call down is intentionally a no-op."""
+        return
+
+    def on_up(self, data=None) -> None:
+        """Incoming-call up is intentionally a no-op."""
+        return
+
     def on_call_answer(self, data=None) -> None:
         """Answer from a dedicated call action."""
         self._answer_call()

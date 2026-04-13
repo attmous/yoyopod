@@ -563,6 +563,22 @@ class VoiceNoteScreen(Screen):
             return
         self._selected_action_index = (self._selected_action_index + 1) % len(actions)
 
+    def on_down(self, data=None) -> None:
+        """Move to the next selectable action."""
+
+        actions = self.actions()
+        if not actions:
+            return
+        self._selected_action_index = (self._selected_action_index + 1) % len(actions)
+
+    def on_up(self, data=None) -> None:
+        """Move to the previous selectable action."""
+
+        actions = self.actions()
+        if not actions:
+            return
+        self._selected_action_index = (self._selected_action_index - 1) % len(actions)
+
     def on_back(self, data=None) -> None:
         """Return to the previous Talk screen."""
 
