@@ -267,6 +267,22 @@ class CubiePimoroniAdapter(DisplayHAL):
             except Exception as e:
                 logger.error("Failed to update Cubie Pimoroni display: {}", e)
 
+    def draw_rgb565_region(
+        self, x: int, y: int, width: int, height: int, pixel_data: bytes
+    ) -> None:
+        """Receive RGB565 region from LVGL flush and push to ST7789 via SPI."""
+        if not self.simulate and self._driver:
+            try:
+                self._driver.draw_image(x, y, width, height, pixel_data)
+            except Exception as e:
+                logger.error("Failed to draw LVGL region: {}", e)
+
+    def get_flush_target(self) -> "CubiePimoroniAdapter | None":
+        """Return self as LVGL flush target when hardware is available."""
+        if not self.simulate and self._driver:
+            return self
+        return None
+
     def set_backlight(self, brightness: float) -> None:
         if not self.simulate and self._driver:
             self._driver.set_backlight(brightness > 0)
