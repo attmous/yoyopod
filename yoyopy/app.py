@@ -65,7 +65,7 @@ from yoyopy.ui.screens import (
     VoiceNoteScreen,
 )
 from yoyopy.network import NetworkManager
-from yoyopy.events import NetworkPppUpEvent
+from yoyopy.events import NetworkPppUpEvent, NetworkGpsFixEvent
 from yoyopy.voice import VoiceSettings
 from yoyopy.voip import CallHistoryStore, VoIPConfig, VoIPManager
 
@@ -191,6 +191,7 @@ class YoyoPodApp:
             GracefulShutdownCancelled,
             self._handle_graceful_shutdown_cancelled_event,
         )
+        self.event_bus.subscribe(NetworkGpsFixEvent, self._handle_network_gps_fix)
 
         # Extracted coordinators
         self.coordinator_runtime: Optional[CoordinatorRuntime] = None
@@ -732,6 +733,7 @@ class YoyoPodApp:
                 self.display,
                 self.context,
                 power_manager=self.power_manager,
+                network_manager=self.network_manager,
                 status_provider=self.get_status,
                 volume_up_action=self.volume_up,
                 volume_down_action=self.volume_down,
@@ -1127,6 +1129,11 @@ class YoyoPodApp:
             color=self.display.COLOR_GREEN if self.display is not None else (0, 255, 0),
             duration_seconds=3.0,
         )
+
+    def _handle_network_gps_fix(self, event: "NetworkGpsFixEvent") -> None:
+        """Update GPS fix state in AppContext."""
+        if self.context:
+            self.context.update_network_status(gps_has_fix=True)
 
     def _register_power_shutdown_hooks(self) -> None:
         """Register built-in shutdown hooks once the power manager is available."""
