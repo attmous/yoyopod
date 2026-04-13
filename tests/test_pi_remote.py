@@ -477,7 +477,7 @@ def test_run_screenshot_uses_sigusr1_for_readback(monkeypatch, tmp_path) -> None
     assert exit_code == 0
     assert any(command.startswith("rm -f ") for command in recorded_commands)
     assert any(command.startswith("kill -USR1 ") for command in recorded_commands)
-    assert any(command.startswith("for _ in $(seq 1 10); do ") for command in recorded_commands)
+    assert any(command.startswith("for _ in $(seq 1 20); do ") for command in recorded_commands)
 
 
 def test_run_screenshot_uses_sigusr2_for_default_shadow_path(monkeypatch, tmp_path) -> None:
@@ -509,7 +509,7 @@ def test_run_screenshot_uses_sigusr2_for_default_shadow_path(monkeypatch, tmp_pa
     assert exit_code == 0
     assert any(command.startswith("rm -f ") for command in recorded_commands)
     assert any(command.startswith("kill -USR2 ") for command in recorded_commands)
-    assert any(command.startswith("for _ in $(seq 1 10); do ") for command in recorded_commands)
+    assert any(command.startswith("for _ in $(seq 1 20); do ") for command in recorded_commands)
 
 
 def test_build_service_command_supports_install_and_logs() -> None:

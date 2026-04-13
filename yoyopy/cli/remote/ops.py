@@ -1313,6 +1313,7 @@ def run_screenshot(
     args: argparse.Namespace,
 ) -> int:
     """Capture a screenshot from the remote app and copy it locally."""
+    wait_seconds = 20
     pid_file = shell_quote(deploy_config.pid_file)
     screenshot_path = shell_quote(deploy_config.screenshot_path)
 
@@ -1350,7 +1351,7 @@ def run_screenshot(
     verify_result = run_remote_capture(
         config,
         (
-            "for _ in $(seq 1 10); do "
+            f"for _ in $(seq 1 {wait_seconds}); do "
             f"test -f {screenshot_path} && echo READY && exit 0; "
             "sleep 1; "
             "done; "
