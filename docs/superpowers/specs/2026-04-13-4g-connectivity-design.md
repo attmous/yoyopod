@@ -22,7 +22,7 @@ Audio for VoIP calls uses the Whisplay's mic and speaker, not the modem's audio 
 
 **Layered AT Backend — App Owns Modem, OS Owns PPP**
 
-The app owns the serial port and full modem lifecycle via AT commands (init, registration, GPS). For the data path, the app configures the modem's PDP context via AT commands then hands off to `pppd` as a managed subprocess — following the existing `MpvProcess` pattern. Telemetry comes from AT queries before PPP starts. Live telemetry during PPP is deferred to a future CMUX iteration.
+The app owns the modem lifecycle via AT commands (init, registration, GPS) on `/dev/ttyUSB2`. For the data path, the app configures the modem's PDP context via AT commands then hands off to `pppd` as a managed subprocess on `/dev/ttyUSB3` — following the existing `MpvProcess` pattern. Since AT and PPP use separate USB ports, telemetry and GPS queries work during active PPP sessions without interruption.
 
 ---
 
@@ -158,7 +158,8 @@ Config model added to `yoyopy/config/models.py`:
 ```python
 class NetworkConfig:
     enabled: bool = False
-    serial_port: str = "/dev/ttyS0"
+    serial_port: str = "/dev/ttyUSB2"
+    ppp_port: str = "/dev/ttyUSB3"
     baud_rate: int = 115200
     apn: str = ""
     pin: str | None = None
@@ -171,7 +172,8 @@ YAML in `config/yoyopod_config.yaml`:
 ```yaml
 network:
   enabled: false
-  serial_port: /dev/ttyS0
+  serial_port: /dev/ttyUSB2
+  ppp_port: /dev/ttyUSB3
   baud_rate: 115200
   apn: "your-carrier-apn"
   gps_enabled: true
