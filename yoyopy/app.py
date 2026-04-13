@@ -832,15 +832,11 @@ class YoyoPodApp:
 
     def _get_initial_screen_name(self) -> str:
         """Return the root screen for the active interaction profile."""
-        if self._get_interaction_profile() == InteractionProfile.ONE_BUTTON:
-            return "hub"
-        return "menu"
+        return "hub"
 
     def _get_initial_ui_state(self) -> AppRuntimeState:
         """Return the base runtime state for the active interaction profile."""
-        if self._get_interaction_profile() == InteractionProfile.ONE_BUTTON:
-            return AppRuntimeState.HUB
-        return AppRuntimeState.MENU
+        return AppRuntimeState.HUB
 
     def _setup_voip_callbacks(self) -> None:
         """Register VoIP event callbacks."""
