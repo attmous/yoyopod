@@ -7,6 +7,7 @@ from datetime import datetime
 from yoyopy.app_context import AppContext
 from yoyopy.power import BatteryState, PowerDeviceInfo, PowerSnapshot, RTCState, ShutdownState
 from yoyopy.ui.display import Display
+from yoyopy.ui.input import InteractionProfile
 from yoyopy.ui.screens.system.power import PowerScreen
 
 
@@ -174,5 +175,49 @@ def test_power_screen_voice_page_toggles_runtime_voice_settings() -> None:
         screen.on_left()
         assert context.voice.output_volume == 50
         assert volume_calls == [("up", 5), ("down", 5)]
+    finally:
+        display.cleanup()
+
+
+def test_power_screen_one_button_voice_page_wraps_back_to_setup_paging() -> None:
+    """Whisplay Setup navigation should not get trapped on the last Voice row."""
+
+    display = Display(simulate=True)
+    try:
+        context = AppContext(interaction_profile=InteractionProfile.ONE_BUTTON)
+        screen = PowerScreen(
+            display,
+            context,
+            power_manager=StubPowerManager(_snapshot()),
+            status_provider=lambda: {},
+        )
+
+        screen.page_index = 3
+        assert screen._active_page().title == "Voice"
+
+        screen.on_advance()
+        assert screen.selected_row == 1
+        assert screen.page_index == 3
+
+        screen.on_advance()
+        screen.on_advance()
+        screen.on_advance()
+
+        assert screen.selected_row == 4
+        assert screen.page_index == 3
+
+        visible_rows, visible_selected_index = screen._visible_rows_for_page(screen._active_page())
+        assert [label for label, _ in visible_rows] == [
+            "AI Requests",
+            "Screen Read",
+            "Mic",
+            "Volume",
+        ]
+        assert visible_selected_index == 3
+
+        screen.on_advance()
+        assert screen.page_index == 0
+        assert screen.selected_row == 0
+        assert screen._active_page().title == "Power"
     finally:
         display.cleanup()

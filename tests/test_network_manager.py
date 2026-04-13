@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from yoyopy.config.models import AppNetworkConfig, build_config_model
 from yoyopy.event_bus import EventBus
-from yoyopy.events import NetworkPppUpEvent, NetworkPppDownEvent
+from yoyopy.events import NetworkGpsFixEvent, NetworkPppUpEvent
 from yoyopy.network.manager import NetworkManager
-from yoyopy.network.models import ModemPhase, ModemState, SignalInfo
+from yoyopy.network.models import GpsCoordinate, ModemPhase, ModemState, SignalInfo
 
 
 class FakeBackend:
@@ -25,6 +25,8 @@ class FakeBackend:
         self.inited = False
         self.ppp_started = False
         self.ppp_stopped = False
+        self.gps_query_calls = 0
+        self.gps_coord: GpsCoordinate | None = None
 
     def probe(self) -> bool:
         return True
@@ -52,7 +54,10 @@ class FakeBackend:
         self.state.phase = ModemPhase.REGISTERED
 
     def query_gps(self):
-        return None
+        self.gps_query_calls += 1
+        if self.gps_coord is not None:
+            self.state.gps = self.gps_coord
+        return self.gps_coord
 
 
 def test_manager_start_full_sequence():
@@ -109,3 +114,25 @@ def test_manager_is_online():
 
     backend.state.phase = ModemPhase.REGISTERED
     assert manager.is_online is False
+
+
+def test_manager_warms_gps_fix_on_start_when_enabled():
+    """start() should query GPS once so Setup can show cached coordinates promptly."""
+
+    config = build_config_model(
+        AppNetworkConfig,
+        {"enabled": True, "apn": "internet", "gps_enabled": True},
+    )
+    backend = FakeBackend()
+    backend.gps_coord = GpsCoordinate(lat=48.7083, lng=9.6610, altitude=328.2, speed=0.0)
+    bus = EventBus()
+    gps_events: list[object] = []
+    bus.subscribe(NetworkGpsFixEvent, gps_events.append)
+
+    manager = NetworkManager(config=config, backend=backend, event_bus=bus)
+    manager.start()
+
+    assert backend.gps_query_calls == 1
+    assert backend.state.gps == backend.gps_coord
+    assert len(gps_events) == 1
+    assert isinstance(gps_events[0], NetworkGpsFixEvent)

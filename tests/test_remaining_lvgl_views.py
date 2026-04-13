@@ -525,7 +525,7 @@ def test_power_screen_cycles_four_lvgl_pages() -> None:
     assert payload["icon_key"] == "battery"
     assert payload["current_page_index"] == 0
     assert payload["total_pages"] == 4
-    assert payload["footer"] == "Tap = Page / Hold = Back"
+    assert payload["footer"] == "Tap page / Hold back"
     assert payload["items"] == [
         "Source: Unavailable",
         "Battery: Unknown",
@@ -552,8 +552,9 @@ def test_power_screen_cycles_four_lvgl_pages() -> None:
     assert payload["title_text"] == "Voice"
     assert payload["icon_key"] == "voice_note"
     assert payload["page_text"] is None
+    assert payload["footer"] == "Tap next / 2x change / Hold back"
     assert payload["items"] == [
-        "Voice Cmds: On",
+        "> Voice Cmds: On",
         "AI Requests: On",
         "Screen Read: Off",
         "Mic: Live",
@@ -561,6 +562,53 @@ def test_power_screen_cycles_four_lvgl_pages() -> None:
 
     screen.exit()
     assert binding.power_destroy_calls == 1
+
+
+def test_power_screen_one_button_voice_page_advances_to_next_page_after_last_row() -> None:
+    """The Whisplay Voice page should stay navigable instead of trapping Setup on the last row."""
+
+    binding = FakeLvglBinding()
+    screen = PowerScreen(
+        FakeLvglDisplay(binding),
+        make_one_button_context(),
+        power_manager=None,
+        status_provider=lambda: {},
+    )
+    screen.page_index = 3
+
+    screen.enter()
+    screen.render()
+
+    assert binding.power_sync_payloads[-1]["title_text"] == "Voice"
+    assert binding.power_sync_payloads[-1]["items"][0] == "> Voice Cmds: On"
+
+    screen.on_advance()
+    screen.render()
+    assert binding.power_sync_payloads[-1]["items"][1] == "> AI Requests: On"
+
+    screen.on_advance()
+    screen.render()
+    assert binding.power_sync_payloads[-1]["items"][2] == "> Screen Read: Off"
+
+    screen.on_advance()
+    screen.render()
+    assert binding.power_sync_payloads[-1]["items"][3] == "> Mic: Live"
+
+    screen.on_advance()
+    screen.render()
+    assert binding.power_sync_payloads[-1]["items"] == [
+        "AI Requests: On",
+        "Screen Read: Off",
+        "Mic: Live",
+        "> Volume: 50%",
+    ]
+
+    screen.on_advance()
+    screen.render()
+    assert binding.power_sync_payloads[-1]["title_text"] == "Power"
+    assert binding.power_sync_payloads[-1]["current_page_index"] == 0
+
+    screen.exit()
 
 
 def test_power_screen_reports_full_network_page_count_through_lvgl() -> None:

@@ -68,7 +68,7 @@ class PowerScreen(Screen):
         self.selected_row = 0
         self._lvgl_view: "ScreenView | None" = None
         self._last_gps_query_at = 0.0
-        self._gps_refresh_interval_seconds = 8.0
+        self._gps_refresh_interval_seconds = 2.0
 
     def enter(self) -> None:
         """Create the LVGL view when the screen becomes active."""
@@ -112,10 +112,7 @@ class PowerScreen(Screen):
         pages = self._build_pages_for_display(snapshot=snapshot, status=status)
         self.page_index %= len(pages)
         active_page = pages[self.page_index]
-        if active_page.rows:
-            self.selected_row %= len(active_page.rows)
-        else:
-            self.selected_row = 0
+        visible_rows, visible_selected_index = self._visible_rows_for_page(active_page)
         render_backdrop(self.display, "setup")
         render_status_bar(self.display, self.context, show_time=False)
         page_text = f"{self.page_index + 1}/{len(pages)}"
@@ -175,11 +172,11 @@ class PowerScreen(Screen):
         row_height = 20
         row_gap = 4
         max_row_bottom = self.display.HEIGHT - 60
-        for row_index, (label, value) in enumerate(active_page.rows):
+        for row_index, (label, value) in enumerate(visible_rows):
             row_bottom = row_y + row_height
             if row_bottom > max_row_bottom:
                 break
-            is_selected = active_page.interactive and row_index == self.selected_row
+            is_selected = visible_selected_index is not None and row_index == visible_selected_index
             rounded_panel(
                 self.display,
                 16,
@@ -229,6 +226,28 @@ class PowerScreen(Screen):
         if title == "GPS":
             return "care"
         return "care"
+
+    def _visible_rows_for_page(
+        self,
+        page: PowerPage,
+        *,
+        max_rows: int = 4,
+    ) -> tuple[list[tuple[str, str]], int | None]:
+        """Return the visible row window plus the selected index inside it."""
+
+        if not page.rows:
+            self.selected_row = 0
+            return [], None
+
+        self.selected_row %= len(page.rows)
+        if not page.interactive or len(page.rows) <= max_rows:
+            return page.rows[:max_rows], (self.selected_row if page.interactive else None)
+
+        start = max(0, self.selected_row - (max_rows - 1))
+        end = min(len(page.rows), start + max_rows)
+        start = max(0, end - max_rows)
+        visible_rows = page.rows[start:end]
+        return visible_rows, self.selected_row - start
 
     def _render_page_dots(self, *, total_pages: int) -> None:
         """Render the compact Setup page-position dots."""
@@ -592,7 +611,7 @@ class PowerScreen(Screen):
 
         if page.interactive:
             if self.is_one_button_mode():
-                return "Tap item / Double change / Hold back"
+                return "Tap next / 2x change / Hold back"
             return "A change | B back | X/Y item | L/R page"
         return "Tap page / Hold back" if self.is_one_button_mode() else "A page | B back | X/Y page"
 
@@ -681,6 +700,13 @@ class PowerScreen(Screen):
     def on_advance(self, data=None) -> None:
         """Single-button tap cycles pages."""
         if self._is_voice_page():
+            if self.is_one_button_mode():
+                page = self._active_page()
+                if self.selected_row >= len(page.rows) - 1:
+                    self._next_page()
+                else:
+                    self._select_next_row()
+                return
             self._select_next_row()
             return
         self._next_page()

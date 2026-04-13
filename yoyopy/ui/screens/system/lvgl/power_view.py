@@ -40,7 +40,13 @@ class LvglPowerView:
 
         self.screen.page_index %= len(pages)
         active_page = pages[self.screen.page_index]
-        items = [f"{label}: {value}" for label, value in active_page.rows[:4]]
+        visible_rows, visible_selected_index = self.screen._visible_rows_for_page(active_page)
+        items = []
+        for index, (label, value) in enumerate(visible_rows):
+            row_text = f"{label}: {value}"
+            if visible_selected_index is not None and index == visible_selected_index:
+                row_text = f"> {row_text}"
+            items.append(row_text)
         context = self.screen.context
         sync_network_status(self.backend.binding, context)
 
@@ -48,11 +54,7 @@ class LvglPowerView:
             title_text=active_page.title,
             page_text=None,
             icon_key=self.screen._page_icon_key(active_page.title),
-            footer=(
-                "Tap = Page / Hold = Back"
-                if self.screen.is_one_button_mode()
-                else "A page | B back"
-            ),
+            footer=self.screen._instruction_text(active_page),
             items=items,
             current_page_index=self.screen.page_index,
             total_pages=len(pages),
