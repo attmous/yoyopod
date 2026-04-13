@@ -191,7 +191,9 @@ def get_display(
         logger.info("Creating simulation display adapter (240x280 portrait, Whisplay profile)")
         from yoyopy.ui.display.adapters.simulation import SimulationDisplayAdapter
 
-        return _attach_simulation_preview(SimulationDisplayAdapter())
+        adapter = _attach_simulation_preview(SimulationDisplayAdapter())
+        _try_attach_lvgl_backend(adapter)
+        return adapter
 
     valid_types = ", ".join(sorted(VALID_DISPLAY_TYPES))
     raise ValueError(f"Unknown display hardware type: '{hardware}'. Valid options: {valid_types}")

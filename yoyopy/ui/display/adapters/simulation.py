@@ -58,9 +58,13 @@ class SimulationDisplayAdapter(DisplayHAL):
         self.buffer: Optional[Image.Image] = None
         self.draw: Optional[ImageDraw.ImageDraw] = None
         self.web_server = None  # Will be set by web server module
+        self._rgb565_framebuffer: Optional[bytearray] = None
 
         # Create PIL drawing buffer
         self._create_buffer()
+
+        # Create RGB565 framebuffer for LVGL flush compositing
+        self._rgb565_framebuffer = bytearray(self.WIDTH * self.HEIGHT * 2)
 
         logger.info("Simulation display adapter initialized (240x280 portrait, Whisplay profile)")
         logger.info("Display will be available at http://localhost:5000")
@@ -429,6 +433,67 @@ class SimulationDisplayAdapter(DisplayHAL):
                 signal_y + 12,
                 fill=bar_color,
             )
+
+    def draw_rgb565_region(
+        self, x: int, y: int, width: int, height: int, pixel_data: bytes
+    ) -> None:
+        """Receive RGB565 region from LVGL flush, composite into framebuffer, and push to browser."""
+        if self._rgb565_framebuffer is None:
+            return
+
+        # Write region into the RGB565 framebuffer at the correct offset
+        src_offset = 0
+        for row in range(height):
+            dst_row = y + row
+            if dst_row >= self.HEIGHT:
+                break
+            dst_offset = (dst_row * self.WIDTH + x) * 2
+            row_bytes = min(width, self.WIDTH - x) * 2
+            self._rgb565_framebuffer[dst_offset : dst_offset + row_bytes] = (
+                pixel_data[src_offset : src_offset + row_bytes]
+            )
+            src_offset += width * 2
+
+        # Convert full framebuffer to PNG and push to browser
+        self._push_rgb565_to_browser()
+
+    def _push_rgb565_to_browser(self) -> None:
+        """Convert the RGB565 framebuffer to PNG and send via WebSocket."""
+        if self._rgb565_framebuffer is None or self.web_server is None:
+            return
+
+        # Convert RGB565 to RGB888 PIL image
+        img = Image.new("RGB", (self.WIDTH, self.HEIGHT))
+        pixels = []
+        buf = self._rgb565_framebuffer
+        for i in range(0, len(buf), 2):
+            val = (buf[i] << 8) | buf[i + 1]
+            r = (val >> 11) & 0x1F
+            g = (val >> 5) & 0x3F
+            b = val & 0x1F
+            pixels.append((r << 3, g << 2, b << 3))
+        img.putdata(pixels)
+
+        # Encode as base64 PNG
+        png_buffer = io.BytesIO()
+        img.save(png_buffer, format="PNG")
+        png_data = base64.b64encode(png_buffer.getvalue()).decode("ascii")
+        self.web_server.send_display_update(png_data)
+
+    def get_flush_target(self) -> "SimulationDisplayAdapter | None":
+        """Return self as LVGL flush target."""
+        return self
+
+    def get_backend_kind(self) -> str:
+        """Return 'lvgl' when an LVGL backend is attached, otherwise 'pil'."""
+        backend = getattr(self, "ui_backend", None)
+        if backend is not None and getattr(backend, "initialized", False):
+            return "lvgl"
+        return "pil"
+
+    def get_ui_backend(self):
+        """Return the attached LVGL backend, if any."""
+        return getattr(self, "ui_backend", None)
 
     def update(self) -> None:
         """
