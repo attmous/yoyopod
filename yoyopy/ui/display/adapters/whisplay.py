@@ -302,6 +302,12 @@ class WhisplayDisplayAdapter(DisplayHAL):
         if self.shadow_buffer_sync_enabled:
             self._paste_rgb565_region(x, y, width, height, pixel_data)
 
+    def get_flush_target(self) -> "WhisplayDisplayAdapter | None":
+        """Return self as LVGL flush target when hardware is available."""
+        if not self.simulate and self.device:
+            return self
+        return None
+
     def clear(self, color: Optional[Tuple[int, int, int]] = None) -> None:
         """Clear the display with specified color."""
         if color is None:
