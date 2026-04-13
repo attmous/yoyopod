@@ -63,6 +63,7 @@ class PTTInputAdapter(InputHAL):
         self.press_start_time: Optional[float] = None
         self.pending_single_tap_time: Optional[float] = None
         self.double_tap_candidate = False
+        self.double_tap_select_enabled = True
         self.raw_ptt_passthrough = False
         self.raw_hold_started = False
         self._hold_back_fired = False
@@ -118,9 +119,10 @@ class PTTInputAdapter(InputHAL):
         if self.enable_navigation:
             actions = [
                 InputAction.ADVANCE,
-                InputAction.SELECT,
                 InputAction.BACK,
             ]
+            if self.double_tap_select_enabled:
+                actions.append(InputAction.SELECT)
             if self.raw_ptt_passthrough:
                 actions.extend([InputAction.PTT_PRESS, InputAction.PTT_RELEASE])
             return actions
@@ -134,6 +136,12 @@ class PTTInputAdapter(InputHAL):
         """Enable or disable raw PTT press/release passthrough while in navigation mode."""
         self.raw_ptt_passthrough = bool(enabled)
         self.raw_hold_started = False
+        self.pending_single_tap_time = None
+        self.double_tap_candidate = False
+
+    def set_double_tap_select_enabled(self, enabled: bool) -> None:
+        """Enable or disable delayed double-tap select for one-button navigation."""
+        self.double_tap_select_enabled = bool(enabled)
         self.pending_single_tap_time = None
         self.double_tap_candidate = False
 
@@ -208,10 +216,11 @@ class PTTInputAdapter(InputHAL):
         )
         self.double_tap_candidate = (
             self.enable_navigation
+            and self.double_tap_select_enabled
             and self.pending_single_tap_time is not None
             and (current_time - self.pending_single_tap_time) < self.double_click_time
         )
-        if not self.double_tap_candidate:
+        if not self.double_tap_candidate and self.double_tap_select_enabled:
             self._emit_pending_navigation(current_time)
         self.button_pressed = True
         self.press_start_time = current_time
@@ -298,6 +307,20 @@ class PTTInputAdapter(InputHAL):
             self.raw_hold_started = False
             return
 
+        if not self.double_tap_select_enabled:
+            self.pending_single_tap_time = None
+            self.double_tap_candidate = False
+            self._fire_action(
+                InputAction.ADVANCE,
+                {
+                    "method": "single_tap",
+                    "timestamp": current_time,
+                },
+            )
+            self.press_start_time = None
+            self.raw_hold_started = False
+            return
+
         if self.double_tap_candidate:
             self.pending_single_tap_time = None
             self.double_tap_candidate = False
@@ -319,7 +342,11 @@ class PTTInputAdapter(InputHAL):
 
     def _emit_pending_navigation(self, current_time: float) -> None:
         """Emit ADVANCE once the double-tap window has expired."""
-        if not self.enable_navigation or self.button_pressed:
+        if (
+            not self.enable_navigation
+            or not self.double_tap_select_enabled
+            or self.button_pressed
+        ):
             return
 
         if self.pending_single_tap_time is None:

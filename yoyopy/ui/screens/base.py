@@ -93,6 +93,10 @@ class Screen(ABC):
         """Return True when the screen should render Whisplay-first hints."""
         return self.get_interaction_profile() == InteractionProfile.ONE_BUTTON
 
+    def prefers_simple_one_button_navigation(self) -> bool:
+        """Return True when one-button navigation should skip double-tap select."""
+        return False
+
     def handle_action(self, action: "InputAction", data: Optional[Any] = None) -> None:
         """Dispatch a semantic input action to the matching handler method."""
         handler = getattr(self, f"on_{action.value}", None)

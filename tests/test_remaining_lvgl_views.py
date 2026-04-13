@@ -552,20 +552,20 @@ def test_power_screen_cycles_four_lvgl_pages() -> None:
     assert payload["title_text"] == "Voice"
     assert payload["icon_key"] == "voice_note"
     assert payload["page_text"] is None
-    assert payload["footer"] == "Tap next / 2x change / Hold back"
+    assert payload["footer"] == "Tap page / Hold back"
     assert payload["items"] == [
-        "> Voice Cmds: On",
+        "Voice Cmds: On",
         "AI Requests: On",
-        "Screen Read: Off",
         "Mic: Live",
+        "Volume: 50%",
     ]
 
     screen.exit()
     assert binding.power_destroy_calls == 1
 
 
-def test_power_screen_one_button_voice_page_advances_to_next_page_after_last_row() -> None:
-    """The Whisplay Voice page should stay navigable instead of trapping Setup on the last row."""
+def test_power_screen_one_button_voice_page_wraps_immediately() -> None:
+    """The Whisplay Voice page should stay in the normal page-to-page loop."""
 
     binding = FakeLvglBinding()
     screen = PowerScreen(
@@ -580,27 +580,12 @@ def test_power_screen_one_button_voice_page_advances_to_next_page_after_last_row
     screen.render()
 
     assert binding.power_sync_payloads[-1]["title_text"] == "Voice"
-    assert binding.power_sync_payloads[-1]["items"][0] == "> Voice Cmds: On"
-
-    screen.on_advance()
-    screen.render()
-    assert binding.power_sync_payloads[-1]["items"][1] == "> AI Requests: On"
-
-    screen.on_advance()
-    screen.render()
-    assert binding.power_sync_payloads[-1]["items"][2] == "> Screen Read: Off"
-
-    screen.on_advance()
-    screen.render()
-    assert binding.power_sync_payloads[-1]["items"][3] == "> Mic: Live"
-
-    screen.on_advance()
-    screen.render()
+    assert binding.power_sync_payloads[-1]["footer"] == "Tap page / Hold back"
     assert binding.power_sync_payloads[-1]["items"] == [
+        "Voice Cmds: On",
         "AI Requests: On",
-        "Screen Read: Off",
         "Mic: Live",
-        "> Volume: 50%",
+        "Volume: 50%",
     ]
 
     screen.on_advance()

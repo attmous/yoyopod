@@ -268,10 +268,22 @@ class ScreenManager:
         if callable(raw_ptt_hook):
             wants_raw_ptt = bool(raw_ptt_hook())
 
+        prefers_simple_nav = False
+        simple_nav_hook = getattr(
+            self.current_screen,
+            "prefers_simple_one_button_navigation",
+            None,
+        )
+        if callable(simple_nav_hook):
+            prefers_simple_nav = bool(simple_nav_hook())
+
         for adapter in getattr(self.input_manager, "adapters", []):
             configure_passthrough = getattr(adapter, "set_raw_ptt_passthrough", None)
             if callable(configure_passthrough):
                 configure_passthrough(wants_raw_ptt)
+            configure_double_tap = getattr(adapter, "set_double_tap_select_enabled", None)
+            if callable(configure_double_tap):
+                configure_double_tap(not prefers_simple_nav)
 
     def rebind_current_screen_inputs(self) -> None:
         """Re-apply input bindings for the active screen after its mode changes."""

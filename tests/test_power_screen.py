@@ -179,8 +179,8 @@ def test_power_screen_voice_page_toggles_runtime_voice_settings() -> None:
         display.cleanup()
 
 
-def test_power_screen_one_button_voice_page_wraps_back_to_setup_paging() -> None:
-    """Whisplay Setup navigation should not get trapped on the last Voice row."""
+def test_power_screen_one_button_voice_page_stays_in_fast_page_mode() -> None:
+    """Whisplay Setup should treat Voice like a normal page, not an interactive trap."""
 
     display = Display(simulate=True)
     try:
@@ -193,27 +193,18 @@ def test_power_screen_one_button_voice_page_wraps_back_to_setup_paging() -> None
         )
 
         screen.page_index = 3
-        assert screen._active_page().title == "Voice"
+        page = screen._active_page()
+        assert page.title == "Voice"
+        assert page.interactive is False
 
-        screen.on_advance()
-        assert screen.selected_row == 1
-        assert screen.page_index == 3
-
-        screen.on_advance()
-        screen.on_advance()
-        screen.on_advance()
-
-        assert screen.selected_row == 4
-        assert screen.page_index == 3
-
-        visible_rows, visible_selected_index = screen._visible_rows_for_page(screen._active_page())
+        visible_rows, visible_selected_index = screen._visible_rows_for_page(page)
         assert [label for label, _ in visible_rows] == [
+            "Voice Cmds",
             "AI Requests",
-            "Screen Read",
             "Mic",
             "Volume",
         ]
-        assert visible_selected_index == 3
+        assert visible_selected_index is None
 
         screen.on_advance()
         assert screen.page_index == 0

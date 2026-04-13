@@ -278,11 +278,16 @@ class PowerScreen(Screen):
         if self.network_manager is not None and self.network_manager.config.enabled:
             pages.append(PowerPage(title="Network", rows=self._build_network_rows()))
             pages.append(PowerPage(title="GPS", rows=self._build_gps_rows()))
+        voice_interactive = not self.is_one_button_mode()
         pages.extend(
             [
                 PowerPage(title="Time", rows=battery_rows[4:6] + runtime_rows[:2]),
                 PowerPage(title="Care", rows=runtime_rows[2:]),
-                PowerPage(title="Voice", rows=self._build_voice_rows(), interactive=True),
+                PowerPage(
+                    title="Voice",
+                    rows=self._build_voice_rows(summary_mode=not voice_interactive),
+                    interactive=voice_interactive,
+                ),
             ]
         )
         return pages
@@ -308,26 +313,35 @@ class PowerScreen(Screen):
             pages = self.build_pages(snapshot=snapshot, status=status)
         return pages
 
-    def _build_voice_rows(self) -> list[tuple[str, str]]:
+    def _build_voice_rows(self, *, summary_mode: bool = False) -> list[tuple[str, str]]:
         """Build the voice-related settings page."""
 
         if self.context is None:
-            return [
+            rows = [
                 ("Voice Cmds", "Unknown"),
                 ("AI Requests", "Unknown"),
                 ("Screen Read", "Unknown"),
                 ("Mic", "Unknown"),
                 ("Volume", "--"),
             ]
+            return rows[:4] if summary_mode else rows
 
         voice = self.context.voice
-        return [
+        rows = [
             ("Voice Cmds", "On" if voice.commands_enabled else "Off"),
             ("AI Requests", "On" if voice.ai_requests_enabled else "Off"),
             ("Screen Read", "On" if voice.screen_read_enabled else "Off"),
             ("Mic", "Muted" if voice.mic_muted else "Live"),
             ("Volume", f"{voice.output_volume}%"),
         ]
+        if summary_mode:
+            return [
+                rows[0],
+                rows[1],
+                rows[3],
+                rows[4],
+            ]
+        return rows
 
     def _build_network_rows(self) -> list[tuple[str, str]]:
         """Build the cellular network status page."""
@@ -614,6 +628,10 @@ class PowerScreen(Screen):
                 return "Tap next / 2x change / Hold back"
             return "A change | B back | X/Y item | L/R page"
         return "Tap page / Hold back" if self.is_one_button_mode() else "A page | B back | X/Y page"
+
+    def prefers_simple_one_button_navigation(self) -> bool:
+        """Use fast page-to-page taps on Whisplay Setup screens."""
+        return self.is_one_button_mode()
 
     def _active_pages(self) -> list[PowerPage]:
         """Return the current page list for navigation helpers."""

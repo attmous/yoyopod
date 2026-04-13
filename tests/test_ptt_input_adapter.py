@@ -89,6 +89,18 @@ def test_long_hold_suppresses_pending_single_tap() -> None:
     assert actions == [InputAction.BACK]
 
 
+def test_disabling_double_tap_select_emits_advance_immediately() -> None:
+    """Simple one-button mode should page immediately on short release."""
+    adapter = PTTInputAdapter(simulate=True, enable_navigation=True)
+    adapter.set_double_tap_select_enabled(False)
+    actions = _record_actions(adapter)
+
+    adapter._handle_button_press(0.0)
+    adapter._handle_button_release(0.1)
+
+    assert actions == [InputAction.ADVANCE]
+
+
 def test_button_press_fires_raw_activity_immediately() -> None:
     """Physical button presses should emit wake-worthy activity before gesture resolution."""
     adapter = PTTInputAdapter(simulate=True, enable_navigation=True)
