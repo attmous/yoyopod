@@ -33,10 +33,11 @@ def open_chip(name: str) -> Any:
     if not HAS_GPIOD:
         raise RuntimeError("gpiod module is required but not installed")
 
+    # Both gpiod 1.x and some 2.x builds expect /dev/ paths
+    if not name.startswith("/dev/"):
+        name = f"/dev/{name}"
+
     if _is_v1():
-        # gpiod 1.x expects /dev/gpiochipN path
-        if not name.startswith("/dev/"):
-            name = f"/dev/{name}"
         return _gpiod.chip(name)
     else:
         return _gpiod.Chip(name)
