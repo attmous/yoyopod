@@ -382,12 +382,15 @@ class YoyoPodApp:
             logger.info(f"    Dimensions: {self.display.WIDTH}x{self.display.HEIGHT}")
             logger.info(f"    Orientation: {self.display.ORIENTATION}")
             self._lvgl_backend = self.display.get_ui_backend()
-            if self._lvgl_backend is not None and self._lvgl_backend.initialize():
-                self.display.refresh_backend_kind()
+            if self._lvgl_backend is not None and self._lvgl_backend.initialized:
                 self._last_lvgl_pump_at = time.monotonic()
-            else:
-                self._lvgl_backend = None
-                self.display.refresh_backend_kind()
+            elif self._lvgl_backend is not None:
+                # Backend exists but not yet initialized (e.g. factory skipped init)
+                if self._lvgl_backend.initialize():
+                    self._last_lvgl_pump_at = time.monotonic()
+                else:
+                    self._lvgl_backend = None
+            self.display.refresh_backend_kind()
             logger.info(f"    Active UI backend: {self.display.backend_kind}")
 
             self.display.clear(self.display.COLOR_BLACK)
