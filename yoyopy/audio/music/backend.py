@@ -50,6 +50,7 @@ class MpvBackend:
 
     _STARTUP_CONNECT_RETRIES = 30
     _STARTUP_CONNECT_DELAY = 0.1
+    _STARTUP_SPAWN_ATTEMPTS = 4
 
     def __init__(self, config: MusicConfig) -> None:
         self.config = config
@@ -70,17 +71,29 @@ class MpvBackend:
 
     def start(self) -> bool:
         """Spawn mpv, connect IPC, subscribe to events."""
-        if not self._process.spawn():
-            return False
+        for attempt in range(1, self._STARTUP_SPAWN_ATTEMPTS + 1):
+            if not self._process.spawn():
+                return False
 
-        for _ in range(self._STARTUP_CONNECT_RETRIES):
-            if self._ipc.connect():
-                break
-            time.sleep(self._STARTUP_CONNECT_DELAY)
-        else:
-            logger.error("Failed to connect to mpv IPC after spawn")
-            self._process.kill()
-            return False
+            for _ in range(self._STARTUP_CONNECT_RETRIES):
+                if self._ipc.connect():
+                    break
+                time.sleep(self._STARTUP_CONNECT_DELAY)
+            else:
+                self._process.kill()
+                if attempt == self._STARTUP_SPAWN_ATTEMPTS:
+                    logger.error(
+                        "Failed to connect to mpv IPC after {} spawn attempts",
+                        self._STARTUP_SPAWN_ATTEMPTS,
+                    )
+                    return False
+                logger.warning(
+                    "mpv IPC did not become ready on spawn attempt {}/{}; retrying",
+                    attempt,
+                    self._STARTUP_SPAWN_ATTEMPTS,
+                )
+                continue
+            break
 
         if not self._event_handler_registered:
             self._ipc.on_event(self._handle_mpv_event)

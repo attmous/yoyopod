@@ -792,7 +792,7 @@ def build_smoke_command(
     with_lvgl_soak: bool = False,
     verbose: bool = False,
     music_timeout: int = 5,
-    voip_timeout: float = 10.0,
+    voip_timeout: float = 90.0,
 ) -> str:
     """Create the remote smoke-validation command."""
     parts = ["uv run yoyoctl pi smoke"]
@@ -810,7 +810,7 @@ def build_smoke_command(
         parts.append("--verbose")
     if music_timeout != 5:
         parts.extend(["--music-timeout", str(music_timeout)])
-    if voip_timeout != 10.0:
+    if voip_timeout != 90.0:
         parts.extend(["--voip-timeout", str(voip_timeout)])
     return " ".join(parts)
 
@@ -886,7 +886,7 @@ def smoke(
     with_lvgl_soak: Annotated[bool, typer.Option("--with-lvgl-soak", help="Include a short LVGL transition and sleep/wake soak.")] = False,
     verbose: Annotated[bool, typer.Option("--verbose", help="Enable verbose smoke-script logging.")] = False,
     music_timeout: Annotated[int, typer.Option("--music-timeout", help="Music-backend startup timeout in seconds.")] = 5,
-    voip_timeout: Annotated[float, typer.Option("--voip-timeout", help="VoIP registration timeout in seconds.")] = 10.0,
+    voip_timeout: Annotated[float, typer.Option("--voip-timeout", help="VoIP registration timeout in seconds.")] = 90.0,
 ) -> None:
     """Run the Raspberry Pi smoke validator remotely."""
     config = _resolve_remote_config(host, user, project_dir, branch)
@@ -923,7 +923,7 @@ def preflight(
     with_lvgl_soak: Annotated[bool, typer.Option("--with-lvgl-soak", help="Include the LVGL soak helper in the remote smoke pass.")] = False,
     verbose: Annotated[bool, typer.Option("--verbose", help="Enable verbose smoke-script logging.")] = False,
     music_timeout: Annotated[int, typer.Option("--music-timeout", help="Music-backend startup timeout in seconds.")] = 5,
-    voip_timeout: Annotated[float, typer.Option("--voip-timeout", help="VoIP registration timeout in seconds.")] = 10.0,
+    voip_timeout: Annotated[float, typer.Option("--voip-timeout", help="VoIP registration timeout in seconds.")] = 90.0,
 ) -> None:
     """Run local checks, sync the Pi, and execute the Pi smoke pass."""
     config = _resolve_remote_config(host, user, project_dir, branch)

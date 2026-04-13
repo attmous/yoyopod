@@ -10,7 +10,10 @@ from yoyopy.network.ppp import PppProcess
 
 def test_ppp_spawn_constructs_correct_command():
     """PppProcess.spawn should invoke pppd with the correct arguments."""
-    with patch("subprocess.Popen") as mock_popen:
+    with (
+        patch("yoyopy.network.ppp.shutil.which", return_value="pppd"),
+        patch("subprocess.Popen") as mock_popen,
+    ):
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
         mock_proc.pid = 12345
@@ -23,6 +26,27 @@ def test_ppp_spawn_constructs_correct_command():
         assert "pppd" in args[0]
         assert "/dev/ttyUSB3" in args
         assert mock_proc.pid == 12345
+
+
+def test_ppp_spawn_uses_sbin_fallback_when_path_omits_pppd():
+    """spawn() should still find pppd under /usr/sbin on minimal PATHs."""
+
+    with (
+        patch(
+            "yoyopy.network.ppp.shutil.which",
+            side_effect=lambda candidate: "/usr/sbin/pppd" if candidate == "/usr/sbin/pppd" else None,
+        ),
+        patch("subprocess.Popen") as mock_popen,
+    ):
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.pid = 12345
+        mock_popen.return_value = mock_proc
+
+        ppp = PppProcess(serial_port="/dev/ttyUSB3", apn="internet")
+
+        assert ppp.spawn() is True
+        assert mock_popen.call_args[0][0][0] == "/usr/sbin/pppd"
 
 
 def test_ppp_kill_terminates_process():

@@ -153,6 +153,58 @@ def test_mpv_backend_waits_for_delayed_ipc_ready(monkeypatch) -> None:
     assert backend.is_connected is True
 
 
+def test_mpv_backend_retries_spawn_when_early_launches_never_open_ipc(monkeypatch) -> None:
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.spawn_calls = 0
+            self.kill_calls = 0
+
+        def spawn(self) -> bool:
+            self.spawn_calls += 1
+            return True
+
+        def kill(self) -> None:
+            self.kill_calls += 1
+
+        def is_alive(self) -> bool:
+            return True
+
+    class FakeIpc:
+        def __init__(self, process: FakeProcess) -> None:
+            self._process = process
+            self.connected = False
+
+        def connect(self) -> bool:
+            self.connected = self._process.spawn_calls >= 4
+            return self.connected
+
+        def on_event(self, callback) -> None:
+            self._callback = callback
+
+        def start_reader(self) -> None:
+            return None
+
+        def observe_property(self, name: str, observe_id: int) -> None:
+            return None
+
+        def send_command(self, args: list[object]) -> dict[str, object]:
+            return {"error": "success"}
+
+        def disconnect(self) -> None:
+            self.connected = False
+
+    backend = MpvBackend(MusicConfig())
+    fake_process = FakeProcess()
+    backend._process = fake_process
+    backend._ipc = FakeIpc(fake_process)
+    monkeypatch.setattr("yoyopy.audio.music.backend.time.sleep", lambda _: None)
+
+    assert backend.start() is True
+    assert fake_process.spawn_calls == 4
+    assert fake_process.kill_calls == 3
+    assert backend.is_connected is True
+
+
 def test_mpv_backend_builds_track_from_property_events() -> None:
     backend = MpvBackend(MusicConfig())
 

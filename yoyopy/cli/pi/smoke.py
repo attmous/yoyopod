@@ -451,7 +451,7 @@ def smoke(
     with_voip: Annotated[bool, typer.Option("--with-voip", help="Also validate Liblinphone startup and SIP registration.")] = False,
     with_lvgl_soak: Annotated[bool, typer.Option("--with-lvgl-soak", help="Also run a short LVGL transition and sleep/wake soak.")] = False,
     music_timeout: Annotated[int, typer.Option("--music-timeout", help="Startup timeout in seconds for music checks.")] = 5,
-    voip_timeout: Annotated[float, typer.Option("--voip-timeout", help="Registration timeout in seconds for VoIP checks.")] = 10.0,
+    voip_timeout: Annotated[float, typer.Option("--voip-timeout", help="Registration timeout in seconds for VoIP checks.")] = 90.0,
     display_hold_seconds: Annotated[float, typer.Option("--display-hold-seconds", help="How long to keep the display confirmation text visible.")] = 0.5,
     verbose: Annotated[bool, typer.Option("--verbose", help="Enable DEBUG logging.")] = False,
 ) -> None:

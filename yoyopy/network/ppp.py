@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -11,6 +12,8 @@ from loguru import logger
 
 class PppProcess:
     """Spawn, monitor, and kill a pppd process for cellular data."""
+
+    _PPP_BINARY_CANDIDATES = ("pppd", "/usr/sbin/pppd", "/sbin/pppd")
 
     def __init__(self, serial_port: str, apn: str, baud_rate: int = 115200) -> None:
         self.serial_port = serial_port
@@ -24,8 +27,13 @@ class PppProcess:
             logger.warning("pppd already running (pid={})", self._process.pid)
             return True
 
+        pppd_binary = self._resolve_pppd_binary()
+        if pppd_binary is None:
+            logger.error("pppd binary not found")
+            return False
+
         cmd = [
-            "pppd",
+            pppd_binary,
             self.serial_port,
             str(self.baud_rate),
             "nodetach",
@@ -51,6 +59,17 @@ class PppProcess:
         except Exception as exc:
             logger.error("Failed to spawn pppd: {}", exc)
             return False
+
+    def _resolve_pppd_binary(self) -> str | None:
+        """Find pppd even when systemd omits sbin directories from PATH."""
+
+        for candidate in self._PPP_BINARY_CANDIDATES:
+            resolved = shutil.which(candidate)
+            if resolved:
+                return resolved
+            if candidate.startswith("/") and Path(candidate).exists():
+                return candidate
+        return None
 
     def wait_for_link(self, timeout: float = 30.0) -> bool:
         """Block until ppp0 interface exists or timeout expires."""
