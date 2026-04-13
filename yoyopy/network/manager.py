@@ -109,7 +109,7 @@ class NetworkManager:
 
     def query_gps(self) -> GpsCoordinate | None:
         """Query GPS coordinates (may briefly interrupt PPP)."""
-        from yoyopy.events import NetworkGpsFixEvent
+        from yoyopy.events import NetworkGpsFixEvent, NetworkGpsNoFixEvent
 
         coord = self.backend.query_gps()
         if coord is not None:
@@ -121,6 +121,8 @@ class NetworkManager:
                     speed=coord.speed,
                 )
             )
+        else:
+            self._publish(NetworkGpsNoFixEvent(reason="no_fix"))
         return coord
 
     def _publish(self, event: object) -> None:

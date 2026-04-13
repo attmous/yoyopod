@@ -67,6 +67,7 @@ from yoyopy.ui.screens import (
 from yoyopy.network import NetworkManager
 from yoyopy.events import (
     NetworkGpsFixEvent,
+    NetworkGpsNoFixEvent,
     NetworkPppDownEvent,
     NetworkPppUpEvent,
     NetworkSignalUpdateEvent,
@@ -199,6 +200,7 @@ class YoyoPodApp:
         self.event_bus.subscribe(NetworkPppUpEvent, self._handle_network_ppp_up)
         self.event_bus.subscribe(NetworkSignalUpdateEvent, self._handle_network_signal_update)
         self.event_bus.subscribe(NetworkGpsFixEvent, self._handle_network_gps_fix)
+        self.event_bus.subscribe(NetworkGpsNoFixEvent, self._handle_network_gps_no_fix)
         self.event_bus.subscribe(NetworkPppDownEvent, self._handle_network_ppp_down)
 
         # Extracted coordinators
@@ -551,21 +553,21 @@ class YoyoPodApp:
                 self.config_manager, event_bus=self.event_bus
             )
             if self.network_manager.config.enabled and not self.simulate:
-                if self.context:
-                    self.context.update_network_status(network_enabled=True)
                 try:
                     self.network_manager.start()
-                    state = self.network_manager.modem_state
-                    if state.signal and self.context:
-                        self.context.update_network_status(
-                            signal_bars=state.signal.bars,
-                            connection_type="4g" if self.network_manager.is_online else "none",
-                            connected=self.network_manager.is_online,
-                        )
                 except Exception as exc:
                     logger.error("Network manager start failed: {}", exc)
+                self._sync_network_context_from_manager()
             else:
                 logger.info("    Network module disabled in config")
+                if self.context is not None:
+                    self.context.update_network_status(
+                        network_enabled=False,
+                        signal_bars=0,
+                        connection_type="none",
+                        connected=False,
+                        gps_has_fix=False,
+                    )
 
             return True
         except Exception:
@@ -1140,8 +1142,40 @@ class YoyoPodApp:
             duration_seconds=3.0,
         )
 
+    def _cellular_connection_type(self) -> str:
+        """Return a best-effort cellular connection type for degraded status chrome."""
+
+        if self.network_manager is None or not self.network_manager.config.enabled:
+            return "none"
+
+        from yoyopy.network.models import ModemPhase
+
+        state = self.network_manager.modem_state
+        if state.phase == ModemPhase.OFF:
+            return "none"
+        return "4g"
+
+    def _sync_network_context_from_manager(self) -> None:
+        """Refresh AppContext network state from the current modem snapshot."""
+
+        if self.context is None or self.network_manager is None:
+            return
+
+        state = self.network_manager.modem_state
+        signal_bars = state.signal.bars if state.signal is not None else 0
+        self.context.update_network_status(
+            network_enabled=self.network_manager.config.enabled,
+            signal_bars=signal_bars,
+            connection_type=self._cellular_connection_type(),
+            connected=self.network_manager.is_online,
+            gps_has_fix=state.gps is not None,
+        )
+
     def _handle_network_ppp_up(self, event: "NetworkPppUpEvent") -> None:
         """Refresh network connectivity state when PPP comes online."""
+        if self.network_manager is not None:
+            self._sync_network_context_from_manager()
+            return
         if self.context:
             self.context.update_network_status(
                 network_enabled=True,
@@ -1151,20 +1185,52 @@ class YoyoPodApp:
 
     def _handle_network_signal_update(self, event: "NetworkSignalUpdateEvent") -> None:
         """Refresh signal bars when the modem reports new telemetry."""
+        if self.network_manager is not None:
+            self._sync_network_context_from_manager()
+            return
         if self.context:
-            self.context.update_network_status(signal_bars=event.bars)
+            connection_type = self.context.connection_type
+            if connection_type == "none":
+                connection_type = "4g"
+            self.context.update_network_status(
+                network_enabled=True,
+                signal_bars=event.bars,
+                connection_type=connection_type,
+            )
 
     def _handle_network_gps_fix(self, event: "NetworkGpsFixEvent") -> None:
         """Update GPS fix state in AppContext."""
+        if self.network_manager is not None:
+            self._sync_network_context_from_manager()
+            return
         if self.context:
-            self.context.update_network_status(gps_has_fix=True)
+            connection_type = self.context.connection_type
+            if connection_type == "none":
+                connection_type = "4g"
+            self.context.update_network_status(
+                network_enabled=True,
+                connection_type=connection_type,
+                gps_has_fix=True,
+            )
+
+    def _handle_network_gps_no_fix(self, event: "NetworkGpsNoFixEvent") -> None:
+        """Clear GPS fix state when a query completes without coordinates."""
+
+        if self.network_manager is not None:
+            self._sync_network_context_from_manager()
+            return
+        if self.context:
+            self.context.update_network_status(gps_has_fix=False)
 
     def _handle_network_ppp_down(self, event: "NetworkPppDownEvent") -> None:
         """Reset network state in AppContext when PPP drops."""
+        if self.network_manager is not None:
+            self._sync_network_context_from_manager()
+            return
         if self.context:
             self.context.update_network_status(
+                network_enabled=True,
                 connected=False,
-                connection_type="none",
                 gps_has_fix=False,
             )
 

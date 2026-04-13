@@ -133,3 +133,10 @@ class NetworkGpsFixEvent:
     lng: float = 0.0
     altitude: float = 0.0
     speed: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class NetworkGpsNoFixEvent:
+    """Published when a GPS query completes without an active fix."""
+
+    reason: str = ""

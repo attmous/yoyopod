@@ -126,6 +126,5 @@ class Sim7600Backend:
     def query_gps(self) -> GpsCoordinate | None:
         """Query GPS. Safe to call during active PPP since AT and PPP use separate USB ports."""
         coord = self._gps.query()
-        if coord is not None:
-            self._state.gps = coord
+        self._state.gps = coord
         return coord

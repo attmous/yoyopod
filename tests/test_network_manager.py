@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from yoyopy.config.models import AppNetworkConfig, build_config_model
 from yoyopy.event_bus import EventBus
-from yoyopy.events import NetworkGpsFixEvent, NetworkPppUpEvent
+from yoyopy.events import NetworkGpsFixEvent, NetworkGpsNoFixEvent, NetworkPppUpEvent
 from yoyopy.network.manager import NetworkManager
 from yoyopy.network.models import GpsCoordinate, ModemPhase, ModemState, SignalInfo
 
@@ -55,8 +55,7 @@ class FakeBackend:
 
     def query_gps(self):
         self.gps_query_calls += 1
-        if self.gps_coord is not None:
-            self.state.gps = self.gps_coord
+        self.state.gps = self.gps_coord
         return self.gps_coord
 
 
@@ -136,3 +135,26 @@ def test_manager_warms_gps_fix_on_start_when_enabled():
     assert backend.state.gps == backend.gps_coord
     assert len(gps_events) == 1
     assert isinstance(gps_events[0], NetworkGpsFixEvent)
+
+
+def test_manager_publishes_no_fix_and_clears_cached_gps_state() -> None:
+    """query_gps() should clear stale coordinates and publish a no-fix event."""
+
+    config = build_config_model(
+        AppNetworkConfig,
+        {"enabled": True, "apn": "internet", "gps_enabled": True},
+    )
+    backend = FakeBackend()
+    backend.state.gps = GpsCoordinate(lat=48.7083, lng=9.6610, altitude=328.2, speed=0.0)
+    bus = EventBus()
+    no_fix_events: list[object] = []
+    bus.subscribe(NetworkGpsNoFixEvent, no_fix_events.append)
+
+    manager = NetworkManager(config=config, backend=backend, event_bus=bus)
+
+    coord = manager.query_gps()
+
+    assert coord is None
+    assert backend.state.gps is None
+    assert len(no_fix_events) == 1
+    assert isinstance(no_fix_events[0], NetworkGpsNoFixEvent)
