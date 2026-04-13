@@ -1472,19 +1472,24 @@ int yoyopy_lvgl_listen_build(void) {
     lv_obj_set_style_bg_opa(g_listen_scene.screen, LV_OPA_COVER, 0);
     yoyopy_status_bar_build(g_listen_scene.screen, &g_listen_scene.status_bar, 0);
 
+    int side_pad = 16;
+    int panel_width = g_display_width - (2 * side_pad);
+    int item_text_width = panel_width - 88;  /* space after icon + padding */
+    int panel_height = footer_bar_top() - 92;
+
     g_listen_scene.title_label = lv_label_create(g_listen_scene.screen);
     lv_label_set_text(g_listen_scene.title_label, "Your Music");
-    lv_obj_set_pos(g_listen_scene.title_label, 16, 38);
+    lv_obj_set_pos(g_listen_scene.title_label, side_pad, 38);
     lv_obj_set_style_text_font(g_listen_scene.title_label, &lv_font_montserrat_24, 0);
 
     g_listen_scene.subtitle_label = lv_label_create(g_listen_scene.screen);
     lv_label_set_text(g_listen_scene.subtitle_label, "Local library");
-    lv_obj_set_pos(g_listen_scene.subtitle_label, 16, 68);
+    lv_obj_set_pos(g_listen_scene.subtitle_label, side_pad, 68);
     lv_obj_set_style_text_font(g_listen_scene.subtitle_label, &lv_font_montserrat_12, 0);
 
     g_listen_scene.panel = lv_obj_create(g_listen_scene.screen);
-    lv_obj_set_size(g_listen_scene.panel, 208, 188);
-    lv_obj_set_pos(g_listen_scene.panel, 16, 92);
+    lv_obj_set_size(g_listen_scene.panel, panel_width, panel_height);
+    lv_obj_set_pos(g_listen_scene.panel, side_pad, 92);
     lv_obj_set_style_radius(g_listen_scene.panel, 0, 0);
     lv_obj_set_style_border_width(g_listen_scene.panel, 0, 0);
     lv_obj_set_style_bg_opa(g_listen_scene.panel, LV_OPA_TRANSP, 0);
@@ -1495,7 +1500,7 @@ int yoyopy_lvgl_listen_build(void) {
 
     for(int index = 0; index < 4; ++index) {
         g_listen_scene.item_panels[index] = lv_obj_create(g_listen_scene.panel);
-        lv_obj_set_size(g_listen_scene.item_panels[index], 208, 44);
+        lv_obj_set_size(g_listen_scene.item_panels[index], panel_width, 44);
         lv_obj_set_pos(g_listen_scene.item_panels[index], 0, index * 52);
         lv_obj_set_style_radius(g_listen_scene.item_panels[index], 16, 0);
         lv_obj_set_style_border_width(g_listen_scene.item_panels[index], 1, 0);
@@ -1509,21 +1514,24 @@ int yoyopy_lvgl_listen_build(void) {
         lv_obj_set_style_text_font(g_listen_scene.item_icons[index], &lv_font_montserrat_18, 0);
 
         g_listen_scene.item_titles[index] = lv_label_create(g_listen_scene.item_panels[index]);
-        lv_obj_set_width(g_listen_scene.item_titles[index], 120);
+        lv_obj_set_width(g_listen_scene.item_titles[index], item_text_width);
         lv_obj_set_pos(g_listen_scene.item_titles[index], 48, 8);
         lv_label_set_long_mode(g_listen_scene.item_titles[index], LV_LABEL_LONG_MODE_CLIP);
         lv_obj_set_style_text_font(g_listen_scene.item_titles[index], &lv_font_montserrat_16, 0);
 
         g_listen_scene.item_subtitles[index] = lv_label_create(g_listen_scene.item_panels[index]);
-        lv_obj_set_width(g_listen_scene.item_subtitles[index], 120);
+        lv_obj_set_width(g_listen_scene.item_subtitles[index], item_text_width);
         lv_obj_set_pos(g_listen_scene.item_subtitles[index], 48, 26);
         lv_label_set_long_mode(g_listen_scene.item_subtitles[index], LV_LABEL_LONG_MODE_CLIP);
         lv_obj_set_style_text_font(g_listen_scene.item_subtitles[index], &lv_font_montserrat_12, 0);
     }
 
+    int empty_width = panel_width - 4;
+    int empty_text_width = empty_width - 36;
+
     g_listen_scene.empty_panel = lv_obj_create(g_listen_scene.screen);
-    lv_obj_set_size(g_listen_scene.empty_panel, 204, 156);
-    lv_obj_set_pos(g_listen_scene.empty_panel, 18, 94);
+    lv_obj_set_size(g_listen_scene.empty_panel, empty_width, 156);
+    lv_obj_set_pos(g_listen_scene.empty_panel, side_pad + 2, 94);
     lv_obj_set_style_radius(g_listen_scene.empty_panel, 22, 0);
     lv_obj_set_style_border_width(g_listen_scene.empty_panel, 0, 0);
     lv_obj_set_style_pad_all(g_listen_scene.empty_panel, 0, 0);
@@ -1537,13 +1545,13 @@ int yoyopy_lvgl_listen_build(void) {
     lv_obj_align(g_listen_scene.empty_icon, LV_ALIGN_TOP_MID, 0, 18);
 
     g_listen_scene.empty_title = lv_label_create(g_listen_scene.empty_panel);
-    lv_obj_set_width(g_listen_scene.empty_title, 168);
+    lv_obj_set_width(g_listen_scene.empty_title, empty_text_width);
     lv_obj_set_pos(g_listen_scene.empty_title, 18, 84);
     lv_obj_set_style_text_font(g_listen_scene.empty_title, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_align(g_listen_scene.empty_title, LV_TEXT_ALIGN_CENTER, 0);
 
     g_listen_scene.empty_subtitle = lv_label_create(g_listen_scene.empty_panel);
-    lv_obj_set_width(g_listen_scene.empty_subtitle, 168);
+    lv_obj_set_width(g_listen_scene.empty_subtitle, empty_text_width);
     lv_obj_set_pos(g_listen_scene.empty_subtitle, 18, 112);
     lv_label_set_long_mode(g_listen_scene.empty_subtitle, LV_LABEL_LONG_MODE_WRAP);
     lv_obj_set_style_text_font(g_listen_scene.empty_subtitle, &lv_font_montserrat_12, 0);
