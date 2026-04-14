@@ -1,4 +1,4 @@
-# YoyoPod
+# YoyoPod Core
 
 YoyoPod is an iPod-inspired Raspberry Pi application that combines SIP calling, local-first music playback, and a small-screen button UI.
 
