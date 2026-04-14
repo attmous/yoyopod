@@ -72,11 +72,11 @@ If one of these conflicts with the current code or the current runtime docs abov
 
 ## Historical implementation records
 
-These are useful when you need to understand how the repo got here, but they are not the top-level source of truth for current architecture.
+These are useful when you need to understand how the repo got here, but they are not the top-level source of truth for current architecture. Each of these files should say that plainly at the top.
 
-- [`INTEGRATION_PLAN.md`](INTEGRATION_PLAN.md)
-- [`UI_RESTRUCTURE_PROPOSAL.md`](UI_RESTRUCTURE_PROPOSAL.md)
-- [`PHASE2_SUMMARY.md`](PHASE2_SUMMARY.md)
+- [`INTEGRATION_PLAN.md`](INTEGRATION_PLAN.md), implemented milestone record for VoIP + local music integration
+- [`UI_RESTRUCTURE_PROPOSAL.md`](UI_RESTRUCTURE_PROPOSAL.md), refactor status record for the UI split and remaining cleanup
+- [`PHASE2_SUMMARY.md`](PHASE2_SUMMARY.md), milestone summary for early screen integration
 
 ## Archived history
 
