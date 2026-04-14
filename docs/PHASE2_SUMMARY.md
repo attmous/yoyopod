@@ -1,7 +1,9 @@
 # Phase 2 Summary: Screen Integration
 
 **Last updated:** 2026-04-02
-**Status:** Historical summary, corrected to current file paths
+**Status:** Historical milestone summary, corrected to current file paths
+
+> Current note: this file preserves a milestone summary for the screen-integration phase. It is useful for understanding why the current app wiring looks the way it does, but it should not outrank the current architecture docs or the code on `main`.
 
 Phase 2 was the point where the integrated application stopped being a set of separate demos and became one navigable app.
 
