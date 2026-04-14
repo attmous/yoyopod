@@ -2,6 +2,9 @@
 
 **Last Updated:** 2026-04-05
 **Scope:** Whisplay-first LVGL migration for the CPython YoyoPod runtime
+**Status:** Historical migration record, partly completed
+
+> Current note: Whisplay now runs on the LVGL path in the current runtime. This document is still useful for migration context and rationale, but it is not the primary source of truth for current behavior. For current implementation details, trust `AGENTS.md`, `docs/SYSTEM_ARCHITECTURE.md`, and the code under `yoyopy/ui/lvgl_binding/`.
 
 ---
 

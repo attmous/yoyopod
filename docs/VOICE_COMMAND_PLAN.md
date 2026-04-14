@@ -1,5 +1,9 @@
 # Voice Command Plan
 
+**Status:** Transitional design record, not the full current implementation contract
+
+> Current note: this document captures the original design direction for local voice control. The current codebase now uses a unified `AskScreen` instead of the earlier split `Voice Commands` and `AI Requests` menu shape described below. Keep using this file for design context and future direction, but trust the current code and `docs/SYSTEM_ARCHITECTURE.md` for what exists on `main`.
+
 ## Goal
 
 Add local voice commands and spoken device responses to YoyoPod using:
