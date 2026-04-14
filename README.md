@@ -21,6 +21,10 @@ python yoyopod.py --simulate
 uv run pytest -q
 ```
 
+For the full setup, validation, and Pi workflow, start with:
+- [`docs/README.md`](docs/README.md)
+- [`docs/DEVELOPMENT_GUIDE.md`](docs/DEVELOPMENT_GUIDE.md)
+
 Run on hardware:
 
 ```bash
@@ -38,18 +42,26 @@ YOYOPOD_CONFIG_BOARD=rpi-zero-2w python yoyopod.py
 
 ## Docs
 
+Start here:
+- [Documentation Guide](docs/README.md)
 - [Development Guide](docs/DEVELOPMENT_GUIDE.md)
 - [System Architecture](docs/SYSTEM_ARCHITECTURE.md)
+
+Setup and operations:
 - [Pi Dev Workflow](docs/PI_DEV_WORKFLOW.md)
 - [Pi Smoke Validation](docs/RPI_SMOKE_VALIDATION.md)
+- [Deployed Pi Dependencies](docs/DEPLOYED_PI_DEPENDENCIES.md)
+
+Subsystem docs:
 - [Power Module](docs/POWER_MODULE.md)
 - [Audio Stack](docs/AUDIO_STACK.md)
-- [Deployed Pi Dependencies](docs/DEPLOYED_PI_DEPENDENCIES.md)
 - [Local-First Music Plan](docs/LOCAL_FIRST_MUSIC_PLAN.md)
 - [mpv Dependencies](docs/MPV_DEPENDENCIES.md)
+
+Design and migration notes:
 - [LVGL Migration Plan](docs/LVGL_MIGRATION_PLAN.md)
 
-Historical milestone notes are kept under [docs/archive](docs/archive).
+Historical milestone notes are kept under [docs/archive](docs/archive). See [docs/README.md](docs/README.md) for the full docs map and source-of-truth guidance.
 
 ## Rules
 

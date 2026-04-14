@@ -2,6 +2,22 @@
 
 This guide holds the operational detail that does not belong on the repo landing page.
 
+If you are new here, read these first:
+
+1. [`../README.md`](../README.md)
+2. [`README.md`](README.md)
+3. [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md)
+
+## Source of truth
+
+For current behavior, trust:
+- current code in `yoyopy/`
+- this guide for setup and workflow
+- [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md) for runtime topology
+- [`../AGENTS.md`](../AGENTS.md) and `rules/` for repo guidance
+
+Treat plan docs and checklists as supporting context unless they explicitly state they are current.
+
 ## Python Environment
 
 ```bash
@@ -177,10 +193,16 @@ yoyopy/
 
 ## Current Active Docs
 
+Start with [`README.md`](README.md) for the full docs map.
+
+Current runtime and setup docs:
 - `docs/SYSTEM_ARCHITECTURE.md`
 - `docs/POWER_MODULE.md`
 - `docs/LOCAL_FIRST_MUSIC_PLAN.md`
 - `docs/MPV_DEPENDENCIES.md`
-- `docs/LVGL_MIGRATION_PLAN.md`
+- `docs/PI_DEV_WORKFLOW.md`
+- `docs/RPI_SMOKE_VALIDATION.md`
+
+Plan and migration docs can still be useful, but they are not automatically the source of truth.
 
 Historical milestone notes are archived under `docs/archive/`.
