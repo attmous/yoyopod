@@ -78,7 +78,9 @@ class VoiceNoteScreen(Screen):
         if getattr(self.display, "backend_kind", "pil") != "lvgl":
             return None
 
-        ui_backend = self.display.get_ui_backend() if hasattr(self.display, "get_ui_backend") else None
+        ui_backend = (
+            self.display.get_ui_backend() if hasattr(self.display, "get_ui_backend") else None
+        )
         if ui_backend is None or not getattr(ui_backend, "initialized", False):
             return None
 
@@ -96,14 +98,18 @@ class VoiceNoteScreen(Screen):
 
         if self.context is None:
             return "Friend"
-        return self.context.voice_note_recipient_name or self.context.talk_contact_name or "Friend"
+        voice_note = self.context.talk.active_voice_note
+        selected_contact = self.context.talk
+        return voice_note.recipient_name or selected_contact.selected_contact_name or "Friend"
 
     def recipient_address(self) -> str:
         """Return the selected recipient SIP address."""
 
         if self.context is None:
             return ""
-        return self.context.voice_note_recipient_address or self.context.talk_contact_address
+        voice_note = self.context.talk.active_voice_note
+        selected_contact = self.context.talk
+        return voice_note.recipient_address or selected_contact.selected_contact_address
 
     def recipient_monogram(self) -> str:
         """Return a compact label for the active recipient."""
@@ -173,9 +179,9 @@ class VoiceNoteScreen(Screen):
     def _duration_label(self) -> str:
         """Return a compact duration label for the active draft."""
 
-        if self.context is None or self.context.voice_note_duration_ms <= 0:
+        if self.context is None or self.context.talk.active_voice_note.duration_ms <= 0:
             return ""
-        seconds = max(1, round(self.context.voice_note_duration_ms / 1000))
+        seconds = max(1, round(self.context.talk.active_voice_note.duration_ms / 1000))
         return f"{seconds}s"
 
     def actions(self) -> list[VoiceNoteAction]:
@@ -352,28 +358,31 @@ class VoiceNoteScreen(Screen):
         if self._state == "review":
             return (
                 "Review",
-                self.context.voice_note_status_text or f"Listen, send, or record again for {recipient}.",
+                self.context.talk.active_voice_note.status_text
+                or f"Listen, send, or record again for {recipient}.",
                 "Tap next / Double choose" if self.is_one_button_mode() else "Select choose / Back",
                 "voice_note",
             )
         if self._state == "sending":
             return (
                 "Sending",
-                self.context.voice_note_status_text or f"Sending your note to {recipient}.",
+                self.context.talk.active_voice_note.status_text
+                or f"Sending your note to {recipient}.",
                 "Please wait",
                 "voice_note",
             )
         if self._state == "sent":
             return (
                 "Sent",
-                self.context.voice_note_status_text or f"Your note reached {recipient}.",
+                self.context.talk.active_voice_note.status_text
+                or f"Your note reached {recipient}.",
                 "Double done / Hold back" if self.is_one_button_mode() else "Back",
                 "voice_note",
             )
         if self._state == "failed":
             return (
                 "Couldn't Send",
-                self.context.voice_note_status_text or f"Try {recipient}'s note again.",
+                self.context.talk.active_voice_note.status_text or f"Try {recipient}'s note again.",
                 "Tap next / Double choose" if self.is_one_button_mode() else "Select retry / Back",
                 "voice_note",
             )
@@ -491,7 +500,7 @@ class VoiceNoteScreen(Screen):
         if self.voip_manager is None or self.context is None:
             return
 
-        file_path = self.context.voice_note_file_path
+        file_path = self.context.talk.active_voice_note.file_path
         if not file_path:
             return
 
@@ -503,7 +512,7 @@ class VoiceNoteScreen(Screen):
                 send_state="review",
                 status_text="Playing preview",
                 file_path=file_path,
-                duration_ms=self.context.voice_note_duration_ms,
+                duration_ms=self.context.talk.active_voice_note.duration_ms,
             )
             return
 
@@ -514,7 +523,7 @@ class VoiceNoteScreen(Screen):
             send_state="review",
             status_text="Couldn't play note",
             file_path=file_path,
-            duration_ms=self.context.voice_note_duration_ms,
+            duration_ms=self.context.talk.active_voice_note.duration_ms,
         )
 
     def on_select(self, data=None) -> None:

@@ -51,6 +51,8 @@ yoyopod.py / yoyopy.main
       -> CoordinatorRuntime
       -> CallCoordinator / PlaybackCoordinator / ScreenCoordinator / PowerCoordinator
       -> AppContext
+         -> focused runtime state objects (`media`, `power`, `network`, `screen`, `voip`, `talk`, `voice`)
+         -> media state composes with canonical music models from `yoyopy/audio/music/models.py`
       -> LocalMusicService
       -> MpvBackend
         -> MpvProcess
@@ -79,7 +81,8 @@ yoyopod.py / yoyopy.main
 - `yoyopy/main.py`: package entry point
 - `yoyopy/fsm.py`: split music and call state models
 - `yoyopy/coordinators/runtime.py`: derived app runtime state
-- `yoyopy/app_context.py`: shared app state
+- `yoyopy/app_context.py`: compatibility wrapper over focused shared runtime state
+- `yoyopy/runtime_state.py`: focused runtime state objects owned by `AppContext`
 - `yoyopy/runtime/boot.py`: boot-time composition and manager wiring
 - `yoyopy/runtime/loop.py`: coordinator-loop scheduling and queued main-thread work
 - `yoyopy/runtime/recovery.py`: backend recovery, power polling, and watchdog supervision
@@ -197,6 +200,7 @@ and updates:
 - screen stack
 - music pause/resume behavior
 - state machine state
+- focused runtime state objects through `AppContext`
 
 ## Event Flows
 

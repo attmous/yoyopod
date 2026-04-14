@@ -191,7 +191,9 @@ class PowerScreen(Screen):
                 row_bottom = row_y + row_height
                 if row_bottom > max_row_bottom:
                     break
-                is_selected = visible_selected_index is not None and row_index == visible_selected_index
+                is_selected = (
+                    visible_selected_index is not None and row_index == visible_selected_index
+                )
                 rounded_panel(
                     self.display,
                     16,
@@ -1015,5 +1017,4 @@ class PowerScreen(Screen):
 
         if volume is None or self.context is None:
             return
-        self.context.playback.volume = volume
-        self.context.voice.output_volume = volume
+        self.context.cache_output_volume(volume)

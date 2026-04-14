@@ -20,15 +20,15 @@ def network_status_kwargs(context: "AppContext | None") -> dict[str, int]:
             "gps_has_fix": 0,
         }
 
-    signal_strength = max(0, min(4, int(getattr(context, "signal_strength", 0))))
-    connection_type = str(getattr(context, "connection_type", "none")).lower()
-    is_connected = bool(getattr(context, "is_connected", False))
+    signal_strength = max(0, min(4, int(context.network.signal_strength)))
+    connection_type = str(context.network.connection_type).lower()
+    is_connected = context.network.connected
     return {
-        "network_enabled": 1 if bool(getattr(context, "network_enabled", False)) else 0,
+        "network_enabled": 1 if context.network.enabled else 0,
         "network_connected": 1 if is_connected and connection_type == "4g" else 0,
         "wifi_connected": 1 if is_connected and connection_type == "wifi" else 0,
         "signal_strength": signal_strength,
-        "gps_has_fix": 1 if bool(getattr(context, "gps_has_fix", False)) else 0,
+        "gps_has_fix": 1 if context.network.gps_has_fix else 0,
     }
 
 

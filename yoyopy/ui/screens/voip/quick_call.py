@@ -9,16 +9,10 @@ from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
 from yoyopy.ui.screens.theme import (
     INK,
-    MUTED,
-    SURFACE,
-    TALK,
     draw_empty_state,
-    draw_icon,
-    mix,
     render_backdrop,
     render_footer,
     render_status_bar,
-    rounded_panel,
     text_fit,
 )
 from yoyopy.ui.screens.voip.lvgl import LvglCallView
@@ -98,7 +92,9 @@ class CallScreen(Screen):
         if getattr(self.display, "backend_kind", "pil") != "lvgl":
             return None
 
-        ui_backend = self.display.get_ui_backend() if hasattr(self.display, "get_ui_backend") else None
+        ui_backend = (
+            self.display.get_ui_backend() if hasattr(self.display, "get_ui_backend") else None
+        )
         if ui_backend is None or not getattr(ui_backend, "initialized", False):
             return None
 
@@ -156,7 +152,7 @@ class CallScreen(Screen):
 
         preferred_address = ""
         if self.context is not None:
-            preferred_address = self.context.talk_contact_address
+            preferred_address = self.context.talk.selected_contact_address
 
         if preferred_address:
             for index, person in enumerate(self.people):
@@ -214,10 +210,15 @@ class CallScreen(Screen):
             }
         subtitle = selected_person.subtitle
         if self.context is not None:
-            latest_note = self.context.latest_voice_note_by_contact.get(selected_person.sip_address, {})
+            latest_note = self.context.talk.latest_voice_note_by_contact.get(
+                selected_person.sip_address,
+                {},
+            )
             if latest_note.get("unread"):
                 subtitle = "New voice note"
-            elif latest_note.get("direction") == "outgoing" and latest_note.get("delivery_state") in {"sent", "delivered"}:
+            elif latest_note.get("direction") == "outgoing" and latest_note.get(
+                "delivery_state"
+            ) in {"sent", "delivered"}:
                 subtitle = "Latest note sent"
             elif latest_note.get("local_file_path"):
                 subtitle = "Play latest note"
@@ -305,12 +306,12 @@ class CallScreen(Screen):
     def _show_missed_calls(self) -> bool:
         """Return True when a missed-call badge should be shown on the deck."""
 
-        return bool(self.context is not None and getattr(self.context, "missed_calls", 0) > 0)
+        return bool(self.context is not None and self.context.talk.missed_calls > 0)
 
     def _missed_calls_badge(self) -> str:
         """Return the compact missed-call badge copy."""
 
-        missed_calls = 0 if self.context is None else int(getattr(self.context, "missed_calls", 0))
+        missed_calls = 0 if self.context is None else self.context.talk.missed_calls
         label = "missed call" if missed_calls == 1 else "missed calls"
         return f"{missed_calls} {label}"
 

@@ -73,7 +73,9 @@ class TalkContactScreen(Screen):
         if getattr(self.display, "backend_kind", "pil") != "lvgl":
             return None
 
-        ui_backend = self.display.get_ui_backend() if hasattr(self.display, "get_ui_backend") else None
+        ui_backend = (
+            self.display.get_ui_backend() if hasattr(self.display, "get_ui_backend") else None
+        )
         if ui_backend is None or not getattr(ui_backend, "initialized", False):
             return None
 
@@ -86,14 +88,14 @@ class TalkContactScreen(Screen):
 
         if self.context is None:
             return "Friend"
-        return self.context.talk_contact_name or "Friend"
+        return self.context.talk.selected_contact_name or "Friend"
 
     def current_contact_address(self) -> str:
         """Return the selected contact SIP address."""
 
         if self.context is None:
             return ""
-        return self.context.talk_contact_address
+        return self.context.talk.selected_contact_address
 
     def current_contact_monogram(self) -> str:
         """Return a compact label for the current contact."""
@@ -108,7 +110,9 @@ class TalkContactScreen(Screen):
             TalkAction("voice_note", "Voice Note", "Record a short message"),
         ]
         latest_note = None
-        if self.voip_manager is not None and hasattr(self.voip_manager, "latest_voice_note_for_contact"):
+        if self.voip_manager is not None and hasattr(
+            self.voip_manager, "latest_voice_note_for_contact"
+        ):
             latest_note = self.voip_manager.latest_voice_note_for_contact(
                 self.current_contact_address(),
             )
@@ -120,7 +124,11 @@ class TalkContactScreen(Screen):
         """Return visible action rows for the LVGL scene."""
 
         actions = self.actions()
-        return [action.title for action in actions], [action.subtitle for action in actions], self.selected_index
+        return (
+            [action.title for action in actions],
+            [action.subtitle for action in actions],
+            self.selected_index,
+        )
 
     def get_visible_action_icons(self) -> list[str]:
         """Return the visible icon key for each action row."""

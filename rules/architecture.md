@@ -11,7 +11,8 @@ yoyopod.py / yoyopy/main.py  (entry points)
     |- ShutdownLifecycleService (runtime/shutdown.py)
     |- MusicFSM + CallFSM (fsm.py) -- composed playback and call state machines
     |- CoordinatorRuntime (coordinators/runtime.py) -- derived app state
-    |- AppContext (app_context.py) -- shared state
+    |- AppContext (app_context.py) -- compatibility wrapper over focused runtime state objects
+    |  |- media / power / network / screen / voip / talk / voice
     |- LocalMusicService (audio/local_service.py) -- playlists, recents, shuffle
     |- MpvBackend (audio/music/backend.py)
     |  |- MpvProcess (audio/music/process.py)
@@ -84,6 +85,11 @@ yoyopod.py / yoyopy/main.py  (entry points)
 
 - Prefer canonical typed models over parallel shape duplication across UI and runtime layers.
 - `AppContext` is shared runtime state, not a dumping ground for every new feature field.
+- Prefer adding new mutable runtime fields to the focused state objects in `yoyopy/runtime_state.py`
+  before extending `AppContext` directly.
+- Music runtime state should compose with the canonical models in `yoyopy/audio/music/models.py`.
+- Use `PlaybackQueue` for ordered playback state instead of defining alternate runtime `Track` or
+  `Playlist` shapes under `AppContext` or `runtime_state.py`.
 - New domain objects should be introduced in clear model modules before being copied into screen-only state.
 
 ### Events and threading

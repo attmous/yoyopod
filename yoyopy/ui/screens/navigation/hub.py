@@ -81,7 +81,9 @@ class HubScreen(Screen):
         if getattr(self.display, "backend_kind", "pil") != "lvgl":
             return None
 
-        ui_backend = self.display.get_ui_backend() if hasattr(self.display, "get_ui_backend") else None
+        ui_backend = (
+            self.display.get_ui_backend() if hasattr(self.display, "get_ui_backend") else None
+        )
         if ui_backend is None or not getattr(ui_backend, "initialized", False):
             return None
 
@@ -134,8 +136,8 @@ class HubScreen(Screen):
 
     def _talk_subtitle(self) -> str:
         """Return the compact Talk card subtitle."""
-        if self.context is not None and getattr(self.context, "missed_calls", 0) > 0:
-            missed_calls = int(self.context.missed_calls)
+        if self.context is not None and self.context.talk.missed_calls > 0:
+            missed_calls = self.context.talk.missed_calls
             label = "call" if missed_calls == 1 else "calls"
             return f"{missed_calls} missed {label}"
 
@@ -241,7 +243,9 @@ class HubScreen(Screen):
             self.display.circle(dots_x + (index * dot_gap), dots_y, 2, fill=dot_color)
 
         footer_top = self.display.HEIGHT - 32
-        self.display.rectangle(0, footer_top, self.display.WIDTH, self.display.HEIGHT, fill=FOOTER_BAR)
+        self.display.rectangle(
+            0, footer_top, self.display.WIDTH, self.display.HEIGHT, fill=FOOTER_BAR
+        )
         footer_text = "Tap = Next \u00b7 2\u00d7 = Open \u00b7 Hold = Ask"
         footer_width, footer_height = self.display.get_text_size(footer_text, 10)
         self.display.text(

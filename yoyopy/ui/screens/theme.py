@@ -326,14 +326,12 @@ def render_status_bar(
     battery_gap = STATUS_BATTERY_GAP_PORTRAIT if is_portrait else STATUS_BATTERY_GAP_LANDSCAPE
 
     cursor_x = side_inset
-    connection_type = (
-        "none" if context is None else str(getattr(context, "connection_type", "none")).lower()
-    )
-    is_connected = False if context is None else bool(getattr(context, "is_connected", False))
+    connection_type = "none" if context is None else str(context.network.connection_type).lower()
+    is_connected = False if context is None else context.network.connected
 
     # -- Signal bars (visible when network module is enabled) --
-    if context is not None and getattr(context, "network_enabled", False):
-        signal = context.signal_strength
+    if context is not None and context.network.enabled:
+        signal = context.network.signal_strength
         connected = is_connected and connection_type == "4g"
         for i, h in enumerate(STATUS_SIGNAL_BAR_HEIGHTS):
             bx = cursor_x + i * (STATUS_SIGNAL_BAR_WIDTH + STATUS_SIGNAL_BAR_GAP)
@@ -356,8 +354,8 @@ def render_status_bar(
         cursor_x += STATUS_WIFI_ICON_WIDTH + cluster_gap
 
     # -- GPS indicator (visible when network module is enabled) --
-    if context is not None and getattr(context, "network_enabled", False):
-        gps_fix = getattr(context, "gps_has_fix", False)
+    if context is not None and context.network.enabled:
+        gps_fix = context.network.gps_has_fix
         gps_color = SUCCESS if gps_fix else MUTED
         _draw_status_gps_icon(display, cursor_x, icon_bottom, gps_color)
         cursor_x += STATUS_GPS_ICON_WIDTH + cluster_gap
@@ -380,9 +378,9 @@ def render_status_bar(
         time_x = max(0, (display.WIDTH - time_width) // 2)
         display.text(time_text, time_x, clock_top, color=MUTED, font_size=STATUS_TIME_FONT_SIZE)
 
-    battery_level = 100 if context is None else int(round(context.battery_percent))
-    charging = False if context is None else context.battery_charging
-    power_available = True if context is None else context.power_available
+    battery_level = 100 if context is None else int(round(context.power.battery_percent))
+    charging = False if context is None else context.power.battery_charging
+    power_available = True if context is None else context.power.available
 
     battery_text = f"{max(0, min(100, battery_level))}%"
     battery_text_width, _ = display.get_text_size(battery_text, STATUS_TIME_FONT_SIZE)
@@ -1554,17 +1552,17 @@ def _draw_signal_icon(display: Display, draw, x: int, y: int, size: int, color: 
 def _voip_state(context: AppContext | None) -> str:
     """Return ready/offline/none for the simplified status bar."""
 
-    if context is None or not getattr(context, "voip_configured", False):
+    if context is None or not context.voip.configured:
         return "none"
-    return "ready" if getattr(context, "voip_ready", False) else "offline"
+    return "ready" if context.voip.ready else "offline"
 
 
 def format_battery_compact(context: AppContext | None) -> str:
     """Return a tiny battery summary for cards."""
 
-    if context is None or not getattr(context, "power_available", False):
+    if context is None or not context.power.available:
         return "Power offline"
-    level = getattr(context, "battery_percent", 100)
-    if getattr(context, "battery_charging", False):
+    level = context.power.battery_percent
+    if context.power.battery_charging:
         return f"{level}% charging"
     return f"{level}% battery"
