@@ -53,17 +53,30 @@ Plan docs are useful, but they are not automatically the current implementation 
 
 ## Plans, specs, and design work
 
-These files are useful for context, but they may describe work in progress, transitional architecture, or older intended behavior.
+These files are useful for context, but they are not all the same kind of document.
 
-- [`LVGL_MIGRATION_PLAN.md`](LVGL_MIGRATION_PLAN.md)
-- [`VOICE_COMMAND_PLAN.md`](VOICE_COMMAND_PLAN.md)
-- [`VOICE_COMMAND_CHECKLIST.md`](VOICE_COMMAND_CHECKLIST.md)
-- [`ASK_SCREEN_DESIGN_SPEC.md`](ASK_SCREEN_DESIGN_SPEC.md)
+### Transitional or partly historical design docs
+
+- [`LVGL_MIGRATION_PLAN.md`](LVGL_MIGRATION_PLAN.md), historical migration record with some still-relevant rationale
+- [`VOICE_COMMAND_PLAN.md`](VOICE_COMMAND_PLAN.md), transitional design record, not the current `Ask` implementation contract
+- [`VOICE_COMMAND_CHECKLIST.md`](VOICE_COMMAND_CHECKLIST.md), historical implementation checklist from an older branch snapshot
+- [`ASK_SCREEN_DESIGN_SPEC.md`](ASK_SCREEN_DESIGN_SPEC.md), design target for the unified `Ask` screen, not automatic proof of implementation
+
+### Active design or contract docs
+
 - [`GLOBAL_AUDIO_DEVICE_FACADE_CONTRACT.md`](GLOBAL_AUDIO_DEVICE_FACADE_CONTRACT.md)
 - [`WHISPLAY_SIMULATION_PARITY_CONTRACT.md`](WHISPLAY_SIMULATION_PARITY_CONTRACT.md)
 - [`design-previews/`](design-previews/)
 
-If one of these conflicts with the current code or the current runtime docs above, treat it as design history unless it is explicitly updated.
+If one of these conflicts with the current code or the current runtime docs above, trust the current code and the current runtime docs.
+
+## Historical implementation records
+
+These are useful when you need to understand how the repo got here, but they are not the top-level source of truth for current architecture.
+
+- [`INTEGRATION_PLAN.md`](INTEGRATION_PLAN.md)
+- [`UI_RESTRUCTURE_PROPOSAL.md`](UI_RESTRUCTURE_PROPOSAL.md)
+- [`PHASE2_SUMMARY.md`](PHASE2_SUMMARY.md)
 
 ## Archived history
 

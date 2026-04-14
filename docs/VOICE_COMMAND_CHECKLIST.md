@@ -1,13 +1,16 @@
 # Voice Command Implementation Checklist
 
+**Status:** Historical implementation checklist, not the current implementation contract
+
+> Current note: this file preserves a working checklist from an earlier branch snapshot. It still contains old branch naming and some stale absolute file paths from a previous local workspace. Use it for implementation context only, not as the authoritative map of current files on `main`.
+
 ## Branch
 
-Current feature branch:
+Historical feature branch at the time this checklist was written:
 
 - `feat/ask-voice-local`
 
-This branch was created from the current working state and already includes the
-simulation/input fixes that were in progress before voice work started.
+That branch note is preserved for context only.
 
 ## Goal
 
@@ -20,6 +23,8 @@ Keep conversational AI responses out of scope for now. The `AI Requests` path
 should exist in the UI, but only return a placeholder spoken response.
 
 ## Actual Integration Points
+
+The file references below were captured at the time of writing. Some absolute paths are now stale and should be interpreted as historical pointers to the equivalent files in the current repo.
 
 ### Ask Navigation and Rendering
 
