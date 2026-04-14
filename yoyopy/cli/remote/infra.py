@@ -17,8 +17,6 @@ from yoyopy.cli.remote.ops import (
     DEPLOY_CONFIG_PATH,
     LOCAL_DEPLOY_CONFIG_PATH,
     PiDeployConfig,
-    RemoteConfig,
-    _activate_script_path,
     _resolve_remote_config,
     build_startup_verification_command,
     load_pi_deploy_config,
@@ -117,6 +115,11 @@ def build_service_command(
         return " && ".join(
             [
                 "test -f deploy/systemd/yoyopod@.service",
+                (
+                    "printf 'YOYOPOD_PROJECT_DIR=%s\\n' "
+                    f"{shell_quote(deploy.project_dir)} | "
+                    "sudo tee /etc/default/yoyopod >/dev/null"
+                ),
                 "sudo cp deploy/systemd/yoyopod@.service /etc/systemd/system/yoyopod@.service",
                 "sudo systemctl daemon-reload",
                 f"sudo systemctl enable --now {service_name}",

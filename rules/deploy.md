@@ -9,8 +9,8 @@ Applies to: `deploy/pi-deploy.yaml`, deployment and debugging on Raspberry Pi
 git push
 
 # RPi: pull and run
-ssh rpi-zero "cd yoyo-py && git pull origin main"
-ssh rpi-zero "cd yoyo-py && source .venv/bin/activate && python yoyopod.py"
+ssh rpi-zero "cd YoyoPod_Core && git pull origin main"
+ssh rpi-zero "cd YoyoPod_Core && source .venv/bin/activate && python yoyopod.py"
 ```
 
 Kill stuck processes before restarting:
@@ -45,5 +45,5 @@ Plugin repo: https://github.com/moustafattia/rpi-deploy
 
 - Raspberry Pi Zero 2W (416 MB RAM)
 - SSH host alias: `rpi-zero` (configured in `~/.ssh/config`)
-- Project dir on Pi: `/home/pi/yoyo-py`
-- Venv on Pi: `/home/pi/yoyo-py/.venv`
+- Project dir on Pi: `/home/pi/YoyoPod_Core`
+- Venv on Pi: `/home/pi/YoyoPod_Core/.venv`

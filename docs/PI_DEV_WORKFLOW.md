@@ -41,7 +41,7 @@ Optional environment defaults:
 
 ```bash
 export YOYOPOD_PI_HOST=rpi-zero
-export YOYOPOD_PI_PROJECT_DIR=~/yoyo-py
+export YOYOPOD_PI_PROJECT_DIR=~/YoyoPod_Core
 export YOYOPOD_PI_BRANCH=main
 ```
 
@@ -49,7 +49,7 @@ On Windows PowerShell:
 
 ```powershell
 $env:YOYOPOD_PI_HOST="rpi-zero"
-$env:YOYOPOD_PI_PROJECT_DIR="~/yoyo-py"
+$env:YOYOPOD_PI_PROJECT_DIR="~/YoyoPod_Core"
 $env:YOYOPOD_PI_BRANCH="main"
 ```
 
@@ -150,6 +150,7 @@ yoyoctl remote service logs --lines 150
 ```
 
 This installs `deploy/systemd/yoyopod@.service` onto the Pi as `yoyopod@<remote-user>.service`, enables it at boot, and keeps the app paired with the PiSugar watchdog recovery loop. `service install`, `start`, and `restart` now wait for the file-log startup marker and verify that it matches the PID file before returning success.
+The install step also records the merged `project_dir` in `/etc/default/yoyopod`, so the service keeps following your configured checkout path after the repo rename.
 
 ### Structured file logs
 

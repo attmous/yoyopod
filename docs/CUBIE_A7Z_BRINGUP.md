@@ -16,7 +16,7 @@ This bringup was done on:
 - OS: `Debian Bullseye`
 - kernel family: Radxa vendor BSP `5.15.147-18-a733`
 - user: `radxa`
-- project dir: `~/yoyo-py`
+- project dir: `~/YoyoPod_Core`
 
 The Cubie A7Z is now a usable YoyoPod development target, but it is not yet a drop-in replacement for the Raspberry Pi Zero 2W. The major caveat is the Whisplay physical button behavior on this board.
 
@@ -61,7 +61,7 @@ Important note:
 Project setup on the board:
 
 ```bash
-cd ~/yoyo-py
+cd ~/YoyoPod_Core
 ~/.local/bin/uv venv --python 3.12 .venv
 ~/.local/bin/uv sync --extra dev
 ```
@@ -162,7 +162,7 @@ The Cubie board was validated with:
 - `espeak-ng`
 - Vosk Python package from the project environment
 - local Vosk model installed at:
-  - `~/yoyo-py/models/vosk-model-small-en-us`
+- `~/YoyoPod_Core/models/vosk-model-small-en-us`
 
 Verified state on the board:
 

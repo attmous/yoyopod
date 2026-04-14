@@ -27,6 +27,7 @@ from yoyopy.cli.common import REPO_ROOT
 
 DEPLOY_CONFIG_PATH = REPO_ROOT / "deploy" / "pi-deploy.yaml"
 LOCAL_DEPLOY_CONFIG_PATH = REPO_ROOT / "deploy" / "pi-deploy.local.yaml"
+DEFAULT_PI_PROJECT_DIR = "~/YoyoPod_Core"
 
 
 @dataclass
@@ -52,7 +53,7 @@ class PiDeployConfig:
 
     host: str = ""
     user: str = ""
-    project_dir: str = "~/yoyo-py"
+    project_dir: str = DEFAULT_PI_PROJECT_DIR
     branch: str = "main"
     venv: str = ".venv"
     start_cmd: str = "python yoyopod.py"
@@ -105,9 +106,9 @@ def parse_pi_deploy_config(data: dict[str, object]) -> PiDeployConfig:
         host=str(data.get("host", "")).strip(),
         user=str(data.get("user", "")).strip(),
         project_dir=str(
-            data.get("project_dir", data.get("remote_dir", "~/yoyo-py"))
+            data.get("project_dir", data.get("remote_dir", DEFAULT_PI_PROJECT_DIR))
         ).strip()
-        or "~/yoyo-py",
+        or DEFAULT_PI_PROJECT_DIR,
         branch=str(data.get("branch", "main")).strip() or "main",
         venv=str(data.get("venv", ".venv")).strip() or ".venv",
         start_cmd=str(data.get("start_cmd", "python yoyopod.py")).strip()
@@ -1171,7 +1172,7 @@ def build_parser(deploy_config: PiDeployConfig) -> argparse.ArgumentParser:
     parser.add_argument(
         "--project-dir",
         default=os.getenv("YOYOPOD_PI_PROJECT_DIR", deploy_config.project_dir),
-        help="Project directory on the Raspberry Pi (default: ~/yoyo-py)",
+        help=f"Project directory on the Raspberry Pi (default: {DEFAULT_PI_PROJECT_DIR})",
     )
     parser.add_argument(
         "--branch",

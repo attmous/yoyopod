@@ -7,7 +7,7 @@
 
 host: ""
 user: ""
-project_dir: ~/yoyo-py
+project_dir: ~/YoyoPod_Core
 branch: main
 venv: .venv
 start_cmd: python yoyopod.py

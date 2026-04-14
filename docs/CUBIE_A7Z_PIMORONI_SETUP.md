@@ -8,7 +8,7 @@ The Pimoroni HAT was designed for the Raspberry Pi. On the Cubie, the Pi-specifi
 
 - Radxa Cubie A7Z with Debian Bullseye and vendor BSP kernel `5.15.147-18-a733`
 - SPI1 enabled via `sun60iw2p1-spi1-spidev.dtbo` overlay (see `docs/CUBIE_A7Z_BRINGUP.md`)
-- YoyoPod project deployed at `~/yoyo-py` with Python 3.12 venv
+- YoyoPod project deployed at `~/YoyoPod_Core` with Python 3.12 venv
 - `dtc` (device tree compiler) installed: `sudo apt install device-tree-compiler`
 
 ## Pin Mapping
@@ -199,7 +199,7 @@ The GPIO pin mapping is already configured in the tracked board overlay at `conf
 ### Launch with Pimoroni display
 
 ```bash
-cd ~/yoyo-py
+cd ~/YoyoPod_Core
 YOYOPOD_DISPLAY=pimoroni YOYOPOD_CONFIG_BOARD=radxa-cubie-a7z .venv/bin/python yoyopod.py
 ```
 

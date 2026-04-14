@@ -398,4 +398,4 @@ The current codebase is in a good place to focus on product behavior instead of 
 - `docs/RPI_SMOKE_VALIDATION.md`
 - `docs/PI_DEV_WORKFLOW.md`
 - `docs/archive/`
-- Project repository: `https://github.com/moustafattia/yoyo-py`
+- Project repository: `https://github.com/moustafattia/YoyoPod_Core`

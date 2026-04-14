@@ -36,7 +36,7 @@ No separate Mopidy process or music daemon is part of the stack anymore.
 
 - `python3`
 - `uv`
-- YoyoPod virtual environment under `/home/tifo/yoyo-py/.venv`
+- YoyoPod virtual environment under `/home/tifo/YoyoPod_Core/.venv`
 
 ### Music playback
 

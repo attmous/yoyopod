@@ -7,11 +7,11 @@ Wants=network-online.target
 Type=simple
 User=%i
 Group=%i
-WorkingDirectory=/home/%i/yoyo-py
+WorkingDirectory=/home/%i
 Environment=PYTHONUNBUFFERED=1
 Environment=PATH=/home/%i/.local/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=-/etc/default/yoyopod
-ExecStart=/usr/bin/env bash -lc 'exec uv run python yoyopod.py'
+ExecStart=/usr/bin/env bash -lc 'PROJECT_DIR="${YOYOPOD_PROJECT_DIR:-$HOME/YoyoPod_Core}"; case "$PROJECT_DIR" in "~") PROJECT_DIR="$HOME" ;; "~/"*) PROJECT_DIR="$HOME/${PROJECT_DIR#~/}" ;; esac; if [ ! -f "$PROJECT_DIR/pyproject.toml" ] && [ -f "$HOME/yoyo-py/pyproject.toml" ]; then PROJECT_DIR="$HOME/yoyo-py"; fi; if [ ! -f "$PROJECT_DIR/pyproject.toml" ]; then echo "Could not find a YoyoPod checkout at $PROJECT_DIR" >&2; exit 1; fi; cd "$PROJECT_DIR"; exec uv run python yoyopod.py'
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
