@@ -3,7 +3,12 @@
 ```text
 yoyopod.py / yoyopy/main.py  (entry points)
         |
-    YoyoPodApp (app.py) -- central coordinator
+    YoyoPodApp (app.py) -- thin composition shell
+    |- RuntimeBootService (runtime/boot.py)
+    |- RuntimeLoopService (runtime/loop.py)
+    |- RecoverySupervisor (runtime/recovery.py)
+    |- ScreenPowerService (runtime/screen_power.py)
+    |- ShutdownLifecycleService (runtime/shutdown.py)
     |- MusicFSM + CallFSM (fsm.py) -- composed playback and call state machines
     |- CoordinatorRuntime (coordinators/runtime.py) -- derived app state
     |- AppContext (app_context.py) -- shared state

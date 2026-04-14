@@ -17,12 +17,19 @@ YoyoPod runs as a single Python application that coordinates:
 - state transitions between playback and call flows
 
 The production entrypoint is `yoyopod.py`, which delegates to `YoyoPodApp` in `yoyopy/app.py`.
+`YoyoPodApp` is now a thin composition shell around focused runtime services in
+`yoyopy/runtime/`.
 
 ## Runtime Topology
 
 ```text
 yoyopod.py / yoyopy.main
   -> YoyoPodApp
+     -> RuntimeBootService
+     -> RuntimeLoopService
+     -> RecoverySupervisor
+     -> ScreenPowerService
+     -> ShutdownLifecycleService
      -> Display facade
         -> Display factory
            -> PimoroniDisplayAdapter | WhisplayDisplayAdapter | SimulationDisplayAdapter
@@ -49,11 +56,16 @@ yoyopod.py / yoyopy.main
 
 ### Application Layer
 
-- `yoyopy/app.py`: main coordinator
+- `yoyopy/app.py`: thin runtime shell and compatibility surface
 - `yoyopy/main.py`: package entry point
 - `yoyopy/fsm.py`: split music and call state models
 - `yoyopy/coordinators/runtime.py`: derived app runtime state
 - `yoyopy/app_context.py`: shared app state
+- `yoyopy/runtime/boot.py`: boot-time composition and manager wiring
+- `yoyopy/runtime/loop.py`: coordinator-loop scheduling and queued main-thread work
+- `yoyopy/runtime/recovery.py`: backend recovery, power polling, and watchdog supervision
+- `yoyopy/runtime/screen_power.py`: screen wake/sleep policy and power overlays
+- `yoyopy/runtime/shutdown.py`: shutdown countdowns, hooks, and lifecycle cleanup
 
 ### Audio and VoIP
 
@@ -141,7 +153,7 @@ Playback and call orchestration use composed models:
 - `PAUSED_BY_CALL`
 - `CALL_ACTIVE_MUSIC_PAUSED`
 
-`YoyoPodApp` listens to:
+Runtime services and coordinators listen to:
 
 - music-backend playback changes
 - VoIP registration changes
