@@ -31,6 +31,7 @@ Plan docs are useful, but they are not automatically the current implementation 
 ### Setup, bringup, and deployment
 
 - [`DEVELOPMENT_GUIDE.md`](DEVELOPMENT_GUIDE.md), main developer setup guide
+- [`SETUP_CONTRACT.md`](SETUP_CONTRACT.md), repo-owned setup and dependency contract
 - [`DEPLOYED_PI_DEPENDENCIES.md`](DEPLOYED_PI_DEPENDENCIES.md), deployed/runtime dependency inventory
 - [`PI_DEV_WORKFLOW.md`](PI_DEV_WORKFLOW.md), day-to-day Raspberry Pi workflow
 - [`RPI_SMOKE_VALIDATION.md`](RPI_SMOKE_VALIDATION.md), validation checklist for CI-safe and on-device checks

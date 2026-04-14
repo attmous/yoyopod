@@ -24,6 +24,7 @@ uv run pytest -q
 For the full setup, validation, and Pi workflow, start with:
 - [`docs/README.md`](docs/README.md)
 - [`docs/DEVELOPMENT_GUIDE.md`](docs/DEVELOPMENT_GUIDE.md)
+- [`docs/SETUP_CONTRACT.md`](docs/SETUP_CONTRACT.md)
 
 Run on hardware:
 
@@ -48,6 +49,7 @@ Start here:
 - [System Architecture](docs/SYSTEM_ARCHITECTURE.md)
 
 Setup and operations:
+- [Setup Contract](docs/SETUP_CONTRACT.md)
 - [Pi Dev Workflow](docs/PI_DEV_WORKFLOW.md)
 - [Pi Smoke Validation](docs/RPI_SMOKE_VALIDATION.md)
 - [Deployed Pi Dependencies](docs/DEPLOYED_PI_DEPENDENCIES.md)

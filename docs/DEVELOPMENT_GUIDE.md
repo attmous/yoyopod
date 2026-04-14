@@ -26,23 +26,36 @@ uv sync --extra dev
 
 ## System Dependencies
 
-Raspberry Pi OS packages expected by the current stack:
+The current repo-owned setup contract lives in [`SETUP_CONTRACT.md`](SETUP_CONTRACT.md).
+
+Short version:
+
+Core Raspberry Pi packages and services expected by the active stack:
 
 - `mpv`
+- `ffmpeg`
 - `liblinphone-dev`
 - `pkg-config`
 - `cmake`
 - `alsa-utils`
 - `i2c-tools`
-- `pisugar-server`
+- `pisugar-server` on PiSugar-based targets
+
+Feature-gated extras are documented there too, including:
+
+- `espeak-ng` for the current TTS path
+- `ppp` for the modem PPP path
+- Vosk model files under `models/`
 
 Example:
 
 ```bash
-sudo apt install mpv liblinphone-dev pkg-config cmake alsa-utils i2c-tools
+sudo apt install -y mpv ffmpeg liblinphone-dev pkg-config cmake alsa-utils i2c-tools
 yoyoctl build liblinphone
 yoyoctl build lvgl
 ```
+
+For PiSugar-based hardware, make sure `pisugar-server` is installed and running too.
 
 ## Configuration
 
