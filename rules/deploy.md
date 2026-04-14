@@ -36,7 +36,9 @@ Config: `deploy/pi-deploy.yaml` plus optional `deploy/pi-deploy.local.yaml` for 
 
 ```bash
 yoyoctl remote config show
-yoyoctl remote config edit
+uv run yoyoctl remote config edit
+uv run yoyoctl remote setup
+uv run yoyoctl remote verify-setup
 ```
 
 Plugin repo: https://github.com/moustafattia/rpi-deploy
@@ -44,6 +46,5 @@ Plugin repo: https://github.com/moustafattia/rpi-deploy
 ## Target Hardware
 
 - Raspberry Pi Zero 2W (416 MB RAM)
-- SSH host alias: `rpi-zero` (configured in `~/.ssh/config`)
-- Project dir on Pi: `/home/pi/YoyoPod_Core`
-- Venv on Pi: `/home/pi/YoyoPod_Core/.venv`
+- SSH host, user, and project-dir defaults come from `deploy/pi-deploy.yaml` plus gitignored `deploy/pi-deploy.local.yaml`
+- Machine-local hostnames, usernames, and path overrides must stay out of tracked files

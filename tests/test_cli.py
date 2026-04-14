@@ -22,6 +22,7 @@ def test_root_help():
     assert "pi" in _plain(result.output)
     assert "remote" in _plain(result.output)
     assert "build" in _plain(result.output)
+    assert "setup" in _plain(result.output)
 
 
 def test_pi_help():
@@ -37,6 +38,35 @@ def test_remote_help():
 def test_build_help():
     result = runner.invoke(app, ["build", "--help"])
     assert result.exit_code == 0
+
+
+def test_setup_help():
+    result = runner.invoke(app, ["setup", "--help"])
+    assert result.exit_code == 0
+
+
+def test_setup_host_help():
+    result = runner.invoke(app, ["setup", "host", "--help"])
+    assert result.exit_code == 0
+    assert "--skip-sync" in _plain(result.output)
+
+
+def test_setup_pi_help():
+    result = runner.invoke(app, ["setup", "pi", "--help"])
+    assert result.exit_code == 0
+    assert "--with-pisugar" in _plain(result.output)
+
+
+def test_setup_verify_host_help():
+    result = runner.invoke(app, ["setup", "verify-host", "--help"])
+    assert result.exit_code == 0
+    assert "--with-remote-tools" in _plain(result.output)
+
+
+def test_setup_verify_pi_help():
+    result = runner.invoke(app, ["setup", "verify-pi", "--help"])
+    assert result.exit_code == 0
+    assert "--with-network" in _plain(result.output)
 
 
 def test_build_lvgl_help():
@@ -191,3 +221,15 @@ def test_remote_whisplay_help():
 def test_remote_rtc_help():
     result = runner.invoke(app, ["remote", "rtc", "--help"])
     assert result.exit_code == 0
+
+
+def test_remote_setup_help():
+    result = runner.invoke(app, ["remote", "setup", "--help"])
+    assert result.exit_code == 0
+    assert "--with-voice" in _plain(result.output)
+
+
+def test_remote_verify_setup_help():
+    result = runner.invoke(app, ["remote", "verify-setup", "--help"])
+    assert result.exit_code == 0
+    assert "--with-pisugar" in _plain(result.output)

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+
 try:
     import typer
 except ImportError:
@@ -33,6 +37,11 @@ app.add_typer(remote_app)
 from yoyopy.cli.build import build_app  # noqa: E402
 
 app.add_typer(build_app)
+
+# -- setup group (repo-owned bootstrap/verify commands) ---------------------
+from yoyopy.cli.setup import setup_app  # noqa: E402
+
+app.add_typer(setup_app)
 
 
 def run() -> None:

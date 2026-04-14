@@ -16,15 +16,22 @@ Supported display/input modes:
 ## Quick Start
 
 ```bash
-uv sync --extra dev
+uv run yoyoctl setup host
+uv run yoyoctl setup verify-host
 python yoyopod.py --simulate
+uv run python scripts/quality.py gate
 uv run pytest -q
 ```
 
 For the full setup, validation, and Pi workflow, start with:
 - [`docs/README.md`](docs/README.md)
+- [`docs/CONTRIBUTOR_WORKFLOW.md`](docs/CONTRIBUTOR_WORKFLOW.md)
 - [`docs/DEVELOPMENT_GUIDE.md`](docs/DEVELOPMENT_GUIDE.md)
 - [`docs/SETUP_CONTRACT.md`](docs/SETUP_CONTRACT.md)
+
+The current setup commands define a baseline executable contract, not a fully
+solved setup story. Non-apt assets like Vosk models and board/modem-specific
+bringup still need explicit follow-through.
 
 Run on hardware:
 
@@ -45,11 +52,13 @@ YOYOPOD_CONFIG_BOARD=rpi-zero-2w python yoyopod.py
 
 Start here:
 - [Documentation Guide](docs/README.md)
+- [Contributor Workflow](docs/CONTRIBUTOR_WORKFLOW.md)
 - [Development Guide](docs/DEVELOPMENT_GUIDE.md)
 - [System Architecture](docs/SYSTEM_ARCHITECTURE.md)
 
 Setup and operations:
 - [Setup Contract](docs/SETUP_CONTRACT.md)
+- [Quality Gates](docs/QUALITY_GATES.md)
 - [Pi Dev Workflow](docs/PI_DEV_WORKFLOW.md)
 - [Pi Smoke Validation](docs/RPI_SMOKE_VALIDATION.md)
 - [Deployed Pi Dependencies](docs/DEPLOYED_PI_DEPENDENCIES.md)

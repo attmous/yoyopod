@@ -1,9 +1,12 @@
 # Ask Screen Design Specification
 
+**Status:** Design target for the unified `Ask` experience, not the standalone current implementation contract
 **Source:** Figma YoyoPod-Design, node `43:4677` (Ask section)
 **Extracted:** 2026-04-10
 **Target:** 240x280 Whisplay portrait display
 **Rendering path:** PIL fallback in `yoyopy/ui/screens/navigation/ask.py`
+
+> Current note: use this file for intended interaction and visual design. For what actually exists on `main`, trust `docs/SYSTEM_ARCHITECTURE.md`, the current `AskScreen` implementation, and the current router/screen registration code.
 
 ---
 

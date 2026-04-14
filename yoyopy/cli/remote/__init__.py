@@ -18,6 +18,7 @@ from yoyopy.cli.remote.ops import (
     sync,
     whisplay,
 )
+from yoyopy.cli.remote.setup import setup, verify_setup
 
 remote_app = typer.Typer(
     name="remote",
@@ -39,3 +40,5 @@ remote_app.command()(whisplay)
 remote_app.command()(rtc)
 remote_app.command()(config)
 remote_app.command()(service)
+remote_app.command()(setup)
+remote_app.command(name="verify-setup")(verify_setup)

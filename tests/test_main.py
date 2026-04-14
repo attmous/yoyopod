@@ -26,11 +26,6 @@ def test_configure_logger_uses_shared_utility(monkeypatch, tmp_path) -> None:
         calls.append(kwargs)
         return fake_runtime
 
-    class FakePath:
-        @staticmethod
-        def cwd() -> Path:
-            return fake_base_dir
-
     monkeypatch.setattr(main_module, "load_app_settings", fake_load_app_settings)
     monkeypatch.setattr(
         main_module,
@@ -38,7 +33,8 @@ def test_configure_logger_uses_shared_utility(monkeypatch, tmp_path) -> None:
         fake_build_logging_runtime_config,
     )
     monkeypatch.setattr(main_module, "init_logger", fake_init_logger)
-    monkeypatch.setattr(main_module, "Path", FakePath)
+    fake_base_dir.mkdir()
+    monkeypatch.setattr(Path, "cwd", staticmethod(lambda: fake_base_dir))
 
     runtime = main_module.configure_logger()
 

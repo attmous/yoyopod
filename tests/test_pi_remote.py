@@ -34,6 +34,7 @@ from yoyopy.cli.remote.infra import (
     build_service_command,
 )
 from yoyopy.cli.remote.lvgl import build_lvgl_soak_command
+from yoyopy.cli.remote.setup import build_setup_command, build_verify_setup_command
 from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
@@ -393,6 +394,44 @@ def test_build_power_command_supports_verbose_status() -> None:
     command = build_power_command(verbose=True)
 
     assert command == "uv run yoyoctl pi power battery --verbose"
+
+
+def test_build_setup_command_supports_feature_flags_and_dry_run() -> None:
+    """Remote setup wrapper should invoke the repo-owned Pi bootstrap command."""
+
+    command = build_setup_command(
+        with_voice=True,
+        with_network=True,
+        with_pisugar=True,
+        skip_uv_sync=True,
+        skip_builds=True,
+        dry_run=True,
+    )
+
+    assert command.startswith('export PATH="$HOME/.local/bin:$PATH"; uv run yoyoctl setup pi')
+    assert "--with-voice" in command
+    assert "--with-network" in command
+    assert "--with-pisugar" in command
+    assert "--skip-uv-sync" in command
+    assert "--skip-builds" in command
+    assert "--dry-run" in command
+
+
+def test_build_verify_setup_command_supports_feature_flags() -> None:
+    """Remote setup verifier should reuse the repo-owned Pi verification command."""
+
+    command = build_verify_setup_command(
+        with_voice=True,
+        with_network=False,
+        with_pisugar=True,
+    )
+
+    assert command.startswith(
+        'export PATH="$HOME/.local/bin:$PATH"; uv run yoyoctl setup verify-pi'
+    )
+    assert "--with-voice" in command
+    assert "--with-pisugar" in command
+    assert "--with-network" not in command
 
 
 def test_build_lvgl_soak_command_supports_cycles_and_sleep_toggle() -> None:

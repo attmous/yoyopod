@@ -1,13 +1,16 @@
 # Voice Command Implementation Checklist
 
+**Status:** Historical implementation checklist, not the current implementation contract
+
+> Current note: this file preserves a working checklist from an earlier branch snapshot. It still contains old branch naming and older design assumptions from that phase. The links below have been normalized to the current repo layout, but the checklist itself remains historical context, not the authoritative map of what ships on `main`.
+
 ## Branch
 
-Current feature branch:
+Historical feature branch at the time this checklist was written:
 
 - `feat/ask-voice-local`
 
-This branch was created from the current working state and already includes the
-simulation/input fixes that were in progress before voice work started.
+That branch note is preserved for context only.
 
 ## Goal
 
@@ -21,45 +24,47 @@ should exist in the UI, but only return a placeholder spoken response.
 
 ## Actual Integration Points
 
+The file references below were captured at the time of writing. Their links have been normalized to repo-relative paths where possible, but the checklist itself is still historical context rather than the current implementation contract.
+
 ### Ask Navigation and Rendering
 
-- [yoyopy/ui/screens/navigation/ask.py](/home/raouf/yoyo-py/yoyopy/ui/screens/navigation/ask.py)
-- [yoyopy/ui/screens/navigation/lvgl/ask_view.py](/home/raouf/yoyo-py/yoyopy/ui/screens/navigation/lvgl/ask_view.py)
-- [yoyopy/ui/screens/router.py](/home/raouf/yoyo-py/yoyopy/ui/screens/router.py)
-- [yoyopy/app.py](/home/raouf/yoyo-py/yoyopy/app.py)
+- [yoyopy/ui/screens/navigation/ask.py](../yoyopy/ui/screens/navigation/ask.py)
+- [yoyopy/ui/screens/navigation/lvgl/ask_view.py](../yoyopy/ui/screens/navigation/lvgl/ask_view.py)
+- [yoyopy/ui/screens/router.py](../yoyopy/ui/screens/router.py)
+- [yoyopy/app.py](../yoyopy/app.py)
 
 ### Setup / Device Settings Screen
 
-- [yoyopy/ui/screens/system/power.py](/home/raouf/yoyo-py/yoyopy/ui/screens/system/power.py)
-- [yoyopy/ui/screens/system/lvgl/power_view.py](/home/raouf/yoyo-py/yoyopy/ui/screens/system/lvgl/power_view.py)
+- [yoyopy/ui/screens/system/power.py](../yoyopy/ui/screens/system/power.py)
+- [yoyopy/ui/screens/system/lvgl/power_view.py](../yoyopy/ui/screens/system/lvgl/power_view.py)
 
 ### Shared App State
 
-- [yoyopy/app_context.py](/home/raouf/yoyo-py/yoyopy/app_context.py)
+- [yoyopy/app_context.py](../yoyopy/app_context.py)
 
 ### Config Models and Persistence
 
-- [yoyopy/config/models.py](/home/raouf/yoyo-py/yoyopy/config/models.py)
-- [yoyopy/config/manager.py](/home/raouf/yoyo-py/yoyopy/config/manager.py)
-- [config/yoyopod_config.yaml](/home/raouf/yoyo-py/config/yoyopod_config.yaml)
+- [yoyopy/config/models.py](../yoyopy/config/models.py)
+- [yoyopy/config/manager.py](../yoyopy/config/manager.py)
+- [config/yoyopod_config.yaml](../config/yoyopod_config.yaml)
 
 ### Output Volume and Audio
 
-- [yoyopy/audio/volume.py](/home/raouf/yoyo-py/yoyopy/audio/volume.py)
-- [docs/AUDIO_STACK.md](/home/raouf/yoyo-py/docs/AUDIO_STACK.md)
+- [yoyopy/audio/volume.py](../yoyopy/audio/volume.py)
+- [docs/AUDIO_STACK.md](AUDIO_STACK.md)
 
 ### Contact Calling / VoIP
 
-- [yoyopy/voip/manager.py](/home/raouf/yoyo-py/yoyopy/voip/manager.py)
-- [yoyopy/config/manager.py](/home/raouf/yoyo-py/yoyopy/config/manager.py)
-- [config/contacts.yaml](/home/raouf/yoyo-py/config/contacts.yaml)
+- [yoyopy/voip/manager.py](../yoyopy/voip/manager.py)
+- [yoyopy/config/manager.py](../yoyopy/config/manager.py)
+- [config/contacts.yaml](../config/contacts.yaml)
 
 ### Tests to Extend
 
-- [tests/test_config_models.py](/home/raouf/yoyo-py/tests/test_config_models.py)
-- [tests/test_config_manager.py](/home/raouf/yoyo-py/tests/test_config_manager.py)
-- [tests/test_screen_routing.py](/home/raouf/yoyo-py/tests/test_screen_routing.py)
-- [tests/test_output_volume.py](/home/raouf/yoyo-py/tests/test_output_volume.py)
+- [tests/test_config_models.py](../tests/test_config_models.py)
+- [tests/test_config_manager.py](../tests/test_config_manager.py)
+- [tests/test_screen_routing.py](../tests/test_screen_routing.py)
+- [tests/test_output_volume.py](../tests/test_output_volume.py)
 - add new focused voice tests under `tests/`
 
 ## Work Breakdown
@@ -68,8 +73,8 @@ should exist in the UI, but only return a placeholder spoken response.
 
 Files:
 
-- [yoyopy/config/models.py](/home/raouf/yoyo-py/yoyopy/config/models.py)
-- [config/yoyopod_config.yaml](/home/raouf/yoyo-py/config/yoyopod_config.yaml)
+- [yoyopy/config/models.py](../yoyopy/config/models.py)
+- [config/yoyopod_config.yaml](../config/yoyopod_config.yaml)
 
 Checklist:
 
@@ -90,8 +95,8 @@ Notes:
 
 Files:
 
-- [yoyopy/config/manager.py](/home/raouf/yoyo-py/yoyopy/config/manager.py)
-- [yoyopy/app_context.py](/home/raouf/yoyo-py/yoyopy/app_context.py)
+- [yoyopy/config/manager.py](../yoyopy/config/manager.py)
+- [yoyopy/app_context.py](../yoyopy/app_context.py)
 
 Checklist:
 
@@ -109,14 +114,14 @@ Notes:
 
 Files to add:
 
-- [yoyopy/voice](/home/raouf/yoyo-py/yoyopy/voice)
+- [yoyopy/voice](../yoyopy/voice)
 - suggested:
-  - `/home/raouf/yoyo-py/yoyopy/voice/__init__.py`
-  - `/home/raouf/yoyo-py/yoyopy/voice/models.py`
-  - `/home/raouf/yoyo-py/yoyopy/voice/stt.py`
-  - `/home/raouf/yoyo-py/yoyopy/voice/tts.py`
-  - `/home/raouf/yoyo-py/yoyopy/voice/service.py`
-  - `/home/raouf/yoyo-py/yoyopy/voice/commands.py`
+  - `../yoyopy/voice/__init__.py`
+  - `../yoyopy/voice/models.py`
+  - `../yoyopy/voice/stt.py`
+  - `../yoyopy/voice/tts.py`
+  - `../yoyopy/voice/service.py`
+  - `../yoyopy/voice/commands.py`
 
 Checklist:
 
@@ -135,10 +140,10 @@ Notes:
 
 Files:
 
-- [yoyopy/ui/screens/navigation/ask.py](/home/raouf/yoyo-py/yoyopy/ui/screens/navigation/ask.py)
-- [yoyopy/ui/screens/navigation/lvgl/ask_view.py](/home/raouf/yoyo-py/yoyopy/ui/screens/navigation/lvgl/ask_view.py)
-- [yoyopy/ui/screens/router.py](/home/raouf/yoyo-py/yoyopy/ui/screens/router.py)
-- [yoyopy/app.py](/home/raouf/yoyo-py/yoyopy/app.py)
+- [yoyopy/ui/screens/navigation/ask.py](../yoyopy/ui/screens/navigation/ask.py)
+- [yoyopy/ui/screens/navigation/lvgl/ask_view.py](../yoyopy/ui/screens/navigation/lvgl/ask_view.py)
+- [yoyopy/ui/screens/router.py](../yoyopy/ui/screens/router.py)
+- [yoyopy/app.py](../yoyopy/app.py)
 
 Checklist:
 
@@ -159,9 +164,9 @@ Notes:
 
 Files:
 
-- [yoyopy/voice/commands.py](/home/raouf/yoyo-py/yoyopy/voice/commands.py)
-- [yoyopy/config/manager.py](/home/raouf/yoyo-py/yoyopy/config/manager.py)
-- [config/contacts.yaml](/home/raouf/yoyo-py/config/contacts.yaml)
+- [yoyopy/voice/commands.py](../yoyopy/voice/commands.py)
+- [yoyopy/config/manager.py](../yoyopy/config/manager.py)
+- [config/contacts.yaml](../config/contacts.yaml)
 
 Checklist:
 
@@ -189,10 +194,10 @@ Notes:
 
 Files:
 
-- [yoyopy/app.py](/home/raouf/yoyo-py/yoyopy/app.py)
-- [yoyopy/audio/volume.py](/home/raouf/yoyo-py/yoyopy/audio/volume.py)
-- [yoyopy/voip/manager.py](/home/raouf/yoyo-py/yoyopy/voip/manager.py)
-- [yoyopy/app_context.py](/home/raouf/yoyo-py/yoyopy/app_context.py)
+- [yoyopy/app.py](../yoyopy/app.py)
+- [yoyopy/audio/volume.py](../yoyopy/audio/volume.py)
+- [yoyopy/voip/manager.py](../yoyopy/voip/manager.py)
+- [yoyopy/app_context.py](../yoyopy/app_context.py)
 
 Checklist:
 
@@ -212,9 +217,9 @@ Notes:
 
 Files:
 
-- [yoyopy/ui/screens/system/power.py](/home/raouf/yoyo-py/yoyopy/ui/screens/system/power.py)
-- [yoyopy/ui/screens/system/lvgl/power_view.py](/home/raouf/yoyo-py/yoyopy/ui/screens/system/lvgl/power_view.py)
-- [yoyopy/app.py](/home/raouf/yoyo-py/yoyopy/app.py)
+- [yoyopy/ui/screens/system/power.py](../yoyopy/ui/screens/system/power.py)
+- [yoyopy/ui/screens/system/lvgl/power_view.py](../yoyopy/ui/screens/system/lvgl/power_view.py)
+- [yoyopy/app.py](../yoyopy/app.py)
 
 Checklist:
 
@@ -236,14 +241,14 @@ Notes:
 
 Files:
 
-- [yoyopy/ui/screens/base.py](/home/raouf/yoyo-py/yoyopy/ui/screens/base.py)
+- [yoyopy/ui/screens/base.py](../yoyopy/ui/screens/base.py)
 - selected concrete screen files such as:
-  - [yoyopy/ui/screens/navigation/menu.py](/home/raouf/yoyo-py/yoyopy/ui/screens/navigation/menu.py)
-  - [yoyopy/ui/screens/navigation/hub.py](/home/raouf/yoyo-py/yoyopy/ui/screens/navigation/hub.py)
-  - [yoyopy/ui/screens/navigation/ask.py](/home/raouf/yoyo-py/yoyopy/ui/screens/navigation/ask.py)
-  - [yoyopy/ui/screens/system/power.py](/home/raouf/yoyo-py/yoyopy/ui/screens/system/power.py)
-  - [yoyopy/ui/screens/voip/contact_list.py](/home/raouf/yoyo-py/yoyopy/ui/screens/voip/contact_list.py)
-  - [yoyopy/ui/screens/voip/talk_contact.py](/home/raouf/yoyo-py/yoyopy/ui/screens/voip/talk_contact.py)
+  - [yoyopy/ui/screens/navigation/menu.py](../yoyopy/ui/screens/navigation/menu.py)
+  - [yoyopy/ui/screens/navigation/hub.py](../yoyopy/ui/screens/navigation/hub.py)
+  - [yoyopy/ui/screens/navigation/ask.py](../yoyopy/ui/screens/navigation/ask.py)
+  - [yoyopy/ui/screens/system/power.py](../yoyopy/ui/screens/system/power.py)
+  - [yoyopy/ui/screens/voip/contact_list.py](../yoyopy/ui/screens/voip/contact_list.py)
+  - [yoyopy/ui/screens/voip/talk_contact.py](../yoyopy/ui/screens/voip/talk_contact.py)
 
 Checklist:
 
@@ -261,8 +266,8 @@ Notes:
 
 Files:
 
-- [yoyopy/ui/screens/navigation/ask.py](/home/raouf/yoyo-py/yoyopy/ui/screens/navigation/ask.py)
-- [yoyopy/voice/service.py](/home/raouf/yoyo-py/yoyopy/voice/service.py)
+- [yoyopy/ui/screens/navigation/ask.py](../yoyopy/ui/screens/navigation/ask.py)
+- [yoyopy/voice/service.py](../yoyopy/voice/service.py)
 
 Checklist:
 
@@ -275,9 +280,9 @@ Checklist:
 
 Files:
 
-- [pyproject.toml](/home/raouf/yoyo-py/pyproject.toml)
-- [docs/AUDIO_STACK.md](/home/raouf/yoyo-py/docs/AUDIO_STACK.md)
-- [README.md](/home/raouf/yoyo-py/README.md)
+- [pyproject.toml](../pyproject.toml)
+- [docs/AUDIO_STACK.md](AUDIO_STACK.md)
+- [README.md](../README.md)
 
 Checklist:
 
@@ -291,14 +296,14 @@ Checklist:
 
 Files to add or update:
 
-- [tests/test_config_models.py](/home/raouf/yoyo-py/tests/test_config_models.py)
-- [tests/test_config_manager.py](/home/raouf/yoyo-py/tests/test_config_manager.py)
-- [tests/test_screen_routing.py](/home/raouf/yoyo-py/tests/test_screen_routing.py)
-- [tests/test_output_volume.py](/home/raouf/yoyo-py/tests/test_output_volume.py)
+- [tests/test_config_models.py](../tests/test_config_models.py)
+- [tests/test_config_manager.py](../tests/test_config_manager.py)
+- [tests/test_screen_routing.py](../tests/test_screen_routing.py)
+- [tests/test_output_volume.py](../tests/test_output_volume.py)
 - suggested new tests:
-  - `/home/raouf/yoyo-py/tests/test_voice_commands.py`
-  - `/home/raouf/yoyo-py/tests/test_voice_service.py`
-  - `/home/raouf/yoyo-py/tests/test_ask_screen.py`
+  - `../tests/test_voice_commands.py`
+  - `../tests/test_voice_service.py`
+  - `../tests/test_ask_screen.py`
 
 Checklist:
 
@@ -342,8 +347,8 @@ Checklist:
 
 Start with the low-risk backbone:
 
-- [yoyopy/config/models.py](/home/raouf/yoyo-py/yoyopy/config/models.py)
-- [yoyopy/app_context.py](/home/raouf/yoyo-py/yoyopy/app_context.py)
+- [yoyopy/config/models.py](../yoyopy/config/models.py)
+- [yoyopy/app_context.py](../yoyopy/app_context.py)
 - new `yoyopy/voice/` package skeleton
 
 That gives the rest of the UI work a stable typed target.

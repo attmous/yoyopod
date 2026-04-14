@@ -6,6 +6,8 @@
 
 > Current note: Whisplay now runs on the LVGL path in the current runtime. This document is still useful for migration context and rationale, but it is not the primary source of truth for current behavior. For current implementation details, trust `AGENTS.md`, `docs/SYSTEM_ARCHITECTURE.md`, and the code under `yoyopy/ui/lvgl_binding/`.
 
+> Read this as migration history plus remaining rationale, not as proof that every phase item below is still pending.
+
 ---
 
 ## Summary

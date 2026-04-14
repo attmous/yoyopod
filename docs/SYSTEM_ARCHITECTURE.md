@@ -20,56 +20,71 @@ YoyoPod runs as a single Python application that coordinates:
 - state transitions between playback and call flows
 
 The production entrypoint is `yoyopod.py`, which delegates to `YoyoPodApp` in `yoyopy/app.py`.
+`YoyoPodApp` is now a thin composition shell around focused runtime services in
+`yoyopy/runtime/`.
+
+This extraction is a first pass, not the end state. `yoyopy/runtime/boot.py` is
+still the biggest remaining runtime hotspot and should be the next split target
+if more setup logic accumulates there.
 
 ## Runtime Topology
 
 ```text
 yoyopod.py / yoyopy.main
   -> YoyoPodApp
-     -> EventBus
-     -> Display facade
-        -> Display factory
-           -> PimoroniDisplayAdapter | WhisplayDisplayAdapter | SimulationDisplayAdapter
+     -> RuntimeBootService
+     -> RuntimeLoopService
+     -> RecoverySupervisor
+     -> ScreenPowerService
+      -> ShutdownLifecycleService
+      -> EventBus
+      -> Display facade
+         -> Display factory
+            -> PimoroniDisplayAdapter | WhisplayDisplayAdapter | SimulationDisplayAdapter
      -> InputManager
         -> FourButtonInputAdapter | PTTInputAdapter | KeyboardInputAdapter
      -> ScreenManager
         -> navigation screens
         -> music screens
         -> voip screens
-        -> system screens
      -> MusicFSM / CallFSM / CallInterruptionPolicy
-     -> CoordinatorRuntime
-     -> CallCoordinator / PlaybackCoordinator / ScreenCoordinator / PowerCoordinator
-     -> AppContext
-     -> LocalMusicService
-     -> MpvBackend
+      -> CoordinatorRuntime
+      -> CallCoordinator / PlaybackCoordinator / ScreenCoordinator / PowerCoordinator
+      -> AppContext
+      -> LocalMusicService
+      -> MpvBackend
         -> MpvProcess
         -> MpvIpcClient
            -> mpv JSON IPC over Unix socket / named pipe
-     -> VoIPManager
-        -> LiblinphoneBackend
-           -> native Liblinphone shim
-     -> PowerManager
-        -> PiSugarBackend
-        -> PiSugarWatchdog
-     -> NetworkManager
-        -> Sim7600Backend
-        -> PPP process / GPS queries
-     -> VoiceService
-        -> audio capture backend
-        -> Vosk STT backend
-        -> espeak-ng TTS backend
+      -> VoIPManager
+         -> LiblinphoneBackend
+            -> native Liblinphone shim
+      -> PowerManager
+         -> PiSugarBackend
+         -> PiSugarWatchdog
+      -> NetworkManager
+         -> Sim7600Backend
+         -> PPP process / GPS queries
+      -> VoiceService
+         -> audio capture backend
+         -> Vosk STT backend
+         -> espeak-ng TTS backend
 ```
 
 ## Package Structure
 
 ### Application Layer
 
-- `yoyopy/app.py`: main coordinator
+- `yoyopy/app.py`: thin runtime shell and compatibility surface
 - `yoyopy/main.py`: package entry point
 - `yoyopy/fsm.py`: split music and call state models
 - `yoyopy/coordinators/runtime.py`: derived app runtime state
 - `yoyopy/app_context.py`: shared app state
+- `yoyopy/runtime/boot.py`: boot-time composition and manager wiring
+- `yoyopy/runtime/loop.py`: coordinator-loop scheduling and queued main-thread work
+- `yoyopy/runtime/recovery.py`: backend recovery, power polling, and watchdog supervision
+- `yoyopy/runtime/screen_power.py`: screen wake/sleep policy and power overlays
+- `yoyopy/runtime/shutdown.py`: shutdown countdowns, hooks, and lifecycle cleanup
 
 ### Coordinators
 
@@ -171,21 +186,17 @@ Playback and call orchestration use composed models:
 - `PAUSED_BY_CALL`
 - `CALL_ACTIVE_MUSIC_PAUSED`
 
-`YoyoPodApp` listens to:
+Runtime services and coordinators listen to:
 
 - music-backend playback changes
 - VoIP registration changes
 - VoIP call state changes
-- power and low-battery events
-- modem signal, PPP, and GPS events
 
 and updates:
 
 - screen stack
 - music pause/resume behavior
 - state machine state
-- app context status fields
-- power overlays and shutdown behavior
 
 ## Event Flows
 
@@ -214,23 +225,12 @@ Shared music-domain model ownership lives in `yoyopy/audio/music/models.py`. `Tr
 2. successful modem registration publishes typed network events onto the `EventBus`
 3. PPP startup publishes connectivity state used by the UI/runtime status
 4. GPS queries publish fix or no-fix events consumed by the app context and Setup UI
-
 ### Simulation Mode
 
 1. `Display` chooses `SimulationDisplayAdapter`
 2. `web_server.py` starts a Flask-SocketIO server
 3. browser receives base64 PNG display updates
 4. keyboard and web buttons feed `InputManager`
-
-## Temporary Bridges And Current Caveats
-
-A few architecture transitions are still live in the current codebase:
-
-- `Screen` still carries a semantic-input to legacy `on_button_*()` compatibility bridge
-- Whisplay is on the LVGL path, while Pimoroni and simulation still use PIL rendering
-- local voice flow is implemented today, but most orchestration still sits close to `AskScreen`
-
-These are current implementation realities, not end-state design goals.
 
 ## Raspberry Pi Assumptions
 
@@ -252,9 +252,6 @@ For current behavior, trust these files over older notes or demos:
 - `yoyopy/coordinators/runtime.py`
 - `yoyopy/audio/`
 - `yoyopy/voip/`
-- `yoyopy/power/`
-- `yoyopy/network/`
-- `yoyopy/voice/`
 - `yoyopy/ui/display/`
 - `yoyopy/ui/input/`
 - `yoyopy/ui/screens/`

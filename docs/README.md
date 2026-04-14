@@ -25,13 +25,16 @@ Plan docs are useful, but they are not automatically the current implementation 
 ### Start here
 
 - [`../README.md`](../README.md), repo overview and quick start
+- [`CONTRIBUTOR_WORKFLOW.md`](CONTRIBUTOR_WORKFLOW.md), day-to-day contributor path and PR checklist
 - [`DEVELOPMENT_GUIDE.md`](DEVELOPMENT_GUIDE.md), setup, running, validation, package layout
 - [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md), current runtime architecture
 
 ### Setup, bringup, and deployment
 
+- [`CONTRIBUTOR_WORKFLOW.md`](CONTRIBUTOR_WORKFLOW.md), contributor onboarding and daily workflow
 - [`DEVELOPMENT_GUIDE.md`](DEVELOPMENT_GUIDE.md), main developer setup guide
 - [`SETUP_CONTRACT.md`](SETUP_CONTRACT.md), repo-owned setup and dependency contract
+- [`QUALITY_GATES.md`](QUALITY_GATES.md), current staged quality gate and audit contract
 - [`DEPLOYED_PI_DEPENDENCIES.md`](DEPLOYED_PI_DEPENDENCIES.md), deployed/runtime dependency inventory
 - [`PI_DEV_WORKFLOW.md`](PI_DEV_WORKFLOW.md), day-to-day Raspberry Pi workflow
 - [`RPI_SMOKE_VALIDATION.md`](RPI_SMOKE_VALIDATION.md), validation checklist for CI-safe and on-device checks
@@ -50,17 +53,37 @@ Plan docs are useful, but they are not automatically the current implementation 
 
 ## Plans, specs, and design work
 
-These files are useful for context, but they may describe work in progress, transitional architecture, or older intended behavior.
+These files are useful for context, but they are not all the same kind of document.
 
-- [`LVGL_MIGRATION_PLAN.md`](LVGL_MIGRATION_PLAN.md)
-- [`VOICE_COMMAND_PLAN.md`](VOICE_COMMAND_PLAN.md)
-- [`VOICE_COMMAND_CHECKLIST.md`](VOICE_COMMAND_CHECKLIST.md)
-- [`ASK_SCREEN_DESIGN_SPEC.md`](ASK_SCREEN_DESIGN_SPEC.md)
+### Transitional or partly historical design docs
+
+- [`LVGL_MIGRATION_PLAN.md`](LVGL_MIGRATION_PLAN.md), historical migration record with some still-relevant rationale
+- [`VOICE_COMMAND_PLAN.md`](VOICE_COMMAND_PLAN.md), transitional design record, not the current `Ask` implementation contract
+- [`VOICE_COMMAND_CHECKLIST.md`](VOICE_COMMAND_CHECKLIST.md), historical implementation checklist from an older branch snapshot
+- [`ASK_SCREEN_DESIGN_SPEC.md`](ASK_SCREEN_DESIGN_SPEC.md), design target for the unified `Ask` screen, not automatic proof of implementation
+
+### Active design or contract docs
+
 - [`GLOBAL_AUDIO_DEVICE_FACADE_CONTRACT.md`](GLOBAL_AUDIO_DEVICE_FACADE_CONTRACT.md)
 - [`WHISPLAY_SIMULATION_PARITY_CONTRACT.md`](WHISPLAY_SIMULATION_PARITY_CONTRACT.md)
 - [`design-previews/`](design-previews/)
 
-If one of these conflicts with the current code or the current runtime docs above, treat it as design history unless it is explicitly updated.
+If one of these conflicts with the current code or the current runtime docs above, trust the current code and the current runtime docs.
+
+## Historical implementation records
+
+These are useful when you need to understand how the repo got here, but they are not the top-level source of truth for current architecture. Each of these files should say that plainly at the top.
+
+- [`INTEGRATION_PLAN.md`](INTEGRATION_PLAN.md), implemented milestone record for VoIP + local music integration
+- [`UI_RESTRUCTURE_PROPOSAL.md`](UI_RESTRUCTURE_PROPOSAL.md), refactor status record for the UI split and remaining cleanup
+- [`PHASE2_SUMMARY.md`](PHASE2_SUMMARY.md), milestone summary for early screen integration
+
+## Generated planning workspace
+
+- [`superpowers/README.md`](superpowers/README.md), status and usage notes for generated plan/spec workspaces
+- [`superpowers/`](superpowers/), historical agent-generated plans and specs that may retain older repo names or environment-specific paths
+
+Treat this directory as preserved planning context, not as the current implementation contract.
 
 ## Archived history
 
@@ -84,9 +107,10 @@ Archive files are for historical context only. They are not the source of truth 
 
 1. `README.md`
 2. `docs/README.md`
-3. `docs/DEVELOPMENT_GUIDE.md`
-4. `docs/SYSTEM_ARCHITECTURE.md`
-5. `rules/project.md`
+3. `docs/CONTRIBUTOR_WORKFLOW.md`
+4. `docs/DEVELOPMENT_GUIDE.md`
+5. `docs/SYSTEM_ARCHITECTURE.md`
+6. `rules/project.md`
 
 ### Working on runtime code
 
@@ -97,7 +121,9 @@ Archive files are for historical context only. They are not the source of truth 
 
 ### Working on Raspberry Pi deployment
 
-1. `docs/DEVELOPMENT_GUIDE.md`
-2. `docs/PI_DEV_WORKFLOW.md`
-3. `docs/RPI_SMOKE_VALIDATION.md`
-4. `skills/yoyopod-*.md` guidance via `AGENTS.md`
+1. `docs/CONTRIBUTOR_WORKFLOW.md`
+2. `docs/SETUP_CONTRACT.md`
+3. `docs/DEVELOPMENT_GUIDE.md`
+4. `docs/PI_DEV_WORKFLOW.md`
+5. `docs/RPI_SMOKE_VALIDATION.md`
+6. `skills/yoyopod-*.md` guidance via `AGENTS.md`

@@ -3,7 +3,12 @@
 ```text
 yoyopod.py / yoyopy/main.py  (entry points)
         |
-    YoyoPodApp (app.py) -- central coordinator
+    YoyoPodApp (app.py) -- thin composition shell
+    |- RuntimeBootService (runtime/boot.py)
+    |- RuntimeLoopService (runtime/loop.py)
+    |- RecoverySupervisor (runtime/recovery.py)
+    |- ScreenPowerService (runtime/screen_power.py)
+    |- ShutdownLifecycleService (runtime/shutdown.py)
     |- MusicFSM + CallFSM (fsm.py) -- composed playback and call state machines
     |- CoordinatorRuntime (coordinators/runtime.py) -- derived app state
     |- AppContext (app_context.py) -- shared state
@@ -49,6 +54,7 @@ yoyopod.py / yoyopy/main.py  (entry points)
 - `yoyopod.py`, `yoyopy/main.py`, and `yoyopy/app.py` are composition and lifecycle layers.
 - Do not turn entrypoint files into feature homes for UI, business rules, or backend-specific logic.
 - If `YoyoPodApp` grows, extract focused runtime services instead of adding more feature logic there.
+- Treat runtime extraction as incremental work: if a service like `runtime/boot.py` becomes the new blob, split it again instead of calling the cleanup finished.
 
 ### Screens and UI
 

@@ -8,7 +8,8 @@ Three display/input modes are supported today: Pimoroni Display HAT Mini, PiSuga
 
 ```bash
 # Install dev dependencies
-uv sync --extra dev
+uv run yoyoctl setup host
+uv run yoyoctl setup verify-host
 
 # Run the app
 python yoyopod.py
@@ -23,7 +24,15 @@ uv run python scripts/quality.py gate
 
 # Full quality debt audit
 uv run python scripts/quality.py audit
+
+# Baseline Pi setup contract
+uv run yoyoctl setup pi
+uv run yoyoctl setup verify-pi
 ```
+
+`yoyoctl setup *` is the baseline executable contract, not the finished setup story.
+It does not yet provision non-apt assets like Vosk models, validate every native
+artifact deeply, or cover every board/modem-specific edge.
 
 ## Configuration
 

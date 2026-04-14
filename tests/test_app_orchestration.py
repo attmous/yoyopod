@@ -11,7 +11,7 @@ import pytest
 
 from yoyopy.app import YoyoPodApp
 from yoyopy.app_context import AppContext
-from yoyopy.audio import MockMusicBackend, Track
+from yoyopy.audio import MockMusicBackend
 from yoyopy.voip import CallState, RegistrationState
 from yoyopy.coordinators.runtime import AppRuntimeState
 from yoyopy.events import (
@@ -682,9 +682,31 @@ def test_manager_recovery_schedules_music_reconnect_off_main_thread() -> None:
     app.music_backend = FakeRecoveringMusicBackend([False, True])
     scheduled_attempts: list[float] = []
 
-    app._start_music_recovery_worker = lambda recovery_now: scheduled_attempts.append(recovery_now)
+    app.recovery_service.start_music_recovery_worker = (
+        lambda recovery_now: scheduled_attempts.append(recovery_now)
+    )
 
     app._attempt_manager_recovery(now=0.0)
+
+    assert app.voip_manager.start_calls == 1
+    assert app.music_backend.start_calls == 0
+    assert scheduled_attempts == [0.0]
+    assert app._music_recovery.in_flight
+    assert app._voip_recovery.next_attempt_at == 1.0
+
+
+def test_recovery_service_schedules_music_reconnect_off_main_thread() -> None:
+    """The extracted recovery service should keep music reconnects off the loop thread."""
+    app = YoyoPodApp(simulate=True)
+    app.voip_manager = FakeRecoveringVoIPManager([False, True])
+    app.music_backend = FakeRecoveringMusicBackend([False, True])
+    scheduled_attempts: list[float] = []
+
+    app.recovery_service.start_music_recovery_worker = (
+        lambda recovery_now: scheduled_attempts.append(recovery_now)
+    )
+
+    app.recovery_service.attempt_manager_recovery(now=0.0)
 
     assert app.voip_manager.start_calls == 1
     assert app.music_backend.start_calls == 0
@@ -801,7 +823,9 @@ def test_power_poll_honors_interval_and_tracks_unavailable_backend() -> None:
     app, _, _ = _build_app(playback_state="stopped")
     app.power_manager = FakePowerManager(
         [
-            _power_snapshot(available=True, battery_percent=61.0, charging=False, power_plugged=False),
+            _power_snapshot(
+                available=True, battery_percent=61.0, charging=False, power_plugged=False
+            ),
             _power_snapshot(available=False, error="I2C not connected"),
         ],
         poll_interval_seconds=30.0,
@@ -833,6 +857,27 @@ def test_screen_timeout_turns_backlight_off_after_inactivity() -> None:
     app._active_brightness = app._resolve_active_brightness()
     app._configure_screen_power(initial_now=0.0)
     app._update_screen_power(31.0)
+
+    assert app.display.set_backlight_calls == [0.8, 0.0]
+    assert app.context.screen_awake is False
+    assert app.context.screen_on_seconds == 31
+    assert app.context.screen_idle_seconds == 31
+
+
+def test_screen_power_service_turns_backlight_off_after_inactivity() -> None:
+    """The extracted screen-power service should enforce the inactivity timeout."""
+
+    app, _, _ = _build_app(playback_state="stopped")
+    app.display = FakeDisplay()
+    app.app_settings = SimpleNamespace(
+        ui=SimpleNamespace(screen_timeout_seconds=300),
+        display=SimpleNamespace(brightness=80, backlight_timeout_seconds=30),
+    )
+
+    app._screen_timeout_seconds = app._resolve_screen_timeout_seconds()
+    app._active_brightness = app._resolve_active_brightness()
+    app._configure_screen_power(initial_now=0.0)
+    app.screen_power_service.update_screen_power(31.0)
 
     assert app.display.set_backlight_calls == [0.8, 0.0]
     assert app.context.screen_awake is False
@@ -1066,6 +1111,48 @@ def test_pending_shutdown_runs_hooks_and_requests_system_poweroff(tmp_path) -> N
     assert payload["external_power"] is False
 
 
+def test_shutdown_service_runs_hooks_and_requests_system_poweroff(tmp_path) -> None:
+    """The extracted shutdown service should own poweroff execution."""
+
+    shutdown_state_file = tmp_path / "last_shutdown_state.json"
+    power_manager = FakePowerManager(
+        [
+            _power_snapshot(
+                available=True,
+                battery_percent=8.0,
+                charging=False,
+                power_plugged=False,
+            )
+        ],
+        critical_shutdown_percent=10.0,
+        shutdown_delay_seconds=0.0,
+        shutdown_state_file=str(shutdown_state_file),
+    )
+    app, _, _ = _build_app_with_power(power_manager)
+    stop_calls: list[str] = []
+
+    def fake_stop(disable_watchdog: bool = True) -> None:
+        stop_calls.append("stop")
+        app._stopping = True
+
+    app.stop = fake_stop
+    app.shutdown_service.register_power_shutdown_hooks()
+    app._poll_power_status(now=0.0, force=True)
+
+    assert app._pending_shutdown is not None
+
+    app.shutdown_service.process_pending_shutdown(app._pending_shutdown.execute_at)
+
+    assert stop_calls == ["stop"]
+    assert power_manager.run_shutdown_hooks_calls == 1
+    assert power_manager.shutdown_requested is True
+    assert app._shutdown_completed is True
+
+    payload = json.loads(shutdown_state_file.read_text(encoding="utf-8"))
+    assert payload["state"] == "menu"
+    assert payload["current_screen"] == "menu"
+
+
 def test_watchdog_starts_and_feeds_from_app_loop() -> None:
     """The app loop should enable and periodically feed the PiSugar watchdog."""
 
@@ -1131,3 +1218,23 @@ def test_poweroff_path_suppresses_watchdog_feed_without_disabling_it() -> None:
     assert stop_disable_watchdog == [False]
     assert power_manager.disable_watchdog_calls == 0
     assert app.get_status()["watchdog_feed_suppressed"] is True
+
+
+def test_runtime_loop_service_refreshes_visible_power_screen() -> None:
+    """The extracted runtime loop should schedule visible-screen refresh work."""
+
+    app, _, screen_manager = _build_app_with_power(
+        FakePowerManager([_power_snapshot(available=True, battery_percent=55.0)])
+    )
+    screen_manager.push_screen("power")
+    render_calls_before = app.power_screen.render_calls
+
+    updated_at = app.runtime_loop.run_iteration(
+        monotonic_now=1.0,
+        current_time=1.0,
+        last_screen_update=0.0,
+        screen_update_interval=1.0,
+    )
+
+    assert updated_at == 1.0
+    assert app.power_screen.render_calls > render_calls_before

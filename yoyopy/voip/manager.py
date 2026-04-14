@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from loguru import logger
 
@@ -33,6 +33,9 @@ from yoyopy.voip.models import (
     VoIPEvent,
     VoIPMessageRecord,
 )
+
+if TYPE_CHECKING:
+    from yoyopy.config import ConfigManager
 
 
 @dataclass(slots=True)
@@ -60,7 +63,7 @@ class VoIPManager:
     def __init__(
         self,
         config: VoIPConfig,
-        config_manager=None,
+        config_manager: "ConfigManager | None" = None,
         backend: Optional[VoIPBackend] = None,
         message_store: Optional[VoIPMessageStore] = None,
     ) -> None:
@@ -88,7 +91,9 @@ class VoIPManager:
         self.message_received_callbacks: list[Callable[[VoIPMessageRecord], None]] = []
         self.message_delivery_callbacks: list[Callable[[VoIPMessageRecord], None]] = []
         self.message_failure_callbacks: list[Callable[[str, str], None]] = []
-        self.message_summary_callbacks: list[Callable[[int, dict[str, dict[str, str]]], None]] = []
+        self.message_summary_callbacks: list[
+            Callable[[int, dict[str, dict[str, object]]], None]
+        ] = []
 
         self.duration_thread: Optional[threading.Thread] = None
         self.duration_stop_event = threading.Event()
@@ -109,7 +114,9 @@ class VoIPManager:
         self.running = self.backend.start()
         if not self.running:
             self._update_registration_state(RegistrationState.FAILED)
-        self._notify_availability_change(self.running, "started" if self.running else "start_failed")
+        self._notify_availability_change(
+            self.running, "started" if self.running else "start_failed"
+        )
         self._notify_message_summary_change()
         return self.running
 
@@ -312,7 +319,7 @@ class VoIPManager:
     def unread_voice_note_count(self) -> int:
         return self._message_store.unread_voice_note_count()
 
-    def latest_voice_note_summary(self) -> dict[str, dict[str, str]]:
+    def latest_voice_note_summary(self) -> dict[str, dict[str, object]]:
         return self._message_store.latest_voice_note_by_contact()
 
     def mark_voice_notes_seen(self, sip_address: str) -> None:
@@ -362,7 +369,7 @@ class VoIPManager:
 
     def on_message_summary_change(
         self,
-        callback: Callable[[int, dict[str, dict[str, str]]], None],
+        callback: Callable[[int, dict[str, dict[str, object]]], None],
     ) -> None:
         self.message_summary_callbacks.append(callback)
 
@@ -378,7 +385,10 @@ class VoIPManager:
         }
 
     def get_call_duration(self) -> int:
-        if self.call_start_time and self.call_state in (CallState.CONNECTED, CallState.STREAMS_RUNNING):
+        if self.call_start_time and self.call_state in (
+            CallState.CONNECTED,
+            CallState.STREAMS_RUNNING,
+        ):
             return int(time.time() - self.call_start_time)
         return 0
 
@@ -458,11 +468,16 @@ class VoIPManager:
         if record is None:
             return
 
-        if self._active_voice_note is not None and self._active_voice_note.message_id == event.message_id:
+        if (
+            self._active_voice_note is not None
+            and self._active_voice_note.message_id == event.message_id
+        ):
             if event.delivery_state in (MessageDeliveryState.SENT, MessageDeliveryState.DELIVERED):
                 self._active_voice_note.send_state = "sent"
                 self._active_voice_note.status_text = (
-                    "Delivered" if event.delivery_state == MessageDeliveryState.DELIVERED else "Sent"
+                    "Delivered"
+                    if event.delivery_state == MessageDeliveryState.DELIVERED
+                    else "Sent"
                 )
                 self._active_voice_note.send_started_at = 0.0
             elif event.delivery_state == MessageDeliveryState.FAILED:
@@ -508,7 +523,10 @@ class VoIPManager:
 
     def _handle_message_failed(self, event: MessageFailed) -> None:
         self._message_store.update_delivery(event.message_id, MessageDeliveryState.FAILED)
-        if self._active_voice_note is not None and self._active_voice_note.message_id == event.message_id:
+        if (
+            self._active_voice_note is not None
+            and self._active_voice_note.message_id == event.message_id
+        ):
             self._active_voice_note.send_state = "failed"
             self._active_voice_note.status_text = event.reason or "Couldn't send"
             self._active_voice_note.send_started_at = 0.0
@@ -525,7 +543,8 @@ class VoIPManager:
                 return replace(
                     message,
                     mime_type=self._extract_voice_note_payload_mime(message.text) or "audio/wav",
-                    duration_ms=message.duration_ms or self._extract_voice_note_duration_ms(message.text),
+                    duration_ms=message.duration_ms
+                    or self._extract_voice_note_duration_ms(message.text),
                     text="",
                 )
             return message
@@ -539,7 +558,8 @@ class VoIPManager:
                 message,
                 kind=MessageKind.VOICE_NOTE,
                 mime_type=self._extract_voice_note_payload_mime(message.text) or "audio/wav",
-                duration_ms=message.duration_ms or self._extract_voice_note_duration_ms(message.text),
+                duration_ms=message.duration_ms
+                or self._extract_voice_note_duration_ms(message.text),
                 text="",
             )
         return message
@@ -631,7 +651,7 @@ class VoIPManager:
         if self.config_manager is not None:
             contact = self.config_manager.get_contact_by_address(sip_address)
             if contact:
-                return contact.display_name
+                return str(contact.display_name)
         return self._extract_username(sip_address)
 
     def _start_call_timer(self) -> None:
