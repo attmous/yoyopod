@@ -154,9 +154,10 @@ yoyoctl remote config show
 uv run yoyoctl remote setup
 uv run yoyoctl remote verify-setup
 yoyoctl remote status
-yoyoctl remote preflight --branch main --with-music --with-voip --with-lvgl-soak
-yoyoctl remote sync --branch main
-yoyoctl remote smoke --with-music --with-voip
+git branch --show-current
+git rev-parse HEAD
+yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-lvgl-soak
+yoyoctl remote preflight --branch <branch> --with-music --with-voip --with-lvgl-soak
 yoyoctl remote service status
 yoyoctl remote logs --lines 200
 ```

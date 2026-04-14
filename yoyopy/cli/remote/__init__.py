@@ -16,6 +16,7 @@ from yoyopy.cli.remote.ops import (
     smoke,
     status,
     sync,
+    validate,
     whisplay,
 )
 from yoyopy.cli.remote.setup import setup, verify_setup
@@ -28,6 +29,7 @@ remote_app = typer.Typer(
 
 remote_app.command()(status)
 remote_app.command()(sync)
+remote_app.command()(validate)
 remote_app.command()(smoke)
 remote_app.command()(preflight)
 remote_app.command()(restart)

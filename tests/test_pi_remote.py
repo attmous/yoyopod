@@ -1,5 +1,6 @@
 """Tests for Raspberry Pi remote workflow helpers."""
 
+import pytest
 import yaml
 
 from yoyopy.cli.remote.ops import (
@@ -19,10 +20,12 @@ from yoyopy.cli.remote.ops import (
     build_status_command,
     build_sync_command,
     build_sync_file_manifest,
+    build_validation_inspection_command,
     build_whisplay_command,
     load_pi_deploy_config,
     quote_remote_project_dir,
     resolve_local_executable,
+    resolve_local_validation_target,
     run_screenshot,
     should_use_direct_rsync,
     sync_path_is_excluded,
@@ -154,8 +157,41 @@ def test_build_sync_command_includes_uv_sync_by_default() -> None:
         branch="main",
     )
 
-    assert "uv sync --extra dev" in build_sync_command(config, skip_uv_sync=False)
-    assert "uv sync --extra dev" not in build_sync_command(config, skip_uv_sync=True)
+    command_with_uv = build_sync_command(config, skip_uv_sync=False)
+    command_without_uv = build_sync_command(config, skip_uv_sync=True)
+
+    assert "git fetch --prune origin" in command_with_uv
+    assert "git checkout --force -B main origin/main" in command_with_uv
+    assert "git clean -fd" in command_with_uv
+    assert "uv sync --extra dev" in command_with_uv
+    assert "uv sync --extra dev" not in command_without_uv
+
+
+def test_build_sync_command_supports_exact_sha_checkout() -> None:
+    """Exact-SHA sync should verify ancestry and detach to the requested commit."""
+
+    config = RemoteConfig(
+        host="rpi-zero",
+        user="pi",
+        project_dir=DEFAULT_PROJECT_DIR,
+        branch="feature/hardware-validate",
+    )
+
+    command = build_sync_command(
+        config,
+        skip_uv_sync=False,
+        target_sha="1234567890abcdef1234567890abcdef12345678",
+    )
+
+    assert (
+        "git checkout --force -B feature/hardware-validate origin/feature/hardware-validate"
+        in command
+    )
+    assert (
+        "git merge-base --is-ancestor 1234567890abcdef1234567890abcdef12345678 "
+        "origin/feature/hardware-validate"
+    ) in command
+    assert "git checkout --force --detach 1234567890abcdef1234567890abcdef12345678" in command
 
 
 def test_build_rsync_command_uses_excludes_and_remote_target() -> None:
@@ -330,6 +366,17 @@ def test_build_smoke_command_adds_optional_checks() -> None:
     assert "--voip-timeout 15.0" in command
 
 
+def test_build_validation_inspection_command_reports_marker_and_logs() -> None:
+    """Post-validate inspection should show the startup marker and recent file logs."""
+
+    command = build_validation_inspection_command(DEPLOY_CONFIG, lines=25)
+
+    assert "== Latest Startup Marker ==" in command
+    assert "grep -F 'YoyoPod starting' logs/yoyopod.log | tail -n 1" in command
+    assert "== Recent Logs ==" in command
+    assert "tail -n 25 logs/yoyopod.log" in command
+
+
 def test_build_local_preflight_commands_cover_compile_and_pytest() -> None:
     """Preflight should run both compileall and pytest locally."""
     commands = build_local_preflight_commands()
@@ -432,6 +479,51 @@ def test_build_verify_setup_command_supports_feature_flags() -> None:
     assert "--with-voice" in command
     assert "--with-pisugar" in command
     assert "--with-network" not in command
+
+
+def test_resolve_local_validation_target_uses_clean_head_and_remote_branch(monkeypatch) -> None:
+    """Committed board validation should resolve the current branch and exact pushed HEAD."""
+
+    responses = {
+        ("git", "status", "--short"): SimpleNamespace(returncode=0, stdout="", stderr=""),
+        ("git", "branch", "--show-current"): SimpleNamespace(
+            returncode=0,
+            stdout="feature/117\n",
+            stderr="",
+        ),
+        ("git", "ls-remote", "--exit-code", "origin", "refs/heads/feature/117"): SimpleNamespace(
+            returncode=0,
+            stdout="abc1234567890abc1234567890abc1234567890\trefs/heads/feature/117\n",
+            stderr="",
+        ),
+        ("git", "rev-parse", "HEAD"): SimpleNamespace(
+            returncode=0,
+            stdout="abc1234567890abc1234567890abc1234567890\n",
+            stderr="",
+        ),
+    }
+
+    def fake_run_local_capture(command):
+        return responses[tuple(command)]
+
+    monkeypatch.setattr("yoyopy.cli.remote.ops.run_local_capture", fake_run_local_capture)
+
+    assert resolve_local_validation_target(branch="", sha=None) == (
+        "feature/117",
+        "abc1234567890abc1234567890abc1234567890",
+    )
+
+
+def test_resolve_local_validation_target_rejects_dirty_worktree(monkeypatch) -> None:
+    """Dirty local state should stop the committed validation flow immediately."""
+
+    def fake_run_local_capture(_command):
+        return SimpleNamespace(returncode=0, stdout=" M yoyopy/app.py\n", stderr="")
+
+    monkeypatch.setattr("yoyopy.cli.remote.ops.run_local_capture", fake_run_local_capture)
+
+    with pytest.raises(SystemExit, match="Commit and push before `yoyoctl remote validate`"):
+        resolve_local_validation_target(branch="", sha=None)
 
 
 def test_build_lvgl_soak_command_supports_cycles_and_sleep_toggle() -> None:

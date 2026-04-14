@@ -160,6 +160,16 @@ def test_remote_sync_help():
     assert result.exit_code == 0
     assert "--host" in _plain(result.output)
     assert "--branch" in _plain(result.output)
+    assert "--sha" in _plain(result.output)
+
+
+def test_remote_validate_help():
+    result = runner.invoke(app, ["remote", "validate", "--help"])
+    assert result.exit_code == 0
+    assert "--branch" in _plain(result.output)
+    assert "--sha" in _plain(result.output)
+    assert "--with-music" in _plain(result.output)
+    assert "--lines" in _plain(result.output)
 
 
 def test_remote_smoke_help():
@@ -210,6 +220,7 @@ def test_remote_screenshot_help():
 def test_remote_rsync_help():
     result = runner.invoke(app, ["remote", "rsync", "--help"])
     assert result.exit_code == 0
+    assert "escape hatch" in _plain(result.output).lower()
 
 
 def test_remote_whisplay_help():

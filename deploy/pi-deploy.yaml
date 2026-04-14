@@ -1,9 +1,15 @@
 # Raspberry Pi deploy contract for YoyoPod.
-# This is the shared source of truth for yoyoctl remote and Pi skills.
+# This is the shared source of truth for `yoyoctl remote` and the Pi skills.
+# The board should reuse one stable checkout path at `project_dir`.
 # Machine-specific connection overrides belong in deploy/pi-deploy.local.yaml.
 # Leave host/user blank in the tracked file; do not commit personal Pi values here.
 # Create or edit that file with:
-#   uv run yoyoctl remote config edit
+#   yoyoctl remote config edit
+# Default board validation flow:
+#   git branch --show-current
+#   git rev-parse HEAD
+#   yoyoctl remote validate --branch <branch> --sha <commit>
+# Dirty-tree `yoyoctl remote rsync` is a rare debugging escape hatch only.
 
 host: ""
 user: ""

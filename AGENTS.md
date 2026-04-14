@@ -41,8 +41,8 @@ Workflow instructions for deploying and debugging on Raspberry Pi are in canonic
 
 | Skill | File | Purpose |
 |---|---|---|
-| yoyopod-deploy | `skills/yoyopod-deploy/SKILL.md` | Git push, remote branch sync, restart, verify |
-| yoyopod-sync | `skills/yoyopod-sync/SKILL.md` | Rsync dirty tree (no commit), restart |
+| yoyopod-deploy | `skills/yoyopod-deploy/SKILL.md` | Commit-safe branch/SHA validation on the Pi |
+| yoyopod-sync | `skills/yoyopod-sync/SKILL.md` | Rare-case dirty-tree sync escape hatch |
 | yoyopod-logs | `skills/yoyopod-logs/SKILL.md` | Tail app logs with filtering |
 | yoyopod-restart | `skills/yoyopod-restart/SKILL.md` | Kill processes and relaunch |
 | yoyopod-status | `skills/yoyopod-status/SKILL.md` | Health check dashboard |
@@ -300,8 +300,8 @@ Preferred remote helper:
 ```bash
 yoyoctl remote status --host rpi-zero
 yoyoctl remote preflight --host rpi-zero --with-music --with-voip --with-lvgl-soak
-yoyoctl remote sync --host rpi-zero --branch main
-yoyoctl remote smoke --host rpi-zero --with-music --with-voip --with-lvgl-soak
+git rev-parse HEAD
+yoyoctl remote validate --host rpi-zero --branch <branch> --sha <commit> --with-music --with-voip --with-lvgl-soak
 yoyoctl remote lvgl-soak --host rpi-zero --cycles 2
 yoyoctl remote power --host rpi-zero
 yoyoctl remote service install --host rpi-zero

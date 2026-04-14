@@ -325,6 +325,73 @@ def _resolve_remote_config(
     )
 
 
+def _capture_local_git(command: Sequence[str], *, action: str) -> str:
+    """Run one local git command and return its trimmed stdout."""
+    completed = run_local_capture(command)
+    if completed.returncode != 0:
+        details = completed.stderr.strip() or completed.stdout.strip() or "unknown git failure"
+        raise SystemExit(f"Failed to {action}: {details}")
+    return completed.stdout.strip()
+
+
+def resolve_local_validation_target(
+    *,
+    branch: str,
+    sha: str | None,
+) -> tuple[str, str]:
+    """Resolve the branch/SHA pair for committed on-board validation."""
+    status_output = _capture_local_git(
+        ["git", "status", "--short"],
+        action="check the local git status",
+    )
+    if status_output:
+        raise SystemExit(
+            "Local working tree has uncommitted changes. Commit and push before "
+            "`yoyoctl remote validate`. Rare-case escape hatch: `yoyoctl remote rsync`."
+        )
+
+    current_branch = _capture_local_git(
+        ["git", "branch", "--show-current"],
+        action="resolve the current branch",
+    )
+    resolved_branch = branch.strip() or current_branch
+    if not resolved_branch:
+        raise SystemExit(
+            "Could not resolve a validation branch from the local checkout. "
+            "Pass `--branch <name>` when validating from a detached HEAD."
+        )
+
+    remote_branch_lookup = run_local_capture(
+        ["git", "ls-remote", "--exit-code", "origin", f"refs/heads/{resolved_branch}"]
+    )
+    if remote_branch_lookup.returncode != 0 or not remote_branch_lookup.stdout.strip():
+        raise SystemExit(
+            f"origin/{resolved_branch} is not pushed yet. Push the branch before board validation."
+        )
+    remote_branch_head = remote_branch_lookup.stdout.split()[0]
+
+    if sha:
+        resolved_sha = _capture_local_git(
+            ["git", "rev-parse", "--verify", f"{sha}^{{commit}}"],
+            action=f"resolve commit {sha}",
+        )
+    elif current_branch == resolved_branch:
+        resolved_sha = _capture_local_git(
+            ["git", "rev-parse", "HEAD"],
+            action="resolve HEAD",
+        )
+    else:
+        resolved_sha = remote_branch_head
+
+    if resolved_sha != remote_branch_head:
+        raise SystemExit(
+            f"origin/{resolved_branch} is at {remote_branch_head[:12]}, but the requested "
+            f"validation commit is {resolved_sha[:12]}. Push the branch before board validation."
+        )
+
+    return resolved_branch, resolved_sha
+
+
 # ---------------------------------------------------------------------------
 # Startup verification and native shim helpers
 # ---------------------------------------------------------------------------
@@ -454,6 +521,34 @@ def build_restart_command(deploy_config: PiDeployConfig) -> str:
             build_native_shim_refresh_command(deploy_config),
             managed_restart,
             build_startup_verification_command(deploy_config),
+        ]
+    )
+
+
+def build_validation_inspection_command(
+    deploy_config: PiDeployConfig | None = None,
+    *,
+    lines: int = 20,
+) -> str:
+    """Inspect the latest startup marker and recent logs after validation."""
+    deploy = deploy_config or load_pi_deploy_config()
+    log_file = shell_quote(deploy.log_file)
+    startup_marker = shell_quote(deploy.startup_marker)
+    return " && ".join(
+        [
+            "echo '== Latest Startup Marker ==' ",
+            (
+                f"if test -f {log_file}; "
+                f"then grep -F {startup_marker} {log_file} | tail -n 1 || true; "
+                "else echo 'missing'; fi"
+            ),
+            "echo",
+            "echo '== Recent Logs ==' ",
+            (
+                f"if test -f {log_file}; "
+                f"then tail -n {lines} {log_file}; "
+                "else echo 'missing'; fi"
+            ),
         ]
     )
 
@@ -764,7 +859,8 @@ def build_status_command(deploy_config: PiDeployConfig | None = None) -> str:
     return " && ".join(
         [
             "echo '== Git ==' ",
-            "git branch --show-current",
+            'branch="$(git branch --show-current)"',
+            'if test -n "$branch"; then echo "$branch"; else echo DETACHED; fi',
             "git rev-parse --short HEAD",
             "git status --short",
             "echo",
@@ -797,13 +893,30 @@ def build_status_command(deploy_config: PiDeployConfig | None = None) -> str:
     )
 
 
-def build_sync_command(config: RemoteConfig, skip_uv_sync: bool) -> str:
-    """Create the remote sync command."""
+def build_sync_command(
+    config: RemoteConfig,
+    skip_uv_sync: bool,
+    *,
+    target_sha: str | None = None,
+) -> str:
+    """Create the remote committed-code sync command."""
+    branch_literal = shlex.quote(config.branch)
+    origin_branch_literal = shlex.quote(f"origin/{config.branch}")
     commands = [
-        "git fetch origin",
-        f"git checkout {shlex.quote(config.branch)}",
-        f"git pull --ff-only origin {shlex.quote(config.branch)}",
+        "git fetch --prune origin",
+        "git clean -fd",
+        f"git checkout --force -B {branch_literal} {origin_branch_literal}",
+        "git clean -fd",
     ]
+    if target_sha:
+        target_sha_literal = shlex.quote(target_sha)
+        commands.extend(
+            [
+                f"git rev-parse --verify {target_sha_literal}^{{commit}} >/dev/null",
+                f"git merge-base --is-ancestor {target_sha_literal} {origin_branch_literal}",
+                f"git checkout --force --detach {target_sha_literal}",
+            ]
+        )
     if not skip_uv_sync:
         commands.append("uv sync --extra dev")
     return " && ".join(commands)
@@ -907,16 +1020,126 @@ def sync(
     branch: Annotated[
         str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")
     ] = "",
+    sha: Annotated[
+        Optional[str],
+        typer.Option(
+            "--sha",
+            help="Exact commit SHA to check out after syncing the branch onto the Raspberry Pi.",
+        ),
+    ] = None,
     skip_uv_sync: Annotated[
         bool, typer.Option("--skip-uv-sync", help="Skip `uv sync --extra dev` after pulling.")
     ] = False,
 ) -> None:
-    """Fetch, checkout, pull, and optionally run uv sync on the Raspberry Pi."""
+    """Sync the stable Pi checkout to one committed branch or exact commit."""
     config = _resolve_remote_config(host, user, project_dir, branch)
     validate_config(config)
-    rc = run_remote(config, build_sync_command(config, skip_uv_sync))
+    rc = run_remote(config, build_sync_command(config, skip_uv_sync, target_sha=sha))
     if rc != 0:
         raise typer.Exit(code=rc)
+
+
+def validate(
+    host: Annotated[
+        str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")
+    ] = "",
+    user: Annotated[
+        str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")
+    ] = "",
+    project_dir: Annotated[
+        str, typer.Option("--project-dir", help="Project directory on the Raspberry Pi.")
+    ] = "",
+    branch: Annotated[
+        str,
+        typer.Option(
+            "--branch",
+            help="Git branch to validate on the Raspberry Pi. Defaults to the current local branch.",
+        ),
+    ] = "",
+    sha: Annotated[
+        Optional[str],
+        typer.Option(
+            "--sha",
+            help="Exact commit SHA to validate. Defaults to local HEAD when validating the current branch.",
+        ),
+    ] = None,
+    skip_uv_sync: Annotated[
+        bool,
+        typer.Option(
+            "--skip-uv-sync", help="Skip `uv sync --extra dev` during the remote sync step."
+        ),
+    ] = False,
+    with_power: Annotated[
+        bool, typer.Option("--with-power", help="Include PiSugar power checks.")
+    ] = False,
+    with_rtc: Annotated[
+        bool, typer.Option("--with-rtc", help="Include PiSugar RTC checks.")
+    ] = False,
+    with_music: Annotated[
+        bool, typer.Option("--with-music", help="Include music-backend startup checks.")
+    ] = False,
+    with_voip: Annotated[
+        bool, typer.Option("--with-voip", help="Include SIP registration checks.")
+    ] = False,
+    with_lvgl_soak: Annotated[
+        bool,
+        typer.Option(
+            "--with-lvgl-soak", help="Include a short LVGL transition and sleep/wake soak."
+        ),
+    ] = False,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", help="Enable verbose smoke-script logging.")
+    ] = False,
+    music_timeout: Annotated[
+        int, typer.Option("--music-timeout", help="Music-backend startup timeout in seconds.")
+    ] = 5,
+    voip_timeout: Annotated[
+        float, typer.Option("--voip-timeout", help="VoIP registration timeout in seconds.")
+    ] = 90.0,
+    lines: Annotated[
+        int,
+        typer.Option("--lines", help="Number of recent startup log lines to show after launch."),
+    ] = 20,
+) -> None:
+    """Validate a committed branch/SHA on the Pi, then leave the app running."""
+    resolved_branch, resolved_sha = resolve_local_validation_target(branch=branch, sha=sha)
+    config = _resolve_remote_config(host, user, project_dir, resolved_branch)
+    validate_config(config)
+    deploy_config = load_pi_deploy_config()
+
+    sync_exit_code = run_remote(
+        config,
+        build_sync_command(config, skip_uv_sync, target_sha=resolved_sha),
+    )
+    if sync_exit_code != 0:
+        raise typer.Exit(code=sync_exit_code)
+
+    smoke_exit_code = run_remote(
+        config,
+        build_smoke_command(
+            with_power=with_power,
+            with_rtc=with_rtc,
+            with_music=with_music,
+            with_voip=with_voip,
+            with_lvgl_soak=with_lvgl_soak,
+            verbose=verbose,
+            music_timeout=music_timeout,
+            voip_timeout=voip_timeout,
+        ),
+    )
+    if smoke_exit_code != 0:
+        raise typer.Exit(code=smoke_exit_code)
+
+    restart_exit_code = run_remote(config, build_restart_command(deploy_config))
+    if restart_exit_code != 0:
+        raise typer.Exit(code=restart_exit_code)
+
+    inspect_exit_code = run_remote(
+        config,
+        build_validation_inspection_command(deploy_config, lines=lines),
+    )
+    if inspect_exit_code != 0:
+        raise typer.Exit(code=inspect_exit_code)
 
 
 def smoke(
@@ -1193,10 +1416,13 @@ def rsync(
     ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", help="Enable debug logging.")] = False,
 ) -> None:
-    """Rsync the local working tree to the Pi (no git commit needed)."""
+    """Rare-case escape hatch: mirror the local dirty working tree to the Pi."""
     config = _resolve_remote_config(host, user, project_dir, branch)
     validate_config(config)
     deploy_config = load_pi_deploy_config()
+    print(
+        "[pi-remote] warning=dirty-tree rsync is a debugging escape hatch; prefer `yoyoctl remote validate` for committed branch/SHA validation"
+    )
     rc = run_rsync_deploy(config, deploy_config, skip_restart=skip_restart)
     if rc != 0:
         raise typer.Exit(code=rc)
@@ -1402,13 +1628,36 @@ def build_parser(deploy_config: PiDeployConfig) -> argparse.ArgumentParser:
 
     sync_parser = subparsers.add_parser(
         "sync",
-        help="Fetch, checkout, pull, and optionally run uv sync on the Raspberry Pi",
+        help="Sync the stable Pi checkout to one committed branch or exact commit",
+    )
+    sync_parser.add_argument(
+        "--sha",
+        help="Exact commit SHA to check out after syncing the branch",
     )
     sync_parser.add_argument(
         "--skip-uv-sync",
         action="store_true",
-        help="Skip `uv sync --extra dev` after pulling",
+        help="Skip `uv sync --extra dev` after syncing the requested revision",
     )
+
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate one committed branch/SHA on the Pi and leave the app running",
+    )
+    validate_parser.add_argument(
+        "--sha",
+        help="Exact commit SHA to validate (defaults to local HEAD for the current branch)",
+    )
+    validate_parser.add_argument("--skip-uv-sync", action="store_true")
+    validate_parser.add_argument("--with-power", action="store_true")
+    validate_parser.add_argument("--with-rtc", action="store_true")
+    validate_parser.add_argument("--with-music", action="store_true")
+    validate_parser.add_argument("--with-voip", action="store_true")
+    validate_parser.add_argument("--with-lvgl-soak", action="store_true")
+    validate_parser.add_argument("--verbose", action="store_true")
+    validate_parser.add_argument("--music-timeout", type=int, default=5)
+    validate_parser.add_argument("--voip-timeout", type=float, default=90.0)
+    validate_parser.add_argument("--lines", type=int, default=20)
 
     screenshot_parser = subparsers.add_parser(
         "screenshot",
@@ -1501,6 +1750,12 @@ def build_parser(deploy_config: PiDeployConfig) -> argparse.ArgumentParser:
         choices=["status", "install", "start", "stop", "restart", "logs"],
     )
     service_parser.add_argument("--lines", type=int, default=100)
+
+    rsync_parser = subparsers.add_parser(
+        "rsync",
+        help="Rare-case escape hatch: mirror the local dirty working tree to the Pi",
+    )
+    rsync_parser.add_argument("--skip-restart", action="store_true")
 
     return parser
 

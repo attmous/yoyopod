@@ -1,43 +1,45 @@
 ---
 name: yoyopod-deploy
-description: Git-based deploy to Raspberry Pi (push, pull, restart)
+description: Commit-safe branch/SHA validation on Raspberry Pi
 disable-model-invocation: true
 allowed-tools:
   - Read
   - Bash(git status:*)
   - Bash(git branch --show-current:*)
+  - Bash(git rev-parse:*)
   - Bash(git push:*)
   - Bash(yoyoctl remote:*)
 ---
 
 ## Config
 
-Use `deploy/pi-deploy.yaml` as the shared deploy contract and `deploy/pi-deploy.local.yaml` for machine-specific overrides such as host, SSH user, project dir, and branch. `yoyoctl remote` merges them directly, and `yoyoctl remote config edit` is the preferred way to create or update the local override.
+Use `deploy/pi-deploy.yaml` as the shared deploy contract and `deploy/pi-deploy.local.yaml` for machine-specific overrides such as host, SSH user, and the stable Pi `project_dir`. `yoyoctl remote` merges them directly, and `yoyoctl remote config edit` is the preferred way to create or update the local override.
 
 If the file does not exist yet, run `yoyoctl remote config edit` first. That command creates `deploy/pi-deploy.local.yaml` automatically before opening it.
 
 ## Steps
 
-1. **Check local git status.** Run `git status --short`. If there are uncommitted or unstaged changes, stop and tell the user: "You have uncommitted changes. Use `/yoyopod-sync` for a dirty-tree deploy, or commit first."
+1. **Check local git status.** Run `git status --short`. If there are uncommitted or unstaged changes, stop and tell the user: "You have uncommitted changes. Commit and push first. `/yoyopod-sync` is a rare dirty-tree debugging override only."
 
-2. **Resolve the branch.** Run `git branch --show-current` and deploy that branch.
+2. **Resolve the branch and exact commit.** Run:
+   ```bash
+   git branch --show-current
+   git rev-parse HEAD
+   ```
+   If the branch is empty, stop and ask the user which branch should be validated.
 
 3. **Push the branch.** Run `git push`. If the branch has no upstream yet, run `git push -u origin <branch>`.
 
-4. **Sync the committed branch onto the Pi.** Run:
+4. **Validate the committed branch and exact SHA on the Pi.** Run:
    ```bash
-   yoyoctl remote sync --branch <branch>
+   yoyoctl remote validate --branch <branch> --sha <commit>
    ```
+   Add smoke flags such as `--with-music`, `--with-voip`, `--with-power`, `--with-rtc`, or `--with-lvgl-soak` when the task calls for them.
 
-5. **Restart and verify the app.** Run:
-   ```bash
-   yoyoctl remote restart
-   ```
-
-6. **Handle failures.** If either command fails, run:
+5. **Handle failures.** If validation fails, run:
    ```bash
    yoyoctl remote logs --lines 20
    ```
    Include the relevant error output in your response.
 
-Report the deployed branch and whether the final restart succeeded.
+6. **Report the result.** Include the deployed branch, exact SHA, whether validation passed, and that the app was left running for manual testing when the flow succeeded.
