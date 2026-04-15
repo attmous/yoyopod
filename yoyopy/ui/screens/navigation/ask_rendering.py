@@ -194,8 +194,13 @@ class AskScreenRenderingMixin:
     def _refresh_after_state_change(self) -> None:
         """Refresh the screen after updating the voice UI state."""
 
-        if self.screen_manager is not None and self.screen_manager.get_current_screen() is self:
-            self.screen_manager.refresh_current_screen()
+        if self.screen_manager is None:
+            return
+        get_current_screen = getattr(self.screen_manager, "get_current_screen", None)
+        refresh_current_screen = getattr(self.screen_manager, "refresh_current_screen", None)
+        if callable(get_current_screen) and callable(refresh_current_screen):
+            if get_current_screen() is self:
+                refresh_current_screen()
 
     def _icon_circle_fill(self) -> tuple[int, int, int]:
         """Return the blended icon halo color for the current state."""

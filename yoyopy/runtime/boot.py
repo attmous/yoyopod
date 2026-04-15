@@ -23,6 +23,11 @@ from yoyopy.coordinators import (
 from yoyopy.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
 from yoyopy.network import NetworkManager
 from yoyopy.power import PowerManager
+from yoyopy.runtime.voice import (
+    VoiceCommandExecutor,
+    VoiceRuntimeCoordinator,
+    VoiceSettingsResolver,
+)
 from yoyopy.ui.display import Display
 from yoyopy.ui.input import InteractionProfile, get_input_manager
 from yoyopy.ui.lvgl_binding import LvglInputBridge
@@ -402,6 +407,102 @@ class RuntimeBootService:
                 music_service=self.app.local_music_service,
             )
             voice_cfg = self.app.app_settings.voice if self.app.app_settings is not None else None
+            self.app.voice_runtime = VoiceRuntimeCoordinator(
+                context=context,
+                settings_resolver=VoiceSettingsResolver(
+                    context=context,
+                    config_manager=self.app.config_manager,
+                    settings_provider=lambda: VoiceSettings(
+                        commands_enabled=(
+                            self.app.context.voice.commands_enabled
+                            if self.app.context is not None
+                            else True
+                        ),
+                        ai_requests_enabled=(
+                            self.app.context.voice.ai_requests_enabled
+                            if self.app.context is not None
+                            else True
+                        ),
+                        screen_read_enabled=(
+                            self.app.context.voice.screen_read_enabled
+                            if self.app.context is not None
+                            else False
+                        ),
+                        stt_enabled=(
+                            self.app.context.voice.stt_enabled
+                            if self.app.context is not None
+                            else True
+                        ),
+                        tts_enabled=(
+                            self.app.context.voice.tts_enabled
+                            if self.app.context is not None
+                            else True
+                        ),
+                        mic_muted=(
+                            self.app.context.voice.mic_muted
+                            if self.app.context is not None
+                            else False
+                        ),
+                        output_volume=self.app.get_output_volume()
+                        or (
+                            self.app.context.voice.output_volume
+                            if self.app.context is not None
+                            else 50
+                        ),
+                        stt_backend=voice_cfg.stt_backend if voice_cfg is not None else "vosk",
+                        tts_backend=voice_cfg.tts_backend if voice_cfg is not None else "espeak-ng",
+                        vosk_model_path=(
+                            voice_cfg.vosk_model_path
+                            if voice_cfg is not None
+                            else "models/vosk-model-small-en-us"
+                        ),
+                        speaker_device_id=(
+                            self.app.context.voice.speaker_device_id
+                            if self.app.context is not None
+                            and self.app.context.voice.speaker_device_id is not None
+                            else (
+                                self.app.config_manager.get_ring_output_device()
+                                if self.app.config_manager is not None
+                                else None
+                            )
+                        ),
+                        capture_device_id=(
+                            self.app.context.voice.capture_device_id
+                            if self.app.context is not None
+                            and self.app.context.voice.capture_device_id is not None
+                            else (
+                                self.app.config_manager.get_capture_device_id()
+                                if self.app.config_manager is not None
+                                else None
+                            )
+                        ),
+                        sample_rate_hz=voice_cfg.sample_rate_hz if voice_cfg is not None else 16000,
+                        record_seconds=voice_cfg.record_seconds if voice_cfg is not None else 4,
+                        tts_rate_wpm=voice_cfg.tts_rate_wpm if voice_cfg is not None else 155,
+                        tts_voice=voice_cfg.tts_voice if voice_cfg is not None else "en",
+                    ),
+                ),
+                command_executor=VoiceCommandExecutor(
+                    context=context,
+                    config_manager=self.app.config_manager,
+                    voip_manager=self.app.voip_manager,
+                    volume_up_action=self.app.volume_up,
+                    volume_down_action=self.app.volume_down,
+                    mute_action=(
+                        self.app.voip_manager.mute if self.app.voip_manager is not None else None
+                    ),
+                    unmute_action=(
+                        self.app.voip_manager.unmute
+                        if self.app.voip_manager is not None
+                        else None
+                    ),
+                    play_music_action=(
+                        self.app.local_music_service.shuffle_all
+                        if self.app.local_music_service is not None
+                        else None
+                    ),
+                ),
+            )
             self.app.ask_screen = AskScreen(
                 display,
                 context,
@@ -420,67 +521,7 @@ class RuntimeBootService:
                     if self.app.local_music_service is not None
                     else None
                 ),
-                voice_settings_provider=lambda: VoiceSettings(
-                    commands_enabled=(
-                        self.app.context.voice.commands_enabled
-                        if self.app.context is not None
-                        else True
-                    ),
-                    ai_requests_enabled=(
-                        self.app.context.voice.ai_requests_enabled
-                        if self.app.context is not None
-                        else True
-                    ),
-                    screen_read_enabled=(
-                        self.app.context.voice.screen_read_enabled
-                        if self.app.context is not None
-                        else False
-                    ),
-                    stt_enabled=(
-                        self.app.context.voice.stt_enabled if self.app.context is not None else True
-                    ),
-                    tts_enabled=(
-                        self.app.context.voice.tts_enabled if self.app.context is not None else True
-                    ),
-                    mic_muted=(
-                        self.app.context.voice.mic_muted if self.app.context is not None else False
-                    ),
-                    output_volume=self.app.get_output_volume()
-                    or (
-                        self.app.context.voice.output_volume if self.app.context is not None else 50
-                    ),
-                    stt_backend=voice_cfg.stt_backend if voice_cfg is not None else "vosk",
-                    tts_backend=voice_cfg.tts_backend if voice_cfg is not None else "espeak-ng",
-                    vosk_model_path=(
-                        voice_cfg.vosk_model_path
-                        if voice_cfg is not None
-                        else "models/vosk-model-small-en-us"
-                    ),
-                    speaker_device_id=(
-                        self.app.context.voice.speaker_device_id
-                        if self.app.context is not None
-                        and self.app.context.voice.speaker_device_id is not None
-                        else (
-                            self.app.config_manager.get_ring_output_device()
-                            if self.app.config_manager is not None
-                            else None
-                        )
-                    ),
-                    capture_device_id=(
-                        self.app.context.voice.capture_device_id
-                        if self.app.context is not None
-                        and self.app.context.voice.capture_device_id is not None
-                        else (
-                            self.app.config_manager.get_capture_device_id()
-                            if self.app.config_manager is not None
-                            else None
-                        )
-                    ),
-                    sample_rate_hz=voice_cfg.sample_rate_hz if voice_cfg is not None else 16000,
-                    record_seconds=voice_cfg.record_seconds if voice_cfg is not None else 4,
-                    tts_rate_wpm=voice_cfg.tts_rate_wpm if voice_cfg is not None else 155,
-                    tts_voice=voice_cfg.tts_voice if voice_cfg is not None else "en",
-                ),
+                voice_runtime=self.app.voice_runtime,
             )
             self.app.power_screen = PowerScreen(
                 display,

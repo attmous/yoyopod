@@ -17,6 +17,7 @@ from yoyopy.runtime_state import (
     PowerRuntimeState,
     ScreenRuntimeState,
     TalkRuntimeState,
+    VoiceInteractionState,
     VoiceState,
     VoipRuntimeState,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "PowerRuntimeState",
     "ScreenRuntimeState",
     "TalkRuntimeState",
+    "VoiceInteractionState",
     "VoiceState",
     "VoipRuntimeState",
 ]
@@ -648,3 +650,26 @@ class AppContext:
         """Cache the latest spoken response text."""
 
         self.voice.last_spoken_text = text.strip()
+
+    def update_voice_interaction(
+        self,
+        *,
+        phase: str,
+        headline: str,
+        body: str,
+        capture_in_flight: bool | None = None,
+        ptt_active: bool | None = None,
+        generation: int | None = None,
+    ) -> None:
+        """Cache the current shared voice interaction state."""
+
+        interaction = self.voice.interaction
+        interaction.phase = phase
+        interaction.headline = headline
+        interaction.body = body
+        if capture_in_flight is not None:
+            interaction.capture_in_flight = capture_in_flight
+        if ptt_active is not None:
+            interaction.ptt_active = ptt_active
+        if generation is not None:
+            interaction.generation = generation

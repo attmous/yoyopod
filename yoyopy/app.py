@@ -53,6 +53,7 @@ from yoyopy.runtime import (
     RuntimeLoopService,
     ScreenPowerService,
     ShutdownLifecycleService,
+    VoiceRuntimeCoordinator,
 )
 from yoyopy.ui.display import Display
 from yoyopy.ui.input import InputManager, InteractionProfile
@@ -114,6 +115,7 @@ class YoyoPodApp:
         self.call_history_store: Optional[CallHistoryStore] = None
         self.recent_track_store: Optional[RecentTrackHistoryStore] = None
         self.voice_device_catalog: Optional[VoiceDeviceCatalog] = None
+        self.voice_runtime: Optional[VoiceRuntimeCoordinator] = None
 
         # Screen instances
         self.hub_screen: Optional[HubScreen] = None

@@ -209,6 +209,18 @@ class VoipRuntimeState:
 
 
 @dataclass(slots=True)
+class VoiceInteractionState:
+    """Shared state for the active voice interaction session."""
+
+    phase: str = "idle"
+    headline: str = "Ask"
+    body: str = "Ask me anything..."
+    capture_in_flight: bool = False
+    ptt_active: bool = False
+    generation: int = 0
+
+
+@dataclass(slots=True)
 class VoiceState:
     """Runtime voice settings and recent voice activity."""
 
@@ -226,6 +238,7 @@ class VoiceState:
     last_spoken_text: str = ""
     last_mode: str = ""
     output_volume: int = 50
+    interaction: VoiceInteractionState = field(default_factory=VoiceInteractionState)
 
 
 @dataclass(slots=True)

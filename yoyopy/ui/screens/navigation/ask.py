@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable, Optional
 
+from yoyopy.runtime.voice import (
+    VoiceCommandExecutor,
+    VoiceRuntimeCoordinator,
+    VoiceSettingsResolver,
+)
 from yoyopy.ui.display import Display
 from yoyopy.ui.screens.base import Screen
 from yoyopy.ui.screens.navigation.ask_rendering import AskScreenRenderingMixin
 from yoyopy.ui.screens.navigation.ask_voice import AskScreenVoiceMixin
 from yoyopy.voice import VoiceService, VoiceSettings
-from yoyopy.voice.output import AlsaOutputPlayer
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
@@ -41,58 +45,70 @@ class AskScreen(AskScreenVoiceMixin, AskScreenRenderingMixin, Screen):
         play_music_action: Optional[Callable[[], bool]] = None,
         voice_settings_provider: Optional[Callable[[], VoiceSettings]] = None,
         voice_service_factory: Optional[Callable[[VoiceSettings], VoiceService]] = None,
+        voice_runtime: Optional["VoiceRuntimeCoordinator"] = None,
     ) -> None:
         super().__init__(display, context, "Ask")
         self.config_manager = config_manager
         self.voip_manager = voip_manager
-        self.volume_up_action = volume_up_action
-        self.volume_down_action = volume_down_action
-        self.mute_action = mute_action
-        self.unmute_action = unmute_action
-        self.play_music_action = play_music_action
-        self.voice_settings_provider = voice_settings_provider
-        self.voice_service_factory = voice_service_factory
-        self._cached_voice_service: VoiceService | None = None
+        self.voice_runtime = voice_runtime or VoiceRuntimeCoordinator(
+            context=context,
+            settings_resolver=VoiceSettingsResolver(
+                context=context,
+                config_manager=config_manager,
+                settings_provider=voice_settings_provider,
+            ),
+            command_executor=VoiceCommandExecutor(
+                context=context,
+                config_manager=config_manager,
+                voip_manager=voip_manager,
+                volume_up_action=volume_up_action,
+                volume_down_action=volume_down_action,
+                mute_action=mute_action,
+                unmute_action=unmute_action,
+                play_music_action=play_music_action,
+                screen_summary_provider=self._screen_summary,
+            ),
+            voice_service_factory=voice_service_factory,
+        )
+        self._async_voice_capture = voice_runtime is not None or voice_service_factory is None
         self._state: str = "idle"
         self._headline: str = "Ask"
         self._body: str = "Ask me anything..."
-        self._auto_listen_started = False
         self._capture_in_flight = False
         self._listen_generation = 0
-        self._active_capture_cancel = None
-        self._output_player = AlsaOutputPlayer()
         self._quick_command = False
         self._ptt_active = False
         self._auto_return_timer = None
         self._lvgl_view: "ScreenView | None" = None
+        self._bind_voice_runtime()
 
     def enter(self) -> None:
         """Reset to a ready state when entering the Ask screen."""
 
         super().enter()
-        self._cancel_listening_cycle()
-        self._auto_listen_started = False
-        self._capture_in_flight = False
-
-        self._state = "idle"
-        self._headline = "Ask"
-        self._body = "Ask me anything..."
-        if self._quick_command:
-            self._start_ptt_capture()
-        else:
-            self._begin_listening_on_entry()
+        self._cancel_auto_return()
+        self.voice_runtime.begin_entry_cycle(
+            quick_command=self._quick_command,
+            async_capture=self._async_voice_capture,
+        )
         self._ensure_lvgl_view()
 
     def exit(self) -> None:
         """Invalidate any in-flight result before leaving the screen."""
 
-        self._cancel_listening_cycle()
+        self.voice_runtime.cancel()
         self._cancel_auto_return()
         self._quick_command = False
         if self._lvgl_view is not None:
             self._lvgl_view.destroy()
             self._lvgl_view = None
         super().exit()
+
+    def set_screen_manager(self, manager) -> None:
+        """Bind screen-manager scheduling to the shared voice runtime."""
+
+        super().set_screen_manager(manager)
+        self._bind_voice_runtime()
 
     def set_quick_command(self, enabled: bool) -> None:
         """Enable or disable quick-command mode for one-shot entry."""
@@ -103,3 +119,10 @@ class AskScreen(AskScreenVoiceMixin, AskScreenRenderingMixin, Screen):
         """Return True when Ask should receive raw PTT release events."""
 
         return self.is_one_button_mode() and self._quick_command
+
+    def _screen_summary(self) -> str:
+        """Return the current screen summary for spoken playback."""
+
+        if self.context is not None and self.context.voice.screen_read_enabled:
+            return "You are on Ask. Say a direct command now."
+        return "Screen read is off. Turn it on in Setup to auto-read screens."
