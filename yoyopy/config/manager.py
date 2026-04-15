@@ -6,53 +6,26 @@ Manages typed app/VoIP settings and contacts from YAML configuration files.
 
 from __future__ import annotations
 
-import os
-import tempfile
 import yaml
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
 from loguru import logger
 
+from yoyopy.config.contacts import Contact, contacts_from_mapping, contacts_to_mapping
+from yoyopy.config.layers import resolve_config_board, resolve_config_layers
 from yoyopy.config.models import (
     VoIPFileConfig,
     YoyoPodConfig,
     build_config_model,
     config_to_dict,
 )
-
-
-def _deep_merge_mappings(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
-    """Recursively merge one config mapping into another."""
-
-    merged = dict(base)
-    for key, value in overlay.items():
-        if isinstance(merged.get(key), dict) and isinstance(value, dict):
-            merged[key] = _deep_merge_mappings(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
-
-
-@dataclass
-class Contact:
-    """Represents a VoIP contact."""
-
-    name: str
-    sip_address: str
-    favorite: bool = False
-    notes: str = ""
-
-    @property
-    def display_name(self) -> str:
-        """Return the kid-facing label for the contact."""
-
-        label = self.notes.strip()
-        return label or self.name
-
-    def __str__(self) -> str:
-        return f"{self.name} ({self.sip_address})"
+from yoyopy.config.storage import (
+    atomic_write_yaml,
+    deep_merge_mappings,
+    load_yaml_layers,
+    load_yaml_mapping,
+)
 
 
 class ConfigManager:
@@ -68,10 +41,22 @@ class ConfigManager:
         config_board: str | None = None,
     ) -> None:
         self.config_dir = Path(config_dir)
-        self.config_board = self._resolve_config_board(explicit_board=config_board)
-        self.app_config_layers = self._resolve_config_layers("yoyopod_config.yaml")
-        self.voip_config_layers = self._resolve_config_layers("voip_config.yaml")
-        self.contacts_layers = self._resolve_config_layers("contacts.yaml")
+        self.config_board = resolve_config_board(explicit_board=config_board)
+        self.app_config_layers = resolve_config_layers(
+            self.config_dir,
+            self.config_board,
+            "yoyopod_config.yaml",
+        )
+        self.voip_config_layers = resolve_config_layers(
+            self.config_dir,
+            self.config_board,
+            "voip_config.yaml",
+        )
+        self.contacts_layers = resolve_config_layers(
+            self.config_dir,
+            self.config_board,
+            "contacts.yaml",
+        )
 
         self.app_config_file = self.app_config_layers[-1]
         self.voip_config_file = self.voip_config_layers[-1]
@@ -107,7 +92,7 @@ class ConfigManager:
 
         self.app_config_loaded = any(path.exists() for path in self.app_config_layers)
         try:
-            data = self._load_yaml_layers(self.app_config_layers)
+            data = load_yaml_layers(self.app_config_layers)
             self.app_settings = build_config_model(YoyoPodConfig, data)
             self.app_config = config_to_dict(self.app_settings)
 
@@ -144,7 +129,7 @@ class ConfigManager:
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True)
             data = config_to_dict(self.app_settings)
-            self._atomic_write_yaml(self.app_config_file, data)
+            atomic_write_yaml(self.app_config_file, data)
             self.app_config = data
             self.app_config_loaded = True
             logger.info("App configuration saved successfully")
@@ -157,9 +142,9 @@ class ConfigManager:
         """Persist one partial update into the active app-config layer only."""
 
         try:
-            current = self._load_yaml_mapping(self.app_config_file)
-            data = _deep_merge_mappings(current, patch)
-            self._atomic_write_yaml(self.app_config_file, data)
+            current = load_yaml_mapping(self.app_config_file)
+            data = deep_merge_mappings(current, patch)
+            atomic_write_yaml(self.app_config_file, data)
             self.app_config_loaded = True
             logger.info("App configuration layer updated successfully")
             return True
@@ -184,7 +169,7 @@ class ConfigManager:
             self._create_default_voip_config()
 
         try:
-            data = self._load_yaml_layers(self.voip_config_layers)
+            data = load_yaml_layers(self.voip_config_layers)
             self.voip_settings = build_config_model(VoIPFileConfig, data)
             self.voip_config = config_to_dict(self.voip_settings)
 
@@ -215,18 +200,8 @@ class ConfigManager:
             return False
 
         try:
-            data = self._load_yaml_layers(self.contacts_layers)
-
-            self.contacts = [
-                Contact(
-                    name=contact_data.get("name", ""),
-                    sip_address=contact_data.get("sip_address", ""),
-                    favorite=contact_data.get("favorite", False),
-                    notes=contact_data.get("notes", ""),
-                )
-                for contact_data in data.get("contacts", [])
-            ]
-            self.speed_dial = data.get("speed_dial", {})
+            data = load_yaml_layers(self.contacts_layers)
+            self.contacts, self.speed_dial = contacts_from_mapping(data)
 
             logger.info(f"Loaded {len(self.contacts)} contacts")
             return True
@@ -243,18 +218,7 @@ class ConfigManager:
         """
 
         try:
-            data = {
-                "contacts": [
-                    {
-                        "name": contact.name,
-                        "sip_address": contact.sip_address,
-                        "favorite": contact.favorite,
-                        "notes": contact.notes,
-                    }
-                    for contact in self.contacts
-                ],
-                "speed_dial": self.speed_dial,
-            }
+            data = contacts_to_mapping(self.contacts, self.speed_dial)
 
             with open(self.contacts_file, "w", encoding="utf-8") as handle:
                 yaml.dump(data, handle, default_flow_style=False, sort_keys=False)
@@ -264,35 +228,6 @@ class ConfigManager:
         except Exception:
             logger.exception("Error saving contacts")
             return False
-
-    @staticmethod
-    def _atomic_write_yaml(path: Path, data: dict[str, Any]) -> None:
-        """Write YAML atomically so power loss never corrupts the config file."""
-
-        directory = path.parent
-        directory.mkdir(parents=True, exist_ok=True)
-
-        fd, tmp_path = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(directory))
-        tmp = Path(tmp_path)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                yaml.dump(data, handle, default_flow_style=False, sort_keys=False)
-            os.replace(str(tmp), str(path))
-        finally:
-            try:
-                tmp.unlink(missing_ok=True)
-            except Exception:
-                pass
-
-    @staticmethod
-    def _load_yaml_mapping(path: Path) -> dict[str, Any]:
-        """Load one YAML mapping from disk, tolerating missing files."""
-
-        if not path.exists():
-            return {}
-        with open(path, "r", encoding="utf-8") as handle:
-            loaded = yaml.safe_load(handle) or {}
-        return loaded if isinstance(loaded, dict) else {}
 
     def _create_default_voip_config(self) -> None:
         """Create a default typed VoIP configuration file."""
@@ -325,67 +260,21 @@ class ConfigManager:
 
         self.load_contacts()
 
-    @classmethod
-    def _detect_config_board(cls) -> str | None:
-        """Return the known board config that matches the current hardware."""
-
-        model = cls._read_device_tree_text(Path("/proc/device-tree/model")).lower()
-        compatible = cls._read_device_tree_text(Path("/proc/device-tree/compatible")).lower()
-
-        if "cubie a7z" in model or "radxa,cubie-a7z" in compatible:
-            return "radxa-cubie-a7z"
-        if "raspberry pi zero 2" in model:
-            return "rpi-zero-2w"
-
-        return None
-
-    @staticmethod
-    def _read_device_tree_text(path: Path) -> str:
-        """Read one device-tree text node, tolerating missing files off-device."""
-
-        try:
-            return path.read_bytes().replace(b"\x00", b"\n").decode("utf-8", errors="ignore")
-        except OSError:
-            return ""
-
     def _resolve_config_board(
         self,
         *,
         explicit_board: str | None,
     ) -> str | None:
         """Resolve the active board config from args, env, or hardware detection."""
-
-        if explicit_board:
-            return explicit_board
-
-        env_board = os.getenv("YOYOPOD_CONFIG_BOARD", "").strip()
-        if env_board:
-            return env_board
-
-        return self._detect_config_board()
+        return resolve_config_board(explicit_board=explicit_board)
 
     def _resolve_config_layers(self, filename: str) -> tuple[Path, ...]:
         """Return the base config file plus any matching board overlay."""
-
-        layers = [self.config_dir / filename]
-        if self.config_board:
-            board_file = self.config_dir / "boards" / self.config_board / filename
-            if board_file.exists():
-                layers.append(board_file)
-        return tuple(layers)
+        return resolve_config_layers(self.config_dir, self.config_board, filename)
 
     def _load_yaml_layers(self, paths: tuple[Path, ...]) -> dict[str, Any]:
         """Load and merge YAML mappings from lowest to highest precedence."""
-
-        merged: dict[str, Any] = {}
-        for path in paths:
-            if not path.exists():
-                continue
-            with open(path, "r", encoding="utf-8") as handle:
-                loaded = yaml.safe_load(handle) or {}
-            if isinstance(loaded, dict):
-                merged = _deep_merge_mappings(merged, loaded)
-        return merged
+        return load_yaml_layers(paths)
 
     def get_app_settings(self) -> YoyoPodConfig:
         """Return the typed application configuration model."""

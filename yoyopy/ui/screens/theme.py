@@ -2,204 +2,68 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PIL import Image
 
 from yoyopy.ui.display import Display
+from yoyopy.ui.screens.theme_assets import ICON_ASSET_DIR, PHOSPHOR_ICON_FILES, load_icon_asset
+from yoyopy.ui.screens.theme_text import mix, text_fit, wrap_text
+from yoyopy.ui.screens.theme_tokens import (
+    ASK,
+    BACKGROUND,
+    ERROR,
+    FOOTER_BAR,
+    FOOTER_SAFE_HEIGHT_LANDSCAPE,
+    FOOTER_SAFE_HEIGHT_PORTRAIT,
+    HEADER_SIDE_INSET_LANDSCAPE,
+    HEADER_SIDE_INSET_PORTRAIT,
+    INK,
+    LISTEN,
+    MUTED,
+    MUTED_DIM,
+    ModeTheme,
+    NEUTRAL,
+    SETUP,
+    STATUS_BATTERY_GAP_LANDSCAPE,
+    STATUS_BATTERY_GAP_PORTRAIT,
+    STATUS_BATTERY_SIDE_INSET_LANDSCAPE,
+    STATUS_BATTERY_SIDE_INSET_PORTRAIT,
+    STATUS_BATTERY_TOP_LANDSCAPE,
+    STATUS_BATTERY_TOP_PORTRAIT,
+    STATUS_CLOCK_TOP_LANDSCAPE,
+    STATUS_CLOCK_TOP_PORTRAIT,
+    STATUS_CLUSTER_GAP_LANDSCAPE,
+    STATUS_CLUSTER_GAP_PORTRAIT,
+    STATUS_GPS_CENTER_RADIUS,
+    STATUS_GPS_ICON_HEIGHT,
+    STATUS_GPS_ICON_WIDTH,
+    STATUS_GPS_RING_RADIUS,
+    STATUS_ICON_BOTTOM_LANDSCAPE,
+    STATUS_ICON_BOTTOM_PORTRAIT,
+    STATUS_SIDE_INSET_LANDSCAPE,
+    STATUS_SIDE_INSET_PORTRAIT,
+    STATUS_SIGNAL_BAR_GAP,
+    STATUS_SIGNAL_BAR_HEIGHTS,
+    STATUS_SIGNAL_BAR_WIDTH,
+    STATUS_TIME_FONT_SIZE,
+    STATUS_VOIP_ICON_RADIUS,
+    STATUS_WIFI_DOT_RADIUS,
+    STATUS_WIFI_ICON_HEIGHT,
+    STATUS_WIFI_ICON_WIDTH,
+    SUCCESS,
+    SURFACE,
+    SURFACE_BORDER,
+    SURFACE_RAISED,
+    TALK,
+    WARNING,
+    Color,
+    theme_for,
+)
 
 if TYPE_CHECKING:
     from yoyopy.app_context import AppContext
-
-Color = tuple[int, int, int]
-
-BACKGROUND: Color = (42, 45, 53)
-SURFACE: Color = (49, 52, 60)
-SURFACE_RAISED: Color = (54, 58, 68)
-SURFACE_BORDER: Color = (80, 85, 97)
-FOOTER_BAR: Color = (31, 33, 39)
-INK: Color = (255, 255, 255)
-MUTED: Color = (180, 183, 190)
-MUTED_DIM: Color = (122, 125, 132)
-SUCCESS: Color = (61, 221, 83)
-WARNING: Color = (255, 208, 0)
-ERROR: Color = (255, 103, 93)
-NEUTRAL: Color = (156, 163, 175)
-FOOTER_SAFE_HEIGHT_PORTRAIT = 32
-FOOTER_SAFE_HEIGHT_LANDSCAPE = 28
-STATUS_SIDE_INSET_PORTRAIT = 16
-STATUS_SIDE_INSET_LANDSCAPE = 10
-STATUS_CLOCK_TOP_PORTRAIT = 7
-STATUS_CLOCK_TOP_LANDSCAPE = 6
-STATUS_TIME_FONT_SIZE = 11
-STATUS_BATTERY_TOP_PORTRAIT = 9
-STATUS_BATTERY_TOP_LANDSCAPE = 8
-STATUS_ICON_BOTTOM_PORTRAIT = 20
-STATUS_ICON_BOTTOM_LANDSCAPE = 16
-STATUS_CLUSTER_GAP_PORTRAIT = 6
-STATUS_CLUSTER_GAP_LANDSCAPE = 5
-STATUS_BATTERY_SIDE_INSET_PORTRAIT = 18
-STATUS_BATTERY_SIDE_INSET_LANDSCAPE = 10
-STATUS_BATTERY_GAP_PORTRAIT = 28
-STATUS_BATTERY_GAP_LANDSCAPE = 24
-STATUS_SIGNAL_BAR_WIDTH = 3
-STATUS_SIGNAL_BAR_GAP = 1
-STATUS_SIGNAL_BAR_HEIGHTS = (4, 7, 10, 13)
-STATUS_WIFI_ICON_WIDTH = 11
-STATUS_WIFI_ICON_HEIGHT = 11
-STATUS_WIFI_DOT_RADIUS = 1
-STATUS_GPS_ICON_WIDTH = 8
-STATUS_GPS_ICON_HEIGHT = 12
-STATUS_GPS_RING_RADIUS = 3
-STATUS_GPS_CENTER_RADIUS = 1
-STATUS_VOIP_ICON_RADIUS = 3
-HEADER_SIDE_INSET_PORTRAIT = 18
-HEADER_SIDE_INSET_LANDSCAPE = 16
-
-
-@dataclass(frozen=True, slots=True)
-class ModeTheme:
-    """Palette for one product mode."""
-
-    key: str
-    label: str
-    accent: Color
-    hero_end: Color
-    accent_soft: Color
-    accent_dim: Color
-
-
-LISTEN = ModeTheme(
-    key="listen",
-    label="Listen",
-    accent=(0, 255, 136),
-    hero_end=(0, 204, 106),
-    accent_soft=(0, 204, 106),
-    accent_dim=(0, 108, 63),
-)
-TALK = ModeTheme(
-    key="talk",
-    label="Talk",
-    accent=(0, 212, 255),
-    hero_end=(0, 153, 255),
-    accent_soft=(0, 153, 255),
-    accent_dim=(0, 102, 158),
-)
-ASK = ModeTheme(
-    key="ask",
-    label="Ask",
-    accent=(255, 208, 0),
-    hero_end=(255, 170, 0),
-    accent_soft=(255, 170, 0),
-    accent_dim=(145, 102, 0),
-)
-SETUP = ModeTheme(
-    key="setup",
-    label="Setup",
-    accent=(156, 163, 175),
-    hero_end=(107, 114, 128),
-    accent_soft=(107, 114, 128),
-    accent_dim=(84, 90, 102),
-)
-
-THEMES = {
-    "listen": LISTEN,
-    "music": LISTEN,
-    "playlists": LISTEN,
-    "now_playing": LISTEN,
-    "talk": TALK,
-    "call": TALK,
-    "contacts": TALK,
-    "incoming": TALK,
-    "outgoing": TALK,
-    "in_call": TALK,
-    "ask": ASK,
-    "setup": SETUP,
-    "power": SETUP,
-    "menu": SETUP,
-    "home": SETUP,
-}
-
-ICON_ASSET_DIR = Path(__file__).resolve().parent / "assets" / "phosphor"
-PHOSPHOR_ICON_FILES = {
-    "listen": "hub-listen.png",
-    "talk": "hub-talk.png",
-    "ask": "hub-ask.png",
-    "voice_note": "microphone.png",
-    "call": "phone-call.png",
-    "setup": "hub-setup.png",
-    "power": "gear-six.png",
-}
-_ICON_CACHE: dict[str, Image.Image] = {}
-
-
-def theme_for(mode: str) -> ModeTheme:
-    """Return the palette for a mode key."""
-
-    return THEMES.get(mode, SETUP)
-
-
-def mix(color_a: Color, color_b: Color, ratio: float) -> Color:
-    """Return a simple RGB mix."""
-
-    ratio = max(0.0, min(1.0, ratio))
-    return (
-        int(color_a[0] * (1.0 - ratio) + color_b[0] * ratio),
-        int(color_a[1] * (1.0 - ratio) + color_b[1] * ratio),
-        int(color_a[2] * (1.0 - ratio) + color_b[2] * ratio),
-    )
-
-
-def text_fit(display: Display, text: str, max_width: int, font_size: int) -> str:
-    """Trim text to fit a target width."""
-
-    if display.get_text_size(text, font_size)[0] <= max_width:
-        return text
-
-    trimmed = text
-    while trimmed and display.get_text_size(f"{trimmed}...", font_size)[0] > max_width:
-        trimmed = trimmed[:-1]
-    return f"{trimmed}..." if trimmed else "..."
-
-
-def wrap_text(
-    display: Display,
-    text: str,
-    max_width: int,
-    font_size: int,
-    max_lines: int = 2,
-) -> list[str]:
-    """Wrap text into compact lines that fit the provided width."""
-
-    words = text.split()
-    if not words:
-        return []
-
-    lines: list[str] = []
-    current = words[0]
-    for word in words[1:]:
-        candidate = f"{current} {word}"
-        if display.get_text_size(candidate, font_size)[0] <= max_width:
-            current = candidate
-            continue
-
-        lines.append(current)
-        current = word
-        if len(lines) == max_lines - 1:
-            break
-
-    if len(lines) < max_lines:
-        lines.append(current)
-
-    if len(words) > 1 and len(lines) == max_lines:
-        consumed_words = sum(len(line.split()) for line in lines)
-        if consumed_words < len(words):
-            lines[-1] = text_fit(display, f"{lines[-1]}...", max_width, font_size)
-
-    return lines[:max_lines]
 
 
 def _get_draw(display: Display):
@@ -1047,7 +911,7 @@ def _paste_phosphor_icon(
     if buffer is None:
         return False
 
-    source = _load_icon_asset(filename)
+    source = load_icon_asset(filename)
     if source is None:
         return False
 
@@ -1057,25 +921,6 @@ def _paste_phosphor_icon(
     tinted.putalpha(alpha)
     buffer.paste(tinted, (x, y), tinted)
     return True
-
-
-def _load_icon_asset(filename: str) -> Image.Image | None:
-    """Load and cache one PNG icon asset from disk."""
-
-    cached = _ICON_CACHE.get(filename)
-    if cached is not None:
-        return cached
-
-    path = ICON_ASSET_DIR / filename
-    if not path.exists():
-        return None
-
-    with Image.open(path) as icon:
-        rgba_icon = icon.convert("RGBA")
-    _ICON_CACHE[filename] = rgba_icon
-    return rgba_icon
-
-
 def _draw_listen_icon(display: Display, draw, x: int, y: int, size: int, color: Color) -> None:
     stroke = max(2, size // 14)
     pad = max(4, size // 6)
