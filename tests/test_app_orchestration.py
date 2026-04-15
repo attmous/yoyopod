@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import threading
+from dataclasses import dataclass
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Protocol
 
 import pytest
 
@@ -13,7 +15,7 @@ from yoyopy.app import YoyoPodApp
 from yoyopy.app_context import AppContext
 from yoyopy.audio import MockMusicBackend
 from yoyopy.voip import CallState, RegistrationState
-from yoyopy.coordinators.runtime import AppRuntimeState
+from yoyopy.coordinators.runtime import AppRuntimeState, CoordinatorRuntime
 from yoyopy.events import (
     CallEndedEvent,
     CallStateChangedEvent,
@@ -35,6 +37,23 @@ from yoyopy.fsm import (
 )
 from yoyopy.power import BatteryState, PowerSnapshot
 from yoyopy.ui.input import InputManager, InteractionProfile
+
+
+class RenderableScreen(Protocol):
+    """Small screen surface used by orchestration test doubles."""
+
+    render_calls: int
+    route_name: str | None
+
+    def render(self) -> None: ...
+
+
+class IncomingCallScreenLike(RenderableScreen, Protocol):
+    """Extra incoming-call fields used by the screen coordinator."""
+
+    caller_address: str
+    caller_name: str
+    ring_animation_frame: int
 
 
 class FakeScreen:
@@ -89,10 +108,10 @@ class FakeLvglBackend:
 class FakeScreenManager:
     """Simple stack-based screen manager double."""
 
-    def __init__(self, screen_lookup: dict[str, object]) -> None:
+    def __init__(self, screen_lookup: dict[str, RenderableScreen]) -> None:
         self.screen_lookup = screen_lookup
-        self.screen_stack: list[object] = []
-        self.current_screen: object | None = None
+        self.screen_stack: list[RenderableScreen] = []
+        self.current_screen: RenderableScreen | None = None
         self.on_screen_changed = None
 
         for name, screen in screen_lookup.items():
@@ -111,7 +130,7 @@ class FakeScreenManager:
         route_name = getattr(self.current_screen, "route_name", None)
         self._notify_screen_changed(route_name)
 
-    def get_current_screen(self) -> object | None:
+    def get_current_screen(self) -> RenderableScreen | None:
         return self.current_screen
 
     def _notify_screen_changed(self, route_name: str | None) -> None:
@@ -293,52 +312,160 @@ def _power_snapshot(
     )
 
 
+@dataclass(slots=True)
+class OrchestrationScreens:
+    """Grouped screen doubles used by the orchestration test harness."""
+
+    menu: RenderableScreen
+    power: RenderableScreen
+    now_playing: RenderableScreen
+    playlist: RenderableScreen
+    call: RenderableScreen
+    contacts: RenderableScreen
+    incoming_call: IncomingCallScreenLike
+    outgoing_call: RenderableScreen
+    in_call: RenderableScreen
+
+    def screen_lookup(self) -> dict[str, RenderableScreen]:
+        return {
+            "menu": self.menu,
+            "power": self.power,
+            "playlists": self.playlist,
+            "contacts": self.contacts,
+            "incoming_call": self.incoming_call,
+            "outgoing_call": self.outgoing_call,
+            "in_call": self.in_call,
+        }
+
+
+@dataclass(slots=True)
+class OrchestrationHarness:
+    """Small test-only app harness for coordinator-heavy orchestration cases."""
+
+    app: YoyoPodApp
+    music_backend: FakeMusicBackend
+    screen_manager: FakeScreenManager
+    screens: OrchestrationScreens
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        playback_state: str = "stopped",
+        auto_resume: bool = True,
+        power_manager: FakePowerManager | None = None,
+    ) -> OrchestrationHarness:
+        app = YoyoPodApp(simulate=True)
+        app.context = AppContext()
+        app.music_fsm = MusicFSM()
+        app.call_fsm = CallFSM()
+        app.call_interruption_policy = CallInterruptionPolicy()
+        app.auto_resume_after_call = auto_resume
+        app.voip_registered = False
+        app.power_manager = power_manager
+
+        music_backend = FakeMusicBackend(playback_state=playback_state)
+        app.music_backend = music_backend
+
+        screens = OrchestrationScreens(
+            menu=FakeScreen(),
+            power=FakeScreen(),
+            now_playing=FakeScreen(),
+            playlist=FakeScreen(),
+            call=FakeScreen(),
+            contacts=FakeScreen(),
+            incoming_call=FakeIncomingCallScreen(),
+            outgoing_call=FakeScreen(),
+            in_call=FakeScreen(),
+        )
+        app.menu_screen = screens.menu
+        app.power_screen = screens.power
+        app.now_playing_screen = screens.now_playing
+        app.playlist_screen = screens.playlist
+        app.call_screen = screens.call
+        app.contact_list_screen = screens.contacts
+        app.incoming_call_screen = screens.incoming_call
+        app.outgoing_call_screen = screens.outgoing_call
+        app.in_call_screen = screens.in_call
+
+        screen_manager = FakeScreenManager(screens.screen_lookup())
+        app.screen_manager = screen_manager
+        app.screen_manager.push_screen("menu")
+        app._ui_state = AppRuntimeState.MENU
+
+        app._setup_event_subscriptions()
+        assert app.call_coordinator is not None
+        app.call_coordinator.start_ringing = lambda: None
+        app.call_coordinator.stop_ringing = lambda: None
+        return cls(
+            app=app,
+            music_backend=music_backend,
+            screen_manager=screen_manager,
+            screens=screens,
+        )
+
+    @property
+    def runtime(self) -> CoordinatorRuntime:
+        assert self.app.coordinator_runtime is not None
+        return self.app.coordinator_runtime
+
+    @property
+    def music_fsm(self) -> MusicFSM:
+        assert self.app.music_fsm is not None
+        return self.app.music_fsm
+
+    @property
+    def call_fsm(self) -> CallFSM:
+        assert self.app.call_fsm is not None
+        return self.app.call_fsm
+
+    @property
+    def call_interruption_policy(self) -> CallInterruptionPolicy:
+        assert self.app.call_interruption_policy is not None
+        return self.app.call_interruption_policy
+
+    def sync_runtime(
+        self,
+        *,
+        music_state: MusicState | None = None,
+        call_state: CallSessionState | None = None,
+        music_interrupted_by_call: bool | None = None,
+        trigger: str = "test_setup",
+    ) -> None:
+        if music_state is not None:
+            self.music_fsm.sync(music_state)
+        if call_state is not None:
+            self.call_fsm.sync(call_state)
+        if music_interrupted_by_call is not None:
+            self.call_interruption_policy.music_interrupted_by_call = (
+                music_interrupted_by_call
+            )
+        self.runtime.sync_app_state(trigger)
+
+    def push_screens(self, *screen_names: str) -> None:
+        for screen_name in screen_names:
+            self.screen_manager.push_screen(screen_name)
+
+    def show_now_playing(self) -> None:
+        self.screen_manager.current_screen = self.screens.now_playing
+
+    def publish(self, event: object) -> None:
+        _publish_from_worker(self.app, event)
+
+    def drain_events(self) -> int:
+        return self.app.event_bus.drain()
+
+
 def _build_app(playback_state: str = "stopped", auto_resume: bool = True) -> tuple[
     YoyoPodApp,
     FakeMusicBackend,
     FakeScreenManager,
 ]:
-    app = YoyoPodApp(simulate=True)
-    app.context = AppContext()
-    app.music_fsm = MusicFSM()
-    app.call_fsm = CallFSM()
-    app.call_interruption_policy = CallInterruptionPolicy()
-    app.auto_resume_after_call = auto_resume
-    app.voip_registered = False
-    app.power_manager = None
-
-    music_backend = FakeMusicBackend(playback_state=playback_state)
-    app.music_backend = music_backend
-
-    app.menu_screen = FakeScreen()
-    app.power_screen = FakeScreen()
-    app.now_playing_screen = FakeScreen()
-    app.playlist_screen = FakeScreen()
-    app.call_screen = FakeScreen()
-    app.contact_list_screen = FakeScreen()
-    app.incoming_call_screen = FakeIncomingCallScreen()
-    app.outgoing_call_screen = FakeScreen()
-    app.in_call_screen = FakeScreen()
-
-    screen_manager = FakeScreenManager(
-        {
-            "menu": app.menu_screen,
-            "power": app.power_screen,
-            "playlists": app.playlist_screen,
-            "contacts": app.contact_list_screen,
-            "incoming_call": app.incoming_call_screen,
-            "outgoing_call": app.outgoing_call_screen,
-            "in_call": app.in_call_screen,
-        }
+    harness = OrchestrationHarness.build(
+        playback_state=playback_state,
+        auto_resume=auto_resume,
     )
-    app.screen_manager = screen_manager
-    app.screen_manager.push_screen("menu")
-    app._ui_state = AppRuntimeState.MENU
-
-    app._setup_event_subscriptions()
-    app.call_coordinator.start_ringing = lambda: None
-    app.call_coordinator.stop_ringing = lambda: None
-    return app, music_backend, screen_manager
+    return harness.app, harness.music_backend, harness.screen_manager
 
 
 def _build_app_with_power(
@@ -347,47 +474,12 @@ def _build_app_with_power(
     playback_state: str = "stopped",
     auto_resume: bool = True,
 ) -> tuple[YoyoPodApp, FakeMusicBackend, FakeScreenManager]:
-    app = YoyoPodApp(simulate=True)
-    app.context = AppContext()
-    app.music_fsm = MusicFSM()
-    app.call_fsm = CallFSM()
-    app.call_interruption_policy = CallInterruptionPolicy()
-    app.auto_resume_after_call = auto_resume
-    app.voip_registered = False
-    app.power_manager = power_manager
-
-    music_backend = FakeMusicBackend(playback_state=playback_state)
-    app.music_backend = music_backend
-
-    app.menu_screen = FakeScreen()
-    app.power_screen = FakeScreen()
-    app.now_playing_screen = FakeScreen()
-    app.playlist_screen = FakeScreen()
-    app.call_screen = FakeScreen()
-    app.contact_list_screen = FakeScreen()
-    app.incoming_call_screen = FakeIncomingCallScreen()
-    app.outgoing_call_screen = FakeScreen()
-    app.in_call_screen = FakeScreen()
-
-    screen_manager = FakeScreenManager(
-        {
-            "menu": app.menu_screen,
-            "power": app.power_screen,
-            "playlists": app.playlist_screen,
-            "contacts": app.contact_list_screen,
-            "incoming_call": app.incoming_call_screen,
-            "outgoing_call": app.outgoing_call_screen,
-            "in_call": app.in_call_screen,
-        }
+    harness = OrchestrationHarness.build(
+        playback_state=playback_state,
+        auto_resume=auto_resume,
+        power_manager=power_manager,
     )
-    app.screen_manager = screen_manager
-    app.screen_manager.push_screen("menu")
-    app._ui_state = AppRuntimeState.MENU
-
-    app._setup_event_subscriptions()
-    app.call_coordinator.start_ringing = lambda: None
-    app.call_coordinator.stop_ringing = lambda: None
-    return app, music_backend, screen_manager
+    return harness.app, harness.music_backend, harness.screen_manager
 
 
 def test_apply_default_music_volume_updates_backend_and_context() -> None:
@@ -431,73 +523,70 @@ def test_music_connect_reapplies_shared_output_volume() -> None:
 
 def test_incoming_call_pauses_playing_music_once() -> None:
     """Incoming call events should pause active playback exactly once."""
-    app, music_backend, screen_manager = _build_app(playback_state="playing")
-    app.music_fsm.transition("play")
-    app.coordinator_runtime.sync_app_state("playback_playing")
+    harness = OrchestrationHarness.build(playback_state="playing")
+    harness.sync_runtime(music_state=MusicState.PLAYING, trigger="playback_playing")
 
-    _publish_from_worker(
-        app,
+    harness.publish(
         IncomingCallEvent(caller_address="sip:alice@example.com", caller_name="Alice"),
     )
 
-    assert music_backend.pause_calls == 0
-    assert app.event_bus.drain() == 1
-    assert music_backend.pause_calls == 1
-    assert app.music_fsm.state == MusicState.PAUSED
-    assert app.call_fsm.state == CallSessionState.INCOMING
-    assert app.call_interruption_policy.music_interrupted_by_call
-    assert screen_manager.current_screen is app.incoming_call_screen
-    assert app.incoming_call_screen.caller_name == "Alice"
+    assert harness.music_backend.pause_calls == 0
+    assert harness.drain_events() == 1
+    assert harness.music_backend.pause_calls == 1
+    assert harness.music_fsm.state == MusicState.PAUSED
+    assert harness.call_fsm.state == CallSessionState.INCOMING
+    assert harness.call_interruption_policy.music_interrupted_by_call
+    assert harness.screen_manager.current_screen is harness.screens.incoming_call
+    assert harness.screens.incoming_call.caller_name == "Alice"
 
-    _publish_from_worker(
-        app,
+    harness.publish(
         IncomingCallEvent(caller_address="sip:alice@example.com", caller_name="Alice"),
     )
 
-    assert app.event_bus.drain() == 1
-    assert music_backend.pause_calls == 1
-    assert len(screen_manager.screen_stack) == 2
+    assert harness.drain_events() == 1
+    assert harness.music_backend.pause_calls == 1
+    assert len(harness.screen_manager.screen_stack) == 2
 
 
 def test_call_end_auto_resumes_only_when_enabled() -> None:
     """Call end should auto-resume only when playback was interrupted and enabled."""
-    app, music_backend, screen_manager = _build_app(playback_state="paused", auto_resume=True)
-    app.music_fsm.sync(MusicState.PAUSED)
-    app.call_fsm.sync(CallSessionState.ACTIVE)
-    app.call_interruption_policy.music_interrupted_by_call = True
-    app.coordinator_runtime.sync_app_state("test_setup")
-    screen_manager.push_screen("incoming_call")
-    screen_manager.push_screen("in_call")
+    harness = OrchestrationHarness.build(playback_state="paused", auto_resume=True)
+    harness.sync_runtime(
+        music_state=MusicState.PAUSED,
+        call_state=CallSessionState.ACTIVE,
+        music_interrupted_by_call=True,
+    )
+    harness.push_screens("incoming_call", "in_call")
 
-    _publish_from_worker(app, CallEndedEvent())
+    harness.publish(CallEndedEvent())
 
-    assert music_backend.play_calls == 0
-    assert app.event_bus.drain() == 1
-    assert music_backend.play_calls == 1
-    assert app.music_fsm.state == MusicState.PLAYING
-    assert app.call_fsm.state == CallSessionState.IDLE
-    assert not app.call_interruption_policy.music_interrupted_by_call
-    assert screen_manager.current_screen is app.menu_screen
+    assert harness.music_backend.play_calls == 0
+    assert harness.drain_events() == 1
+    assert harness.music_backend.play_calls == 1
+    assert harness.music_fsm.state == MusicState.PLAYING
+    assert harness.call_fsm.state == CallSessionState.IDLE
+    assert not harness.call_interruption_policy.music_interrupted_by_call
+    assert harness.screen_manager.current_screen is harness.screens.menu
 
 
 def test_call_end_keeps_music_paused_when_auto_resume_disabled() -> None:
     """Call end should leave playback paused when auto-resume is off."""
-    app, music_backend, screen_manager = _build_app(playback_state="paused", auto_resume=False)
-    app.music_fsm.sync(MusicState.PAUSED)
-    app.call_fsm.sync(CallSessionState.ACTIVE)
-    app.call_interruption_policy.music_interrupted_by_call = True
-    app.coordinator_runtime.sync_app_state("test_setup")
-    screen_manager.push_screen("incoming_call")
-    screen_manager.push_screen("in_call")
+    harness = OrchestrationHarness.build(playback_state="paused", auto_resume=False)
+    harness.sync_runtime(
+        music_state=MusicState.PAUSED,
+        call_state=CallSessionState.ACTIVE,
+        music_interrupted_by_call=True,
+    )
+    harness.push_screens("incoming_call", "in_call")
 
-    _publish_from_worker(app, CallEndedEvent())
+    harness.publish(CallEndedEvent())
 
-    assert app.event_bus.drain() == 1
-    assert music_backend.play_calls == 0
-    assert app.music_fsm.state == MusicState.PAUSED
-    assert app.call_fsm.state == CallSessionState.IDLE
-    assert not app.call_interruption_policy.music_interrupted_by_call
-    assert screen_manager.current_screen is app.menu_screen
+    assert harness.drain_events() == 1
+    assert harness.music_backend.play_calls == 0
+    assert harness.music_fsm.state == MusicState.PAUSED
+    assert harness.call_fsm.state == CallSessionState.IDLE
+    assert not harness.call_interruption_policy.music_interrupted_by_call
+    assert harness.screen_manager.current_screen is harness.screens.menu
 
 
 @pytest.mark.parametrize(
@@ -541,17 +630,16 @@ def test_background_events_wait_for_drain_before_mutating_state() -> None:
 
 def test_track_event_refreshes_now_playing_screen_when_visible() -> None:
     """Track events should refresh the current now playing screen through the bus."""
-    app, _, screen_manager = _build_app(playback_state="playing")
-    screen_manager.current_screen = app.now_playing_screen
-    app.music_fsm.transition("play")
-    app.coordinator_runtime.sync_app_state("playback_playing")
+    harness = OrchestrationHarness.build(playback_state="playing")
+    harness.show_now_playing()
+    harness.sync_runtime(music_state=MusicState.PLAYING, trigger="playback_playing")
 
-    _publish_from_worker(app, TrackChangedEvent(track=None))
+    harness.publish(TrackChangedEvent(track=None))
 
-    assert app.now_playing_screen.render_calls == 0
-    assert app.event_bus.drain() == 1
-    assert app.now_playing_screen.render_calls == 1
-    assert app.music_fsm.state == MusicState.IDLE
+    assert harness.screens.now_playing.render_calls == 0
+    assert harness.drain_events() == 1
+    assert harness.screens.now_playing.render_calls == 1
+    assert harness.music_fsm.state == MusicState.IDLE
 
 
 def test_periodic_in_call_refresh_only_renders_visible_call_screen() -> None:
@@ -572,40 +660,38 @@ def test_periodic_in_call_refresh_only_renders_visible_call_screen() -> None:
 
 def test_voip_unavailable_event_ends_call_and_restores_music() -> None:
     """VoIP backend loss should tear down the call flow and restore interrupted playback."""
-    app, music_backend, screen_manager = _build_app(playback_state="paused", auto_resume=True)
-    app.music_fsm.sync(MusicState.PAUSED)
-    app.call_fsm.sync(CallSessionState.ACTIVE)
-    app.call_interruption_policy.music_interrupted_by_call = True
-    app.coordinator_runtime.sync_app_state("test_setup")
-    screen_manager.push_screen("in_call")
+    harness = OrchestrationHarness.build(playback_state="paused", auto_resume=True)
+    harness.sync_runtime(
+        music_state=MusicState.PAUSED,
+        call_state=CallSessionState.ACTIVE,
+        music_interrupted_by_call=True,
+    )
+    harness.push_screens("in_call")
 
-    _publish_from_worker(
-        app,
+    harness.publish(
         VoIPAvailabilityChangedEvent(available=False, reason="backend_stopped"),
     )
 
-    assert app.event_bus.drain() == 1
-    assert app.call_fsm.state == CallSessionState.IDLE
-    assert app.music_fsm.state == MusicState.PLAYING
-    assert music_backend.play_calls == 1
-    assert screen_manager.current_screen is app.menu_screen
+    assert harness.drain_events() == 1
+    assert harness.call_fsm.state == CallSessionState.IDLE
+    assert harness.music_fsm.state == MusicState.PLAYING
+    assert harness.music_backend.play_calls == 1
+    assert harness.screen_manager.current_screen is harness.screens.menu
 
 
 def test_music_unavailable_event_stops_music_and_refreshes_now_playing() -> None:
     """Music backend loss should stop music state and refresh the visible now-playing screen."""
-    app, _, screen_manager = _build_app(playback_state="playing")
-    screen_manager.current_screen = app.now_playing_screen
-    app.music_fsm.transition("play")
-    app.coordinator_runtime.sync_app_state("playback_playing")
+    harness = OrchestrationHarness.build(playback_state="playing")
+    harness.show_now_playing()
+    harness.sync_runtime(music_state=MusicState.PLAYING, trigger="playback_playing")
 
-    _publish_from_worker(
-        app,
+    harness.publish(
         MusicAvailabilityChangedEvent(available=False, reason="connection_lost"),
     )
 
-    assert app.event_bus.drain() == 1
-    assert app.music_fsm.state == MusicState.IDLE
-    assert app.now_playing_screen.render_calls == 1
+    assert harness.drain_events() == 1
+    assert harness.music_fsm.state == MusicState.IDLE
+    assert harness.screens.now_playing.render_calls == 1
 
 
 def test_navigation_updates_runtime_base_state() -> None:
