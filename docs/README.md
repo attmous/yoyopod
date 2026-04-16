@@ -44,6 +44,7 @@ Plan docs are useful, but they are not automatically the current implementation 
 ### Core runtime architecture
 
 - [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md), top-level runtime topology plus startup/bootstrap flow
+- [`RUNTIME_EVENT_FLOW.md`](RUNTIME_EVENT_FLOW.md), current event pipeline and coordinator ownership
 - [`DISPLAY_HAL_ARCHITECTURE.md`](DISPLAY_HAL_ARCHITECTURE.md), display abstraction and adapters
 - [`INPUT_HAL_ARCHITECTURE.md`](INPUT_HAL_ARCHITECTURE.md), semantic input model and adapters
 - [`POWER_MODULE.md`](POWER_MODULE.md), power, battery, RTC, watchdog

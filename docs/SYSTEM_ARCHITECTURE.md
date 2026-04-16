@@ -280,39 +280,24 @@ and updates:
 - state machine state
 - focused runtime state objects through `AppContext`
 
+For a fuller map of the typed runtime event pipeline and coordinator boundaries, see [`docs/RUNTIME_EVENT_FLOW.md`](RUNTIME_EVENT_FLOW.md).
+
 ## Event Flows
 
-### Incoming Call
+The canonical current-state event-flow document is
+[`RUNTIME_EVENT_FLOW.md`](RUNTIME_EVENT_FLOW.md).
 
-1. `YoyoPodApp` iterates the Liblinphone backend on the coordinator thread
-2. the native shim queues typed registration, call, and message events
-3. `VoIPManager` translates those into app callbacks
-4. `YoyoPodApp` pauses music if needed
-5. state transitions to `CALL_INCOMING`
-6. `IncomingCallScreen` is pushed
+Use that document when you need:
 
-### Music Playback
+- actual `EventBus` dispatch behavior
+- coordinator ownership boundaries
+- current incoming-call, playback, power, network, and recovery paths
+- known seams where runtime ownership is still split or overloaded
 
-1. screen action triggers a `MusicBackend` command
-2. `MpvBackend` receives push events from mpv over JSON IPC
-3. `LocalMusicService` handles local playlist and filesystem browse concerns
-4. callbacks refresh `NowPlayingScreen`
-5. the derived runtime state stays synchronized with actual playback state
-
-Shared music-domain model ownership lives in `src/yoyopod/audio/music/models.py`. `Track` is the canonical track shape, `Playlist` is the local-library playlist summary, and `PlaybackQueue` is the runtime ordered queue used when the app needs selected-track state.
-
-### 4G / GPS Bringup
-
-1. `NetworkManager` starts the modem backend and initializes the SIM7600 path
-2. successful modem registration publishes typed network events onto the `EventBus`
-3. PPP startup publishes connectivity state used by the UI/runtime status
-4. GPS queries publish fix or no-fix events consumed by the app context and Setup UI
-### Simulation Mode
-
-1. `Display` chooses `SimulationDisplayAdapter`
-2. `web_server.py` starts a Flask-SocketIO server
-3. browser receives base64 PNG display updates
-4. keyboard and web buttons feed `InputManager`
+Shared music-domain model ownership still lives in `src/yoyopod/audio/music/models.py`.
+`Track` is the canonical track shape, `Playlist` is the local-library playlist
+summary, and `PlaybackQueue` is the runtime ordered queue used when the app
+needs selected-track state.
 
 ## Raspberry Pi Assumptions
 
