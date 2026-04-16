@@ -9,6 +9,7 @@ from yoyopod.cli.remote.lvgl import lvgl_soak
 from yoyopod.cli.remote.ops import (
     logs,
     preflight,
+    provision_test_music,
     restart,
     rsync,
     rtc,
@@ -31,6 +32,7 @@ remote_app.command()(status)
 remote_app.command()(sync)
 remote_app.command()(validate)
 remote_app.command()(smoke)
+remote_app.command(name="provision-test-music")(provision_test_music)
 remote_app.command()(preflight)
 remote_app.command()(restart)
 remote_app.command()(logs)

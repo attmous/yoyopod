@@ -31,6 +31,17 @@ def test_pi_help():
     assert "validate" in _plain(result.output)
 
 
+def test_pi_music_help():
+    result = runner.invoke(app, ["pi", "music", "--help"])
+    assert result.exit_code == 0
+
+
+def test_pi_music_provision_test_library_help():
+    result = runner.invoke(app, ["pi", "music", "provision-test-library", "--help"])
+    assert result.exit_code == 0
+    assert "--target-dir" in _plain(result.output)
+
+
 def test_remote_help():
     result = runner.invoke(app, ["remote", "--help"])
     assert result.exit_code == 0
@@ -134,6 +145,19 @@ def test_pi_smoke_help():
     assert "--with-voip" in _plain(result.output)
     assert "--with-power" in _plain(result.output)
     assert "--with-lvgl-soak" in _plain(result.output)
+    assert "--test-music-dir" in _plain(result.output)
+
+
+def test_pi_music_help():
+    result = runner.invoke(app, ["pi", "music", "--help"])
+    assert result.exit_code == 0
+    assert "provision-test-library" in _plain(result.output)
+
+
+def test_pi_music_provision_test_library_help():
+    result = runner.invoke(app, ["pi", "music", "provision-test-library", "--help"])
+    assert result.exit_code == 0
+    assert "--target-dir" in _plain(result.output)
 
 
 def test_pi_validate_help():
@@ -215,12 +239,20 @@ def test_remote_validate_help():
     assert "--branch" in _plain(result.output)
     assert "--sha" in _plain(result.output)
     assert "--with-music" in _plain(result.output)
+    assert "--test-music-dir" in _plain(result.output)
     assert "--lines" in _plain(result.output)
 
 
 def test_remote_smoke_help():
     result = runner.invoke(app, ["remote", "smoke", "--help"])
     assert result.exit_code == 0
+    assert "--test-music-dir" in _plain(result.output)
+
+
+def test_remote_provision_test_music_help():
+    result = runner.invoke(app, ["remote", "provision-test-music", "--help"])
+    assert result.exit_code == 0
+    assert "--target-dir" in _plain(result.output)
 
 
 def test_remote_preflight_help():

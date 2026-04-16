@@ -1,5 +1,7 @@
 """Tests for Raspberry Pi remote workflow helpers."""
 
+import shlex
+
 import pytest
 import yaml
 
@@ -13,6 +15,7 @@ from yoyopod.cli.remote.ops import (
     build_logs_command,
     build_native_shim_refresh_command,
     build_parser,
+    build_provision_test_music_command,
     build_restart_command,
     build_rsync_command,
     build_rtc_command,
@@ -66,6 +69,7 @@ DEPLOY_CONFIG = PiDeployConfig(
     pid_file="/tmp/yoyopod.pid",
     startup_marker="YoyoPod starting",
     screenshot_path="/tmp/yoyopod_screenshot.png",
+    test_music_target_dir="~/YoyoPod_Test_Music",
     rsync_exclude=(".git/", ".cache/", "build/", "logs/"),
 )
 
@@ -101,6 +105,7 @@ def test_load_pi_deploy_config_merges_local_override(tmp_path) -> None:
                 "pid_file: /tmp/yoyopod.pid",
                 'startup_marker: "YoyoPod starting"',
                 "screenshot_path: /tmp/yoyopod_screenshot.png",
+                "test_music_target_dir: ~/YoyoPod_Test_Music",
                 "rsync_exclude: [.git/, .cache/, build/, logs/]",
             ]
         ),
@@ -126,6 +131,7 @@ def test_load_pi_deploy_config_merges_local_override(tmp_path) -> None:
     assert config.user == "pi"
     assert config.project_dir == "~/custom-yoyo"
     assert config.branch == "main"
+    assert config.test_music_target_dir == "~/YoyoPod_Test_Music"
 
 
 def test_build_local_override_template_targets_machine_specific_fields() -> None:
@@ -349,6 +355,7 @@ def test_build_smoke_command_adds_optional_checks() -> None:
         with_power=True,
         with_rtc=True,
         with_music=True,
+        test_music_target_dir=DEPLOY_CONFIG.test_music_target_dir,
         with_voip=True,
         with_lvgl_soak=True,
         verbose=True,
@@ -360,6 +367,7 @@ def test_build_smoke_command_adds_optional_checks() -> None:
     assert "--with-power" in command
     assert "--with-rtc" in command
     assert "uv run yoyoctl pi validate music" in command
+    assert shlex.quote(DEPLOY_CONFIG.test_music_target_dir) in command
     assert "uv run yoyoctl pi validate voip" in command
     assert "uv run yoyoctl pi validate stability" in command
     assert "--verbose" in command
@@ -372,6 +380,34 @@ def test_build_deploy_validation_command_targets_pi_suite() -> None:
     command = build_deploy_validation_command(verbose=True)
 
     assert command == "uv run yoyoctl pi validate deploy --verbose"
+
+
+def test_build_smoke_command_supports_disabling_test_music_provisioning() -> None:
+    """Music smoke should be able to skip deterministic asset seeding when requested."""
+
+    command = build_smoke_command(
+        with_music=True,
+        provision_test_music=False,
+        test_music_target_dir=DEPLOY_CONFIG.test_music_target_dir,
+    )
+
+    assert "uv run yoyoctl pi validate music" in command
+    assert "--no-provision-test-music" in command
+    assert "--test-music-dir" not in command
+
+
+def test_build_provision_test_music_command_targets_the_dedicated_library_path() -> None:
+    """Remote provisioning should call the Pi-side test-music helper with the target dir."""
+
+    command = build_provision_test_music_command(
+        target_dir=DEPLOY_CONFIG.test_music_target_dir,
+        verbose=True,
+    )
+
+    assert command.startswith("uv run yoyoctl pi music provision-test-library")
+    assert "--target-dir" in command
+    assert shlex.quote(DEPLOY_CONFIG.test_music_target_dir) in command
+    assert command.endswith("--verbose")
 
 
 def test_build_validation_inspection_command_reports_marker_and_logs() -> None:

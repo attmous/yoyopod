@@ -37,6 +37,15 @@ yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voi
 yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-lvgl-soak
 ```
 
+When `--with-music` is enabled, the Pi smoke flow provisions a deterministic validation library under the configured `test_music_target_dir` before the mpv checks run.
+
+The seeded validation library is explicit and stable:
+
+- `yoyopod-validation-set.m3u`
+- `tracks/alpha-beacon.wav`
+- `tracks/bravo-lantern.wav`
+- `tracks/charlie-sundial.wav`
+
 What it checks:
 
 - the branch is committed locally
@@ -78,6 +87,9 @@ What each command checks:
 Useful flags:
 
 - `yoyoctl pi validate music --timeout 10`
+- `yoyoctl pi validate music --test-music-dir ~/YoyoPod_Test_Music`
+- `yoyoctl pi music provision-test-library --target-dir ~/YoyoPod_Test_Music`
+- `yoyoctl remote provision-test-music`
 - `yoyoctl pi validate voip --timeout 15`
 - `yoyoctl pi validate stability --cycles 3 --hold-seconds 0.3`
 - `--verbose` on any suite command
@@ -203,7 +215,7 @@ Only use it when:
 - `deploy` fails: verify the checkout still has `deploy/pi-deploy.yaml`, `deploy/systemd/yoyopod@.service`, the configured virtualenv, and writable runtime path parents
 - `display` fails: check attached HAT, driver and library install, and `display.hardware` config
 - `input` fails: check the matching display adapter initialized correctly first
-- `music` fails: verify `mpv` is installed, the configured socket path is writable, and the configured `audio.music_dir` exists
+- `music` fails: verify `mpv` is installed, the configured socket path is writable, and the provision target under `test_music_target_dir` is writable when deterministic seeding is enabled
 - `voip` fails: verify the Liblinphone shim build, `config/liblinphone_factory.conf`, SIP credentials, network reachability, and audio device configuration
 - `stability` fails: rerun `yoyoctl pi validate stability --verbose` or `yoyoctl pi lvgl soak` for a deeper LVGL-only pass
 - `validate` fails before launch: check whether the branch was actually pushed and whether the Pi checkout is reachable over SSH

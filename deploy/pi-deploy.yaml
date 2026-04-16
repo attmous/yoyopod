@@ -25,6 +25,9 @@ error_log_file: logs/yoyopod_errors.log
 pid_file: /tmp/yoyopod.pid
 startup_marker: "YoyoPod starting"
 screenshot_path: /tmp/yoyopod_screenshot.png
+# Validation-only library seeded by `yoyoctl pi music provision-test-library`
+# and automatically used by `yoyoctl remote/pi smoke --with-music` unless disabled.
+test_music_target_dir: ~/YoyoPod_Test_Music
 rsync_exclude:
   - .git/
   - .cache/

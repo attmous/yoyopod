@@ -96,6 +96,22 @@ yoyoctl remote validate --branch <branch> --sha <commit> --with-lvgl-soak
 yoyoctl remote validate --branch <branch> --sha <commit> --skip-uv-sync
 ```
 
+When `--with-music` is enabled, the Pi-side smoke flow seeds the deterministic validation library into the configured `test_music_target_dir` before it exercises the music backend.
+
+The seeded validation library is explicit and stable:
+
+- `yoyopod-validation-set.m3u`
+- `tracks/alpha-beacon.wav`
+- `tracks/bravo-lantern.wav`
+- `tracks/charlie-sundial.wav`
+
+Use the dedicated provisioning helper when you want the assets on the Pi without running the full smoke flow:
+
+```bash
+yoyoctl remote provision-test-music
+yoyoctl remote provision-test-music --target-dir ~/YoyoPod_Test_Music
+```
+
 `yoyoctl remote validate` does all of this:
 
 1. stops if the local worktree is dirty
@@ -157,6 +173,7 @@ Useful variations:
 ```bash
 yoyoctl remote smoke --with-music --music-timeout 10
 yoyoctl remote smoke --with-voip --voip-timeout 15 --verbose
+yoyoctl remote provision-test-music
 ```
 
 ### Restart the already-synced app

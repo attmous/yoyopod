@@ -45,6 +45,7 @@ __all__ = [
     "PiDeployConfig",
     "RemoteConfig",
     "_resolve_remote_config",
+    "build_provision_test_music_command",
     "load_pi_deploy_config",
     "pi_deploy_config_to_dict",
     "quote_remote_project_dir",
@@ -675,6 +676,8 @@ def build_smoke_command(
     with_music: bool = False,
     with_voip: bool = False,
     with_lvgl_soak: bool = False,
+    provision_test_music: bool = True,
+    test_music_target_dir: str | None = None,
     verbose: bool = False,
     music_timeout: int = 5,
     voip_timeout: float = 90.0,
@@ -694,8 +697,11 @@ def build_smoke_command(
             music_command += " --verbose"
         if music_timeout != 5:
             music_command += f" --timeout {music_timeout}"
+        if not provision_test_music:
+            music_command += " --no-provision-test-music"
+        elif test_music_target_dir:
+            music_command += f" --test-music-dir {shlex.quote(test_music_target_dir)}"
         commands.append(music_command)
-
     if with_voip:
         voip_command = "uv run yoyoctl pi validate voip"
         if verbose:
@@ -716,6 +722,22 @@ def build_smoke_command(
 def build_deploy_validation_command(*, verbose: bool = False) -> str:
     """Create the remote deploy-readiness validation command."""
     parts = ["uv run yoyoctl pi validate deploy"]
+    if verbose:
+        parts.append("--verbose")
+    return " ".join(parts)
+
+
+def build_provision_test_music_command(
+    *,
+    target_dir: str,
+    verbose: bool = False,
+) -> str:
+    """Create the remote command that seeds the deterministic test-music library."""
+    parts = [
+        "uv run yoyoctl pi music provision-test-library",
+        "--target-dir",
+        shlex.quote(target_dir),
+    ]
     if verbose:
         parts.append("--verbose")
     return " ".join(parts)
@@ -846,6 +868,20 @@ def validate(
     with_music: Annotated[
         bool, typer.Option("--with-music", help="Include music-backend startup checks.")
     ] = False,
+    provision_test_music: Annotated[
+        bool,
+        typer.Option(
+            "--provision-test-music/--no-provision-test-music",
+            help="Seed deterministic validation music before remote music smoke checks.",
+        ),
+    ] = True,
+    test_music_dir: Annotated[
+        str,
+        typer.Option(
+            "--test-music-dir",
+            help="Dedicated target directory for validation-only test music assets.",
+        ),
+    ] = "",
     with_voip: Annotated[
         bool, typer.Option("--with-voip", help="Include SIP registration checks.")
     ] = False,
@@ -874,6 +910,7 @@ def validate(
     config = resolve_remote_config(host, user, project_dir, resolved_branch)
     validate_config(config)
     deploy_config = load_pi_deploy_config()
+    resolved_test_music_dir = test_music_dir or deploy_config.test_music_target_dir
 
     sync_exit_code = run_remote(
         config,
@@ -895,6 +932,8 @@ def validate(
             with_power=with_power,
             with_rtc=with_rtc,
             with_music=with_music,
+            provision_test_music=provision_test_music,
+            test_music_target_dir=resolved_test_music_dir if with_music else None,
             with_voip=with_voip,
             with_lvgl_soak=with_lvgl_soak,
             verbose=verbose,
@@ -939,6 +978,20 @@ def smoke(
     with_music: Annotated[
         bool, typer.Option("--with-music", help="Include music-backend startup checks.")
     ] = False,
+    provision_test_music: Annotated[
+        bool,
+        typer.Option(
+            "--provision-test-music/--no-provision-test-music",
+            help="Seed deterministic validation music before remote music smoke checks.",
+        ),
+    ] = True,
+    test_music_dir: Annotated[
+        str,
+        typer.Option(
+            "--test-music-dir",
+            help="Dedicated target directory for validation-only test music assets.",
+        ),
+    ] = "",
     with_voip: Annotated[
         bool, typer.Option("--with-voip", help="Include SIP registration checks.")
     ] = False,
@@ -961,17 +1014,62 @@ def smoke(
     """Run the Raspberry Pi smoke validator remotely."""
     config = resolve_remote_config(host, user, project_dir, branch)
     validate_config(config)
+    deploy_config = load_pi_deploy_config()
+    resolved_test_music_dir = test_music_dir or deploy_config.test_music_target_dir
     rc = run_remote(
         config,
         build_smoke_command(
             with_power=with_power,
             with_rtc=with_rtc,
             with_music=with_music,
+            provision_test_music=provision_test_music,
+            test_music_target_dir=resolved_test_music_dir if with_music else None,
             with_voip=with_voip,
             with_lvgl_soak=with_lvgl_soak,
             verbose=verbose,
             music_timeout=music_timeout,
             voip_timeout=voip_timeout,
+        ),
+    )
+    if rc != 0:
+        raise typer.Exit(code=rc)
+
+
+def provision_test_music(
+    host: Annotated[
+        str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")
+    ] = "",
+    user: Annotated[
+        str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")
+    ] = "",
+    project_dir: Annotated[
+        str, typer.Option("--project-dir", help="Project directory on the Raspberry Pi.")
+    ] = "",
+    branch: Annotated[
+        str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")
+    ] = "",
+    target_dir: Annotated[
+        str,
+        typer.Option(
+            "--target-dir",
+            help="Dedicated target directory for validation-only test music assets.",
+        ),
+    ] = "",
+    verbose: Annotated[
+        bool, typer.Option("--verbose", help="Enable verbose provisioning logging.")
+    ] = False,
+) -> None:
+    """Provision the deterministic validation music library on the Raspberry Pi."""
+
+    config = resolve_remote_config(host, user, project_dir, branch)
+    validate_config(config)
+    deploy_config = load_pi_deploy_config()
+    resolved_target_dir = target_dir or deploy_config.test_music_target_dir
+    rc = run_remote(
+        config,
+        build_provision_test_music_command(
+            target_dir=resolved_target_dir,
+            verbose=verbose,
         ),
     )
     if rc != 0:
@@ -1020,6 +1118,20 @@ def preflight(
             "--with-music", help="Include music-backend startup checks in the remote smoke pass."
         ),
     ] = False,
+    provision_test_music: Annotated[
+        bool,
+        typer.Option(
+            "--provision-test-music/--no-provision-test-music",
+            help="Seed deterministic validation music before remote music smoke checks.",
+        ),
+    ] = True,
+    test_music_dir: Annotated[
+        str,
+        typer.Option(
+            "--test-music-dir",
+            help="Dedicated target directory for validation-only test music assets.",
+        ),
+    ] = "",
     with_voip: Annotated[
         bool,
         typer.Option(
@@ -1045,6 +1157,8 @@ def preflight(
     """Run local checks, sync the Pi, and execute the Pi smoke pass."""
     config = resolve_remote_config(host, user, project_dir, branch)
     validate_config(config)
+    deploy_config = load_pi_deploy_config()
+    resolved_test_music_dir = test_music_dir or deploy_config.test_music_target_dir
 
     if not skip_local:
         for label, command in build_local_preflight_commands():
@@ -1066,6 +1180,8 @@ def preflight(
             with_power=with_power,
             with_rtc=with_rtc,
             with_music=with_music,
+            provision_test_music=provision_test_music,
+            test_music_target_dir=resolved_test_music_dir if with_music else None,
             with_voip=with_voip,
             with_lvgl_soak=with_lvgl_soak,
             verbose=verbose,
@@ -1427,6 +1543,11 @@ def build_parser(deploy_config: PiDeployConfig) -> argparse.ArgumentParser:
     validate_parser.add_argument("--with-power", action="store_true")
     validate_parser.add_argument("--with-rtc", action="store_true")
     validate_parser.add_argument("--with-music", action="store_true")
+    validate_parser.add_argument("--no-provision-test-music", action="store_true")
+    validate_parser.add_argument(
+        "--test-music-dir",
+        default=deploy_config.test_music_target_dir,
+    )
     validate_parser.add_argument("--with-voip", action="store_true")
     validate_parser.add_argument("--with-lvgl-soak", action="store_true")
     validate_parser.add_argument("--verbose", action="store_true")
@@ -1459,11 +1580,26 @@ def build_parser(deploy_config: PiDeployConfig) -> argparse.ArgumentParser:
     smoke_parser.add_argument("--with-power", action="store_true")
     smoke_parser.add_argument("--with-rtc", action="store_true")
     smoke_parser.add_argument("--with-music", action="store_true")
+    smoke_parser.add_argument("--no-provision-test-music", action="store_true")
+    smoke_parser.add_argument(
+        "--test-music-dir",
+        default=deploy_config.test_music_target_dir,
+    )
     smoke_parser.add_argument("--with-voip", action="store_true")
     smoke_parser.add_argument("--with-lvgl-soak", action="store_true")
     smoke_parser.add_argument("--verbose", action="store_true")
     smoke_parser.add_argument("--music-timeout", type=int, default=5)
     smoke_parser.add_argument("--voip-timeout", type=float, default=10.0)
+
+    provision_music_parser = subparsers.add_parser(
+        "provision-test-music",
+        help="Seed the deterministic validation music library on the Raspberry Pi",
+    )
+    provision_music_parser.add_argument(
+        "--target-dir",
+        default=deploy_config.test_music_target_dir,
+    )
+    provision_music_parser.add_argument("--verbose", action="store_true")
 
     whisplay_parser = subparsers.add_parser(
         "whisplay",

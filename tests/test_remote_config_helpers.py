@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
-from yoyopod.cli.remote.config import load_pi_deploy_config, resolve_remote_config
+from yoyopod.cli.remote.config import (
+    DEFAULT_TEST_MUSIC_TARGET_DIR,
+    load_pi_deploy_config,
+    resolve_remote_config,
+)
 from yoyopod.cli.remote.transport import build_ssh_command
 
 
@@ -69,3 +73,4 @@ def test_load_pi_deploy_config_uses_tracked_defaults_without_local_override(tmp_
     assert config.host == "rpi-zero"
     assert config.user == "pi"
     assert config.project_dir == "~/YoyoPod_Core"
+    assert config.test_music_target_dir == DEFAULT_TEST_MUSIC_TARGET_DIR
