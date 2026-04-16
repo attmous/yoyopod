@@ -70,7 +70,7 @@ Notes:
 
 ```bash
 pgrep -af mpv
-yoyoctl pi smoke --with-music
+yoyoctl pi validate music
 yoyoctl remote smoke --with-music
 yoyoctl remote logs --filter music --lines 100
 ```

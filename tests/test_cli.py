@@ -28,6 +28,7 @@ def test_root_help():
 def test_pi_help():
     result = runner.invoke(app, ["pi", "--help"])
     assert result.exit_code == 0
+    assert "validate" in _plain(result.output)
 
 
 def test_remote_help():
@@ -133,6 +134,51 @@ def test_pi_smoke_help():
     assert "--with-voip" in _plain(result.output)
     assert "--with-power" in _plain(result.output)
     assert "--with-lvgl-soak" in _plain(result.output)
+
+
+def test_pi_validate_help():
+    result = runner.invoke(app, ["pi", "validate", "--help"])
+    assert result.exit_code == 0
+    output = _plain(result.output)
+    assert "deploy" in output
+    assert "smoke" in output
+    assert "music" in output
+    assert "voip" in output
+    assert "stability" in output
+
+
+def test_pi_validate_deploy_help():
+    result = runner.invoke(app, ["pi", "validate", "deploy", "--help"])
+    assert result.exit_code == 0
+    assert "--config-dir" in _plain(result.output)
+
+
+def test_pi_validate_smoke_help():
+    result = runner.invoke(app, ["pi", "validate", "smoke", "--help"])
+    assert result.exit_code == 0
+    output = _plain(result.output)
+    assert "--with-power" in output
+    assert "--with-rtc" in output
+
+
+def test_pi_validate_music_help():
+    result = runner.invoke(app, ["pi", "validate", "music", "--help"])
+    assert result.exit_code == 0
+    assert "--timeout" in _plain(result.output)
+
+
+def test_pi_validate_voip_help():
+    result = runner.invoke(app, ["pi", "validate", "voip", "--help"])
+    assert result.exit_code == 0
+    assert "--timeout" in _plain(result.output)
+
+
+def test_pi_validate_stability_help():
+    result = runner.invoke(app, ["pi", "validate", "stability", "--help"])
+    assert result.exit_code == 0
+    output = _plain(result.output)
+    assert "--cycles" in output
+    assert "--hold-seconds" in output
 
 
 def test_pi_tune_help():

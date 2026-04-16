@@ -679,24 +679,45 @@ def build_smoke_command(
     music_timeout: int = 5,
     voip_timeout: float = 90.0,
 ) -> str:
-    """Create the remote smoke-validation command."""
-    parts = ["uv run yoyoctl pi smoke"]
+    """Create the remote target-validation command set."""
+    commands = ["uv run yoyoctl pi validate smoke"]
     if with_power:
-        parts.append("--with-power")
+        commands[-1] += " --with-power"
     if with_rtc:
-        parts.append("--with-rtc")
+        commands[-1] += " --with-rtc"
+    if verbose:
+        commands[-1] += " --verbose"
+
     if with_music:
-        parts.append("--with-music")
+        music_command = "uv run yoyoctl pi validate music"
+        if verbose:
+            music_command += " --verbose"
+        if music_timeout != 5:
+            music_command += f" --timeout {music_timeout}"
+        commands.append(music_command)
+
     if with_voip:
-        parts.append("--with-voip")
+        voip_command = "uv run yoyoctl pi validate voip"
+        if verbose:
+            voip_command += " --verbose"
+        if voip_timeout != 90.0:
+            voip_command += f" --timeout {voip_timeout}"
+        commands.append(voip_command)
+
     if with_lvgl_soak:
-        parts.append("--with-lvgl-soak")
+        stability_command = "uv run yoyoctl pi validate stability"
+        if verbose:
+            stability_command += " --verbose"
+        commands.append(stability_command)
+
+    return " && ".join(commands)
+
+
+def build_deploy_validation_command(*, verbose: bool = False) -> str:
+    """Create the remote deploy-readiness validation command."""
+    parts = ["uv run yoyoctl pi validate deploy"]
     if verbose:
         parts.append("--verbose")
-    if music_timeout != 5:
-        parts.extend(["--music-timeout", str(music_timeout)])
-    if voip_timeout != 90.0:
-        parts.extend(["--voip-timeout", str(voip_timeout)])
     return " ".join(parts)
 
 
@@ -712,6 +733,7 @@ def build_local_preflight_commands() -> list[tuple[str, list[str]]]:
                 "yoyopod",
                 "tests",
                 "src/yoyopod/cli/pi/smoke.py",
+                "src/yoyopod/cli/pi/validate.py",
                 "src/yoyopod/cli/pi/voip.py",
                 "src/yoyopod/power/backend.py",
                 "src/yoyopod/power/manager.py",
@@ -859,6 +881,13 @@ def validate(
     )
     if sync_exit_code != 0:
         raise typer.Exit(code=sync_exit_code)
+
+    deploy_exit_code = run_remote(
+        config,
+        build_deploy_validation_command(verbose=verbose),
+    )
+    if deploy_exit_code != 0:
+        raise typer.Exit(code=deploy_exit_code)
 
     smoke_exit_code = run_remote(
         config,

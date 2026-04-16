@@ -31,7 +31,7 @@ yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voi
 - stops on uncommitted local changes
 - requires a pushed branch/SHA
 - syncs one stable checkout path on the board
-- runs smoke checks before launch
+- runs the target-side deploy, smoke, and requested service/stability checks before launch
 - waits for the startup marker after restart
 - prints recent logs and leaves the app running
 
@@ -68,6 +68,14 @@ Lower-level `yoyoctl remote` commands:
 - `yoyoctl remote smoke` is the remote smoke primitive
 - `yoyoctl remote restart` restarts the synced app and verifies startup
 - `yoyoctl remote rsync` is not the default; use it only as an explicit debugging override
+
+Target-side `yoyoctl pi validate` commands:
+
+- `yoyoctl pi validate deploy` checks the deploy contract, config files, runtime paths, and entrypoints without launching the app
+- `yoyoctl pi validate smoke` checks environment, display, input, and optional PiSugar telemetry
+- `yoyoctl pi validate music` checks the mpv backend in isolation
+- `yoyoctl pi validate voip` checks Liblinphone startup and SIP registration in isolation
+- `yoyoctl pi validate stability` runs the repeated LVGL transition and sleep/wake stability pass
 
 Config lives in `deploy/pi-deploy.yaml` plus optional `deploy/pi-deploy.local.yaml` for machine-specific host and user overrides. Preferred edit flow:
 

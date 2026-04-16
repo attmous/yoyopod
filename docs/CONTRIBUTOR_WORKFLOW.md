@@ -86,6 +86,8 @@ Baseline commands:
 ```bash
 uv run yoyoctl setup pi
 uv run yoyoctl setup verify-pi
+yoyoctl pi validate deploy
+yoyoctl pi validate smoke
 uv run yoyoctl remote setup
 uv run yoyoctl remote verify-setup
 ```

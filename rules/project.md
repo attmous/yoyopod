@@ -31,6 +31,13 @@ uv run python scripts/quality.py audit
 # Baseline Pi setup contract
 uv run yoyoctl setup pi
 uv run yoyoctl setup verify-pi
+
+# Focused target-side validation
+yoyoctl pi validate deploy
+yoyoctl pi validate smoke
+yoyoctl pi validate music
+yoyoctl pi validate voip
+yoyoctl pi validate stability
 ```
 
 `yoyoctl setup *` is the baseline executable contract, not the finished setup story.

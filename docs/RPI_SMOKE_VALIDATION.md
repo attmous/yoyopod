@@ -42,7 +42,8 @@ What it checks:
 - the branch is committed locally
 - the branch and exact SHA are pushed
 - the stable Pi checkout is synced to committed code only
-- the requested smoke checks pass
+- the target-side deploy validation passes
+- the requested target-side smoke, music, voip, and stability checks pass
 - the app restarts cleanly
 - the PID file and startup marker agree
 - recent logs look sane before handoff
@@ -53,49 +54,33 @@ Expected result:
 - the Pi reflects the requested committed branch/SHA, not dirty local state
 - the startup marker matches the active PID
 
-### 3. On-Pi core hardware smoke
+### 3. On-Pi target validation suite
 
-Run these directly on the target Raspberry Pi when you want the lower-level hardware checks without the remote orchestration layer:
-
-```bash
-yoyoctl pi smoke
-yoyoctl pi smoke --with-power --with-rtc
-yoyoctl pi lvgl soak
-```
-
-What it checks:
-
-- target environment information
-- display initialization on real hardware
-- matching input adapter construction and start/stop
-- optional LVGL transition and sleep/wake soak when requested
-
-Expected result:
-
-- `display` reports a real hardware adapter, not simulation
-- `input` reports the active interaction profile plus semantic capabilities for the attached hardware
-
-### 4. On-Pi service smoke
-
-Add music-backend and SIP checks when those services are expected to be available:
+Run these directly on the target Raspberry Pi when you want focused, repeated-safe validation without the remote orchestration layer:
 
 ```bash
-yoyoctl pi smoke --with-music --with-voip
-yoyoctl pi smoke --with-power --with-rtc --with-music --with-voip
+yoyoctl pi validate deploy
+yoyoctl pi validate smoke
+yoyoctl pi validate smoke --with-power --with-rtc
+yoyoctl pi validate music
+yoyoctl pi validate voip
+yoyoctl pi validate stability
 ```
 
-What it checks:
+What each command checks:
 
-- PiSugar battery telemetry and RTC state when requested
-- mpv music-backend startup using `config/yoyopod_config.yaml`
-- Liblinphone startup and SIP registration using `config/voip_config.yaml`
-- Liblinphone media and codec defaults from `config/liblinphone_factory.conf`
+- `deploy`: deploy contract files, tracked runtime config, runtime path parents, and app entrypoints without launching the app
+- `smoke`: target environment, display initialization on real hardware, matching input adapter construction and start/stop, plus optional PiSugar power and RTC checks
+- `music`: mpv music-backend startup using `config/yoyopod_config.yaml`
+- `voip`: Liblinphone startup and SIP registration using `config/voip_config.yaml`
+- `stability`: repeated LVGL transition plus sleep/wake recovery on the active app path
 
 Useful flags:
 
-- `--music-timeout 10`
-- `--voip-timeout 15`
-- `--verbose`
+- `yoyoctl pi validate music --timeout 10`
+- `yoyoctl pi validate voip --timeout 15`
+- `yoyoctl pi validate stability --cycles 3 --hold-seconds 0.3`
+- `--verbose` on any suite command
 
 ## Manual Follow-Up Checks
 
@@ -215,15 +200,17 @@ Only use it when:
 
 ## Failure Triage
 
+- `deploy` fails: verify the checkout still has `deploy/pi-deploy.yaml`, `deploy/systemd/yoyopod@.service`, the configured virtualenv, and writable runtime path parents
 - `display` fails: check attached HAT, driver and library install, and `display.hardware` config
 - `input` fails: check the matching display adapter initialized correctly first
 - `music` fails: verify `mpv` is installed, the configured socket path is writable, and the configured `audio.music_dir` exists
 - `voip` fails: verify the Liblinphone shim build, `config/liblinphone_factory.conf`, SIP credentials, network reachability, and audio device configuration
+- `stability` fails: rerun `yoyoctl pi validate stability --verbose` or `yoyoctl pi lvgl soak` for a deeper LVGL-only pass
 - `validate` fails before launch: check whether the branch was actually pushed and whether the Pi checkout is reachable over SSH
 
 ## Notes
 
-- the smoke script exits non-zero if any requested check fails
+- each `yoyoctl pi validate <command>` exits non-zero if its requested check fails
 - CI intentionally does not run hardware-in-the-loop checks
 - `yoyoctl remote validate` is the normal branch and PR validation path
-- the hardware smoke script is meant to be quick; use the manual drills above when you need deeper debugging
+- the target validation suite is meant to stay small and composable; use the manual drills above when you need deeper debugging

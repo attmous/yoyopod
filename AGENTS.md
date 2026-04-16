@@ -74,7 +74,7 @@ When asked to deploy, sync, restart, check status, view logs, or take a screensh
 - Production local music now runs through the app-managed mpv backend under `src/yoyopod/audio/music/`.
 - Production VoIP now runs through Liblinphone under `src/yoyopod/voip/liblinphone_binding/` and `src/yoyopod/voip/backend.py`.
 - CI validates the staged quality gate plus Python test suite; the local mirror is `uv run python scripts/quality.py ci`.
-- Raspberry Pi validation has a defined path through `yoyoctl pi smoke` and `yoyoctl remote`.
+- Raspberry Pi validation has a defined path through the `yoyoctl pi validate` suite and `yoyoctl remote`.
 
 This file should reflect the repo as it exists on `main`. Older milestone notes are useful for history, but they are not the source of truth anymore.
 
@@ -306,12 +306,14 @@ yoyoctl remote power --host rpi-zero
 yoyoctl remote service install --host rpi-zero
 ```
 
-Direct smoke helper on the Pi:
+Direct target validation helpers on the Pi:
 
 ```bash
-yoyoctl pi smoke
-yoyoctl pi smoke --with-music --with-voip
-yoyoctl pi lvgl soak
+yoyoctl pi validate deploy
+yoyoctl pi validate smoke
+yoyoctl pi validate music
+yoyoctl pi validate voip
+yoyoctl pi validate stability
 ```
 
 If the Pi seems to keep old Python state after a pull, restart the running app process before retesting.
@@ -377,7 +379,7 @@ These old names are no longer correct:
 - `tests/test_voip_registration.py` -> use `yoyoctl pi voip check`
 - `tests/test_incoming_call_debug.py` -> use `yoyoctl pi voip debug`
 - `scripts/pi_remote.py` -> use `yoyoctl remote`
-- `scripts/pi_smoke.py` -> use `yoyoctl pi smoke`
+- `scripts/pi_smoke.py` -> use `yoyoctl pi validate smoke` or the focused `yoyoctl pi validate` subcommands
 - `scripts/check_voip_registration.py` -> use `yoyoctl pi voip check`
 - `scripts/debug_incoming_call.py` -> use `yoyoctl pi voip debug`
 - `scripts/pisugar_power.py` -> use `yoyoctl pi power battery`

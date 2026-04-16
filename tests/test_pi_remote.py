@@ -8,6 +8,7 @@ from yoyopod.cli.remote.ops import (
     PiDeployConfig,
     RemoteConfig,
     build_archive_sync_extract_command,
+    build_deploy_validation_command,
     build_local_preflight_commands,
     build_logs_command,
     build_native_shim_refresh_command,
@@ -355,15 +356,22 @@ def test_build_smoke_command_adds_optional_checks() -> None:
         voip_timeout=15.0,
     )
 
-    assert command.startswith("uv run yoyoctl pi smoke")
+    assert command.startswith("uv run yoyoctl pi validate smoke")
     assert "--with-power" in command
     assert "--with-rtc" in command
-    assert "--with-music" in command
-    assert "--with-voip" in command
-    assert "--with-lvgl-soak" in command
+    assert "uv run yoyoctl pi validate music" in command
+    assert "uv run yoyoctl pi validate voip" in command
+    assert "uv run yoyoctl pi validate stability" in command
     assert "--verbose" in command
-    assert "--music-timeout 10" in command
-    assert "--voip-timeout 15.0" in command
+    assert "--timeout 10" in command
+    assert "--timeout 15.0" in command
+
+
+def test_build_deploy_validation_command_targets_pi_suite() -> None:
+    """Deploy validation should call the focused target-side suite."""
+    command = build_deploy_validation_command(verbose=True)
+
+    assert command == "uv run yoyoctl pi validate deploy --verbose"
 
 
 def test_build_validation_inspection_command_reports_marker_and_logs() -> None:
@@ -384,6 +392,7 @@ def test_build_local_preflight_commands_cover_compile_and_pytest() -> None:
     assert commands[0][0] == "compileall"
     assert commands[0][1][1:3] == ["-m", "compileall"]
     assert "src/yoyopod/cli/pi/smoke.py" in commands[0][1]
+    assert "src/yoyopod/cli/pi/validate.py" in commands[0][1]
     assert "src/yoyopod/cli/pi/voip.py" in commands[0][1]
     assert "src/yoyopod/power/backend.py" in commands[0][1]
     assert commands[1] == ("pytest", ["uv", "run", "pytest", "-q"])

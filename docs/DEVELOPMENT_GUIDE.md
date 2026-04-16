@@ -140,13 +140,15 @@ uv run python scripts/quality.py audit
 
 The staged gate contract and exact target set live in [`QUALITY_GATES.md`](QUALITY_GATES.md).
 
-Pi smoke:
+Target-side validation suite:
 
 ```bash
-yoyoctl pi smoke
-yoyoctl pi smoke --with-music --with-voip
-yoyoctl pi smoke --with-power --with-rtc
-yoyoctl pi lvgl soak
+yoyoctl pi validate deploy
+yoyoctl pi validate smoke
+yoyoctl pi validate smoke --with-power --with-rtc
+yoyoctl pi validate music
+yoyoctl pi validate voip
+yoyoctl pi validate stability
 ```
 
 ## Raspberry Pi Workflow

@@ -14,7 +14,7 @@ from yoyopod.cli.common import configure_logging, resolve_config_dir
 
 smoke_app = typer.Typer(
     name="smoke",
-    help="Run Raspberry Pi hardware smoke validation.",
+    help="Run the legacy combined Raspberry Pi smoke validator. Prefer `yoyoctl pi validate` for focused target checks.",
     invoke_without_command=True,
     no_args_is_help=False,
 )
@@ -455,7 +455,7 @@ def smoke(
     display_hold_seconds: Annotated[float, typer.Option("--display-hold-seconds", help="How long to keep the display confirmation text visible.")] = 0.5,
     verbose: Annotated[bool, typer.Option("--verbose", help="Enable DEBUG logging.")] = False,
 ) -> None:
-    """Run Raspberry Pi hardware smoke validation for YoyoPod."""
+    """Run the legacy combined Raspberry Pi smoke validation flow for YoyoPod."""
     from loguru import logger
 
     configure_logging(verbose)

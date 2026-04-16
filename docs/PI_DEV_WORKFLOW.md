@@ -102,11 +102,12 @@ yoyoctl remote validate --branch <branch> --sha <commit> --skip-uv-sync
 2. verifies the requested branch is pushed
 3. syncs the stable Pi checkout to the branch and exact SHA
 4. runs `uv sync --extra dev` unless skipped
-5. runs the requested smoke checks
-6. restarts the app
-7. verifies startup with the PID file and startup marker
-8. prints the latest startup marker and recent logs
-9. leaves the app running for manual testing
+5. runs `yoyoctl pi validate deploy`
+6. runs the requested target-side validation checks
+7. restarts the app
+8. verifies startup with the PID file and startup marker
+9. prints the latest startup marker and recent logs
+10. leaves the app running for manual testing
 
 ## Lower-Level Commands
 
@@ -143,6 +144,13 @@ yoyoctl remote smoke --with-power --with-rtc
 yoyoctl remote smoke --with-music --with-voip --with-rtc
 yoyoctl remote smoke --with-lvgl-soak
 ```
+
+This composes the target-side suite:
+
+- `yoyoctl pi validate smoke`
+- `yoyoctl pi validate music`
+- `yoyoctl pi validate voip`
+- `yoyoctl pi validate stability`
 
 Useful variations:
 

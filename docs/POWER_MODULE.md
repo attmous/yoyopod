@@ -300,13 +300,13 @@ yoyoctl remote power --host rpi-zero
 Smoke validation:
 
 ```bash
-yoyoctl pi smoke --with-power
-yoyoctl pi smoke --with-power --with-rtc
+yoyoctl pi validate smoke --with-power
+yoyoctl pi validate smoke --with-power --with-rtc
 ```
 
 Recommended hardware sequence:
 1. `uv run pytest -q`
-2. `yoyoctl pi smoke --with-power --with-rtc`
+2. `yoyoctl pi validate smoke --with-power --with-rtc`
 3. `yoyoctl pi power battery`
 4. `yoyoctl pi power rtc status`
 

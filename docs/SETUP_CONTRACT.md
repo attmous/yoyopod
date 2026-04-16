@@ -172,8 +172,9 @@ hardware-specific extras still need follow-through when the feature requires the
 ```bash
 uv run yoyoctl setup pi
 uv run yoyoctl setup verify-pi
-yoyoctl pi smoke
-yoyoctl pi smoke --with-power --with-rtc
+yoyoctl pi validate deploy
+yoyoctl pi validate smoke
+yoyoctl pi validate smoke --with-power --with-rtc
 uv run python yoyopod.py
 ```
 
@@ -206,7 +207,7 @@ Checklist:
 - tracked config files are present under `config/`
 - required system packages are verified with `uv run yoyoctl setup verify-pi`
 - native shims have been built when the feature requires them
-- `yoyoctl pi smoke` passes for the requested hardware path
+- `yoyoctl pi validate smoke` passes for the requested hardware path
 - remote config values come from `deploy/pi-deploy.yaml` plus local overrides, not tribal knowledge
 
 ## Current gaps
