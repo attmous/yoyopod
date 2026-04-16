@@ -82,6 +82,19 @@ from yoyopod.voice import VoiceDeviceCatalog
 from yoyopod.voip import CallHistoryStore, VoIPManager
 
 
+def _queue_depth(queue_obj: object) -> int | None:
+    """Return a best-effort queue depth for runtime diagnostics."""
+
+    qsize = getattr(queue_obj, "qsize", None)
+    if not callable(qsize):
+        return None
+
+    try:
+        return int(qsize())
+    except (NotImplementedError, TypeError, ValueError):
+        return None
+
+
 class YoyoPodApp:
     """
     Main YoyoPod application coordinator.
@@ -180,6 +193,7 @@ class YoyoPodApp:
         self._lvgl_backend: Optional[LvglDisplayBackend] = None
         self._lvgl_input_bridge: Optional[LvglInputBridge] = None
         self._last_lvgl_pump_at = 0.0
+        self._last_loop_heartbeat_at = 0.0
         self._next_voip_iterate_at = 0.0
         self._voip_iterate_interval_seconds = 0.02
 
@@ -717,15 +731,19 @@ class YoyoPodApp:
 
     def get_status(self) -> Dict[str, Any]:
         """Return the current application status."""
+        monotonic_now = time.monotonic()
         pending_shutdown_in_seconds = None
         if self._pending_shutdown is not None:
             pending_shutdown_in_seconds = max(
                 0.0,
-                self._pending_shutdown.execute_at - time.monotonic(),
+                self._pending_shutdown.execute_at - monotonic_now,
             )
 
         assert self.coordinator_runtime is not None
         assert self.call_interruption_policy is not None
+        current_screen = (
+            self.screen_manager.get_current_screen() if self.screen_manager is not None else None
+        )
         power_snapshot = (
             self.power_manager.get_snapshot() if self.power_manager is not None else None
         )
@@ -739,6 +757,12 @@ class YoyoPodApp:
             "music_available": self.music_backend is not None and self.music_backend.is_connected,
             "volume": self.get_output_volume(),
             "power_available": power_snapshot.available if power_snapshot is not None else False,
+            "current_screen": getattr(current_screen, "route_name", None),
+            "screen_stack_depth": (
+                len(self.screen_manager.screen_stack) if self.screen_manager is not None else 0
+            ),
+            "pending_main_thread_callbacks": _queue_depth(self._pending_main_thread_callbacks),
+            "pending_event_bus_events": self.event_bus.pending_count(),
             "battery_percent": self.context.battery_percent if self.context else None,
             "battery_charging": self.context.battery_charging if self.context else None,
             "external_power": self.context.external_power if self.context else None,
@@ -772,6 +796,28 @@ class YoyoPodApp:
                 getattr(self.display, "backend_kind", "pil")
                 if self.display is not None
                 else "unknown"
+            ),
+            "lvgl_initialized": bool(
+                self._lvgl_backend is not None and self._lvgl_backend.initialized
+            ),
+            "lvgl_pump_age_seconds": (
+                max(0.0, monotonic_now - self._last_lvgl_pump_at)
+                if self._last_lvgl_pump_at > 0.0
+                else None
+            ),
+            "loop_heartbeat_age_seconds": (
+                max(0.0, monotonic_now - self._last_loop_heartbeat_at)
+                if self._last_loop_heartbeat_at > 0.0
+                else None
+            ),
+            "next_voip_iterate_in_seconds": (
+                max(0.0, self._next_voip_iterate_at - monotonic_now)
+                if (
+                    self.voip_manager is not None
+                    and self.voip_manager.running
+                    and self._next_voip_iterate_at > 0.0
+                )
+                else None
             ),
             "power_model": power_snapshot.device.model if power_snapshot is not None else None,
             "power_error": power_snapshot.error if power_snapshot is not None else None,

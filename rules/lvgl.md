@@ -56,6 +56,9 @@ Must rebuild on Pi after changing `lv_conf.h` or `lvgl_shim.c`.
 - `yoyoctl remote screenshot` defaults to the shadow-first path via `SIGUSR2`.
 - `yoyoctl remote screenshot --readback` requests LVGL readback via `SIGUSR1`.
 - The remote helper now clears the previous remote PNG before capture and waits for a fresh file.
+- Both screenshot signals also append freeze diagnostics to `logs/yoyopod_errors.log`:
+  - an all-thread traceback dump from `faulthandler`
+  - a structured runtime snapshot logged before the screenshot is queued
 - To confirm which path actually succeeded, check the app log:
   - `Saved screenshot via LVGL readback` means native LVGL snapshotting succeeded.
   - `Saved screenshot via shadow buffer` means the shadow path was used instead.

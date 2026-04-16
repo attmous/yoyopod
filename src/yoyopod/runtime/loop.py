@@ -83,6 +83,7 @@ class RuntimeLoopService:
         screen_update_interval: float,
     ) -> float:
         """Run one coordinator-loop iteration and return the next screen refresh timestamp."""
+        self.app._last_loop_heartbeat_at = monotonic_now
         self.iterate_voip_backend_if_due(monotonic_now)
         self.process_pending_main_thread_actions()
         self.app.recovery_service.attempt_manager_recovery(now=monotonic_now)

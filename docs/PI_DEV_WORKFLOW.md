@@ -174,6 +174,34 @@ This tails the file sinks declared in `deploy/pi-deploy.yaml`, which is the stab
 - `<project-dir>/logs/yoyopod_errors.log`
 - `/tmp/yoyopod.pid`
 
+### Freeze investigation
+
+When the app looks stuck during idle navigation, use the screenshot signal path as the first
+evidence trigger:
+
+```bash
+yoyoctl remote logs --follow --filter ERROR
+yoyoctl remote screenshot --readback
+```
+
+What to expect:
+
+- `yoyoctl remote screenshot --readback` sends `SIGUSR1` to the app.
+- `SIGUSR1` now does two things:
+  - appends an all-thread traceback dump to `logs/yoyopod_errors.log`
+  - logs a structured runtime snapshot before trying the queued screenshot capture
+- if the main loop is still healthy enough, you also get the PNG
+- if the main loop is wedged and the PNG never appears, the error log is still the first place to inspect
+
+For shadow-buffer comparison, use:
+
+```bash
+yoyoctl remote screenshot
+```
+
+That uses `SIGUSR2`, which captures the same traceback + runtime evidence but prefers the legacy
+shadow-first screenshot path.
+
 ### Production systemd service
 
 ```bash

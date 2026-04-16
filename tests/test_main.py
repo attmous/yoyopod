@@ -1,4 +1,7 @@
+import json
+import signal
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -164,3 +167,85 @@ def test_request_screenshot_capture_queues_main_loop_callback(monkeypatch) -> No
     assert force_refresh_calls == ["force_refresh"]
     assert capture_calls == [(adapter, "/tmp/test.png", True, True)]
     assert adapter._force_shadow_buffer_sync is False
+
+
+def test_log_signal_snapshot_serializes_runtime_state() -> None:
+    """Signal-triggered diagnostics should emit JSON-safe runtime state."""
+
+    logs: list[tuple[object, ...]] = []
+    fake_log = SimpleNamespace(
+        error=lambda *args: logs.append(args),
+    )
+    app = SimpleNamespace(
+        get_status=lambda: {
+            "current_screen": "hub",
+            "rtc_time": datetime(2026, 4, 16, 0, 9, tzinfo=timezone.utc),
+            "recent_calls": [{"when": datetime(2026, 4, 15, 23, 59, tzinfo=timezone.utc)}],
+        }
+    )
+
+    main_module._log_signal_snapshot(
+        app=app,
+        app_log=fake_log,
+        signal_name="SIGUSR1",
+        prefer_readback=True,
+    )
+
+    assert len(logs) == 1
+    assert logs[0][0] == "Freeze diagnostics snapshot: {}"
+    payload = json.loads(logs[0][1])
+    assert payload["signal"] == "SIGUSR1"
+    assert payload["capture_mode"] == "readback-first"
+    assert payload["status"]["current_screen"] == "hub"
+    assert payload["status"]["rtc_time"] == "2026-04-16T00:09:00+00:00"
+    assert payload["status"]["recent_calls"][0]["when"] == "2026-04-15T23:59:00+00:00"
+
+
+def test_install_traceback_dump_handlers_registers_faulthandler_chain(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Traceback dumps should chain onto the existing screenshot signal handlers."""
+
+    register_calls: list[tuple[int, bool, bool]] = []
+    unregister_calls: list[int] = []
+    logs: list[tuple[str, tuple[object, ...]]] = []
+
+    monkeypatch.setattr(
+        main_module.faulthandler,
+        "register",
+        lambda signum, *, file, all_threads, chain: register_calls.append(
+            (signum, all_threads, chain)
+        ),
+    )
+    monkeypatch.setattr(
+        main_module.faulthandler,
+        "unregister",
+        lambda signum: unregister_calls.append(signum),
+    )
+    fake_log = SimpleNamespace(
+        info=lambda *args: logs.append(("info", args)),
+        warning=lambda *args: logs.append(("warning", args)),
+    )
+
+    dump_stream, installed = main_module._install_traceback_dump_handlers(
+        signals=(signal.SIGUSR1, signal.SIGUSR2),
+        dump_path=tmp_path / "yoyopod_errors.log",
+        app_log=fake_log,
+    )
+
+    assert installed == (signal.SIGUSR1, signal.SIGUSR2)
+    assert register_calls == [
+        (signal.SIGUSR1, True, True),
+        (signal.SIGUSR2, True, True),
+    ]
+    assert dump_stream is not None
+    assert dump_stream.closed is False
+
+    main_module._uninstall_traceback_dump_handlers(
+        signals=installed,
+        dump_stream=dump_stream,
+    )
+
+    assert unregister_calls == [signal.SIGUSR1, signal.SIGUSR2]
+    assert dump_stream.closed is True

@@ -1560,7 +1560,9 @@ def run_screenshot(
     if verify_result.returncode != 0 or verify_result.stdout.strip() != "READY":
         print(
             "Screenshot was not created on the Raspberry Pi. "
-            "Confirm the app is running and screenshot handlers are installed."
+            "Confirm the app is running and screenshot handlers are installed. "
+            "If the app is wedged, inspect `yoyoctl remote logs --errors` for the "
+            "traceback dump and runtime snapshot triggered by the screenshot signal."
         )
         if verify_result.stderr.strip():
             print(verify_result.stderr.strip())

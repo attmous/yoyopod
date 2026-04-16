@@ -42,7 +42,9 @@ def test_background_publish_is_queued_until_drain() -> None:
     worker.join()
 
     assert seen_thread_ids == []
+    assert bus.pending_count() == 1
     assert bus.drain() == 1
+    assert bus.pending_count() == 0
     assert seen_thread_ids == [bus.main_thread_id]
 
 

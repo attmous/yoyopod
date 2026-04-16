@@ -66,6 +66,10 @@ class EventBus:
 
         return processed
 
+    def pending_count(self) -> int:
+        """Return the number of queued events waiting for the coordinator thread."""
+        return self._queue.qsize()
+
     def _dispatch(self, event: Any) -> None:
         """Dispatch an event to all compatible subscribers."""
         handlers: list[EventHandler] = []
