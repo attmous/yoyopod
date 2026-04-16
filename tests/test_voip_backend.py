@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from cffi import FFI
 
 from yoyopod.voip import (
@@ -93,7 +94,9 @@ class FakeBinding:
     def cancel_voice_recording(self) -> None:
         self.calls.append("cancel-record")
 
-    def send_voice_note(self, sip_address: str, *, file_path: str, duration_ms: int, mime_type: str) -> str:
+    def send_voice_note(
+        self, sip_address: str, *, file_path: str, duration_ms: int, mime_type: str
+    ) -> str:
         self.calls.append(f"voice {sip_address} {file_path} {duration_ms} {mime_type}")
         return "voice-1"
 
@@ -178,7 +181,7 @@ def test_liblinphone_backend_starts_and_drains_native_events() -> None:
             unread=1,
         ),
     ]
-    backend.iterate()
+    drained_events = backend.iterate()
 
     assert isinstance(events[0], RegistrationStateChanged)
     assert events[0].state == RegistrationState.OK
@@ -188,14 +191,15 @@ def test_liblinphone_backend_starts_and_drains_native_events() -> None:
     assert isinstance(events[3], MessageReceived)
     assert events[3].message.kind == MessageKind.VOICE_NOTE
     assert events[3].message.unread is True
+    assert drained_events == 4
     assert binding.start_kwargs["conference_factory_uri"] == ""
     assert binding.start_kwargs["file_transfer_server_url"] == "https://transfer.example.com"
     assert binding.start_kwargs["lime_server_url"] == ""
     assert binding.start_kwargs["mic_gain"] == 0
     assert binding.start_kwargs["output_volume"] == 100
-    assert binding.start_kwargs["factory_config_path"].endswith("config\\liblinphone_factory.conf") or binding.start_kwargs[
-        "factory_config_path"
-    ].endswith("config/liblinphone_factory.conf")
+    assert binding.start_kwargs["factory_config_path"].endswith(
+        "config\\liblinphone_factory.conf"
+    ) or binding.start_kwargs["factory_config_path"].endswith("config/liblinphone_factory.conf")
 
 
 def test_liblinphone_backend_infers_linphone_hosted_servers() -> None:
@@ -210,14 +214,40 @@ def test_liblinphone_backend_infers_linphone_hosted_servers() -> None:
 
     assert backend.start()
     assert (
-        binding.start_kwargs["conference_factory_uri"]
-        == "sip:conference-factory@sip.linphone.org"
+        binding.start_kwargs["conference_factory_uri"] == "sip:conference-factory@sip.linphone.org"
     )
     assert binding.start_kwargs["file_transfer_server_url"] == "https://files.linphone.org/lft.php"
     assert (
         binding.start_kwargs["lime_server_url"]
         == "https://lime.linphone.org/lime-server/lime-server.php"
     )
+
+
+def test_liblinphone_backend_records_native_iterate_timings(monkeypatch) -> None:
+    """Keep-alive diagnostics should separate native iterate time from event-drain time."""
+
+    binding = FakeBinding()
+    binding.events = [native_event(type=1, registration_state=2)]
+    backend = LiblinphoneBackend(build_config(), binding=binding)
+    warnings: list[tuple[object, ...]] = []
+    monotonic_values = iter([10.0, 10.0, 10.18, 10.18, 10.29, 10.31])
+
+    monkeypatch.setattr("yoyopod.voip.backend.time.monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr("yoyopod.voip.backend.logger.warning", lambda *args: warnings.append(args))
+
+    assert backend.start()
+
+    drained_events = backend.iterate()
+    metrics = backend.get_iterate_metrics()
+
+    assert drained_events == 1
+    assert metrics is not None
+    assert metrics.native_duration_seconds == pytest.approx(0.18)
+    assert metrics.event_drain_duration_seconds == pytest.approx(0.11)
+    assert metrics.total_duration_seconds == pytest.approx(0.31)
+    assert metrics.drained_events == 1
+    assert warnings[0][0].startswith("VoIP keep-alive native iterate slow:")
+    assert warnings[1][0].startswith("VoIP keep-alive event drain slow:")
 
 
 def test_liblinphone_backend_uses_shared_output_volume_and_capture_only_alsa(monkeypatch) -> None:
@@ -376,7 +406,9 @@ def test_voip_manager_fails_voice_note_send_without_transfer_server() -> None:
     assert manager.get_active_voice_note().status_text == "Voice notes unavailable"
 
 
-def test_voip_manager_allows_voice_note_send_for_hosted_linphone_account_without_explicit_url() -> None:
+def test_voip_manager_allows_voice_note_send_for_hosted_linphone_account_without_explicit_url() -> (
+    None
+):
     """Hosted Linphone accounts should use inferred upload settings instead of failing immediately."""
 
     backend = MockVoIPBackend()
@@ -406,10 +438,11 @@ def test_voip_manager_times_out_stuck_voice_note_send() -> None:
     assert manager.send_active_voice_note() is True
 
     manager.get_active_voice_note().send_started_at = time.monotonic() - 30.0
-    manager.iterate()
+    drained_events = manager.iterate()
 
     assert manager.get_active_voice_note().send_state == "failed"
     assert manager.get_active_voice_note().status_text == "Send timed out"
+    assert drained_events == 0
 
 
 def test_voip_manager_surfaces_voice_note_failure_reason() -> None:
@@ -437,7 +470,9 @@ def test_voip_manager_receives_incoming_voice_note_and_updates_summary(tmp_path:
     config.message_store_dir = str(tmp_path / "messages")
     manager = VoIPManager(config, backend=backend)
     summary_events: list[tuple[int, dict[str, dict[str, str]]]] = []
-    manager.on_message_summary_change(lambda unread, summary: summary_events.append((unread, summary)))
+    manager.on_message_summary_change(
+        lambda unread, summary: summary_events.append((unread, summary))
+    )
 
     assert manager.start()
 
@@ -487,7 +522,9 @@ def test_voip_manager_uses_ffplay_for_containerized_voice_notes() -> None:
     ]
 
 
-def test_voip_manager_coerces_rcs_voice_note_envelope_into_voice_note_record(tmp_path: Path) -> None:
+def test_voip_manager_coerces_rcs_voice_note_envelope_into_voice_note_record(
+    tmp_path: Path,
+) -> None:
     """Incoming GSMA file-transfer envelopes for voice recordings should not be stored as plain text."""
 
     backend = MockVoIPBackend()
@@ -513,7 +550,7 @@ def test_voip_manager_coerces_rcs_voice_note_envelope_into_voice_note_record(tmp
                     '<?xml version="1.0" encoding="UTF-8"?>'
                     '<file xmlns="urn:gsma:params:xml:ns:rcs:rcs:fthttp" '
                     'xmlns:am="urn:gsma:params:xml:ns:rcs:rcs:rram">'
-                    "<file-info type=\"file\">"
+                    '<file-info type="file">'
                     "<content-type>audio/wav;voice-recording=yes</content-type>"
                     "<am:playing-length>4046</am:playing-length>"
                     "</file-info>"
@@ -554,7 +591,10 @@ def test_liblinphone_shim_records_voice_notes_as_wav() -> None:
         encoding="utf-8"
     )
 
-    assert "linphone_recorder_params_set_file_format(params, LinphoneRecorderFileFormatWav);" in shim_source
+    assert (
+        "linphone_recorder_params_set_file_format(params, LinphoneRecorderFileFormatWav);"
+        in shim_source
+    )
 
 
 def test_liblinphone_shim_wires_incoming_message_debug_paths() -> None:
@@ -564,24 +604,43 @@ def test_liblinphone_shim_wires_incoming_message_debug_paths() -> None:
         encoding="utf-8"
     )
 
-    assert "linphone_core_cbs_set_messages_received(g_state.core_cbs, yoyopod_on_messages_received);" in shim_source
-    assert "linphone_core_set_chat_messages_aggregation_enabled(g_state.core, FALSE);" in shim_source
+    assert (
+        "linphone_core_cbs_set_messages_received(g_state.core_cbs, yoyopod_on_messages_received);"
+        in shim_source
+    )
+    assert (
+        "linphone_core_set_chat_messages_aggregation_enabled(g_state.core, FALSE);" in shim_source
+    )
     assert "linphone_core_cbs_set_message_received_unable_decrypt(" in shim_source
     assert "linphone_account_params_enable_cpim_in_basic_chat_room(params, TRUE);" in shim_source
-    assert "linphone_account_params_set_conference_factory_address(params, conference_factory_address);" in shim_source
+    assert (
+        "linphone_account_params_set_conference_factory_address(params, conference_factory_address);"
+        in shim_source
+    )
     assert "linphone_account_params_set_lime_server_url(params, lime_server_url);" in shim_source
     assert "linphone_factory_create_chat_room_cbs(g_state.factory);" in shim_source
     assert "linphone_chat_room_add_callbacks(chat_room, g_state.chat_room_cbs);" in shim_source
-    assert "linphone_chat_room_cbs_set_message_received(g_state.chat_room_cbs, yoyopod_on_chat_room_message_received);" in shim_source
+    assert (
+        "linphone_chat_room_cbs_set_message_received(g_state.chat_room_cbs, yoyopod_on_chat_room_message_received);"
+        in shim_source
+    )
     assert "linphone_logging_service_set_log_level_mask(" in shim_source
-    assert "yoyopod_log_account_diagnostics(\"registration_ok\");" in shim_source
+    assert 'yoyopod_log_account_diagnostics("registration_ok");' in shim_source
     assert "linphone_core_search_chat_room(" in shim_source
     assert "linphone_core_create_chat_room_6(" in shim_source
-    assert "linphone_chat_room_params_set_backend(params, LinphoneChatRoomBackendFlexisipChat);" in shim_source
-    assert "linphone_chat_room_params_set_backend(params, LinphoneChatRoomBackendBasic);" in shim_source
+    assert (
+        "linphone_chat_room_params_set_backend(params, LinphoneChatRoomBackendFlexisipChat);"
+        in shim_source
+    )
+    assert (
+        "linphone_chat_room_params_set_backend(params, LinphoneChatRoomBackendBasic);"
+        in shim_source
+    )
     assert "linphone_chat_room_params_enable_encryption(params, FALSE);" in shim_source
-    assert 'voice-recording=yes' in shim_source
-    assert "linphone_core_enable_auto_download_voice_recordings(g_state.core, FALSE);" in shim_source
+    assert "voice-recording=yes" in shim_source
+    assert (
+        "linphone_core_enable_auto_download_voice_recordings(g_state.core, FALSE);" in shim_source
+    )
     assert 'linphone_chat_room_params_set_subject(params, "YoyoPod");' in shim_source
     assert "linphone_core_delete_chat_room(g_state.core, chat_room);" in shim_source
     assert shim_source.count("chat_room = yoyopod_get_direct_chat_room(sip_address);") >= 2

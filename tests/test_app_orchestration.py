@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Protocol
 
 import pytest
+from loguru import logger
 
 from yoyopod.app import YoyoPodApp
 from yoyopod.app_context import AppContext
@@ -36,6 +38,7 @@ from yoyopod.fsm import (
     MusicState,
 )
 from yoyopod.power import BatteryState, PowerSnapshot
+from yoyopod.runtime.loop import RuntimeLoopService
 from yoyopod.ui.input import InputManager, InteractionProfile
 
 
@@ -198,6 +201,35 @@ class FakeStoppingVoIPManager:
 
     def stop(self, notify_events: bool = True) -> None:
         self.stop_notify_events.append(notify_events)
+
+
+class FakeRuntimeLoopVoIPManager:
+    """Minimal running VoIP manager double for loop timing diagnostics."""
+
+    def __init__(
+        self,
+        *,
+        native_events: int = 0,
+        native_iterate_seconds: float = 0.0,
+        event_drain_seconds: float = 0.0,
+    ) -> None:
+        self.running = True
+        self.iterate_calls = 0
+        self.native_events = native_events
+        self.native_iterate_seconds = native_iterate_seconds
+        self.event_drain_seconds = event_drain_seconds
+
+    def iterate(self) -> int:
+        self.iterate_calls += 1
+        return self.native_events
+
+    def get_iterate_metrics(self) -> object:
+        return SimpleNamespace(
+            native_duration_seconds=self.native_iterate_seconds,
+            event_drain_duration_seconds=self.event_drain_seconds,
+            total_duration_seconds=self.native_iterate_seconds + self.event_drain_seconds,
+            drained_events=self.native_events,
+        )
 
 
 class FakePowerManager:
@@ -437,9 +469,7 @@ class OrchestrationHarness:
         if call_state is not None:
             self.call_fsm.sync(call_state)
         if music_interrupted_by_call is not None:
-            self.call_interruption_policy.music_interrupted_by_call = (
-                music_interrupted_by_call
-            )
+            self.call_interruption_policy.music_interrupted_by_call = music_interrupted_by_call
         self.runtime.sync_app_state(trigger)
 
     def push_screens(self, *screen_names: str) -> None:
@@ -1324,3 +1354,118 @@ def test_runtime_loop_service_refreshes_visible_power_screen() -> None:
 
     assert updated_at == 1.0
     assert app.power_screen.render_calls > render_calls_before
+
+
+def test_runtime_loop_logs_voip_timing_drift_and_exposes_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """VoIP keep-alive timing should surface in logs and freeze snapshots."""
+
+    app, _, _ = _build_app_with_power(
+        FakePowerManager([_power_snapshot(available=True, battery_percent=55.0)])
+    )
+    voip_manager = FakeRuntimeLoopVoIPManager(
+        native_events=3,
+        native_iterate_seconds=0.08,
+        event_drain_seconds=0.03,
+    )
+    app.voip_manager = voip_manager
+    app._voip_iterate_interval_seconds = 0.02
+
+    messages: list[str] = []
+    sink_id = logger.add(
+        lambda message: messages.append(
+            f"{message.record['extra'].get('subsystem', '')}|{message.record['message']}"
+        ),
+        format="{message}",
+        level="INFO",
+    )
+    monkeypatch.setattr(RuntimeLoopService, "_VOIP_TIMING_SUMMARY_INTERVAL_SECONDS", 0.0)
+    try:
+        app.runtime_loop.run_iteration(
+            monotonic_now=1.0,
+            current_time=1.0,
+            last_screen_update=0.0,
+            screen_update_interval=10.0,
+        )
+        app.runtime_loop.run_iteration(
+            monotonic_now=1.25,
+            current_time=1.25,
+            last_screen_update=1.0,
+            screen_update_interval=10.0,
+        )
+    finally:
+        logger.remove(sink_id)
+
+    log_text = "\n".join(messages)
+    assert "coord|Runtime loop blocked:" in log_text
+    assert "voip|VoIP iterate timing drift:" in log_text
+    assert "voip|VoIP timing window:" in log_text
+    assert "native_iterate_ms=80.0" in log_text
+    assert "event_drain_ms=30.0" in log_text
+    assert "max_native_iterate_ms=80.0" in log_text
+    assert "max_event_drain_ms=30.0" in log_text
+    assert "native_events=3" in log_text
+    assert voip_manager.iterate_calls == 2
+
+    status = app.get_status()
+    assert status["runtime_loop_gap_seconds"] == pytest.approx(0.25)
+    assert status["voip_schedule_delay_seconds"] == pytest.approx(0.23)
+    assert status["voip_iterate_duration_seconds"] is not None
+    assert status["voip_native_iterate_duration_seconds"] == pytest.approx(0.08)
+    assert status["voip_event_drain_duration_seconds"] == pytest.approx(0.03)
+    assert status["voip_iterate_native_events"] == 3
+    assert status["voip_iterate_interval_seconds"] == pytest.approx(0.02)
+
+
+def test_runtime_loop_logs_named_blocking_spans(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Long coordinator steps should identify the blocking span in the logs and status."""
+
+    app, _, _ = _build_app_with_power(
+        FakePowerManager([_power_snapshot(available=True, battery_percent=55.0)])
+    )
+    app.voip_manager = FakeRuntimeLoopVoIPManager()
+    app._voip_iterate_interval_seconds = 0.02
+
+    messages: list[str] = []
+    sink_id = logger.add(
+        lambda message: messages.append(
+            f"{message.record['extra'].get('subsystem', '')}|{message.record['message']}"
+        ),
+        format="{message}",
+        level="INFO",
+    )
+    monkeypatch.setattr(
+        RuntimeLoopService,
+        "_runtime_blocking_span_warning_seconds",
+        lambda self: 0.01,
+    )
+    monkeypatch.setattr(RuntimeLoopService, "_VOIP_TIMING_SUMMARY_INTERVAL_SECONDS", 0.0)
+    original_poll_power_status = app.recovery_service.poll_power_status
+
+    def slow_poll_power_status(*, now: float | None = None, force: bool = False) -> None:
+        time.sleep(0.02)
+        original_poll_power_status(now=now, force=force)
+
+    app.recovery_service.poll_power_status = slow_poll_power_status
+    try:
+        app.runtime_loop.run_iteration(
+            monotonic_now=1.0,
+            current_time=1.0,
+            last_screen_update=0.0,
+            screen_update_interval=10.0,
+        )
+    finally:
+        logger.remove(sink_id)
+
+    log_text = "\n".join(messages)
+    assert "coord|Coordinator blocking span: span=power_poll" in log_text
+    assert "voip|VoIP timing window:" in log_text
+    assert "max_blocking_span=power_poll" in log_text
+
+    status = app.get_status()
+    assert status["runtime_blocking_span_name"] == "power_poll"
+    assert status["runtime_blocking_span_seconds"] is not None
+    assert status["runtime_blocking_span_age_seconds"] is not None

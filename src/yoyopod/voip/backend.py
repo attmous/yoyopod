@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional, Protocol
+from typing import Callable, Protocol
 
 from loguru import logger
 
@@ -43,8 +44,8 @@ class VoIPBackend(Protocol):
     def stop(self) -> None:
         """Stop the backend and release resources."""
 
-    def iterate(self) -> None:
-        """Advance the backend once on the coordinator thread."""
+    def iterate(self) -> int:
+        """Advance the backend once on the coordinator thread and return drained event count."""
 
     def make_call(self, sip_address: str) -> bool:
         """Initiate an outgoing call."""
@@ -95,8 +96,21 @@ class _AlsaCaptureConfig:
     capture_raw: int
 
 
+@dataclass(frozen=True, slots=True)
+class VoIPIterateMetrics:
+    """Most recent keep-alive timing captured around one backend iterate."""
+
+    native_duration_seconds: float = 0.0
+    event_drain_duration_seconds: float = 0.0
+    total_duration_seconds: float = 0.0
+    drained_events: int = 0
+
+
 class LiblinphoneBackend:
     """Production VoIP backend driven by the native Liblinphone shim."""
+
+    _MIN_NATIVE_ITERATE_WARNING_SECONDS = 0.15
+    _MIN_EVENT_DRAIN_WARNING_SECONDS = 0.1
 
     def __init__(
         self,
@@ -108,6 +122,7 @@ class LiblinphoneBackend:
         self.binding = binding or LiblinphoneBinding.try_load()
         self.running = False
         self.event_callbacks: list[Callable[[VoIPEvent], None]] = []
+        self._last_iterate_metrics: VoIPIterateMetrics | None = None
 
     def on_event(self, callback: Callable[[VoIPEvent], None]) -> None:
         self.event_callbacks.append(callback)
@@ -204,21 +219,45 @@ class LiblinphoneBackend:
             self.binding.shutdown()
             self.running = False
 
-    def iterate(self) -> None:
-        if not self.running or self.binding is None:
-            return
+    def get_iterate_metrics(self) -> VoIPIterateMetrics | None:
+        """Return the latest native keep-alive timing sample."""
 
+        return self._last_iterate_metrics
+
+    def iterate(self) -> int:
+        if not self.running or self.binding is None:
+            return 0
+
+        drained_events = 0
+        started_at = time.monotonic()
+        native_duration_seconds = 0.0
+        event_drain_started_at = started_at
         try:
+            native_started_at = time.monotonic()
             self.binding.iterate()
+            native_duration_seconds = max(0.0, time.monotonic() - native_started_at)
+            event_drain_started_at = time.monotonic()
             while True:
                 event = self.binding.poll_event()
                 if event is None:
                     break
+                drained_events += 1
                 self._emit_native_event(event)
         except Exception as exc:
             logger.error("Liblinphone iterate failed: {}", exc)
             self.running = False
             self._emit(BackendStopped(reason=str(exc)))
+        finally:
+            event_drain_duration_seconds = max(0.0, time.monotonic() - event_drain_started_at)
+            total_duration_seconds = max(0.0, time.monotonic() - started_at)
+            self._last_iterate_metrics = VoIPIterateMetrics(
+                native_duration_seconds=native_duration_seconds,
+                event_drain_duration_seconds=event_drain_duration_seconds,
+                total_duration_seconds=total_duration_seconds,
+                drained_events=drained_events,
+            )
+            self._log_iterate_warning_if_needed()
+        return drained_events
 
     def make_call(self, sip_address: str) -> bool:
         return self._call_binding(lambda: self.binding.make_call(sip_address))
@@ -294,6 +333,36 @@ class LiblinphoneBackend:
             logger.error("Liblinphone operation failed: {}", exc)
             return False
 
+    def _log_iterate_warning_if_needed(self) -> None:
+        """Surface backend-native keep-alive work when it blocks unusually long."""
+
+        if self._last_iterate_metrics is None:
+            return
+
+        if (
+            self._last_iterate_metrics.native_duration_seconds
+            >= self._MIN_NATIVE_ITERATE_WARNING_SECONDS
+        ):
+            logger.warning(
+                "VoIP keep-alive native iterate slow: native_ms={:.1f} "
+                "total_ms={:.1f} drained_events={}",
+                self._last_iterate_metrics.native_duration_seconds * 1000.0,
+                self._last_iterate_metrics.total_duration_seconds * 1000.0,
+                self._last_iterate_metrics.drained_events,
+            )
+
+        if (
+            self._last_iterate_metrics.event_drain_duration_seconds
+            >= self._MIN_EVENT_DRAIN_WARNING_SECONDS
+        ):
+            logger.warning(
+                "VoIP keep-alive event drain slow: drain_ms={:.1f} "
+                "total_ms={:.1f} drained_events={}",
+                self._last_iterate_metrics.event_drain_duration_seconds * 1000.0,
+                self._last_iterate_metrics.total_duration_seconds * 1000.0,
+                self._last_iterate_metrics.drained_events,
+            )
+
     def _emit(self, event: VoIPEvent) -> None:
         for callback in self.event_callbacks:
             try:
@@ -303,7 +372,9 @@ class LiblinphoneBackend:
 
     def _emit_native_event(self, event: LiblinphoneNativeEvent) -> None:
         if event.type == 1:
-            self._emit(RegistrationStateChanged(state=self._registration_state(event.registration_state)))
+            self._emit(
+                RegistrationStateChanged(state=self._registration_state(event.registration_state))
+            )
             return
 
         if event.type == 2:
@@ -552,8 +623,11 @@ class MockVoIPBackend:
         self.running = False
         self.recording_active = False
 
-    def iterate(self) -> None:
-        return
+    def iterate(self) -> int:
+        return 0
+
+    def get_iterate_metrics(self) -> VoIPIterateMetrics | None:
+        return None
 
     def make_call(self, sip_address: str) -> bool:
         self.commands.append(f"call {sip_address}")
@@ -609,5 +683,7 @@ class MockVoIPBackend:
         duration_ms: int,
         mime_type: str,
     ) -> str | None:
-        self.commands.append(f"voice-note {sip_address} {Path(file_path).name} {duration_ms} {mime_type}")
+        self.commands.append(
+            f"voice-note {sip_address} {Path(file_path).name} {duration_ms} {mime_type}"
+        )
         return self.next_voice_note_id

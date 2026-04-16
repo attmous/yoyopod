@@ -165,6 +165,7 @@ This waits for the startup marker and matching PID before returning success.
 yoyoctl remote logs --lines 200
 yoyoctl remote logs --errors
 yoyoctl remote logs --filter voip
+yoyoctl remote logs --filter coord
 yoyoctl remote logs --follow --filter ERROR
 ```
 
@@ -173,6 +174,12 @@ This tails the file sinks declared in `deploy/pi-deploy.yaml`, which is the stab
 - `<project-dir>/logs/yoyopod.log`
 - `<project-dir>/logs/yoyopod_errors.log`
 - `/tmp/yoyopod.pid`
+
+For keep-alive freeze triage, watch the `voip` and `coord` lines together:
+
+- `VoIP timing window`: rolling summary of keep-alive schedule delay, iterate duration, and the worst loop gap in that window
+- `VoIP iterate timing drift`: one-off warning when a keep-alive step ran late or took unusually long
+- `Runtime loop blocked`: one-off warning when some other coordinator work starved the loop enough to threaten VoIP cadence
 
 ### Freeze investigation
 
@@ -190,6 +197,11 @@ What to expect:
 - `SIGUSR1` now does two things:
   - appends an all-thread traceback dump to `logs/yoyopod_errors.log`
   - logs a structured runtime snapshot before trying the queued screenshot capture
+- recent runtime logs also expose VoIP keep-alive timing in three layers:
+  - `VoIP keep-alive native iterate slow` means the Liblinphone keep-alive call itself blocked
+  - `VoIP iterate timing drift` means the coordinator reached keep-alive late or the full iterate pass ran long
+  - `Coordinator blocking span` points at nearby coordinator work that may have delayed keep-alives
+- the periodic `VoIP timing window` summary rolls those samples up for hardware runs without logging every 20 ms iterate
 - if the main loop is still healthy enough, you also get the PNG
 - if the main loop is wedged and the PNG never appears, the error log is still the first place to inspect
 

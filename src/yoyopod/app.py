@@ -849,4 +849,5 @@ class YoyoPodApp:
                 if self.power_manager is not None
                 else None
             ),
+            **self.runtime_loop.timing_snapshot(now=monotonic_now),
         }

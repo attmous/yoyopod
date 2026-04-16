@@ -119,6 +119,16 @@ yoyoctl pi voip check
 
 Use this when you want a registration-only pass with detailed logs.
 
+When the full app is running, the coordinator-thread timing signals land in
+`logs/yoyopod.log` and through `yoyoctl remote logs --follow`.
+
+- `VoIP iterate timing drift` is the per-keep-alive warning. `schedule_delay_ms` shows how late the iterate ran, `iterate_ms` shows how long the Liblinphone keep-alive took on the coordinator thread, and `native_events` shows how many backend events were drained during that pass.
+- `VoIP timing window` is the low-frequency summary for target-hardware runs. Use it to spot repeated delay or duration spikes without reading every keep-alive warning. `max_blocking_span` and `max_blocking_span_ms` point at the worst nearby coordinator step seen in that summary window.
+- `Runtime loop blocked` means the whole coordinator loop stalled between iterations.
+- `Coordinator blocking span` names the specific runtime step that blocked long enough to threaten keep-alive cadence or UI responsiveness.
+- `Runtime iteration slow` means the total loop iteration stayed on the coordinator thread too long even if the exact hot span was not obvious from a single callback.
+- Freeze snapshots also include `runtime_blocking_span_name`, `runtime_blocking_span_seconds`, and `runtime_blocking_span_age_seconds` so a `SIGUSR1` dump can tell you whether the last blocking span is still fresh or already stale.
+
 ### Incoming call debug drill
 
 ```bash

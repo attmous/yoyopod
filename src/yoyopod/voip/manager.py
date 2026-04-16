@@ -134,10 +134,12 @@ class VoIPManager:
             self._stopping = False
         logger.info("VoIP manager stopped")
 
-    def iterate(self) -> None:
+    def iterate(self) -> int:
+        drained_events = 0
         if self.running:
-            self.backend.iterate()
+            drained_events = self.backend.iterate()
         self._check_active_voice_note_timeout()
+        return drained_events
 
     def make_call(self, sip_address: str, contact_name: str | None = None) -> bool:
         if not self.registered:
@@ -383,6 +385,14 @@ class VoIPManager:
             "sip_identity": self.config.sip_identity,
             "unread_voice_notes": self.unread_voice_note_count(),
         }
+
+    def get_iterate_metrics(self) -> object | None:
+        """Return the latest backend-native keep-alive timing sample when available."""
+
+        get_metrics = getattr(self.backend, "get_iterate_metrics", None)
+        if not callable(get_metrics):
+            return None
+        return get_metrics()
 
     def get_call_duration(self) -> int:
         if self.call_start_time and self.call_state in (
