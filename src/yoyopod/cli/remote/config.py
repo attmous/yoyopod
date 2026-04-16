@@ -9,6 +9,7 @@ from typing import Sequence
 
 import yaml
 
+from yoyopod.audio.test_music import DEFAULT_TEST_MUSIC_TARGET_DIR
 from yoyopod.cli.common import REPO_ROOT
 
 DEPLOY_CONFIG_PATH = REPO_ROOT / "deploy" / "pi-deploy.yaml"
@@ -50,6 +51,7 @@ class PiDeployConfig:
     pid_file: str = "/tmp/yoyopod.pid"
     startup_marker: str = "YoyoPod starting"
     screenshot_path: str = "/tmp/yoyopod_screenshot.png"
+    test_music_target_dir: str = DEFAULT_TEST_MUSIC_TARGET_DIR
     rsync_exclude: tuple[str, ...] = (
         ".git/",
         ".cache/",
@@ -122,6 +124,10 @@ def parse_pi_deploy_config(data: dict[str, object]) -> PiDeployConfig:
         startup_marker=str(data["startup_marker"]).strip(),
         screenshot_path=str(data.get("screenshot_path", "/tmp/yoyopod_screenshot.png")).strip()
         or "/tmp/yoyopod_screenshot.png",
+        test_music_target_dir=str(
+            data.get("test_music_target_dir", DEFAULT_TEST_MUSIC_TARGET_DIR)
+        ).strip()
+        or DEFAULT_TEST_MUSIC_TARGET_DIR,
         rsync_exclude=_as_string_tuple(
             data.get(
                 "rsync_exclude",
@@ -190,6 +196,7 @@ def pi_deploy_config_to_dict(config: PiDeployConfig) -> dict[str, object]:
         "pid_file": config.pid_file,
         "startup_marker": config.startup_marker,
         "screenshot_path": config.screenshot_path,
+        "test_music_target_dir": config.test_music_target_dir,
         "rsync_exclude": list(config.rsync_exclude),
     }
 

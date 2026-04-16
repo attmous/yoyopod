@@ -10,6 +10,7 @@ from typing import Annotated, Any, Optional
 
 import typer
 
+from yoyopod.audio.test_music import DEFAULT_TEST_MUSIC_TARGET_DIR
 from yoyopod.cli.common import configure_logging, resolve_config_dir
 
 smoke_app = typer.Typer(
@@ -242,8 +243,35 @@ def _rtc_check(config_dir: Path) -> CheckResult:
     return CheckResult(name="rtc", status="pass", details=details)
 
 
-def _music_check(app_config: dict[str, Any], timeout_seconds: int) -> CheckResult:
+def _prepare_music_validation_library(
+    app_config: dict[str, Any],
+    *,
+    provision_test_music: bool,
+    test_music_dir: str,
+):
+    """Provision the deterministic validation music library and point smoke at it."""
+    from yoyopod.audio.test_music import provision_test_music_library
+
+    if not provision_test_music:
+        return None
+
+    library = provision_test_music_library(Path(test_music_dir))
+    audio_config = app_config.get("audio")
+    if not isinstance(audio_config, dict):
+        audio_config = {}
+        app_config["audio"] = audio_config
+    audio_config["music_dir"] = str(library.target_dir)
+    return library
+
+
+def _music_check(
+    app_config: dict[str, Any],
+    timeout_seconds: int,
+    *,
+    expected_library=None,
+) -> CheckResult:
     """Validate music-backend startup and basic state queries."""
+    from yoyopod.audio.local_service import LocalMusicService
     from yoyopod.audio.music import MpvBackend, MusicConfig
 
     audio_config = app_config.get("audio", {})
@@ -274,6 +302,69 @@ def _music_check(app_config: dict[str, Any], timeout_seconds: int) -> CheckResul
                 name="music",
                 status="fail",
                 details=f"music backend did not report ready within {timeout_seconds}s",
+            )
+
+        if expected_library is not None:
+            missing_assets = [
+                path
+                for path in expected_library.expected_asset_paths
+                if not path.exists()
+            ]
+            if missing_assets:
+                missing_list = ", ".join(str(path) for path in missing_assets)
+                return CheckResult(
+                    name="music",
+                    status="fail",
+                    details=f"missing provisioned test assets: {missing_list}",
+                )
+
+            music_service = LocalMusicService(backend, music_dir=expected_library.target_dir)
+            playlist_path = expected_library.default_playlist_path
+            playlists = music_service.list_playlists()
+            if str(playlist_path) not in {playlist.uri for playlist in playlists}:
+                return CheckResult(
+                    name="music",
+                    status="fail",
+                    details=f"provisioned playlist not discoverable under {expected_library.target_dir}",
+                )
+
+            if not music_service.load_playlist(str(playlist_path)):
+                return CheckResult(
+                    name="music",
+                    status="fail",
+                    details=f"mpv could not load the provisioned playlist {playlist_path}",
+                )
+
+            expected_track_uris = {str(path) for path in expected_library.track_paths}
+            loaded_track = None
+            while (time.monotonic() - started_at) < timeout_seconds:
+                loaded_track = backend.get_current_track()
+                if loaded_track is not None and loaded_track.uri in expected_track_uris:
+                    break
+                time.sleep(0.1)
+
+            if loaded_track is None or loaded_track.uri not in expected_track_uris:
+                current_uri = loaded_track.uri if loaded_track is not None else "none"
+                return CheckResult(
+                    name="music",
+                    status="fail",
+                    details=(
+                        "music backend started, but it did not load one of the "
+                        f"provisioned validation tracks from {expected_library.target_dir}; "
+                        f"current_track={current_uri}"
+                    ),
+                )
+
+            playback_state = backend.get_playback_state()
+            return CheckResult(
+                name="music",
+                status="pass",
+                details=(
+                    f"binary={config.mpv_binary}, socket={config.mpv_socket}, "
+                    f"music_dir={expected_library.target_dir}, "
+                    f"playlist={playlist_path.name}, state={playback_state}, "
+                    f"track={loaded_track.name}"
+                ),
             )
 
         playback_state = backend.get_playback_state()
@@ -450,6 +541,20 @@ def smoke(
     with_rtc: Annotated[bool, typer.Option("--with-rtc", help="Also validate PiSugar RTC state and alarm.")] = False,
     with_voip: Annotated[bool, typer.Option("--with-voip", help="Also validate Liblinphone startup and SIP registration.")] = False,
     with_lvgl_soak: Annotated[bool, typer.Option("--with-lvgl-soak", help="Also run a short LVGL transition and sleep/wake soak.")] = False,
+    provision_test_music: Annotated[
+        bool,
+        typer.Option(
+            "--provision-test-music/--no-provision-test-music",
+            help="Seed the deterministic validation music library before music checks.",
+        ),
+    ] = True,
+    test_music_dir: Annotated[
+        str,
+        typer.Option(
+            "--test-music-dir",
+            help="Dedicated target directory for validation-only test music assets.",
+        ),
+    ] = DEFAULT_TEST_MUSIC_TARGET_DIR,
     music_timeout: Annotated[int, typer.Option("--music-timeout", help="Startup timeout in seconds for music checks.")] = 5,
     voip_timeout: Annotated[float, typer.Option("--voip-timeout", help="Registration timeout in seconds for VoIP checks.")] = 90.0,
     display_hold_seconds: Annotated[float, typer.Option("--display-hold-seconds", help="How long to keep the display confirmation text visible.")] = 0.5,
@@ -465,6 +570,13 @@ def smoke(
     logger.info(f"Using config directory: {config_path}")
 
     app_config = _load_app_config(config_path)
+    expected_music_library = None
+    if with_music:
+        expected_music_library = _prepare_music_validation_library(
+            app_config,
+            provision_test_music=provision_test_music,
+            test_music_dir=test_music_dir,
+        )
     results: list[CheckResult] = [_environment_check()]
     display = None
 
@@ -482,7 +594,13 @@ def smoke(
             results.append(_rtc_check(config_path))
 
         if with_music:
-            results.append(_music_check(app_config, music_timeout))
+            results.append(
+                _music_check(
+                    app_config,
+                    music_timeout,
+                    expected_library=expected_music_library,
+                )
+            )
 
         if with_voip:
             results.append(_voip_check(config_path, voip_timeout))

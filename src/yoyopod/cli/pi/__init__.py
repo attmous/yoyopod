@@ -6,6 +6,7 @@ import typer
 
 from yoyopod.cli.pi.gallery import gallery_app
 from yoyopod.cli.pi.lvgl import lvgl_app
+from yoyopod.cli.pi.music import music_app
 from yoyopod.cli.pi.network import network_app
 from yoyopod.cli.pi.power import power_app
 from yoyopod.cli.pi.smoke import smoke_app
@@ -18,6 +19,7 @@ pi_app.add_typer(validate_app)
 pi_app.add_typer(voip_app)
 pi_app.add_typer(power_app)
 pi_app.add_typer(network_app)
+pi_app.add_typer(music_app)
 pi_app.add_typer(lvgl_app)
 pi_app.add_typer(smoke_app)
 pi_app.add_typer(tune_app)
