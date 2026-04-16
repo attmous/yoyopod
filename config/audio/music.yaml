@@ -2,9 +2,9 @@
 
 audio:
   music_dir: "/home/tifo/Music"
+  recent_tracks_file: "data/media/recent_tracks.json"
   mpv_socket: "/tmp/yoyopod-mpv.sock"
   mpv_binary: "mpv"
-  alsa_device: "default"
   auto_resume_after_call: true
   fade_out_duration_ms: 0
   fade_in_duration_ms: 0

@@ -14,9 +14,13 @@ from typing import Any, Callable, Dict, Optional
 from loguru import logger
 
 from yoyopod.app_context import AppContext
-from yoyopod.audio import LocalMusicService, OutputVolumeController, RecentTrackHistoryStore
-from yoyopod.audio.music import MpvBackend
-from yoyopod.config import ConfigManager, YoyoPodConfig
+from yoyopod.audio import (
+    LocalMusicService,
+    MpvBackend,
+    OutputVolumeController,
+    RecentTrackHistoryStore,
+)
+from yoyopod.config import ConfigManager, MediaConfig, YoyoPodConfig
 from yoyopod.coordinators import (
     AppRuntimeState,
     CallCoordinator,
@@ -116,6 +120,7 @@ class YoyoPodApp:
         self.context: Optional[AppContext] = None
         self.config_manager: Optional[ConfigManager] = None
         self.app_settings: Optional[YoyoPodConfig] = None
+        self.media_settings: Optional[MediaConfig] = None
         self.screen_manager: Optional[ScreenManager] = None
         self.input_manager: Optional[InputManager] = None
         self.people_directory: Optional[PeopleDirectory] = None
@@ -291,8 +296,8 @@ class YoyoPodApp:
 
     def _resolve_default_music_volume(self) -> int:
         """Return the configured startup volume for the music backend."""
-        audio_cfg = self.app_settings.audio if self.app_settings else None
-        raw_volume = audio_cfg.default_volume if audio_cfg else 100
+        media_cfg = self.media_settings
+        raw_volume = media_cfg.music.default_volume if media_cfg else 100
         return max(0, min(100, int(raw_volume)))
 
     def _apply_default_music_volume(self) -> None:

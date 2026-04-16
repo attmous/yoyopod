@@ -108,11 +108,13 @@ class CallCoordinator:
 
         try:
             ring_output_device = None
+            speaker_test_path = "speaker-test"
             if self.runtime.config_manager:
                 ring_output_device = self.runtime.config_manager.get_ring_output_device()
+                speaker_test_path = self.runtime.config_manager.get_speaker_test_path()
 
             command = [
-                self.runtime.config.get("audio", {}).get("speaker_test_path", "speaker-test"),
+                speaker_test_path,
                 "-t",
                 "sine",
                 "-f",

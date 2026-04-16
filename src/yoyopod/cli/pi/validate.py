@@ -20,6 +20,7 @@ from yoyopod.cli.pi.smoke import (
     _environment_check,
     _input_check,
     _load_app_config,
+    _load_media_config,
     _music_check,
     _power_check,
     _rtc_check,
@@ -299,8 +300,8 @@ def music(
 
     logger.info("Running target music validation")
 
-    app_config = _load_app_config(config_path)
-    results = [_music_check(app_config, timeout)]
+    media_config = _load_media_config(config_path)
+    results = [_music_check(media_config, timeout)]
 
     _print_summary("music", results)
     if any(result.status == "fail" for result in results):

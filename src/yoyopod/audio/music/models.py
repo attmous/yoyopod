@@ -5,7 +5,10 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from yoyopod.config import ConfigManager, MediaConfig as RuntimeMediaConfig
 
 
 def _normalized_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -206,3 +209,32 @@ class MusicConfig:
     def __post_init__(self) -> None:
         if not self.mpv_socket:
             self.mpv_socket = _default_mpv_socket()
+
+    @classmethod
+    def from_media_settings(cls, settings: "RuntimeMediaConfig | None") -> MusicConfig:
+        """Translate composed media settings into the backend-facing mpv config."""
+
+        music_settings = settings.music if settings is not None else None
+        audio_settings = settings.audio if settings is not None else None
+        return cls(
+            music_dir=(
+                Path(music_settings.music_dir)
+                if music_settings is not None
+                else Path("/home/pi/Music")
+            ),
+            mpv_socket=(
+                music_settings.mpv_socket
+                if music_settings and music_settings.mpv_socket
+                else ""
+            ),
+            mpv_binary=music_settings.mpv_binary if music_settings is not None else "mpv",
+            alsa_device=audio_settings.alsa_device if audio_settings is not None else "default",
+        )
+
+    @classmethod
+    def from_config_manager(cls, config_manager: "ConfigManager | None") -> MusicConfig:
+        """Build the backend-facing mpv config from the typed media runtime seam."""
+
+        if config_manager is None:
+            return cls()
+        return cls.from_media_settings(config_manager.get_media_settings())

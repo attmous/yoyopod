@@ -100,9 +100,9 @@ Key settings:
 - `config/app/core.yaml`
   - `app.*`, `ui.*`, `logging.*`, `diagnostics.*`
 - `config/audio/music.yaml`
-  - `audio.music_dir`, `audio.mpv_*`, `audio.alsa_device`, `audio.default_volume`
+  - `audio.music_dir`, `audio.recent_tracks_file`, `audio.mpv_*`, `audio.default_volume`
 - `config/device/hardware.yaml`
-  - `input.*`, `display.*`, `power.*`, `communication_audio.*`, `voice_audio.*`
+  - `input.*`, `display.*`, `power.*`, `communication_audio.*`, `media_audio.*`, `voice_audio.*`
 - `config/network/cellular.yaml`
   - `network.*` cellular modem enablement, ports, APN, GPS, and PPP timeout
 - `config/voice/assistant.yaml`
@@ -116,7 +116,8 @@ Key settings:
 
 Local SIP credentials belong in `config/communication/calling.secrets.yaml` or
 env vars. Mutable contacts live in `data/people/contacts.yaml`, optionally
-bootstrapped from `config/people/contacts.seed.yaml`.
+bootstrapped from `config/people/contacts.seed.yaml`. Mutable media history
+lives in `data/media/recent_tracks.json`.
 
 ## Running
 

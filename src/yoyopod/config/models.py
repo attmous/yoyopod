@@ -142,13 +142,12 @@ class AppMetadataConfig:
 
 
 @dataclass(slots=True)
-class AppAudioConfig:
-    """Audio and local music-backend settings."""
+class MediaMusicConfig:
+    """Local music playback policy and runtime paths."""
 
     music_dir: str = config_value(default="/home/pi/Music", env="YOYOPOD_MUSIC_DIR")
     mpv_socket: str = config_value(default="", env="YOYOPOD_MPV_SOCKET")
     mpv_binary: str = config_value(default="mpv", env="YOYOPOD_MPV_BINARY")
-    alsa_device: str = config_value(default="default", env="YOYOPOD_ALSA_DEVICE")
     auto_resume_after_call: bool = config_value(
         default=True,
         env="YOYOPOD_AUTO_RESUME_AFTER_CALL",
@@ -157,6 +156,25 @@ class AppAudioConfig:
     fade_in_duration_ms: int = config_value(default=0, env="YOYOPOD_FADE_IN_DURATION_MS")
     default_volume: int = config_value(default=100, env="YOYOPOD_DEFAULT_VOLUME")
     speaker_test_path: str = config_value(default="speaker-test", env="YOYOPOD_SPEAKER_TEST_PATH")
+    recent_tracks_file: str = config_value(
+        default="data/media/recent_tracks.json",
+        env="YOYOPOD_RECENT_TRACKS_FILE",
+    )
+
+
+@dataclass(slots=True)
+class MediaAudioConfig:
+    """Device-owned playback routing for the local media domain."""
+
+    alsa_device: str = config_value(default="default", env="YOYOPOD_ALSA_DEVICE")
+
+
+@dataclass(slots=True)
+class MediaConfig:
+    """Composed media/audio config built from music policy and device-owned routing."""
+
+    music: MediaMusicConfig = config_value(default_factory=MediaMusicConfig)
+    audio: MediaAudioConfig = config_value(default_factory=MediaAudioConfig)
 
 
 @dataclass(slots=True)
@@ -412,10 +430,9 @@ class AppDiagnosticsConfig:
 
 @dataclass(slots=True)
 class YoyoPodConfig:
-    """Composed application-shell config built from the canonical app/audio/device files."""
+    """Composed application-shell config built from the canonical app/device files."""
 
     app: AppMetadataConfig = config_value(default_factory=AppMetadataConfig)
-    audio: AppAudioConfig = config_value(default_factory=AppAudioConfig)
     ui: AppUiConfig = config_value(default_factory=AppUiConfig)
     input: AppInputConfig = config_value(default_factory=AppInputConfig)
     power: AppPowerConfig = config_value(default_factory=AppPowerConfig)
@@ -583,6 +600,7 @@ class YoyoPodRuntimeConfig:
     """One typed runtime model composed from the canonical authored config topology."""
 
     app: YoyoPodConfig = config_value(default_factory=YoyoPodConfig)
+    media: MediaConfig = config_value(default_factory=MediaConfig)
     network: NetworkConfig = config_value(default_factory=NetworkConfig)
     voice: VoiceConfig = config_value(default_factory=VoiceConfig)
     communication: CommunicationConfig = config_value(default_factory=CommunicationConfig)

@@ -41,8 +41,8 @@ This is the startup sequence that exists on `main` today.
    - `yoyopod.py` is only a thin launcher.
    - The installed `yoyopod` console script in `pyproject.toml` also targets `yoyopod.main:main`.
 2. `main()` configures process-level runtime plumbing before app setup starts.
-   - `load_composed_app_settings()` reads `config/app/core.yaml`, `config/audio/music.yaml`, and `config/device/hardware.yaml` early enough to resolve logging settings.
-   - `ConfigManager` later composes domain-owned layers such as `config/network/cellular.yaml`, `config/voice/assistant.yaml`, and the communication files into the full runtime model.
+   - `load_composed_app_settings()` reads `config/app/core.yaml` and `config/device/hardware.yaml` early enough to resolve logging settings.
+   - `ConfigManager` later composes domain-owned layers such as `config/audio/music.yaml`, `config/network/cellular.yaml`, `config/voice/assistant.yaml`, and the communication files into the full runtime model.
    - `configure_logger()` builds the shared `loguru` runtime config and enables console plus file logging.
    - `write_pid_file()` writes the current PID.
    - `log_startup()` emits the startup marker consumed by Pi deploy and remote-validation workflows.

@@ -6,12 +6,16 @@ import platform
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Optional
+from typing import TYPE_CHECKING, Annotated, Any, Optional
 
 import typer
 
 from yoyopod.audio.test_music import DEFAULT_TEST_MUSIC_TARGET_DIR
 from yoyopod.cli.common import configure_logging, resolve_config_dir
+
+if TYPE_CHECKING:
+    from yoyopod.audio.test_music import ProvisionedTestMusicLibrary
+    from yoyopod.config import MediaConfig
 
 smoke_app = typer.Typer(
     name="smoke",
@@ -40,12 +44,18 @@ def _load_app_config(config_dir: Path) -> dict[str, Any]:
         path.exists()
         for path in (
             config_dir / "app" / "core.yaml",
-            config_dir / "audio" / "music.yaml",
             config_dir / "device" / "hardware.yaml",
         )
     ):
         logger.warning("Composed app config not found under {}", config_dir)
     return config_to_dict(load_composed_app_settings(config_dir))
+
+
+def _load_media_config(config_dir: Path) -> MediaConfig:
+    """Load the typed composed media config if present."""
+    from yoyopod.config import ConfigManager
+
+    return ConfigManager(config_dir=str(config_dir)).get_media_settings()
 
 
 def _environment_check() -> CheckResult:
@@ -250,11 +260,11 @@ def _rtc_check(config_dir: Path) -> CheckResult:
 
 
 def _prepare_music_validation_library(
-    app_config: dict[str, Any],
+    media_settings: MediaConfig,
     *,
     provision_test_music: bool,
     test_music_dir: str,
-):
+) -> ProvisionedTestMusicLibrary | None:
     """Provision the deterministic validation music library and point smoke at it."""
     from yoyopod.audio.test_music import provision_test_music_library
 
@@ -262,31 +272,20 @@ def _prepare_music_validation_library(
         return None
 
     library = provision_test_music_library(Path(test_music_dir))
-    audio_config = app_config.get("audio")
-    if not isinstance(audio_config, dict):
-        audio_config = {}
-        app_config["audio"] = audio_config
-    audio_config["music_dir"] = str(library.target_dir)
+    media_settings.music.music_dir = str(library.target_dir)
     return library
 
 
 def _music_check(
-    app_config: dict[str, Any],
+    media_settings: MediaConfig,
     timeout_seconds: int,
     *,
-    expected_library=None,
+    expected_library: ProvisionedTestMusicLibrary | None = None,
 ) -> CheckResult:
     """Validate music-backend startup and basic state queries."""
-    from yoyopod.audio.local_service import LocalMusicService
-    from yoyopod.audio.music import MpvBackend, MusicConfig
+    from yoyopod.audio import LocalMusicService, MpvBackend, MusicConfig
 
-    audio_config = app_config.get("audio", {})
-    config = MusicConfig(
-        music_dir=Path(str(audio_config.get("music_dir", "/home/pi/Music"))),
-        mpv_socket=str(audio_config.get("mpv_socket", "")),
-        mpv_binary=str(audio_config.get("mpv_binary", "mpv")),
-        alsa_device=str(audio_config.get("alsa_device", "default")),
-    )
+    config = MusicConfig.from_media_settings(media_settings)
     backend = MpvBackend(config)
     try:
         started_at = time.monotonic()
@@ -540,10 +539,11 @@ def smoke(
     logger.info(f"Using config directory: {config_path}")
 
     app_config = _load_app_config(config_path)
+    media_config = _load_media_config(config_path)
     expected_music_library = None
     if with_music:
         expected_music_library = _prepare_music_validation_library(
-            app_config,
+            media_config,
             provision_test_music=provision_test_music,
             test_music_dir=test_music_dir,
         )
@@ -566,7 +566,7 @@ def smoke(
         if with_music:
             results.append(
                 _music_check(
-                    app_config,
+                    media_config,
                     music_timeout,
                     expected_library=expected_music_library,
                 )

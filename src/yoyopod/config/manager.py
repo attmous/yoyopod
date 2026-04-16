@@ -10,6 +10,7 @@ from loguru import logger
 from yoyopod.config.layers import resolve_config_board, resolve_config_layers
 from yoyopod.config.models import (
     CommunicationConfig,
+    MediaConfig,
     NetworkConfig,
     PeopleDirectoryConfig,
     VoiceConfig,
@@ -57,13 +58,12 @@ def load_composed_app_settings(
     *,
     config_board: str | None = None,
 ) -> YoyoPodConfig:
-    """Load the typed app settings from the canonical app/audio/device topology."""
+    """Load the typed app settings from the canonical app/device topology."""
 
     base_dir = Path(config_dir)
     active_board = resolve_config_board(explicit_board=config_board)
     payload = _merge_layer_groups(
         resolve_config_layers(base_dir, active_board, APP_CORE_CONFIG),
-        resolve_config_layers(base_dir, active_board, AUDIO_MUSIC_CONFIG),
         resolve_config_layers(base_dir, active_board, DEVICE_HARDWARE_CONFIG),
     )
     return build_config_model(YoyoPodConfig, payload)
@@ -85,7 +85,7 @@ class ConfigManager:
             self.config_board,
             APP_CORE_CONFIG,
         )
-        self.audio_music_layers = resolve_config_layers(
+        self.media_music_layers = resolve_config_layers(
             self.config_dir,
             self.config_board,
             AUDIO_MUSIC_CONFIG,
@@ -124,6 +124,7 @@ class ConfigManager:
 
         self.app_config_file = self.app_core_layers[-1]
         self.device_hardware_file = self.device_hardware_layers[-1]
+        self.media_music_file = self.media_music_layers[-1]
         self.network_cellular_file = self.network_cellular_layers[-1]
         self.voice_assistant_file = self.voice_assistant_layers[-1]
         self.communication_calling_file = self.communication_calling_layers[-1]
@@ -131,6 +132,7 @@ class ConfigManager:
         self.people_directory_file = self.people_directory_layers[-1]
 
         self.app_settings = YoyoPodConfig()
+        self.media_settings = MediaConfig()
         self.network_settings = NetworkConfig()
         self.voice_settings = VoiceConfig()
         self.communication_settings = CommunicationConfig()
@@ -138,12 +140,14 @@ class ConfigManager:
         self.runtime_settings = YoyoPodRuntimeConfig()
 
         self.app_config: dict[str, Any] = config_to_dict(self.app_settings)
+        self.media_config: dict[str, Any] = config_to_dict(self.media_settings)
         self.network_config: dict[str, Any] = config_to_dict(self.network_settings)
         self.voice_config: dict[str, Any] = config_to_dict(self.voice_settings)
         self.communication_config: dict[str, Any] = config_to_dict(self.communication_settings)
         self.runtime_config: dict[str, Any] = config_to_dict(self.runtime_settings)
 
         self.app_config_loaded = False
+        self.media_config_loaded = False
         self.network_config_loaded = False
         self.voice_config_loaded = False
         self.communication_config_loaded = False
@@ -157,6 +161,7 @@ class ConfigManager:
         )
 
         self.load_app_config()
+        self.load_media_config()
         self.load_network_config()
         self.load_voice_config()
         self.load_communication_config()
@@ -168,6 +173,7 @@ class ConfigManager:
 
         self.runtime_settings = YoyoPodRuntimeConfig(
             app=self.app_settings,
+            media=self.media_settings,
             network=self.network_settings,
             voice=self.voice_settings,
             communication=self.communication_settings,
@@ -240,13 +246,11 @@ class ConfigManager:
 
         self.app_config_loaded = _config_loaded(
             self.app_core_layers,
-            self.audio_music_layers,
             self.device_hardware_layers,
         )
         try:
             payload = _merge_layer_groups(
                 self.app_core_layers,
-                self.audio_music_layers,
                 self.device_hardware_layers,
             )
             self.app_settings = build_config_model(YoyoPodConfig, payload)
@@ -260,7 +264,6 @@ class ConfigManager:
                         str(path)
                         for group in (
                             self.app_core_layers,
-                            self.audio_music_layers,
                             self.device_hardware_layers,
                         )
                         for path in group
@@ -270,7 +273,6 @@ class ConfigManager:
             else:
                 logger.warning("No authored app config found; using typed defaults")
 
-            logger.debug("Music directory: {}", self.app_settings.audio.music_dir)
             logger.debug("Display hardware: {}", self.app_settings.display.hardware)
             return self.app_config_loaded
         except Exception:
@@ -278,6 +280,49 @@ class ConfigManager:
             self.app_settings = YoyoPodConfig()
             self.app_config = config_to_dict(self.app_settings)
             self.app_config_loaded = False
+            self._refresh_runtime_settings()
+            return False
+
+    def load_media_config(self) -> bool:
+        """Load the typed media config from audio-owned and device-owned layers."""
+
+        self.media_config_loaded = _config_loaded(
+            self.media_music_layers,
+            self.device_hardware_layers,
+        )
+        try:
+            music_payload = load_yaml_layers(self.media_music_layers)
+            device_payload = load_yaml_layers(self.device_hardware_layers)
+            media_policy = music_payload.get("music", music_payload.get("audio", music_payload))
+            if not isinstance(media_policy, dict):
+                media_policy = {}
+
+            media_audio = device_payload.get("media_audio", {})
+            if not isinstance(media_audio, dict):
+                media_audio = {}
+
+            payload = {
+                "music": media_policy,
+                "audio": media_audio,
+            }
+
+            self.media_settings = build_config_model(MediaConfig, payload)
+            self.media_config = config_to_dict(self.media_settings)
+            self._refresh_runtime_settings()
+
+            if self.media_config_loaded:
+                logger.info("Media configuration loaded successfully")
+            else:
+                logger.warning("No authored media config found; using typed defaults")
+
+            logger.debug("Music directory: {}", self.media_settings.music.music_dir)
+            logger.debug("Media ALSA device: {}", self.media_settings.audio.alsa_device)
+            return self.media_config_loaded
+        except Exception:
+            logger.exception("Error loading media config")
+            self.media_settings = MediaConfig()
+            self.media_config = config_to_dict(self.media_settings)
+            self.media_config_loaded = False
             self._refresh_runtime_settings()
             return False
 
@@ -444,6 +489,11 @@ class ConfigManager:
 
         return self.voice_settings
 
+    def get_media_settings(self) -> MediaConfig:
+        """Return the composed typed media settings."""
+
+        return self.media_settings
+
     def get_network_settings(self) -> NetworkConfig:
         """Return the composed typed network settings."""
 
@@ -468,6 +518,11 @@ class ConfigManager:
         """Return the plain-dict form of the composed app settings."""
 
         return dict(self.app_config)
+
+    def get_media_config_dict(self) -> dict[str, Any]:
+        """Return the plain-dict form of the composed media settings."""
+
+        return dict(self.media_config)
 
     def get_runtime_config_dict(self) -> dict[str, Any]:
         """Return the plain-dict form of the composed runtime settings."""
@@ -601,7 +656,16 @@ class ConfigManager:
         return self.communication_settings.audio.mic_gain
 
     def get_default_output_volume(self) -> int:
-        return self.app_settings.audio.default_volume
+        return self.media_settings.music.default_volume
+
+    def get_media_alsa_device(self) -> str:
+        return self.media_settings.audio.alsa_device
+
+    def get_speaker_test_path(self) -> str:
+        return self.media_settings.music.speaker_test_path
+
+    def get_recent_tracks_file(self) -> str:
+        return self.media_settings.music.recent_tracks_file
 
     def get_ring_output_device(self) -> str:
         ring_output = self.communication_settings.audio.ring_output_device
@@ -624,6 +688,7 @@ class ConfigManager:
 
         logger.info("Reloading configuration...")
         self.load_app_config()
+        self.load_media_config()
         self.load_network_config()
         self.load_voice_config()
         self.load_communication_config()

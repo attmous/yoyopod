@@ -127,11 +127,13 @@ def test_board_config_overlays_base_config(tmp_path, monkeypatch) -> None:
     config_manager = ConfigManager(config_dir=str(tmp_path))
 
     assert config_manager.config_board == "radxa-cubie-a7z"
-    assert config_manager.app_config_file == tmp_path / "boards" / "radxa-cubie-a7z" / "app" / "core.yaml"
-    assert config_manager.audio_music_layers[-1] == board_audio_file
+    assert config_manager.app_config_file == (
+        tmp_path / "boards" / "radxa-cubie-a7z" / "app" / "core.yaml"
+    )
+    assert config_manager.media_music_layers[-1] == board_audio_file
     assert config_manager.app_settings.ui.theme == "retro"
-    assert config_manager.app_settings.audio.music_dir == "/home/radxa/Music"
-    assert config_manager.app_settings.audio.default_volume == 72
+    assert config_manager.get_media_settings().music.music_dir == "/home/radxa/Music"
+    assert config_manager.get_default_output_volume() == 72
     assert config_manager.app_settings.power.watchdog_i2c_bus == 7
 
 
@@ -171,10 +173,10 @@ def test_missing_board_overlay_falls_back_to_base_config(tmp_path, monkeypatch) 
     config_manager = ConfigManager(config_dir=str(tmp_path))
 
     assert config_manager.app_config_file == tmp_path / "app" / "core.yaml"
-    assert config_manager.audio_music_layers[0] == base_file
-    assert config_manager.audio_music_layers[-1] == base_file
+    assert config_manager.media_music_layers[0] == base_file
+    assert config_manager.media_music_layers[-1] == base_file
     assert config_manager.device_hardware_layers[0] == base_device_file
     assert config_manager.device_hardware_layers[-1] == base_device_file
     assert config_manager.app_settings.ui.theme == "dark"
-    assert config_manager.app_settings.audio.music_dir == "/srv/base-music"
+    assert config_manager.get_media_settings().music.music_dir == "/srv/base-music"
     assert config_manager.app_settings.power.watchdog_i2c_bus == 1

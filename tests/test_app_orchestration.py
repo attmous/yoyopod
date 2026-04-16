@@ -527,7 +527,7 @@ def test_apply_default_music_volume_updates_backend_and_context() -> None:
     """Startup should push the configured music volume into mpv and app context."""
     app = YoyoPodApp(simulate=True)
     app.context = AppContext()
-    app.app_settings = SimpleNamespace(audio=SimpleNamespace(default_volume=100))
+    app.media_settings = SimpleNamespace(music=SimpleNamespace(default_volume=100))
     app.music_backend = MockMusicBackend()
     app.music_backend.start()
 

@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from yoyopod.config import ConfigManager
+from yoyopod.audio import MusicConfig
 from yoyopod.network import NetworkManager
 from yoyopod.people import PeopleDirectory
 
@@ -111,6 +112,45 @@ def test_voice_config_composes_domain_policy_with_device_owned_selectors(tmp_pat
     assert manager.get_voice_settings().assistant.tts_backend == "dummy-tts"
     assert manager.get_voice_settings().audio.speaker_device_id == "plughw:CARD=SE,DEV=0"
     assert manager.get_voice_settings().audio.capture_device_id == "plughw:CARD=SE,DEV=1"
+
+
+def test_media_config_composes_domain_policy_with_device_owned_routing(tmp_path: Path) -> None:
+    """Media should read policy from audio config and routing from device config."""
+
+    config_dir = tmp_path / "config"
+    _write_yaml(
+        config_dir,
+        "audio/music.yaml",
+        {
+            "audio": {
+                "music_dir": "/srv/music",
+                "default_volume": 72,
+                "recent_tracks_file": "data/media/recent_tracks.json",
+            }
+        },
+    )
+    _write_yaml(
+        config_dir,
+        "device/hardware.yaml",
+        {
+            "media_audio": {
+                "alsa_device": "hw:Loopback,0",
+            }
+        },
+    )
+
+    manager = ConfigManager(config_dir=str(config_dir))
+
+    assert manager.media_config_loaded is True
+    assert not hasattr(manager.get_app_settings(), "audio")
+    assert manager.get_media_settings().music.music_dir == "/srv/music"
+    assert manager.get_media_settings().audio.alsa_device == "hw:Loopback,0"
+    assert manager.get_default_output_volume() == 72
+    assert MusicConfig.from_config_manager(manager).alsa_device == "hw:Loopback,0"
+    assert (
+        manager.resolve_runtime_path(manager.get_recent_tracks_file())
+        == tmp_path / "data" / "media" / "recent_tracks.json"
+    )
 
 
 def test_network_config_composes_domain_owned_cellular_settings(tmp_path: Path) -> None:

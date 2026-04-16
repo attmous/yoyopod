@@ -53,16 +53,24 @@ YoyoPod adds on top of that:
 ```yaml
 audio:
   music_dir: /home/tifo/Music
+  recent_tracks_file: data/media/recent_tracks.json
   mpv_socket: /tmp/yoyopod-mpv.sock
   mpv_binary: mpv
-  alsa_device: default
   default_volume: 100
+```
+
+## Example `config/device/hardware.yaml`
+
+```yaml
+media_audio:
+  alsa_device: default
 ```
 
 Notes:
 
 - `hw:1` is the Whisplay HAT audio device in the current Raspberry Pi setup.
 - `audio.music_dir` is the source of truth for local library scanning.
+- `media_audio.alsa_device` is the source of truth for the mpv ALSA route.
 - `.m3u` playlists can live anywhere under that music directory.
 - mpv is spawned and supervised by the app; there is no separate music daemon to manage.
 

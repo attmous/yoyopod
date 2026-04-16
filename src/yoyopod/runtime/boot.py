@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from yoyopod.app_context import AppContext
-from yoyopod.audio import LocalMusicService, OutputVolumeController, RecentTrackHistoryStore
-from yoyopod.audio.music import MpvBackend, MusicConfig
+from yoyopod.audio import (
+    LocalMusicService,
+    MpvBackend,
+    MusicConfig,
+    OutputVolumeController,
+    RecentTrackHistoryStore,
+)
 from yoyopod.config import ConfigManager
 from yoyopod.coordinators import (
     AppRuntimeState,
@@ -107,6 +111,7 @@ class RuntimeBootService:
         try:
             self.app.config_manager = ConfigManager(config_dir=self.app.config_dir)
             self.app.app_settings = self.app.config_manager.get_app_settings()
+            self.app.media_settings = self.app.config_manager.get_media_settings()
             self.app.config = self.app.config_manager.get_app_config_dict()
             self.app.people_directory = PeopleDirectory.from_config_manager(self.app.config_manager)
             self.app.call_history_store = CallHistoryStore(
@@ -115,7 +120,9 @@ class RuntimeBootService:
                 )
             )
             self.app.recent_track_store = RecentTrackHistoryStore(
-                self.app.config_manager.config_dir / "recent_tracks.json"
+                self.app.config_manager.resolve_runtime_path(
+                    self.app.config_manager.get_recent_tracks_file()
+                )
             )
             self.app.audio_device_catalog = AudioDeviceCatalog()
             self.app.audio_device_catalog.refresh_async()
@@ -128,7 +135,10 @@ class RuntimeBootService:
             else:
                 logger.info("Using default application configuration")
 
-            self.app.auto_resume_after_call = self.app.app_settings.audio.auto_resume_after_call
+            if self.app.media_settings is not None:
+                self.app.auto_resume_after_call = (
+                    self.app.media_settings.music.auto_resume_after_call
+                )
             self.app._screen_timeout_seconds = (
                 self.app.screen_power_service.resolve_screen_timeout_seconds()
             )
@@ -322,13 +332,7 @@ class RuntimeBootService:
                 )
 
             logger.info("  - MpvBackend")
-            audio_cfg = self.app.app_settings.audio if self.app.app_settings else None
-            music_config = MusicConfig(
-                music_dir=Path(audio_cfg.music_dir) if audio_cfg else Path("/home/pi/Music"),
-                mpv_socket=audio_cfg.mpv_socket if audio_cfg and audio_cfg.mpv_socket else "",
-                mpv_binary=audio_cfg.mpv_binary if audio_cfg else "mpv",
-                alsa_device=audio_cfg.alsa_device if audio_cfg else "default",
-            )
+            music_config = MusicConfig.from_config_manager(config_manager)
             self.app.music_backend = MpvBackend(music_config)
             self.app.local_music_service = LocalMusicService(
                 self.app.music_backend,

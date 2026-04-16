@@ -21,9 +21,9 @@ Tracked authored config lives under `config/` and is split by ownership:
 - `config/app/core.yaml`
   - app shell concerns: `app`, `ui`, `logging`, `diagnostics`
 - `config/audio/music.yaml`
-  - local music policy and mpv settings
+  - local music policy, startup volume, and media runtime paths
 - `config/device/hardware.yaml`
-  - shared hardware truth: `input`, `display`, `power`, `communication_audio`, `voice_audio`
+  - shared hardware truth: `input`, `display`, `power`, `communication_audio`, `media_audio`, `voice_audio`
 - `config/network/cellular.yaml`
   - cellular modem policy and transport settings
 - `config/voice/assistant.yaml`
@@ -46,6 +46,7 @@ Untracked local secrets live in:
 Mutable runtime user data lives outside tracked config:
 
 - `data/communication/`
+- `data/media/`
 - `data/people/`
 
 ### Composition Rule
@@ -55,7 +56,7 @@ ad hoc.
 
 - `ConfigManager` composes the canonical files
 - `YoyoPodRuntimeConfig` is the single typed runtime model
-- `load_composed_app_settings()` is the app-shell loader for `app` + `audio` + `device`
+- `load_composed_app_settings()` is the app-shell loader for `app` + `device`
 
 ### Secret Boundary Rule
 
@@ -103,6 +104,9 @@ Current exemplar package homes:
 - `src/yoyopod/people/`
   - mutable contacts/address-book concerns
   - `__init__.py` is the app-facing seam
+- `src/yoyopod/audio/`
+  - local music/media behavior, history, output-volume coordination, and mpv backend wiring
+  - `__init__.py` is the app-facing seam
 - `src/yoyopod/voice/`
   - local voice behavior, models, and backends
   - device inventory/helpers live outside this package
@@ -112,6 +116,7 @@ Current exemplar package homes:
 The app layer should import from domain seams such as:
 
 - `yoyopod.network`
+- `yoyopod.audio`
 - `yoyopod.communication`
 - `yoyopod.people`
 
@@ -151,6 +156,19 @@ The network migration follows the same cutover shape:
 - `src/yoyopod/network/` as the domain-owned package home
 - app/runtime composition depending on `NetworkManager.from_config_manager()`
   instead of reading network state from app-shell config
+
+## Media Migration Pattern
+
+The media/audio migration follows the same cutover shape:
+
+- media policy under `config/audio/music.yaml`
+- device-owned playback routing under `config/device/hardware.yaml` as `media_audio.*`
+- mutable recent-track history under `data/media/`
+- `ConfigManager.get_media_settings()` as the typed runtime seam for `music` policy
+  plus device-owned `audio` routing
+- `src/yoyopod/audio/` as the domain-owned package home
+- app/runtime composition depending on the `yoyopod.audio` seam via
+  `MusicConfig.from_config_manager()` instead of hand-mapping media fields
 
 ## Template For Future Migrations
 

@@ -7,7 +7,13 @@ from pathlib import Path
 
 import yaml
 
-from yoyopod.config import ConfigManager, VoiceConfig, YoyoPodConfig, load_config_model_from_yaml
+from yoyopod.config import (
+    ConfigManager,
+    MediaConfig,
+    VoiceConfig,
+    YoyoPodConfig,
+    load_config_model_from_yaml,
+)
 
 
 def test_app_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> None:
@@ -26,13 +32,6 @@ def test_app_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> Non
     settings = load_config_model_from_yaml(YoyoPodConfig, config_file)
 
     assert not config_file.exists()
-    assert settings.audio.music_dir == "/home/pi/Music"
-    assert settings.audio.mpv_socket == ""
-    assert settings.audio.mpv_binary == "mpv"
-    assert settings.audio.alsa_device == "default"
-    assert settings.audio.default_volume == 100
-    assert settings.audio.auto_resume_after_call is True
-    assert settings.audio.speaker_test_path == "speaker-test"
     assert settings.input.ptt_navigation is True
     assert settings.input.whisplay_double_tap_ms == 300
     assert settings.input.whisplay_long_hold_ms == 800
@@ -72,6 +71,31 @@ def test_app_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> Non
     assert settings.diagnostics.responsiveness_capture_cooldown_seconds == 30.0
     assert settings.diagnostics.responsiveness_recent_input_window_seconds == 3.0
     assert settings.diagnostics.responsiveness_capture_dir == "logs/responsiveness"
+
+
+def test_media_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> None:
+    """Missing media config should still resolve to typed defaults."""
+
+    monkeypatch.delenv("YOYOPOD_MUSIC_DIR", raising=False)
+    monkeypatch.delenv("YOYOPOD_MPV_SOCKET", raising=False)
+    monkeypatch.delenv("YOYOPOD_MPV_BINARY", raising=False)
+    monkeypatch.delenv("YOYOPOD_ALSA_DEVICE", raising=False)
+    monkeypatch.delenv("YOYOPOD_AUTO_RESUME_AFTER_CALL", raising=False)
+    monkeypatch.delenv("YOYOPOD_DEFAULT_VOLUME", raising=False)
+    monkeypatch.delenv("YOYOPOD_RECENT_TRACKS_FILE", raising=False)
+
+    config_file = tmp_path / "audio" / "music.yaml"
+    settings = load_config_model_from_yaml(MediaConfig, config_file)
+
+    assert not config_file.exists()
+    assert settings.music.music_dir == "/home/pi/Music"
+    assert settings.music.mpv_socket == ""
+    assert settings.music.mpv_binary == "mpv"
+    assert settings.audio.alsa_device == "default"
+    assert settings.music.default_volume == 100
+    assert settings.music.auto_resume_after_call is True
+    assert settings.music.speaker_test_path == "speaker-test"
+    assert settings.music.recent_tracks_file == "data/media/recent_tracks.json"
 
 
 def test_voice_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> None:
@@ -124,6 +148,9 @@ def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) ->
                 "display": {
                     "hardware": "pimoroni",
                 },
+                "media_audio": {
+                    "alsa_device": "hw:Loopback,0",
+                },
             },
             sort_keys=False,
         ),
@@ -146,7 +173,6 @@ def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) ->
     )
 
     monkeypatch.setenv("YOYOPOD_MPV_SOCKET", "/tmp/test-mpv.sock")
-    monkeypatch.setenv("YOYOPOD_ALSA_DEVICE", "hw:Loopback,0")
     monkeypatch.setenv("YOYOPOD_AUTO_RESUME_AFTER_CALL", "false")
     monkeypatch.setenv("YOYOPOD_WHISPLAY_DOUBLE_TAP_MS", "260")
     monkeypatch.setenv("YOYOPOD_WHISPLAY_LONG_HOLD_MS", "900")
@@ -176,16 +202,20 @@ def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) ->
 
     config_manager = ConfigManager(config_dir=str(tmp_path))
     settings = config_manager.get_app_settings()
+    media_settings = config_manager.get_media_settings()
     voice_settings = config_manager.get_voice_settings()
     config_dict = config_manager.get_app_config_dict()
+    media_dict = config_manager.get_media_config_dict()
+    runtime_dict = config_manager.get_runtime_config_dict()
 
     assert config_manager.app_config_loaded is True
-    assert settings.audio.music_dir == "/srv/music"
-    assert settings.audio.mpv_socket == "/tmp/test-mpv.sock"
-    assert settings.audio.mpv_binary == "/usr/local/bin/mpv"
-    assert settings.audio.alsa_device == "hw:Loopback,0"
-    assert settings.audio.auto_resume_after_call is False
-    assert not hasattr(settings.audio, "listen_sources")
+    assert config_manager.media_config_loaded is True
+    assert not hasattr(settings, "audio")
+    assert media_settings.music.music_dir == "/srv/music"
+    assert media_settings.music.mpv_socket == "/tmp/test-mpv.sock"
+    assert media_settings.music.mpv_binary == "/usr/local/bin/mpv"
+    assert media_settings.audio.alsa_device == "hw:Loopback,0"
+    assert media_settings.music.auto_resume_after_call is False
     assert settings.input.whisplay_double_tap_ms == 260
     assert settings.input.whisplay_long_hold_ms == 900
     assert settings.power.transport == "tcp"
@@ -212,12 +242,15 @@ def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) ->
     assert settings.diagnostics.responsiveness_watchdog_enabled is True
     assert settings.diagnostics.responsiveness_stall_threshold_seconds == 8.0
     assert settings.diagnostics.responsiveness_capture_dir == "/tmp/yoyopod-watchdog"
-    assert config_dict["audio"]["music_dir"] == "/srv/music"
-    assert config_dict["audio"]["mpv_socket"] == "/tmp/test-mpv.sock"
-    assert "listen_sources" not in config_dict["audio"]
+    assert "audio" not in config_dict
     assert config_dict["display"]["hardware"] == "whisplay"
     assert config_dict["display"]["whisplay_renderer"] == "lvgl"
     assert config_dict["display"]["lvgl_buffer_lines"] == 24
+    assert media_dict["music"]["music_dir"] == "/srv/music"
+    assert media_dict["music"]["mpv_socket"] == "/tmp/test-mpv.sock"
+    assert media_dict["audio"]["alsa_device"] == "hw:Loopback,0"
+    assert runtime_dict["media"]["music"]["music_dir"] == "/srv/music"
+    assert runtime_dict["media"]["audio"]["alsa_device"] == "hw:Loopback,0"
     assert "network" not in config_dict
     assert "voice" not in config_dict
     assert config_dict["logging"]["file"] == "/var/log/yoyopod.log"

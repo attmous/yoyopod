@@ -75,6 +75,7 @@ deploy/pi-deploy.local.yaml
 .cache/
 data/*.json
 data/communication/
+data/media/
 data/people/
 
 # OS files

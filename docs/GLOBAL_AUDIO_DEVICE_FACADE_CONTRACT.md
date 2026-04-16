@@ -7,7 +7,7 @@
 
 YoyoPod currently reaches ALSA and device selection through multiple partially overlapping paths:
 
-- music playback uses `audio.alsa_device` plus `OutputVolumeController`
+- music playback uses `media_audio.alsa_device` plus `OutputVolumeController`
 - Liblinphone receives its own playback, ringer, capture, and media device IDs
 - `LiblinphoneBackend` also applies capture-side `amixer` commands directly
 - voice-command capture resolves `arecord` devices independently

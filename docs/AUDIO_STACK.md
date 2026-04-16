@@ -41,21 +41,26 @@ So music and VoIP use different software stacks, but they converge on the same R
 
 `YoyoPodApp` owns the audio stack startup in production.
 
-- `audio.music_dir` selects the local music root.
-- `audio.mpv_socket` selects the mpv IPC socket.
-- `audio.mpv_binary` selects the binary to spawn.
-- `audio.alsa_device` selects the mpv ALSA target.
-- `audio.default_volume` is applied at startup through the shared output-volume controller.
+- `config/audio/music.yaml` owns `audio.music_dir`, `audio.recent_tracks_file`, `audio.mpv_socket`, `audio.mpv_binary`, and `audio.default_volume`.
+- `config/device/hardware.yaml` owns `media_audio.alsa_device`.
+- `ConfigManager.get_media_settings()` composes those layers into `MediaConfig.music` and `MediaConfig.audio`.
+- `MusicConfig.from_config_manager()` is the app-facing seam that turns the composed media config into mpv runtime settings.
+- startup output volume is applied through the shared output-volume controller.
 
 Current production config shape:
 
 ```yaml
 audio:
   music_dir: /home/tifo/Music
+  recent_tracks_file: data/media/recent_tracks.json
   mpv_socket: /tmp/yoyopod-mpv.sock
   mpv_binary: mpv
-  alsa_device: default
   default_volume: 100
+```
+
+```yaml
+media_audio:
+  alsa_device: default
 ```
 
 ## Music Domain Models
@@ -197,7 +202,7 @@ Liblinphone uses the communication audio selectors from
 
 So:
 
-- music path: `mpv -> alsa/default -> wm8960`
+- music path: `mpv -> media_audio.alsa_device -> wm8960`
 - VoIP path: `Liblinphone -> ALSA: wm8960-soundcard`
 
 They are separate software paths that meet at the same codec/hardware.

@@ -49,8 +49,8 @@ artifact deeply, or cover every board/modem-specific edge.
 
 Tracked authored config lives under `config/`:
 - `app/core.yaml` -- app shell, UI, logging, diagnostics
-- `audio/music.yaml` -- local music and mpv settings
-- `device/hardware.yaml` -- shared hardware truth for display, input, power, communication audio, and voice audio
+- `audio/music.yaml` -- local music policy, startup volume, and media runtime paths
+- `device/hardware.yaml` -- shared hardware truth for display, input, power, communication audio, media audio, and voice audio
 - `network/cellular.yaml` -- cellular modem policy and transport settings
 - `voice/assistant.yaml` -- local voice policy and assistant defaults
 - `communication/calling.yaml` -- non-secret SIP identity and calling policy
@@ -60,8 +60,9 @@ Tracked authored config lives under `config/`:
 - `people/directory.yaml` -- mutable people-data paths only
 - `people/contacts.seed.yaml` -- tracked bootstrap seed for the mutable address book
 
-Runtime user data lives under `data/communication/` and `data/people/`. Local SIP
-secrets belong in `config/communication/calling.secrets.yaml` or env vars.
+Runtime user data lives under `data/communication/`, `data/media/`, and
+`data/people/`. Local SIP secrets belong in
+`config/communication/calling.secrets.yaml` or env vars.
 
 ## Current Gaps
 

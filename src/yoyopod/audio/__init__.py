@@ -1,8 +1,4 @@
-"""
-Audio management for YoyoPod.
-
-Provides audio playback, volume control, and device management.
-"""
+"""App-facing seam for the media/audio domain."""
 
 from yoyopod.audio.history import RecentTrackEntry, RecentTrackHistoryStore
 from yoyopod.audio.local_service import LocalLibraryItem, LocalMusicService
