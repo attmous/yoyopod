@@ -194,7 +194,9 @@ sudo reboot
 
 ## Step 3: Configure YoyoPod
 
-The GPIO pin mapping is already configured in the tracked board overlay at `config/boards/radxa-cubie-a7z/yoyopod_config.yaml`. No manual config changes are needed.
+The GPIO pin mapping is already configured in the tracked board overlays under
+`config/boards/radxa-cubie-a7z/`, especially `device/hardware.yaml`. No manual
+config changes are needed.
 
 ### Launch with Pimoroni display
 

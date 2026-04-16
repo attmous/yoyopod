@@ -36,6 +36,7 @@ from yoyopod.events import (
     ScreenChangedEvent,
     UserActivityEvent,
 )
+from yoyopod.people import PeopleDirectory
 from yoyopod.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
 from yoyopod.network import NetworkManager
 from yoyopod.power import (
@@ -79,7 +80,7 @@ from yoyopod.ui.screens import (
     VoiceNoteScreen,
 )
 from yoyopod.voice import VoiceDeviceCatalog
-from yoyopod.voip import CallHistoryStore, VoIPManager
+from yoyopod.communication import CallHistoryStore, VoIPManager
 
 
 def _queue_depth(queue_obj: object) -> int | None:
@@ -117,6 +118,7 @@ class YoyoPodApp:
         self.app_settings: Optional[YoyoPodConfig] = None
         self.screen_manager: Optional[ScreenManager] = None
         self.input_manager: Optional[InputManager] = None
+        self.people_directory: Optional[PeopleDirectory] = None
 
         # Manager components
         self.voip_manager: Optional[VoIPManager] = None

@@ -19,8 +19,10 @@ from yoyopod.voice.output import AlsaOutputPlayer
 
 if TYPE_CHECKING:
     from yoyopod.app_context import AppContext
-    from yoyopod.config import ConfigManager, Contact
-    from yoyopod.voip import VoIPManager
+    from yoyopod.config import ConfigManager
+    from yoyopod.communication import VoIPManager
+    from yoyopod.people import Contact
+    from yoyopod.people import PeopleDirectory
 
 
 @dataclass(slots=True, frozen=True)
@@ -152,6 +154,7 @@ class VoiceCommandExecutor:
         *,
         context: "AppContext | None",
         config_manager: "ConfigManager | None" = None,
+        people_directory: "PeopleDirectory | None" = None,
         voip_manager: "VoIPManager | None" = None,
         volume_up_action: Callable[[int], int | None] | None = None,
         volume_down_action: Callable[[int], int | None] | None = None,
@@ -162,6 +165,7 @@ class VoiceCommandExecutor:
     ) -> None:
         self._context = context
         self._config_manager = config_manager
+        self._people_directory = people_directory
         self._voip_manager = voip_manager
         self._volume_up_action = volume_up_action
         self._volume_down_action = volume_down_action
@@ -261,14 +265,14 @@ class VoiceCommandExecutor:
         return VoiceCommandOutcome("Call Failed", f"I could not call {display_name}.")
 
     def _find_contact(self, spoken_name: str) -> "Contact | None":
-        if self._config_manager is None:
+        if self._people_directory is None:
             return None
 
         normalized = self._normalize_label(spoken_name)
         if not normalized:
             return None
 
-        for contact in self._config_manager.get_contacts():
+        for contact in self._people_directory.get_contacts():
             if normalized in self._contact_labels(contact):
                 return contact
         return None

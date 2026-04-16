@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from loguru import logger
 
-from yoyopod.voip.backend import LiblinphoneBackend, VoIPBackend
-from yoyopod.voip.messages import VoIPMessageStore
-from yoyopod.voip.models import (
+from yoyopod.communication.calling.backend import LiblinphoneBackend, VoIPBackend
+from yoyopod.communication.messaging import VoIPMessageStore
+from yoyopod.communication.models import (
     BackendStopped,
     CallState,
     CallStateChanged,
@@ -35,7 +35,7 @@ from yoyopod.voip.models import (
 )
 
 if TYPE_CHECKING:
-    from yoyopod.config import ConfigManager
+    from yoyopod.people import PeopleDirectory
 
 
 @dataclass(slots=True)
@@ -63,12 +63,12 @@ class VoIPManager:
     def __init__(
         self,
         config: VoIPConfig,
-        config_manager: "ConfigManager | None" = None,
+        people_directory: "PeopleDirectory | None" = None,
         backend: Optional[VoIPBackend] = None,
         message_store: Optional[VoIPMessageStore] = None,
     ) -> None:
         self.config = config
-        self.config_manager = config_manager
+        self.people_directory = people_directory
         self.backend = backend or LiblinphoneBackend(config)
         self.running = False
         self.registered = False
@@ -658,8 +658,8 @@ class VoIPManager:
         if not sip_address:
             return "Unknown"
 
-        if self.config_manager is not None:
-            contact = self.config_manager.get_contact_by_address(sip_address)
+        if self.people_directory is not None:
+            contact = self.people_directory.get_contact_by_address(sip_address)
             if contact:
                 return str(contact.display_name)
         return self._extract_username(sip_address)

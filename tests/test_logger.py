@@ -76,7 +76,7 @@ def test_pid_file_helpers_create_and_cleanup_file(tmp_path: Path) -> None:
 def test_infer_subsystem_maps_core_packages() -> None:
     """Subsystem inference should keep logs grep-friendly by package area."""
 
-    assert infer_subsystem("yoyopod.voip.manager") == "voip"
+    assert infer_subsystem("yoyopod.communication.calling.manager") == "comm"
     assert infer_subsystem("yoyopod.ui.screens.manager") == "ui"
     assert infer_subsystem("yoyopod.event_bus") == "core"
     assert infer_subsystem("yoyopod.main") == "app"

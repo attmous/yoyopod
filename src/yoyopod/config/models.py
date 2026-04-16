@@ -156,18 +156,7 @@ class AppAudioConfig:
     fade_out_duration_ms: int = config_value(default=0, env="YOYOPOD_FADE_OUT_DURATION_MS")
     fade_in_duration_ms: int = config_value(default=0, env="YOYOPOD_FADE_IN_DURATION_MS")
     default_volume: int = config_value(default=100, env="YOYOPOD_DEFAULT_VOLUME")
-    ring_output_device: str = config_value(default="", env="YOYOPOD_RING_OUTPUT_DEVICE")
     speaker_test_path: str = config_value(default="speaker-test", env="YOYOPOD_SPEAKER_TEST_PATH")
-
-
-@dataclass(slots=True)
-class AppVoIPConfig:
-    """App-level VoIP coordination settings."""
-
-    config_file: str = config_value(default="config/voip_config.yaml", env="YOYOPOD_VOIP_CONFIG_FILE")
-    priority_over_music: bool = config_value(default=True, env="YOYOPOD_PRIORITY_OVER_MUSIC")
-    auto_answer: bool = config_value(default=False)
-    ring_duration_seconds: int = config_value(default=30, env="YOYOPOD_RING_DURATION_SECONDS")
 
 
 @dataclass(slots=True)
@@ -418,11 +407,10 @@ class AppDiagnosticsConfig:
 
 @dataclass(slots=True)
 class YoyoPodConfig:
-    """Root application configuration model loaded from yoyopod_config.yaml."""
+    """Composed application config built from the canonical app/audio/device files."""
 
     app: AppMetadataConfig = config_value(default_factory=AppMetadataConfig)
     audio: AppAudioConfig = config_value(default_factory=AppAudioConfig)
-    voip: AppVoIPConfig = config_value(default_factory=AppVoIPConfig)
     ui: AppUiConfig = config_value(default_factory=AppUiConfig)
     input: AppInputConfig = config_value(default_factory=AppInputConfig)
     voice: AppVoiceConfig = config_value(default_factory=AppVoiceConfig)
@@ -434,71 +422,35 @@ class YoyoPodConfig:
 
 
 @dataclass(slots=True)
-class VoIPAccountConfig:
-    """VoIP account and SIP identity settings."""
+class CommunicationAccountConfig:
+    """Non-secret SIP identity and transport settings."""
 
     sip_server: str = config_value(default="sip.linphone.org", env="YOYOPOD_SIP_SERVER")
     sip_username: str = config_value(default="", env="YOYOPOD_SIP_USERNAME")
-    sip_password: str = config_value(default="", env="YOYOPOD_SIP_PASSWORD")
-    sip_password_ha1: str = config_value(default="", env="YOYOPOD_SIP_PASSWORD_HA1")
     sip_identity: str = config_value(default="", env="YOYOPOD_SIP_IDENTITY")
-    factory_config_path: str = config_value(
-        default="config/liblinphone_factory.conf",
-        env="YOYOPOD_LIBLINPHONE_FACTORY_CONFIG",
-    )
     transport: str = config_value(default="tcp", env="YOYOPOD_SIP_TRANSPORT")
     display_name: str = "YoyoPod"
 
 
 @dataclass(slots=True)
-class VoIPNetworkConfig:
-    """VoIP network and NAT traversal settings."""
+class CommunicationSecretConfig:
+    """Credentials that must stay out of tracked authored config."""
+
+    sip_password: str = config_value(default="", env="YOYOPOD_SIP_PASSWORD")
+    sip_password_ha1: str = config_value(default="", env="YOYOPOD_SIP_PASSWORD_HA1")
+
+
+@dataclass(slots=True)
+class CommunicationNetworkConfig:
+    """Communication NAT traversal and SIP network settings."""
 
     stun_server: str = config_value(default="stun.linphone.org", env="YOYOPOD_STUN_SERVER")
     enable_ice: bool = True
 
 
 @dataclass(slots=True)
-class VoIPMessagingConfig:
-    """VoIP chat and voice-note settings."""
-
-    conference_factory_uri: str = config_value(
-        default="",
-        env="YOYOPOD_CONFERENCE_FACTORY_URI",
-    )
-    file_transfer_server_url: str = config_value(
-        default="",
-        env="YOYOPOD_FILE_TRANSFER_SERVER_URL",
-    )
-    lime_server_url: str = config_value(
-        default="",
-        env="YOYOPOD_LIME_SERVER_URL",
-    )
-    iterate_interval_ms: int = config_value(
-        default=20,
-        env="YOYOPOD_VOIP_ITERATE_INTERVAL_MS",
-    )
-    message_store_dir: str = config_value(
-        default="data/messages",
-        env="YOYOPOD_MESSAGE_STORE_DIR",
-    )
-    voice_note_store_dir: str = config_value(
-        default="data/voice_notes",
-        env="YOYOPOD_VOICE_NOTE_STORE_DIR",
-    )
-    voice_note_max_duration_seconds: int = config_value(
-        default=30,
-        env="YOYOPOD_VOICE_NOTE_MAX_DURATION_SECONDS",
-    )
-    auto_download_incoming_voice_recordings: bool = config_value(
-        default=True,
-        env="YOYOPOD_AUTO_DOWNLOAD_INCOMING_VOICE_RECORDINGS",
-    )
-
-
-@dataclass(slots=True)
-class VoIPAudioConfig:
-    """VoIP audio and device settings."""
+class CommunicationAudioConfig:
+    """Shared device-truth used by the communication domain."""
 
     preferred_codec: str = "opus"
     echo_cancellation: bool = True
@@ -523,12 +475,100 @@ class VoIPAudioConfig:
 
 
 @dataclass(slots=True)
-class VoIPFileConfig:
-    """Root VoIP configuration model loaded from voip_config.yaml."""
+class CommunicationMessagingConfig:
+    """Messaging and voice-note policy plus mutable storage paths."""
 
-    account: VoIPAccountConfig = config_value(default_factory=VoIPAccountConfig)
-    network: VoIPNetworkConfig = config_value(default_factory=VoIPNetworkConfig)
-    audio: VoIPAudioConfig = config_value(default_factory=VoIPAudioConfig)
-    messaging: VoIPMessagingConfig = config_value(default_factory=VoIPMessagingConfig)
+    conference_factory_uri: str = config_value(
+        default="",
+        env="YOYOPOD_CONFERENCE_FACTORY_URI",
+    )
+    file_transfer_server_url: str = config_value(
+        default="",
+        env="YOYOPOD_FILE_TRANSFER_SERVER_URL",
+    )
+    lime_server_url: str = config_value(
+        default="",
+        env="YOYOPOD_LIME_SERVER_URL",
+    )
+    iterate_interval_ms: int = config_value(
+        default=20,
+        env="YOYOPOD_VOIP_ITERATE_INTERVAL_MS",
+    )
+    message_store_dir: str = config_value(
+        default="data/communication/messages",
+        env="YOYOPOD_MESSAGE_STORE_DIR",
+    )
+    voice_note_store_dir: str = config_value(
+        default="data/communication/voice_notes",
+        env="YOYOPOD_VOICE_NOTE_STORE_DIR",
+    )
+    voice_note_max_duration_seconds: int = config_value(
+        default=30,
+        env="YOYOPOD_VOICE_NOTE_MAX_DURATION_SECONDS",
+    )
+    auto_download_incoming_voice_recordings: bool = config_value(
+        default=True,
+        env="YOYOPOD_AUTO_DOWNLOAD_INCOMING_VOICE_RECORDINGS",
+    )
+
+
+@dataclass(slots=True)
+class CommunicationIntegrationsConfig:
+    """Config for repo-owned communication integrations."""
+
+    liblinphone_factory_config_path: str = config_value(
+        default="config/communication/integrations/liblinphone_factory.conf",
+        env="YOYOPOD_LIBLINPHONE_FACTORY_CONFIG",
+    )
+
+
+@dataclass(slots=True)
+class CommunicationCallingConfig:
+    """Calling-specific policy and runtime state paths."""
+
+    priority_over_music: bool = config_value(default=True, env="YOYOPOD_PRIORITY_OVER_MUSIC")
     auto_answer: bool = False
+    ring_duration_seconds: int = config_value(default=30, env="YOYOPOD_RING_DURATION_SECONDS")
     call_timeout: int = 60
+    call_history_file: str = config_value(
+        default="data/communication/call_history.json",
+        env="YOYOPOD_CALL_HISTORY_FILE",
+    )
+    account: CommunicationAccountConfig = config_value(default_factory=CommunicationAccountConfig)
+    network: CommunicationNetworkConfig = config_value(default_factory=CommunicationNetworkConfig)
+
+
+@dataclass(slots=True)
+class CommunicationConfig:
+    """Composed communication domain config built from calling/messaging/device/secret layers."""
+
+    calling: CommunicationCallingConfig = config_value(default_factory=CommunicationCallingConfig)
+    messaging: CommunicationMessagingConfig = config_value(default_factory=CommunicationMessagingConfig)
+    audio: CommunicationAudioConfig = config_value(default_factory=CommunicationAudioConfig)
+    integrations: CommunicationIntegrationsConfig = config_value(
+        default_factory=CommunicationIntegrationsConfig
+    )
+    secrets: CommunicationSecretConfig = config_value(default_factory=CommunicationSecretConfig)
+
+
+@dataclass(slots=True)
+class PeopleDirectoryConfig:
+    """Authored paths that define where mutable people data lives."""
+
+    contacts_file: str = config_value(
+        default="data/people/contacts.yaml",
+        env="YOYOPOD_PEOPLE_CONTACTS_FILE",
+    )
+    contacts_seed_file: str = config_value(
+        default="config/people/contacts.seed.yaml",
+        env="YOYOPOD_PEOPLE_CONTACTS_SEED_FILE",
+    )
+
+
+@dataclass(slots=True)
+class YoyoPodRuntimeConfig:
+    """One typed runtime model composed from the canonical authored config topology."""
+
+    app: YoyoPodConfig = config_value(default_factory=YoyoPodConfig)
+    communication: CommunicationConfig = config_value(default_factory=CommunicationConfig)
+    people: PeopleDirectoryConfig = config_value(default_factory=PeopleDirectoryConfig)

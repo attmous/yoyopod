@@ -179,6 +179,9 @@ This snapshot was built from:
 - `dpkg -l`
 - `ldd` on the two native shims
 - repo config in:
-  - `config/yoyopod_config.yaml`
-  - `config/voip_config.yaml`
+  - `config/app/core.yaml`
+  - `config/audio/music.yaml`
+  - `config/device/hardware.yaml`
+  - `config/communication/calling.yaml`
+  - `config/communication/messaging.yaml`
   - `deploy/pi-deploy.yaml`

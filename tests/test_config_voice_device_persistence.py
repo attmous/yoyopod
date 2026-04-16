@@ -41,12 +41,13 @@ def test_voice_device_persistence_does_not_flatten_env_overrides(
 
     cfg_dir = tmp_path / "config"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    config_file = cfg_dir / "yoyopod_config.yaml"
+    config_file = cfg_dir / "app" / "core.yaml"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
     config_file.write_text(
         yaml.safe_dump(
             {
-                "audio": {
-                    "default_volume": 40,
+                "ui": {
+                    "theme": "dark",
                 },
                 "voice": {
                     "commands_enabled": False,
@@ -63,10 +64,10 @@ def test_voice_device_persistence_does_not_flatten_env_overrides(
     assert manager.set_voice_speaker_device_id("plughw:CARD=SE,DEV=0") is True
 
     persisted = yaml.safe_load(config_file.read_text(encoding="utf-8"))
-    assert persisted["audio"]["default_volume"] == 40
+    assert persisted["ui"]["theme"] == "dark"
     assert persisted["voice"]["commands_enabled"] is False
     assert persisted["voice"]["speaker_device_id"] == "plughw:CARD=SE,DEV=0"
-    assert "power" not in persisted
+    assert "audio" not in persisted
 
 
 def test_voice_device_persistence_only_updates_active_overlay(
@@ -77,21 +78,22 @@ def test_voice_device_persistence_only_updates_active_overlay(
 
     cfg_dir = tmp_path / "config"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    base_file = cfg_dir / "yoyopod_config.yaml"
+    base_file = cfg_dir / "app" / "core.yaml"
+    base_file.parent.mkdir(parents=True, exist_ok=True)
     base_file.write_text(
         yaml.safe_dump(
             {
-                "audio": {
-                    "default_volume": 40,
+                "ui": {
+                    "theme": "dark",
                 },
             },
             sort_keys=False,
         ),
         encoding="utf-8",
     )
-    overlay_dir = cfg_dir / "boards" / "rpi-zero-2w"
+    overlay_dir = cfg_dir / "boards" / "rpi-zero-2w" / "app"
     overlay_dir.mkdir(parents=True, exist_ok=True)
-    overlay_file = overlay_dir / "yoyopod_config.yaml"
+    overlay_file = overlay_dir / "core.yaml"
     overlay_file.write_text(
         yaml.safe_dump(
             {
@@ -110,8 +112,8 @@ def test_voice_device_persistence_only_updates_active_overlay(
     assert manager.set_voice_speaker_device_id("plughw:CARD=SE,DEV=0") is True
 
     assert yaml.safe_load(base_file.read_text(encoding="utf-8")) == {
-        "audio": {
-            "default_volume": 40,
+        "ui": {
+            "theme": "dark",
         }
     }
     assert yaml.safe_load(overlay_file.read_text(encoding="utf-8")) == {

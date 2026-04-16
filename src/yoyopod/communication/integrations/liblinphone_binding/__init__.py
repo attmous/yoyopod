@@ -1,6 +1,6 @@
 """CPython binding layer for the native Liblinphone shim."""
 
-from yoyopod.voip.liblinphone_binding.binding import (
+from yoyopod.communication.integrations.liblinphone_binding.binding import (
     LiblinphoneBinding,
     LiblinphoneBindingError,
     LiblinphoneNativeEvent,

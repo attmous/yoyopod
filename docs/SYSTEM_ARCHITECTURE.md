@@ -41,7 +41,7 @@ This is the startup sequence that exists on `main` today.
    - `yoyopod.py` is only a thin launcher.
    - The installed `yoyopod` console script in `pyproject.toml` also targets `yoyopod.main:main`.
 2. `main()` configures process-level runtime plumbing before app setup starts.
-   - `load_app_settings()` reads `config/yoyopod_config.yaml` early enough to resolve logging settings.
+   - `load_composed_app_settings()` reads `config/app/core.yaml`, `config/audio/music.yaml`, and `config/device/hardware.yaml` early enough to resolve logging settings.
    - `configure_logger()` builds the shared `loguru` runtime config and enables console plus file logging.
    - `write_pid_file()` writes the current PID.
    - `log_startup()` emits the startup marker consumed by Pi deploy and remote-validation workflows.
@@ -177,7 +177,7 @@ yoyopod.py / yoyopod.main
 - `src/yoyopod/coordinators/screen.py`: screen refresh and call-screen updates
 - `src/yoyopod/coordinators/runtime.py`: derived runtime state and shared runtime references
 
-### Audio and VoIP
+### Audio and Communication
 
 - `src/yoyopod/audio/local_service.py`: local playlists, shuffle source collection, recent history integration
 - `src/yoyopod/audio/music/backend.py`: `MusicBackend`, `MpvBackend`, `MockMusicBackend`
@@ -185,9 +185,12 @@ yoyopod.py / yoyopod.main
 - `src/yoyopod/audio/music/ipc.py`: low-level mpv JSON IPC client
 - `src/yoyopod/audio/music/models.py`: `Track`, `Playlist`, `PlaybackQueue`, `MusicConfig`
 - `src/yoyopod/audio/volume.py`: shared ALSA and mpv output-volume coordination
-- `src/yoyopod/voip/manager.py`: call, message, and voice-note facade
-- `src/yoyopod/voip/liblinphone_binding/`: native Liblinphone shim and CPython binding
-- `config/liblinphone_factory.conf`: repo-managed Liblinphone factory config for media, codec, and network defaults
+- `src/yoyopod/communication/__init__.py`: app-facing seam for communication
+- `src/yoyopod/communication/calling/`: call facade, backend, and history
+- `src/yoyopod/communication/messaging/`: message metadata store
+- `src/yoyopod/communication/integrations/liblinphone_binding/`: native Liblinphone shim and CPython binding
+- `src/yoyopod/people/`: mutable contacts/address-book domain
+- `config/communication/integrations/liblinphone_factory.conf`: repo-managed Liblinphone factory config for media, codec, and network defaults
 
 ### Power, Network, and Voice
 
@@ -227,7 +230,7 @@ Core semantic actions:
 
 - navigation: `SELECT`, `BACK`, `UP`, `DOWN`, `LEFT`, `RIGHT`, `MENU`, `HOME`
 - playback: `PLAY_PAUSE`, `NEXT_TRACK`, `PREV_TRACK`
-- VoIP: `CALL_ANSWER`, `CALL_REJECT`, `CALL_HANGUP`
+- communication: `CALL_ANSWER`, `CALL_REJECT`, `CALL_HANGUP`
 - PTT: `PTT_PRESS`, `PTT_RELEASE`
 
 Current adapters:
@@ -270,8 +273,8 @@ Playback and call orchestration use composed models:
 Runtime services and coordinators listen to:
 
 - music-backend playback changes
-- VoIP registration changes
-- VoIP call state changes
+- communication registration changes
+- communication call state changes
 
 and updates:
 
@@ -306,7 +309,7 @@ The current code still includes a few environment-specific assumptions:
 - Whisplay driver path: `/home/tifo/Whisplay/Driver/WhisPlay.py`
 - audio device defaults for Liblinphone and mpv: `ALSA: wm8960-soundcard` / `alsa/default`
 - simulation server defaults to port `5000`
-- call negotiation on the Pi currently depends on the tracked Liblinphone factory config at `config/liblinphone_factory.conf`
+- call negotiation on the Pi currently depends on the tracked Liblinphone factory config at `config/communication/integrations/liblinphone_factory.conf`
 
 These are known implementation constraints, not architecture goals.
 
@@ -318,7 +321,8 @@ For current behavior, trust these files over older notes or demos:
 - `src/yoyopod/fsm.py`
 - `src/yoyopod/coordinators/runtime.py`
 - `src/yoyopod/audio/`
-- `src/yoyopod/voip/`
+- `src/yoyopod/communication/`
+- `src/yoyopod/people/`
 - `src/yoyopod/ui/display/`
 - `src/yoyopod/ui/input/`
 - `src/yoyopod/ui/screens/`

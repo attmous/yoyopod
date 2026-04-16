@@ -48,7 +48,7 @@ YoyoPod adds on top of that:
 | `mpv` | Core local playback engine and JSON IPC server |
 | `alsa-utils` | Device inspection and audio smoke testing |
 
-## Example `yoyopod_config.yaml`
+## Example `config/audio/music.yaml`
 
 ```yaml
 audio:

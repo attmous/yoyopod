@@ -28,7 +28,7 @@ def probe(
     manager = NetworkManager.from_config_manager(config_manager)
 
     if not manager.config.enabled:
-        logger.error("network module disabled in yoyopod_config.yaml")
+        logger.error("network module disabled in config/app/core.yaml")
         raise typer.Exit(code=1)
 
     from yoyopod.network.transport import SerialTransport, TransportError
@@ -72,7 +72,7 @@ def status(
     manager = NetworkManager.from_config_manager(config_manager)
 
     if not manager.config.enabled:
-        logger.error("network module disabled in yoyopod_config.yaml")
+        logger.error("network module disabled in config/app/core.yaml")
         raise typer.Exit(code=1)
 
     backend = Sim7600Backend(manager.config)
@@ -120,7 +120,7 @@ def gps(
     manager = NetworkManager.from_config_manager(config_manager)
 
     if not manager.config.enabled:
-        logger.error("network module disabled in yoyopod_config.yaml")
+        logger.error("network module disabled in config/app/core.yaml")
         raise typer.Exit(code=1)
 
     backend = Sim7600Backend(manager.config)

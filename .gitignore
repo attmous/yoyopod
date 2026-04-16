@@ -57,6 +57,7 @@ logs/
 
 # Configuration
 config/config.json
+config/communication/calling.secrets.yaml
 deploy/pi-deploy.local.yaml
 
 # Assets (exclude large binaries, include via Git LFS if needed)
@@ -73,6 +74,8 @@ deploy/pi-deploy.local.yaml
 *.swp
 .cache/
 data/*.json
+data/communication/
+data/people/
 
 # OS files
 .DS_Store

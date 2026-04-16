@@ -21,7 +21,7 @@ from yoyopod.events import (
     RegistrationChangedEvent,
     VoIPAvailabilityChangedEvent,
 )
-from yoyopod.voip import CallHistoryEntry, CallHistoryStore, CallState, RegistrationState
+from yoyopod.communication import CallHistoryEntry, CallHistoryStore, CallState, RegistrationState
 
 
 @dataclass(slots=True)
@@ -107,8 +107,8 @@ class CallCoordinator:
         self.stop_ringing()
 
         try:
-            ring_output_device = self.runtime.config.get("audio", {}).get("ring_output_device")
-            if not ring_output_device and self.runtime.config_manager:
+            ring_output_device = None
+            if self.runtime.config_manager:
                 ring_output_device = self.runtime.config_manager.get_ring_output_device()
 
             command = [

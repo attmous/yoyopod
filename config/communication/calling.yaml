@@ -1,0 +1,20 @@
+# Communication calling policy and non-secret account identity.
+
+calling:
+  priority_over_music: true
+  auto_answer: false
+  ring_duration_seconds: 30
+  call_timeout: 60
+  call_history_file: "data/communication/call_history.json"
+  account:
+    sip_server: "sip.linphone.org"
+    sip_username: ""
+    sip_identity: ""
+    transport: "tcp"
+    display_name: "YoyoPod"
+  network:
+    stun_server: "stun.linphone.org"
+    enable_ice: true
+
+integrations:
+  liblinphone_factory_config_path: "config/communication/integrations/liblinphone_factory.conf"

@@ -81,10 +81,15 @@ def test_collect_host_setup_checks_cover_required_tools_modules_and_config(
     tmp_path, monkeypatch
 ) -> None:
     tracked_config = (
-        tmp_path / "config" / "yoyopod_config.yaml",
-        tmp_path / "config" / "voip_config.yaml",
-        tmp_path / "config" / "liblinphone_factory.conf",
-        tmp_path / "config" / "contacts.yaml",
+        tmp_path / "config" / "app" / "core.yaml",
+        tmp_path / "config" / "audio" / "music.yaml",
+        tmp_path / "config" / "device" / "hardware.yaml",
+        tmp_path / "config" / "communication" / "calling.yaml",
+        tmp_path / "config" / "communication" / "messaging.yaml",
+        tmp_path / "config" / "communication" / "calling.secrets.example.yaml",
+        tmp_path / "config" / "communication" / "integrations" / "liblinphone_factory.conf",
+        tmp_path / "config" / "people" / "directory.yaml",
+        tmp_path / "config" / "people" / "contacts.seed.yaml",
         tmp_path / "deploy" / "pi-deploy.yaml",
     )
     for path in tracked_config:
@@ -117,10 +122,15 @@ def test_collect_pi_setup_checks_require_packages_native_artifacts_and_service(
     tmp_path, monkeypatch
 ) -> None:
     tracked_config = (
-        tmp_path / "config" / "yoyopod_config.yaml",
-        tmp_path / "config" / "voip_config.yaml",
-        tmp_path / "config" / "liblinphone_factory.conf",
-        tmp_path / "config" / "contacts.yaml",
+        tmp_path / "config" / "app" / "core.yaml",
+        tmp_path / "config" / "audio" / "music.yaml",
+        tmp_path / "config" / "device" / "hardware.yaml",
+        tmp_path / "config" / "communication" / "calling.yaml",
+        tmp_path / "config" / "communication" / "messaging.yaml",
+        tmp_path / "config" / "communication" / "calling.secrets.example.yaml",
+        tmp_path / "config" / "communication" / "integrations" / "liblinphone_factory.conf",
+        tmp_path / "config" / "people" / "directory.yaml",
+        tmp_path / "config" / "people" / "contacts.seed.yaml",
         tmp_path / "deploy" / "pi-deploy.yaml",
     )
     native_artifacts = (

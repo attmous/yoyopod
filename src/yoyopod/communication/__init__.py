@@ -1,10 +1,9 @@
-"""VoIP module exports for Liblinphone-backed calls and messaging."""
+"""App-facing seams for the communication domain."""
 
-from yoyopod.voip.backend import LiblinphoneBackend, MockVoIPBackend, VoIPBackend
-from yoyopod.voip.history import CallHistoryEntry, CallHistoryStore
-from yoyopod.voip.manager import VoIPManager, VoiceNoteDraft
-from yoyopod.voip.messages import VoIPMessageStore
-from yoyopod.voip.models import (
+from yoyopod.communication.calling import CallHistoryEntry, CallHistoryStore, VoIPManager, VoiceNoteDraft
+from yoyopod.communication.calling.backend import LiblinphoneBackend, MockVoIPBackend, VoIPBackend
+from yoyopod.communication.messaging import VoIPMessageStore
+from yoyopod.communication.models import (
     BackendStopped,
     CallState,
     CallStateChanged,

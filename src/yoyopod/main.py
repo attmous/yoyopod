@@ -22,7 +22,7 @@ from loguru import logger
 
 from yoyopod import __version__
 from yoyopod.app import YoyoPodApp
-from yoyopod.config.models import YoyoPodConfig, load_config_model_from_yaml
+from yoyopod.config import YoyoPodConfig, load_composed_app_settings
 from yoyopod.runtime import ResponsivenessWatchdog, ResponsivenessWatchdogDecision
 from yoyopod.utils.logger import (
     LoggingRuntimeConfig,
@@ -145,9 +145,8 @@ def _request_screenshot_capture(
 def load_app_settings(config_dir: str = "config") -> YoyoPodConfig:
     """Load app settings early enough to configure logging before app setup."""
 
-    config_path = Path(config_dir) / "yoyopod_config.yaml"
     try:
-        return load_config_model_from_yaml(YoyoPodConfig, config_path)
+        return load_composed_app_settings(config_dir)
     except Exception:
         return YoyoPodConfig()
 
@@ -465,8 +464,14 @@ def main() -> int:
         if not app.setup():
             app_log.error("Failed to setup application")
             app_log.error("Check that:")
-            app_log.error("  - config/voip_config.yaml exists")
-            app_log.error("  - config/contacts.yaml exists")
+            app_log.error("  - config/app/core.yaml exists")
+            app_log.error("  - config/audio/music.yaml exists")
+            app_log.error("  - config/device/hardware.yaml exists")
+            app_log.error("  - config/communication/calling.yaml exists")
+            app_log.error("  - config/communication/messaging.yaml exists")
+            app_log.error(
+                "  - data/people/contacts.yaml can be created from config/people/contacts.seed.yaml"
+            )
             app_log.error("  - liblinphone is installed and the native shim is built")
             app_log.error("  - mpv is installed and the configured music backend can start")
             app.stop()

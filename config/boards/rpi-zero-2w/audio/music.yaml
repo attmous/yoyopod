@@ -1,0 +1,4 @@
+# Raspberry Pi Zero 2W board overrides.
+
+audio:
+  music_dir: "/home/pi/Music"

@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from yoyopod.config.contacts import Contact, contacts_from_mapping, contacts_to_mapping
 from yoyopod.config.layers import resolve_config_board, resolve_config_layers
 from yoyopod.config.storage import deep_merge_mappings
+from yoyopod.people import Contact, contacts_from_mapping, contacts_to_mapping
 
 
 def test_deep_merge_mappings_recurses_without_losing_base_values() -> None:
@@ -55,14 +55,14 @@ def test_contacts_round_trip_between_yaml_mapping_and_models() -> None:
 def test_resolve_config_layers_includes_board_overlay_only_when_present(tmp_path) -> None:
     """Board overlays should be appended only when the file exists."""
 
-    board_dir = tmp_path / "boards" / "rpi-zero-2w"
+    board_dir = tmp_path / "boards" / "rpi-zero-2w" / "audio"
     board_dir.mkdir(parents=True)
-    overlay = board_dir / "yoyopod_config.yaml"
+    overlay = board_dir / "music.yaml"
     overlay.write_text("audio: {}\n", encoding="utf-8")
 
-    layers = resolve_config_layers(tmp_path, "rpi-zero-2w", "yoyopod_config.yaml")
+    layers = resolve_config_layers(tmp_path, "rpi-zero-2w", Path("audio/music.yaml"))
 
-    assert layers == (tmp_path / "yoyopod_config.yaml", overlay)
+    assert layers == (tmp_path / "audio" / "music.yaml", overlay)
 
 
 def test_resolve_config_board_prefers_explicit_value(monkeypatch) -> None:

@@ -68,8 +68,8 @@ class _DemoVoiceNoteDraft:
     message_id: str = ""
 
 
-class _FakeConfigManager:
-    """Small contact/config double for Talk screens."""
+class _FakePeopleDirectory:
+    """Small people-directory double for Talk screens."""
 
     def __init__(self, contacts: list[_DemoContact]) -> None:
         self._contacts = list(contacts)
@@ -459,7 +459,7 @@ def _build_music_service() -> _FakeMusicService:
 
 def _build_call_history_store() -> _FakeCallHistoryStore:
     """Return deterministic Talk recents."""
-    from yoyopod.voip.history import CallHistoryEntry
+    from yoyopod.communication.calling.history import CallHistoryEntry
 
     entries = [
         CallHistoryEntry.create(
@@ -658,7 +658,7 @@ def _build_capture_specs(display: object) -> list[_CaptureSpec]:
     )
 
     contacts = _build_contacts()
-    config_manager = _FakeConfigManager(contacts)
+    people_directory = _FakePeopleDirectory(contacts)
     music_service = _build_music_service()
     call_history_store = _build_call_history_store()
     power_snapshot = _build_power_snapshot()
@@ -708,7 +708,7 @@ def _build_capture_specs(display: object) -> list[_CaptureSpec]:
                 display,
                 _build_context(),
                 voip_manager=_FakeVoipManager(),
-                config_manager=config_manager,
+                people_directory=people_directory,
                 call_history_store=call_history_store,
             ),
         ),
@@ -722,7 +722,7 @@ def _build_capture_specs(display: object) -> list[_CaptureSpec]:
                 display,
                 _build_context(),
                 voip_manager=_FakeVoipManager(),
-                config_manager=config_manager,
+                people_directory=people_directory,
             ),
             prepare=lambda screen: setattr(screen, "selected_index", 1),
         ),

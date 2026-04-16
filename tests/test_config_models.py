@@ -11,7 +11,7 @@ from yoyopod.config import ConfigManager, YoyoPodConfig, load_config_model_from_
 
 
 def test_app_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> None:
-    """Missing yoyopod_config.yaml should resolve to typed defaults in memory."""
+    """Missing authored config should resolve to typed defaults in memory."""
 
     monkeypatch.delenv("YOYOPOD_MUSIC_DIR", raising=False)
     monkeypatch.delenv("YOYOPOD_MPV_SOCKET", raising=False)
@@ -22,7 +22,7 @@ def test_app_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> Non
     monkeypatch.delenv("YOYOPOD_VOICE_COMMANDS_ENABLED", raising=False)
     monkeypatch.delenv("YOYOPOD_VOSK_MODEL_PATH", raising=False)
 
-    config_file = tmp_path / "yoyopod_config.yaml"
+    config_file = tmp_path / "app" / "core.yaml"
     settings = load_config_model_from_yaml(YoyoPodConfig, config_file)
 
     assert not config_file.exists()
@@ -85,20 +85,31 @@ def test_app_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> Non
 def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) -> None:
     """Environment variables should override YAML while preserving other values."""
 
-    config_file = tmp_path / "yoyopod_config.yaml"
-    config_file.write_text(
+    app_file = tmp_path / "app" / "core.yaml"
+    app_file.parent.mkdir(parents=True, exist_ok=True)
+    app_file.write_text(
+        yaml.safe_dump(
+            {
+                "display": {
+                    "hardware": "pimoroni",
+                },
+                "logging": {
+                    "level": "DEBUG",
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    audio_file = tmp_path / "audio" / "music.yaml"
+    audio_file.parent.mkdir(parents=True, exist_ok=True)
+    audio_file.write_text(
         yaml.safe_dump(
             {
                 "audio": {
                     "music_dir": "/srv/music",
                     "mpv_binary": "/usr/local/bin/mpv",
                     "auto_resume_after_call": True,
-                },
-                "display": {
-                    "hardware": "pimoroni",
-                },
-                "logging": {
-                    "level": "DEBUG",
                 },
             },
             sort_keys=False,
@@ -185,8 +196,8 @@ def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) ->
     assert config_dict["diagnostics"]["responsiveness_watchdog_enabled"] is True
 
 
-def test_config_manager_keeps_typed_voip_audio_settings(tmp_path, monkeypatch) -> None:
-    """VoIP settings should stay typed while preserving existing getter behavior."""
+def test_config_manager_keeps_typed_communication_audio_settings(tmp_path, monkeypatch) -> None:
+    """Communication settings should stay typed while preserving existing getter behavior."""
 
     monkeypatch.setenv("YOYOPOD_PLAYBACK_DEVICE", "ALSA: default")
     monkeypatch.setenv("YOYOPOD_RING_OUTPUT_DEVICE", "default")
@@ -194,35 +205,35 @@ def test_config_manager_keeps_typed_voip_audio_settings(tmp_path, monkeypatch) -
 
     config_manager = ConfigManager(config_dir=str(tmp_path))
 
-    assert config_manager.voip_settings.audio.playback_device_id == "ALSA: default"
+    assert config_manager.get_communication_settings().audio.playback_device_id == "ALSA: default"
     assert config_manager.get_default_output_volume() == 91
     assert config_manager.get_playback_device_id() == "ALSA: default"
     assert config_manager.get_ring_output_device() == "default"
 
 
 def test_config_manager_keeps_liblinphone_factory_config_path(tmp_path, monkeypatch) -> None:
-    """VoIP config should expose the Liblinphone factory config path with env override support."""
+    """Communication config should expose the Liblinphone factory config path with env override support."""
 
     monkeypatch.setenv("YOYOPOD_LIBLINPHONE_FACTORY_CONFIG", "config/custom_liblinphone_factory.conf")
 
     config_manager = ConfigManager(config_dir=str(tmp_path))
 
     assert (
-        config_manager.voip_settings.account.factory_config_path
+        config_manager.get_communication_settings().integrations.liblinphone_factory_config_path
         == "config/custom_liblinphone_factory.conf"
     )
     assert config_manager.get_voip_factory_config_path() == "config/custom_liblinphone_factory.conf"
 
 
 def test_config_manager_exposes_lime_server_url(tmp_path, monkeypatch) -> None:
-    """VoIP config should expose the configured LIME/X3DH server URL."""
+    """Communication config should expose the configured LIME/X3DH server URL."""
 
     monkeypatch.setenv("YOYOPOD_LIME_SERVER_URL", "https://lime.example.com/lime-server/lime-server.php")
 
     config_manager = ConfigManager(config_dir=str(tmp_path))
 
     assert (
-        config_manager.voip_settings.messaging.lime_server_url
+        config_manager.get_communication_settings().messaging.lime_server_url
         == "https://lime.example.com/lime-server/lime-server.php"
     )
     assert (
@@ -232,13 +243,16 @@ def test_config_manager_exposes_lime_server_url(tmp_path, monkeypatch) -> None:
 
 
 def test_config_manager_exposes_conference_factory_uri(tmp_path, monkeypatch) -> None:
-    """VoIP config should expose the configured conference-factory URI."""
+    """Communication config should expose the configured conference-factory URI."""
 
     monkeypatch.setenv("YOYOPOD_CONFERENCE_FACTORY_URI", "sip:conference-factory@example.com")
 
     config_manager = ConfigManager(config_dir=str(tmp_path))
 
-    assert config_manager.voip_settings.messaging.conference_factory_uri == "sip:conference-factory@example.com"
+    assert (
+        config_manager.get_communication_settings().messaging.conference_factory_uri
+        == "sip:conference-factory@example.com"
+    )
     assert config_manager.get_conference_factory_uri() == "sip:conference-factory@example.com"
 
 

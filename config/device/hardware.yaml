@@ -1,0 +1,56 @@
+# Device-owned hardware truth shared across domains.
+
+input:
+  ptt_navigation: true
+  whisplay_debounce_ms: 50
+  whisplay_double_tap_ms: 300
+  whisplay_long_hold_ms: 800
+
+power:
+  enabled: true
+  backend: "pisugar"
+  transport: "auto"
+  socket_path: "/tmp/pisugar-server.sock"
+  tcp_host: "127.0.0.1"
+  tcp_port: 8423
+  timeout_seconds: 2.0
+  poll_interval_seconds: 30.0
+  low_battery_warning_percent: 20.0
+  low_battery_warning_cooldown_seconds: 300.0
+  auto_shutdown_enabled: true
+  critical_shutdown_percent: 10.0
+  shutdown_delay_seconds: 15.0
+  shutdown_command: "sudo -n shutdown -h now"
+  shutdown_state_file: "data/last_shutdown_state.json"
+  watchdog_enabled: false
+  watchdog_timeout_seconds: 60
+  watchdog_feed_interval_seconds: 15.0
+  watchdog_i2c_bus: 1
+  watchdog_i2c_address: 0x57
+  watchdog_command_timeout_seconds: 5.0
+
+display:
+  hardware: "auto"
+  whisplay_renderer: "lvgl"
+  lvgl_buffer_lines: 40
+  brightness: 80
+  rotation: 0
+  backlight_timeout_seconds: 60
+
+network:
+  enabled: false
+  serial_port: /dev/ttyUSB2
+  ppp_port: /dev/ttyUSB3
+  baud_rate: 115200
+  apn: ""
+  gps_enabled: true
+
+communication_audio:
+  preferred_codec: "opus"
+  echo_cancellation: true
+  mic_gain: 80
+  playback_device_id: "ALSA: wm8960-soundcard"
+  ringer_device_id: "ALSA: wm8960-soundcard"
+  capture_device_id: "ALSA: wm8960-soundcard"
+  media_device_id: "ALSA: wm8960-soundcard"
+  ring_output_device: ""

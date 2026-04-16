@@ -1,0 +1,4 @@
+# People config defines paths only. The mutable address book lives in runtime user-state.
+
+contacts_file: "data/people/contacts.yaml"
+contacts_seed_file: "config/people/contacts.seed.yaml"

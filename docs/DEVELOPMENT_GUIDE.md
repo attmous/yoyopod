@@ -83,27 +83,34 @@ Add `--with-voice` and/or `--with-network` when the target uses the TTS or modem
 
 Tracked config files live under `config/`:
 
-- `config/yoyopod_config.yaml`
-- `config/voip_config.yaml`
-- `config/liblinphone_factory.conf`
-- `config/contacts.yaml`
+- `config/app/core.yaml`
+- `config/audio/music.yaml`
+- `config/device/hardware.yaml`
+- `config/communication/calling.yaml`
+- `config/communication/messaging.yaml`
+- `config/communication/calling.secrets.example.yaml`
+- `config/communication/integrations/liblinphone_factory.conf`
+- `config/people/directory.yaml`
+- `config/people/contacts.seed.yaml`
 
 Key settings:
 
-- `config/yoyopod_config.yaml`
-  - `display.*` hardware and renderer selection
-  - `audio.music_dir`
-  - `audio.mpv_socket`
-  - `audio.mpv_binary`
-  - `audio.alsa_device`
-  - `audio.default_volume`
-  - `input.whisplay_*_ms`
-  - `power.*`
-  - `logging.*`
-- `config/voip_config.yaml`
-  - SIP account, transport, STUN, Liblinphone messaging and media config
-- `config/contacts.yaml`
-  - contact list and speed-dial style entries
+- `config/app/core.yaml`
+  - `app.*`, `ui.*`, `voice.*`, `logging.*`, `diagnostics.*`
+- `config/audio/music.yaml`
+  - `audio.music_dir`, `audio.mpv_*`, `audio.alsa_device`, `audio.default_volume`
+- `config/device/hardware.yaml`
+  - `input.*`, `display.*`, `power.*`, `network.*`, `communication_audio.*`
+- `config/communication/calling.yaml`
+  - SIP identity, transport, STUN, call policy, call-history path
+- `config/communication/messaging.yaml`
+  - file transfer, message-store paths, voice-note policy
+- `config/people/directory.yaml`
+  - paths for mutable people data under `data/people/`
+
+Local SIP credentials belong in `config/communication/calling.secrets.yaml` or
+env vars. Mutable contacts live in `data/people/contacts.yaml`, optionally
+bootstrapped from `config/people/contacts.seed.yaml`.
 
 ## Running
 

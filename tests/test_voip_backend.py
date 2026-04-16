@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 from cffi import FFI
 
-from yoyopod.voip import (
+from yoyopod.communication import (
     BackendStopped,
     CallState,
     CallStateChanged,
@@ -29,7 +29,7 @@ from yoyopod.voip import (
     VoIPManager,
     VoIPMessageRecord,
 )
-from yoyopod.voip.liblinphone_binding import LiblinphoneBinding
+from yoyopod.communication.integrations.liblinphone_binding import LiblinphoneBinding
 
 
 class FakeBinding:
@@ -101,8 +101,8 @@ class FakeBinding:
         return "voice-1"
 
 
-class FakeConfigManager:
-    """Minimal contact lookup double for VoIP manager tests."""
+class FakePeopleDirectory:
+    """Minimal people-directory double for VoIP manager tests."""
 
     def __init__(self, contacts: dict[str, str] | None = None) -> None:
         self.contacts = contacts or {}
@@ -199,7 +199,9 @@ def test_liblinphone_backend_starts_and_drains_native_events() -> None:
     assert binding.start_kwargs["output_volume"] == 100
     assert binding.start_kwargs["factory_config_path"].endswith(
         "config\\liblinphone_factory.conf"
-    ) or binding.start_kwargs["factory_config_path"].endswith("config/liblinphone_factory.conf")
+    ) or binding.start_kwargs["factory_config_path"].endswith(
+        "config/communication/integrations/liblinphone_factory.conf"
+    )
 
 
 def test_liblinphone_backend_infers_linphone_hosted_servers() -> None:
@@ -232,8 +234,11 @@ def test_liblinphone_backend_records_native_iterate_timings(monkeypatch) -> None
     warnings: list[tuple[object, ...]] = []
     monotonic_values = iter([10.0, 10.0, 10.18, 10.18, 10.29, 10.31])
 
-    monkeypatch.setattr("yoyopod.voip.backend.time.monotonic", lambda: next(monotonic_values))
-    monkeypatch.setattr("yoyopod.voip.backend.logger.warning", lambda *args: warnings.append(args))
+    monkeypatch.setattr("yoyopod.communication.calling.backend.time.monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(
+        "yoyopod.communication.calling.backend.logger.warning",
+        lambda *args: warnings.append(args),
+    )
 
     assert backend.start()
 
@@ -265,7 +270,7 @@ def test_liblinphone_backend_uses_shared_output_volume_and_capture_only_alsa(mon
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    monkeypatch.setattr("yoyopod.voip.backend.subprocess.run", fake_run)
+    monkeypatch.setattr("yoyopod.communication.calling.backend.subprocess.run", fake_run)
 
     binding = FakeBinding()
     config = build_config()
@@ -299,7 +304,7 @@ def test_liblinphone_backend_matches_wm8960_card_from_capture_device(monkeypatch
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    monkeypatch.setattr("yoyopod.voip.backend.subprocess.run", fake_run)
+    monkeypatch.setattr("yoyopod.communication.calling.backend.subprocess.run", fake_run)
 
     backend = LiblinphoneBackend(build_config(), binding=FakeBinding())
 
@@ -325,8 +330,8 @@ def test_voip_manager_applies_backend_events_and_resolves_contact_names() -> Non
     """VoIPManager should stay app-facing while backend events remain typed and low-level."""
 
     backend = MockVoIPBackend()
-    config_manager = FakeConfigManager({"sip:parent@example.com": "Parent"})
-    manager = VoIPManager(build_config(), config_manager=config_manager, backend=backend)
+    people_directory = FakePeopleDirectory({"sip:parent@example.com": "Parent"})
+    manager = VoIPManager(build_config(), people_directory=people_directory, backend=backend)
 
     registration_states: list[RegistrationState] = []
     call_states: list[CallState] = []
@@ -587,7 +592,9 @@ def test_voip_manager_builds_message_store_under_directory(tmp_path: Path) -> No
 def test_liblinphone_shim_records_voice_notes_as_wav() -> None:
     """The native recorder shim should explicitly match the .wav files used by the app."""
 
-    shim_source = Path("src/yoyopod/voip/liblinphone_binding/native/liblinphone_shim.c").read_text(
+    shim_source = Path(
+        "src/yoyopod/communication/integrations/liblinphone_binding/native/liblinphone_shim.c"
+    ).read_text(
         encoding="utf-8"
     )
 
@@ -600,7 +607,9 @@ def test_liblinphone_shim_records_voice_notes_as_wav() -> None:
 def test_liblinphone_shim_wires_incoming_message_debug_paths() -> None:
     """The native shim should cover aggregated and undecryptable incoming message paths."""
 
-    shim_source = Path("src/yoyopod/voip/liblinphone_binding/native/liblinphone_shim.c").read_text(
+    shim_source = Path(
+        "src/yoyopod/communication/integrations/liblinphone_binding/native/liblinphone_shim.c"
+    ).read_text(
         encoding="utf-8"
     )
 

@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 """Tests for portable audio/device configuration helpers."""
 
+from pathlib import Path
+
 import yaml
 
 from yoyopod.config.manager import ConfigManager
 from yoyopod.ui.display.adapters.whisplay_paths import find_whisplay_driver
 
 
+def _write_yaml(base_dir: Path, relative_path: str, payload: dict) -> Path:
+    path = base_dir / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    return path
+
+
 def test_audio_device_defaults(tmp_path, monkeypatch) -> None:
-    """Default config should preserve the Pi-oriented audio device settings."""
+    """Default communication audio settings should preserve the Pi-oriented device selectors."""
     monkeypatch.delenv("YOYOPOD_PLAYBACK_DEVICE", raising=False)
     monkeypatch.delenv("YOYOPOD_RINGER_DEVICE", raising=False)
     monkeypatch.delenv("YOYOPOD_CAPTURE_DEVICE", raising=False)
@@ -25,7 +34,7 @@ def test_audio_device_defaults(tmp_path, monkeypatch) -> None:
 
 
 def test_audio_env_overrides(tmp_path, monkeypatch) -> None:
-    """Environment variables should override persisted audio device settings."""
+    """Environment variables should override composed communication audio settings."""
     monkeypatch.setenv("YOYOPOD_PLAYBACK_DEVICE", "ALSA: default")
     monkeypatch.setenv("YOYOPOD_RINGER_DEVICE", "ALSA: sysdefault")
     monkeypatch.setenv("YOYOPOD_CAPTURE_DEVICE", "ALSA: hw:2,0")
@@ -54,39 +63,63 @@ def test_whisplay_driver_path_can_come_from_env(tmp_path, monkeypatch) -> None:
 
 
 def test_board_config_overlays_base_config(tmp_path, monkeypatch) -> None:
-    """Board overlays should override only the settings they redefine."""
+    """Board overlays should override only the settings they redefine in the canonical topology."""
 
-    (tmp_path / "yoyopod_config.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "audio": {
-                    "music_dir": "/srv/common-music",
-                    "default_volume": 72,
-                },
-                "power": {
-                    "watchdog_i2c_bus": 1,
-                },
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
+    _write_yaml(
+        tmp_path,
+        "audio/music.yaml",
+        {
+            "audio": {
+                "music_dir": "/srv/common-music",
+                "default_volume": 72,
+            }
+        },
+    )
+    _write_yaml(
+        tmp_path,
+        "app/core.yaml",
+        {
+            "ui": {
+                "theme": "dark",
+            }
+        },
+    )
+    _write_yaml(
+        tmp_path,
+        "device/hardware.yaml",
+        {
+            "power": {
+                "watchdog_i2c_bus": 1,
+            }
+        },
     )
 
-    board_dir = tmp_path / "boards" / "radxa-cubie-a7z"
-    board_dir.mkdir(parents=True)
-    (board_dir / "yoyopod_config.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "audio": {
-                    "music_dir": "/home/radxa/Music",
-                },
-                "power": {
-                    "watchdog_i2c_bus": 7,
-                },
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
+    board_audio_file = _write_yaml(
+        tmp_path,
+        "boards/radxa-cubie-a7z/audio/music.yaml",
+        {
+            "audio": {
+                "music_dir": "/home/radxa/Music",
+            }
+        },
+    )
+    _write_yaml(
+        tmp_path,
+        "boards/radxa-cubie-a7z/app/core.yaml",
+        {
+            "ui": {
+                "theme": "retro",
+            }
+        },
+    )
+    _write_yaml(
+        tmp_path,
+        "boards/radxa-cubie-a7z/device/hardware.yaml",
+        {
+            "power": {
+                "watchdog_i2c_bus": 7,
+            }
+        },
     )
 
     monkeypatch.setenv("YOYOPOD_CONFIG_BOARD", "radxa-cubie-a7z")
@@ -94,35 +127,54 @@ def test_board_config_overlays_base_config(tmp_path, monkeypatch) -> None:
     config_manager = ConfigManager(config_dir=str(tmp_path))
 
     assert config_manager.config_board == "radxa-cubie-a7z"
-    assert config_manager.app_config_file == board_dir / "yoyopod_config.yaml"
+    assert config_manager.app_config_file == tmp_path / "boards" / "radxa-cubie-a7z" / "app" / "core.yaml"
+    assert config_manager.audio_music_layers[-1] == board_audio_file
+    assert config_manager.app_settings.ui.theme == "retro"
     assert config_manager.app_settings.audio.music_dir == "/home/radxa/Music"
     assert config_manager.app_settings.audio.default_volume == 72
     assert config_manager.app_settings.power.watchdog_i2c_bus == 7
 
 
 def test_missing_board_overlay_falls_back_to_base_config(tmp_path, monkeypatch) -> None:
-    """Unknown or missing board overlays should leave the base config in place."""
+    """Unknown or missing board overlays should leave the base composed config in place."""
 
-    base_file = tmp_path / "yoyopod_config.yaml"
-    base_file.write_text(
-        yaml.safe_dump(
-            {
-                "audio": {
-                    "music_dir": "/srv/base-music",
-                },
-                "power": {
-                    "watchdog_i2c_bus": 1,
-                },
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
+    base_file = _write_yaml(
+        tmp_path,
+        "audio/music.yaml",
+        {
+            "audio": {
+                "music_dir": "/srv/base-music",
+            }
+        },
+    )
+    _write_yaml(
+        tmp_path,
+        "app/core.yaml",
+        {
+            "ui": {
+                "theme": "dark",
+            }
+        },
+    )
+    base_device_file = _write_yaml(
+        tmp_path,
+        "device/hardware.yaml",
+        {
+            "power": {
+                "watchdog_i2c_bus": 1,
+            }
+        },
     )
 
     monkeypatch.setenv("YOYOPOD_CONFIG_BOARD", "radxa-cubie-a7z")
 
     config_manager = ConfigManager(config_dir=str(tmp_path))
 
-    assert config_manager.app_config_file == base_file
+    assert config_manager.app_config_file == tmp_path / "app" / "core.yaml"
+    assert config_manager.audio_music_layers[0] == base_file
+    assert config_manager.audio_music_layers[-1] == base_file
+    assert config_manager.device_hardware_layers[0] == base_device_file
+    assert config_manager.device_hardware_layers[-1] == base_device_file
+    assert config_manager.app_settings.ui.theme == "dark"
     assert config_manager.app_settings.audio.music_dir == "/srv/base-music"
     assert config_manager.app_settings.power.watchdog_i2c_bus == 1

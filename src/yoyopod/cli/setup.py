@@ -22,10 +22,15 @@ setup_app = typer.Typer(
 )
 
 TRACKED_CONFIG_PATHS: tuple[Path, ...] = (
-    REPO_ROOT / "config" / "yoyopod_config.yaml",
-    REPO_ROOT / "config" / "voip_config.yaml",
-    REPO_ROOT / "config" / "liblinphone_factory.conf",
-    REPO_ROOT / "config" / "contacts.yaml",
+    REPO_ROOT / "config" / "app" / "core.yaml",
+    REPO_ROOT / "config" / "audio" / "music.yaml",
+    REPO_ROOT / "config" / "device" / "hardware.yaml",
+    REPO_ROOT / "config" / "communication" / "calling.yaml",
+    REPO_ROOT / "config" / "communication" / "messaging.yaml",
+    REPO_ROOT / "config" / "communication" / "calling.secrets.example.yaml",
+    REPO_ROOT / "config" / "communication" / "integrations" / "liblinphone_factory.conf",
+    REPO_ROOT / "config" / "people" / "directory.yaml",
+    REPO_ROOT / "config" / "people" / "contacts.seed.yaml",
     REPO_ROOT / "deploy" / "pi-deploy.yaml",
 )
 CORE_PI_PACKAGES: tuple[str, ...] = (
@@ -55,7 +60,8 @@ NATIVE_ARTIFACTS: tuple[Path, ...] = (
     REPO_ROOT
     / "src"
     / "yoyopod"
-    / "voip"
+    / "communication"
+    / "integrations"
     / "liblinphone_binding"
     / "native"
     / "build"

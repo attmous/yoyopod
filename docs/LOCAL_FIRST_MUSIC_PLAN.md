@@ -27,4 +27,4 @@ YoyoPod now uses an app-managed mpv backend plus filesystem scanning:
 - shuffle builds a queue from filesystem track paths
 - metadata falls back to local tag reads when mpv metadata is sparse
 
-The local library root lives in `config/yoyopod_config.yaml` under `audio.music_dir`.
+The local library root lives in `config/audio/music.yaml` under `audio.music_dir`.

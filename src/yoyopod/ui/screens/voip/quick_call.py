@@ -19,9 +19,9 @@ from yoyopod.ui.screens.voip.lvgl import LvglCallView
 
 if TYPE_CHECKING:
     from yoyopod.app_context import AppContext
-    from yoyopod.config import ConfigManager, Contact
+    from yoyopod.people import Contact, PeopleDirectory
     from yoyopod.ui.screens import ScreenView
-    from yoyopod.voip import CallHistoryStore, VoIPManager
+    from yoyopod.communication import CallHistoryStore, VoIPManager
 
 
 @dataclass(slots=True)
@@ -56,12 +56,12 @@ class CallScreen(Screen):
         display: Display,
         context: Optional["AppContext"] = None,
         voip_manager: Optional["VoIPManager"] = None,
-        config_manager: Optional["ConfigManager"] = None,
+        people_directory: Optional["PeopleDirectory"] = None,
         call_history_store: Optional["CallHistoryStore"] = None,
     ) -> None:
         super().__init__(display, context, "Talk")
         self.voip_manager = voip_manager
-        self.config_manager = config_manager
+        self.people_directory = people_directory
         self.call_history_store = call_history_store
         self.people: list[TalkPerson] = []
         self.deck_cards: list[TalkDeckCard] = []
@@ -105,10 +105,10 @@ class CallScreen(Screen):
     def _sorted_contacts(self) -> list["Contact"]:
         """Return contacts ordered for child-facing Talk access."""
 
-        if self.config_manager is None:
+        if self.people_directory is None:
             return []
 
-        contacts = list(self.config_manager.get_contacts())
+        contacts = list(self.people_directory.get_contacts())
         favorites = [contact for contact in contacts if contact.favorite]
         others = [contact for contact in contacts if not contact.favorite]
         return (favorites + others)[: self._MAX_CONTACTS]

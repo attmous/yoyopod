@@ -9,7 +9,7 @@ All logging via `loguru` (never stdlib `logging`). Centralized configuration in 
 ## Subsystem Tags
 
 Use `get_subsystem_logger(subsystem)` for bound loggers. Available tags (6-char max):
-- `voip`, `music`, `coord`, `ui`, `power`, `config`, `app`, `core`
+- `comm`, `music`, `coord`, `ui`, `power`, `config`, `app`, `core`
 
 Tags are auto-inferred from module names via `_SUBSYSTEM_OVERRIDES` mapping. Explicit binding overrides auto-inference.
 
@@ -49,4 +49,5 @@ Used by deploy commands to verify the app started successfully.
 
 ## Configuration
 
-All settings in `config/yoyopod_config.yaml` under `logging:` key. Every setting overridable via `YOYOPOD_*` environment variables.
+Logging settings live in `config/app/core.yaml` under `logging:`. Every setting
+remains overridable via `YOYOPOD_*` environment variables.

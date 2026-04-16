@@ -83,8 +83,8 @@ What each command checks:
 
 - `deploy`: deploy contract files, tracked runtime config, runtime path parents, and app entrypoints without launching the app
 - `smoke`: target environment, display initialization on real hardware, matching input adapter construction and start/stop, plus optional PiSugar power and RTC checks
-- `music`: mpv music-backend startup using `config/yoyopod_config.yaml`
-- `voip`: Liblinphone startup and SIP registration using `config/voip_config.yaml`
+- `music`: mpv music-backend startup using the composed `config/app|audio|device` topology
+- `voip`: Liblinphone startup and SIP registration using `config/communication/calling.yaml` plus local secrets/env
 - `navigation`: repeatable one-button routed navigation with explicit idle dwells, click-driven transitions, optional playlist/shuffle playback, and a final sleep/wake pass
 - `stability`: repeated LVGL transition plus sleep/wake recovery on the active app path
 
@@ -159,7 +159,10 @@ yoyoctl pi tune
 yoyoctl pi tune --double-tap-ms 240 --long-hold-ms 900
 ```
 
-Use this when button feel needs tuning on the real device. It listens for the semantic Whisplay gestures, prints every detected `advance`, `select`, and `back` event with timing detail, and can apply temporary timing overrides without editing `config/yoyopod_config.yaml`.
+Use this when button feel needs tuning on the real device. It listens for the
+semantic Whisplay gestures, prints every detected `advance`, `select`, and
+`back` event with timing detail, and can apply temporary timing overrides
+without editing tracked config files.
 
 Useful flags:
 
@@ -239,7 +242,7 @@ Only use it when:
 - `display` fails: check attached HAT, driver and library install, and `display.hardware` config
 - `input` fails: check the matching display adapter initialized correctly first
 - `music` fails: verify `mpv` is installed, the configured socket path is writable, and the provision target under `test_music_target_dir` is writable when deterministic seeding is enabled
-- `voip` fails: verify the Liblinphone shim build, `config/liblinphone_factory.conf`, SIP credentials, network reachability, and audio device configuration
+- `voip` fails: verify the Liblinphone shim build, `config/communication/integrations/liblinphone_factory.conf`, SIP credentials, network reachability, and audio device configuration
 - `navigation` fails: rerun `yoyoctl pi validate navigation --verbose` or `yoyoctl remote navigation-soak --verbose` and inspect which expected screen or playback transition stalled
 - `stability` fails: rerun `yoyoctl pi validate stability --verbose` or `yoyoctl pi lvgl soak` for a deeper LVGL-only pass
 - `validate` fails before launch: check whether the branch was actually pushed and whether the Pi checkout is reachable over SSH

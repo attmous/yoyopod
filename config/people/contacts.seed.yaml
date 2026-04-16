@@ -1,0 +1,10 @@
+# Tracked seed data for first-run bootstrap into data/people/contacts.yaml.
+
+contacts:
+  - name: "Hagar"
+    sip_address: "sip:hagarmo@sip.linphone.org"
+    favorite: true
+    notes: "Mama"
+
+speed_dial:
+  1: "sip:hagarmo@sip.linphone.org"

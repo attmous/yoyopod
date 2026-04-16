@@ -112,7 +112,7 @@ Important nested fields:
 
 ## Configuration
 
-Power configuration lives in `config/yoyopod_config.yaml` under `power:`.
+Power configuration lives in `config/device/hardware.yaml` under `power:`.
 
 Current keys:
 - `enabled`

@@ -63,6 +63,7 @@ Start here:
 - [Contributor Workflow](docs/CONTRIBUTOR_WORKFLOW.md)
 - [Development Guide](docs/DEVELOPMENT_GUIDE.md)
 - [System Architecture](docs/SYSTEM_ARCHITECTURE.md)
+- [Canonical Structure](docs/CANONICAL_STRUCTURE.md)
 
 Setup and operations:
 - [Setup Contract](docs/SETUP_CONTRACT.md)

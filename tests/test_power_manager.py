@@ -102,7 +102,9 @@ def test_power_manager_reads_power_config_from_config_manager(tmp_path) -> None:
     """Typed application settings should feed the power manager configuration."""
 
     config_dir = tmp_path
-    (config_dir / "yoyopod_config.yaml").write_text(
+    hardware_file = config_dir / "device" / "hardware.yaml"
+    hardware_file.parent.mkdir(parents=True, exist_ok=True)
+    hardware_file.write_text(
         """
 power:
   enabled: true
@@ -228,4 +230,3 @@ def test_power_manager_wraps_watchdog_lifecycle() -> None:
     assert watchdog.enable_calls == 1
     assert watchdog.feed_calls == 1
     assert watchdog.disable_calls == 1
-

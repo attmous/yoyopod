@@ -11,11 +11,11 @@ from typing import Callable, Protocol
 
 from loguru import logger
 
-from yoyopod.voip.liblinphone_binding import (
+from yoyopod.communication.integrations.liblinphone_binding import (
     LiblinphoneBinding,
     LiblinphoneNativeEvent,
 )
-from yoyopod.voip.models import (
+from yoyopod.communication.models import (
     BackendStopped,
     CallState,
     CallStateChanged,

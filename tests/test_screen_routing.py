@@ -460,6 +460,9 @@ def test_ask_screen_can_place_call_for_named_contact() -> None:
         config_manager=_FakeConfigManager(
             [_FakeContact("Hagar", "sip:mama@example.com", notes="Mama")]
         ),
+        people_directory=_FakeConfigManager(
+            [_FakeContact("Hagar", "sip:mama@example.com", notes="Mama")]
+        ),
         voip_manager=voip_manager,
     )
 
@@ -479,6 +482,12 @@ def test_ask_screen_can_place_call_for_parent_aliases() -> None:
         display=object(),
         context=context,
         config_manager=_FakeConfigManager(
+            [
+                _FakeContact("Hagar", "sip:mama@example.com", notes="Mama"),
+                _FakeContact("Moustafa", "sip:dad@example.com", notes="Dad"),
+            ]
+        ),
+        people_directory=_FakeConfigManager(
             [
                 _FakeContact("Hagar", "sip:mama@example.com", notes="Mama"),
                 _FakeContact("Moustafa", "sip:dad@example.com", notes="Dad"),
@@ -595,6 +604,9 @@ def test_ask_screen_ignores_stale_results_after_back() -> None:
         display=object(),
         context=context,
         config_manager=_FakeConfigManager(
+            [_FakeContact("Hagar", "sip:mama@example.com", notes="Mama")]
+        ),
+        people_directory=_FakeConfigManager(
             [_FakeContact("Hagar", "sip:mama@example.com", notes="Mama")]
         ),
         voip_manager=voip_manager,

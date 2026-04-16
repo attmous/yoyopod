@@ -1,4 +1,4 @@
-"""Contact models and serialization helpers for YoyoPod config."""
+"""People-domain models and YAML serialization helpers."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 
 @dataclass
 class Contact:
-    """Represents a VoIP contact."""
+    """One mutable address-book entry used by the Talk flow."""
 
     name: str
     sip_address: str
@@ -27,7 +27,7 @@ class Contact:
 
 
 def contacts_from_mapping(data: dict[str, Any]) -> tuple[list[Contact], dict[int, str]]:
-    """Build contacts and speed-dial data from one config mapping."""
+    """Build contacts and speed-dial data from one YAML-compatible mapping."""
 
     contacts = [
         Contact(
@@ -45,7 +45,7 @@ def contacts_to_mapping(
     contacts: list[Contact],
     speed_dial: dict[int, str],
 ) -> dict[str, Any]:
-    """Serialize contacts and speed dial back into YAML-friendly data."""
+    """Serialize contacts and speed dial into a YAML-friendly mapping."""
 
     return {
         "contacts": [

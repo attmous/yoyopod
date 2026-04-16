@@ -139,7 +139,8 @@ RTC status was checked and synchronized to the NTP-synced system clock.
 
 Cubie A7Z support is configured through a tracked board override:
 
-- `config/boards/radxa-cubie-a7z/yoyopod_config.yaml`
+- `config/boards/radxa-cubie-a7z/audio/music.yaml`
+- `config/boards/radxa-cubie-a7z/device/hardware.yaml`
 
 Current Cubie override:
 

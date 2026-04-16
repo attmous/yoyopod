@@ -139,6 +139,7 @@ def _build_executor(
     return VoiceCommandExecutor(
         context=context,
         config_manager=config_manager,
+        people_directory=config_manager,
         voip_manager=voip_manager,
         volume_up_action=lambda step: 55,
         volume_down_action=lambda step: 45,

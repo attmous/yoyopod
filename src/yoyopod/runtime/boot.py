@@ -22,6 +22,7 @@ from yoyopod.coordinators import (
 )
 from yoyopod.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
 from yoyopod.network import NetworkManager
+from yoyopod.people import PeopleDirectory
 from yoyopod.power import PowerManager
 from yoyopod.runtime.voice import (
     VoiceCommandExecutor,
@@ -52,7 +53,7 @@ from yoyopod.ui.screens import (
     VoiceNoteScreen,
 )
 from yoyopod.voice import VoiceDeviceCatalog, VoiceSettings
-from yoyopod.voip import CallHistoryStore, VoIPConfig, VoIPManager
+from yoyopod.communication import CallHistoryStore, VoIPConfig, VoIPManager
 
 if TYPE_CHECKING:
     from yoyopod.app import YoyoPodApp
@@ -106,8 +107,11 @@ class RuntimeBootService:
             self.app.config_manager = ConfigManager(config_dir=self.app.config_dir)
             self.app.app_settings = self.app.config_manager.get_app_settings()
             self.app.config = self.app.config_manager.get_app_config_dict()
+            self.app.people_directory = PeopleDirectory.from_config_manager(self.app.config_manager)
             self.app.call_history_store = CallHistoryStore(
-                self.app.config_manager.config_dir / "call_history.json"
+                self.app.config_manager.resolve_runtime_path(
+                    self.app.config_manager.get_call_history_file()
+                )
             )
             self.app.recent_track_store = RecentTrackHistoryStore(
                 self.app.config_manager.config_dir / "recent_tracks.json"
@@ -116,7 +120,10 @@ class RuntimeBootService:
             self.app.voice_device_catalog.refresh_async()
 
             if self.app.config_manager.app_config_loaded:
-                logger.info(f"Loaded configuration from {self.app.config_manager.app_config_file}")
+                logger.info(
+                    "Loaded composed app configuration from canonical config topology under {}",
+                    self.app.config_manager.config_dir,
+                )
             else:
                 logger.info("Using default application configuration")
 
@@ -294,7 +301,7 @@ class RuntimeBootService:
             voip_config = VoIPConfig.from_config_manager(config_manager)
             self.app.voip_manager = VoIPManager(
                 voip_config,
-                config_manager=config_manager,
+                people_directory=self.app.people_directory,
             )
             self.app._voip_iterate_interval_seconds = max(
                 0.01,
@@ -486,6 +493,7 @@ class RuntimeBootService:
                 command_executor=VoiceCommandExecutor(
                     context=context,
                     config_manager=self.app.config_manager,
+                    people_directory=self.app.people_directory,
                     voip_manager=self.app.voip_manager,
                     volume_up_action=self.app.volume_up,
                     volume_down_action=self.app.volume_down,
@@ -508,6 +516,7 @@ class RuntimeBootService:
                 display,
                 context,
                 config_manager=self.app.config_manager,
+                people_directory=self.app.people_directory,
                 voip_manager=self.app.voip_manager,
                 volume_up_action=self.app.volume_up,
                 volume_down_action=self.app.volume_down,
@@ -582,7 +591,7 @@ class RuntimeBootService:
                 display,
                 context,
                 voip_manager=self.app.voip_manager,
-                config_manager=self.app.config_manager,
+                people_directory=self.app.people_directory,
                 call_history_store=self.app.call_history_store,
             )
             self.app.call_history_screen = CallHistoryScreen(
@@ -600,7 +609,7 @@ class RuntimeBootService:
                 display,
                 context,
                 voip_manager=self.app.voip_manager,
-                config_manager=self.app.config_manager,
+                people_directory=self.app.people_directory,
             )
             self.app.voice_note_screen = VoiceNoteScreen(
                 display,

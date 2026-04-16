@@ -236,7 +236,7 @@ def test_call_screen_builds_syncs_and_destroys_lvgl_view() -> None:
         FakeLvglDisplay(binding),
         make_one_button_context(),
         voip_manager=FakeVoipManager(),
-        config_manager=FakeConfigManager(
+        people_directory=FakeConfigManager(
             [
                 FakeContact("Hagar", "sip:hagar@example.com", True),
                 FakeContact("Mama", "sip:mama@example.com", True),
@@ -274,7 +274,7 @@ def test_call_screen_can_reenter_lvgl_view_without_lifecycle_errors() -> None:
         FakeLvglDisplay(binding),
         make_one_button_context(),
         voip_manager=FakeVoipManager(),
-        config_manager=FakeConfigManager(
+        people_directory=FakeConfigManager(
             [
                 FakeContact("Hagar", "sip:hagar@example.com", True),
                 FakeContact("Mama", "sip:mama@example.com", True),
@@ -359,7 +359,7 @@ def test_contact_list_screen_syncs_sorted_contacts_through_lvgl() -> None:
         FakeLvglDisplay(binding),
         make_one_button_context(),
         voip_manager=FakeVoipManager(),
-        config_manager=FakeConfigManager(
+        people_directory=FakeConfigManager(
             [
                 FakeContact("Zed", "sip:zed@example.com", False),
                 FakeContact("Amy", "sip:amy@example.com", True, notes="Mama"),

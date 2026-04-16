@@ -47,10 +47,19 @@ artifact deeply, or cover every board/modem-specific edge.
 
 ## Configuration
 
-All tracked config lives under `config/`:
-- `yoyopod_config.yaml` -- display hardware, local music directory, mpv settings, default volume, auto-resume
-- `voip_config.yaml` -- SIP account, transport, STUN, Liblinphone messaging, audio devices
-- `contacts.yaml` -- contact list and speed dial
+Tracked authored config lives under `config/`:
+- `app/core.yaml` -- app shell, UI, voice, logging, diagnostics
+- `audio/music.yaml` -- local music and mpv settings
+- `device/hardware.yaml` -- shared hardware truth for display, input, power, network, and communication audio
+- `communication/calling.yaml` -- non-secret SIP identity and calling policy
+- `communication/messaging.yaml` -- messaging policy and communication runtime storage paths
+- `communication/calling.secrets.example.yaml` -- tracked example for the gitignored secrets file
+- `communication/integrations/liblinphone_factory.conf` -- repo-owned Liblinphone integration defaults
+- `people/directory.yaml` -- mutable people-data paths only
+- `people/contacts.seed.yaml` -- tracked bootstrap seed for the mutable address book
+
+Runtime user data lives under `data/communication/` and `data/people/`. Local SIP
+secrets belong in `config/communication/calling.secrets.yaml` or env vars.
 
 ## Current Gaps
 

@@ -1,22 +1,18 @@
-"""
-Configuration Manager for YoyoPod.
-
-Manages typed app/VoIP settings and contacts from YAML configuration files.
-"""
+"""Canonical config composition for YoyoPod."""
 
 from __future__ import annotations
 
-import yaml
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from loguru import logger
 
-from yoyopod.config.contacts import Contact, contacts_from_mapping, contacts_to_mapping
 from yoyopod.config.layers import resolve_config_board, resolve_config_layers
 from yoyopod.config.models import (
-    VoIPFileConfig,
+    CommunicationConfig,
+    PeopleDirectoryConfig,
     YoyoPodConfig,
+    YoyoPodRuntimeConfig,
     build_config_model,
     config_to_dict,
 )
@@ -27,13 +23,50 @@ from yoyopod.config.storage import (
     load_yaml_mapping,
 )
 
+APP_CORE_CONFIG = Path("app/core.yaml")
+AUDIO_MUSIC_CONFIG = Path("audio/music.yaml")
+DEVICE_HARDWARE_CONFIG = Path("device/hardware.yaml")
+COMMUNICATION_CALLING_CONFIG = Path("communication/calling.yaml")
+COMMUNICATION_MESSAGING_CONFIG = Path("communication/messaging.yaml")
+COMMUNICATION_SECRETS_CONFIG = Path("communication/calling.secrets.yaml")
+PEOPLE_DIRECTORY_CONFIG = Path("people/directory.yaml")
+_SECRET_KEYS = ("sip_password", "sip_password_ha1")
+
+
+def _config_loaded(*layer_groups: tuple[Path, ...]) -> bool:
+    """Return whether any layer in any group exists on disk."""
+
+    return any(path.exists() for group in layer_groups for path in group)
+
+
+def _merge_layer_groups(*layer_groups: tuple[Path, ...]) -> dict[str, Any]:
+    """Load and merge multiple layer groups in order."""
+
+    merged: dict[str, Any] = {}
+    for group in layer_groups:
+        merged = deep_merge_mappings(merged, load_yaml_layers(group))
+    return merged
+
+
+def load_composed_app_settings(
+    config_dir: str | Path = "config",
+    *,
+    config_board: str | None = None,
+) -> YoyoPodConfig:
+    """Load the typed app settings from the canonical app/audio/device topology."""
+
+    base_dir = Path(config_dir)
+    active_board = resolve_config_board(explicit_board=config_board)
+    payload = _merge_layer_groups(
+        resolve_config_layers(base_dir, active_board, APP_CORE_CONFIG),
+        resolve_config_layers(base_dir, active_board, AUDIO_MUSIC_CONFIG),
+        resolve_config_layers(base_dir, active_board, DEVICE_HARDWARE_CONFIG),
+    )
+    return build_config_model(YoyoPodConfig, payload)
+
 
 class ConfigManager:
-    """
-    Manages application configuration.
-
-    Loads typed application and VoIP settings plus contacts from YAML files.
-    """
+    """Compose authored config files into one typed runtime model."""
 
     def __init__(
         self,
@@ -42,104 +75,81 @@ class ConfigManager:
     ) -> None:
         self.config_dir = Path(config_dir)
         self.config_board = resolve_config_board(explicit_board=config_board)
-        self.app_config_layers = resolve_config_layers(
-            self.config_dir,
-            self.config_board,
-            "yoyopod_config.yaml",
-        )
-        self.voip_config_layers = resolve_config_layers(
-            self.config_dir,
-            self.config_board,
-            "voip_config.yaml",
-        )
-        self.contacts_layers = resolve_config_layers(
-            self.config_dir,
-            self.config_board,
-            "contacts.yaml",
-        )
 
-        self.app_config_file = self.app_config_layers[-1]
-        self.voip_config_file = self.voip_config_layers[-1]
-        self.contacts_file = self.contacts_layers[-1]
+        self.app_core_layers = resolve_config_layers(
+            self.config_dir,
+            self.config_board,
+            APP_CORE_CONFIG,
+        )
+        self.audio_music_layers = resolve_config_layers(
+            self.config_dir,
+            self.config_board,
+            AUDIO_MUSIC_CONFIG,
+        )
+        self.device_hardware_layers = resolve_config_layers(
+            self.config_dir,
+            self.config_board,
+            DEVICE_HARDWARE_CONFIG,
+        )
+        self.communication_calling_layers = resolve_config_layers(
+            self.config_dir,
+            self.config_board,
+            COMMUNICATION_CALLING_CONFIG,
+        )
+        self.communication_messaging_layers = resolve_config_layers(
+            self.config_dir,
+            self.config_board,
+            COMMUNICATION_MESSAGING_CONFIG,
+        )
+        self.people_directory_layers = resolve_config_layers(
+            self.config_dir,
+            self.config_board,
+            PEOPLE_DIRECTORY_CONFIG,
+        )
+        self.communication_secrets_file = self.config_dir / COMMUNICATION_SECRETS_CONFIG
+
+        self.app_config_file = self.app_core_layers[-1]
+        self.communication_calling_file = self.communication_calling_layers[-1]
+        self.communication_messaging_file = self.communication_messaging_layers[-1]
+        self.people_directory_file = self.people_directory_layers[-1]
 
         self.app_settings = YoyoPodConfig()
-        self.voip_settings = VoIPFileConfig()
+        self.communication_settings = CommunicationConfig()
+        self.people_settings = PeopleDirectoryConfig()
+        self.runtime_settings = YoyoPodRuntimeConfig()
+
         self.app_config: dict[str, Any] = config_to_dict(self.app_settings)
-        self.voip_config: dict[str, Any] = config_to_dict(self.voip_settings)
-        self.contacts: list[Contact] = []
-        self.speed_dial: dict[int, str] = {}
+        self.communication_config: dict[str, Any] = config_to_dict(self.communication_settings)
+        self.runtime_config: dict[str, Any] = config_to_dict(self.runtime_settings)
 
         self.app_config_loaded = False
-        self.voip_config_loaded = False
-        self.contacts_loaded = False
+        self.communication_config_loaded = False
+        self.communication_secrets_loaded = False
+        self.people_config_loaded = False
 
         logger.info(
-            "ConfigManager initialized "
-            f"(config_dir: {config_dir}, config_board: {self.config_board or 'default'})"
+            "ConfigManager initialized (config_dir={}, config_board={})",
+            self.config_dir,
+            self.config_board or "default",
         )
 
         self.load_app_config()
-        self.load_voip_config()
-        self.load_contacts()
+        self.load_communication_config()
+        self.load_people_config()
+        self._refresh_runtime_settings()
 
-    def load_app_config(self) -> bool:
-        """
-        Load typed application configuration from yoyopod_config.yaml.
+    def _refresh_runtime_settings(self) -> None:
+        """Rebuild the composed runtime model after one domain reloads."""
 
-        Returns:
-            True if loaded from file, False if defaults were used.
-        """
-
-        self.app_config_loaded = any(path.exists() for path in self.app_config_layers)
-        try:
-            data = load_yaml_layers(self.app_config_layers)
-            self.app_settings = build_config_model(YoyoPodConfig, data)
-            self.app_config = config_to_dict(self.app_settings)
-
-            if self.app_config_loaded:
-                logger.info(
-                    "App configuration loaded successfully from "
-                    + ", ".join(str(path) for path in self.app_config_layers if path.exists())
-                )
-            else:
-                logger.warning(
-                    "App config file not found: "
-                    + ", ".join(str(path) for path in self.app_config_layers)
-                )
-                logger.info("Using default app configuration")
-
-            logger.debug(f"Music directory: {self.app_settings.audio.music_dir}")
-            logger.debug(f"mpv socket: {self.app_settings.audio.mpv_socket or '(default)'}")
-            logger.debug(f"Display hardware: {self.app_settings.display.hardware}")
-            return self.app_config_loaded
-        except Exception:
-            logger.exception("Error loading app config")
-            self.app_settings = YoyoPodConfig()
-            self.app_config = config_to_dict(self.app_settings)
-            self.app_config_loaded = False
-            return False
-
-    def save_app_config(self) -> bool:
-        """Persist the current typed application config to yoyopod_config.yaml.
-
-        This is a whole-model write. Prefer targeted layer patches for UI-driven
-        settings updates so env overlays and board-layer shape stay intact.
-        """
-
-        try:
-            self.config_dir.mkdir(parents=True, exist_ok=True)
-            data = config_to_dict(self.app_settings)
-            atomic_write_yaml(self.app_config_file, data)
-            self.app_config = data
-            self.app_config_loaded = True
-            logger.info("App configuration saved successfully")
-            return True
-        except Exception:
-            logger.exception("Error saving app config")
-            return False
+        self.runtime_settings = YoyoPodRuntimeConfig(
+            app=self.app_settings,
+            communication=self.communication_settings,
+            people=self.people_settings,
+        )
+        self.runtime_config = config_to_dict(self.runtime_settings)
 
     def _save_app_config_layer_patch(self, patch: dict[str, Any]) -> bool:
-        """Persist one partial update into the active app-config layer only."""
+        """Persist one partial update into the active app layer only."""
 
         try:
             current = load_yaml_mapping(self.app_config_file)
@@ -152,134 +162,216 @@ class ConfigManager:
             logger.exception("Error updating app config layer")
             return False
 
-    def load_voip_config(self) -> bool:
-        """
-        Load typed VoIP configuration from file.
+    def _app_core_payload(self) -> dict[str, Any]:
+        """Return only the sections owned by config/app/core.yaml."""
 
-        Returns:
-            True if loaded from file, False if a default file was created.
-        """
-
-        self.voip_config_loaded = any(path.exists() for path in self.voip_config_layers)
-        if not self.voip_config_loaded:
-            logger.warning(
-                "VoIP config file not found: "
-                + ", ".join(str(path) for path in self.voip_config_layers)
-            )
-            self._create_default_voip_config()
-
-        try:
-            data = load_yaml_layers(self.voip_config_layers)
-            self.voip_settings = build_config_model(VoIPFileConfig, data)
-            self.voip_config = config_to_dict(self.voip_settings)
-
-            logger.info("VoIP configuration loaded successfully")
-            logger.debug(f"SIP Server: {self.get_sip_server()}")
-            logger.debug(f"SIP Identity: {self.get_sip_identity()}")
-            return self.voip_config_loaded
-        except Exception:
-            logger.exception("Error loading VoIP config")
-            self.voip_settings = VoIPFileConfig()
-            self.voip_config = config_to_dict(self.voip_settings)
-            return False
-
-    def load_contacts(self) -> bool:
-        """
-        Load contacts from file.
-
-        Returns:
-            True if loaded successfully, False otherwise.
-        """
-
-        self.contacts_loaded = any(path.exists() for path in self.contacts_layers)
-        if not self.contacts_loaded:
-            logger.warning(
-                "Contacts file not found: " + ", ".join(str(path) for path in self.contacts_layers)
-            )
-            self._create_default_contacts()
-            return False
-
-        try:
-            data = load_yaml_layers(self.contacts_layers)
-            self.contacts, self.speed_dial = contacts_from_mapping(data)
-
-            logger.info(f"Loaded {len(self.contacts)} contacts")
-            return True
-        except Exception:
-            logger.exception("Error loading contacts")
-            return False
-
-    def save_contacts(self) -> bool:
-        """
-        Save contacts to file.
-
-        Returns:
-            True if saved successfully, False otherwise.
-        """
-
-        try:
-            data = contacts_to_mapping(self.contacts, self.speed_dial)
-
-            with open(self.contacts_file, "w", encoding="utf-8") as handle:
-                yaml.dump(data, handle, default_flow_style=False, sort_keys=False)
-
-            logger.info("Contacts saved successfully")
-            return True
-        except Exception:
-            logger.exception("Error saving contacts")
-            return False
-
-    def _create_default_voip_config(self) -> None:
-        """Create a default typed VoIP configuration file."""
-
-        logger.info("Creating default VoIP configuration...")
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-
-        default_config = config_to_dict(VoIPFileConfig())
-        self.voip_config_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.voip_config_file, "w", encoding="utf-8") as handle:
-            yaml.dump(default_config, handle, default_flow_style=False, sort_keys=False)
-
-        self.voip_settings = VoIPFileConfig()
-        self.voip_config = default_config
-
-    def _create_default_contacts(self) -> None:
-        """Create a default contacts file."""
-
-        logger.info("Creating default contacts file...")
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-
-        default_contacts = {
-            "contacts": [],
-            "speed_dial": {},
+        return {
+            "app": config_to_dict(self.app_settings.app),
+            "ui": config_to_dict(self.app_settings.ui),
+            "voice": config_to_dict(self.app_settings.voice),
+            "logging": config_to_dict(self.app_settings.logging),
+            "diagnostics": config_to_dict(self.app_settings.diagnostics),
         }
 
-        self.contacts_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.contacts_file, "w", encoding="utf-8") as handle:
-            yaml.dump(default_contacts, handle, default_flow_style=False, sort_keys=False)
+    @staticmethod
+    def _validate_secret_boundary(payload: dict[str, Any], *, source: str) -> None:
+        """Reject secrets that leak into tracked non-secret config files."""
 
-        self.load_contacts()
+        account = payload.get("calling", {}).get("account", {})
+        if isinstance(account, dict):
+            leaked = [key for key in _SECRET_KEYS if str(account.get(key, "")).strip()]
+            if leaked:
+                raise ValueError(
+                    f"{source} must not carry secrets ({', '.join(leaked)}); "
+                    "use communication/calling.secrets.yaml or env vars"
+                )
 
-    def _resolve_config_board(
-        self,
-        *,
-        explicit_board: str | None,
-    ) -> str | None:
-        """Resolve the active board config from args, env, or hardware detection."""
-        return resolve_config_board(explicit_board=explicit_board)
+        secrets = payload.get("secrets", {})
+        if isinstance(secrets, dict):
+            leaked = [key for key in _SECRET_KEYS if str(secrets.get(key, "")).strip()]
+            if leaked:
+                raise ValueError(
+                    f"{source} must not define a secrets block; "
+                    "use communication/calling.secrets.yaml or env vars"
+                )
 
-    def _resolve_config_layers(self, filename: str) -> tuple[Path, ...]:
-        """Return the base config file plus any matching board overlay."""
-        return resolve_config_layers(self.config_dir, self.config_board, filename)
+    def load_app_config(self) -> bool:
+        """Load the typed app settings from canonical authored files."""
 
-    def _load_yaml_layers(self, paths: tuple[Path, ...]) -> dict[str, Any]:
-        """Load and merge YAML mappings from lowest to highest precedence."""
-        return load_yaml_layers(paths)
+        self.app_config_loaded = _config_loaded(
+            self.app_core_layers,
+            self.audio_music_layers,
+            self.device_hardware_layers,
+        )
+        try:
+            payload = _merge_layer_groups(
+                self.app_core_layers,
+                self.audio_music_layers,
+                self.device_hardware_layers,
+            )
+            self.app_settings = build_config_model(YoyoPodConfig, payload)
+            self.app_config = config_to_dict(self.app_settings)
+            self._refresh_runtime_settings()
+
+            if self.app_config_loaded:
+                logger.info(
+                    "App configuration loaded from {}",
+                    ", ".join(
+                        str(path)
+                        for group in (
+                            self.app_core_layers,
+                            self.audio_music_layers,
+                            self.device_hardware_layers,
+                        )
+                        for path in group
+                        if path.exists()
+                    ),
+                )
+            else:
+                logger.warning("No authored app config found; using typed defaults")
+
+            logger.debug("Music directory: {}", self.app_settings.audio.music_dir)
+            logger.debug("Display hardware: {}", self.app_settings.display.hardware)
+            return self.app_config_loaded
+        except Exception:
+            logger.exception("Error loading app config")
+            self.app_settings = YoyoPodConfig()
+            self.app_config = config_to_dict(self.app_settings)
+            self.app_config_loaded = False
+            self._refresh_runtime_settings()
+            return False
+
+    def save_app_config(self) -> bool:
+        """Persist the current app-core layer without collapsing other owned files."""
+
+        try:
+            self.config_dir.mkdir(parents=True, exist_ok=True)
+            data = self._app_core_payload()
+            atomic_write_yaml(self.app_config_file, data)
+            self.app_config = config_to_dict(self.app_settings)
+            self.app_config_loaded = True
+            self._refresh_runtime_settings()
+            logger.info("App configuration saved successfully")
+            return True
+        except Exception:
+            logger.exception("Error saving app config")
+            return False
+
+    def load_communication_config(self) -> bool:
+        """Load the typed communication config from calling/messaging/device/secrets files."""
+
+        self.communication_config_loaded = _config_loaded(
+            self.communication_calling_layers,
+            self.communication_messaging_layers,
+            self.device_hardware_layers,
+        )
+        self.communication_secrets_loaded = self.communication_secrets_file.exists()
+
+        try:
+            calling_payload = load_yaml_layers(self.communication_calling_layers)
+            messaging_payload = load_yaml_layers(self.communication_messaging_layers)
+            device_payload = load_yaml_layers(self.device_hardware_layers)
+            secrets_payload = load_yaml_mapping(self.communication_secrets_file)
+
+            self._validate_secret_boundary(calling_payload, source="communication/calling.yaml")
+            self._validate_secret_boundary(
+                messaging_payload,
+                source="communication/messaging.yaml",
+            )
+            self._validate_secret_boundary(device_payload, source="device/hardware.yaml")
+
+            communication_audio = device_payload.get("communication_audio", {})
+            if not isinstance(communication_audio, dict):
+                communication_audio = {}
+
+            payload = _merge_layer_groups(
+                self.communication_calling_layers,
+                self.communication_messaging_layers,
+            )
+            payload = deep_merge_mappings(payload, {"audio": communication_audio})
+            payload = deep_merge_mappings(payload, secrets_payload)
+
+            self.communication_settings = build_config_model(CommunicationConfig, payload)
+            self.communication_config = config_to_dict(self.communication_settings)
+            self._refresh_runtime_settings()
+
+            if self.communication_config_loaded:
+                logger.info("Communication configuration loaded successfully")
+            else:
+                logger.warning("No authored communication config found; using typed defaults")
+
+            if not self.communication_secrets_loaded:
+                logger.info(
+                    "Communication secrets file not found at {}; env vars remain available",
+                    self.communication_secrets_file,
+                )
+
+            logger.debug("SIP server: {}", self.get_sip_server())
+            logger.debug("SIP identity: {}", self.get_sip_identity())
+            return self.communication_config_loaded or self.communication_secrets_loaded
+        except Exception:
+            logger.exception("Error loading communication config")
+            self.communication_settings = CommunicationConfig()
+            self.communication_config = config_to_dict(self.communication_settings)
+            self.communication_config_loaded = False
+            self.communication_secrets_loaded = False
+            self._refresh_runtime_settings()
+            return False
+
+    def load_people_config(self) -> bool:
+        """Load the typed people-data path config."""
+
+        self.people_config_loaded = _config_loaded(self.people_directory_layers)
+        try:
+            payload = load_yaml_layers(self.people_directory_layers)
+            self.people_settings = build_config_model(PeopleDirectoryConfig, payload)
+            self._refresh_runtime_settings()
+            return self.people_config_loaded
+        except Exception:
+            logger.exception("Error loading people config")
+            self.people_settings = PeopleDirectoryConfig()
+            self.people_config_loaded = False
+            self._refresh_runtime_settings()
+            return False
 
     def get_app_settings(self) -> YoyoPodConfig:
-        """Return the typed application configuration model."""
+        """Return the composed typed app settings."""
 
         return self.app_settings
+
+    def get_communication_settings(self) -> CommunicationConfig:
+        """Return the composed typed communication settings."""
+
+        return self.communication_settings
+
+    def get_people_settings(self) -> PeopleDirectoryConfig:
+        """Return the typed people directory settings."""
+
+        return self.people_settings
+
+    def get_runtime_settings(self) -> YoyoPodRuntimeConfig:
+        """Return the single typed runtime model consumed by the app."""
+
+        return self.runtime_settings
+
+    def get_app_config_dict(self) -> dict[str, Any]:
+        """Return the plain-dict form of the composed app settings."""
+
+        return dict(self.app_config)
+
+    def get_runtime_config_dict(self) -> dict[str, Any]:
+        """Return the plain-dict form of the composed runtime settings."""
+
+        return dict(self.runtime_config)
+
+    def resolve_runtime_path(self, path_value: str | Path) -> Path:
+        """Resolve a repo-relative runtime path from the active config root."""
+
+        path = Path(path_value)
+        if path.is_absolute():
+            return path
+        base_dir = self.config_dir.parent if self.config_dir.name == "config" else self.config_dir
+        return base_dir / path
 
     def set_voice_capture_device_id(self, device_id: str | None) -> bool:
         """Persist the capture device selector used by local voice interactions."""
@@ -291,6 +383,7 @@ class ConfigManager:
             return False
         self.app_settings.voice.capture_device_id = value
         self.app_config.setdefault("voice", {})["capture_device_id"] = value
+        self._refresh_runtime_settings()
         return True
 
     def set_voice_speaker_device_id(self, device_id: str | None) -> bool:
@@ -303,142 +396,91 @@ class ConfigManager:
             return False
         self.app_settings.voice.speaker_device_id = value
         self.app_config.setdefault("voice", {})["speaker_device_id"] = value
+        self._refresh_runtime_settings()
         return True
 
-    def get_app_config_dict(self) -> dict[str, Any]:
-        """Return the plain-dict form of the application configuration."""
-
-        return config_to_dict(self.app_settings)
-
     def get_sip_server(self) -> str:
-        """Get SIP server address."""
-
-        return self.voip_settings.account.sip_server
+        return self.communication_settings.calling.account.sip_server
 
     def get_sip_username(self) -> str:
-        """Get SIP username."""
-
-        return self.voip_settings.account.sip_username
+        return self.communication_settings.calling.account.sip_username
 
     def get_sip_password(self) -> str:
-        """Get SIP password."""
-
-        return self.voip_settings.account.sip_password
+        return self.communication_settings.secrets.sip_password
 
     def get_sip_password_ha1(self) -> str:
-        """Get SIP password HA1 hash."""
-
-        return self.voip_settings.account.sip_password_ha1
+        return self.communication_settings.secrets.sip_password_ha1
 
     def get_sip_identity(self) -> str:
-        """Get SIP identity."""
-
-        return self.voip_settings.account.sip_identity
+        return self.communication_settings.calling.account.sip_identity
 
     def get_voip_factory_config_path(self) -> str:
-        """Get the Liblinphone factory-config path."""
-
-        return self.voip_settings.account.factory_config_path
+        return self.communication_settings.integrations.liblinphone_factory_config_path
 
     def get_transport(self) -> str:
-        """Get transport protocol."""
-
-        return self.voip_settings.account.transport
+        return self.communication_settings.calling.account.transport
 
     def get_display_name(self) -> str:
-        """Get display name."""
-
-        return self.voip_settings.account.display_name
+        return self.communication_settings.calling.account.display_name
 
     def get_stun_server(self) -> str:
-        """Get STUN server address."""
-
-        return self.voip_settings.network.stun_server
+        return self.communication_settings.calling.network.stun_server
 
     def get_file_transfer_server_url(self) -> str:
-        """Get the configured Liblinphone file transfer server URL."""
-
-        return self.voip_settings.messaging.file_transfer_server_url
+        return self.communication_settings.messaging.file_transfer_server_url
 
     def get_conference_factory_uri(self) -> str:
-        """Get the configured conference-factory URI for hosted chat rooms."""
-
-        return self.voip_settings.messaging.conference_factory_uri
+        return self.communication_settings.messaging.conference_factory_uri
 
     def get_lime_server_url(self) -> str:
-        """Get the configured Liblinphone LIME/X3DH server URL."""
-
-        return self.voip_settings.messaging.lime_server_url
+        return self.communication_settings.messaging.lime_server_url
 
     def get_voip_iterate_interval_ms(self) -> int:
-        """Get the Liblinphone iterate cadence in milliseconds."""
-
-        return self.voip_settings.messaging.iterate_interval_ms
+        return self.communication_settings.messaging.iterate_interval_ms
 
     def get_message_store_dir(self) -> str:
-        """Get the persistent VoIP message metadata directory."""
-
-        return self.voip_settings.messaging.message_store_dir
+        return self.communication_settings.messaging.message_store_dir
 
     def get_voice_note_store_dir(self) -> str:
-        """Get the directory used to store local voice-note files."""
-
-        return self.voip_settings.messaging.voice_note_store_dir
+        return self.communication_settings.messaging.voice_note_store_dir
 
     def get_voice_note_max_duration_seconds(self) -> int:
-        """Get the maximum allowed voice-note duration in seconds."""
-
-        return self.voip_settings.messaging.voice_note_max_duration_seconds
+        return self.communication_settings.messaging.voice_note_max_duration_seconds
 
     def get_auto_download_incoming_voice_recordings(self) -> bool:
-        """Return whether incoming voice-note attachments should auto-download."""
-
-        return self.voip_settings.messaging.auto_download_incoming_voice_recordings
+        return self.communication_settings.messaging.auto_download_incoming_voice_recordings
 
     def get_auto_answer(self) -> bool:
-        """Get auto-answer setting."""
-
-        return self.voip_settings.auto_answer
+        return self.communication_settings.calling.auto_answer
 
     def get_call_timeout(self) -> int:
-        """Get call timeout in seconds."""
+        return self.communication_settings.calling.call_timeout
 
-        return self.voip_settings.call_timeout
+    def get_call_history_file(self) -> str:
+        return self.communication_settings.calling.call_history_file
 
     def get_playback_device_id(self) -> str:
-        """Get the ALSA playback device id for Linphone."""
-
-        return self.voip_settings.audio.playback_device_id
+        return self.communication_settings.audio.playback_device_id
 
     def get_ringer_device_id(self) -> str:
-        """Get the ALSA ringer device id for Linphone."""
-
-        return self.voip_settings.audio.ringer_device_id or self.get_playback_device_id()
+        configured = self.communication_settings.audio.ringer_device_id
+        return configured or self.get_playback_device_id()
 
     def get_capture_device_id(self) -> str:
-        """Get the ALSA capture device id for Linphone."""
-
-        return self.voip_settings.audio.capture_device_id
+        return self.communication_settings.audio.capture_device_id
 
     def get_media_device_id(self) -> str:
-        """Get the ALSA media device id for Linphone."""
-
-        return self.voip_settings.audio.media_device_id or self.get_playback_device_id()
+        configured = self.communication_settings.audio.media_device_id
+        return configured or self.get_playback_device_id()
 
     def get_mic_gain(self) -> int:
-        """Get the configured microphone gain (0-100)."""
-
-        return self.voip_settings.audio.mic_gain
+        return self.communication_settings.audio.mic_gain
 
     def get_default_output_volume(self) -> int:
-        """Get the shared app output volume used by music and call playback."""
-
         return self.app_settings.audio.default_volume
 
     def get_ring_output_device(self) -> str:
-        """Get the output device for the speaker-test ring tone helper."""
-
-        ring_output = self.voip_settings.audio.ring_output_device
+        ring_output = self.communication_settings.audio.ring_output_device
         if ring_output:
             return ring_output
 
@@ -447,92 +489,16 @@ class ConfigManager:
             return playback_device.split(":", 1)[1].strip()
         return playback_device or "default"
 
-    def get_contacts(self, favorites_only: bool = False) -> list[Contact]:
-        """Get the current contact list."""
+    def get_people_contacts_file(self) -> str:
+        return str(self.resolve_runtime_path(self.people_settings.contacts_file))
 
-        if favorites_only:
-            return [contact for contact in self.contacts if contact.favorite]
-        return self.contacts
-
-    def get_contact_by_name(self, name: str) -> Optional[Contact]:
-        """Get a contact by display name."""
-
-        for contact in self.contacts:
-            if contact.name.lower() == name.lower():
-                return contact
-        return None
-
-    def get_contact_by_address(self, sip_address: str) -> Optional[Contact]:
-        """Get a contact by SIP address."""
-
-        for contact in self.contacts:
-            if contact.sip_address == sip_address:
-                return contact
-        return None
-
-    def add_contact(
-        self,
-        name: str,
-        sip_address: str,
-        favorite: bool = False,
-        notes: str = "",
-    ) -> Contact:
-        """Add a new contact and persist it to disk."""
-
-        contact = Contact(
-            name=name,
-            sip_address=sip_address,
-            favorite=favorite,
-            notes=notes,
-        )
-        self.contacts.append(contact)
-        self.save_contacts()
-        logger.info(f"Added contact: {contact}")
-        return contact
-
-    def remove_contact(self, name: str) -> bool:
-        """Remove a contact by name."""
-
-        contact = self.get_contact_by_name(name)
-        if contact is None:
-            return False
-
-        self.contacts.remove(contact)
-        self.save_contacts()
-        logger.info(f"Removed contact: {contact}")
-        return True
-
-    def update_contact(self, name: str, **kwargs) -> bool:
-        """Update a contact by name."""
-
-        contact = self.get_contact_by_name(name)
-        if contact is None:
-            return False
-
-        for key, value in kwargs.items():
-            if hasattr(contact, key):
-                setattr(contact, key, value)
-
-        self.save_contacts()
-        logger.info(f"Updated contact: {contact}")
-        return True
-
-    def get_speed_dial_address(self, number: int) -> Optional[str]:
-        """Get SIP address for a speed dial number."""
-
-        return self.speed_dial.get(number)
-
-    def set_speed_dial(self, number: int, sip_address: str) -> None:
-        """Assign a SIP address to a speed dial number."""
-
-        self.speed_dial[number] = sip_address
-        self.save_contacts()
-        logger.info(f"Set speed dial {number} to {sip_address}")
+    def get_people_contacts_seed_file(self) -> str:
+        return str(self.resolve_runtime_path(self.people_settings.contacts_seed_file))
 
     def reload(self) -> None:
-        """Reload all configuration from disk."""
+        """Reload all authored config from disk."""
 
         logger.info("Reloading configuration...")
         self.load_app_config()
-        self.load_voip_config()
-        self.load_contacts()
+        self.load_communication_config()
+        self.load_people_config()

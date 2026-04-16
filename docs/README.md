@@ -7,6 +7,7 @@ If you are new here, read these first:
 1. [`README.md`](../README.md) for the repo overview and quick start
 2. [`docs/DEVELOPMENT_GUIDE.md`](DEVELOPMENT_GUIDE.md) for setup, running, validation, and daily workflow
 3. [`docs/SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md) for the current runtime shape
+4. [`docs/CANONICAL_STRUCTURE.md`](CANONICAL_STRUCTURE.md) for the current config/package ownership template
 
 ## Source of truth
 
@@ -28,6 +29,7 @@ Plan docs are useful, but they are not automatically the current implementation 
 - [`CONTRIBUTOR_WORKFLOW.md`](CONTRIBUTOR_WORKFLOW.md), day-to-day contributor path and PR checklist
 - [`DEVELOPMENT_GUIDE.md`](DEVELOPMENT_GUIDE.md), setup, running, validation, package layout
 - [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md), current runtime architecture and startup/bootstrap flow
+- [`CANONICAL_STRUCTURE.md`](CANONICAL_STRUCTURE.md), canonical config topology and package ownership template
 
 ### Setup, bringup, and deployment
 
@@ -44,6 +46,7 @@ Plan docs are useful, but they are not automatically the current implementation 
 ### Core runtime architecture
 
 - [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md), top-level runtime topology plus startup/bootstrap flow
+- [`CANONICAL_STRUCTURE.md`](CANONICAL_STRUCTURE.md), canonical config topology and domain package ownership
 - [`RUNTIME_EVENT_FLOW.md`](RUNTIME_EVENT_FLOW.md), current event pipeline and coordinator ownership
 - [`DISPLAY_HAL_ARCHITECTURE.md`](DISPLAY_HAL_ARCHITECTURE.md), display abstraction and adapters
 - [`INPUT_HAL_ARCHITECTURE.md`](INPUT_HAL_ARCHITECTURE.md), semantic input model and adapters

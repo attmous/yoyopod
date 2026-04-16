@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from yoyopod.app_context import AppContext
     from yoyopod.audio import LocalMusicService
     from yoyopod.audio.music.backend import MusicBackend
-    from yoyopod.voip import VoIPManager
+    from yoyopod.communication import VoIPManager
     from yoyopod.ui.screens import ScreenView
 
 

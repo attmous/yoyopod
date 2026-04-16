@@ -27,7 +27,7 @@ from yoyopod.ui.screens.voip.lvgl.voice_note_view import LvglVoiceNoteView
 if TYPE_CHECKING:
     from yoyopod.app_context import AppContext
     from yoyopod.ui.screens import ScreenView
-    from yoyopod.voip import VoIPManager
+    from yoyopod.communication import VoIPManager
 
 
 @dataclass(frozen=True, slots=True)

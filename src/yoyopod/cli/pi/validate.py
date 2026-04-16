@@ -65,9 +65,14 @@ def _nearest_existing_parent(path: Path) -> Path:
 def _config_files_check(config_path: Path) -> CheckResult:
     """Validate that the tracked runtime config files are present."""
     required_files = (
-        config_path / "yoyopod_config.yaml",
-        config_path / "voip_config.yaml",
-        config_path / "contacts.yaml",
+        config_path / "app" / "core.yaml",
+        config_path / "audio" / "music.yaml",
+        config_path / "device" / "hardware.yaml",
+        config_path / "communication" / "calling.yaml",
+        config_path / "communication" / "messaging.yaml",
+        config_path / "communication" / "integrations" / "liblinphone_factory.conf",
+        config_path / "people" / "directory.yaml",
+        config_path / "people" / "contacts.seed.yaml",
     )
     missing = [str(path.relative_to(REPO_ROOT)) for path in required_files if not path.exists()]
     if missing:

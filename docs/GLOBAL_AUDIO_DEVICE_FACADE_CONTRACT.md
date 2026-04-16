@@ -39,8 +39,8 @@ That means the app does not yet have one global audio hardware contract. Device 
 
 ### Calls
 
-- `config/voip_config.yaml` carries playback, ringer, capture, and media device IDs
-- `src/yoyopod/voip/backend.py` directly issues startup `amixer` capture-tuning commands
+- `config/device/hardware.yaml` carries shared communication audio device IDs
+- `src/yoyopod/communication/calling/backend.py` directly issues startup `amixer` capture-tuning commands
 
 ### Voice Commands
 
@@ -160,7 +160,7 @@ Audio routing should become shared configuration first and backend-specific conf
 
 Suggested direction:
 
-- keep backend-specific codec and SIP behavior in `config/voip_config.yaml`
+- keep backend-specific codec and SIP behavior in `config/communication/calling.yaml`
 - move shared device routing and mixer policy under the main app audio config
 - let env overrides feed the shared resolver, not separate feature paths
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 from yoyopod.audio.music.models import Track
-from yoyopod.voip.manager import CallState, RegistrationState
+from yoyopod.communication import CallState, RegistrationState
 
 
 @dataclass(frozen=True, slots=True)

@@ -187,7 +187,8 @@ There is also HDMI audio on card 1, but the current YoyoPod music runtime is usi
 
 VoIP is not routed through mpv.
 
-Liblinphone uses its own ALSA device selection from `config/voip_config.yaml`, typically:
+Liblinphone uses the communication audio selectors from
+`config/device/hardware.yaml`, typically:
 
 - playback: `ALSA: wm8960-soundcard`
 - ringer: `ALSA: wm8960-soundcard`
@@ -223,5 +224,6 @@ They are separate software paths that meet at the same codec/hardware.
 - `src/yoyopod/audio/music/ipc.py`
 - `src/yoyopod/audio/music/models.py`
 - `src/yoyopod/audio/volume.py`
-- `config/yoyopod_config.yaml`
-- `config/voip_config.yaml`
+- `config/audio/music.yaml`
+- `config/device/hardware.yaml`
+- `config/communication/calling.yaml`

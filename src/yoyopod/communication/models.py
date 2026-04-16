@@ -1,4 +1,4 @@
-"""Shared VoIP models and typed backend events."""
+"""Shared communication models and typed backend events."""
 
 from __future__ import annotations
 
@@ -67,22 +67,23 @@ class MessageDeliveryState(Enum):
 
 @dataclass(slots=True)
 class VoIPConfig:
-    """VoIP configuration."""
+    """Runtime communication config passed into the Liblinphone-backed service."""
 
     sip_server: str = "sip.linphone.org"
     sip_username: str = ""
     sip_password: str = ""
     sip_password_ha1: str = ""
     sip_identity: str = ""
-    factory_config_path: str = "config/liblinphone_factory.conf"
+    factory_config_path: str = "config/communication/integrations/liblinphone_factory.conf"
     transport: str = "tcp"
     stun_server: str = ""
     conference_factory_uri: str = ""
     file_transfer_server_url: str = ""
     lime_server_url: str = ""
     iterate_interval_ms: int = 20
-    message_store_dir: str = "data/messages"
-    voice_note_store_dir: str = "data/voice_notes"
+    message_store_dir: str = "data/communication/messages"
+    voice_note_store_dir: str = "data/communication/voice_notes"
+    call_history_file: str = "data/communication/call_history.json"
     voice_note_max_duration_seconds: int = 30
     auto_download_incoming_voice_recordings: bool = True
     playback_dev_id: str = "ALSA: wm8960-soundcard"
@@ -102,15 +103,24 @@ class VoIPConfig:
             sip_password=config_manager.get_sip_password(),
             sip_password_ha1=config_manager.get_sip_password_ha1(),
             sip_identity=config_manager.get_sip_identity(),
-            factory_config_path=config_manager.get_voip_factory_config_path(),
+            factory_config_path=str(
+                config_manager.resolve_runtime_path(config_manager.get_voip_factory_config_path())
+            ),
             transport=config_manager.get_transport(),
             stun_server=config_manager.get_stun_server(),
             conference_factory_uri=config_manager.get_conference_factory_uri(),
             file_transfer_server_url=config_manager.get_file_transfer_server_url(),
             lime_server_url=config_manager.get_lime_server_url(),
             iterate_interval_ms=config_manager.get_voip_iterate_interval_ms(),
-            message_store_dir=config_manager.get_message_store_dir(),
-            voice_note_store_dir=config_manager.get_voice_note_store_dir(),
+            message_store_dir=str(
+                config_manager.resolve_runtime_path(config_manager.get_message_store_dir())
+            ),
+            voice_note_store_dir=str(
+                config_manager.resolve_runtime_path(config_manager.get_voice_note_store_dir())
+            ),
+            call_history_file=str(
+                config_manager.resolve_runtime_path(config_manager.get_call_history_file())
+            ),
             voice_note_max_duration_seconds=config_manager.get_voice_note_max_duration_seconds(),
             auto_download_incoming_voice_recordings=(
                 config_manager.get_auto_download_incoming_voice_recordings()

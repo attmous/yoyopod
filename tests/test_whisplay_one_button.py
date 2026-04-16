@@ -6,6 +6,7 @@ import pytest
 
 from yoyopod.app_context import AppContext
 from yoyopod.audio import LocalMusicService, MockMusicBackend, Playlist, RecentTrackHistoryStore, Track
+from yoyopod.communication.calling import VoiceNoteDraft
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InteractionProfile
 from yoyopod.ui.screens import (
@@ -23,7 +24,6 @@ from yoyopod.ui.screens import (
     TalkContactScreen,
     VoiceNoteScreen,
 )
-from yoyopod.voip.manager import VoiceNoteDraft
 
 
 class FakeMusicBackend(MockMusicBackend):
@@ -81,8 +81,8 @@ class FakeContact:
         return self.notes or self.name
 
 
-class FakeConfigManager:
-    """Minimal config manager returning test contacts."""
+class FakePeopleDirectory:
+    """Minimal people-directory returning test contacts."""
 
     def __init__(self, contacts: list[FakeContact]) -> None:
         self._contacts = contacts
@@ -408,7 +408,7 @@ def test_call_screen_advance_wraps_through_contacts(
         display,
         one_button_context,
         voip_manager=FakeVoIPManager(),
-        config_manager=FakeConfigManager(contacts),
+        people_directory=FakePeopleDirectory(contacts),
     )
 
     screen.enter()
@@ -431,7 +431,7 @@ def test_call_screen_select_routes_to_contact_actions(
         display,
         one_button_context,
         voip_manager=FakeVoIPManager(),
-        config_manager=FakeConfigManager(contacts),
+        people_directory=FakePeopleDirectory(contacts),
     )
 
     screen.enter()
@@ -500,7 +500,7 @@ def test_contact_list_advance_wraps_and_select_opens_contact(
         display,
         one_button_context,
         voip_manager=voip_manager,
-        config_manager=FakeConfigManager(contacts),
+        people_directory=FakePeopleDirectory(contacts),
     )
 
     screen.enter()

@@ -5,20 +5,20 @@ from __future__ import annotations
 import pytest
 
 from yoyopod.app_context import AppContext
-from yoyopod.config import Contact
-from yoyopod.ui.display import Display
-from yoyopod.ui.screens import CallScreen, NavigationRequest, TalkContactScreen, VoiceNoteScreen
-from yoyopod.voip.manager import VoiceNoteDraft
-from yoyopod.voip.models import (
+from yoyopod.communication import (
     MessageDeliveryState,
     MessageDirection,
     MessageKind,
     VoIPMessageRecord,
 )
+from yoyopod.communication.calling import VoiceNoteDraft
+from yoyopod.people import Contact
+from yoyopod.ui.display import Display
+from yoyopod.ui.screens import CallScreen, NavigationRequest, TalkContactScreen, VoiceNoteScreen
 
 
-class FakeConfigManager:
-    """Minimal contact source for Talk tests."""
+class FakePeopleDirectory:
+    """Minimal people-directory source for Talk tests."""
 
     def __init__(self, contacts: list[Contact]) -> None:
         self._contacts = contacts
@@ -120,7 +120,7 @@ def test_call_screen_builds_people_deck_from_contacts(display: Display) -> None:
         display,
         AppContext(),
         voip_manager=FakeVoIPManager(),
-        config_manager=FakeConfigManager(contacts),
+        people_directory=FakePeopleDirectory(contacts),
     )
 
     screen.enter()
@@ -137,7 +137,7 @@ def test_call_screen_select_opens_selected_contact(display: Display) -> None:
         display,
         context,
         voip_manager=FakeVoIPManager(),
-        config_manager=FakeConfigManager(contacts),
+        people_directory=FakePeopleDirectory(contacts),
     )
 
     screen.enter()

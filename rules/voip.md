@@ -1,12 +1,12 @@
-# VoIP (Liblinphone)
+# Communication (Liblinphone)
 
-Applies to: `src/yoyopod/voip/**`
+Applies to: `src/yoyopod/communication/**`, `src/yoyopod/people/**`
 
 ## Overview
 
 The production VoIP path is Liblinphone-only:
 
-- native Liblinphone shim under `src/yoyopod/voip/liblinphone_binding/`
+- native Liblinphone shim under `src/yoyopod/communication/integrations/liblinphone_binding/`
 - CPython `cffi` binding against the shim header only
 - `VoIPManager` as the app-facing facade for registration, calls, text messages, and voice notes
 
@@ -31,20 +31,24 @@ Do not reintroduce `linphonec` subprocess control or `.linphonerc`-driven runtim
 
 ## Configuration
 
-SIP and messaging config lives in `config/voip_config.yaml`:
+Communication config is split by ownership:
 
-- SIP account, transport, STUN server
-- HA1 hash authentication
-- Liblinphone factory config path
-- file-transfer server URL
-- message store directory
-- voice-note store directory
-- voice-note max duration
+- `config/communication/calling.yaml`
+  - non-secret SIP identity, transport, STUN, calling policy
+- `config/communication/messaging.yaml`
+  - file transfer, message-store paths, voice-note policy
+- `config/communication/calling.secrets.yaml`
+  - SIP credentials only, gitignored
+- `config/device/hardware.yaml`
+  - shared communication audio device truth
+- `config/people/directory.yaml`
+  - paths for mutable people data only
 
-Trusted peer identities live in `config/contacts.yaml`.
+Contacts are mutable user data under `data/people/contacts.yaml`, optionally
+bootstrapped from `config/people/contacts.seed.yaml`.
 
 ## Audio
 
 - Ring tone generation stays outside Liblinphone and may still use local helper tooling.
 - Media devices should target the WM8960 codec on Whisplay-class hardware.
-- Keep device selection configurable through the existing env/config path.
+- Keep device selection configurable through `device/hardware.yaml` and env vars.

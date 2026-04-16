@@ -31,12 +31,12 @@ class ContactListScreen(Screen):
         display: Display,
         context: Optional["AppContext"] = None,
         voip_manager=None,
-        config_manager=None,
+        people_directory=None,
         action_mode: Literal["call", "voice_note"] = "call",
     ) -> None:
         super().__init__(display, context, "ContactList")
         self.voip_manager = voip_manager
-        self.config_manager = config_manager
+        self.people_directory = people_directory
         self.action_mode = action_mode
         self.contacts = []
         self.selected_index = 0
@@ -94,15 +94,15 @@ class ContactListScreen(Screen):
         return self._lvgl_view
 
     def load_contacts(self) -> None:
-        """Load contacts from config manager."""
-        if self.config_manager:
-            contacts = self.config_manager.get_contacts()
+        """Load contacts from the people directory."""
+        if self.people_directory:
+            contacts = self.people_directory.get_contacts()
             favorites = [contact for contact in contacts if contact.favorite]
             others = [contact for contact in contacts if not contact.favorite]
             self.contacts = favorites + others
             logger.info(f"Loaded {len(self.contacts)} contacts")
         else:
-            logger.warning("No config manager available to load contacts")
+            logger.warning("No people directory available to load contacts")
             self.contacts = []
 
     def render(self) -> None:

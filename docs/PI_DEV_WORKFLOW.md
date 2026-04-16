@@ -267,7 +267,7 @@ shadow-first screenshot path.
 ### Automatic responsiveness watchdog
 
 For validation runs where you want the app to capture evidence on its own, enable the
-opt-in responsiveness watchdog in `config/yoyopod_config.yaml` or via env vars:
+opt-in responsiveness watchdog in `config/app/core.yaml` or via env vars:
 
 ```yaml
 diagnostics:

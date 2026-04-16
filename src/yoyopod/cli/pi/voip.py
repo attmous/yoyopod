@@ -17,8 +17,8 @@ def check() -> None:
     from loguru import logger
 
     from yoyopod.config import ConfigManager
-    from yoyopod.voip import RegistrationState, VoIPConfig, VoIPManager
-    from yoyopod.voip.liblinphone_binding import LiblinphoneBinding
+    from yoyopod.communication import RegistrationState, VoIPConfig, VoIPManager
+    from yoyopod.communication.integrations.liblinphone_binding import LiblinphoneBinding
 
     configure_logging(verbose=True)
 
@@ -41,7 +41,7 @@ def check() -> None:
     logger.info(f"STUN Server: {voip_config.stun_server}")
     logger.info(f"File transfer server: {voip_config.file_transfer_server_url or 'unset'}")
 
-    voip_manager = VoIPManager(voip_config, config_manager=config_manager)
+    voip_manager = VoIPManager(voip_config)
     registration_states: list[RegistrationState] = []
     voip_manager.on_registration_change(lambda state: registration_states.append(state))
 
@@ -75,8 +75,8 @@ def debug() -> None:
     from loguru import logger
 
     from yoyopod.config import ConfigManager
-    from yoyopod.voip import VoIPConfig, VoIPManager
-    from yoyopod.voip.liblinphone_binding import LiblinphoneBinding
+    from yoyopod.communication import VoIPConfig, VoIPManager
+    from yoyopod.communication.integrations.liblinphone_binding import LiblinphoneBinding
 
     configure_logging(verbose=True)
 
@@ -91,7 +91,7 @@ def debug() -> None:
 
     config_manager = ConfigManager(config_dir="config")
     voip_config = VoIPConfig.from_config_manager(config_manager)
-    voip_manager = VoIPManager(voip_config, config_manager=config_manager)
+    voip_manager = VoIPManager(voip_config)
     incoming_calls: list[tuple[str, str]] = []
 
     def on_incoming_call(caller_address: str, caller_name: str) -> None:

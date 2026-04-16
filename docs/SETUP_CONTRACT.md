@@ -155,14 +155,20 @@ See:
 
 Tracked config lives in:
 
-- `config/yoyopod_config.yaml`
-- `config/voip_config.yaml`
-- `config/liblinphone_factory.conf`
-- `config/contacts.yaml`
+- `config/app/core.yaml`
+- `config/audio/music.yaml`
+- `config/device/hardware.yaml`
+- `config/communication/calling.yaml`
+- `config/communication/messaging.yaml`
+- `config/communication/calling.secrets.example.yaml`
+- `config/communication/integrations/liblinphone_factory.conf`
+- `config/people/directory.yaml`
+- `config/people/contacts.seed.yaml`
 - `deploy/pi-deploy.yaml`
 
 Gitignored local overrides belong in:
 
+- `config/communication/calling.secrets.yaml`
 - `deploy/pi-deploy.local.yaml`
 
 The tracked deploy contract must stay generic:

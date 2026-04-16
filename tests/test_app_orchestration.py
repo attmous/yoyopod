@@ -16,7 +16,7 @@ from loguru import logger
 from yoyopod.app import YoyoPodApp
 from yoyopod.app_context import AppContext
 from yoyopod.audio import MockMusicBackend
-from yoyopod.voip import CallState, RegistrationState
+from yoyopod.communication import CallState, RegistrationState
 from yoyopod.coordinators.runtime import AppRuntimeState, CoordinatorRuntime
 from yoyopod.events import (
     CallEndedEvent,

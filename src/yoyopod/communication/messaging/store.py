@@ -9,7 +9,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from yoyopod.voip.models import (
+from yoyopod.communication.models import (
     MessageDeliveryState,
     MessageDirection,
     MessageKind,

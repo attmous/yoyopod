@@ -1,0 +1,50 @@
+# Canonical app-owned config.
+# Board overlays follow this same relative path under config/boards/<board>/.
+
+app:
+  name: "YoyoPod"
+  version: "1.0.0"
+  simulate: false
+
+ui:
+  theme: "dark"
+  show_album_art: true
+  screen_timeout_seconds: 300
+  button_debounce_ms: 50
+
+voice:
+  commands_enabled: true
+  ai_requests_enabled: true
+  screen_read_enabled: false
+  stt_enabled: true
+  tts_enabled: true
+  stt_backend: "vosk"
+  tts_backend: "espeak-ng"
+  vosk_model_path: "models/vosk-model-small-en-us"
+  record_seconds: 4
+  sample_rate_hz: 16000
+  tts_rate_wpm: 155
+  tts_voice: "en"
+
+logging:
+  level: "INFO"
+  file: "logs/yoyopod.log"
+  error_file: "logs/yoyopod_errors.log"
+  pid_file: "/tmp/yoyopod.pid"
+  rotation: "5 MB"
+  retention: "3 days"
+  compression: "gz"
+  error_rotation: "2 MB"
+  error_retention: "7 days"
+  encoding: "utf-8"
+  enqueue: false
+  backtrace: true
+  diagnose: true
+
+diagnostics:
+  responsiveness_watchdog_enabled: false
+  responsiveness_watchdog_poll_interval_seconds: 1.0
+  responsiveness_stall_threshold_seconds: 5.0
+  responsiveness_capture_cooldown_seconds: 30.0
+  responsiveness_recent_input_window_seconds: 3.0
+  responsiveness_capture_dir: "logs/responsiveness"

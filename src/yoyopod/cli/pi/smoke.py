@@ -31,15 +31,21 @@ class CheckResult:
 
 
 def _load_app_config(config_dir: Path) -> dict[str, Any]:
-    """Load the app-level configuration file if present."""
+    """Load the composed app config if present."""
     from loguru import logger
 
-    from yoyopod.config import YoyoPodConfig, config_to_dict, load_config_model_from_yaml
+    from yoyopod.config import config_to_dict, load_composed_app_settings
 
-    config_file = config_dir / "yoyopod_config.yaml"
-    if not config_file.exists():
-        logger.warning(f"App config not found: {config_file}")
-    return config_to_dict(load_config_model_from_yaml(YoyoPodConfig, config_file))
+    if not any(
+        path.exists()
+        for path in (
+            config_dir / "app" / "core.yaml",
+            config_dir / "audio" / "music.yaml",
+            config_dir / "device" / "hardware.yaml",
+        )
+    ):
+        logger.warning("Composed app config not found under {}", config_dir)
+    return config_to_dict(load_composed_app_settings(config_dir))
 
 
 def _environment_check() -> CheckResult:
@@ -186,7 +192,7 @@ def _power_check(config_dir: Path) -> CheckResult:
         return CheckResult(
             name="power",
             status="warn",
-            details="power backend disabled in yoyopod_config.yaml",
+            details="power backend disabled in config/app/core.yaml",
         )
 
     snapshot = manager.refresh()
@@ -217,7 +223,7 @@ def _rtc_check(config_dir: Path) -> CheckResult:
         return CheckResult(
             name="rtc",
             status="warn",
-            details="power backend disabled in yoyopod_config.yaml",
+            details="power backend disabled in config/app/core.yaml",
         )
 
     snapshot = manager.refresh()
@@ -388,8 +394,8 @@ def _music_check(
 def _voip_check(config_dir: Path, registration_timeout: float) -> CheckResult:
     """Validate Liblinphone startup and SIP registration."""
     from yoyopod.config import ConfigManager
-    from yoyopod.voip import VoIPConfig, VoIPManager
-    from yoyopod.voip.liblinphone_binding import LiblinphoneBinding
+    from yoyopod.communication import VoIPConfig, VoIPManager
+    from yoyopod.communication.integrations.liblinphone_binding import LiblinphoneBinding
 
     config_manager = ConfigManager(config_dir=str(config_dir))
     voip_config = VoIPConfig.from_config_manager(config_manager)
@@ -405,10 +411,13 @@ def _voip_check(config_dir: Path, registration_timeout: float) -> CheckResult:
         return CheckResult(
             name="voip",
             status="fail",
-            details="sip_identity is empty in config/voip_config.yaml",
+            details="sip_identity is empty in config/communication/calling.yaml",
         )
 
-    manager = VoIPManager(voip_config, config_manager=config_manager)
+    manager = VoIPManager(
+        voip_config,
+        people_directory=None,
+    )
     try:
         if not manager.start():
             return CheckResult(

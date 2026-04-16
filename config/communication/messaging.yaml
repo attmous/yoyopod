@@ -1,0 +1,11 @@
+# Communication messaging policy and runtime storage roots.
+
+messaging:
+  conference_factory_uri: ""
+  file_transfer_server_url: "https://files.linphone.org/lft.php"
+  lime_server_url: "https://lime.linphone.org/lime-server/lime-server.php"
+  iterate_interval_ms: 20
+  message_store_dir: "data/communication/messages"
+  voice_note_store_dir: "data/communication/voice_notes"
+  voice_note_max_duration_seconds: 30
+  auto_download_incoming_voice_recordings: true

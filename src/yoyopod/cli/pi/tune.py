@@ -30,11 +30,10 @@ class GestureEvent:
 
 
 def _load_app_config(config_dir: Path) -> dict[str, Any]:
-    """Load the current app config as a plain dict."""
-    from yoyopod.config import YoyoPodConfig, config_to_dict, load_config_model_from_yaml
+    """Load the composed app config as a plain dict."""
+    from yoyopod.config import config_to_dict, load_composed_app_settings
 
-    config_file = config_dir / "yoyopod_config.yaml"
-    return config_to_dict(load_config_model_from_yaml(YoyoPodConfig, config_file))
+    return config_to_dict(load_composed_app_settings(config_dir))
 
 
 def apply_timing_overrides(
