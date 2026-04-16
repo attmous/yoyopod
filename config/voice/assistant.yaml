@@ -1,0 +1,15 @@
+# Local voice policy and assistant defaults.
+
+assistant:
+  commands_enabled: true
+  ai_requests_enabled: true
+  screen_read_enabled: false
+  stt_enabled: true
+  tts_enabled: true
+  stt_backend: "vosk"
+  tts_backend: "espeak-ng"
+  vosk_model_path: "models/vosk-model-small-en-us"
+  record_seconds: 4
+  sample_rate_hz: 16000
+  tts_rate_wpm: 155
+  tts_voice: "en"

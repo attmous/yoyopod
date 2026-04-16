@@ -68,6 +68,7 @@ def _config_files_check(config_path: Path) -> CheckResult:
         config_path / "app" / "core.yaml",
         config_path / "audio" / "music.yaml",
         config_path / "device" / "hardware.yaml",
+        config_path / "voice" / "assistant.yaml",
         config_path / "communication" / "calling.yaml",
         config_path / "communication" / "messaging.yaml",
         config_path / "communication" / "integrations" / "liblinphone_factory.conf",

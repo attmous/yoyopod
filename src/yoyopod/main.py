@@ -467,6 +467,7 @@ def main() -> int:
             app_log.error("  - config/app/core.yaml exists")
             app_log.error("  - config/audio/music.yaml exists")
             app_log.error("  - config/device/hardware.yaml exists")
+            app_log.error("  - config/voice/assistant.yaml exists")
             app_log.error("  - config/communication/calling.yaml exists")
             app_log.error("  - config/communication/messaging.yaml exists")
             app_log.error(

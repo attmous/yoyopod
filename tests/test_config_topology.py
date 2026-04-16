@@ -77,6 +77,41 @@ def test_config_manager_rejects_secret_leak_in_tracked_calling_file(tmp_path: Pa
     assert manager.get_sip_password() == ""
 
 
+def test_voice_config_composes_domain_policy_with_device_owned_selectors(tmp_path: Path) -> None:
+    """Voice should read assistant policy from voice config and selectors from device config."""
+
+    config_dir = tmp_path / "config"
+    _write_yaml(
+        config_dir,
+        "voice/assistant.yaml",
+        {
+            "assistant": {
+                "commands_enabled": False,
+                "tts_backend": "dummy-tts",
+                "tts_voice": "en-us",
+            }
+        },
+    )
+    _write_yaml(
+        config_dir,
+        "device/hardware.yaml",
+        {
+            "voice_audio": {
+                "speaker_device_id": "plughw:CARD=SE,DEV=0",
+                "capture_device_id": "plughw:CARD=SE,DEV=1",
+            }
+        },
+    )
+
+    manager = ConfigManager(config_dir=str(config_dir))
+
+    assert manager.voice_config_loaded is True
+    assert manager.get_voice_settings().assistant.commands_enabled is False
+    assert manager.get_voice_settings().assistant.tts_backend == "dummy-tts"
+    assert manager.get_voice_settings().audio.speaker_device_id == "plughw:CARD=SE,DEV=0"
+    assert manager.get_voice_settings().audio.capture_device_id == "plughw:CARD=SE,DEV=1"
+
+
 def test_people_directory_bootstraps_mutable_contacts_from_seed(tmp_path: Path) -> None:
     """People data should seed mutable runtime storage instead of treating contacts as config."""
 

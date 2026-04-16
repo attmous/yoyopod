@@ -182,6 +182,7 @@ This snapshot was built from:
   - `config/app/core.yaml`
   - `config/audio/music.yaml`
   - `config/device/hardware.yaml`
+  - `config/voice/assistant.yaml`
   - `config/communication/calling.yaml`
   - `config/communication/messaging.yaml`
   - `deploy/pi-deploy.yaml`

@@ -11,6 +11,7 @@ from yoyopod.config.layers import resolve_config_board, resolve_config_layers
 from yoyopod.config.models import (
     CommunicationConfig,
     PeopleDirectoryConfig,
+    VoiceConfig,
     YoyoPodConfig,
     YoyoPodRuntimeConfig,
     build_config_model,
@@ -26,6 +27,7 @@ from yoyopod.config.storage import (
 APP_CORE_CONFIG = Path("app/core.yaml")
 AUDIO_MUSIC_CONFIG = Path("audio/music.yaml")
 DEVICE_HARDWARE_CONFIG = Path("device/hardware.yaml")
+VOICE_ASSISTANT_CONFIG = Path("voice/assistant.yaml")
 COMMUNICATION_CALLING_CONFIG = Path("communication/calling.yaml")
 COMMUNICATION_MESSAGING_CONFIG = Path("communication/messaging.yaml")
 COMMUNICATION_SECRETS_CONFIG = Path("communication/calling.secrets.yaml")
@@ -91,6 +93,11 @@ class ConfigManager:
             self.config_board,
             DEVICE_HARDWARE_CONFIG,
         )
+        self.voice_assistant_layers = resolve_config_layers(
+            self.config_dir,
+            self.config_board,
+            VOICE_ASSISTANT_CONFIG,
+        )
         self.communication_calling_layers = resolve_config_layers(
             self.config_dir,
             self.config_board,
@@ -109,20 +116,25 @@ class ConfigManager:
         self.communication_secrets_file = self.config_dir / COMMUNICATION_SECRETS_CONFIG
 
         self.app_config_file = self.app_core_layers[-1]
+        self.device_hardware_file = self.device_hardware_layers[-1]
+        self.voice_assistant_file = self.voice_assistant_layers[-1]
         self.communication_calling_file = self.communication_calling_layers[-1]
         self.communication_messaging_file = self.communication_messaging_layers[-1]
         self.people_directory_file = self.people_directory_layers[-1]
 
         self.app_settings = YoyoPodConfig()
+        self.voice_settings = VoiceConfig()
         self.communication_settings = CommunicationConfig()
         self.people_settings = PeopleDirectoryConfig()
         self.runtime_settings = YoyoPodRuntimeConfig()
 
         self.app_config: dict[str, Any] = config_to_dict(self.app_settings)
+        self.voice_config: dict[str, Any] = config_to_dict(self.voice_settings)
         self.communication_config: dict[str, Any] = config_to_dict(self.communication_settings)
         self.runtime_config: dict[str, Any] = config_to_dict(self.runtime_settings)
 
         self.app_config_loaded = False
+        self.voice_config_loaded = False
         self.communication_config_loaded = False
         self.communication_secrets_loaded = False
         self.people_config_loaded = False
@@ -134,6 +146,7 @@ class ConfigManager:
         )
 
         self.load_app_config()
+        self.load_voice_config()
         self.load_communication_config()
         self.load_people_config()
         self._refresh_runtime_settings()
@@ -143,6 +156,7 @@ class ConfigManager:
 
         self.runtime_settings = YoyoPodRuntimeConfig(
             app=self.app_settings,
+            voice=self.voice_settings,
             communication=self.communication_settings,
             people=self.people_settings,
         )
@@ -162,13 +176,26 @@ class ConfigManager:
             logger.exception("Error updating app config layer")
             return False
 
+    def _save_device_hardware_layer_patch(self, patch: dict[str, Any]) -> bool:
+        """Persist one partial update into the active device layer only."""
+
+        try:
+            current = load_yaml_mapping(self.device_hardware_file)
+            data = deep_merge_mappings(current, patch)
+            atomic_write_yaml(self.device_hardware_file, data)
+            self.voice_config_loaded = True
+            logger.info("Device configuration layer updated successfully")
+            return True
+        except Exception:
+            logger.exception("Error updating device config layer")
+            return False
+
     def _app_core_payload(self) -> dict[str, Any]:
         """Return only the sections owned by config/app/core.yaml."""
 
         return {
             "app": config_to_dict(self.app_settings.app),
             "ui": config_to_dict(self.app_settings.ui),
-            "voice": config_to_dict(self.app_settings.voice),
             "logging": config_to_dict(self.app_settings.logging),
             "diagnostics": config_to_dict(self.app_settings.diagnostics),
         }
@@ -257,6 +284,40 @@ class ConfigManager:
             logger.exception("Error saving app config")
             return False
 
+    def load_voice_config(self) -> bool:
+        """Load the typed voice config from voice-owned and device-owned layers."""
+
+        self.voice_config_loaded = _config_loaded(
+            self.voice_assistant_layers,
+            self.device_hardware_layers,
+        )
+        try:
+            assistant_payload = load_yaml_layers(self.voice_assistant_layers)
+            device_payload = load_yaml_layers(self.device_hardware_layers)
+            voice_audio = device_payload.get("voice_audio", {})
+            if not isinstance(voice_audio, dict):
+                voice_audio = {}
+
+            payload = deep_merge_mappings(assistant_payload, {"audio": voice_audio})
+
+            self.voice_settings = build_config_model(VoiceConfig, payload)
+            self.voice_config = config_to_dict(self.voice_settings)
+            self._refresh_runtime_settings()
+
+            if self.voice_config_loaded:
+                logger.info("Voice configuration loaded successfully")
+            else:
+                logger.warning("No authored voice config found; using typed defaults")
+
+            return self.voice_config_loaded
+        except Exception:
+            logger.exception("Error loading voice config")
+            self.voice_settings = VoiceConfig()
+            self.voice_config = config_to_dict(self.voice_settings)
+            self.voice_config_loaded = False
+            self._refresh_runtime_settings()
+            return False
+
     def load_communication_config(self) -> bool:
         """Load the typed communication config from calling/messaging/device/secrets files."""
 
@@ -339,6 +400,11 @@ class ConfigManager:
 
         return self.app_settings
 
+    def get_voice_settings(self) -> VoiceConfig:
+        """Return the composed typed voice settings."""
+
+        return self.voice_settings
+
     def get_communication_settings(self) -> CommunicationConfig:
         """Return the composed typed communication settings."""
 
@@ -379,10 +445,10 @@ class ConfigManager:
         value = (device_id or "").strip()
         if "\n" in value or "\r" in value:
             raise ValueError("Invalid ALSA device id (contains newline)")
-        if not self._save_app_config_layer_patch({"voice": {"capture_device_id": value}}):
+        if not self._save_device_hardware_layer_patch({"voice_audio": {"capture_device_id": value}}):
             return False
-        self.app_settings.voice.capture_device_id = value
-        self.app_config.setdefault("voice", {})["capture_device_id"] = value
+        self.voice_settings.audio.capture_device_id = value
+        self.voice_config.setdefault("audio", {})["capture_device_id"] = value
         self._refresh_runtime_settings()
         return True
 
@@ -392,12 +458,22 @@ class ConfigManager:
         value = (device_id or "").strip()
         if "\n" in value or "\r" in value:
             raise ValueError("Invalid ALSA device id (contains newline)")
-        if not self._save_app_config_layer_patch({"voice": {"speaker_device_id": value}}):
+        if not self._save_device_hardware_layer_patch({"voice_audio": {"speaker_device_id": value}}):
             return False
-        self.app_settings.voice.speaker_device_id = value
-        self.app_config.setdefault("voice", {})["speaker_device_id"] = value
+        self.voice_settings.audio.speaker_device_id = value
+        self.voice_config.setdefault("audio", {})["speaker_device_id"] = value
         self._refresh_runtime_settings()
         return True
+
+    def get_voice_speaker_device_id(self) -> str:
+        """Return the configured local-voice playback selector."""
+
+        return self.voice_settings.audio.speaker_device_id
+
+    def get_voice_capture_device_id(self) -> str:
+        """Return the configured local-voice capture selector."""
+
+        return self.voice_settings.audio.capture_device_id
 
     def get_sip_server(self) -> str:
         return self.communication_settings.calling.account.sip_server
@@ -500,5 +576,6 @@ class ConfigManager:
 
         logger.info("Reloading configuration...")
         self.load_app_config()
+        self.load_voice_config()
         self.load_communication_config()
         self.load_people_config()

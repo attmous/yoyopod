@@ -36,6 +36,7 @@ from yoyopod.events import (
     ScreenChangedEvent,
     UserActivityEvent,
 )
+from yoyopod.device import AudioDeviceCatalog
 from yoyopod.people import PeopleDirectory
 from yoyopod.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
 from yoyopod.network import NetworkManager
@@ -79,7 +80,6 @@ from yoyopod.ui.screens import (
     TalkContactScreen,
     VoiceNoteScreen,
 )
-from yoyopod.voice import VoiceDeviceCatalog
 from yoyopod.communication import CallHistoryStore, VoIPManager
 
 
@@ -129,7 +129,7 @@ class YoyoPodApp:
         self.network_manager: Optional[NetworkManager] = None
         self.call_history_store: Optional[CallHistoryStore] = None
         self.recent_track_store: Optional[RecentTrackHistoryStore] = None
-        self.voice_device_catalog: Optional[VoiceDeviceCatalog] = None
+        self.audio_device_catalog: Optional[AudioDeviceCatalog] = None
         self.voice_runtime: Optional[VoiceRuntimeCoordinator] = None
 
         # Screen instances

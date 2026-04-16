@@ -19,11 +19,13 @@ communication + people exemplar migration.
 Tracked authored config lives under `config/` and is split by ownership:
 
 - `config/app/core.yaml`
-  - app shell concerns: `app`, `ui`, `voice`, `logging`, `diagnostics`
+  - app shell concerns: `app`, `ui`, `logging`, `diagnostics`
 - `config/audio/music.yaml`
   - local music policy and mpv settings
 - `config/device/hardware.yaml`
-  - shared hardware truth: `input`, `display`, `power`, `network`, `communication_audio`
+  - shared hardware truth: `input`, `display`, `power`, `network`, `communication_audio`, `voice_audio`
+- `config/voice/assistant.yaml`
+  - local voice policy and assistant defaults
 - `config/communication/calling.yaml`
   - non-secret SIP identity, calling policy, call-history path
 - `config/communication/messaging.yaml`
@@ -51,7 +53,7 @@ ad hoc.
 
 - `ConfigManager` composes the canonical files
 - `YoyoPodRuntimeConfig` is the single typed runtime model
-- `load_composed_app_settings()` is the app-only loader for `app` + `audio` + `device`
+- `load_composed_app_settings()` is the app-shell loader for `app` + `audio` + `device`
 
 ### Secret Boundary Rule
 
@@ -85,6 +87,8 @@ YoyoPod uses a hybrid ownership model:
 
 Current exemplar package homes:
 
+- `src/yoyopod/device/`
+  - device-owned helpers shared across domains
 - `src/yoyopod/communication/`
   - `calling/`
   - `messaging/`
@@ -93,6 +97,9 @@ Current exemplar package homes:
 - `src/yoyopod/people/`
   - mutable contacts/address-book concerns
   - `__init__.py` is the app-facing seam
+- `src/yoyopod/voice/`
+  - local voice behavior, models, and backends
+  - device inventory/helpers live outside this package
 - `src/yoyopod/runtime/`, `src/yoyopod/coordinators/`, `src/yoyopod/app.py`
   - app/runtime composition
 
@@ -116,6 +123,17 @@ The communication exemplar establishes:
 
 Contacts are not communication config. The tracked people config file only says
 where the mutable address book lives and which seed file can bootstrap it.
+
+## Voice Migration Pattern
+
+The voice migration adds the next reusable slice:
+
+- voice policy under `config/voice/assistant.yaml`
+- local voice capture and prompt selectors under `config/device/hardware.yaml`
+  as `voice_audio.*`
+- device listing and label helpers under `src/yoyopod/device/`
+- voice runtime and services consuming `ConfigManager.get_voice_settings()`
+  instead of reading app-shell config directly
 
 ## Template For Future Migrations
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from yoyopod.config import ConfigManager, YoyoPodConfig, load_config_model_from_yaml
+from yoyopod.config import ConfigManager, VoiceConfig, YoyoPodConfig, load_config_model_from_yaml
 
 
 def test_app_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> None:
@@ -36,14 +36,6 @@ def test_app_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> Non
     assert settings.input.ptt_navigation is True
     assert settings.input.whisplay_double_tap_ms == 300
     assert settings.input.whisplay_long_hold_ms == 800
-    assert settings.voice.commands_enabled is True
-    assert settings.voice.ai_requests_enabled is True
-    assert settings.voice.screen_read_enabled is False
-    assert settings.voice.stt_backend == "vosk"
-    assert settings.voice.tts_backend == "espeak-ng"
-    assert settings.voice.vosk_model_path == "models/vosk-model-small-en-us"
-    assert settings.voice.sample_rate_hz == 16000
-    assert settings.voice.tts_rate_wpm == 155
     assert settings.power.enabled is True
     assert settings.power.backend == "pisugar"
     assert settings.power.transport == "auto"
@@ -82,6 +74,29 @@ def test_app_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> Non
     assert settings.diagnostics.responsiveness_capture_dir == "logs/responsiveness"
 
 
+def test_voice_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> None:
+    """Missing voice config should still resolve to typed assistant and device defaults."""
+
+    monkeypatch.delenv("YOYOPOD_VOICE_COMMANDS_ENABLED", raising=False)
+    monkeypatch.delenv("YOYOPOD_VOSK_MODEL_PATH", raising=False)
+    monkeypatch.delenv("YOYOPOD_VOICE_SPEAKER_DEVICE", raising=False)
+
+    config_file = tmp_path / "voice" / "assistant.yaml"
+    settings = load_config_model_from_yaml(VoiceConfig, config_file)
+
+    assert not config_file.exists()
+    assert settings.assistant.commands_enabled is True
+    assert settings.assistant.ai_requests_enabled is True
+    assert settings.assistant.screen_read_enabled is False
+    assert settings.assistant.stt_backend == "vosk"
+    assert settings.assistant.tts_backend == "espeak-ng"
+    assert settings.assistant.vosk_model_path == "models/vosk-model-small-en-us"
+    assert settings.assistant.sample_rate_hz == 16000
+    assert settings.assistant.tts_rate_wpm == 155
+    assert settings.audio.speaker_device_id == ""
+    assert settings.audio.capture_device_id == ""
+
+
 def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) -> None:
     """Environment variables should override YAML while preserving other values."""
 
@@ -90,11 +105,24 @@ def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) ->
     app_file.write_text(
         yaml.safe_dump(
             {
-                "display": {
-                    "hardware": "pimoroni",
+                "ui": {
+                    "theme": "dark",
                 },
                 "logging": {
                     "level": "DEBUG",
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    device_file = tmp_path / "device" / "hardware.yaml"
+    device_file.parent.mkdir(parents=True, exist_ok=True)
+    device_file.write_text(
+        yaml.safe_dump(
+            {
+                "display": {
+                    "hardware": "pimoroni",
                 },
             },
             sort_keys=False,
@@ -148,6 +176,7 @@ def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) ->
 
     config_manager = ConfigManager(config_dir=str(tmp_path))
     settings = config_manager.get_app_settings()
+    voice_settings = config_manager.get_voice_settings()
     config_dict = config_manager.get_app_config_dict()
 
     assert config_manager.app_config_loaded is True
@@ -172,9 +201,9 @@ def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) ->
     assert settings.display.hardware == "whisplay"
     assert settings.display.whisplay_renderer == "lvgl"
     assert settings.display.lvgl_buffer_lines == 24
-    assert settings.voice.commands_enabled is False
-    assert settings.voice.screen_read_enabled is True
-    assert settings.voice.vosk_model_path == "/srv/models/vosk-small"
+    assert voice_settings.assistant.commands_enabled is False
+    assert voice_settings.assistant.screen_read_enabled is True
+    assert voice_settings.assistant.vosk_model_path == "/srv/models/vosk-small"
     assert settings.logging.level == "DEBUG"
     assert settings.logging.file == "/var/log/yoyopod.log"
     assert settings.logging.error_file == "/var/log/yoyopod_errors.log"
@@ -189,9 +218,7 @@ def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) ->
     assert config_dict["display"]["hardware"] == "whisplay"
     assert config_dict["display"]["whisplay_renderer"] == "lvgl"
     assert config_dict["display"]["lvgl_buffer_lines"] == 24
-    assert config_dict["voice"]["commands_enabled"] is False
-    assert config_dict["voice"]["screen_read_enabled"] is True
-    assert config_dict["voice"]["vosk_model_path"] == "/srv/models/vosk-small"
+    assert "voice" not in config_dict
     assert config_dict["logging"]["file"] == "/var/log/yoyopod.log"
     assert config_dict["diagnostics"]["responsiveness_watchdog_enabled"] is True
 

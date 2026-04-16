@@ -40,9 +40,9 @@ class _FakeConfigManager:
     def get_default_output_volume(self) -> int:
         return 61
 
-    def get_app_settings(self):
+    def get_voice_settings(self):
         return SimpleNamespace(
-            voice=SimpleNamespace(
+            assistant=SimpleNamespace(
                 commands_enabled=True,
                 ai_requests_enabled=True,
                 screen_read_enabled=False,
@@ -51,12 +51,14 @@ class _FakeConfigManager:
                 stt_backend="dummy-stt",
                 tts_backend="dummy-tts",
                 vosk_model_path="models/custom-model",
-                speaker_device_id="",
-                capture_device_id="",
                 sample_rate_hz=22050,
                 record_seconds=6,
                 tts_rate_wpm=180,
                 tts_voice="en-us",
+            ),
+            audio=SimpleNamespace(
+                speaker_device_id="",
+                capture_device_id="",
             )
         )
 

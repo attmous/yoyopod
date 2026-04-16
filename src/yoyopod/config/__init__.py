@@ -3,9 +3,9 @@
 from yoyopod.config.manager import ConfigManager, load_composed_app_settings
 from yoyopod.config.models import (
     AppPowerConfig,
-    AppVoiceConfig,
     CommunicationConfig,
     PeopleDirectoryConfig,
+    VoiceConfig,
     YoyoPodConfig,
     YoyoPodRuntimeConfig,
     config_to_dict,
@@ -16,8 +16,8 @@ __all__ = [
     "ConfigManager",
     "CommunicationConfig",
     "AppPowerConfig",
-    "AppVoiceConfig",
     "PeopleDirectoryConfig",
+    "VoiceConfig",
     "YoyoPodConfig",
     "YoyoPodRuntimeConfig",
     "load_composed_app_settings",

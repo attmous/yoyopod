@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from loguru import logger
 
+from yoyopod.device import format_device_label
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.system.lvgl import LvglPowerView
@@ -24,7 +25,6 @@ from yoyopod.ui.screens.theme import (
     rounded_panel,
     text_fit,
 )
-from yoyopod.voice.devices import format_device_label
 
 if TYPE_CHECKING:
     from yoyopod.app_context import AppContext

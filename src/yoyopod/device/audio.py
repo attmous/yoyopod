@@ -266,8 +266,8 @@ def format_device_label(device_id: str | None) -> str:
     return normalized
 
 
-class VoiceDeviceCatalog:
-    """Cache voice-device options and refresh them off the UI input path."""
+class AudioDeviceCatalog:
+    """Cache audio-device options and refresh them off the UI input path."""
 
     def __init__(
         self,
@@ -314,7 +314,7 @@ class VoiceDeviceCatalog:
 
             worker = threading.Thread(
                 target=self._refresh_worker,
-                name="voice-device-catalog-refresh",
+                name="audio-device-catalog-refresh",
                 daemon=True,
             )
             self._refresh_thread = worker
@@ -324,4 +324,4 @@ class VoiceDeviceCatalog:
         try:
             self.refresh()
         except Exception as exc:
-            logger.debug("Voice-device refresh failed: {}", exc)
+            logger.debug("Audio-device refresh failed: {}", exc)

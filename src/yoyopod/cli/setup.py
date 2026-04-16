@@ -25,6 +25,7 @@ TRACKED_CONFIG_PATHS: tuple[Path, ...] = (
     REPO_ROOT / "config" / "app" / "core.yaml",
     REPO_ROOT / "config" / "audio" / "music.yaml",
     REPO_ROOT / "config" / "device" / "hardware.yaml",
+    REPO_ROOT / "config" / "voice" / "assistant.yaml",
     REPO_ROOT / "config" / "communication" / "calling.yaml",
     REPO_ROOT / "config" / "communication" / "messaging.yaml",
     REPO_ROOT / "config" / "communication" / "calling.secrets.example.yaml",

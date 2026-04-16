@@ -86,6 +86,7 @@ Tracked config files live under `config/`:
 - `config/app/core.yaml`
 - `config/audio/music.yaml`
 - `config/device/hardware.yaml`
+- `config/voice/assistant.yaml`
 - `config/communication/calling.yaml`
 - `config/communication/messaging.yaml`
 - `config/communication/calling.secrets.example.yaml`
@@ -96,11 +97,13 @@ Tracked config files live under `config/`:
 Key settings:
 
 - `config/app/core.yaml`
-  - `app.*`, `ui.*`, `voice.*`, `logging.*`, `diagnostics.*`
+  - `app.*`, `ui.*`, `logging.*`, `diagnostics.*`
 - `config/audio/music.yaml`
   - `audio.music_dir`, `audio.mpv_*`, `audio.alsa_device`, `audio.default_volume`
 - `config/device/hardware.yaml`
-  - `input.*`, `display.*`, `power.*`, `network.*`, `communication_audio.*`
+  - `input.*`, `display.*`, `power.*`, `network.*`, `communication_audio.*`, `voice_audio.*`
+- `config/voice/assistant.yaml`
+  - `assistant.*` local voice commands, STT, TTS, and prompt policy
 - `config/communication/calling.yaml`
   - SIP identity, transport, STUN, call policy, call-history path
 - `config/communication/messaging.yaml`

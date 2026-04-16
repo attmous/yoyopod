@@ -87,13 +87,41 @@ class VoiceSettingsResolver:
 
         capture_device_id = None
         speaker_device_id = None
+        assistant_cfg = None
         if self._config_manager is not None:
-            voice_cfg = getattr(self._config_manager.get_app_settings(), "voice", None)
+            voice_cfg = getattr(self._config_manager, "get_voice_settings", lambda: None)()
             if voice_cfg is not None:
-                capture_device_id = getattr(voice_cfg, "capture_device_id", "").strip() or None
-                speaker_device_id = getattr(voice_cfg, "speaker_device_id", "").strip() or None
+                assistant_cfg = getattr(voice_cfg, "assistant", None)
+                audio_cfg = getattr(voice_cfg, "audio", None)
+                if audio_cfg is not None:
+                    capture_device_id = getattr(audio_cfg, "capture_device_id", "").strip() or None
+                    speaker_device_id = getattr(audio_cfg, "speaker_device_id", "").strip() or None
+
+            legacy_app_settings = getattr(self._config_manager, "get_app_settings", None)
+            legacy_voice_cfg = None
+            if callable(legacy_app_settings):
+                app_settings = legacy_app_settings()
+                legacy_voice_cfg = getattr(app_settings, "voice", None)
+                if assistant_cfg is None:
+                    assistant_cfg = legacy_voice_cfg
+                if legacy_voice_cfg is not None:
+                    if capture_device_id is None:
+                        capture_device_id = (
+                            getattr(legacy_voice_cfg, "capture_device_id", "").strip() or None
+                        )
+                    if speaker_device_id is None:
+                        speaker_device_id = (
+                            getattr(legacy_voice_cfg, "speaker_device_id", "").strip() or None
+                        )
+
             if capture_device_id is None:
-                capture_device_id = self._config_manager.get_capture_device_id()
+                capture_device_id = getattr(self._config_manager, "get_capture_device_id", lambda: None)()
+            if speaker_device_id is None:
+                speaker_device_id = getattr(
+                    self._config_manager,
+                    "get_voice_speaker_device_id",
+                    lambda: None,
+                )()
             if speaker_device_id is None:
                 speaker_device_id = getattr(
                     self._config_manager,
@@ -107,14 +135,7 @@ class VoiceSettingsResolver:
         )
         if self._config_manager is None:
             return defaults
-
-        get_app_settings = getattr(self._config_manager, "get_app_settings", None)
-        if not callable(get_app_settings):
-            return defaults
-
-        app_settings = get_app_settings()
-        voice_cfg = getattr(app_settings, "voice", None)
-        if voice_cfg is None:
+        if assistant_cfg is None:
             return defaults
 
         get_default_output_volume = getattr(self._config_manager, "get_default_output_volume", None)
@@ -123,21 +144,21 @@ class VoiceSettingsResolver:
             output_volume = int(get_default_output_volume())
 
         return VoiceSettings(
-            commands_enabled=voice_cfg.commands_enabled,
-            ai_requests_enabled=voice_cfg.ai_requests_enabled,
-            screen_read_enabled=voice_cfg.screen_read_enabled,
-            stt_enabled=voice_cfg.stt_enabled,
-            tts_enabled=voice_cfg.tts_enabled,
+            commands_enabled=assistant_cfg.commands_enabled,
+            ai_requests_enabled=assistant_cfg.ai_requests_enabled,
+            screen_read_enabled=assistant_cfg.screen_read_enabled,
+            stt_enabled=assistant_cfg.stt_enabled,
+            tts_enabled=assistant_cfg.tts_enabled,
             output_volume=output_volume,
-            stt_backend=voice_cfg.stt_backend,
-            tts_backend=voice_cfg.tts_backend,
-            vosk_model_path=voice_cfg.vosk_model_path,
+            stt_backend=assistant_cfg.stt_backend,
+            tts_backend=assistant_cfg.tts_backend,
+            vosk_model_path=assistant_cfg.vosk_model_path,
             speaker_device_id=speaker_device_id,
             capture_device_id=capture_device_id,
-            sample_rate_hz=voice_cfg.sample_rate_hz,
-            record_seconds=voice_cfg.record_seconds,
-            tts_rate_wpm=voice_cfg.tts_rate_wpm,
-            tts_voice=voice_cfg.tts_voice,
+            sample_rate_hz=assistant_cfg.sample_rate_hz,
+            record_seconds=assistant_cfg.record_seconds,
+            tts_rate_wpm=assistant_cfg.tts_rate_wpm,
+            tts_voice=assistant_cfg.tts_voice,
         )
 
 
