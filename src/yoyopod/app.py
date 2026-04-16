@@ -192,7 +192,9 @@ class YoyoPodApp:
         self._screen_awake = True
         self._watchdog_active = False
         self._watchdog_feed_suppressed = False
+        self._watchdog_feed_in_flight = False
         self._next_watchdog_feed_at = 0.0
+        self._power_refresh_in_flight = False
         self._stopped = False
         self._lvgl_backend: Optional[LvglDisplayBackend] = None
         self._lvgl_input_bridge: Optional[LvglInputBridge] = None
@@ -317,14 +319,19 @@ class YoyoPodApp:
         else:
             logger.warning("    Failed to set startup music volume to {}%", volume)
 
-    def get_output_volume(self) -> int | None:
+    def get_output_volume(self, *, refresh_system: bool = True) -> int | None:
         """Return the current shared output volume."""
         if self.output_volume is not None:
-            volume = self.output_volume.get_volume()
+            volume = (
+                self.output_volume.get_volume()
+                if refresh_system
+                else self.output_volume.peek_cached_volume()
+            )
             if self.context is not None and volume is not None:
                 self.context.playback.volume = volume
                 self.context.voice.output_volume = volume
-            return volume
+            if volume is not None:
+                return volume
         if self.context is not None:
             return self.context.playback.volume
         return None
@@ -761,7 +768,7 @@ class YoyoPodApp:
         """Clean up and stop the application."""
         self.shutdown_service.stop(disable_watchdog=disable_watchdog)
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self, *, refresh_output_volume: bool = False) -> Dict[str, Any]:
         """Return the current application status."""
         monotonic_now = time.monotonic()
         pending_shutdown_in_seconds = None
@@ -787,7 +794,7 @@ class YoyoPodApp:
             "auto_resume": self.auto_resume_after_call,
             "voip_available": self.voip_manager is not None and self.voip_manager.running,
             "music_available": self.music_backend is not None and self.music_backend.is_connected,
-            "volume": self.get_output_volume(),
+            "volume": self.get_output_volume(refresh_system=refresh_output_volume),
             "power_available": power_snapshot.available if power_snapshot is not None else False,
             "current_screen": getattr(current_screen, "route_name", None),
             "screen_stack_depth": (
@@ -885,6 +892,7 @@ class YoyoPodApp:
                 else False
             ),
             "watchdog_active": self._watchdog_active,
+            "watchdog_feed_in_flight": self._watchdog_feed_in_flight,
             "watchdog_feed_suppressed": self._watchdog_feed_suppressed,
             "watchdog_timeout_seconds": (
                 self.power_manager.config.watchdog_timeout_seconds
@@ -896,11 +904,20 @@ class YoyoPodApp:
                 if self.power_manager is not None
                 else None
             ),
+            "power_refresh_in_flight": self._power_refresh_in_flight,
             "responsiveness_watchdog_enabled": bool(
-                getattr(getattr(self.app_settings, "diagnostics", None), "responsiveness_watchdog_enabled", False)
+                getattr(
+                    getattr(self.app_settings, "diagnostics", None),
+                    "responsiveness_watchdog_enabled",
+                    False,
+                )
             ),
             "responsiveness_capture_dir": (
-                getattr(getattr(self.app_settings, "diagnostics", None), "responsiveness_capture_dir", None)
+                getattr(
+                    getattr(self.app_settings, "diagnostics", None),
+                    "responsiveness_capture_dir",
+                    None,
+                )
             ),
             "responsiveness_last_capture_age_seconds": (
                 max(0.0, monotonic_now - self._last_responsiveness_capture_at)

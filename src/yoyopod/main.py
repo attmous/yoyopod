@@ -486,7 +486,7 @@ def main() -> int:
         app_log.info("  - Full UI navigation")
         app_log.info("")
         app_log.info("Current Configuration:")
-        status = app.get_status()
+        status = app.get_status(refresh_output_volume=True)
         app_log.info(f"  Auto-resume: {status['auto_resume']}")
         app_log.info(f"  VoIP available: {status['voip_available']}")
         app_log.info(f"  Music available: {status['music_available']}")

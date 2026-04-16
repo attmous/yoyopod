@@ -35,6 +35,10 @@ class OutputVolumeController:
         """Attach or replace the active music backend."""
         self.music_backend = music_backend
 
+    def peek_cached_volume(self) -> int | None:
+        """Return the last known shared volume without touching ALSA or mpv."""
+        return self._last_requested_volume
+
     def get_volume(self) -> int | None:
         """Return the best current app-facing output volume."""
         system_volume = self.get_system_volume()

@@ -318,6 +318,17 @@ def _publish_from_worker(app: YoyoPodApp, event: object) -> None:
     worker.join()
 
 
+def _wait_for(predicate, *, timeout_seconds: float = 1.0) -> None:
+    """Wait for one async test predicate to become true."""
+
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.01)
+    raise AssertionError("Timed out waiting for async condition")
+
+
 def _navigate_from_worker(screen_manager: FakeScreenManager, screen_name: str) -> None:
     worker = threading.Thread(target=lambda: screen_manager.push_screen(screen_name))
     worker.start()
@@ -950,6 +961,8 @@ def test_power_poll_honors_interval_and_tracks_unavailable_backend() -> None:
     app._poll_power_status(now=0.0, force=True)
     app._poll_power_status(now=10.0)
     app._poll_power_status(now=30.0)
+    _wait_for(lambda: not app._pending_main_thread_callbacks.empty())
+    app._process_pending_main_thread_actions()
 
     assert app.power_manager.refresh_calls == 2
     assert app.context.battery_percent == 61
@@ -957,6 +970,42 @@ def test_power_poll_honors_interval_and_tracks_unavailable_backend() -> None:
     assert app.context.power_error == "I2C not connected"
     assert app.coordinator_runtime.power_available is False
     assert app.menu_screen.render_calls == 2
+
+
+def test_periodic_power_poll_runs_off_the_coordinator_thread() -> None:
+    """Loop-driven power refresh should return immediately and publish results later."""
+
+    refresh_started = threading.Event()
+    refresh_release = threading.Event()
+
+    class BlockingPowerManager(FakePowerManager):
+        def refresh(self) -> PowerSnapshot:
+            refresh_started.set()
+            refresh_release.wait(timeout=1.0)
+            return super().refresh()
+
+    app, _, _ = _build_app(playback_state="stopped")
+    app.power_manager = BlockingPowerManager(
+        [_power_snapshot(available=True, battery_percent=48.0, charging=False, power_plugged=False)]
+    )
+
+    started_at = time.monotonic()
+    app._poll_power_status(now=0.0)
+    elapsed_seconds = time.monotonic() - started_at
+
+    assert elapsed_seconds < 0.1
+    assert refresh_started.wait(timeout=1.0) is True
+    assert app.get_status()["power_refresh_in_flight"] is True
+    assert app.menu_screen.render_calls == 0
+
+    refresh_release.set()
+    _wait_for(lambda: not app._pending_main_thread_callbacks.empty())
+    app._process_pending_main_thread_actions()
+
+    assert app.power_manager.refresh_calls == 1
+    assert app.context.battery_percent == 48
+    assert app.menu_screen.render_calls == 1
+    assert app.get_status()["power_refresh_in_flight"] is False
 
 
 def test_screen_timeout_turns_backlight_off_after_inactivity() -> None:
@@ -1054,6 +1103,26 @@ def test_status_exposes_input_and_responsiveness_markers() -> None:
     assert status["responsiveness_last_capture_reason"] == "coordinator_stall_after_input"
     assert status["responsiveness_last_capture_scope"] == "input_to_runtime_handoff"
     assert status["responsiveness_last_capture_artifacts"] == {"snapshot": "/tmp/test.json"}
+
+
+def test_status_uses_cached_output_volume_without_touching_system_mixer() -> None:
+    """Runtime status snapshots should not block on live ALSA reads."""
+
+    app, _, _ = _build_app(playback_state="stopped")
+    app.context.set_volume(61)
+
+    class FakeOutputVolume:
+        def peek_cached_volume(self) -> int:
+            return 61
+
+        def get_volume(self) -> int:
+            raise AssertionError("status should not call get_volume()")
+
+    app.output_volume = FakeOutputVolume()
+
+    status = app.get_status()
+
+    assert status["volume"] == 61
 
 
 def test_raw_user_activity_wakes_screen_without_rerendering_current_pil_screen() -> None:
@@ -1313,10 +1382,54 @@ def test_watchdog_starts_and_feeds_from_app_loop() -> None:
     app._start_watchdog(now=0.0)
     app._feed_watchdog_if_due(9.0)
     app._feed_watchdog_if_due(10.0)
+    _wait_for(lambda: power_manager.feed_watchdog_calls == 1)
+    _wait_for(lambda: not app._pending_main_thread_callbacks.empty())
+    app._process_pending_main_thread_actions()
 
     assert power_manager.enable_watchdog_calls == 1
     assert power_manager.feed_watchdog_calls == 1
     assert app.get_status()["watchdog_active"] is True
+    assert app.get_status()["watchdog_feed_in_flight"] is False
+
+
+def test_watchdog_feed_runs_off_the_coordinator_thread() -> None:
+    """Periodic watchdog feeds should not block the interactive runtime loop."""
+
+    feed_started = threading.Event()
+    feed_release = threading.Event()
+
+    class BlockingWatchdogPowerManager(FakePowerManager):
+        def feed_watchdog(self) -> bool:
+            self.feed_watchdog_calls += 1
+            feed_started.set()
+            feed_release.wait(timeout=1.0)
+            return True
+
+    power_manager = BlockingWatchdogPowerManager(
+        [_power_snapshot(available=True, battery_percent=60.0)],
+        watchdog_enabled=True,
+        watchdog_timeout_seconds=60,
+        watchdog_feed_interval_seconds=10.0,
+    )
+    app, _, _ = _build_app_with_power(power_manager)
+    app.simulate = False
+
+    app._start_watchdog(now=0.0)
+    started_at = time.monotonic()
+    app._feed_watchdog_if_due(10.0)
+    elapsed_seconds = time.monotonic() - started_at
+
+    assert elapsed_seconds < 0.1
+    assert feed_started.wait(timeout=1.0) is True
+    assert app.get_status()["watchdog_feed_in_flight"] is True
+
+    feed_release.set()
+    _wait_for(lambda: not app._pending_main_thread_callbacks.empty())
+    app._process_pending_main_thread_actions()
+
+    assert power_manager.feed_watchdog_calls == 1
+    assert app.get_status()["watchdog_active"] is True
+    assert app.get_status()["watchdog_feed_in_flight"] is False
 
 
 def test_intentional_stop_disables_watchdog() -> None:
