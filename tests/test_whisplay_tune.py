@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("typer")
+
 from yoyopod.cli.pi.tune import apply_timing_overrides, summarize_timings
 
 

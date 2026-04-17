@@ -5,6 +5,8 @@ import shlex
 import pytest
 import yaml
 
+pytest.importorskip("typer")
+
 from yoyopod.cli.remote.ops import (
     DEPLOY_CONFIG_PATH,
     PiDeployConfig,

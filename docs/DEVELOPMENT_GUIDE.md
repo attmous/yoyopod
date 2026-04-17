@@ -28,6 +28,8 @@ uv run yoyoctl setup verify-host
 
 These commands define the baseline executable setup contract. They do not yet
 cover non-apt assets like Vosk models or every board/modem-specific setup edge.
+If `yoyoctl` reports that the contributor CLI dependencies are missing, run
+`uv sync --extra dev` and retry.
 
 If you plan to use the remote Pi workflow from your dev machine, verify the
 extra host tools explicitly:

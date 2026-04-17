@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
+pytest.importorskip("typer")
+
 import yoyopod.cli.setup as setup_cli_module
 from yoyopod.cli.setup import (
     SetupCheck,

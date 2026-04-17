@@ -2,6 +2,10 @@
 
 import re
 
+import pytest
+
+pytest.importorskip("typer")
+
 from typer.testing import CliRunner
 
 from yoyopod.cli import app

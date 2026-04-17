@@ -58,6 +58,8 @@ uv run yoyoctl setup host
 
 This is the executable baseline, not full setup ownership. It does not provision
 non-apt assets like Vosk models or cover every board-specific edge.
+If `yoyoctl` is invoked before the contributor CLI stack is present, it should
+now exit with a short bootstrap hint instead of crashing during import.
 
 Current repo-owned validation baseline:
 
