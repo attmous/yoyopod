@@ -1,87 +1,765 @@
-"""Telemetry manager — publishes device state to the backend via MQTT."""
+"""Cloud manager for device auth, remote config, cache, and operator status."""
 
 from __future__ import annotations
 
+import json
+import threading
 import time
-from typing import TYPE_CHECKING
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable
 
 from loguru import logger
 
+from yoyopod.cloud.client import CloudClientError, CloudDeviceClient
+from yoyopod.cloud.models import CloudAccessToken, CloudStatusSnapshot
 from yoyopod.cloud.mqtt_client import DeviceMqttClient
 
 if TYPE_CHECKING:
-    from yoyopod.config.models import BackendTelemetryConfig
+    from yoyopod.app import YoyoPodApp
+    from yoyopod.config import ConfigManager
 
 
-class TelemetryManager:
-    """Own MQTT-based device telemetry publishing (battery, heartbeat, connectivity).
+class CloudManager:
+    """Own device provisioning, auth refresh, config sync, and MQTT telemetry."""
 
-    This is intentionally decoupled from the runtime loop — it runs its MQTT
-    client on a background daemon thread and exposes simple fire-and-forget
-    publish helpers that the coordinator layer calls directly.
-    """
+    _NETWORK_RETRY_DELAYS_SECONDS = (30.0, 60.0, 120.0, 300.0)
+    _INVALID_CREDENTIALS_CODES = {"invalid_credentials", "invalid_device"}
+    _TOKEN_RETRY_CODES = {"unauthorized", "token_revoked"}
 
-    def __init__(self, *, config: "BackendTelemetryConfig", device_id: str) -> None:
-        self._config = config
-        self._device_id = device_id
+    def __init__(
+        self,
+        *,
+        app: "YoyoPodApp",
+        config_manager: "ConfigManager",
+        client: CloudDeviceClient | None = None,
+    ) -> None:
+        self.app = app
+        self.config_manager = config_manager
+        backend = config_manager.get_cloud_settings().backend
+        self._custom_client = client is not None
+        self.client = client or CloudDeviceClient(
+            base_url=backend.api_base_url,
+            auth_path=backend.auth_path,
+            refresh_path=backend.refresh_path,
+            config_path_template=backend.config_path_template,
+            timeout_seconds=backend.timeout_seconds,
+        )
+        self.status = CloudStatusSnapshot()
+        self._access_token: CloudAccessToken | None = None
+        self._next_auth_attempt_at = 0.0
+        self._next_refresh_at = 0.0
+        self._next_config_poll_at = 0.0
+        self._network_retry_index = 0
+        self._secrets_fingerprint: tuple[bool, int, int] | None = None
+        self._last_persisted_status_payload: dict[str, Any] | None = None
+        self._request_in_flight = False
+        self._provisioning_generation = 0
         self._mqtt: DeviceMqttClient | None = None
-        self._next_battery_report_at: float = 0.0
+        self._next_battery_report_at = 0.0
 
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
+    def prepare_boot(self) -> None:
+        """Load secrets/cache and start MQTT before the runtime loop begins."""
 
-    def start(self) -> None:
-        """Create and connect the MQTT client."""
-        cfg = self._config
-        if not cfg.mqtt_broker_host:
-            logger.info("Telemetry: no MQTT broker configured — skipping")
+        self._reload_provisioning(force=True, now=time.monotonic())
+        self._start_mqtt()
+
+    def tick(self, now: float | None = None) -> None:
+        """Advance auth/config sync on the coordinator loop."""
+
+        monotonic_now = time.monotonic() if now is None else now
+        self._reload_provisioning(force=False, now=monotonic_now)
+
+        if not self._is_backend_configured():
+            self.status.cloud_state = "offline"
+            self.status.backend_reachable = None
+            self._persist_status()
+            self._sync_context_state()
             return
 
-        self._mqtt = DeviceMqttClient(
-            broker_host=cfg.mqtt_broker_host,
-            device_id=self._device_id,
-            port=cfg.mqtt_broker_port,
-            username=cfg.mqtt_username or None,
-            password=cfg.mqtt_password or None,
-            use_tls=cfg.mqtt_use_tls,
-        )
-        self._mqtt.start()
-        logger.info(
-            "Telemetry: MQTT client started (broker={}:{})",
-            cfg.mqtt_broker_host,
-            cfg.mqtt_broker_port,
-        )
+        if self.status.provisioning_state != "provisioned":
+            self._persist_status()
+            self._sync_context_state()
+            return
+
+        if self._request_in_flight:
+            return
+
+        if self._access_token is None:
+            if monotonic_now >= self._next_auth_attempt_at:
+                self._start_authentication(monotonic_now)
+            return
+
+        if monotonic_now >= self._next_refresh_at:
+            self._start_refresh_token(monotonic_now)
+            return
+
+        if monotonic_now >= self._next_config_poll_at:
+            self._start_fetch_remote_config(monotonic_now)
+
+    def note_network_change(self, *, connected: bool) -> None:
+        """Wake auth/config work when connectivity changes."""
+
+        if not connected:
+            self.status.cloud_state = "offline"
+            self.status.backend_reachable = False
+            self._sync_context_state()
+            self._persist_status()
+            return
+
+        if self.status.provisioning_state != "provisioned":
+            return
+
+        now = time.monotonic()
+        if self._access_token is None:
+            self._next_auth_attempt_at = now
+        else:
+            self._next_config_poll_at = now
+        self._persist_status()
+
+    def request_immediate_poll(self) -> None:
+        """Reset the config-poll timer so the next tick polls immediately."""
+
+        self._next_config_poll_at = 0.0
+
+    def publish_battery(self, *, level: int, charging: bool, now: float) -> None:
+        """Send a battery telemetry event via MQTT if the interval has elapsed."""
+
+        if self._mqtt is None or not self._mqtt.is_connected:
+            return
+        if now < self._next_battery_report_at:
+            return
+        interval = self.config_manager.get_cloud_settings().backend.battery_report_interval_seconds
+        if self._mqtt.publish_battery(level=level, charging=charging):
+            self._next_battery_report_at = now + max(1, interval)
+
+    def publish_heartbeat(self, *, firmware_version: str | None = None) -> None:
+        """Send a heartbeat event via MQTT."""
+
+        if self._mqtt is not None and self._mqtt.is_connected:
+            self._mqtt.publish_heartbeat(firmware_version=firmware_version)
+
+    def sync_context_state(self) -> None:
+        """Push the latest cloud/max-volume state into AppContext when available."""
+
+        self._sync_context_state()
+
+    def export_status(self) -> dict[str, Any]:
+        """Return the current redacted cloud status as a dict."""
+
+        return self.status.to_dict()
 
     def stop(self) -> None:
-        """Disconnect the MQTT client."""
+        """Persist the latest status and stop MQTT on shutdown."""
+
+        self._persist_status()
+        if self._mqtt is not None:
+            self._mqtt.stop()
+
+    def _reload_provisioning(self, *, force: bool, now: float) -> None:
+        """Reload runtime secrets when the provisioning file changes."""
+
+        fingerprint = self._current_secrets_fingerprint()
+        if not force and fingerprint == self._secrets_fingerprint:
+            return
+
+        previous_device_id = self.status.device_id
+        self._secrets_fingerprint = fingerprint
+        self._provisioning_generation += 1
+        self.config_manager.load_cloud_config()
+        if not self._custom_client:
+            backend = self.config_manager.get_cloud_settings().backend
+            self.client = CloudDeviceClient(
+                base_url=backend.api_base_url,
+                auth_path=backend.auth_path,
+                refresh_path=backend.refresh_path,
+                config_path_template=backend.config_path_template,
+                timeout_seconds=backend.timeout_seconds,
+            )
+
+        device_id = self.config_manager.get_cloud_device_id().strip()
+        device_secret = self.config_manager.get_cloud_device_secret().strip()
+        self.status.device_id = device_id
+        self.status.backend_reachable = None
+        self.status.last_error_summary = ""
+        self.status.updated_at = self._utc_now()
+        self._access_token = None
+        self._next_refresh_at = 0.0
+        self._next_config_poll_at = 0.0
+        self._network_retry_index = 0
+        self._start_mqtt()
+
+        if self.config_manager.cloud_secrets_error:
+            self.status.provisioning_state = "invalid_provisioning"
+            self.status.cloud_state = "degraded"
+            self.status.config_source = "none"
+            self.status.last_error_summary = self.config_manager.cloud_secrets_error
+            self.status.unapplied_keys = []
+            self.status.config_version = 0
+            self._sync_context_state()
+            self._persist_status()
+            return
+
+        if not device_id and not device_secret:
+            self.status.provisioning_state = "unprovisioned"
+            self.status.cloud_state = "offline"
+            self.status.config_source = "none"
+            self.status.unapplied_keys = []
+            self.status.config_version = 0
+            self._sync_context_state()
+            self._persist_status()
+            return
+
+        if not device_id or not device_secret:
+            self.status.provisioning_state = "invalid_provisioning"
+            self.status.cloud_state = "degraded"
+            self.status.config_source = "none"
+            self.status.last_error_summary = "Provisioning file must contain device_id and device_secret"
+            self.status.unapplied_keys = []
+            self.status.config_version = 0
+            self._sync_context_state()
+            self._persist_status()
+            return
+
+        self.status.provisioning_state = "provisioned"
+        self.status.cloud_state = "offline"
+        if device_id != previous_device_id:
+            self.status.config_source = "none"
+            self.status.unapplied_keys = []
+            self.status.config_version = 0
+            self.status.last_successful_sync = None
+
+        self._load_cached_config()
+        self._next_auth_attempt_at = now
+        self._sync_context_state()
+        self._persist_status()
+
+    def _start_authentication(self, now: float) -> None:
+        self.status.cloud_state = "authenticating"
+        self.status.updated_at = self._utc_now()
+        self._sync_context_state()
+        self._persist_status()
+
+        self._request_in_flight = True
+        self._start_worker(
+            name="cloud-auth",
+            work=lambda: self._run_authentication(
+                device_id=self.config_manager.get_cloud_device_id().strip(),
+                device_secret=self.config_manager.get_cloud_device_secret().strip(),
+                generation=self._provisioning_generation,
+            ),
+        )
+
+    def _start_refresh_token(self, now: float) -> None:
+        if self._access_token is None:
+            self._next_auth_attempt_at = now
+            return
+
+        access_token = self._access_token.access_token
+        self._request_in_flight = True
+        self._start_worker(
+            name="cloud-refresh",
+            work=lambda: self._run_refresh_token(
+                access_token=access_token,
+                generation=self._provisioning_generation,
+            ),
+        )
+
+    def _start_fetch_remote_config(self, now: float) -> None:
+        if self._access_token is None:
+            self._next_auth_attempt_at = now
+            return
+
+        access_token = self._access_token.access_token
+        device_id = self.config_manager.get_cloud_device_id().strip()
+        self._request_in_flight = True
+        self._start_worker(
+            name="cloud-config-fetch",
+            work=lambda: self._run_fetch_remote_config(
+                access_token=access_token,
+                device_id=device_id,
+                generation=self._provisioning_generation,
+            ),
+        )
+
+    def _run_authentication(self, *, device_id: str, device_secret: str, generation: int) -> None:
+        try:
+            token = self.client.authenticate(device_id=device_id, device_secret=device_secret)
+        except CloudClientError as exc:
+            self.app._queue_main_thread_callback(
+                lambda exc=exc, generation=generation, device_id=device_id, completed_at=time.monotonic(): self._complete_authentication(
+                    device_id=device_id,
+                    generation=generation,
+                    completed_at=completed_at,
+                    error=exc,
+                )
+            )
+            return
+        except Exception as exc:
+            error = CloudClientError(str(exc))
+            self.app._queue_main_thread_callback(
+                lambda error=error, generation=generation, device_id=device_id, completed_at=time.monotonic(): self._complete_authentication(
+                    device_id=device_id,
+                    generation=generation,
+                    completed_at=completed_at,
+                    error=error,
+                )
+            )
+            return
+
+        self.app._queue_main_thread_callback(
+            lambda token=token, generation=generation, device_id=device_id, completed_at=time.monotonic(): self._complete_authentication(
+                device_id=device_id,
+                generation=generation,
+                completed_at=completed_at,
+                token=token,
+            )
+        )
+
+    def _complete_authentication(
+        self,
+        *,
+        device_id: str,
+        generation: int,
+        completed_at: float,
+        token: CloudAccessToken | None = None,
+        error: CloudClientError | None = None,
+    ) -> None:
+        self._request_in_flight = False
+        if not self._matches_current_provisioning(device_id=device_id, generation=generation):
+            return
+
+        if error is not None:
+            self._handle_auth_error(error, now=completed_at)
+            return
+
+        assert token is not None
+        self._access_token = token
+        self.status.backend_reachable = True
+        self.status.cloud_state = "ready" if self.status.config_source != "none" else "authenticating"
+        self._schedule_refresh(token, now=completed_at)
+        self._next_config_poll_at = completed_at
+        self._network_retry_index = 0
+        self.status.last_error_summary = ""
+        self._persist_status()
+        self._sync_context_state()
+
+    def _run_refresh_token(self, *, access_token: str, generation: int) -> None:
+        try:
+            token = self.client.refresh(access_token=access_token)
+        except CloudClientError as exc:
+            self.app._queue_main_thread_callback(
+                lambda exc=exc, generation=generation, access_token=access_token, completed_at=time.monotonic(): self._complete_refresh_token(
+                    access_token=access_token,
+                    generation=generation,
+                    completed_at=completed_at,
+                    error=exc,
+                )
+            )
+            return
+        except Exception as exc:
+            error = CloudClientError(str(exc))
+            self.app._queue_main_thread_callback(
+                lambda error=error, generation=generation, access_token=access_token, completed_at=time.monotonic(): self._complete_refresh_token(
+                    access_token=access_token,
+                    generation=generation,
+                    completed_at=completed_at,
+                    error=error,
+                )
+            )
+            return
+
+        self.app._queue_main_thread_callback(
+            lambda token=token, generation=generation, access_token=access_token, completed_at=time.monotonic(): self._complete_refresh_token(
+                access_token=access_token,
+                generation=generation,
+                completed_at=completed_at,
+                token=token,
+            )
+        )
+
+    def _complete_refresh_token(
+        self,
+        *,
+        access_token: str,
+        generation: int,
+        completed_at: float,
+        token: CloudAccessToken | None = None,
+        error: CloudClientError | None = None,
+    ) -> None:
+        self._request_in_flight = False
+        if not self._matches_current_request(access_token=access_token, generation=generation):
+            return
+
+        if error is not None:
+            if error.error_code in self._TOKEN_RETRY_CODES:
+                self._access_token = None
+                self._next_auth_attempt_at = completed_at
+                self.status.cloud_state = "authenticating"
+                self.status.last_error_summary = ""
+                self._persist_status()
+                self._sync_context_state()
+                return
+            self._handle_network_or_backend_error(error, now=completed_at)
+            return
+
+        assert token is not None
+        self._access_token = token
+        self.status.backend_reachable = True
+        self.status.cloud_state = "ready"
+        self.status.last_error_summary = ""
+        self._schedule_refresh(token, now=completed_at)
+        self._persist_status()
+        self._sync_context_state()
+
+    def _run_fetch_remote_config(self, *, access_token: str, device_id: str, generation: int) -> None:
+        try:
+            payload = self.client.fetch_config(access_token=access_token, device_id=device_id)
+        except CloudClientError as exc:
+            self.app._queue_main_thread_callback(
+                lambda exc=exc, generation=generation, access_token=access_token, device_id=device_id, completed_at=time.monotonic(): self._complete_fetch_remote_config(
+                    access_token=access_token,
+                    device_id=device_id,
+                    generation=generation,
+                    completed_at=completed_at,
+                    error=exc,
+                )
+            )
+            return
+        except Exception as exc:
+            error = CloudClientError(str(exc))
+            self.app._queue_main_thread_callback(
+                lambda error=error, generation=generation, access_token=access_token, device_id=device_id, completed_at=time.monotonic(): self._complete_fetch_remote_config(
+                    access_token=access_token,
+                    device_id=device_id,
+                    generation=generation,
+                    completed_at=completed_at,
+                    error=error,
+                )
+            )
+            return
+
+        self.app._queue_main_thread_callback(
+            lambda payload=payload, generation=generation, access_token=access_token, device_id=device_id, completed_at=time.monotonic(): self._complete_fetch_remote_config(
+                access_token=access_token,
+                device_id=device_id,
+                generation=generation,
+                completed_at=completed_at,
+                payload=payload,
+            )
+        )
+
+    def _complete_fetch_remote_config(
+        self,
+        *,
+        access_token: str,
+        device_id: str,
+        generation: int,
+        completed_at: float,
+        payload: dict[str, Any] | None = None,
+        error: CloudClientError | None = None,
+    ) -> None:
+        self._request_in_flight = False
+        if not self._matches_current_request(
+            access_token=access_token,
+            generation=generation,
+            device_id=device_id,
+        ):
+            return
+
+        if error is not None:
+            if error.error_code in self._TOKEN_RETRY_CODES:
+                self._access_token = None
+                self._next_auth_attempt_at = completed_at
+                self.status.cloud_state = "authenticating"
+                self._persist_status()
+                self._sync_context_state()
+                return
+            self._handle_network_or_backend_error(error, now=completed_at)
+            return
+
+        assert payload is not None
+        config_version = int(payload.get("config_version") or 0)
+        unapplied_keys = self.config_manager.apply_cloud_overrides(payload)
+        self._apply_runtime_side_effects(payload)
+        self.status.backend_reachable = True
+        self.status.cloud_state = "ready"
+        self.status.config_source = "live"
+        self.status.config_version = config_version
+        self.status.last_successful_sync = self._utc_now()
+        self.status.last_error_summary = ""
+        self.status.unapplied_keys = unapplied_keys
+        self._next_config_poll_at = completed_at + max(
+            1,
+            self.config_manager.get_cloud_settings().backend.config_poll_interval_seconds,
+        )
+        self._network_retry_index = 0
+        self._write_cache(
+            payload=payload,
+            config_version=config_version,
+            source="live",
+            unapplied_keys=unapplied_keys,
+        )
+        self._persist_status()
+        self._sync_context_state()
+        from yoyopod import __version__
+        self.publish_heartbeat(firmware_version=__version__)
+
+    def _start_worker(self, *, name: str, work: Callable[[], None]) -> None:
+        threading.Thread(target=work, daemon=True, name=name).start()
+
+    def _matches_current_provisioning(self, *, device_id: str, generation: int) -> bool:
+        return (
+            generation == self._provisioning_generation
+            and device_id == self.config_manager.get_cloud_device_id().strip()
+            and self.status.provisioning_state == "provisioned"
+        )
+
+    def _matches_current_request(
+        self,
+        *,
+        access_token: str,
+        generation: int,
+        device_id: str | None = None,
+    ) -> bool:
+        if not self._matches_current_provisioning(
+            device_id=device_id or self.config_manager.get_cloud_device_id().strip(),
+            generation=generation,
+        ):
+            return False
+        return self._access_token is not None and self._access_token.access_token == access_token
+
+    def _handle_auth_error(self, exc: CloudClientError, *, now: float) -> None:
+        if exc.error_code == "device_unclaimed":
+            self.status.backend_reachable = True
+            self.status.cloud_state = "unclaimed"
+            self.status.last_error_summary = "Device has not been claimed yet"
+            self._next_auth_attempt_at = now + max(
+                1,
+                self.config_manager.get_cloud_settings().backend.claim_retry_seconds,
+            )
+        elif exc.error_code in self._INVALID_CREDENTIALS_CODES:
+            self.status.backend_reachable = True
+            self.status.cloud_state = "degraded"
+            self.status.last_error_summary = "Invalid device credentials"
+            self._next_auth_attempt_at = float("inf")
+        else:
+            self._handle_network_or_backend_error(exc, now=now)
+            return
+
+        self._persist_status()
+        self._sync_context_state()
+
+    def _handle_network_or_backend_error(self, exc: CloudClientError, *, now: float) -> None:
+        status_code = exc.status_code or 0
+        reachable = exc.status_code is not None
+        self.status.backend_reachable = True if status_code >= 400 else False
+        self.status.cloud_state = "offline" if not reachable or status_code >= 500 else "degraded"
+        self.status.last_error_summary = str(exc)
+        delay = self._NETWORK_RETRY_DELAYS_SECONDS[
+            min(self._network_retry_index, len(self._NETWORK_RETRY_DELAYS_SECONDS) - 1)
+        ]
+        self._network_retry_index = min(
+            self._network_retry_index + 1,
+            len(self._NETWORK_RETRY_DELAYS_SECONDS) - 1,
+        )
+        if self._access_token is None:
+            self._next_auth_attempt_at = now + delay
+        else:
+            self._next_refresh_at = now + delay
+            self._next_config_poll_at = now + delay
+        self._persist_status()
+        self._sync_context_state()
+
+    def _schedule_refresh(self, token: CloudAccessToken, *, now: float) -> None:
+        threshold_seconds = min(token.lifetime_seconds * 0.2, 2 * 60 * 60)
+        refresh_at_epoch = max(token.issued_at_epoch, token.expires_at_epoch - threshold_seconds)
+        seconds_until_refresh = max(0.0, refresh_at_epoch - time.time())
+        self._next_refresh_at = now + seconds_until_refresh
+
+    def _apply_runtime_side_effects(self, payload: dict[str, Any]) -> None:
+        audio = payload.get("audio", {})
+        if not isinstance(audio, dict):
+            audio = {}
+
+        if self.app.context is not None:
+            self.app.context.settings["max_volume"] = self.config_manager.get_max_output_volume()
+
+        if "max_volume" in audio:
+            max_volume = self.config_manager.get_max_output_volume()
+            current = self.app.get_output_volume(refresh_system=False)
+            if current is not None and current > max_volume:
+                self.app.set_output_volume(max_volume)
+            elif self.app.context is not None and self.app.context.voice.output_volume > max_volume:
+                self.app.context.set_volume(max_volume)
+
+        if "default_volume" in audio:
+            self.app.set_output_volume(self.config_manager.get_default_output_volume())
+
+        if self.app.voip_manager is not None:
+            self.app.voip_manager.config.voice_note_max_duration_seconds = (
+                self.config_manager.get_voice_note_max_duration_seconds()
+            )
+            current_volume = self.app.get_output_volume(refresh_system=False)
+            if current_volume is not None:
+                self.app.voip_manager.config.output_volume = current_volume
+
+        self._sync_context_state()
+
+    def _load_cached_config(self) -> None:
+        cache_path = self._cache_path()
+        if not cache_path.exists():
+            return
+
+        try:
+            payload = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning("Failed to read cloud config cache {}: {}", cache_path, exc)
+            return
+
+        if not isinstance(payload, dict):
+            logger.warning("Ignoring malformed cloud config cache {}", cache_path)
+            return
+
+        cached_device_id = str(payload.get("device_id") or "")
+        current_device_id = self.config_manager.get_cloud_device_id().strip()
+        if cached_device_id != current_device_id:
+            logger.warning(
+                "Ignoring cloud config cache for mismatched device id (cache={}, current={})",
+                cached_device_id,
+                current_device_id,
+            )
+            return
+
+        raw_payload = payload.get("raw_payload", {})
+        if not isinstance(raw_payload, dict):
+            logger.warning("Ignoring malformed cloud config cache payload {}", cache_path)
+            return
+
+        unapplied_keys = self.config_manager.apply_cloud_overrides(raw_payload)
+        self._apply_runtime_side_effects(raw_payload)
+        self.status.config_source = "cache"
+        self.status.config_version = int(payload.get("config_version") or 0)
+        self.status.unapplied_keys = unapplied_keys
+
+    def _write_cache(
+        self,
+        *,
+        payload: dict[str, Any],
+        config_version: int,
+        source: str,
+        unapplied_keys: list[str],
+    ) -> None:
+        cache_path = self._cache_path()
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_payload = {
+            "device_id": self.config_manager.get_cloud_device_id().strip(),
+            "config_version": config_version,
+            "fetched_at": self._utc_now(),
+            "source": source,
+            "raw_payload": payload,
+            "unapplied_keys": list(unapplied_keys),
+        }
+        try:
+            cache_path.write_text(
+                json.dumps(cache_payload, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            logger.warning("Failed to persist cloud config cache {}: {}", cache_path, exc)
+
+    def _persist_status(self) -> None:
+        status_path = self._status_path()
+        status_path.parent.mkdir(parents=True, exist_ok=True)
+        status_payload = self.status.to_dict()
+        status_payload["updated_at"] = None
+        if status_payload == self._last_persisted_status_payload:
+            return
+        self.status.updated_at = self._utc_now()
+        status_json = json.dumps(self.status.to_dict(), indent=2, sort_keys=True)
+        try:
+            status_path.write_text(status_json, encoding="utf-8")
+        except OSError as exc:
+            logger.warning("Failed to persist cloud status {}: {}", status_path, exc)
+            return
+        self._last_persisted_status_payload = status_payload
+
+    def _sync_context_state(self) -> None:
+        if self.app.context is None:
+            return
+        self.app.context.settings["max_volume"] = self.config_manager.get_max_output_volume()
+        self.app.context.update_cloud_status(
+            device_id=self.status.device_id,
+            provisioning_state=self.status.provisioning_state,
+            cloud_state=self.status.cloud_state,
+            config_source=self.status.config_source,
+            config_version=self.status.config_version,
+            backend_reachable=self.status.backend_reachable,
+            last_successful_sync=self.status.last_successful_sync,
+            last_error_summary=self.status.last_error_summary,
+            unapplied_keys=self.status.unapplied_keys,
+        )
+
+    def _start_mqtt(self) -> None:
+        backend = self.config_manager.get_cloud_settings().backend
         if self._mqtt is not None:
             self._mqtt.stop()
             self._mqtt = None
-
-    # ------------------------------------------------------------------
-    # Publishing
-    # ------------------------------------------------------------------
-
-    def publish_battery(self, *, level: int, charging: bool, now: float | None = None) -> None:
-        """Publish a battery event, rate-limited by config interval."""
-        if self._mqtt is None:
+        if not backend.mqtt_broker_host.strip():
+            logger.info("MQTT broker host not configured — telemetry events disabled")
             return
 
-        monotonic_now = time.monotonic() if now is None else now
-        if monotonic_now < self._next_battery_report_at:
+        device_id = self.config_manager.get_cloud_device_id().strip()
+        if not device_id:
+            logger.info("Device not provisioned — MQTT telemetry deferred")
             return
 
-        if self._mqtt.publish_battery(level=level, charging=charging):
-            self._next_battery_report_at = (
-                monotonic_now + self._config.battery_report_interval_seconds
-            )
+        self._mqtt = DeviceMqttClient(
+            broker_host=backend.mqtt_broker_host,
+            device_id=device_id,
+            port=backend.mqtt_broker_port,
+            username=backend.mqtt_username or None,
+            password=backend.mqtt_password or None,
+            use_tls=backend.mqtt_use_tls,
+            command_callback=self._handle_mqtt_command,
+        )
+        self._mqtt.start()
+        logger.info(
+            "MQTT client started -> {}:{} (device={})",
+            backend.mqtt_broker_host,
+            backend.mqtt_broker_port,
+            device_id,
+        )
 
-    def publish_heartbeat(self, *, firmware_version: str | None = None) -> None:
-        """Publish a heartbeat event (e.g. on screen wake or periodic tick)."""
-        if self._mqtt is not None:
-            self._mqtt.publish_heartbeat(firmware_version=firmware_version)
+    def _handle_mqtt_command(self, command: dict[str, Any]) -> None:
+        cmd_type = command.get("type", "unknown")
+        logger.info("MQTT command received from backend: {}", cmd_type)
+        self.app._queue_main_thread_callback(lambda cmd=command: self._apply_mqtt_command(cmd))
 
-    @property
-    def is_connected(self) -> bool:
-        return self._mqtt is not None and self._mqtt.is_connected
+    def _apply_mqtt_command(self, command: dict[str, Any]) -> None:
+        cmd_type = command.get("type", "")
+        if cmd_type == "fetch_config":
+            self._next_config_poll_at = 0.0
+            logger.info("MQTT: backend requested immediate config fetch")
+        else:
+            logger.info("MQTT: unhandled command type '{}'", cmd_type)
+
+    def _is_backend_configured(self) -> bool:
+        return bool(self.config_manager.get_cloud_settings().backend.api_base_url.strip())
+
+    def _current_secrets_fingerprint(self) -> tuple[bool, int, int]:
+        path = self.config_manager.cloud_secrets_runtime_file
+        if not path.exists():
+            return (False, 0, 0)
+        stat = path.stat()
+        return (True, stat.st_mtime_ns, stat.st_size)
+
+    def _cache_path(self) -> Path:
+        return self.config_manager.resolve_runtime_path(self.config_manager.get_cloud_cache_file())
+
+    def _status_path(self) -> Path:
+        return self.config_manager.resolve_runtime_path(self.config_manager.get_cloud_status_file())
+
+    @staticmethod
+    def _utc_now() -> str:
+        return datetime.now(timezone.utc).isoformat()

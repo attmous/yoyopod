@@ -79,6 +79,17 @@ class AppContext:
 
         # Navigation history remains screen-manager-adjacent scratch state.
         self.navigation_history: list[str] = []
+        self.cloud_status: dict[str, object] = {
+            "device_id": "",
+            "provisioning_state": "unprovisioned",
+            "cloud_state": "offline",
+            "config_source": "none",
+            "config_version": 0,
+            "backend_reachable": None,
+            "last_successful_sync": None,
+            "last_error_summary": "",
+            "unapplied_keys": [],
+        }
 
         logger.info("AppContext initialized")
 
@@ -650,6 +661,33 @@ class AppContext:
         """Cache the latest spoken response text."""
 
         self.voice.last_spoken_text = text.strip()
+
+    def update_cloud_status(
+        self,
+        *,
+        device_id: str,
+        provisioning_state: str,
+        cloud_state: str,
+        config_source: str,
+        config_version: int,
+        backend_reachable: bool | None,
+        last_successful_sync: str | None,
+        last_error_summary: str,
+        unapplied_keys: list[str],
+    ) -> None:
+        """Cache backend/provisioning state for UI and diagnostics."""
+
+        self.cloud_status = {
+            "device_id": device_id,
+            "provisioning_state": provisioning_state,
+            "cloud_state": cloud_state,
+            "config_source": config_source,
+            "config_version": int(config_version),
+            "backend_reachable": backend_reachable,
+            "last_successful_sync": last_successful_sync,
+            "last_error_summary": last_error_summary,
+            "unapplied_keys": list(unapplied_keys),
+        }
 
     def update_voice_interaction(
         self,

@@ -128,10 +128,10 @@ class ScreenPowerService:
 
         self.update_screen_runtime_metrics(now)
 
-        # Publish a heartbeat so the backend learns the device is online again
-        # without waiting for the next scheduled battery report.
-        if self.app.telemetry_manager is not None:
-            self.app.telemetry_manager.publish_heartbeat()
+        if self.app.cloud_manager is not None:
+            # Wake both the config-poll path and MQTT liveness path on screen wake.
+            self.app.cloud_manager.request_immediate_poll()
+            self.app.cloud_manager.publish_heartbeat()
 
         logger.debug("Screen woke from inactivity")
 

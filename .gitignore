@@ -75,6 +75,7 @@ deploy/pi-deploy.local.yaml
 .cache/
 data/*.json
 data/communication/
+data/cloud/
 data/media/
 data/people/
 

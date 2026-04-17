@@ -9,7 +9,8 @@ from loguru import logger
 
 from yoyopod.config.layers import resolve_config_board, resolve_config_layers
 from yoyopod.config.models import (
-    BackendTelemetryConfig,
+    CloudConfig,
+    CloudSecretsConfig,
     CommunicationConfig,
     MediaConfig,
     NetworkConfig,
@@ -38,7 +39,9 @@ COMMUNICATION_CALLING_CONFIG = Path("communication/calling.yaml")
 COMMUNICATION_MESSAGING_CONFIG = Path("communication/messaging.yaml")
 COMMUNICATION_SECRETS_CONFIG = Path("communication/calling.secrets.yaml")
 PEOPLE_DIRECTORY_CONFIG = Path("people/directory.yaml")
-BACKEND_TELEMETRY_CONFIG = Path("cloud/backend.yaml")
+CLOUD_BACKEND_CONFIG = Path("cloud/backend.yaml")
+CLOUD_SECRETS_CONFIG = Path("cloud/device.secrets.yaml")
+SYSTEM_CLOUD_SECRETS_FILE = Path("/etc/yoyopod/cloud/device.secrets.yaml")
 _SECRET_KEYS = ("sip_password", "sip_password_ha1")
 
 
@@ -129,12 +132,18 @@ class ConfigManager:
             self.config_board,
             PEOPLE_DIRECTORY_CONFIG,
         )
-        self.backend_telemetry_layers = resolve_config_layers(
+        self.cloud_backend_layers = resolve_config_layers(
             self.config_dir,
             self.config_board,
-            BACKEND_TELEMETRY_CONFIG,
+            CLOUD_BACKEND_CONFIG,
         )
         self.communication_secrets_file = self.config_dir / COMMUNICATION_SECRETS_CONFIG
+        self.cloud_secrets_file = self.config_dir / CLOUD_SECRETS_CONFIG
+        self.cloud_secrets_runtime_file = (
+            self.cloud_secrets_file
+            if self.cloud_secrets_file.exists()
+            else SYSTEM_CLOUD_SECRETS_FILE
+        )
 
         self.app_config_file = self.app_core_layers[-1]
         self.device_hardware_file = self.device_hardware_layers[-1]
@@ -145,7 +154,7 @@ class ConfigManager:
         self.communication_calling_file = self.communication_calling_layers[-1]
         self.communication_messaging_file = self.communication_messaging_layers[-1]
         self.people_directory_file = self.people_directory_layers[-1]
-        self.backend_telemetry_file = self.backend_telemetry_layers[-1]
+        self.cloud_backend_file = self.cloud_backend_layers[-1]
 
         self.app_settings = YoyoPodConfig()
         self.media_settings = MediaConfig()
@@ -154,7 +163,7 @@ class ConfigManager:
         self.voice_settings = VoiceConfig()
         self.communication_settings = CommunicationConfig()
         self.people_settings = PeopleDirectoryConfig()
-        self.backend_settings = BackendTelemetryConfig()
+        self.cloud_settings = CloudConfig()
         self.runtime_settings = YoyoPodRuntimeConfig()
 
         self.app_config: dict[str, Any] = config_to_dict(self.app_settings)
@@ -173,7 +182,10 @@ class ConfigManager:
         self.communication_config_loaded = False
         self.communication_secrets_loaded = False
         self.people_config_loaded = False
-        self.backend_config_loaded = False
+        self.cloud_config_loaded = False
+        self.cloud_secrets_loaded = False
+        self.cloud_secrets_error = ""
+        self._cloud_override_values: dict[str, Any] = {}
 
         logger.info(
             "ConfigManager initialized (config_dir={}, config_board={})",
@@ -188,7 +200,7 @@ class ConfigManager:
         self.load_voice_config()
         self.load_communication_config()
         self.load_people_config()
-        self.load_backend_config()
+        self.load_cloud_config()
         self._refresh_runtime_settings()
 
     def _refresh_runtime_settings(self) -> None:
@@ -202,7 +214,7 @@ class ConfigManager:
             voice=self.voice_settings,
             communication=self.communication_settings,
             people=self.people_settings,
-            backend=self.backend_settings,
+            cloud=self.cloud_settings,
         )
         self.runtime_config = config_to_dict(self.runtime_settings)
 
@@ -528,34 +540,138 @@ class ConfigManager:
             self._refresh_runtime_settings()
             return False
 
-    def load_backend_config(self) -> bool:
-        """Load backend telemetry config (MQTT broker settings)."""
+    def load_cloud_config(self) -> bool:
+        """Load cloud/backend tracked config plus runtime-only device secrets."""
 
-        self.backend_config_loaded = _config_loaded(self.backend_telemetry_layers)
+        self.cloud_config_loaded = _config_loaded(self.cloud_backend_layers)
+        self.cloud_secrets_runtime_file = (
+            self.cloud_secrets_file
+            if self.cloud_secrets_file.exists()
+            else SYSTEM_CLOUD_SECRETS_FILE
+        )
+        self.cloud_secrets_loaded = self.cloud_secrets_runtime_file.exists()
+        self.cloud_secrets_error = ""
         try:
-            payload = load_yaml_layers(self.backend_telemetry_layers)
-            self.backend_settings = build_config_model(
-                BackendTelemetryConfig, payload.get("backend", payload)
-            )
+            backend_payload = load_yaml_layers(self.cloud_backend_layers)
+            secrets_payload: dict[str, Any] = {}
+            if self.cloud_secrets_loaded:
+                secrets_payload = load_yaml_mapping(self.cloud_secrets_runtime_file)
+
+            merged_payload = {
+                "backend": backend_payload.get("backend", backend_payload),
+                "secrets": secrets_payload.get("secrets", secrets_payload),
+            }
+            self.cloud_settings = build_config_model(CloudConfig, merged_payload)
+
+            device_id = self.cloud_settings.secrets.device_id.strip()
+            device_secret = self.cloud_settings.secrets.device_secret.strip()
+            if (device_id and not device_secret) or (device_secret and not device_id):
+                self.cloud_secrets_error = (
+                    "Provisioning file must contain both device_id and device_secret"
+                )
+
             self._refresh_runtime_settings()
 
-            if self.backend_config_loaded:
-                logger.info("Backend telemetry configuration loaded successfully")
+            if self.cloud_config_loaded:
+                logger.info("Cloud backend configuration loaded successfully")
             else:
-                logger.info("No backend telemetry config found; MQTT telemetry disabled")
+                logger.info("No cloud backend config found; backend connectivity disabled")
+            if self.cloud_secrets_loaded:
+                logger.info(
+                    "Cloud provisioning secrets loaded successfully from {}",
+                    self.cloud_secrets_runtime_file,
+                )
 
-            return self.backend_config_loaded
+            return self.cloud_config_loaded or self.cloud_secrets_loaded
         except Exception:
-            logger.exception("Error loading backend telemetry config")
-            self.backend_settings = BackendTelemetryConfig()
-            self.backend_config_loaded = False
+            logger.exception("Error loading cloud config")
+            self.cloud_settings = CloudConfig()
+            self.cloud_config_loaded = False
+            self.cloud_secrets_loaded = False
+            self.cloud_secrets_error = "Failed to load cloud configuration"
             self._refresh_runtime_settings()
             return False
 
-    def get_backend_settings(self) -> BackendTelemetryConfig:
-        """Return the typed backend telemetry settings."""
+    def load_backend_config(self) -> bool:
+        """Compatibility alias for older telemetry-only callers."""
 
-        return self.backend_settings
+        return self.load_cloud_config()
+
+    def get_cloud_settings(self) -> CloudConfig:
+        """Return the typed cloud settings."""
+
+        return self.cloud_settings
+
+    def get_backend_settings(self) -> Any:
+        """Compatibility alias returning just the backend subsection."""
+
+        return self.cloud_settings.backend
+
+    def get_cloud_device_id(self) -> str:
+        return self.cloud_settings.secrets.device_id
+
+    def get_cloud_device_secret(self) -> str:
+        return self.cloud_settings.secrets.device_secret
+
+    def get_cloud_cache_file(self) -> str:
+        return self.cloud_settings.backend.cache_file
+
+    def get_cloud_status_file(self) -> str:
+        return self.cloud_settings.backend.status_file
+
+    def get_max_output_volume(self) -> int:
+        value = self._cloud_override_values.get("audio.max_volume", 80)
+        return max(0, min(100, int(value)))
+
+    def apply_cloud_overrides(self, payload: dict[str, Any]) -> list[str]:
+        """Apply recognized runtime-only cloud overrides and return unapplied keys."""
+
+        if not isinstance(payload, dict):
+            return ["<invalid-payload>"]
+
+        unapplied: list[str] = []
+
+        audio_payload = payload.get("audio", {})
+        if isinstance(audio_payload, dict):
+            if "max_volume" in audio_payload:
+                try:
+                    self._cloud_override_values["audio.max_volume"] = max(
+                        0,
+                        min(100, int(audio_payload["max_volume"])),
+                    )
+                except (TypeError, ValueError):
+                    unapplied.append("audio.max_volume")
+            if "default_volume" in audio_payload:
+                try:
+                    self.media_settings.music.default_volume = max(
+                        0,
+                        min(100, int(audio_payload["default_volume"])),
+                    )
+                except (TypeError, ValueError):
+                    unapplied.append("audio.default_volume")
+        elif "audio" in payload:
+            unapplied.append("audio")
+
+        messaging_payload = payload.get("messaging", {})
+        if isinstance(messaging_payload, dict):
+            if "voice_note_max_duration_seconds" in messaging_payload:
+                try:
+                    self.communication_settings.messaging.voice_note_max_duration_seconds = max(
+                        1,
+                        int(messaging_payload["voice_note_max_duration_seconds"]),
+                    )
+                except (TypeError, ValueError):
+                    unapplied.append("messaging.voice_note_max_duration_seconds")
+        elif "messaging" in payload:
+            unapplied.append("messaging")
+
+        recognized_top_level = {"audio", "messaging", "config_version"}
+        for key in payload:
+            if key not in recognized_top_level:
+                unapplied.append(str(key))
+
+        self._refresh_runtime_settings()
+        return sorted(set(unapplied))
 
     def get_app_settings(self) -> YoyoPodConfig:
         """Return the composed typed app settings."""
@@ -777,7 +893,9 @@ class ConfigManager:
         logger.info("Reloading configuration...")
         self.load_app_config()
         self.load_media_config()
+        self.load_power_config()
         self.load_network_config()
         self.load_voice_config()
         self.load_communication_config()
         self.load_people_config()
+        self.load_cloud_config()

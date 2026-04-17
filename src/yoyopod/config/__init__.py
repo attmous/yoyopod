@@ -3,6 +3,9 @@
 from yoyopod.config.manager import ConfigManager, load_composed_app_settings
 from yoyopod.config.models import (
     BackendTelemetryConfig,
+    CloudBackendConfig,
+    CloudConfig,
+    CloudSecretsConfig,
     CommunicationConfig,
     MediaConfig,
     NetworkConfig,
@@ -17,6 +20,9 @@ from yoyopod.config.models import (
 
 __all__ = [
     "BackendTelemetryConfig",
+    "CloudBackendConfig",
+    "CloudConfig",
+    "CloudSecretsConfig",
     "ConfigManager",
     "CommunicationConfig",
     "MediaConfig",

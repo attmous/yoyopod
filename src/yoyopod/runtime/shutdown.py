@@ -204,9 +204,9 @@ class ShutdownLifecycleService:
                 if cleanup is not None:
                     cleanup()
 
-        if self.app.telemetry_manager is not None:
-            logger.info("  - Stopping telemetry manager")
-            self.app.telemetry_manager.stop()
+        if self.app.cloud_manager is not None:
+            logger.info("  - Stopping cloud manager")
+            self.app.cloud_manager.stop()
 
         if self.app.input_manager:
             logger.info("  - Stopping input manager")

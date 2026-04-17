@@ -1,4 +1,13 @@
 backend:
+  api_base_url: "https://yoyopod.moraouf.net"
+  auth_path: "/v1/auth/device"
+  refresh_path: "/v1/auth/device/refresh"
+  config_path_template: "/v1/devices/{device_id}/config"
+  timeout_seconds: 3.0
+  config_poll_interval_seconds: 300
+  claim_retry_seconds: 60
+  cache_file: "data/cloud/config_cache.json"
+  status_file: "data/cloud/status.json"
   mqtt_broker_host: "yoyopod.moraouf.net"
   mqtt_broker_port: 1883
   mqtt_use_tls: false

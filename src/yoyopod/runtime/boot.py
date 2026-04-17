@@ -69,7 +69,7 @@ from yoyopod.ui.screens.voip.voice_note import (
     build_voice_note_actions,
     build_voice_note_state_provider,
 )
-from yoyopod.cloud import TelemetryManager
+from yoyopod.cloud import CloudManager
 from yoyopod.voice import VoiceSettings
 from yoyopod.communication import CallHistoryStore, VoIPConfig, VoIPManager
 
@@ -397,21 +397,12 @@ class RuntimeBootService:
                         gps_has_fix=False,
                     )
 
-            logger.info("  - TelemetryManager")
-            backend_cfg = config_manager.get_backend_settings()
-            configured_device_id = (
-                self.app.app_settings.app.device_id.strip()
-                if self.app.app_settings is not None
-                else ""
+            logger.info("  - CloudManager")
+            self.app.cloud_manager = CloudManager(
+                app=self.app,
+                config_manager=config_manager,
             )
-            if not configured_device_id:
-                import socket as _socket
-                configured_device_id = _socket.gethostname()
-            self.app.telemetry_manager = TelemetryManager(
-                config=backend_cfg,
-                device_id=configured_device_id,
-            )
-            self.app.telemetry_manager.start()
+            self.app.cloud_manager.prepare_boot()
 
             return True
         except Exception:
@@ -867,7 +858,7 @@ class RuntimeBootService:
             runtime=self.app.coordinator_runtime,
             screen_coordinator=self.app.screen_coordinator,
             context=self.app.context,
-            telemetry_manager=self.app.telemetry_manager,
+            cloud_manager=self.app.cloud_manager,
         )
         if self.app.screen_manager is not None:
             self.app.screen_manager.on_screen_changed = self.app._handle_screen_changed

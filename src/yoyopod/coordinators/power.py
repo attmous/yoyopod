@@ -24,7 +24,7 @@ from yoyopod.power import (
 )
 
 if TYPE_CHECKING:
-    from yoyopod.cloud import TelemetryManager
+    from yoyopod.cloud import CloudManager
 
 
 class PowerCoordinator:
@@ -36,12 +36,12 @@ class PowerCoordinator:
         screen_coordinator: ScreenCoordinator,
         context: AppContext,
         now_provider: Callable[[], float] | None = None,
-        telemetry_manager: "TelemetryManager | None" = None,
+        cloud_manager: "CloudManager | None" = None,
     ) -> None:
         self.runtime = runtime
         self.screen_coordinator = screen_coordinator
         self.context = context
-        self.telemetry_manager = telemetry_manager
+        self.cloud_manager = cloud_manager
         power_config = runtime.power_manager.config if runtime.power_manager is not None else None
         self.policy = PowerSafetyPolicy(power_config) if power_config is not None else None
         self.now_provider = now_provider or time.monotonic
@@ -96,11 +96,11 @@ class PowerCoordinator:
         if current_signature != previous_signature or current_route_name == "power":
             self.screen_coordinator.refresh_current_screen()
 
-        if self.telemetry_manager is not None:
+        if self.cloud_manager is not None:
             level = snapshot.battery.level_percent
             charging = snapshot.battery.charging
             if level is not None:
-                self.telemetry_manager.publish_battery(
+                self.cloud_manager.publish_battery(
                     level=round(level),
                     charging=bool(charging),
                     now=self.now_provider(),

@@ -400,6 +400,11 @@ class RuntimeLoopService:
                 "power_poll",
                 lambda: self.app.power_runtime.poll_status(now=monotonic_now),
             )
+            if self.app.cloud_manager is not None:
+                self._measure_blocking_span(
+                    "cloud_tick",
+                    lambda: self.app.cloud_manager.tick(monotonic_now),
+                )
             self._measure_blocking_span(
                 "lvgl_pump",
                 lambda: self.pump_lvgl_backend(monotonic_now),

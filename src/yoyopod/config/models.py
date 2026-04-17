@@ -592,6 +592,76 @@ class PeopleDirectoryConfig:
 
 
 @dataclass(slots=True)
+class CloudBackendConfig:
+    """Tracked cloud/backend endpoints, polling, cache, and MQTT transport."""
+
+    api_base_url: str = config_value(
+        default="https://yoyopod.moraouf.net",
+        env="YOYOPOD_CLOUD_API_BASE_URL",
+    )
+    auth_path: str = "/v1/auth/device"
+    refresh_path: str = "/v1/auth/device/refresh"
+    config_path_template: str = "/v1/devices/{device_id}/config"
+    timeout_seconds: float = config_value(default=3.0, env="YOYOPOD_CLOUD_TIMEOUT_SECONDS")
+    config_poll_interval_seconds: int = config_value(
+        default=300,
+        env="YOYOPOD_CLOUD_CONFIG_POLL_INTERVAL_SECONDS",
+    )
+    claim_retry_seconds: int = config_value(
+        default=60,
+        env="YOYOPOD_CLOUD_CLAIM_RETRY_SECONDS",
+    )
+    cache_file: str = config_value(
+        default="data/cloud/config_cache.json",
+        env="YOYOPOD_CLOUD_CACHE_FILE",
+    )
+    status_file: str = config_value(
+        default="data/cloud/status.json",
+        env="YOYOPOD_CLOUD_STATUS_FILE",
+    )
+    mqtt_broker_host: str = config_value(
+        default="yoyopod.moraouf.net",
+        env="YOYOPOD_CLOUD_MQTT_BROKER_HOST",
+    )
+    mqtt_broker_port: int = config_value(
+        default=1883,
+        env="YOYOPOD_CLOUD_MQTT_BROKER_PORT",
+    )
+    mqtt_use_tls: bool = config_value(
+        default=False,
+        env="YOYOPOD_CLOUD_MQTT_USE_TLS",
+    )
+    mqtt_username: str = config_value(
+        default="",
+        env="YOYOPOD_CLOUD_MQTT_USERNAME",
+    )
+    mqtt_password: str = config_value(
+        default="",
+        env="YOYOPOD_CLOUD_MQTT_PASSWORD",
+    )
+    battery_report_interval_seconds: int = config_value(
+        default=60,
+        env="YOYOPOD_CLOUD_BATTERY_REPORT_INTERVAL_SECONDS",
+    )
+
+
+@dataclass(slots=True)
+class CloudSecretsConfig:
+    """Runtime-only device claim credentials."""
+
+    device_id: str = config_value(default="", env="YOYOPOD_CLOUD_DEVICE_ID")
+    device_secret: str = config_value(default="", env="YOYOPOD_CLOUD_DEVICE_SECRET")
+
+
+@dataclass(slots=True)
+class CloudConfig:
+    """Composed cloud config built from tracked backend settings plus runtime secrets."""
+
+    backend: CloudBackendConfig = config_value(default_factory=CloudBackendConfig)
+    secrets: CloudSecretsConfig = config_value(default_factory=CloudSecretsConfig)
+
+
+@dataclass(slots=True)
 class VoiceConfig:
     """Composed voice domain config built from voice and device-owned layers."""
 
@@ -599,35 +669,7 @@ class VoiceConfig:
     audio: VoiceAudioConfig = config_value(default_factory=VoiceAudioConfig)
 
 
-@dataclass(slots=True)
-class BackendTelemetryConfig:
-    """MQTT broker settings for sending device telemetry to the backend."""
-
-    mqtt_broker_host: str = config_value(
-        default="",
-        env="YOYOPOD_MQTT_BROKER_HOST",
-    )
-    mqtt_broker_port: int = config_value(
-        default=1883,
-        env="YOYOPOD_MQTT_BROKER_PORT",
-    )
-    mqtt_use_tls: bool = config_value(
-        default=False,
-        env="YOYOPOD_MQTT_USE_TLS",
-    )
-    mqtt_username: str = config_value(
-        default="",
-        env="YOYOPOD_MQTT_USERNAME",
-    )
-    mqtt_password: str = config_value(
-        default="",
-        env="YOYOPOD_MQTT_PASSWORD",
-    )
-    battery_report_interval_seconds: int = config_value(
-        default=60,
-        env="YOYOPOD_BATTERY_REPORT_INTERVAL",
-    )
-
+BackendTelemetryConfig = CloudBackendConfig
 
 @dataclass(slots=True)
 class YoyoPodRuntimeConfig:
@@ -640,4 +682,4 @@ class YoyoPodRuntimeConfig:
     voice: VoiceConfig = config_value(default_factory=VoiceConfig)
     communication: CommunicationConfig = config_value(default_factory=CommunicationConfig)
     people: PeopleDirectoryConfig = config_value(default_factory=PeopleDirectoryConfig)
-    backend: BackendTelemetryConfig = config_value(default_factory=BackendTelemetryConfig)
+    cloud: CloudConfig = config_value(default_factory=CloudConfig)

@@ -85,7 +85,7 @@ from yoyopod.ui.screens import (
     TalkContactScreen,
     VoiceNoteScreen,
 )
-from yoyopod.cloud import TelemetryManager
+from yoyopod.cloud import CloudManager
 from yoyopod.communication import CallHistoryStore, VoIPManager
 
 
@@ -168,8 +168,8 @@ class YoyoPodApp:
         self._voip_registered = False
         self._ui_state = AppRuntimeState.IDLE
 
-        # Telemetry
-        self.telemetry_manager: Optional[TelemetryManager] = None
+        # Cloud / backend runtime
+        self.cloud_manager: Optional[CloudManager] = None
 
         # Extracted coordinators
         self.coordinator_runtime: Optional[CoordinatorRuntime] = None
@@ -535,6 +535,8 @@ class YoyoPodApp:
 
     def _handle_network_ppp_up(self, event: NetworkPppUpEvent) -> None:
         """Refresh network connectivity state when PPP comes online."""
+        if self.cloud_manager is not None:
+            self.cloud_manager.note_network_change(connected=True)
         if self.network_manager is not None:
             self._sync_network_context_from_manager()
             return
@@ -585,6 +587,8 @@ class YoyoPodApp:
 
     def _handle_network_ppp_down(self, _event: NetworkPppDownEvent) -> None:
         """Reset network state in AppContext when PPP drops."""
+        if self.cloud_manager is not None:
+            self.cloud_manager.note_network_change(connected=False)
         if self.network_manager is not None:
             self._sync_network_context_from_manager()
             return
