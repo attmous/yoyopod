@@ -14,6 +14,7 @@ from typing import Annotated
 import typer
 
 from yoyopod.cli.common import REPO_ROOT
+from yoyopod.setup_contract import SETUP_TRACKED_CONFIG_FILES
 
 setup_app = typer.Typer(
     name="setup",
@@ -21,19 +22,8 @@ setup_app = typer.Typer(
     no_args_is_help=True,
 )
 
-TRACKED_CONFIG_PATHS: tuple[Path, ...] = (
-    REPO_ROOT / "config" / "app" / "core.yaml",
-    REPO_ROOT / "config" / "audio" / "music.yaml",
-    REPO_ROOT / "config" / "device" / "hardware.yaml",
-    REPO_ROOT / "config" / "network" / "cellular.yaml",
-    REPO_ROOT / "config" / "voice" / "assistant.yaml",
-    REPO_ROOT / "config" / "communication" / "calling.yaml",
-    REPO_ROOT / "config" / "communication" / "messaging.yaml",
-    REPO_ROOT / "config" / "communication" / "calling.secrets.example.yaml",
-    REPO_ROOT / "config" / "communication" / "integrations" / "liblinphone_factory.conf",
-    REPO_ROOT / "config" / "people" / "directory.yaml",
-    REPO_ROOT / "config" / "people" / "contacts.seed.yaml",
-    REPO_ROOT / "deploy" / "pi-deploy.yaml",
+TRACKED_CONFIG_PATHS: tuple[Path, ...] = tuple(
+    REPO_ROOT / relative_path for relative_path in SETUP_TRACKED_CONFIG_FILES
 )
 CORE_PI_PACKAGES: tuple[str, ...] = (
     "mpv",

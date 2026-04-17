@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import yoyopod.main as main_module
+from yoyopod.setup_contract import RUNTIME_REQUIRED_CONFIG_FILES
 
 
 def test_configure_logger_uses_shared_utility(monkeypatch, tmp_path) -> None:
@@ -199,6 +200,20 @@ def test_log_signal_snapshot_serializes_runtime_state() -> None:
     assert payload["status"]["current_screen"] == "hub"
     assert payload["status"]["rtc_time"] == "2026-04-16T00:09:00+00:00"
     assert payload["status"]["recent_calls"][0]["when"] == "2026-04-15T23:59:00+00:00"
+
+
+def test_log_setup_failure_guidance_uses_shared_runtime_config_contract() -> None:
+    """Bootstrap guidance should enumerate the shared runtime config surface."""
+
+    logs: list[tuple[object, ...]] = []
+    fake_log = SimpleNamespace(
+        error=lambda *args: logs.append(args),
+    )
+
+    main_module._log_setup_failure_guidance(fake_log)
+
+    for relative_path in RUNTIME_REQUIRED_CONFIG_FILES:
+        assert (f"  - {relative_path.as_posix()} exists",) in logs
 
 
 def test_capture_responsiveness_watchdog_evidence_writes_artifacts(

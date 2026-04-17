@@ -24,6 +24,7 @@ from yoyopod import __version__
 from yoyopod.app import YoyoPodApp
 from yoyopod.config import YoyoPodConfig, load_composed_app_settings
 from yoyopod.runtime import ResponsivenessWatchdog, ResponsivenessWatchdogDecision
+from yoyopod.setup_contract import RUNTIME_REQUIRED_CONFIG_FILES
 from yoyopod.utils.logger import (
     LoggingRuntimeConfig,
     build_logging_runtime_config,
@@ -260,6 +261,19 @@ def _log_signal_snapshot(
     app_log.error("Freeze diagnostics snapshot: {}", json.dumps(payload, sort_keys=True))
 
 
+def _log_setup_failure_guidance(app_log: Any) -> None:
+    """Log the shared setup contract guidance when app bootstrap fails."""
+
+    app_log.error("Check that:")
+    for relative_path in RUNTIME_REQUIRED_CONFIG_FILES:
+        app_log.error(f"  - {relative_path.as_posix()} exists")
+    app_log.error(
+        "  - data/people/contacts.yaml can be created from config/people/contacts.seed.yaml"
+    )
+    app_log.error("  - liblinphone is installed and the native shim is built")
+    app_log.error("  - mpv is installed and the configured music backend can start")
+
+
 def _resolve_responsiveness_capture_dir(app: object) -> Path:
     """Resolve the configured directory for automatic watchdog evidence files."""
 
@@ -463,20 +477,7 @@ def main() -> int:
 
         if not app.setup():
             app_log.error("Failed to setup application")
-            app_log.error("Check that:")
-            app_log.error("  - config/app/core.yaml exists")
-            app_log.error("  - config/audio/music.yaml exists")
-            app_log.error("  - config/device/hardware.yaml exists")
-            app_log.error("  - config/power/backend.yaml exists")
-            app_log.error("  - config/network/cellular.yaml exists")
-            app_log.error("  - config/voice/assistant.yaml exists")
-            app_log.error("  - config/communication/calling.yaml exists")
-            app_log.error("  - config/communication/messaging.yaml exists")
-            app_log.error(
-                "  - data/people/contacts.yaml can be created from config/people/contacts.seed.yaml"
-            )
-            app_log.error("  - liblinphone is installed and the native shim is built")
-            app_log.error("  - mpv is installed and the configured music backend can start")
+            _log_setup_failure_guidance(app_log)
             app.stop()
             return 1
 

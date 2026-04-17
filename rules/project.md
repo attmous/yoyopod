@@ -51,6 +51,7 @@ Tracked authored config lives under `config/`:
 - `app/core.yaml` -- app shell, UI, logging, diagnostics
 - `audio/music.yaml` -- local music policy, startup volume, and media runtime paths
 - `device/hardware.yaml` -- shared hardware truth for display, input, power, communication audio, media audio, and voice audio
+- `power/backend.yaml` -- power backend transport, polling, watchdog, and shutdown policy
 - `network/cellular.yaml` -- cellular modem policy and transport settings
 - `voice/assistant.yaml` -- local voice policy and assistant defaults
 - `communication/calling.yaml` -- non-secret SIP identity and calling policy
