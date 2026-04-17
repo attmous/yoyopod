@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from yoyopod.ui.display.adapters.whisplay import (
     WhisplayDisplayAdapter,
@@ -253,3 +253,81 @@ def test_simulated_whisplay_adapter_does_not_own_browser_preview() -> None:
     adapter.update()
 
     assert not hasattr(adapter, "web_server")
+
+
+def test_whisplay_font_cache_reuses_loaded_fonts(monkeypatch) -> None:
+    """Repeated text draws should not reload the same font on every call."""
+
+    adapter = WhisplayDisplayAdapter(simulate=True, renderer="pil")
+    adapter._font_cache.clear()
+
+    original_truetype = ImageFont.truetype
+    load_calls: list[tuple[str, int]] = []
+
+    def counting_truetype(path: str, size: int, *args, **kwargs):
+        load_calls.append((path, size))
+        return original_truetype(path, size, *args, **kwargs)
+
+    monkeypatch.setattr(
+        "yoyopod.ui.display.adapters.whisplay.ImageFont.truetype", counting_truetype
+    )
+
+    adapter.text("Hello", 4, 4, font_size=16)
+    adapter.text("Again", 4, 24, font_size=16)
+    adapter.get_text_size("Measured", 16)
+
+    assert len(load_calls) == 1
+
+
+def test_rgb565_conversion_matches_expected_byte_order() -> None:
+    """The optimized conversion should preserve the adapter's big-endian RGB565 contract."""
+
+    adapter = WhisplayDisplayAdapter(simulate=True, renderer="pil")
+    adapter.WIDTH = 2
+    adapter.HEIGHT = 1
+    adapter.buffer = Image.new("RGB", (2, 1))
+    adapter.draw = ImageDraw.Draw(adapter.buffer)
+    adapter.buffer.putdata([(255, 0, 0), (0, 255, 0)])
+
+    assert adapter._convert_to_rgb565() == bytes.fromhex("f80007e0")
+
+
+def test_paste_rgb565_region_decodes_into_shadow_buffer() -> None:
+    """Shadow-buffer region pastes should decode RGB565 bytes back into RGB pixels."""
+
+    adapter = WhisplayDisplayAdapter(simulate=True, renderer="pil")
+    adapter.WIDTH = 2
+    adapter.HEIGHT = 1
+    adapter.buffer = Image.new("RGB", (2, 1))
+    adapter.draw = ImageDraw.Draw(adapter.buffer)
+
+    adapter._paste_rgb565_region(0, 0, 2, 1, bytes.fromhex("f80007e0"))
+
+    assert adapter.buffer.getpixel((0, 0)) == (255, 0, 0)
+    assert adapter.buffer.getpixel((1, 0)) == (0, 255, 0)
+
+
+def test_timing_snapshot_tracks_full_frame_and_partial_flushes() -> None:
+    """The adapter should expose recent timing metrics for both update paths."""
+
+    adapter = WhisplayDisplayAdapter(simulate=True, renderer="pil")
+    adapter.WIDTH = 2
+    adapter.HEIGHT = 1
+    adapter.buffer = Image.new("RGB", (2, 1))
+    adapter.draw = ImageDraw.Draw(adapter.buffer)
+    adapter.buffer.putdata([(255, 0, 0), (0, 255, 0)])
+
+    adapter.simulate = False
+    adapter.device = FakeDevice()
+    adapter.update()
+
+    adapter.simulate = True
+    adapter.draw_rgb565_region(0, 0, 2, 1, bytes.fromhex("f80007e0"))
+
+    snapshot = adapter.timing_snapshot()
+
+    assert snapshot["full_frame_updates"] == 1
+    assert snapshot["partial_flushes"] == 1
+    assert snapshot["last_full_frame_total_ms"] >= 0.0
+    assert snapshot["last_partial_flush_total_ms"] >= 0.0
+    assert snapshot["avg_partial_flush_ms"] >= 0.0

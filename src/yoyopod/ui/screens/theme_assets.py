@@ -17,6 +17,7 @@ PHOSPHOR_ICON_FILES = {
     "power": "gear-six.png",
 }
 ICON_CACHE: dict[str, Image.Image] = {}
+ICON_VARIANT_CACHE: dict[tuple[str, int, tuple[int, int, int]], Image.Image] = {}
 
 
 def load_icon_asset(filename: str) -> Image.Image | None:
@@ -34,3 +35,27 @@ def load_icon_asset(filename: str) -> Image.Image | None:
         rgba_icon = icon.convert("RGBA")
     ICON_CACHE[filename] = rgba_icon
     return rgba_icon
+
+
+def load_icon_variant(
+    filename: str,
+    size: int,
+    color: tuple[int, int, int],
+) -> Image.Image | None:
+    """Load, resize, tint, and cache a reusable icon variant."""
+
+    cache_key = (filename, size, color)
+    cached = ICON_VARIANT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    source = load_icon_asset(filename)
+    if source is None:
+        return None
+
+    rendered = source.resize((size, size), Image.Resampling.LANCZOS)
+    alpha = rendered.getchannel("A")
+    tinted = Image.new("RGBA", rendered.size, color + (0,))
+    tinted.putalpha(alpha)
+    ICON_VARIANT_CACHE[cache_key] = tinted
+    return tinted

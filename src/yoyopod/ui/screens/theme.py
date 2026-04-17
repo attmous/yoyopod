@@ -5,10 +5,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from PIL import Image
-
 from yoyopod.ui.display import Display
-from yoyopod.ui.screens.theme_assets import ICON_ASSET_DIR, PHOSPHOR_ICON_FILES, load_icon_asset
+from yoyopod.ui.screens.theme_assets import (
+    ICON_ASSET_DIR,
+    PHOSPHOR_ICON_FILES,
+    load_icon_variant,
+)
 from yoyopod.ui.screens.theme_text import mix, text_fit, wrap_text
 from yoyopod.ui.screens.theme_tokens import (
     ASK,
@@ -64,6 +66,21 @@ from yoyopod.ui.screens.theme_tokens import (
 
 if TYPE_CHECKING:
     from yoyopod.app_context import AppContext
+
+
+__all__ = [
+    "ASK",
+    "BACKGROUND",
+    "FOOTER_BAR",
+    "ICON_ASSET_DIR",
+    "INK",
+    "LISTEN",
+    "MUTED",
+    "NEUTRAL",
+    "SETUP",
+    "TALK",
+    "WARNING",
+]
 
 
 def _get_draw(display: Display):
@@ -911,16 +928,14 @@ def _paste_phosphor_icon(
     if buffer is None:
         return False
 
-    source = load_icon_asset(filename)
-    if source is None:
+    rendered = load_icon_variant(filename, size, color)
+    if rendered is None:
         return False
 
-    rendered = source.resize((size, size), Image.Resampling.LANCZOS)
-    alpha = rendered.getchannel("A")
-    tinted = Image.new("RGBA", rendered.size, color + (0,))
-    tinted.putalpha(alpha)
-    buffer.paste(tinted, (x, y), tinted)
+    buffer.paste(rendered, (x, y), rendered)
     return True
+
+
 def _draw_listen_icon(display: Display, draw, x: int, y: int, size: int, color: Color) -> None:
     stroke = max(2, size // 14)
     pad = max(4, size // 6)

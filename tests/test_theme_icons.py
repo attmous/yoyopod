@@ -5,7 +5,8 @@ from __future__ import annotations
 from PIL import Image, ImageChops
 
 from yoyopod.ui.display import Display
-from yoyopod.ui.screens.theme import BACKGROUND, FOOTER_BAR, ICON_ASSET_DIR, draw_icon, render_footer
+from yoyopod.ui.screens.theme import FOOTER_BAR, ICON_ASSET_DIR, draw_icon, render_footer
+from yoyopod.ui.screens.theme_assets import ICON_VARIANT_CACHE, load_icon_variant
 
 
 def test_hub_icon_assets_exist_and_are_56px() -> None:
@@ -58,3 +59,19 @@ def test_render_footer_reserves_a_clean_bottom_strip() -> None:
         assert ImageChops.difference(footer_strip, footer_bar_strip).getbbox() is not None
     finally:
         display.cleanup()
+
+
+def test_icon_variants_are_cached_by_filename_size_and_color() -> None:
+    """Repeated icon draws should reuse the same resized+tinted asset variant."""
+
+    ICON_VARIANT_CACHE.clear()
+
+    first = load_icon_variant("hub-listen.png", 24, (255, 255, 255))
+    second = load_icon_variant("hub-listen.png", 24, (255, 255, 255))
+    third = load_icon_variant("hub-listen.png", 24, (0, 255, 0))
+
+    assert first is not None
+    assert first is second
+    assert third is not None
+    assert third is not first
+    assert len(ICON_VARIANT_CACHE) == 2

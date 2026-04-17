@@ -18,6 +18,7 @@ Date: 2025-11-30
 
 from importlib import import_module
 from pathlib import Path
+import time
 from types import ModuleType
 from typing import Optional, Tuple
 
@@ -28,6 +29,7 @@ from yoyopod.ui.display.adapters.whisplay_paths import ensure_whisplay_driver_on
 from yoyopod.ui.display.hal import DisplayHAL
 
 DRIVER_PATH = ensure_whisplay_driver_on_path()
+DEFAULT_FONT_PATH = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
 
 
 def _normalize_gpiochip_path(candidate: object) -> object:
@@ -148,6 +150,9 @@ class WhisplayDisplayAdapter(DisplayHAL):
     HEIGHT = 280
     ORIENTATION = "portrait"
     STATUS_BAR_HEIGHT = 25  # Slightly taller for portrait mode
+    _SLOW_FULL_FRAME_UPDATE_THRESHOLD_SECONDS = 0.03
+    _SLOW_REGION_FLUSH_THRESHOLD_SECONDS = 0.008
+    _PARTIAL_FLUSH_TIMING_LOG_INTERVAL = 60
 
     def __init__(
         self,
@@ -169,6 +174,21 @@ class WhisplayDisplayAdapter(DisplayHAL):
         self.lvgl_buffer_lines = max(1, int(lvgl_buffer_lines))
         self.ui_backend = None
         self._force_shadow_buffer_sync = False
+        self._font_cache: dict[tuple[str, int], object] = {}
+        self._timing_metrics: dict[str, float | int] = {
+            "full_frame_updates": 0,
+            "last_full_frame_convert_ms": 0.0,
+            "last_full_frame_device_ms": 0.0,
+            "last_full_frame_total_ms": 0.0,
+            "max_full_frame_total_ms": 0.0,
+            "partial_flushes": 0,
+            "partial_flush_shadow_syncs": 0,
+            "last_partial_flush_device_ms": 0.0,
+            "last_partial_flush_shadow_ms": 0.0,
+            "last_partial_flush_total_ms": 0.0,
+            "max_partial_flush_total_ms": 0.0,
+            "partial_flush_total_ms": 0.0,
+        }
 
         # Create PIL drawing buffer
         self._create_buffer()
@@ -228,6 +248,151 @@ class WhisplayDisplayAdapter(DisplayHAL):
         self.buffer = Image.new("RGB", (self.WIDTH, self.HEIGHT), self.COLOR_BLACK)
         self.draw = ImageDraw.Draw(self.buffer)
 
+    def _load_font(
+        self,
+        font_size: int,
+        font_path: Optional[Path] = None,
+    ) -> object:
+        """Load and cache the requested font once per path/size pair."""
+
+        resolved_path: Path | None = None
+        if font_path is not None and font_path.exists():
+            resolved_path = font_path
+        elif DEFAULT_FONT_PATH.exists():
+            resolved_path = DEFAULT_FONT_PATH
+
+        cache_key = (
+            str(resolved_path.resolve()) if resolved_path is not None else "__pil_default__",
+            font_size,
+        )
+        cached_font = self._font_cache.get(cache_key)
+        if cached_font is not None:
+            return cached_font
+
+        try:
+            if resolved_path is not None:
+                font = ImageFont.truetype(str(resolved_path), font_size)
+            else:
+                font = ImageFont.load_default()
+        except Exception as e:
+            logger.warning("Failed to load font {} at {} px: {}", resolved_path, font_size, e)
+            cache_key = ("__pil_default__", font_size)
+            cached_font = self._font_cache.get(cache_key)
+            if cached_font is not None:
+                return cached_font
+            font = ImageFont.load_default()
+
+        self._font_cache[cache_key] = font
+        return font
+
+    @staticmethod
+    def _rgb565_to_image(width: int, height: int, pixel_data: bytes) -> Image.Image:
+        """Decode big-endian RGB565 bytes into a PIL image."""
+
+        swapped = bytearray(len(pixel_data))
+        swapped[0::2] = pixel_data[1::2]
+        swapped[1::2] = pixel_data[0::2]
+        return Image.frombytes("RGB", (width, height), bytes(swapped), "raw", "BGR;16")
+
+    def _record_partial_flush_timing(
+        self,
+        *,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        device_seconds: float,
+        shadow_seconds: float,
+        total_seconds: float,
+        shadow_synced: bool,
+    ) -> None:
+        """Record lightweight timing visibility for LVGL partial flushes."""
+
+        metrics = self._timing_metrics
+        metrics["partial_flushes"] = int(metrics["partial_flushes"]) + 1
+        if shadow_synced:
+            metrics["partial_flush_shadow_syncs"] = int(metrics["partial_flush_shadow_syncs"]) + 1
+        metrics["last_partial_flush_device_ms"] = device_seconds * 1000.0
+        metrics["last_partial_flush_shadow_ms"] = shadow_seconds * 1000.0
+        metrics["last_partial_flush_total_ms"] = total_seconds * 1000.0
+        metrics["partial_flush_total_ms"] = float(metrics["partial_flush_total_ms"]) + (
+            total_seconds * 1000.0
+        )
+        metrics["max_partial_flush_total_ms"] = max(
+            float(metrics["max_partial_flush_total_ms"]),
+            total_seconds * 1000.0,
+        )
+
+        if total_seconds >= self._SLOW_REGION_FLUSH_THRESHOLD_SECONDS:
+            logger.warning(
+                "Slow Whisplay RGB565 flush: area={}x{} at {},{} total_ms={:.1f} device_ms={:.1f} shadow_ms={:.1f} shadow_sync={}",
+                width,
+                height,
+                x,
+                y,
+                total_seconds * 1000.0,
+                device_seconds * 1000.0,
+                shadow_seconds * 1000.0,
+                shadow_synced,
+            )
+            return
+
+        flush_count = int(metrics["partial_flushes"])
+        if flush_count % self._PARTIAL_FLUSH_TIMING_LOG_INTERVAL == 0:
+            average_ms = float(metrics["partial_flush_total_ms"]) / max(1, flush_count)
+            logger.debug(
+                "Whisplay RGB565 flush timing: flushes={} avg_ms={:.1f} max_ms={:.1f} shadow_syncs={}",
+                flush_count,
+                average_ms,
+                float(metrics["max_partial_flush_total_ms"]),
+                int(metrics["partial_flush_shadow_syncs"]),
+            )
+
+    def _record_full_frame_timing(
+        self,
+        *,
+        convert_seconds: float,
+        device_seconds: float,
+        total_seconds: float,
+    ) -> None:
+        """Record timing visibility for the PIL full-frame update path."""
+
+        metrics = self._timing_metrics
+        metrics["full_frame_updates"] = int(metrics["full_frame_updates"]) + 1
+        metrics["last_full_frame_convert_ms"] = convert_seconds * 1000.0
+        metrics["last_full_frame_device_ms"] = device_seconds * 1000.0
+        metrics["last_full_frame_total_ms"] = total_seconds * 1000.0
+        metrics["max_full_frame_total_ms"] = max(
+            float(metrics["max_full_frame_total_ms"]),
+            total_seconds * 1000.0,
+        )
+
+        if total_seconds >= self._SLOW_FULL_FRAME_UPDATE_THRESHOLD_SECONDS:
+            logger.warning(
+                "Slow Whisplay full-frame update: convert_ms={:.1f} device_ms={:.1f} total_ms={:.1f}",
+                convert_seconds * 1000.0,
+                device_seconds * 1000.0,
+                total_seconds * 1000.0,
+            )
+            return
+
+        logger.debug(
+            "Whisplay full-frame update timing: convert_ms={:.1f} device_ms={:.1f} total_ms={:.1f}",
+            convert_seconds * 1000.0,
+            device_seconds * 1000.0,
+            total_seconds * 1000.0,
+        )
+
+    def timing_snapshot(self) -> dict[str, float | int]:
+        """Return the most recent Whisplay render/update timing metrics."""
+
+        metrics = dict(self._timing_metrics)
+        flush_count = int(metrics["partial_flushes"])
+        metrics["avg_partial_flush_ms"] = (
+            float(metrics["partial_flush_total_ms"]) / max(1, flush_count) if flush_count else 0.0
+        )
+        return metrics
+
     def _convert_to_rgb565(self) -> bytes:
         """
         Convert PIL RGB888 buffer to RGB565 byte array for Whisplay display.
@@ -241,21 +406,25 @@ class WhisplayDisplayAdapter(DisplayHAL):
         Returns:
             Byte array in RGB565 format (big-endian)
         """
-        pixel_data = []
+        if self.buffer is None:
+            return b""
 
-        for y in range(self.HEIGHT):
-            for x in range(self.WIDTH):
-                # Get RGB888 pixel from PIL buffer
-                r, g, b = self.buffer.getpixel((x, y))
+        rgb_bytes = self.buffer.tobytes()
+        pixel_count = self.WIDTH * self.HEIGHT
+        pixel_data = bytearray(pixel_count * 2)
 
-                # Convert to RGB565
-                # R: 8 bits -> 5 bits (keep upper 5 bits)
-                # G: 8 bits -> 6 bits (keep upper 6 bits)
-                # B: 8 bits -> 5 bits (keep upper 5 bits)
-                rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+        src_index = 0
+        dst_index = 0
+        for _ in range(pixel_count):
+            red = rgb_bytes[src_index]
+            green = rgb_bytes[src_index + 1]
+            blue = rgb_bytes[src_index + 2]
+            src_index += 3
 
-                # Split into 2 bytes (big-endian)
-                pixel_data.extend([(rgb565 >> 8) & 0xFF, rgb565 & 0xFF])
+            rgb565 = ((red & 0xF8) << 8) | ((green & 0xFC) << 3) | (blue >> 3)
+            pixel_data[dst_index] = (rgb565 >> 8) & 0xFF
+            pixel_data[dst_index + 1] = rgb565 & 0xFF
+            dst_index += 2
 
         return bytes(pixel_data)
 
@@ -272,16 +441,7 @@ class WhisplayDisplayAdapter(DisplayHAL):
         if self.buffer is None:
             return
 
-        region = Image.new("RGB", (width, height))
-        pixels: list[tuple[int, int, int]] = []
-        for index in range(0, len(pixel_data), 2):
-            rgb565 = (pixel_data[index] << 8) | pixel_data[index + 1]
-            red = ((rgb565 >> 11) & 0x1F) * 255 // 31
-            green = ((rgb565 >> 5) & 0x3F) * 255 // 63
-            blue = (rgb565 & 0x1F) * 255 // 31
-            pixels.append((red, green, blue))
-
-        region.putdata(pixels)
+        region = self._rgb565_to_image(width, height, pixel_data)
         self.buffer.paste(region, (x, y))
 
     def draw_rgb565_region(
@@ -294,13 +454,30 @@ class WhisplayDisplayAdapter(DisplayHAL):
     ) -> None:
         """Write an RGB565 region to hardware and optionally the PIL shadow buffer."""
 
+        started_at = time.monotonic()
+        device_started_at = started_at
         if not self.simulate and self.device:
             self.device.draw_image(x, y, width, height, pixel_data)
+        device_seconds = max(0.0, time.monotonic() - device_started_at)
 
         # Keep the PIL buffer in sync only when it is the active renderer or simulation target.
         # Doing this for every LVGL partial flush on hardware is too expensive on the Pi.
-        if self.shadow_buffer_sync_enabled:
+        shadow_started_at = time.monotonic()
+        shadow_synced = self.shadow_buffer_sync_enabled
+        if shadow_synced:
             self._paste_rgb565_region(x, y, width, height, pixel_data)
+        shadow_seconds = max(0.0, time.monotonic() - shadow_started_at) if shadow_synced else 0.0
+        total_seconds = max(0.0, time.monotonic() - started_at)
+        self._record_partial_flush_timing(
+            x=x,
+            y=y,
+            width=width,
+            height=height,
+            device_seconds=device_seconds,
+            shadow_seconds=shadow_seconds,
+            total_seconds=total_seconds,
+            shadow_synced=shadow_synced,
+        )
 
     def clear(self, color: Optional[Tuple[int, int, int]] = None) -> None:
         """Clear the display with specified color."""
@@ -323,21 +500,7 @@ class WhisplayDisplayAdapter(DisplayHAL):
         if color is None:
             color = self.COLOR_WHITE
 
-        try:
-            if font_path and font_path.exists():
-                font = ImageFont.truetype(str(font_path), font_size)
-            else:
-                # Try to use default system font
-                try:
-                    font = ImageFont.truetype(
-                        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size
-                    )
-                except Exception:
-                    font = ImageFont.load_default()
-        except Exception as e:
-            logger.warning(f"Failed to load font: {e}, using default")
-            font = ImageFont.load_default()
-
+        font = self._load_font(font_size, font_path)
         self.draw.text((x, y), text, fill=color, font=font)
 
     def rectangle(
@@ -506,12 +669,20 @@ class WhisplayDisplayAdapter(DisplayHAL):
 
         if not self.simulate and self.device:
             try:
-                # Convert PIL buffer to RGB565 byte array
+                started_at = time.monotonic()
+                convert_started_at = started_at
                 pixel_data = self._convert_to_rgb565()
+                convert_seconds = max(0.0, time.monotonic() - convert_started_at)
 
-                # Send to Whisplay display
+                device_started_at = time.monotonic()
                 self.device.draw_image(0, 0, self.WIDTH, self.HEIGHT, pixel_data)
-                logger.debug("Whisplay display updated")
+                device_seconds = max(0.0, time.monotonic() - device_started_at)
+                total_seconds = max(0.0, time.monotonic() - started_at)
+                self._record_full_frame_timing(
+                    convert_seconds=convert_seconds,
+                    device_seconds=device_seconds,
+                    total_seconds=total_seconds,
+                )
             except Exception as e:
                 logger.error(f"Failed to update Whisplay display: {e}")
         else:
@@ -586,19 +757,7 @@ class WhisplayDisplayAdapter(DisplayHAL):
                 logger.error("LVGL snapshot returned no data")
                 return False
 
-            # Convert RGB565_SWAPPED to RGB888 PIL Image
-            from PIL import Image as PilImage
-
-            img = PilImage.new("RGB", (self.WIDTH, self.HEIGHT))
-            pixels: list[tuple[int, int, int]] = []
-            for index in range(0, len(pixel_data), 2):
-                rgb565 = (pixel_data[index] << 8) | pixel_data[index + 1]
-                red = ((rgb565 >> 11) & 0x1F) * 255 // 31
-                green = ((rgb565 >> 5) & 0x3F) * 255 // 63
-                blue = (rgb565 & 0x1F) * 255 // 31
-                pixels.append((red, green, blue))
-
-            img.putdata(pixels)
+            img = self._rgb565_to_image(self.WIDTH, self.HEIGHT, pixel_data)
             img.save(path, "PNG")
             logger.info("LVGL readback screenshot saved to {}", path)
             return True
@@ -645,10 +804,7 @@ class WhisplayDisplayAdapter(DisplayHAL):
 
     def get_text_size(self, text: str, font_size: int = 16) -> Tuple[int, int]:
         """Calculate rendered text dimensions."""
-        try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
-        except Exception:
-            font = ImageFont.load_default()
+        font = self._load_font(font_size)
 
         bbox = self.draw.textbbox((0, 0), text, font=font)
         return (bbox[2] - bbox[0], bbox[3] - bbox[1])
