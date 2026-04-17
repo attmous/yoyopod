@@ -36,21 +36,28 @@ class LvglNowPlayingView:
         if not self._built or self.backend.binding is None:
             return
 
-        track_title, artist, progress, state_label, is_playing = self.screen._track_snapshot()
-        footer = self.screen.get_footer_text(is_playing=is_playing, state_label=state_label)
+        state = self.screen.current_state()
+        footer = self.screen.get_footer_text(
+            is_playing=state.is_playing,
+            state_label=state.state_label,
+        )
         context = self.screen.context
         sync_network_status(self.backend.binding, context)
 
         self.backend.binding.now_playing_sync(
-            title_text=track_title,
-            artist_text=artist,
-            state_text=self.screen._display_state_text(state_label),
+            title_text=state.title,
+            artist_text=state.artist,
+            state_text=self.screen._display_state_text(state.state_label),
             footer=footer,
-            progress_permille=max(0, min(1000, int(progress * 1000))),
+            progress_permille=max(0, min(1000, int(state.progress * 1000))),
             voip_state=self._voip_state(context),
             battery_percent=self._battery_percent(context),
-            charging=bool(getattr(context, "battery_charging", False)) if context is not None else False,
-            power_available=bool(getattr(context, "power_available", True)) if context is not None else True,
+            charging=(
+                bool(getattr(context, "battery_charging", False)) if context is not None else False
+            ),
+            power_available=(
+                bool(getattr(context, "power_available", True)) if context is not None else True
+            ),
             accent=LISTEN.accent,
         )
 

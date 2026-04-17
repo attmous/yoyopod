@@ -32,9 +32,8 @@ class LvglPowerView:
         if not self._built or self.backend.binding is None:
             return
 
-        snapshot = self.screen._get_snapshot()
-        status = self.screen._get_status()
-        pages = self.screen._build_pages_for_display(snapshot=snapshot, status=status)
+        state = self.screen._get_state()
+        pages = self.screen._build_pages_for_display(state=state)
         if not pages:
             return
 
@@ -64,8 +63,14 @@ class LvglPowerView:
                 total_pages=len(pages),
                 voip_state=self._voip_state(context),
                 battery_percent=self._battery_percent(context),
-                charging=bool(getattr(context, "battery_charging", False)) if context is not None else False,
-                power_available=bool(getattr(context, "power_available", True)) if context is not None else True,
+                charging=(
+                    bool(getattr(context, "battery_charging", False))
+                    if context is not None
+                    else False
+                ),
+                power_available=(
+                    bool(getattr(context, "power_available", True)) if context is not None else True
+                ),
                 accent=SETUP.accent,
             )
             return
@@ -88,8 +93,12 @@ class LvglPowerView:
             total_pages=len(pages),
             voip_state=self._voip_state(context),
             battery_percent=self._battery_percent(context),
-            charging=bool(getattr(context, "battery_charging", False)) if context is not None else False,
-            power_available=bool(getattr(context, "power_available", True)) if context is not None else True,
+            charging=(
+                bool(getattr(context, "battery_charging", False)) if context is not None else False
+            ),
+            power_available=(
+                bool(getattr(context, "power_available", True)) if context is not None else True
+            ),
             accent=SETUP.accent,
         )
 

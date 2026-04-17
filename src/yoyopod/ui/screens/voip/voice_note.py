@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
@@ -26,8 +26,8 @@ from yoyopod.ui.screens.voip.lvgl.voice_note_view import LvglVoiceNoteView
 
 if TYPE_CHECKING:
     from yoyopod.app_context import AppContext
-    from yoyopod.ui.screens import ScreenView
     from yoyopod.communication import VoIPManager
+    from yoyopod.ui.screens import ScreenView
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +39,136 @@ class VoiceNoteAction:
     badge: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class VoiceNoteState:
+    """Prepared state for the voice-note flow."""
+
+    recipient_name: str = "Friend"
+    recipient_address: str = ""
+    send_state: str = "idle"
+    status_text: str = ""
+    file_path: str = ""
+    duration_ms: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class VoiceNoteActions:
+    """Focused voice-note actions exposed to the screen."""
+
+    start_recording: Callable[[str, str], bool] | None = None
+    stop_recording: Callable[[], object | None] | None = None
+    cancel_recording: Callable[[], bool] | None = None
+    discard_active_draft: Callable[[], None] | None = None
+    send_active_draft: Callable[[], bool] | None = None
+    preview_draft: Callable[[str], bool] | None = None
+    set_draft_status_text: Callable[[str], None] | None = None
+
+
+def _resolve_voice_note_recipient(context: "AppContext | None") -> tuple[str, str]:
+    """Return the active voice-note recipient from the current UI context."""
+
+    if context is None:
+        return ("Friend", "")
+
+    voice_note = context.talk.active_voice_note
+    selected_contact = context.talk
+    return (
+        voice_note.recipient_name or selected_contact.selected_contact_name or "Friend",
+        voice_note.recipient_address or selected_contact.selected_contact_address,
+    )
+
+
+def build_voice_note_state_provider(
+    *,
+    context: "AppContext | None" = None,
+    voip_manager: "VoIPManager | None" = None,
+) -> Callable[[], VoiceNoteState]:
+    """Build a narrow prepared-state provider for the voice-note screen."""
+
+    def provider() -> VoiceNoteState:
+        recipient_name, recipient_address = _resolve_voice_note_recipient(context)
+        if voip_manager is None:
+            active_voice_note = context.talk.active_voice_note if context is not None else None
+            return VoiceNoteState(
+                recipient_name=recipient_name,
+                recipient_address=recipient_address,
+                send_state=(
+                    active_voice_note.send_state if active_voice_note is not None else "idle"
+                ),
+                status_text=active_voice_note.status_text if active_voice_note is not None else "",
+                file_path=active_voice_note.file_path if active_voice_note is not None else "",
+                duration_ms=active_voice_note.duration_ms if active_voice_note is not None else 0,
+            )
+
+        draft = voip_manager.get_active_voice_note()
+        if draft is None:
+            return VoiceNoteState(
+                recipient_name=recipient_name,
+                recipient_address=recipient_address,
+            )
+        if (
+            recipient_address
+            and draft.recipient_address
+            and draft.recipient_address != recipient_address
+        ):
+            return VoiceNoteState(
+                recipient_name=recipient_name,
+                recipient_address=recipient_address,
+            )
+
+        return VoiceNoteState(
+            recipient_name=draft.recipient_name or recipient_name,
+            recipient_address=draft.recipient_address or recipient_address,
+            send_state=draft.send_state or "idle",
+            status_text=draft.status_text,
+            file_path=draft.file_path,
+            duration_ms=draft.duration_ms,
+        )
+
+    return provider
+
+
+def build_voice_note_actions(
+    *,
+    voip_manager: "VoIPManager | None" = None,
+) -> VoiceNoteActions:
+    """Build the focused voice-note actions for the screen."""
+
+    def set_draft_status_text(status_text: str) -> None:
+        if voip_manager is None:
+            return
+        draft = voip_manager.get_active_voice_note()
+        if draft is not None:
+            draft.status_text = status_text
+
+    if voip_manager is None:
+        return VoiceNoteActions(set_draft_status_text=set_draft_status_text)
+
+    start_voice_note_recording = getattr(voip_manager, "start_voice_note_recording", None)
+    stop_voice_note_recording = getattr(voip_manager, "stop_voice_note_recording", None)
+    cancel_voice_note_recording = getattr(voip_manager, "cancel_voice_note_recording", None)
+    discard_active_voice_note = getattr(voip_manager, "discard_active_voice_note", None)
+    send_active_voice_note = getattr(voip_manager, "send_active_voice_note", None)
+    play_voice_note = getattr(voip_manager, "play_voice_note", None)
+
+    return VoiceNoteActions(
+        start_recording=(
+            None
+            if start_voice_note_recording is None
+            else lambda recipient_address, recipient_name: start_voice_note_recording(
+                recipient_address,
+                recipient_name=recipient_name,
+            )
+        ),
+        stop_recording=stop_voice_note_recording,
+        cancel_recording=cancel_voice_note_recording,
+        discard_active_draft=discard_active_voice_note,
+        send_active_draft=send_active_voice_note,
+        preview_draft=play_voice_note,
+        set_draft_status_text=set_draft_status_text,
+    )
+
+
 class VoiceNoteScreen(Screen):
     """Kid-facing voice-note flow with real record, review, and send states."""
 
@@ -46,10 +176,13 @@ class VoiceNoteScreen(Screen):
         self,
         display: Display,
         context: Optional["AppContext"] = None,
-        voip_manager: Optional["VoIPManager"] = None,
+        *,
+        state_provider: Callable[[], VoiceNoteState] | None = None,
+        actions: VoiceNoteActions | None = None,
     ) -> None:
         super().__init__(display, context, "VoiceNote")
-        self.voip_manager = voip_manager
+        self._state_provider = state_provider or build_voice_note_state_provider(context=context)
+        self._actions = actions or VoiceNoteActions()
         self._state = "ready"
         self._selected_action_index = 0
         self._lvgl_view: "ScreenView | None" = None
@@ -59,7 +192,7 @@ class VoiceNoteScreen(Screen):
 
         super().enter()
         self._discard_terminal_draft_for_recipient()
-        self._sync_state_from_manager(default_state="ready")
+        self._sync_state_from_provider(default_state="ready")
         self._selected_action_index = 0
         self._ensure_lvgl_view()
 
@@ -96,52 +229,40 @@ class VoiceNoteScreen(Screen):
     def recipient_name(self) -> str:
         """Return the selected recipient."""
 
-        if self.context is None:
-            return "Friend"
-        voice_note = self.context.talk.active_voice_note
-        selected_contact = self.context.talk
-        return voice_note.recipient_name or selected_contact.selected_contact_name or "Friend"
+        return self.current_state().recipient_name
 
     def recipient_address(self) -> str:
         """Return the selected recipient SIP address."""
 
-        if self.context is None:
-            return ""
-        voice_note = self.context.talk.active_voice_note
-        selected_contact = self.context.talk
-        return voice_note.recipient_address or selected_contact.selected_contact_address
+        return self.current_state().recipient_address
 
     def recipient_monogram(self) -> str:
         """Return a compact label for the active recipient."""
 
         return talk_monogram(self.recipient_name())
 
-    def _sync_state_from_manager(self, default_state: str = "ready") -> None:
-        """Reflect the active voice-note draft from VoIPManager into the screen/context."""
+    def current_state(self) -> VoiceNoteState:
+        """Return the prepared voice-note state for the current render."""
 
-        if self.voip_manager is None:
-            self._state = default_state
-            return
+        return self._state_provider()
 
-        draft = self.voip_manager.get_active_voice_note()
-        recipient_address = self.recipient_address()
-        if draft is None or (
-            recipient_address
-            and draft.recipient_address
-            and draft.recipient_address != recipient_address
-        ):
+    def _sync_state_from_provider(self, default_state: str = "ready") -> None:
+        """Reflect the prepared voice-note state into the screen and shared context."""
+
+        state = self.current_state()
+        if state.send_state in {"", "idle"}:
             self._state = default_state
             if self.context is not None:
                 self.context.update_active_voice_note(send_state="idle")
             return
 
-        self._state = draft.send_state or default_state
+        self._state = state.send_state or default_state
         if self.context is not None:
             self.context.update_active_voice_note(
-                send_state=draft.send_state,
-                status_text=draft.status_text,
-                file_path=draft.file_path,
-                duration_ms=draft.duration_ms,
+                send_state=state.send_state,
+                status_text=state.status_text,
+                file_path=state.file_path,
+                duration_ms=state.duration_ms,
             )
         if self._state not in {"review", "failed"}:
             self._selected_action_index = 0
@@ -149,21 +270,10 @@ class VoiceNoteScreen(Screen):
     def _discard_terminal_draft_for_recipient(self) -> None:
         """Start fresh when reopening a terminal draft for the same recipient."""
 
-        if self.voip_manager is None:
-            return
-
-        draft = self.voip_manager.get_active_voice_note()
-        recipient_address = self.recipient_address()
-        if draft is None:
-            return
-        if (
-            recipient_address
-            and draft.recipient_address
-            and draft.recipient_address != recipient_address
-        ):
-            return
-        if draft.send_state in {"sent", "failed"}:
-            self.voip_manager.discard_active_voice_note()
+        state = self.current_state()
+        if state.send_state in {"sent", "failed"}:
+            if self._actions.discard_active_draft is not None:
+                self._actions.discard_active_draft()
             if self.context is not None:
                 self.context.update_active_voice_note(send_state="idle")
 
@@ -179,9 +289,10 @@ class VoiceNoteScreen(Screen):
     def _duration_label(self) -> str:
         """Return a compact duration label for the active draft."""
 
-        if self.context is None or self.context.talk.active_voice_note.duration_ms <= 0:
+        duration_ms = self.current_state().duration_ms
+        if duration_ms <= 0:
             return ""
-        seconds = max(1, round(self.context.talk.active_voice_note.duration_ms / 1000))
+        seconds = max(1, round(duration_ms / 1000))
         return f"{seconds}s"
 
     def actions(self) -> list[VoiceNoteAction]:
@@ -348,6 +459,7 @@ class VoiceNoteScreen(Screen):
         """Return title, subtitle, footer, and icon for the current voice-note state."""
 
         recipient = self.recipient_name()
+        state = self.current_state()
         if self._state == "recording":
             return (
                 "Recording",
@@ -358,31 +470,28 @@ class VoiceNoteScreen(Screen):
         if self._state == "review":
             return (
                 "Review",
-                self.context.talk.active_voice_note.status_text
-                or f"Listen, send, or record again for {recipient}.",
+                state.status_text or f"Listen, send, or record again for {recipient}.",
                 "Tap next / Double choose" if self.is_one_button_mode() else "Select choose / Back",
                 "voice_note",
             )
         if self._state == "sending":
             return (
                 "Sending",
-                self.context.talk.active_voice_note.status_text
-                or f"Sending your note to {recipient}.",
+                state.status_text or f"Sending your note to {recipient}.",
                 "Please wait",
                 "voice_note",
             )
         if self._state == "sent":
             return (
                 "Sent",
-                self.context.talk.active_voice_note.status_text
-                or f"Your note reached {recipient}.",
+                state.status_text or f"Your note reached {recipient}.",
                 "Double done / Hold back" if self.is_one_button_mode() else "Back",
                 "voice_note",
             )
         if self._state == "failed":
             return (
                 "Couldn't Send",
-                self.context.talk.active_voice_note.status_text or f"Try {recipient}'s note again.",
+                state.status_text or f"Try {recipient}'s note again.",
                 "Tap next / Double choose" if self.is_one_button_mode() else "Select retry / Back",
                 "voice_note",
             )
@@ -396,7 +505,7 @@ class VoiceNoteScreen(Screen):
     def render(self) -> None:
         """Render the current voice-note flow state."""
 
-        self._sync_state_from_manager(default_state=self._state)
+        self._sync_state_from_provider(default_state=self._state)
         lvgl_view = self._ensure_lvgl_view()
         if lvgl_view is not None:
             lvgl_view.sync()
@@ -486,8 +595,8 @@ class VoiceNoteScreen(Screen):
     def _close_to_talk_contact(self) -> None:
         """Clear terminal draft state and return to the selected contact."""
 
-        if self.voip_manager is not None:
-            self.voip_manager.discard_active_voice_note()
+        if self._actions.discard_active_draft is not None:
+            self._actions.discard_active_draft()
         if self.context is not None:
             self.context.update_active_voice_note(send_state="idle")
         self._state = "ready"
@@ -497,33 +606,32 @@ class VoiceNoteScreen(Screen):
     def _preview_active_voice_note(self) -> None:
         """Play the current draft locally before sending it."""
 
-        if self.voip_manager is None or self.context is None:
+        if self.context is None or self._actions.preview_draft is None:
             return
 
-        file_path = self.context.talk.active_voice_note.file_path
+        state = self.current_state()
+        file_path = state.file_path
         if not file_path:
             return
 
-        if self.voip_manager.play_voice_note(file_path):
-            draft = self.voip_manager.get_active_voice_note()
-            if draft is not None:
-                draft.status_text = "Playing preview"
+        if self._actions.preview_draft(file_path):
+            if self._actions.set_draft_status_text is not None:
+                self._actions.set_draft_status_text("Playing preview")
             self.context.update_active_voice_note(
                 send_state="review",
                 status_text="Playing preview",
                 file_path=file_path,
-                duration_ms=self.context.talk.active_voice_note.duration_ms,
+                duration_ms=state.duration_ms,
             )
             return
 
-        draft = self.voip_manager.get_active_voice_note()
-        if draft is not None:
-            draft.status_text = "Couldn't play note"
+        if self._actions.set_draft_status_text is not None:
+            self._actions.set_draft_status_text("Couldn't play note")
         self.context.update_active_voice_note(
             send_state="review",
             status_text="Couldn't play note",
             file_path=file_path,
-            duration_ms=self.context.talk.active_voice_note.duration_ms,
+            duration_ms=state.duration_ms,
         )
 
     def on_select(self, data=None) -> None:
@@ -607,11 +715,11 @@ class VoiceNoteScreen(Screen):
     def _start_recording(self) -> None:
         """Start a new voice-note recording for the active recipient."""
 
-        if self.voip_manager is None:
+        if self._actions.start_recording is None:
             return
-        if not self.voip_manager.start_voice_note_recording(
+        if not self._actions.start_recording(
             self.recipient_address(),
-            recipient_name=self.recipient_name(),
+            self.recipient_name(),
         ):
             self._state = "failed"
             if self.context is not None:
@@ -621,15 +729,15 @@ class VoiceNoteScreen(Screen):
                 )
             return
         self._selected_action_index = 0
-        self._sync_state_from_manager(default_state="recording")
+        self._sync_state_from_provider(default_state="recording")
         self._refresh_input_mode()
 
     def _stop_recording(self) -> None:
         """Stop the active recording and move to review."""
 
-        if self.voip_manager is None:
+        if self._actions.stop_recording is None:
             return
-        draft = self.voip_manager.stop_voice_note_recording()
+        draft = self._actions.stop_recording()
         if draft is None:
             self._state = "failed"
             if self.context is not None:
@@ -640,14 +748,14 @@ class VoiceNoteScreen(Screen):
         else:
             self._state = "review"
             self._selected_action_index = 0
-            self._sync_state_from_manager(default_state="review")
+            self._sync_state_from_provider(default_state="review")
         self._refresh_input_mode()
 
     def _cancel_recording(self) -> None:
         """Cancel the active recording and return to the ready state."""
 
-        if self.voip_manager is not None:
-            self.voip_manager.cancel_voice_note_recording()
+        if self._actions.cancel_recording is not None:
+            self._actions.cancel_recording()
         self._state = "ready"
         self._selected_action_index = 0
         if self.context is not None:
@@ -657,8 +765,8 @@ class VoiceNoteScreen(Screen):
     def _discard_and_reset(self) -> None:
         """Discard the current draft and return to the ready state."""
 
-        if self.voip_manager is not None:
-            self.voip_manager.discard_active_voice_note()
+        if self._actions.discard_active_draft is not None:
+            self._actions.discard_active_draft()
         self._state = "ready"
         self._selected_action_index = 0
         if self.context is not None:
@@ -668,11 +776,11 @@ class VoiceNoteScreen(Screen):
     def _send_active_voice_note(self) -> None:
         """Send the recorded voice note through the VoIP manager."""
 
-        if self.voip_manager is None:
+        if self._actions.send_active_draft is None:
             return
-        if self.voip_manager.send_active_voice_note():
-            self._sync_state_from_manager(default_state="sending")
+        if self._actions.send_active_draft():
+            self._sync_state_from_provider(default_state="sending")
             self._state = "sending"
             return
-        self._sync_state_from_manager(default_state="failed")
+        self._sync_state_from_provider(default_state="failed")
         self._state = "failed"

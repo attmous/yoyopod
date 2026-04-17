@@ -5,7 +5,13 @@ from __future__ import annotations
 import pytest
 
 from yoyopod.app_context import AppContext
-from yoyopod.audio import LocalMusicService, MockMusicBackend, Playlist, RecentTrackHistoryStore, Track
+from yoyopod.audio import (
+    LocalMusicService,
+    MockMusicBackend,
+    Playlist,
+    RecentTrackHistoryStore,
+    Track,
+)
 from yoyopod.communication.calling import VoiceNoteDraft
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InteractionProfile
@@ -24,6 +30,14 @@ from yoyopod.ui.screens import (
     TalkContactScreen,
     VoiceNoteScreen,
 )
+from yoyopod.ui.screens.music.now_playing import (
+    build_now_playing_actions,
+    build_now_playing_state_provider,
+)
+from yoyopod.ui.screens.voip.voice_note import (
+    build_voice_note_actions,
+    build_voice_note_state_provider,
+)
 
 
 class FakeMusicBackend(MockMusicBackend):
@@ -32,7 +46,9 @@ class FakeMusicBackend(MockMusicBackend):
     def __init__(self) -> None:
         super().__init__()
         self.start()
-        self.current_track = Track(uri="/music/track.mp3", name="Track", artists=["Artist"], length=120000)
+        self.current_track = Track(
+            uri="/music/track.mp3", name="Track", artists=["Artist"], length=120000
+        )
         self.next_track_calls = 0
         self.play_calls = 0
         self.pause_calls = 0
@@ -70,7 +86,9 @@ class FakeMusicBackend(MockMusicBackend):
 class FakeContact:
     """Minimal contact record for VoIP screen tests."""
 
-    def __init__(self, name: str, sip_address: str, favorite: bool = False, notes: str = "") -> None:
+    def __init__(
+        self, name: str, sip_address: str, favorite: bool = False, notes: str = ""
+    ) -> None:
         self.name = name
         self.sip_address = sip_address
         self.favorite = favorite
@@ -263,6 +281,7 @@ def test_listen_screen_select_opens_recent_tracks(
 
     assert screen.consume_navigation_request() == NavigationRequest.route("open_recent")
 
+
 def test_hub_select_requests_setup_route_for_setup_card(
     display: Display,
     one_button_context: AppContext,
@@ -337,7 +356,18 @@ def test_now_playing_advance_and_select_follow_one_button_mapping(
 ) -> None:
     """Now Playing should map ADVANCE to next track and SELECT to play/pause."""
     backend = FakeMusicBackend()
-    screen = NowPlayingScreen(display, one_button_context, music_backend=backend)
+    screen = NowPlayingScreen(
+        display,
+        one_button_context,
+        state_provider=build_now_playing_state_provider(
+            context=one_button_context,
+            music_backend=backend,
+        ),
+        actions=build_now_playing_actions(
+            context=one_button_context,
+            music_backend=backend,
+        ),
+    )
 
     screen.on_advance()
     screen.on_select()
@@ -470,7 +500,15 @@ def test_voice_note_screen_uses_hold_to_record_in_one_button_mode(
 
     one_button_context.set_voice_note_recipient(name="Mama", sip_address="sip:alice@example.com")
     voip_manager = FakeVoIPManager()
-    screen = VoiceNoteScreen(display, one_button_context, voip_manager=voip_manager)
+    screen = VoiceNoteScreen(
+        display,
+        one_button_context,
+        state_provider=build_voice_note_state_provider(
+            context=one_button_context,
+            voip_manager=voip_manager,
+        ),
+        actions=build_voice_note_actions(voip_manager=voip_manager),
+    )
 
     screen.enter()
     assert screen.wants_ptt_passthrough()

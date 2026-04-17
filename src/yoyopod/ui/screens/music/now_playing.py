@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Callable, Optional
 
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
@@ -31,6 +32,136 @@ if TYPE_CHECKING:
     from yoyopod.ui.screens import ScreenView
 
 
+@dataclass(frozen=True, slots=True)
+class NowPlayingState:
+    """Prepared playback state for the now-playing screen."""
+
+    title: str
+    artist: str
+    progress: float
+    state_label: str
+    is_playing: bool
+
+
+@dataclass(frozen=True, slots=True)
+class NowPlayingActions:
+    """Focused playback actions exposed to the now-playing screen."""
+
+    toggle_playback: Callable[[], None] | None = None
+    previous_track: Callable[[], None] | None = None
+    next_track: Callable[[], None] | None = None
+
+
+def build_now_playing_state_provider(
+    *,
+    context: "AppContext | None" = None,
+    music_backend: "MusicBackend | None" = None,
+) -> Callable[[], NowPlayingState]:
+    """Build a narrow prepared-state provider for the now-playing screen."""
+
+    def provider() -> NowPlayingState:
+        if music_backend is not None:
+            if not music_backend.is_connected:
+                return NowPlayingState(
+                    title="Music Offline",
+                    artist="Trying to reconnect",
+                    progress=0.0,
+                    state_label="OFFLINE",
+                    is_playing=False,
+                )
+
+            current_track = music_backend.get_current_track()
+            playback_state = music_backend.get_playback_state()
+            if current_track is not None:
+                progress = 0.0
+                if current_track.length > 0:
+                    progress = music_backend.get_time_position() / current_track.length
+                state_label = (
+                    "PLAYING"
+                    if playback_state == "playing"
+                    else "PAUSED" if playback_state == "paused" else "READY"
+                )
+                return NowPlayingState(
+                    title=current_track.name,
+                    artist=current_track.get_artist_string() or "Unknown artist",
+                    progress=progress,
+                    state_label=state_label,
+                    is_playing=playback_state == "playing",
+                )
+
+            return NowPlayingState(
+                title="No Track Yet",
+                artist="Pick local music to begin",
+                progress=0.0,
+                state_label="READY",
+                is_playing=False,
+            )
+
+        track = context.get_current_track() if context is not None else None
+        if track is None:
+            return NowPlayingState(
+                title="No Track Yet",
+                artist="Pick local music to begin",
+                progress=0.0,
+                state_label="READY",
+                is_playing=False,
+            )
+
+        return NowPlayingState(
+            title=track.name,
+            artist=track.get_artist_string(),
+            progress=context.get_playback_progress() if context is not None else 0.0,
+            state_label=(
+                "PLAYING" if context is not None and context.playback.is_playing else "PAUSED"
+            ),
+            is_playing=bool(context is not None and context.playback.is_playing),
+        )
+
+    return provider
+
+
+def build_now_playing_actions(
+    *,
+    context: "AppContext | None" = None,
+    music_backend: "MusicBackend | None" = None,
+) -> NowPlayingActions:
+    """Build the focused playback actions for the now-playing screen."""
+
+    def toggle_playback() -> None:
+        if music_backend is not None:
+            if not music_backend.is_connected:
+                return
+            if music_backend.get_playback_state() == "playing":
+                music_backend.pause()
+            else:
+                music_backend.play()
+            return
+        if context is not None:
+            context.toggle_playback()
+
+    def previous_track() -> None:
+        if music_backend is not None:
+            if music_backend.is_connected:
+                music_backend.previous_track()
+            return
+        if context is not None:
+            context.previous_track()
+
+    def next_track() -> None:
+        if music_backend is not None:
+            if music_backend.is_connected:
+                music_backend.next_track()
+            return
+        if context is not None:
+            context.next_track()
+
+    return NowPlayingActions(
+        toggle_playback=toggle_playback,
+        previous_track=previous_track,
+        next_track=next_track,
+    )
+
+
 class NowPlayingScreen(Screen):
     """Current playback screen styled for the new Listen mode."""
 
@@ -38,10 +169,13 @@ class NowPlayingScreen(Screen):
         self,
         display: Display,
         context: Optional["AppContext"] = None,
-        music_backend: "MusicBackend | None" = None,
+        *,
+        state_provider: Callable[[], NowPlayingState] | None = None,
+        actions: NowPlayingActions | None = None,
     ) -> None:
         super().__init__(display, context, "NowPlaying")
-        self.music_backend = music_backend
+        self._state_provider = state_provider or build_now_playing_state_provider(context=context)
+        self._actions = actions or build_now_playing_actions(context=context)
         self._lvgl_view: "ScreenView | None" = None
 
     def enter(self) -> None:
@@ -81,10 +215,10 @@ class NowPlayingScreen(Screen):
             lvgl_view.sync()
             return
 
-        track_title, artist, progress, state_label, is_playing = self._track_snapshot()
-        state_text = self._display_state_text(state_label)
-        footer = self.get_footer_text(is_playing=is_playing, state_label=state_label)
-        visuals = self._state_visuals(state_label)
+        state = self.current_state()
+        state_text = self._display_state_text(state.state_label)
+        footer = self.get_footer_text(is_playing=state.is_playing, state_label=state.state_label)
+        visuals = self._state_visuals(state.state_label)
 
         render_backdrop(self.display, "listen")
         render_status_bar(self.display, self.context, show_time=True)
@@ -115,11 +249,11 @@ class NowPlayingScreen(Screen):
         title_y = halo_top + halo_height + 18
         title_lines = wrap_text(
             self.display,
-            track_title,
+            state.title,
             self.display.WIDTH - 32,
             18,
             max_lines=2,
-        ) or [text_fit(self.display, track_title, self.display.WIDTH - 32, 18)]
+        ) or [text_fit(self.display, state.title, self.display.WIDTH - 32, 18)]
         title_line_height = self.display.get_text_size("Ag", 18)[1]
         for index, line in enumerate(title_lines):
             title_width, _ = self.display.get_text_size(line, 18)
@@ -133,7 +267,7 @@ class NowPlayingScreen(Screen):
 
         title_bottom = title_y + (len(title_lines) * title_line_height)
         artist_y = title_bottom + 8
-        artist_text = text_fit(self.display, artist, self.display.WIDTH - 36, 11)
+        artist_text = text_fit(self.display, state.artist, self.display.WIDTH - 36, 11)
         artist_width, _ = self.display.get_text_size(artist_text, 11)
         self.display.text(
             artist_text,
@@ -175,7 +309,7 @@ class NowPlayingScreen(Screen):
             progress_y + 8,
             fill=mix(BACKGROUND, SURFACE_RAISED, 0.5),
         )
-        fill_width = max(0, min(progress_width, int(progress_width * progress)))
+        fill_width = max(0, min(progress_width, int(progress_width * state.progress)))
         if fill_width > 0:
             self.display.rectangle(
                 progress_x,
@@ -234,77 +368,28 @@ class NowPlayingScreen(Screen):
             "progress_fill": LISTEN.accent,
         }
 
-    def _track_snapshot(self) -> tuple[str, str, float, str, bool]:
-        """Return current track, artist, progress and state label."""
-        if self.music_backend:
-            if not self.music_backend.is_connected:
-                return ("Music Offline", "Trying to reconnect", 0.0, "OFFLINE", False)
+    def current_state(self) -> NowPlayingState:
+        """Return the prepared playback state for the current render."""
 
-            current_track = self.music_backend.get_current_track()
-            playback_state = self.music_backend.get_playback_state()
-            if current_track:
-                progress = 0.0
-                if current_track.length > 0:
-                    progress = self.music_backend.get_time_position() / current_track.length
-                state_label = (
-                    "PLAYING"
-                    if playback_state == "playing"
-                    else "PAUSED" if playback_state == "paused" else "READY"
-                )
-                return (
-                    current_track.name,
-                    current_track.get_artist_string() or "Unknown artist",
-                    progress,
-                    state_label,
-                    playback_state == "playing",
-                )
-
-            return ("No Track Yet", "Pick local music to begin", 0.0, "READY", False)
-
-        track = self.context.get_current_track() if self.context else None
-        if track is None:
-            return ("No Track Yet", "Pick local music to begin", 0.0, "READY", False)
-
-        return (
-            track.name,
-            track.get_artist_string(),
-            self.context.get_playback_progress() if self.context else 0.0,
-            "PLAYING" if self.context and self.context.playback.is_playing else "PAUSED",
-            bool(self.context and self.context.playback.is_playing),
-        )
+        return self._state_provider()
 
     def _toggle_playback(self) -> None:
-        """Toggle playback via the music backend or local app context."""
-        if self.music_backend:
-            if not self.music_backend.is_connected:
-                return
-            state = self.music_backend.get_playback_state()
-            if state == "playing":
-                self.music_backend.pause()
-            else:
-                self.music_backend.play()
-            return
+        """Toggle playback via the injected action seam."""
 
-        if self.context:
-            self.context.toggle_playback()
+        if self._actions.toggle_playback is not None:
+            self._actions.toggle_playback()
 
     def _previous_track(self) -> None:
-        """Go to the previous track."""
-        if self.music_backend:
-            if self.music_backend.is_connected:
-                self.music_backend.previous_track()
-            return
-        if self.context:
-            self.context.previous_track()
+        """Go to the previous track via the injected action seam."""
+
+        if self._actions.previous_track is not None:
+            self._actions.previous_track()
 
     def _next_track(self) -> None:
-        """Go to the next track."""
-        if self.music_backend:
-            if self.music_backend.is_connected:
-                self.music_backend.next_track()
-            return
-        if self.context:
-            self.context.next_track()
+        """Go to the next track via the injected action seam."""
+
+        if self._actions.next_track is not None:
+            self._actions.next_track()
 
     def on_select(self, data: object | None = None) -> None:
         """Toggle play/pause."""

@@ -8,7 +8,11 @@ from yoyopod.app_context import AppContext
 from yoyopod.power import BatteryState, PowerDeviceInfo, PowerSnapshot, RTCState, ShutdownState
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InteractionProfile
-from yoyopod.ui.screens.system.power import PowerScreen
+from yoyopod.ui.screens.system.power import (
+    PowerScreen,
+    build_power_screen_actions,
+    build_power_screen_state_provider,
+)
 
 
 class StubPowerManager:
@@ -66,11 +70,16 @@ def test_power_screen_builds_battery_and_runtime_pages() -> None:
         screen = PowerScreen(
             display,
             AppContext(),
-            power_manager=StubPowerManager(_snapshot()),
-            status_provider=lambda: status,
+            state_provider=build_power_screen_state_provider(
+                power_manager=StubPowerManager(_snapshot()),
+                status_provider=lambda: status,
+            ),
         )
 
-        pages = screen.build_pages(snapshot=screen.power_manager.get_snapshot(), status=status)
+        pages = screen.build_pages(
+            snapshot=screen._get_snapshot(),
+            status=status,
+        )
 
         assert [page.title for page in pages] == ["Power", "Time", "Care", "Voice"]
         assert ("Model", "PiSugar 3") in pages[0].rows
@@ -100,8 +109,10 @@ def test_power_screen_formats_unavailable_snapshot() -> None:
         screen = PowerScreen(
             display,
             AppContext(),
-            power_manager=StubPowerManager(snapshot),
-            status_provider=lambda: {},
+            state_provider=build_power_screen_state_provider(
+                power_manager=StubPowerManager(snapshot),
+                status_provider=lambda: {},
+            ),
         )
 
         pages = screen.build_pages(snapshot=snapshot, status={})
@@ -137,12 +148,16 @@ def test_power_screen_voice_page_toggles_runtime_voice_settings() -> None:
         screen = PowerScreen(
             display,
             context,
-            power_manager=StubPowerManager(_snapshot()),
-            status_provider=lambda: {},
-            volume_up_action=volume_up,
-            volume_down_action=volume_down,
-            mute_action=lambda: mute_calls.append("mute") or True,
-            unmute_action=lambda: mute_calls.append("unmute") or True,
+            state_provider=build_power_screen_state_provider(
+                power_manager=StubPowerManager(_snapshot()),
+                status_provider=lambda: {},
+            ),
+            actions=build_power_screen_actions(
+                volume_up_action=volume_up,
+                volume_down_action=volume_down,
+                mute_action=lambda: mute_calls.append("mute") or True,
+                unmute_action=lambda: mute_calls.append("unmute") or True,
+            ),
         )
 
         screen.page_index = 3
@@ -194,8 +209,10 @@ def test_power_screen_one_button_voice_page_stays_in_fast_page_mode() -> None:
         screen = PowerScreen(
             display,
             context,
-            power_manager=StubPowerManager(_snapshot()),
-            status_provider=lambda: {},
+            state_provider=build_power_screen_state_provider(
+                power_manager=StubPowerManager(_snapshot()),
+                status_provider=lambda: {},
+            ),
         )
 
         screen.page_index = 3
@@ -233,16 +250,20 @@ def test_power_screen_uses_injected_voice_device_hooks() -> None:
         screen = PowerScreen(
             display,
             context,
-            power_manager=StubPowerManager(_snapshot()),
-            status_provider=lambda: {},
-            refresh_voice_device_options_action=lambda: refresh_calls.append("refresh"),
-            playback_device_options_provider=lambda: ["plughw:CARD=wm8960soundcard,DEV=0"],
-            capture_device_options_provider=lambda: ["plughw:CARD=USB,DEV=0"],
-            persist_speaker_device_action=(
-                lambda device_id: persisted_devices.append(("speaker", device_id)) or True
+            state_provider=build_power_screen_state_provider(
+                power_manager=StubPowerManager(_snapshot()),
+                status_provider=lambda: {},
+                playback_device_options_provider=lambda: ["plughw:CARD=wm8960soundcard,DEV=0"],
+                capture_device_options_provider=lambda: ["plughw:CARD=USB,DEV=0"],
             ),
-            persist_capture_device_action=(
-                lambda device_id: persisted_devices.append(("capture", device_id)) or True
+            actions=build_power_screen_actions(
+                refresh_voice_device_options_action=lambda: refresh_calls.append("refresh"),
+                persist_speaker_device_action=(
+                    lambda device_id: persisted_devices.append(("speaker", device_id)) or True
+                ),
+                persist_capture_device_action=(
+                    lambda device_id: persisted_devices.append(("capture", device_id)) or True
+                ),
             ),
         )
 

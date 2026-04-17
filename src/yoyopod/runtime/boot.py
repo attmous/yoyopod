@@ -57,6 +57,18 @@ from yoyopod.ui.screens import (
     TalkContactScreen,
     VoiceNoteScreen,
 )
+from yoyopod.ui.screens.music.now_playing import (
+    build_now_playing_actions,
+    build_now_playing_state_provider,
+)
+from yoyopod.ui.screens.system.power import (
+    build_power_screen_actions,
+    build_power_screen_state_provider,
+)
+from yoyopod.ui.screens.voip.voice_note import (
+    build_voice_note_actions,
+    build_voice_note_state_provider,
+)
 from yoyopod.voice import VoiceSettings
 from yoyopod.communication import CallHistoryStore, VoIPConfig, VoIPManager
 
@@ -466,9 +478,7 @@ class RuntimeBootService:
                             else 50
                         ),
                         stt_backend=(
-                            voice_cfg.assistant.stt_backend
-                            if voice_cfg is not None
-                            else "vosk"
+                            voice_cfg.assistant.stt_backend if voice_cfg is not None else "vosk"
                         ),
                         tts_backend=(
                             voice_cfg.assistant.tts_backend
@@ -523,9 +533,7 @@ class RuntimeBootService:
                         self.app.voip_manager.mute if self.app.voip_manager is not None else None
                     ),
                     unmute_action=(
-                        self.app.voip_manager.unmute
-                        if self.app.voip_manager is not None
-                        else None
+                        self.app.voip_manager.unmute if self.app.voip_manager is not None else None
                     ),
                     play_music_action=(
                         self.app.local_music_service.shuffle_all
@@ -558,46 +566,59 @@ class RuntimeBootService:
             self.app.power_screen = PowerScreen(
                 display,
                 context,
-                power_manager=self.app.power_manager,
-                status_provider=self.app.get_status,
-                refresh_voice_device_options_action=(
-                    self.app.audio_device_catalog.refresh_async
-                    if self.app.audio_device_catalog is not None
-                    else None
+                state_provider=build_power_screen_state_provider(
+                    power_manager=self.app.power_manager,
+                    network_manager=self.app.network_manager,
+                    status_provider=self.app.get_status,
+                    playback_device_options_provider=(
+                        self.app.audio_device_catalog.playback_devices
+                        if self.app.audio_device_catalog is not None
+                        else None
+                    ),
+                    capture_device_options_provider=(
+                        self.app.audio_device_catalog.capture_devices
+                        if self.app.audio_device_catalog is not None
+                        else None
+                    ),
                 ),
-                playback_device_options_provider=(
-                    self.app.audio_device_catalog.playback_devices
-                    if self.app.audio_device_catalog is not None
-                    else None
-                ),
-                capture_device_options_provider=(
-                    self.app.audio_device_catalog.capture_devices
-                    if self.app.audio_device_catalog is not None
-                    else None
-                ),
-                persist_speaker_device_action=(
-                    self.app.config_manager.set_voice_speaker_device_id
-                    if self.app.config_manager is not None
-                    else None
-                ),
-                persist_capture_device_action=(
-                    self.app.config_manager.set_voice_capture_device_id
-                    if self.app.config_manager is not None
-                    else None
-                ),
-                volume_up_action=self.app.volume_up,
-                volume_down_action=self.app.volume_down,
-                mute_action=(
-                    self.app.voip_manager.mute if self.app.voip_manager is not None else None
-                ),
-                unmute_action=(
-                    self.app.voip_manager.unmute if self.app.voip_manager is not None else None
+                actions=build_power_screen_actions(
+                    network_manager=self.app.network_manager,
+                    refresh_voice_device_options_action=(
+                        self.app.audio_device_catalog.refresh_async
+                        if self.app.audio_device_catalog is not None
+                        else None
+                    ),
+                    persist_speaker_device_action=(
+                        self.app.config_manager.set_voice_speaker_device_id
+                        if self.app.config_manager is not None
+                        else None
+                    ),
+                    persist_capture_device_action=(
+                        self.app.config_manager.set_voice_capture_device_id
+                        if self.app.config_manager is not None
+                        else None
+                    ),
+                    volume_up_action=self.app.volume_up,
+                    volume_down_action=self.app.volume_down,
+                    mute_action=(
+                        self.app.voip_manager.mute if self.app.voip_manager is not None else None
+                    ),
+                    unmute_action=(
+                        self.app.voip_manager.unmute if self.app.voip_manager is not None else None
+                    ),
                 ),
             )
             self.app.now_playing_screen = NowPlayingScreen(
                 display,
                 context,
-                music_backend=self.app.music_backend,
+                state_provider=build_now_playing_state_provider(
+                    context=context,
+                    music_backend=self.app.music_backend,
+                ),
+                actions=build_now_playing_actions(
+                    context=context,
+                    music_backend=self.app.music_backend,
+                ),
             )
             self.app.playlist_screen = PlaylistScreen(
                 display,
@@ -636,7 +657,11 @@ class RuntimeBootService:
             self.app.voice_note_screen = VoiceNoteScreen(
                 display,
                 context,
-                voip_manager=self.app.voip_manager,
+                state_provider=build_voice_note_state_provider(
+                    context=context,
+                    voip_manager=self.app.voip_manager,
+                ),
+                actions=build_voice_note_actions(voip_manager=self.app.voip_manager),
             )
             self.app.incoming_call_screen = IncomingCallScreen(
                 display,

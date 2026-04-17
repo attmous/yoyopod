@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable, Optional
 
@@ -41,6 +41,193 @@ class PowerPage:
     interactive: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class PowerScreenState:
+    """Prepared power/setup state consumed by the Setup screen."""
+
+    snapshot: "PowerSnapshot | None" = None
+    status: dict[str, object] = field(default_factory=dict)
+    network_enabled: bool = False
+    network_rows: tuple[tuple[str, str], ...] = ()
+    gps_rows: tuple[tuple[str, str], ...] = ()
+    playback_devices: tuple[str, ...] = ()
+    capture_devices: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class PowerScreenActions:
+    """Focused actions exposed to the Setup screen."""
+
+    refresh_voice_devices: Callable[[], None] | None = None
+    refresh_gps: Callable[[], bool] | None = None
+    persist_speaker_device: Callable[[str | None], bool] | None = None
+    persist_capture_device: Callable[[str | None], bool] | None = None
+    volume_up: Callable[[int], int | None] | None = None
+    volume_down: Callable[[int], int | None] | None = None
+    mute: Callable[[], bool] | None = None
+    unmute: Callable[[], bool] | None = None
+
+
+def _build_network_rows_from_manager(network_manager: object | None) -> list[tuple[str, str]]:
+    """Build the cellular network status rows from a backend-facing manager."""
+
+    if network_manager is None or not network_manager.config.enabled:
+        return [("Status", "Disabled")]
+
+    from yoyopod.network.models import ModemPhase
+
+    state = network_manager.modem_state
+    if state.phase == ModemPhase.ONLINE:
+        status_text = "Online"
+    elif state.phase in (
+        ModemPhase.REGISTERED,
+        ModemPhase.PPP_STARTING,
+        ModemPhase.PPP_STOPPING,
+    ):
+        status_text = "Registered"
+    elif state.phase in (ModemPhase.PROBING, ModemPhase.READY, ModemPhase.REGISTERING):
+        status_text = "Connecting"
+    else:
+        status_text = "Offline"
+
+    return [
+        ("Status", status_text),
+        ("Carrier", state.carrier or "Unknown"),
+        ("Type", state.network_type or "Unknown"),
+        ("Signal", f"{state.signal.bars}/4" if state.signal else "Unknown"),
+        ("PPP", "Up" if state.phase == ModemPhase.ONLINE else "Down"),
+    ]
+
+
+def _build_gps_rows_from_manager(network_manager: object | None) -> list[tuple[str, str]]:
+    """Build the GPS status rows from a backend-facing manager."""
+
+    if network_manager is None or not network_manager.config.enabled:
+        return [
+            ("Fix", "Disabled"),
+            ("Lat", "--"),
+            ("Lng", "--"),
+            ("Alt", "--"),
+            ("Speed", "--"),
+        ]
+    if not network_manager.config.gps_enabled:
+        return [
+            ("Fix", "Disabled"),
+            ("Lat", "--"),
+            ("Lng", "--"),
+            ("Alt", "--"),
+            ("Speed", "--"),
+        ]
+
+    from yoyopod.network.models import ModemPhase
+
+    state = network_manager.modem_state
+    if state.gps is None:
+        fix_status = "Searching"
+        if state.phase in (ModemPhase.OFF, ModemPhase.PROBING, ModemPhase.READY):
+            fix_status = "Starting"
+        elif state.phase not in (
+            ModemPhase.REGISTERING,
+            ModemPhase.REGISTERED,
+            ModemPhase.PPP_STARTING,
+            ModemPhase.PPP_STOPPING,
+            ModemPhase.ONLINE,
+        ):
+            fix_status = "Unavailable"
+        return [
+            ("Fix", fix_status),
+            ("Lat", "--"),
+            ("Lng", "--"),
+            ("Alt", "--"),
+            ("Speed", "--"),
+        ]
+
+    coord = state.gps
+    return [
+        ("Fix", "Yes"),
+        ("Lat", f"{coord.lat:.6f}"),
+        ("Lng", f"{coord.lng:.6f}"),
+        ("Alt", f"{coord.altitude:.1f}m"),
+        ("Speed", f"{coord.speed:.1f}km/h"),
+    ]
+
+
+def build_power_screen_state_provider(
+    *,
+    power_manager: "PowerManager | None" = None,
+    network_manager: object | None = None,
+    status_provider: Callable[[], dict[str, object]] | None = None,
+    playback_device_options_provider: Callable[[], list[str]] | None = None,
+    capture_device_options_provider: Callable[[], list[str]] | None = None,
+) -> Callable[[], PowerScreenState]:
+    """Build a prepared-state provider for the Setup screen."""
+
+    def provider() -> PowerScreenState:
+        snapshot = power_manager.get_snapshot() if power_manager is not None else None
+        try:
+            status = dict(status_provider() if status_provider is not None else {})
+        except Exception:
+            status = {}
+
+        return PowerScreenState(
+            snapshot=snapshot,
+            status=status,
+            network_enabled=bool(
+                network_manager is not None and getattr(network_manager.config, "enabled", False)
+            ),
+            network_rows=tuple(_build_network_rows_from_manager(network_manager)),
+            gps_rows=tuple(_build_gps_rows_from_manager(network_manager)),
+            playback_devices=tuple(
+                playback_device_options_provider()
+                if playback_device_options_provider is not None
+                else []
+            ),
+            capture_devices=tuple(
+                capture_device_options_provider()
+                if capture_device_options_provider is not None
+                else []
+            ),
+        )
+
+    return provider
+
+
+def build_power_screen_actions(
+    *,
+    network_manager: object | None = None,
+    refresh_voice_device_options_action: Callable[[], None] | None = None,
+    persist_speaker_device_action: Callable[[str | None], bool] | None = None,
+    persist_capture_device_action: Callable[[str | None], bool] | None = None,
+    volume_up_action: Callable[[int], int | None] | None = None,
+    volume_down_action: Callable[[int], int | None] | None = None,
+    mute_action: Callable[[], bool] | None = None,
+    unmute_action: Callable[[], bool] | None = None,
+) -> PowerScreenActions:
+    """Build the focused actions for the Setup screen."""
+
+    def refresh_gps() -> bool:
+        if network_manager is None or not getattr(network_manager.config, "enabled", False):
+            return False
+        if not getattr(network_manager.config, "gps_enabled", False):
+            return False
+
+        query_gps = getattr(network_manager, "query_gps", None)
+        if not callable(query_gps):
+            return False
+        return query_gps() is not None
+
+    return PowerScreenActions(
+        refresh_voice_devices=refresh_voice_device_options_action,
+        refresh_gps=refresh_gps,
+        persist_speaker_device=persist_speaker_device_action,
+        persist_capture_device=persist_capture_device_action,
+        volume_up=volume_up_action,
+        volume_down=volume_down_action,
+        mute=mute_action,
+        unmute=unmute_action,
+    )
+
+
 class PowerScreen(Screen):
     """Compact Setup screen for power and device care state."""
 
@@ -49,32 +236,12 @@ class PowerScreen(Screen):
         display: Display,
         context: Optional["AppContext"] = None,
         *,
-        power_manager: Optional["PowerManager"] = None,
-        network_manager: Optional[object] = None,
-        status_provider: Optional[Callable[[], dict[str, object]]] = None,
-        refresh_voice_device_options_action: Optional[Callable[[], None]] = None,
-        playback_device_options_provider: Optional[Callable[[], list[str]]] = None,
-        capture_device_options_provider: Optional[Callable[[], list[str]]] = None,
-        persist_speaker_device_action: Optional[Callable[[str | None], bool]] = None,
-        persist_capture_device_action: Optional[Callable[[str | None], bool]] = None,
-        volume_up_action: Optional[Callable[[int], int | None]] = None,
-        volume_down_action: Optional[Callable[[int], int | None]] = None,
-        mute_action: Optional[Callable[[], bool]] = None,
-        unmute_action: Optional[Callable[[], bool]] = None,
+        state_provider: Callable[[], PowerScreenState] | None = None,
+        actions: PowerScreenActions | None = None,
     ) -> None:
         super().__init__(display, context, "PowerStatus")
-        self.power_manager = power_manager
-        self.network_manager = network_manager
-        self.status_provider = status_provider or (lambda: {})
-        self.refresh_voice_device_options_action = refresh_voice_device_options_action
-        self.playback_device_options_provider = playback_device_options_provider
-        self.capture_device_options_provider = capture_device_options_provider
-        self.persist_speaker_device_action = persist_speaker_device_action
-        self.persist_capture_device_action = persist_capture_device_action
-        self.volume_up_action = volume_up_action
-        self.volume_down_action = volume_down_action
-        self.mute_action = mute_action
-        self.unmute_action = unmute_action
+        self._state_provider = state_provider or build_power_screen_state_provider()
+        self._actions = actions or PowerScreenActions()
         self.page_index = 0
         self.selected_row = 0
         self.in_detail = False
@@ -89,8 +256,8 @@ class PowerScreen(Screen):
         self.page_index = 0
         self.selected_row = 0
         self.in_detail = False
-        if self.refresh_voice_device_options_action is not None:
-            self.refresh_voice_device_options_action()
+        if self._actions.refresh_voice_devices is not None:
+            self._actions.refresh_voice_devices()
         self._ensure_lvgl_view()
 
     def exit(self) -> None:
@@ -125,9 +292,8 @@ class PowerScreen(Screen):
             lvgl_view.sync()
             return
 
-        snapshot = self._get_snapshot()
-        status = self._get_status()
-        pages = self._build_pages_for_display(snapshot=snapshot, status=status)
+        state = self._get_state()
+        pages = self._build_pages_for_display(state=state)
         self.page_index %= len(pages)
         active_page = pages[self.page_index]
         picker_mode = not self.is_one_button_mode() and not self.in_detail
@@ -377,19 +543,26 @@ class PowerScreen(Screen):
     def build_pages(
         self,
         *,
-        snapshot: Optional["PowerSnapshot"],
-        status: dict[str, object],
+        snapshot: Optional["PowerSnapshot"] = None,
+        status: dict[str, object] | None = None,
+        state: PowerScreenState | None = None,
     ) -> list[PowerPage]:
         """Build compact setup pages for rendering and tests."""
-        battery_rows = self._build_battery_rows(snapshot=snapshot)
-        runtime_rows = self._build_runtime_rows(snapshot=snapshot, status=status)
+        resolved_state = state or self._get_state()
+        resolved_snapshot = snapshot if snapshot is not None else resolved_state.snapshot
+        resolved_status = status if status is not None else resolved_state.status
+        battery_rows = self._build_battery_rows(snapshot=resolved_snapshot)
+        runtime_rows = self._build_runtime_rows(
+            snapshot=resolved_snapshot,
+            status=resolved_status,
+        )
 
         pages = [
             PowerPage(title="Power", rows=battery_rows[:4]),
         ]
-        if self.network_manager is not None and self.network_manager.config.enabled:
-            pages.append(PowerPage(title="Network", rows=self._build_network_rows()))
-            pages.append(PowerPage(title="GPS", rows=self._build_gps_rows()))
+        if resolved_state.network_enabled:
+            pages.append(PowerPage(title="Network", rows=self._build_network_rows(resolved_state)))
+            pages.append(PowerPage(title="GPS", rows=self._build_gps_rows(resolved_state)))
         voice_interactive = not self.is_one_button_mode()
         pages.extend(
             [
@@ -407,12 +580,18 @@ class PowerScreen(Screen):
     def _build_pages_for_display(
         self,
         *,
-        snapshot: Optional["PowerSnapshot"],
-        status: dict[str, object],
+        snapshot: Optional["PowerSnapshot"] = None,
+        status: dict[str, object] | None = None,
+        state: PowerScreenState | None = None,
     ) -> list[PowerPage]:
         """Build pages and opportunistically refresh GPS when the GPS page is active."""
 
-        pages = self.build_pages(snapshot=snapshot, status=status)
+        resolved_state = state or self._get_state()
+        pages = self.build_pages(
+            snapshot=snapshot,
+            status=status,
+            state=resolved_state,
+        )
         if not pages:
             return pages
 
@@ -422,7 +601,7 @@ class PowerScreen(Screen):
             return pages
 
         if self._maybe_refresh_gps_page():
-            pages = self.build_pages(snapshot=snapshot, status=status)
+            pages = self.build_pages(state=self._get_state())
         return pages
 
     def _build_voice_rows(self, *, summary_mode: bool = False) -> list[tuple[str, str]]:
@@ -468,93 +647,33 @@ class PowerScreen(Screen):
             ]
         return rows
 
-    def _build_network_rows(self) -> list[tuple[str, str]]:
+    def _build_network_rows(
+        self,
+        state: PowerScreenState | None = None,
+    ) -> list[tuple[str, str]]:
         """Build the cellular network status page."""
-        if self.network_manager is None or not self.network_manager.config.enabled:
-            return [("Status", "Disabled")]
-        state = self.network_manager.modem_state
-        from yoyopod.network.models import ModemPhase
+        resolved_state = state or self._get_state()
+        return list(resolved_state.network_rows or (("Status", "Disabled"),))
 
-        if state.phase == ModemPhase.ONLINE:
-            status_text = "Online"
-        elif state.phase in (
-            ModemPhase.REGISTERED,
-            ModemPhase.PPP_STARTING,
-            ModemPhase.PPP_STOPPING,
-        ):
-            status_text = "Registered"
-        elif state.phase in (ModemPhase.PROBING, ModemPhase.READY, ModemPhase.REGISTERING):
-            status_text = "Connecting"
-        else:
-            status_text = "Offline"
-        return [
-            ("Status", status_text),
-            ("Carrier", state.carrier or "Unknown"),
-            ("Type", state.network_type or "Unknown"),
-            ("Signal", f"{state.signal.bars}/4" if state.signal else "Unknown"),
-            ("PPP", "Up" if state.phase == ModemPhase.ONLINE else "Down"),
-        ]
-
-    def _build_gps_rows(self) -> list[tuple[str, str]]:
+    def _build_gps_rows(
+        self,
+        state: PowerScreenState | None = None,
+    ) -> list[tuple[str, str]]:
         """Build the GPS status page."""
-        if self.network_manager is None or not self.network_manager.config.enabled:
-            return [
+        resolved_state = state or self._get_state()
+        return list(
+            resolved_state.gps_rows
+            or (
                 ("Fix", "Disabled"),
                 ("Lat", "--"),
                 ("Lng", "--"),
                 ("Alt", "--"),
                 ("Speed", "--"),
-            ]
-        if not self.network_manager.config.gps_enabled:
-            return [
-                ("Fix", "Disabled"),
-                ("Lat", "--"),
-                ("Lng", "--"),
-                ("Alt", "--"),
-                ("Speed", "--"),
-            ]
-        state = self.network_manager.modem_state
-        from yoyopod.network.models import ModemPhase
-
-        if state.gps is None:
-            fix_status = "Searching"
-            if state.phase in (ModemPhase.OFF, ModemPhase.PROBING, ModemPhase.READY):
-                fix_status = "Starting"
-            elif state.phase not in (
-                ModemPhase.REGISTERING,
-                ModemPhase.REGISTERED,
-                ModemPhase.PPP_STARTING,
-                ModemPhase.PPP_STOPPING,
-                ModemPhase.ONLINE,
-            ):
-                fix_status = "Unavailable"
-            return [
-                ("Fix", fix_status),
-                ("Lat", "--"),
-                ("Lng", "--"),
-                ("Alt", "--"),
-                ("Speed", "--"),
-            ]
-        coord = state.gps
-        return [
-            ("Fix", "Yes"),
-            ("Lat", f"{coord.lat:.6f}"),
-            ("Lng", f"{coord.lng:.6f}"),
-            ("Alt", f"{coord.altitude:.1f}m"),
-            ("Speed", f"{coord.speed:.1f}km/h"),
-        ]
+            )
+        )
 
     def _maybe_refresh_gps_page(self) -> bool:
         """Query GPS when the user is actively viewing the GPS page."""
-
-        if self.network_manager is None or not self.network_manager.config.enabled:
-            return False
-        if not self.network_manager.config.gps_enabled:
-            return False
-
-        query_gps = getattr(self.network_manager, "query_gps", None)
-        if not callable(query_gps):
-            return False
 
         now = time.monotonic()
         if now - self._last_gps_query_at < self._gps_refresh_interval_seconds:
@@ -562,27 +681,30 @@ class PowerScreen(Screen):
 
         self._last_gps_query_at = now
         try:
-            coord = query_gps()
+            coord = False if self._actions.refresh_gps is None else self._actions.refresh_gps()
         except Exception as exc:
             logger.warning("GPS refresh failed on Setup screen: {}", exc)
             return False
 
         if self.context is not None:
-            self.context.update_network_status(gps_has_fix=coord is not None)
-        return coord is not None
+            self.context.update_network_status(gps_has_fix=bool(coord))
+        return bool(coord)
+
+    def _get_state(self) -> PowerScreenState:
+        """Return the prepared state for the current render."""
+
+        try:
+            return self._state_provider()
+        except Exception:
+            return PowerScreenState()
 
     def _get_snapshot(self) -> Optional["PowerSnapshot"]:
         """Return the latest power snapshot."""
-        if self.power_manager is None:
-            return None
-        return self.power_manager.get_snapshot()
+        return self._get_state().snapshot
 
     def _get_status(self) -> dict[str, object]:
         """Return the latest app runtime/policy status."""
-        try:
-            return self.status_provider()
-        except Exception:
-            return {}
+        return dict(self._get_state().status)
 
     def _build_battery_rows(self, *, snapshot: Optional["PowerSnapshot"]) -> list[tuple[str, str]]:
         """Build the power-focused page."""
@@ -765,7 +887,7 @@ class PowerScreen(Screen):
     def _active_pages(self) -> list[PowerPage]:
         """Return the current page list for navigation helpers."""
 
-        return self.build_pages(snapshot=self._get_snapshot(), status=self._get_status())
+        return self.build_pages(state=self._get_state())
 
     def _active_page(self) -> PowerPage:
         """Return the current active page."""
@@ -830,10 +952,10 @@ class PowerScreen(Screen):
             self._apply_mic_state(not self.context.voice.mic_muted)
             return
         current = None
-        if direction > 0 and self.volume_up_action is not None:
-            current = self.volume_up_action(5)
-        elif direction < 0 and self.volume_down_action is not None:
-            current = self.volume_down_action(5)
+        if direction > 0 and self._actions.volume_up is not None:
+            current = self._actions.volume_up(5)
+        elif direction < 0 and self._actions.volume_down is not None:
+            current = self._actions.volume_down(5)
         else:
             volume = self.context.voice.output_volume + (5 * direction)
             self.context.set_volume(max(0, min(100, volume)))
@@ -843,18 +965,12 @@ class PowerScreen(Screen):
     def _playback_device_options(self) -> list[str | None]:
         """Return selectable playback options, with None representing Auto."""
 
-        devices = []
-        if self.playback_device_options_provider is not None:
-            devices = list(self.playback_device_options_provider())
-        return [None, *devices]
+        return [None, *self._get_state().playback_devices]
 
     def _capture_device_options(self) -> list[str | None]:
         """Return selectable capture options, with None representing Auto."""
 
-        devices = []
-        if self.capture_device_options_provider is not None:
-            devices = list(self.capture_device_options_provider())
-        return [None, *devices]
+        return [None, *self._get_state().capture_devices]
 
     @staticmethod
     def _cycle_option(
@@ -880,8 +996,8 @@ class PowerScreen(Screen):
             direction,
         )
         self.context.configure_voice(speaker_device_id=next_device)
-        if self.persist_speaker_device_action is not None:
-            self.persist_speaker_device_action(next_device)
+        if self._actions.persist_speaker_device is not None:
+            self._actions.persist_speaker_device(next_device)
 
     def _cycle_capture_device(self, direction: int) -> None:
         if self.context is None:
@@ -892,8 +1008,8 @@ class PowerScreen(Screen):
             direction,
         )
         self.context.configure_voice(capture_device_id=next_device)
-        if self.persist_capture_device_action is not None:
-            self.persist_capture_device_action(next_device)
+        if self._actions.persist_capture_device is not None:
+            self._actions.persist_capture_device(next_device)
 
     def _next_page(self) -> None:
         """Advance to the next page with wraparound."""
@@ -1008,7 +1124,7 @@ class PowerScreen(Screen):
 
         if self.context is not None:
             self.context.set_mic_muted(muted)
-        action = self.mute_action if muted else self.unmute_action
+        action = self._actions.mute if muted else self._actions.unmute
         if action is not None:
             action()
 

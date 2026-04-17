@@ -15,6 +15,10 @@ from yoyopod.communication.calling import VoiceNoteDraft
 from yoyopod.people import Contact
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens import CallScreen, NavigationRequest, TalkContactScreen, VoiceNoteScreen
+from yoyopod.ui.screens.voip.voice_note import (
+    build_voice_note_actions,
+    build_voice_note_state_provider,
+)
 
 
 class FakePeopleDirectory:
@@ -131,7 +135,9 @@ def test_call_screen_builds_people_deck_from_contacts(display: Display) -> None:
 def test_call_screen_select_opens_selected_contact(display: Display) -> None:
     """Selecting from Talk should store the contact and route to the action screen."""
 
-    contacts = [Contact(name="Alice", sip_address="sip:alice@example.com", favorite=True, notes="Mama")]
+    contacts = [
+        Contact(name="Alice", sip_address="sip:alice@example.com", favorite=True, notes="Mama")
+    ]
     context = AppContext()
     screen = CallScreen(
         display,
@@ -179,7 +185,9 @@ def test_talk_contact_screen_routes_to_voice_note(display: Display) -> None:
     assert screen.consume_navigation_request() == NavigationRequest.route("voice_note")
 
 
-def test_talk_contact_screen_adds_play_note_action_when_latest_note_exists(display: Display) -> None:
+def test_talk_contact_screen_adds_play_note_action_when_latest_note_exists(
+    display: Display,
+) -> None:
     """Contacts with a stored incoming voice note should expose Play Note."""
 
     context = AppContext()
@@ -216,7 +224,12 @@ def test_voice_note_screen_records_reviews_and_sends(display: Display) -> None:
     context = AppContext()
     voip_manager = FakeVoIPManager()
     context.set_voice_note_recipient(name="Mama", sip_address="sip:alice@example.com")
-    screen = VoiceNoteScreen(display, context, voip_manager=voip_manager)
+    screen = VoiceNoteScreen(
+        display,
+        context,
+        state_provider=build_voice_note_state_provider(context=context, voip_manager=voip_manager),
+        actions=build_voice_note_actions(voip_manager=voip_manager),
+    )
 
     screen.enter()
     assert screen.current_view_model()[0] == "Voice Note"
@@ -240,7 +253,12 @@ def test_voice_note_screen_can_preview_before_sending(display: Display) -> None:
     context = AppContext()
     voip_manager = FakeVoIPManager()
     context.set_voice_note_recipient(name="Mama", sip_address="sip:alice@example.com")
-    screen = VoiceNoteScreen(display, context, voip_manager=voip_manager)
+    screen = VoiceNoteScreen(
+        display,
+        context,
+        state_provider=build_voice_note_state_provider(context=context, voip_manager=voip_manager),
+        actions=build_voice_note_actions(voip_manager=voip_manager),
+    )
 
     screen.enter()
     screen.on_ptt_press({"stage": "hold_started"})
@@ -267,7 +285,12 @@ def test_voice_note_screen_reopens_clean_after_terminal_draft(display: Display) 
         duration_ms=3200,
     )
     context.set_voice_note_recipient(name="Mama", sip_address="sip:alice@example.com")
-    screen = VoiceNoteScreen(display, context, voip_manager=voip_manager)
+    screen = VoiceNoteScreen(
+        display,
+        context,
+        state_provider=build_voice_note_state_provider(context=context, voip_manager=voip_manager),
+        actions=build_voice_note_actions(voip_manager=voip_manager),
+    )
 
     screen.enter()
 
@@ -291,7 +314,12 @@ def test_voice_note_screen_render_syncs_manager_terminal_state(display: Display)
         duration_ms=3200,
     )
     context.set_voice_note_recipient(name="Mama", sip_address="sip:alice@example.com")
-    screen = VoiceNoteScreen(display, context, voip_manager=voip_manager)
+    screen = VoiceNoteScreen(
+        display,
+        context,
+        state_provider=build_voice_note_state_provider(context=context, voip_manager=voip_manager),
+        actions=build_voice_note_actions(voip_manager=voip_manager),
+    )
 
     screen.enter()
     voip_manager.active_voice_note.send_state = "failed"
@@ -316,7 +344,12 @@ def test_voice_note_screen_ignores_stale_draft_for_different_recipient(display: 
         message_id="note-alice",
     )
     context.set_voice_note_recipient(name="Dad", sip_address="sip:bob@example.com")
-    screen = VoiceNoteScreen(display, context, voip_manager=voip_manager)
+    screen = VoiceNoteScreen(
+        display,
+        context,
+        state_provider=build_voice_note_state_provider(context=context, voip_manager=voip_manager),
+        actions=build_voice_note_actions(voip_manager=voip_manager),
+    )
 
     screen.enter()
 

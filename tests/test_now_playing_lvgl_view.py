@@ -6,6 +6,10 @@ from yoyopod.app_context import AppContext
 from yoyopod.audio import MockMusicBackend, Track
 from yoyopod.ui.input import InteractionProfile
 from yoyopod.ui.screens import NowPlayingScreen
+from yoyopod.ui.screens.music.now_playing import (
+    build_now_playing_actions,
+    build_now_playing_state_provider,
+)
 
 
 class FakeLvglBinding:
@@ -67,7 +71,12 @@ def test_now_playing_screen_builds_syncs_and_destroys_lvgl_view() -> None:
     )
     backend.time_position = 50000
     backend.play()
-    screen = NowPlayingScreen(display, context, music_backend=backend)
+    screen = NowPlayingScreen(
+        display,
+        context,
+        state_provider=build_now_playing_state_provider(context=context, music_backend=backend),
+        actions=build_now_playing_actions(context=context, music_backend=backend),
+    )
 
     screen.enter()
     screen.render()
@@ -95,10 +104,18 @@ def test_now_playing_screen_syncs_offline_state_through_lvgl() -> None:
     binding = FakeLvglBinding()
     display = FakeLvglDisplay(binding)
     context = AppContext(interaction_profile=InteractionProfile.ONE_BUTTON)
+    backend = MockMusicBackend()
     screen = NowPlayingScreen(
         display,
         context,
-        music_backend=MockMusicBackend(),
+        state_provider=build_now_playing_state_provider(
+            context=context,
+            music_backend=backend,
+        ),
+        actions=build_now_playing_actions(
+            context=context,
+            music_backend=backend,
+        ),
     )
 
     screen.enter()
@@ -130,7 +147,12 @@ def test_now_playing_screen_syncs_paused_state_through_lvgl() -> None:
     backend.time_position = 74000
     backend.pause()
 
-    screen = NowPlayingScreen(display, context, music_backend=backend)
+    screen = NowPlayingScreen(
+        display,
+        context,
+        state_provider=build_now_playing_state_provider(context=context, music_backend=backend),
+        actions=build_now_playing_actions(context=context, music_backend=backend),
+    )
 
     screen.enter()
     screen.render()

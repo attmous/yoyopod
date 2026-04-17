@@ -470,11 +470,20 @@ def test_voice_note_screen_uses_talk_actions_scene_for_voice_note_states() -> No
     """VoiceNoteScreen should delegate to the Talk actions scene on LVGL."""
 
     from yoyopod.ui.screens.voip.voice_note import VoiceNoteScreen
+    from yoyopod.ui.screens.voip.voice_note import (
+        build_voice_note_actions,
+        build_voice_note_state_provider,
+    )
 
     binding = FakeLvglBinding()
     context = make_one_button_context()
     context.set_voice_note_recipient(name="Hagar", sip_address="sip:hagar@example.com")
-    screen = VoiceNoteScreen(FakeLvglDisplay(binding), context)
+    screen = VoiceNoteScreen(
+        FakeLvglDisplay(binding),
+        context,
+        state_provider=build_voice_note_state_provider(context=context),
+        actions=build_voice_note_actions(),
+    )
 
     screen.enter()
     screen.render()
@@ -494,25 +503,28 @@ def test_voice_note_screen_uses_talk_actions_scene_for_voice_note_states() -> No
 def test_power_screen_cycles_four_lvgl_pages() -> None:
     """PowerScreen should use the picker/detail Setup flow on standard controls."""
 
+    from yoyopod.ui.screens.system.power import build_power_screen_state_provider
+
     binding = FakeLvglBinding()
     screen = PowerScreen(
         FakeLvglDisplay(binding),
         AppContext(),
-        power_manager=None,
-        status_provider=lambda: {
-            "app_uptime_seconds": 99,
-            "screen_awake": True,
-            "screen_on_seconds": 42,
-            "screen_idle_seconds": 3,
-            "screen_timeout_seconds": 60,
-            "warning_threshold_percent": 20,
-            "critical_shutdown_percent": 10,
-            "shutdown_delay_seconds": 15,
-            "shutdown_pending": False,
-            "watchdog_enabled": True,
-            "watchdog_active": True,
-            "watchdog_feed_suppressed": False,
-        },
+        state_provider=build_power_screen_state_provider(
+            status_provider=lambda: {
+                "app_uptime_seconds": 99,
+                "screen_awake": True,
+                "screen_on_seconds": 42,
+                "screen_idle_seconds": 3,
+                "screen_timeout_seconds": 60,
+                "warning_threshold_percent": 20,
+                "critical_shutdown_percent": 10,
+                "shutdown_delay_seconds": 15,
+                "shutdown_pending": False,
+                "watchdog_enabled": True,
+                "watchdog_active": True,
+                "watchdog_feed_suppressed": False,
+            },
+        ),
     )
 
     screen.enter()
@@ -591,12 +603,13 @@ def test_power_screen_cycles_four_lvgl_pages() -> None:
 def test_power_screen_one_button_voice_page_wraps_immediately() -> None:
     """The Whisplay Voice page should stay in the normal page-to-page loop."""
 
+    from yoyopod.ui.screens.system.power import build_power_screen_state_provider
+
     binding = FakeLvglBinding()
     screen = PowerScreen(
         FakeLvglDisplay(binding),
         make_one_button_context(),
-        power_manager=None,
-        status_provider=lambda: {},
+        state_provider=build_power_screen_state_provider(status_provider=lambda: {}),
     )
 
     screen.enter()
@@ -625,6 +638,10 @@ def test_power_screen_reports_full_network_page_count_through_lvgl() -> None:
     """Network-enabled Setup pages should preserve the full page count in LVGL payloads."""
 
     from yoyopod.network.models import ModemPhase, ModemState, SignalInfo
+    from yoyopod.ui.screens.system.power import (
+        build_power_screen_actions,
+        build_power_screen_state_provider,
+    )
 
     class _FakeNetworkManager:
         def __init__(self) -> None:
@@ -647,11 +664,15 @@ def test_power_screen_reports_full_network_page_count_through_lvgl() -> None:
             return None
 
     binding = FakeLvglBinding()
+    network_manager = _FakeNetworkManager()
     screen = PowerScreen(
         FakeLvglDisplay(binding),
         make_one_button_context(),
-        network_manager=_FakeNetworkManager(),
-        status_provider=lambda: {},
+        state_provider=build_power_screen_state_provider(
+            network_manager=network_manager,
+            status_provider=lambda: {},
+        ),
+        actions=build_power_screen_actions(network_manager=network_manager),
     )
 
     screen.enter()

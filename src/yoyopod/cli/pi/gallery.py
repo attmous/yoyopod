@@ -550,6 +550,10 @@ def _build_talk_contact_screen(display: object) -> object:
 def _build_voice_note_recording_screen(display: object) -> object:
     """Build the voice-note recording state."""
     from yoyopod.ui.screens import VoiceNoteScreen
+    from yoyopod.ui.screens.voip.voice_note import (
+        build_voice_note_actions,
+        build_voice_note_state_provider,
+    )
 
     context = _build_context()
     context.set_voice_note_recipient(name="Mama", sip_address="sip:mama@example.com")  # type: ignore[union-attr]
@@ -561,16 +565,25 @@ def _build_voice_note_recording_screen(display: object) -> object:
         send_state="recording",
         status_text="Recording...",
     )
+    voip_manager = _FakeVoipManager(active_voice_note=draft)
     return VoiceNoteScreen(
         display,
         context,
-        voip_manager=_FakeVoipManager(active_voice_note=draft),
+        state_provider=build_voice_note_state_provider(
+            context=context,
+            voip_manager=voip_manager,
+        ),
+        actions=build_voice_note_actions(voip_manager=voip_manager),
     )
 
 
 def _build_voice_note_review_screen(display: object) -> object:
     """Build the voice-note review state."""
     from yoyopod.ui.screens import VoiceNoteScreen
+    from yoyopod.ui.screens.voip.voice_note import (
+        build_voice_note_actions,
+        build_voice_note_state_provider,
+    )
 
     context = _build_context()
     context.set_voice_note_recipient(name="Mama", sip_address="sip:mama@example.com")  # type: ignore[union-attr]
@@ -582,16 +595,25 @@ def _build_voice_note_review_screen(display: object) -> object:
         send_state="review",
         status_text="Ready to send",
     )
+    voip_manager = _FakeVoipManager(active_voice_note=draft)
     return VoiceNoteScreen(
         display,
         context,
-        voip_manager=_FakeVoipManager(active_voice_note=draft),
+        state_provider=build_voice_note_state_provider(
+            context=context,
+            voip_manager=voip_manager,
+        ),
+        actions=build_voice_note_actions(voip_manager=voip_manager),
     )
 
 
 def _build_voice_note_sent_screen(display: object) -> object:
     """Build the voice-note sent state."""
     from yoyopod.ui.screens import VoiceNoteScreen
+    from yoyopod.ui.screens.voip.voice_note import (
+        build_voice_note_actions,
+        build_voice_note_state_provider,
+    )
 
     context = _build_context()
     context.set_voice_note_recipient(name="Mama", sip_address="sip:mama@example.com")  # type: ignore[union-attr]
@@ -604,10 +626,15 @@ def _build_voice_note_sent_screen(display: object) -> object:
         status_text="Sent",
         message_id="demo-note",
     )
+    voip_manager = _FakeVoipManager(active_voice_note=draft)
     return VoiceNoteScreen(
         display,
         context,
-        voip_manager=_FakeVoipManager(active_voice_note=draft),
+        state_provider=build_voice_note_state_provider(
+            context=context,
+            voip_manager=voip_manager,
+        ),
+        actions=build_voice_note_actions(voip_manager=voip_manager),
     )
 
 
@@ -633,6 +660,58 @@ def _build_now_playing_backend(*, playback_state: str) -> object:
     return backend
 
 
+def _build_now_playing_screen(display: object, *, playback_state: str) -> object:
+    """Build a now-playing screen wired through the playback facade seam."""
+
+    from yoyopod.ui.screens import NowPlayingScreen
+    from yoyopod.ui.screens.music.now_playing import (
+        build_now_playing_actions,
+        build_now_playing_state_provider,
+    )
+
+    context = _build_context()
+    backend = _build_now_playing_backend(playback_state=playback_state)
+    return NowPlayingScreen(
+        display,
+        context,
+        state_provider=build_now_playing_state_provider(
+            context=context,
+            music_backend=backend,
+        ),
+        actions=build_now_playing_actions(
+            context=context,
+            music_backend=backend,
+        ),
+    )
+
+
+def _build_power_screen(
+    display: object,
+    *,
+    power_snapshot: object,
+    network_manager: object | None = None,
+) -> object:
+    """Build a Setup screen wired through the prepared power facade seam."""
+
+    from yoyopod.ui.screens import PowerScreen
+    from yoyopod.ui.screens.system.power import (
+        build_power_screen_actions,
+        build_power_screen_state_provider,
+    )
+
+    context = _build_context()
+    return PowerScreen(
+        display,
+        context,
+        state_provider=build_power_screen_state_provider(
+            power_manager=_FakePowerManager(power_snapshot),
+            network_manager=network_manager,
+            status_provider=_build_power_status,
+        ),
+        actions=build_power_screen_actions(network_manager=network_manager),
+    )
+
+
 def _advance_ask_to_response(screen: object) -> None:
     """Drive AskScreen into its response state for a second capture."""
     screen.on_select()  # type: ignore[union-attr]
@@ -650,10 +729,8 @@ def _build_capture_specs(display: object) -> list[_CaptureSpec]:
         InCallScreen,
         IncomingCallScreen,
         ListenScreen,
-        NowPlayingScreen,
         OutgoingCallScreen,
         PlaylistScreen,
-        PowerScreen,
         RecentTracksScreen,
     )
 
@@ -680,27 +757,15 @@ def _build_capture_specs(display: object) -> list[_CaptureSpec]:
         ),
         _CaptureSpec(
             "04_now_playing",
-            lambda: NowPlayingScreen(
-                display,
-                _build_context(),
-                music_backend=_build_now_playing_backend(playback_state="playing"),
-            ),
+            lambda: _build_now_playing_screen(display, playback_state="playing"),
         ),
         _CaptureSpec(
             "04b_now_playing_paused",
-            lambda: NowPlayingScreen(
-                display,
-                _build_context(),
-                music_backend=_build_now_playing_backend(playback_state="paused"),
-            ),
+            lambda: _build_now_playing_screen(display, playback_state="paused"),
         ),
         _CaptureSpec(
             "04c_now_playing_offline",
-            lambda: NowPlayingScreen(
-                display,
-                _build_context(),
-                music_backend=_build_now_playing_backend(playback_state="offline"),
-            ),
+            lambda: _build_now_playing_screen(display, playback_state="offline"),
         ),
         _CaptureSpec(
             "05_talk",
@@ -759,42 +824,25 @@ def _build_capture_specs(display: object) -> list[_CaptureSpec]:
         ),
         _CaptureSpec(
             "12_power",
-            lambda: PowerScreen(
-                display,
-                _build_context(),
-                power_manager=_FakePowerManager(power_snapshot),
-                status_provider=_build_power_status,
-            ),
+            lambda: _build_power_screen(display, power_snapshot=power_snapshot),
         ),
         _CaptureSpec(
             "12b_gps",
-            lambda: PowerScreen(
+            lambda: _build_power_screen(
                 display,
-                _build_context(),
-                power_manager=_FakePowerManager(power_snapshot),
+                power_snapshot=power_snapshot,
                 network_manager=_FakeNetworkManager(),
-                status_provider=_build_power_status,
             ),
             prepare=lambda screen: setattr(screen, "page_index", 2),
         ),
         _CaptureSpec(
             "13_time",
-            lambda: PowerScreen(
-                display,
-                _build_context(),
-                power_manager=_FakePowerManager(power_snapshot),
-                status_provider=_build_power_status,
-            ),
+            lambda: _build_power_screen(display, power_snapshot=power_snapshot),
             prepare=lambda screen: setattr(screen, "page_index", 1),
         ),
         _CaptureSpec(
             "14_care",
-            lambda: PowerScreen(
-                display,
-                _build_context(),
-                power_manager=_FakePowerManager(power_snapshot),
-                status_provider=_build_power_status,
-            ),
+            lambda: _build_power_screen(display, power_snapshot=power_snapshot),
             prepare=lambda screen: setattr(screen, "page_index", 2),
         ),
         _CaptureSpec(
