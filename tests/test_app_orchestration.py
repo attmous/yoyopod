@@ -1527,12 +1527,41 @@ def test_runtime_loop_relaxes_idle_cadence_and_exposes_snapshot() -> None:
 
     status = app.get_status()
     assert sleep_seconds == pytest.approx(0.05)
-    assert status["runtime_cadence_mode"] == "idle"
-    assert status["runtime_cadence_reason"] == "idle_state"
+    assert status["runtime_cadence_mode"] == "idle_awake"
+    assert status["runtime_cadence_reason"] == "screen_awake_idle"
     assert status["runtime_target_sleep_seconds"] == pytest.approx(0.05)
     assert status["runtime_requested_sleep_seconds"] == pytest.approx(0.05)
     assert status["voip_iterate_interval_seconds"] == pytest.approx(0.02)
     assert status["voip_effective_iterate_interval_seconds"] == pytest.approx(0.05)
+    assert status["runtime_cadence_age_seconds"] is not None
+
+
+def test_runtime_loop_uses_slower_screen_off_idle_cadence() -> None:
+    """Screen-off idle should stretch both the loop sleep and the VoIP deadline."""
+
+    app, _, _ = _build_app_with_power(
+        FakePowerManager([_power_snapshot(available=True, battery_percent=55.0)])
+    )
+    app.voip_manager = FakeRuntimeLoopVoIPManager()
+    app._voip_iterate_interval_seconds = 0.02
+    app._screen_awake = False
+    app._next_voip_iterate_at = 1.05
+
+    sleep_seconds = app.runtime_loop.next_sleep_interval_seconds(
+        monotonic_now=1.0,
+        current_time=1.0,
+        last_screen_update=1.0,
+        screen_update_interval=1.0,
+    )
+
+    status = app.get_status()
+    assert sleep_seconds == pytest.approx(0.1)
+    assert app._next_voip_iterate_at == pytest.approx(1.1)
+    assert status["runtime_cadence_mode"] == "idle_sleeping"
+    assert status["runtime_cadence_reason"] == "screen_sleeping"
+    assert status["runtime_target_sleep_seconds"] == pytest.approx(0.1)
+    assert status["runtime_requested_sleep_seconds"] == pytest.approx(0.1)
+    assert status["voip_effective_iterate_interval_seconds"] == pytest.approx(0.1)
 
 
 def test_runtime_loop_restores_fast_cadence_for_recent_input() -> None:

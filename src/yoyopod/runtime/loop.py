@@ -84,6 +84,7 @@ class RuntimeLoopService:
     _MIN_VOIP_ITERATE_WARNING_SECONDS = 0.15
     _RECENT_INPUT_WINDOW_SECONDS = 0.4
     _RELAXED_IDLE_INTERVAL_SECONDS = 0.05
+    _SCREEN_SLEEP_IDLE_INTERVAL_SECONDS = 0.1
     _LATENCY_SENSITIVE_STATES = frozenset(
         {
             "call_incoming",
@@ -278,8 +279,9 @@ class RuntimeLoopService:
         self._last_voip_event_drain_duration_seconds = (
             iterate_metrics.event_drain_duration_seconds if iterate_metrics is not None else 0.0
         )
-        self.app._next_voip_iterate_at = (
-            monotonic_now + self._effective_voip_iterate_interval_seconds()
+        self.app._next_voip_iterate_at = self._next_voip_due_at_for_cadence(
+            monotonic_now=monotonic_now,
+            iterate_interval_seconds=self._effective_voip_iterate_interval_seconds(),
         )
 
         delayed = schedule_delay_seconds >= self._voip_schedule_delay_warning_seconds()
@@ -598,6 +600,11 @@ class RuntimeLoopService:
             "runtime_cadence_reason": self._current_cadence_reason,
             "runtime_target_sleep_seconds": self._current_loop_sleep_seconds,
             "runtime_requested_sleep_seconds": self._last_requested_sleep_seconds,
+            "runtime_cadence_age_seconds": (
+                max(0.0, monotonic_now - self._last_cadence_selected_at)
+                if self._last_cadence_selected_at > 0.0
+                else None
+            ),
             "runtime_requested_sleep_age_seconds": (
                 max(0.0, monotonic_now - self._last_requested_sleep_recorded_at)
                 if self._last_requested_sleep_recorded_at > 0.0
@@ -692,9 +699,20 @@ class RuntimeLoopService:
                 voip_iterate_interval_seconds=configured_voip_interval_seconds,
             )
 
+        if not self.app._screen_awake:
+            return _LoopCadenceDecision(
+                mode="idle_sleeping",
+                reason="screen_sleeping",
+                loop_sleep_seconds=self._SCREEN_SLEEP_IDLE_INTERVAL_SECONDS,
+                voip_iterate_interval_seconds=max(
+                    configured_voip_interval_seconds,
+                    self._SCREEN_SLEEP_IDLE_INTERVAL_SECONDS,
+                ),
+            )
+
         return _LoopCadenceDecision(
-            mode="idle",
-            reason="idle_state",
+            mode="idle_awake",
+            reason="screen_awake_idle",
             loop_sleep_seconds=self._RELAXED_IDLE_INTERVAL_SECONDS,
             voip_iterate_interval_seconds=max(
                 configured_voip_interval_seconds,
@@ -726,11 +744,11 @@ class RuntimeLoopService:
         if (
             self.app.voip_manager is not None
             and self.app.voip_manager.running
-            and self.app._next_voip_iterate_at > 0.0
-            and decision.voip_iterate_interval_seconds < previous_voip_interval_seconds
         ):
-            accelerated_due = monotonic_now + decision.voip_iterate_interval_seconds
-            self.app._next_voip_iterate_at = min(self.app._next_voip_iterate_at, accelerated_due)
+            self.app._next_voip_iterate_at = self._next_voip_due_at_for_cadence(
+                monotonic_now=monotonic_now,
+                iterate_interval_seconds=decision.voip_iterate_interval_seconds,
+            )
 
         if not changed:
             return
@@ -752,6 +770,22 @@ class RuntimeLoopService:
         """Return the currently selected VoIP iterate cadence."""
 
         return max(0.01, self._current_voip_iterate_interval_seconds)
+
+    def _next_voip_due_at_for_cadence(
+        self,
+        *,
+        monotonic_now: float,
+        iterate_interval_seconds: float,
+    ) -> float:
+        """Return the next VoIP iterate deadline aligned to the current cadence."""
+
+        effective_interval_seconds = max(0.01, iterate_interval_seconds)
+        if self._last_voip_iterate_started_at <= 0.0:
+            return monotonic_now + effective_interval_seconds
+        return max(
+            monotonic_now,
+            self._last_voip_iterate_started_at + effective_interval_seconds,
+        )
 
     def _observe_loop_gap(self, *, monotonic_now: float) -> None:
         """Track coordinator-loop gaps so starvation shows up in logs and snapshots."""

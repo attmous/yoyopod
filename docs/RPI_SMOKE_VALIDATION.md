@@ -131,6 +131,7 @@ When the full app is running, the coordinator-thread timing signals land in
 - `Runtime loop blocked` means the whole coordinator loop stalled between iterations.
 - `Coordinator blocking span` names the specific runtime step that blocked long enough to threaten keep-alive cadence or UI responsiveness.
 - `Runtime iteration slow` means the total loop iteration stayed on the coordinator thread too long even if the exact hot span was not obvious from a single callback.
+- `runtime_cadence_mode`, `runtime_target_sleep_seconds`, `runtime_requested_sleep_seconds`, and `voip_effective_iterate_interval_seconds` in `app.get_status()` snapshots tell you whether the loop is in a fast interactive path, awake idle, or screen-off idle and what sleep / VoIP cadence it actually requested.
 - Freeze snapshots also include `runtime_blocking_span_name`, `runtime_blocking_span_seconds`, and `runtime_blocking_span_age_seconds` so a `SIGUSR1` dump can tell you whether the last blocking span is still fresh or already stale.
 - When `diagnostics.responsiveness_watchdog_enabled=true`, the app also writes automatic evidence bundles under `logs/responsiveness/` once the loop heartbeat stops advancing past the configured threshold.
 - Those bundles include `input_activity_age_seconds` and `handled_input_activity_age_seconds` so you can tell whether input was still arriving while the coordinator/UI side stopped responding.

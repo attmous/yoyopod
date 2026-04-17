@@ -96,6 +96,7 @@ This is the startup sequence that exists on `main` today.
    - It logs a startup status snapshot.
    - It starts the watchdog cadence.
    - Each loop iteration drains queued main-thread callbacks and typed events, pumps LVGL timers and queued input, iterates the Liblinphone backend on the coordinator thread, polls recovery and power services, and refreshes active screens on the configured cadence.
+   - The outer loop adapts its next wake based on runtime state: call / recent-input paths stay fast, awake idle relaxes, and screen-off idle can relax further while still honoring the next VoIP, watchdog, power-poll, shutdown, or screen-refresh deadline.
 9. Shutdown runs through `app.stop()` and `ShutdownLifecycleService.stop()`.
    - network, VoIP, music, and input managers are stopped
    - queued main-thread work is drained one last time
