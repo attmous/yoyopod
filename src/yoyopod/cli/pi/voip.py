@@ -469,13 +469,15 @@ def _print_result(result: _DrillResult) -> None:
 
 
 @voip_app.command()
-def check() -> None:
+def check(
+    config_dir: str = typer.Option(
+        "config",
+        "--config-dir",
+        help="Configuration directory to use.",
+    ),
+) -> None:
     """Run a verbose SIP registration check against the Liblinphone backend."""
     from loguru import logger
-
-    from yoyopod.config import ConfigManager
-    from yoyopod.communication import VoIPConfig, VoIPManager
-    from yoyopod.communication.integrations.liblinphone_binding import LiblinphoneBinding
 
     configure_logging(verbose=True)
 
@@ -483,15 +485,8 @@ def check() -> None:
     logger.info("Liblinphone Registration Test")
     logger.info("=" * 60)
 
-    binding = LiblinphoneBinding.try_load()
-    if binding is None:
-        logger.error(
-            "Liblinphone shim is unavailable. Build it first with yoyoctl build liblinphone."
-        )
-        raise typer.Exit(code=1)
-
-    config_manager = ConfigManager(config_dir="config")
-    voip_config = VoIPConfig.from_config_manager(config_manager)
+    voip_manager = _build_voip_manager(config_dir)
+    voip_config = voip_manager.config
 
     logger.info(f"SIP Server: {voip_config.sip_server}")
     logger.info(f"SIP Username: {voip_config.sip_username}")
@@ -500,7 +495,6 @@ def check() -> None:
     logger.info(f"STUN Server: {voip_config.stun_server}")
     logger.info(f"File transfer server: {voip_config.file_transfer_server_url or 'unset'}")
 
-    voip_manager = VoIPManager(voip_config)
     registration_states: list[RegistrationState] = []
     voip_manager.on_registration_change(lambda state: registration_states.append(state))
 
@@ -529,13 +523,15 @@ def check() -> None:
 
 
 @voip_app.command()
-def debug() -> None:
+def debug(
+    config_dir: str = typer.Option(
+        "config",
+        "--config-dir",
+        help="Configuration directory to use.",
+    ),
+) -> None:
     """Monitor for incoming SIP calls with verbose logging."""
     from loguru import logger
-
-    from yoyopod.config import ConfigManager
-    from yoyopod.communication import VoIPConfig, VoIPManager
-    from yoyopod.communication.integrations.liblinphone_binding import LiblinphoneBinding
 
     configure_logging(verbose=True)
 
@@ -543,16 +539,8 @@ def debug() -> None:
     logger.info("Incoming Call Debug Test")
     logger.info("=" * 60)
 
-    binding = LiblinphoneBinding.try_load()
-    if binding is None:
-        logger.error(
-            "Liblinphone shim is unavailable. Build it first with yoyoctl build liblinphone."
-        )
-        raise typer.Exit(code=1)
-
-    config_manager = ConfigManager(config_dir="config")
-    voip_config = VoIPConfig.from_config_manager(config_manager)
-    voip_manager = VoIPManager(voip_config)
+    voip_manager = _build_voip_manager(config_dir)
+    voip_config = voip_manager.config
     incoming_calls: list[tuple[str, str]] = []
 
     def on_incoming_call(caller_address: str, caller_name: str) -> None:
@@ -806,9 +794,11 @@ def reconnect_drill(
             logger.info(message)
             recorder.note(message)
 
-        outage_deadline = time.monotonic() + disconnect_seconds
+        outage_started_at = time.monotonic()
+        outage_deadline = outage_started_at + disconnect_seconds
         drop_observed = False
         drop_state = RegistrationState.OK.value
+        first_drop_wait_seconds: float | None = None
         while time.monotonic() <= outage_deadline:
             manager.iterate()
             recorder.sample(manager)
@@ -816,6 +806,8 @@ def reconnect_drill(
             if not _status_is_registered(status):
                 drop_observed = True
                 drop_state = str(status.get("registration_state", ""))
+                if first_drop_wait_seconds is None:
+                    first_drop_wait_seconds = max(0.0, time.monotonic() - outage_started_at)
             time.sleep(_iterate_interval_seconds(manager))
 
         if restore_command:
@@ -840,7 +832,7 @@ def reconnect_drill(
                 timeout=drop_detect_timeout,
             )
         else:
-            drop_wait_seconds = disconnect_seconds
+            drop_wait_seconds = first_drop_wait_seconds or 0.0
 
         if not drop_observed:
             result = recorder.finalize(

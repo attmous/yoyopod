@@ -103,11 +103,13 @@ def test_build_liblinphone_help():
 def test_pi_voip_check_help():
     result = runner.invoke(app, ["pi", "voip", "check", "--help"])
     assert result.exit_code == 0
+    assert "--config-dir" in _plain(result.output)
 
 
 def test_pi_voip_debug_help():
     result = runner.invoke(app, ["pi", "voip", "debug", "--help"])
     assert result.exit_code == 0
+    assert "--config-dir" in _plain(result.output)
 
 
 def test_pi_voip_registration_stability_help():

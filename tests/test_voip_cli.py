@@ -42,7 +42,11 @@ class FakeVoIPManager:
         self.config = SimpleNamespace(
             iterate_interval_ms=100,
             sip_server="sip.example.com",
+            sip_username="alice",
             sip_identity="sip:alice@example.com",
+            transport="udp",
+            stun_server="stun.example.com",
+            file_transfer_server_url="https://uploads.example.com",
         )
         self.running = False
         self.registered = False
@@ -50,8 +54,11 @@ class FakeVoIPManager:
         self.call_state = CallState.IDLE
         self._registration_callbacks: list[object] = []
         self._call_state_callbacks: list[object] = []
+        self._incoming_call_callbacks: list[object] = []
         self._scheduled: list[tuple[float, object]] = []
         self.call_connected_at: float | None = None
+        self.start_result = True
+        self.make_call_result = True
 
     def schedule_registration(self, delay_seconds: float, state: RegistrationState) -> None:
         self._scheduled.append((self.clock.now + delay_seconds, ("registration", state)))
@@ -65,9 +72,12 @@ class FakeVoIPManager:
     def on_call_state_change(self, callback) -> None:
         self._call_state_callbacks.append(callback)
 
+    def on_incoming_call(self, callback) -> None:
+        self._incoming_call_callbacks.append(callback)
+
     def start(self) -> bool:
         self.running = True
-        return True
+        return self.start_result
 
     def stop(self) -> None:
         self.running = False
@@ -102,6 +112,8 @@ class FakeVoIPManager:
         )
 
     def make_call(self, sip_address: str, contact_name: str | None = None) -> bool:
+        if not self.make_call_result:
+            return False
         self._set_call_state(CallState.OUTGOING_RINGING)
         self.schedule_call_state(0.2, CallState.CONNECTED)
         return True
@@ -179,6 +191,39 @@ def test_registration_stability_writes_pass_artifacts(
     assert summary["extras"]["hold_seconds"] == 1.0
 
 
+def test_registration_stability_fails_when_registration_flaps_during_hold(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The registration drill should exit non-zero when registration leaves OK during the hold."""
+
+    clock = FakeClock()
+    manager = FakeVoIPManager(clock)
+    manager.schedule_registration(0.1, RegistrationState.OK)
+    manager.schedule_registration(0.4, RegistrationState.FAILED)
+    _patch_clock(monkeypatch, clock)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+
+    result = runner.invoke(
+        voip_cli.voip_app,
+        [
+            "registration-stability",
+            "--registration-timeout",
+            "1",
+            "--hold-seconds",
+            "1",
+            "--artifacts-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 1
+    summary = _load_summary(tmp_path)
+    assert summary["status"] == "fail"
+    assert summary["reason"] == "Registration left OK during stability hold: failed"
+    assert summary["extras"]["failed_state"] == "failed"
+
+
 def test_reconnect_drill_fails_when_registration_never_recovers(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -231,6 +276,7 @@ def test_reconnect_drill_fails_when_registration_never_recovers(
     assert summary["status"] == "fail"
     assert "did not recover" in summary["reason"]
     assert summary["extras"]["drop_state"] == "failed"
+    assert summary["extras"]["drop_wait_seconds"] == pytest.approx(0.1)
 
 
 def test_reconnect_drill_recovers_after_temporary_drop(
@@ -287,6 +333,7 @@ def test_reconnect_drill_recovers_after_temporary_drop(
     assert summary["status"] == "pass"
     assert summary["reason"] == "Registration recovered after the temporary outage"
     assert summary["extras"]["drop_state"] == "failed"
+    assert summary["extras"]["drop_wait_seconds"] == pytest.approx(0.1)
     assert summary["registration_states"] == ["ok", "failed", "ok"]
 
 
@@ -373,3 +420,103 @@ def test_call_soak_writes_pass_summary(
     assert summary["status"] == "pass"
     assert summary["metadata"]["target"] == "sip:echo@example.com"
     assert summary["extras"]["cleanup"] == "hangup_clean"
+
+
+def test_call_soak_fails_when_call_never_reaches_connected_media(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The call soak should exit non-zero when the target call terminates before media connects."""
+
+    clock = FakeClock()
+    manager = FakeVoIPManager(clock)
+    manager.schedule_registration(0.1, RegistrationState.OK)
+    _patch_clock(monkeypatch, clock)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+
+    def fake_make_call(sip_address: str, contact_name: str | None = None) -> bool:
+        manager._set_call_state(CallState.OUTGOING_RINGING)
+        manager.schedule_call_state(0.2, CallState.END)
+        return True
+
+    monkeypatch.setattr(manager, "make_call", fake_make_call)
+
+    result = runner.invoke(
+        voip_cli.voip_app,
+        [
+            "call-soak",
+            "--target",
+            "sip:echo@example.com",
+            "--registration-timeout",
+            "1",
+            "--connect-timeout",
+            "1",
+            "--soak-seconds",
+            "1",
+            "--hangup-timeout",
+            "0.5",
+            "--artifacts-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 1
+    summary = _load_summary(tmp_path)
+    assert summary["status"] == "fail"
+    assert summary["reason"] == "Call never reached a connected state (last_state=end)"
+    assert summary["extras"]["last_call_state"] == "end"
+
+
+def test_check_uses_custom_config_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The verbose registration check should honor the shared config-dir option."""
+
+    clock = FakeClock()
+    manager = FakeVoIPManager(clock)
+    manager.schedule_registration(0.1, RegistrationState.OK)
+    _patch_clock(monkeypatch, clock)
+    called_with: list[str] = []
+
+    def fake_build(config_dir: str) -> FakeVoIPManager:
+        called_with.append(config_dir)
+        return manager
+
+    monkeypatch.setattr(voip_cli, "_build_voip_manager", fake_build)
+
+    result = runner.invoke(
+        voip_cli.voip_app,
+        ["check", "--config-dir", "/tmp/custom-config"],
+    )
+
+    assert result.exit_code == 0
+    assert called_with == ["/tmp/custom-config"]
+
+
+def test_debug_uses_custom_config_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The incoming-call debug loop should honor the shared config-dir option."""
+
+    clock = FakeClock()
+    manager = FakeVoIPManager(clock)
+    _patch_clock(monkeypatch, clock)
+    called_with: list[str] = []
+
+    def fake_build(config_dir: str) -> FakeVoIPManager:
+        called_with.append(config_dir)
+        return manager
+
+    def interrupting_iterate() -> int:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(voip_cli, "_build_voip_manager", fake_build)
+    monkeypatch.setattr(manager, "iterate", interrupting_iterate)
+
+    result = runner.invoke(
+        voip_cli.voip_app,
+        ["debug", "--config-dir", "/tmp/custom-config"],
+    )
+
+    assert result.exit_code == 0
+    assert called_with == ["/tmp/custom-config"]
