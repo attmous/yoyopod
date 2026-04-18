@@ -14,6 +14,7 @@ from __future__ import annotations
 import select
 import time
 from collections import defaultdict
+from datetime import datetime
 from enum import Enum
 from threading import Event, Thread
 from typing import Any, Callable, Dict, List, Optional
@@ -58,8 +59,8 @@ _DEBOUNCE_TIME = 0.05
 _LONG_PRESS_TIME = 1.0
 _POLL_INTERVAL = 0.03
 _EDGE_IDLE_WAIT_TIMEOUT = 0.5
-_EDGE_EVENT_RISING = {"rising", "rising_edge", "line_event_rising_edge", "edge_rising"}
-_EDGE_EVENT_FALLING = {"falling", "falling_edge", "line_event_falling_edge", "edge_falling"}
+_EDGE_EVENT_RISING = {"rising", "rising_edge", "line_event_rising_edge", "edge_rising", "1"}
+_EDGE_EVENT_FALLING = {"falling", "falling_edge", "line_event_falling_edge", "edge_falling", "2"}
 
 
 class GpiodButtonAdapter(InputHAL):
@@ -357,13 +358,15 @@ class GpiodButtonAdapter(InputHAL):
 
         return None
 
-    def _edge_event_observed_at(self, event: object, fallback: float) -> float:
-        """Prefer event timestamps when available so drained edges keep their ordering."""
+    def _edge_event_timestamp_seconds(self, event: object) -> float | None:
+        """Extract an event timestamp as seconds without assuming a clock domain."""
         timestamp_ns = getattr(event, "timestamp_ns", None)
         if isinstance(timestamp_ns, int):
             return timestamp_ns / 1_000_000_000
 
         timestamp = getattr(event, "timestamp", None)
+        if isinstance(timestamp, datetime):
+            return timestamp.timestamp()
         if isinstance(timestamp, (int, float)):
             return float(timestamp)
 
@@ -372,7 +375,20 @@ class GpiodButtonAdapter(InputHAL):
         if isinstance(sec, int) and isinstance(nsec, int):
             return sec + (nsec / 1_000_000_000)
 
-        return fallback
+        return None
+
+    def _edge_event_observed_at(
+        self,
+        event: object,
+        fallback: float,
+        first_timestamp: float | None,
+    ) -> float:
+        """Project event ordering onto the local monotonic clock used by the FSM."""
+        timestamp_seconds = self._edge_event_timestamp_seconds(event)
+        if timestamp_seconds is None or first_timestamp is None:
+            return fallback
+
+        return fallback + max(0.0, timestamp_seconds - first_timestamp)
 
     def _edge_type_to_pressed_state(self, edge_type: object) -> bool | None:
         """Map gpiod edge direction identifiers onto active-low pressed state."""
@@ -393,8 +409,15 @@ class GpiodButtonAdapter(InputHAL):
             self._observe_raw_state(button, self._read_button(button), observed_at)
             return
 
+        first_timestamp = None
         for event in events:
-            event_at = self._edge_event_observed_at(event, observed_at)
+            timestamp_seconds = self._edge_event_timestamp_seconds(event)
+            if timestamp_seconds is not None:
+                first_timestamp = timestamp_seconds
+                break
+
+        for event in events:
+            event_at = self._edge_event_observed_at(event, observed_at, first_timestamp)
             self._advance_button_state(button, event_at)
             event_state = self._edge_event_state(event)
             if event_state is None:

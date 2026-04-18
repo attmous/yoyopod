@@ -270,7 +270,57 @@ def test_apply_edge_events_preserves_queued_transitions(monkeypatch: pytest.Monk
     )
 
     adapter._apply_edge_events(Button.A, FakeLine(), 1.0)
-    adapter._advance_button_state(Button.A, 1.05)
-    adapter._advance_button_state(Button.A, 1.11)
+    adapter._advance_button_state(Button.A, 1.07)
+    adapter._advance_button_state(Button.A, 1.12)
 
     assert received == [("select", {"button": "A"})]
+
+
+def test_apply_edge_events_accepts_integer_edge_constants(monkeypatch: pytest.MonkeyPatch) -> None:
+    from yoyopod.ui.input.adapters.gpiod_buttons import Button, GpiodButtonAdapter
+
+    class FakeEvent:
+        def __init__(self, event_type: int, timestamp_ns: int) -> None:
+            self.event_type = event_type
+            self.timestamp_ns = timestamp_ns
+
+    class FakeLine:
+        def get_value(self) -> int:
+            raise AssertionError("edge decoding should not fall back to sampling")
+
+    adapter = GpiodButtonAdapter(pin_config={}, simulate=True)
+    received: list[tuple[str, dict[str, str]]] = []
+    adapter.on_action(InputAction.SELECT, lambda data: received.append(("select", data)))
+
+    monkeypatch.setattr(
+        "yoyopod.ui.input.adapters.gpiod_buttons.read_edge_events",
+        lambda _line: [
+            FakeEvent(2, 1_000_000_000),
+            FakeEvent(1, 1_060_000_000),
+        ],
+    )
+
+    adapter._apply_edge_events(Button.A, FakeLine(), 5.0)
+    adapter._advance_button_state(Button.A, 5.07)
+    adapter._advance_button_state(Button.A, 5.12)
+
+    assert received == [("select", {"button": "A"})]
+
+
+def test_edge_event_observed_at_projects_datetime_order_onto_monotonic_clock() -> None:
+    from datetime import datetime, timezone
+
+    from yoyopod.ui.input.adapters.gpiod_buttons import GpiodButtonAdapter
+
+    class FakeEvent:
+        def __init__(self, timestamp: datetime) -> None:
+            self.timestamp = timestamp
+
+    adapter = GpiodButtonAdapter(pin_config={}, simulate=True)
+    first = datetime(2026, 4, 18, 9, 0, 0, tzinfo=timezone.utc)
+    second = datetime(2026, 4, 18, 9, 0, 0, 60_000, tzinfo=timezone.utc)
+    base = adapter._edge_event_timestamp_seconds(FakeEvent(first))
+
+    assert base is not None
+    assert adapter._edge_event_observed_at(FakeEvent(first), 10.0, base) == 10.0
+    assert adapter._edge_event_observed_at(FakeEvent(second), 10.0, base) == pytest.approx(10.06)
