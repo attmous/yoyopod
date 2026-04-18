@@ -10,6 +10,7 @@ from yoyopod.ui.display import Display
 from yoyopod.ui.input import InteractionProfile
 from yoyopod.ui.screens.system.power import (
     PowerScreen,
+    PowerScreenState,
     build_power_screen_actions,
     build_power_screen_state_provider,
 )
@@ -286,5 +287,49 @@ def test_power_screen_uses_injected_voice_device_hooks() -> None:
             ("speaker", "plughw:CARD=wm8960soundcard,DEV=0"),
             ("capture", "plughw:CARD=USB,DEV=0"),
         ]
+    finally:
+        display.cleanup()
+
+
+def test_power_screen_reuses_prepared_pages_until_explicit_refresh() -> None:
+    """Setup should reuse cached prepared pages until an explicit refresh updates state."""
+
+    class TogglingStateProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(self) -> PowerScreenState:
+            self.calls += 1
+            network_enabled = self.calls > 1
+            return PowerScreenState(
+                network_enabled=network_enabled,
+                network_rows=(("Status", "Online"),),
+                gps_rows=(
+                    ("Fix", "Yes"),
+                    ("Lat", "48.873800"),
+                    ("Lng", "2.352200"),
+                    ("Alt", "349.6m"),
+                    ("Speed", "0.0km/h"),
+                ),
+            )
+
+    display = Display(simulate=True)
+    try:
+        provider = TogglingStateProvider()
+        screen = PowerScreen(display, AppContext(), state_provider=provider)
+
+        screen.enter()
+        first_payload = screen.lvgl_payload()
+        second_payload = screen.lvgl_payload()
+
+        assert provider.calls == 1
+        assert first_payload.total_pages == 4
+        assert second_payload.total_pages == 4
+
+        screen.refresh_prepared_state(force=True, reason="test")
+        refreshed_payload = screen.lvgl_payload()
+
+        assert provider.calls == 2
+        assert refreshed_payload.total_pages == 6
     finally:
         display.cleanup()

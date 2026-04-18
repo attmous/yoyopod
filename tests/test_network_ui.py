@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from yoyopod.app_context import AppContext
 from yoyopod.network.models import GpsCoordinate, ModemPhase, ModemState, SignalInfo
+from yoyopod.ui.input import InteractionProfile
 from yoyopod.ui.screens.system.power import (
     PowerScreen,
     build_power_screen_actions,
@@ -121,25 +123,53 @@ def test_gps_page_no_fix():
     assert ("Lat", "--") in rows
 
 
-def test_active_gps_page_refreshes_coordinates_before_render():
-    """The GPS Setup page should trigger a GPS query when it becomes active."""
+def test_gps_page_render_does_not_query_coordinates():
+    """GPS render helpers should consume cached state instead of querying coordinates."""
 
     nm = FakeNetworkManager()
     nm._state.gps = GpsCoordinate(lat=48.8738, lng=2.3522, altitude=349.6, speed=0.0)
     screen = PowerScreen(
         FakeDisplay(),
+        AppContext(interaction_profile=InteractionProfile.ONE_BUTTON),
         state_provider=build_power_screen_state_provider(network_manager=nm),
         actions=build_power_screen_actions(network_manager=nm),
     )
+    screen.enter()
     screen.page_index = 2
 
-    pages = screen._build_pages_for_display()
+    payload = screen.lvgl_payload()
+
+    assert nm.query_gps_calls == 0
+    assert payload.title_text == "GPS"
+    assert payload.items == (
+        "Fix: Yes",
+        "Lat: 48.873800",
+        "Lng: 2.352200",
+        "Alt: 349.6m",
+        "Speed: 0.0km/h",
+    )
+
+
+def test_active_gps_page_refreshes_coordinates_via_explicit_state_hook():
+    """The GPS Setup page should only query coordinates through an explicit refresh hook."""
+
+    nm = FakeNetworkManager()
+    nm._state.gps = GpsCoordinate(lat=48.8738, lng=2.3522, altitude=349.6, speed=0.0)
+    screen = PowerScreen(
+        FakeDisplay(),
+        AppContext(interaction_profile=InteractionProfile.ONE_BUTTON),
+        state_provider=build_power_screen_state_provider(network_manager=nm),
+        actions=build_power_screen_actions(network_manager=nm),
+    )
+    screen.enter()
+    screen.page_index = 2
+
+    screen.refresh_prepared_state(force=True, allow_gps_refresh=True, reason="test")
+    payload = screen.lvgl_payload()
 
     assert nm.query_gps_calls == 1
-    gps_page = pages[2]
-    assert gps_page.title == "GPS"
-    assert ("Fix", "Yes") in gps_page.rows
-    assert any("48.8738" in value for _, value in gps_page.rows)
+    assert payload.title_text == "GPS"
+    assert "Lat: 48.873800" in payload.items
 
 
 def test_build_pages_includes_network_when_enabled():

@@ -64,10 +64,14 @@ class FakeScreen:
 
     def __init__(self) -> None:
         self.render_calls = 0
+        self.refresh_for_visible_tick_calls = 0
         self.route_name: str | None = None
 
     def render(self) -> None:
         self.render_calls += 1
+
+    def refresh_for_visible_tick(self) -> None:
+        self.refresh_for_visible_tick_calls += 1
 
 
 class FakeIncomingCallScreen(FakeScreen):
@@ -1077,10 +1081,12 @@ def test_periodic_power_refresh_only_renders_visible_power_screen() -> None:
 
     app._update_power_screen_if_needed()
     assert app.power_screen.render_calls == 0
+    assert app.power_screen.refresh_for_visible_tick_calls == 0
 
     screen_manager.push_screen("power")
     app._update_power_screen_if_needed()
     assert app.power_screen.render_calls == 1
+    assert app.power_screen.refresh_for_visible_tick_calls == 1
 
 
 def test_power_poll_honors_interval_and_tracks_unavailable_backend() -> None:
@@ -1634,6 +1640,7 @@ def test_runtime_loop_service_refreshes_visible_power_screen() -> None:
 
     assert updated_at == 1.0
     assert app.power_screen.render_calls > render_calls_before
+    assert app.power_screen.refresh_for_visible_tick_calls > 0
 
 
 def test_runtime_loop_relaxes_idle_cadence_and_exposes_snapshot() -> None:

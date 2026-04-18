@@ -60,6 +60,13 @@ class ScreenCoordinator:
             and self.runtime.power_screen is not None
             and self.runtime.screen_manager.current_screen == self.runtime.power_screen
         ):
+            refresh_for_visible_tick = getattr(
+                self.runtime.power_screen,
+                "refresh_for_visible_tick",
+                None,
+            )
+            if callable(refresh_for_visible_tick):
+                refresh_for_visible_tick()
             self.runtime.power_screen.render()
 
     def refresh_current_screen(self) -> None:
