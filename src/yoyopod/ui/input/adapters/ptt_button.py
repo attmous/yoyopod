@@ -28,7 +28,7 @@ class PTTInputAdapter(InputHAL):
     DEFAULT_DEBOUNCE_TIME = 0.05
     DEFAULT_LONG_PRESS_TIME = 0.8
     DEFAULT_DOUBLE_CLICK_TIME = 0.3
-    DEFAULT_POLL_RATE = 0.01
+    DEFAULT_POLL_RATE = 0.03
 
     def __init__(
         self,
@@ -60,6 +60,8 @@ class PTTInputAdapter(InputHAL):
         self.stop_event = Event()
 
         self.button_pressed = False
+        self._raw_button_state = False
+        self._button_transition_time: Optional[float] = None
         self.press_start_time: Optional[float] = None
         self.pending_single_tap_time: Optional[float] = None
         self.double_tap_candidate = False
@@ -346,6 +348,7 @@ class PTTInputAdapter(InputHAL):
             not self.enable_navigation
             or not self.double_tap_select_enabled
             or self.button_pressed
+            or self._raw_button_state
         ):
             return
 
@@ -364,35 +367,87 @@ class PTTInputAdapter(InputHAL):
             },
         )
 
+    def _observe_raw_state(self, current_state: bool, observed_at: float) -> None:
+        """Track raw button transitions and start a debounce window when needed."""
+        if current_state == self._raw_button_state:
+            return
+
+        self._raw_button_state = current_state
+        self._button_transition_time = observed_at
+
+    def _advance_debounced_state(self, current_time: float) -> None:
+        """Resolve a debounced physical state change into press or release callbacks."""
+        transition_started_at = self._button_transition_time
+        if transition_started_at is None:
+            return
+
+        if (current_time - transition_started_at) < self.debounce_time:
+            return
+
+        self._button_transition_time = None
+        if self._raw_button_state == self.button_pressed:
+            return
+
+        if self._raw_button_state:
+            self._handle_button_press(transition_started_at)
+        else:
+            self._handle_button_release(transition_started_at)
+
+    def _hold_deadline_pending(self) -> bool:
+        """Return True while a held button still has threshold-driven work pending."""
+        if not self.button_pressed or self.press_start_time is None:
+            return False
+        if self.raw_ptt_passthrough:
+            return not self.raw_hold_started
+        if not self.enable_navigation:
+            return False
+        return not self._hold_back_fired
+
+    def _next_wait_timeout(self, current_time: float) -> float:
+        """Return the next deadline for polling, debounce, hold, or single-tap resolution."""
+        deadlines = [self.poll_rate]
+
+        if self._button_transition_time is not None:
+            deadlines.append(
+                max(0.0, self.debounce_time - (current_time - self._button_transition_time))
+            )
+
+        if self._hold_deadline_pending() and self.press_start_time is not None:
+            hold_remaining = self.long_press_time - (current_time - self.press_start_time)
+            if hold_remaining > 0.0:
+                deadlines.append(hold_remaining)
+
+        if (
+            self.enable_navigation
+            and self.double_tap_select_enabled
+            and not self.button_pressed
+            and not self._raw_button_state
+            and self.pending_single_tap_time is not None
+        ):
+            deadlines.append(
+                max(0.0, self.double_click_time - (current_time - self.pending_single_tap_time))
+            )
+
+        return min(deadlines)
+
     def _poll_button(self) -> None:
         """Poll the button and emit semantic actions."""
         logger.debug("PTT button polling started")
 
         while not self.stop_event.is_set():
-            current_time = time.time()
+            current_time = time.monotonic()
             self._emit_pending_navigation(current_time)
 
             current_state = self._get_button_state()
-            previous_state = self.button_pressed
+            self._observe_raw_state(current_state, current_time)
+            self._advance_debounced_state(current_time)
 
-            if current_state and not previous_state:
-                press_detected_at = current_time
-                time.sleep(self.debounce_time)
-                current_state = self._get_button_state()
-                if current_state:
-                    self._handle_button_press(press_detected_at)
-
-            elif (
-                current_state
-                and previous_state
+            if (
+                self.button_pressed
                 and self.press_start_time is not None
                 and (current_time - self.press_start_time) >= self.long_press_time
             ):
-                # existing raw_ptt_passthrough logic stays here
-                if (
-                    self.raw_ptt_passthrough
-                    and not self.raw_hold_started
-                ):
+                if self.raw_ptt_passthrough and not self.raw_hold_started:
                     self.raw_hold_started = True
                     self._fire_action(
                         InputAction.PTT_PRESS,
@@ -402,12 +457,8 @@ class PTTInputAdapter(InputHAL):
                             "duration": current_time - self.press_start_time,
                         },
                     )
-                # fire BACK at threshold for navigation mode
                 self._check_hold_threshold(current_time)
 
-            elif not current_state and previous_state:
-                self._handle_button_release(time.time())
-
-            time.sleep(self.poll_rate)
+            self.stop_event.wait(self._next_wait_timeout(current_time))
 
         logger.debug("PTT button polling stopped")

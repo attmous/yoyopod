@@ -4,11 +4,12 @@ Four-button input adapter for Pimoroni Display HAT Mini.
 Maps physical buttons (A, B, X, Y) to semantic input actions.
 """
 
-import time
 from collections import defaultdict
 from enum import Enum
-from typing import Callable, Dict, Optional, Any, List
-from threading import Thread, Event
+from threading import Event, Thread
+from typing import Any, Callable, Dict, List, Optional
+
+import time
 from loguru import logger
 
 from yoyopod.ui.input.hal import InputHAL, InputAction
@@ -69,6 +70,7 @@ class FourButtonInputAdapter(InputHAL):
     DEBOUNCE_TIME = 0.05      # 50ms debounce
     LONG_PRESS_TIME = 1.0     # 1 second for long press
     DOUBLE_PRESS_TIME = 0.3   # 300ms window for double press
+    POLL_INTERVAL = 0.03      # 30ms idle poll to reduce GIL churn
 
     def __init__(
         self,
@@ -102,6 +104,18 @@ class FourButtonInputAdapter(InputHAL):
             Button.B: False,
             Button.X: False,
             Button.Y: False,
+        }
+        self.raw_button_states: Dict[Button, bool] = {
+            Button.A: False,
+            Button.B: False,
+            Button.X: False,
+            Button.Y: False,
+        }
+        self.button_transition_times: Dict[Button, Optional[float]] = {
+            Button.A: None,
+            Button.B: None,
+            Button.X: None,
+            Button.Y: None,
         }
 
         # Press time tracking for long press detection
@@ -219,6 +233,81 @@ class FourButtonInputAdapter(InputHAL):
                 except Exception as e:
                     logger.error(f"Error in button callback: {e}")
 
+    def _observe_raw_state(
+        self,
+        button: Button,
+        current_state: bool,
+        observed_at: float,
+    ) -> None:
+        """Track a raw edge and start a debounce window when the signal changes."""
+        if current_state == self.raw_button_states[button]:
+            return
+
+        self.raw_button_states[button] = current_state
+        self.button_transition_times[button] = observed_at
+
+    def _advance_button_state(self, button: Button, current_time: float) -> None:
+        """Promote debounced edges into semantic press, release, and long-hold state."""
+        transition_started_at = self.button_transition_times[button]
+        stable_state = self.button_states[button]
+        raw_state = self.raw_button_states[button]
+
+        if transition_started_at is not None:
+            if (current_time - transition_started_at) >= self.DEBOUNCE_TIME:
+                self.button_transition_times[button] = None
+                if raw_state != stable_state:
+                    if raw_state:
+                        self.button_press_times[button] = transition_started_at
+                        self.button_states[button] = True
+                        self.long_press_fired[button] = False
+                        logger.trace(f"Button {button.value} pressed")
+                    else:
+                        press_time = self.button_press_times[button]
+                        self.button_states[button] = False
+                        if press_time is not None:
+                            press_duration = transition_started_at - press_time
+                            if not self.long_press_fired[button]:
+                                action = self.mapping.get(button)
+                                if action:
+                                    self._fire_action(action, {"button": button.value})
+                            logger.trace(
+                                f"Button {button.value} released after {press_duration:.2f}s"
+                            )
+                        self.button_press_times[button] = None
+
+        press_time = self.button_press_times[button]
+        if self.button_states[button] and press_time is not None and not self.long_press_fired[button]:
+            hold_duration = current_time - press_time
+            if hold_duration >= self.LONG_PRESS_TIME:
+                long_action = self.LONG_PRESS_MAPPING.get(button)
+                if long_action:
+                    self._fire_action(
+                        long_action,
+                        {"button": button.value, "long_press": True},
+                    )
+                self.long_press_fired[button] = True
+
+    def _next_wait_timeout(self, current_time: float) -> float:
+        """Return the shortest relevant wait for polling, debounce, or long-hold deadlines."""
+        deadlines = [self.POLL_INTERVAL]
+
+        for transition_started_at in self.button_transition_times.values():
+            if transition_started_at is None:
+                continue
+            deadlines.append(
+                max(0.0, self.DEBOUNCE_TIME - (current_time - transition_started_at))
+            )
+
+        for button in Button:
+            press_time = self.button_press_times[button]
+            if press_time is None or not self.button_states[button] or self.long_press_fired[button]:
+                continue
+            deadlines.append(
+                max(0.0, self.LONG_PRESS_TIME - (current_time - press_time))
+            )
+
+        return min(deadlines)
+
     def _poll_buttons(self) -> None:
         """
         Poll button states in a loop.
@@ -229,57 +318,13 @@ class FourButtonInputAdapter(InputHAL):
         logger.debug("Button polling started")
 
         while not self.stop_event.is_set():
-            current_time = time.time()
+            current_time = time.monotonic()
 
             for button in Button:
                 current_state = self._get_button_state(button)
-                previous_state = self.button_states[button]
+                self._observe_raw_state(button, current_state, current_time)
+                self._advance_button_state(button, current_time)
 
-                # Button just pressed (transition from False to True)
-                if current_state and not previous_state:
-                    # Debounce
-                    time.sleep(self.DEBOUNCE_TIME)
-                    current_state = self._get_button_state(button)
-
-                    if current_state:  # Still pressed after debounce
-                        self.button_press_times[button] = current_time
-                        self.button_states[button] = True
-                        self.long_press_fired[button] = False
-                        logger.trace(f"Button {button.value} pressed")
-
-                # Button released (transition from True to False)
-                elif not current_state and previous_state:
-                    press_time = self.button_press_times[button]
-                    self.button_states[button] = False
-
-                    if press_time:
-                        press_duration = current_time - press_time
-
-                        # Don't fire PRESS if LONG_PRESS already fired
-                        if not self.long_press_fired[button]:
-                            # Map button to action and fire
-                            action = self.mapping.get(button)
-                            if action:
-                                self._fire_action(action, {"button": button.value})
-
-                        self.button_press_times[button] = None
-                        logger.trace(f"Button {button.value} released after {press_duration:.2f}s")
-
-                # Button held down - check for long press
-                elif current_state and previous_state:
-                    press_time = self.button_press_times[button]
-                    if press_time and not self.long_press_fired[button]:
-                        hold_duration = current_time - press_time
-                        if hold_duration >= self.LONG_PRESS_TIME:
-                            # Check for long press mapping
-                            long_action = self.LONG_PRESS_MAPPING.get(button)
-                            if long_action:
-                                self._fire_action(long_action, {
-                                    "button": button.value,
-                                    "long_press": True
-                                })
-                            self.long_press_fired[button] = True
-
-            time.sleep(0.01)  # 10ms polling rate
+            self.stop_event.wait(self._next_wait_timeout(current_time))
 
         logger.debug("Button polling stopped")

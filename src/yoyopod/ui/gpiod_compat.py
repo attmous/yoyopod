@@ -1,15 +1,16 @@
 """
-gpiod API compatibility layer for gpiod 1.x and 2.x.
+gpiod API compatibility layer for the legacy Python bindings used by YoyoPod.
 
-gpiod 1.x (Debian Bullseye): lowercase ``gpiod.chip()``, ``gpiod.line_request``
-gpiod 2.x (newer distros): uppercase ``gpiod.Chip()``, ``gpiod.LINE_REQ_DIR_OUT``
-
-This module normalizes both APIs behind a minimal interface used by the
-ST7789 SPI driver and gpiod button adapter.
+The project primarily targets the historical Python gpiod layouts that expose
+``chip()/line_request`` or ``Chip()/LINE_REQ_*`` with line-level requests.
+Some environments also provide the official libgpiod Python bindings, so this
+module keeps the interface narrow and feature-detects when edge-event requests
+are available.
 """
 
 from __future__ import annotations
 
+import select
 from typing import Any
 
 from loguru import logger
@@ -80,3 +81,98 @@ def request_input(chip: Any, line_offset: int, consumer: str) -> Any:
         )
 
     return line
+
+
+def request_input_events(chip: Any, line_offset: int, consumer: str) -> Any:
+    """Request a GPIO line for both-edge events when the runtime supports it."""
+    if not HAS_GPIOD:
+        raise RuntimeError("gpiod module is required but not installed")
+
+    line = chip.get_line(line_offset)
+
+    if _is_v1():
+        config = _gpiod.line_request()
+        config.consumer = consumer
+        config.request_type = _gpiod.line_request.EVENT_BOTH_EDGES
+        config.flags = _gpiod.line_request.FLAG_BIAS_DISABLE
+        line.request(config)
+        return line
+
+    if hasattr(_gpiod, "LINE_REQ_EV_BOTH_EDGES"):
+        line.request(
+            consumer=consumer,
+            type=_gpiod.LINE_REQ_EV_BOTH_EDGES,
+            flags=_gpiod.LINE_REQ_FLAG_BIAS_DISABLE,
+        )
+        return line
+
+    raise RuntimeError("gpiod edge-event requests are unavailable")
+
+
+def _normalize_event_fd(candidate: Any) -> int | None:
+    """Return a waitable GPIO event fd or ``None`` when the runtime reports none."""
+    try:
+        event_fd = int(candidate)
+    except Exception as exc:
+        logger.debug("Failed to normalize GPIO event fd: {}", exc)
+        return None
+
+    if event_fd < 0:
+        logger.debug("Ignoring invalid negative GPIO event fd: {}", event_fd)
+        return None
+
+    return event_fd
+
+
+def get_event_fd(line: Any) -> int | None:
+    """Return the file descriptor used for waiting on GPIO edge events."""
+    getter = getattr(line, "event_get_fd", None)
+    if callable(getter):
+        try:
+            return _normalize_event_fd(getter())
+        except Exception as exc:
+            logger.debug("Failed to read GPIO event fd: {}", exc)
+            return None
+
+    fd = getattr(line, "fd", None)
+    return _normalize_event_fd(fd)
+
+
+def read_edge_events(line: Any) -> list[Any]:
+    """Drain the currently queued edge events for one requested line."""
+    reader = getattr(line, "read_edge_events", None)
+    if callable(reader):
+        events = reader()
+        return list(events) if events is not None else []
+
+    reader = getattr(line, "event_read", None)
+    if callable(reader):
+        events: list[Any] = []
+        event_fd = get_event_fd(line)
+
+        while True:
+            event = reader()
+            if event is None:
+                break
+
+            events.append(event)
+
+            if event_fd is None:
+                break
+
+            try:
+                ready, _, _ = select.select([event_fd], [], [], 0.0)
+            except (OSError, ValueError) as exc:
+                logger.debug(
+                    "Failed to drain legacy GPIO edge queue from fd {}: {}",
+                    event_fd,
+                    exc,
+                )
+                break
+
+            if not ready:
+                break
+
+        return events
+
+    raise RuntimeError("Requested line does not expose edge-event reads")
