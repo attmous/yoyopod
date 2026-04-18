@@ -333,6 +333,13 @@ If power telemetry fails:
 - run `i2cdetect -y 1` on Raspberry Pi Zero 2W hardware
 - run `i2cdetect -y 7` on Radxa Cubie A7Z hardware
 
+If PiSugar is not visible on the expected I2C bus:
+- on Raspberry Pi Zero 2W plus PiSugar 3, the usual device addresses are `0x57` and `0x68`
+- if `0x57` disappears but other bus devices still respond, suspect physical contact between the PiSugar pogo pins and the underside of the Raspberry Pi GPIO header
+- clean the underside GPIO pads, reseat the PiSugar carefully, and re-run `i2cdetect`
+- if needed, add a small amount of solder to the underside GPIO pads to improve pogo-pin contact, then power-cycle and retest
+- once the PiSugar device reappears on I2C, restart `pisugar-server` and confirm `yoyoctl pi power battery` returns real battery values again
+
 Expected PiSugar 3 visibility usually includes:
 - `0x57`
 - `0x68`

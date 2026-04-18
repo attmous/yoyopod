@@ -62,7 +62,6 @@ class CloudManager:
         """Load secrets/cache and start MQTT before the runtime loop begins."""
 
         self._reload_provisioning(force=True, now=time.monotonic())
-        self._start_mqtt()
 
     def tick(self, now: float | None = None) -> None:
         """Advance auth/config sync on the coordinator loop."""

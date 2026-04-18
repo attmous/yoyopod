@@ -63,7 +63,11 @@ class DeviceMqttClient:
             )
             return
 
-        client = mqtt.Client(client_id=f"yoyopod-{self._device_id}", clean_session=True, transport=self._transport)
+        client = mqtt.Client(
+            client_id=f"yoyopod-{self._device_id}",
+            clean_session=True,
+            transport=self._transport,
+        )
 
         if self._username:
             client.username_pw_set(self._username, self._password)
@@ -71,23 +75,47 @@ class DeviceMqttClient:
         if self._use_tls:
             client.tls_set()
 
+        # Keep reconnect behavior inside the single Paho network loop so
+        # replacement clients do not leave behind their own retry threads.
+        client.reconnect_delay_set(
+            min_delay=1,
+            max_delay=int(_RECONNECT_DELAY_SECONDS),
+        )
+
         client.on_connect = self._on_connect
         client.on_disconnect = self._on_disconnect
         client.on_message = self._on_message
 
-        self._client = client
-        self._stopped = False
+        with self._lock:
+            self._client = client
+            self._connected = False
+            self._stopped = False
 
-        # Connect in background thread so it doesn't block the boot sequence.
-        threading.Thread(target=self._connect_loop, daemon=True, name="mqtt-connect").start()
+        try:
+            client.connect_async(self._broker_host, self._port, keepalive=_KEEPALIVE_SECONDS)
+            client.loop_start()
+        except Exception as exc:
+            with self._lock:
+                self._client = None
+                self._connected = False
+                self._stopped = True
+            logger.warning("MQTT startup failed: {}", exc)
 
     def stop(self) -> None:
         """Disconnect and stop reconnect attempts."""
-        self._stopped = True
-        client = self._client
+        with self._lock:
+            self._stopped = True
+            self._connected = False
+            client = self._client
+            self._client = None
+
         if client is not None:
             try:
                 client.disconnect()
+            except Exception:
+                pass
+            try:
+                client.loop_stop()
             except Exception:
                 pass
 
@@ -137,37 +165,11 @@ class DeviceMqttClient:
             logger.warning("MQTT publish error for {}: {}", event_type, exc)
             return False
 
-    def _connect_loop(self) -> None:
-        """Attempt to connect (and reconnect) to the broker."""
-        while not self._stopped:
-            try:
-                client = self._client
-                if client is None:
-                    break
-
-                client.connect(self._broker_host, self._port, keepalive=_KEEPALIVE_SECONDS)
-                client.loop_forever()
-
-            except OSError as exc:
-                logger.warning(
-                    "MQTT connection failed: {} — retrying in {}s",
-                    exc,
-                    _RECONNECT_DELAY_SECONDS,
-                )
-                if not self._stopped:
-                    time.sleep(_RECONNECT_DELAY_SECONDS)
-            except Exception as exc:
-                logger.warning(
-                    "MQTT unexpected error: {} — retrying in {}s",
-                    exc,
-                    _RECONNECT_DELAY_SECONDS,
-                )
-                if not self._stopped:
-                    time.sleep(_RECONNECT_DELAY_SECONDS)
-
     def _on_connect(self, client: Any, userdata: Any, flags: Any, rc: int) -> None:
         if rc == 0:
             with self._lock:
+                if self._client is not client or self._stopped:
+                    return
                 self._connected = True
             client.subscribe(f"yoyopod/{self._device_id}/cmd", qos=1)
             logger.info(
@@ -178,6 +180,8 @@ class DeviceMqttClient:
 
     def _on_disconnect(self, client: Any, userdata: Any, rc: int) -> None:
         with self._lock:
+            if self._client is not None and self._client is not client:
+                return
             self._connected = False
         if rc != 0 and not self._stopped:
             logger.warning("MQTT disconnected unexpectedly: rc={}", rc)

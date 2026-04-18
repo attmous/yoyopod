@@ -255,6 +255,14 @@ Current command application in `CloudManager`:
   - causes the next loop tick to re-fetch config immediately
 - other command types are currently only logged as unhandled
 
+Current lifecycle guardrails:
+
+- `CloudManager.prepare_boot()` relies on provisioning reload to start MQTT once
+- replacing MQTT configuration stops the previous client before creating a new one
+- `DeviceMqttClient` uses one managed Paho network loop instead of separate reconnect threads
+
+This matters because duplicate MQTT clients using the same device id can force broker session takeovers and prevent battery telemetry from reaching the backend reliably.
+
 ## 10. Current Telemetry Definitely Wired In The Python Runtime
 
 The safest claim is what is definitely wired today.
