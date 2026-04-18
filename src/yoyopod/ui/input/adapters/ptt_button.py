@@ -421,6 +421,7 @@ class PTTInputAdapter(InputHAL):
             self.enable_navigation
             and self.double_tap_select_enabled
             and not self.button_pressed
+            and not self._raw_button_state
             and self.pending_single_tap_time is not None
         ):
             deadlines.append(

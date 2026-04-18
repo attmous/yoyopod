@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+import pytest
+
 from yoyopod.ui.input import InputAction
 from yoyopod.ui.input.adapters.ptt_button import PTTInputAdapter
 
@@ -170,3 +172,17 @@ def test_hold_back_fired_resets_on_next_press() -> None:
 
     back_count = sum(1 for a, _ in log if a == InputAction.BACK)
     assert back_count == 2
+
+
+def test_next_wait_timeout_skips_expired_tap_deadline_during_raw_press_debounce() -> None:
+    """A second raw press should wait on debounce, not spin on an expired tap deadline."""
+    adapter = FakePTTAdapter()
+    adapter.poll_rate = 1.0
+    adapter.pending_single_tap_time = 0.0
+    adapter._raw_button_state = True
+    adapter.button_pressed = False
+    adapter._button_transition_time = 0.31
+
+    timeout = adapter._next_wait_timeout(0.32)
+
+    assert timeout == pytest.approx(0.04)
