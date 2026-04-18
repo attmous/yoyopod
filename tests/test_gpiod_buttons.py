@@ -241,6 +241,30 @@ def test_edge_wait_loop_samples_level_when_event_drain_fails(
     assert received == [("select", {"button": "A"})]
 
 
+def test_read_edge_events_drains_legacy_event_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    from yoyopod.ui import gpiod_compat
+
+    first = object()
+    second = object()
+    pending_events = [first, second]
+    select_calls: list[tuple[list[int], float]] = []
+
+    class FakeLine:
+        fd = 101
+
+        def event_read(self) -> object:
+            return pending_events.pop(0)
+
+    def fake_select(reads, _writes, _errors, timeout):
+        select_calls.append((list(reads), timeout))
+        return ([101], [], []) if pending_events else ([], [], [])
+
+    monkeypatch.setattr(gpiod_compat.select, "select", fake_select)
+
+    assert gpiod_compat.read_edge_events(FakeLine()) == [first, second]
+    assert select_calls == [([101], 0.0), ([101], 0.0)]
+
+
 def test_event_wait_loop_seeds_initial_pressed_state(monkeypatch: pytest.MonkeyPatch) -> None:
     from yoyopod.ui.input.adapters import gpiod_buttons
     from yoyopod.ui.input.adapters.gpiod_buttons import Button

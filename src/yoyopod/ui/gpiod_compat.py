@@ -10,6 +10,7 @@ are available.
 
 from __future__ import annotations
 
+import select
 from typing import Any
 
 from loguru import logger
@@ -146,6 +147,32 @@ def read_edge_events(line: Any) -> list[Any]:
 
     reader = getattr(line, "event_read", None)
     if callable(reader):
-        return [reader()]
+        events: list[Any] = []
+        event_fd = get_event_fd(line)
+
+        while True:
+            event = reader()
+            if event is None:
+                break
+
+            events.append(event)
+
+            if event_fd is None:
+                break
+
+            try:
+                ready, _, _ = select.select([event_fd], [], [], 0.0)
+            except (OSError, ValueError) as exc:
+                logger.debug(
+                    "Failed to drain legacy GPIO edge queue from fd {}: {}",
+                    event_fd,
+                    exc,
+                )
+                break
+
+            if not ready:
+                break
+
+        return events
 
     raise RuntimeError("Requested line does not expose edge-event reads")
