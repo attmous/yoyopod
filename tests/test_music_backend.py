@@ -641,14 +641,40 @@ def test_mpv_backend_get_time_position_returns_zero_when_cache_is_stale(
     backend._connected = True
     backend._ipc = FakeIpc()
     backend._process = FakeProcess()
+    backend._playback_state = "playing"
     backend._cached_time_position_ms = 12500
     backend._last_time_position_cache_update = 100.0
     monkeypatch.setattr(
         "yoyopod.audio.music.backend.time.monotonic",
-        _monotonic_stub(103.0),
+        _monotonic_stub(100.0 + backend._TIME_POSITION_STALE_SECONDS + 1.0),
     )
 
     assert backend.get_time_position() == 0
+
+
+def test_mpv_backend_get_time_position_keeps_cached_value_when_paused_and_stale(
+    monkeypatch,
+) -> None:
+    class FakeIpc:
+        connected = True
+
+    class FakeProcess:
+        def is_alive(self) -> bool:
+            return True
+
+    backend = MpvBackend(MusicConfig())
+    backend._connected = True
+    backend._ipc = FakeIpc()
+    backend._process = FakeProcess()
+    backend._playback_state = "paused"
+    backend._cached_time_position_ms = 12500
+    backend._last_time_position_cache_update = 100.0
+    monkeypatch.setattr(
+        "yoyopod.audio.music.backend.time.monotonic",
+        _monotonic_stub(100.0 + backend._TIME_POSITION_STALE_SECONDS + 1.0),
+    )
+
+    assert backend.get_time_position() == 12500
 
 
 def test_mpv_backend_registers_mpv_event_handler_only_once_across_restarts() -> None:

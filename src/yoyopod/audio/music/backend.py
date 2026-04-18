@@ -65,7 +65,7 @@ class MpvBackend:
     _STARTUP_SPAWN_ATTEMPTS = 4
     # A second-resolution progress bar does not need every mpv time-pos event.
     _TIME_POSITION_CACHE_MIN_INTERVAL_SECONDS = 0.5
-    _TIME_POSITION_STALE_SECONDS = 2.0
+    _TIME_POSITION_STALE_SECONDS = 5.0
 
     def __init__(self, config: MusicConfig) -> None:
         self.config = config
@@ -190,14 +190,17 @@ class MpvBackend:
         if not self.is_connected:
             return 0
         with self._state_lock:
-            if self._last_time_position_cache_update is None:
-                return 0
-            if (
-                time.monotonic() - self._last_time_position_cache_update
-                > self._TIME_POSITION_STALE_SECONDS
-            ):
-                return 0
-            return self._cached_time_position_ms
+            last_update = self._last_time_position_cache_update
+            playback_state = self._playback_state
+            cached_time_position_ms = self._cached_time_position_ms
+        if last_update is None:
+            return 0
+        if (
+            playback_state == "playing"
+            and time.monotonic() - last_update > self._TIME_POSITION_STALE_SECONDS
+        ):
+            return 0
+        return cached_time_position_ms
 
     def load_tracks(self, uris: list[str]) -> bool:
         if not uris:
@@ -353,6 +356,8 @@ class MpvBackend:
         position_ms = _coerce_time_position_ms(value)
         now = time.monotonic()
 
+        # Best-effort unlocked hint: the locked check below re-validates before
+        # mutating shared state, so this only skips obviously throttled updates.
         last_update_hint = self._last_time_position_cache_update
         cached_position_hint = self._cached_time_position_ms
         if (
