@@ -63,7 +63,9 @@ class MpvBackend:
     _STARTUP_CONNECT_RETRIES = 30
     _STARTUP_CONNECT_DELAY = 0.1
     _STARTUP_SPAWN_ATTEMPTS = 4
+    # A second-resolution progress bar does not need every mpv time-pos event.
     _TIME_POSITION_CACHE_MIN_INTERVAL_SECONDS = 0.5
+    _TIME_POSITION_STALE_SECONDS = 2.0
 
     def __init__(self, config: MusicConfig) -> None:
         self.config = config
@@ -79,7 +81,7 @@ class MpvBackend:
         self._cached_duration: object | None = None
         self._cached_media_title: str | None = None
         self._cached_time_position_ms = 0
-        self._last_time_position_cache_update = 0.0
+        self._last_time_position_cache_update: float | None = None
 
         self._track_change_callbacks: list[Callable[[Track | None], None]] = []
         self._playback_state_callbacks: list[Callable[[str], None]] = []
@@ -188,6 +190,13 @@ class MpvBackend:
         if not self.is_connected:
             return 0
         with self._state_lock:
+            if self._last_time_position_cache_update is None:
+                return 0
+            if (
+                time.monotonic() - self._last_time_position_cache_update
+                > self._TIME_POSITION_STALE_SECONDS
+            ):
+                return 0
             return self._cached_time_position_ms
 
     def load_tracks(self, uris: list[str]) -> bool:
@@ -322,7 +331,7 @@ class MpvBackend:
         self._update_time_position_cache(0, force=True)
 
     def _prime_track_cache_from_ipc(self) -> None:
-        """Seed observed track cache once when mpv has data before events arrive."""
+        """Seed track cache when current mpv properties beat observed events."""
         path = self._get_property("path")
         metadata = self._get_property("metadata")
         duration = self._get_property("duration")
@@ -340,14 +349,27 @@ class MpvBackend:
         *,
         force: bool = False,
     ) -> None:
-        """Throttle time-pos updates while keeping visible progress current."""
+        """Throttle time-pos updates to match the coarse visible progress UI."""
         position_ms = _coerce_time_position_ms(value)
         now = time.monotonic()
+
+        last_update_hint = self._last_time_position_cache_update
+        cached_position_hint = self._cached_time_position_ms
+        if (
+            not force
+            and last_update_hint is not None
+            and position_ms >= cached_position_hint
+            and abs(position_ms - cached_position_hint) < 1000
+            and now - last_update_hint < self._TIME_POSITION_CACHE_MIN_INTERVAL_SECONDS
+        ):
+            return
+
         with self._state_lock:
             if (
                 force
                 or position_ms < self._cached_time_position_ms
                 or abs(position_ms - self._cached_time_position_ms) >= 1000
+                or self._last_time_position_cache_update is None
                 or now - self._last_time_position_cache_update
                 >= self._TIME_POSITION_CACHE_MIN_INTERVAL_SECONDS
             ):
