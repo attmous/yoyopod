@@ -392,7 +392,9 @@ class CloudManager:
             return
 
         if error is not None:
-            if error.error_code in self._TOKEN_RETRY_CODES:
+            if error.error_code in self._TOKEN_RETRY_CODES or (
+                error.status_code == 401 and not error.error_code
+            ):
                 self._access_token = None
                 self._next_auth_attempt_at = completed_at
                 self.status.cloud_state = "authenticating"
@@ -468,10 +470,13 @@ class CloudManager:
             return
 
         if error is not None:
-            if error.error_code in self._TOKEN_RETRY_CODES:
+            if error.error_code in self._TOKEN_RETRY_CODES or (
+                error.status_code == 401 and not error.error_code
+            ):
                 self._access_token = None
                 self._next_auth_attempt_at = completed_at
                 self.status.cloud_state = "authenticating"
+                self.status.last_error_summary = ""
                 self._persist_status()
                 self._sync_context_state()
                 return
