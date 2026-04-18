@@ -50,6 +50,11 @@ class _VoIPManagerLike(Protocol):
         callback: Callable[[CallState], None],
     ) -> None: ...
 
+    def on_incoming_call(
+        self,
+        callback: Callable[[str, str], None],
+    ) -> None: ...
+
     def make_call(self, sip_address: str, contact_name: str | None = None) -> bool: ...
 
     def hangup(self) -> bool: ...
@@ -438,6 +443,12 @@ def _run_shell_hook(
     phase: str,
     command: str,
 ) -> bool:
+    """Run an operator-supplied outage hook.
+
+    The reconnect drill treats --drop-command/--restore-command as trusted operator input
+    for a local diagnostic workflow on the device, so shell execution is intentional here.
+    """
+
     completed = subprocess.run(
         command,
         shell=True,

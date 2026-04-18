@@ -153,7 +153,7 @@ yoyoctl pi voip reconnect-drill
 yoyoctl pi voip reconnect-drill --disconnect-seconds 12
 ```
 
-If you can automate the outage on the Pi, keep it explicit:
+If you can automate the outage on the Pi, keep it explicit. The drill executes `--drop-command` and `--restore-command` with a shell, so treat them as trusted operator input for your own device only:
 
 ```bash
 yoyoctl pi voip reconnect-drill \

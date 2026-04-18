@@ -224,6 +224,68 @@ def test_registration_stability_fails_when_registration_flaps_during_hold(
     assert summary["extras"]["failed_state"] == "failed"
 
 
+def test_registration_stability_fails_when_manager_start_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The registration drill should fail honestly when the VoIP manager never starts."""
+
+    clock = FakeClock()
+    manager = FakeVoIPManager(clock)
+    manager.start_result = False
+    _patch_clock(monkeypatch, clock)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+
+    result = runner.invoke(
+        voip_cli.voip_app,
+        [
+            "registration-stability",
+            "--registration-timeout",
+            "1",
+            "--hold-seconds",
+            "1",
+            "--artifacts-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 1
+    summary = _load_summary(tmp_path)
+    assert summary["status"] == "fail"
+    assert summary["reason"] == "VoIP manager failed to start"
+
+
+def test_registration_stability_fails_when_registration_never_reaches_ok(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The registration drill should fail honestly when SIP never reaches OK."""
+
+    clock = FakeClock()
+    manager = FakeVoIPManager(clock)
+    _patch_clock(monkeypatch, clock)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+
+    result = runner.invoke(
+        voip_cli.voip_app,
+        [
+            "registration-stability",
+            "--registration-timeout",
+            "0.5",
+            "--hold-seconds",
+            "1",
+            "--artifacts-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 1
+    summary = _load_summary(tmp_path)
+    assert summary["status"] == "fail"
+    assert summary["reason"] == "Registration never reached OK"
+    assert summary["extras"]["registration_wait_seconds"] >= 0.5
+
+
 def test_reconnect_drill_fails_when_registration_never_recovers(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
