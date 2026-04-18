@@ -23,13 +23,17 @@ from types import ModuleType
 from typing import Optional, Tuple
 
 from loguru import logger
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from yoyopod.ui.display.adapters.whisplay_paths import ensure_whisplay_driver_on_path
 from yoyopod.ui.display.hal import DisplayHAL
 
 DRIVER_PATH = ensure_whisplay_driver_on_path()
 DEFAULT_FONT_PATH = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+_RGB565_HIGH_RED_LUT = tuple(value & 0xF8 for value in range(256))
+_RGB565_HIGH_GREEN_LUT = tuple(value >> 5 for value in range(256))
+_RGB565_LOW_GREEN_LUT = tuple((value & 0x1C) << 3 for value in range(256))
+_RGB565_LOW_BLUE_LUT = tuple(value >> 3 for value in range(256))
 
 
 def _normalize_gpiochip_path(candidate: object) -> object:
@@ -409,24 +413,19 @@ class WhisplayDisplayAdapter(DisplayHAL):
         if self.buffer is None:
             return b""
 
-        rgb_bytes = self.buffer.tobytes()
-        pixel_count = self.WIDTH * self.HEIGHT
-        pixel_data = bytearray(pixel_count * 2)
+        red, green, blue = self.buffer.split()
+        high = ImageChops.add(
+            red.point(_RGB565_HIGH_RED_LUT),
+            green.point(_RGB565_HIGH_GREEN_LUT),
+        )
+        low = ImageChops.add(
+            green.point(_RGB565_LOW_GREEN_LUT),
+            blue.point(_RGB565_LOW_BLUE_LUT),
+        )
 
-        src_index = 0
-        dst_index = 0
-        for _ in range(pixel_count):
-            red = rgb_bytes[src_index]
-            green = rgb_bytes[src_index + 1]
-            blue = rgb_bytes[src_index + 2]
-            src_index += 3
-
-            rgb565 = ((red & 0xF8) << 8) | ((green & 0xFC) << 3) | (blue >> 3)
-            pixel_data[dst_index] = (rgb565 >> 8) & 0xFF
-            pixel_data[dst_index + 1] = rgb565 & 0xFF
-            dst_index += 2
-
-        return bytes(pixel_data)
+        # ``LA`` stores two 8-bit channels interleaved, which matches the
+        # adapter's big-endian RGB565 byte contract without a Python pixel loop.
+        return Image.merge("LA", (high, low)).tobytes()
 
     def _paste_rgb565_region(
         self,

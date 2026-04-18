@@ -292,6 +292,30 @@ def test_rgb565_conversion_matches_expected_byte_order() -> None:
     assert adapter._convert_to_rgb565() == bytes.fromhex("f80007e0")
 
 
+def test_rgb565_conversion_matches_reference_for_mixed_pixels() -> None:
+    """The bulk conversion should match the historical RGB565 packing rules."""
+
+    adapter = WhisplayDisplayAdapter(simulate=True, renderer="pil")
+    adapter.WIDTH = 4
+    adapter.HEIGHT = 1
+    adapter.buffer = Image.new("RGB", (4, 1))
+    adapter.draw = ImageDraw.Draw(adapter.buffer)
+    pixels = [
+        (255, 255, 255),
+        (0, 0, 255),
+        (17, 34, 51),
+        (123, 231, 45),
+    ]
+    adapter.buffer.putdata(pixels)
+
+    expected = bytearray()
+    for red, green, blue in pixels:
+        rgb565 = ((red & 0xF8) << 8) | ((green & 0xFC) << 3) | (blue >> 3)
+        expected.extend(((rgb565 >> 8) & 0xFF, rgb565 & 0xFF))
+
+    assert adapter._convert_to_rgb565() == bytes(expected)
+
+
 def test_paste_rgb565_region_decodes_into_shadow_buffer() -> None:
     """Shadow-buffer region pastes should decode RGB565 bytes back into RGB pixels."""
 
