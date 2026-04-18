@@ -36,6 +36,9 @@ class FakeLvglBackend:
         self.initialized = True
         self.scene_generation = 0
 
+    def reset(self) -> None:
+        self.scene_generation += 1
+
 
 class FakeLvglDisplay:
     """Tiny Display double for LVGL playlist delegation tests."""
@@ -135,10 +138,12 @@ def test_playlist_screen_rebuilds_retained_lvgl_view_after_backend_reset(tmp_pat
     screen.enter()
 
     assert binding.playlist_build_calls == 1
+    first_view = screen._lvgl_view
 
-    display.get_ui_backend().scene_generation += 1
+    display.get_ui_backend().reset()
     screen.enter()
 
+    assert screen._lvgl_view is not first_view
     assert binding.playlist_build_calls == 2
 
 

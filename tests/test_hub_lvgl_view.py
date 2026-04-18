@@ -33,6 +33,9 @@ class FakeLvglBackend:
         self.initialized = True
         self.scene_generation = 0
 
+    def reset(self) -> None:
+        self.scene_generation += 1
+
 
 class FakeLvglDisplay:
     """Tiny Display double for LVGL Hub delegation tests."""
@@ -103,11 +106,13 @@ def test_hub_screen_rebuilds_retained_lvgl_view_after_backend_reset() -> None:
     screen.render()
 
     assert binding.hub_build_calls == 1
+    first_view = screen._lvgl_view
 
-    display.get_ui_backend().scene_generation += 1
+    display.get_ui_backend().reset()
     screen.enter()
     screen.render()
 
+    assert screen._lvgl_view is not first_view
     assert binding.hub_build_calls == 2
     assert len(binding.hub_sync_payloads) == 2
 

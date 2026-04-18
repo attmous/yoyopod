@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 from yoyopod.ui.lvgl_binding import LvglDisplayBackend
 
@@ -18,10 +18,30 @@ class RetainedLvglView(Protocol):
         """Rebuild the native LVGL scene for this retained view."""
 
 
+RetainedLvglViewT = TypeVar("RetainedLvglViewT", bound=RetainedLvglView)
+
+
 def current_scene_generation(backend: LvglDisplayBackend) -> int:
     """Return the backend scene generation with a backwards-safe default."""
 
     return int(getattr(backend, "scene_generation", 0))
+
+
+def current_retained_view(
+    view: RetainedLvglViewT | None,
+    backend: LvglDisplayBackend | None,
+) -> RetainedLvglViewT | None:
+    """Return the cached retained view only when it still matches the backend."""
+
+    if view is None or backend is None:
+        return None
+    if getattr(view, "backend", None) is not backend:
+        return None
+    if view._build_generation != current_scene_generation(backend):
+        return None
+    if not view_is_ready(view):
+        return None
+    return view
 
 
 def view_is_ready(view: RetainedLvglView) -> bool:
