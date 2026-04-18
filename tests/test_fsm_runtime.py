@@ -1,5 +1,8 @@
 """Tests for the split FSM orchestration layer and derived runtime state."""
 
+from __future__ import annotations
+
+import yoyopod.fsm as fsm_module
 from yoyopod.coordinators.runtime import AppRuntimeState, CoordinatorRuntime
 from yoyopod.fsm import (
     CallFSM,
@@ -79,6 +82,33 @@ def test_call_interruption_policy_pauses_and_resumes_music() -> None:
 
     policy.clear()
     assert not policy.music_interrupted_by_call
+
+
+def test_fsm_debug_logs_defer_formatting(monkeypatch) -> None:
+    """FSM debug logging should pass format args to Loguru instead of eager f-strings."""
+
+    debug_calls: list[tuple[str, tuple[object, ...]]] = []
+
+    monkeypatch.setattr(
+        fsm_module.logger,
+        "debug",
+        lambda message, *args: debug_calls.append((message, args)),
+    )
+
+    music_fsm = MusicFSM()
+    assert music_fsm.transition("play")
+    music_fsm.sync(MusicState.PAUSED)
+
+    call_fsm = CallFSM()
+    assert call_fsm.transition("dial")
+    call_fsm.sync(CallSessionState.ACTIVE)
+
+    assert debug_calls == [
+        ("MusicFSM: {} -> {} ({})", ("idle", "playing", "play")),
+        ("MusicFSM synced to {}", ("paused",)),
+        ("CallFSM: {} -> {} ({})", ("idle", "outgoing", "dial")),
+        ("CallFSM synced to {}", ("active",)),
+    ]
 
 
 def test_runtime_state_is_derived_from_split_fsms() -> None:
