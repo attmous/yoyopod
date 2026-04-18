@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from queue import Empty
 from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
 
 from loguru import logger
@@ -57,6 +58,36 @@ class _LoopCadenceDecision:
     voip_iterate_interval_seconds: float
 
 
+@dataclass(frozen=True, slots=True)
+class _MainThreadDrainResult:
+    """Snapshot one coordinator-thread queue drain so backlog pressure is visible."""
+
+    callbacks_processed: int = 0
+    events_processed: int = 0
+    callbacks_deferred: int = 0
+    events_deferred: int = 0
+    callback_budget: int | None = None
+    event_budget: int | None = None
+
+    @property
+    def total_processed(self) -> int:
+        """Return the total amount of generic queue work advanced in one drain."""
+
+        return self.callbacks_processed + self.events_processed
+
+    @property
+    def callback_budget_hit(self) -> bool:
+        """Return whether queued callbacks were deferred by the per-iteration budget."""
+
+        return self.callback_budget is not None and self.callbacks_deferred > 0
+
+    @property
+    def event_budget_hit(self) -> bool:
+        """Return whether queued typed events were deferred by the per-iteration budget."""
+
+        return self.event_budget is not None and self.events_deferred > 0
+
+
 def _queue_depth(queue_obj: object) -> int | None:
     """Return a best-effort queue depth for runtime diagnostics."""
 
@@ -83,8 +114,12 @@ class RuntimeLoopService:
     _MIN_VOIP_SCHEDULE_DELAY_WARNING_SECONDS = 0.15
     _MIN_VOIP_ITERATE_WARNING_SECONDS = 0.15
     _RECENT_INPUT_WINDOW_SECONDS = 0.4
+    _PENDING_WORK_LOOP_INTERVAL_SECONDS = 0.01
     _RELAXED_IDLE_INTERVAL_SECONDS = 0.05
     _SCREEN_SLEEP_IDLE_INTERVAL_SECONDS = 0.1
+    _MAIN_THREAD_CALLBACK_DRAIN_BUDGET = 4
+    _EVENT_BUS_DRAIN_BUDGET = 8
+    _DRAIN_BUDGET_LOG_INTERVAL_SECONDS = 1.0
     _LATENCY_SENSITIVE_STATES = frozenset(
         {
             "call_incoming",
@@ -111,6 +146,15 @@ class RuntimeLoopService:
         self._last_runtime_blocking_span_name: str | None = None
         self._last_runtime_blocking_span_seconds = 0.0
         self._last_runtime_blocking_span_recorded_at = 0.0
+        self._last_main_thread_callbacks_drained = 0
+        self._last_event_bus_events_drained = 0
+        self._last_main_thread_callbacks_deferred = 0
+        self._last_event_bus_events_deferred = 0
+        self._last_main_thread_callback_budget_hit = False
+        self._last_event_bus_event_budget_hit = False
+        self._last_main_thread_callback_drain_budget: int | None = None
+        self._last_event_bus_drain_budget: int | None = None
+        self._last_drain_budget_log_at = 0.0
         self._voip_timing_window = _VoipTimingWindow()
         self._current_cadence_mode = "startup"
         self._current_cadence_reason = "startup"
@@ -282,26 +326,149 @@ class RuntimeLoopService:
     def process_pending_main_thread_actions(self, limit: Optional[int] = None) -> int:
         """Drain queued typed events scheduled by worker threads."""
         started_at = time.monotonic()
+        callbacks_processed = self._drain_pending_main_thread_callbacks(limit)
+        remaining_limit = None if limit is None else max(0, limit - callbacks_processed)
+        events_processed = self.app.event_bus.drain(remaining_limit)
+        result = self._snapshot_main_thread_drain_result(
+            callbacks_processed=callbacks_processed,
+            events_processed=events_processed,
+        )
+        self._record_main_thread_drain_result(result)
+        self._warn_if_slow(
+            "main-thread drain",
+            started_at=started_at,
+            threshold_seconds=self._SLOW_MAIN_THREAD_DRAIN_WARNING_SECONDS,
+            detail=self._main_thread_drain_detail(result),
+        )
+        return result.total_processed
+
+    def _process_pending_main_thread_actions_for_iteration(self) -> int:
+        """Advance generic queue work with hard per-iteration fairness budgets."""
+
+        started_at = time.monotonic()
+        callback_budget = self._main_thread_callback_drain_budget()
+        event_budget = self._event_bus_drain_budget()
+        result = self._snapshot_main_thread_drain_result(
+            callbacks_processed=self._drain_pending_main_thread_callbacks(
+                callback_budget,
+            ),
+            events_processed=self.app.event_bus.drain(event_budget),
+            callback_budget=callback_budget,
+            event_budget=event_budget,
+        )
+        self._record_main_thread_drain_result(result)
+        self._maybe_log_main_thread_drain_budget_hit(result)
+        self._warn_if_slow(
+            "main-thread drain",
+            started_at=started_at,
+            threshold_seconds=self._SLOW_MAIN_THREAD_DRAIN_WARNING_SECONDS,
+            detail=self._main_thread_drain_detail(result),
+        )
+        return result.total_processed
+
+    def _main_thread_callback_drain_budget(self) -> int:
+        """Return the maximum callback count the coordinator should drain per iteration."""
+
+        return max(1, int(self._MAIN_THREAD_CALLBACK_DRAIN_BUDGET))
+
+    def _event_bus_drain_budget(self) -> int:
+        """Return the maximum typed event count the coordinator should drain per iteration."""
+
+        return max(1, int(self._EVENT_BUS_DRAIN_BUDGET))
+
+    def _drain_pending_main_thread_callbacks(self, limit: int | None = None) -> int:
+        """Run queued coordinator-thread callbacks with an optional hard count limit."""
+
         processed = 0
-        while not self.app._pending_main_thread_callbacks.empty():
-            callback = self.app._pending_main_thread_callbacks.get()
+        while limit is None or processed < limit:
+            try:
+                callback = self.app._pending_main_thread_callbacks.get_nowait()
+            except Empty:
+                break
+
             try:
                 callback()
             except Exception as exc:
                 logger.error(f"Error handling scheduled main-thread callback: {exc}")
             processed += 1
-            if limit is not None and processed >= limit:
-                return processed
 
-        remaining_limit = None if limit is None else max(0, limit - processed)
-        processed += self.app.event_bus.drain(remaining_limit)
-        self._warn_if_slow(
-            "main-thread drain",
-            started_at=started_at,
-            threshold_seconds=self._SLOW_MAIN_THREAD_DRAIN_WARNING_SECONDS,
-            detail=f"callbacks={processed}",
-        )
         return processed
+
+    def _snapshot_main_thread_drain_result(
+        self,
+        *,
+        callbacks_processed: int,
+        events_processed: int,
+        callback_budget: int | None = None,
+        event_budget: int | None = None,
+    ) -> _MainThreadDrainResult:
+        """Capture drain totals and remaining backlog after one coordinator drain."""
+
+        return _MainThreadDrainResult(
+            callbacks_processed=callbacks_processed,
+            events_processed=events_processed,
+            callbacks_deferred=max(0, _queue_depth(self.app._pending_main_thread_callbacks) or 0),
+            events_deferred=max(0, self.app.event_bus.pending_count()),
+            callback_budget=callback_budget,
+            event_budget=event_budget,
+        )
+
+    def _record_main_thread_drain_result(self, result: _MainThreadDrainResult) -> None:
+        """Persist the latest queue-drain snapshot for diagnostics and status output."""
+
+        self._last_main_thread_callbacks_drained = result.callbacks_processed
+        self._last_event_bus_events_drained = result.events_processed
+        self._last_main_thread_callbacks_deferred = result.callbacks_deferred
+        self._last_event_bus_events_deferred = result.events_deferred
+        self._last_main_thread_callback_budget_hit = result.callback_budget_hit
+        self._last_event_bus_event_budget_hit = result.event_budget_hit
+        self._last_main_thread_callback_drain_budget = result.callback_budget
+        self._last_event_bus_drain_budget = result.event_budget
+
+    def _main_thread_drain_detail(self, result: _MainThreadDrainResult) -> str:
+        """Format one queue-drain snapshot for warnings and debug logs."""
+
+        callback_budget = (
+            "all" if result.callback_budget is None else str(result.callback_budget)
+        )
+        event_budget = "all" if result.event_budget is None else str(result.event_budget)
+        return (
+            f"callbacks={result.callbacks_processed}/{callback_budget} "
+            f"events={result.events_processed}/{event_budget} "
+            f"deferred_callbacks={result.callbacks_deferred} "
+            f"deferred_events={result.events_deferred}"
+        )
+
+    def _maybe_log_main_thread_drain_budget_hit(self, result: _MainThreadDrainResult) -> None:
+        """Surface queue-budget pressure without logging on every hot-loop iteration."""
+
+        if not (result.callback_budget_hit or result.event_budget_hit):
+            return
+
+        now = time.monotonic()
+        if (
+            self._last_drain_budget_log_at > 0.0
+            and (now - self._last_drain_budget_log_at) < self._DRAIN_BUDGET_LOG_INTERVAL_SECONDS
+        ):
+            return
+
+        self._last_drain_budget_log_at = now
+        coord_logger.warning(
+            "Main-thread drain budget hit: "
+            "callbacks_drained={} callback_budget={} callbacks_deferred={} "
+            "events_drained={} event_budget={} events_deferred={} "
+            "cadence_mode={} cadence_reason={} screen={} state={}",
+            result.callbacks_processed,
+            result.callback_budget,
+            result.callbacks_deferred,
+            result.events_processed,
+            result.event_budget,
+            result.events_deferred,
+            self._current_cadence_mode,
+            self._current_cadence_reason,
+            self._current_screen_name(),
+            self._runtime_state_name(),
+        )
 
     def queue_main_thread_callback(self, callback: Callable[[], None]) -> None:
         """Schedule a callback to run on the coordinator thread."""
@@ -495,7 +662,7 @@ class RuntimeLoopService:
             )
             self._measure_blocking_span(
                 "main_thread_actions",
-                self.process_pending_main_thread_actions,
+                self._process_pending_main_thread_actions_for_iteration,
             )
             self._measure_blocking_span(
                 "manager_recovery",
@@ -681,7 +848,11 @@ class RuntimeLoopService:
             if not self.app._shutdown_completed and not self.app._stopping:
                 self.app.stop()
 
-    def timing_snapshot(self, *, now: float | None = None) -> dict[str, float | int | None]:
+    def timing_snapshot(
+        self,
+        *,
+        now: float | None = None,
+    ) -> dict[str, float | int | str | bool | None]:
         """Expose the latest loop timing markers for snapshots and diagnostics."""
 
         monotonic_now = time.monotonic() if now is None else now
@@ -742,6 +913,18 @@ class RuntimeLoopService:
             "voip_effective_iterate_interval_seconds": (
                 self._current_voip_iterate_interval_seconds
             ),
+            "runtime_main_thread_callbacks_drained": self._last_main_thread_callbacks_drained,
+            "runtime_event_bus_events_drained": self._last_event_bus_events_drained,
+            "runtime_main_thread_callbacks_deferred": self._last_main_thread_callbacks_deferred,
+            "runtime_event_bus_events_deferred": self._last_event_bus_events_deferred,
+            "runtime_main_thread_callback_drain_budget": (
+                self._last_main_thread_callback_drain_budget
+            ),
+            "runtime_event_bus_drain_budget": self._last_event_bus_drain_budget,
+            "runtime_main_thread_callback_budget_hit": (
+                self._last_main_thread_callback_budget_hit
+            ),
+            "runtime_event_bus_event_budget_hit": self._last_event_bus_event_budget_hit,
             "runtime_blocking_span_name": self._last_runtime_blocking_span_name,
             "runtime_blocking_span_seconds": (
                 self._last_runtime_blocking_span_seconds
@@ -773,7 +956,10 @@ class RuntimeLoopService:
             return _LoopCadenceDecision(
                 mode="latency_sensitive",
                 reason="pending_work",
-                loop_sleep_seconds=0.0,
+                loop_sleep_seconds=min(
+                    configured_voip_interval_seconds,
+                    self._PENDING_WORK_LOOP_INTERVAL_SECONDS,
+                ),
                 voip_iterate_interval_seconds=configured_voip_interval_seconds,
             )
 

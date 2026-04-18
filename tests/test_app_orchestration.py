@@ -103,9 +103,13 @@ class FakeLvglBackend:
     def __init__(self) -> None:
         self.initialized = True
         self.force_refresh_calls = 0
+        self.pump_calls: list[int] = []
 
     def force_refresh(self) -> None:
         self.force_refresh_calls += 1
+
+    def pump(self, delta_ms: int) -> None:
+        self.pump_calls.append(delta_ms)
 
 
 class FakeScreenManager:
@@ -1744,6 +1748,153 @@ def test_runtime_loop_keeps_fast_cadence_during_call_states() -> None:
     assert status["runtime_cadence_mode"] == "latency_sensitive"
     assert status["runtime_cadence_reason"] == "call_or_connecting_state"
     assert status["voip_effective_iterate_interval_seconds"] == pytest.approx(0.02)
+
+
+def test_runtime_loop_pending_work_uses_nonzero_backlog_cadence() -> None:
+    """Queued work should no longer collapse the coordinator into a zero-sleep spin."""
+
+    app, _, _ = _build_app_with_power(
+        FakePowerManager([_power_snapshot(available=True, battery_percent=55.0)])
+    )
+    app.voip_manager = FakeRuntimeLoopVoIPManager()
+    app._voip_iterate_interval_seconds = 0.02
+    app._queue_main_thread_callback(lambda: None)
+    _publish_from_worker(app, UserActivityEvent(action_name="select"))
+
+    sleep_seconds = app.runtime_loop.next_sleep_interval_seconds(
+        monotonic_now=1.0,
+        current_time=1.0,
+        last_screen_update=1.0,
+        screen_update_interval=1.0,
+    )
+
+    status = app.get_status()
+    assert sleep_seconds == pytest.approx(RuntimeLoopService._PENDING_WORK_LOOP_INTERVAL_SECONDS)
+    assert status["runtime_cadence_mode"] == "latency_sensitive"
+    assert status["runtime_cadence_reason"] == "pending_work"
+    assert status["runtime_target_sleep_seconds"] == pytest.approx(
+        RuntimeLoopService._PENDING_WORK_LOOP_INTERVAL_SECONDS
+    )
+    assert status["runtime_requested_sleep_seconds"] == pytest.approx(
+        RuntimeLoopService._PENDING_WORK_LOOP_INTERVAL_SECONDS
+    )
+    assert status["voip_effective_iterate_interval_seconds"] == pytest.approx(0.02)
+
+
+def test_runtime_loop_budgets_backlog_and_keeps_protected_work_running() -> None:
+    """Queue pressure should defer generic work while still advancing VoIP, LVGL, and watchdog."""
+
+    feed_started = threading.Event()
+    feed_release = threading.Event()
+
+    class BlockingWatchdogPowerManager(FakePowerManager):
+        def feed_watchdog(self) -> bool:
+            self.feed_watchdog_calls += 1
+            feed_started.set()
+            feed_release.wait(timeout=1.0)
+            return True
+
+    power_manager = BlockingWatchdogPowerManager(
+        [_power_snapshot(available=True, battery_percent=60.0)],
+        watchdog_enabled=True,
+        watchdog_timeout_seconds=60,
+        watchdog_feed_interval_seconds=10.0,
+    )
+    app, _, _ = _build_app_with_power(power_manager)
+    app.simulate = False
+    app.voip_manager = FakeRuntimeLoopVoIPManager()
+    app._voip_iterate_interval_seconds = 0.02
+    app._lvgl_backend = FakeLvglBackend()
+    app._start_watchdog(now=0.0)
+
+    callback_budget = RuntimeLoopService._MAIN_THREAD_CALLBACK_DRAIN_BUDGET
+    event_budget = RuntimeLoopService._EVENT_BUS_DRAIN_BUDGET
+    queued_callbacks = callback_budget + 2
+    queued_events = event_budget + 3
+    callback_calls: list[int] = []
+
+    for index in range(queued_callbacks):
+        app._queue_main_thread_callback(lambda index=index: callback_calls.append(index))
+    for _ in range(queued_events):
+        _publish_from_worker(app, UserActivityEvent(action_name="select"))
+
+    app.runtime_loop.run_iteration(
+        monotonic_now=10.0,
+        current_time=10.0,
+        last_screen_update=10.0,
+        screen_update_interval=10.0,
+    )
+
+    try:
+        assert feed_started.wait(timeout=1.0) is True
+
+        status = app.get_status()
+        assert app.voip_manager.iterate_calls == 1
+        assert app._lvgl_backend.pump_calls == [0]
+        assert power_manager.feed_watchdog_calls == 1
+        assert status["watchdog_feed_in_flight"] is True
+        assert callback_calls == list(range(callback_budget))
+        assert status["runtime_main_thread_callbacks_drained"] == callback_budget
+        assert status["runtime_event_bus_events_drained"] == event_budget
+        assert status["runtime_main_thread_callbacks_deferred"] == (
+            queued_callbacks - callback_budget
+        )
+        assert status["runtime_event_bus_events_deferred"] == queued_events - event_budget
+        assert status["runtime_main_thread_callback_drain_budget"] == callback_budget
+        assert status["runtime_event_bus_drain_budget"] == event_budget
+        assert status["runtime_main_thread_callback_budget_hit"] is True
+        assert status["runtime_event_bus_event_budget_hit"] is True
+        assert status["pending_main_thread_callbacks"] >= queued_callbacks - callback_budget
+        assert status["pending_event_bus_events"] == queued_events - event_budget
+    finally:
+        feed_release.set()
+        _wait_for(
+            lambda: (app.get_status()["pending_main_thread_callbacks"] or 0)
+            > (queued_callbacks - callback_budget)
+        )
+        app._process_pending_main_thread_actions()
+
+
+def test_runtime_loop_logs_main_thread_drain_budget_hits() -> None:
+    """Budget-pressure logs should report both the cap and the deferred backlog."""
+
+    app, _, _ = _build_app_with_power(
+        FakePowerManager([_power_snapshot(available=True, battery_percent=55.0)])
+    )
+    app.voip_manager = FakeRuntimeLoopVoIPManager()
+    app._voip_iterate_interval_seconds = 0.02
+
+    callback_budget = RuntimeLoopService._MAIN_THREAD_CALLBACK_DRAIN_BUDGET
+    event_budget = RuntimeLoopService._EVENT_BUS_DRAIN_BUDGET
+    for _ in range(callback_budget + 1):
+        app._queue_main_thread_callback(lambda: None)
+    for _ in range(event_budget + 2):
+        _publish_from_worker(app, UserActivityEvent(action_name="select"))
+
+    messages: list[str] = []
+    sink_id = logger.add(
+        lambda message: messages.append(
+            f"{message.record['extra'].get('subsystem', '')}|{message.record['message']}"
+        ),
+        format="{message}",
+        level="INFO",
+    )
+    try:
+        app.runtime_loop.run_iteration(
+            monotonic_now=1.0,
+            current_time=1.0,
+            last_screen_update=1.0,
+            screen_update_interval=10.0,
+        )
+    finally:
+        logger.remove(sink_id)
+
+    log_text = "\n".join(messages)
+    assert "coord|Main-thread drain budget hit:" in log_text
+    assert f"callback_budget={callback_budget}" in log_text
+    assert "callbacks_deferred=1" in log_text
+    assert f"event_budget={event_budget}" in log_text
+    assert "events_deferred=2" in log_text
 
 
 def test_runtime_loop_offloads_voip_iterate_to_background_manager() -> None:
