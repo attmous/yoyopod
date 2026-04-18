@@ -64,6 +64,7 @@ Start here:
 - [Development Guide](docs/DEVELOPMENT_GUIDE.md)
 - [System Architecture](docs/SYSTEM_ARCHITECTURE.md)
 - [Canonical Structure](docs/CANONICAL_STRUCTURE.md)
+- [Cloud Provisioning And Backend Integration](docs/CLOUD_PROVISIONING_AND_BACKEND.md)
 
 Setup and operations:
 - [Setup Contract](docs/SETUP_CONTRACT.md)
@@ -77,6 +78,7 @@ Subsystem docs:
 - [Audio Stack](docs/AUDIO_STACK.md)
 - [Local-First Music Plan](docs/LOCAL_FIRST_MUSIC_PLAN.md)
 - [mpv Dependencies](docs/MPV_DEPENDENCIES.md)
+- [Cloud Provisioning And Backend Integration](docs/CLOUD_PROVISIONING_AND_BACKEND.md)
 
 Design and migration notes:
 - [LVGL Migration Plan](docs/LVGL_MIGRATION_PLAN.md)

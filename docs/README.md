@@ -47,6 +47,7 @@ Plan docs are useful, but they are not automatically the current implementation 
 
 - [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md), top-level runtime topology plus startup/bootstrap flow
 - [`CANONICAL_STRUCTURE.md`](CANONICAL_STRUCTURE.md), canonical config topology and domain package ownership
+- [`CLOUD_PROVISIONING_AND_BACKEND.md`](CLOUD_PROVISIONING_AND_BACKEND.md), claimed-device auth, config sync, cache/status files, MQTT telemetry, and current backend-integration status
 - [`RUNTIME_EVENT_FLOW.md`](RUNTIME_EVENT_FLOW.md), current event pipeline and coordinator ownership
 - [`VOICE_STT_MODEL_LIFECYCLE.md`](VOICE_STT_MODEL_LIFECYCLE.md), offline Vosk retention policy and measured footprint
 - [`DISPLAY_HAL_ARCHITECTURE.md`](DISPLAY_HAL_ARCHITECTURE.md), display abstraction and adapters
@@ -120,9 +121,10 @@ Archive files are for historical context only. They are not the source of truth 
 ### Working on runtime code
 
 1. `docs/SYSTEM_ARCHITECTURE.md`
-2. subsystem doc for the area you are changing
-3. `AGENTS.md`
-4. relevant files under `src/yoyopod/`
+2. `docs/CLOUD_PROVISIONING_AND_BACKEND.md` when the work touches backend auth, provisioning, config, or telemetry
+3. subsystem doc for the area you are changing
+4. `AGENTS.md`
+5. relevant files under `src/yoyopod/`
 
 ### Working on Raspberry Pi deployment
 

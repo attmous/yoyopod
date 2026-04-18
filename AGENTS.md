@@ -110,6 +110,7 @@ When in doubt, trust these files first:
 - `src/yoyopod/voice/`
 - `README.md`
 - `docs/SYSTEM_ARCHITECTURE.md`
+- `docs/CLOUD_PROVISIONING_AND_BACKEND.md`
 - `docs/POWER_MODULE.md`
 - `docs/LVGL_MIGRATION_PLAN.md`
 - `docs/LOCAL_FIRST_MUSIC_PLAN.md`
