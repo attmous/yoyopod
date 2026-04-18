@@ -32,7 +32,7 @@ class EventBus:
     def subscribe(self, event_type: type[Any], handler: EventHandler) -> None:
         """Register a handler for a specific event type."""
         self._subscribers[event_type].append(handler)
-        logger.debug(f"Subscribed handler for {event_type.__name__}")
+        logger.trace("Subscribed handler for {}", event_type.__name__)
 
     def publish(self, event: Any) -> None:
         """Publish an event, queueing it if called off the main thread."""
@@ -41,7 +41,7 @@ class EventBus:
             return
 
         self._queue.put(event)
-        logger.debug(f"Queued event: {event.__class__.__name__}")
+        logger.trace("Queued event: {}", event.__class__.__name__)
 
     def drain(self, limit: int | None = None) -> int:
         """

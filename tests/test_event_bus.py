@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import pytest
 
+import yoyopod.event_bus as event_bus_module
 from yoyopod.event_bus import EventBus
 
 
@@ -46,6 +47,36 @@ def test_background_publish_is_queued_until_drain() -> None:
     assert bus.drain() == 1
     assert bus.pending_count() == 0
     assert seen_thread_ids == [bus.main_thread_id]
+
+
+def test_event_bus_hot_path_logs_trace_with_deferred_formatting(monkeypatch) -> None:
+    """EventBus hot-path logs should use TRACE with deferred formatting args."""
+    trace_calls: list[tuple[str, tuple[object, ...]]] = []
+    debug_calls: list[tuple[str, tuple[object, ...]]] = []
+
+    monkeypatch.setattr(
+        event_bus_module.logger,
+        "trace",
+        lambda message, *args: trace_calls.append((message, args)),
+    )
+    monkeypatch.setattr(
+        event_bus_module.logger,
+        "debug",
+        lambda message, *args: debug_calls.append((message, args)),
+    )
+
+    bus = EventBus()
+    bus.subscribe(DemoEvent, lambda event: None)
+
+    worker = threading.Thread(target=lambda: bus.publish(DemoEvent(value="queued")))
+    worker.start()
+    worker.join()
+
+    assert trace_calls == [
+        ("Subscribed handler for {}", ("DemoEvent",)),
+        ("Queued event: {}", ("DemoEvent",)),
+    ]
+    assert debug_calls == []
 
 
 def test_strict_event_bus_reraises_handler_errors() -> None:

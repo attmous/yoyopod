@@ -103,7 +103,7 @@ class InputManager:
             manager.on_action(InputAction.SELECT, handle_select)
         """
         self.callbacks[action].append(callback)
-        logger.debug(f"Registered callback for action: {action.value}")
+        logger.debug("Registered callback for action: {}", action.value)
 
     def on_activity(
         self,
@@ -156,7 +156,7 @@ class InputManager:
             try:
                 adapter.start()
                 adapter_name = adapter.__class__.__name__
-                logger.debug(f"Started adapter: {adapter_name}")
+                logger.debug("Started adapter: {}", adapter_name)
             except Exception as e:
                 adapter_name = adapter.__class__.__name__
                 logger.error(f"Failed to start adapter {adapter_name}: {e}")
@@ -179,7 +179,7 @@ class InputManager:
             try:
                 adapter.stop()
                 adapter_name = adapter.__class__.__name__
-                logger.debug(f"Stopped adapter: {adapter_name}")
+                logger.debug("Stopped adapter: {}", adapter_name)
             except Exception as e:
                 adapter_name = adapter.__class__.__name__
                 logger.error(f"Failed to stop adapter {adapter_name}: {e}")
@@ -217,7 +217,7 @@ class InputManager:
 
         callbacks = self.callbacks.get(action, [])
         if callbacks:
-            logger.debug(f"Action fired: {action.value} (data: {data})")
+            logger.trace("Action fired: {} (data: {})", action.value, data)
             for callback in callbacks:
                 try:
                     callback(data)
@@ -225,7 +225,7 @@ class InputManager:
                     logger.error(f"Error in action callback for {action.value}: {e}")
         else:
             # No callbacks registered - this is normal during screen transitions
-            logger.trace(f"Action {action.value} fired but no callbacks registered")
+            logger.trace("Action {} fired but no callbacks registered", action.value)
 
     def simulate_action(
         self,

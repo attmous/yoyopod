@@ -73,7 +73,7 @@ class ScreenManager:
         self.screens[name] = screen
         screen.set_screen_manager(self)
         screen.set_route_name(name)
-        logger.debug(f"Registered screen: {name}")
+        logger.debug("Registered screen: {}", name)
 
     def push_screen(self, screen_name: str) -> None:
         """
@@ -284,7 +284,7 @@ class ScreenManager:
         for action in InputAction:
             self.input_manager.on_action(action, wrap_with_refresh(action))
 
-        logger.debug(f"Connected input actions for {self.current_screen.name}")
+        logger.debug("Connected input actions for {}", self.current_screen.name)
 
     def _disconnect_inputs(self) -> None:
         """Disconnect input action handlers for the current screen."""
@@ -299,7 +299,7 @@ class ScreenManager:
         # Clear all action callbacks
         self.input_manager.clear_callbacks()
 
-        logger.debug(f"Disconnected input actions for {self.current_screen.name}")
+        logger.debug("Disconnected input actions for {}", self.current_screen.name)
 
     def _configure_screen_input_modes(self) -> None:
         """Adjust adapter-specific modes based on the active screen."""

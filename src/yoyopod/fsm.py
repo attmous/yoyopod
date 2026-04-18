@@ -61,7 +61,12 @@ class MusicFSM:
 
         self.previous_state = self.state
         self.state = target
-        logger.debug(f"MusicFSM: {self.previous_state.value} -> {self.state.value} ({trigger})")
+        logger.debug(
+            "MusicFSM: {} -> {} ({})",
+            self.previous_state.value,
+            self.state.value,
+            trigger,
+        )
         return True
 
     def sync(self, state: MusicState) -> None:
@@ -71,7 +76,7 @@ class MusicFSM:
 
         self.previous_state = self.state
         self.state = state
-        logger.debug(f"MusicFSM synced to {self.state.value}")
+        logger.debug("MusicFSM synced to {}", self.state.value)
 
 
 class CallFSM:
@@ -118,7 +123,12 @@ class CallFSM:
 
         self.previous_state = self.state
         self.state = target
-        logger.debug(f"CallFSM: {self.previous_state.value} -> {self.state.value} ({trigger})")
+        logger.debug(
+            "CallFSM: {} -> {} ({})",
+            self.previous_state.value,
+            self.state.value,
+            trigger,
+        )
         return True
 
     def sync(self, state: CallSessionState) -> None:
@@ -128,7 +138,7 @@ class CallFSM:
 
         self.previous_state = self.state
         self.state = state
-        logger.debug(f"CallFSM synced to {self.state.value}")
+        logger.debug("CallFSM synced to {}", self.state.value)
 
     @property
     def is_active(self) -> bool:
