@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from yoyopod.ui.lvgl_binding import LvglDisplayBackend
 from yoyopod.ui.screens.lvgl_lifecycle import (
@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 class LvglHubView:
     """Own the LVGL object lifecycle for the root Hub screen."""
 
+    scene_key: ClassVar[str] = "hub"
     screen: "HubScreen"
     backend: LvglDisplayBackend
     _built: bool = False

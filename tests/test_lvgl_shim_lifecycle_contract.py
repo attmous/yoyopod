@@ -60,6 +60,15 @@ def test_clear_screen_reuses_the_blank_screen_instead_of_allocating_placeholders
     assert "lv_obj_create(NULL)" not in body
 
 
+def test_shutdown_clears_retained_scenes_before_freeing_draw_buffers() -> None:
+    """Shutdown should release retained scenes before buffer storage is freed."""
+
+    body = _function_body("void yoyopod_lvgl_shutdown")
+
+    assert "yoyopod_lvgl_clear_screen();" in body
+    assert body.index("yoyopod_lvgl_clear_screen();") < body.index("lv_free(g_draw_buf);")
+
+
 def test_retained_scene_syncs_guard_missing_roots_before_activation() -> None:
     """Each retained sync path should reject a missing scene root before load-time activation."""
 

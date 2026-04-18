@@ -898,3 +898,29 @@ def test_power_screen_reports_full_network_page_count_through_lvgl() -> None:
     ]
 
     screen.exit()
+
+
+def test_power_screen_lvgl_render_keeps_controller_indices_stable() -> None:
+    """LVGL sync should derive the active Setup page without rewriting controller indices."""
+
+    from yoyopod.ui.screens.system.power import build_power_screen_state_provider
+
+    binding = FakeLvglBinding()
+    screen = PowerScreen(
+        FakeLvglDisplay(binding),
+        AppContext(),
+        state_provider=build_power_screen_state_provider(status_provider=lambda: {}),
+    )
+
+    screen.enter()
+    screen.page_index = 7
+    screen.in_detail = True
+    screen.selected_row = 7
+    screen.render()
+
+    payload = binding.power_sync_payloads[-1]
+    assert payload["title_text"] == "Voice"
+    assert payload["current_page_index"] == 3
+    assert payload["items"][0].startswith("> Voice Cmds:")
+    assert screen.page_index == 7
+    assert screen.selected_row == 7

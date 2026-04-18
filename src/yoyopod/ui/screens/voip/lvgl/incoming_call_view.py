@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from yoyopod.ui.lvgl_binding import LvglDisplayBackend
 from yoyopod.ui.screens.lvgl_lifecycle import (
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 class LvglIncomingCallView:
     """Own the LVGL object lifecycle for IncomingCallScreen."""
 
+    scene_key: ClassVar[str] = "incoming_call"
     screen: "IncomingCallScreen"
     backend: LvglDisplayBackend
     _built: bool = False

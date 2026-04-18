@@ -3440,6 +3440,8 @@ int yoyopod_lvgl_init(void) {
 }
 
 void yoyopod_lvgl_shutdown(void) {
+    yoyopod_lvgl_clear_screen();
+
     if(g_draw_buf != NULL) {
         lv_free(g_draw_buf);
         g_draw_buf = NULL;

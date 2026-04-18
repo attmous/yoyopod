@@ -36,6 +36,7 @@ class LvglDisplayBackend:
     binding: LvglBinding | None = None
     initialized: bool = field(init=False, default=False)
     scene_generation: int = field(init=False, default=0)
+    _retained_scene_claims: dict[str, int] = field(init=False, default_factory=dict)
     width: int = field(init=False, default=0)
     height: int = field(init=False, default=0)
 

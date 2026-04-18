@@ -69,6 +69,19 @@ class PowerScreenActions:
     unmute: Callable[[], bool] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class PowerScreenLvglPayload:
+    """Pure LVGL payload derived from the current Setup controller state."""
+
+    title_text: str
+    page_text: str | None
+    icon_key: str
+    footer: str
+    items: tuple[str, ...]
+    current_page_index: int
+    total_pages: int
+
+
 def _build_network_rows_from_manager(network_manager: object | None) -> list[tuple[str, str]]:
     """Build the cellular network status rows from a backend-facing manager."""
 
@@ -289,18 +302,19 @@ class PowerScreen(Screen):
     def render(self) -> None:
         """Render the active Setup page."""
         lvgl_view = self._ensure_lvgl_view()
+        pages = self._build_pages_for_display()
+        if not pages:
+            return
+        active_page_index = self._page_index_for(pages)
+        active_page = pages[active_page_index]
         if lvgl_view is not None:
             lvgl_view.sync()
             return
 
-        state = self._get_state()
-        pages = self._build_pages_for_display(state=state)
-        self.page_index %= len(pages)
-        active_page = pages[self.page_index]
         picker_mode = not self.is_one_button_mode() and not self.in_detail
         render_backdrop(self.display, "setup")
         render_status_bar(self.display, self.context, show_time=False)
-        page_text = f"{self.page_index + 1}/{len(pages)}"
+        page_text = f"{active_page_index + 1}/{len(pages)}"
 
         halo_size = 44
         halo_left = (self.display.WIDTH - halo_size) // 2
@@ -410,7 +424,11 @@ class PowerScreen(Screen):
             max_visible = max(1, min(len(pages), available // item_height))
 
             for offset, (index, page) in enumerate(
-                self._visible_picker_pages(pages, max_items=max_visible)
+                self._visible_picker_pages(
+                    pages,
+                    max_items=max_visible,
+                    current_page_index=active_page_index,
+                )
             ):
                 title = page.title
                 subtitle = self._page_subtitle(page.title)
@@ -442,7 +460,7 @@ class PowerScreen(Screen):
                     font_size=11,
                 )
 
-        self._render_page_dots(total_pages=len(pages))
+        self._render_page_dots(total_pages=len(pages), current_page_index=active_page_index)
 
         help_text = self._instruction_text(active_page)
         render_footer(self.display, help_text, mode="setup")
@@ -481,11 +499,27 @@ class PowerScreen(Screen):
             return "Commands and audio"
         return ""
 
+    def _page_index_for(self, pages: list[PowerPage]) -> int:
+        """Return the active page index without mutating controller state."""
+
+        if not pages:
+            return 0
+        return self.page_index % len(pages)
+
+    @staticmethod
+    def _selected_row_for_page(page: PowerPage, selected_row: int) -> int:
+        """Clamp one page's selected row without writing it back."""
+
+        if not page.rows:
+            return 0
+        return selected_row % len(page.rows)
+
     def _visible_picker_pages(
         self,
         pages: list[PowerPage],
         *,
         max_items: int,
+        current_page_index: int | None = None,
     ) -> list[tuple[int, PowerPage]]:
         """Return the visible page-picker window around the current page."""
 
@@ -493,7 +527,13 @@ class PowerScreen(Screen):
             return []
 
         max_items = max(1, min(max_items, len(pages)))
-        start_index = max(0, min(self.page_index - (max_items // 2), len(pages) - max_items))
+        active_page_index = (
+            self._page_index_for(pages) if current_page_index is None else current_page_index
+        )
+        start_index = max(
+            0,
+            min(active_page_index - (max_items // 2), len(pages) - max_items),
+        )
         return [(start_index + offset, pages[start_index + offset]) for offset in range(max_items)]
 
     def _visible_rows_for_page(
@@ -508,18 +548,17 @@ class PowerScreen(Screen):
             max_rows = self._row_capacity_for_page(page)
 
         if not page.rows:
-            self.selected_row = 0
             return [], None
 
-        self.selected_row %= len(page.rows)
+        selected_row = self._selected_row_for_page(page, self.selected_row)
         if not page.interactive or len(page.rows) <= max_rows:
-            return page.rows[:max_rows], (self.selected_row if page.interactive else None)
+            return page.rows[:max_rows], (selected_row if page.interactive else None)
 
-        start = max(0, self.selected_row - (max_rows - 1))
+        start = max(0, selected_row - (max_rows - 1))
         end = min(len(page.rows), start + max_rows)
         start = max(0, end - max_rows)
         visible_rows = page.rows[start:end]
-        return visible_rows, self.selected_row - start
+        return visible_rows, selected_row - start
 
     def _row_capacity_for_page(self, page: PowerPage) -> int:
         """Return how many rows the current display/layout can safely show."""
@@ -528,17 +567,18 @@ class PowerScreen(Screen):
             return 5
         return 4
 
-    def _render_page_dots(self, *, total_pages: int) -> None:
+    def _render_page_dots(self, *, total_pages: int, current_page_index: int | None = None) -> None:
         """Render the compact Setup page-position dots."""
 
         if total_pages <= 1:
             return
 
+        active_page_index = 0 if current_page_index is None else current_page_index
         dots_width = max(0, (total_pages - 1) * 10)
         dots_x = (self.display.WIDTH - dots_width) // 2
         dots_y = self.display.HEIGHT - 42
         for index in range(total_pages):
-            color = SETUP.accent if index == self.page_index else MUTED
+            color = SETUP.accent if index == active_page_index else MUTED
             self.display.circle(dots_x + (index * 10), dots_y, 2, fill=color)
 
     def build_pages(
@@ -596,14 +636,63 @@ class PowerScreen(Screen):
         if not pages:
             return pages
 
-        self.page_index %= len(pages)
-        active_page = pages[self.page_index]
+        active_page = pages[self._page_index_for(pages)]
         if active_page.title != "GPS":
             return pages
 
         if self._maybe_refresh_gps_page():
             pages = self.build_pages(state=self._get_state())
         return pages
+
+    def lvgl_payload(self) -> PowerScreenLvglPayload:
+        """Return the current Setup LVGL payload without mutating controller state."""
+
+        pages = self.build_pages(state=self._get_state())
+        if not pages:
+            return PowerScreenLvglPayload(
+                title_text="Setup",
+                page_text=None,
+                icon_key="care",
+                footer="",
+                items=(),
+                current_page_index=0,
+                total_pages=0,
+            )
+
+        active_page_index = self._page_index_for(pages)
+        active_page = pages[active_page_index]
+        picker_mode = not self.is_one_button_mode() and not self.in_detail
+
+        if picker_mode:
+            items = tuple(
+                f"{'> ' if index == active_page_index else ''}{page.title}"
+                for index, page in self._visible_picker_pages(
+                    pages,
+                    max_items=5,
+                    current_page_index=active_page_index,
+                )
+            )
+            title_text = "Setup"
+        else:
+            visible_rows, visible_selected_index = self._visible_rows_for_page(active_page)
+            formatted_rows: list[str] = []
+            for index, (label, value) in enumerate(visible_rows):
+                row_text = f"{label}: {value}"
+                if visible_selected_index is not None and index == visible_selected_index:
+                    row_text = f"> {row_text}"
+                formatted_rows.append(row_text)
+            items = tuple(formatted_rows)
+            title_text = active_page.title
+
+        return PowerScreenLvglPayload(
+            title_text=title_text,
+            page_text=None,
+            icon_key=self._page_icon_key(active_page.title),
+            footer=self._instruction_text(active_page),
+            items=items,
+            current_page_index=active_page_index,
+            total_pages=len(pages),
+        )
 
     def _build_voice_rows(self, *, summary_mode: bool = False) -> list[tuple[str, str]]:
         """Build the voice-related settings page."""
