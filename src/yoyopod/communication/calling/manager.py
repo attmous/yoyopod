@@ -550,52 +550,61 @@ class VoIPManager:
     def _run_background_iterate_loop(self) -> None:
         """Advance the backend on a dedicated worker instead of the coordinator thread."""
 
-        next_due_at = time.monotonic()
-        while not self._iterate_stop_event.is_set():
-            wait_seconds = max(0.0, next_due_at - time.monotonic())
-            woke_early = self._iterate_wakeup_event.wait(wait_seconds)
-            if self._iterate_stop_event.is_set():
-                break
-            if woke_early:
-                self._iterate_wakeup_event.clear()
-                next_due_at = time.monotonic() + self._current_iterate_interval_seconds()
-                continue
+        try:
+            next_due_at = time.monotonic()
+            while not self._iterate_stop_event.is_set():
+                wait_seconds = max(0.0, next_due_at - time.monotonic())
+                woke_early = self._iterate_wakeup_event.wait(wait_seconds)
+                if self._iterate_stop_event.is_set():
+                    break
+                if woke_early:
+                    self._iterate_wakeup_event.clear()
+                    next_due_at = time.monotonic() + self._current_iterate_interval_seconds()
+                    continue
 
-            started_at = time.monotonic()
-            schedule_delay_seconds = max(0.0, started_at - next_due_at)
+                started_at = time.monotonic()
+                schedule_delay_seconds = max(0.0, started_at - next_due_at)
+                with self._iterate_state_lock:
+                    self._iterate_snapshot = replace(
+                        self._iterate_snapshot,
+                        last_started_at=started_at,
+                        schedule_delay_seconds=schedule_delay_seconds,
+                        in_flight=True,
+                    )
+
+                drained_events = self.backend.iterate() if self.running else 0
+                metrics = self.get_iterate_metrics()
+                completed_at = time.monotonic()
+
+                with self._iterate_state_lock:
+                    self._iterate_snapshot = VoIPIterateSnapshot(
+                        sample_id=self._iterate_snapshot.sample_id + 1,
+                        last_started_at=started_at,
+                        last_completed_at=completed_at,
+                        schedule_delay_seconds=schedule_delay_seconds,
+                        total_duration_seconds=max(0.0, completed_at - started_at),
+                        native_duration_seconds=max(
+                            0.0,
+                            float(getattr(metrics, "native_duration_seconds", 0.0) or 0.0),
+                        ),
+                        event_drain_duration_seconds=max(
+                            0.0,
+                            float(getattr(metrics, "event_drain_duration_seconds", 0.0) or 0.0),
+                        ),
+                        drained_events=max(0, int(drained_events)),
+                        interval_seconds=self._iterate_interval_seconds,
+                        in_flight=False,
+                    )
+
+                next_due_at = started_at + self._current_iterate_interval_seconds()
+        except Exception as exc:
+            if not self._iterate_stop_event.is_set():
+                reason = str(exc).strip() or exc.__class__.__name__
+                logger.exception("VoIP background iterate loop crashed: {}", reason)
+                self._dispatch_backend_event(BackendStopped(reason=reason))
+        finally:
             with self._iterate_state_lock:
-                self._iterate_snapshot = replace(
-                    self._iterate_snapshot,
-                    last_started_at=started_at,
-                    schedule_delay_seconds=schedule_delay_seconds,
-                    in_flight=True,
-                )
-
-            drained_events = self.backend.iterate() if self.running else 0
-            metrics = self.get_iterate_metrics()
-            completed_at = time.monotonic()
-
-            with self._iterate_state_lock:
-                self._iterate_snapshot = VoIPIterateSnapshot(
-                    sample_id=self._iterate_snapshot.sample_id + 1,
-                    last_started_at=started_at,
-                    last_completed_at=completed_at,
-                    schedule_delay_seconds=schedule_delay_seconds,
-                    total_duration_seconds=max(0.0, completed_at - started_at),
-                    native_duration_seconds=max(
-                        0.0,
-                        float(getattr(metrics, "native_duration_seconds", 0.0) or 0.0),
-                    ),
-                    event_drain_duration_seconds=max(
-                        0.0,
-                        float(getattr(metrics, "event_drain_duration_seconds", 0.0) or 0.0),
-                    ),
-                    drained_events=max(0, int(drained_events)),
-                    interval_seconds=self._iterate_interval_seconds,
-                    in_flight=False,
-                )
-
-            next_due_at = started_at + self._current_iterate_interval_seconds()
+                self._iterate_snapshot = replace(self._iterate_snapshot, in_flight=False)
 
     def _current_iterate_interval_seconds(self) -> float:
         """Return the currently selected iterate interval for the background worker."""
@@ -820,7 +829,10 @@ class VoIPManager:
         self.call_state = state
         logger.info("Call state: {} -> {}", old_state.value, state.value)
 
-        if state in (CallState.CONNECTED, CallState.STREAMS_RUNNING) and self.call_start_time is None:
+        if (
+            state in (CallState.CONNECTED, CallState.STREAMS_RUNNING)
+            and self.call_start_time is None
+        ):
             self._start_call_timer()
         elif state in (CallState.RELEASED, CallState.END, CallState.ERROR):
             self._clear_call_session()

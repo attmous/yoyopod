@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import queue
 import subprocess
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,6 +29,7 @@ from yoyopod.communication import (
     RegistrationState,
     RegistrationStateChanged,
     VoIPConfig,
+    VoIPEvent,
     VoIPManager,
     VoIPMessageRecord,
 )
@@ -115,6 +118,38 @@ class FakePeopleDirectory:
         return SimpleNamespace(display_name=contact_name)
 
 
+class BackgroundIterateMockVoIPBackend(MockVoIPBackend):
+    """Mock backend that cooperates with the manager's real background iterate thread."""
+
+    def __init__(
+        self,
+        *,
+        event_to_emit: VoIPEvent | None = None,
+        metrics_error: Exception | None = None,
+    ) -> None:
+        super().__init__()
+        self.event_to_emit = event_to_emit
+        self.metrics_error = metrics_error
+        self.iterate_calls = 0
+        self.iterate_started = threading.Event()
+
+    def iterate(self) -> int:
+        self.iterate_started.set()
+        self.iterate_calls += 1
+        if self.iterate_calls == 1 and self.event_to_emit is not None:
+            self.emit(self.event_to_emit)
+            return 1
+        return 0
+
+    def get_iterate_metrics(self) -> object | None:
+        if self.metrics_error is not None:
+            raise self.metrics_error
+        return SimpleNamespace(
+            native_duration_seconds=0.0,
+            event_drain_duration_seconds=0.0,
+        )
+
+
 def build_config() -> VoIPConfig:
     """Create a small test configuration."""
 
@@ -152,6 +187,17 @@ def native_event(**overrides) -> SimpleNamespace:
     }
     base.update(overrides)
     return SimpleNamespace(**base)
+
+
+def wait_for_condition(predicate: Callable[[], bool], *, timeout_seconds: float = 1.0) -> bool:
+    """Poll a test condition until it becomes true or the timeout expires."""
+
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return predicate()
 
 
 def test_liblinphone_backend_starts_and_drains_native_events() -> None:
@@ -235,7 +281,9 @@ def test_liblinphone_backend_records_native_iterate_timings(monkeypatch) -> None
     warnings: list[tuple[object, ...]] = []
     monotonic_values = iter([10.0, 10.0, 10.18, 10.18, 10.29, 10.31])
 
-    monkeypatch.setattr("yoyopod.communication.calling.backend.time.monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(
+        "yoyopod.communication.calling.backend.time.monotonic", lambda: next(monotonic_values)
+    )
     monkeypatch.setattr(
         "yoyopod.communication.calling.backend.logger.warning",
         lambda *args: warnings.append(args),
@@ -496,6 +544,96 @@ def test_voip_manager_queues_backend_events_back_to_main_thread(tmp_path: Path) 
     assert manager.call_state == CallState.CONNECTED
 
 
+def test_voip_manager_background_iterate_thread_queues_events_and_stops_cleanly(
+    tmp_path: Path,
+) -> None:
+    """The dedicated iterate worker should queue callbacks back to the coordinator thread."""
+
+    backend = BackgroundIterateMockVoIPBackend(
+        event_to_emit=CallStateChanged(state=CallState.CONNECTED)
+    )
+    config = build_config()
+    config.message_store_dir = str(tmp_path / "messages")
+    config.voice_note_store_dir = str(tmp_path / "voice_notes")
+    scheduled_callbacks: queue.Queue[Callable[[], None]] = queue.Queue()
+    manager = VoIPManager(
+        config,
+        backend=backend,
+        event_scheduler=scheduled_callbacks.put,
+        background_iterate_enabled=True,
+    )
+
+    assert manager.start()
+    try:
+        manager.ensure_background_iterate_running()
+
+        assert wait_for_condition(backend.iterate_started.is_set)
+        assert manager._iterate_thread is not None
+        worker_thread = manager._iterate_thread
+
+        assert wait_for_condition(lambda: not scheduled_callbacks.empty())
+        assert manager.call_state == CallState.IDLE
+
+        scheduled_callbacks.get_nowait()()
+
+        assert manager.call_state == CallState.CONNECTED
+        assert backend.iterate_calls >= 1
+
+        manager._stop_background_iterate_loop()
+
+        assert manager._iterate_thread is None
+        assert worker_thread is not None
+        assert worker_thread.is_alive() is False
+    finally:
+        manager.stop(notify_events=False)
+
+
+def test_voip_manager_background_iterate_worker_surfaces_unexpected_failure(
+    tmp_path: Path,
+) -> None:
+    """Unexpected worker-loop failures should be converted into a backend-stopped event."""
+
+    backend = BackgroundIterateMockVoIPBackend(metrics_error=RuntimeError("metrics exploded"))
+    config = build_config()
+    config.message_store_dir = str(tmp_path / "messages")
+    config.voice_note_store_dir = str(tmp_path / "voice_notes")
+    scheduled_callbacks: queue.Queue[Callable[[], None]] = queue.Queue()
+    availability_changes: list[tuple[bool, str]] = []
+    manager = VoIPManager(
+        config,
+        backend=backend,
+        event_scheduler=scheduled_callbacks.put,
+        background_iterate_enabled=True,
+    )
+    manager.on_availability_change(
+        lambda available, reason: availability_changes.append((available, reason))
+    )
+
+    assert manager.start()
+    try:
+        manager.ensure_background_iterate_running()
+
+        assert wait_for_condition(backend.iterate_started.is_set)
+        assert wait_for_condition(lambda: not scheduled_callbacks.empty())
+
+        scheduled_callbacks.get_nowait()()
+
+        assert manager.running is False
+        assert manager.registered is False
+        assert manager.registration_state == RegistrationState.FAILED
+        assert availability_changes[-1] == (False, "metrics exploded")
+
+        worker_thread = manager._iterate_thread
+        assert worker_thread is not None
+        assert wait_for_condition(lambda: worker_thread.is_alive() is False)
+
+        manager._stop_background_iterate_loop()
+
+        assert manager._iterate_thread is None
+    finally:
+        manager.stop(notify_events=False)
+
+
 def test_voip_manager_surfaces_voice_note_failure_reason() -> None:
     """Voice-note send failures should preserve the backend reason for the UI."""
 
@@ -640,9 +778,7 @@ def test_liblinphone_shim_records_voice_notes_as_wav() -> None:
 
     shim_source = Path(
         "src/yoyopod/communication/integrations/liblinphone_binding/native/liblinphone_shim.c"
-    ).read_text(
-        encoding="utf-8"
-    )
+    ).read_text(encoding="utf-8")
 
     assert (
         "linphone_recorder_params_set_file_format(params, LinphoneRecorderFileFormatWav);"
@@ -655,9 +791,7 @@ def test_liblinphone_shim_wires_incoming_message_debug_paths() -> None:
 
     shim_source = Path(
         "src/yoyopod/communication/integrations/liblinphone_binding/native/liblinphone_shim.c"
-    ).read_text(
-        encoding="utf-8"
-    )
+    ).read_text(encoding="utf-8")
 
     assert (
         "linphone_core_cbs_set_messages_received(g_state.core_cbs, yoyopod_on_messages_received);"
