@@ -58,6 +58,8 @@ _DEBOUNCE_TIME = 0.05
 _LONG_PRESS_TIME = 1.0
 _POLL_INTERVAL = 0.03
 _EDGE_IDLE_WAIT_TIMEOUT = 0.5
+_EDGE_EVENT_RISING = {"rising", "rising_edge", "line_event_rising_edge", "edge_rising"}
+_EDGE_EVENT_FALLING = {"falling", "falling_edge", "line_event_falling_edge", "edge_falling"}
 
 
 class GpiodButtonAdapter(InputHAL):
@@ -318,9 +320,92 @@ class GpiodButtonAdapter(InputHAL):
             self._observe_raw_state(button, current_state, current_time)
             self._advance_button_state(button, current_time)
 
+    def _seed_event_loop_states(self, observed_at: float) -> None:
+        """Prime raw/stable state from live GPIO levels before waiting on edges."""
+        for button in Button:
+            if button not in self._lines:
+                continue
+
+            current_state = self._read_button(button)
+            self._raw_button_states[button] = current_state
+            self._button_states[button] = current_state
+            self._transition_times[button] = None
+            self._long_fired[button] = False
+            self._press_times[button] = observed_at if current_state else None
+
+    def _edge_event_state(self, event: object) -> bool | None:
+        """Translate a gpiod edge-event object into the adapter's pressed state."""
+        for attr_name in ("event_type", "type"):
+            edge_type = getattr(event, attr_name, None)
+            state = self._edge_type_to_pressed_state(edge_type)
+            if state is not None:
+                return state
+
+        for attr_name in ("rising_edge", "is_rising_edge"):
+            value = getattr(event, attr_name, None)
+            if value is True:
+                return False
+            if value is False:
+                return True
+
+        for attr_name in ("falling_edge", "is_falling_edge"):
+            value = getattr(event, attr_name, None)
+            if value is True:
+                return True
+            if value is False:
+                return False
+
+        return None
+
+    def _edge_event_observed_at(self, event: object, fallback: float) -> float:
+        """Prefer event timestamps when available so drained edges keep their ordering."""
+        timestamp_ns = getattr(event, "timestamp_ns", None)
+        if isinstance(timestamp_ns, int):
+            return timestamp_ns / 1_000_000_000
+
+        timestamp = getattr(event, "timestamp", None)
+        if isinstance(timestamp, (int, float)):
+            return float(timestamp)
+
+        sec = getattr(event, "sec", None)
+        nsec = getattr(event, "nsec", None)
+        if isinstance(sec, int) and isinstance(nsec, int):
+            return sec + (nsec / 1_000_000_000)
+
+        return fallback
+
+    def _edge_type_to_pressed_state(self, edge_type: object) -> bool | None:
+        """Map gpiod edge direction identifiers onto active-low pressed state."""
+        if edge_type is None:
+            return None
+
+        normalized = str(edge_type).rsplit(".", 1)[-1].lower()
+        if normalized in _EDGE_EVENT_RISING:
+            return False
+        if normalized in _EDGE_EVENT_FALLING:
+            return True
+        return None
+
+    def _apply_edge_events(self, button: Button, line: object, observed_at: float) -> None:
+        """Replay drained edge transitions without collapsing them into one sampled level."""
+        events = read_edge_events(line)
+        if not events:
+            self._observe_raw_state(button, self._read_button(button), observed_at)
+            return
+
+        for event in events:
+            event_at = self._edge_event_observed_at(event, observed_at)
+            self._advance_button_state(button, event_at)
+            event_state = self._edge_event_state(event)
+            if event_state is None:
+                event_state = self._read_button(button)
+            self._observe_raw_state(button, event_state, event_at)
+            self._advance_button_state(button, event_at)
+
     def _event_wait_loop(self) -> None:
         """Block on GPIO edge file descriptors so idle threads stay asleep."""
         fd_to_button = {fd: button for button, fd in self._line_event_fds.items()}
+        self._seed_event_loop_states(time.monotonic())
 
         while not self._stop_event.is_set():
             current_time = time.monotonic()
@@ -346,15 +431,14 @@ class GpiodButtonAdapter(InputHAL):
                 if line is None:
                     continue
                 try:
-                    read_edge_events(line)
+                    self._apply_edge_events(button, line, observed_at)
                 except Exception as exc:
                     logger.debug(
                         "Failed to drain GPIO edge events for button {}; sampling level directly: {}",
                         button.value,
                         exc,
                     )
-
-                self._observe_raw_state(button, self._read_button(button), observed_at)
+                    self._observe_raw_state(button, self._read_button(button), observed_at)
 
             for button in Button:
                 self._advance_button_state(button, observed_at)

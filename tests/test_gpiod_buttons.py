@@ -145,12 +145,13 @@ def test_edge_wait_loop_samples_level_when_event_drain_fails(
         def close(self) -> None:
             return None
 
-    line = FakeLine(101, 1)
-    clock = iter((10.0, 10.0))
+    line = FakeLine(101, 0)
+    clock = iter((10.0, 10.0, 10.0))
 
     def fake_select(reads, _writes, _errors, timeout):
         assert reads == [101]
         assert timeout > 0.0
+        line.value = 1
         adapter._stop_event.set()
         return ([101], [], [])
 
@@ -179,15 +180,97 @@ def test_edge_wait_loop_samples_level_when_event_drain_fails(
         InputAction.SELECT,
         lambda data: received.append(("select", data)),
     )
-    adapter._raw_button_states[Button.A] = True
-    adapter._button_states[Button.A] = True
-    adapter._press_times[Button.A] = 9.95
-
     adapter._event_wait_loop()
 
     transition_started_at = adapter._transition_times[Button.A]
     assert transition_started_at == 10.0
 
     adapter._advance_button_state(Button.A, transition_started_at + 0.06)
+
+    assert received == [("select", {"button": "A"})]
+
+
+def test_event_wait_loop_seeds_initial_pressed_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    from yoyopod.ui.input.adapters import gpiod_buttons
+    from yoyopod.ui.input.adapters.gpiod_buttons import Button
+
+    class FakeLine:
+        def __init__(self, fd: int, value: int) -> None:
+            self.fd = fd
+            self.value = value
+
+        def get_value(self) -> int:
+            return self.value
+
+        def release(self) -> None:
+            return None
+
+    class FakeChip:
+        def close(self) -> None:
+            return None
+
+    line = FakeLine(101, 0)
+    clock = iter((10.0, 10.0, 10.0))
+
+    def fake_select(reads, _writes, _errors, timeout):
+        assert reads == [101]
+        assert timeout > 0.0
+        adapter._stop_event.set()
+        return ([], [], [])
+
+    monkeypatch.setattr(gpiod_buttons, "HAS_GPIOD", True)
+    monkeypatch.setattr(gpiod_buttons, "open_chip", lambda _name: FakeChip())
+    monkeypatch.setattr(
+        gpiod_buttons,
+        "request_input_events",
+        lambda _chip, _line_offset, _consumer: line,
+    )
+    monkeypatch.setattr(gpiod_buttons, "get_event_fd", lambda requested_line: requested_line.fd)
+    monkeypatch.setattr(gpiod_buttons, "read_edge_events", lambda _line: [])
+    monkeypatch.setattr(gpiod_buttons.select, "select", fake_select)
+    monkeypatch.setattr(gpiod_buttons.time, "monotonic", lambda: next(clock))
+
+    adapter = gpiod_buttons.GpiodButtonAdapter(
+        pin_config={"button_a": {"chip": "gpiochip0", "line": 10}},
+        simulate=False,
+    )
+
+    adapter._event_wait_loop()
+
+    assert adapter._raw_button_states[Button.A] is True
+    assert adapter._button_states[Button.A] is True
+    assert adapter._press_times[Button.A] == 10.0
+
+
+def test_apply_edge_events_preserves_queued_transitions(monkeypatch: pytest.MonkeyPatch) -> None:
+    from yoyopod.ui.input.adapters.gpiod_buttons import Button, GpiodButtonAdapter
+
+    class FakeEvent:
+        def __init__(self, event_type: str, timestamp_ns: int) -> None:
+            self.event_type = event_type
+            self.timestamp_ns = timestamp_ns
+
+    class FakeLine:
+        def get_value(self) -> int:
+            return 1
+
+    adapter = GpiodButtonAdapter(pin_config={}, simulate=True)
+    received: list[tuple[str, dict[str, str]]] = []
+    adapter.on_action(
+        InputAction.SELECT,
+        lambda data: received.append(("select", data)),
+    )
+
+    monkeypatch.setattr(
+        "yoyopod.ui.input.adapters.gpiod_buttons.read_edge_events",
+        lambda _line: [
+            FakeEvent("falling", 1_000_000_000),
+            FakeEvent("rising", 1_060_000_000),
+        ],
+    )
+
+    adapter._apply_edge_events(Button.A, FakeLine(), 1.0)
+    adapter._advance_button_state(Button.A, 1.05)
+    adapter._advance_button_state(Button.A, 1.11)
 
     assert received == [("select", {"button": "A"})]
