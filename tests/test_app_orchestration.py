@@ -1099,7 +1099,7 @@ def test_power_poll_honors_interval_and_tracks_unavailable_backend() -> None:
     app._poll_power_status(now=0.0, force=True)
     app._poll_power_status(now=10.0)
     app._poll_power_status(now=30.0)
-    _wait_for(lambda: not app._pending_main_thread_callbacks.empty())
+    _wait_for(lambda: (app.get_status()["pending_main_thread_callbacks"] or 0) > 0)
     app._process_pending_main_thread_actions()
 
     assert app.power_manager.refresh_calls == 2
@@ -1137,7 +1137,7 @@ def test_periodic_power_poll_runs_off_the_coordinator_thread() -> None:
     assert app.menu_screen.render_calls == 0
 
     refresh_release.set()
-    _wait_for(lambda: not app._pending_main_thread_callbacks.empty())
+    _wait_for(lambda: (app.get_status()["pending_main_thread_callbacks"] or 0) > 0)
     app._process_pending_main_thread_actions()
 
     assert app.power_manager.refresh_calls == 1
@@ -1521,7 +1521,7 @@ def test_watchdog_starts_and_feeds_from_app_loop() -> None:
     app._feed_watchdog_if_due(9.0)
     app._feed_watchdog_if_due(10.0)
     _wait_for(lambda: power_manager.feed_watchdog_calls == 1)
-    _wait_for(lambda: not app._pending_main_thread_callbacks.empty())
+    _wait_for(lambda: (app.get_status()["pending_main_thread_callbacks"] or 0) > 0)
     app._process_pending_main_thread_actions()
 
     assert power_manager.enable_watchdog_calls == 1
@@ -1562,7 +1562,7 @@ def test_watchdog_feed_runs_off_the_coordinator_thread() -> None:
     assert app.get_status()["watchdog_feed_in_flight"] is True
 
     feed_release.set()
-    _wait_for(lambda: not app._pending_main_thread_callbacks.empty())
+    _wait_for(lambda: (app.get_status()["pending_main_thread_callbacks"] or 0) > 0)
     app._process_pending_main_thread_actions()
 
     assert power_manager.feed_watchdog_calls == 1
@@ -1878,6 +1878,42 @@ def test_runtime_loop_budgets_backlog_and_keeps_protected_work_running() -> None
             > (queued_callbacks - callback_budget)
         )
         app._process_pending_main_thread_actions()
+
+
+def test_runtime_loop_exempts_watchdog_completion_callback_from_budget() -> None:
+    """Watchdog completion should bypass the generic callback cap under backlog."""
+
+    power_manager = FakePowerManager(
+        [_power_snapshot(available=True, battery_percent=60.0)],
+        watchdog_enabled=True,
+        watchdog_timeout_seconds=60,
+        watchdog_feed_interval_seconds=10.0,
+    )
+    app, _, _ = _build_app_with_power(power_manager)
+    app.simulate = False
+    app._watchdog_active = True
+    app._watchdog_feed_in_flight = True
+
+    callback_budget = RuntimeLoopService._MAIN_THREAD_CALLBACK_DRAIN_BUDGET
+    queued_callbacks = callback_budget + 2
+    callback_calls: list[int] = []
+
+    for index in range(queued_callbacks):
+        app._queue_main_thread_callback(lambda index=index: callback_calls.append(index))
+
+    app.power_runtime.run_watchdog_feed_attempt()
+
+    processed = app.runtime_loop._process_pending_main_thread_actions_for_iteration()
+    status = app.get_status()
+
+    assert power_manager.feed_watchdog_calls == 1
+    assert processed == callback_budget + 1
+    assert callback_calls == list(range(callback_budget))
+    assert status["watchdog_feed_in_flight"] is False
+    assert status["runtime_main_thread_callbacks_drained"] == callback_budget + 1
+    assert status["runtime_main_thread_callbacks_deferred"] == queued_callbacks - callback_budget
+    assert status["runtime_main_thread_callback_budget_hit"] is True
+    assert status["pending_main_thread_callbacks"] == queued_callbacks - callback_budget
 
 
 def test_runtime_loop_logs_main_thread_drain_budget_hits() -> None:

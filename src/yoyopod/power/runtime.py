@@ -56,7 +56,8 @@ class PowerRuntimeService:
 
         snapshot = self._refresh_snapshot()
         self.app._queue_main_thread_callback(
-            lambda snapshot=snapshot: self._complete_refresh(snapshot=snapshot)
+            lambda snapshot=snapshot: self._complete_refresh(snapshot=snapshot),
+            safety=True,
         )
 
     def _refresh_snapshot(self) -> "PowerSnapshot":
@@ -170,7 +171,8 @@ class PowerRuntimeService:
                 success=success,
                 completed_at=completed_at,
                 feed_interval=feed_interval,
-            )
+            ),
+            safety=True,
         )
 
     def _complete_watchdog_feed(

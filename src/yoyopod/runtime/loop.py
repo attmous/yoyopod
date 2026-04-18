@@ -88,6 +88,20 @@ class _MainThreadDrainResult:
         return self.event_budget is not None and self.events_deferred > 0
 
 
+@dataclass(frozen=True, slots=True)
+class _CallbackDrainResult:
+    """Track ordinary and safety callback drain counts for one coordinator step."""
+
+    regular_callbacks_processed: int = 0
+    safety_callbacks_processed: int = 0
+
+    @property
+    def total_processed(self) -> int:
+        """Return the total number of callbacks advanced in one drain."""
+
+        return self.regular_callbacks_processed + self.safety_callbacks_processed
+
+
 def _queue_depth(queue_obj: object) -> int | None:
     """Return a best-effort queue depth for runtime diagnostics."""
 
@@ -187,7 +201,7 @@ class RuntimeLoopService:
             "span={} duration_ms={:.1f} pending_callbacks={} pending_events={} screen={} state={}",
             span_name,
             duration_seconds * 1000.0,
-            _queue_depth(self.app._pending_main_thread_callbacks),
+            self.app._pending_main_thread_callback_count(),
             self.app.event_bus.pending_count(),
             self._current_screen_name(),
             self._runtime_state_name(),
@@ -317,7 +331,7 @@ class RuntimeLoopService:
                 self._last_voip_native_events,
                 self._current_cadence_mode,
                 self._current_cadence_reason,
-                _queue_depth(self.app._pending_main_thread_callbacks),
+                self.app._pending_main_thread_callback_count(),
                 self.app.event_bus.pending_count(),
                 self._current_screen_name(),
                 self._runtime_state_name(),
@@ -326,11 +340,15 @@ class RuntimeLoopService:
     def process_pending_main_thread_actions(self, limit: Optional[int] = None) -> int:
         """Drain queued typed events scheduled by worker threads."""
         started_at = time.monotonic()
-        callbacks_processed = self._drain_pending_main_thread_callbacks(limit)
-        remaining_limit = None if limit is None else max(0, limit - callbacks_processed)
+        callback_result = self._drain_pending_main_thread_callbacks(limit)
+        remaining_limit = (
+            None
+            if limit is None
+            else max(0, limit - callback_result.regular_callbacks_processed)
+        )
         events_processed = self.app.event_bus.drain(remaining_limit)
         result = self._snapshot_main_thread_drain_result(
-            callbacks_processed=callbacks_processed,
+            callbacks_processed=callback_result.total_processed,
             events_processed=events_processed,
         )
         self._record_main_thread_drain_result(result)
@@ -348,10 +366,9 @@ class RuntimeLoopService:
         started_at = time.monotonic()
         callback_budget = self._main_thread_callback_drain_budget()
         event_budget = self._event_bus_drain_budget()
+        callback_result = self._drain_pending_main_thread_callbacks(callback_budget)
         result = self._snapshot_main_thread_drain_result(
-            callbacks_processed=self._drain_pending_main_thread_callbacks(
-                callback_budget,
-            ),
+            callbacks_processed=callback_result.total_processed,
             events_processed=self.app.event_bus.drain(event_budget),
             callback_budget=callback_budget,
             event_budget=event_budget,
@@ -383,13 +400,36 @@ class RuntimeLoopService:
         # between iterations instead of tracking the faster VoIP cadence.
         return self._PENDING_WORK_LOOP_INTERVAL_SECONDS
 
-    def _drain_pending_main_thread_callbacks(self, limit: int | None = None) -> int:
+    def _drain_pending_main_thread_callbacks(
+        self,
+        limit: int | None = None,
+    ) -> _CallbackDrainResult:
+        """Run safety callbacks ahead of ordinary queue work."""
+
+        safety_callbacks_processed = self._drain_callback_queue(
+            self.app._pending_safety_main_thread_callbacks
+        )
+        regular_callbacks_processed = self._drain_callback_queue(
+            self.app._pending_main_thread_callbacks,
+            limit=limit,
+        )
+        return _CallbackDrainResult(
+            regular_callbacks_processed=regular_callbacks_processed,
+            safety_callbacks_processed=safety_callbacks_processed,
+        )
+
+    def _drain_callback_queue(
+        self,
+        queue_obj: Any,
+        *,
+        limit: int | None = None,
+    ) -> int:
         """Run queued coordinator-thread callbacks with an optional hard count limit."""
 
         processed = 0
         while limit is None or processed < limit:
             try:
-                callback = self.app._pending_main_thread_callbacks.get_nowait()
+                callback = queue_obj.get_nowait()
             except Empty:
                 break
 
@@ -411,7 +451,7 @@ class RuntimeLoopService:
     ) -> _MainThreadDrainResult:
         """Capture drain totals and remaining backlog after one coordinator drain."""
 
-        callback_backlog = _queue_depth(self.app._pending_main_thread_callbacks)
+        callback_backlog = self.app._pending_main_thread_callback_count()
         # Deferred callback count is best-effort: queues without qsize support degrade
         # to 0 here rather than paying extra coordinator work to derive a stronger estimate.
         return _MainThreadDrainResult(
@@ -482,8 +522,17 @@ class RuntimeLoopService:
             self._runtime_state_name(),
         )
 
-    def queue_main_thread_callback(self, callback: Callable[[], None]) -> None:
+    def queue_main_thread_callback(
+        self,
+        callback: Callable[[], None],
+        *,
+        safety: bool = False,
+    ) -> None:
         """Schedule a callback to run on the coordinator thread."""
+        if safety:
+            # Safety completions must bypass the ordinary per-iteration fairness cap.
+            self.app._pending_safety_main_thread_callbacks.put(callback)
+            return
         self.app._pending_main_thread_callbacks.put(callback)
 
     def queue_lvgl_input_action(self, action: Any, _data: Optional[Any] = None) -> None:
@@ -595,7 +644,7 @@ class RuntimeLoopService:
                 native_events,
                 self._current_cadence_mode,
                 self._current_cadence_reason,
-                _queue_depth(self.app._pending_main_thread_callbacks),
+                self.app._pending_main_thread_callback_count(),
                 self.app.event_bus.pending_count(),
                 self._current_screen_name(),
                 self._runtime_state_name(),
@@ -747,7 +796,7 @@ class RuntimeLoopService:
                     "Runtime iteration slow: "
                     "iteration_ms={:.1f} pending_callbacks={} pending_events={} screen={} state={}",
                     self._last_runtime_iteration_duration_seconds * 1000.0,
-                    _queue_depth(self.app._pending_main_thread_callbacks),
+                    self.app._pending_main_thread_callback_count(),
                     self.app.event_bus.pending_count(),
                     self._current_screen_name(),
                     self._runtime_state_name(),
@@ -962,7 +1011,7 @@ class RuntimeLoopService:
             self._RELAXED_IDLE_INTERVAL_SECONDS,
             configured_voip_interval_seconds,
         )
-        pending_callbacks = max(0, _queue_depth(self.app._pending_main_thread_callbacks) or 0)
+        pending_callbacks = max(0, self.app._pending_main_thread_callback_count() or 0)
         pending_events = max(0, self.app.event_bus.pending_count())
         if pending_callbacks > 0 or pending_events > 0:
             return _LoopCadenceDecision(
@@ -1136,7 +1185,7 @@ class RuntimeLoopService:
             self._effective_voip_iterate_interval_seconds() * 1000.0,
             self._current_cadence_mode,
             self._current_cadence_reason,
-            _queue_depth(self.app._pending_main_thread_callbacks),
+            self.app._pending_main_thread_callback_count(),
             self.app.event_bus.pending_count(),
             self._current_screen_name(),
             self._runtime_state_name(),

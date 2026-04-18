@@ -221,6 +221,9 @@ class YoyoPodApp:
         self._main_thread_id = threading.get_ident()
         self.event_bus = EventBus(main_thread_id=self._main_thread_id)
         self._pending_main_thread_callbacks: SimpleQueue[Callable[[], None]] = SimpleQueue()
+        self._pending_safety_main_thread_callbacks: SimpleQueue[Callable[[], None]] = (
+            SimpleQueue()
+        )
 
         # Runtime services
         self.screen_power_service = ScreenPowerService(self)
@@ -464,8 +467,22 @@ class YoyoPodApp:
     def _process_pending_main_thread_actions(self, limit: Optional[int] = None) -> int:
         return self.runtime_loop.process_pending_main_thread_actions(limit)
 
-    def _queue_main_thread_callback(self, callback: Callable[[], None]) -> None:
-        self.runtime_loop.queue_main_thread_callback(callback)
+    def _queue_main_thread_callback(
+        self,
+        callback: Callable[[], None],
+        *,
+        safety: bool = False,
+    ) -> None:
+        self.runtime_loop.queue_main_thread_callback(callback, safety=safety)
+
+    def _pending_main_thread_callback_count(self) -> int | None:
+        """Return the combined generic and safety callback backlog."""
+
+        callback_backlog = _queue_depth(self._pending_main_thread_callbacks)
+        safety_backlog = _queue_depth(self._pending_safety_main_thread_callbacks)
+        if callback_backlog is None and safety_backlog is None:
+            return None
+        return max(0, callback_backlog or 0) + max(0, safety_backlog or 0)
 
     def _queue_lvgl_input_action(self, action: Any, _data: Optional[Any] = None) -> None:
         self.runtime_loop.queue_lvgl_input_action(action, _data)
@@ -817,7 +834,7 @@ class YoyoPodApp:
             "input_manager_running": (
                 self.input_manager.running if self.input_manager is not None else False
             ),
-            "pending_main_thread_callbacks": _queue_depth(self._pending_main_thread_callbacks),
+            "pending_main_thread_callbacks": self._pending_main_thread_callback_count(),
             "pending_event_bus_events": self.event_bus.pending_count(),
             "input_activity_age_seconds": (
                 max(0.0, monotonic_now - self._last_input_activity_at)
