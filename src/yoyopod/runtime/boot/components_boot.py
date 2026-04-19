@@ -48,8 +48,16 @@ class ComponentsBoot:
             and requested_renderer.strip().lower() == "lvgl"
         )
 
+    def _default_music_volume(self) -> int:
+        """Return the configured startup output volume for music playback."""
+
+        media_cfg = getattr(self.app, "media_settings", None)
+        raw_volume = media_cfg.music.default_volume if media_cfg is not None else 100
+        return max(0, min(100, int(raw_volume)))
+
     def init_core_components(self) -> bool:
         """Initialize display, context, orchestration models, input, and screen manager."""
+        from yoyopod.audio import AudioVolumeController
         from yoyopod.app_context import AppContext
         from yoyopod.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
 
@@ -107,6 +115,14 @@ class ComponentsBoot:
 
             self.logger.info("  - AppContext")
             self.app.context = AppContext()
+            audio_volume_controller = AudioVolumeController(
+                context=self.app.context,
+                default_music_volume_provider=self._default_music_volume,
+                output_volume=getattr(self.app, "output_volume", None),
+                music_backend=getattr(self.app, "music_backend", None),
+            )
+            setattr(self.app, "audio_volume_controller", audio_volume_controller)
+            self.app.context.audio_volume_controller = audio_volume_controller
             if self.app.config_manager is not None:
                 self.app.context.update_voip_status(
                     configured=bool(

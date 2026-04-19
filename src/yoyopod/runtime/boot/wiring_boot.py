@@ -58,14 +58,20 @@ class WiringBoot:
         self.app.voip_manager.on_availability_change(
             self.app.call_coordinator.publish_availability_change
         )
-        self.app.voip_manager.on_message_summary_change(self.app._handle_voice_note_summary_changed)
-        self.app.voip_manager.on_message_received(self.app._handle_voice_note_activity_changed)
-        self.app.voip_manager.on_message_delivery_change(
-            self.app._handle_voice_note_activity_changed
+        self.app.voip_manager.on_message_summary_change(
+            self.app.event_wiring.voice_note_events.handle_voice_note_summary_changed
         )
-        self.app.voip_manager.on_message_failure(self.app._handle_voice_note_failure)
+        self.app.voip_manager.on_message_received(
+            self.app.event_wiring.voice_note_events.handle_voice_note_activity_changed
+        )
+        self.app.voip_manager.on_message_delivery_change(
+            self.app.event_wiring.voice_note_events.handle_voice_note_activity_changed
+        )
+        self.app.voip_manager.on_message_failure(
+            self.app.event_wiring.voice_note_events.handle_voice_note_failure
+        )
         self.refresh_talk_summary()
-        self.app._sync_active_voice_note_context()
+        self.app.event_wiring.voice_note_events.sync_active_voice_note_context()
         self.logger.info("  VoIP callbacks registered")
 
     def setup_music_callbacks(self) -> None:
@@ -82,7 +88,10 @@ class WiringBoot:
         self.app.music_backend.on_playback_state_change(
             self.app.playback_coordinator.publish_playback_state_change
         )
-        self.app.music_backend.on_connection_change(self.app._sync_output_volume_on_music_connect)
+        if self.app.audio_volume_controller is not None:
+            self.app.music_backend.on_connection_change(
+                self.app.audio_volume_controller.sync_output_volume_on_music_connect
+            )
         self.app.music_backend.on_connection_change(
             self.app.playback_coordinator.publish_availability_change
         )

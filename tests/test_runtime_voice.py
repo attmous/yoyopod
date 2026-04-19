@@ -101,6 +101,17 @@ class _FakeVoipManager:
         return True
 
 
+class _FakeAudioVolumeController:
+    def __init__(self, context: AppContext) -> None:
+        self.context = context
+        self.set_calls: list[int] = []
+
+    def set_output_volume(self, volume: int) -> bool:
+        self.set_calls.append(volume)
+        self.context.cache_output_volume(volume)
+        return True
+
+
 class _FakeVoiceService:
     def __init__(self, transcript: str) -> None:
         self.settings: VoiceSettings | None = None
@@ -210,6 +221,21 @@ def test_voice_command_executor_handles_local_device_actions() -> None:
     assert context.voice.mic_muted is True
     assert voip_manager.mute_calls == 1
     assert volume_outcome.body == "Volume is 55."
+    assert context.voice.output_volume == 55
+
+
+def test_voice_command_executor_volume_fallback_uses_app_context_audio_controller() -> None:
+    context = AppContext()
+    context.audio_volume_controller = _FakeAudioVolumeController(context)
+    executor = VoiceCommandExecutor(
+        context=context,
+        screen_summary_provider=lambda: "screen",
+    )
+
+    outcome = executor.execute("volume up")
+
+    assert outcome.body == "Volume is 55."
+    assert context.audio_volume_controller.set_calls == [55]
     assert context.voice.output_volume == 55
 
 

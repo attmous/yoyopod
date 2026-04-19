@@ -15,7 +15,7 @@ from loguru import logger
 
 from yoyopod.app import YoyoPodApp
 from yoyopod.app_context import AppContext
-from yoyopod.audio import MockMusicBackend
+from yoyopod.audio import AudioVolumeController, MockMusicBackend
 from yoyopod.communication import CallState, RegistrationState
 from yoyopod.coordinators.runtime import AppRuntimeState, CoordinatorRuntime
 from yoyopod.events import (
@@ -398,7 +398,7 @@ def _complete_power_refresh(app: YoyoPodApp) -> None:
     """Drain one queued async power-refresh completion for the test app."""
 
     _wait_for(lambda: (app.get_status()["pending_main_thread_callbacks"] or 0) > 0)
-    app._process_pending_main_thread_actions()
+    app.runtime_loop.process_pending_main_thread_actions()
     assert app.get_status()["power_refresh_in_flight"] is False
 
 
@@ -610,8 +610,14 @@ def test_apply_default_music_volume_updates_backend_and_context() -> None:
     app.media_settings = SimpleNamespace(music=SimpleNamespace(default_volume=100))
     app.music_backend = MockMusicBackend()
     app.music_backend.start()
+    app.audio_volume_controller = AudioVolumeController(
+        context=app.context,
+        default_music_volume_provider=lambda: app.media_settings.music.default_volume,
+        music_backend=app.music_backend,
+    )
+    app.context.audio_volume_controller = app.audio_volume_controller
 
-    app._apply_default_music_volume()
+    app.audio_volume_controller.apply_default_music_volume()
 
     assert app.context.playback.volume == 100
     assert app.music_backend.get_volume() == 100
@@ -635,8 +641,14 @@ def test_music_connect_reapplies_shared_output_volume() -> None:
             return True
 
     app.output_volume = FakeOutputVolume()
+    app.audio_volume_controller = AudioVolumeController(
+        context=app.context,
+        default_music_volume_provider=lambda: 100,
+        output_volume=app.output_volume,
+    )
+    app.context.audio_volume_controller = app.audio_volume_controller
 
-    app._sync_output_volume_on_music_connect(True, "connected")
+    app.audio_volume_controller.sync_output_volume_on_music_connect(True, "connected")
 
     assert app.output_volume.synced == [82]
     assert app.context.playback.volume == 82
@@ -1035,11 +1047,11 @@ def test_main_thread_callback_errors_are_contained_and_drain_continues() -> None
     def good_callback() -> None:
         callback_order.append("good")
 
-    app._queue_main_thread_callback(bad_callback)
-    app._queue_main_thread_callback(good_callback)
+    app.runtime_loop.queue_main_thread_callback(bad_callback)
+    app.runtime_loop.queue_main_thread_callback(good_callback)
     _publish_from_worker(app, UserActivityEvent(action_name="select"))
 
-    assert app._process_pending_main_thread_actions() == 3
+    assert app.runtime_loop.process_pending_main_thread_actions() == 3
     assert callback_order == ["bad", "good"]
 
 
@@ -1246,7 +1258,7 @@ def test_power_poll_honors_interval_and_tracks_unavailable_backend() -> None:
     app._poll_power_status(now=10.0)
     app._poll_power_status(now=30.0)
     _wait_for(lambda: (app.get_status()["pending_main_thread_callbacks"] or 0) > 0)
-    app._process_pending_main_thread_actions()
+    app.runtime_loop.process_pending_main_thread_actions()
 
     assert app.power_manager.refresh_calls == 2
     assert app.context.battery_percent == 61
@@ -1284,7 +1296,7 @@ def test_periodic_power_poll_runs_off_the_coordinator_thread() -> None:
 
     refresh_release.set()
     _wait_for(lambda: (app.get_status()["pending_main_thread_callbacks"] or 0) > 0)
-    app._process_pending_main_thread_actions()
+    app.runtime_loop.process_pending_main_thread_actions()
 
     assert app.power_manager.refresh_calls == 1
     assert app.context.battery_percent == 48
@@ -1393,7 +1405,7 @@ def test_forced_power_poll_uses_new_cached_snapshot_while_refresh_callback_is_pe
     assert app.coordinator_runtime.power_snapshot is second_snapshot
     assert app.menu_screen.render_calls == 2
 
-    app._process_pending_main_thread_actions()
+    app.runtime_loop.process_pending_main_thread_actions()
     assert app.get_status()["power_refresh_in_flight"] is False
     assert app.menu_screen.render_calls == 2
 
@@ -1828,7 +1840,7 @@ def test_watchdog_starts_and_feeds_from_app_loop() -> None:
     app._feed_watchdog_if_due(10.0)
     _wait_for(lambda: power_manager.feed_watchdog_calls == 1)
     _wait_for(lambda: (app.get_status()["pending_main_thread_callbacks"] or 0) > 0)
-    app._process_pending_main_thread_actions()
+    app.runtime_loop.process_pending_main_thread_actions()
 
     assert power_manager.enable_watchdog_calls == 1
     assert power_manager.feed_watchdog_calls == 1
@@ -1869,7 +1881,7 @@ def test_watchdog_feed_runs_off_the_coordinator_thread() -> None:
 
     feed_release.set()
     _wait_for(lambda: (app.get_status()["pending_main_thread_callbacks"] or 0) > 0)
-    app._process_pending_main_thread_actions()
+    app.runtime_loop.process_pending_main_thread_actions()
 
     assert power_manager.feed_watchdog_calls == 1
     assert app.get_status()["watchdog_active"] is True
@@ -2102,7 +2114,7 @@ def test_runtime_loop_pending_work_uses_nonzero_backlog_cadence() -> None:
     )
     app.voip_manager = FakeRuntimeLoopVoIPManager()
     app._voip_iterate_interval_seconds = 0.02
-    app._queue_main_thread_callback(lambda: None)
+    app.runtime_loop.queue_main_thread_callback(lambda: None)
     _publish_from_worker(app, UserActivityEvent(action_name="select"))
 
     sleep_seconds = app.runtime_loop.next_sleep_interval_seconds(
@@ -2133,7 +2145,7 @@ def test_runtime_loop_pending_work_keeps_minimum_nonzero_backlog_cadence() -> No
     )
     app.voip_manager = FakeRuntimeLoopVoIPManager()
     app._voip_iterate_interval_seconds = 0.001
-    app._queue_main_thread_callback(lambda: None)
+    app.runtime_loop.queue_main_thread_callback(lambda: None)
 
     sleep_seconds = app.runtime_loop.next_sleep_interval_seconds(
         monotonic_now=1.0,
@@ -2183,7 +2195,7 @@ def test_runtime_loop_budgets_backlog_and_keeps_protected_work_running() -> None
     callback_calls: list[int] = []
 
     for index in range(queued_callbacks):
-        app._queue_main_thread_callback(lambda index=index: callback_calls.append(index))
+        app.runtime_loop.queue_main_thread_callback(lambda index=index: callback_calls.append(index))
     for _ in range(queued_events):
         _publish_from_worker(app, UserActivityEvent(action_name="select"))
 
@@ -2221,7 +2233,7 @@ def test_runtime_loop_budgets_backlog_and_keeps_protected_work_running() -> None
             lambda: (app.get_status()["pending_main_thread_callbacks"] or 0)
             > (queued_callbacks - callback_budget)
         )
-        app._process_pending_main_thread_actions()
+        app.runtime_loop.process_pending_main_thread_actions()
 
 
 def test_runtime_loop_exempts_watchdog_completion_callback_from_budget() -> None:
@@ -2243,7 +2255,7 @@ def test_runtime_loop_exempts_watchdog_completion_callback_from_budget() -> None
     callback_calls: list[int] = []
 
     for index in range(queued_callbacks):
-        app._queue_main_thread_callback(lambda index=index: callback_calls.append(index))
+        app.runtime_loop.queue_main_thread_callback(lambda index=index: callback_calls.append(index))
 
     app.power_runtime.run_watchdog_feed_attempt()
 
@@ -2272,7 +2284,7 @@ def test_runtime_loop_logs_main_thread_drain_budget_hits() -> None:
     callback_budget = RuntimeLoopService._MAIN_THREAD_CALLBACK_DRAIN_BUDGET
     event_budget = RuntimeLoopService._EVENT_BUS_DRAIN_BUDGET
     for _ in range(callback_budget + 1):
-        app._queue_main_thread_callback(lambda: None)
+        app.runtime_loop.queue_main_thread_callback(lambda: None)
     for _ in range(event_budget + 2):
         _publish_from_worker(app, UserActivityEvent(action_name="select"))
 

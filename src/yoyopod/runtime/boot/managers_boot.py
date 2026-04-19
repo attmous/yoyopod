@@ -70,7 +70,7 @@ class ManagersBoot:
             self.app.voip_manager = self.voip_manager_cls(
                 voip_config,
                 people_directory=self.app.people_directory,
-                event_scheduler=self.app._queue_main_thread_callback,
+                event_scheduler=self.app.runtime_loop.queue_main_thread_callback,
                 background_iterate_enabled=True,
             )
             self.app._voip_iterate_interval_seconds = max(
@@ -104,12 +104,16 @@ class ManagersBoot:
                 self.app.output_volume = self.output_volume_controller_cls(self.app.music_backend)
             else:
                 self.app.output_volume.attach_music_backend(self.app.music_backend)
+            if self.app.audio_volume_controller is not None:
+                self.app.audio_volume_controller.attach_music_backend(self.app.music_backend)
+                self.app.audio_volume_controller.attach_output_volume(self.app.output_volume)
             if self.app.music_backend.start():
                 self.logger.info("    Music backend started successfully")
             else:
                 self.logger.warning("    Music backend failed to start (VoIP-only mode)")
 
-            self.app._apply_default_music_volume()
+            if self.app.audio_volume_controller is not None:
+                self.app.audio_volume_controller.apply_default_music_volume()
 
             self.logger.info("  - PowerManager")
             self.app.power_manager = self.power_manager_cls.from_config_manager(config_manager)
@@ -129,7 +133,7 @@ class ManagersBoot:
             if self.app.network_manager.config.enabled and not self.app.simulate:
                 try:
                     self.app.network_manager.start()
-                    self.app._sync_network_context_from_manager()
+                    self.app.event_wiring.network_events.sync_network_context_from_manager()
                 except Exception as exc:
                     self.logger.error("Network manager start failed: {}", exc)
                     if self.app.context is not None:

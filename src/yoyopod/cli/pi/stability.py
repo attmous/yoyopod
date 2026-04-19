@@ -233,7 +233,7 @@ def _pump_app(app: YoyoPodApp, duration_seconds: float) -> None:
 
     deadline = time.monotonic() + max(0.0, duration_seconds)
     while time.monotonic() < deadline:
-        app._process_pending_main_thread_actions()
+        app.runtime_loop.process_pending_main_thread_actions()
         now = time.monotonic()
         app._attempt_manager_recovery()
         app._poll_power_status(now=now)

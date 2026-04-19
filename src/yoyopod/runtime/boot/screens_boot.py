@@ -61,6 +61,9 @@ class ScreensBoot:
             display = self.app.display
             context = self.app.context
             screen_manager = self.app.screen_manager
+            volume_controller = self.app.audio_volume_controller
+            if volume_controller is None:
+                raise RuntimeError("Audio volume controller is not initialized")
             menu_items = ["Listen", "Talk", "Ask", "Setup"]
             self.app.hub_screen = HubScreen(
                 display,
@@ -117,7 +120,7 @@ class ScreensBoot:
                             if self.app.context is not None
                             else False
                         ),
-                        output_volume=self.app.get_output_volume()
+                        output_volume=volume_controller.get_output_volume()
                         or (
                             self.app.context.voice.output_volume
                             if self.app.context is not None
@@ -178,8 +181,8 @@ class ScreensBoot:
                     config_manager=self.app.config_manager,
                     people_directory=self.app.people_directory,
                     voip_manager=self.app.voip_manager,
-                    volume_up_action=self.app.volume_up,
-                    volume_down_action=self.app.volume_down,
+                    volume_up_action=volume_controller.volume_up,
+                    volume_down_action=volume_controller.volume_down,
                     mute_action=(
                         self.app.voip_manager.mute if self.app.voip_manager is not None else None
                     ),
@@ -199,8 +202,8 @@ class ScreensBoot:
                 config_manager=self.app.config_manager,
                 people_directory=self.app.people_directory,
                 voip_manager=self.app.voip_manager,
-                volume_up_action=self.app.volume_up,
-                volume_down_action=self.app.volume_down,
+                volume_up_action=volume_controller.volume_up,
+                volume_down_action=volume_controller.volume_down,
                 mute_action=(
                     self.app.voip_manager.mute if self.app.voip_manager is not None else None
                 ),
@@ -249,8 +252,8 @@ class ScreensBoot:
                         if self.app.config_manager is not None
                         else None
                     ),
-                    volume_up_action=self.app.volume_up,
-                    volume_down_action=self.app.volume_down,
+                    volume_up_action=volume_controller.volume_up,
+                    volume_down_action=volume_controller.volume_down,
                     mute_action=(
                         self.app.voip_manager.mute if self.app.voip_manager is not None else None
                     ),

@@ -13,10 +13,12 @@ from yoyopod.audio.music import (
     Track,
 )
 from yoyopod.audio.volume import OutputVolumeController
+from yoyopod.audio.volume_controller import AudioVolumeController
 
 __all__ = [
     "AudioDevice",
     "AudioManager",
+    "AudioVolumeController",
     "LocalLibraryItem",
     "LocalMusicService",
     "MockMusicBackend",

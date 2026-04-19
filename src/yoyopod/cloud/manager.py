@@ -157,6 +157,63 @@ class CloudManager:
         if self._mqtt is not None:
             self._mqtt.stop()
 
+    def _queue_main_thread_callback(
+        self,
+        callback: Callable[[], None],
+        *,
+        safety: bool = False,
+    ) -> None:
+        """Schedule coordinator-thread work through runtime loop dispatch."""
+
+        runtime_loop = getattr(self.app, "runtime_loop", None)
+        queue_callback = getattr(runtime_loop, "queue_main_thread_callback", None)
+        if callable(queue_callback):
+            queue_callback(callback, safety=safety)
+            return
+
+        legacy_callback = getattr(self.app, "_queue_main_thread_callback", None)
+        if callable(legacy_callback):
+            try:
+                legacy_callback(callback, safety=safety)
+            except TypeError:
+                legacy_callback(callback)
+            return
+
+        callback()
+
+    def _get_output_volume(self, *, refresh_system: bool) -> int | None:
+        """Read the current shared output volume."""
+
+        volume_controller = getattr(self.app, "audio_volume_controller", None)
+        if volume_controller is not None:
+            return volume_controller.get_output_volume(refresh_system=refresh_system)
+
+        legacy_getter = getattr(self.app, "get_output_volume", None)
+        if callable(legacy_getter):
+            return legacy_getter(refresh_system=refresh_system)
+
+        context = getattr(self.app, "context", None)
+        playback = getattr(context, "playback", None)
+        volume = getattr(playback, "volume", None)
+        return int(volume) if isinstance(volume, int) else None
+
+    def _set_output_volume(self, volume: int) -> bool:
+        """Update the shared output volume."""
+
+        volume_controller = getattr(self.app, "audio_volume_controller", None)
+        if volume_controller is not None:
+            return volume_controller.set_output_volume(volume)
+
+        legacy_setter = getattr(self.app, "set_output_volume", None)
+        if callable(legacy_setter):
+            return bool(legacy_setter(volume))
+
+        context = getattr(self.app, "context", None)
+        if context is not None and hasattr(context, "set_volume"):
+            context.set_volume(volume)
+            return True
+        return False
+
     def _reload_provisioning(self, *, force: bool, now: float) -> None:
         """Reload runtime secrets when the provisioning file changes."""
 
@@ -292,7 +349,7 @@ class CloudManager:
         try:
             token = self.client.authenticate(device_id=device_id, device_secret=device_secret)
         except CloudClientError as exc:
-            self.app._queue_main_thread_callback(
+            self._queue_main_thread_callback(
                 lambda exc=exc, generation=generation, device_id=device_id, completed_at=time.monotonic(): self._complete_authentication(
                     device_id=device_id,
                     generation=generation,
@@ -303,7 +360,7 @@ class CloudManager:
             return
         except Exception as exc:
             error = CloudClientError(str(exc))
-            self.app._queue_main_thread_callback(
+            self._queue_main_thread_callback(
                 lambda error=error, generation=generation, device_id=device_id, completed_at=time.monotonic(): self._complete_authentication(
                     device_id=device_id,
                     generation=generation,
@@ -313,7 +370,7 @@ class CloudManager:
             )
             return
 
-        self.app._queue_main_thread_callback(
+        self._queue_main_thread_callback(
             lambda token=token, generation=generation, device_id=device_id, completed_at=time.monotonic(): self._complete_authentication(
                 device_id=device_id,
                 generation=generation,
@@ -354,7 +411,7 @@ class CloudManager:
         try:
             token = self.client.refresh(access_token=access_token)
         except CloudClientError as exc:
-            self.app._queue_main_thread_callback(
+            self._queue_main_thread_callback(
                 lambda exc=exc, generation=generation, access_token=access_token, completed_at=time.monotonic(): self._complete_refresh_token(
                     access_token=access_token,
                     generation=generation,
@@ -365,7 +422,7 @@ class CloudManager:
             return
         except Exception as exc:
             error = CloudClientError(str(exc))
-            self.app._queue_main_thread_callback(
+            self._queue_main_thread_callback(
                 lambda error=error, generation=generation, access_token=access_token, completed_at=time.monotonic(): self._complete_refresh_token(
                     access_token=access_token,
                     generation=generation,
@@ -375,7 +432,7 @@ class CloudManager:
             )
             return
 
-        self.app._queue_main_thread_callback(
+        self._queue_main_thread_callback(
             lambda token=token, generation=generation, access_token=access_token, completed_at=time.monotonic(): self._complete_refresh_token(
                 access_token=access_token,
                 generation=generation,
@@ -424,7 +481,7 @@ class CloudManager:
         try:
             payload = self.client.fetch_config(access_token=access_token, device_id=device_id)
         except CloudClientError as exc:
-            self.app._queue_main_thread_callback(
+            self._queue_main_thread_callback(
                 lambda exc=exc, generation=generation, access_token=access_token, device_id=device_id, completed_at=time.monotonic(): self._complete_fetch_remote_config(
                     access_token=access_token,
                     device_id=device_id,
@@ -436,7 +493,7 @@ class CloudManager:
             return
         except Exception as exc:
             error = CloudClientError(str(exc))
-            self.app._queue_main_thread_callback(
+            self._queue_main_thread_callback(
                 lambda error=error, generation=generation, access_token=access_token, device_id=device_id, completed_at=time.monotonic(): self._complete_fetch_remote_config(
                     access_token=access_token,
                     device_id=device_id,
@@ -447,7 +504,7 @@ class CloudManager:
             )
             return
 
-        self.app._queue_main_thread_callback(
+        self._queue_main_thread_callback(
             lambda payload=payload, generation=generation, access_token=access_token, device_id=device_id, completed_at=time.monotonic(): self._complete_fetch_remote_config(
                 access_token=access_token,
                 device_id=device_id,
@@ -603,22 +660,22 @@ class CloudManager:
 
         if "max_volume" in audio:
             max_volume = self.config_manager.get_max_output_volume()
-            current = self.app.get_output_volume(refresh_system=False)
+            current = self._get_output_volume(refresh_system=False)
             if current is not None and current > max_volume:
-                self.app.set_output_volume(max_volume)
+                self._set_output_volume(max_volume)
             elif self.app.context is not None and self.app.context.voice.output_volume > max_volume:
                 self.app.context.set_volume(max_volume)
 
         if "default_volume" in audio:
             max_volume = self.config_manager.get_max_output_volume()
             default_volume = min(self.config_manager.get_default_output_volume(), max_volume)
-            self.app.set_output_volume(default_volume)
+            self._set_output_volume(default_volume)
 
         if self.app.voip_manager is not None:
             self.app.voip_manager.config.voice_note_max_duration_seconds = (
                 self.config_manager.get_voice_note_max_duration_seconds()
             )
-            current_volume = self.app.get_output_volume(refresh_system=False)
+            current_volume = self._get_output_volume(refresh_system=False)
             if current_volume is not None:
                 self.app.voip_manager.config.output_volume = current_volume
 
@@ -725,7 +782,7 @@ class CloudManager:
                 entries=entries,
             )
         except CloudClientError as exc:
-            self.app._queue_main_thread_callback(
+            self._queue_main_thread_callback(
                 lambda exc=exc, generation=generation, access_token=access_token, device_id=device_id, completed_at=time.monotonic(): self._complete_bootstrap_contacts(
                     access_token=access_token,
                     device_id=device_id,
@@ -737,7 +794,7 @@ class CloudManager:
             return
         except Exception as exc:
             error = CloudClientError(str(exc))
-            self.app._queue_main_thread_callback(
+            self._queue_main_thread_callback(
                 lambda error=error, generation=generation, access_token=access_token, device_id=device_id, completed_at=time.monotonic(): self._complete_bootstrap_contacts(
                     access_token=access_token,
                     device_id=device_id,
@@ -748,7 +805,7 @@ class CloudManager:
             )
             return
 
-        self.app._queue_main_thread_callback(
+        self._queue_main_thread_callback(
             lambda payload=payload, generation=generation, access_token=access_token, device_id=device_id, completed_at=time.monotonic(): self._complete_bootstrap_contacts(
                 access_token=access_token,
                 device_id=device_id,
@@ -924,7 +981,7 @@ class CloudManager:
     def _handle_mqtt_command(self, command: dict[str, Any]) -> None:
         cmd_type = command.get("type", "unknown")
         logger.info("MQTT command received from backend: {}", cmd_type)
-        self.app._queue_main_thread_callback(lambda cmd=command: self._apply_mqtt_command(cmd))
+        self._queue_main_thread_callback(lambda cmd=command: self._apply_mqtt_command(cmd))
 
     def _apply_mqtt_command(self, command: dict[str, Any]) -> None:
         cmd_type = command.get("type", "")

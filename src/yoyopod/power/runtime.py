@@ -64,7 +64,7 @@ class PowerRuntimeService:
         """Collect one PiSugar snapshot off the coordinator thread."""
 
         snapshot = self._refresh_snapshot()
-        self.app._queue_main_thread_callback(
+        self.app.runtime_loop.queue_main_thread_callback(
             lambda snapshot=snapshot: self._complete_refresh(snapshot=snapshot),
             safety=True,
         )
@@ -200,7 +200,7 @@ class PowerRuntimeService:
                 )
 
         completed_at = time.monotonic()
-        self.app._queue_main_thread_callback(
+        self.app.runtime_loop.queue_main_thread_callback(
             lambda success=success, completed_at=completed_at, feed_interval=feed_interval: self._complete_watchdog_feed(
                 success=success,
                 completed_at=completed_at,

@@ -25,6 +25,7 @@ from yoyopod.ui.input.hal import InteractionProfile
 
 if TYPE_CHECKING:
     from yoyopod.audio.manager import AudioManager
+    from yoyopod.audio.volume_controller import AudioVolumeController
     from yoyopod.power import PowerSnapshot
 
 __all__ = [
@@ -59,6 +60,7 @@ class AppContext:
         interaction_profile: InteractionProfile = InteractionProfile.STANDARD,
     ) -> None:
         self.audio_manager = audio_manager
+        self.audio_volume_controller: AudioVolumeController | None = None
         self.interaction_profile = interaction_profile
 
         self.media = MediaRuntimeState()
@@ -423,7 +425,12 @@ class AppContext:
 
         max_volume = self.settings.get("max_volume", 100)
         volume = max(0, min(int(volume), int(max_volume)))
-        self.cache_output_volume(volume)
+        if self.audio_volume_controller is not None:
+            applied = self.audio_volume_controller.set_output_volume(volume)
+            if not applied:
+                self.cache_output_volume(volume)
+        else:
+            self.cache_output_volume(volume)
         logger.debug(f"Volume set to {volume}")
 
     def volume_up(self, step: int = 5) -> int:

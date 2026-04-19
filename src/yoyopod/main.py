@@ -131,9 +131,19 @@ def _request_screenshot_capture(
             if should_reset_shadow_sync:
                 setattr(adapter, "_force_shadow_buffer_sync", False)
 
-    queue_callback = getattr(app, "_queue_main_thread_callback", None)
+    runtime_loop = getattr(app, "runtime_loop", None)
+    queue_callback = getattr(runtime_loop, "queue_main_thread_callback", None)
     if callable(queue_callback):
         queue_callback(capture_on_app_loop)
+        app_log.info(
+            "Queued screenshot capture request ({})",
+            "readback-first" if prefer_readback else "shadow-first",
+        )
+        return
+
+    legacy_queue_callback = getattr(app, "_queue_main_thread_callback", None)
+    if callable(legacy_queue_callback):
+        legacy_queue_callback(capture_on_app_loop)
         app_log.info(
             "Queued screenshot capture request ({})",
             "readback-first" if prefer_readback else "shadow-first",

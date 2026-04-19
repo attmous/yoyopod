@@ -15,6 +15,7 @@ from loguru import logger
 
 from yoyopod.app_context import AppContext
 from yoyopod.audio import (
+    AudioVolumeController,
     LocalMusicService,
     MpvBackend,
     OutputVolumeController,
@@ -31,11 +32,6 @@ from yoyopod.coordinators import (
 )
 from yoyopod.event_bus import EventBus
 from yoyopod.events import (
-    NetworkGpsFixEvent,
-    NetworkGpsNoFixEvent,
-    NetworkPppDownEvent,
-    NetworkPppUpEvent,
-    NetworkSignalUpdateEvent,
     RecoveryAttemptCompletedEvent,
     ScreenChangedEvent,
     UserActivityEvent,
@@ -45,9 +41,6 @@ from yoyopod.people import PeopleDirectory
 from yoyopod.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
 from yoyopod.network import NetworkManager
 from yoyopod.power import (
-    GracefulShutdownCancelled,
-    GracefulShutdownRequested,
-    LowBatteryWarningRaised,
     PowerManager,
     PowerRuntimeService,
 )
@@ -136,6 +129,7 @@ class YoyoPodApp:
         self.music_backend: Optional[MpvBackend] = None
         self.local_music_service: Optional[LocalMusicService] = None
         self.output_volume: Optional[OutputVolumeController] = None
+        self.audio_volume_controller: Optional[AudioVolumeController] = None
         self.power_manager: Optional[PowerManager] = None
         self.network_manager: Optional[NetworkManager] = None
         self.call_history_store: Optional[CallHistoryStore] = None
@@ -280,99 +274,6 @@ class YoyoPodApp:
     def _init_managers(self) -> bool:
         return self.boot_service.init_managers()
 
-    def _resolve_default_music_volume(self) -> int:
-        """Return the configured startup volume for the music backend."""
-        media_cfg = self.media_settings
-        raw_volume = media_cfg.music.default_volume if media_cfg else 100
-        return max(0, min(100, int(raw_volume)))
-
-    def _apply_default_music_volume(self) -> None:
-        """Apply the configured startup volume to ALSA and the live music backend."""
-        volume = self._resolve_default_music_volume()
-
-        if self.output_volume is not None:
-            if self.output_volume.set_volume(volume):
-                resolved = self.output_volume.get_volume()
-                if self.context is not None and resolved is not None:
-                    self.context.playback.volume = resolved
-                    self.context.voice.output_volume = resolved
-                logger.info("    Startup output volume set to {}%", resolved or volume)
-                return
-            logger.warning("    Failed to set startup output volume to {}%", volume)
-
-        if self.context is not None:
-            self.context.playback.volume = volume
-            self.context.voice.output_volume = volume
-
-        if self.music_backend is None or not self.music_backend.is_connected:
-            return
-
-        if self.music_backend.set_volume(volume):
-            logger.info("    Startup music volume set to {}%", volume)
-        else:
-            logger.warning("    Failed to set startup music volume to {}%", volume)
-
-    def get_output_volume(self, *, refresh_system: bool = True) -> int | None:
-        """Return the current shared output volume."""
-        if self.output_volume is not None:
-            volume = (
-                self.output_volume.get_volume()
-                if refresh_system
-                else self.output_volume.peek_cached_volume()
-            )
-            if self.context is not None and volume is not None:
-                self.context.playback.volume = volume
-                self.context.voice.output_volume = volume
-            if volume is not None:
-                return volume
-        if self.context is not None:
-            return self.context.playback.volume
-        return None
-
-    def set_output_volume(self, volume: int) -> bool:
-        """Set the shared output volume across ALSA and the music backend."""
-        target = max(0, min(100, int(volume)))
-
-        applied = False
-        if self.output_volume is not None:
-            applied = self.output_volume.set_volume(target)
-        elif self.music_backend is not None and self.music_backend.is_connected:
-            applied = self.music_backend.set_volume(target)
-
-        if self.context is not None:
-            resolved = self.get_output_volume()
-            self.context.playback.volume = resolved if resolved is not None else target
-            self.context.voice.output_volume = resolved if resolved is not None else target
-
-        return applied
-
-    def volume_up(self, step: int = 5) -> int | None:
-        """Increase shared output volume."""
-        current = self.get_output_volume()
-        target = (current if current is not None else 0) + step
-        self.set_output_volume(target)
-        return self.get_output_volume()
-
-    def volume_down(self, step: int = 5) -> int | None:
-        """Decrease shared output volume."""
-        current = self.get_output_volume()
-        target = (current if current is not None else 0) - step
-        self.set_output_volume(target)
-        return self.get_output_volume()
-
-    def _sync_output_volume_on_music_connect(self, connected: bool, _reason: str) -> None:
-        """Reapply the current shared volume whenever mpv reconnects."""
-        if not connected or self.output_volume is None:
-            return
-
-        volume = self.output_volume.get_volume()
-        if volume is None:
-            volume = self._resolve_default_music_volume()
-
-        if self.output_volume.sync_music_backend(volume) and self.context is not None:
-            self.context.playback.volume = volume
-            self.context.voice.output_volume = volume
-
     def _setup_screens(self) -> bool:
         return self.boot_service.setup_screens()
 
@@ -388,44 +289,11 @@ class YoyoPodApp:
     def _setup_voip_callbacks(self) -> None:
         self.boot_service.setup_voip_callbacks()
 
-    def _handle_voice_note_summary_changed(
-        self,
-        unread_voice_notes: int,
-        latest_voice_note_by_contact: dict[str, dict[str, object]],
-    ) -> None:
-        self.event_wiring.handle_voice_note_summary_changed(
-            unread_voice_notes=unread_voice_notes,
-            latest_voice_note_by_contact=latest_voice_note_by_contact,
-        )
-
-    def _handle_voice_note_activity_changed(self, *_args: Any) -> None:
-        self.event_wiring.handle_voice_note_activity_changed(*_args)
-
-    def _handle_voice_note_failure(self, *_args: Any) -> None:
-        self.event_wiring.handle_voice_note_failure(*_args)
-
-    def _sync_active_voice_note_context(self) -> None:
-        self.event_wiring.sync_active_voice_note_context()
-
-    def _refresh_talk_related_screen(self) -> None:
-        self.event_wiring.refresh_talk_related_screen()
-
     def _setup_music_callbacks(self) -> None:
         self.boot_service.setup_music_callbacks()
 
     def _setup_event_subscriptions(self) -> None:
         self.boot_service.setup_event_subscriptions()
-
-    def _process_pending_main_thread_actions(self, limit: Optional[int] = None) -> int:
-        return self.runtime_loop.process_pending_main_thread_actions(limit)
-
-    def _queue_main_thread_callback(
-        self,
-        callback: Callable[[], None],
-        *,
-        safety: bool = False,
-    ) -> None:
-        self.runtime_loop.queue_main_thread_callback(callback, safety=safety)
 
     def _pending_main_thread_callback_count(self) -> int | None:
         """Return the combined generic and safety callback backlog."""
@@ -435,9 +303,6 @@ class YoyoPodApp:
         if callback_backlog is None and safety_backlog is None:
             return None
         return max(0, callback_backlog or 0) + max(0, safety_backlog or 0)
-
-    def _queue_lvgl_input_action(self, action: Any, _data: Optional[Any] = None) -> None:
-        self.runtime_loop.queue_lvgl_input_action(action, _data)
 
     def _pump_lvgl_backend(self, now: float | None = None) -> None:
         self.runtime_loop.pump_lvgl_backend(now)
@@ -459,40 +324,6 @@ class YoyoPodApp:
         event: RecoveryAttemptCompletedEvent,
     ) -> None:
         self.event_wiring.handle_recovery_attempt_completed_event(event)
-
-    def _handle_low_battery_warning_event(self, event: LowBatteryWarningRaised) -> None:
-        self.event_wiring.handle_low_battery_warning_event(event)
-
-    def _handle_graceful_shutdown_requested_event(
-        self,
-        event: GracefulShutdownRequested,
-    ) -> None:
-        self.event_wiring.handle_graceful_shutdown_requested_event(event)
-
-    def _handle_graceful_shutdown_cancelled_event(
-        self,
-        event: GracefulShutdownCancelled,
-    ) -> None:
-        self.event_wiring.handle_graceful_shutdown_cancelled_event(event)
-
-    def _sync_network_context_from_manager(self) -> None:
-        """Refresh AppContext network state from the current modem snapshot."""
-        self.event_wiring.sync_network_context_from_manager()
-
-    def _handle_network_ppp_up(self, event: NetworkPppUpEvent) -> None:
-        self.event_wiring.handle_network_ppp_up(event)
-
-    def _handle_network_signal_update(self, event: NetworkSignalUpdateEvent) -> None:
-        self.event_wiring.handle_network_signal_update(event)
-
-    def _handle_network_gps_fix(self, event: NetworkGpsFixEvent) -> None:
-        self.event_wiring.handle_network_gps_fix(event)
-
-    def _handle_network_gps_no_fix(self, _event: NetworkGpsNoFixEvent) -> None:
-        self.event_wiring.handle_network_gps_no_fix(_event)
-
-    def _handle_network_ppp_down(self, _event: NetworkPppDownEvent) -> None:
-        self.event_wiring.handle_network_ppp_down(_event)
 
     def _register_power_shutdown_hooks(self) -> None:
         self.shutdown_service.register_power_shutdown_hooks()
@@ -703,7 +534,17 @@ class YoyoPodApp:
             "auto_resume": self.auto_resume_after_call,
             "voip_available": self.voip_manager is not None and self.voip_manager.running,
             "music_available": self.music_backend is not None and self.music_backend.is_connected,
-            "volume": self.get_output_volume(refresh_system=refresh_output_volume),
+            "volume": (
+                self.audio_volume_controller.get_output_volume(
+                    refresh_system=refresh_output_volume
+                )
+                if self.audio_volume_controller is not None
+                else (
+                    self.context.playback.volume
+                    if self.context is not None
+                    else None
+                )
+            ),
             "power_available": power_snapshot.available if power_snapshot is not None else False,
             "current_screen": getattr(current_screen, "route_name", None),
             "screen_stack_depth": (
