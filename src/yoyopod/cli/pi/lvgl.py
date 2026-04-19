@@ -99,7 +99,14 @@ def probe(
         logger.error(f"Unknown scene '{scene}'. Valid choices: {sorted(scene_map)}")
         raise typer.Exit(code=1)
 
-    adapter = WhisplayDisplayAdapter(simulate=simulate, renderer="pil")
+    adapter = WhisplayDisplayAdapter(
+        simulate=simulate,
+        renderer="pil",
+        # The probe command owns its own throwaway LVGL backend below, so keep the
+        # adapter on the lightweight PIL shadow-buffer path instead of the app's
+        # production contract enforcement.
+        enforce_production_contract=False,
+    )
     backend = LvglDisplayBackend(adapter)
 
     if not backend.available:

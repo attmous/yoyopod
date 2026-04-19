@@ -1,6 +1,8 @@
 """tests/test_cli.py — yoyoctl CLI smoke tests."""
 
 import re
+import sys
+import types
 
 import pytest
 
@@ -175,6 +177,83 @@ def test_pi_lvgl_probe_help():
     assert "--scene" in _plain(result.output)
     assert "--duration-seconds" in _plain(result.output)
     assert "--simulate" in _plain(result.output)
+
+
+def test_pi_lvgl_probe_uses_explicit_debug_escape_hatch(monkeypatch) -> None:
+    """The standalone probe should bypass the production render contract explicitly."""
+
+    import yoyopod.cli.pi.lvgl as lvgl_cli
+
+    adapter_kwargs = {}
+    backend_calls = []
+
+    class FakeWhisplayDisplayAdapter:
+        def __init__(self, **kwargs) -> None:
+            adapter_kwargs.update(kwargs)
+
+        def cleanup(self) -> None:
+            backend_calls.append("adapter_cleanup")
+
+    class FakeLvglBinding:
+        SCENE_CARD = 1
+        SCENE_LIST = 2
+        SCENE_FOOTER = 3
+        SCENE_CAROUSEL = 4
+
+    class FakeLvglBindingError(RuntimeError):
+        pass
+
+    class FakeLvglDisplayBackend:
+        def __init__(self, adapter) -> None:
+            self.adapter = adapter
+            self.available = True
+
+        def initialize(self) -> bool:
+            backend_calls.append("initialize")
+            return True
+
+        def show_probe_scene(self, scene_id: int) -> None:
+            backend_calls.append(("scene", scene_id))
+
+        def pump(self, milliseconds: int) -> int:
+            backend_calls.append(("pump", milliseconds))
+            return 0
+
+        def cleanup(self) -> None:
+            backend_calls.append("backend_cleanup")
+
+    fake_whisplay_module = types.ModuleType("yoyopod.ui.display.adapters.whisplay")
+    fake_whisplay_module.WhisplayDisplayAdapter = FakeWhisplayDisplayAdapter
+    fake_lvgl_module = types.ModuleType("yoyopod.ui.lvgl_binding")
+    fake_lvgl_module.LvglBinding = FakeLvglBinding
+    fake_lvgl_module.LvglBindingError = FakeLvglBindingError
+    fake_lvgl_module.LvglDisplayBackend = FakeLvglDisplayBackend
+
+    monkeypatch.setattr(lvgl_cli, "configure_logging", lambda _verbose: None)
+    monkeypatch.setitem(
+        sys.modules,
+        "yoyopod.ui.display.adapters.whisplay",
+        fake_whisplay_module,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "yoyopod.ui.lvgl_binding",
+        fake_lvgl_module,
+    )
+
+    lvgl_cli.probe(scene="carousel", duration_seconds=0.0, simulate=False, verbose=False)
+
+    assert adapter_kwargs == {
+        "simulate": False,
+        "renderer": "pil",
+        "enforce_production_contract": False,
+    }
+    assert backend_calls == [
+        "initialize",
+        ("scene", FakeLvglBinding.SCENE_CAROUSEL),
+        "backend_cleanup",
+        "adapter_cleanup",
+    ]
 
 
 def test_pi_smoke_help():

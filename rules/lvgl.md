@@ -8,6 +8,13 @@ LVGL 9.5.0 is the standard rendering layer for all hardware displays. The archit
 
 For the Figma-to-Whisplay implementation workflow, screen extraction order, and hardware validation loop, also follow `rules/design-fidelity.md`.
 
+## Production Contract
+
+- Non-simulated Whisplay runs are a production LVGL path.
+- `display.whisplay_renderer: lvgl` is the only supported production setting for Whisplay hardware.
+- If the Whisplay driver, hardware init, or LVGL shim/backend is unavailable, startup must fail loudly instead of silently degrading to PIL or simulation mode.
+- PIL rendering remains acceptable for simulation and other local debug workflows such as `python yoyopod.py --simulate`.
+
 ## Rendering Pipeline
 
 ```

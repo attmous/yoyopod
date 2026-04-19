@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 from PIL import Image, ImageDraw, ImageFont
 
+from yoyopod.ui.display.contracts import WhisplayProductionRenderContractError
 from yoyopod.ui.display.adapters.whisplay import (
     WhisplayDisplayAdapter,
     _patch_vendor_gpiod_compat,
@@ -99,6 +101,24 @@ def test_vendor_gpiod_compat_retries_existing_chip_with_dev_prefix() -> None:
 
     assert fake_gpiod.Chip("gpiochip1") == {"path": "/dev/gpiochip1"}
     assert chip_calls == ["gpiochip1", "/dev/gpiochip1"]
+
+
+def test_production_whisplay_rejects_non_lvgl_renderer() -> None:
+    """Real Whisplay runs must not silently keep the historical PIL path."""
+
+    with pytest.raises(WhisplayProductionRenderContractError, match="require the LVGL renderer"):
+        WhisplayDisplayAdapter(simulate=False, renderer="pil")
+
+
+def test_production_whisplay_refuses_missing_driver(monkeypatch) -> None:
+    """Real Whisplay runs should fail loudly when the driver is unavailable."""
+
+    import yoyopod.ui.display.adapters.whisplay as whisplay_module
+
+    monkeypatch.setattr(whisplay_module, "HAS_HARDWARE", False)
+
+    with pytest.raises(WhisplayProductionRenderContractError, match="driver is unavailable"):
+        WhisplayDisplayAdapter(simulate=False, renderer="lvgl")
 
 
 def test_hardware_lvgl_flush_skips_shadow_buffer_sync(monkeypatch) -> None:

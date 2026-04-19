@@ -272,6 +272,9 @@ def _log_setup_failure_guidance(app_log: Any) -> None:
     )
     app_log.error("  - liblinphone is installed and the native shim is built")
     app_log.error("  - mpv is installed and the configured music backend can start")
+    app_log.error(
+        "  - Whisplay production runs have a working LVGL shim and do not rely on PIL or simulation fallback"
+    )
 
 
 def _resolve_responsiveness_capture_dir(app: object) -> Path:

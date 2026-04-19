@@ -61,7 +61,7 @@ class Display:
         self,
         hardware: str = "auto",
         simulate: bool = False,
-        whisplay_renderer: str = "pil",
+        whisplay_renderer: str = "lvgl",
         whisplay_lvgl_buffer_lines: int = 40,
     ) -> None:
         """
