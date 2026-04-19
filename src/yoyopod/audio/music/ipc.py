@@ -195,12 +195,8 @@ class MpvIpcClient:
         if event_queue is None:
             return
 
-        while not self._reader_stop.is_set():
-            try:
-                event = event_queue.get(timeout=0.1)
-            except queue.Empty:
-                continue
-
+        while True:
+            event = event_queue.get()
             if event is None:
                 break
 

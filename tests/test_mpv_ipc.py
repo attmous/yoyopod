@@ -210,3 +210,20 @@ def test_event_callback_can_send_command_without_blocking_reader_thread(tmp_path
 def test_disconnect_is_safe_when_not_connected(tmp_path: Path) -> None:
     client = MpvIpcClient(str(tmp_path / "no.sock"))
     client.disconnect()
+
+
+def test_disconnect_wakes_blocked_dispatch_thread(tmp_path: Path) -> None:
+    client = MpvIpcClient(str(tmp_path / "no.sock"))
+    client._event_queue = queue.Queue()
+    client._dispatch_thread = threading.Thread(target=client._dispatch_loop, daemon=True)
+    client._dispatch_thread.start()
+
+    deadline = time.time() + 1.0
+    while time.time() < deadline and not client._dispatch_thread.is_alive():
+        time.sleep(0.01)
+
+    assert client._dispatch_thread.is_alive() is True
+
+    client.disconnect()
+
+    assert client._dispatch_thread is None
