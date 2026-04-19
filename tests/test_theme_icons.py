@@ -6,7 +6,11 @@ from PIL import Image, ImageChops
 
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.theme import FOOTER_BAR, ICON_ASSET_DIR, draw_icon, render_footer
-from yoyopod.ui.screens.theme_assets import ICON_VARIANT_CACHE, load_icon_variant
+from yoyopod.ui.screens.theme_assets import (
+    ICON_VARIANT_CACHE,
+    ICON_VARIANT_CACHE_MAXSIZE,
+    load_icon_variant,
+)
 
 
 def test_hub_icon_assets_exist_and_are_56px() -> None:
@@ -75,3 +79,28 @@ def test_icon_variants_are_cached_by_filename_size_and_color() -> None:
     assert third is not None
     assert third is not first
     assert len(ICON_VARIANT_CACHE) == 2
+
+
+def test_icon_variant_cache_uses_lru_eviction() -> None:
+    """The icon variant cache should stay bounded and keep recently reused entries."""
+
+    ICON_VARIANT_CACHE.clear()
+
+    retained_key = ("hub-listen.png", 24, (255, 255, 255))
+    evicted_key = ("hub-listen.png", 25, (255, 255, 255))
+
+    assert load_icon_variant(*retained_key) is not None
+    assert load_icon_variant(*evicted_key) is not None
+
+    for size in range(26, 26 + ICON_VARIANT_CACHE_MAXSIZE - 2):
+        assert load_icon_variant("hub-listen.png", size, (255, 255, 255)) is not None
+
+    assert len(ICON_VARIANT_CACHE) == ICON_VARIANT_CACHE_MAXSIZE
+
+    # Touch the original entry again so the next insertion evicts the true least-recently-used item.
+    assert load_icon_variant(*retained_key) is not None
+    assert load_icon_variant("hub-listen.png", 26 + ICON_VARIANT_CACHE_MAXSIZE - 2, (255, 255, 255))
+
+    assert len(ICON_VARIANT_CACHE) == ICON_VARIANT_CACHE_MAXSIZE
+    assert retained_key in ICON_VARIANT_CACHE
+    assert evicted_key not in ICON_VARIANT_CACHE

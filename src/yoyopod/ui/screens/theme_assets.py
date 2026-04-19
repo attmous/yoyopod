@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from pathlib import Path
 
 from PIL import Image
@@ -16,8 +17,9 @@ PHOSPHOR_ICON_FILES = {
     "setup": "hub-setup.png",
     "power": "gear-six.png",
 }
+ICON_VARIANT_CACHE_MAXSIZE = 64
 ICON_CACHE: dict[str, Image.Image] = {}
-ICON_VARIANT_CACHE: dict[tuple[str, int, tuple[int, int, int]], Image.Image] = {}
+ICON_VARIANT_CACHE: OrderedDict[tuple[str, int, tuple[int, int, int]], Image.Image] = OrderedDict()
 
 
 def load_icon_asset(filename: str) -> Image.Image | None:
@@ -47,6 +49,7 @@ def load_icon_variant(
     cache_key = (filename, size, color)
     cached = ICON_VARIANT_CACHE.get(cache_key)
     if cached is not None:
+        ICON_VARIANT_CACHE.move_to_end(cache_key)
         return cached
 
     source = load_icon_asset(filename)
@@ -58,4 +61,6 @@ def load_icon_variant(
     tinted = Image.new("RGBA", rendered.size, color + (0,))
     tinted.putalpha(alpha)
     ICON_VARIANT_CACHE[cache_key] = tinted
+    if len(ICON_VARIANT_CACHE) > ICON_VARIANT_CACHE_MAXSIZE:
+        ICON_VARIANT_CACHE.popitem(last=False)
     return tinted
