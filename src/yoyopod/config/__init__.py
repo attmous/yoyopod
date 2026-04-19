@@ -16,6 +16,7 @@ from yoyopod.config.models import (
     YoyoPodConfig,
     YoyoPodRuntimeConfig,
     config_to_dict,
+    config_value,
     load_config_model_from_yaml,
 )
 
@@ -36,4 +37,5 @@ __all__ = [
     "load_composed_app_settings",
     "load_config_model_from_yaml",
     "config_to_dict",
+    "config_value",
 ]

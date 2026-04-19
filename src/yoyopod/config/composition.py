@@ -13,16 +13,16 @@ APP_CORE_CONFIG = Path("app/core.yaml")
 DEVICE_HARDWARE_CONFIG = Path("device/hardware.yaml")
 
 
-def _config_loaded(*layer_groups: tuple[Path, ...]) -> bool:
+def config_loaded(*layer_groups: tuple[Path, ...]) -> bool:
     """Return whether any layer in any group exists on disk."""
 
     return any(path.exists() for group in layer_groups for path in group)
 
 
-def _merge_layer_groups(*layer_groups: tuple[Path, ...]) -> dict[str, Any]:
+def merge_layer_groups(*layer_groups: tuple[Path, ...]) -> dict[str, Any]:
     """Load and merge multiple layer groups in order."""
 
-    merged: dict[str, object] = {}
+    merged: dict[str, Any] = {}
     for group in layer_groups:
         merged = deep_merge_mappings(merged, load_yaml_layers(group))
     return merged
@@ -37,7 +37,7 @@ def load_composed_app_settings(
 
     base_dir = Path(config_dir)
     active_board = resolve_config_board(explicit_board=config_board)
-    payload = _merge_layer_groups(
+    payload = merge_layer_groups(
         resolve_config_layers(base_dir, active_board, APP_CORE_CONFIG),
         resolve_config_layers(base_dir, active_board, DEVICE_HARDWARE_CONFIG),
     )

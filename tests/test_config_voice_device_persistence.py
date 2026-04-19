@@ -33,6 +33,21 @@ def test_config_manager_allows_auto_device_ids(tmp_path: Path) -> None:
     assert reloaded.get_voice_settings().audio.capture_device_id == ""
 
 
+def test_voice_device_persistence_sets_device_hardware_loaded_only(tmp_path: Path) -> None:
+    """Device-layer writes should not misreport the voice-domain load state."""
+
+    cfg_dir = tmp_path / "config"
+    manager = ConfigManager(config_dir=str(cfg_dir))
+
+    assert manager.voice_config_loaded is False
+    assert manager.device_hardware_config_loaded is False
+
+    assert manager.set_voice_speaker_device_id("plughw:CARD=SE,DEV=0") is True
+
+    assert manager.voice_config_loaded is False
+    assert manager.device_hardware_config_loaded is True
+
+
 def test_voice_device_persistence_does_not_flatten_env_overrides(
     tmp_path: Path,
     monkeypatch,

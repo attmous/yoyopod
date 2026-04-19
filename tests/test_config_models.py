@@ -426,3 +426,12 @@ def test_display_config_defaults_pimoroni_gpio_to_none():
 
     config = build_config_model(AppDisplayConfig, {})
     assert config.pimoroni_gpio is None
+
+
+def test_top_level_config_exports_config_value() -> None:
+    """Top-level config package should mirror the field helper export."""
+
+    from yoyopod.config import config_value
+    from yoyopod.config.models import config_value as models_config_value
+
+    assert config_value is models_config_value
