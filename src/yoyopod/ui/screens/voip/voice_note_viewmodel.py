@@ -147,8 +147,10 @@ class VoiceNoteViewModel:
 
         if self.flow_state == "sent":
             return 1
-        if self.flow_state in {"sending", "ready"}:
-            return 0 if self.flow_state == "sending" else 3
+        if self.flow_state == "sending":
+            return 0
+        if self.flow_state == "ready":
+            return 3
         return 3
 
     def current_primary_status(self) -> tuple[str, tuple[int, int, int]]:
@@ -207,8 +209,7 @@ class VoiceNoteViewModel:
         if self.flow_state == "review":
             return (
                 "Review",
-                self.state.status_text
-                or f"Listen, send, or record again for {recipient}.",
+                self.state.status_text or f"Listen, send, or record again for {recipient}.",
                 "Tap next / Double choose" if self.one_button_mode else "Select choose / Back",
                 "voice_note",
             )

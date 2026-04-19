@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
@@ -27,16 +27,21 @@ from yoyopod.ui.screens.voip.voice_note_models import (
     build_voice_note_actions,
     build_voice_note_state_provider,
 )
-from yoyopod.ui.screens.voip.voice_note_recording import (
-    VoiceNoteRecordingController,
-    VoiceNoteRecordingResult,
-)
+from yoyopod.ui.screens.voip.voice_note_recording import VoiceNoteRecordingController
 from yoyopod.ui.screens.voip.voice_note_viewmodel import VoiceNoteViewModel
 
 if TYPE_CHECKING:
     from yoyopod.app_context import AppContext
-    from yoyopod.communication import VoIPManager
-    from yoyopod.ui.screens import ScreenView
+    from yoyopod.ui.screens.voip.voice_note_recording import VoiceNoteRecordingResult
+
+__all__ = [
+    "VoiceNoteScreen",
+    "VoiceNoteAction",
+    "VoiceNoteActions",
+    "VoiceNoteState",
+    "build_voice_note_actions",
+    "build_voice_note_state_provider",
+]
 
 
 class VoiceNoteScreen(Screen):
@@ -56,7 +61,7 @@ class VoiceNoteScreen(Screen):
         self._recording_controller = VoiceNoteRecordingController(self._actions)
         self._state = "ready"
         self._selected_action_index = 0
-        self._lvgl_view: "ScreenView | None" = None
+        self._lvgl_view: LvglVoiceNoteView | None = None
 
     def enter(self) -> None:
         """Reset the voice-note flow when opened."""
@@ -71,7 +76,7 @@ class VoiceNoteScreen(Screen):
         """Leave the retained LVGL voice-note view alive across transitions."""
         super().exit()
 
-    def _ensure_lvgl_view(self) -> "ScreenView | None":
+    def _ensure_lvgl_view(self) -> LvglVoiceNoteView | None:
         if getattr(self.display, "backend_kind", "pil") != "lvgl":
             self._lvgl_view = None
             return None
@@ -83,7 +88,10 @@ class VoiceNoteScreen(Screen):
             self._lvgl_view = None
             return None
 
-        self._lvgl_view = current_retained_view(self._lvgl_view, ui_backend)
+        self._lvgl_view = cast(
+            LvglVoiceNoteView | None,
+            current_retained_view(cast(Any, self._lvgl_view), ui_backend),
+        )
         if self._lvgl_view is not None:
             return self._lvgl_view
 
@@ -364,7 +372,7 @@ class VoiceNoteScreen(Screen):
             duration_ms=state.duration_ms,
         )
 
-    def on_select(self, data=None) -> None:
+    def on_select(self, data: object | None = None) -> None:
         """Advance the voice-note flow."""
 
         if self._state == "ready":
@@ -402,7 +410,7 @@ class VoiceNoteScreen(Screen):
             return
         self.request_route("back")
 
-    def on_advance(self, data=None) -> None:
+    def on_advance(self, data: object | None = None) -> None:
         """Cycle selectable actions in one-button mode."""
 
         actions = self.actions()
@@ -410,7 +418,7 @@ class VoiceNoteScreen(Screen):
             return
         self._selected_action_index = (self._selected_action_index + 1) % len(actions)
 
-    def on_back(self, data=None) -> None:
+    def on_back(self, data: object | None = None) -> None:
         """Return to the previous Talk screen."""
 
         if self._state == "recording":
@@ -423,7 +431,7 @@ class VoiceNoteScreen(Screen):
             return
         self.request_route("back")
 
-    def on_ptt_press(self, data=None) -> None:
+    def on_ptt_press(self, data: object | None = None) -> None:
         """Start recording once the raw hold threshold is crossed."""
 
         if not isinstance(data, dict) or data.get("stage") != "hold_started":
@@ -432,7 +440,7 @@ class VoiceNoteScreen(Screen):
             return
         self._start_recording()
 
-    def on_ptt_release(self, data=None) -> None:
+    def on_ptt_release(self, data: object | None = None) -> None:
         """Stop an active recording when the button is released."""
 
         if self._state != "recording":
@@ -469,7 +477,10 @@ class VoiceNoteScreen(Screen):
         """Cancel the active recording and return to the ready state."""
 
         result = self._recording_controller.cancel_recording()
-        self._consume_recording_result(result, on_success=self._mark_recording_idle)
+        self._consume_recording_result(
+            result,
+            on_success=lambda _default_state: self._mark_recording_idle(),
+        )
         self._refresh_input_mode()
 
     def _discard_and_reset(self) -> None:
@@ -517,9 +528,7 @@ class VoiceNoteScreen(Screen):
             return
 
         if result.next_state in {"recording", "review", "sending", "sent"}:
-            if result.next_state == "recording":
-                self._selected_action_index = 0
-            if result.next_state == "review":
+            if result.next_state in {"recording", "review"}:
                 self._selected_action_index = 0
             on_success(result.next_state)
             self._state = result.next_state
