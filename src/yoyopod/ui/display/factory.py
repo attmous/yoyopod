@@ -109,7 +109,7 @@ def get_display(
     hardware: str = "auto",
     simulate: bool = False,
     *,
-    whisplay_renderer: str = "pil",
+    whisplay_renderer: str = "lvgl",
     whisplay_lvgl_buffer_lines: int = 40,
 ) -> DisplayHAL:
     """Create the appropriate display adapter."""

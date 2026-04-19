@@ -166,3 +166,54 @@ def test_init_core_components_schedules_screen_actions_for_pil_backend(monkeypat
     assert captured["action_scheduler"] is scheduled_callback
     assert fake_input_manager.started is True
 
+
+def test_init_core_components_refuses_whisplay_when_lvgl_backend_does_not_start(
+    monkeypatch,
+) -> None:
+    """Production Whisplay startup should fail instead of downgrading to PIL."""
+
+    class _FakeLvglBackend:
+        def initialize(self) -> bool:
+            return False
+
+    class _FakeWhisplayDisplay(_FakeDisplay):
+        def __init__(
+            self,
+            *,
+            hardware: str,
+            simulate: bool,
+            whisplay_renderer: str,
+            whisplay_lvgl_buffer_lines: int,
+        ) -> None:
+            super().__init__(
+                hardware=hardware,
+                simulate=simulate,
+                whisplay_renderer=whisplay_renderer,
+                whisplay_lvgl_buffer_lines=whisplay_lvgl_buffer_lines,
+            )
+            self.backend_kind = "pil"
+            self._adapter = SimpleNamespace(DISPLAY_TYPE="whisplay")
+
+        def get_ui_backend(self):
+            return _FakeLvglBackend()
+
+        def get_adapter(self) -> object:
+            return self._adapter
+
+    fake_input_manager = _FakeInputManager()
+
+    monkeypatch.setattr(boot_module, "Display", _FakeWhisplayDisplay)
+    monkeypatch.setattr(
+        boot_module,
+        "get_input_manager",
+        lambda **_kwargs: fake_input_manager,
+    )
+
+    app = _FakeApp(scheduler=object())
+    app.simulate = False
+    app.app_settings.display.hardware = "whisplay"
+    app.app_settings.display.whisplay_renderer = "lvgl"
+
+    assert RuntimeBootService(app).init_core_components() is False
+    assert app.input_manager is None
+    assert fake_input_manager.started is False

@@ -62,6 +62,7 @@ This is the startup sequence that exists on `main` today.
       - resolves screen timeout, brightness, and auto-resume settings
    2. `init_core_components()`
       - creates the `Display` facade using the configured or auto-detected hardware mode
+      - treats non-simulated Whisplay as a strict LVGL production path and fails startup if that contract cannot be met
       - initializes the LVGL backend when the selected adapter supports it
       - renders the initial `YoyoPod Starting...` splash
       - creates `AppContext`
@@ -226,6 +227,12 @@ Selection happens in `src/yoyopod/ui/display/factory.py` using:
 2. `YOYOPOD_DISPLAY` environment variable
 3. auto-detection
 4. simulation fallback
+
+Whisplay has one extra contract on top of the general selection rules:
+
+- non-simulated Whisplay startup requires `display.whisplay_renderer=lvgl`
+- if the Whisplay driver, board init, or LVGL backend is unavailable, startup stops instead of silently degrading to PIL or simulation
+- PIL remains a simulation and local debug path, not a supported production Whisplay mode
 
 ## Input Architecture
 

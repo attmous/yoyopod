@@ -25,6 +25,10 @@ from typing import Optional, Tuple
 from loguru import logger
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
+from yoyopod.ui.display.contracts import (
+    WhisplayProductionRenderContractError,
+    build_whisplay_production_contract_message,
+)
 from yoyopod.ui.display.adapters.whisplay_paths import ensure_whisplay_driver_on_path
 from yoyopod.ui.display.hal import DisplayHAL
 
@@ -161,8 +165,10 @@ class WhisplayDisplayAdapter(DisplayHAL):
     def __init__(
         self,
         simulate: bool = False,
-        renderer: str = "pil",
+        renderer: str = "lvgl",
         lvgl_buffer_lines: int = 40,
+        *,
+        enforce_production_contract: bool | None = None,
     ) -> None:
         """
         Initialize the Whisplay HAT display.
@@ -170,11 +176,27 @@ class WhisplayDisplayAdapter(DisplayHAL):
         Args:
             simulate: If True, run in simulation mode without hardware
         """
-        self.simulate = simulate or not HAS_HARDWARE
+        requested_simulation = bool(simulate)
+        self._production_contract_enforced = (
+            not requested_simulation
+            if enforce_production_contract is None
+            else bool(enforce_production_contract)
+        )
+        self.requested_renderer = renderer.lower().strip() or "pil"
+        self.renderer = self.requested_renderer
+        if self._production_contract_enforced and self.renderer != "lvgl":
+            self._raise_production_contract_error(
+                "Configured Whisplay renderer is not LVGL",
+            )
+        if self._production_contract_enforced and not HAS_HARDWARE:
+            self._raise_production_contract_error(
+                "Whisplay driver is unavailable on this host",
+            )
+
+        self.simulate = requested_simulation or not HAS_HARDWARE
         self.buffer: Optional[Image.Image] = None
         self.draw: Optional[ImageDraw.ImageDraw] = None
         self.device = None
-        self.renderer = renderer.lower().strip() or "pil"
         self.lvgl_buffer_lines = max(1, int(lvgl_buffer_lines))
         self.ui_backend = None
         self._force_shadow_buffer_sync = False
@@ -206,6 +228,10 @@ class WhisplayDisplayAdapter(DisplayHAL):
                 self.device.set_rgb(0, 100, 200)  # Blue LED indicator
                 logger.info("Whisplay HAT initialized (240×280 portrait)")
             except Exception as e:
+                if self._production_contract_enforced:
+                    self._raise_production_contract_error(
+                        f"Whisplay hardware initialization failed: {e}",
+                    )
                 logger.error(f"Failed to initialize Whisplay display hardware: {e}")
                 logger.info("Falling back to simulation mode")
                 self.simulate = True
@@ -222,13 +248,29 @@ class WhisplayDisplayAdapter(DisplayHAL):
                     buffer_lines=self.lvgl_buffer_lines,
                 )
                 if not self.ui_backend.available:
+                    if self._production_contract_enforced:
+                        self._raise_production_contract_error(
+                            "Whisplay LVGL shim is unavailable during startup",
+                        )
                     logger.warning(
                         "Whisplay LVGL renderer requested but native shim is unavailable"
                     )
             except Exception as e:
+                if self._production_contract_enforced:
+                    self._raise_production_contract_error(
+                        f"Failed to prepare the Whisplay LVGL backend: {e}",
+                    )
                 logger.warning(f"Failed to prepare LVGL backend: {e}")
                 self.ui_backend = None
                 self.renderer = "pil"
+
+    @staticmethod
+    def _raise_production_contract_error(reason: str) -> None:
+        """Fail loudly instead of silently degrading on production Whisplay hardware."""
+
+        message = build_whisplay_production_contract_message(reason)
+        logger.error(message)
+        raise WhisplayProductionRenderContractError(message)
 
     @property
     def shadow_buffer_sync_enabled(self) -> bool:

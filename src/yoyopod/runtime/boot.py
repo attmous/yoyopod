@@ -35,6 +35,10 @@ from yoyopod.runtime.voice import (
     VoiceSettingsResolver,
 )
 from yoyopod.ui.display import Display
+from yoyopod.ui.display.contracts import (
+    WhisplayProductionRenderContractError,
+    build_whisplay_production_contract_message,
+)
 from yoyopod.ui.input import InteractionProfile, get_input_manager
 from yoyopod.ui.lvgl_binding import LvglInputBridge
 from yoyopod.ui.screens import (
@@ -178,6 +182,19 @@ class RuntimeBootService:
                 latest_voice_note_by_contact=self.app.voip_manager.latest_voice_note_summary(),
             )
 
+    def _whisplay_production_contract_required(self, *, requested_renderer: str) -> bool:
+        """Return True when this boot must refuse non-LVGL Whisplay fallback."""
+
+        if self.app.simulate:
+            return False
+        if self.app.display is None:
+            return False
+        adapter = self.app.display.get_adapter()
+        return (
+            getattr(adapter, "DISPLAY_TYPE", None) == "whisplay"
+            and requested_renderer.strip().lower() == "lvgl"
+        )
+
     def init_core_components(self) -> bool:
         """Initialize display, context, orchestration models, input, and screen manager."""
         logger.info("Initializing core components...")
@@ -211,6 +228,14 @@ class RuntimeBootService:
             else:
                 self.app._lvgl_backend = None
                 display.refresh_backend_kind()
+                if self._whisplay_production_contract_required(
+                    requested_renderer=whisplay_renderer,
+                ):
+                    raise WhisplayProductionRenderContractError(
+                        build_whisplay_production_contract_message(
+                            "Whisplay LVGL backend initialization failed during startup",
+                        )
+                    )
             logger.info(f"    Active UI backend: {display.backend_kind}")
 
             display.clear(display.COLOR_BLACK)
