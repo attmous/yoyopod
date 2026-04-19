@@ -43,9 +43,9 @@ def render_header(
 ) -> int:
     """Render the shared status bar plus title block and return content start."""
 
-    from .status_bar import render_status_bar
+    from .status_bar import render_backdrop, render_status_bar
 
-    theme = theme_for(mode)
+    theme = render_backdrop(display, mode)
     render_status_bar(display, context, show_time=show_time)
     side_inset = (
         HEADER_SIDE_INSET_PORTRAIT if display.is_portrait() else HEADER_SIDE_INSET_LANDSCAPE
