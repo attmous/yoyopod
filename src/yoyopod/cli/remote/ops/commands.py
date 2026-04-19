@@ -37,7 +37,7 @@ def build_startup_verification_command(
                 "done"
             ),
             f"test -f {pid_file}",
-            f'pid="$(tr -d \'\\n\' < {pid_file})"',
+            f"pid=\"$(tr -d '\\n' < {pid_file})\"",
             'test -n "$pid"',
             'kill -0 "$pid"',
             (

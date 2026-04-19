@@ -21,12 +21,18 @@ from .validation import _resolve_remote_config
 
 
 def status(
-    host: Annotated[str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")] = "",
-    user: Annotated[str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")] = "",
+    host: Annotated[
+        str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")
+    ] = "",
+    user: Annotated[
+        str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")
+    ] = "",
     project_dir: Annotated[
         str, typer.Option("--project-dir", help="Project directory on the Raspberry Pi.")
     ] = "",
-    branch: Annotated[str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")] = "",
+    branch: Annotated[
+        str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")
+    ] = "",
 ) -> None:
     """Show remote repo, music backend, and process status."""
     config = _resolve_remote_config(host, user, project_dir, branch)
@@ -38,15 +44,23 @@ def status(
 
 
 def logs(
-    host: Annotated[str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")] = "",
-    user: Annotated[str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")] = "",
+    host: Annotated[
+        str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")
+    ] = "",
+    user: Annotated[
+        str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")
+    ] = "",
     project_dir: Annotated[
         str, typer.Option("--project-dir", help="Project directory on the Raspberry Pi.")
     ] = "",
-    branch: Annotated[str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")] = "",
+    branch: Annotated[
+        str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")
+    ] = "",
     lines: Annotated[int, typer.Option("--lines", help="Number of log lines to tail.")] = 50,
     follow: Annotated[bool, typer.Option("--follow", "-f", help="Follow log output.")] = False,
-    errors: Annotated[bool, typer.Option("--errors", help="Tail the error log instead of the main log.")] = False,
+    errors: Annotated[
+        bool, typer.Option("--errors", help="Tail the error log instead of the main log.")
+    ] = False,
     filter: Annotated[
         Optional[str], typer.Option("--filter", help="Grep filter to apply to log output.")
     ] = None,
@@ -68,12 +82,18 @@ def logs(
 
 
 def restart(
-    host: Annotated[str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")] = "",
-    user: Annotated[str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")] = "",
+    host: Annotated[
+        str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")
+    ] = "",
+    user: Annotated[
+        str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")
+    ] = "",
     project_dir: Annotated[
         str, typer.Option("--project-dir", help="Project directory on the Raspberry Pi.")
     ] = "",
-    branch: Annotated[str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")] = "",
+    branch: Annotated[
+        str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")
+    ] = "",
     verbose: Annotated[bool, typer.Option("--verbose", help="Enable debug logging.")] = False,
 ) -> None:
     """Restart the yoyopod app on the Pi."""
@@ -86,12 +106,18 @@ def restart(
 
 
 def whisplay(
-    host: Annotated[str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")] = "",
-    user: Annotated[str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")] = "",
+    host: Annotated[
+        str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")
+    ] = "",
+    user: Annotated[
+        str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")
+    ] = "",
     project_dir: Annotated[
         str, typer.Option("--project-dir", help="Project directory on the Raspberry Pi.")
     ] = "",
-    branch: Annotated[str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")] = "",
+    branch: Annotated[
+        str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")
+    ] = "",
     duration_seconds: Annotated[
         float, typer.Option("--duration-seconds", help="Session duration in seconds.")
     ] = 30.0,
@@ -126,17 +152,25 @@ def whisplay(
 
 
 def rtc(
-    host: Annotated[str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")] = "",
-    user: Annotated[str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")] = "",
+    host: Annotated[
+        str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")
+    ] = "",
+    user: Annotated[
+        str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")
+    ] = "",
     project_dir: Annotated[
         str, typer.Option("--project-dir", help="Project directory on the Raspberry Pi.")
     ] = "",
-    branch: Annotated[str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")] = "",
+    branch: Annotated[
+        str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")
+    ] = "",
     action: Annotated[
         str,
         typer.Argument(help="RTC action: status, sync-to, sync-from, set-alarm, disable-alarm."),
     ] = "status",
-    time: Annotated[Optional[str], typer.Option("--time", help="Alarm time in ISO 8601 format (for set-alarm).")] = None,
+    time: Annotated[
+        Optional[str], typer.Option("--time", help="Alarm time in ISO 8601 format (for set-alarm).")
+    ] = None,
     repeat_mask: Annotated[
         int, typer.Option("--repeat-mask", help="Repeat bitmask (default: every day).")
     ] = 127,

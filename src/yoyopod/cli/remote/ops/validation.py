@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import subprocess
+from collections.abc import Callable, Sequence
 from importlib import import_module
-from typing import Optional, Sequence
+from typing import Optional, cast
 
 import typer
 
@@ -24,10 +26,14 @@ from .commands import (
     build_validation_inspection_command,
 )
 
+RunLocalCaptureFn = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 
-def _resolve_run_local_capture():
+
+def _resolve_run_local_capture() -> RunLocalCaptureFn:
     """Resolve the package-level local capture helper for legacy monkeypatch seams."""
-    return import_module("yoyopod.cli.remote.ops").run_local_capture
+
+    ops_module = import_module("yoyopod.cli.remote.ops")
+    return cast(RunLocalCaptureFn, ops_module.run_local_capture)
 
 
 def _resolve_remote_config(
@@ -41,7 +47,12 @@ def _resolve_remote_config(
     return resolve_remote_config(host, user, project_dir, branch)
 
 
-def _capture_local_git(command: Sequence[str], *, action: str, run_local_capture_fn=None) -> str:
+def _capture_local_git(
+    command: Sequence[str],
+    *,
+    action: str,
+    run_local_capture_fn: RunLocalCaptureFn | None = None,
+) -> str:
     """Run one local git command and return its trimmed stdout."""
     # Default through the package path so ``yoyopod.cli.remote.ops.run_local_capture``
     # remains the single monkeypatch target for legacy tests and callers.
@@ -165,7 +176,9 @@ def remote_validate(
             with_rtc=with_rtc,
             with_music=with_music,
             provision_test_music=provision_test_music,
-            test_music_target_dir=(resolved_test_music_dir if (with_music or with_navigation_soak) else None),
+            test_music_target_dir=(
+                resolved_test_music_dir if (with_music or with_navigation_soak) else None
+            ),
             with_voip=with_voip,
             with_navigation_soak=with_navigation_soak,
             with_lvgl_soak=with_lvgl_soak,
@@ -220,7 +233,9 @@ def remote_smoke(
             with_rtc=with_rtc,
             with_music=with_music,
             provision_test_music=provision_test_music,
-            test_music_target_dir=(resolved_test_music_dir if (with_music or with_navigation_soak) else None),
+            test_music_target_dir=(
+                resolved_test_music_dir if (with_music or with_navigation_soak) else None
+            ),
             with_voip=with_voip,
             with_navigation_soak=with_navigation_soak,
             with_lvgl_soak=with_lvgl_soak,
@@ -308,7 +323,9 @@ def remote_preflight(
             with_rtc=with_rtc,
             with_music=with_music,
             provision_test_music=provision_test_music,
-            test_music_target_dir=(resolved_test_music_dir if (with_music or with_navigation_soak) else None),
+            test_music_target_dir=(
+                resolved_test_music_dir if (with_music or with_navigation_soak) else None
+            ),
             with_voip=with_voip,
             with_navigation_soak=with_navigation_soak,
             with_lvgl_soak=with_lvgl_soak,

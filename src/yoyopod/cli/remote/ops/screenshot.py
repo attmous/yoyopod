@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 import shlex
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Protocol
 
 import typer
 
@@ -16,13 +17,34 @@ from yoyopod.cli.remote.transport import run_remote_capture, validate_config
 from .validation import _resolve_remote_config
 
 
+class RemoteCaptureFn(Protocol):
+    """Callable contract for SSH capture helpers."""
+
+    def __call__(
+        self,
+        config: RemoteConfig,
+        remote_command: str,
+    ) -> subprocess.CompletedProcess[str]: ...
+
+
+class SubprocessRunFn(Protocol):
+    """Callable contract for local subprocess runners."""
+
+    def __call__(
+        self,
+        args: Sequence[str],
+        *,
+        check: bool,
+    ) -> subprocess.CompletedProcess[object]: ...
+
+
 def run_screenshot(
     config: RemoteConfig,
     deploy_config: PiDeployConfig,
     args: argparse.Namespace,
     *,
-    run_remote_capture_fn,
-    subprocess_run_fn,
+    run_remote_capture_fn: RemoteCaptureFn,
+    subprocess_run_fn: SubprocessRunFn,
 ) -> int:
     """Capture a screenshot from the remote app and copy it locally."""
     wait_seconds = 20
@@ -99,13 +121,21 @@ def run_screenshot(
 
 
 def screenshot(
-    host: Annotated[str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")] = "",
-    user: Annotated[str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")] = "",
+    host: Annotated[
+        str, typer.Option("--host", help="SSH host or alias for the Raspberry Pi.")
+    ] = "",
+    user: Annotated[
+        str, typer.Option("--user", help="SSH user for the Raspberry Pi (optional).")
+    ] = "",
     project_dir: Annotated[
         str, typer.Option("--project-dir", help="Project directory on the Raspberry Pi.")
     ] = "",
-    branch: Annotated[str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")] = "",
-    output: Annotated[str, typer.Option("--output", help="Local output file path.")] = "screenshot.png",
+    branch: Annotated[
+        str, typer.Option("--branch", help="Git branch to sync on the Raspberry Pi.")
+    ] = "",
+    output: Annotated[
+        str, typer.Option("--output", help="Local output file path.")
+    ] = "screenshot.png",
     readback: Annotated[
         bool,
         typer.Option(
