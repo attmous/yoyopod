@@ -7,6 +7,7 @@ concerns into focused submodules.
 from __future__ import annotations
 
 from yoyopod.ui.screens.theme_assets import ICON_ASSET_DIR, PHOSPHOR_ICON_FILES
+from yoyopod.ui.screens.theme_text import mix, text_fit, wrap_text
 from yoyopod.ui.screens.theme_tokens import (
     ASK,
     BACKGROUND,
@@ -78,12 +79,14 @@ __all__ = [
     "draw_talk_person_header",
     "draw_talk_status_chip",
     "format_battery_compact",
+    "mix",
     "render_backdrop",
     "render_footer",
     "render_header",
     "render_status_bar",
     "rounded_panel",
     "talk_monogram",
+    "text_fit",
     "theme_for",
+    "wrap_text",
 ]
-
