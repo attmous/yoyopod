@@ -9,7 +9,7 @@ Purpose
 - For detail, read the referenced docs instead of stuffing more into this file.
 
 Guidance order
-1. Current code in `yoyopy/`
+1. Current code in `src/yoyopod/`
 2. `README.md` and `docs/README.md`
 3. `rules/` for constraints and style
 4. This file for quick operating context
