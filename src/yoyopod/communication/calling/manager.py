@@ -95,7 +95,6 @@ class VoIPManager:
         self.current_call_id: Optional[str] = None
         self.caller_address: Optional[str] = None
         self.caller_name: Optional[str] = None
-        self.call_duration: int = 0
         self.call_start_time: Optional[float] = None
         self.is_muted = False
         self._pending_terminal_action: str | None = None
@@ -129,8 +128,6 @@ class VoIPManager:
         self._iterate_stop_event = threading.Event()
         self._iterate_wakeup_event = threading.Event()
 
-        self.duration_thread: Optional[threading.Thread] = None
-        self.duration_stop_event = threading.Event()
         self._stopping = False
 
         self.backend.on_event(self._dispatch_backend_event)
@@ -865,18 +862,9 @@ class VoIPManager:
 
     def _start_call_timer(self) -> None:
         self.call_start_time = time.time()
-        self.call_duration = 0
-        self.duration_stop_event.clear()
-        self.duration_thread = threading.Thread(target=self._track_duration, daemon=True)
-        self.duration_thread.start()
 
     def _stop_call_timer(self) -> None:
-        self.duration_stop_event.set()
-        if self.duration_thread is not None:
-            self.duration_thread.join(timeout=1)
-            self.duration_thread = None
         self.call_start_time = None
-        self.call_duration = 0
 
     def _clear_call_session(self) -> None:
         self._stop_call_timer()
@@ -893,12 +881,6 @@ class VoIPManager:
         self.running = False
         self.registered = False
         self.registration_state = RegistrationState.NONE
-
-    def _track_duration(self) -> None:
-        while not self.duration_stop_event.is_set():
-            if self.call_start_time is not None:
-                self.call_duration = int(time.time() - self.call_start_time)
-            time.sleep(1)
 
     def _notify_availability_change(self, available: bool, reason: str) -> None:
         for callback in self.availability_callbacks:

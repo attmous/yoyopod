@@ -435,6 +435,21 @@ def test_voip_manager_starts_timer_on_streams_running_without_connected() -> Non
     assert started == [True]
 
 
+def test_voip_manager_derives_live_call_duration_without_worker_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Call duration should come from the current clock and stored start time."""
+
+    backend = MockVoIPBackend()
+    manager = VoIPManager(build_config(), backend=backend)
+    now = 1_000.9
+    monkeypatch.setattr(time, "time", lambda: now)
+    manager.call_start_time = 940.0
+    manager.call_state = CallState.CONNECTED
+
+    assert manager.get_call_duration() == 60
+
+
 def test_voip_manager_tracks_voice_note_send_and_delivery() -> None:
     """Voice-note record/send flow should update the active draft and summary state."""
 
