@@ -10,13 +10,17 @@ from typing import TYPE_CHECKING, TypeVar
 from yoyopod.utils.logger import get_subsystem_logger
 
 if TYPE_CHECKING:
-    from yoyopod.app import YoyoPodApp
+    from yoyopod.runtime.loop import RuntimeLoopService
 
 coord_logger = get_subsystem_logger("coord")
 _T = TypeVar("_T")
 
 
-def _record_blocking_span(runtime_loop: "YoyoPodApp", span_name: str, duration_seconds: float) -> None:
+def _record_blocking_span(
+    runtime_loop: "RuntimeLoopService",
+    span_name: str,
+    duration_seconds: float,
+) -> None:
     """Persist and log one named coordinator-thread blocking span."""
 
     runtime_loop._last_runtime_blocking_span_name = span_name
@@ -26,6 +30,8 @@ def _record_blocking_span(runtime_loop: "YoyoPodApp", span_name: str, duration_s
         runtime_loop._voip_timing_window.started_at > 0.0
         and duration_seconds >= runtime_loop._voip_timing_window.max_blocking_span_seconds
     ):
+        # Blocking spans only contribute to the summary once a VoIP timing window
+        # exists, which starts with the first recorded iterate sample.
         runtime_loop._voip_timing_window.max_blocking_span_name = span_name
         runtime_loop._voip_timing_window.max_blocking_span_seconds = duration_seconds
     coord_logger.warning(
@@ -41,7 +47,7 @@ def _record_blocking_span(runtime_loop: "YoyoPodApp", span_name: str, duration_s
 
 
 def _measure_blocking_span(
-    runtime_loop: "YoyoPodApp",
+    runtime_loop: "RuntimeLoopService",
     span_name: str,
     callback: Callable[[], _T],
 ) -> _T:
@@ -57,7 +63,7 @@ def _measure_blocking_span(
 
 
 def _warn_if_slow(
-    runtime_loop: "YoyoPodApp",
+    runtime_loop: "RuntimeLoopService",
     phase: str,
     *,
     started_at: float,
@@ -79,7 +85,7 @@ def _warn_if_slow(
     )
 
 
-def _runtime_loop_gap_warning_seconds(runtime_loop: "YoyoPodApp") -> float:
+def _runtime_loop_gap_warning_seconds(runtime_loop: "RuntimeLoopService") -> float:
     """Return the loop-gap threshold that is worth surfacing on hardware."""
 
     return max(
@@ -88,7 +94,7 @@ def _runtime_loop_gap_warning_seconds(runtime_loop: "YoyoPodApp") -> float:
     )
 
 
-def _runtime_iteration_warning_seconds(runtime_loop: "YoyoPodApp") -> float:
+def _runtime_iteration_warning_seconds(runtime_loop: "RuntimeLoopService") -> float:
     """Return the total iteration duration threshold for broad blocking work."""
 
     return max(
@@ -97,7 +103,7 @@ def _runtime_iteration_warning_seconds(runtime_loop: "YoyoPodApp") -> float:
     )
 
 
-def _runtime_blocking_span_warning_seconds(runtime_loop: "YoyoPodApp") -> float:
+def _runtime_blocking_span_warning_seconds(runtime_loop: "RuntimeLoopService") -> float:
     """Return the per-step blocking threshold for coordinator runtime spans."""
 
     return max(
@@ -106,7 +112,7 @@ def _runtime_blocking_span_warning_seconds(runtime_loop: "YoyoPodApp") -> float:
     )
 
 
-def _voip_schedule_delay_warning_seconds(runtime_loop: "YoyoPodApp") -> float:
+def _voip_schedule_delay_warning_seconds(runtime_loop: "RuntimeLoopService") -> float:
     """Return the schedule-drift threshold for VoIP iterate warnings."""
 
     return max(
@@ -115,7 +121,7 @@ def _voip_schedule_delay_warning_seconds(runtime_loop: "YoyoPodApp") -> float:
     )
 
 
-def _voip_iterate_warning_seconds(runtime_loop: "YoyoPodApp") -> float:
+def _voip_iterate_warning_seconds(runtime_loop: "RuntimeLoopService") -> float:
     """Return the per-iterate duration threshold for VoIP keep-alive warnings."""
 
     return max(

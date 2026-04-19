@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from yoyopod.utils.logger import get_subsystem_logger
 
 if TYPE_CHECKING:
-    from yoyopod.app import YoyoPodApp
+    from yoyopod.runtime.loop import RuntimeLoopService
 
 
 voip_logger = get_subsystem_logger("voip")
@@ -42,7 +42,9 @@ class _VoipIterateMetrics:
     event_drain_duration_seconds: float = 0.0
 
 
-def _latest_voip_iterate_metrics(runtime_loop: "YoyoPodApp") -> _VoipIterateMetrics | None:
+def _latest_voip_iterate_metrics(
+    runtime_loop: "RuntimeLoopService",
+) -> _VoipIterateMetrics | None:
     """Return the latest backend-native keep-alive sub-span timings when available."""
 
     if runtime_loop.app.voip_manager is None:
@@ -68,7 +70,7 @@ def _latest_voip_iterate_metrics(runtime_loop: "YoyoPodApp") -> _VoipIterateMetr
     )
 
 
-def _sync_background_voip_timing_sample(runtime_loop: "YoyoPodApp") -> None:
+def _sync_background_voip_timing_sample(runtime_loop: "RuntimeLoopService") -> None:
     """Pull the latest background iterate sample into runtime timing snapshots."""
 
     if runtime_loop.app.voip_manager is None:
@@ -153,7 +155,7 @@ def _sync_background_voip_timing_sample(runtime_loop: "YoyoPodApp") -> None:
 
 
 def _record_voip_timing_sample(
-    runtime_loop: "YoyoPodApp",
+    runtime_loop: "RuntimeLoopService",
     *,
     monotonic_now: float,
     schedule_delay_seconds: float,
@@ -202,7 +204,11 @@ def _record_voip_timing_sample(
         runtime_loop._voip_timing_window.slow_samples += 1
 
 
-def _maybe_log_voip_timing_summary(runtime_loop: "YoyoPodApp", *, monotonic_now: float) -> None:
+def _maybe_log_voip_timing_summary(
+    runtime_loop: "RuntimeLoopService",
+    *,
+    monotonic_now: float,
+) -> None:
     """Emit a low-frequency summary of keep-alive timing behavior."""
 
     window = runtime_loop._voip_timing_window

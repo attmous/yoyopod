@@ -608,10 +608,11 @@ class RuntimeLoopService:
                 "power_poll",
                 lambda: self.app.power_runtime.poll_status(now=monotonic_now),
             )
-            if self.app.cloud_manager is not None:
+            cloud_manager = self.app.cloud_manager
+            if cloud_manager is not None:
                 self._measure_blocking_span(
                     "cloud_tick",
-                    lambda: self.app.cloud_manager.tick(monotonic_now),
+                    lambda: cloud_manager.tick(monotonic_now),
                 )
             self._measure_blocking_span(
                 "lvgl_pump",
@@ -646,13 +647,17 @@ class RuntimeLoopService:
                 self.app.boot_service.ensure_coordinators()
                 assert self.app.playback_coordinator is not None
                 assert self.app.screen_coordinator is not None
+                playback_coordinator = self.app.playback_coordinator
+                screen_coordinator = self.app.screen_coordinator
+
+                def refresh_visible_screen() -> None:
+                    playback_coordinator.update_now_playing_if_needed()
+                    screen_coordinator.update_in_call_if_needed()
+                    screen_coordinator.update_power_screen_if_needed()
+
                 self._measure_blocking_span(
                     "visible_screen_refresh",
-                    lambda: (
-                        self.app.playback_coordinator.update_now_playing_if_needed(),
-                        self.app.screen_coordinator.update_in_call_if_needed(),
-                        self.app.screen_coordinator.update_power_screen_if_needed(),
-                    ),
+                    refresh_visible_screen,
                 )
                 return current_time
 

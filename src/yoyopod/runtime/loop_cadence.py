@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from yoyopod.utils.logger import get_subsystem_logger
 
 if TYPE_CHECKING:
-    from yoyopod.app import YoyoPodApp
+    from yoyopod.runtime.loop import RuntimeLoopService
 
 
 coord_logger = get_subsystem_logger("coord")
@@ -24,7 +24,11 @@ class _LoopCadenceDecision:
     voip_iterate_interval_seconds: float
 
 
-def _select_loop_cadence(runtime_loop: "YoyoPodApp", *, monotonic_now: float) -> _LoopCadenceDecision:
+def _select_loop_cadence(
+    runtime_loop: "RuntimeLoopService",
+    *,
+    monotonic_now: float,
+) -> _LoopCadenceDecision:
     """Choose the next runtime cadence from current state and queued work."""
 
     configured_voip_interval_seconds = max(
@@ -100,7 +104,7 @@ def _select_loop_cadence(runtime_loop: "YoyoPodApp", *, monotonic_now: float) ->
 
 
 def _apply_loop_cadence(
-    runtime_loop: "YoyoPodApp",
+    runtime_loop: "RuntimeLoopService",
     decision: _LoopCadenceDecision,
     *,
     monotonic_now: float,
@@ -139,8 +143,12 @@ def _apply_loop_cadence(
             )
             if callable(set_interval):
                 set_interval(decision.voip_iterate_interval_seconds)
+            # The background worker now owns iterate timing, so the coordinator-side
+            # deadline stays cleared even when the cadence decision itself is unchanged.
             runtime_loop.app._next_voip_iterate_at = 0.0
         else:
+            # Recompute the coordinator-side deadline on every pass so manual iterate
+            # scheduling stays aligned to the latest cadence and last-start timestamp.
             runtime_loop.app._next_voip_iterate_at = _next_voip_due_at_for_cadence(
                 runtime_loop=runtime_loop,
                 monotonic_now=monotonic_now,
@@ -164,14 +172,14 @@ def _apply_loop_cadence(
     )
 
 
-def _effective_voip_iterate_interval_seconds(runtime_loop: "YoyoPodApp") -> float:
+def _effective_voip_iterate_interval_seconds(runtime_loop: "RuntimeLoopService") -> float:
     """Return the currently selected VoIP iterate cadence."""
 
     return max(0.01, runtime_loop._current_voip_iterate_interval_seconds)
 
 
 def _next_voip_due_at_for_cadence(
-    runtime_loop: "YoyoPodApp",
+    runtime_loop: "RuntimeLoopService",
     *,
     monotonic_now: float,
     iterate_interval_seconds: float,
