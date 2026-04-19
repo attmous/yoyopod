@@ -1,6 +1,7 @@
 """Canonical config composition for YoyoPod."""
 
-from yoyopod.config.manager import ConfigManager, load_composed_app_settings
+from yoyopod.config.composition import load_composed_app_settings
+from yoyopod.config.manager import ConfigManager
 from yoyopod.config.models import (
     BackendTelemetryConfig,
     CloudBackendConfig,

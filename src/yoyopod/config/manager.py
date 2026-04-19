@@ -7,6 +7,12 @@ from typing import Any
 
 from loguru import logger
 
+from yoyopod.config.composition import (
+    DEVICE_HARDWARE_CONFIG,
+    APP_CORE_CONFIG,
+    _config_loaded,
+    _merge_layer_groups,
+)
 from yoyopod.config.layers import resolve_config_board, resolve_config_layers
 from yoyopod.config.models import (
     CloudConfig,
@@ -29,9 +35,7 @@ from yoyopod.config.storage import (
     load_yaml_mapping,
 )
 
-APP_CORE_CONFIG = Path("app/core.yaml")
 AUDIO_MUSIC_CONFIG = Path("audio/music.yaml")
-DEVICE_HARDWARE_CONFIG = Path("device/hardware.yaml")
 POWER_BACKEND_CONFIG = Path("power/backend.yaml")
 NETWORK_CELLULAR_CONFIG = Path("network/cellular.yaml")
 VOICE_ASSISTANT_CONFIG = Path("voice/assistant.yaml")
@@ -43,37 +47,6 @@ CLOUD_BACKEND_CONFIG = Path("cloud/backend.yaml")
 CLOUD_SECRETS_CONFIG = Path("cloud/device.secrets.yaml")
 SYSTEM_CLOUD_SECRETS_FILE = Path("/etc/yoyopod/cloud/device.secrets.yaml")
 _SECRET_KEYS = ("sip_password", "sip_password_ha1")
-
-
-def _config_loaded(*layer_groups: tuple[Path, ...]) -> bool:
-    """Return whether any layer in any group exists on disk."""
-
-    return any(path.exists() for group in layer_groups for path in group)
-
-
-def _merge_layer_groups(*layer_groups: tuple[Path, ...]) -> dict[str, Any]:
-    """Load and merge multiple layer groups in order."""
-
-    merged: dict[str, Any] = {}
-    for group in layer_groups:
-        merged = deep_merge_mappings(merged, load_yaml_layers(group))
-    return merged
-
-
-def load_composed_app_settings(
-    config_dir: str | Path = "config",
-    *,
-    config_board: str | None = None,
-) -> YoyoPodConfig:
-    """Load the typed app settings from the canonical app/device topology."""
-
-    base_dir = Path(config_dir)
-    active_board = resolve_config_board(explicit_board=config_board)
-    payload = _merge_layer_groups(
-        resolve_config_layers(base_dir, active_board, APP_CORE_CONFIG),
-        resolve_config_layers(base_dir, active_board, DEVICE_HARDWARE_CONFIG),
-    )
-    return build_config_model(YoyoPodConfig, payload)
 
 
 class ConfigManager:
