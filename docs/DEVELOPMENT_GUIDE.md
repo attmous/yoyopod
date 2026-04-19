@@ -126,6 +126,15 @@ env vars. Mutable contacts live in `data/people/contacts.yaml`, optionally
 bootstrapped from `config/people/contacts.seed.yaml`. Mutable media history
 lives in `data/media/recent_tracks.json`.
 
+Current approved-contacts behavior:
+
+- contacts may include both `sip_address` and `phone_number`
+- the runtime prefers SIP for calling while GSM remains disabled
+- backend config sync can replace the cloud-managed subset while preserving
+  local-only contacts
+- a claimed device may upload prestored local contacts once when backend
+  authority is still empty for that household
+
 ## Running
 
 Production app:
@@ -217,6 +226,10 @@ yoyoctl remote logs --lines 200
 That remote flow mirrors the same baseline contract. You still need feature-specific
 follow-through for assets like Vosk models and for unusual board/modem bringup.
 Add `--with-voice` and/or `--with-network` to the setup commands when the target depends on those paths.
+
+If a GitHub fetch or push fails with a short-lived connectivity error, retry it
+several times before treating it as a real failure. This environment has seen
+brief `github.com` reachability blips.
 
 The detailed deploy and validation flows live in:
 

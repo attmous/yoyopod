@@ -8,6 +8,15 @@ Current product surface:
 - `Ask` - staged shell for future safe AI interactions
 - `Setup` - power, care, and device status
 
+Approved contacts are now backend-synced policy data:
+
+- the Pi stores mutable people data in `data/people/contacts.yaml`
+- backend config sync can merge household-approved contacts into that file
+- contacts may carry both `sip_address` and `phone_number`
+- calling is currently SIP-first; GSM numbers are stored for later enablement
+- a claimed device may bootstrap prestored local contacts to the backend once
+  when the backend household contact list is still empty
+
 Supported display/input modes:
 - Pimoroni Display HAT Mini: `320x240` landscape with four buttons
 - PiSugar Whisplay HAT: `240x280` portrait with a single PTT-style button

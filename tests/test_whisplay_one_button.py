@@ -98,6 +98,19 @@ class FakeContact:
     def display_name(self) -> str:
         return self.notes or self.name
 
+    def preferred_call_target(
+        self,
+        *,
+        gsm_enabled: bool = False,
+    ) -> tuple[str | None, str]:
+        if self.sip_address.strip():
+            return "sip", self.sip_address.strip()
+        return None, ""
+
+    def is_callable(self, *, gsm_enabled: bool = False) -> bool:
+        route, _ = self.preferred_call_target(gsm_enabled=gsm_enabled)
+        return bool(route)
+
 
 class FakePeopleDirectory:
     """Minimal people-directory returning test contacts."""
@@ -107,6 +120,11 @@ class FakePeopleDirectory:
 
     def get_contacts(self) -> list[FakeContact]:
         return list(self._contacts)
+
+    def get_callable_contacts(self, *, gsm_enabled: bool = False) -> list[FakeContact]:
+        return [
+            contact for contact in self._contacts if contact.is_callable(gsm_enabled=gsm_enabled)
+        ]
 
 
 class FakeVoIPManager:

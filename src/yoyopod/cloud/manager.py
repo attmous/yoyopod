@@ -43,6 +43,7 @@ class CloudManager:
             auth_path=backend.auth_path,
             refresh_path=backend.refresh_path,
             config_path_template=backend.config_path_template,
+            contacts_bootstrap_path_template=backend.contacts_bootstrap_path_template,
             timeout_seconds=backend.timeout_seconds,
         )
         self.status = CloudStatusSnapshot()
@@ -57,6 +58,7 @@ class CloudManager:
         self._provisioning_generation = 0
         self._mqtt: DeviceMqttClient | None = None
         self._next_battery_report_at = 0.0
+        self._contacts_bootstrap_attempted = False
 
     def prepare_boot(self) -> None:
         """Load secrets/cache and start MQTT before the runtime loop begins."""
@@ -173,6 +175,7 @@ class CloudManager:
                 auth_path=backend.auth_path,
                 refresh_path=backend.refresh_path,
                 config_path_template=backend.config_path_template,
+                contacts_bootstrap_path_template=backend.contacts_bootstrap_path_template,
                 timeout_seconds=backend.timeout_seconds,
             )
 
@@ -186,6 +189,7 @@ class CloudManager:
         self._next_refresh_at = 0.0
         self._next_config_poll_at = 0.0
         self._network_retry_index = 0
+        self._contacts_bootstrap_attempted = False
         if self._mqtt is not None:
             self._mqtt.stop()
             self._mqtt = None
@@ -487,7 +491,11 @@ class CloudManager:
 
         assert payload is not None
         config_version = int(payload.get("config_version") or 0)
-        unapplied_keys = self.config_manager.apply_cloud_overrides(payload)
+        self._apply_cloud_contacts(payload)
+        runtime_payload = {
+            key: value for key, value in payload.items() if key != "contacts"
+        }
+        unapplied_keys = self.config_manager.apply_cloud_overrides(runtime_payload)
         self._apply_runtime_side_effects(payload)
         self.status.backend_reachable = True
         self.status.cloud_state = "ready"
@@ -511,6 +519,7 @@ class CloudManager:
         self._sync_context_state()
         from yoyopod import __version__
         self.publish_heartbeat(firmware_version=__version__)
+        self._maybe_bootstrap_local_contacts(payload=payload, completed_at=completed_at)
 
     def _start_worker(self, *, name: str, work: Callable[[], None]) -> None:
         threading.Thread(target=work, daemon=True, name=name).start()
@@ -615,6 +624,173 @@ class CloudManager:
 
         self._sync_context_state()
 
+    def _apply_cloud_contacts(self, payload: dict[str, Any]) -> None:
+        """Merge cloud-managed contacts into the mutable people directory."""
+
+        contacts_payload = payload.get("contacts", {})
+        if not isinstance(contacts_payload, dict):
+            return
+
+        entries = contacts_payload.get("entries", [])
+        if not isinstance(entries, list):
+            return
+
+        if self.app.people_directory is None:
+            logger.warning("Skipping cloud contacts sync because no people directory is loaded")
+            return
+
+        self.app.people_directory.merge_cloud_contacts(entries)
+
+    def _local_contacts_bootstrap_entries(self) -> list[dict[str, Any]]:
+        """Build one bootstrap payload from non-cloud local contacts."""
+
+        if self.app.people_directory is None:
+            return []
+
+        local_contacts = self.app.people_directory.get_local_contacts()
+        if not local_contacts:
+            return []
+
+        quick_dial_by_address = {
+            str(address): int(slot)
+            for slot, address in self.app.people_directory.speed_dial.items()
+            if str(address).strip()
+        }
+
+        entries: list[dict[str, Any]] = []
+        for contact in local_contacts:
+            entries.append(
+                {
+                    "name": contact.name,
+                    "phoneNumber": contact.phone_number.strip() or None,
+                    "sipAddress": contact.sip_address.strip() or None,
+                    "relationship": contact.notes.strip() or None,
+                    "isPrimary": bool(contact.favorite),
+                    "canCall": bool(contact.can_call),
+                    "canReceive": bool(contact.can_receive),
+                    "quickDial": quick_dial_by_address.get(contact.sip_address.strip()),
+                }
+            )
+        return entries
+
+    def _payload_has_backend_contacts(self, payload: dict[str, Any]) -> bool:
+        contacts_payload = payload.get("contacts", {})
+        if not isinstance(contacts_payload, dict):
+            return False
+        entries = contacts_payload.get("entries", [])
+        return isinstance(entries, list) and len(entries) > 0
+
+    def _maybe_bootstrap_local_contacts(self, *, payload: dict[str, Any], completed_at: float) -> None:
+        """Upload local seeded contacts once when the backend still has none."""
+
+        if self._contacts_bootstrap_attempted:
+            return
+        if self._payload_has_backend_contacts(payload):
+            return
+        if self._access_token is None:
+            return
+
+        entries = self._local_contacts_bootstrap_entries()
+        if not entries:
+            self._contacts_bootstrap_attempted = True
+            return
+
+        self._contacts_bootstrap_attempted = True
+        self._request_in_flight = True
+        access_token = self._access_token.access_token
+        device_id = self.config_manager.get_cloud_device_id().strip()
+        generation = self._provisioning_generation
+        self._start_worker(
+            name="cloud-contacts-bootstrap",
+            work=lambda: self._run_bootstrap_contacts(
+                access_token=access_token,
+                device_id=device_id,
+                generation=generation,
+                entries=entries,
+            ),
+        )
+
+    def _run_bootstrap_contacts(
+        self,
+        *,
+        access_token: str,
+        device_id: str,
+        generation: int,
+        entries: list[dict[str, Any]],
+    ) -> None:
+        try:
+            payload = self.client.bootstrap_contacts(
+                access_token=access_token,
+                device_id=device_id,
+                entries=entries,
+            )
+        except CloudClientError as exc:
+            self.app._queue_main_thread_callback(
+                lambda exc=exc, generation=generation, access_token=access_token, device_id=device_id, completed_at=time.monotonic(): self._complete_bootstrap_contacts(
+                    access_token=access_token,
+                    device_id=device_id,
+                    generation=generation,
+                    completed_at=completed_at,
+                    error=exc,
+                )
+            )
+            return
+        except Exception as exc:
+            error = CloudClientError(str(exc))
+            self.app._queue_main_thread_callback(
+                lambda error=error, generation=generation, access_token=access_token, device_id=device_id, completed_at=time.monotonic(): self._complete_bootstrap_contacts(
+                    access_token=access_token,
+                    device_id=device_id,
+                    generation=generation,
+                    completed_at=completed_at,
+                    error=error,
+                )
+            )
+            return
+
+        self.app._queue_main_thread_callback(
+            lambda payload=payload, generation=generation, access_token=access_token, device_id=device_id, completed_at=time.monotonic(): self._complete_bootstrap_contacts(
+                access_token=access_token,
+                device_id=device_id,
+                generation=generation,
+                completed_at=completed_at,
+                payload=payload,
+            )
+        )
+
+    def _complete_bootstrap_contacts(
+        self,
+        *,
+        access_token: str,
+        device_id: str,
+        generation: int,
+        completed_at: float,
+        payload: dict[str, Any] | None = None,
+        error: CloudClientError | None = None,
+    ) -> None:
+        self._request_in_flight = False
+        if not self._matches_current_request(
+            access_token=access_token,
+            generation=generation,
+            device_id=device_id,
+        ):
+            return
+
+        if error is not None:
+            logger.warning("Cloud contact bootstrap failed for {}: {}", device_id, error)
+            return
+
+        imported_count = int((payload or {}).get("importedCount") or 0)
+        skipped_count = int((payload or {}).get("skippedCount") or 0)
+        logger.info(
+            "Cloud contact bootstrap completed for {} (imported={}, skipped={})",
+            device_id,
+            imported_count,
+            skipped_count,
+        )
+        if imported_count > 0:
+            self._next_config_poll_at = completed_at
+
     def _load_cached_config(self) -> None:
         cache_path = self._cache_path()
         if not cache_path.exists():
@@ -645,7 +821,11 @@ class CloudManager:
             logger.warning("Ignoring malformed cloud config cache payload {}", cache_path)
             return
 
-        unapplied_keys = self.config_manager.apply_cloud_overrides(raw_payload)
+        self._apply_cloud_contacts(raw_payload)
+        runtime_payload = {
+            key: value for key, value in raw_payload.items() if key != "contacts"
+        }
+        unapplied_keys = self.config_manager.apply_cloud_overrides(runtime_payload)
         self._apply_runtime_side_effects(raw_payload)
         self.status.config_source = "cache"
         self.status.config_version = int(payload.get("config_version") or 0)

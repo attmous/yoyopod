@@ -326,6 +326,15 @@ class _FakeContact:
     def display_name(self) -> str:
         return self.notes or self.name
 
+    def preferred_call_target(
+        self,
+        *,
+        gsm_enabled: bool = False,
+    ) -> tuple[str | None, str]:
+        if self.sip_address.strip():
+            return "sip", self.sip_address.strip()
+        return None, ""
+
 
 class _FakeConfigManager:
     def __init__(self, contacts: list[_FakeContact]) -> None:
@@ -333,6 +342,13 @@ class _FakeConfigManager:
 
     def get_contacts(self) -> list[_FakeContact]:
         return self._contacts
+
+    def get_callable_contacts(self, *, gsm_enabled: bool = False) -> list[_FakeContact]:
+        return [
+            contact for contact in self._contacts if contact.preferred_call_target(
+                gsm_enabled=gsm_enabled
+            )[0]
+        ]
 
     def get_capture_device_id(self) -> str | None:
         return None

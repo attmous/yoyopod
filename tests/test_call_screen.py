@@ -30,6 +30,11 @@ class FakePeopleDirectory:
     def get_contacts(self) -> list[Contact]:
         return list(self._contacts)
 
+    def get_callable_contacts(self, *, gsm_enabled: bool = False) -> list[Contact]:
+        return [
+            contact for contact in self._contacts if contact.is_callable(gsm_enabled=gsm_enabled)
+        ]
+
 
 class FakeVoIPManager:
     """Minimal VoIP manager double for Talk actions."""

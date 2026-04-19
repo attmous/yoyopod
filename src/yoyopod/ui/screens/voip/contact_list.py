@@ -99,7 +99,7 @@ class ContactListScreen(Screen):
     def load_contacts(self) -> None:
         """Load contacts from the people directory."""
         if self.people_directory:
-            contacts = self.people_directory.get_contacts()
+            contacts = self.people_directory.get_callable_contacts(gsm_enabled=False)
             favorites = [contact for contact in contacts if contact.favorite]
             others = [contact for contact in contacts if not contact.favorite]
             self.contacts = favorites + others

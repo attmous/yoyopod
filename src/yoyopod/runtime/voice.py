@@ -272,9 +272,16 @@ class VoiceCommandExecutor:
         if contact is None:
             return VoiceCommandOutcome("No Match", f"I could not find {spoken_name}.")
 
+        route, address = contact.preferred_call_target(gsm_enabled=False)
+        if route != "sip" or not address:
+            return VoiceCommandOutcome(
+                "Not Ready",
+                f"{contact.display_name} is saved, but this device can only place SIP calls right now.",
+            )
+
         display_name = contact.display_name
         if self._context is not None:
-            self._context.set_talk_contact(name=display_name, sip_address=contact.sip_address)
+            self._context.set_talk_contact(name=display_name, sip_address=address)
 
         if self._voip_manager is None:
             return VoiceCommandOutcome(
@@ -282,7 +289,7 @@ class VoiceCommandExecutor:
                 f"I found {display_name}, but calling is not ready.",
             )
 
-        if self._voip_manager.make_call(contact.sip_address, contact_name=display_name):
+        if self._voip_manager.make_call(address, contact_name=display_name):
             return VoiceCommandOutcome(
                 "Calling",
                 f"Calling {display_name}.",

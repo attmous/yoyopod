@@ -3,6 +3,7 @@ backend:
   auth_path: "/v1/auth/device"
   refresh_path: "/v1/auth/device/refresh"
   config_path_template: "/v1/devices/{device_id}/config"
+  contacts_bootstrap_path_template: "/v1/devices/{device_id}/contacts/bootstrap"
   timeout_seconds: 3.0
   config_poll_interval_seconds: 300
   claim_retry_seconds: 60

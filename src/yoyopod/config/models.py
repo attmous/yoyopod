@@ -602,6 +602,7 @@ class CloudBackendConfig:
     auth_path: str = "/v1/auth/device"
     refresh_path: str = "/v1/auth/device/refresh"
     config_path_template: str = "/v1/devices/{device_id}/config"
+    contacts_bootstrap_path_template: str = "/v1/devices/{device_id}/contacts/bootstrap"
     timeout_seconds: float = config_value(default=3.0, env="YOYOPOD_CLOUD_TIMEOUT_SECONDS")
     config_poll_interval_seconds: int = config_value(
         default=300,

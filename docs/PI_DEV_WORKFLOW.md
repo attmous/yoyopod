@@ -82,6 +82,10 @@ $env:YOYOPOD_PI_HOST="rpi-zero"
 $env:YOYOPOD_PI_PROJECT_DIR="~/YoyoPod_Core"
 ```
 
+If your actual deployed board uses a different stable checkout path, set that in
+your local override instead of assuming the repo default. For example, the live
+`piz` board in this environment uses `~/yoyo-py`.
+
 ## Default Validate-On-Board Flow
 
 Use this when validating a feature branch or PR on target hardware.
@@ -103,6 +107,8 @@ Use this when validating a feature branch or PR on target hardware.
    ```bash
    git push -u origin <branch>
    ```
+   If `github.com` is briefly unreachable, do not treat one short network error
+   as a definitive failure. Retry the push a few times before escalating.
 4. Run the repo-owned hardware validation flow:
    ```bash
    yoyoctl remote validate --branch <branch> --sha <commit>

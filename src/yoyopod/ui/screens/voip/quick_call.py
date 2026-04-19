@@ -108,7 +108,7 @@ class CallScreen(Screen):
         if self.people_directory is None:
             return []
 
-        contacts = list(self.people_directory.get_contacts())
+        contacts = list(self.people_directory.get_callable_contacts(gsm_enabled=False))
         favorites = [contact for contact in contacts if contact.favorite]
         others = [contact for contact in contacts if not contact.favorite]
         return (favorites + others)[: self._MAX_CONTACTS]

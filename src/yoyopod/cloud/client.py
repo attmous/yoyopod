@@ -36,12 +36,14 @@ class CloudDeviceClient:
         auth_path: str,
         refresh_path: str,
         config_path_template: str,
+        contacts_bootstrap_path_template: str,
         timeout_seconds: float = 3.0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.auth_path = auth_path
         self.refresh_path = refresh_path
         self.config_path_template = config_path_template
+        self.contacts_bootstrap_path_template = contacts_bootstrap_path_template
         self.timeout_seconds = max(0.1, float(timeout_seconds))
 
     def authenticate(self, *, device_id: str, device_secret: str) -> CloudAccessToken:
@@ -71,6 +73,26 @@ class CloudDeviceClient:
         )
         if not isinstance(payload, dict):
             raise CloudClientError("Malformed cloud config payload", payload={"payload": payload})
+        return payload
+
+    def bootstrap_contacts(
+        self,
+        *,
+        access_token: str,
+        device_id: str,
+        entries: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        payload = self._request_json(
+            "POST",
+            self._url(self.contacts_bootstrap_path_template.format(device_id=device_id)),
+            headers=self._auth_headers(access_token),
+            json={"entries": entries},
+        )
+        if not isinstance(payload, dict):
+            raise CloudClientError(
+                "Malformed cloud contact bootstrap payload",
+                payload={"payload": payload},
+            )
         return payload
 
     def _request_json(
