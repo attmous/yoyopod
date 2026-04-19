@@ -119,9 +119,7 @@ class ScreenPowerService:
             self.app.display.set_backlight(self.app._active_brightness)
 
         if render_current and self.app.screen_manager is not None:
-            current_screen = self.app.screen_manager.get_current_screen()
-            if current_screen is not None:
-                current_screen.render()
+            self.app.screen_manager.refresh_current_screen()
 
         if self.app._lvgl_backend is not None and self.app._lvgl_backend.initialized:
             self.app._lvgl_backend.force_refresh()
@@ -255,9 +253,7 @@ class ScreenPowerService:
         if now >= self.app._power_alert.expires_at:
             self.app._power_alert = None
             if self.app.screen_manager is not None:
-                current_screen = self.app.screen_manager.get_current_screen()
-                if current_screen is not None:
-                    current_screen.render()
+                self.app.screen_manager.refresh_current_screen()
             return False
 
         self.render_power_overlay(
