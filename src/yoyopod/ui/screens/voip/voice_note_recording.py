@@ -46,7 +46,10 @@ class VoiceNoteRecordingController:
         draft = self._actions.stop_recording()
         if draft is None:
             return VoiceNoteRecordingResult(next_state="failed", status_text="Couldn't save note")
-        return VoiceNoteRecordingResult(next_state="review")
+        return VoiceNoteRecordingResult(
+            next_state=getattr(draft, "send_state", "review") or "review",
+            status_text=getattr(draft, "status_text", None),
+        )
 
     def cancel_recording(self) -> VoiceNoteRecordingResult:
         """Cancel the active recording and return to ready."""

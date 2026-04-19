@@ -158,21 +158,42 @@ def test_recording_controller_start_handles_missing_and_failed_actions() -> None
     )
 
 
-def test_recording_controller_stop_moves_to_review_when_draft_exists() -> None:
-    """Stopping a recording should move to review only when a draft is returned."""
+def test_recording_controller_stop_propagates_draft_send_state() -> None:
+    """Stopping a recording should preserve the draft state and status text."""
 
-    saved_draft = VoiceNoteDraft(
+    review_draft = VoiceNoteDraft(
         recipient_address="sip:alice@example.com",
         recipient_name="Mama",
         file_path="/tmp/note.wav",
+        send_state="review",
+        status_text="Ready to send",
+    )
+    failed_draft = VoiceNoteDraft(
+        recipient_address="sip:alice@example.com",
+        recipient_name="Mama",
+        file_path="/tmp/note.wav",
+        send_state="failed",
+        status_text="Note too long",
     )
     review_controller = VoiceNoteRecordingController(
-        VoiceNoteActions(stop_recording=lambda: saved_draft)
+        VoiceNoteActions(stop_recording=lambda: review_draft)
     )
-    failed_controller = VoiceNoteRecordingController(VoiceNoteActions(stop_recording=lambda: None))
+    failed_state_controller = VoiceNoteRecordingController(
+        VoiceNoteActions(stop_recording=lambda: failed_draft)
+    )
+    missing_draft_controller = VoiceNoteRecordingController(
+        VoiceNoteActions(stop_recording=lambda: None)
+    )
 
-    assert review_controller.stop_recording() == VoiceNoteRecordingResult(next_state="review")
-    assert failed_controller.stop_recording() == VoiceNoteRecordingResult(
+    assert review_controller.stop_recording() == VoiceNoteRecordingResult(
+        next_state="review",
+        status_text="Ready to send",
+    )
+    assert failed_state_controller.stop_recording() == VoiceNoteRecordingResult(
+        next_state="failed",
+        status_text="Note too long",
+    )
+    assert missing_draft_controller.stop_recording() == VoiceNoteRecordingResult(
         next_state="failed",
         status_text="Couldn't save note",
     )

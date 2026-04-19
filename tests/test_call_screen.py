@@ -39,8 +39,16 @@ class FakePeopleDirectory:
 class FakeVoIPManager:
     """Minimal VoIP manager double for Talk actions."""
 
-    def __init__(self, *, make_call_result: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        make_call_result: bool = True,
+        stop_send_state: str = "review",
+        stop_status_text: str = "Ready to send",
+    ) -> None:
         self.make_call_result = make_call_result
+        self.stop_send_state = stop_send_state
+        self.stop_status_text = stop_status_text
         self.make_calls: list[tuple[str, str | None]] = []
         self.started_recordings: list[tuple[str, str]] = []
         self.send_attempts = 0
@@ -82,8 +90,8 @@ class FakeVoIPManager:
         if self.active_voice_note is None:
             return None
         self.active_voice_note.duration_ms = 3200
-        self.active_voice_note.send_state = "review"
-        self.active_voice_note.status_text = "Ready to send"
+        self.active_voice_note.send_state = self.stop_send_state
+        self.active_voice_note.status_text = self.stop_status_text
         return self.active_voice_note
 
     def cancel_voice_note_recording(self) -> bool:
@@ -250,6 +258,31 @@ def test_voice_note_screen_records_reviews_and_sends(display: Display) -> None:
     screen.on_select()
     assert screen.current_view_model()[0] == "Sending"
     assert voip_manager.send_attempts == 1
+
+
+def test_voice_note_screen_propagates_failed_stop_state(display: Display) -> None:
+    """Stopping a note should preserve manager failures like oversized recordings."""
+
+    context = AppContext()
+    voip_manager = FakeVoIPManager(
+        stop_send_state="failed",
+        stop_status_text="Note too long",
+    )
+    context.set_voice_note_recipient(name="Mama", sip_address="sip:alice@example.com")
+    screen = VoiceNoteScreen(
+        display,
+        context,
+        state_provider=build_voice_note_state_provider(context=context, voip_manager=voip_manager),
+        actions=build_voice_note_actions(voip_manager=voip_manager),
+    )
+
+    screen.enter()
+    screen.on_ptt_press({"stage": "hold_started"})
+    screen.on_ptt_release({"hold_started": True})
+
+    assert screen.current_view_model()[0] == "Couldn't Send"
+    assert context.voice_note_send_state == "failed"
+    assert context.voice_note_status_text == "Note too long"
 
 
 def test_voice_note_screen_can_preview_before_sending(display: Display) -> None:
