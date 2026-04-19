@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import IntEnum
 from types import SimpleNamespace
 
 import pytest
@@ -389,6 +390,61 @@ def test_request_output_supports_official_gpiod_v2_request_lines(
     line.set_value(0)
 
     assert set_calls == [(12, inactive_token)]
+
+
+def test_request_output_preserves_falsey_inactive_enum_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from yoyopod.ui import gpiod_compat
+
+    set_calls: list[tuple[int, object]] = []
+
+    class FakeValue(IntEnum):
+        INACTIVE = 0
+        ACTIVE = 1
+
+    class FakeLineSettings:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+    class FakeRequest:
+        def set_value(self, offset: int, value: object) -> None:
+            set_calls.append((offset, value))
+
+        def release(self) -> None:
+            return None
+
+    class FakeChip:
+        def request_lines(self, *, consumer: str, config: dict[int, object]) -> FakeRequest:
+            assert consumer == "pimoroni-led-r"
+            assert config[12].kwargs == {
+                "direction": "output",
+                "output_value": FakeValue.INACTIVE,
+            }
+            return FakeRequest()
+
+        def close(self) -> None:
+            return None
+
+    fake_gpiod = SimpleNamespace(
+        Chip=lambda _path: FakeChip(),
+        LineSettings=FakeLineSettings,
+        line=SimpleNamespace(
+            Direction=SimpleNamespace(INPUT="input", OUTPUT="output"),
+            Bias=SimpleNamespace(DISABLED="bias-disabled"),
+            Edge=SimpleNamespace(BOTH="both-edges"),
+            Value=FakeValue,
+        ),
+    )
+
+    monkeypatch.setattr(gpiod_compat, "HAS_GPIOD", True)
+    monkeypatch.setattr(gpiod_compat, "_gpiod", fake_gpiod)
+
+    chip = gpiod_compat.open_chip("gpiochip0")
+    line = gpiod_compat.request_output(chip, 12, "pimoroni-led-r", default_val=0)
+    line.set_value(0)
+
+    assert set_calls == [(12, FakeValue.INACTIVE)]
 
 
 def test_request_input_events_does_not_mask_internal_type_error(

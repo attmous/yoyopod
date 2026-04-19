@@ -260,8 +260,11 @@ def _request_v2_line(
 def _resolve_output_value(raw_value: int) -> Any:
     """Map 0/1 onto libgpiod v2 output enums when the runtime requires them."""
     if raw_value:
-        return _resolve_gpiod_attr("line.Value.ACTIVE", "Value.ACTIVE") or raw_value
-    return _resolve_gpiod_attr("line.Value.INACTIVE", "Value.INACTIVE") or raw_value
+        active = _resolve_gpiod_attr("line.Value.ACTIVE", "Value.ACTIVE")
+        return raw_value if active is None else active
+
+    inactive = _resolve_gpiod_attr("line.Value.INACTIVE", "Value.INACTIVE")
+    return raw_value if inactive is None else inactive
 
 
 def _coerce_output_value(value: Any) -> Any:
