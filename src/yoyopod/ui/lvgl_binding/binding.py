@@ -279,6 +279,7 @@ class LvglBinding:
 
         self.lib = self.ffi.dlopen(str(self.library_path))
         self._flush_callback = None
+        self._hub_sync_string_cache: dict[str, object] = {}
         logger.info("Loaded LVGL shim from {}", self.library_path)
 
     @classmethod
@@ -316,6 +317,16 @@ class LvglBinding:
     def _pack_rgb(color: tuple[int, int, int]) -> int:
         red, green, blue = color
         return ((int(red) & 0xFF) << 16) | ((int(green) & 0xFF) << 8) | (int(blue) & 0xFF)
+
+    def _new_char_array(self, value: str) -> object:
+        return self.ffi.new("char[]", value.encode("utf-8"))
+
+    def _get_cached_char_array(self, cache: dict[str, object], value: str) -> object:
+        cached = cache.get(value)
+        if cached is None:
+            cached = self._new_char_array(value)
+            cache[value] = cached
+        return cached
 
     def init(self) -> None:
         if self.lib.yoyopod_lvgl_init() != 0:
@@ -399,12 +410,12 @@ class LvglBinding:
         charging: bool,
         power_available: bool,
     ) -> None:
-        icon_key_raw = self.ffi.new("char[]", icon_key.encode("utf-8"))
-        title_raw = self.ffi.new("char[]", title.encode("utf-8"))
-        subtitle_raw = self.ffi.new("char[]", subtitle.encode("utf-8"))
-        footer_raw = self.ffi.new("char[]", footer.encode("utf-8"))
+        icon_key_raw = self._get_cached_char_array(self._hub_sync_string_cache, icon_key)
+        title_raw = self._get_cached_char_array(self._hub_sync_string_cache, title)
+        subtitle_raw = self._get_cached_char_array(self._hub_sync_string_cache, subtitle)
+        footer_raw = self._get_cached_char_array(self._hub_sync_string_cache, footer)
         if time_text:
-            time_raw = self.ffi.new("char[]", time_text.encode("utf-8"))
+            time_raw = self._new_char_array(time_text)
         else:
             time_raw = self.ffi.NULL
 
