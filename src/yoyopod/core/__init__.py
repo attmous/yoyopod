@@ -1,7 +1,9 @@
 """Core orchestration primitives for YoyoPod.
 
-Legacy top-level modules such as ``yoyopod.app_context`` and ``yoyopod.fsm``
-remain as thin compatibility shims that re-export these symbols.
+Legacy top-level modules such as ``yoyopod.app_context``, ``yoyopod.event_bus``,
+``yoyopod.events``, ``yoyopod.fsm``, ``yoyopod.runtime_state``, and
+``yoyopod.setup_contract`` remain as thin compatibility shims that re-export
+these symbols.
 """
 
 from yoyopod.core.app_context import AppContext
