@@ -31,7 +31,8 @@ def test_build_validate_minimal() -> None:
         with_lvgl_soak=False,
         with_navigation=False,
     )
-    assert "git fetch origin" in shell
+    assert "git fetch --prune origin" in shell
+    assert shell.count("git clean -fd") == 2
     assert "git checkout 'main'" in shell or "git checkout main" in shell
     assert "uv run yoyopod pi validate deploy" in shell
     assert "uv run yoyopod pi validate smoke" in shell
@@ -96,6 +97,33 @@ def test_build_validate_syncs_branch_before_validation_stages() -> None:
     assert sync_idx >= 0, f"sync step missing from: {shell}"
     assert deploy_idx >= 0
     assert sync_idx < deploy_idx, "sync must happen before validation"
+
+
+def test_build_validate_cleans_untracked_files_before_and_after_checkout() -> None:
+    shell = _build_validate(
+        branch="feature-x",
+        sha="",
+        with_music=False,
+        with_voip=False,
+        with_power=False,
+        with_rtc=False,
+        with_lvgl_soak=False,
+        with_navigation=False,
+    )
+    assert shell.count("git clean -fd") == 2
+    first_clean_idx = shell.find("git clean -fd")
+    checkout_idx = shell.find("git checkout feature-x")
+    if checkout_idx < 0:
+        checkout_idx = shell.find("git checkout 'feature-x'")
+    reset_idx = max(
+        shell.find("git reset --hard origin/feature-x"),
+        shell.find("git reset --hard 'origin/feature-x'"),
+    )
+    second_clean_idx = shell.rfind("git clean -fd")
+    assert first_clean_idx >= 0
+    assert checkout_idx > first_clean_idx
+    assert reset_idx > checkout_idx
+    assert second_clean_idx > reset_idx
 
 
 def test_preflight_help() -> None:

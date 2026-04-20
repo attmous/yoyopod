@@ -47,17 +47,20 @@ def _build_validate(
     on origin is used.
     """
     br = shell_quote(branch)
+    origin_br = shell_quote(f"origin/{branch}")
     steps = [
-        "git fetch origin",
+        "git fetch --prune origin",
+        "git clean -fd",
         f"git checkout {br}",
     ]
     if sha:
         sh = shell_quote(sha)
         # Fail fast when the SHA is not reachable from the target branch.
-        steps.append(f"git merge-base --is-ancestor {sh} origin/{br}")
+        steps.append(f"git merge-base --is-ancestor {sh} {origin_br}")
         steps.append(f"git reset --hard {sh}")
     else:
-        steps.append(f"git reset --hard origin/{br}")
+        steps.append(f"git reset --hard {origin_br}")
+    steps.append("git clean -fd")
     smoke_cmd = "uv run yoyopod pi validate smoke"
     if with_power:
         smoke_cmd += " --with-power"

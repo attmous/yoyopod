@@ -31,6 +31,14 @@ class RemoteConnection:
         return self.host
 
 
+def _coerce_text(value: object, default: str) -> str:
+    """Normalize one YAML/default value into text, treating None as missing."""
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text or default
+
+
 def _resolve_remote_connection(
     host: str,
     user: str,
@@ -41,16 +49,16 @@ def _resolve_remote_connection(
     pi = load_pi_paths()
 
     defaults: dict[str, object] = {}
-    defaults.update(_load_yaml(HOST.deploy_config))
-    defaults.update(_load_yaml(HOST.deploy_config_local))
+    for layer in (_load_yaml(HOST.deploy_config), _load_yaml(HOST.deploy_config_local)):
+        for key, value in layer.items():
+            if value is not None:
+                defaults[key] = value
 
     return RemoteConnection(
-        host=host or str(defaults.get("host", "")).strip(),
-        user=user or str(defaults.get("user", "")).strip(),
-        project_dir=project_dir
-        or str(defaults.get("project_dir", pi.project_dir)).strip()
-        or pi.project_dir,
-        branch=(branch or str(defaults.get("branch", "main")).strip()) or "main",
+        host=host or _coerce_text(defaults.get("host"), ""),
+        user=user or _coerce_text(defaults.get("user"), ""),
+        project_dir=project_dir or _coerce_text(defaults.get("project_dir"), pi.project_dir),
+        branch=branch or _coerce_text(defaults.get("branch"), "main"),
     )
 
 
