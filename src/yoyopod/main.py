@@ -24,7 +24,7 @@ from yoyopod import __version__
 from yoyopod.app import YoyoPodApp
 from yoyopod.config import YoyoPodConfig, load_composed_app_settings
 from yoyopod.runtime import ResponsivenessWatchdog, ResponsivenessWatchdogDecision
-from yoyopod.setup_contract import RUNTIME_REQUIRED_CONFIG_FILES
+from yoyopod.core import RUNTIME_REQUIRED_CONFIG_FILES
 from yoyopod.utils.logger import (
     LoggingRuntimeConfig,
     build_logging_runtime_config,

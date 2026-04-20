@@ -15,7 +15,7 @@ from yoyopod.ui.screens.router import NavigationRequest
 
 if TYPE_CHECKING:
     from yoyopod.ui.screens.manager import ScreenManager
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
     from yoyopod.ui.input import InputAction
 
 

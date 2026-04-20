@@ -37,7 +37,7 @@ def test_gps_coordinate_fields():
     assert coord.lng == 2.3522
 
 
-from yoyopod.events import (
+from yoyopod.core import (
     NetworkModemReadyEvent,
     NetworkRegisteredEvent,
     NetworkPppUpEvent,
@@ -45,7 +45,7 @@ from yoyopod.events import (
     NetworkSignalUpdateEvent,
     NetworkGpsFixEvent,
 )
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.network import NetworkConfig
 
 

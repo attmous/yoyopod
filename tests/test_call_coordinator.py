@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.communication import CallHistoryStore, CallState, RegistrationState
 from yoyopod.coordinators.call import CallCoordinator
 from yoyopod.coordinators.runtime import CoordinatorRuntime
-from yoyopod.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
+from yoyopod.core import CallFSM, CallInterruptionPolicy, MusicFSM
 
 
 class _ScreenCoordinatorStub:

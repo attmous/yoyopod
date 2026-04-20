@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
 
 
 def network_status_kwargs(context: "AppContext | None") -> dict[str, int]:

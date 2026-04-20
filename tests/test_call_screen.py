@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.communication import (
     MessageDeliveryState,
     MessageDirection,

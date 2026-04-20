@@ -14,7 +14,7 @@ from typing import Annotated
 import typer
 
 from yoyopod.cli.common import REPO_ROOT
-from yoyopod.setup_contract import SETUP_TRACKED_CONFIG_FILES
+from yoyopod.core import SETUP_TRACKED_CONFIG_FILES
 
 setup_app = typer.Typer(
     name="setup",

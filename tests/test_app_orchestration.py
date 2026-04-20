@@ -14,11 +14,11 @@ import pytest
 from loguru import logger
 
 from yoyopod.app import YoyoPodApp
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.audio import AudioVolumeController, MockMusicBackend
 from yoyopod.communication import CallState, RegistrationState
 from yoyopod.coordinators.runtime import AppRuntimeState, CoordinatorRuntime
-from yoyopod.events import (
+from yoyopod.core import (
     CallEndedEvent,
     CallStateChangedEvent,
     IncomingCallEvent,
@@ -30,7 +30,7 @@ from yoyopod.events import (
     UserActivityEvent,
     VoIPAvailabilityChangedEvent,
 )
-from yoyopod.fsm import (
+from yoyopod.core import (
     CallFSM,
     CallInterruptionPolicy,
     CallSessionState,

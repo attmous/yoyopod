@@ -21,7 +21,7 @@ from yoyopod.ui.screens.theme import (
 )
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
     from yoyopod.ui.screens import ScreenView
 
 

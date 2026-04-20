@@ -11,7 +11,7 @@ from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.theme import MUTED, draw_icon, draw_list_item, render_footer, render_header, rounded_panel
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
 
 
 ITEM_MODES = {

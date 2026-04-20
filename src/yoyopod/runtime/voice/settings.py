@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable
 from yoyopod.voice import VoiceSettings
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
     from yoyopod.config import ConfigManager
 
 

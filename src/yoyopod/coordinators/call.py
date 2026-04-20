@@ -13,8 +13,8 @@ from loguru import logger
 
 from yoyopod.coordinators.runtime import AppRuntimeState, CoordinatorRuntime
 from yoyopod.coordinators.screen import ScreenCoordinator
-from yoyopod.event_bus import EventBus
-from yoyopod.events import (
+from yoyopod.core import EventBus
+from yoyopod.core import (
     CallEndedEvent,
     CallStateChangedEvent,
     IncomingCallEvent,
@@ -22,7 +22,7 @@ from yoyopod.events import (
     VoIPAvailabilityChangedEvent,
 )
 from yoyopod.communication import CallHistoryEntry, CallHistoryStore, CallState, RegistrationState
-from yoyopod.fsm import CallSessionState
+from yoyopod.core import CallSessionState
 
 
 @dataclass(slots=True)

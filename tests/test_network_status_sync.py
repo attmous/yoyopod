@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from yoyopod.app import YoyoPodApp
-from yoyopod.app_context import AppContext
-from yoyopod.events import (
+from yoyopod.core import AppContext
+from yoyopod.core import (
     NetworkGpsFixEvent,
     NetworkGpsNoFixEvent,
     NetworkPppDownEvent,

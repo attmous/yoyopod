@@ -44,7 +44,7 @@ from yoyopod.ui.screens.theme_tokens import (
 )
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
 
 
 def render_backdrop(display: Display, mode: str) -> ModeTheme:

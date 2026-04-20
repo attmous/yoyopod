@@ -3,7 +3,7 @@
 
 import pytest
 
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.ui.display import Display, get_hardware_info
 from yoyopod.ui.display.adapters.pimoroni import PimoroniDisplayAdapter
 from yoyopod.ui.screens import HomeScreen, MenuScreen, NowPlayingScreen

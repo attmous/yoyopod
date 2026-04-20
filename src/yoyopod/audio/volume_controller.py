@@ -10,7 +10,7 @@ from yoyopod.audio.volume import OutputVolumeController
 
 if TYPE_CHECKING:
     from yoyopod.audio.music.backend import MusicBackend
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
 
 
 class AudioVolumeController:

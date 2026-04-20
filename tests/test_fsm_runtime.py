@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import yoyopod.fsm as fsm_module
+import yoyopod.core.fsm.music as fsm_module
 from yoyopod.coordinators.runtime import AppRuntimeState, CoordinatorRuntime
-from yoyopod.fsm import (
+from yoyopod.core import (
     CallFSM,
     CallInterruptionPolicy,
     CallSessionState,

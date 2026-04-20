@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.communication import VoIPManager
 from yoyopod.communication.calling import VoiceNoteDraft
 from yoyopod.ui.screens.voip.voice_note_models import (

@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.audio.music.models import MusicConfig, PlaybackQueue, Playlist, Track
 
 

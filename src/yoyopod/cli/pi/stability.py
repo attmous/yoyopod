@@ -17,7 +17,7 @@ from yoyopod.audio.test_music import (
     ProvisionedTestMusicLibrary,
     provision_test_music_library,
 )
-from yoyopod.events import UserActivityEvent
+from yoyopod.core import UserActivityEvent
 from yoyopod.ui.input import InputAction
 
 

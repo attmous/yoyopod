@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from loguru import logger
 
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.audio import (
     AudioVolumeController,
     LocalMusicService,
@@ -30,15 +30,15 @@ from yoyopod.coordinators import (
     PowerCoordinator,
     ScreenCoordinator,
 )
-from yoyopod.event_bus import EventBus
-from yoyopod.events import (
+from yoyopod.core import EventBus
+from yoyopod.core import (
     RecoveryAttemptCompletedEvent,
     ScreenChangedEvent,
     UserActivityEvent,
 )
 from yoyopod.device import AudioDeviceCatalog
 from yoyopod.people import PeopleDirectory
-from yoyopod.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
+from yoyopod.core import CallFSM, CallInterruptionPolicy, MusicFSM
 from yoyopod.network import NetworkManager
 from yoyopod.power import (
     PowerManager,

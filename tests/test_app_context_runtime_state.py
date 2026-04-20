@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.audio.music.models import PlaybackQueue, Track
 
 

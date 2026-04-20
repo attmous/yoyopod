@@ -17,7 +17,7 @@ from yoyopod.cli.pi.gallery.fakes import (
 )
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
     from yoyopod.audio import MusicBackend
     from yoyopod.communication import VoIPManager
     from yoyopod.power import PowerManager, PowerSnapshot
@@ -54,7 +54,7 @@ _GALLERY_POWER_STATUS_FIELDS = tuple(field.name for field in fields(_GalleryPowe
 
 def _build_context() -> "AppContext":
     """Create one stable one-button app context."""
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
     from yoyopod.audio.music.models import PlaybackQueue, Track
     from yoyopod.ui.input import InteractionProfile
 

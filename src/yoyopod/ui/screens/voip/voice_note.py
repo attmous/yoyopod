@@ -31,7 +31,7 @@ from yoyopod.ui.screens.voip.voice_note_recording import VoiceNoteRecordingContr
 from yoyopod.ui.screens.voip.voice_note_viewmodel import VoiceNoteViewModel
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
     from yoyopod.ui.screens.voip.voice_note_recording import VoiceNoteRecordingResult
 
 __all__ = [

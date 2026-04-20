@@ -17,7 +17,7 @@ from yoyopod.ui.screens.lvgl_status import sync_network_status
 from yoyopod.ui.screens.theme import TALK
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
     from yoyopod.ui.screens.voip.call_history import CallHistoryScreen
 
 

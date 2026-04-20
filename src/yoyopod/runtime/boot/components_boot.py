@@ -58,8 +58,8 @@ class ComponentsBoot:
     def init_core_components(self) -> bool:
         """Initialize display, context, orchestration models, input, and screen manager."""
         from yoyopod.audio import AudioVolumeController
-        from yoyopod.app_context import AppContext
-        from yoyopod.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
+        from yoyopod.core import AppContext
+        from yoyopod.core import CallFSM, CallInterruptionPolicy, MusicFSM
 
         self.logger.info("Initializing core components...")
 

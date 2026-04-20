@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from yoyopod.events import RecoveryAttemptCompletedEvent
+from yoyopod.core import RecoveryAttemptCompletedEvent
 
 if TYPE_CHECKING:
     from yoyopod.app import YoyoPodApp

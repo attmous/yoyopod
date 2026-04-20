@@ -3,7 +3,7 @@
 
 from typing import Any, Callable, Optional
 
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InputAction, InputManager
 from yoyopod.ui.input.hal import InputHAL

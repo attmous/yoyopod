@@ -16,7 +16,7 @@ from yoyopod.ui.screens.navigation.ask_voice import AskScreenVoiceMixin
 from yoyopod.voice import VoiceService, VoiceSettings
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
     from yoyopod.config import ConfigManager
     from yoyopod.people import PeopleDirectory
     from yoyopod.ui.screens import ScreenView

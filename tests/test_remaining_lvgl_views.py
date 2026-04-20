@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.ui.input import InteractionProfile
 from yoyopod.ui.screens import (
     CallScreen,

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Callable
 
 from loguru import logger
 
-from yoyopod.events import UserActivityEvent
+from yoyopod.core import UserActivityEvent
 from yoyopod.ui.input import InputAction
 
 from yoyopod.cli.pi.navigation.stats import NavigationSoakFailure

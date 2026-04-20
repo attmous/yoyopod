@@ -26,7 +26,7 @@ from .icons import draw_icon
 from .primitives import _pill, rounded_panel
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
 
 
 def render_header(

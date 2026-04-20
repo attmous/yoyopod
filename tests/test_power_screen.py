@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import fields
 from datetime import datetime
 
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.power import BatteryState, PowerDeviceInfo, PowerSnapshot, RTCState, ShutdownState
-from yoyopod.runtime_state import VoiceState
+from yoyopod.core import VoiceState
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InteractionProfile
 from yoyopod.ui.screens.system.power import (

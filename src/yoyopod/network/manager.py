@@ -12,7 +12,7 @@ from yoyopod.network.models import GpsCoordinate, ModemPhase, ModemState
 if TYPE_CHECKING:
     from yoyopod.config import ConfigManager
     from yoyopod.config.models import NetworkConfig
-    from yoyopod.event_bus import EventBus
+    from yoyopod.core import EventBus
 
 
 class NetworkManager:
@@ -38,7 +38,7 @@ class NetworkManager:
 
     def start(self) -> None:
         """Open modem, initialize, and start PPP."""
-        from yoyopod.events import (
+        from yoyopod.core import (
             NetworkModemReadyEvent,
             NetworkPppUpEvent,
             NetworkRegisteredEvent,
@@ -88,7 +88,7 @@ class NetworkManager:
 
     def stop(self) -> None:
         """Stop PPP and close the modem."""
-        from yoyopod.events import NetworkPppDownEvent
+        from yoyopod.core import NetworkPppDownEvent
 
         logger.info("Stopping network manager")
         try:
@@ -109,7 +109,7 @@ class NetworkManager:
 
     def query_gps(self) -> GpsCoordinate | None:
         """Query GPS coordinates (may briefly interrupt PPP)."""
-        from yoyopod.events import NetworkGpsFixEvent, NetworkGpsNoFixEvent
+        from yoyopod.core import NetworkGpsFixEvent, NetworkGpsNoFixEvent
 
         coord = self.backend.query_gps()
         if coord is not None:

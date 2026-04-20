@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from types import SimpleNamespace
 
-from yoyopod.app_context import AppContext
+from yoyopod.core import AppContext
 from yoyopod.runtime.voice import (
     VoiceCommandExecutor,
     VoiceCommandOutcome,

@@ -9,7 +9,7 @@ from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.theme import ASK, INK, LISTEN, MUTED, SETUP, TALK, draw_icon, render_footer, render_status_bar, render_backdrop, rounded_panel
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
 
 
 class HomeScreen(Screen):

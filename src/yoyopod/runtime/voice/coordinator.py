@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Callable
 
 from loguru import logger
 
-from yoyopod.runtime_state import VoiceInteractionState
+from yoyopod.core import VoiceInteractionState
 from yoyopod.voice import VoiceCaptureRequest, VoiceService, VoiceSettings
 from yoyopod.voice.output import AlsaOutputPlayer
 
@@ -20,7 +20,7 @@ from .executor import VoiceCommandExecutor
 from .settings import VoiceCommandOutcome, VoiceSettingsResolver
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
 
 
 class VoiceRuntimeCoordinator:

@@ -22,7 +22,7 @@ from yoyopod.ui.screens.system.power_format import (
 )
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
     from yoyopod.power import PowerSnapshot
 
 

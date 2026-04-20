@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from yoyopod.fsm import (
+from yoyopod.core import (
     CallFSM,
     CallInterruptionPolicy,
     CallSessionState,
@@ -19,7 +19,7 @@ from yoyopod.fsm import (
 )
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
     from yoyopod.audio.music.backend import MusicBackend
     from yoyopod.config import ConfigManager
     from yoyopod.power import PowerManager, PowerSnapshot

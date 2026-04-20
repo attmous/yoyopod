@@ -98,6 +98,8 @@ def infer_subsystem(module_name: str | None) -> str:
         return "app"
     if module_name in {"yoyopod.event_bus", "yoyopod.events", "yoyopod.fsm"}:
         return "core"
+    if module_name == "yoyopod.core" or module_name.startswith("yoyopod.core."):
+        return "core"
     return DEFAULT_SUBSYSTEM
 
 

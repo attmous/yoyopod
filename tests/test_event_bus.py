@@ -7,8 +7,8 @@ from dataclasses import dataclass
 
 import pytest
 
-import yoyopod.event_bus as event_bus_module
-from yoyopod.event_bus import EventBus
+import yoyopod.core.event_bus as event_bus_module
+from yoyopod.core import EventBus
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from yoyopod.runtime.voice import VoiceCommandOutcome, VoiceRuntimeCoordinator
 
 if TYPE_CHECKING:
-    from yoyopod.runtime_state import VoiceInteractionState
+    from yoyopod.core import VoiceInteractionState
     from yoyopod.voice import VoiceService, VoiceSettings
 
 

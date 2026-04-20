@@ -10,8 +10,8 @@ from yoyopod.audio.local_service import LocalMusicService
 from yoyopod.audio.music.models import Track
 from yoyopod.coordinators.runtime import AppRuntimeState, CoordinatorRuntime
 from yoyopod.coordinators.screen import ScreenCoordinator
-from yoyopod.event_bus import EventBus
-from yoyopod.events import (
+from yoyopod.core import EventBus
+from yoyopod.core import (
     MusicAvailabilityChangedEvent,
     PlaybackStateChangedEvent,
     TrackChangedEvent,

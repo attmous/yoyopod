@@ -23,7 +23,7 @@ from yoyopod.ui.screens.theme import (
 from yoyopod.ui.screens.voip.lvgl import LvglInCallView
 
 if TYPE_CHECKING:
-    from yoyopod.app_context import AppContext
+    from yoyopod.core import AppContext
     from yoyopod.ui.screens import ScreenView
 
 

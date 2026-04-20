@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import yoyopod.main as main_module
-from yoyopod.setup_contract import RUNTIME_REQUIRED_CONFIG_FILES
+from yoyopod.core import RUNTIME_REQUIRED_CONFIG_FILES
 
 
 def test_configure_logger_uses_shared_utility(monkeypatch, tmp_path) -> None:
