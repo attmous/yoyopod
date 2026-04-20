@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -14,6 +15,7 @@ class PppProcess:
     """Spawn, monitor, and kill a pppd process for cellular data."""
 
     _PPP_BINARY_CANDIDATES = ("pppd", "/usr/sbin/pppd", "/sbin/pppd")
+    _SUDO_BINARY_CANDIDATES = ("sudo", "/usr/bin/sudo", "/bin/sudo")
 
     def __init__(self, serial_port: str, apn: str, baud_rate: int = 115200) -> None:
         self.serial_port = serial_port
@@ -32,7 +34,12 @@ class PppProcess:
             logger.error("pppd binary not found")
             return False
 
+        launch_prefix = self._resolve_launch_prefix()
+        if launch_prefix is None:
+            return False
+
         cmd = [
+            *launch_prefix,
             pppd_binary,
             self.serial_port,
             str(self.baud_rate),
@@ -64,6 +71,29 @@ class PppProcess:
         """Find pppd even when systemd omits sbin directories from PATH."""
 
         for candidate in self._PPP_BINARY_CANDIDATES:
+            resolved = shutil.which(candidate)
+            if resolved:
+                return resolved
+            if candidate.startswith("/") and Path(candidate).exists():
+                return candidate
+        return None
+
+    def _resolve_launch_prefix(self) -> list[str] | None:
+        """Return the optional privileged wrapper required by pppd."""
+
+        geteuid = getattr(os, "geteuid", None)
+        if callable(geteuid) and geteuid() != 0:
+            sudo_binary = self._resolve_sudo_binary()
+            if sudo_binary is None:
+                logger.error("pppd requires root privileges for noauth, but sudo is unavailable")
+                return None
+            return [sudo_binary, "-n"]
+        return []
+
+    def _resolve_sudo_binary(self) -> str | None:
+        """Find sudo for passwordless privileged PPP launches."""
+
+        for candidate in self._SUDO_BINARY_CANDIDATES:
             resolved = shutil.which(candidate)
             if resolved:
                 return resolved

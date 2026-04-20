@@ -100,7 +100,11 @@ class Sim7600Backend:
 
     def start_ppp(self) -> bool:
         self._state.phase = ModemPhase.PPP_STARTING
-        self._at.configure_pdp(self._config.apn)
+        apn = self._config.apn.strip()
+        if apn:
+            self._at.configure_pdp(apn)
+        else:
+            logger.warning("Network APN is empty; leaving modem PDP context unchanged")
 
         if not self._ppp.spawn():
             self._state.phase = ModemPhase.REGISTERED

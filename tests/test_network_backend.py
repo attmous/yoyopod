@@ -12,6 +12,7 @@ def test_ppp_spawn_constructs_correct_command():
     """PppProcess.spawn should invoke pppd with the correct arguments."""
     with (
         patch("yoyopod.network.ppp.shutil.which", return_value="pppd"),
+        patch("yoyopod.network.ppp.os.geteuid", return_value=0, create=True),
         patch("subprocess.Popen") as mock_popen,
     ):
         mock_proc = MagicMock()
@@ -36,6 +37,7 @@ def test_ppp_spawn_uses_sbin_fallback_when_path_omits_pppd():
             "yoyopod.network.ppp.shutil.which",
             side_effect=lambda candidate: "/usr/sbin/pppd" if candidate == "/usr/sbin/pppd" else None,
         ),
+        patch("yoyopod.network.ppp.os.geteuid", return_value=0, create=True),
         patch("subprocess.Popen") as mock_popen,
     ):
         mock_proc = MagicMock()
@@ -47,6 +49,51 @@ def test_ppp_spawn_uses_sbin_fallback_when_path_omits_pppd():
 
         assert ppp.spawn() is True
         assert mock_popen.call_args[0][0][0] == "/usr/sbin/pppd"
+
+
+def test_ppp_spawn_uses_sudo_wrapper_for_non_root_noauth() -> None:
+    """spawn() should wrap pppd in sudo when the caller is not root."""
+
+    def _which(candidate: str) -> str | None:
+        if candidate in {"pppd", "/usr/sbin/pppd"}:
+            return "/usr/sbin/pppd"
+        if candidate in {"sudo", "/usr/bin/sudo"}:
+            return "/usr/bin/sudo"
+        return None
+
+    with (
+        patch("yoyopod.network.ppp.shutil.which", side_effect=_which),
+        patch("yoyopod.network.ppp.os.geteuid", return_value=1000, create=True),
+        patch("subprocess.Popen") as mock_popen,
+    ):
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.pid = 12345
+        mock_popen.return_value = mock_proc
+
+        ppp = PppProcess(serial_port="/dev/ttyUSB3", apn="internet")
+
+        assert ppp.spawn() is True
+        assert mock_popen.call_args[0][0][:3] == ["/usr/bin/sudo", "-n", "/usr/sbin/pppd"]
+
+
+def test_ppp_spawn_fails_without_sudo_for_non_root() -> None:
+    """spawn() should fail early when noauth is needed but sudo is unavailable."""
+
+    def _which(candidate: str) -> str | None:
+        if candidate in {"pppd", "/usr/sbin/pppd"}:
+            return "/usr/sbin/pppd"
+        return None
+
+    with (
+        patch("yoyopod.network.ppp.shutil.which", side_effect=_which),
+        patch("yoyopod.network.ppp.os.geteuid", return_value=1000, create=True),
+        patch("subprocess.Popen") as mock_popen,
+    ):
+        ppp = PppProcess(serial_port="/dev/ttyUSB3", apn="internet")
+
+        assert ppp.spawn() is False
+        mock_popen.assert_not_called()
 
 
 def test_ppp_kill_terminates_process():
@@ -220,3 +267,26 @@ def test_backend_start_ppp():
     assert backend._state.phase == ModemPhase.ONLINE
     assert "spawn" in ppp.calls
     assert "configure_pdp:internet" in at.calls
+
+
+def test_backend_start_ppp_skips_blank_apn_configuration() -> None:
+    """start_ppp() should not overwrite the modem PDP context with an empty APN."""
+
+    at = FakeAtCommands()
+    ppp = FakePpp()
+    backend = Sim7600Backend.__new__(Sim7600Backend)
+    backend._at = at
+    backend._ppp = ppp
+    backend._gps = None
+    backend._state = ModemState(phase=ModemPhase.REGISTERED)
+
+    class FakeConfig:
+        apn = "   "
+        ppp_timeout = 30
+
+    backend._config = FakeConfig()
+    backend.start_ppp()
+
+    assert backend._state.phase == ModemPhase.ONLINE
+    assert "spawn" in ppp.calls
+    assert not any(call.startswith("configure_pdp:") for call in at.calls)
