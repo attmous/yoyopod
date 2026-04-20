@@ -317,9 +317,7 @@ def _wait_for_route(
         last_route = _current_route(app)
     if last_route == route_name:
         return
-    raise NavigationSoakError(
-        f"navigation soak expected route '{route_name}', got '{last_route}'"
-    )
+    raise NavigationSoakError(f"navigation soak expected route '{route_name}', got '{last_route}'")
 
 
 def _wait_for_track(
