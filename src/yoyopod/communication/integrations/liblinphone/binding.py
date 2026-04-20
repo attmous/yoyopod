@@ -145,6 +145,21 @@ class LiblinphoneBinding:
                 base_dir / "native" / "build" / "libyoyopod_liblinphone_shim.so",
                 base_dir / "native" / "build" / "yoyopod_liblinphone_shim.dll",
                 base_dir / "native" / "build" / "libyoyopod_liblinphone_shim.dylib",
+                base_dir.parent
+                / "liblinphone_binding"
+                / "native"
+                / "build"
+                / "libyoyopod_liblinphone_shim.so",
+                base_dir.parent
+                / "liblinphone_binding"
+                / "native"
+                / "build"
+                / "yoyopod_liblinphone_shim.dll",
+                base_dir.parent
+                / "liblinphone_binding"
+                / "native"
+                / "build"
+                / "libyoyopod_liblinphone_shim.dylib",
                 Path.cwd() / "build" / "liblinphone" / "libyoyopod_liblinphone_shim.so",
             ]
         )

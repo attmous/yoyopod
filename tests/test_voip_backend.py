@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import queue
 import subprocess
 import threading
@@ -378,6 +379,41 @@ def test_liblinphone_binding_decodes_c_string_arrays() -> None:
     buffer = ffi.new("char[]", b"sip:parent@example.com")
 
     assert binding._decode_c_string(buffer) == "sip:parent@example.com"
+
+
+def test_legacy_liblinphone_backend_module_reexports_backend() -> None:
+    """The old calling.liblinphone_backend path should keep resolving the backend class."""
+
+    legacy_module = importlib.import_module("yoyopod.communication.calling.liblinphone_backend")
+    relocated_module = importlib.import_module("yoyopod.communication.integrations.liblinphone.backend")
+
+    assert legacy_module.LiblinphoneBackend is relocated_module.LiblinphoneBackend
+    assert legacy_module.time is relocated_module.time
+
+
+def test_liblinphone_binding_accepts_legacy_native_build_path(monkeypatch) -> None:
+    """Library discovery should fall back to the legacy build directory during upgrades."""
+
+    binding_module = importlib.import_module("yoyopod.communication.integrations.liblinphone.binding")
+    base_dir = Path(binding_module.__file__).resolve().parent
+    legacy_candidate = (
+        base_dir.parent
+        / "liblinphone_binding"
+        / "native"
+        / "build"
+        / "libyoyopod_liblinphone_shim.so"
+    )
+
+    monkeypatch.delenv("YOYOPOD_LIBLINPHONE_SHIM_PATH", raising=False)
+    monkeypatch.setattr(
+        Path,
+        "exists",
+        lambda path: path == legacy_candidate,
+    )
+
+    binding = object.__new__(LiblinphoneBinding)
+
+    assert binding._resolve_library_path() == legacy_candidate
 
 
 def test_voip_manager_applies_backend_events_and_resolves_contact_names() -> None:
