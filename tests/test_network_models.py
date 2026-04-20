@@ -62,13 +62,13 @@ def test_network_events_are_frozen():
 def test_app_context_update_network_status():
     """update_network_status should set signal and connection fields."""
     ctx = AppContext()
-    assert ctx.connection_type == "none"
-    assert ctx.signal_strength == 4  # default
+    assert ctx.network.connection_type == "none"
+    assert ctx.network.signal_strength == 4  # default
 
     ctx.update_network_status(signal_bars=3, connection_type="4g", connected=True)
-    assert ctx.signal_strength == 3
-    assert ctx.connection_type == "4g"
-    assert ctx.is_connected is True
+    assert ctx.network.signal_strength == 3
+    assert ctx.network.connection_type == "4g"
+    assert ctx.network.connected is True
 
 
 from yoyopod.config.models import build_config_model
@@ -98,10 +98,10 @@ def test_network_config_from_yaml_data():
 def test_app_context_update_network_status_with_gps():
     """update_network_status should set gps_has_fix."""
     ctx = AppContext()
-    assert ctx.gps_has_fix is False
+    assert ctx.network.gps_has_fix is False
 
     ctx.update_network_status(gps_has_fix=True)
-    assert ctx.gps_has_fix is True
+    assert ctx.network.gps_has_fix is True
 
     ctx.update_network_status(gps_has_fix=False)
-    assert ctx.gps_has_fix is False
+    assert ctx.network.gps_has_fix is False

@@ -41,7 +41,7 @@ def build_context() -> AppContext:
     context.set_playlist(playlist)
     context.update_system_status(battery=85, signal=3, connected=True)
     context.play()
-    context.playback.position = 54.0
+    context.media.playback.position = 54.0
     return context
 
 

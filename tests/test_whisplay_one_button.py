@@ -512,7 +512,7 @@ def test_call_screen_select_routes_to_contact_actions(
     screen.enter()
     screen.on_select()
 
-    assert one_button_context.talk_contact_name == "Mama"
+    assert one_button_context.talk.selected_contact_name == "Mama"
     assert screen.consume_navigation_request() == NavigationRequest.route("open_contact")
 
 
@@ -533,7 +533,7 @@ def test_talk_contact_screen_advance_and_select_follow_one_button_mapping(
     screen.on_advance()
     screen.on_select()
 
-    assert one_button_context.voice_note_recipient_name == "Mama"
+    assert one_button_context.talk.active_voice_note.recipient_name == "Mama"
     assert screen.consume_navigation_request() == NavigationRequest.route("voice_note")
 
 
@@ -592,8 +592,8 @@ def test_contact_list_advance_wraps_and_select_opens_contact(
     screen.on_select()
 
     assert screen.selected_index == 0
-    assert one_button_context.talk_contact_name == "Alice"
-    assert one_button_context.talk_contact_address == "sip:alice@example.com"
+    assert one_button_context.talk.selected_contact_name == "Alice"
+    assert one_button_context.talk.selected_contact_address == "sip:alice@example.com"
     assert voip_manager.make_calls == []
     assert screen.consume_navigation_request() == NavigationRequest.route("open_contact")
 

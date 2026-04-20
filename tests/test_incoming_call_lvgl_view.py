@@ -52,9 +52,9 @@ def test_incoming_call_screen_reuses_retained_lvgl_view_across_exit_and_reentry(
     display = FakeLvglDisplay(binding)
     context = AppContext(interaction_profile=InteractionProfile.ONE_BUTTON)
     context.update_voip_status(configured=True, ready=True)
-    context.battery_percent = 49
-    context.battery_charging = False
-    context.power_available = True
+    context.power.battery_percent = 49
+    context.power.battery_charging = False
+    context.power.available = True
 
     screen = IncomingCallScreen(
         display,

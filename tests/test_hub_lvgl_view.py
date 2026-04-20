@@ -56,9 +56,9 @@ def test_hub_screen_reuses_retained_lvgl_view_across_exit_and_reentry() -> None:
     display = FakeLvglDisplay(binding)
     context = AppContext(interaction_profile=InteractionProfile.ONE_BUTTON)
     context.update_voip_status(configured=True, ready=True)
-    context.battery_percent = 77
-    context.battery_charging = True
-    context.power_available = True
+    context.power.battery_percent = 77
+    context.power.battery_charging = True
+    context.power.available = True
 
     screen = HubScreen(display, context)
 

@@ -86,35 +86,35 @@ def test_network_event_handlers_keep_context_status_in_sync() -> None:
     app.event_wiring.network_events.handle_network_ppp_up(
         NetworkPppUpEvent(connection_type="4g")
     )
-    assert app.context.network_enabled is True
-    assert app.context.is_connected is True
-    assert app.context.connection_type == "4g"
+    assert app.context.network.enabled is True
+    assert app.context.network.connected is True
+    assert app.context.network.connection_type == "4g"
     assert app.context.network.enabled is True
     assert app.context.network.connected is True
 
     app.event_wiring.network_events.handle_network_signal_update(
         NetworkSignalUpdateEvent(bars=2, csq=12)
     )
-    assert app.context.signal_strength == 2
+    assert app.context.network.signal_strength == 2
     assert app.context.network.signal_strength == 2
 
     app.event_wiring.network_events.handle_network_gps_fix(NetworkGpsFixEvent(lat=0.0, lng=0.0))
-    assert app.context.gps_has_fix is True
+    assert app.context.network.gps_has_fix is True
     assert app.context.network.gps_has_fix is True
 
     app.event_wiring.network_events.handle_network_gps_no_fix(
         NetworkGpsNoFixEvent(reason="no_fix")
     )
-    assert app.context.gps_has_fix is False
+    assert app.context.network.gps_has_fix is False
     assert app.context.network.gps_has_fix is False
 
     app.event_wiring.network_events.handle_network_ppp_down(
         NetworkPppDownEvent(reason="link lost")
     )
-    assert app.context.network_enabled is True
-    assert app.context.is_connected is False
-    assert app.context.connection_type == "4g"
-    assert app.context.gps_has_fix is False
+    assert app.context.network.enabled is True
+    assert app.context.network.connected is False
+    assert app.context.network.connection_type == "4g"
+    assert app.context.network.gps_has_fix is False
 
 
 def test_network_event_handlers_prefer_live_manager_state_over_latched_flags() -> None:
@@ -147,11 +147,11 @@ def test_network_event_handlers_prefer_live_manager_state_over_latched_flags() -
     app.event_wiring.network_events.handle_network_gps_fix(
         NetworkGpsFixEvent(lat=48.7083, lng=9.6610)
     )
-    assert app.context.network_enabled is True
-    assert app.context.signal_strength == 3
-    assert app.context.connection_type == "4g"
-    assert app.context.is_connected is False
-    assert app.context.gps_has_fix is True
+    assert app.context.network.enabled is True
+    assert app.context.network.signal_strength == 3
+    assert app.context.network.connection_type == "4g"
+    assert app.context.network.connected is False
+    assert app.context.network.gps_has_fix is True
     assert app.context.network.enabled is True
     assert app.context.network.signal_strength == 3
 
@@ -159,11 +159,11 @@ def test_network_event_handlers_prefer_live_manager_state_over_latched_flags() -
     app.event_wiring.network_events.handle_network_gps_no_fix(
         NetworkGpsNoFixEvent(reason="no_fix")
     )
-    assert app.context.gps_has_fix is False
+    assert app.context.network.gps_has_fix is False
     assert app.context.network.gps_has_fix is False
 
     app.event_wiring.network_events.handle_network_ppp_down(
         NetworkPppDownEvent(reason="link lost")
     )
-    assert app.context.connection_type == "4g"
-    assert app.context.is_connected is False
+    assert app.context.network.connection_type == "4g"
+    assert app.context.network.connected is False

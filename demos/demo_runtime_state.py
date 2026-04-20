@@ -206,7 +206,7 @@ def main() -> int:
                     break
                 if cmd == "state":
                     log_runtime_state("inspect")
-                    logger.info(f"Playing: {context.playback.is_playing}")
+                    logger.info(f"Playing: {context.media.playback.is_playing}")
                     continue
                 if cmd == "help":
                     logger.info("Commands: a, b, x, y, state, quit")

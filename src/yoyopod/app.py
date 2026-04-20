@@ -540,7 +540,7 @@ class YoyoPodApp:
                 )
                 if self.audio_volume_controller is not None
                 else (
-                    self.context.playback.volume
+                    self.context.media.playback.volume
                     if self.context is not None
                     else None
                 )
@@ -567,15 +567,15 @@ class YoyoPodApp:
                 else None
             ),
             "last_handled_input_action": self._last_input_handled_action_name,
-            "battery_percent": self.context.battery_percent if self.context else None,
-            "battery_charging": self.context.battery_charging if self.context else None,
-            "external_power": self.context.external_power if self.context else None,
-            "missed_calls": self.context.missed_calls if self.context else 0,
-            "recent_calls": self.context.recent_calls if self.context else [],
-            "screen_awake": self.context.screen_awake if self.context else self._screen_awake,
-            "screen_idle_seconds": self.context.screen_idle_seconds if self.context else None,
-            "screen_on_seconds": self.context.screen_on_seconds if self.context else None,
-            "app_uptime_seconds": self.context.app_uptime_seconds if self.context else None,
+            "battery_percent": self.context.power.battery_percent if self.context else None,
+            "battery_charging": self.context.power.battery_charging if self.context else None,
+            "external_power": self.context.power.external_power if self.context else None,
+            "missed_calls": self.context.talk.missed_calls if self.context else 0,
+            "recent_calls": self.context.talk.recent_calls if self.context else [],
+            "screen_awake": self.context.screen.awake if self.context else self._screen_awake,
+            "screen_idle_seconds": self.context.screen.idle_seconds if self.context else None,
+            "screen_on_seconds": self.context.screen.on_seconds if self.context else None,
+            "app_uptime_seconds": self.context.screen.app_uptime_seconds if self.context else None,
             "shutdown_pending": self._pending_shutdown is not None,
             "shutdown_reason": self._pending_shutdown.reason if self._pending_shutdown else None,
             "shutdown_in_seconds": pending_shutdown_in_seconds,

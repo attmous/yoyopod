@@ -79,33 +79,33 @@ def test_app_context_groups_runtime_state_by_concern() -> None:
     assert context.talk.active_voice_note.duration_ms == 3200
 
 
-def test_app_context_compatibility_aliases_write_through_nested_state() -> None:
-    """Legacy top-level fields should still update the focused runtime state objects."""
+def test_app_context_nested_state_fields_are_mutable() -> None:
+    """Focused runtime state objects should remain mutable for call sites that own them."""
 
     context = AppContext()
     playlist = PlaybackQueue(name="Demo")
 
-    context.current_playlist = playlist
-    context.playlists = {"demo": playlist}
-    context.battery_percent = 77
-    context.battery_charging = True
-    context.power_available = True
-    context.connection_type = "wifi"
-    context.network_enabled = True
-    context.is_connected = True
-    context.gps_has_fix = True
-    context.screen_awake = False
-    context.screen_on_seconds = 31
-    context.screen_idle_seconds = 9
-    context.app_uptime_seconds = 120
-    context.talk_contact_name = "Mama"
-    context.talk_contact_address = "sip:alice@example.com"
-    context.voice_note_recipient_name = "Mama"
-    context.voice_note_recipient_address = "sip:alice@example.com"
-    context.voice_note_send_state = "sent"
-    context.voice_note_status_text = "Delivered"
-    context.voice_note_file_path = "/tmp/note.wav"
-    context.voice_note_duration_ms = 2800
+    context.media.current_playlist = playlist
+    context.media.playlists = {"demo": playlist}
+    context.power.battery_percent = 77
+    context.power.battery_charging = True
+    context.power.available = True
+    context.network.connection_type = "wifi"
+    context.network.enabled = True
+    context.network.connected = True
+    context.network.gps_has_fix = True
+    context.screen.awake = False
+    context.screen.on_seconds = 31
+    context.screen.idle_seconds = 9
+    context.screen.app_uptime_seconds = 120
+    context.talk.selected_contact_name = "Mama"
+    context.talk.selected_contact_address = "sip:alice@example.com"
+    context.talk.active_voice_note.recipient_name = "Mama"
+    context.talk.active_voice_note.recipient_address = "sip:alice@example.com"
+    context.talk.active_voice_note.send_state = "sent"
+    context.talk.active_voice_note.status_text = "Delivered"
+    context.talk.active_voice_note.file_path = "/tmp/note.wav"
+    context.talk.active_voice_note.duration_ms = 2800
     context.cache_output_volume(64)
 
     assert context.media.current_playlist is playlist

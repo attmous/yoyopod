@@ -162,8 +162,8 @@ def test_call_screen_select_opens_selected_contact(display: Display) -> None:
     screen.enter()
     screen.on_select()
 
-    assert context.talk_contact_name == "Mama"
-    assert context.talk_contact_address == "sip:alice@example.com"
+    assert context.talk.selected_contact_name == "Mama"
+    assert context.talk.selected_contact_address == "sip:alice@example.com"
     assert screen.consume_navigation_request() == NavigationRequest.route("open_contact")
 
 
@@ -193,8 +193,8 @@ def test_talk_contact_screen_routes_to_voice_note(display: Display) -> None:
     screen.on_advance()
     screen.on_select()
 
-    assert context.voice_note_recipient_name == "Mama"
-    assert context.voice_note_recipient_address == "sip:alice@example.com"
+    assert context.talk.active_voice_note.recipient_name == "Mama"
+    assert context.talk.active_voice_note.recipient_address == "sip:alice@example.com"
     assert screen.consume_navigation_request() == NavigationRequest.route("voice_note")
 
 
@@ -253,7 +253,7 @@ def test_voice_note_screen_records_reviews_and_sends(display: Display) -> None:
 
     screen.on_ptt_release({"hold_started": True})
     assert screen.current_view_model()[0] == "Review"
-    assert context.voice_note_duration_ms == 3200
+    assert context.talk.active_voice_note.duration_ms == 3200
 
     screen.on_select()
     assert screen.current_view_model()[0] == "Sending"
@@ -281,8 +281,8 @@ def test_voice_note_screen_propagates_failed_stop_state(display: Display) -> Non
     screen.on_ptt_release({"hold_started": True})
 
     assert screen.current_view_model()[0] == "Couldn't Send"
-    assert context.voice_note_send_state == "failed"
-    assert context.voice_note_status_text == "Note too long"
+    assert context.talk.active_voice_note.send_state == "failed"
+    assert context.talk.active_voice_note.status_text == "Note too long"
 
 
 def test_voice_note_screen_can_preview_before_sending(display: Display) -> None:
@@ -305,7 +305,7 @@ def test_voice_note_screen_can_preview_before_sending(display: Display) -> None:
     screen.on_select()
 
     assert voip_manager.played_notes == ["data/voice_notes/test.wav"]
-    assert context.voice_note_status_text == "Playing preview"
+    assert context.talk.active_voice_note.status_text == "Playing preview"
 
 
 def test_voice_note_screen_reopens_clean_after_terminal_draft(display: Display) -> None:
@@ -334,7 +334,7 @@ def test_voice_note_screen_reopens_clean_after_terminal_draft(display: Display) 
 
     assert screen.current_view_model()[0] == "Voice Note"
     assert voip_manager.active_voice_note is None
-    assert context.voice_note_send_state == "idle"
+    assert context.talk.active_voice_note.send_state == "idle"
 
 
 def test_voice_note_screen_render_syncs_manager_terminal_state(display: Display) -> None:
@@ -365,7 +365,7 @@ def test_voice_note_screen_render_syncs_manager_terminal_state(display: Display)
     screen.render()
 
     assert screen.current_view_model()[0] == "Couldn't Send"
-    assert context.voice_note_status_text == "Voice notes unavailable"
+    assert context.talk.active_voice_note.status_text == "Voice notes unavailable"
 
 
 def test_voice_note_screen_ignores_stale_draft_for_different_recipient(display: Display) -> None:
@@ -392,5 +392,5 @@ def test_voice_note_screen_ignores_stale_draft_for_different_recipient(display: 
     screen.enter()
 
     assert screen.current_view_model()[0] == "Voice Note"
-    assert context.voice_note_send_state == "idle"
-    assert context.voice_note_status_text == ""
+    assert context.talk.active_voice_note.send_state == "idle"
+    assert context.talk.active_voice_note.status_text == ""

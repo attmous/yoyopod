@@ -109,21 +109,31 @@ class ShutdownLifecycleService:
                 else None
             ),
             "current_screen": current_screen,
-            "battery_percent": self.app.context.battery_percent if self.app.context else None,
-            "battery_charging": self.app.context.battery_charging if self.app.context else None,
-            "external_power": self.app.context.external_power if self.app.context else None,
+            "battery_percent": (
+                self.app.context.power.battery_percent if self.app.context else None
+            ),
+            "battery_charging": (
+                self.app.context.power.battery_charging if self.app.context else None
+            ),
+            "external_power": self.app.context.power.external_power if self.app.context else None,
             "voip_registered": self.app.voip_registered,
             "music_available": (
                 self.app.music_backend.is_connected if self.app.music_backend else False
             ),
-            "app_uptime_seconds": self.app.context.app_uptime_seconds if self.app.context else 0,
-            "screen_on_seconds": self.app.context.screen_on_seconds if self.app.context else 0,
-            "screen_awake": self.app.context.screen_awake if self.app.context else True,
-            "screen_idle_seconds": self.app.context.screen_idle_seconds if self.app.context else 0,
+            "app_uptime_seconds": (
+                self.app.context.screen.app_uptime_seconds if self.app.context else 0
+            ),
+            "screen_on_seconds": self.app.context.screen.on_seconds if self.app.context else 0,
+            "screen_awake": self.app.context.screen.awake if self.app.context else True,
+            "screen_idle_seconds": self.app.context.screen.idle_seconds if self.app.context else 0,
             "playback": {
-                "is_playing": self.app.context.playback.is_playing if self.app.context else False,
-                "is_paused": self.app.context.playback.is_paused if self.app.context else False,
-                "volume": self.app.context.playback.volume if self.app.context else None,
+                "is_playing": (
+                    self.app.context.media.playback.is_playing if self.app.context else False
+                ),
+                "is_paused": (
+                    self.app.context.media.playback.is_paused if self.app.context else False
+                ),
+                "volume": self.app.context.media.playback.volume if self.app.context else None,
             },
             "track": current_track,
         }

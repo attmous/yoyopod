@@ -619,7 +619,7 @@ def test_apply_default_music_volume_updates_backend_and_context() -> None:
 
     app.audio_volume_controller.apply_default_music_volume()
 
-    assert app.context.playback.volume == 100
+    assert app.context.media.playback.volume == 100
     assert app.music_backend.get_volume() == 100
     assert app.music_backend.commands[-1] == "volume:100"
 
@@ -651,7 +651,7 @@ def test_music_connect_reapplies_shared_output_volume() -> None:
     app.audio_volume_controller.sync_output_volume_on_music_connect(True, "connected")
 
     assert app.output_volume.synced == [82]
-    assert app.context.playback.volume == 82
+    assert app.context.media.playback.volume == 82
 
 
 def test_incoming_call_pauses_playing_music_once() -> None:
@@ -1202,10 +1202,10 @@ def test_power_poll_updates_context_runtime_and_visible_screen() -> None:
     _force_power_refresh(app, now=0.0)
 
     assert app.power_manager.refresh_calls == 1
-    assert app.context.battery_percent == 55
-    assert app.context.battery_charging is True
-    assert app.context.external_power is True
-    assert app.context.power_available is True
+    assert app.context.power.battery_percent == 55
+    assert app.context.power.battery_charging is True
+    assert app.context.power.external_power is True
+    assert app.context.power.available is True
     assert app.coordinator_runtime.power_available is True
     assert app.coordinator_runtime.power_snapshot is not None
     assert app.coordinator_runtime.power_snapshot.battery.level_percent == 55.4
@@ -1261,9 +1261,9 @@ def test_power_poll_honors_interval_and_tracks_unavailable_backend() -> None:
     app.runtime_loop.process_pending_main_thread_actions()
 
     assert app.power_manager.refresh_calls == 2
-    assert app.context.battery_percent == 61
-    assert app.context.power_available is False
-    assert app.context.power_error == "I2C not connected"
+    assert app.context.power.battery_percent == 61
+    assert app.context.power.available is False
+    assert app.context.power.error == "I2C not connected"
     assert app.coordinator_runtime.power_available is False
     assert app.menu_screen.render_calls == 2
 
@@ -1299,7 +1299,7 @@ def test_periodic_power_poll_runs_off_the_coordinator_thread() -> None:
     app.runtime_loop.process_pending_main_thread_actions()
 
     assert app.power_manager.refresh_calls == 1
-    assert app.context.battery_percent == 48
+    assert app.context.power.battery_percent == 48
     assert app.menu_screen.render_calls == 1
     assert app.get_status()["power_refresh_in_flight"] is False
 
@@ -1343,9 +1343,9 @@ def test_forced_power_poll_skips_placeholder_snapshot_before_first_refresh() -> 
     _complete_power_refresh(app)
 
     assert app.power_manager.refresh_calls == 1
-    assert app.context.battery_percent == 52
-    assert app.context.battery_charging is True
-    assert app.context.external_power is True
+    assert app.context.power.battery_percent == 52
+    assert app.context.power.battery_charging is True
+    assert app.context.power.external_power is True
     assert app.coordinator_runtime.power_snapshot is refreshed_snapshot
     assert app.menu_screen.render_calls == 1
 
@@ -1384,7 +1384,7 @@ def test_forced_power_poll_uses_new_cached_snapshot_while_refresh_callback_is_pe
     app.power_manager = TwoStepPowerManager()
 
     _force_power_refresh(app, now=0.0)
-    assert app.context.battery_percent == 41
+    assert app.context.power.battery_percent == 41
     assert app.menu_screen.render_calls == 1
 
     app._poll_power_status(now=30.0)
@@ -1399,9 +1399,9 @@ def test_forced_power_poll_uses_new_cached_snapshot_while_refresh_callback_is_pe
     elapsed_seconds = time.monotonic() - started_at
 
     assert elapsed_seconds < 0.1
-    assert app.context.battery_percent == 52
-    assert app.context.battery_charging is True
-    assert app.context.external_power is True
+    assert app.context.power.battery_percent == 52
+    assert app.context.power.battery_charging is True
+    assert app.context.power.external_power is True
     assert app.coordinator_runtime.power_snapshot is second_snapshot
     assert app.menu_screen.render_calls == 2
 
@@ -1426,9 +1426,9 @@ def test_screen_timeout_turns_backlight_off_after_inactivity() -> None:
     app._update_screen_power(31.0)
 
     assert app.display.set_backlight_calls == [0.8, 0.0]
-    assert app.context.screen_awake is False
-    assert app.context.screen_on_seconds == 31
-    assert app.context.screen_idle_seconds == 31
+    assert app.context.screen.awake is False
+    assert app.context.screen.on_seconds == 31
+    assert app.context.screen.idle_seconds == 31
 
 
 def test_screen_power_service_turns_backlight_off_after_inactivity() -> None:
@@ -1447,9 +1447,9 @@ def test_screen_power_service_turns_backlight_off_after_inactivity() -> None:
     app.screen_power_service.update_screen_power(31.0)
 
     assert app.display.set_backlight_calls == [0.8, 0.0]
-    assert app.context.screen_awake is False
-    assert app.context.screen_on_seconds == 31
-    assert app.context.screen_idle_seconds == 31
+    assert app.context.screen.awake is False
+    assert app.context.screen.on_seconds == 31
+    assert app.context.screen.idle_seconds == 31
 
 
 def test_user_activity_event_wakes_screen_and_refreshes_current_screen() -> None:
@@ -1467,14 +1467,14 @@ def test_user_activity_event_wakes_screen_and_refreshes_current_screen() -> None
     app._configure_screen_power(initial_now=0.0)
     app._sleep_screen(31.0)
 
-    assert app.context.screen_awake is False
+    assert app.context.screen.awake is False
     render_calls_before = app.menu_screen.render_calls
 
     _publish_from_worker(app, UserActivityEvent(action_name="select"))
 
     assert app.event_bus.drain() == 1
     assert app.display.set_backlight_calls[-1] == 0.75
-    assert app.context.screen_awake is True
+    assert app.context.screen.awake is True
     assert app.menu_screen.render_calls == render_calls_before + 1
 
 
@@ -1502,7 +1502,7 @@ def test_user_activity_event_wakes_screen_and_refreshes_visible_power_screen_hoo
     _publish_from_worker(app, UserActivityEvent(action_name="select"))
 
     assert app.event_bus.drain() == 1
-    assert app.context.screen_awake is True
+    assert app.context.screen.awake is True
     assert app.power_screen.render_calls == render_calls_before + 1
     assert app.power_screen.refresh_for_visible_tick_calls == refresh_calls_before + 1
 
@@ -1571,14 +1571,14 @@ def test_raw_user_activity_wakes_screen_without_rerendering_current_pil_screen()
     app._configure_screen_power(initial_now=0.0)
     app._sleep_screen(31.0)
 
-    assert app.context.screen_awake is False
+    assert app.context.screen.awake is False
     render_calls_before = app.menu_screen.render_calls
 
     _publish_from_worker(app, UserActivityEvent(action_name=None))
 
     assert app.event_bus.drain() == 1
     assert app.display.set_backlight_calls[-1] == 0.75
-    assert app.context.screen_awake is True
+    assert app.context.screen.awake is True
     assert app.menu_screen.render_calls == render_calls_before
 
 
@@ -1622,7 +1622,7 @@ def test_screen_on_time_accumulates_across_sleep_and_wake_cycles() -> None:
     app._sleep_screen(25.0)
 
     assert app.display.set_backlight_calls == [0.8, 0.0, 0.8, 0.0]
-    assert app.context.screen_on_seconds == 15
+    assert app.context.screen.on_seconds == 15
     assert app.get_status()["screen_on_seconds"] == 15
 
 

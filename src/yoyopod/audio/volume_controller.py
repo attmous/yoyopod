@@ -83,7 +83,7 @@ class AudioVolumeController:
             if volume is not None:
                 self._cache_context_volume(volume)
                 return volume
-        return self._context.playback.volume
+        return self._context.media.playback.volume
 
     def set_output_volume(self, volume: int) -> bool:
         """Set shared output volume across ALSA and the music backend."""

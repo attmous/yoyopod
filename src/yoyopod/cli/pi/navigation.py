@@ -604,12 +604,12 @@ class NavigationSoakRunner:
 
         self.app._last_user_activity_at = time.monotonic() - timeout_seconds - 1.0
         self.pump.run_for(max(0.35, self.hold_seconds))
-        if self.app.context is None or self.app.context.screen_awake:
+        if self.app.context is None or self.app.context.screen.awake:
             raise NavigationSoakFailure("screen did not enter sleep during navigation soak")
 
         self.app.event_bus.publish(UserActivityEvent(action_name="navigation_soak"))
         self.pump.run_for(max(0.35, self.hold_seconds))
-        if self.app.context is None or not self.app.context.screen_awake:
+        if self.app.context is None or not self.app.context.screen.awake:
             raise NavigationSoakFailure("screen did not wake after simulated navigation activity")
 
         self.stats.sleep_wake_status = "ok"

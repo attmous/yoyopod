@@ -49,9 +49,7 @@ class AppContext:
     """
     Shared app-facing runtime state.
 
-    `AppContext` now owns focused runtime state objects and keeps a light
-    compatibility surface for existing callers that still read or write the
-    old top-level fields.
+    `AppContext` owns focused runtime state objects grouped by domain.
     """
 
     def __init__(
@@ -95,260 +93,6 @@ class AppContext:
 
         logger.info("AppContext initialized")
 
-    @property
-    def playback(self) -> PlaybackState:
-        """Expose playback state for existing callers."""
-
-        return self.media.playback
-
-    @playback.setter
-    def playback(self, value: PlaybackState) -> None:
-        self.media.playback = value
-
-    @property
-    def current_playlist(self) -> PlaybackQueue | None:
-        """Expose the active playlist for existing callers."""
-
-        return self.media.current_playlist
-
-    @current_playlist.setter
-    def current_playlist(self, value: PlaybackQueue | None) -> None:
-        self.media.current_playlist = value
-
-    @property
-    def playlists(self) -> dict[str, PlaybackQueue]:
-        """Expose cached playlists for existing callers."""
-
-        return self.media.playlists
-
-    @playlists.setter
-    def playlists(self, value: dict[str, PlaybackQueue]) -> None:
-        self.media.playlists = value
-
-    @property
-    def battery_percent(self) -> int:
-        return self.power.battery_percent
-
-    @battery_percent.setter
-    def battery_percent(self, value: int) -> None:
-        self.power.update_battery_percent(value)
-
-    @property
-    def battery_charging(self) -> bool:
-        return self.power.battery_charging
-
-    @battery_charging.setter
-    def battery_charging(self, value: bool) -> None:
-        self.power.battery_charging = value
-
-    @property
-    def external_power(self) -> bool:
-        return self.power.external_power
-
-    @external_power.setter
-    def external_power(self, value: bool) -> None:
-        self.power.external_power = value
-
-    @property
-    def power_available(self) -> bool:
-        return self.power.available
-
-    @power_available.setter
-    def power_available(self, value: bool) -> None:
-        self.power.available = value
-
-    @property
-    def power_error(self) -> str:
-        return self.power.error
-
-    @power_error.setter
-    def power_error(self, value: str) -> None:
-        self.power.error = value
-
-    @property
-    def voip_configured(self) -> bool:
-        return self.voip.configured
-
-    @voip_configured.setter
-    def voip_configured(self, value: bool) -> None:
-        self.voip.configured = value
-
-    @property
-    def voip_ready(self) -> bool:
-        return self.voip.ready
-
-    @voip_ready.setter
-    def voip_ready(self, value: bool) -> None:
-        self.voip.ready = value
-
-    @property
-    def screen_awake(self) -> bool:
-        return self.screen.awake
-
-    @screen_awake.setter
-    def screen_awake(self, value: bool) -> None:
-        self.screen.awake = value
-
-    @property
-    def screen_idle_seconds(self) -> int:
-        return self.screen.idle_seconds
-
-    @screen_idle_seconds.setter
-    def screen_idle_seconds(self, value: int) -> None:
-        self.screen.idle_seconds = max(0, int(value))
-
-    @property
-    def screen_on_seconds(self) -> int:
-        return self.screen.on_seconds
-
-    @screen_on_seconds.setter
-    def screen_on_seconds(self, value: int) -> None:
-        self.screen.on_seconds = max(0, int(value))
-
-    @property
-    def app_uptime_seconds(self) -> int:
-        return self.screen.app_uptime_seconds
-
-    @app_uptime_seconds.setter
-    def app_uptime_seconds(self, value: int) -> None:
-        self.screen.app_uptime_seconds = max(0, int(value))
-
-    @property
-    def signal_strength(self) -> int:
-        return self.network.signal_strength
-
-    @signal_strength.setter
-    def signal_strength(self, value: int) -> None:
-        self.network.signal_strength = max(0, min(4, int(value)))
-
-    @property
-    def is_connected(self) -> bool:
-        return self.network.connected
-
-    @is_connected.setter
-    def is_connected(self, value: bool) -> None:
-        self.network.connected = value
-
-    @property
-    def connection_type(self) -> str:
-        return self.network.connection_type
-
-    @connection_type.setter
-    def connection_type(self, value: str) -> None:
-        self.network.connection_type = value
-
-    @property
-    def network_enabled(self) -> bool:
-        return self.network.enabled
-
-    @network_enabled.setter
-    def network_enabled(self, value: bool) -> None:
-        self.network.enabled = value
-
-    @property
-    def gps_has_fix(self) -> bool:
-        return self.network.gps_has_fix
-
-    @gps_has_fix.setter
-    def gps_has_fix(self, value: bool) -> None:
-        self.network.gps_has_fix = value
-
-    @property
-    def missed_calls(self) -> int:
-        return self.talk.missed_calls
-
-    @missed_calls.setter
-    def missed_calls(self, value: int) -> None:
-        self.talk.missed_calls = max(0, int(value))
-
-    @property
-    def recent_calls(self) -> list[str]:
-        return self.talk.recent_calls
-
-    @recent_calls.setter
-    def recent_calls(self, value: list[str]) -> None:
-        self.talk.recent_calls = list(value)
-
-    @property
-    def unread_voice_notes(self) -> int:
-        return self.talk.unread_voice_notes
-
-    @unread_voice_notes.setter
-    def unread_voice_notes(self, value: int) -> None:
-        self.talk.unread_voice_notes = max(0, int(value))
-
-    @property
-    def latest_voice_note_by_contact(self) -> dict[str, dict[str, object]]:
-        return self.talk.latest_voice_note_by_contact
-
-    @latest_voice_note_by_contact.setter
-    def latest_voice_note_by_contact(self, value: dict[str, dict[str, object]]) -> None:
-        self.talk.latest_voice_note_by_contact = dict(value)
-
-    @property
-    def talk_contact_name(self) -> str:
-        return self.talk.selected_contact_name
-
-    @talk_contact_name.setter
-    def talk_contact_name(self, value: str) -> None:
-        self.talk.selected_contact_name = value
-
-    @property
-    def talk_contact_address(self) -> str:
-        return self.talk.selected_contact_address
-
-    @talk_contact_address.setter
-    def talk_contact_address(self, value: str) -> None:
-        self.talk.selected_contact_address = value
-
-    @property
-    def voice_note_recipient_name(self) -> str:
-        return self.talk.active_voice_note.recipient_name
-
-    @voice_note_recipient_name.setter
-    def voice_note_recipient_name(self, value: str) -> None:
-        self.talk.active_voice_note.recipient_name = value
-
-    @property
-    def voice_note_recipient_address(self) -> str:
-        return self.talk.active_voice_note.recipient_address
-
-    @voice_note_recipient_address.setter
-    def voice_note_recipient_address(self, value: str) -> None:
-        self.talk.active_voice_note.recipient_address = value
-
-    @property
-    def voice_note_send_state(self) -> str:
-        return self.talk.active_voice_note.send_state
-
-    @voice_note_send_state.setter
-    def voice_note_send_state(self, value: str) -> None:
-        self.talk.active_voice_note.send_state = value
-
-    @property
-    def voice_note_status_text(self) -> str:
-        return self.talk.active_voice_note.status_text
-
-    @voice_note_status_text.setter
-    def voice_note_status_text(self, value: str) -> None:
-        self.talk.active_voice_note.status_text = value
-
-    @property
-    def voice_note_file_path(self) -> str:
-        return self.talk.active_voice_note.file_path
-
-    @voice_note_file_path.setter
-    def voice_note_file_path(self, value: str) -> None:
-        self.talk.active_voice_note.file_path = value
-
-    @property
-    def voice_note_duration_ms(self) -> int:
-        return self.talk.active_voice_note.duration_ms
-
-    @voice_note_duration_ms.setter
-    def voice_note_duration_ms(self, value: int) -> None:
-        self.talk.active_voice_note.duration_ms = max(0, int(value))
-
     def set_playlist(self, playlist: PlaybackQueue) -> None:
         """Set the current playlist."""
 
@@ -375,7 +119,8 @@ class AppContext:
     def pause(self) -> None:
         """Pause playback."""
 
-        if not self.playback.is_playing:
+        playback = self.media.playback
+        if not playback.is_playing:
             return
 
         self.media.pause()
@@ -384,7 +129,8 @@ class AppContext:
     def resume(self) -> None:
         """Resume playback."""
 
-        if not self.playback.is_paused:
+        playback = self.media.playback
+        if not playback.is_paused:
             return
 
         self.media.resume()
@@ -399,11 +145,12 @@ class AppContext:
     def toggle_playback(self) -> bool:
         """Toggle between play and pause."""
 
-        if self.playback.is_playing:
+        playback = self.media.playback
+        if playback.is_playing:
             self.pause()
             return False
-        if self.playback.is_paused or self.playback.is_stopped:
-            if self.playback.is_stopped:
+        if playback.is_paused or playback.is_stopped:
+            if playback.is_stopped:
                 self.play()
             else:
                 self.resume()
@@ -436,14 +183,16 @@ class AppContext:
     def volume_up(self, step: int = 5) -> int:
         """Increase volume."""
 
-        self.set_volume(self.playback.volume + step)
-        return self.playback.volume
+        playback = self.media.playback
+        self.set_volume(playback.volume + step)
+        return playback.volume
 
     def volume_down(self, step: int = 5) -> int:
         """Decrease volume."""
 
-        self.set_volume(self.playback.volume - step)
-        return self.playback.volume
+        playback = self.media.playback
+        self.set_volume(playback.volume - step)
+        return playback.volume
 
     def next_track(self) -> Track | None:
         """Skip to the next track."""
@@ -453,7 +202,7 @@ class AppContext:
             return None
 
         logger.info(f"Next track: {track.name}")
-        if self.playback.is_playing:
+        if self.media.playback.is_playing:
             self.play()
         return track
 
@@ -465,7 +214,7 @@ class AppContext:
             return None
 
         logger.info(f"Previous track: {track.name}")
-        if self.playback.is_playing:
+        if self.media.playback.is_playing:
             self.play()
         return track
 

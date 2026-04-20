@@ -97,13 +97,13 @@ def test_semantic_input_navigation() -> None:
         input_manager.simulate_action(InputAction.SELECT)
         assert screen_manager.current_screen is now_playing
 
-        assert not context.playback.is_playing
+        assert not context.media.playback.is_playing
         input_manager.simulate_action(InputAction.SELECT)
-        assert context.playback.is_playing
+        assert context.media.playback.is_playing
 
         input_manager.simulate_action(InputAction.SELECT)
-        assert not context.playback.is_playing
-        assert context.playback.is_paused
+        assert not context.media.playback.is_playing
+        assert context.media.playback.is_paused
 
         input_manager.simulate_action(InputAction.BACK)
         assert screen_manager.current_screen is menu

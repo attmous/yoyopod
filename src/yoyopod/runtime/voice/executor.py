@@ -199,5 +199,5 @@ class VoiceCommandExecutor:
     def _sync_context_output_volume(self, volume: int | None) -> None:
         if volume is None or self._context is None:
             return
-        self._context.playback.volume = volume
+        self._context.media.playback.volume = volume
         self._context.voice.output_volume = volume

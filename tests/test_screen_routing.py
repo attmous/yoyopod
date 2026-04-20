@@ -623,7 +623,7 @@ def test_ask_screen_can_place_call_for_named_contact() -> None:
 
     screen.on_voice_command({"transcript": "call mama"})
 
-    assert context.talk_contact_name == "Mama"
+    assert context.talk.selected_contact_name == "Mama"
     assert voip_manager.make_calls == [("sip:mama@example.com", "Mama")]
     assert screen.consume_navigation_request() is None
     assert screen._auto_return_timer is None

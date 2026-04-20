@@ -61,13 +61,13 @@ def _build_context() -> "AppContext":
     context = AppContext(interaction_profile=InteractionProfile.ONE_BUTTON)
     context.update_voip_status(configured=True, ready=True)
     context.update_system_status(battery=86, signal=4, connected=True)
-    context.battery_charging = False
-    context.external_power = False
-    context.power_available = True
-    context.screen_awake = True
-    context.app_uptime_seconds = 3672
-    context.screen_on_seconds = 1240
-    context.screen_idle_seconds = 7
+    context.power.battery_charging = False
+    context.power.external_power = False
+    context.power.available = True
+    context.screen.awake = True
+    context.screen.app_uptime_seconds = 3672
+    context.screen.on_seconds = 1240
+    context.screen.idle_seconds = 7
     context.update_call_summary(missed_calls=2, recent_calls=["Mama", "Hagar", "Papa"])
     context.update_voice_note_summary(
         unread_voice_notes=1,
@@ -105,10 +105,10 @@ def _build_context() -> "AppContext":
         ],
     )
     context.set_playlist(demo_playlist)
-    context.playback.is_playing = True
-    context.playback.is_paused = False
-    context.playback.is_stopped = False
-    context.playback.position = 74.0
+    context.media.playback.is_playing = True
+    context.media.playback.is_paused = False
+    context.media.playback.is_stopped = False
+    context.media.playback.position = 74.0
     return context
 
 

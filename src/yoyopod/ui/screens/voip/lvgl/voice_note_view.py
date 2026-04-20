@@ -61,8 +61,8 @@ class LvglVoiceNoteView:
                 button_size_kind=0,
                 voip_state=self._voip_state(context),
                 battery_percent=self._battery_percent(context),
-                charging=bool(getattr(context, "battery_charging", False)) if context is not None else False,
-                power_available=bool(getattr(context, "power_available", True)) if context is not None else True,
+                charging=context.power.battery_charging if context is not None else False,
+                power_available=context.power.available if context is not None else True,
                 accent=TALK.accent,
             )
             return
@@ -82,8 +82,8 @@ class LvglVoiceNoteView:
             button_size_kind=2,
             voip_state=self._voip_state(context),
             battery_percent=self._battery_percent(context),
-            charging=bool(getattr(context, "battery_charging", False)) if context is not None else False,
-            power_available=bool(getattr(context, "power_available", True)) if context is not None else True,
+            charging=context.power.battery_charging if context is not None else False,
+            power_available=context.power.available if context is not None else True,
             accent=TALK.accent,
         )
 
@@ -97,10 +97,10 @@ class LvglVoiceNoteView:
     def _battery_percent(context: "AppContext | None") -> int:
         if context is None:
             return 100
-        return max(0, min(100, int(getattr(context, "battery_percent", 100))))
+        return max(0, min(100, int(context.power.battery_percent)))
 
     @staticmethod
     def _voip_state(context: "AppContext | None") -> int:
-        if context is None or not getattr(context, "voip_configured", False):
+        if context is None or not context.voip.configured:
             return 0
-        return 1 if getattr(context, "voip_ready", False) else 2
+        return 1 if context.voip.ready else 2
