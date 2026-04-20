@@ -33,7 +33,7 @@ from yoyopod.communication import (
     VoIPManager,
     VoIPMessageRecord,
 )
-from yoyopod.communication.integrations.liblinphone_binding import LiblinphoneBinding
+from yoyopod.communication.integrations.liblinphone import LiblinphoneBinding
 
 
 class FakeBinding:
@@ -282,11 +282,11 @@ def test_liblinphone_backend_records_native_iterate_timings(monkeypatch) -> None
     monotonic_values = iter([10.0, 10.0, 10.18, 10.18, 10.29, 10.31])
 
     monkeypatch.setattr(
-        "yoyopod.communication.calling.liblinphone_backend.time.monotonic",
+        "yoyopod.communication.integrations.liblinphone.backend.time.monotonic",
         lambda: next(monotonic_values),
     )
     monkeypatch.setattr(
-        "yoyopod.communication.calling.liblinphone_backend.logger.warning",
+        "yoyopod.communication.integrations.liblinphone.backend.logger.warning",
         lambda *args: warnings.append(args),
     )
 
@@ -321,7 +321,7 @@ def test_liblinphone_backend_uses_shared_output_volume_and_capture_only_alsa(mon
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(
-        "yoyopod.communication.calling.liblinphone_backend.subprocess.run", fake_run
+        "yoyopod.communication.integrations.liblinphone.backend.subprocess.run", fake_run
     )
 
     binding = FakeBinding()
@@ -357,7 +357,7 @@ def test_liblinphone_backend_matches_wm8960_card_from_capture_device(monkeypatch
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(
-        "yoyopod.communication.calling.liblinphone_backend.subprocess.run", fake_run
+        "yoyopod.communication.integrations.liblinphone.backend.subprocess.run", fake_run
     )
 
     backend = LiblinphoneBackend(build_config(), binding=FakeBinding())
@@ -805,7 +805,7 @@ def test_liblinphone_shim_records_voice_notes_as_wav() -> None:
     """The native recorder shim should explicitly match the .wav files used by the app."""
 
     shim_source = Path(
-        "src/yoyopod/communication/integrations/liblinphone_binding/native/liblinphone_shim.c"
+        "src/yoyopod/communication/integrations/liblinphone/native/liblinphone_shim.c"
     ).read_text(encoding="utf-8")
 
     assert (
@@ -818,7 +818,7 @@ def test_liblinphone_shim_wires_incoming_message_debug_paths() -> None:
     """The native shim should cover aggregated and undecryptable incoming message paths."""
 
     shim_source = Path(
-        "src/yoyopod/communication/integrations/liblinphone_binding/native/liblinphone_shim.c"
+        "src/yoyopod/communication/integrations/liblinphone/native/liblinphone_shim.c"
     ).read_text(encoding="utf-8")
 
     assert (

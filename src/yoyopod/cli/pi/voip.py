@@ -261,7 +261,7 @@ def _build_voip_manager(config_dir: str) -> _VoIPManagerLike:
     from loguru import logger
 
     from yoyopod.communication import VoIPConfig, VoIPManager
-    from yoyopod.communication.integrations.liblinphone_binding import LiblinphoneBinding
+    from yoyopod.communication.integrations.liblinphone import LiblinphoneBinding
     from yoyopod.config import ConfigManager
 
     if LiblinphoneBinding.try_load() is None:

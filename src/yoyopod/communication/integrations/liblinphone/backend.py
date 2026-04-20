@@ -13,7 +13,7 @@ from typing import Callable
 from loguru import logger
 
 from yoyopod.communication.calling.backend_protocol import VoIPIterateMetrics
-from yoyopod.communication.integrations.liblinphone_binding import (
+from yoyopod.communication.integrations.liblinphone.binding import (
     LiblinphoneBinding,
     LiblinphoneNativeEvent,
 )

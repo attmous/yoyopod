@@ -54,7 +54,7 @@ NATIVE_ARTIFACTS: tuple[Path, ...] = (
     / "yoyopod"
     / "communication"
     / "integrations"
-    / "liblinphone_binding"
+    / "liblinphone"
     / "native"
     / "build"
     / "libyoyopod_liblinphone_shim.so",

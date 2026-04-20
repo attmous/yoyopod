@@ -145,13 +145,7 @@ def build_liblinphone(
 ) -> None:
     """Build the native Liblinphone shim for the current platform."""
     native_dir = (
-        _REPO_ROOT
-        / "src"
-        / "yoyopod"
-        / "communication"
-        / "integrations"
-        / "liblinphone_binding"
-        / "native"
+        _REPO_ROOT / "src" / "yoyopod" / "communication" / "integrations" / "liblinphone" / "native"
     )
     resolved_build = build_dir if build_dir is not None else native_dir / "build"
 

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from yoyopod.communication.calling.history import CallHistoryEntry, CallHistoryStore
-    from yoyopod.communication.calling.liblinphone_backend import LiblinphoneBackend
+    from yoyopod.communication.integrations.liblinphone import LiblinphoneBackend
     from yoyopod.communication.calling.manager import VoIPManager
     from yoyopod.communication.calling.mock_backend import MockVoIPBackend
     from yoyopod.communication.calling.voice_notes import VoiceNoteDraft
@@ -40,7 +40,7 @@ _LAZY_EXPORTS = {
     "CallHistoryEntry": "yoyopod.communication.calling.history",
     "CallHistoryStore": "yoyopod.communication.calling.history",
     "VoIPBackend": "yoyopod.communication.calling.backend_protocol",
-    "LiblinphoneBackend": "yoyopod.communication.calling.liblinphone_backend",
+    "LiblinphoneBackend": "yoyopod.communication.integrations.liblinphone",
     "MockVoIPBackend": "yoyopod.communication.calling.mock_backend",
     "VoIPConfig": "yoyopod.communication.models",
     "VoIPMessageRecord": "yoyopod.communication.models",
