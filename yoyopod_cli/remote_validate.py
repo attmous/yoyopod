@@ -9,8 +9,15 @@ from __future__ import annotations
 import typer
 
 from yoyopod_cli.common import configure_logging
+from yoyopod_cli.paths import load_pi_paths
 from yoyopod_cli.remote_shared import build_remote_app, pi_conn
-from yoyopod_cli.remote_transport import run_local, run_remote, shell_quote, validate_config
+from yoyopod_cli.remote_transport import (
+    run_local,
+    run_remote,
+    shell_quote,
+    validate_config,
+    venv_activate_prefix,
+)
 
 app = build_remote_app("validate_app", "Validate commit + health on the Pi.")
 
@@ -27,20 +34,38 @@ def _build_preflight_steps() -> list[tuple[str, list[str]]]:
 def _build_validate(
     *,
     branch: str,
+    sha: str = "",
     with_music: bool,
     with_voip: bool,
     with_lvgl_soak: bool,
     with_navigation: bool,
 ) -> str:
-    """Shell that fast-forwards the branch on the Pi, then runs staged validation."""
+    """Shell that fast-forwards the branch on the Pi, then runs staged validation.
+
+    When *sha* is provided the checkout is pinned to that commit (ancestry check
+    ensures it is reachable from origin/<branch>). Without a SHA the branch tip
+    on origin is used.
+    """
+    pi = load_pi_paths()
     br = shell_quote(branch)
     steps = [
         "git fetch origin",
         f"git checkout {br}",
-        f"git reset --hard origin/{br}",
-        "yoyopod pi validate deploy",
-        "yoyopod pi validate smoke",
     ]
+    if sha:
+        sh = shell_quote(sha)
+        # Fail fast when the SHA is not reachable from the target branch.
+        steps.append(f"git merge-base --is-ancestor {sh} origin/{br}")
+        steps.append(f"git reset --hard {sh}")
+    else:
+        steps.append(f"git reset --hard origin/{br}")
+    steps.append(venv_activate_prefix(pi.venv))
+    steps.extend(
+        [
+            "yoyopod pi validate deploy",
+            "yoyopod pi validate smoke",
+        ]
+    )
     if with_music:
         steps.append("yoyopod pi validate music")
     if with_voip:
@@ -66,6 +91,11 @@ def preflight(verbose: bool = typer.Option(False, "--verbose")) -> None:
 @app.command()
 def validate(
     ctx: typer.Context,
+    sha: str = typer.Option(
+        "",
+        "--sha",
+        help="Pin validation to a specific commit on the target branch (must be an ancestor of origin/<branch>).",
+    ),
     with_music: bool = typer.Option(False, "--with-music"),
     with_voip: bool = typer.Option(False, "--with-voip"),
     with_lvgl_soak: bool = typer.Option(False, "--with-lvgl-soak"),
@@ -78,6 +108,7 @@ def validate(
     validate_config(conn)
     cmd = _build_validate(
         branch=conn.branch,
+        sha=sha,
         with_music=with_music,
         with_voip=with_voip,
         with_lvgl_soak=with_lvgl_soak,

@@ -51,7 +51,8 @@ def _root(
     if ctx.invoked_subcommand is None:
         from yoyopod.main import main as launch_app
 
-        launch_app()
+        rc = launch_app()
+        raise typer.Exit(rc if isinstance(rc, int) else 0)
 
 
 def run() -> None:
@@ -206,6 +207,11 @@ def _validate_shortcut(
     user: str = typer.Option("", "--user", envvar="YOYOPOD_PI_USER"),
     project_dir: str = typer.Option("", "--project-dir", envvar="YOYOPOD_PI_PROJECT_DIR"),
     branch: str = typer.Option("", "--branch", envvar="YOYOPOD_PI_BRANCH"),
+    sha: str = typer.Option(
+        "",
+        "--sha",
+        help="Pin validation to a specific commit (must be an ancestor of origin/<branch>).",
+    ),
     with_music: bool = typer.Option(False, "--with-music"),
     with_voip: bool = typer.Option(False, "--with-voip"),
     with_lvgl_soak: bool = typer.Option(False, "--with-lvgl-soak"),
@@ -215,6 +221,7 @@ def _validate_shortcut(
     """Run staged Pi validation (alias for `remote validate`)."""
     _remote_validate.validate(
         ctx=_with_connection(host, user, project_dir, branch),
+        sha=sha,
         with_music=with_music,
         with_voip=with_voip,
         with_lvgl_soak=with_lvgl_soak,

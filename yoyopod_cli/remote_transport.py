@@ -36,6 +36,16 @@ def quote_remote_project_dir(project_dir: str) -> str:
     return shlex.quote(project_dir)
 
 
+def venv_activate_prefix(venv_relpath: str = ".venv") -> str:
+    """Return a shell fragment that activates the Pi's venv before invoking ``yoyopod``.
+
+    SSH sessions started with ``bash -lc`` are login shells but do not auto-activate
+    per-project virtualenvs. Prepending this to any remote command that needs the
+    ``yoyopod`` console script ensures it is resolved from the repo's venv.
+    """
+    return f"source {venv_relpath}/bin/activate"
+
+
 def build_ssh_command(
     conn: RemoteConnection,
     remote_command: str,

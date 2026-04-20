@@ -5,20 +5,28 @@ from __future__ import annotations
 import typer
 
 from yoyopod_cli.common import configure_logging
+from yoyopod_cli.paths import load_pi_paths
 from yoyopod_cli.remote_shared import build_remote_app, pi_conn
-from yoyopod_cli.remote_transport import run_remote, shell_quote, validate_config
+from yoyopod_cli.remote_transport import (
+    run_remote,
+    shell_quote,
+    validate_config,
+    venv_activate_prefix,
+)
 
 app = build_remote_app("infra", "Remote power, rtc, and service commands.")
 
 
 def _build_power() -> str:
-    """Invoke `yoyopod pi power battery` on the Pi."""
-    return "yoyopod pi power battery"
+    """Invoke ``yoyopod pi power battery`` on the Pi."""
+    pi = load_pi_paths()
+    return f"{venv_activate_prefix(pi.venv)} && yoyopod pi power battery"
 
 
 def _build_rtc(action: str, *, time_iso: str, repeat_mask: int) -> str:
-    """Build `yoyopod pi power rtc <action>` remote shell."""
-    cmd = f"yoyopod pi power rtc {shell_quote(action)}"
+    """Build ``yoyopod pi power rtc <action>`` remote shell."""
+    pi = load_pi_paths()
+    cmd = f"{venv_activate_prefix(pi.venv)} && yoyopod pi power rtc {shell_quote(action)}"
     if action == "set-alarm":
         if not time_iso:
             raise typer.BadParameter("set-alarm requires --time")
@@ -27,8 +35,11 @@ def _build_rtc(action: str, *, time_iso: str, repeat_mask: int) -> str:
 
 
 def _build_service_install() -> str:
-    """Shell that installs the systemd unit (from the Pi's checkout)."""
+    """Shell that installs the systemd unit and writes the env file."""
     return (
+        "sudo tee /etc/default/yoyopod > /dev/null <<ENV_EOF\n"
+        'YOYOPOD_PROJECT_DIR="$PWD"\n'
+        "ENV_EOF\n"
         "sudo cp deploy/systemd/yoyopod@.service /etc/systemd/system/ && "
         "sudo systemctl daemon-reload && "
         "sudo systemctl enable --now yoyopod@$USER"
@@ -36,10 +47,11 @@ def _build_service_install() -> str:
 
 
 def _build_service_uninstall() -> str:
-    """Shell that removes the systemd unit."""
+    """Shell that removes the systemd unit and its env file."""
     return (
         "sudo systemctl disable --now yoyopod@$USER && "
         "sudo rm -f /etc/systemd/system/yoyopod@.service && "
+        "sudo rm -f /etc/default/yoyopod && "
         "sudo systemctl daemon-reload"
     )
 
