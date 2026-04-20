@@ -1,6 +1,9 @@
 """Test top-level aliases for hot-path commands."""
 
 from __future__ import annotations
+
+from types import SimpleNamespace
+
 from typer.testing import CliRunner
 
 from yoyopod_cli.main import app
@@ -62,6 +65,18 @@ def test_logs_alias_respects_follow_flag(monkeypatch) -> None:
 
 def test_validate_alias_with_flags(monkeypatch) -> None:
     calls: list[str] = []
+
+    def fake_local(argv: list[str]) -> SimpleNamespace:
+        if argv == ["git", "show-ref", "--verify", "--quiet", "refs/heads/main"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv == ["git", "rev-list", "--count", "origin/main..main"]:
+            return SimpleNamespace(returncode=0, stdout="0\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "yoyopod_cli.remote_validate.run_local_capture",
+        fake_local,
+    )
     monkeypatch.setattr(
         "yoyopod_cli.remote_validate.run_remote",
         lambda conn, cmd, tty=False: (calls.append(cmd), 0)[1],
@@ -78,6 +93,18 @@ def test_validate_alias_with_flags(monkeypatch) -> None:
 
 def test_validate_alias_with_power_and_rtc_flags(monkeypatch) -> None:
     calls: list[str] = []
+
+    def fake_local(argv: list[str]) -> SimpleNamespace:
+        if argv == ["git", "show-ref", "--verify", "--quiet", "refs/heads/main"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv == ["git", "rev-list", "--count", "origin/main..main"]:
+            return SimpleNamespace(returncode=0, stdout="0\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "yoyopod_cli.remote_validate.run_local_capture",
+        fake_local,
+    )
     monkeypatch.setattr(
         "yoyopod_cli.remote_validate.run_remote",
         lambda conn, cmd, tty=False: (calls.append(cmd), 0)[1],

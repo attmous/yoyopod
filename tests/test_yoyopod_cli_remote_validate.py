@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from typer.testing import CliRunner
 
 from yoyopod_cli.remote_validate import app, _build_validate, _build_preflight_steps
@@ -215,3 +217,87 @@ def test_validate_has_sha_flag() -> None:
     validate_cmd = click_cmd.commands["validate"]  # type: ignore[attr-defined]
     names = _collect_option_names(validate_cmd)
     assert "--sha" in names, f"--sha flag missing; found: {names}"
+
+
+def test_validate_cli_stops_on_dirty_local_worktree(monkeypatch) -> None:
+    remote_calls: list[str] = []
+
+    def fake_local(argv: list[str]) -> SimpleNamespace:
+        if argv == ["git", "diff", "--quiet"]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("yoyopod_cli.remote_validate.run_local_capture", fake_local)
+    monkeypatch.setattr(
+        "yoyopod_cli.remote_validate.run_remote",
+        lambda conn, cmd, tty=False: remote_calls.append(cmd) or 0,
+    )
+    monkeypatch.setenv("YOYOPOD_PI_HOST", "rpi-zero")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["validate"])
+
+    assert result.exit_code == 1
+    assert "Local worktree has uncommitted changes" in result.output
+    assert remote_calls == []
+
+
+def test_validate_cli_stops_when_requested_branch_has_unpushed_commits(monkeypatch) -> None:
+    remote_calls: list[str] = []
+
+    def fake_local(argv: list[str]) -> SimpleNamespace:
+        if argv in (
+            ["git", "diff", "--quiet"],
+            ["git", "diff", "--cached", "--quiet"],
+            ["git", "fetch", "--quiet", "origin", "feature-x"],
+            ["git", "rev-parse", "--verify", "origin/feature-x^{commit}"],
+        ):
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv == ["git", "show-ref", "--verify", "--quiet", "refs/heads/feature-x"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv == ["git", "rev-list", "--count", "origin/feature-x..feature-x"]:
+            return SimpleNamespace(returncode=0, stdout="2\n", stderr="")
+        raise AssertionError(f"unexpected command: {argv}")
+
+    monkeypatch.setattr("yoyopod_cli.remote_validate.run_local_capture", fake_local)
+    monkeypatch.setattr(
+        "yoyopod_cli.remote_validate.run_remote",
+        lambda conn, cmd, tty=False: remote_calls.append(cmd) or 0,
+    )
+    monkeypatch.setenv("YOYOPOD_PI_HOST", "rpi-zero")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["--branch", "feature-x", "validate"])
+
+    assert result.exit_code == 1
+    assert "has unpushed commits" in result.output
+    assert remote_calls == []
+
+
+def test_validate_cli_accepts_pushed_sha_before_running_remote(monkeypatch) -> None:
+    remote_calls: list[str] = []
+
+    def fake_local(argv: list[str]) -> SimpleNamespace:
+        if argv in (
+            ["git", "diff", "--quiet"],
+            ["git", "diff", "--cached", "--quiet"],
+            ["git", "fetch", "--quiet", "origin", "feature-x"],
+            ["git", "rev-parse", "--verify", "origin/feature-x^{commit}"],
+            ["git", "merge-base", "--is-ancestor", "abc123", "origin/feature-x"],
+        ):
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        raise AssertionError(f"unexpected command: {argv}")
+
+    monkeypatch.setattr("yoyopod_cli.remote_validate.run_local_capture", fake_local)
+    monkeypatch.setattr(
+        "yoyopod_cli.remote_validate.run_remote",
+        lambda conn, cmd, tty=False: remote_calls.append(cmd) or 0,
+    )
+    monkeypatch.setenv("YOYOPOD_PI_HOST", "rpi-zero")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["--branch", "feature-x", "validate", "--sha", "abc123"])
+
+    assert result.exit_code == 0, result.output
+    assert len(remote_calls) == 1
+    assert "abc123" in remote_calls[0]

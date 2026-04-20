@@ -12,6 +12,7 @@ from yoyopod_cli.common import configure_logging
 from yoyopod_cli.remote_shared import build_remote_app, pi_conn
 from yoyopod_cli.remote_transport import (
     run_local,
+    run_local_capture,
     run_remote,
     shell_quote,
     validate_config,
@@ -27,6 +28,78 @@ def _build_preflight_steps() -> list[tuple[str, list[str]]]:
         ("git diff staged", ["git", "diff", "--cached", "--quiet"]),
         ("quality gate", ["uv", "run", "python", "scripts/quality.py", "ci"]),
     ]
+
+
+def _require_local_check(command: list[str], *, message: str) -> None:
+    """Run one local git check and abort with a clear CLI error when it fails."""
+    result = run_local_capture(command)
+    if result.returncode == 0:
+        return
+    typer.echo(message, err=True)
+    stderr = result.stderr.strip()
+    if stderr:
+        typer.echo(stderr, err=True)
+    raise typer.Exit(1)
+
+
+def _require_local_revision_ready(branch: str, sha: str) -> None:
+    """Enforce the committed-code contract before any remote validation runs."""
+    _require_local_check(
+        ["git", "diff", "--quiet"],
+        message=(
+            "Local worktree has uncommitted changes. Commit or stash them before "
+            "`yoyopod remote validate`."
+        ),
+    )
+    _require_local_check(
+        ["git", "diff", "--cached", "--quiet"],
+        message=(
+            "Local index has staged but uncommitted changes. Commit or stash them before "
+            "`yoyopod remote validate`."
+        ),
+    )
+    _require_local_check(
+        ["git", "fetch", "--quiet", "origin", branch],
+        message=f"Failed to fetch `origin/{branch}` before remote validation.",
+    )
+    _require_local_check(
+        ["git", "rev-parse", "--verify", f"origin/{branch}^{{commit}}"],
+        message=(
+            f"Branch `{branch}` is not available on origin. Push it before "
+            "`yoyopod remote validate`."
+        ),
+    )
+    if sha:
+        _require_local_check(
+            ["git", "merge-base", "--is-ancestor", sha, f"origin/{branch}"],
+            message=(
+                f"Commit `{sha}` is not reachable from `origin/{branch}`. "
+                "Push it or choose a pushed SHA before remote validation."
+            ),
+        )
+        return
+
+    local_branch_ref = f"refs/heads/{branch}"
+    local_branch = run_local_capture(["git", "show-ref", "--verify", "--quiet", local_branch_ref])
+    if local_branch.returncode != 0:
+        return
+
+    ahead = run_local_capture(["git", "rev-list", "--count", f"origin/{branch}..{branch}"])
+    if ahead.returncode != 0:
+        typer.echo(
+            f"Failed to compare local `{branch}` against `origin/{branch}` before remote validation.",
+            err=True,
+        )
+        stderr = ahead.stderr.strip()
+        if stderr:
+            typer.echo(stderr, err=True)
+        raise typer.Exit(1)
+    if ahead.stdout.strip() != "0":
+        typer.echo(
+            f"Local branch `{branch}` has unpushed commits. Push it or pass --sha for a pushed commit before remote validation.",
+            err=True,
+        )
+        raise typer.Exit(1)
 
 
 def _build_validate(
@@ -109,6 +182,7 @@ def validate(
     configure_logging(verbose)
     conn = pi_conn(ctx)
     validate_config(conn)
+    _require_local_revision_ready(conn.branch, sha)
     cmd = _build_validate(
         branch=conn.branch,
         sha=sha,
