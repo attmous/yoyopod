@@ -53,7 +53,8 @@ def _build_logs_tail(
     cmd = f"tail -n {lines}{' -f' if follow else ''} {shell_quote(log)}"
     if filter_pattern:
         # Always single-quote the pattern so grep receives it verbatim on the remote.
-        escaped = filter_pattern.replace("'", "'''")
+        # POSIX escape for a single quote inside single-quoted string: '\''
+        escaped = filter_pattern.replace("'", "'\\''")
         cmd += f" | grep '{escaped}'"
     return cmd
 

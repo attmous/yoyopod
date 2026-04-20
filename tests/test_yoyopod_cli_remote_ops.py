@@ -39,6 +39,15 @@ def test_build_logs_tail_follow_errors_filter() -> None:
     assert "grep 'ERROR'" in shell
 
 
+def test_build_logs_tail_filter_with_apostrophe_uses_posix_escape() -> None:
+    pi = PiPaths()
+    shell = _build_logs_tail(pi, lines=50, follow=False, errors=False, filter_pattern="O'Brien")
+    # Must produce grep 'O'\''Brien' — not 'O'''Brien'
+    assert "grep 'O'\\''Brien'" in shell
+    # Regression guard: no triple-single-quote malformed escape
+    assert "'''" not in shell
+
+
 def test_build_sync_includes_branch_and_restart() -> None:
     pi = PiPaths()
     shell = _build_sync(pi, branch="main")
