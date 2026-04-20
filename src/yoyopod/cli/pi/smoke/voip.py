@@ -21,7 +21,7 @@ def _voip_check(config_dir: Path, registration_timeout: float) -> CheckResult:
         return CheckResult(
             name="voip",
             status="fail",
-            details="Liblinphone shim is unavailable; run yoyoctl build liblinphone on the Pi",
+            details="Liblinphone shim is unavailable; run yoyopod build liblinphone on the Pi",
         )
 
     if not voip_config.sip_identity:

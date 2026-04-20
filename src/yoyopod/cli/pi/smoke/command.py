@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 smoke_app = typer.Typer(
     name="smoke",
-    help="Run the legacy combined Raspberry Pi smoke validator. Prefer `yoyoctl pi validate` for focused target checks.",
+    help="Run the legacy combined Raspberry Pi smoke validator. Prefer `yoyopod pi validate` for focused target checks.",
     invoke_without_command=True,
     no_args_is_help=False,
 )
