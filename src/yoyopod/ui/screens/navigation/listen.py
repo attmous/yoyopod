@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
-from yoyopod.audio.local_service import LocalLibraryItem, LocalMusicService
+from yoyopod.audio.music import LocalLibraryItem, LocalMusicService
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.lvgl_lifecycle import current_retained_view

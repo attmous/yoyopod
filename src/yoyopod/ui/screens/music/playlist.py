@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 from loguru import logger
 
-from yoyopod.audio.local_service import LocalMusicService
+from yoyopod.audio.music import LocalMusicService
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.lvgl_lifecycle import current_retained_view
 from yoyopod.ui.screens.base import Screen

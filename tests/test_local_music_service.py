@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-import yoyopod.audio.local_service as local_service_module
+import yoyopod.audio.music.library as library_module
 from yoyopod.audio import LocalMusicService, MockMusicBackend, RecentTrackHistoryStore, Track
 from yoyopod.coordinators.playback import PlaybackCoordinator
 
@@ -122,13 +122,13 @@ def test_local_music_service_collects_tracks_with_single_library_walk(
 
     service = LocalMusicService(None, music_dir=music_dir)
     walk_calls: list[Path] = []
-    original_walk = local_service_module.os.walk
+    original_walk = library_module.os.walk
 
     def _counting_walk(root: Path, *args: object, **kwargs: object):
         walk_calls.append(root)
         yield from original_walk(root, *args, **kwargs)
 
-    monkeypatch.setattr(local_service_module.os, "walk", _counting_walk)
+    monkeypatch.setattr(library_module.os, "walk", _counting_walk)
 
     track_uris = service._collect_local_track_uris()
 
