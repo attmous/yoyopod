@@ -53,7 +53,7 @@ def _build_logs_tail(
     cmd = f"tail -n {lines}{' -f' if follow else ''} {shell_quote(log)}"
     if filter_pattern:
         # Always single-quote the pattern so grep receives it verbatim on the remote.
-        escaped = filter_pattern.replace("'", "'\\''")
+        escaped = filter_pattern.replace("'", "'''")
         cmd += f" | grep '{escaped}'"
     return cmd
 
@@ -137,10 +137,13 @@ def screenshot(
     pi = load_pi_paths()
 
     remote_png = pi.screenshot_path
-    cmd = (
-        f"python -c 'from yoyopod.ui.display.factory import capture_shadow_png; "
-        f"capture_shadow_png({shell_quote(remote_png)})'"
+    # Use a heredoc so shell quoting doesn't conflict with Python string quotes.
+    python_path_literal = repr(remote_png)
+    python_src = (
+        "from yoyopod.ui.display.factory import capture_shadow_png\n"
+        f"capture_shadow_png({python_path_literal})\n"
     )
+    cmd = f"python - <<'PY_SCREENSHOT_EOF'\n{python_src}PY_SCREENSHOT_EOF"
     rc = run_remote(conn, cmd)
     if rc != 0:
         raise typer.Exit(rc)

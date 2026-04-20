@@ -6,8 +6,6 @@ previous `remote navigation-soak` as `--with-navigation`.
 
 from __future__ import annotations
 
-import shlex
-
 import typer
 
 from yoyopod_cli.common import configure_logging
@@ -17,9 +15,13 @@ from yoyopod_cli.remote_transport import run_local, run_remote, validate_config
 app = build_remote_app("validate_app", "Validate commit + health on the Pi.")
 
 
-def _build_preflight() -> str:
-    """Local shell that fails fast on dirty tree + bad quality gate."""
-    return "git diff --quiet && git diff --cached --quiet && " "uv run python scripts/quality.py ci"
+def _build_preflight_steps() -> list[tuple[str, list[str]]]:
+    """Preflight steps as (label, argv) tuples. Run them sequentially; exit on first failure."""
+    return [
+        ("git diff clean", ["git", "diff", "--quiet"]),
+        ("git diff staged", ["git", "diff", "--cached", "--quiet"]),
+        ("quality gate", ["uv", "run", "python", "scripts/quality.py", "ci"]),
+    ]
 
 
 def _build_validate(
@@ -50,7 +52,10 @@ def _build_validate(
 def preflight(verbose: bool = typer.Option(False, "--verbose")) -> None:
     """Run host-side preflight checks (dirty tree + quality gate) before any remote work."""
     configure_logging(verbose)
-    raise typer.Exit(run_local(shlex.split(_build_preflight()), "preflight"))
+    for label, argv in _build_preflight_steps():
+        rc = run_local(argv, label)
+        if rc != 0:
+            raise typer.Exit(rc)
 
 
 @app.command()

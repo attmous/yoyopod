@@ -5,7 +5,6 @@ from __future__ import annotations
 import typer
 
 from yoyopod_cli.common import configure_logging
-from yoyopod_cli.paths import HOST
 from yoyopod_cli.remote_shared import build_remote_app, pi_conn
 from yoyopod_cli.remote_transport import run_remote, shell_quote, validate_config
 
@@ -28,9 +27,9 @@ def _build_rtc(action: str, *, time_iso: str, repeat_mask: int) -> str:
 
 
 def _build_service_install() -> str:
-    """Shell that installs the systemd unit."""
+    """Shell that installs the systemd unit (from the Pi's checkout)."""
     return (
-        f"sudo cp {shell_quote(str(HOST.systemd_unit_template))} /etc/systemd/system/ && "
+        "sudo cp deploy/systemd/yoyopod@.service /etc/systemd/system/ && "
         "sudo systemctl daemon-reload && "
         "sudo systemctl enable --now yoyopod@$USER"
     )

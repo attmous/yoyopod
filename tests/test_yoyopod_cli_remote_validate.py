@@ -3,13 +3,13 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from yoyopod_cli.remote_validate import app, _build_validate, _build_preflight
+from yoyopod_cli.remote_validate import app, _build_validate, _build_preflight_steps
 
 
-def test_build_preflight_checks_git_and_quality() -> None:
-    shell = _build_preflight()
-    assert "git diff" in shell
-    assert "scripts/quality.py" in shell
+def test_build_preflight_steps_include_git_and_quality() -> None:
+    steps = _build_preflight_steps()
+    assert any("git diff" in " ".join(argv) for _, argv in steps)
+    assert any("quality.py" in " ".join(argv) for _, argv in steps)
 
 
 def test_build_validate_minimal() -> None:
@@ -36,13 +36,13 @@ def test_build_validate_only_music() -> None:
 
 
 def test_preflight_help() -> None:
-    runner = CliRunner()
+    runner = CliRunner(env={'COLUMNS': '200'})
     result = runner.invoke(app, ["preflight", "--help"])
     assert result.exit_code == 0
 
 
 def test_validate_help_shows_flags() -> None:
-    runner = CliRunner()
+    runner = CliRunner(env={'COLUMNS': '200'})
     result = runner.invoke(app, ["validate", "--help"])
     assert result.exit_code == 0
     assert "--with-music" in result.output

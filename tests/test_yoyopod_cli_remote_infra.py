@@ -4,7 +4,6 @@ from __future__ import annotations
 from typer.testing import CliRunner
 
 from yoyopod_cli.remote_infra import app, _build_power, _build_rtc, _build_service_install, _build_service_action
-from yoyopod_cli.paths import HOST
 
 
 def test_build_power_invokes_pi_power_battery() -> None:
@@ -33,11 +32,15 @@ def test_build_rtc_set_alarm_without_time_fails() -> None:
         _build_rtc("set-alarm", time_iso="", repeat_mask=127)
 
 
-def test_build_service_install_uses_template() -> None:
+def test_build_service_install_uses_relative_template_path() -> None:
     shell = _build_service_install()
-    assert "yoyopod@.service" in shell
+    assert "deploy/systemd/yoyopod@.service" in shell
     assert "systemctl daemon-reload" in shell
     assert "systemctl enable" in shell
+    # Must NOT contain an absolute host path
+    assert "/home/" not in shell
+    assert "/Users/" not in shell
+    assert "c:/users" not in shell.lower()
 
 
 def test_build_service_action_start() -> None:
