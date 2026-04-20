@@ -63,13 +63,13 @@ def test_backend_compat_shim_imports_mock_without_liblinphone() -> None:
 
     repo_root = Path(__file__).resolve().parents[1]
     script = """
-import importlib
 import sys
 
-module = importlib.import_module("yoyopod.communication.calling.backend_protocol")
+from yoyopod.communication import MockVoIPBackend
+
 assert "yoyopod.communication.integrations.liblinphone.backend" not in sys.modules
-assert module.VoIPBackend.__name__ == "VoIPBackend"
-assert "yoyopod.communication.calling.mock_backend" not in sys.modules
+assert "yoyopod.communication.calling.mock_backend" in sys.modules
+assert MockVoIPBackend.__name__ == "MockVoIPBackend"
 """
     result = subprocess.run(
         [sys.executable, "-c", script],
