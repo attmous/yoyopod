@@ -81,9 +81,13 @@ def test_simulation_factory_uses_whisplay_profile_and_browser_buttons(monkeypatc
 
     server = FakeServer()
 
-    fake_web_server = types.ModuleType("yoyopod.ui.web_server")
+    fake_web_server = types.ModuleType("yoyopod.ui.display.adapters.simulation_web.server")
     fake_web_server.get_server = lambda *args, **kwargs: server
-    monkeypatch.setitem(sys.modules, "yoyopod.ui.web_server", fake_web_server)
+    monkeypatch.setitem(
+        sys.modules,
+        "yoyopod.ui.display.adapters.simulation_web.server",
+        fake_web_server,
+    )
 
     manager = get_input_manager(
         SimulationDisplayAdapter(),

@@ -1,26 +1,45 @@
 """
 Web server for YoyoPod simulation mode.
 
-Provides a Flask + SocketIO web server that serves the simulation UI
-and handles real-time display updates and input events.
-
-Features:
-- Real-time canvas display updates via WebSocket
-- Web-based button controls
-- Keyboard input forwarding
-- Runs in background thread (non-blocking)
-
-Author: YoyoPod Team
-Date: 2025-11-30
+Provides a Flask + SocketIO web server that serves the simulation UI and handles
+real-time display updates and input events.
 """
 
-from flask import Flask, render_template, jsonify, request
-from flask_socketio import SocketIO, emit
-from flask_cors import CORS
-from typing import Optional, Callable
-from loguru import logger
+from __future__ import annotations
+
 import threading
 import time
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, TYPE_CHECKING, Optional
+
+from loguru import logger
+
+if TYPE_CHECKING:
+    from flask import Flask
+    from flask_socketio import SocketIO
+
+
+def _load_dependencies() -> dict[str, Any]:
+    """Import Flask/SocketIO dependencies on demand."""
+    try:
+        from flask import Flask, jsonify, render_template
+        from flask_cors import CORS
+        from flask_socketio import SocketIO, emit
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Simulation web server requires optional dependencies: flask, flask-socketio, and "
+            "flask-cors. Install them to run simulation mode."
+        ) from exc
+
+    return {
+        "Flask": Flask,
+        "jsonify": jsonify,
+        "render_template": render_template,
+        "CORS": CORS,
+        "SocketIO": SocketIO,
+        "emit": emit,
+    }
 
 
 class SimulationWebServer:
@@ -37,7 +56,7 @@ class SimulationWebServer:
     when the application exits.
     """
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 5000):
+    def __init__(self, host: str = "0.0.0.0", port: int = 5000) -> None:
         """
         Initialize the web server.
 
@@ -47,23 +66,28 @@ class SimulationWebServer:
         """
         self.host = host
         self.port = port
-        self.app = Flask(__name__, template_folder='templates')
-        self.app.config['SECRET_KEY'] = 'yoyopod-simulation-key'
+        self._flask_objects = _load_dependencies()
+
+        self.app = self._flask_objects["Flask"](
+            __name__,
+            template_folder=str(Path(__file__).resolve().parent / "templates"),
+        )
+        self.app.config["SECRET_KEY"] = "yoyopod-simulation-key"
 
         # Enable CORS for development
-        CORS(self.app)
+        self._flask_objects["CORS"](self.app)
 
         # Initialize SocketIO
-        self.socketio = SocketIO(
+        self.socketio = self._flask_objects["SocketIO"](
             self.app,
             cors_allowed_origins="*",
-            async_mode='threading'
+            async_mode="threading",
         )
 
         # State
         self.running = False
         self.server_thread: Optional[threading.Thread] = None
-        self.input_callback: Optional[Callable] = None
+        self.input_callback: Optional[Callable[[str], None]] = None
         self.latest_display_data: str = ""
 
         # Setup routes
@@ -75,81 +99,70 @@ class SimulationWebServer:
     def _setup_routes(self) -> None:
         """Setup Flask HTTP routes."""
 
-        @self.app.route('/')
-        def index():
+        @self.app.route("/")
+        def index() -> str:
             """Serve main simulation UI page."""
-            return render_template('display.html')
+            return self._flask_objects["render_template"]("display.html")
 
-        @self.app.route('/api/health')
-        def health():
+        @self.app.route("/api/health")
+        def health() -> tuple[dict[str, str], int]:
             """Health check endpoint."""
-            return jsonify({
-                'status': 'running',
-                'server': 'YoyoPod Simulation',
-                'display': 'ready'
-            })
+            return (
+                {
+                    "status": "running",
+                    "server": "YoyoPod Simulation",
+                    "display": "ready",
+                },
+                200,
+            )
 
-        @self.app.route('/api/input/<action>', methods=['POST'])
-        def handle_input(action):
-            """
-            Handle input action from web UI buttons.
-
-            Args:
-                action: Input action name (SELECT, BACK, UP, DOWN)
-            """
+        @self.app.route("/api/input/<action>", methods=["POST"])
+        def handle_input(action: str):
+            """Handle input action from web UI buttons."""
             if self.input_callback:
                 try:
                     self.input_callback(action.upper())
-                    return jsonify({'status': 'success', 'action': action})
-                except Exception as e:
-                    logger.error(f"Error handling input action {action}: {e}")
-                    return jsonify({'status': 'error', 'message': str(e)}), 500
-            else:
-                return jsonify({'status': 'error', 'message': 'No input handler registered'}), 503
+                    return self._flask_objects["jsonify"](
+                        {"status": "success", "action": action}
+                    ), 200
+                except Exception as exc:
+                    logger.error(f"Error handling input action {action}: {exc}")
+                    return self._flask_objects["jsonify"](
+                        {"status": "error", "message": str(exc)}
+                    ), 500
+            return self._flask_objects["jsonify"](
+                {"status": "error", "message": "No input handler registered"}
+            ), 503
 
     def _setup_socket_handlers(self) -> None:
         """Setup SocketIO event handlers."""
 
-        @self.socketio.on('connect')
-        def handle_connect():
+        @self.socketio.on("connect")
+        def handle_connect() -> None:
             """Handle client connection."""
             logger.info("Browser client connected to simulation server")
             # Send latest display data to newly connected client
             if self.latest_display_data:
-                emit('display_update', {'image': self.latest_display_data})
+                self._flask_objects["emit"](
+                    "display_update", {"image": self.latest_display_data}
+                )
 
-        @self.socketio.on('disconnect')
-        def handle_disconnect():
+        @self.socketio.on("disconnect")
+        def handle_disconnect() -> None:
             """Handle client disconnection."""
             logger.info("Browser client disconnected from simulation server")
 
-        @self.socketio.on('keyboard_input')
-        def handle_keyboard(data):
-            """
-            Handle keyboard input from browser.
-
-            Args:
-                data: Dictionary with 'action' key
-            """
-            if 'action' in data and self.input_callback:
+        @self.socketio.on("keyboard_input")
+        def handle_keyboard(data: dict[str, str]) -> None:
+            """Handle keyboard input from browser."""
+            if "action" in data and self.input_callback:
                 try:
-                    self.input_callback(data['action'].upper())
-                except Exception as e:
-                    logger.error(f"Error handling keyboard input: {e}")
+                    self.input_callback(data["action"].upper())
+                except Exception as exc:
+                    logger.error(f"Error handling keyboard input: {exc}")
 
     def set_input_callback(self, callback: Callable[[str], None]) -> None:
-        """
-        Register callback function for input events.
-
-        Args:
-            callback: Function to call with action name when input occurs.
-                      Signature: callback(action: str) -> None
-
-        Example:
-            >>> def handle_input(action):
-            ...     print(f"Received action: {action}")
-            >>> server.set_input_callback(handle_input)
-        """
+        """Register callback function for input events."""
         self.input_callback = callback
         logger.info("Input callback registered")
 
@@ -159,18 +172,14 @@ class SimulationWebServer:
 
         Args:
             image_data: Base64-encoded PNG image data
-
-        Example:
-            >>> png_base64 = "iVBORw0KGgoAAAANS..."
-            >>> server.send_display_update(png_base64)
         """
         self.latest_display_data = image_data
 
         if self.running:
             try:
-                self.socketio.emit('display_update', {'image': image_data})
-            except Exception as e:
-                logger.warning(f"Failed to send display update: {e}")
+                self.socketio.emit("display_update", {"image": image_data})
+            except Exception as exc:
+                logger.warning(f"Failed to send display update: {exc}")
 
     def start(self) -> None:
         """
@@ -184,7 +193,7 @@ class SimulationWebServer:
 
         self.running = True
 
-        def run_server():
+        def run_server() -> None:
             """Server thread target function."""
             try:
                 logger.info(f"Starting web server on http://{self.host}:{self.port}")
@@ -198,17 +207,17 @@ class SimulationWebServer:
                     debug=False,
                     use_reloader=False,
                     log_output=False,
-                    allow_unsafe_werkzeug=True
+                    allow_unsafe_werkzeug=True,
                 )
-            except Exception as e:
-                logger.error(f"Web server error: {e}")
+            except Exception as exc:
+                logger.error(f"Web server error: {exc}")
                 self.running = False
 
         # Start server thread
         self.server_thread = threading.Thread(
             target=run_server,
             daemon=True,
-            name="WebServerThread"
+            name="WebServerThread",
         )
         self.server_thread.start()
 
@@ -221,11 +230,7 @@ class SimulationWebServer:
             logger.error("Failed to start web server")
 
     def stop(self) -> None:
-        """
-        Stop the web server.
-
-        Gracefully shuts down the server and cleans up resources.
-        """
+        """Stop the web server and clean up resources."""
         if not self.running:
             return
 
@@ -235,7 +240,7 @@ class SimulationWebServer:
         # SocketIO server cleanup
         try:
             self.socketio.stop()
-        except:
+        except Exception:
             pass
 
         if self.server_thread:
@@ -246,12 +251,7 @@ class SimulationWebServer:
         logger.info("Web server stopped")
 
     def is_running(self) -> bool:
-        """
-        Check if web server is currently running.
-
-        Returns:
-            True if server is running, False otherwise
-        """
+        """Check if web server is currently running."""
         return self.running
 
 
@@ -264,34 +264,16 @@ def get_server(host: str = "0.0.0.0", port: int = 5000) -> SimulationWebServer:
     Get or create the global web server instance.
 
     This ensures only one web server runs at a time.
-
-    Args:
-        host: Host address to bind to
-        port: Port number to listen on
-
-    Returns:
-        SimulationWebServer instance
-
-    Example:
-        >>> server = get_server()
-        >>> server.start()
-        >>> # ... use server ...
-        >>> server.stop()
     """
     global _server_instance
 
     if _server_instance is None:
         _server_instance = SimulationWebServer(host=host, port=port)
-
     return _server_instance
 
 
 def cleanup_server() -> None:
-    """
-    Clean up and stop the global web server instance.
-
-    Call this when shutting down the application.
-    """
+    """Clean up and stop the global web server instance."""
     global _server_instance
 
     if _server_instance:

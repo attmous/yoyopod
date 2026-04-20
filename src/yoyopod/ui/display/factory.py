@@ -92,7 +92,7 @@ def _attach_simulation_preview(adapter: DisplayHAL) -> DisplayHAL:
     """Attach the browser preview transport to the simulation adapter."""
 
     try:
-        from yoyopod.ui.web_server import get_server
+        from yoyopod.ui.display.adapters.simulation_web.server import get_server
 
         server = get_server()
         adapter.web_server = server
