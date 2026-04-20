@@ -4,8 +4,8 @@ YoyoPod package.
 Integrated Raspberry Pi application for button-driven music playback and SIP calling.
 """
 
-from yoyopod.core import EventBus
-from yoyopod.core import (
+from yoyopod.event_bus import EventBus
+from yoyopod.events import (
     CallEndedEvent,
     CallStateChangedEvent,
     IncomingCallEvent,
@@ -17,7 +17,7 @@ from yoyopod.core import (
     UserActivityEvent,
     VoIPAvailabilityChangedEvent,
 )
-from yoyopod.core import CallFSM, CallInterruptionPolicy, CallSessionState, MusicFSM, MusicState
+from yoyopod.fsm import CallFSM, CallInterruptionPolicy, CallSessionState, MusicFSM, MusicState
 
 __version__ = "0.1.0"
 __author__ = "YoyoPod Team"
