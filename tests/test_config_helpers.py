@@ -2,8 +2,11 @@
 
 from pathlib import Path
 
-from yoyopod.config.layers import resolve_config_board, resolve_config_layers
-from yoyopod.config.storage import deep_merge_mappings
+from yoyopod.config.composition import (
+    deep_merge_mappings,
+    resolve_config_board,
+    resolve_config_layers,
+)
 from yoyopod.people import Contact, contacts_from_mapping, contacts_to_mapping
 
 

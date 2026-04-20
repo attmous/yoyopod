@@ -6,7 +6,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from yoyopod.config.storage import atomic_write_yaml, load_yaml_mapping
+from yoyopod.config.composition import atomic_write_yaml, load_yaml_mapping
 from yoyopod.people.cloud_sync import build_cloud_contact
 from yoyopod.people.models import Contact, contacts_from_mapping, contacts_to_mapping
 

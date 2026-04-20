@@ -10,13 +10,17 @@ from loguru import logger
 from yoyopod.config.composition import (
     DEVICE_HARDWARE_CONFIG,
     APP_CORE_CONFIG,
+    atomic_write_yaml,
+    deep_merge_mappings,
+    load_yaml_layers,
+    load_yaml_mapping,
     config_loaded,
     merge_layer_groups,
+    resolve_config_board,
+    resolve_config_layers,
 )
-from yoyopod.config.layers import resolve_config_board, resolve_config_layers
 from yoyopod.config.models import (
     CloudConfig,
-    CloudSecretsConfig,
     CommunicationConfig,
     MediaConfig,
     NetworkConfig,
@@ -27,12 +31,6 @@ from yoyopod.config.models import (
     YoyoPodRuntimeConfig,
     build_config_model,
     config_to_dict,
-)
-from yoyopod.config.storage import (
-    atomic_write_yaml,
-    deep_merge_mappings,
-    load_yaml_layers,
-    load_yaml_mapping,
 )
 
 AUDIO_MUSIC_CONFIG = Path("audio/music.yaml")
