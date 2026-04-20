@@ -46,6 +46,7 @@ class NavigationSoakStep:
     action: InputAction | None = None
     wait_for_route: str | None = None
     expect_track_loaded: bool = False
+    reset_selection_after_wait: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,12 +93,14 @@ def build_navigation_soak_plan(*, with_music: bool) -> tuple[NavigationSoakStep,
             "Open Listen from the hub",
             action=InputAction.SELECT,
             wait_for_route="listen",
+            reset_selection_after_wait=True,
         ),
         NavigationSoakStep(
             "action",
             "Open Playlists from Listen",
             action=InputAction.SELECT,
             wait_for_route="playlists",
+            reset_selection_after_wait=True,
         ),
     ]
 
@@ -132,6 +135,7 @@ def build_navigation_soak_plan(*, with_music: bool) -> tuple[NavigationSoakStep,
                     "Return to Playlists",
                     action=InputAction.BACK,
                     wait_for_route="playlists",
+                    reset_selection_after_wait=True,
                 ),
             ]
         )
@@ -143,6 +147,7 @@ def build_navigation_soak_plan(*, with_music: bool) -> tuple[NavigationSoakStep,
                 "Return to Listen",
                 action=InputAction.BACK,
                 wait_for_route="listen",
+                reset_selection_after_wait=True,
             ),
             NavigationSoakStep(
                 "action",
@@ -166,6 +171,7 @@ def build_navigation_soak_plan(*, with_music: bool) -> tuple[NavigationSoakStep,
                 "Return to the hub",
                 action=InputAction.BACK,
                 wait_for_route="hub",
+                reset_selection_after_wait=True,
             ),
             NavigationSoakStep(
                 "action",
@@ -452,7 +458,8 @@ def run_navigation_idle_soak(
                             step.wait_for_route,
                             timeout_seconds=wait_timeout_seconds,
                         )
-                        _reset_selection(app.screen_manager.current_screen)
+                        if step.reset_selection_after_wait:
+                            _reset_selection(app.screen_manager.current_screen)
                     _pump_app(app, hold_seconds)
 
                     if step.expect_track_loaded:
