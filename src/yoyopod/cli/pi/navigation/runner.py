@@ -1,140 +1,22 @@
-"""Target-hardware navigation and idle soak helpers."""
+"""Navigation soak runner orchestration."""
 
 from __future__ import annotations
 
-import os
 import time
-from contextlib import contextmanager
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Iterator
+from typing import TYPE_CHECKING, Callable
 
 from loguru import logger
 
-from yoyopod.audio.test_music import (
-    DEFAULT_TEST_MUSIC_TARGET_DIR,
-    provision_test_music_library,
-)
+from yoyopod.audio.test_music import DEFAULT_TEST_MUSIC_TARGET_DIR, provision_test_music_library
 from yoyopod.events import UserActivityEvent
 from yoyopod.ui.input import InputAction, InteractionProfile
+from yoyopod.cli.pi.navigation.env import _temporary_env_var
+from yoyopod.cli.pi.navigation.pump import _RuntimePump
+from yoyopod.cli.pi.navigation.stats import NavigationSoakFailure, NavigationSoakStats
 
 if TYPE_CHECKING:
     from yoyopod.app import YoyoPodApp
-
-
-class NavigationSoakFailure(RuntimeError):
-    """Raised when the navigation soak cannot complete its expected path."""
-
-
-@dataclass(slots=True)
-class NavigationSoakStats:
-    """Accumulate compact soak diagnostics for the final summary."""
-
-    actions: int = 0
-    visited_screens: set[str] = field(default_factory=set)
-    explicit_idle_seconds: float = 0.0
-    max_runtime_iteration_ms: float = 0.0
-    max_runtime_loop_gap_ms: float = 0.0
-    max_voip_schedule_delay_ms: float = 0.0
-    heaviest_blocking_span_name: str | None = None
-    heaviest_blocking_span_ms: float = 0.0
-    last_track_name: str | None = None
-    playback_verified: bool = False
-    sleep_wake_status: str = "skipped"
-
-    def observe_snapshot(self, snapshot: dict[str, float | int | None]) -> None:
-        """Record high-level loop timing from one runtime snapshot."""
-
-        runtime_iteration = snapshot.get("runtime_iteration_seconds")
-        if runtime_iteration is not None:
-            self.max_runtime_iteration_ms = max(
-                self.max_runtime_iteration_ms,
-                float(runtime_iteration) * 1000.0,
-            )
-
-        loop_gap = snapshot.get("runtime_loop_gap_seconds")
-        if loop_gap is not None:
-            self.max_runtime_loop_gap_ms = max(
-                self.max_runtime_loop_gap_ms,
-                float(loop_gap) * 1000.0,
-            )
-
-        voip_schedule_delay = snapshot.get("voip_schedule_delay_seconds")
-        if voip_schedule_delay is not None:
-            self.max_voip_schedule_delay_ms = max(
-                self.max_voip_schedule_delay_ms,
-                float(voip_schedule_delay) * 1000.0,
-            )
-
-        blocking_name = snapshot.get("runtime_blocking_span_name")
-        blocking_seconds = snapshot.get("runtime_blocking_span_seconds")
-        if blocking_name and blocking_seconds is not None:
-            blocking_ms = float(blocking_seconds) * 1000.0
-            if blocking_ms >= self.heaviest_blocking_span_ms:
-                self.heaviest_blocking_span_ms = blocking_ms
-                self.heaviest_blocking_span_name = str(blocking_name)
-
-
-@contextmanager
-def _temporary_env_var(name: str, value: str | None) -> Iterator[None]:
-    """Temporarily override one environment variable."""
-
-    previous = os.environ.get(name)
-    if value is None:
-        yield
-        return
-
-    os.environ[name] = value
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop(name, None)
-        else:
-            os.environ[name] = previous
-
-
-class _RuntimePump:
-    """Drive the app loop without entering the long-running production loop."""
-
-    def __init__(self, app: "YoyoPodApp", stats: NavigationSoakStats) -> None:
-        self._app = app
-        self._stats = stats
-        self._last_screen_update = time.time()
-        self._screen_update_interval = 1.0
-
-    def run_for(self, duration_seconds: float) -> None:
-        """Pump the app for the requested duration."""
-
-        deadline = time.monotonic() + max(0.0, duration_seconds)
-        while time.monotonic() < deadline:
-            time.sleep(min(0.05, max(0.01, self._app._voip_iterate_interval_seconds)))
-            monotonic_now = time.monotonic()
-            current_time = time.time()
-            iteration_started_at = time.monotonic()
-            self._last_screen_update = self._app.runtime_loop.run_iteration(
-                monotonic_now=monotonic_now,
-                current_time=current_time,
-                last_screen_update=self._last_screen_update,
-                screen_update_interval=self._screen_update_interval,
-            )
-            iteration_duration_ms = (time.monotonic() - iteration_started_at) * 1000.0
-            self._stats.max_runtime_iteration_ms = max(
-                self._stats.max_runtime_iteration_ms,
-                iteration_duration_ms,
-            )
-
-            current_screen = self._app.screen_manager.get_current_screen()
-            if current_screen is not None and current_screen.route_name is not None:
-                self._stats.visited_screens.add(current_screen.route_name)
-
-            snapshot = self._app.runtime_loop.timing_snapshot(now=monotonic_now)
-            self._stats.observe_snapshot(snapshot)
-
-            if self._app._shutdown_completed:
-                raise NavigationSoakFailure(
-                    "app completed shutdown unexpectedly during navigation soak"
-                )
 
 
 class NavigationSoakRunner:
@@ -190,7 +72,9 @@ class NavigationSoakRunner:
                 try:
                     app.stop()
                 except Exception:
-                    logger.exception("Navigation soak cleanup failed after unsuccessful app setup")
+                    logger.exception(
+                        "Navigation soak cleanup failed after unsuccessful app setup"
+                    )
                 return False, "app setup failed"
 
             try:
@@ -610,34 +494,8 @@ class NavigationSoakRunner:
         self.app.event_bus.publish(UserActivityEvent(action_name="navigation_soak"))
         self.pump.run_for(max(0.35, self.hold_seconds))
         if self.app.context is None or not self.app.context.screen.awake:
-            raise NavigationSoakFailure("screen did not wake after simulated navigation activity")
+            raise NavigationSoakFailure(
+                "screen did not wake after simulated navigation activity"
+            )
 
         self.stats.sleep_wake_status = "ok"
-
-
-def run_navigation_soak(
-    *,
-    config_dir: str = "config",
-    cycles: int = 2,
-    hold_seconds: float = 0.35,
-    idle_seconds: float = 3.0,
-    tail_idle_seconds: float = 10.0,
-    with_playback: bool = True,
-    provision_test_music: bool = True,
-    test_music_dir: str = DEFAULT_TEST_MUSIC_TARGET_DIR,
-    skip_sleep: bool = False,
-) -> tuple[bool, str]:
-    """Run the target-hardware navigation and idle stability soak."""
-
-    runner = NavigationSoakRunner(
-        config_dir=config_dir,
-        cycles=cycles,
-        hold_seconds=hold_seconds,
-        idle_seconds=idle_seconds,
-        tail_idle_seconds=tail_idle_seconds,
-        with_playback=with_playback,
-        provision_test_music=provision_test_music,
-        test_music_dir=test_music_dir,
-        skip_sleep=skip_sleep,
-    )
-    return runner.run()
