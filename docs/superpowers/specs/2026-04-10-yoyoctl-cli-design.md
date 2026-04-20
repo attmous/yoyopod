@@ -1,4 +1,4 @@
-# yoyoctl CLI Design
+# yoyopod CLI Design
 
 **Date:** 2026-04-10
 **Status:** Draft
@@ -10,14 +10,14 @@
 
 The `scripts/` folder has 13 Python files (~3,000 lines) with inconsistent CLI patterns (some argparse, some bare `main()`). They're invoked via `uv run python scripts/foo.py`, which is verbose and hard to remember. The code is hard to navigate and has duplicated patterns across scripts.
 
-`yoyoctl` replaces this with a single entry point using typer, organized into logical command groups.
+`yoyopod` replaces this with a single entry point using typer, organized into logical command groups.
 
 ---
 
 ## Command Tree
 
 ```
-yoyoctl
+yoyopod
 ├── pi                          # runs ON the Pi
 │   ├── smoke                   # from pi_smoke.py
 │   ├── tune                    # from whisplay_tune.py
@@ -97,12 +97,12 @@ dev = [
 [project.scripts]
 yoyopod = "yoyopod.main:main"
 yoyopod = "yoyopod.main:main"
-yoyoctl = "yoyopod.cli:app"
+yoyopod = "yoyopod.cli:app"
 ```
 
 ### Key constraint
 
-`typer` is a dev-only dependency. The `yoyoctl` entry point only works when installed with `uv sync --extra dev`. The Pi production environment installs only prod dependencies and never sees typer or the CLI package.
+`typer` is a dev-only dependency. The `yoyopod` entry point only works when installed with `uv sync --extra dev`. The Pi production environment installs only prod dependencies and never sees typer or the CLI package.
 
 The `src/yoyopod/cli/` package must not be imported by any prod code path (`src/yoyopod/app.py`, `src/yoyopod/main.py`, etc.).
 
@@ -115,8 +115,8 @@ The `src/yoyopod/cli/` package must not be imported by any prod code path (`src/
 1. Each script's `main()` logic is refactored into typer command functions — same behavior, new wiring.
 2. argparse argument definitions become typer `Option()` / `Argument()` annotations.
 3. The `scripts/` folder is deleted after all commands are ported and verified.
-4. CLAUDE.md updated: `uv run python scripts/pi_remote.py status --host rpi-zero` becomes `yoyoctl remote status --host rpi-zero`.
-5. Docs and skill files updated to reference `yoyoctl` invocations.
+4. CLAUDE.md updated: `uv run python scripts/pi_remote.py status --host rpi-zero` becomes `yoyopod remote status --host rpi-zero`.
+5. Docs and skill files updated to reference `yoyopod` invocations.
 
 ### What stays the same
 
@@ -127,10 +127,10 @@ The `src/yoyopod/cli/` package must not be imported by any prod code path (`src/
 
 ### Verification
 
-- Every original script invocation documented in CLAUDE.md must work identically via `yoyoctl`.
+- Every original script invocation documented in CLAUDE.md must work identically via `yoyopod`.
 - `uv run pytest -q` continues to pass.
 - `python -m compileall yoyopod` continues to pass.
-- `yoyoctl --help` shows the full command tree with descriptions.
+- `yoyopod --help` shows the full command tree with descriptions.
 - Each leaf command's `--help` matches the original script's argument documentation.
 
 ---
@@ -148,13 +148,13 @@ uv run python scripts/check_voip_registration.py
 uv run python scripts/lvgl_build.py --skip-fetch
 
 # After
-yoyoctl remote status --host rpi-zero
-yoyoctl pi smoke --with-music --with-voip
-yoyoctl pi power battery --verbose
-yoyoctl pi power rtc status
-yoyoctl pi lvgl soak --cycles 5 --simulate
-yoyoctl pi voip check
-yoyoctl build lvgl --skip-fetch
+yoyopod remote status --host rpi-zero
+yoyopod pi smoke --with-music --with-voip
+yoyopod pi power battery --verbose
+yoyopod pi power rtc status
+yoyopod pi lvgl soak --cycles 5 --simulate
+yoyopod pi voip check
+yoyopod build lvgl --skip-fetch
 ```
 
 ---

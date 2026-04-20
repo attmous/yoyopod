@@ -1,15 +1,15 @@
 # Raspberry Pi deploy contract for YoyoPod.
-# This is the shared source of truth for `yoyoctl remote` and the Pi skills.
+# This is the shared source of truth for `yoyopod remote` and the Pi skills.
 # The board should reuse one stable checkout path at `project_dir`.
 # Machine-specific connection overrides belong in deploy/pi-deploy.local.yaml.
 # Leave host/user blank in the tracked file; do not commit personal Pi values here.
 # Create or edit that file with:
-#   yoyoctl remote config edit
+#   yoyopod remote config edit
 # Default board validation flow:
 #   git branch --show-current
 #   git rev-parse HEAD
-#   yoyoctl remote validate --branch <branch> --sha <commit>
-# Dirty-tree `yoyoctl remote rsync` is a rare debugging escape hatch only.
+#   yoyopod remote validate --branch <branch>
+# Dirty-tree `yoyopod remote sync` is a rare debugging escape hatch only.
 
 host: ""
 user: ""
@@ -25,8 +25,7 @@ error_log_file: logs/yoyopod_errors.log
 pid_file: /tmp/yoyopod.pid
 startup_marker: "YoyoPod starting"
 screenshot_path: /tmp/yoyopod_screenshot.png
-# Validation-only library seeded by `yoyoctl pi music provision-test-library`
-# and automatically used by `yoyoctl remote/pi smoke --with-music` unless disabled.
+# Validation-only library used automatically by `yoyopod pi validate smoke --with-music` unless disabled.
 test_music_target_dir: ~/YoyoPod_Test_Music
 rsync_exclude:
   - .git/

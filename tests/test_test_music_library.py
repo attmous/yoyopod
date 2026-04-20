@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from yoyopod.cli.pi.music_fixtures import (
+from yoyopod_cli.music_fixtures import (
     TEST_MUSIC_MANIFEST_FILENAME,
+    TEST_TONE_SPECS,
     expected_test_music_relative_paths,
     provision_test_music_library,
 )
@@ -47,3 +48,11 @@ def test_provision_test_music_library_replaces_managed_assets_only(tmp_path: Pat
     assert extra_file.exists()
     assert first_track.stat().st_size > 3
     assert reprovisioned.default_playlist_path.exists()
+
+
+def test_validation_music_library_is_long_enough_for_navigation_soak() -> None:
+    """Validation tracks should outlast the default Now Playing idle dwell on hardware."""
+
+    total_duration = sum(spec.duration_seconds for spec in TEST_TONE_SPECS)
+
+    assert total_duration > 6.0

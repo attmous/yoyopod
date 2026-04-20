@@ -12,7 +12,8 @@ pytest.importorskip("typer")
 
 from typer.testing import CliRunner
 
-from yoyopod.cli.pi import voip as voip_cli
+import yoyopod_cli.pi_validate as voip_cli
+import yoyopod_cli.pi_voip as voip_check_cli
 from yoyopod.communication.models import CallState, RegistrationState
 
 runner = CliRunner()
@@ -179,12 +180,13 @@ def test_registration_stability_writes_pass_artifacts(
     manager = FakeVoIPManager(clock)
     manager.schedule_registration(0.2, RegistrationState.OK)
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_cli.app,
         [
-            "registration-stability",
+            "voip",
+            "--soak", "registration",
             "--registration-timeout",
             "1",
             "--hold-seconds",
@@ -214,12 +216,13 @@ def test_registration_stability_fails_when_registration_flaps_during_hold(
     manager.schedule_registration(0.1, RegistrationState.OK)
     manager.schedule_registration(0.4, RegistrationState.FAILED)
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_cli.app,
         [
-            "registration-stability",
+            "voip",
+            "--soak", "registration",
             "--registration-timeout",
             "1",
             "--hold-seconds",
@@ -246,12 +249,13 @@ def test_registration_stability_fails_when_manager_start_fails(
     manager = FakeVoIPManager(clock)
     manager.start_result = False
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_cli.app,
         [
-            "registration-stability",
+            "voip",
+            "--soak", "registration",
             "--registration-timeout",
             "1",
             "--hold-seconds",
@@ -276,12 +280,13 @@ def test_registration_stability_fails_when_registration_never_reaches_ok(
     clock = FakeClock()
     manager = FakeVoIPManager(clock)
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_cli.app,
         [
-            "registration-stability",
+            "voip",
+            "--soak", "registration",
             "--registration-timeout",
             "0.5",
             "--hold-seconds",
@@ -308,7 +313,7 @@ def test_reconnect_drill_fails_when_registration_never_recovers(
     manager = FakeVoIPManager(clock)
     manager.schedule_registration(0.1, RegistrationState.OK)
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     def fake_hook(*, recorder, phase: str, command: str) -> bool:
         if phase == "drop":
@@ -325,9 +330,10 @@ def test_reconnect_drill_fails_when_registration_never_recovers(
     monkeypatch.setattr(voip_cli, "_run_shell_hook", fake_hook)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_cli.app,
         [
-            "reconnect-drill",
+            "voip",
+            "--soak", "reconnect",
             "--registration-timeout",
             "1",
             "--disconnect-seconds",
@@ -363,7 +369,7 @@ def test_reconnect_drill_recovers_after_temporary_drop(
     manager = FakeVoIPManager(clock)
     manager.schedule_registration(0.1, RegistrationState.OK)
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     def fake_hook(*, recorder, phase: str, command: str) -> bool:
         if phase == "drop":
@@ -382,9 +388,10 @@ def test_reconnect_drill_recovers_after_temporary_drop(
     monkeypatch.setattr(voip_cli, "_run_shell_hook", fake_hook)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_cli.app,
         [
-            "reconnect-drill",
+            "voip",
+            "--soak", "reconnect",
             "--registration-timeout",
             "1",
             "--disconnect-seconds",
@@ -432,12 +439,13 @@ def test_reconnect_drill_without_hooks_exercises_manual_operator_path(
     manager.schedule_registration(0.3, RegistrationState.FAILED)
     manager.schedule_registration(0.6, RegistrationState.OK)
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_cli.app,
         [
-            "reconnect-drill",
+            "voip",
+            "--soak", "reconnect",
             "--registration-timeout",
             "1",
             "--disconnect-seconds",
@@ -479,7 +487,7 @@ def test_reconnect_drill_fails_when_hook_command_returns_non_zero(
     manager = FakeVoIPManager(clock)
     manager.schedule_registration(0.1, RegistrationState.OK)
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
     phase_under_test = phase
 
     def fake_hook(*, recorder, phase: str, command: str) -> bool:
@@ -496,7 +504,8 @@ def test_reconnect_drill_fails_when_hook_command_returns_non_zero(
     monkeypatch.setattr(voip_cli, "_run_shell_hook", fake_hook)
 
     args = [
-        "reconnect-drill",
+        "voip",
+        "--soak", "reconnect",
         "--registration-timeout",
         "1",
         "--disconnect-seconds",
@@ -517,7 +526,7 @@ def test_reconnect_drill_fails_when_hook_command_returns_non_zero(
         ]
     )
 
-    result = runner.invoke(voip_cli.voip_app, args)
+    result = runner.invoke(voip_cli.app, args)
 
     assert result.exit_code == 1
     summary = _load_summary(tmp_path)
@@ -587,13 +596,14 @@ def test_call_soak_writes_pass_summary(
     manager = FakeVoIPManager(clock)
     manager.schedule_registration(0.1, RegistrationState.OK)
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_cli.app,
         [
-            "call-soak",
-            "--target",
+            "voip",
+            "--soak", "call",
+            "--soak-target",
             "sip:echo@example.com",
             "--registration-timeout",
             "1",
@@ -627,7 +637,7 @@ def test_call_soak_fails_when_call_never_reaches_connected_media(
     manager = FakeVoIPManager(clock)
     manager.schedule_registration(0.1, RegistrationState.OK)
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     def fake_make_call(sip_address: str, contact_name: str | None = None) -> bool:
         manager._set_call_state(CallState.OUTGOING_RINGING)
@@ -637,10 +647,11 @@ def test_call_soak_fails_when_call_never_reaches_connected_media(
     monkeypatch.setattr(manager, "make_call", fake_make_call)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_cli.app,
         [
-            "call-soak",
-            "--target",
+            "voip",
+            "--soak", "call",
+            "--soak-target",
             "sip:echo@example.com",
             "--registration-timeout",
             "1",
@@ -672,7 +683,7 @@ def test_call_soak_fails_fast_when_call_returns_to_idle(
     manager = FakeVoIPManager(clock)
     manager.schedule_registration(0.1, RegistrationState.OK)
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     def fake_make_call(sip_address: str, contact_name: str | None = None) -> bool:
         manager._set_call_state(CallState.OUTGOING_RINGING)
@@ -682,10 +693,11 @@ def test_call_soak_fails_fast_when_call_returns_to_idle(
     monkeypatch.setattr(manager, "make_call", fake_make_call)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_cli.app,
         [
-            "call-soak",
-            "--target",
+            "voip",
+            "--soak", "call",
+            "--soak-target",
             "sip:echo@example.com",
             "--registration-timeout",
             "1",
@@ -717,13 +729,14 @@ def test_call_soak_fails_when_manager_start_fails(
     manager = FakeVoIPManager(clock)
     manager.start_result = False
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_cli.app,
         [
-            "call-soak",
-            "--target",
+            "voip",
+            "--soak", "call",
+            "--soak-target",
             "sip:echo@example.com",
             "--artifacts-dir",
             str(tmp_path),
@@ -747,13 +760,14 @@ def test_call_soak_fails_when_call_cannot_be_initiated(
     manager.schedule_registration(0.1, RegistrationState.OK)
     manager.make_call_result = False
     _patch_clock(monkeypatch, clock)
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", lambda _config_dir: manager)
+    monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_cli.app,
         [
-            "call-soak",
-            "--target",
+            "voip",
+            "--soak", "call",
+            "--soak-target",
             "sip:echo@example.com",
             "--registration-timeout",
             "1",
@@ -776,17 +790,19 @@ def test_check_uses_custom_config_dir(
     clock = FakeClock()
     manager = FakeVoIPManager(clock)
     manager.schedule_registration(0.1, RegistrationState.OK)
-    _patch_clock(monkeypatch, clock)
+    monkeypatch.setattr(voip_check_cli.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(voip_check_cli.time, "time", clock.time)
+    monkeypatch.setattr(voip_check_cli.time, "sleep", clock.sleep)
     called_with: list[str] = []
 
     def fake_build(config_dir: str) -> FakeVoIPManager:
         called_with.append(config_dir)
         return manager
 
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", fake_build)
+    monkeypatch.setattr(voip_check_cli, "_build_voip_manager", fake_build)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_check_cli.app,
         ["check", "--config-dir", "/tmp/custom-config"],
     )
 
@@ -801,7 +817,9 @@ def test_debug_uses_custom_config_dir(
 
     clock = FakeClock()
     manager = FakeVoIPManager(clock)
-    _patch_clock(monkeypatch, clock)
+    monkeypatch.setattr(voip_check_cli.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(voip_check_cli.time, "time", clock.time)
+    monkeypatch.setattr(voip_check_cli.time, "sleep", clock.sleep)
     called_with: list[str] = []
 
     def fake_build(config_dir: str) -> FakeVoIPManager:
@@ -811,11 +829,11 @@ def test_debug_uses_custom_config_dir(
     def interrupting_iterate() -> int:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(voip_cli, "_build_voip_manager", fake_build)
+    monkeypatch.setattr(voip_check_cli, "_build_voip_manager", fake_build)
     monkeypatch.setattr(manager, "iterate", interrupting_iterate)
 
     result = runner.invoke(
-        voip_cli.voip_app,
+        voip_check_cli.app,
         ["debug", "--config-dir", "/tmp/custom-config"],
     )
 

@@ -1577,10 +1577,10 @@ This task is a manual validation on the Cubie A7Z board at 192.168.178.110. No c
 - [ ] **Step 1: Sync code to the Cubie**
 
 ```bash
-yoyoctl remote sync --host 192.168.178.110
+yoyopod remote sync --host 192.168.178.110
 ```
 
-Or if yoyoctl isn't configured for this host:
+Or if yoyopod isn't configured for this host:
 
 ```bash
 ssh radxa@192.168.178.110 "cd ~/yoyo-py && git fetch origin && git checkout claude/hungry-bouman && git pull"

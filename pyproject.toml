@@ -48,15 +48,14 @@ dev = [
 ]
 
 [project.scripts]
-yoyopod = "yoyopod.main:main"
-yoyoctl = "yoyopod.cli:run"
+yoyopod = "yoyopod_cli.main:run"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/yoyopod"]
+packages = ["src/yoyopod", "yoyopod_cli"]
 
 [tool.black]
 line-length = 100
@@ -71,6 +70,7 @@ python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+mypy_path = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -79,26 +79,17 @@ testpaths = ["tests"]
 gate_format_paths = [
     "scripts/quality.py",
     "src/yoyopod/main.py",
-    "src/yoyopod/cli/__init__.py",
-    "src/yoyopod/cli/common.py",
-    "src/yoyopod/cli/build.py",
-    "src/yoyopod/cli/remote",
+    "yoyopod_cli",
 ]
 gate_lint_paths = [
     "scripts/quality.py",
     "src/yoyopod/main.py",
-    "src/yoyopod/cli/__init__.py",
-    "src/yoyopod/cli/common.py",
-    "src/yoyopod/cli/build.py",
-    "src/yoyopod/cli/remote",
+    "yoyopod_cli",
 ]
 gate_type_paths = [
     "scripts/quality.py",
     "src/yoyopod/main.py",
-    "src/yoyopod/cli/__init__.py",
-    "src/yoyopod/cli/common.py",
-    "src/yoyopod/cli/build.py",
-    "src/yoyopod/cli/remote",
+    "yoyopod_cli",
 ]
 audit_format_paths = ["."]
 audit_lint_paths = ["."]

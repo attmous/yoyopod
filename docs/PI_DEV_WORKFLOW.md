@@ -29,16 +29,16 @@ Do not normalize ad hoc per-branch checkout directories on the board.
 
 Make sure your dev machine can SSH into the Raspberry Pi with an alias or reachable host name.
 
-Before the first `yoyoctl remote validate`, verify the host prerequisites that the remote workflow depends on:
+Before the first `yoyopod remote validate`, verify the host prerequisites that the remote workflow depends on:
 
 ```bash
-uv run yoyoctl setup verify-host --with-remote-tools
+uv run yoyopod setup verify-host --with-remote-tools
 ```
 
 If you also use GitHub CLI helpers for branch or PR work, verify that separately:
 
 ```bash
-uv run yoyoctl setup verify-host --with-github
+uv run yoyopod setup verify-host --with-github
 ```
 
 The repo-tracked deploy contract lives in `deploy/pi-deploy.yaml`.
@@ -49,14 +49,14 @@ The repo-tracked deploy contract lives in `deploy/pi-deploy.yaml`.
 - create or update that file with:
 
 ```bash
-yoyoctl remote config edit
+yoyopod remote config edit
 ```
 
 Bootstrap and verify the target with flags that match the hardware and feature paths you actually expect:
 
 ```bash
-uv run yoyoctl remote setup --with-pisugar
-uv run yoyoctl remote verify-setup --with-pisugar
+uv run yoyopod remote setup --with-pisugar
+uv run yoyopod remote verify-setup --with-pisugar
 ```
 
 Add `--with-voice` and/or `--with-network` when the target needs the TTS or modem paths. `--with-pisugar` is the normal Whisplay and PiSugar path because it pulls in the `pisugar-server` package and service check.
@@ -111,18 +111,18 @@ Use this when validating a feature branch or PR on target hardware.
    as a definitive failure. Retry the push a few times before escalating.
 4. Run the repo-owned hardware validation flow:
    ```bash
-   yoyoctl remote validate --branch <branch> --sha <commit>
+   yoyopod remote validate --branch <branch> --sha <commit>
    ```
 
 Useful variations:
 
 ```bash
-yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voip
-yoyoctl remote validate --branch <branch> --sha <commit> --with-power --with-rtc
-yoyoctl remote validate --branch <branch> --sha <commit> --with-navigation-soak
-yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-navigation-soak
-yoyoctl remote validate --branch <branch> --sha <commit> --with-lvgl-soak
-yoyoctl remote validate --branch <branch> --sha <commit> --skip-uv-sync
+yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip
+yoyopod remote validate --branch <branch> --sha <commit> --with-power --with-rtc
+yoyopod remote validate --branch <branch> --sha <commit> --with-navigation
+yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-navigation
+yoyopod remote validate --branch <branch> --sha <commit> --with-lvgl-soak
+yoyopod remote validate --branch <branch> --sha <commit> --skip-uv-sync
 ```
 
 When `--with-music` is enabled, the Pi-side smoke flow seeds the deterministic validation library into the configured `test_music_target_dir` before it exercises the music backend.
@@ -134,20 +134,13 @@ The seeded validation library is explicit and stable:
 - `tracks/bravo-lantern.wav`
 - `tracks/charlie-sundial.wav`
 
-Use the dedicated provisioning helper when you want the assets on the Pi without running the full smoke flow:
-
-```bash
-yoyoctl remote provision-test-music
-yoyoctl remote provision-test-music --target-dir ~/YoyoPod_Test_Music
-```
-
-`yoyoctl remote validate` does all of this:
+`yoyopod remote validate` does all of this:
 
 1. stops if the local worktree is dirty
 2. verifies the requested branch is pushed
 3. syncs the stable Pi checkout to the branch and exact SHA
 4. runs `uv sync --extra dev` unless skipped
-5. runs `yoyoctl pi validate deploy`
+5. runs `yoyopod pi validate deploy`
 6. runs the requested target-side validation checks
 7. restarts the app
 8. verifies startup with the PID file and startup marker
@@ -159,7 +152,7 @@ yoyoctl remote provision-test-music --target-dir ~/YoyoPod_Test_Music
 ### Check remote status
 
 ```bash
-yoyoctl remote status
+yoyopod remote status
 ```
 
 Shows:
@@ -175,42 +168,34 @@ Shows:
 ### Sync committed code without launching the app
 
 ```bash
-yoyoctl remote sync --branch <branch>
-yoyoctl remote sync --branch <branch> --sha <commit>
+yoyopod remote sync --branch <branch>
+yoyopod remote sync --branch <branch> --sha <commit>
 ```
 
 Use this when you want the stable checkout updated but do not want the full validate flow yet.
 
-### Run smoke validation only
+### Run validation
 
 ```bash
-yoyoctl remote smoke
-yoyoctl remote smoke --with-power --with-rtc
-yoyoctl remote smoke --with-music --with-voip --with-rtc
-yoyoctl remote smoke --with-navigation-soak
-yoyoctl remote smoke --with-lvgl-soak
+yoyopod remote validate --branch <branch> --sha <commit>
+yoyopod remote validate --branch <branch> --sha <commit> --with-power --with-rtc
+yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-rtc
+yoyopod remote validate --branch <branch> --sha <commit> --with-navigation
+yoyopod remote validate --branch <branch> --sha <commit> --with-lvgl-soak
 ```
 
 This composes the target-side suite:
 
-- `yoyoctl pi validate smoke`
-- `yoyoctl pi validate music`
-- `yoyoctl pi validate voip`
-- `yoyoctl pi validate navigation`
-- `yoyoctl pi validate stability`
-
-Useful variations:
-
-```bash
-yoyoctl remote smoke --with-music --music-timeout 10
-yoyoctl remote smoke --with-voip --voip-timeout 15 --verbose
-yoyoctl remote provision-test-music
-```
+- `yoyopod pi validate smoke`
+- `yoyopod pi validate music`
+- `yoyopod pi validate voip`
+- `yoyopod pi validate navigation`
+- `yoyopod pi validate stability`
 
 ### Restart the already-synced app
 
 ```bash
-yoyoctl remote restart
+yoyopod remote restart
 ```
 
 This waits for the startup marker and matching PID before returning success.
@@ -218,11 +203,11 @@ This waits for the startup marker and matching PID before returning success.
 ### Structured file logs
 
 ```bash
-yoyoctl remote logs --lines 200
-yoyoctl remote logs --errors
-yoyoctl remote logs --filter comm
-yoyoctl remote logs --filter coord
-yoyoctl remote logs --follow --filter ERROR
+yoyopod remote logs --lines 200
+yoyopod remote logs --errors
+yoyopod remote logs --filter comm
+yoyopod remote logs --filter coord
+yoyopod remote logs --follow --filter ERROR
 ```
 
 This tails the file sinks declared in `deploy/pi-deploy.yaml`, which is the stable Pi contract for:
@@ -243,13 +228,13 @@ When the app looks stuck during idle navigation, use the screenshot signal path 
 evidence trigger:
 
 ```bash
-yoyoctl remote logs --follow --filter ERROR
-yoyoctl remote screenshot --readback
+yoyopod remote logs --follow --filter ERROR
+yoyopod remote screenshot --readback
 ```
 
 What to expect:
 
-- `yoyoctl remote screenshot --readback` sends `SIGUSR1` to the app.
+- `yoyopod remote screenshot --readback` sends `SIGUSR1` to the app.
 - `SIGUSR1` now does two things:
   - appends an all-thread traceback dump to `logs/yoyopod_errors.log`
   - logs a structured runtime snapshot before trying the queued screenshot capture
@@ -264,7 +249,7 @@ What to expect:
 For shadow-buffer comparison, use:
 
 ```bash
-yoyoctl remote screenshot
+yoyopod remote screenshot
 ```
 
 That uses `SIGUSR2`, which captures the same traceback + runtime evidence but prefers the legacy
@@ -304,32 +289,27 @@ runtime stall.
 ### Production systemd service
 
 ```bash
-yoyoctl remote service status
-yoyoctl remote service install
-yoyoctl remote service restart
-yoyoctl remote service logs --lines 150
+yoyopod remote service status
+yoyopod remote service install
+yoyopod remote service restart
+yoyopod remote service logs --lines 150
 ```
 
 This installs `deploy/systemd/yoyopod@.service` onto the Pi as `yoyopod@<remote-user>.service`, enables it at boot, and records the merged `project_dir` in `/etc/default/yoyopod` so the service follows the same stable checkout path.
 
-### Whisplay and PiSugar helpers
+### PiSugar helpers
 
 ```bash
-yoyoctl remote whisplay
-yoyoctl remote whisplay --duration-seconds 45 --double-tap-ms 240 --long-hold-ms 900
-yoyoctl remote lvgl-soak
-yoyoctl remote navigation-soak
-yoyoctl remote navigation-soak --with-playback --idle-seconds 5 --tail-idle-seconds 20
-yoyoctl remote rtc status
-yoyoctl remote power
+yoyopod remote rtc status
+yoyopod remote power
 ```
 
 ## Preflight
 
-`yoyoctl remote preflight` is still useful, but it is a preparation step, not the full hardware-validation finish line.
+`yoyopod remote preflight` is still useful, but it is a preparation step, not the full hardware-validation finish line.
 
 ```bash
-yoyoctl remote preflight --branch <branch> --with-music --with-voip --with-navigation-soak --with-lvgl-soak
+yoyopod remote preflight --branch <branch> --with-music --with-voip --with-navigation --with-lvgl-soak
 ```
 
 What it does:
@@ -339,11 +319,11 @@ What it does:
 3. syncs the chosen branch to the Raspberry Pi
 4. runs the Raspberry Pi smoke pass
 
-Use it before commit when you want an extra sanity pass, or before `yoyoctl remote validate` when you want a stricter gate.
+Use it before commit when you want an extra sanity pass, or before `yoyopod remote validate` when you want a stricter gate.
 
 ## Dirty-Tree Escape Hatch
 
-`yoyoctl remote rsync` still exists, but it is not the normal validation path.
+`yoyopod remote sync` is a debugging escape hatch and is not the normal validation path.
 
 Use it only when:
 
@@ -353,8 +333,8 @@ Use it only when:
 Commands:
 
 ```bash
-yoyoctl remote rsync
-yoyoctl remote rsync --skip-restart
+yoyopod remote sync
+yoyopod remote sync --skip-restart
 ```
 
 If you use it, say clearly that the board is running a dirty-tree override instead of the committed branch/SHA flow.
@@ -373,29 +353,29 @@ If you use it, say clearly that the board is running a dirty-tree override inste
    ```
 5. Validate on the Pi:
    ```bash
-   yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voip
+   yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip
    ```
 6. Manually test on the target hardware while the app remains running.
 
 When you are chasing idle freezes or routed-screen hangs, add the deterministic soak:
 
 ```bash
-yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-navigation-soak
+yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-navigation
 ```
 
 ## Release / Pre-Merge Checklist
 
 - local branch is green with `uv run python scripts/quality.py ci`
 - branch is pushed and reviewed
-- `yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-lvgl-soak` passes
-- if you touched idle navigation, `yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-navigation-soak` passes
+- `yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-lvgl-soak` passes
+- if you touched idle navigation, `yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-navigation` passes
 - the app starts cleanly and stays running for manual hardware testing
 - manual sanity still passes for display, input, music, SIP registration, and call flow
 
 ## Notes
 
-- `yoyoctl remote validate` is the default board-validation contract for branches and PRs.
-- `yoyoctl remote preflight` is intentionally non-launching.
-- `yoyoctl remote service install` expects passwordless `sudo` or an interactive sudo policy on the Pi.
-- `yoyoctl remote rsync` is a debugging escape hatch, not the normal deploy story.
+- `yoyopod remote validate` is the default board-validation contract for branches and PRs.
+- `yoyopod remote preflight` is intentionally non-launching.
+- `yoyopod remote service install` expects passwordless `sudo` or an interactive sudo policy on the Pi.
+- `yoyopod remote sync` used as a dirty-tree override is a debugging escape hatch, not the normal deploy story.
 - For deeper hardware debugging, use `docs/RPI_SMOKE_VALIDATION.md`.

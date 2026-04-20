@@ -8,9 +8,9 @@ import pytest
 
 pytest.importorskip("typer")
 
-import yoyopod.cli.setup as setup_cli_module
+import yoyopod_cli.setup as setup_cli_module
 from yoyopod.core import RUNTIME_REQUIRED_CONFIG_FILES
-from yoyopod.cli.setup import (
+from yoyopod_cli.setup import (
     SetupCheck,
     build_host_setup_commands,
     build_pi_setup_commands,
@@ -78,8 +78,8 @@ def test_build_pi_setup_commands_include_install_sync_and_builds() -> None:
         "pisugar-server",
     )
     assert commands[2].command == ("uv", "sync", "--extra", "dev")
-    assert commands[3].command == ("uv", "run", "yoyoctl", "build", "liblinphone")
-    assert commands[4].command == ("uv", "run", "yoyoctl", "build", "lvgl")
+    assert commands[3].command == ("uv", "run", "yoyopod", "build", "liblinphone")
+    assert commands[4].command == ("uv", "run", "yoyopod", "build", "lvgl")
 
 
 def test_collect_host_setup_checks_cover_required_tools_modules_and_config(
@@ -225,8 +225,10 @@ def test_collect_host_setup_checks_fail_when_power_backend_config_is_missing(
 
 
 def test_tracked_setup_config_paths_cover_runtime_required_config_contract() -> None:
+    # Normalize to forward-slash posix form so the check works on Windows too.
     tracked = {
-        setup_cli_module._display_path(path) for path in setup_cli_module.TRACKED_CONFIG_PATHS
+        setup_cli_module._display_path(path).replace("\\", "/")
+        for path in setup_cli_module.TRACKED_CONFIG_PATHS
     }
 
     assert {path.as_posix() for path in RUNTIME_REQUIRED_CONFIG_FILES}.issubset(tracked)

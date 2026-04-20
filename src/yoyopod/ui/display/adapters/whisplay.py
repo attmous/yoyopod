@@ -115,7 +115,7 @@ class WhisplayDisplayAdapter(DisplayHAL):
         lvgl_buffer_lines: int = 40,
         *,
         # Keep this override narrow. The intended non-test caller is
-        # `yoyoctl pi lvgl probe`, which builds its own throwaway LVGL backend.
+        # `yoyopod pi validate lvgl`, which builds its own throwaway LVGL backend.
         enforce_production_contract: bool | None = None,
     ) -> None:
         """

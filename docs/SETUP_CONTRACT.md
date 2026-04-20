@@ -28,7 +28,7 @@ The repo should own:
 - the tracked app config in `config/`
 - the documented system dependency list in this file
 - the validation commands in `docs/DEVELOPMENT_GUIDE.md` and `docs/RPI_SMOKE_VALIDATION.md`
-- the remote workflow exposed through `yoyoctl remote`
+- the remote workflow exposed through `yoyopod remote`
 
 Machine-local values should stay out of tracked files.
 
@@ -53,18 +53,18 @@ Minimum expectation:
 Current repo-owned bootstrap baseline:
 
 ```bash
-uv run yoyoctl setup host
+uv run yoyopod setup host
 ```
 
 This is the executable baseline, not full setup ownership. It does not provision
 non-apt assets like Vosk models or cover every board-specific edge.
-If `yoyoctl` is invoked before the contributor CLI stack is present, it should
+If `yoyopod` is invoked before the contributor CLI stack is present, it should
 now exit with a short bootstrap hint instead of crashing during import.
 
 Current repo-owned validation baseline:
 
 ```bash
-uv run yoyoctl setup verify-host
+uv run yoyopod setup verify-host
 ```
 
 Optional but expected for Pi workflows:
@@ -79,12 +79,12 @@ Optional but useful for repo operations:
 Workflow-specific host verification:
 
 ```bash
-uv run yoyoctl setup verify-host --with-remote-tools
-uv run yoyoctl setup verify-host --with-github
-uv run yoyoctl setup verify-host --with-remote-tools --with-github
+uv run yoyopod setup verify-host --with-remote-tools
+uv run yoyopod setup verify-host --with-github
+uv run yoyopod setup verify-host --with-remote-tools --with-github
 ```
 
-Use the baseline command for local-only work. Add `--with-remote-tools` before using `yoyoctl remote`, `--with-github` before relying on `gh`, and combine them when you need both.
+Use the baseline command for local-only work. Add `--with-remote-tools` before using `yoyopod remote`, `--with-github` before relying on `gh`, and combine them when you need both.
 
 ### 2. Target Raspberry Pi runtime
 
@@ -102,7 +102,7 @@ Current core system packages and services expected by the active stack:
 Current repo-owned bootstrap baseline:
 
 ```bash
-uv run yoyoctl setup pi
+uv run yoyopod setup pi
 ```
 
 This bootstraps the baseline package/build contract only. It does not yet solve
@@ -110,14 +110,14 @@ Vosk model provisioning, board/modem permissions, or non-Debian portability.
 
 Feature extras are opt-in:
 
-- `yoyoctl setup pi --with-voice`
-- `yoyoctl setup pi --with-network`
-- `yoyoctl setup pi --with-pisugar`
+- `yoyopod setup pi --with-voice`
+- `yoyopod setup pi --with-network`
+- `yoyopod setup pi --with-pisugar`
 
 Current repo-owned verification baseline:
 
 ```bash
-uv run yoyoctl setup verify-pi
+uv run yoyopod setup verify-pi
 ```
 
 This verifies presence and basic build state. It does not perform deeper
@@ -126,8 +126,8 @@ artifact health checks for every native/runtime dependency.
 Use flags that match the actual target you are bringing up:
 
 ```bash
-uv run yoyoctl setup pi --with-pisugar
-uv run yoyoctl setup verify-pi --with-pisugar
+uv run yoyopod setup pi --with-pisugar
+uv run yoyopod setup verify-pi --with-pisugar
 ```
 
 Add `--with-voice` and/or `--with-network` when the target depends on the TTS or modem paths. `--with-pisugar` is the normal Whisplay/PiSugar hardware path because it adds the `pisugar-server` package and service check.
@@ -188,8 +188,8 @@ The tracked deploy contract must stay generic:
 ### Local developer bringup baseline
 
 ```bash
-uv run yoyoctl setup host
-uv run yoyoctl setup verify-host
+uv run yoyopod setup host
+uv run yoyopod setup verify-host
 python yoyopod.py --simulate
 uv run python scripts/quality.py ci
 ```
@@ -200,11 +200,11 @@ hardware-specific extras still need follow-through when the feature requires the
 ### Target Pi bringup baseline
 
 ```bash
-uv run yoyoctl setup pi --with-pisugar
-uv run yoyoctl setup verify-pi --with-pisugar
-yoyoctl pi validate deploy
-yoyoctl pi validate smoke
-yoyoctl pi validate smoke --with-power --with-rtc
+uv run yoyopod setup pi --with-pisugar
+uv run yoyopod setup verify-pi --with-pisugar
+yoyopod pi validate deploy
+yoyopod pi validate smoke
+yoyopod pi validate smoke --with-power --with-rtc
 uv run python yoyopod.py
 ```
 
@@ -215,12 +215,12 @@ when the target needs those feature paths.
 ### Remote Pi workflow baseline
 
 ```bash
-uv run yoyoctl setup verify-host --with-remote-tools
-yoyoctl remote config edit
-uv run yoyoctl remote setup --with-pisugar
-uv run yoyoctl remote verify-setup --with-pisugar
-yoyoctl remote status
-yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voip
+uv run yoyopod setup verify-host --with-remote-tools
+yoyopod remote config edit
+uv run yoyopod remote setup --with-pisugar
+uv run yoyopod remote verify-setup --with-pisugar
+yoyopod remote status
+yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip
 ```
 
 These remote helpers mirror the same baseline contract. They still rely on
@@ -234,15 +234,15 @@ Before treating a failure as an app bug, verify the setup layer first.
 
 Checklist:
 
-- local bootstrap completes with `uv run yoyoctl setup host`
-- local verification passes with `uv run yoyoctl setup verify-host`
-- remote Pi workflows use `uv run yoyoctl setup verify-host --with-remote-tools`
-- GitHub CLI workflows use `uv run yoyoctl setup verify-host --with-github`
+- local bootstrap completes with `uv run yoyopod setup host`
+- local verification passes with `uv run yoyopod setup verify-host`
+- remote Pi workflows use `uv run yoyopod setup verify-host --with-remote-tools`
+- GitHub CLI workflows use `uv run yoyopod setup verify-host --with-github`
 - tracked config files are present under `config/`
-- required system packages are verified with `uv run yoyoctl setup verify-pi`
+- required system packages are verified with `uv run yoyopod setup verify-pi`
 - target feature extras are verified with the matching `--with-pisugar`, `--with-voice`, and `--with-network` flags
 - native shims have been built when the feature requires them
-- `yoyoctl pi validate smoke` passes for the requested hardware path
+- `yoyopod pi validate smoke` passes for the requested hardware path
 - remote config values come from `deploy/pi-deploy.yaml` plus local overrides, not tribal knowledge
 
 ## Current gaps

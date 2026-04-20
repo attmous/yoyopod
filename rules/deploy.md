@@ -1,6 +1,6 @@
 # Deploy Workflow
 
-Applies to: `deploy/pi-deploy.yaml`, `yoyoctl remote`, Raspberry Pi validation, and Pi-facing agent skills
+Applies to: `deploy/pi-deploy.yaml`, `yoyopod remote`, Raspberry Pi validation, and Pi-facing agent skills
 
 ## Default Contract
 
@@ -23,10 +23,10 @@ The repo-owned command for that flow is:
 ```bash
 git branch --show-current
 git rev-parse HEAD
-yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-navigation-soak
+yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-navigation
 ```
 
-`yoyoctl remote validate` is the default because it:
+`yoyopod remote validate` is the default because it:
 
 - stops on uncommitted local changes
 - requires a pushed branch/SHA
@@ -50,7 +50,7 @@ Do not normalize ad hoc per-branch directories on the board.
 
 ## Command Map
 
-The `rpi-deploy` Claude Code plugin is still the high-level integration surface, but in this repo `yoyoctl remote` is the executable implementation and the skills should stay thin wrappers around it.
+The `rpi-deploy` Claude Code plugin is still the high-level integration surface, but in this repo `yoyopod remote` is the executable implementation and the skills should stay thin wrappers around it.
 
 | Command | Purpose |
 |---|---|
@@ -60,45 +60,40 @@ The `rpi-deploy` Claude Code plugin is still the high-level integration surface,
 | `/yoyopod-restart` | Restart the already-synced app |
 | `/yoyopod-status` | Health check dashboard |
 | `/yoyopod-screenshot [--readback]` | Capture display output as PNG |
-| `yoyoctl remote navigation-soak` | Run the target navigation and idle soak over SSH |
+Lower-level `yoyopod remote` commands:
 
-Lower-level `yoyoctl remote` commands:
+- `yoyopod remote validate` is the default branch/SHA validation flow (use `--with-navigation` for the navigation soak, `--with-lvgl-soak` for the LVGL soak)
+- `yoyopod remote sync` is the committed-code sync primitive
+- `yoyopod remote restart` restarts the synced app and verifies startup
 
-- `yoyoctl remote validate` is the default branch/SHA validation flow
-- `yoyoctl remote sync` is the committed-code sync primitive
-- `yoyoctl remote smoke` is the remote smoke primitive
-- `yoyoctl remote restart` restarts the synced app and verifies startup
-- `yoyoctl remote navigation-soak` runs the action-driven navigation and idle soak remotely
-- `yoyoctl remote rsync` is not the default; use it only as an explicit debugging override
+Target-side `yoyopod pi validate` commands:
 
-Target-side `yoyoctl pi validate` commands:
-
-- `yoyoctl pi validate deploy` checks the deploy contract, config files, runtime paths, and entrypoints without launching the app
-- `yoyoctl pi validate smoke` checks environment, display, input, and optional PiSugar telemetry
-- `yoyoctl pi validate music` checks the mpv backend in isolation
-- `yoyoctl pi validate voip` checks Liblinphone startup and SIP registration in isolation
-- `yoyoctl pi validate navigation` runs the one-button navigation, idle, and playback stress path used for freeze repro
-- `yoyoctl pi validate stability` runs the repeated LVGL transition and sleep/wake stability pass
+- `yoyopod pi validate deploy` checks the deploy contract, config files, runtime paths, and entrypoints without launching the app
+- `yoyopod pi validate smoke` checks environment, display, input, and optional PiSugar telemetry
+- `yoyopod pi validate music` checks the mpv backend in isolation
+- `yoyopod pi validate voip` checks Liblinphone startup and SIP registration in isolation
+- `yoyopod pi validate navigation` runs the one-button navigation, idle, and playback stress path used for freeze repro
+- `yoyopod pi validate stability` runs the repeated LVGL transition and sleep/wake stability pass
 
 Config lives in `deploy/pi-deploy.yaml` plus optional `deploy/pi-deploy.local.yaml` for machine-specific host and user overrides. Preferred edit flow:
 
 ```bash
-yoyoctl remote config show
-yoyoctl remote config edit
-uv run yoyoctl remote setup
-uv run yoyoctl remote verify-setup
+yoyopod remote config show
+yoyopod remote config edit
+uv run yoyopod remote setup
+uv run yoyopod remote verify-setup
 ```
 
 ## Escape Hatch Only
 
 Dirty-tree deploys are still allowed as a rare debugging override, but they are not the default validation story.
 
-Use `yoyoctl remote rsync` only when:
+Use `yoyopod remote sync` with caution for dirty-tree debugging only when:
 
 - the user explicitly asks to validate uncommitted local state
 - you are doing one-off hardware debugging and have called out that the Pi is not running committed code
 
-Do not present dirty-tree rsync as the normal way to validate a branch or PR.
+Do not present dirty-tree sync as the normal way to validate a branch or PR.
 
 ## Target Hardware
 

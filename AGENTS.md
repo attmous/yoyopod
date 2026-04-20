@@ -1,6 +1,6 @@
 # YoyoPod - Agent Instructions
 
-Last Updated: 2026-04-19
+Last Updated: 2026-04-20
 Target Hardware: Raspberry Pi Zero 2W
 Project: iPod-inspired VoIP + local music device with small-screen button UI
 
@@ -35,13 +35,14 @@ Canonical deploy/debug skills
 - `skills/yoyopod-screenshot/SKILL.md`
 
 Current runtime summary
-- Entrypoint: `yoyopod.py` -> `yoyopy.main` -> `YoyoPodApp`
+- Entrypoint: `yoyopod.py` -> `yoyopod.main` -> `YoyoPodApp`
 - Main packages: `src/yoyopod/audio/`, `src/yoyopod/communication/`, `src/yoyopod/power/`, `src/yoyopod/ui/`, `src/yoyopod/coordinators/`
 - Runtime structure: split `MusicFSM` + `CallFSM`, typed `EventBus`, coordinator-driven app state
 - Production audio: mpv backend under `src/yoyopod/audio/music/`
 - Production VoIP: Liblinphone under `src/yoyopod/communication/integrations/liblinphone_binding/`
 - Production LVGL path: `src/yoyopod/ui/lvgl_binding/`
 - Production service templates: `deploy/systemd/`
+- CLI package: `yoyopod_cli/` (flat, single `yoyopod` entry point)
 
 Source-of-truth files
 - `src/yoyopod/app.py`
@@ -49,6 +50,8 @@ Source-of-truth files
 - `src/yoyopod/event_bus.py`
 - `src/yoyopod/events.py`
 - `src/yoyopod/coordinators/runtime.py`
+- `yoyopod_cli/main.py`
+- `yoyopod_cli/COMMANDS.md`
 - `README.md`
 - `docs/SYSTEM_ARCHITECTURE.md`
 - `docs/POWER_MODULE.md`
@@ -58,8 +61,17 @@ Source-of-truth files
 High-value commands
 - Install/test env: `uv sync --extra dev`
 - Tests: `uv run pytest -q`
-- Pi smoke: `yoyoctl pi smoke`
-- Remote operations: `yoyoctl remote ...`
+- **CI quality gate (run before every commit + push):** `uv run python scripts/quality.py gate`
+- **CI test suite (run before every commit + push):** `uv run pytest -q`
+- Pi smoke: `yoyopod pi validate smoke`
+- Remote operations: `yoyopod remote ...`
+- Full command reference: `yoyopod_cli/COMMANDS.md` (auto-generated; regenerate via `yoyopod dev docs`)
+
+Pre-commit rule
+- Before every `git commit` (including `--amend`) and every `git push`, run BOTH commands above. They mirror exactly what CI runs in `.github/workflows/ci.yml` — the `quality` job runs `scripts/quality.py gate` (black + ruff + mypy on gate paths, no pytest), and the `test` job runs `pytest -q` (full suite).
+- Per-file pytest/ruff runs are NOT enough. CI gates format + lint + type + full test suite across the paths in `[tool.yoyopod_quality]`, and rendering/behavior can differ between local terminals and Linux CI (terminal width, color, `COLUMNS` env).
+- Windows note: CI is Linux-only. A handful of tests have known Windows-specific failures (faulthandler, native shim loading, Windows-path/font behavior) that are green on Linux. If you're on Windows and see failures, diff them against the latest green main CI run — flag only NEW failures.
+- When dispatching implementer subagents, include "run `uv run python scripts/quality.py gate && uv run pytest -q` before the final commit step" as an explicit requirement.
 
 Hardware modes
 - Pimoroni Display HAT Mini: landscape + four buttons
@@ -69,7 +81,7 @@ Hardware modes
 Guardrails
 - Prefer narrow, reviewable changes.
 - Keep raw LVGL confined to `src/yoyopod/ui/lvgl_binding/` and display-layer code.
-- Prefer `yoyoctl remote` over ad-hoc SSH sequences.
+- Prefer `yoyopod remote` over ad-hoc SSH sequences.
 - Current code and runtime docs beat old plan docs when they disagree.
 - `docs/archive/` is history, not truth.
 

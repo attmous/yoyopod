@@ -15,5 +15,5 @@ def build_whisplay_production_contract_message(reason: str) -> str:
         f"{normalized_reason}. Refusing to continue because Whisplay production runs require "
         "the LVGL renderer on real hardware and do not allow PIL or simulation fallback. "
         "Use `python yoyopod.py --simulate` for local debug fallback, or run "
-        "`yoyoctl build lvgl` on the target to restore the supported render path."
+        "`yoyopod build lvgl` on the target to restore the supported render path."
     )

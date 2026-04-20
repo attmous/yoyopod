@@ -22,26 +22,26 @@ Treat plan docs and checklists as supporting context unless they explicitly stat
 ## Python Environment
 
 ```bash
-uv run yoyoctl setup host
-uv run yoyoctl setup verify-host
+uv run yoyopod setup host
+uv run yoyopod setup verify-host
 ```
 
 These commands define the baseline executable setup contract. They do not yet
 cover non-apt assets like Vosk models or every board/modem-specific setup edge.
-If `yoyoctl` reports that the contributor CLI dependencies are missing, run
+If `yoyopod` reports that the contributor CLI dependencies are missing, run
 `uv sync --extra dev` and retry.
 
 If you plan to use the remote Pi workflow from your dev machine, verify the
 extra host tools explicitly:
 
 ```bash
-uv run yoyoctl setup verify-host --with-remote-tools
+uv run yoyopod setup verify-host --with-remote-tools
 ```
 
 If you plan to use GitHub CLI helpers for branch or PR work, verify that too:
 
 ```bash
-uv run yoyoctl setup verify-host --with-github
+uv run yoyopod setup verify-host --with-github
 ```
 
 Combine both flags when you need both surfaces.
@@ -72,8 +72,8 @@ Feature-gated extras are documented there too, including:
 Example:
 
 ```bash
-uv run yoyoctl setup pi --with-pisugar
-uv run yoyoctl setup verify-pi --with-pisugar
+uv run yoyopod setup pi --with-pisugar
+uv run yoyopod setup verify-pi --with-pisugar
 ```
 
 Treat those commands as the baseline package/build verifier, not proof that all
@@ -193,13 +193,13 @@ The staged gate contract and exact target set live in [`QUALITY_GATES.md`](QUALI
 Target-side validation suite:
 
 ```bash
-yoyoctl pi validate deploy
-yoyoctl pi validate smoke
-yoyoctl pi validate smoke --with-power --with-rtc
-yoyoctl pi validate music
-yoyoctl pi validate voip
-yoyoctl pi validate navigation
-yoyoctl pi validate stability
+yoyopod pi validate deploy
+yoyopod pi validate smoke
+yoyopod pi validate smoke --with-power --with-rtc
+yoyopod pi validate music
+yoyopod pi validate voip
+yoyopod pi validate navigation
+yoyopod pi validate stability
 ```
 
 ## Raspberry Pi Workflow
@@ -207,20 +207,19 @@ yoyoctl pi validate stability
 Preferred remote helper:
 
 ```bash
-uv run yoyoctl setup verify-host --with-remote-tools
-yoyoctl remote config edit
-uv run yoyoctl remote setup --with-pisugar
-uv run yoyoctl remote verify-setup --with-pisugar
-yoyoctl remote config show
-yoyoctl remote status
+uv run yoyopod setup verify-host --with-remote-tools
+yoyopod remote config edit
+uv run yoyopod remote setup --with-pisugar
+uv run yoyopod remote verify-setup --with-pisugar
+yoyopod remote config show
+yoyopod remote status
 git branch --show-current
 git rev-parse HEAD
-yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-lvgl-soak
-yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-navigation-soak
-yoyoctl remote navigation-soak --with-playback --idle-seconds 5 --tail-idle-seconds 20
-yoyoctl remote preflight --branch <branch> --with-music --with-voip --with-navigation-soak --with-lvgl-soak
-yoyoctl remote service status
-yoyoctl remote logs --lines 200
+yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-lvgl-soak
+yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-navigation
+yoyopod remote preflight --branch <branch> --with-music --with-voip --with-navigation --with-lvgl-soak
+yoyopod remote service status
+yoyopod remote logs --lines 200
 ```
 
 That remote flow mirrors the same baseline contract. You still need feature-specific
@@ -252,10 +251,10 @@ Pi deploy defaults live in:
 Useful remote log commands:
 
 ```bash
-yoyoctl remote logs --lines 200
-yoyoctl remote logs --errors
-yoyoctl remote logs --filter comm
-yoyoctl remote logs --follow --filter ERROR
+yoyopod remote logs --lines 200
+yoyopod remote logs --errors
+yoyopod remote logs --filter comm
+yoyopod remote logs --follow --filter ERROR
 ```
 
 ## Package Layout

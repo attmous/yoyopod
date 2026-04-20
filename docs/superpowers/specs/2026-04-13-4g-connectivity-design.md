@@ -191,17 +191,16 @@ Env overrides:
 
 ## CLI Commands
 
-Under `yoyoctl pi network`:
+Under `yoyopod pi network`:
 
-- `yoyoctl pi network status` — modem state, signal, carrier, PPP up/down
-- `yoyoctl pi network gps` — query GPS fix, print coordinates
-- `yoyoctl pi network probe` — check if modem responds to AT commands
+- `yoyopod pi network status` — modem state, signal, carrier, PPP up/down
+- `yoyopod pi network probe` — check if modem responds to AT commands
 
 Remote variant:
 
-- `yoyoctl remote network --host rpi-zero`
+- `yoyopod remote network --host rpi-zero`
 
-Follows existing patterns (`yoyoctl pi power battery`, `yoyoctl pi voip check`).
+Follows existing patterns (`yoyopod pi power battery`, `yoyopod pi voip check`).
 
 ---
 
@@ -212,7 +211,7 @@ Minimal FastAPI app at `demos/demo_gps_server.py`, runs **on the Pi** alongside 
 - `GET /location` — calls `NetworkManager.query_gps()` in-process, returns `{ lat, lng, altitude, speed, timestamp }`
 - `GET /health` — modem status, signal, carrier from cached `ModemState`
 
-For quick testing without the server: `yoyoctl pi network gps` over SSH.
+For quick testing without the server: use `yoyopod pi network probe` or query the GPS via SSH directly.
 
 ---
 

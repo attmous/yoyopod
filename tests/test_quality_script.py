@@ -37,6 +37,6 @@ def test_gate_steps_expand_directory_targets_into_python_files() -> None:
     black_targets = [Path(step.command[-1]) for step in black_steps]
 
     assert black_targets
-    assert Path("src/yoyopod/cli/remote") not in black_targets
-    assert Path("src/yoyopod/cli/remote/navigation.py") in black_targets
+    assert Path("yoyopod_cli") not in black_targets
+    assert Path("yoyopod_cli/main.py") in black_targets
     assert all(target.suffix == ".py" for target in black_targets)

@@ -77,14 +77,13 @@ For Whisplay UI work, the standard loop is:
    ```
 3. Validate the committed branch or exact SHA on the Pi:
    ```bash
-   yoyoctl remote validate --branch <branch> --sha <commit>
+   yoyopod remote validate --branch <branch> --sha <commit>
    ```
 4. Capture output from the Pi:
-   - single capture with `yoyoctl remote screenshot`
-   - multi-screen capture with `yoyoctl pi gallery`
+   - single capture with `yoyopod remote screenshot`
 5. Compare the captured result against Figma and adjust.
 
-Use `yoyoctl remote rsync` only if the user explicitly wants a dirty-tree hardware check as a one-off debugging override.
+Use `yoyopod remote sync` only if the user explicitly wants a dirty-tree hardware check as a one-off debugging override.
 
 ## Screenshot Interpretation
 
@@ -101,7 +100,7 @@ Use all three appropriately:
 ## Native Rebuild Rule
 
 - If `src/yoyopod/ui/lvgl_binding/native/lvgl_shim.c`, `lvgl_shim.h`, `binding.py`, or LVGL config changes, the native shim must be rebuilt on the Pi before judging the hardware result.
-- `yoyoctl remote validate` and `yoyoctl remote restart` may rebuild stale native shims automatically. Do not assume a stale Pi build reflects local code.
+- `yoyopod remote validate` and `yoyopod remote restart` may rebuild stale native shims automatically. Do not assume a stale Pi build reflects local code.
 
 ## Whisplay-Specific Acceptance Criteria
 

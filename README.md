@@ -34,8 +34,8 @@ Supported display/input modes:
 Local-only contributor path:
 
 ```bash
-uv run yoyoctl setup host
-uv run yoyoctl setup verify-host
+uv run yoyopod setup host
+uv run yoyopod setup verify-host
 python yoyopod.py --simulate
 uv run python scripts/quality.py ci
 ```
@@ -43,8 +43,8 @@ uv run python scripts/quality.py ci
 If you plan to validate on a Raspberry Pi or use GitHub CLI helpers, verify those host prerequisites explicitly before you need them:
 
 ```bash
-uv run yoyoctl setup verify-host --with-remote-tools
-uv run yoyoctl setup verify-host --with-github
+uv run yoyopod setup verify-host --with-remote-tools
+uv run yoyopod setup verify-host --with-github
 ```
 
 For the full setup, validation, and Pi workflow, start with:
