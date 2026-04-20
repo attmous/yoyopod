@@ -39,7 +39,7 @@ Current runtime summary
 - Main packages: `src/yoyopod/audio/`, `voip/`, `power/`, `ui/`, `coordinators/`
 - Runtime structure: split `MusicFSM` + `CallFSM`, typed `EventBus`, coordinator-driven app state
 - Production audio: mpv backend under `src/yoyopod/audio/music/`
-- Production VoIP: Liblinphone under `src/yoyopod/voip/liblinphone_binding/`
+- Production VoIP: Liblinphone under `src/yoyopod/communication/integrations/liblinphone_binding/`
 - Production LVGL path: `src/yoyopod/ui/lvgl_binding/`
 - Production service templates: `deploy/systemd/`
 
