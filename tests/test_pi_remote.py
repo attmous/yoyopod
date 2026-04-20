@@ -433,7 +433,7 @@ def test_build_local_preflight_commands_cover_compile_and_pytest() -> None:
 
     assert commands[0][0] == "compileall"
     assert commands[0][1][1:3] == ["-m", "compileall"]
-    assert "src/yoyopod/cli/pi/smoke.py" in commands[0][1]
+    assert "src/yoyopod/cli/pi/smoke" in commands[0][1]
     assert "src/yoyopod/cli/pi/validate.py" in commands[0][1]
     assert "src/yoyopod/cli/pi/voip.py" in commands[0][1]
     assert "src/yoyopod/power/backend.py" in commands[0][1]
@@ -726,9 +726,15 @@ def test_build_parser_includes_navigation_soak_surface() -> None:
     smoke_parser = command_action.choices["smoke"]
     navigation_parser = command_action.choices["navigation-soak"]
 
-    assert any("--with-navigation-soak" in action.option_strings for action in validate_parser._actions)
-    assert any("--with-navigation-soak" in action.option_strings for action in smoke_parser._actions)
-    assert any("--tail-idle-seconds" in action.option_strings for action in navigation_parser._actions)
+    assert any(
+        "--with-navigation-soak" in action.option_strings for action in validate_parser._actions
+    )
+    assert any(
+        "--with-navigation-soak" in action.option_strings for action in smoke_parser._actions
+    )
+    assert any(
+        "--tail-idle-seconds" in action.option_strings for action in navigation_parser._actions
+    )
     assert any(
         "--no-provision-test-music" in action.option_strings
         for action in navigation_parser._actions
