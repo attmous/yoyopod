@@ -14,18 +14,15 @@ from yoyopod.cli.pi.music_fixtures import DEFAULT_TEST_MUSIC_TARGET_DIR
 from yoyopod.cli.common import REPO_ROOT, configure_logging, resolve_config_dir
 from yoyopod.cli.pi.lvgl import soak as run_lvgl_soak
 from yoyopod.cli.pi.navigation.command import register_navigation_command
-from yoyopod.cli.pi.smoke import (
-    CheckResult,
-    _display_check,
-    _environment_check,
-    _input_check,
-    _load_app_config,
-    _load_media_config,
-    _music_check,
-    _power_check,
-    _rtc_check,
-    _voip_check,
-)
+from yoyopod.cli.pi.smoke.command import _load_app_config, _load_media_config
+from yoyopod.cli.pi.smoke.display import _display_check
+from yoyopod.cli.pi.smoke.environment import _environment_check
+from yoyopod.cli.pi.smoke.input import _input_check
+from yoyopod.cli.pi.smoke.music import _music_check
+from yoyopod.cli.pi.smoke.power import _power_check
+from yoyopod.cli.pi.smoke.rtc import _rtc_check
+from yoyopod.cli.pi.smoke.types import CheckResult
+from yoyopod.cli.pi.smoke.voip import _voip_check
 from yoyopod.cli.remote.config import PiDeployConfig, load_pi_deploy_config
 
 validate_app = typer.Typer(

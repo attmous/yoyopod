@@ -305,7 +305,7 @@ def build_local_preflight_commands() -> list[tuple[str, list[str]]]:
                 "compileall",
                 "yoyopod",
                 "tests",
-                "src/yoyopod/cli/pi/smoke.py",
+                "src/yoyopod/cli/pi/smoke",
                 "src/yoyopod/cli/pi/validate.py",
                 "src/yoyopod/cli/pi/voip.py",
                 "src/yoyopod/power/backend.py",
