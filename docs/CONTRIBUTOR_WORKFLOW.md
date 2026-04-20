@@ -23,8 +23,8 @@ If you are new here, read in this order:
 Use the repo-owned setup contract first:
 
 ```bash
-uv run yoyoctl setup host
-uv run yoyoctl setup verify-host
+uv run yoyopod setup host
+uv run yoyopod setup verify-host
 ```
 
 This is the baseline executable setup contract.
@@ -34,8 +34,8 @@ It is not the same thing as complete setup ownership. Feature-specific assets an
 Before you start a workflow that depends on more than local simulation and CI-safe checks, verify the extra host prerequisites explicitly:
 
 ```bash
-uv run yoyoctl setup verify-host --with-remote-tools
-uv run yoyoctl setup verify-host --with-github
+uv run yoyopod setup verify-host --with-remote-tools
+uv run yoyopod setup verify-host --with-github
 ```
 
 Use `--with-remote-tools --with-github` together when you plan to both validate on a Raspberry Pi over SSH and use GitHub CLI helpers for branch or PR work.
@@ -96,16 +96,16 @@ Read:
 Baseline commands:
 
 ```bash
-uv run yoyoctl setup verify-host --with-remote-tools
-yoyoctl remote config edit
-uv run yoyoctl remote setup --with-pisugar
-uv run yoyoctl remote verify-setup --with-pisugar
-yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voip
+uv run yoyopod setup verify-host --with-remote-tools
+yoyopod remote config edit
+uv run yoyopod remote setup --with-pisugar
+uv run yoyopod remote verify-setup --with-pisugar
+yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip
 ```
 
 These are the canonical contributor-path commands.
 Add `--with-voice` and/or `--with-network` when the target needs the TTS or modem paths.
-For direct on-Pi validation commands such as `yoyoctl pi validate smoke`, use [`RPI_SMOKE_VALIDATION.md`](RPI_SMOKE_VALIDATION.md).
+For direct on-Pi validation commands such as `yoyopod pi validate smoke`, use [`RPI_SMOKE_VALIDATION.md`](RPI_SMOKE_VALIDATION.md).
 
 ### Docs and contributor guidance work
 

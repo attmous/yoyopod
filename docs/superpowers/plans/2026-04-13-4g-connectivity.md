@@ -24,7 +24,7 @@
 | `src/yoyopod/network/gps.py` | `GpsReader` — GPS enable/query via AT commands |
 | `src/yoyopod/network/backend.py` | `NetworkBackend` protocol + `Sim7600Backend` implementation |
 | `src/yoyopod/network/manager.py` | `NetworkManager` facade (PowerManager pattern) |
-| `src/yoyopod/cli/pi/network.py` | `yoyoctl pi network` CLI commands |
+| `src/yoyopod/cli/pi/network.py` | `yoyopod pi network` CLI commands |
 | `demos/demo_gps_server.py` | Minimal FastAPI GPS endpoint |
 | `tests/test_network_models.py` | Model and config tests |
 | `tests/test_network_transport.py` | Transport and AT command tests |
@@ -1962,7 +1962,7 @@ Expected: all tests pass
 
 ```bash
 git add src/yoyopod/cli/pi/network.py src/yoyopod/cli/__init__.py
-git commit -m "feat(network): add yoyoctl pi network CLI commands"
+git commit -m "feat(network): add yoyopod pi network CLI commands"
 ```
 
 ---
@@ -2105,13 +2105,13 @@ ssh rpi-zero "groups pi | grep dialout"
 Use the existing deploy workflow:
 
 ```bash
-yoyoctl remote sync --host rpi-zero
+yoyopod remote sync --host rpi-zero
 ```
 
 - [ ] **Step 4: Probe the modem**
 
 ```bash
-ssh rpi-zero "cd /home/pi/yoyo-py && uv run yoyoctl pi network probe"
+ssh rpi-zero "cd /home/pi/yoyo-py && uv run yoyopod pi network probe"
 ```
 
 Expected: `Modem OK`
@@ -2119,18 +2119,12 @@ Expected: `Modem OK`
 - [ ] **Step 5: Check modem status**
 
 ```bash
-ssh rpi-zero "cd /home/pi/yoyo-py && uv run yoyoctl pi network status"
+ssh rpi-zero "cd /home/pi/yoyo-py && uv run yoyopod pi network status"
 ```
 
 Expected: carrier name, signal bars, registered state
 
-- [ ] **Step 6: Test GPS query**
-
-```bash
-ssh rpi-zero "cd /home/pi/yoyo-py && uv run yoyoctl pi network gps"
-```
-
-Expected: GPS coordinates (may need outdoor fix) or "No GPS fix available"
+- [ ] **Step 6: Test GPS query** *(removed in 2026-04 CLI polish — use direct NMEA serial inspection or a one-off test script)*
 
 - [ ] **Step 7: Run full test suite on Pi**
 

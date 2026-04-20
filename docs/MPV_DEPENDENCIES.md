@@ -78,9 +78,9 @@ Notes:
 
 ```bash
 pgrep -af mpv
-yoyoctl pi validate music
-yoyoctl remote smoke --with-music
-yoyoctl remote logs --filter music --lines 100
+yoyopod pi validate music
+yoyopod remote validate --branch <branch> --sha <commit> --with-music
+yoyopod remote logs --filter music --lines 100
 ```
 
 Expected checks:

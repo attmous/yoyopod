@@ -1,14 +1,14 @@
-# yoyoctl CLI Implementation Plan
+# yoyopod CLI Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Migrate 12 scripts from `scripts/` into a unified `yoyoctl` CLI built on typer, organized into `pi`, `remote`, and `build` command groups.
+**Goal:** Migrate 12 scripts from `scripts/` into a unified `yoyopod` CLI built on typer, organized into `pi`, `remote`, and `build` command groups.
 
 **Architecture:** A `src/yoyopod/cli/` subpackage with one module per command group. Root app in `__init__.py` wires subgroups via `app.add_typer()`. Shared logging/config helpers extracted into a common module. typer is a dev-only dependency.
 
 **Tech Stack:** typer>=0.12.0, loguru (existing), pathlib (existing)
 
-**Spec:** `docs/superpowers/specs/2026-04-10-yoyoctl-cli-design.md`
+**Spec:** `docs/superpowers/specs/2026-04-10-yoyopod-cli-design.md`
 
 ---
 
@@ -23,7 +23,7 @@
 - [ ] **Step 1: Write the failing test**
 
 ```python
-"""tests/test_cli.py — yoyoctl CLI smoke tests."""
+"""tests/test_cli.py — yoyopod CLI smoke tests."""
 
 from typer.testing import CliRunner
 
@@ -76,13 +76,13 @@ dev = [
 ]
 ```
 
-Add the `yoyoctl` entry point:
+Add the `yoyopod` entry point:
 
 ```toml
 [project.scripts]
 yoyopod = "yoyopod.main:main"
 yoyopod = "yoyopod.main:main"
-yoyoctl = "yoyopod.cli:run"
+yoyopod = "yoyopod.cli:run"
 ```
 
 Run: `uv sync --extra dev`
@@ -123,14 +123,14 @@ def resolve_config_dir(config_dir: str) -> Path:
 - [ ] **Step 5: Create the root CLI app with empty subgroups**
 
 ```python
-"""src/yoyopod/cli/__init__.py — yoyoctl root application."""
+"""src/yoyopod/cli/__init__.py — yoyopod root application."""
 
 from __future__ import annotations
 
 import typer
 
 app = typer.Typer(
-    name="yoyoctl",
+    name="yoyopod",
     help="YoyoPod development and hardware CLI.",
     no_args_is_help=True,
 )
@@ -149,7 +149,7 @@ app.add_typer(build_app)
 
 
 def run() -> None:
-    """Entry point for the yoyoctl console script."""
+    """Entry point for the yoyopod console script."""
     app()
 ```
 
@@ -167,7 +167,7 @@ Expected: No errors
 
 ```bash
 git add src/yoyopod/cli/__init__.py src/yoyopod/cli/common.py tests/test_cli.py pyproject.toml
-git commit -m "feat(cli): scaffold yoyoctl with pi/remote/build groups"
+git commit -m "feat(cli): scaffold yoyopod with pi/remote/build groups"
 ```
 
 ---
@@ -1130,16 +1130,16 @@ Expected: No errors
 
 - [ ] **Step 10: Verify CLI end-to-end**
 
-Run: `yoyoctl --help`
+Run: `yoyopod --help`
 Expected: Shows pi, remote, build groups
 
-Run: `yoyoctl pi --help`
+Run: `yoyopod pi --help`
 Expected: Shows smoke, tune, gallery, lvgl, voip, power subgroups
 
-Run: `yoyoctl remote --help`
+Run: `yoyopod remote --help`
 Expected: Shows status, sync, smoke, preflight, lvgl-soak, power, config, service
 
-Run: `yoyoctl build --help`
+Run: `yoyopod build --help`
 Expected: Shows lvgl, liblinphone
 
 - [ ] **Step 11: Delete migrated scripts**
@@ -1174,7 +1174,7 @@ Read `tests/test_pi_remote.py`. It imports from `scripts.pi_remote` or uses `sub
 
 - [ ] **Step 2: Update import paths**
 
-Replace any `from scripts.pi_remote import ...` with imports from the new location in `yoyopod.cli.remote.*`. If the test runs `python scripts/pi_remote.py` via subprocess, change to `yoyoctl remote ...` or import and invoke directly.
+Replace any `from scripts.pi_remote import ...` with imports from the new location in `yoyopod.cli.remote.*`. If the test runs `python scripts/pi_remote.py` via subprocess, change to `yoyopod remote ...` or import and invoke directly.
 
 - [ ] **Step 3: Run tests**
 
@@ -1202,7 +1202,7 @@ git commit -m "fix(tests): update pi_remote tests for cli module paths"
 
 - [ ] **Step 1: Update CLAUDE.md Raspberry Pi Workflow section**
 
-Replace all `uv run python scripts/...` invocations with `yoyoctl` equivalents:
+Replace all `uv run python scripts/...` invocations with `yoyopod` equivalents:
 
 ```markdown
 ## Raspberry Pi Workflow
@@ -1210,21 +1210,21 @@ Replace all `uv run python scripts/...` invocations with `yoyoctl` equivalents:
 Preferred remote helper:
 
 \`\`\`bash
-yoyoctl remote status --host rpi-zero
-yoyoctl remote preflight --host rpi-zero --with-music --with-voip --with-lvgl-soak
-yoyoctl remote sync --host rpi-zero --branch main
-yoyoctl remote smoke --host rpi-zero --with-music --with-voip --with-lvgl-soak
-yoyoctl remote lvgl-soak --host rpi-zero --cycles 2
-yoyoctl remote power --host rpi-zero
-yoyoctl remote service install --host rpi-zero
+yoyopod remote status --host rpi-zero
+yoyopod remote preflight --host rpi-zero --with-music --with-voip --with-lvgl-soak
+yoyopod remote sync --host rpi-zero --branch main
+yoyopod remote smoke --host rpi-zero --with-music --with-voip --with-lvgl-soak
+yoyopod remote lvgl-soak --host rpi-zero --cycles 2
+yoyopod remote power --host rpi-zero
+yoyopod remote service install --host rpi-zero
 \`\`\`
 
 Direct smoke helper on the Pi:
 
 \`\`\`bash
-yoyoctl pi smoke
-yoyoctl pi smoke --with-music --with-voip
-yoyoctl pi lvgl soak
+yoyopod pi smoke
+yoyopod pi smoke --with-music --with-voip
+yoyopod pi lvgl soak
 \`\`\`
 ```
 
@@ -1234,8 +1234,8 @@ yoyoctl pi lvgl soak
 ## Debug Entry Points
 
 \`\`\`bash
-yoyoctl pi voip check
-yoyoctl pi voip debug
+yoyopod pi voip check
+yoyopod pi voip debug
 \`\`\`
 ```
 
@@ -1248,7 +1248,7 @@ Add a new section for the CLI package:
 ```markdown
 ### CLI (dev-only)
 
-- `src/yoyopod/cli/__init__.py` - root yoyoctl app and group wiring
+- `src/yoyopod/cli/__init__.py` - root yoyopod app and group wiring
 - `src/yoyopod/cli/common.py` - shared logging and config helpers
 - `src/yoyopod/cli/build.py` - native extension build commands
 - `src/yoyopod/cli/pi/` - on-Pi hardware and diagnostic commands
@@ -1257,7 +1257,7 @@ Add a new section for the CLI package:
 
 - [ ] **Step 4: Update skill files**
 
-Read each file in `skills/` that references `scripts/`. Update invocation examples to use `yoyoctl`.
+Read each file in `skills/` that references `scripts/`. Update invocation examples to use `yoyopod`.
 
 - [ ] **Step 5: Run compileall and tests one final time**
 
@@ -1269,12 +1269,12 @@ Expected: Both pass
 
 ```bash
 git add CLAUDE.md skills/ docs/
-git commit -m "docs: update all references from scripts/ to yoyoctl"
+git commit -m "docs: update all references from scripts/ to yoyopod"
 ```
 
 ---
 
-Plan complete and saved to `docs/superpowers/plans/2026-04-10-yoyoctl-cli.md`. Two execution options:
+Plan complete and saved to `docs/superpowers/plans/2026-04-10-yoyopod-cli.md`. Two execution options:
 
 **1. Subagent-Driven (recommended)** — I dispatch a fresh subagent per task, review between tasks, fast iteration
 

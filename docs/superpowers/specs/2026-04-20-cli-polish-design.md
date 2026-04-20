@@ -3,7 +3,7 @@
 **Date:** 2026-04-20
 **Owner:** Moustafa
 **Status:** Approved for implementation planning
-**Supersedes:** `docs/superpowers/plans/2026-04-10-yoyoctl-cli.md` (the original `yoyoctl` CLI scaffold plan)
+**Supersedes:** `docs/superpowers/plans/2026-04-10-yoyopod-cli.md` (the original `yoyopod` CLI scaffold plan)
 
 ---
 
@@ -23,7 +23,7 @@ Plus a pile of commands that are no longer part of any real workflow (duplicates
 - Every CLI command follows the same template (signature → shared state pull → inline shell → exit).
 - All path and process constants live in a single `paths.py`.
 - Every surviving command is one you run often enough to justify keeping.
-- `yoyoctl` is gone; `yoyopod` is both the app launcher and the CLI dispatcher.
+- `yoyopod` is gone; `yoyopod` is both the app launcher and the CLI dispatcher.
 - An auto-generated `COMMANDS.md` at the CLI root lists every command.
 
 ---
@@ -39,7 +39,7 @@ Plus a pile of commands that are no longer part of any real workflow (duplicates
 - Introduce a single shared-options callback for the remote Pi connection.
 - Remove the `cli/remote/ops/__init__.py` 152-line re-export shim.
 - Remove the `argparse.Namespace` bridge in every remote handler.
-- Rename the console script `yoyoctl` → `yoyopod` (cold cutover, no alias).
+- Rename the console script `yoyopod` → `yoyopod` (cold cutover, no alias).
 - Regenerate and commit `yoyopod_cli/COMMANDS.md` from Typer introspection.
 - Update all documentation, skills, CLAUDE.md, and tests.
 
@@ -421,7 +421,7 @@ def run() -> None:
 ```toml
 [project.scripts]
 yoyopod = "yoyopod_cli.main:run"
-# yoyoctl removed entirely
+# yoyopod removed entirely
 ```
 
 The bare-`yoyopod`-launches-the-app behavior uses Typer's `@app.callback(invoke_without_command=True)` — no custom sys.argv parsing.
@@ -486,7 +486,7 @@ Every monkeypatch target in `tests/test_pi_remote.py` (~15 lines) gets a one-lin
 
 ## 11. Documentation updates
 
-### Files requiring find-and-replace of `yoyoctl` → `yoyopod`
+### Files requiring find-and-replace of `yoyopod` → `yoyopod`
 
 - `CLAUDE.md` (project instructions)
 - `README.md`
@@ -501,9 +501,9 @@ Every monkeypatch target in `tests/test_pi_remote.py` (~15 lines) gets a one-lin
 - `skills/yoyopod-restart/SKILL.md`
 - `skills/yoyopod-status/SKILL.md`
 - `skills/yoyopod-screenshot/SKILL.md`
-- Any `rules/*.md` referencing `yoyoctl`
+- Any `rules/*.md` referencing `yoyopod`
 
-Global `grep -rn yoyoctl` + find-replace pass, followed by human review.
+Global `grep -rn yoyopod` + find-replace pass, followed by human review.
 
 ### Updates covering removed commands
 
@@ -522,7 +522,7 @@ Low-risk because scope is well-contained to one package plus its tests and docs.
 ### Step sequence
 
 1. **Scaffold** `yoyopod_cli/` with `paths.py`, `common.py`, `remote_shared.py`, `remote_transport.py`, empty `main.py` skeleton, `__init__.py`. No commands yet. Verify `python -c "import yoyopod_cli"` works.
-2. **Rewire entry point.** `pyproject.toml`: `yoyopod = "yoyopod_cli.main:run"`. Remove `yoyoctl` line. Verify `yoyopod --help` shows the skeleton.
+2. **Rewire entry point.** `pyproject.toml`: `yoyopod = "yoyopod_cli.main:run"`. Remove `yoyopod` line. Verify `yoyopod --help` shows the skeleton.
 3. **Port `build` + `setup` groups** (smallest, least cross-referenced — warm-up).
 4. **Port `remote_ops`** (status, sync, restart, logs, screenshot) — proves the shared-options pattern on the hot path.
 5. **Port `remote_config`, `remote_infra`, `remote_setup`** — rest of remote except validate.
@@ -533,14 +533,14 @@ Low-risk because scope is well-contained to one package plus its tests and docs.
 10. **Build `_docgen.py`** and generate `COMMANDS.md`.
 11. **Delete `src/yoyopod/cli/`** in one commit. Update `pyproject.toml` quality-gate paths.
 12. **Migrate tests** — import-path rewrites, monkeypatch target updates, delete tests for cut commands. Run `uv run python scripts/quality.py ci` to green.
-13. **Doc sweep** — find-replace `yoyoctl` → `yoyopod` across docs/skills/CLAUDE.md/rules. Note removed commands in relevant skills.
+13. **Doc sweep** — find-replace `yoyopod` → `yoyopod` across docs/skills/CLAUDE.md/rules. Note removed commands in relevant skills.
 14. **Final verification** — full CI pass, `yoyopod pi validate deploy` + `yoyopod pi validate smoke` on real hardware.
 
 ### Risk notes
 
 - **Tests that monkeypatch legacy paths are the biggest nuisance.** The current `cli/remote/ops/__init__.py` shim exists specifically for legacy test paths. New tests monkeypatch at the new module boundaries. ~15 lines to rewrite; no test logic changes.
-- **Cold cutover means one painful day for anyone with `yoyoctl` in muscle memory or personal scripts.** That's the user (and accepted).
-- **Doc drift risk.** ~50 mentions of `yoyoctl` across docs/skills. A single grep + find-replace catches most; human review catches the rest.
+- **Cold cutover means one painful day for anyone with `yoyopod` in muscle memory or personal scripts.** That's the user (and accepted).
+- **Doc drift risk.** ~50 mentions of `yoyopod` across docs/skills. A single grep + find-replace catches most; human review catches the rest.
 - **Steps 1–11 are pre-deletion.** You can run the new CLI end-to-end and exercise every command before anything gets deleted. Rollback is `git checkout` of steps 2–11.
 
 ---
@@ -557,5 +557,5 @@ Implementation-level decisions (file-by-file call choices, exact helper signatur
 
 - Current implementation: `src/yoyopod/cli/` (~8,800 lines, ~30 files)
 - Reference layout: Hermes Agent `hermes_cli/` — flat package at repo root, bare-`hermes` launches app
-- Superseded plan: `docs/superpowers/plans/2026-04-10-yoyoctl-cli.md` (original scaffold plan)
+- Superseded plan: `docs/superpowers/plans/2026-04-10-yoyopod-cli.md` (original scaffold plan)
 - Related docs: `rules/project.md`, `rules/architecture.md`, `rules/deploy.md`

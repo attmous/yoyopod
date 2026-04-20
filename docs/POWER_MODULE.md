@@ -34,7 +34,7 @@ Main files:
 - `src/yoyopod/power/events.py`
 - `src/yoyopod/coordinators/power.py`
 - `src/yoyopod/ui/screens/system/power.py`
-- `src/yoyopod/cli/pi/power.py` (`yoyoctl pi power battery`, `yoyoctl pi power rtc`)
+- `src/yoyopod/cli/pi/power.py` (`yoyopod pi power battery`, `yoyopod pi power rtc`)
 
 Runtime flow:
 
@@ -212,17 +212,17 @@ Supported RTC operations:
 Primary helper:
 
 ```bash
-yoyoctl pi power rtc status
-yoyoctl pi power rtc sync-to
-yoyoctl pi power rtc sync-from
-yoyoctl pi power rtc set-alarm --time 2026-04-06T07:30:00+02:00
-yoyoctl pi power rtc disable-alarm
+yoyopod pi power rtc status
+yoyopod pi power rtc sync-to
+yoyopod pi power rtc sync-from
+yoyopod pi power rtc set-alarm --time 2026-04-06T07:30:00+02:00
+yoyopod pi power rtc disable-alarm
 ```
 
 Remote helper:
 
 ```bash
-yoyoctl remote rtc status --host rpi-zero
+yoyopod remote rtc status --host rpi-zero
 ```
 
 ## Watchdog Support
@@ -280,7 +280,7 @@ Note:
 Focused power helper:
 
 ```bash
-yoyoctl pi power battery
+yoyopod pi power battery
 ```
 
 This prints:
@@ -298,21 +298,21 @@ This prints:
 Remote power helper:
 
 ```bash
-yoyoctl remote power --host rpi-zero
+yoyopod remote power --host rpi-zero
 ```
 
 Smoke validation:
 
 ```bash
-yoyoctl pi validate smoke --with-power
-yoyoctl pi validate smoke --with-power --with-rtc
+yoyopod pi validate smoke --with-power
+yoyopod pi validate smoke --with-power --with-rtc
 ```
 
 Recommended hardware sequence:
 1. `uv run pytest -q`
-2. `yoyoctl pi validate smoke --with-power --with-rtc`
-3. `yoyoctl pi power battery`
-4. `yoyoctl pi power rtc status`
+2. `yoyopod pi validate smoke --with-power --with-rtc`
+3. `yoyopod pi power battery`
+4. `yoyopod pi power rtc status`
 
 ## Dependencies On The Pi
 
@@ -329,7 +329,7 @@ The PiSugar server should expose at least one of:
 If power telemetry fails:
 - check `pisugar-server` is running
 - check `/tmp/pisugar-server.sock` exists or TCP `8423` is listening
-- run `yoyoctl pi power battery`
+- run `yoyopod pi power battery`
 - run `i2cdetect -y 1` on Raspberry Pi Zero 2W hardware
 - run `i2cdetect -y 7` on Radxa Cubie A7Z hardware
 
@@ -338,7 +338,7 @@ If PiSugar is not visible on the expected I2C bus:
 - if `0x57` disappears but other bus devices still respond, suspect physical contact between the PiSugar pogo pins and the underside of the Raspberry Pi GPIO header
 - clean the underside GPIO pads, reseat the PiSugar carefully, and re-run `i2cdetect`
 - if needed, add a small amount of solder to the underside GPIO pads to improve pogo-pin contact, then power-cycle and retest
-- once the PiSugar device reappears on I2C, restart `pisugar-server` and confirm `yoyoctl pi power battery` returns real battery values again
+- once the PiSugar device reappears on I2C, restart `pisugar-server` and confirm `yoyopod pi power battery` returns real battery values again
 
 Expected PiSugar 3 visibility usually includes:
 - `0x57`
@@ -350,7 +350,7 @@ If watchdog commands fail:
 - confirm passwordless `sudo` is not required for your chosen flow, because the watchdog uses direct I2C tools
 
 If RTC sync behaves strangely:
-- validate with `yoyoctl pi power rtc status`
+- validate with `yoyopod pi power rtc status`
 - check whether the distro image has a working `hwclock` path
 
 If the app shuts down too aggressively:

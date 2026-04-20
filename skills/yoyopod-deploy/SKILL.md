@@ -8,14 +8,14 @@ allowed-tools:
   - Bash(git branch --show-current:*)
   - Bash(git rev-parse:*)
   - Bash(git push:*)
-  - Bash(yoyoctl remote:*)
+  - Bash(yoyopod remote:*)
 ---
 
 ## Config
 
-Use `deploy/pi-deploy.yaml` as the shared deploy contract and `deploy/pi-deploy.local.yaml` for machine-specific overrides such as host, SSH user, and the stable Pi `project_dir`. `yoyoctl remote` merges them directly, and `yoyoctl remote config edit` is the preferred way to create or update the local override.
+Use `deploy/pi-deploy.yaml` as the shared deploy contract and `deploy/pi-deploy.local.yaml` for machine-specific overrides such as host, SSH user, and the stable Pi `project_dir`. `yoyopod remote` merges them directly, and `yoyopod remote config edit` is the preferred way to create or update the local override.
 
-If the file does not exist yet, run `yoyoctl remote config edit` first. That command creates `deploy/pi-deploy.local.yaml` automatically before opening it.
+If the file does not exist yet, run `yoyopod remote config edit` first. That command creates `deploy/pi-deploy.local.yaml` automatically before opening it.
 
 ## Steps
 
@@ -32,13 +32,13 @@ If the file does not exist yet, run `yoyoctl remote config edit` first. That com
 
 4. **Validate the committed branch and exact SHA on the Pi.** Run:
    ```bash
-   yoyoctl remote validate --branch <branch> --sha <commit>
+   yoyopod remote validate --branch <branch> --sha <commit>
    ```
    Add smoke flags such as `--with-music`, `--with-voip`, `--with-power`, `--with-rtc`, or `--with-lvgl-soak` when the task calls for them.
 
 5. **Handle failures.** If validation fails, run:
    ```bash
-   yoyoctl remote logs --lines 20
+   yoyopod remote logs --lines 20
    ```
    Include the relevant error output in your response.
 

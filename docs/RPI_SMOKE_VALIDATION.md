@@ -2,7 +2,7 @@
 
 This guide separates CI-safe checks from the target-hardware checks that still require a Raspberry Pi, the mpv music backend, and a reachable SIP account.
 
-The default board-validation path from the dev machine is now committed-code validation through `yoyoctl remote validate`.
+The default board-validation path from the dev machine is now committed-code validation through `yoyopod remote validate`.
 
 ## Validation Layers
 
@@ -26,17 +26,17 @@ git status --short
 git branch --show-current
 git rev-parse HEAD
 git push
-yoyoctl remote validate --branch <branch> --sha <commit>
+yoyopod remote validate --branch <branch> --sha <commit>
 ```
 
 Useful variations:
 
 ```bash
-yoyoctl remote validate --branch <branch> --sha <commit> --with-power --with-rtc
-yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voip
-yoyoctl remote validate --branch <branch> --sha <commit> --with-navigation-soak
-yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-navigation-soak
-yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-lvgl-soak
+yoyopod remote validate --branch <branch> --sha <commit> --with-power --with-rtc
+yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip
+yoyopod remote validate --branch <branch> --sha <commit> --with-navigation
+yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-navigation
+yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-lvgl-soak
 ```
 
 When `--with-music` is enabled, the Pi smoke flow provisions a deterministic validation library under the configured `test_music_target_dir` before the mpv checks run.
@@ -70,13 +70,13 @@ Expected result:
 Run these directly on the target Raspberry Pi when you want focused, repeated-safe validation without the remote orchestration layer:
 
 ```bash
-yoyoctl pi validate deploy
-yoyoctl pi validate smoke
-yoyoctl pi validate smoke --with-power --with-rtc
-yoyoctl pi validate music
-yoyoctl pi validate voip
-yoyoctl pi validate navigation
-yoyoctl pi validate stability
+yoyopod pi validate deploy
+yoyopod pi validate smoke
+yoyopod pi validate smoke --with-power --with-rtc
+yoyopod pi validate music
+yoyopod pi validate voip
+yoyopod pi validate navigation
+yoyopod pi validate stability
 ```
 
 What each command checks:
@@ -90,15 +90,13 @@ What each command checks:
 
 Useful flags:
 
-- `yoyoctl pi validate music --timeout 10`
-- `yoyoctl pi validate music --test-music-dir ~/YoyoPod_Test_Music`
-- `yoyoctl pi music provision-test-library --target-dir ~/YoyoPod_Test_Music`
-- `yoyoctl remote provision-test-music`
-- `yoyoctl pi validate voip --timeout 15`
-- `yoyoctl pi validate navigation --with-playback --test-music-dir ~/YoyoPod_Test_Music`
-- `yoyoctl pi validate navigation --cycles 3 --idle-seconds 5 --tail-idle-seconds 20`
-- `yoyoctl remote navigation-soak --with-playback --test-music-dir ~/YoyoPod_Test_Music`
-- `yoyoctl pi validate stability --cycles 3 --hold-seconds 0.3`
+- `yoyopod pi validate music --timeout 10`
+- `yoyopod pi validate music --test-music-dir ~/YoyoPod_Test_Music`
+- `yoyopod pi validate voip --timeout 15`
+- `yoyopod pi validate navigation --with-playback --test-music-dir ~/YoyoPod_Test_Music`
+- `yoyopod pi validate navigation --cycles 3 --idle-seconds 5 --tail-idle-seconds 20`
+- `yoyopod remote validate --branch <branch> --sha <commit> --with-navigation`
+- `yoyopod pi validate stability --cycles 3 --hold-seconds 0.3`
 - `--verbose` on any suite command
 
 ## Manual Follow-Up Checks
@@ -118,7 +116,7 @@ Verify:
 ### VoIP registration drill
 
 ```bash
-yoyoctl pi voip check
+yoyopod pi voip check
 ```
 
 Use this when you want a registration-only pass with detailed logs.
@@ -130,13 +128,13 @@ These are the deeper real-hardware VoIP checks. They intentionally stay as a few
 - `summary.json` — pass/fail, timings, final status, and the exact thresholds used
 - `timeline.jsonl` — state changes, periodic status samples, and any network drop/restore hook results
 
-Use them after `yoyoctl pi validate voip` passes, not instead of it.
+Use them after `yoyopod pi validate voip` passes, not instead of it.
 
 #### Registration stability
 
 ```bash
-yoyoctl pi voip registration-stability
-yoyoctl pi voip registration-stability --hold-seconds 120
+yoyopod pi validate voip --soak registration
+yoyopod pi validate voip --soak registration --hold-seconds 120
 ```
 
 What it proves:
@@ -149,14 +147,14 @@ Fail the run if registration never reaches `ok` or if it leaves `ok` during the 
 #### Reconnect drill
 
 ```bash
-yoyoctl pi voip reconnect-drill
-yoyoctl pi voip reconnect-drill --disconnect-seconds 12
+yoyopod pi validate voip --soak reconnect
+yoyopod pi validate voip --soak reconnect --disconnect-seconds 12
 ```
 
 If you can automate the outage on the Pi, keep it explicit. The drill executes `--drop-command` and `--restore-command` with a shell, so treat them as trusted operator input for your own device only:
 
 ```bash
-yoyoctl pi voip reconnect-drill \
+yoyopod pi validate voip --soak reconnect \
   --drop-command "nmcli networking off" \
   --restore-command "nmcli networking on"
 ```
@@ -172,8 +170,8 @@ Fail the run if the drill never sees registration leave `ok` or if recovery does
 #### Call soak
 
 ```bash
-yoyoctl pi voip call-soak --target sip:echo@example.com
-yoyoctl pi voip call-soak --target sip:echo@example.com --soak-seconds 900
+yoyopod pi validate voip --soak call --target sip:echo@example.com
+yoyopod pi validate voip --soak call --target sip:echo@example.com --soak-seconds 900
 ```
 
 Use a target that will actually answer, such as an echo bot or a second endpoint you control.
@@ -193,7 +191,7 @@ Fail the run if the call never connects, if registration drops during the soak, 
 - If a run fails, compare `summary.json` across runs first. It makes timing drift, last seen state, and the exact failure point obvious without reading the whole timeline.
 
 When the full app is running, the coordinator-thread timing signals land in
-`logs/yoyopod.log` and through `yoyoctl remote logs --follow`.
+`logs/yoyopod.log` and through `yoyopod remote logs --follow`.
 
 - `VoIP iterate timing drift` is the per-keep-alive warning. `schedule_delay_ms` shows how late the iterate ran, `iterate_ms` shows how long the Liblinphone keep-alive took on the coordinator thread, and `native_events` shows how many backend events were drained during that pass.
 - `VoIP timing window` is the low-frequency summary for target-hardware runs. Use it to spot repeated delay or duration spikes without reading every keep-alive warning. `max_blocking_span` and `max_blocking_span_ms` point at the worst nearby coordinator step seen in that summary window.
@@ -208,7 +206,7 @@ When the full app is running, the coordinator-thread timing signals land in
 ### Incoming call debug drill
 
 ```bash
-yoyoctl pi voip debug
+yoyopod pi voip debug
 ```
 
 Use this when SIP registration works but incoming-call parsing or callback delivery looks wrong.
@@ -216,37 +214,22 @@ Use this when SIP registration works but incoming-call parsing or callback deliv
 ### Whisplay display-only debug
 
 ```bash
-yoyoctl build lvgl
-yoyoctl pi lvgl probe --scene carousel --duration-seconds 10
+yoyopod build lvgl
+yoyopod pi validate lvgl
 ```
 
 Use this only on a Pi with the Whisplay hardware attached. It validates the display/LVGL path without starting the full app and is not part of CI.
 
 ### Whisplay gesture tuning
 
+This tooling (`pi tune`) was removed in the 2026-04 CLI polish. Use hardware-manual testing with the running app for gesture feel adjustment, or edit `config/device/hardware.yaml` timing overrides directly.
+
 ```bash
-yoyoctl pi tune
-yoyoctl pi tune --double-tap-ms 240 --long-hold-ms 900
-```
-
-Use this when button feel needs tuning on the real device. It listens for the
-semantic Whisplay gestures, prints every detected `advance`, `select`, and
-`back` event with timing detail, and can apply temporary timing overrides
-without editing tracked config files.
-
-Useful flags:
-
-- `--duration-seconds 45`
-- `--debounce-ms 75`
-- `--double-tap-ms 240`
-- `--long-hold-ms 900`
-- `--verbose`
-
 ### LVGL Whisplay soak
 
 ```bash
-yoyoctl pi lvgl soak
-yoyoctl pi lvgl soak --cycles 3 --hold-seconds 0.3
+yoyopod pi validate lvgl
+yoyopod pi validate lvgl --cycles 3 --hold-seconds 0.3
 ```
 
 Use this when Whisplay rendering feels fast but you still want a hardware pass for:
@@ -258,9 +241,9 @@ Use this when Whisplay rendering feels fast but you still want a hardware pass f
 ### Navigation and idle stability soak
 
 ```bash
-yoyoctl pi validate navigation
-yoyoctl pi validate navigation --with-playback --test-music-dir ~/YoyoPod_Test_Music
-yoyoctl remote navigation-soak --with-playback --idle-seconds 5 --tail-idle-seconds 20
+yoyopod pi validate navigation
+yoyopod pi validate navigation --with-playback --test-music-dir ~/YoyoPod_Test_Music
+yoyopod remote validate --branch <branch> --sha <commit> --with-navigation
 ```
 
 Use this when you want a reproducible freeze-repro path that keeps the app mostly idle but still exercises:
@@ -274,8 +257,8 @@ Use this when you want a reproducible freeze-repro path that keeps the app mostl
 ### PiSugar RTC drill
 
 ```bash
-yoyoctl pi power rtc status
-yoyoctl pi power rtc sync-to
+yoyopod pi power rtc status
+yoyopod pi power rtc sync-to
 ```
 
 Use this when you want a focused RTC read or sync pass without running the full app.
@@ -283,7 +266,7 @@ Use this when you want a focused RTC read or sync pass without running the full 
 ### PiSugar power drill
 
 ```bash
-yoyoctl pi power battery
+yoyopod pi power battery
 ```
 
 Use this when you want a focused battery, charging, RTC, shutdown-threshold, and watchdog readout without the full smoke flow.
@@ -294,12 +277,12 @@ Use this when you want a focused battery, charging, RTC, shutdown-threshold, and
 2. `uv run python scripts/quality.py ci`
 3. `git push`
 4. `git rev-parse HEAD`
-5. `yoyoctl remote validate --branch <branch> --sha <commit> --with-music --with-voip`
+5. `yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip`
 6. manual follow-up on the still-running app
 
 ## Dirty-Tree Escape Hatch
 
-`yoyoctl remote rsync` still exists for rare debugging sessions, but it is not the default validation contract.
+`yoyopod remote sync` is a debugging escape hatch and is not the default validation contract.
 
 Only use it when:
 
@@ -316,13 +299,13 @@ Only use it when:
 - `registration-stability` fails: compare `logs/voip-validation/*/summary.json` across runs and look for whether startup never reached `ok` or whether `ok` flapped during the hold window
 - `reconnect-drill` fails: check whether the run ever recorded a non-`ok` registration state, whether the outage lasted long enough to force a drop, and whether recovery returned before the timeout
 - `call-soak` fails: check whether the target endpoint actually answered, whether registration stayed `ok`, and which non-connected call state ended the soak
-- `navigation` fails: rerun `yoyoctl pi validate navigation --verbose` or `yoyoctl remote navigation-soak --verbose` and inspect which expected screen or playback transition stalled
-- `stability` fails: rerun `yoyoctl pi validate stability --verbose` or `yoyoctl pi lvgl soak` for a deeper LVGL-only pass
+- `navigation` fails: rerun `yoyopod pi validate navigation --verbose` or `yoyopod remote validate --with-navigation --verbose` and inspect which expected screen or playback transition stalled
+- `stability` fails: rerun `yoyopod pi validate stability --verbose` or `yoyopod pi validate lvgl` for a deeper LVGL-only pass
 - `validate` fails before launch: check whether the branch was actually pushed and whether the Pi checkout is reachable over SSH
 
 ## Notes
 
-- each `yoyoctl pi validate <command>` exits non-zero if its requested check fails
+- each `yoyopod pi validate <command>` exits non-zero if its requested check fails
 - CI intentionally does not run hardware-in-the-loop checks
-- `yoyoctl remote validate` is the normal branch and PR validation path
+- `yoyopod remote validate` is the normal branch and PR validation path
 - the target validation suite is meant to stay small and composable; use the manual drills above when you need deeper debugging

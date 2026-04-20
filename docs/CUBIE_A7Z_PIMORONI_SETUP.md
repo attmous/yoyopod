@@ -210,7 +210,7 @@ YOYOPOD_DISPLAY=pimoroni YOYOPOD_CONFIG_BOARD=radxa-cubie-a7z .venv/bin/python y
 To make the systemd service use Pimoroni, create or update the local deploy override:
 
 ```bash
-yoyoctl remote config edit --host cubie-a7z
+yoyopod remote config edit --host cubie-a7z
 ```
 
 Or manually add to `deploy/pi-deploy.local.yaml`:

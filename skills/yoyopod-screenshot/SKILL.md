@@ -4,15 +4,15 @@ description: Capture a screenshot of the app's display from Raspberry Pi
 disable-model-invocation: true
 allowed-tools:
   - Read
-  - Bash(yoyoctl remote:*)
+  - Bash(yoyopod remote:*)
 argument-hint: "[--readback]"
 ---
 
 ## Config
 
-Use `deploy/pi-deploy.yaml` as the shared deploy contract and `deploy/pi-deploy.local.yaml` for machine-specific overrides such as host, SSH user, project dir, and branch. `yoyoctl remote` merges them directly, and `yoyoctl remote config edit` is the preferred way to create or update the local override.
+Use `deploy/pi-deploy.yaml` as the shared deploy contract and `deploy/pi-deploy.local.yaml` for machine-specific overrides such as host, SSH user, project dir, and branch. `yoyopod remote` merges them directly, and `yoyopod remote config edit` is the preferred way to create or update the local override.
 
-If the file does not exist yet, run `yoyoctl remote config edit` first. That command creates `deploy/pi-deploy.local.yaml` automatically before opening it.
+If the file does not exist yet, run `yoyopod remote config edit` first. That command creates `deploy/pi-deploy.local.yaml` automatically before opening it.
 
 ## Argument Parsing
 
@@ -24,7 +24,7 @@ Parse the arguments string provided after `/yoyopod-screenshot`:
 
 1. **Capture the screenshot to a temporary local PNG.** Run:
    ```bash
-   yoyoctl remote screenshot [--readback] --output <local_temp_path>
+   yoyopod remote screenshot [--readback] --output <local_temp_path>
    ```
    Use a temporary local path such as `./pi_screenshot.png`.
 
@@ -38,7 +38,7 @@ Parse the arguments string provided after `/yoyopod-screenshot`:
 
 4. **If the user is debugging screenshot fidelity, verify the capture path in logs.** Run:
    ```bash
-   yoyoctl remote logs --lines 20
+   yoyopod remote logs --lines 20
    ```
    Confirm one of these outcomes:
    - `Saved screenshot via LVGL readback` means the readback path succeeded.

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Restructure the YoyoPod CLI into a flat `yoyopod_cli/` package at the repo root, rename the entry point `yoyoctl` → `yoyopod`, prune ~15 unused commands, consolidate path constants into `paths.py`, and apply one uniform command template across every file.
+**Goal:** Restructure the YoyoPod CLI into a flat `yoyopod_cli/` package at the repo root, rename the entry point `yoyopod` → `yoyopod`, prune ~15 unused commands, consolidate path constants into `paths.py`, and apply one uniform command template across every file.
 
-**Architecture:** New flat package at `yoyopod_cli/` (sibling of `src/`). Every command follows a single template: typed Typer handler → `pi_conn(ctx)` for shared Pi connection → inline f-string shell command → `raise typer.Exit(run_remote(...))`. No intermediate builder layer for simple commands; complex multi-line shell remains a private helper in the same file. `pyproject.toml` scripts collapse from `yoyopod` + `yoyoctl` to just `yoyopod`, with a root callback launching the app when no subcommand is passed. The current `src/yoyopod/cli/` tree is deleted wholesale once the new one is green.
+**Architecture:** New flat package at `yoyopod_cli/` (sibling of `src/`). Every command follows a single template: typed Typer handler → `pi_conn(ctx)` for shared Pi connection → inline f-string shell command → `raise typer.Exit(run_remote(...))`. No intermediate builder layer for simple commands; complex multi-line shell remains a private helper in the same file. `pyproject.toml` scripts collapse from `yoyopod` + `yoyopod` to just `yoyopod`, with a root callback launching the app when no subcommand is passed. The current `src/yoyopod/cli/` tree is deleted wholesale once the new one is green.
 
 **Tech Stack:** Python 3.12, Typer, loguru, pyyaml, pytest, uv, hatch.
 
@@ -923,7 +923,7 @@ Edit `pyproject.toml` lines 50–53:
 yoyopod = "yoyopod_cli.main:run"
 ```
 
-Remove the `yoyoctl = "yoyopod.cli:run"` line. Leave `yoyopod` pointing at the new CLI.
+Remove the `yoyopod = "yoyopod.cli:run"` line. Leave `yoyopod` pointing at the new CLI.
 
 - [ ] **Step 5: Re-install the package so the new script is available**
 
@@ -1491,7 +1491,7 @@ from yoyopod_cli.paths import HOST
 
 def test_build_power_calls_battery() -> None:
     shell = _build_power()
-    assert "yoyopod pi power battery" in shell or "yoyoctl" not in shell
+    assert "yoyopod pi power battery" in shell or "yoyopod" not in shell
 
 
 def test_build_rtc_with_status() -> None:
@@ -3054,7 +3054,7 @@ git commit -m "test(cli): drop tests for cut commands; convert navigation-soak t
 
 ---
 
-## Task 26: Doc sweep — replace `yoyoctl` with `yoyopod` everywhere
+## Task 26: Doc sweep — replace `yoyopod` with `yoyopod` everywhere
 
 **Files:**
 - Modify: `CLAUDE.md`
@@ -3067,23 +3067,23 @@ git commit -m "test(cli): drop tests for cut commands; convert navigation-soak t
 - Modify: `rules/*.md`
 - Modify: `skills/yoyopod-*/SKILL.md`
 
-- [ ] **Step 1: Find all occurrences of `yoyoctl`**
+- [ ] **Step 1: Find all occurrences of `yoyopod`**
 
-Run: `grep -rln "yoyoctl" CLAUDE.md README.md AGENTS.md docs/ rules/ skills/`
+Run: `grep -rln "yoyopod" CLAUDE.md README.md AGENTS.md docs/ rules/ skills/`
 
 Record the list.
 
 - [ ] **Step 2: Find-replace in each file**
 
-For each file in the list, replace `yoyoctl` → `yoyopod`. In most contexts this is a literal replacement; hand-review each doc to catch:
-- Any mention of `yoyoctl` as a separate concept (e.g., "the `yoyoctl` CLI") — reword to "the `yoyopod` CLI" or "the YoyoPod CLI".
-- Any script shown running `uv run yoyoctl` → `uv run yoyopod`.
+For each file in the list, replace `yoyopod` → `yoyopod`. In most contexts this is a literal replacement; hand-review each doc to catch:
+- Any mention of `yoyopod` as a separate concept (e.g., "the `yoyopod` CLI") — reword to "the `yoyopod` CLI" or "the YoyoPod CLI".
+- Any script shown running `uv run yoyopod` → `uv run yoyopod`.
 
 - [ ] **Step 3: Update skills for removed commands**
 
 For these skills, add a note that the relevant commands have been removed:
 
-- `skills/yoyopod-*/SKILL.md`: refresh command examples to the new names (most are already `yoyoctl pi xxx` or `yoyoctl remote xxx` — just the binary name changes).
+- `skills/yoyopod-*/SKILL.md`: refresh command examples to the new names (most are already `yoyopod pi xxx` or `yoyopod remote xxx` — just the binary name changes).
 
 If any skill references `pi tune`, `pi gallery`, `remote whisplay`, `remote rsync`, `pi voip registration-stability`, `pi voip reconnect-drill`, `pi voip call-soak`, `pi lvgl probe`, `pi lvgl soak`, `remote navigation-soak`, or `remote lvgl-soak` directly, replace with the surviving equivalent:
 
@@ -3101,7 +3101,7 @@ If any skill references `pi tune`, `pi gallery`, `remote whisplay`, `remote rsyn
 
 - [ ] **Step 4: Re-run grep to verify**
 
-Run: `grep -rn "yoyoctl" CLAUDE.md README.md AGENTS.md docs/ rules/ skills/`
+Run: `grep -rn "yoyopod" CLAUDE.md README.md AGENTS.md docs/ rules/ skills/`
 Expected: No matches.
 
 - [ ] **Step 5: Run the quality gate**
@@ -3113,7 +3113,7 @@ Expected: PASS.
 
 ```bash
 git add CLAUDE.md README.md AGENTS.md docs/ rules/ skills/
-git commit -m "docs: rename yoyoctl → yoyopod across docs/skills/rules"
+git commit -m "docs: rename yoyopod → yoyopod across docs/skills/rules"
 ```
 
 ---
