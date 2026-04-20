@@ -287,6 +287,13 @@ def _dispatch_action(app: "YoyoPodApp", action: InputAction) -> None:
         app.screen_manager.refresh_current_screen()
 
 
+def _reset_selection(screen: object) -> None:
+    """Reset retained carousel/list selection when the screen supports it."""
+
+    if hasattr(screen, "selected_index"):
+        screen.selected_index = 0
+
+
 def _wait_for_route(
     app: "YoyoPodApp",
     route_name: str,
@@ -431,6 +438,7 @@ def run_navigation_idle_soak(
                     if step.kind == "replace":
                         assert step.target is not None
                         app.screen_manager.replace_screen(step.target)
+                        _reset_selection(app.screen_manager.current_screen)
                     elif step.kind == "action":
                         assert step.action is not None
                         _dispatch_action(app, step.action)
