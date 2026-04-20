@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from yoyopod.config import ConfigManager
     from yoyopod.communication import VoIPManager
     from yoyopod.people import Contact
-    from yoyopod.people import PeopleDirectory
+    from yoyopod.people import PeopleManager
 
 
 class VoiceCommandExecutor:
@@ -32,7 +32,7 @@ class VoiceCommandExecutor:
         *,
         context: "AppContext | None",
         config_manager: "ConfigManager | None" = None,
-        people_directory: "PeopleDirectory | None" = None,
+        people_directory: "PeopleManager | None" = None,
         voip_manager: "VoIPManager | None" = None,
         volume_up_action: Callable[[int], int | None] | None = None,
         volume_down_action: Callable[[int], int | None] | None = None,

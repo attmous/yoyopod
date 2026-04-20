@@ -32,7 +32,7 @@ from yoyopod.communication.models import (
 )
 
 if TYPE_CHECKING:
-    from yoyopod.people import PeopleDirectory
+    from yoyopod.people import PeopleManager
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +57,7 @@ class VoIPManager:
     def __init__(
         self,
         config: VoIPConfig,
-        people_directory: "PeopleDirectory | None" = None,
+        people_directory: "PeopleManager | None" = None,
         backend: VoIPBackend | None = None,
         message_store: VoIPMessageStore | None = None,
         event_scheduler: Callable[[Callable[[], None]], None] | None = None,

@@ -319,7 +319,7 @@ def test_voice_runtime_coordinator_releases_cached_service_when_settings_change(
     current_settings = VoiceSettings(vosk_model_keep_loaded=True)
     created_services: list[object] = []
 
-    class _TrackingVoiceService:
+    class _TrackingVoiceManager:
         def __init__(self, *, settings: VoiceSettings) -> None:
             self.settings = settings
             self.released = False
@@ -328,7 +328,7 @@ def test_voice_runtime_coordinator_releases_cached_service_when_settings_change(
         def release_resources(self) -> None:
             self.released = True
 
-    monkeypatch.setattr("yoyopod.runtime.voice.coordinator.VoiceService", _TrackingVoiceService)
+    monkeypatch.setattr("yoyopod.runtime.voice.coordinator.VoiceManager", _TrackingVoiceManager)
     coordinator = VoiceRuntimeCoordinator(
         context=None,
         settings_resolver=VoiceSettingsResolver(

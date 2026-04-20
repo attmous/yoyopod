@@ -1,9 +1,4 @@
-"""
-Audio management for YoyoPod.
-
-Handles audio playback, volume control, and device management using
-pygame for cross-platform compatibility with ALSA backend on Linux.
-"""
+"""Domain-owned music manager for playback and output-device state."""
 
 import subprocess
 from dataclasses import dataclass
@@ -18,7 +13,7 @@ from loguru import logger
 
 @lru_cache(maxsize=1)
 def _load_pygame_mixer() -> object | None:
-    """Import pygame.mixer only when an AudioManager instance needs it."""
+    """Import pygame.mixer only when a music-manager instance needs it."""
 
     try:
         return import_module("pygame.mixer")
@@ -45,9 +40,9 @@ class AudioDeviceInfo:
     is_available: bool = True
 
 
-class AudioManager:
+class MusicManager:
     """
-    Manages audio playback and volume control.
+    Manage music playback and volume state for local media.
 
     Uses pygame.mixer for audio playback with ALSA backend on Linux.
     Provides volume control with parental limiting.
@@ -406,3 +401,7 @@ class AudioManager:
                 logger.info("Audio system cleaned up")
             except Exception as e:
                 logger.error(f"Error during audio cleanup: {e}")
+
+
+# Backward compatibility: preserve historical public class name.
+AudioManager = MusicManager

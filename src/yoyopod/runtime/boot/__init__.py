@@ -19,7 +19,7 @@ from yoyopod.communication import CallHistoryStore, VoIPConfig, VoIPManager
 from yoyopod.config import ConfigManager
 from yoyopod.device import AudioDeviceCatalog
 from yoyopod.network import NetworkManager
-from yoyopod.people import PeopleDirectory
+from yoyopod.people import PeopleManager
 from yoyopod.power import PowerManager
 from yoyopod.ui.display import Display
 from yoyopod.ui.display.contracts import (
@@ -50,7 +50,7 @@ class RuntimeBootService:
             app,
             logger=logger,
             config_manager_cls=ConfigManager,
-            people_directory_cls=PeopleDirectory,
+            people_manager_cls=PeopleManager,
             call_history_store_cls=CallHistoryStore,
             recent_track_history_store_cls=RecentTrackHistoryStore,
             audio_device_catalog_cls=AudioDeviceCatalog,

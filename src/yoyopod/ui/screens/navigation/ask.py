@@ -13,12 +13,12 @@ from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.navigation.ask_rendering import AskScreenRenderingMixin
 from yoyopod.ui.screens.navigation.ask_voice import AskScreenVoiceMixin
-from yoyopod.voice import VoiceService, VoiceSettings
+from yoyopod.voice import VoiceManager, VoiceSettings
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
     from yoyopod.config import ConfigManager
-    from yoyopod.people import PeopleDirectory
+    from yoyopod.people import PeopleManager
     from yoyopod.ui.screens import ScreenView
     from yoyopod.communication import VoIPManager
 
@@ -38,7 +38,7 @@ class AskScreen(AskScreenVoiceMixin, AskScreenRenderingMixin, Screen):
         context: Optional["AppContext"] = None,
         *,
         config_manager: Optional["ConfigManager"] = None,
-        people_directory: Optional["PeopleDirectory"] = None,
+        people_directory: Optional["PeopleManager"] = None,
         voip_manager: Optional["VoIPManager"] = None,
         volume_up_action: Optional[Callable[[int], int | None]] = None,
         volume_down_action: Optional[Callable[[int], int | None]] = None,
@@ -46,7 +46,7 @@ class AskScreen(AskScreenVoiceMixin, AskScreenRenderingMixin, Screen):
         unmute_action: Optional[Callable[[], bool]] = None,
         play_music_action: Optional[Callable[[], bool]] = None,
         voice_settings_provider: Optional[Callable[[], VoiceSettings]] = None,
-        voice_service_factory: Optional[Callable[[VoiceSettings], VoiceService]] = None,
+        voice_service_factory: Optional[Callable[[VoiceSettings], VoiceManager]] = None,
         voice_runtime: Optional["VoiceRuntimeCoordinator"] = None,
     ) -> None:
         super().__init__(display, context, "Ask")

@@ -37,7 +37,7 @@ from yoyopod.core import (
     UserActivityEvent,
 )
 from yoyopod.device import AudioDeviceCatalog
-from yoyopod.people import PeopleDirectory
+from yoyopod.people import PeopleManager
 from yoyopod.core import CallFSM, CallInterruptionPolicy, MusicFSM
 from yoyopod.network import NetworkManager
 from yoyopod.power import (
@@ -122,7 +122,7 @@ class YoyoPodApp:
         self.media_settings: Optional[MediaConfig] = None
         self.screen_manager: Optional[ScreenManager] = None
         self.input_manager: Optional[InputManager] = None
-        self.people_directory: Optional[PeopleDirectory] = None
+        self.people_directory: Optional[PeopleManager] = None
 
         # Manager components
         self.voip_manager: Optional[VoIPManager] = None

@@ -20,7 +20,7 @@ from yoyopod.ui.screens.voip.lvgl import LvglCallView
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.people import Contact, PeopleDirectory
+    from yoyopod.people import Contact, PeopleManager
     from yoyopod.ui.screens import ScreenView
     from yoyopod.communication import CallHistoryStore, VoIPManager
 
@@ -57,7 +57,7 @@ class CallScreen(Screen):
         display: Display,
         context: Optional["AppContext"] = None,
         voip_manager: Optional["VoIPManager"] = None,
-        people_directory: Optional["PeopleDirectory"] = None,
+        people_directory: Optional["PeopleManager"] = None,
         call_history_store: Optional["CallHistoryStore"] = None,
     ) -> None:
         super().__init__(display, context, "Talk")

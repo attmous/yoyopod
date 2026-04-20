@@ -72,8 +72,11 @@ yoyopod.py / src/yoyopod/main.py  (entry points)
 ### Subsystem managers and backends
 
 - `audio/`, `communication/`, `people/`, `power/`, `network/`, and `voice/` own subsystem behavior and backend integration.
-- Manager layers provide the app-facing facade.
-- Backend-specific details stay behind the subsystem boundary whenever possible.
+- `backend.py` is the low-level I/O or protocol driver (one concrete driver implementation per module family).
+- `manager.py` is the domain-owned app-facing facade for that subsystem.
+- `runtime.py` is the loop-thread-aware service that owns periodic polling/iteration behavior outside coordinators.
+- `coordinator.py` is the app-level orchestrator that joins subsystem managers to FSMs and EventBus.
+- Keep backend-specific details behind the subsystem boundary whenever possible.
 
 ### Hardware abstraction
 

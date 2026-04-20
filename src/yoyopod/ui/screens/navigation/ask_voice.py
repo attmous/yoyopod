@@ -9,7 +9,7 @@ from yoyopod.runtime.voice import VoiceCommandOutcome, VoiceRuntimeCoordinator
 
 if TYPE_CHECKING:
     from yoyopod.core import VoiceInteractionState
-    from yoyopod.voice import VoiceService, VoiceSettings
+    from yoyopod.voice import VoiceManager, VoiceSettings
 
 
 class AskScreenVoiceMixin:
@@ -74,7 +74,7 @@ class AskScreenVoiceMixin:
         if not navigated and outcome.auto_return:
             self._schedule_auto_return()
 
-    def _voice_service(self) -> "VoiceService":
+    def _voice_service(self) -> "VoiceManager":
         """Compatibility shim for tests that inspect the effective service."""
 
         return self.voice_runtime._voice_service()
@@ -107,7 +107,7 @@ class AskScreenVoiceMixin:
 
     def _run_ptt_listening_cycle(
         self,
-        voice_service: "VoiceService",
+        voice_service: "VoiceManager",
         generation: int,
         cancel_event,
     ) -> None:

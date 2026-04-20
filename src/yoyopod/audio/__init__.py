@@ -1,6 +1,6 @@
 """App-facing seam for the media/audio domain."""
 
-from yoyopod.audio.manager import AudioDevice, AudioManager
+from yoyopod.audio.manager import AudioDevice, AudioManager, MusicManager
 from yoyopod.audio.music import (
     LocalLibraryItem,
     LocalMusicService,
@@ -20,6 +20,7 @@ from yoyopod.audio.volume_controller import AudioVolumeController
 __all__ = [
     "AudioDevice",
     "AudioManager",
+    "MusicManager",
     "AudioVolumeController",
     "LocalLibraryItem",
     "LocalMusicService",

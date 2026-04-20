@@ -24,7 +24,7 @@ from yoyopod.core.runtime_state import (
 from yoyopod.ui.input.hal import InteractionProfile
 
 if TYPE_CHECKING:
-    from yoyopod.audio.manager import AudioManager
+    from yoyopod.audio.manager import MusicManager
     from yoyopod.audio.volume_controller import AudioVolumeController
     from yoyopod.power import PowerSnapshot
 
@@ -54,7 +54,7 @@ class AppContext:
 
     def __init__(
         self,
-        audio_manager: "AudioManager | None" = None,
+        audio_manager: "MusicManager | None" = None,
         interaction_profile: InteractionProfile = InteractionProfile.STANDARD,
     ) -> None:
         self.audio_manager = audio_manager

@@ -19,6 +19,7 @@ from yoyopod.voice.models import (
     VoiceTranscript,
 )
 from yoyopod.voice.output import AlsaOutputPlayer
+from yoyopod.voice.manager import VoiceManager
 from yoyopod.voice.service import VoiceService
 from yoyopod.voice.stt import NullSpeechToTextBackend, SpeechToTextBackend, VoskSpeechToTextBackend
 from yoyopod.voice.tts import (
@@ -42,6 +43,7 @@ __all__ = [
     "VoiceCommandIntent",
     "VoiceCommandMatch",
     "VoiceCommandTemplate",
+    "VoiceManager",
     "VoiceService",
     "VoiceSettings",
     "VoiceTranscript",
