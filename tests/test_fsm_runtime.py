@@ -110,9 +110,10 @@ def test_runtime_state_is_derived_from_split_fsms() -> None:
     """CoordinatorRuntime should derive app state from music and call FSMs."""
     runtime = _build_runtime()
 
-    state_change = runtime.set_ui_state(AppRuntimeState.MENU, trigger="test_menu")
-    assert state_change.entered(AppRuntimeState.MENU)
-    assert runtime.current_app_state == AppRuntimeState.MENU
+    state_change = runtime.set_ui_state("menu", trigger="test_menu")
+    assert not state_change.changed
+    assert runtime.current_app_state == AppRuntimeState.IDLE
+    assert runtime.ui_state == "menu"
 
     runtime.music_fsm.transition("play")
     state_change = runtime.sync_app_state("playback_playing")
@@ -120,13 +121,13 @@ def test_runtime_state_is_derived_from_split_fsms() -> None:
     assert runtime.current_app_state == AppRuntimeState.PLAYING
 
     state_change = runtime.set_voip_ready(True)
-    assert state_change.entered(AppRuntimeState.PLAYING_WITH_VOIP)
-    assert runtime.current_app_state == AppRuntimeState.PLAYING_WITH_VOIP
+    assert not state_change.changed
+    assert runtime.current_app_state == AppRuntimeState.PLAYING
 
     runtime.call_interruption_policy.mark_paused_for_call(runtime.music_fsm)
     state_change = runtime.sync_app_state("auto_pause_for_call")
-    assert state_change.entered(AppRuntimeState.PAUSED_BY_CALL)
-    assert runtime.current_app_state == AppRuntimeState.PAUSED_BY_CALL
+    assert state_change.entered(AppRuntimeState.PAUSED)
+    assert runtime.current_app_state == AppRuntimeState.PAUSED
 
     runtime.call_fsm.transition("incoming")
     state_change = runtime.sync_app_state("incoming_call")
@@ -135,23 +136,23 @@ def test_runtime_state_is_derived_from_split_fsms() -> None:
 
     runtime.call_fsm.transition("connect")
     state_change = runtime.sync_app_state("call_connected")
-    assert state_change.entered(AppRuntimeState.CALL_ACTIVE_MUSIC_PAUSED)
-    assert runtime.current_app_state == AppRuntimeState.CALL_ACTIVE_MUSIC_PAUSED
+    assert state_change.entered(AppRuntimeState.CALL_ACTIVE)
+    assert runtime.current_app_state == AppRuntimeState.CALL_ACTIVE
 
     runtime.call_fsm.transition("end")
     runtime.music_fsm.transition("play")
     runtime.call_interruption_policy.clear()
     state_change = runtime.sync_app_state("call_ended")
-    assert state_change.entered(AppRuntimeState.PLAYING_WITH_VOIP)
-    assert runtime.current_app_state == AppRuntimeState.PLAYING_WITH_VOIP
+    assert state_change.entered(AppRuntimeState.PLAYING)
+    assert runtime.current_app_state == AppRuntimeState.PLAYING
 
 
 def test_runtime_returns_to_base_ui_state_when_music_and_calls_are_idle() -> None:
     """The derived app state should fall back to the current base UI state."""
     runtime = _build_runtime()
 
-    runtime.set_ui_state(AppRuntimeState.PLAYLIST_BROWSER, trigger="browse_playlists")
-    assert runtime.current_app_state == AppRuntimeState.PLAYLIST_BROWSER
+    runtime.set_ui_state("playlists", trigger="browse_playlists")
+    assert runtime.ui_state == "playlists"
 
     runtime.music_fsm.transition("play")
     runtime.sync_app_state("load_playlist")
@@ -159,5 +160,6 @@ def test_runtime_returns_to_base_ui_state_when_music_and_calls_are_idle() -> Non
 
     runtime.music_fsm.transition("stop")
     state_change = runtime.sync_app_state("stop")
-    assert state_change.entered(AppRuntimeState.PLAYLIST_BROWSER)
-    assert runtime.current_app_state == AppRuntimeState.PLAYLIST_BROWSER
+    assert state_change.entered(AppRuntimeState.IDLE)
+    assert runtime.current_app_state == AppRuntimeState.IDLE
+    assert runtime.ui_state == "playlists"

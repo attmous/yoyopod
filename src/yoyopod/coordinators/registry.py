@@ -29,23 +29,11 @@ class AppRuntimeState(Enum):
     """Derived application state used by the production coordinator path."""
 
     IDLE = "idle"
-    HUB = "hub"
-    MENU = "menu"
     PLAYING = "playing"
     PAUSED = "paused"
-    SETTINGS = "settings"
-    PLAYLIST = "playlist"
-    PLAYLIST_BROWSER = "playlist_browser"
-    POWER = "power"
-    CALL_IDLE = "call_idle"
     CALL_INCOMING = "call_incoming"
     CALL_OUTGOING = "call_outgoing"
     CALL_ACTIVE = "call_active"
-    CONNECTING = "connecting"
-    ERROR = "error"
-    PLAYING_WITH_VOIP = "playing_with_voip"
-    PAUSED_BY_CALL = "paused_by_call"
-    CALL_ACTIVE_MUSIC_PAUSED = "call_active_music_paused"
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +66,7 @@ class CoordinatorRuntime:
     config_manager: ConfigManager | None
     music_backend: MusicBackend | None = None
     context: AppContext | None = None
-    ui_state: AppRuntimeState = AppRuntimeState.IDLE
+    ui_state: str = AppRuntimeState.IDLE.value
     voip_ready: bool = False
     power_available: bool = False
     power_snapshot: PowerSnapshot | None = None
@@ -86,17 +74,22 @@ class CoordinatorRuntime:
     previous_app_state: AppRuntimeState | None = field(init=False, default=None)
     state_history: list[AppRuntimeState] = field(init=False, default_factory=list)
 
-    _UI_STATES = {
-        AppRuntimeState.IDLE,
-        AppRuntimeState.HUB,
-        AppRuntimeState.MENU,
-        AppRuntimeState.SETTINGS,
-        AppRuntimeState.PLAYLIST,
-        AppRuntimeState.PLAYLIST_BROWSER,
-        AppRuntimeState.POWER,
-        AppRuntimeState.CALL_IDLE,
-        AppRuntimeState.CONNECTING,
-        AppRuntimeState.ERROR,
+    _KNOWN_UI_ROUTES = {
+        "home",
+        "hub",
+        "menu",
+        "ask",
+        "call",
+        "contacts",
+        "listen",
+        "playlists",
+        "playlist",
+        "recent_tracks",
+        "power",
+        "now_playing",
+        "incoming_call",
+        "outgoing_call",
+        "in_call",
     }
 
     def __post_init__(self) -> None:
@@ -112,25 +105,15 @@ class CoordinatorRuntime:
             return AppRuntimeState.CALL_OUTGOING
 
         if self.call_fsm.state == CallSessionState.ACTIVE:
-            if self.call_interruption_policy.music_interrupted_by_call:
-                return AppRuntimeState.CALL_ACTIVE_MUSIC_PAUSED
             return AppRuntimeState.CALL_ACTIVE
 
-        if (
-            self.call_interruption_policy.music_interrupted_by_call
-            and self.music_fsm.state == MusicState.PAUSED
-        ):
-            return AppRuntimeState.PAUSED_BY_CALL
-
         if self.music_fsm.state == MusicState.PLAYING:
-            if self.voip_ready:
-                return AppRuntimeState.PLAYING_WITH_VOIP
             return AppRuntimeState.PLAYING
 
         if self.music_fsm.state == MusicState.PAUSED:
             return AppRuntimeState.PAUSED
 
-        return self.ui_state
+        return AppRuntimeState.IDLE
 
     def sync_app_state(self, trigger: str = "sync") -> AppStateChange:
         """Refresh the derived app state after coordinator mutations."""
@@ -159,14 +142,15 @@ class CoordinatorRuntime:
 
     def set_ui_state(
         self,
-        state: AppRuntimeState,
+        state: str | AppRuntimeState,
         trigger: str = "ui_state",
     ) -> AppStateChange:
-        """Update the base UI state used when music and calls are idle."""
-        if state not in self._UI_STATES:
-            raise ValueError(f"{state.value} is not a base UI state")
+        """Record the active UI route used when music/call FSMs are idle."""
+        ui_state = state.value if isinstance(state, AppRuntimeState) else str(state)
+        if ui_state not in self._KNOWN_UI_ROUTES:
+            raise ValueError(f"{ui_state} is not a base UI route")
 
-        self.ui_state = state
+        self.ui_state = ui_state
         return self.sync_app_state(trigger)
 
     def set_voip_ready(self, ready: bool, trigger: str = "voip_ready") -> AppStateChange:
@@ -185,23 +169,18 @@ class CoordinatorRuntime:
         self.power_available = available
 
     def sync_ui_state_for_screen(self, screen_name: str | None) -> AppStateChange | None:
-        """Update the base UI state for non-call overlay screens."""
-        state_by_screen = {
-            "home": AppRuntimeState.IDLE,
-            "hub": AppRuntimeState.HUB,
-            "menu": AppRuntimeState.MENU,
-            "listen": AppRuntimeState.PLAYLIST_BROWSER,
-            "ask": AppRuntimeState.SETTINGS,
-            "playlists": AppRuntimeState.PLAYLIST_BROWSER,
-            "power": AppRuntimeState.POWER,
-            "call": AppRuntimeState.CALL_IDLE,
-            "contacts": AppRuntimeState.CALL_IDLE,
-        }
-        if screen_name is None or screen_name not in state_by_screen:
+        """Update the active UI route for non-overlay navigation events."""
+        if not screen_name:
             return None
 
-        return self.set_ui_state(state_by_screen[screen_name], trigger=f"screen:{screen_name}")
+        screen_name = str(screen_name)
+        if screen_name not in self._KNOWN_UI_ROUTES:
+            return None
+
+        return self.set_ui_state(screen_name, trigger=f"screen:{screen_name}")
 
     def get_state_name(self) -> str:
         """Return the current derived app-state name."""
+        if self.current_app_state == AppRuntimeState.IDLE:
+            return self.ui_state
         return self.current_app_state.value

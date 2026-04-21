@@ -126,9 +126,6 @@ class RuntimeLoopService:
             "call_incoming",
             "call_outgoing",
             "call_active",
-            "call_active_music_paused",
-            "paused_by_call",
-            "connecting",
         }
     )
 

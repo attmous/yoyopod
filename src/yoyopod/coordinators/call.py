@@ -163,7 +163,7 @@ class CallCoordinator:
 
     def on_enter_call_active_music_paused(self) -> None:
         """Log entry into the active-call-with-paused-music state."""
-        logger.info("In call (music paused in background)")
+        logger.info("In active call")
 
     def _on_incoming_call_event(self, event: IncomingCallEvent) -> None:
         self.handle_incoming_call(event.caller_address, event.caller_name)
@@ -198,6 +198,18 @@ class CallCoordinator:
     def handle_call_state_change(self, state: CallState) -> None:
         """Coordinate high-level call state updates."""
         logger.info(f"Call state changed: {state.value}")
+
+        if state in (CallState.RELEASED, CallState.END, CallState.ERROR):
+            if not self._has_live_call_state():
+                logger.debug("Ignoring duplicate terminal call state {}", state.value)
+                return
+
+            local_end_action = self._consume_pending_terminal_action()
+            if self._active_call_session is not None:
+                self._active_call_session.terminal_state = state
+                self._active_call_session.local_end_action = local_end_action
+            self.handle_call_ended(reason=state.value)
+            return
 
         if state in (
             CallState.OUTGOING,
@@ -237,26 +249,13 @@ class CallCoordinator:
             if self._active_call_session is not None:
                 self._active_call_session.answered = True
 
-            self.runtime.call_fsm.transition("connect")
-            state_change = self.runtime.sync_app_state("call_connected")
-            if state_change.entered(AppRuntimeState.CALL_ACTIVE_MUSIC_PAUSED):
-                logger.info("In call (music paused in background)")
-            self.screen_coordinator.show_in_call()
-            self.stop_ringing()
-            return
-
-        if state in (CallState.RELEASED, CallState.END, CallState.ERROR):
-            if not self._has_live_call_state():
-                logger.debug("Ignoring duplicate terminal call state {}", state.value)
-                return
-
-            local_end_action = self._consume_pending_terminal_action()
-            if self._active_call_session is not None:
-                self._active_call_session.terminal_state = state
-                self._active_call_session.local_end_action = local_end_action
-            self.handle_call_ended(reason=state.value)
-            return
-
+        self.runtime.call_fsm.transition("connect")
+        state_change = self.runtime.sync_app_state("call_connected")
+        if state_change.entered(AppRuntimeState.CALL_ACTIVE):
+            logger.info("In call (music paused in background)")
+        self.screen_coordinator.show_in_call()
+        self.stop_ringing()
+        return
         logger.debug("Call state {} does not change coordinator phase", state.value)
 
     def handle_call_ended(self, *, reason: str = "released") -> None:
