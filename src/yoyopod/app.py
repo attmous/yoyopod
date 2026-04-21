@@ -38,7 +38,6 @@ from yoyopod.core import (
     NetworkPppDownEvent,
     NetworkPppUpEvent,
     NetworkSignalUpdateEvent,
-    RecoveryAttemptCompletedEvent,
     ScreenChangedEvent,
     UserActivityEvent,
 )
@@ -490,36 +489,8 @@ class YoyoPodApp:
                 gps_has_fix=False,
             )
 
-    def _handle_recovery_attempt_completed_event(
-        self,
-        event: RecoveryAttemptCompletedEvent,
-    ) -> None:
-        self.recovery_service.handle_recovery_attempt_completed(
-            manager=event.manager,
-            recovered=event.recovered,
-            recovery_now=event.recovery_now,
-        )
-
-    def _register_power_shutdown_hooks(self) -> None:
-        self.shutdown_service.register_power_shutdown_hooks()
-
-    def _save_shutdown_state(self) -> None:
-        self.shutdown_service.save_shutdown_state()
-
     def _ensure_coordinators(self) -> None:
         self.boot_service.ensure_coordinators()
-
-    def _pop_call_screens(self) -> None:
-        """Compatibility wrapper for clearing call-related screens."""
-        self._ensure_coordinators()
-        assert self.screen_coordinator is not None
-        self.screen_coordinator.pop_call_screens()
-
-    def _update_now_playing_if_needed(self) -> None:
-        """Compatibility wrapper for periodic now-playing refreshes."""
-        self._ensure_coordinators()
-        assert self.playback_coordinator is not None
-        self.playback_coordinator.update_now_playing_if_needed()
 
     def _update_in_call_if_needed(self) -> None:
         """Refresh the in-call screen from the main loop when it is visible."""
@@ -532,18 +503,6 @@ class YoyoPodApp:
         self._ensure_coordinators()
         assert self.screen_coordinator is not None
         self.screen_coordinator.update_power_screen_if_needed()
-
-    def _start_ringing(self) -> None:
-        """Compatibility wrapper for starting the call ring tone."""
-        self._ensure_coordinators()
-        assert self.call_coordinator is not None
-        self.call_coordinator.start_ringing()
-
-    def _stop_ringing(self) -> None:
-        """Compatibility wrapper for stopping the call ring tone."""
-        self._ensure_coordinators()
-        assert self.call_coordinator is not None
-        self.call_coordinator.stop_ringing()
 
     def _handle_screen_changed(self, screen_name: str | None) -> None:
         """Marshal screen-state sync work onto the coordinator thread."""
@@ -578,25 +537,11 @@ class YoyoPodApp:
         assert self.coordinator_runtime is not None
         self.coordinator_runtime.sync_ui_state_for_screen(screen_name)
 
-    def _mark_user_activity(
-        self,
-        *,
-        now: float | None = None,
-        render_on_wake: bool,
-    ) -> None:
-        self.screen_power_service.mark_user_activity(
-            now=now,
-            render_on_wake=render_on_wake,
-        )
-
     def _wake_screen(self, now: float, *, render_current: bool) -> None:
         self.screen_power_service.wake_screen(now, render_current=render_current)
 
     def _sleep_screen(self, now: float) -> None:
         self.screen_power_service.sleep_screen(now)
-
-    def _update_screen_runtime_metrics(self, now: float) -> None:
-        self.screen_power_service.update_screen_runtime_metrics(now)
 
     def _update_screen_power(self, now: float) -> None:
         self.screen_power_service.update_screen_power(now)
@@ -607,82 +552,14 @@ class YoyoPodApp:
     def _poll_power_status(self, now: float | None = None, force: bool = False) -> None:
         self.power_runtime.poll_status(now=now, force=force)
 
-    def _set_power_alert(
-        self,
-        *,
-        title: str,
-        subtitle: str,
-        color: tuple[int, int, int],
-        duration_seconds: float,
-    ) -> None:
-        self.screen_power_service.set_power_alert(
-            title=title,
-            subtitle=subtitle,
-            color=color,
-            duration_seconds=duration_seconds,
-        )
-
-    def _render_power_overlay(self, title: str, subtitle: str, color: tuple[int, int, int]) -> None:
-        self.screen_power_service.render_power_overlay(title, subtitle, color)
-
-    def _update_power_overlays(self, now: float) -> bool:
-        return self.screen_power_service.update_power_overlays(now)
-
     def _process_pending_shutdown(self, now: float) -> None:
         self.shutdown_service.process_pending_shutdown(now)
-
-    def _execute_pending_shutdown(self) -> None:
-        self.shutdown_service.execute_pending_shutdown()
 
     def _start_watchdog(self, now: float | None = None) -> None:
         self.power_runtime.start_watchdog(now=now)
 
     def _feed_watchdog_if_due(self, now: float) -> None:
         self.power_runtime.feed_watchdog_if_due(now)
-
-    def _disable_watchdog(self) -> None:
-        self.power_runtime.disable_watchdog()
-
-    def _suppress_watchdog_feeding(self, reason: str) -> None:
-        self.power_runtime.suppress_watchdog_feeding(reason)
-
-    def _attempt_voip_recovery(self, recovery_now: float) -> None:
-        self.recovery_service.attempt_voip_recovery(recovery_now)
-
-    def _start_music_backend(self) -> bool:
-        return self.recovery_service.start_music_backend()
-
-    def _attempt_music_recovery(self, recovery_now: float) -> None:
-        self.recovery_service.attempt_music_recovery(recovery_now)
-
-    def _attempt_network_recovery(self, recovery_now: float) -> None:
-        self.recovery_service.attempt_network_recovery(recovery_now)
-
-    def _start_music_recovery_worker(self, recovery_now: float) -> None:
-        self.recovery_service.start_music_recovery_worker(recovery_now)
-
-    def _start_network_recovery_worker(self, recovery_now: float) -> None:
-        self.recovery_service.start_network_recovery_worker(recovery_now)
-
-    def _run_music_recovery_attempt(self, recovery_now: float) -> None:
-        self.recovery_service.run_music_recovery_attempt(recovery_now)
-
-    def _run_network_recovery_attempt(self, recovery_now: float) -> None:
-        self.recovery_service.run_network_recovery_attempt(recovery_now)
-
-    def _finalize_recovery_attempt(
-        self,
-        label: str,
-        state: RecoveryState,
-        recovered: bool,
-        recovery_now: float,
-    ) -> None:
-        self.recovery_service.finalize_recovery_attempt(
-            label=label,
-            state=state,
-            recovered=recovered,
-            recovery_now=recovery_now,
-        )
 
     def run(self) -> None:
         """Run the main application loop until interrupted."""

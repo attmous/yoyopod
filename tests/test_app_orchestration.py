@@ -2034,7 +2034,7 @@ def test_pending_shutdown_runs_hooks_and_requests_system_poweroff(tmp_path) -> N
         app._stopping = True
 
     app.stop = fake_stop
-    app._register_power_shutdown_hooks()
+    app.shutdown_service.register_power_shutdown_hooks()
     _force_power_refresh(app, now=0.0)
 
     assert [name for name, _ in power_manager.registered_shutdown_hooks] == ["save_shutdown_state"]
@@ -2235,7 +2235,7 @@ def test_poweroff_path_suppresses_watchdog_feed_without_disabling_it() -> None:
 
     app.stop = fake_stop
     app._start_watchdog(now=0.0)
-    app._register_power_shutdown_hooks()
+    app.shutdown_service.register_power_shutdown_hooks()
     _force_power_refresh(app, now=0.0)
     app._process_pending_shutdown(app._pending_shutdown.execute_at)
 
