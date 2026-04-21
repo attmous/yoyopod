@@ -1,14 +1,14 @@
-"""Regression tests for boot-time runtime wiring."""
+"""Regression tests for core bootstrap wiring."""
 
 from __future__ import annotations
 
 import sys
 from types import SimpleNamespace
 
-import yoyopod.runtime.boot as boot_module
+import yoyopod.core.bootstrap as boot_module
 from yoyopod.core import AppContext
-from yoyopod.runtime.boot import RuntimeBootService
-from yoyopod.runtime.boot.managers_boot import ManagersBoot
+from yoyopod.core.bootstrap import RuntimeBootService
+from yoyopod.core.bootstrap.managers_boot import ManagersBoot
 
 
 class _FakeDisplay:

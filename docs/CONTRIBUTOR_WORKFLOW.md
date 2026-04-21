@@ -80,7 +80,7 @@ Read:
 Current reality:
 
 - `YoyoPodApp` is thinner than before, but runtime cleanup is still in progress
-- `src/yoyopod/runtime/boot.py` is still a hotspot, not a final architecture destination
+- `src/yoyopod/core/bootstrap/` is the current boot hotspot, not the final architecture destination
 - runtime/state/model cleanup should prefer clearer ownership over broad rewrites
 
 ### Raspberry Pi and setup work
@@ -168,7 +168,7 @@ Watch for these recurring mistakes:
 
 These are good places to be extra careful:
 
-- `src/yoyopod/runtime/boot.py`
+- `src/yoyopod/core/bootstrap/`
 - `src/yoyopod/app_context.py`
 - duplicated domain/state models that drift across layers
 - setup/docs wording that can overstate what the new commands guarantee

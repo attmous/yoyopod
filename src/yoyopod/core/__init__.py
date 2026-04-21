@@ -64,6 +64,7 @@ _PUBLIC_EXPORTS = {
     "RequestFocusCommand": ("yoyopod.core.focus", "RequestFocusCommand"),
     "RequestRecoveryCommand": ("yoyopod.core.recovery", "RequestRecoveryCommand"),
     "RegistrationChangedEvent": ("yoyopod.core.events", "RegistrationChangedEvent"),
+    "RuntimeBootService": ("yoyopod.core.bootstrap", "RuntimeBootService"),
     "ScreenChangedEvent": ("yoyopod.core.events", "ScreenChangedEvent"),
     "ScreenRuntimeState": ("yoyopod.core.runtime_state", "ScreenRuntimeState"),
     "SETUP_TRACKED_CONFIG_FILES": (

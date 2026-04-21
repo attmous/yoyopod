@@ -14,6 +14,7 @@ When this file and older plans disagree, trust the current code in:
 
 - `src/yoyopod/integrations/cloud/`
 - `src/yoyopod/backends/cloud/`
+- `src/yoyopod/core/bootstrap/`
 - `src/yoyopod/runtime/`
 - `src/yoyopod/coordinators/power.py`
 
@@ -43,14 +44,14 @@ Current core files:
 - [src/yoyopod/backends/cloud/mqtt.py](../src/yoyopod/backends/cloud/mqtt.py)
 - [src/yoyopod/integrations/cloud/models.py](../src/yoyopod/integrations/cloud/models.py)
 - [src/yoyopod/config/models.py](../src/yoyopod/config/models.py)
-- [src/yoyopod/runtime/boot.py](../src/yoyopod/runtime/boot.py)
+- [src/yoyopod/core/bootstrap/__init__.py](../src/yoyopod/core/bootstrap/__init__.py)
 - [src/yoyopod/runtime/loop.py](../src/yoyopod/runtime/loop.py)
 - [src/yoyopod/coordinators/power.py](../src/yoyopod/coordinators/power.py)
 
 Current architecture:
 
 ```text
-runtime boot
+core bootstrap
   -> ConfigManager loads cloud config + secrets
   -> CloudManager.prepare_boot()
      -> reload provisioning inputs
@@ -131,7 +132,7 @@ Important distinction:
 
 Current boot wiring happens in:
 
-- [src/yoyopod/runtime/boot.py](/home/raouf/YoyoPod_Core/src/yoyopod/runtime/boot.py)
+- [src/yoyopod/core/bootstrap/__init__.py](../src/yoyopod/core/bootstrap/__init__.py)
 
 At boot:
 
@@ -373,7 +374,7 @@ If you change the device/backend integration, review these together:
 - [src/yoyopod/backends/cloud/http.py](../src/yoyopod/backends/cloud/http.py)
 - [src/yoyopod/backends/cloud/mqtt.py](../src/yoyopod/backends/cloud/mqtt.py)
 - [src/yoyopod/config/models.py](../src/yoyopod/config/models.py)
-- [src/yoyopod/runtime/boot.py](../src/yoyopod/runtime/boot.py)
+- [src/yoyopod/core/bootstrap/__init__.py](../src/yoyopod/core/bootstrap/__init__.py)
 - [src/yoyopod/runtime/loop.py](../src/yoyopod/runtime/loop.py)
 - [src/yoyopod/coordinators/power.py](../src/yoyopod/coordinators/power.py)
 - [tests/test_cloud_config_manager.py](../tests/test_cloud_config_manager.py)

@@ -53,8 +53,14 @@ print(json.dumps(loaded))
     return json.loads(result.stdout)
 
 
-def test_importing_runtime_boot_keeps_feature_screens_unloaded() -> None:
-    """Importing the boot module should not pull in navigation/music/voip/system screens."""
+def test_importing_core_bootstrap_keeps_feature_screens_unloaded() -> None:
+    """Importing the canonical bootstrap module should not eagerly import feature screens."""
+
+    assert _loaded_screen_modules_for("yoyopod.core.bootstrap") == []
+
+
+def test_importing_runtime_boot_compat_keeps_feature_screens_unloaded() -> None:
+    """Importing the legacy runtime boot shim should stay as lazy as the canonical path."""
 
     assert _loaded_screen_modules_for("yoyopod.runtime.boot") == []
 

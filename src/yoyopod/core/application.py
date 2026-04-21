@@ -44,7 +44,7 @@ from yoyopod.integrations.contacts.directory import PeopleManager
 from yoyopod.integrations.music import LocalMusicService, RecentTrackHistoryStore
 from yoyopod.integrations.network import NetworkManager
 from yoyopod.integrations.power import PowerManager
-from yoyopod.runtime.boot import RuntimeBootService
+from yoyopod.core.bootstrap import RuntimeBootService
 from yoyopod.core.event_subscriptions import RuntimeEventSubscriptions
 from yoyopod.runtime.loop import RuntimeLoopService
 from yoyopod.core.status import RuntimeMetricsStore

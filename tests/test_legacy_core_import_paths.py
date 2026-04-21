@@ -22,9 +22,11 @@ from yoyopod.app_context import (
     Track as AppContextTrack,
 )
 from yoyopod.core import AppContext as CoreAppContext
+from yoyopod.core import RuntimeBootService as CoreRuntimeBootService
 from yoyopod.core.event_subscriptions import RuntimeEventSubscriptions as CoreRuntimeEventSubscriptions
 from yoyopod.core.event_bus import EventBus as CoreEventBus
 from yoyopod.core.event_bus import EventHandler as CoreEventHandler
+from yoyopod.core.bootstrap.managers_boot import ManagersBoot as CoreManagersBoot
 from yoyopod.core.recovery import RecoveryState as CoreRecoveryState
 from yoyopod.core.status import RuntimeMetricsStore as CoreRuntimeMetricsStore
 from yoyopod.core.status import RuntimeStatusService as CoreRuntimeStatusService
@@ -142,6 +144,8 @@ from yoyopod.runtime_state import PlaybackQueue as RuntimeStatePlaybackQueue
 from yoyopod.runtime_state import Track as RuntimeStateTrack
 from yoyopod.runtime import ResponsivenessWatchdogDecision as LegacyResponsivenessWatchdogDecision
 from yoyopod.runtime import evaluate_responsiveness_status as legacy_evaluate_responsiveness_status
+from yoyopod.runtime.boot import RuntimeBootService as LegacyRuntimeBootService
+from yoyopod.runtime.boot.managers_boot import ManagersBoot as LegacyManagersBoot
 from yoyopod.runtime.models import PendingShutdown as LegacyPendingShutdown
 from yoyopod.runtime.models import PowerAlert as LegacyPowerAlert
 from yoyopod.runtime.models import RecoveryState as LegacyRecoveryState
@@ -404,6 +408,13 @@ def test_legacy_runtime_event_subscription_import_path_resolves_to_core_owner() 
     """Legacy runtime event-subscription imports should point at the core owner."""
 
     assert LegacyRuntimeEventSubscriptions is CoreRuntimeEventSubscriptions
+
+
+def test_legacy_runtime_boot_import_paths_resolve_to_core_bootstrap() -> None:
+    """Legacy runtime boot imports should point at the canonical core bootstrap seam."""
+
+    assert LegacyRuntimeBootService is CoreRuntimeBootService
+    assert LegacyManagersBoot is CoreManagersBoot
 
 
 def test_legacy_runtime_network_event_import_path_resolves_to_network_owner() -> None:

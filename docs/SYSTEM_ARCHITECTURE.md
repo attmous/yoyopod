@@ -58,10 +58,10 @@ This is the startup sequence that exists on `main` today.
    - `--simulate` is parsed before the app is constructed.
 3. `main()` constructs `YoyoPodApp(config_dir="config", simulate=simulate)`.
    - The constructor does not start hardware or backend processes yet.
-   - It allocates the typed `EventBus`, runtime services (`RuntimeBootService`, `RuntimeLoopService`, `RecoverySupervisor`, `PowerRuntimeService`, `ShutdownLifecycleService`), the canonical display-power helper (`ScreenPowerService` from `src/yoyopod/integrations/display/service.py`), and the long-lived placeholder fields for managers, screens, and shared context.
+   - It allocates the typed `EventBus`, the core bootstrap service (`RuntimeBootService` from `src/yoyopod/core/bootstrap/`), runtime services (`RuntimeLoopService`, `RecoverySupervisor`, `PowerRuntimeService`, `ShutdownLifecycleService`), the canonical display-power helper (`ScreenPowerService` from `src/yoyopod/integrations/display/service.py`), and the long-lived placeholder fields for managers, screens, and shared context.
    - `RecoverySupervisor` now keeps VoIP/music recovery while `yoyopod.runtime.power_service.PowerRuntimeService` owns PiSugar polling and watchdog cadence.
    - It also registers app-level event subscriptions on the `EventBus` so later boot stages can publish typed events back onto the coordinator thread.
-4. `main()` calls `app.setup()`, which delegates to `RuntimeBootService.setup()`.
+4. `main()` calls `app.setup()`, which delegates to `RuntimeBootService.setup()` in `src/yoyopod/core/bootstrap/`.
 5. `RuntimeBootService.setup()` currently executes boot in this order:
    1. `load_configuration()`
       - builds `ConfigManager`
@@ -115,7 +115,7 @@ This is the startup sequence that exists on `main` today.
 
 ## Startup Differences Between Hardware And Simulation
 
-- The boot order is the same in both modes: `main()` still configures logging, constructs `YoyoPodApp`, and calls `RuntimeBootService.setup()`.
+- The boot order is the same in both modes: `main()` still configures logging, constructs `YoyoPodApp`, and calls `RuntimeBootService.setup()` from `src/yoyopod/core/bootstrap/`.
 - Simulation mode changes adapter selection and input behavior by asking the display and input factories for simulation backends, and `main()` logs the browser-based workflow banner before setup.
 - `NetworkManager` is created in both modes, but it is only started when networking is enabled and `simulate` is false.
 - The initial root route still depends on the resolved interaction profile, not on a separate dev-only code path.
@@ -181,7 +181,8 @@ yoyopod.py / yoyopod.main
 - `src/yoyopod/coordinators/registry.py`: derived app runtime state
 - `src/yoyopod/app_context.py`: compatibility wrapper over focused shared runtime state
 - `src/yoyopod/runtime_state.py`: focused runtime state objects owned by `AppContext`
-- `src/yoyopod/runtime/boot.py`: boot-time composition and manager wiring
+- `src/yoyopod/core/bootstrap/`: boot-time composition and manager wiring
+- `src/yoyopod/runtime/boot/`: compatibility shims for the historical boot import path
 - `src/yoyopod/runtime/loop.py`: coordinator-loop scheduling and queued main-thread work
 - `src/yoyopod/runtime/recovery.py`: backend recovery supervision
 - `src/yoyopod/integrations/display/service.py`: screen wake/sleep policy and power overlays

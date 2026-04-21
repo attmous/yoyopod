@@ -55,6 +55,10 @@ Owns:
 
 This is where the app decides which backend signals become typed runtime events.
 
+Canonical owner:
+- `src/yoyopod/core/bootstrap/`
+- `src/yoyopod/runtime/boot/` is now a compatibility shim only
+
 ### `RuntimeLoopService`
 
 Owns:
@@ -349,7 +353,7 @@ If ordering looks inconsistent, this is usually the first place to check.
 ## Source files to trust
 
 - `src/yoyopod/app.py`
-- `src/yoyopod/runtime/boot.py`
+- `src/yoyopod/core/bootstrap/`
 - `src/yoyopod/runtime/loop.py`
 - `src/yoyopod/coordinators/registry.py`
 - `src/yoyopod/coordinators/call.py`
