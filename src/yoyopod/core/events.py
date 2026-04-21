@@ -8,6 +8,8 @@ from typing import Any, Literal, Optional
 from yoyopod.audio.music.models import Track
 from yoyopod.communication.models import CallState, RegistrationState
 
+FocusOwner = Literal["call", "music", "voice"]
+
 
 @dataclass(frozen=True, slots=True)
 class StateChangedEvent:
@@ -69,6 +71,22 @@ class UserActivityEvent:
     """Published when user input activity should wake or keep the screen alive."""
 
     action_name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AudioFocusGrantedEvent:
+    """Published when one domain is granted audio focus."""
+
+    owner: FocusOwner
+    preempted: FocusOwner | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AudioFocusLostEvent:
+    """Published when one domain loses audio focus."""
+
+    owner: FocusOwner
+    preempted_by: FocusOwner | None = None
 
 
 @dataclass(frozen=True, slots=True)

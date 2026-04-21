@@ -11,6 +11,8 @@ from yoyopod.core.app_context import AppContext
 from yoyopod.core.bus import Bus
 from yoyopod.core.event_bus import EventBus
 from yoyopod.core.events import (
+    AudioFocusGrantedEvent,
+    AudioFocusLostEvent,
     CallEndedEvent,
     CallStateChangedEvent,
     IncomingCallEvent,
@@ -57,6 +59,8 @@ from yoyopod.core.testing import assert_events_contain, build_test_app, drain_al
 
 __all__ = [
     "ActiveVoiceNoteState",
+    "AudioFocusGrantedEvent",
+    "AudioFocusLostEvent",
     "AppContext",
     "assert_events_contain",
     "Bus",

@@ -3,6 +3,8 @@
 from yoyopod.audio.music.models import Track
 from yoyopod.communication.models import CallState, RegistrationState
 from yoyopod.core.events import (
+    AudioFocusGrantedEvent,
+    AudioFocusLostEvent,
     CallEndedEvent,
     CallStateChangedEvent,
     IncomingCallEvent,
@@ -26,6 +28,8 @@ from yoyopod.core.events import (
 )
 
 __all__ = [
+    "AudioFocusGrantedEvent",
+    "AudioFocusLostEvent",
     "CallState",
     "CallEndedEvent",
     "CallStateChangedEvent",
