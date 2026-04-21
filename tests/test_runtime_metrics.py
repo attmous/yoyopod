@@ -5,7 +5,7 @@ from __future__ import annotations
 from queue import Queue
 from types import SimpleNamespace
 
-from yoyopod.runtime.metrics import RuntimeMetricsStore
+from yoyopod.core.status import RuntimeMetricsStore
 
 
 def test_runtime_metrics_store_tracks_queue_backlog() -> None:

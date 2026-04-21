@@ -25,6 +25,7 @@ from yoyopod.core import AppContext as CoreAppContext
 from yoyopod.core.event_bus import EventBus as CoreEventBus
 from yoyopod.core.event_bus import EventHandler as CoreEventHandler
 from yoyopod.core.recovery import RecoveryState as CoreRecoveryState
+from yoyopod.core.status import RuntimeMetricsStore as CoreRuntimeMetricsStore
 from yoyopod.core.status import RuntimeStatusService as CoreRuntimeStatusService
 from yoyopod.core.diagnostics.watchdog import (
     ResponsivenessWatchdogDecision as CoreResponsivenessWatchdogDecision,
@@ -141,6 +142,7 @@ from yoyopod.runtime import evaluate_responsiveness_status as legacy_evaluate_re
 from yoyopod.runtime.models import PendingShutdown as LegacyPendingShutdown
 from yoyopod.runtime.models import PowerAlert as LegacyPowerAlert
 from yoyopod.runtime.models import RecoveryState as LegacyRecoveryState
+from yoyopod.runtime.metrics import RuntimeMetricsStore as LegacyRuntimeMetricsStore
 from yoyopod.runtime.status import RuntimeStatusService as LegacyRuntimeStatusService
 from yoyopod.runtime.screen_power import ScreenPowerService as LegacyScreenPowerService
 from yoyopod.event_bus import EventBus, EventHandler
@@ -384,6 +386,12 @@ def test_legacy_runtime_status_import_path_resolves_to_core_service() -> None:
     """Legacy runtime-status imports should point at the canonical core seam."""
 
     assert LegacyRuntimeStatusService is CoreRuntimeStatusService
+
+
+def test_legacy_runtime_metrics_import_path_resolves_to_core_store() -> None:
+    """Legacy runtime-metrics imports should point at the canonical core seam."""
+
+    assert LegacyRuntimeMetricsStore is CoreRuntimeMetricsStore
 
 
 def test_legacy_voice_import_paths_resolve_to_relocated_symbols() -> None:
