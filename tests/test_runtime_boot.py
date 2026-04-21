@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import yoyopod.runtime.boot as boot_module
 from yoyopod.runtime.boot import RuntimeBootService
+from yoyopod.runtime.boot.wiring_boot import WiringBoot
 
 
 class _FakeDisplay:
@@ -133,6 +134,56 @@ class _FakeApp:
         return None
 
 
+class _FakeVoipManager:
+    def __init__(self) -> None:
+        self.incoming_call_callback = None
+        self.call_state_callback = None
+        self.registration_callback = None
+        self.availability_callback = None
+        self.message_summary_callback = None
+        self.message_received_callback = None
+        self.message_delivery_callback = None
+        self.message_failure_callback = None
+
+    def on_incoming_call(self, callback) -> None:
+        self.incoming_call_callback = callback
+
+    def on_call_state_change(self, callback) -> None:
+        self.call_state_callback = callback
+
+    def on_registration_change(self, callback) -> None:
+        self.registration_callback = callback
+
+    def on_availability_change(self, callback) -> None:
+        self.availability_callback = callback
+
+    def on_message_summary_change(self, callback) -> None:
+        self.message_summary_callback = callback
+
+    def on_message_received(self, callback) -> None:
+        self.message_received_callback = callback
+
+    def on_message_delivery_change(self, callback) -> None:
+        self.message_delivery_callback = callback
+
+    def on_message_failure(self, callback) -> None:
+        self.message_failure_callback = callback
+
+
+class _FakeCallCoordinator:
+    def handle_incoming_call(self, *_args) -> None:
+        return None
+
+    def handle_call_state_change(self, *_args) -> None:
+        return None
+
+    def handle_registration_change(self, *_args) -> None:
+        return None
+
+    def handle_availability_change(self, *_args) -> None:
+        return None
+
+
 def test_init_core_components_schedules_screen_actions_for_pil_backend(monkeypatch) -> None:
     """Boot wiring should serialize screen actions on the runtime loop for pil displays too."""
 
@@ -226,3 +277,39 @@ def test_init_core_components_refuses_whisplay_when_lvgl_backend_does_not_start(
     assert isinstance(logged_exceptions[0], boot_module.WhisplayProductionRenderContractError)
     assert app.input_manager is None
     assert fake_input_manager.started is False
+
+
+def test_setup_voip_callbacks_bind_direct_call_handlers() -> None:
+    """VoIP callbacks should wire straight to the coordinator handlers on main-thread delivery."""
+
+    voip_manager = _FakeVoipManager()
+    call_coordinator = _FakeCallCoordinator()
+    voice_note_events = SimpleNamespace(
+        handle_voice_note_summary_changed=lambda *_args: None,
+        handle_voice_note_activity_changed=lambda *_args: None,
+        handle_voice_note_failure=lambda *_args: None,
+        sync_active_voice_note_context=lambda: None,
+    )
+    app = SimpleNamespace(
+        voip_manager=voip_manager,
+        call_coordinator=call_coordinator,
+        event_wiring=SimpleNamespace(voice_note_events=voice_note_events),
+        context=None,
+        call_history_store=None,
+    )
+    wiring = WiringBoot(
+        app,
+        logger=SimpleNamespace(info=lambda *_args, **_kwargs: None, warning=lambda *_args, **_kwargs: None),
+    )
+    wiring.ensure_coordinators = lambda: None
+
+    wiring.setup_voip_callbacks()
+
+    assert voip_manager.incoming_call_callback.__name__ == "handle_incoming_call"
+    assert voip_manager.call_state_callback.__name__ == "handle_call_state_change"
+    assert voip_manager.registration_callback.__name__ == "handle_registration_change"
+    assert voip_manager.availability_callback.__name__ == "handle_availability_change"
+    assert voip_manager.message_summary_callback is voice_note_events.handle_voice_note_summary_changed
+    assert voip_manager.message_received_callback is voice_note_events.handle_voice_note_activity_changed
+    assert voip_manager.message_delivery_callback is voice_note_events.handle_voice_note_activity_changed
+    assert voip_manager.message_failure_callback is voice_note_events.handle_voice_note_failure

@@ -48,15 +48,15 @@ class WiringBoot:
 
         self.ensure_coordinators()
         assert self.app.call_coordinator is not None
-        self.app.voip_manager.on_incoming_call(self.app.call_coordinator.publish_incoming_call)
+        self.app.voip_manager.on_incoming_call(self.app.call_coordinator.handle_incoming_call)
         self.app.voip_manager.on_call_state_change(
-            self.app.call_coordinator.publish_call_state_events
+            self.app.call_coordinator.handle_call_state_change
         )
         self.app.voip_manager.on_registration_change(
-            self.app.call_coordinator.publish_registration_change
+            self.app.call_coordinator.handle_registration_change
         )
         self.app.voip_manager.on_availability_change(
-            self.app.call_coordinator.publish_availability_change
+            self.app.call_coordinator.handle_availability_change
         )
         self.app.voip_manager.on_message_summary_change(
             self.app.event_wiring.voice_note_events.handle_voice_note_summary_changed
