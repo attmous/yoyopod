@@ -19,6 +19,10 @@ from typing import Any, Callable, Dict, List, Optional
 
 from loguru import logger
 
+from yoyopod.ui.input.adapters.ptt_button_state import (
+    PTTButtonState,
+    PTTButtonStateMachine,
+)
 from yoyopod.ui.input.hal import InputAction, InputHAL
 
 
@@ -42,9 +46,7 @@ class PTTInputAdapter(InputHAL):
         self.device = whisplay_device
         self.enable_navigation = enable_navigation
         self.simulate = simulate
-        self.debounce_time = (
-            self.DEFAULT_DEBOUNCE_TIME if debounce_time is None else debounce_time
-        )
+        self.debounce_time = self.DEFAULT_DEBOUNCE_TIME if debounce_time is None else debounce_time
         self.double_click_time = (
             self.DEFAULT_DOUBLE_CLICK_TIME if double_click_time is None else double_click_time
         )
@@ -59,16 +61,17 @@ class PTTInputAdapter(InputHAL):
         self.poll_thread: Optional[Thread] = None
         self.stop_event = Event()
 
-        self.button_pressed = False
-        self._raw_button_state = False
-        self._button_transition_time: Optional[float] = None
-        self.press_start_time: Optional[float] = None
-        self.pending_single_tap_time: Optional[float] = None
-        self.double_tap_candidate = False
-        self.double_tap_select_enabled = True
-        self.raw_ptt_passthrough = False
-        self.raw_hold_started = False
-        self._hold_back_fired = False
+        self.state = PTTButtonState(
+            enable_navigation=enable_navigation,
+            debounce_time=self.debounce_time,
+            double_click_time=self.double_click_time,
+            long_press_time=self.long_press_time,
+        )
+        self._state_machine = PTTButtonStateMachine(
+            state=self.state,
+            emit_action=self._fire_action,
+            emit_activity=self._fire_activity,
+        )
 
         logger.debug(f"PTTInputAdapter initialized (navigation: {enable_navigation})")
 
@@ -123,7 +126,7 @@ class PTTInputAdapter(InputHAL):
                 InputAction.ADVANCE,
                 InputAction.BACK,
             ]
-            if self.double_tap_select_enabled:
+            if self._state_machine.double_tap_select_enabled:
                 actions.append(InputAction.SELECT)
             if self.raw_ptt_passthrough:
                 actions.extend([InputAction.PTT_PRESS, InputAction.PTT_RELEASE])
@@ -136,16 +139,11 @@ class PTTInputAdapter(InputHAL):
 
     def set_raw_ptt_passthrough(self, enabled: bool) -> None:
         """Enable or disable raw PTT press/release passthrough while in navigation mode."""
-        self.raw_ptt_passthrough = bool(enabled)
-        self.raw_hold_started = False
-        self.pending_single_tap_time = None
-        self.double_tap_candidate = False
+        self._state_machine.set_raw_ptt_passthrough(enabled)
 
     def set_double_tap_select_enabled(self, enabled: bool) -> None:
         """Enable or disable delayed double-tap select for one-button navigation."""
-        self.double_tap_select_enabled = bool(enabled)
-        self.pending_single_tap_time = None
-        self.double_tap_candidate = False
+        self._state_machine.set_double_tap_select_enabled(enabled)
 
     def _get_button_state(self) -> bool:
         """Return True when the physical button is pressed."""
@@ -190,245 +188,36 @@ class PTTInputAdapter(InputHAL):
                 logger.error(f"Error in PTT activity callback: {exc}")
 
     def _check_hold_threshold(self, current_time: float) -> None:
-        """Fire BACK at the hold threshold while the button is still pressed."""
-        if (
-            not self.enable_navigation
-            or self._hold_back_fired
-            or self.press_start_time is None
-            or self.raw_ptt_passthrough
-        ):
-            return
-        if (current_time - self.press_start_time) >= self.long_press_time:
-            self._hold_back_fired = True
-            self._fire_action(
-                InputAction.BACK,
-                {
-                    "method": "long_hold",
-                    "duration": current_time - self.press_start_time,
-                },
-            )
+        """Delegate hold-threshold processing to the state machine."""
+        self._state_machine.check_hold_threshold(current_time)
 
     def _handle_button_press(self, current_time: float) -> None:
-        """Record a physical button press."""
-        self._fire_activity(
-            {
-                "timestamp": current_time,
-                "pressed": True,
-            }
-        )
-        self.double_tap_candidate = (
-            self.enable_navigation
-            and self.double_tap_select_enabled
-            and self.pending_single_tap_time is not None
-            and (current_time - self.pending_single_tap_time) < self.double_click_time
-        )
-        if not self.double_tap_candidate and self.double_tap_select_enabled:
-            self._emit_pending_navigation(current_time)
-        self.button_pressed = True
-        self.press_start_time = current_time
-        self.raw_hold_started = False
-        self._hold_back_fired = False
-
-        if self.raw_ptt_passthrough:
-            self._fire_action(
-                InputAction.PTT_PRESS,
-                {
-                    "timestamp": current_time,
-                    "stage": "pressed",
-                },
-            )
-
-        if not self.enable_navigation:
-            self._fire_action(InputAction.PTT_PRESS, {"timestamp": current_time})
+        """Delegate press handling to the state machine."""
+        self._state_machine.handle_button_press(current_time)
 
     def _handle_button_release(self, current_time: float) -> None:
-        """Resolve a press/release sequence into the current interaction grammar."""
-        self.button_pressed = False
-
-        press_duration = 0.0
-        if self.press_start_time is not None:
-            press_duration = current_time - self.press_start_time
-
-        if self.raw_ptt_passthrough:
-            self._fire_action(
-                InputAction.PTT_RELEASE,
-                {
-                    "timestamp": current_time,
-                    "duration": press_duration,
-                    "hold_started": self.raw_hold_started,
-                },
-            )
-
-        if not self.enable_navigation:
-            self._fire_action(
-                InputAction.PTT_RELEASE,
-                {
-                    "timestamp": current_time,
-                    "duration": press_duration,
-                },
-            )
-            self.press_start_time = None
-            self.double_tap_candidate = False
-            self.raw_hold_started = False
-            return
-
-        if self.raw_ptt_passthrough and self.raw_hold_started:
-            self.pending_single_tap_time = None
-            self.double_tap_candidate = False
-            self.press_start_time = None
-            self.raw_hold_started = False
-            return
-
-        if self._hold_back_fired:
-            self._hold_back_fired = False
-            self._fire_action(
-                InputAction.PTT_RELEASE,
-                {
-                    "timestamp": current_time,
-                    "duration": press_duration,
-                    "after_hold": True,
-                },
-            )
-            self.press_start_time = None
-            self.pending_single_tap_time = None
-            self.double_tap_candidate = False
-            self.raw_hold_started = False
-            return
-
-        if press_duration >= self.long_press_time:
-            self.pending_single_tap_time = None
-            self.double_tap_candidate = False
-            self._fire_action(
-                InputAction.BACK,
-                {
-                    "method": "long_hold",
-                    "duration": press_duration,
-                },
-            )
-            self.press_start_time = None
-            self.raw_hold_started = False
-            return
-
-        if not self.double_tap_select_enabled:
-            self.pending_single_tap_time = None
-            self.double_tap_candidate = False
-            self._fire_action(
-                InputAction.ADVANCE,
-                {
-                    "method": "single_tap",
-                    "timestamp": current_time,
-                },
-            )
-            self.press_start_time = None
-            self.raw_hold_started = False
-            return
-
-        if self.double_tap_candidate:
-            self.pending_single_tap_time = None
-            self.double_tap_candidate = False
-            self._fire_action(
-                InputAction.SELECT,
-                {
-                    "method": "double_tap",
-                    "duration": press_duration,
-                },
-            )
-            self.press_start_time = None
-            self.raw_hold_started = False
-            return
-
-        self.double_tap_candidate = False
-        self.pending_single_tap_time = current_time
-        self.press_start_time = None
-        self.raw_hold_started = False
+        """Delegate release handling to the state machine."""
+        self._state_machine.handle_button_release(current_time)
 
     def _emit_pending_navigation(self, current_time: float) -> None:
-        """Emit ADVANCE once the double-tap window has expired."""
-        if (
-            not self.enable_navigation
-            or not self.double_tap_select_enabled
-            or self.button_pressed
-            or self._raw_button_state
-        ):
-            return
-
-        if self.pending_single_tap_time is None:
-            return
-
-        if (current_time - self.pending_single_tap_time) < self.double_click_time:
-            return
-
-        self.pending_single_tap_time = None
-        self._fire_action(
-            InputAction.ADVANCE,
-            {
-                "method": "single_tap",
-                "timestamp": current_time,
-            },
-        )
+        """Delegate pending navigation resolution to the state machine."""
+        self._state_machine.emit_pending_navigation(current_time)
 
     def _observe_raw_state(self, current_state: bool, observed_at: float) -> None:
-        """Track raw button transitions and start a debounce window when needed."""
-        if current_state == self._raw_button_state:
-            return
-
-        self._raw_button_state = current_state
-        self._button_transition_time = observed_at
+        """Track raw transitions in the state machine."""
+        self._state_machine.observe_raw_state(current_state, observed_at)
 
     def _advance_debounced_state(self, current_time: float) -> None:
-        """Resolve a debounced physical state change into press or release callbacks."""
-        transition_started_at = self._button_transition_time
-        if transition_started_at is None:
-            return
-
-        if (current_time - transition_started_at) < self.debounce_time:
-            return
-
-        self._button_transition_time = None
-        if self._raw_button_state == self.button_pressed:
-            return
-
-        if self._raw_button_state:
-            self._handle_button_press(transition_started_at)
-        else:
-            self._handle_button_release(transition_started_at)
+        """Delegate debounced state advancement to the state machine."""
+        self._state_machine.advance_debounced_state(current_time)
 
     def _hold_deadline_pending(self) -> bool:
-        """Return True while a held button still has threshold-driven work pending."""
-        if not self.button_pressed or self.press_start_time is None:
-            return False
-        if self.raw_ptt_passthrough:
-            return not self.raw_hold_started
-        if not self.enable_navigation:
-            return False
-        return not self._hold_back_fired
+        """Return whether a hold deadline is still pending."""
+        return self._state_machine.hold_deadline_pending()
 
     def _next_wait_timeout(self, current_time: float) -> float:
         """Return the next deadline for polling, debounce, hold, or single-tap resolution."""
-        deadlines = [self.poll_rate]
-
-        if self._button_transition_time is not None:
-            deadlines.append(
-                max(0.0, self.debounce_time - (current_time - self._button_transition_time))
-            )
-
-        if self._hold_deadline_pending() and self.press_start_time is not None:
-            hold_remaining = self.long_press_time - (current_time - self.press_start_time)
-            if hold_remaining > 0.0:
-                deadlines.append(hold_remaining)
-
-        if (
-            self.enable_navigation
-            and self.double_tap_select_enabled
-            and not self.button_pressed
-            and not self._raw_button_state
-            and self.pending_single_tap_time is not None
-        ):
-            deadlines.append(
-                max(0.0, self.double_click_time - (current_time - self.pending_single_tap_time))
-            )
-
-        return min(deadlines)
+        return self._state_machine.next_wait_timeout(current_time, self.poll_rate)
 
     def _poll_button(self) -> None:
         """Poll the button and emit semantic actions."""
@@ -462,3 +251,75 @@ class PTTInputAdapter(InputHAL):
             self.stop_event.wait(self._next_wait_timeout(current_time))
 
         logger.debug("PTT button polling stopped")
+
+    @property
+    def button_pressed(self) -> bool:
+        return self._state_machine.button_pressed
+
+    @button_pressed.setter
+    def button_pressed(self, value: bool) -> None:
+        self._state_machine.button_pressed = value
+
+    @property
+    def press_start_time(self) -> Optional[float]:
+        return self._state_machine.press_start_time
+
+    @press_start_time.setter
+    def press_start_time(self, value: Optional[float]) -> None:
+        self._state_machine.press_start_time = value
+
+    @property
+    def pending_single_tap_time(self) -> Optional[float]:
+        return self._state_machine.pending_single_tap_time
+
+    @pending_single_tap_time.setter
+    def pending_single_tap_time(self, value: Optional[float]) -> None:
+        self._state_machine.pending_single_tap_time = value
+
+    @property
+    def double_tap_candidate(self) -> bool:
+        return self._state_machine.double_tap_candidate
+
+    @double_tap_candidate.setter
+    def double_tap_candidate(self, value: bool) -> None:
+        self._state_machine.double_tap_candidate = value
+
+    @property
+    def raw_ptt_passthrough(self) -> bool:
+        return self._state_machine.raw_ptt_passthrough
+
+    @raw_ptt_passthrough.setter
+    def raw_ptt_passthrough(self, value: bool) -> None:
+        self._state_machine.raw_ptt_passthrough = value
+
+    @property
+    def raw_hold_started(self) -> bool:
+        return self._state_machine.raw_hold_started
+
+    @raw_hold_started.setter
+    def raw_hold_started(self, value: bool) -> None:
+        self._state_machine.raw_hold_started = value
+
+    @property
+    def _hold_back_fired(self) -> bool:
+        return self._state_machine.hold_back_fired
+
+    @_hold_back_fired.setter
+    def _hold_back_fired(self, value: bool) -> None:
+        self._state_machine.hold_back_fired = value
+
+    @property
+    def _raw_button_state(self) -> bool:
+        return self._state_machine.raw_button_state
+
+    @_raw_button_state.setter
+    def _raw_button_state(self, value: bool) -> None:
+        self._state_machine.raw_button_state = value
+
+    @property
+    def _button_transition_time(self) -> Optional[float]:
+        return self._state_machine.button_transition_time
+
+    @_button_transition_time.setter
+    def _button_transition_time(self, value: Optional[float]) -> None:
+        self._state_machine.button_transition_time = value
