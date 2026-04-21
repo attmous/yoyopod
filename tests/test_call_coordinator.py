@@ -9,7 +9,7 @@ from yoyopod.communication.calling.history import CallHistoryStore
 from yoyopod.communication.models import CallState, RegistrationState
 from yoyopod.coordinators.call import CallCoordinator
 from yoyopod.coordinators.registry import CoordinatorRuntime
-from yoyopod.core import CallFSM, CallInterruptionPolicy, MusicFSM
+from yoyopod.core import CallFSM, CallInterruptionPolicy, CallSessionState, MusicFSM
 
 
 class _ScreenCoordinatorStub:
@@ -17,6 +17,7 @@ class _ScreenCoordinatorStub:
 
     def __init__(self, voip_manager: _VoipManagerStub | None = None) -> None:
         self.refresh_calls = 0
+        self.show_in_call_calls = 0
         self._voip_manager = voip_manager
 
     def refresh_call_screen_if_visible(self) -> None:
@@ -29,6 +30,7 @@ class _ScreenCoordinatorStub:
         return
 
     def show_in_call(self) -> None:
+        self.show_in_call_calls += 1
         return
 
     def pop_call_screens(self) -> None:
@@ -178,3 +180,64 @@ def test_terminal_call_states_record_rejected_and_failed_history(tmp_path: Path)
     recent = coordinator.call_history_store.list_recent(2)  # type: ignore[union-attr]
     assert recent[0].outcome == "failed"
     assert recent[1].outcome == "rejected"
+
+
+def test_connected_backend_state_ignores_connect_while_call_fsm_idle() -> None:
+    """Ignore backend-connected transitions before the call session is active."""
+    context = AppContext()
+    runtime = _build_runtime(
+        config_manager=_ConfigManagerStub(sip_username="kid@example.com"),
+        context=context,
+    )
+    screen_coordinator = _ScreenCoordinatorStub()
+    coordinator = CallCoordinator(
+        runtime=runtime,
+        screen_coordinator=screen_coordinator,
+        auto_resume_after_call=True,
+    )
+
+    coordinator.handle_call_state_change(CallState.CONNECTED)
+
+    assert runtime.call_fsm.state == CallSessionState.IDLE
+    assert screen_coordinator.show_in_call_calls == 0
+
+
+def test_non_connected_backend_state_does_not_force_in_call_ui() -> None:
+    """Ignore non-terminal backend states that are not real call-connect transitions."""
+    context = AppContext()
+    runtime = _build_runtime(
+        config_manager=_ConfigManagerStub(sip_username="kid@example.com"),
+        context=context,
+    )
+    screen_coordinator = _ScreenCoordinatorStub()
+    coordinator = CallCoordinator(
+        runtime=runtime,
+        screen_coordinator=screen_coordinator,
+        auto_resume_after_call=True,
+    )
+
+    coordinator.handle_call_state_change(CallState.PAUSED)
+
+    assert runtime.call_fsm.state == CallSessionState.IDLE
+    assert screen_coordinator.show_in_call_calls == 0
+
+
+def test_connected_backend_state_activates_call_fsm_when_call_is_starting() -> None:
+    """Accept connected/backend-streaming states only after a call session is active."""
+    context = AppContext()
+    runtime = _build_runtime(
+        config_manager=_ConfigManagerStub(sip_username="kid@example.com"),
+        context=context,
+    )
+    screen_coordinator = _ScreenCoordinatorStub()
+    coordinator = CallCoordinator(
+        runtime=runtime,
+        screen_coordinator=screen_coordinator,
+        auto_resume_after_call=True,
+    )
+
+    coordinator.handle_call_state_change(CallState.OUTGOING)
+    coordinator.handle_call_state_change(CallState.CONNECTED)
+
+    assert runtime.call_fsm.state == CallSessionState.ACTIVE
+    assert screen_coordinator.show_in_call_calls == 1

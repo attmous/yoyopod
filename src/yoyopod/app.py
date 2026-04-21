@@ -22,7 +22,6 @@ from yoyopod.audio import (
 )
 from yoyopod.config import ConfigManager, MediaConfig, YoyoPodConfig
 from yoyopod.coordinators import (
-    AppRuntimeState,
     CallCoordinator,
     CoordinatorRuntime,
     PlaybackCoordinator,
@@ -120,7 +119,7 @@ class YoyoPodApp:
         # Integration state
         self.auto_resume_after_call = True
         self._voip_registered = False
-        self._ui_state = AppRuntimeState.IDLE
+        self._ui_state = "idle"
 
         # Cloud / backend runtime
         self.cloud_manager: Optional[CloudManager] = None
@@ -390,8 +389,8 @@ class YoyoPodApp:
 
         return self.boot_service.get_initial_screen_name()
 
-    def _get_initial_ui_state(self) -> AppRuntimeState:
-        """Compatibility wrapper for initial UI state derivation."""
+    def _get_initial_ui_state(self) -> str:
+        """Compatibility wrapper for initial UI route derivation."""
 
         return self.boot_service.get_initial_ui_state()
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import yoyopod.core.fsm.music as fsm_module
-from yoyopod.coordinators.registry import AppRuntimeState, CoordinatorRuntime
+from yoyopod.coordinators.registry import AppRuntimeState, BaseUIRoute, CoordinatorRuntime
 from yoyopod.core import (
     CallFSM,
     CallInterruptionPolicy,
@@ -13,7 +13,7 @@ from yoyopod.core import (
 )
 
 
-def _build_runtime() -> CoordinatorRuntime:
+def _build_runtime(ui_state: str | BaseUIRoute = AppRuntimeState.IDLE.value) -> CoordinatorRuntime:
     """Create a minimal coordinator runtime for state-derivation tests."""
     return CoordinatorRuntime(
         music_fsm=MusicFSM(),
@@ -23,6 +23,7 @@ def _build_runtime() -> CoordinatorRuntime:
         music_backend=None,
         power_manager=None,
         config_manager=None,
+        ui_state=ui_state,
     )
 
 
@@ -110,54 +111,80 @@ def test_runtime_state_is_derived_from_split_fsms() -> None:
     """CoordinatorRuntime should derive app state from music and call FSMs."""
     runtime = _build_runtime()
 
-    state_change = runtime.set_ui_state(AppRuntimeState.MENU, trigger="test_menu")
-    assert state_change.entered(AppRuntimeState.MENU)
-    assert runtime.current_app_state == AppRuntimeState.MENU
+    state_change = runtime.set_ui_state("menu", trigger="test_menu")
+    assert not state_change.changed
+    assert runtime.current_app_state == AppRuntimeState.IDLE
+    assert runtime.ui_state == "menu"
 
     runtime.music_fsm.transition("play")
     state_change = runtime.sync_app_state("playback_playing")
-    assert state_change.entered(AppRuntimeState.PLAYING)
-    assert runtime.current_app_state == AppRuntimeState.PLAYING
+    assert state_change.entered(AppRuntimeState.MUSIC)
+    assert runtime.current_app_state == AppRuntimeState.MUSIC
 
     state_change = runtime.set_voip_ready(True)
-    assert state_change.entered(AppRuntimeState.PLAYING_WITH_VOIP)
-    assert runtime.current_app_state == AppRuntimeState.PLAYING_WITH_VOIP
+    assert not state_change.changed
+    assert runtime.current_app_state == AppRuntimeState.MUSIC
 
     runtime.call_interruption_policy.mark_paused_for_call(runtime.music_fsm)
     state_change = runtime.sync_app_state("auto_pause_for_call")
-    assert state_change.entered(AppRuntimeState.PAUSED_BY_CALL)
-    assert runtime.current_app_state == AppRuntimeState.PAUSED_BY_CALL
+    assert not state_change.changed
+    assert runtime.music_fsm.state == MusicState.PAUSED
+    assert runtime.current_app_state == AppRuntimeState.MUSIC
 
     runtime.call_fsm.transition("incoming")
     state_change = runtime.sync_app_state("incoming_call")
-    assert state_change.entered(AppRuntimeState.CALL_INCOMING)
-    assert runtime.current_app_state == AppRuntimeState.CALL_INCOMING
+    assert state_change.entered(AppRuntimeState.CALL_CONNECTING)
+    assert runtime.current_app_state == AppRuntimeState.CALL_CONNECTING
 
     runtime.call_fsm.transition("connect")
     state_change = runtime.sync_app_state("call_connected")
-    assert state_change.entered(AppRuntimeState.CALL_ACTIVE_MUSIC_PAUSED)
-    assert runtime.current_app_state == AppRuntimeState.CALL_ACTIVE_MUSIC_PAUSED
+    assert state_change.entered(AppRuntimeState.CALL_ACTIVE)
+    assert runtime.current_app_state == AppRuntimeState.CALL_ACTIVE
 
     runtime.call_fsm.transition("end")
     runtime.music_fsm.transition("play")
     runtime.call_interruption_policy.clear()
     state_change = runtime.sync_app_state("call_ended")
-    assert state_change.entered(AppRuntimeState.PLAYING_WITH_VOIP)
-    assert runtime.current_app_state == AppRuntimeState.PLAYING_WITH_VOIP
+    assert state_change.entered(AppRuntimeState.MUSIC)
+    assert runtime.current_app_state == AppRuntimeState.MUSIC
 
 
 def test_runtime_returns_to_base_ui_state_when_music_and_calls_are_idle() -> None:
     """The derived app state should fall back to the current base UI state."""
     runtime = _build_runtime()
 
-    runtime.set_ui_state(AppRuntimeState.PLAYLIST_BROWSER, trigger="browse_playlists")
-    assert runtime.current_app_state == AppRuntimeState.PLAYLIST_BROWSER
+    runtime.set_ui_state("playlists", trigger="browse_playlists")
+    assert runtime.ui_state == "playlists"
 
     runtime.music_fsm.transition("play")
     runtime.sync_app_state("load_playlist")
-    assert runtime.current_app_state == AppRuntimeState.PLAYING
+    assert runtime.current_app_state == AppRuntimeState.MUSIC
 
     runtime.music_fsm.transition("stop")
     state_change = runtime.sync_app_state("stop")
-    assert state_change.entered(AppRuntimeState.PLAYLIST_BROWSER)
-    assert runtime.current_app_state == AppRuntimeState.PLAYLIST_BROWSER
+    assert state_change.entered(AppRuntimeState.IDLE)
+    assert runtime.current_app_state == AppRuntimeState.IDLE
+    assert runtime.ui_state == "playlists"
+
+
+def test_runtime_accepts_base_ui_route_enum_inputs() -> None:
+    """Base UI routes should stay usable via enum callers after AppRuntimeState narrowed."""
+    runtime = _build_runtime(ui_state=BaseUIRoute.HOME)
+
+    assert runtime.ui_state == BaseUIRoute.HOME.value
+
+    state_change = runtime.set_ui_state(BaseUIRoute.MENU, trigger="show_menu")
+
+    assert not state_change.changed
+    assert runtime.current_app_state == AppRuntimeState.IDLE
+    assert runtime.ui_state == BaseUIRoute.MENU.value
+
+
+def test_runtime_maps_legacy_idle_runtime_enum_to_home_route() -> None:
+    """Legacy idle enum inputs should continue to land on the home UI route."""
+    runtime = _build_runtime()
+
+    state_change = runtime.set_ui_state(AppRuntimeState.IDLE, trigger="legacy_home")
+
+    assert not state_change.changed
+    assert runtime.ui_state == BaseUIRoute.HOME.value

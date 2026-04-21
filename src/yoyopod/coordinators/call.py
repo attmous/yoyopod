@@ -25,6 +25,8 @@ from yoyopod.communication.calling.history import CallHistoryEntry, CallHistoryS
 from yoyopod.communication.models import CallState, RegistrationState
 from yoyopod.core import CallSessionState
 
+_CONNECTED_CALL_STATES = (CallState.CONNECTED, CallState.STREAMS_RUNNING)
+
 
 @dataclass(slots=True)
 class _CallSessionDraft:
@@ -163,7 +165,7 @@ class CallCoordinator:
 
     def on_enter_call_active_music_paused(self) -> None:
         """Log entry into the active-call-with-paused-music state."""
-        logger.info("In call (music paused in background)")
+        logger.info("In active call")
 
     def _on_incoming_call_event(self, event: IncomingCallEvent) -> None:
         self.handle_incoming_call(event.caller_address, event.caller_name)
@@ -199,6 +201,18 @@ class CallCoordinator:
         """Coordinate high-level call state updates."""
         logger.info(f"Call state changed: {state.value}")
 
+        if state in (CallState.RELEASED, CallState.END, CallState.ERROR):
+            if not self._has_live_call_state():
+                logger.debug("Ignoring duplicate terminal call state {}", state.value)
+                return
+
+            local_end_action = self._consume_pending_terminal_action()
+            if self._active_call_session is not None:
+                self._active_call_session.terminal_state = state
+                self._active_call_session.local_end_action = local_end_action
+            self.handle_call_ended(reason=state.value)
+            return
+
         if state in (
             CallState.OUTGOING,
             CallState.OUTGOING_PROGRESS,
@@ -233,28 +247,22 @@ class CallCoordinator:
             self._present_incoming_call_if_ready()
             return
 
-        if state in (CallState.CONNECTED, CallState.STREAMS_RUNNING):
+        if state in _CONNECTED_CALL_STATES:
             if self._active_call_session is not None:
                 self._active_call_session.answered = True
+            if not self.runtime.call_fsm.is_active:
+                logger.debug(
+                    "Ignoring {} while call FSM is idle",
+                    state.value,
+                )
+                return
 
             self.runtime.call_fsm.transition("connect")
             state_change = self.runtime.sync_app_state("call_connected")
-            if state_change.entered(AppRuntimeState.CALL_ACTIVE_MUSIC_PAUSED):
+            if state_change.entered(AppRuntimeState.CALL_ACTIVE):
                 logger.info("In call (music paused in background)")
             self.screen_coordinator.show_in_call()
             self.stop_ringing()
-            return
-
-        if state in (CallState.RELEASED, CallState.END, CallState.ERROR):
-            if not self._has_live_call_state():
-                logger.debug("Ignoring duplicate terminal call state {}", state.value)
-                return
-
-            local_end_action = self._consume_pending_terminal_action()
-            if self._active_call_session is not None:
-                self._active_call_session.terminal_state = state
-                self._active_call_session.local_end_action = local_end_action
-            self.handle_call_ended(reason=state.value)
             return
 
         logger.debug("Call state {} does not change coordinator phase", state.value)

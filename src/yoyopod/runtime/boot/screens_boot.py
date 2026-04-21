@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from yoyopod.coordinators import AppRuntimeState
 from yoyopod.ui.input import InteractionProfile
 
 if TYPE_CHECKING:
@@ -53,8 +52,8 @@ class ScreensBoot:
             return "hub"
         return "menu"
 
-    def get_initial_ui_state(self) -> AppRuntimeState:
-        """Return the base runtime state for the active interaction profile."""
+    def get_initial_ui_state(self) -> str:
+        """Return the base UI route for the active interaction profile."""
         if self.get_interaction_profile() == InteractionProfile.ONE_BUTTON:
-            return AppRuntimeState.HUB
-        return AppRuntimeState.MENU
+            return "hub"
+        return "menu"

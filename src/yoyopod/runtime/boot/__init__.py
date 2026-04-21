@@ -40,7 +40,6 @@ from .wiring_boot import WiringBoot
 
 if TYPE_CHECKING:
     from yoyopod.app import YoyoPodApp
-    from yoyopod.coordinators import AppRuntimeState
 
 
 class RuntimeBootService:
@@ -142,7 +141,7 @@ class RuntimeBootService:
     def get_initial_screen_name(self) -> str:
         return self._screens_boot.get_initial_screen_name()
 
-    def get_initial_ui_state(self) -> "AppRuntimeState":
+    def get_initial_ui_state(self) -> str:
         return self._screens_boot.get_initial_ui_state()
 
     def refresh_talk_summary(self) -> None:

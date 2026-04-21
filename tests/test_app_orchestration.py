@@ -562,7 +562,7 @@ class OrchestrationHarness:
         screen_manager = FakeScreenManager(screens.screen_lookup())
         app.screen_manager = screen_manager
         app.screen_manager.push_screen("menu")
-        app._ui_state = AppRuntimeState.MENU
+        app._ui_state = "menu"
 
         app._setup_event_subscriptions()
         assert app.call_coordinator is not None
@@ -961,7 +961,7 @@ def test_background_events_wait_for_drain_before_mutating_state() -> None:
     assert app.event_bus.drain() == 2
     assert app.voip_registered
     assert app.music_fsm.state == MusicState.PLAYING
-    assert app.coordinator_runtime.current_app_state == AppRuntimeState.PLAYING_WITH_VOIP
+    assert app.coordinator_runtime.current_app_state == AppRuntimeState.MUSIC
 
 
 def test_track_event_refreshes_now_playing_screen_when_visible() -> None:
@@ -1058,16 +1058,20 @@ def test_navigation_updates_runtime_base_state() -> None:
     app, _, screen_manager = _build_app(playback_state="stopped")
 
     screen_manager.push_screen("contacts")
-    assert app.coordinator_runtime.current_app_state == AppRuntimeState.CALL_IDLE
+    assert app.coordinator_runtime.current_app_state == AppRuntimeState.IDLE
+    assert app.coordinator_runtime.ui_state == "contacts"
 
     screen_manager.pop_screen()
-    assert app.coordinator_runtime.current_app_state == AppRuntimeState.MENU
+    assert app.coordinator_runtime.current_app_state == AppRuntimeState.IDLE
+    assert app.coordinator_runtime.ui_state == "menu"
 
     screen_manager.push_screen("playlists")
-    assert app.coordinator_runtime.current_app_state == AppRuntimeState.PLAYLIST_BROWSER
+    assert app.coordinator_runtime.current_app_state == AppRuntimeState.IDLE
+    assert app.coordinator_runtime.ui_state == "playlists"
 
     screen_manager.push_screen("power")
-    assert app.coordinator_runtime.current_app_state == AppRuntimeState.POWER
+    assert app.coordinator_runtime.current_app_state == AppRuntimeState.IDLE
+    assert app.coordinator_runtime.ui_state == "power"
 
 
 def test_worker_navigation_waits_for_coordinator_drain_before_syncing_state() -> None:
@@ -1077,9 +1081,11 @@ def test_worker_navigation_waits_for_coordinator_drain_before_syncing_state() ->
     _navigate_from_worker(screen_manager, "contacts")
 
     assert screen_manager.current_screen is app.contact_list_screen
-    assert app.coordinator_runtime.current_app_state == AppRuntimeState.MENU
+    assert app.coordinator_runtime.current_app_state == AppRuntimeState.IDLE
+    assert app.coordinator_runtime.ui_state == "menu"
     assert app.event_bus.drain() == 1
-    assert app.coordinator_runtime.current_app_state == AppRuntimeState.CALL_IDLE
+    assert app.coordinator_runtime.current_app_state == AppRuntimeState.IDLE
+    assert app.coordinator_runtime.ui_state == "contacts"
 
 
 def test_main_thread_callback_errors_are_contained_and_drain_continues() -> None:
@@ -1117,7 +1123,8 @@ def test_call_end_restores_previous_screen_base_state() -> None:
 
     assert app.event_bus.drain() == 1
     assert screen_manager.current_screen is app.playlist_screen
-    assert app.coordinator_runtime.current_app_state == AppRuntimeState.PLAYLIST_BROWSER
+    assert app.coordinator_runtime.current_app_state == AppRuntimeState.IDLE
+    assert app.coordinator_runtime.ui_state == "playlists"
 
 
 def test_manager_recovery_schedules_music_reconnect_off_main_thread() -> None:
@@ -1300,7 +1307,7 @@ def test_standard_profile_starts_on_menu() -> None:
     app.input_manager = InputManager(interaction_profile=InteractionProfile.STANDARD)
 
     assert app._get_initial_screen_name() == "menu"
-    assert app._get_initial_ui_state() == AppRuntimeState.MENU
+    assert app._get_initial_ui_state() == "menu"
 
 
 def test_one_button_profile_starts_on_hub() -> None:
@@ -1310,7 +1317,7 @@ def test_one_button_profile_starts_on_hub() -> None:
     app.input_manager = InputManager(interaction_profile=InteractionProfile.ONE_BUTTON)
 
     assert app._get_initial_screen_name() == "hub"
-    assert app._get_initial_ui_state() == AppRuntimeState.HUB
+    assert app._get_initial_ui_state() == "hub"
 
 
 def test_power_poll_updates_context_runtime_and_visible_screen() -> None:
@@ -2229,6 +2236,30 @@ def test_runtime_loop_keeps_fast_cadence_during_call_states() -> None:
     status = harness.app.get_status()
     assert sleep_seconds == pytest.approx(0.02)
     assert status["state"] == AppRuntimeState.CALL_ACTIVE.value
+    assert status["runtime_cadence_mode"] == "latency_sensitive"
+    assert status["runtime_cadence_reason"] == "call_or_connecting_state"
+    assert status["voip_effective_iterate_interval_seconds"] == pytest.approx(0.02)
+
+
+def test_runtime_loop_keeps_fast_cadence_during_call_connecting_state() -> None:
+    """Incoming/outgoing call session phases keep coordinator cadence at latency-sensitive."""
+    harness = OrchestrationHarness.build(
+        power_manager=FakePowerManager([_power_snapshot(available=True, battery_percent=55.0)])
+    )
+    harness.app.voip_manager = FakeRuntimeLoopVoIPManager()
+    harness.app._voip_iterate_interval_seconds = 0.02
+    harness.sync_runtime(call_state=CallSessionState.INCOMING, trigger="call_incoming")
+
+    sleep_seconds = harness.app.runtime_loop.next_sleep_interval_seconds(
+        monotonic_now=1.0,
+        current_time=1.0,
+        last_screen_update=1.0,
+        screen_update_interval=1.0,
+    )
+
+    status = harness.app.get_status()
+    assert sleep_seconds == pytest.approx(0.02)
+    assert status["state"] == AppRuntimeState.CALL_CONNECTING.value
     assert status["runtime_cadence_mode"] == "latency_sensitive"
     assert status["runtime_cadence_reason"] == "call_or_connecting_state"
     assert status["voip_effective_iterate_interval_seconds"] == pytest.approx(0.02)

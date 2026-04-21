@@ -71,7 +71,7 @@ class PlaybackCoordinator:
 
     def on_enter_playing_with_voip(self) -> None:
         """Log entry into the playing-with-VoIP-ready state."""
-        logger.info("Music playing with VoIP ready")
+        logger.info("Music playback resumed")
 
     def _on_track_changed_event(self, event: TrackChangedEvent) -> None:
         self.handle_track_change(event.track)
@@ -112,8 +112,8 @@ class PlaybackCoordinator:
             self.runtime.music_fsm.transition("stop")
 
         state_change = self.runtime.sync_app_state(f"playback_{playback_state}")
-        if state_change.entered(AppRuntimeState.PLAYING_WITH_VOIP):
-            logger.info("Music playing with VoIP ready")
+        if state_change.entered(AppRuntimeState.MUSIC):
+            logger.info("Music now playing")
         self.screen_coordinator.refresh_now_playing_screen()
 
     def handle_availability_change(self, available: bool, reason: str) -> None:
