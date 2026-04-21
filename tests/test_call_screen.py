@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from yoyopod.core import AppContext
@@ -311,6 +313,28 @@ def test_voice_note_screen_records_reviews_and_sends(display: Display) -> None:
     assert context.talk.active_voice_note.duration_ms == 3200
 
     screen.on_select()
+    assert screen.current_view_model()[0] == "Sending"
+    assert voip_manager.send_attempts == 1
+
+
+def test_voice_note_screen_can_resolve_voice_note_actions_from_app(display: Display) -> None:
+    """Voice notes should work through the owning app seam without threaded providers."""
+
+    context = AppContext()
+    voip_manager = FakeVoIPManager()
+    context.set_voice_note_recipient(name="Mama", sip_address="sip:alice@example.com")
+    screen = VoiceNoteScreen(
+        display,
+        context,
+        app=SimpleNamespace(voip_manager=voip_manager),
+    )
+
+    screen.enter()
+    screen.on_ptt_press({"stage": "hold_started"})
+    screen.on_ptt_release({"hold_started": True})
+    screen.on_select()
+
+    assert voip_manager.started_recordings == [("sip:alice@example.com", "Mama")]
     assert screen.current_view_model()[0] == "Sending"
     assert voip_manager.send_attempts == 1
 

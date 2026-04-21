@@ -42,12 +42,17 @@ class VoiceNoteScreen(Screen):
         display: Display,
         context: Optional["AppContext"] = None,
         *,
+        app: Any | None = None,
         state_provider: Callable[[], VoiceNoteState] | None = None,
         actions: VoiceNoteActions | None = None,
     ) -> None:
-        super().__init__(display, context, "VoiceNote")
-        self._state_provider = state_provider or build_voice_note_state_provider(context=context)
-        self._actions = actions or VoiceNoteActions()
+        super().__init__(display, context, "VoiceNote", app=app)
+        resolved_voip_manager = getattr(app, "voip_manager", None)
+        self._state_provider = state_provider or build_voice_note_state_provider(
+            context=context,
+            voip_manager=resolved_voip_manager,
+        )
+        self._actions = actions or build_voice_note_actions(voip_manager=resolved_voip_manager)
         self._recording_controller = VoiceNoteRecordingController(self._actions)
         self._state = "ready"
         self._selected_action_index = 0

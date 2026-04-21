@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from loguru import logger
 
@@ -20,10 +20,11 @@ from yoyopod.ui.screens.system.power_rows import (
     _row_capacity_for_page,
 )
 from yoyopod.ui.screens.system.power_viewmodel import (
-    build_power_screen_state_provider,
     _VOICE_PAGE_SIGNATURE_FIELDS,
     PowerScreenActions,
     PowerScreenState,
+    build_power_screen_actions,
+    build_power_screen_state_provider,
 )
 from yoyopod.ui.screens.theme import (
     INK,
@@ -65,14 +66,61 @@ class PowerScreen(Screen):
         display: Display,
         context: Optional["AppContext"] = None,
         *,
+        app: Any | None = None,
         state_provider: Callable[[], PowerScreenState] | None = None,
         actions: PowerScreenActions | None = None,
     ) -> None:
-        super().__init__(display, context, "PowerStatus")
+        super().__init__(display, context, "PowerStatus", app=app)
+        power_manager = getattr(app, "power_manager", None)
+        network_manager = getattr(app, "network_manager", None)
+        audio_device_catalog = getattr(app, "audio_device_catalog", None)
+        config_manager = getattr(app, "config_manager", None)
+        audio_volume_controller = getattr(app, "audio_volume_controller", None)
+        voip_manager = getattr(app, "voip_manager", None)
+        status_provider_from_app = getattr(app, "get_status", None)
         self._state_provider = (
-            state_provider if state_provider is not None else build_power_screen_state_provider()
+            state_provider
+            if state_provider is not None
+            else build_power_screen_state_provider(
+                power_manager=power_manager,
+                network_manager=network_manager,
+                status_provider=(
+                    status_provider_from_app if callable(status_provider_from_app) else None
+                ),
+                playback_device_options_provider=getattr(
+                    audio_device_catalog,
+                    "playback_devices",
+                    None,
+                ),
+                capture_device_options_provider=getattr(
+                    audio_device_catalog,
+                    "capture_devices",
+                    None,
+                ),
+            )
         )
-        self._actions = actions or PowerScreenActions()
+        self._actions = actions or build_power_screen_actions(
+            network_manager=network_manager,
+            refresh_voice_device_options_action=getattr(
+                audio_device_catalog,
+                "refresh_async",
+                None,
+            ),
+            persist_speaker_device_action=getattr(
+                config_manager,
+                "set_voice_speaker_device_id",
+                None,
+            ),
+            persist_capture_device_action=getattr(
+                config_manager,
+                "set_voice_capture_device_id",
+                None,
+            ),
+            volume_up_action=getattr(audio_volume_controller, "volume_up", None),
+            volume_down_action=getattr(audio_volume_controller, "volume_down", None),
+            mute_action=getattr(voip_manager, "mute", None),
+            unmute_action=getattr(voip_manager, "unmute", None),
+        )
         self.page_index = 0
         self.selected_row = 0
         self.in_detail = False

@@ -4,10 +4,17 @@ from __future__ import annotations
 
 from dataclasses import fields
 from datetime import datetime
+from types import SimpleNamespace
 
 from yoyopod.core import AppContext
 from yoyopod.core import VoiceState
-from yoyopod.power.models import BatteryState, PowerDeviceInfo, PowerSnapshot, RTCState, ShutdownState
+from yoyopod.power.models import (
+    BatteryState,
+    PowerDeviceInfo,
+    PowerSnapshot,
+    RTCState,
+    ShutdownState,
+)
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InteractionProfile
 from yoyopod.ui.screens.system.power import (
@@ -202,6 +209,68 @@ def test_power_screen_voice_page_toggles_runtime_voice_settings() -> None:
         screen.on_left()
         assert context.voice.output_volume == 50
         assert volume_calls == [("up", 5), ("down", 5)]
+    finally:
+        display.cleanup()
+
+
+def test_power_screen_can_resolve_state_and_actions_from_app() -> None:
+    """PowerScreen should build its providers from the owning app seam."""
+
+    display = Display(simulate=True)
+    try:
+        context = AppContext()
+        refresh_calls: list[str] = []
+        persist_calls: list[tuple[str, str | None]] = []
+        volume_calls: list[tuple[str, int]] = []
+        context.set_volume(50)
+        app = SimpleNamespace(
+            power_manager=StubPowerManager(_snapshot()),
+            network_manager=None,
+            get_status=lambda: {},
+            audio_device_catalog=SimpleNamespace(
+                playback_devices=lambda: ["Speaker A"],
+                capture_devices=lambda: ["Mic A"],
+                refresh_async=lambda: refresh_calls.append("refresh"),
+            ),
+            config_manager=SimpleNamespace(
+                set_voice_speaker_device_id=lambda value: persist_calls.append(("speaker", value))
+                or True,
+                set_voice_capture_device_id=lambda value: persist_calls.append(("capture", value))
+                or True,
+            ),
+            audio_volume_controller=SimpleNamespace(
+                volume_up=lambda step: volume_calls.append(("up", step))
+                or context.voice.output_volume + step,
+                volume_down=lambda step: volume_calls.append(("down", step))
+                or context.voice.output_volume - step,
+            ),
+            voip_manager=SimpleNamespace(
+                mute=lambda: True,
+                unmute=lambda: True,
+            ),
+        )
+        screen = PowerScreen(
+            display,
+            context,
+            app=app,
+        )
+
+        screen.enter()
+        assert refresh_calls == ["refresh"]
+        assert screen._get_state().playback_devices == ("Speaker A",)
+        assert screen._get_state().capture_devices == ("Mic A",)
+
+        screen.page_index = 3
+        screen.on_select()
+        screen.selected_row = 3
+        screen.on_select()
+        assert context.voice.speaker_device_id == "Speaker A"
+        assert persist_calls == [("speaker", "Speaker A")]
+
+        screen.selected_row = 6
+        screen.on_select()
+        assert context.voice.output_volume == 55
+        assert volume_calls == [("up", 5)]
     finally:
         display.cleanup()
 

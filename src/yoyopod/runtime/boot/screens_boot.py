@@ -32,11 +32,7 @@ class ScreensBoot:
             assert self.app.display is not None
             assert self.app.context is not None
             assert self.app.screen_manager is not None
-            from yoyopod.ui.screens.music.now_playing import (
-                NowPlayingScreen,
-                build_now_playing_actions,
-                build_now_playing_state_provider,
-            )
+            from yoyopod.ui.screens.music.now_playing import NowPlayingScreen
             from yoyopod.ui.screens.music.playlist import PlaylistScreen
             from yoyopod.ui.screens.music.recent import RecentTracksScreen
             from yoyopod.ui.screens.navigation.ask import AskScreen
@@ -44,11 +40,7 @@ class ScreensBoot:
             from yoyopod.ui.screens.navigation.hub import HubScreen
             from yoyopod.ui.screens.navigation.listen import ListenScreen
             from yoyopod.ui.screens.navigation.menu import MenuScreen
-            from yoyopod.ui.screens.system.power import (
-                PowerScreen,
-                build_power_screen_actions,
-                build_power_screen_state_provider,
-            )
+            from yoyopod.ui.screens.system.power import PowerScreen
             from yoyopod.ui.screens.voip.call_history import CallHistoryScreen
             from yoyopod.ui.screens.voip.contact_list import ContactListScreen
             from yoyopod.ui.screens.voip.in_call import InCallScreen
@@ -56,11 +48,7 @@ class ScreensBoot:
             from yoyopod.ui.screens.voip.outgoing_call import OutgoingCallScreen
             from yoyopod.ui.screens.voip.quick_call import CallScreen
             from yoyopod.ui.screens.voip.talk_contact import TalkContactScreen
-            from yoyopod.ui.screens.voip.voice_note import (
-                VoiceNoteScreen,
-                build_voice_note_actions,
-                build_voice_note_state_provider,
-            )
+            from yoyopod.ui.screens.voip.voice_note import VoiceNoteScreen
 
             display = self.app.display
             context = self.app.context
@@ -198,54 +186,12 @@ class ScreensBoot:
             self.app.power_screen = PowerScreen(
                 display,
                 context,
-                state_provider=build_power_screen_state_provider(
-                    power_manager=self.app.power_manager,
-                    network_manager=self.app.network_manager,
-                    status_provider=self.app.get_status,
-                    playback_device_options_provider=(
-                        self.app.audio_device_catalog.playback_devices
-                        if self.app.audio_device_catalog is not None
-                        else None
-                    ),
-                    capture_device_options_provider=(
-                        self.app.audio_device_catalog.capture_devices
-                        if self.app.audio_device_catalog is not None
-                        else None
-                    ),
-                ),
-                actions=build_power_screen_actions(
-                    network_manager=self.app.network_manager,
-                    refresh_voice_device_options_action=(
-                        self.app.audio_device_catalog.refresh_async
-                        if self.app.audio_device_catalog is not None
-                        else None
-                    ),
-                    persist_speaker_device_action=(
-                        self.app.config_manager.set_voice_speaker_device_id
-                        if self.app.config_manager is not None
-                        else None
-                    ),
-                    persist_capture_device_action=(
-                        self.app.config_manager.set_voice_capture_device_id
-                        if self.app.config_manager is not None
-                        else None
-                    ),
-                    volume_up_action=volume_controller.volume_up,
-                    volume_down_action=volume_controller.volume_down,
-                    mute_action=(
-                        self.app.voip_manager.mute if self.app.voip_manager is not None else None
-                    ),
-                    unmute_action=(
-                        self.app.voip_manager.unmute if self.app.voip_manager is not None else None
-                    ),
-                ),
+                app=self.app,
             )
             self.app.now_playing_screen = NowPlayingScreen(
                 display,
                 context,
                 app=self.app,
-                state_provider=build_now_playing_state_provider(app=self.app, context=context),
-                actions=build_now_playing_actions(app=self.app, context=context),
             )
             self.app.playlist_screen = PlaylistScreen(display, context, app=self.app)
             self.app.recent_tracks_screen = RecentTracksScreen(display, context, app=self.app)
@@ -272,11 +218,7 @@ class ScreensBoot:
             self.app.voice_note_screen = VoiceNoteScreen(
                 display,
                 context,
-                state_provider=build_voice_note_state_provider(
-                    context=context,
-                    voip_manager=self.app.voip_manager,
-                ),
-                actions=build_voice_note_actions(voip_manager=self.app.voip_manager),
+                app=self.app,
             )
             self.app.incoming_call_screen = IncomingCallScreen(
                 display,
