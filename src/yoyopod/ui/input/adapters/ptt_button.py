@@ -45,11 +45,11 @@ class PTTInputAdapter(InputHAL):
     ) -> None:
         self.device = whisplay_device
         self.simulate = simulate
-        self.debounce_time = self.DEFAULT_DEBOUNCE_TIME if debounce_time is None else debounce_time
-        self.double_click_time = (
+        debounce_time_value = self.DEFAULT_DEBOUNCE_TIME if debounce_time is None else debounce_time
+        double_click_time_value = (
             self.DEFAULT_DOUBLE_CLICK_TIME if double_click_time is None else double_click_time
         )
-        self.long_press_time = (
+        long_press_time_value = (
             self.DEFAULT_LONG_PRESS_TIME if long_press_time is None else long_press_time
         )
         self.poll_rate = self.DEFAULT_POLL_RATE
@@ -62,9 +62,9 @@ class PTTInputAdapter(InputHAL):
 
         self.state = PTTButtonState(
             enable_navigation=enable_navigation,
-            debounce_time=self.debounce_time,
-            double_click_time=self.double_click_time,
-            long_press_time=self.long_press_time,
+            debounce_time=debounce_time_value,
+            double_click_time=double_click_time_value,
+            long_press_time=long_press_time_value,
         )
         self._state_machine = PTTButtonStateMachine(
             state=self.state,
@@ -159,6 +159,30 @@ class PTTInputAdapter(InputHAL):
     @double_tap_select_enabled.setter
     def double_tap_select_enabled(self, value: bool) -> None:
         self._state_machine.set_double_tap_select_enabled(value)
+
+    @property
+    def debounce_time(self) -> float:
+        return self.state.debounce_time
+
+    @debounce_time.setter
+    def debounce_time(self, value: float) -> None:
+        self.state.debounce_time = value
+
+    @property
+    def double_click_time(self) -> float:
+        return self.state.double_click_time
+
+    @double_click_time.setter
+    def double_click_time(self, value: float) -> None:
+        self.state.double_click_time = value
+
+    @property
+    def long_press_time(self) -> float:
+        return self.state.long_press_time
+
+    @long_press_time.setter
+    def long_press_time(self, value: float) -> None:
+        self.state.long_press_time = value
 
     def _get_button_state(self) -> bool:
         """Return True when the physical button is pressed."""

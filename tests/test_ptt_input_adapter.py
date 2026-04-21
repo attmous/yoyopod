@@ -124,6 +124,22 @@ def test_enable_navigation_attribute_remains_the_single_source_of_truth() -> Non
     assert adapter.get_capabilities() == [InputAction.PTT_PRESS, InputAction.PTT_RELEASE]
 
 
+def test_timing_attributes_remain_synchronized_with_state_machine() -> None:
+    """Public timing attributes should update the shared timing state used by gesture logic."""
+    adapter = PTTInputAdapter(simulate=True, enable_navigation=True)
+
+    adapter.debounce_time = 0.08
+    adapter.double_click_time = 0.24
+    adapter.long_press_time = 0.95
+
+    assert adapter.debounce_time == 0.08
+    assert adapter.double_click_time == 0.24
+    assert adapter.long_press_time == 0.95
+    assert adapter.state.debounce_time == 0.08
+    assert adapter.state.double_click_time == 0.24
+    assert adapter.state.long_press_time == 0.95
+
+
 def test_button_press_fires_raw_activity_immediately() -> None:
     """Physical button presses should emit wake-worthy activity before gesture resolution."""
     adapter = PTTInputAdapter(simulate=True, enable_navigation=True)
