@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, Callable
 from loguru import logger
 
 from yoyopod.core import VoiceInteractionState
-from yoyopod.voice import VoiceCaptureRequest, VoiceManager, VoiceSettings
+from yoyopod.voice.manager import VoiceManager
+from yoyopod.voice.models import VoiceCaptureRequest, VoiceSettings
 from yoyopod.voice.output import AlsaOutputPlayer
 
 from .executor import VoiceCommandExecutor
@@ -21,6 +22,7 @@ from .settings import VoiceCommandOutcome, VoiceSettingsResolver
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
+
 
 class VoiceRuntimeCoordinator:
     """Own one reusable voice interaction session outside the screen layer."""

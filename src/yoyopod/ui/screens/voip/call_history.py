@@ -14,8 +14,8 @@ from yoyopod.ui.screens.voip.lvgl.call_history_view import LvglCallHistoryView
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.ui.screens import ScreenView
-    from yoyopod.communication import CallHistoryEntry, CallHistoryStore
+    from yoyopod.communication.calling.history import CallHistoryEntry, CallHistoryStore
+    from yoyopod.ui.screens.view import ScreenView
 
 
 class CallHistoryScreen(Screen):

@@ -7,7 +7,7 @@ from pathlib import Path
 from yoyopod.core import AppContext
 from yoyopod.audio import LocalMusicService, MockMusicBackend
 from yoyopod.ui.input import InteractionProfile
-from yoyopod.ui.screens import PlaylistScreen
+from yoyopod.ui.screens.music.playlist import PlaylistScreen
 
 
 class FakeLvglBinding:

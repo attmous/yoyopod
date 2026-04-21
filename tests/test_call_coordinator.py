@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from yoyopod.core import AppContext
-from yoyopod.communication import CallHistoryStore, CallState, RegistrationState
+from yoyopod.communication.calling.history import CallHistoryStore
+from yoyopod.communication.models import CallState, RegistrationState
 from yoyopod.coordinators.call import CallCoordinator
 from yoyopod.coordinators.registry import CoordinatorRuntime
 from yoyopod.core import CallFSM, CallInterruptionPolicy, MusicFSM

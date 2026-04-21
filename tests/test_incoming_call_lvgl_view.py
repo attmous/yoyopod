@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from yoyopod.core import AppContext
 from yoyopod.ui.input import InteractionProfile
-from yoyopod.ui.screens import IncomingCallScreen
+from yoyopod.ui.screens.voip.incoming_call import IncomingCallScreen
 
 
 class FakeLvglBinding:

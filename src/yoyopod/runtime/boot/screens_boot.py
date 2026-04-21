@@ -11,7 +11,7 @@ from yoyopod.coordinators.voice import (
     VoiceSettingsResolver,
 )
 from yoyopod.ui.input import InteractionProfile
-from yoyopod.voice import VoiceSettings
+from yoyopod.voice.models import VoiceSettings
 
 if TYPE_CHECKING:
     from yoyopod.app import YoyoPodApp

@@ -6,8 +6,8 @@ from dataclasses import fields
 from datetime import datetime
 
 from yoyopod.core import AppContext
-from yoyopod.power import BatteryState, PowerDeviceInfo, PowerSnapshot, RTCState, ShutdownState
 from yoyopod.core import VoiceState
+from yoyopod.power.models import BatteryState, PowerDeviceInfo, PowerSnapshot, RTCState, ShutdownState
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InteractionProfile
 from yoyopod.ui.screens.system.power import (

@@ -5,17 +5,20 @@ from __future__ import annotations
 import pytest
 
 from yoyopod.core import AppContext
-from yoyopod.communication import (
+from yoyopod.communication.calling import VoiceNoteDraft
+from yoyopod.communication.models import (
     MessageDeliveryState,
     MessageDirection,
     MessageKind,
     VoIPMessageRecord,
 )
-from yoyopod.communication.calling import VoiceNoteDraft
 from yoyopod.people import Contact
 from yoyopod.ui.display import Display
-from yoyopod.ui.screens import CallScreen, NavigationRequest, TalkContactScreen, VoiceNoteScreen
+from yoyopod.ui.screens.router import NavigationRequest
+from yoyopod.ui.screens.voip.quick_call import CallScreen
+from yoyopod.ui.screens.voip.talk_contact import TalkContactScreen
 from yoyopod.ui.screens.voip.voice_note import (
+    VoiceNoteScreen,
     build_voice_note_actions,
     build_voice_note_state_provider,
 )

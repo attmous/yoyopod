@@ -11,7 +11,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Iterator, cast
 
 from loguru import logger
 
@@ -830,7 +830,7 @@ class NavigationSoakRunner:
         """Return the selected hub card mode."""
 
         self._require_screen("hub")
-        hub_screen = self.app.screen_manager.get_current_screen()  # type: ignore[union-attr]
+        hub_screen = cast(Any, self.app.screen_manager.get_current_screen())  # type: ignore[union-attr]
         cards = [] if hub_screen is None else hub_screen._cards()
         if not cards:
             raise NavigationSoakFailure("hub has no cards to navigate")
@@ -840,7 +840,7 @@ class NavigationSoakRunner:
         """Return the selected Listen landing item key."""
 
         self._require_screen("listen")
-        listen_screen = self.app.screen_manager.get_current_screen()  # type: ignore[union-attr]
+        listen_screen = cast(Any, self.app.screen_manager.get_current_screen())  # type: ignore[union-attr]
         items = [] if listen_screen is None else getattr(listen_screen, "items", [])
         if not items:
             raise NavigationSoakFailure("listen screen has no items to navigate")

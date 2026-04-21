@@ -22,8 +22,8 @@ if TYPE_CHECKING:
     from yoyopod.core import AppContext
     from yoyopod.audio import LocalMusicService
     from yoyopod.audio.music.backend import MusicBackend
-    from yoyopod.communication import VoIPManager
-    from yoyopod.ui.screens import ScreenView
+    from yoyopod.communication.calling.manager import VoIPManager
+    from yoyopod.ui.screens.view import ScreenView
 
 
 @dataclass(frozen=True, slots=True)

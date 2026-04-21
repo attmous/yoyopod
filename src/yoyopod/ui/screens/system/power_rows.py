@@ -23,7 +23,7 @@ from yoyopod.ui.screens.system.power_format import (
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.power import PowerSnapshot
+    from yoyopod.power.models import PowerSnapshot
 
 
 @dataclass(frozen=True, slots=True)

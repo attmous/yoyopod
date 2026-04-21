@@ -11,19 +11,17 @@ import sys
 import threading
 import types
 
-from yoyopod.voice import (
-    AlsaOutputPlayer,
-    EspeakNgTextToSpeechBackend,
-    SubprocessAudioCaptureBackend,
+from yoyopod.voice.capture import SubprocessAudioCaptureBackend
+from yoyopod.voice.commands import (
     VOICE_COMMAND_GRAMMAR,
-    VoiceCaptureRequest,
     VoiceCommandIntent,
-    VoiceService,
-    VoiceSettings,
-    VoiceTranscript,
-    VoskSpeechToTextBackend,
     match_voice_command,
 )
+from yoyopod.voice.models import VoiceCaptureRequest, VoiceSettings, VoiceTranscript
+from yoyopod.voice.output import AlsaOutputPlayer
+from yoyopod.voice.service import VoiceService
+from yoyopod.voice.stt import VoskSpeechToTextBackend
+from yoyopod.voice.tts import EspeakNgTextToSpeechBackend
 
 
 class FakeSttBackend:

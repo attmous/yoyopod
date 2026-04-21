@@ -18,7 +18,10 @@ from yoyopod.app_context import AppContext
 from yoyopod.audio.mopidy_client import MopidyClient
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InputAction, get_input_manager
-from yoyopod.ui.screens import MenuScreen, NowPlayingScreen, PlaylistScreen, ScreenManager
+from yoyopod.ui.screens.manager import ScreenManager
+from yoyopod.ui.screens.music.now_playing import NowPlayingScreen
+from yoyopod.ui.screens.music.playlist import PlaylistScreen
+from yoyopod.ui.screens.navigation.menu import MenuScreen
 
 ACTION_MAP = {
     "a": InputAction.SELECT,

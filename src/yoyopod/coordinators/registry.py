@@ -17,19 +17,18 @@ from yoyopod.core import (
 )
 
 if TYPE_CHECKING:
-    from yoyopod.core import AppContext
     from yoyopod.audio.music.backend import MusicBackend
     from yoyopod.config import ConfigManager
-    from yoyopod.power import PowerManager, PowerSnapshot
-    from yoyopod.ui.screens import (
-        CallScreen,
-        InCallScreen,
-        IncomingCallScreen,
-        NowPlayingScreen,
-        OutgoingCallScreen,
-        PowerScreen,
-        ScreenManager,
-    )
+    from yoyopod.core import AppContext
+    from yoyopod.power.manager import PowerManager
+    from yoyopod.power.models import PowerSnapshot
+    from yoyopod.ui.screens.manager import ScreenManager
+    from yoyopod.ui.screens.music.now_playing import NowPlayingScreen
+    from yoyopod.ui.screens.system.power import PowerScreen
+    from yoyopod.ui.screens.voip.in_call import InCallScreen
+    from yoyopod.ui.screens.voip.incoming_call import IncomingCallScreen
+    from yoyopod.ui.screens.voip.outgoing_call import OutgoingCallScreen
+    from yoyopod.ui.screens.voip.quick_call import CallScreen
 
 
 class AppRuntimeState(Enum):

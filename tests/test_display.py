@@ -6,7 +6,9 @@ import pytest
 from yoyopod.core import AppContext
 from yoyopod.ui.display import Display, get_hardware_info
 from yoyopod.ui.display.adapters.pimoroni import PimoroniDisplayAdapter
-from yoyopod.ui.screens import HomeScreen, MenuScreen, NowPlayingScreen
+from yoyopod.ui.screens.music.now_playing import NowPlayingScreen
+from yoyopod.ui.screens.navigation.home import HomeScreen
+from yoyopod.ui.screens.navigation.menu import MenuScreen
 
 
 @pytest.fixture

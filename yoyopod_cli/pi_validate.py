@@ -564,8 +564,9 @@ def _music_check(
 
 def _voip_check(config_dir: Path, registration_timeout: float) -> _CheckResult:
     """Validate Liblinphone startup and SIP registration."""
-    from yoyopod.communication import VoIPConfig, VoIPManager
+    from yoyopod.communication.calling.manager import VoIPManager
     from yoyopod.communication.integrations.liblinphone_binding import LiblinphoneBinding
+    from yoyopod.communication.models import VoIPConfig
     from yoyopod.config import ConfigManager
 
     config_manager = ConfigManager(config_dir=str(config_dir))
@@ -886,8 +887,9 @@ class _VoIPDrillRecorder:
 def _build_voip_manager_for_drill(config_dir: str) -> _VoIPManagerLike:
     from loguru import logger
 
-    from yoyopod.communication import VoIPConfig, VoIPManager
+    from yoyopod.communication.calling.manager import VoIPManager
     from yoyopod.communication.integrations.liblinphone_binding import LiblinphoneBinding
+    from yoyopod.communication.models import VoIPConfig
     from yoyopod.config import ConfigManager
 
     if LiblinphoneBinding.try_load() is None:

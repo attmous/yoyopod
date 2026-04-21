@@ -14,7 +14,7 @@ from yoyopod.ui.screens.voip.lvgl import LvglInCallView
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.ui.screens import ScreenView
+    from yoyopod.ui.screens.view import ScreenView
 
 
 class InCallScreen(Screen):

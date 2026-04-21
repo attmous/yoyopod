@@ -5,7 +5,7 @@ from __future__ import annotations
 from yoyopod.core import AppContext
 from yoyopod.audio import LocalMusicService
 from yoyopod.ui.input import InteractionProfile
-from yoyopod.ui.screens import ListenScreen
+from yoyopod.ui.screens.navigation.listen import ListenScreen
 
 
 class FakeLvglBinding:

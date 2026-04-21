@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 from yoyopod.audio.music.models import PlaybackQueue, Track
 
 if TYPE_CHECKING:
-    from yoyopod.power import PowerSnapshot
+    from yoyopod.power.models import PowerSnapshot
 
 
 @dataclass(slots=True)

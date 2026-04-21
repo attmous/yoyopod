@@ -27,15 +27,16 @@ from yoyopod.ui.screens.theme import (
     text_fit,
     wrap_text,
 )
-from yoyopod.voice import VoiceManager, VoiceSettings
+from yoyopod.voice.manager import VoiceManager
+from yoyopod.voice.models import VoiceSettings
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
     from yoyopod.core import VoiceInteractionState
     from yoyopod.config import ConfigManager
+    from yoyopod.communication.calling.manager import VoIPManager
     from yoyopod.people import PeopleManager
-    from yoyopod.ui.screens import ScreenView
-    from yoyopod.communication import VoIPManager
+    from yoyopod.ui.screens.view import ScreenView
 
 
 class AskScreen(Screen):

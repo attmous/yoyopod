@@ -15,17 +15,14 @@ from yoyopod.core import AppContext
 from yoyopod.runtime.loop import RuntimeLoopService
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InputAction, InputManager
-from yoyopod.ui.screens import (
-    AskScreen,
-    HubScreen,
-    HomeScreen,
-    MenuScreen,
-    NavigationRequest,
-    Screen,
-    ScreenManager,
-    ScreenRouter,
-)
-from yoyopod.voice import VoiceCaptureResult, VoiceSettings, VoiceTranscript
+from yoyopod.ui.screens.base import Screen
+from yoyopod.ui.screens.manager import ScreenManager
+from yoyopod.ui.screens.navigation.ask import AskScreen
+from yoyopod.ui.screens.navigation.home import HomeScreen
+from yoyopod.ui.screens.navigation.hub import HubScreen
+from yoyopod.ui.screens.navigation.menu import MenuScreen
+from yoyopod.ui.screens.router import NavigationRequest, ScreenRouter
+from yoyopod.voice.models import VoiceCaptureResult, VoiceSettings, VoiceTranscript
 
 
 class RoutableStubScreen(Screen):

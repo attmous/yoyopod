@@ -15,7 +15,7 @@ from yoyopod.ui.screens.music.playlist_pil_view import render_playlist_pil
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.ui.screens import ScreenView
+    from yoyopod.ui.screens.view import ScreenView
 
 
 class PlaylistScreen(Screen):

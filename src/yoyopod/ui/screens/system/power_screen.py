@@ -40,8 +40,8 @@ from yoyopod.ui.screens.theme import (
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.power import PowerSnapshot
-    from yoyopod.ui.screens import ScreenView
+    from yoyopod.power.models import PowerSnapshot
+    from yoyopod.ui.screens.view import ScreenView
 
 
 @dataclass(frozen=True, slots=True)

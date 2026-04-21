@@ -20,9 +20,10 @@ from yoyopod.ui.screens.voip.lvgl import LvglCallView
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
+    from yoyopod.communication.calling.history import CallHistoryStore
+    from yoyopod.communication.calling.manager import VoIPManager
     from yoyopod.people import Contact, PeopleManager
-    from yoyopod.ui.screens import ScreenView
-    from yoyopod.communication import CallHistoryStore, VoIPManager
+    from yoyopod.ui.screens.view import ScreenView
 
 
 @dataclass(slots=True)

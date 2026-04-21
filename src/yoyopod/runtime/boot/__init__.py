@@ -15,12 +15,14 @@ from yoyopod.audio import (
     RecentTrackHistoryStore,
 )
 from yoyopod.cloud import CloudManager
-from yoyopod.communication import CallHistoryStore, VoIPConfig, VoIPManager
+from yoyopod.communication.calling.history import CallHistoryStore
+from yoyopod.communication.calling.manager import VoIPManager
+from yoyopod.communication.models import VoIPConfig
 from yoyopod.config import ConfigManager
 from yoyopod.device import AudioDeviceCatalog
 from yoyopod.network import NetworkManager
 from yoyopod.people import PeopleManager
-from yoyopod.power import PowerManager
+from yoyopod.power.manager import PowerManager
 from yoyopod.ui.display import Display
 from yoyopod.ui.display.contracts import (
     WhisplayProductionRenderContractError,

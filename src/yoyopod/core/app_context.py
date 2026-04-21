@@ -26,7 +26,7 @@ from yoyopod.ui.input.hal import InteractionProfile
 if TYPE_CHECKING:
     from yoyopod.audio.manager import MusicManager
     from yoyopod.audio.volume_controller import AudioVolumeController
-    from yoyopod.power import PowerSnapshot
+    from yoyopod.power.models import PowerSnapshot
 
 __all__ = [
     "ActiveVoiceNoteState",

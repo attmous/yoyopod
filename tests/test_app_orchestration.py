@@ -16,7 +16,7 @@ from loguru import logger
 from yoyopod.app import YoyoPodApp
 from yoyopod.core import AppContext
 from yoyopod.audio import AudioVolumeController, MockMusicBackend
-from yoyopod.communication import CallState, RegistrationState
+from yoyopod.communication.models import CallState, RegistrationState
 from yoyopod.coordinators.registry import AppRuntimeState, CoordinatorRuntime
 from yoyopod.core import (
     CallEndedEvent,
@@ -37,7 +37,7 @@ from yoyopod.core import (
     MusicFSM,
     MusicState,
 )
-from yoyopod.power import BatteryState, PowerSnapshot
+from yoyopod.power.models import BatteryState, PowerSnapshot
 from yoyopod.runtime.loop import RuntimeLoopService
 from yoyopod.runtime.models import PowerAlert
 from yoyopod.ui.input import InputManager, InteractionProfile

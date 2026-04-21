@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.communication import VoIPManager
+    from yoyopod.communication.calling.manager import VoIPManager
 
 
 @dataclass(frozen=True, slots=True)

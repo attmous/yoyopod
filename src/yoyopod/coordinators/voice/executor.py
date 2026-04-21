@@ -6,15 +6,14 @@ from typing import TYPE_CHECKING, Callable
 
 from loguru import logger
 
-from yoyopod.voice import VoiceCommandIntent
-from yoyopod.voice.commands import match_voice_command
+from yoyopod.voice.commands import VoiceCommandIntent, match_voice_command
 
 from .settings import VoiceCommandOutcome
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
+    from yoyopod.communication.calling.manager import VoIPManager
     from yoyopod.config import ConfigManager
-    from yoyopod.communication import VoIPManager
     from yoyopod.people import Contact
     from yoyopod.people import PeopleManager
 

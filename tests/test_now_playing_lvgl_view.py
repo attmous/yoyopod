@@ -5,8 +5,8 @@ from __future__ import annotations
 from yoyopod.core import AppContext
 from yoyopod.audio import MockMusicBackend, Track
 from yoyopod.ui.input import InteractionProfile
-from yoyopod.ui.screens import NowPlayingScreen
 from yoyopod.ui.screens.music.now_playing import (
+    NowPlayingScreen,
     build_now_playing_actions,
     build_now_playing_state_provider,
 )

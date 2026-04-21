@@ -19,15 +19,13 @@ from yoyopod.config import ConfigManager
 from yoyopod.voip import RegistrationState, VoIPConfig, VoIPManager
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InputAction, get_input_manager
-from yoyopod.ui.screens import (
-    CallScreen,
-    ContactListScreen,
-    InCallScreen,
-    IncomingCallScreen,
-    MenuScreen,
-    OutgoingCallScreen,
-    ScreenManager,
-)
+from yoyopod.ui.screens.manager import ScreenManager
+from yoyopod.ui.screens.navigation.menu import MenuScreen
+from yoyopod.ui.screens.voip.contact_list import ContactListScreen
+from yoyopod.ui.screens.voip.in_call import InCallScreen
+from yoyopod.ui.screens.voip.incoming_call import IncomingCallScreen
+from yoyopod.ui.screens.voip.outgoing_call import OutgoingCallScreen
+from yoyopod.ui.screens.voip.quick_call import CallScreen
 
 ACTION_MAP = {
     "a": InputAction.SELECT,

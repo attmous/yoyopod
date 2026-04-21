@@ -21,7 +21,8 @@ from yoyopod.core import (
     RegistrationChangedEvent,
     VoIPAvailabilityChangedEvent,
 )
-from yoyopod.communication import CallHistoryEntry, CallHistoryStore, CallState, RegistrationState
+from yoyopod.communication.calling.history import CallHistoryEntry, CallHistoryStore
+from yoyopod.communication.models import CallState, RegistrationState
 from yoyopod.core import CallSessionState
 
 

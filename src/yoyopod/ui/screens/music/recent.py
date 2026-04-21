@@ -15,7 +15,7 @@ from yoyopod.ui.screens.music.recent_pil_view import render_recent_tracks_pil
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.ui.screens import ScreenView
+    from yoyopod.ui.screens.view import ScreenView
 
 
 class RecentTracksScreen(Screen):

@@ -57,8 +57,9 @@ class _VoIPManagerLike(Protocol):
 def _build_voip_manager(config_dir: str) -> _VoIPManagerLike:
     from loguru import logger
 
-    from yoyopod.communication import VoIPConfig, VoIPManager
+    from yoyopod.communication.calling.manager import VoIPManager
     from yoyopod.communication.integrations.liblinphone_binding import LiblinphoneBinding
+    from yoyopod.communication.models import VoIPConfig
     from yoyopod.config import ConfigManager
 
     if LiblinphoneBinding.try_load() is None:

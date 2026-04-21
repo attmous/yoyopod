@@ -8,7 +8,10 @@ from yoyopod.ui.display import Display
 from yoyopod.ui.input import InputAction, InputManager
 from yoyopod.ui.input.hal import InputHAL
 from yoyopod.ui.screens.base import Screen
-from yoyopod.ui.screens import HomeScreen, MenuScreen, NowPlayingScreen, ScreenManager
+from yoyopod.ui.screens.manager import ScreenManager
+from yoyopod.ui.screens.music.now_playing import NowPlayingScreen
+from yoyopod.ui.screens.navigation.home import HomeScreen
+from yoyopod.ui.screens.navigation.menu import MenuScreen
 
 
 class _ModeTrackingAdapter(InputHAL):

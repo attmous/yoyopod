@@ -14,7 +14,7 @@ from yoyopod.coordinators.voice import (
     VoiceRuntimeCoordinator,
     VoiceSettingsResolver,
 )
-from yoyopod.voice import VoiceCaptureResult, VoiceSettings, VoiceTranscript
+from yoyopod.voice.models import VoiceCaptureResult, VoiceSettings, VoiceTranscript
 
 
 class _FakeContact:

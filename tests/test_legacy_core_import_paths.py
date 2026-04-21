@@ -15,8 +15,8 @@ from yoyopod.app_context import (
     Track as AppContextTrack,
 )
 from yoyopod.core import AppContext as CoreAppContext
-from yoyopod.communication import CallState as CommunicationCallState
-from yoyopod.communication import RegistrationState as CommunicationRegistrationState
+from yoyopod.communication.models import CallState as CommunicationCallState
+from yoyopod.communication.models import RegistrationState as CommunicationRegistrationState
 from yoyopod.core.event_bus import EventBus as CoreEventBus
 from yoyopod.core.event_bus import EventHandler as CoreEventHandler
 from yoyopod.core.events import TrackChangedEvent as CoreTrackChangedEvent

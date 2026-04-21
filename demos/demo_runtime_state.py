@@ -17,7 +17,10 @@ from yoyopod.coordinators.registry import AppRuntimeState, CoordinatorRuntime
 from yoyopod.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InputAction, get_input_manager
-from yoyopod.ui.screens import HomeScreen, MenuScreen, NowPlayingScreen, ScreenManager
+from yoyopod.ui.screens.manager import ScreenManager
+from yoyopod.ui.screens.music.now_playing import NowPlayingScreen
+from yoyopod.ui.screens.navigation.home import HomeScreen
+from yoyopod.ui.screens.navigation.menu import MenuScreen
 
 ACTION_MAP = {
     "a": InputAction.SELECT,

@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
-    from yoyopod.power import PowerManager, PowerSnapshot
+    from yoyopod.power.manager import PowerManager
+    from yoyopod.power.models import PowerSnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,4 +202,3 @@ def build_power_screen_actions(
         mute=mute_action,
         unmute=unmute_action,
     )
-

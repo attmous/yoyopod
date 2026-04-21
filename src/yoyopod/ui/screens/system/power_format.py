@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 if False:  # pragma: no cover - runtime import only for typing.
-    from yoyopod.power import PowerSnapshot
+    from yoyopod.power.models import PowerSnapshot
 
 
 def _format_battery(snapshot: "PowerSnapshot") -> str:
@@ -117,4 +117,3 @@ def _truncate(text: str, max_length: int) -> str:
     if len(text) <= max_length:
         return text
     return text[: max_length - 3] + "..."
-

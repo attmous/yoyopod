@@ -16,7 +16,7 @@ from yoyopod.ui.screens.voip.talk_contact_pil_view import render_talk_contact_pi
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.ui.screens import ScreenView
+    from yoyopod.ui.screens.view import ScreenView
 
 
 @dataclass(frozen=True, slots=True)
