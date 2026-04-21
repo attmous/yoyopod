@@ -41,7 +41,7 @@ _SUBSYSTEM_OVERRIDES = {
     "yoyopod.backends.music": "music",
     "yoyopod.core.audio_manager": "music",
     "yoyopod.core.audio_volume": "music",
-    "yoyopod.core.output_volume": "music",
+    "yoyopod.core.audio_volume": "music",
     "yoyopod.core.app_state": "coord",
     "yoyopod.integrations.call.runtime": "coord",
     "yoyopod.integrations.music.runtime": "coord",

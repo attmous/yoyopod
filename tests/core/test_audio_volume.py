@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 
 from yoyopod.backends.music import MockMusicBackend
-from yoyopod.core.output_volume import OutputVolumeController
+from yoyopod.core.audio_volume import OutputVolumeController
 
 
 def test_output_volume_controller_parses_system_volume(monkeypatch) -> None:
@@ -19,7 +19,7 @@ Simple mixer control 'Master',0
             stderr="",
         )
 
-    monkeypatch.setattr("yoyopod.core.output_volume.subprocess.run", fake_run)
+    monkeypatch.setattr("yoyopod.core.audio_volume.subprocess.run", fake_run)
 
     controller = OutputVolumeController()
 
@@ -34,7 +34,7 @@ def test_output_volume_controller_sets_system_and_music_volume(monkeypatch) -> N
         calls.append(args)
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr("yoyopod.core.output_volume.subprocess.run", fake_run)
+    monkeypatch.setattr("yoyopod.core.audio_volume.subprocess.run", fake_run)
 
     backend = MockMusicBackend()
     backend.start()
@@ -51,7 +51,7 @@ def test_output_volume_controller_falls_back_to_music_backend_when_amixer_missin
     def fake_run(_args: list[str], **_kwargs) -> subprocess.CompletedProcess[str]:
         raise FileNotFoundError("amixer")
 
-    monkeypatch.setattr("yoyopod.core.output_volume.subprocess.run", fake_run)
+    monkeypatch.setattr("yoyopod.core.audio_volume.subprocess.run", fake_run)
 
     backend = MockMusicBackend()
     backend.start()
@@ -90,7 +90,7 @@ Simple mixer control 'Master',0
             stderr="",
         )
 
-    monkeypatch.setattr("yoyopod.core.output_volume.subprocess.run", fake_run)
+    monkeypatch.setattr("yoyopod.core.audio_volume.subprocess.run", fake_run)
 
     controller = OutputVolumeController()
 
@@ -116,9 +116,9 @@ def test_output_volume_controller_warns_only_once_when_system_control_missing(
             stderr="amixer: Unable to find simple control",
         )
 
-    monkeypatch.setattr("yoyopod.core.output_volume.subprocess.run", fake_run)
+    monkeypatch.setattr("yoyopod.core.audio_volume.subprocess.run", fake_run)
     monkeypatch.setattr(
-        "yoyopod.core.output_volume.logger.warning",
+        "yoyopod.core.audio_volume.logger.warning",
         lambda message, *args: warnings.append(message.format(*args)),
     )
 
@@ -145,7 +145,7 @@ Simple mixer control 'Headset',0
             )
         return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="")
 
-    monkeypatch.setattr("yoyopod.core.output_volume.subprocess.run", fake_run)
+    monkeypatch.setattr("yoyopod.core.audio_volume.subprocess.run", fake_run)
 
     controller = OutputVolumeController()
 
@@ -177,9 +177,9 @@ Simple mixer control 'Headset',0
             return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="missing")
         return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="missing")
 
-    monkeypatch.setattr("yoyopod.core.output_volume.subprocess.run", fake_run)
+    monkeypatch.setattr("yoyopod.core.audio_volume.subprocess.run", fake_run)
     monkeypatch.setattr(
-        "yoyopod.core.output_volume.logger.warning",
+        "yoyopod.core.audio_volume.logger.warning",
         lambda message, *args: warnings.append(message.format(*args)),
     )
 

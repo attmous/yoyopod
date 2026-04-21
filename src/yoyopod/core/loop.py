@@ -7,30 +7,26 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
 
 from loguru import logger
-from yoyopod.core.blocking_monitor import (
+from yoyopod.core._loop_support import (
+    _LoopCadenceDecision,
+    _VoipIterateMetrics,
+    _VoipTimingWindow,
+    _apply_loop_cadence as _apply_loop_cadence_impl,
+    _effective_voip_iterate_interval_seconds as _effective_voip_iterate_interval_seconds_impl,
+    _latest_voip_iterate_metrics as _latest_voip_iterate_metrics_impl,
+    _maybe_log_voip_timing_summary as _maybe_log_voip_timing_summary_impl,
     _measure_blocking_span as _measure_blocking_span_impl,
+    _next_voip_due_at_for_cadence as _next_voip_due_at_for_cadence_impl,
+    _record_blocking_span as _record_blocking_span_impl,
+    _record_voip_timing_sample as _record_voip_timing_sample_impl,
     _runtime_blocking_span_warning_seconds as _runtime_blocking_span_warning_seconds_impl,
     _runtime_iteration_warning_seconds as _runtime_iteration_warning_seconds_impl,
     _runtime_loop_gap_warning_seconds as _runtime_loop_gap_warning_seconds_impl,
-    _record_blocking_span as _record_blocking_span_impl,
+    _select_loop_cadence as _select_loop_cadence_impl,
+    _sync_background_voip_timing_sample as _sync_background_voip_timing_sample_impl,
     _voip_iterate_warning_seconds as _voip_iterate_warning_seconds_impl,
     _voip_schedule_delay_warning_seconds as _voip_schedule_delay_warning_seconds_impl,
     _warn_if_slow as _warn_if_slow_impl,
-)
-from yoyopod.core.loop_cadence import (
-    _LoopCadenceDecision,
-    _apply_loop_cadence as _apply_loop_cadence_impl,
-    _effective_voip_iterate_interval_seconds as _effective_voip_iterate_interval_seconds_impl,
-    _next_voip_due_at_for_cadence as _next_voip_due_at_for_cadence_impl,
-    _select_loop_cadence as _select_loop_cadence_impl,
-)
-from yoyopod.core.voip_timing import (
-    _VoipIterateMetrics,
-    _VoipTimingWindow,
-    _latest_voip_iterate_metrics as _latest_voip_iterate_metrics_impl,
-    _maybe_log_voip_timing_summary as _maybe_log_voip_timing_summary_impl,
-    _record_voip_timing_sample as _record_voip_timing_sample_impl,
-    _sync_background_voip_timing_sample as _sync_background_voip_timing_sample_impl,
 )
 
 from yoyopod.core.logging import get_subsystem_logger

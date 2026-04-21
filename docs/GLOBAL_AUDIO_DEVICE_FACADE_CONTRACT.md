@@ -35,7 +35,7 @@ That means the app does not yet have one global audio hardware contract. Device 
 ### Music
 
 - `src/yoyopod/backends/music/process.py` launches `mpv` with one ALSA target
-- `src/yoyopod/core/output_volume.py` owns app-facing output volume and writes selected ALSA output controls
+- `src/yoyopod/core/audio_volume.py` owns app-facing output volume and writes selected ALSA output controls
 
 ### Calls
 

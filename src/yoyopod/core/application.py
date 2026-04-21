@@ -16,7 +16,7 @@ from yoyopod.backends.music import MpvBackend
 from yoyopod.config import ConfigManager, MediaConfig, YoyoPodConfig
 from yoyopod.core.app_context import AppContext
 from yoyopod.core.bus import Bus
-from yoyopod.core.output_volume import OutputVolumeController
+from yoyopod.core.audio_volume import OutputVolumeController
 from yoyopod.core.events import LifecycleEvent
 from yoyopod.core.hardware import AudioDeviceCatalog
 from yoyopod.core.logbuffer import LogBuffer

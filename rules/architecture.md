@@ -94,11 +94,11 @@ yoyopod.py / src/yoyopod/main.py  (entry points)
 
 - Prefer canonical typed models over parallel shape duplication across UI and runtime layers.
 - `AppContext` is shared runtime state, not a dumping ground for every new feature field.
-- Prefer adding new mutable runtime fields to the focused state objects in `src/yoyopod/core/runtime_state.py`
+- Prefer adding new mutable runtime fields to the focused state objects in `src/yoyopod/core/app_context.py`
   before extending `AppContext` directly.
 - Music runtime state should compose with the canonical models in `src/yoyopod/backends/music/models.py`.
 - Use `PlaybackQueue` for ordered playback state instead of defining alternate runtime `Track` or
-  `Playlist` shapes under `AppContext` or `core/runtime_state.py`.
+  `Playlist` shapes under `AppContext` or `core/app_context.py`.
 - New domain objects should be introduced in clear model modules before being copied into screen-only state.
 
 ### Events and threading

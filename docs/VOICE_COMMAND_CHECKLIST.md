@@ -50,7 +50,7 @@ The file references below were captured at the time of writing. Their links have
 
 ### Output Volume and Audio
 
-- [src/yoyopod/core/output_volume.py](../src/yoyopod/core/output_volume.py)
+- [src/yoyopod/core/audio_volume.py](../src/yoyopod/core/audio_volume.py)
 - [docs/AUDIO_STACK.md](AUDIO_STACK.md)
 
 ### Contact Calling / VoIP
@@ -63,7 +63,7 @@ The file references below were captured at the time of writing. Their links have
 
 - [tests/config/test_models.py](../tests/config/test_models.py)
 - [tests/ui/test_screen_routing.py](../tests/ui/test_screen_routing.py)
-- [tests/core/test_output_volume.py](../tests/core/test_output_volume.py)
+- [tests/core/test_audio_volume.py](../tests/core/test_audio_volume.py)
 - add new focused voice tests under `tests/integrations/` and `tests/ui/`
 
 ## Work Breakdown
@@ -194,7 +194,7 @@ Notes:
 Files:
 
 - [src/yoyopod/app.py](../src/yoyopod/app.py)
-- [src/yoyopod/core/output_volume.py](../src/yoyopod/core/output_volume.py)
+- [src/yoyopod/core/audio_volume.py](../src/yoyopod/core/audio_volume.py)
 - [src/yoyopod/integrations/call/manager.py](../src/yoyopod/integrations/call/manager.py)
 - [src/yoyopod/core/app_context.py](../src/yoyopod/core/app_context.py)
 
@@ -297,7 +297,7 @@ Files to add or update:
 
 - [tests/config/test_models.py](../tests/config/test_models.py)
 - [tests/ui/test_screen_routing.py](../tests/ui/test_screen_routing.py)
-- [tests/core/test_output_volume.py](../tests/core/test_output_volume.py)
+- [tests/core/test_audio_volume.py](../tests/core/test_audio_volume.py)
 - suggested new tests:
   - `../tests/integrations/test_voice_commands.py`
   - `../tests/integrations/test_voice_service.py`

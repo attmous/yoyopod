@@ -6,6 +6,7 @@ import sys
 from types import SimpleNamespace
 
 import yoyopod.core.bootstrap as boot_module
+from yoyopod.core.audio_volume import OutputVolumeController
 from yoyopod.core import AppContext
 from yoyopod.core.bootstrap import RuntimeBootService
 from yoyopod.core.bootstrap.managers_boot import ManagersBoot

@@ -229,7 +229,7 @@ They are separate software paths that meet at the same codec/hardware.
 - `src/yoyopod/backends/music/process.py`
 - `src/yoyopod/backends/music/ipc.py`
 - `src/yoyopod/backends/music/models.py`
-- `src/yoyopod/core/output_volume.py`
+- `src/yoyopod/core/audio_volume.py`
 - `config/audio/music.yaml`
 - `config/device/hardware.yaml`
 - `config/communication/calling.yaml`

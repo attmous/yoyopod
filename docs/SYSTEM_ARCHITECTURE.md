@@ -179,7 +179,7 @@ yoyopod.py / yoyopod.main
 - `src/yoyopod/core/focus.py`, `recovery.py`, `status.py`, `diagnostics/`: cross-cutting core modules
 - `src/yoyopod/core/app_state.py`: derived app runtime state
 - `src/yoyopod/core/app_context.py`: focused shared runtime state
-- `src/yoyopod/core/runtime_state.py`: focused runtime state objects owned by `AppContext`
+- `src/yoyopod/core/app_context.py`: `AppContext` plus the focused runtime state objects it owns
 - `src/yoyopod/core/bootstrap/`: boot-time composition and manager wiring
 - `src/yoyopod/core/loop.py`: main-thread loop scheduling and queued main-thread work
 - `src/yoyopod/core/recovery.py`: backend recovery supervision and retry services
@@ -351,7 +351,7 @@ For current behavior, trust these files over older notes or demos:
 - `src/yoyopod/core/scheduler.py`
 - `src/yoyopod/core/events.py`
 - `src/yoyopod/core/app_context.py`
-- `src/yoyopod/core/runtime_state.py`
+- `src/yoyopod/core/app_context.py`
 - `src/yoyopod/core/app_state.py`
 - `src/yoyopod/backends/music/`
 - `src/yoyopod/integrations/music/`

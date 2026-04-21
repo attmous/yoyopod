@@ -144,7 +144,7 @@ Frozen canonical package homes:
 
 Temporary migration buckets are not part of the canonical target:
 
-- thin root compatibility wrappers such as `events.py`, `fsm.py`, and `runtime_state.py`
+- thin root compatibility wrappers such as `events.py` and `fsm.py`
 
 The app layer should import from domain seams such as:
 
