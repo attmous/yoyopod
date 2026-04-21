@@ -26,6 +26,9 @@ from yoyopod.communication.models import CallState, RegistrationState
 from yoyopod.core import CallSessionState
 
 
+_CONNECTED_CALL_STATES = (CallState.CONNECTED, CallState.STREAMS_RUNNING)
+
+
 @dataclass(slots=True)
 class _CallSessionDraft:
     """One in-progress call, tracked until the final release event."""
@@ -245,9 +248,15 @@ class CallCoordinator:
             self._present_incoming_call_if_ready()
             return
 
-        if state in (CallState.CONNECTED, CallState.STREAMS_RUNNING):
+        if state in _CONNECTED_CALL_STATES:
             if self._active_call_session is not None:
                 self._active_call_session.answered = True
+            if not self.runtime.call_fsm.is_active:
+                logger.debug(
+                    "Ignoring {} while call FSM is idle",
+                    state.value,
+                )
+                return
 
         self.runtime.call_fsm.transition("connect")
         state_change = self.runtime.sync_app_state("call_connected")

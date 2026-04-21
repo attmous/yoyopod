@@ -2241,6 +2241,30 @@ def test_runtime_loop_keeps_fast_cadence_during_call_states() -> None:
     assert status["voip_effective_iterate_interval_seconds"] == pytest.approx(0.02)
 
 
+def test_runtime_loop_keeps_fast_cadence_during_call_connecting_state() -> None:
+    """Incoming/outgoing call session phases keep coordinator cadence at latency-sensitive."""
+    harness = OrchestrationHarness.build(
+        power_manager=FakePowerManager([_power_snapshot(available=True, battery_percent=55.0)])
+    )
+    harness.app.voip_manager = FakeRuntimeLoopVoIPManager()
+    harness.app._voip_iterate_interval_seconds = 0.02
+    harness.sync_runtime(call_state=CallSessionState.INCOMING, trigger="call_incoming")
+
+    sleep_seconds = harness.app.runtime_loop.next_sleep_interval_seconds(
+        monotonic_now=1.0,
+        current_time=1.0,
+        last_screen_update=1.0,
+        screen_update_interval=1.0,
+    )
+
+    status = harness.app.get_status()
+    assert sleep_seconds == pytest.approx(0.02)
+    assert status["state"] == AppRuntimeState.CALL_CONNECTING.value
+    assert status["runtime_cadence_mode"] == "latency_sensitive"
+    assert status["runtime_cadence_reason"] == "call_or_connecting_state"
+    assert status["voip_effective_iterate_interval_seconds"] == pytest.approx(0.02)
+
+
 def test_runtime_loop_pending_work_uses_nonzero_backlog_cadence() -> None:
     """Queued work should no longer collapse the coordinator into a zero-sleep spin."""
 

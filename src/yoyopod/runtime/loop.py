@@ -123,8 +123,7 @@ class RuntimeLoopService:
     _DRAIN_BUDGET_LOG_INTERVAL_SECONDS = 1.0
     _LATENCY_SENSITIVE_STATES = frozenset(
         {
-            "call_incoming",
-            "call_outgoing",
+            "call_connecting",
             "call_active",
         }
     )
