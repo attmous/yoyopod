@@ -4,13 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from yoyopod.coordinators.voice import (
-    VoiceCommandExecutor,
-    VoiceRuntimeCoordinator,
-    VoiceSettingsResolver,
-)
-from yoyopod.voice.models import VoiceSettings
-
 if TYPE_CHECKING:
     from yoyopod.app import YoyoPodApp
 
@@ -50,6 +43,12 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
         build_voice_note_actions,
         build_voice_note_state_provider,
     )
+    from yoyopod.coordinators.voice import (
+        VoiceCommandExecutor,
+        VoiceRuntimeCoordinator,
+        VoiceSettingsResolver,
+    )
+    from yoyopod.voice.models import VoiceSettings
 
     display = app.display
     context = app.context
@@ -80,7 +79,9 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
             context=context,
             config_manager=app.config_manager,
             settings_provider=lambda: VoiceSettings(
-                commands_enabled=(app.context.voice.commands_enabled if app.context is not None else True),
+                commands_enabled=(
+                    app.context.voice.commands_enabled if app.context is not None else True
+                ),
                 ai_requests_enabled=(
                     app.context.voice.ai_requests_enabled if app.context is not None else True
                 ),
@@ -122,7 +123,9 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
                         else None
                     )
                 ),
-                sample_rate_hz=voice_cfg.assistant.sample_rate_hz if voice_cfg is not None else 16000,
+                sample_rate_hz=(
+                    voice_cfg.assistant.sample_rate_hz if voice_cfg is not None else 16000
+                ),
                 record_seconds=voice_cfg.assistant.record_seconds if voice_cfg is not None else 4,
                 tts_rate_wpm=voice_cfg.assistant.tts_rate_wpm if voice_cfg is not None else 155,
                 tts_voice=voice_cfg.assistant.tts_voice if voice_cfg is not None else "en",
@@ -178,13 +181,19 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
         actions=build_power_screen_actions(
             network_manager=app.network_manager,
             refresh_voice_device_options_action=(
-                app.audio_device_catalog.refresh_async if app.audio_device_catalog is not None else None
+                app.audio_device_catalog.refresh_async
+                if app.audio_device_catalog is not None
+                else None
             ),
             persist_speaker_device_action=(
-                app.config_manager.set_voice_speaker_device_id if app.config_manager is not None else None
+                app.config_manager.set_voice_speaker_device_id
+                if app.config_manager is not None
+                else None
             ),
             persist_capture_device_action=(
-                app.config_manager.set_voice_capture_device_id if app.config_manager is not None else None
+                app.config_manager.set_voice_capture_device_id
+                if app.config_manager is not None
+                else None
             ),
             volume_up_action=volume_controller.volume_up,
             volume_down_action=volume_controller.volume_down,

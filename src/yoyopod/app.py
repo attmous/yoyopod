@@ -53,24 +53,9 @@ if TYPE_CHECKING:
     from yoyopod.ui.display import Display
     from yoyopod.ui.input import InputManager
     from yoyopod.ui.lvgl_binding import LvglDisplayBackend, LvglInputBridge
+    from yoyopod.ui.screens.base import Screen
     from yoyopod.ui.screens.manager import ScreenManager
-    from yoyopod.ui.screens.music.now_playing import NowPlayingScreen
-    from yoyopod.ui.screens.music.playlist import PlaylistScreen
-    from yoyopod.ui.screens.music.recent import RecentTracksScreen
-    from yoyopod.ui.screens.navigation.ask import AskScreen
-    from yoyopod.ui.screens.navigation.home import HomeScreen
-    from yoyopod.ui.screens.navigation.hub import HubScreen
-    from yoyopod.ui.screens.navigation.listen import ListenScreen
-    from yoyopod.ui.screens.navigation.menu import MenuScreen
-    from yoyopod.ui.screens.system.power import PowerScreen
-    from yoyopod.ui.screens.voip.call_history import CallHistoryScreen
-    from yoyopod.ui.screens.voip.contact_list import ContactListScreen
-    from yoyopod.ui.screens.voip.in_call import InCallScreen
-    from yoyopod.ui.screens.voip.incoming_call import IncomingCallScreen
-    from yoyopod.ui.screens.voip.outgoing_call import OutgoingCallScreen
-    from yoyopod.ui.screens.voip.quick_call import CallScreen
-    from yoyopod.ui.screens.voip.talk_contact import TalkContactScreen
-    from yoyopod.ui.screens.voip.voice_note import VoiceNoteScreen
+
 
 class YoyoPodApp:
     """
@@ -109,23 +94,23 @@ class YoyoPodApp:
         self.voice_runtime: Optional[VoiceRuntimeCoordinator] = None
 
         # Screen instances
-        self.hub_screen: Optional[HubScreen] = None
-        self.home_screen: Optional[HomeScreen] = None
-        self.menu_screen: Optional[MenuScreen] = None
-        self.listen_screen: Optional[ListenScreen] = None
-        self.ask_screen: Optional[AskScreen] = None
-        self.power_screen: Optional[PowerScreen] = None
-        self.now_playing_screen: Optional[NowPlayingScreen] = None
-        self.playlist_screen: Optional[PlaylistScreen] = None
-        self.recent_tracks_screen: Optional[RecentTracksScreen] = None
-        self.call_screen: Optional[CallScreen] = None
-        self.talk_contact_screen: Optional[TalkContactScreen] = None
-        self.call_history_screen: Optional[CallHistoryScreen] = None
-        self.contact_list_screen: Optional[ContactListScreen] = None
-        self.voice_note_screen: Optional[VoiceNoteScreen] = None
-        self.incoming_call_screen: Optional[IncomingCallScreen] = None
-        self.outgoing_call_screen: Optional[OutgoingCallScreen] = None
-        self.in_call_screen: Optional[InCallScreen] = None
+        self.hub_screen: Optional[Screen] = None
+        self.home_screen: Optional[Screen] = None
+        self.menu_screen: Optional[Screen] = None
+        self.listen_screen: Optional[Screen] = None
+        self.ask_screen: Optional[Screen] = None
+        self.power_screen: Optional[Screen] = None
+        self.now_playing_screen: Optional[Screen] = None
+        self.playlist_screen: Optional[Screen] = None
+        self.recent_tracks_screen: Optional[Screen] = None
+        self.call_screen: Optional[Screen] = None
+        self.talk_contact_screen: Optional[Screen] = None
+        self.call_history_screen: Optional[Screen] = None
+        self.contact_list_screen: Optional[Screen] = None
+        self.voice_note_screen: Optional[Screen] = None
+        self.incoming_call_screen: Optional[Screen] = None
+        self.outgoing_call_screen: Optional[Screen] = None
+        self.in_call_screen: Optional[Screen] = None
 
         # Split orchestration models
         self.music_fsm: Optional[MusicFSM] = None
@@ -502,15 +487,9 @@ class YoyoPodApp:
             "voip_available": self.voip_manager is not None and self.voip_manager.running,
             "music_available": self.music_backend is not None and self.music_backend.is_connected,
             "volume": (
-                self.audio_volume_controller.get_output_volume(
-                    refresh_system=refresh_output_volume
-                )
+                self.audio_volume_controller.get_output_volume(refresh_system=refresh_output_volume)
                 if self.audio_volume_controller is not None
-                else (
-                    self.context.media.playback.volume
-                    if self.context is not None
-                    else None
-                )
+                else (self.context.media.playback.volume if self.context is not None else None)
             ),
             "power_available": power_snapshot.available if power_snapshot is not None else False,
             "current_screen": getattr(current_screen, "route_name", None),

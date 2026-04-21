@@ -4,9 +4,26 @@ Screen and stack coordination helpers for YoyoPod.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, cast
+
 from loguru import logger
 
 from yoyopod.coordinators.registry import CoordinatorRuntime
+
+if TYPE_CHECKING:
+    from typing import Protocol
+
+    from yoyopod.ui.screens.base import Screen
+
+    class _IncomingCallScreenFields(Protocol):
+        caller_address: str
+        caller_name: str
+        ring_animation_frame: int
+
+    class _OutgoingCallScreenFields(Protocol):
+        callee_address: str
+        callee_name: str
+        ring_animation_frame: int
 
 
 class ScreenCoordinator:
@@ -46,19 +63,41 @@ class ScreenCoordinator:
         """Return True when the provided route is active."""
         return self._current_route_name() == route_name
 
-    def _get_screen(self, route_name: str) -> object | None:
+    def _get_screen(self, route_name: str) -> "Screen | None":
         """Return a registered screen by route name."""
         if self.runtime.screen_manager is None:
             return None
         return self.runtime.screen_manager.screens.get(route_name)
 
-    def _set_screen_fields(self, route_name: str, **field_values: object) -> None:
-        """Set dynamic state fields on a registered screen when available."""
-        screen = self._get_screen(route_name)
+    def _get_incoming_call_screen(self) -> "_IncomingCallScreenFields | None":
+        """Return incoming-call screen fields when the route is registered."""
+        screen = self._get_screen(self._INCOMING_CALL_ROUTE)
         if screen is None:
-            return
-        for field_name, value in field_values.items():
-            setattr(screen, field_name, value)
+            return None
+
+        if not (
+            hasattr(screen, "caller_address")
+            and hasattr(screen, "caller_name")
+            and hasattr(screen, "ring_animation_frame")
+        ):
+            return None
+
+        return cast("_IncomingCallScreenFields", screen)
+
+    def _get_outgoing_call_screen(self) -> "_OutgoingCallScreenFields | None":
+        """Return outgoing-call screen fields when the route is registered."""
+        screen = self._get_screen(self._OUTGOING_CALL_ROUTE)
+        if screen is None:
+            return None
+
+        if not (
+            hasattr(screen, "callee_address")
+            and hasattr(screen, "callee_name")
+            and hasattr(screen, "ring_animation_frame")
+        ):
+            return None
+
+        return cast("_OutgoingCallScreenFields", screen)
 
     def _push_route_if_needed(self, route_name: str, message: str) -> None:
         """Push a route only when it is not already visible."""
@@ -138,12 +177,12 @@ class ScreenCoordinator:
 
     def show_incoming_call(self, caller_address: str, caller_name: str) -> None:
         """Update and show the incoming call screen."""
-        self._set_screen_fields(
-            self._INCOMING_CALL_ROUTE,
-            caller_address=caller_address,
-            caller_name=caller_name,
-            ring_animation_frame=0,
-        )
+        incoming_call_screen = self._get_incoming_call_screen()
+        if incoming_call_screen is not None:
+            incoming_call_screen.caller_address = caller_address
+            incoming_call_screen.caller_name = caller_name
+            incoming_call_screen.ring_animation_frame = 0
+
         self._push_route_if_needed(self._INCOMING_CALL_ROUTE, "  → Pushed incoming call screen")
 
     def show_in_call(self) -> None:
@@ -152,10 +191,10 @@ class ScreenCoordinator:
 
     def show_outgoing_call(self, callee_address: str, callee_name: str) -> None:
         """Update and show the outgoing-call screen."""
-        self._set_screen_fields(
-            self._OUTGOING_CALL_ROUTE,
-            callee_address=callee_address,
-            callee_name=callee_name or "Unknown",
-            ring_animation_frame=0,
-        )
+        outgoing_call_screen = self._get_outgoing_call_screen()
+        if outgoing_call_screen is not None:
+            outgoing_call_screen.callee_address = callee_address
+            outgoing_call_screen.callee_name = callee_name or "Unknown"
+            outgoing_call_screen.ring_animation_frame = 0
+
         self._push_route_if_needed(self._OUTGOING_CALL_ROUTE, "  → Pushed outgoing call screen")
