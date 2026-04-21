@@ -24,6 +24,12 @@ from yoyopod.app_context import (
 from yoyopod.core import AppContext as CoreAppContext
 from yoyopod.core.event_bus import EventBus as CoreEventBus
 from yoyopod.core.event_bus import EventHandler as CoreEventHandler
+from yoyopod.core.diagnostics.watchdog import (
+    ResponsivenessWatchdogDecision as CoreResponsivenessWatchdogDecision,
+)
+from yoyopod.core.diagnostics.watchdog import (
+    evaluate_responsiveness_status as core_evaluate_responsiveness_status,
+)
 from yoyopod.core.events import TrackChangedEvent as CoreTrackChangedEvent
 from yoyopod.core.fsm import CallFSM as CoreCallFSM
 from yoyopod.core.fsm import CallInterruptionPolicy as CoreCallInterruptionPolicy
@@ -125,6 +131,8 @@ from yoyopod.integrations.voice import VoiceTranscript as IntegrationVoiceTransc
 from yoyopod.integrations.voice import match_voice_command as integration_match_voice_command
 from yoyopod.runtime_state import PlaybackQueue as RuntimeStatePlaybackQueue
 from yoyopod.runtime_state import Track as RuntimeStateTrack
+from yoyopod.runtime import ResponsivenessWatchdogDecision as LegacyResponsivenessWatchdogDecision
+from yoyopod.runtime import evaluate_responsiveness_status as legacy_evaluate_responsiveness_status
 from yoyopod.event_bus import EventBus, EventHandler
 from yoyopod.events import CallState, RegistrationState, Track, TrackChangedEvent
 from yoyopod.events import CallStateChangedEvent, NetworkGpsFixEvent, NetworkPppUpEvent
@@ -244,6 +252,8 @@ def test_legacy_core_import_paths_resolve_to_relocated_symbols() -> None:
     assert RootEventBus is EventBus
     assert RootMusicFSM is MusicFSM
     assert RootCallFSM is IntegrationCallFSM
+    assert LegacyResponsivenessWatchdogDecision is CoreResponsivenessWatchdogDecision
+    assert legacy_evaluate_responsiveness_status is core_evaluate_responsiveness_status
 
 
 def test_legacy_audio_import_paths_resolve_to_relocated_music_symbols() -> None:

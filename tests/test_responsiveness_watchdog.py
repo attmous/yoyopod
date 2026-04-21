@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from yoyopod.runtime.responsiveness import (
+from yoyopod.core.diagnostics.watchdog import (
     ResponsivenessWatchdog,
     evaluate_responsiveness_status,
 )

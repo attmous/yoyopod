@@ -13,8 +13,8 @@ from loguru import logger
 from yoyopod import __version__
 from yoyopod.app import YoyoPodApp
 from yoyopod.config import YoyoPodConfig, load_composed_app_settings
-from yoyopod.runtime.responsiveness import ResponsivenessWatchdog
-from yoyopod.runtime.diagnostics import (
+from yoyopod.core.diagnostics.watchdog import (
+    ResponsivenessWatchdog,
     _capture_responsiveness_watchdog_evidence,
     _install_traceback_dump_handlers,
     _log_setup_failure_guidance,
