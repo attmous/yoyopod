@@ -9,7 +9,7 @@ import pytest
 
 import yoyopod.main as main_module
 import yoyopod.core.diagnostics.watchdog as diagnostics_module
-import yoyopod.runtime.screenshot as screenshot_module
+import yoyopod.ui.display.screenshot as screenshot_module
 from yoyopod.core.diagnostics.watchdog import ResponsivenessWatchdogDecision
 from yoyopod.core import RUNTIME_REQUIRED_CONFIG_FILES
 
