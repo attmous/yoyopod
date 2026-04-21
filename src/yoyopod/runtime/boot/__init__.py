@@ -26,7 +26,7 @@ from yoyopod.ui.display.contracts import (
     WhisplayProductionRenderContractError,
     build_whisplay_production_contract_message,
 )
-from yoyopod.ui.input import InteractionProfile, get_input_manager
+from yoyopod.ui.input import get_input_manager
 from yoyopod.ui.lvgl_binding import LvglInputBridge
 from yoyopod.ui.screens.manager import ScreenManager
 
@@ -115,12 +115,6 @@ class RuntimeBootService:
     def load_configuration(self) -> bool:
         return self._config_boot.load_configuration()
 
-    def resolve_screen_timeout_seconds(self) -> float:
-        return self.app.screen_power_service.resolve_screen_timeout_seconds()
-
-    def resolve_active_brightness(self) -> float:
-        return self.app.screen_power_service.resolve_active_brightness()
-
     def init_core_components(self) -> bool:
         return self._components_boot.init_core_components()
 
@@ -129,9 +123,6 @@ class RuntimeBootService:
 
     def setup_screens(self) -> bool:
         return self._screens_boot.setup_screens()
-
-    def get_interaction_profile(self) -> InteractionProfile:
-        return self._screens_boot.get_interaction_profile()
 
     def get_initial_screen_name(self) -> str:
         return self._screens_boot.get_initial_screen_name()
