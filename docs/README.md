@@ -53,7 +53,8 @@ Plan docs are useful, but they are not automatically the current implementation 
 - [`DISPLAY_HAL_ARCHITECTURE.md`](DISPLAY_HAL_ARCHITECTURE.md), display abstraction and adapters
 - [`INPUT_HAL_ARCHITECTURE.md`](INPUT_HAL_ARCHITECTURE.md), semantic input model and adapters
 - [`POWER_MODULE.md`](POWER_MODULE.md), power, battery, RTC, watchdog
-- [`AUDIO_STACK.md`](AUDIO_STACK.md), local playback and output-volume behavior
+- [`AUDIO_STACK.md`](AUDIO_STACK.md), deployed ALSA routing, WM8960 headroom, and mpv output behavior
+- [`REMOTE_PLAYBACK.md`](REMOTE_PLAYBACK.md), backend-issued playback, cache, and device-local media import contract
 - [`LOCAL_FIRST_MUSIC_PLAN.md`](LOCAL_FIRST_MUSIC_PLAN.md), current music direction and constraints
 - [`MPV_DEPENDENCIES.md`](MPV_DEPENDENCIES.md), mpv-specific dependency and integration notes
 

@@ -17,7 +17,7 @@ _KEEPALIVE_SECONDS = 60
 class DeviceMqttClient:
     """Publish device telemetry events to the backend MQTT broker.
 
-    The device publishes to  ``yoyopod/{device_id}/evt``.
+    The device publishes to ``yoyopod/{device_id}/evt``.
     The backend sends commands on ``yoyopod/{device_id}/cmd``; those are
     forwarded to the registered command callback.
     """
@@ -48,10 +48,6 @@ class DeviceMqttClient:
         self._stopped = False
         self._lock = threading.Lock()
 
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
-
     def start(self) -> None:
         """Start the MQTT client and connect in the background."""
         try:
@@ -75,8 +71,6 @@ class DeviceMqttClient:
         if self._use_tls:
             client.tls_set()
 
-        # Keep reconnect behavior inside the single Paho network loop so
-        # replacement clients do not leave behind their own retry threads.
         client.reconnect_delay_set(
             min_delay=1,
             max_delay=int(_RECONNECT_DELAY_SECONDS),
@@ -119,10 +113,6 @@ class DeviceMqttClient:
             except Exception:
                 pass
 
-    # ------------------------------------------------------------------
-    # Publishing
-    # ------------------------------------------------------------------
-
     def publish_battery(self, *, level: int, charging: bool) -> bool:
         """Publish a battery telemetry event."""
         return self._publish("battery", {"level": level, "charging": charging})
@@ -138,9 +128,49 @@ class DeviceMqttClient:
         """Publish a connectivity change (wifi / 4g)."""
         return self._publish("connectivity", {"type": connection_type})
 
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
+    def publish_playback_event(self, payload: dict[str, Any]) -> bool:
+        """Publish one remote-playback event through the normal device event topic."""
+        return self._publish("playback", payload)
+
+    def publish_event(self, event_type: str, payload: dict[str, Any]) -> bool:
+        """Publish one typed event envelope through the device event topic."""
+        return self._publish(event_type, payload)
+
+    def publish_ack(
+        self,
+        *,
+        command_id: str,
+        ok: bool,
+        reason: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> bool:
+        """Publish one command ACK/NACK to ``yoyopod/{device_id}/ack``."""
+        with self._lock:
+            client = self._client
+            connected = self._connected
+
+        if client is None or not connected:
+            logger.debug("MQTT not connected — skipping ack for {}", command_id)
+            return False
+
+        topic = f"yoyopod/{self._device_id}/ack"
+        message_payload: dict[str, Any] = {
+            "command_id": command_id,
+            "status": "ack" if ok else "nack",
+            "payload": payload or {},
+        }
+        if reason:
+            message_payload["reason"] = reason
+
+        try:
+            result = client.publish(topic, json.dumps(message_payload), qos=1)
+            if result.rc != 0:
+                logger.warning("MQTT publish failed for ack {}: rc={}", command_id, result.rc)
+                return False
+            return True
+        except Exception as exc:
+            logger.warning("MQTT ack publish error for {}: {}", command_id, exc)
+            return False
 
     def _publish(self, event_type: str, payload: dict[str, Any]) -> bool:
         """Publish one event envelope to ``yoyopod/{device_id}/evt``."""
@@ -190,7 +220,10 @@ class DeviceMqttClient:
         """Handle an incoming command from the backend."""
         try:
             payload = json.loads(msg.payload.decode())
-            logger.info("MQTT command received: {}", payload.get("type", "unknown"))
+            logger.info(
+                "MQTT command received: {}",
+                payload.get("command") or payload.get("type", "unknown"),
+            )
             if self._command_callback is not None:
                 self._command_callback(payload)
         except Exception as exc:

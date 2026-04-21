@@ -41,7 +41,11 @@ def test_output_volume_controller_sets_system_and_music_volume(monkeypatch) -> N
     controller = OutputVolumeController(music_backend=backend)
 
     assert controller.set_volume(55) is True
-    assert calls[0] == ["amixer", "sset", "Master", "55%"]
+    assert calls[:3] == [
+        ["amixer", "-c", "1", "sset", "Playback", "100%"],
+        ["amixer", "-c", "1", "sset", "Speaker", "100%"],
+        ["amixer", "-c", "1", "sset", "Headphone", "100%"],
+    ]
     assert backend.get_volume() == 55
 
 
@@ -73,6 +77,9 @@ def test_output_volume_controller_falls_back_to_card_one_when_default_card_fails
             ["amixer", "sget", "Master"],
             ["amixer", "-c", "1", "sget", "Master"],
             ["amixer", "-c", "0", "sget", "Master"],
+            ["amixer", "sget", "Playback"],
+            ["amixer", "-c", "1", "sget", "Playback"],
+            ["amixer", "-c", "0", "sget", "Playback"],
         ):
             return subprocess.CompletedProcess(
                 args=args,
@@ -95,10 +102,13 @@ Simple mixer control 'Master',0
     controller = OutputVolumeController()
 
     assert controller.get_system_volume() == 100
-    assert calls[:4] == [
+    assert calls[:7] == [
         ["amixer", "sget", "Master"],
         ["amixer", "-c", "1", "sget", "Master"],
         ["amixer", "-c", "0", "sget", "Master"],
+        ["amixer", "sget", "Playback"],
+        ["amixer", "-c", "1", "sget", "Playback"],
+        ["amixer", "-c", "0", "sget", "Playback"],
         ["amixer", "-c", "1", "sget", "Headset"],
     ]
 

@@ -26,6 +26,14 @@ class MediaMusicConfig:
         default="data/media/recent_tracks.json",
         env="YOYOPOD_RECENT_TRACKS_FILE",
     )
+    remote_cache_dir: str = config_value(
+        default="data/media/remote_cache",
+        env="YOYOPOD_REMOTE_CACHE_DIR",
+    )
+    remote_cache_max_bytes: int = config_value(
+        default=536870912,
+        env="YOYOPOD_REMOTE_CACHE_MAX_BYTES",
+    )
 
 
 @dataclass(slots=True)

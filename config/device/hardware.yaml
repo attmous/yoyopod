@@ -25,7 +25,7 @@ communication_audio:
   ring_output_device: ""
 
 media_audio:
-  alsa_device: "default"
+  alsa_device: "sysdefault:CARD=wm8960soundcard"
 
 voice_audio:
   speaker_device_id: "ALSA: wm8960-soundcard"

@@ -43,6 +43,14 @@ class _FakeConfigManager:
     def get_cloud_settings(self):
         return SimpleNamespace(backend=self._backend)
 
+    def get_media_settings(self):
+        return SimpleNamespace(
+            music=SimpleNamespace(
+                remote_cache_dir="data/media/remote_cache",
+                remote_cache_max_bytes=64 * 1024 * 1024,
+            )
+        )
+
     def get_cloud_device_id(self) -> str:
         return "YYP-DEV-0001"
 
@@ -51,6 +59,9 @@ class _FakeConfigManager:
 
     def load_cloud_config(self) -> None:
         return None
+
+    def resolve_runtime_path(self, value: str) -> str:
+        return value
 
 
 class _FakeClient:

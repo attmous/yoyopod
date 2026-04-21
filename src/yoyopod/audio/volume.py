@@ -41,6 +41,12 @@ class OutputVolumeController:
 
     def get_volume(self) -> int | None:
         """Return the best current app-facing output volume."""
+        if self.music_backend is not None:
+            backend_volume = self.music_backend.get_volume()
+            if backend_volume is not None:
+                self._last_requested_volume = backend_volume
+                return backend_volume
+
         system_volume = self.get_system_volume()
         if system_volume is not None:
             self._last_requested_volume = system_volume
@@ -48,12 +54,6 @@ class OutputVolumeController:
 
         if self._last_requested_volume is not None:
             return self._last_requested_volume
-
-        if self.music_backend is not None:
-            backend_volume = self.music_backend.get_volume()
-            if backend_volume is not None:
-                self._last_requested_volume = backend_volume
-                return backend_volume
 
         return self._last_requested_volume
 
@@ -110,24 +110,37 @@ class OutputVolumeController:
         return None
 
     def set_system_volume(self, volume: int) -> bool:
-        """Write one ALSA mixer percentage for the configured control."""
+        """Keep WM8960 output stages at calibrated headroom when available."""
+        if self._ensure_wm8960_output_headroom():
+            self._last_system_volume_available = True
+            return True
+
         target = max(0, min(100, int(volume)))
-        applied = False
         for command in self._amixer_set_candidates(f"{target}%"):
             result = self._run_amixer(command)
             if result is None:
                 return False
             if result.returncode == 0:
-                applied = True
-
-        if applied:
-            self._last_system_volume_available = True
-            return True
+                self._last_system_volume_available = True
+                return True
 
         if self._last_system_volume_available is not False:
             logger.warning("Failed to set ALSA output volume to {}%", target)
         self._last_system_volume_available = False
         return False
+
+    def _ensure_wm8960_output_headroom(self) -> bool:
+        """Pin WM8960 output stages high and leave user volume to mpv."""
+        successes = 0
+        for command in (
+            [self.amixer_binary, "-c", "1", "sset", "Playback", "100%"],
+            [self.amixer_binary, "-c", "1", "sset", "Speaker", "100%"],
+            [self.amixer_binary, "-c", "1", "sset", "Headphone", "100%"],
+        ):
+            result = self._run_amixer(command)
+            if result is not None and result.returncode == 0:
+                successes += 1
+        return successes > 0
 
     def _amixer_get_candidates(self) -> list[list[str]]:
         """Return candidate amixer reads in priority order."""
@@ -138,6 +151,9 @@ class OutputVolumeController:
                 (None, self.mixer_control),
                 ("1", self.mixer_control),
                 ("0", self.mixer_control),
+                (None, "Playback"),
+                ("1", "Playback"),
+                ("0", "Playback"),
                 ("1", "Headset"),
                 ("0", "Headset"),
                 ("1", "Speaker"),
@@ -156,6 +172,9 @@ class OutputVolumeController:
                 (None, self.mixer_control),
                 ("1", self.mixer_control),
                 ("0", self.mixer_control),
+                (None, "Playback"),
+                ("1", "Playback"),
+                ("0", "Playback"),
                 ("1", "Headset"),
                 ("0", "Headset"),
                 ("1", "Speaker"),

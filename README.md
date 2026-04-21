@@ -3,7 +3,7 @@
 YoyoPod is an iPod-inspired Raspberry Pi application that combines SIP calling, local-first music playback, and a small-screen button UI.
 
 Current product surface:
-- `Listen` - local-only music with `Playlists`, `Recent`, and `Shuffle`
+- `Listen` - local music with `Playlists`, `Recent`, and `Shuffle`, including dashboard-imported device-local tracks
 - `Talk` - contact-first calls and voice notes
 - `Ask` - staged shell for future safe AI interactions
 - `Setup` - power, care, and device status
@@ -92,6 +92,7 @@ Setup and operations:
 Subsystem docs:
 - [Power Module](docs/POWER_MODULE.md)
 - [Audio Stack](docs/AUDIO_STACK.md)
+- [Remote Playback](docs/REMOTE_PLAYBACK.md)
 - [Local-First Music Plan](docs/LOCAL_FIRST_MUSIC_PLAN.md)
 - [mpv Dependencies](docs/MPV_DEPENDENCIES.md)
 - [Cloud Provisioning And Backend Integration](docs/CLOUD_PROVISIONING_AND_BACKEND.md)

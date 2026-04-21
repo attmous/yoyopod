@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
+from urllib.parse import unquote, urlparse
 
 from loguru import logger
 
 from yoyopod.cloud.client import CloudClientError, CloudDeviceClient
 from yoyopod.cloud.models import CloudAccessToken, CloudStatusSnapshot
 from yoyopod.cloud.mqtt_client import DeviceMqttClient
+from yoyopod.cloud.playback_cache import RemotePlaybackCache
 
 if TYPE_CHECKING:
     from yoyopod.app import YoyoPodApp
@@ -59,10 +63,28 @@ class CloudManager:
         self._mqtt: DeviceMqttClient | None = None
         self._next_battery_report_at = 0.0
         self._contacts_bootstrap_attempted = False
+        self._playback_callbacks_bound = False
+        self._remote_playback_session: dict[str, Any] | None = None
+        self._remote_playback_activation_generation = 0
+        self._recent_remote_command_ids: deque[str] = deque(maxlen=32)
+        self._last_remote_playback_state: str | None = None
+        get_media_settings = getattr(self.config_manager, "get_media_settings", None)
+        if callable(get_media_settings):
+            media_settings = get_media_settings().music
+            remote_cache_dir = media_settings.remote_cache_dir
+            remote_cache_max_bytes = media_settings.remote_cache_max_bytes
+        else:
+            remote_cache_dir = "data/media/remote_cache"
+            remote_cache_max_bytes = 64 * 1024 * 1024
+        self._remote_playback_cache = RemotePlaybackCache(
+            self.config_manager.resolve_runtime_path(remote_cache_dir),
+            remote_cache_max_bytes,
+        )
 
     def prepare_boot(self) -> None:
         """Load secrets/cache and start MQTT before the runtime loop begins."""
 
+        self._bind_playback_callbacks()
         self._reload_provisioning(force=True, now=time.monotonic())
 
     def tick(self, now: float | None = None) -> None:
@@ -979,17 +1001,594 @@ class CloudManager:
         )
 
     def _handle_mqtt_command(self, command: dict[str, Any]) -> None:
-        cmd_type = command.get("type", "unknown")
+        cmd_type = command.get("command") or command.get("type", "unknown")
         logger.info("MQTT command received from backend: {}", cmd_type)
         self._queue_main_thread_callback(lambda cmd=command: self._apply_mqtt_command(cmd))
 
     def _apply_mqtt_command(self, command: dict[str, Any]) -> None:
-        cmd_type = command.get("type", "")
+        cmd_type = str(command.get("command") or command.get("type") or "").strip()
         if cmd_type == "fetch_config":
             self._next_config_poll_at = 0.0
             logger.info("MQTT: backend requested immediate config fetch")
+        elif cmd_type in {"play_track", "stop", "pause", "resume"}:
+            self._apply_playback_command(command)
+        elif cmd_type == "store_media":
+            self._apply_store_media_command(command)
         else:
-            logger.info("MQTT: unhandled command type '{}'", cmd_type)
+            logger.info("MQTT: unhandled command type {}", cmd_type)
+
+    def _bind_playback_callbacks(self) -> None:
+        if self._playback_callbacks_bound:
+            return
+
+        music_backend = getattr(self.app, "music_backend", None)
+        if music_backend is None:
+            return
+
+        track_change = getattr(music_backend, "on_track_change", None)
+        if callable(track_change):
+            track_change(self._handle_music_track_change)
+
+        playback_change = getattr(music_backend, "on_playback_state_change", None)
+        if callable(playback_change):
+            playback_change(self._handle_music_playback_state_change)
+
+        self._playback_callbacks_bound = True
+
+    def _apply_playback_command(self, command: dict[str, Any]) -> None:
+        mqtt = self._mqtt
+        music_backend = getattr(self.app, "music_backend", None)
+        command_id = str(command.get("commandId") or command.get("command_id") or "").strip()
+        cmd_type = str(command.get("command") or command.get("type") or "").strip()
+        payload = command.get("payload")
+        payload = payload if isinstance(payload, dict) else {}
+
+        if not command_id:
+            return
+
+        if mqtt is None or not mqtt.is_connected:
+            return
+
+        if command_id in self._recent_remote_command_ids:
+            mqtt.publish_ack(command_id=command_id, ok=True, payload={"duplicate": True})
+            return
+
+        if music_backend is None or not getattr(music_backend, "is_connected", False):
+            mqtt.publish_ack(
+                command_id=command_id,
+                ok=False,
+                reason="playback_backend_error",
+            )
+            return
+
+        if cmd_type == "play_track":
+            media_url = str(payload.get("mediaUrl") or payload.get("media_url") or "").strip()
+            track_id = str(payload.get("trackId") or payload.get("track_id") or "").strip()
+            if not media_url or not track_id:
+                mqtt.publish_ack(command_id=command_id, ok=False, reason="invalid_command")
+                return
+
+            stop_playback = getattr(music_backend, "stop_playback", None)
+            if callable(stop_playback):
+                stop_playback()
+
+            self._remote_playback_activation_generation += 1
+            self._remote_playback_session = {
+                "command_id": command_id,
+                "track_id": track_id,
+                "title": payload.get("title"),
+                "artist": payload.get("artist"),
+                "duration_ms": payload.get("durationMs"),
+                "media_url": media_url,
+                "cached_path": None,
+                "activation_generation": self._remote_playback_activation_generation,
+                "activation_pending": True,
+                "stop_requested": False,
+            }
+            self._recent_remote_command_ids.append(command_id)
+            mqtt.publish_ack(command_id=command_id, ok=True, payload={"command": cmd_type})
+            self._publish_playback_event(
+                "buffering",
+                command_id=command_id,
+                payload={"trackId": track_id, "positionMs": 0},
+            )
+
+            self._last_remote_playback_state = "buffering"
+            activation_generation = self._remote_playback_activation_generation
+            checksum_sha256 = (
+                str(payload.get("checksumSha256") or payload.get("checksum_sha256") or "").strip()
+                or None
+            )
+            self._start_worker(
+                name=f"cloud-playback-fetch-{command_id[:8]}",
+                work=lambda: self._run_prepare_remote_playback_asset(
+                    command_id=command_id,
+                    track_id=track_id,
+                    media_url=media_url,
+                    checksum_sha256=checksum_sha256,
+                    activation_generation=activation_generation,
+                ),
+            )
+            return
+
+        session = self._remote_playback_session
+        if session is None:
+            mqtt.publish_ack(command_id=command_id, ok=False, reason="invalid_command")
+            return
+
+        operation = {
+            "stop": getattr(music_backend, "stop_playback", None),
+            "pause": getattr(music_backend, "pause", None),
+            "resume": getattr(music_backend, "play", None),
+        }.get(cmd_type)
+
+        if cmd_type == "stop":
+            session["stop_requested"] = True
+
+        if not callable(operation) or not operation():
+            mqtt.publish_ack(command_id=command_id, ok=False, reason="playback_backend_error")
+            self._publish_playback_event(
+                "failed",
+                command_id=session["command_id"],
+                payload={
+                    "trackId": session["track_id"],
+                    "reason": "playback_backend_error",
+                },
+            )
+            return
+
+        self._recent_remote_command_ids.append(command_id)
+        mqtt.publish_ack(command_id=command_id, ok=True, payload={"command": cmd_type})
+
+    def _handle_music_track_change(self, track: Any) -> None:
+        if self._remote_playback_session is None or track is None:
+            return
+
+        if self._remote_playback_session.get("activation_pending") and not self._remote_playback_session.get(
+            "cached_path"
+        ):
+            return
+
+        current_uri = getattr(track, "uri", None)
+        session_uri = self._remote_playback_session.get("cached_path")
+        current_path = self._normalize_local_media_path(current_uri)
+        session_path = self._normalize_local_media_path(session_uri)
+        track_id = str(self._remote_playback_session.get("track_id") or "").strip()
+        normalized_current_uri = str(current_uri or "")
+        is_file_like_uri = (
+            normalized_current_uri.startswith("file://")
+            or "/" in normalized_current_uri
+            or bool(Path(normalized_current_uri).suffix)
+        )
+
+        if current_path is not None and session_path is not None:
+            if current_path == session_path or current_path.name == session_path.name:
+                self._remote_playback_session["activation_pending"] = False
+                return
+
+        if track_id and track_id in normalized_current_uri:
+            self._remote_playback_session["activation_pending"] = False
+            return
+
+        if not is_file_like_uri:
+            return
+
+        if current_uri and session_uri and current_uri != session_uri:
+            self._remote_playback_session = None
+            self._last_remote_playback_state = None
+
+    @staticmethod
+    def _normalize_local_media_path(value: Any) -> Path | None:
+        if value in (None, ""):
+            return None
+
+        normalized = str(value).strip()
+        if not normalized:
+            return None
+
+        if normalized.startswith("file://"):
+            normalized = unquote(urlparse(normalized).path)
+
+        try:
+            return Path(normalized).expanduser().resolve(strict=False)
+        except Exception:
+            return Path(normalized)
+
+    def _handle_music_playback_state_change(self, state: str) -> None:
+        session = self._remote_playback_session
+        if session is None:
+            return
+
+        if state == "stopped" and session.get("activation_pending") and not session.get("cached_path"):
+            return
+
+        position_ms = self._current_playback_position_ms()
+        duration_ms = session.get("duration_ms")
+        event_type = state
+
+        if state == "playing" and session.get("playing_started_at_monotonic") is None:
+            session["playing_started_at_monotonic"] = time.monotonic()
+            session["activation_pending"] = False
+        elif state in {"paused", "buffering"}:
+            session["activation_pending"] = False
+
+        if state == "stopped":
+            started_at_monotonic = session.get("playing_started_at_monotonic")
+            elapsed_ms = None
+            if isinstance(started_at_monotonic, (int, float)):
+                elapsed_ms = int(max(0.0, (time.monotonic() - started_at_monotonic) * 1000))
+
+            if (
+                not session.get("stop_requested")
+                and isinstance(duration_ms, int)
+                and duration_ms > 0
+                and elapsed_ms is not None
+                and elapsed_ms >= max(0, duration_ms - 2500)
+            ):
+                event_type = "completed"
+            elif (
+                isinstance(duration_ms, int)
+                and duration_ms > 0
+                and position_ms >= max(0, duration_ms - 2500)
+            ):
+                event_type = "completed"
+            self._remote_playback_session = None
+            self._last_remote_playback_state = None
+        else:
+            self._last_remote_playback_state = state
+
+        self._publish_playback_event(
+            event_type,
+            command_id=session["command_id"],
+            payload={
+                "trackId": session["track_id"],
+                "positionMs": position_ms,
+            },
+        )
+
+    def _current_playback_position_ms(self) -> int:
+        music_backend = getattr(self.app, "music_backend", None)
+        if music_backend is None:
+            return 0
+
+        getter = getattr(music_backend, "get_time_position", None)
+        if not callable(getter):
+            return 0
+
+        try:
+            return int(getter())
+        except Exception:
+            return 0
+
+    def _publish_playback_event(
+        self,
+        event_type: str,
+        *,
+        command_id: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        if self._mqtt is None or not self._mqtt.is_connected:
+            return
+
+        event_payload: dict[str, Any] = {
+            "messageType": "playback.event",
+            "commandId": command_id,
+            "deviceId": self.config_manager.get_cloud_device_id().strip(),
+            "eventType": event_type,
+            "occurredAt": self._utc_now(),
+            "payload": payload or {},
+        }
+        self._mqtt.publish_playback_event(event_payload)
+
+    def _publish_media_library_event(
+        self,
+        event_type: str,
+        *,
+        command_id: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        if self._mqtt is None or not self._mqtt.is_connected:
+            return
+
+        event_payload: dict[str, Any] = {
+            "messageType": "media_library.event",
+            "commandId": command_id,
+            "deviceId": self.config_manager.get_cloud_device_id().strip(),
+            "eventType": event_type,
+            "occurredAt": self._utc_now(),
+            "payload": payload or {},
+        }
+        self._mqtt.publish_event("media_library", event_payload)
+
+    def _run_prepare_remote_playback_asset(
+        self,
+        *,
+        command_id: str,
+        track_id: str,
+        media_url: str,
+        checksum_sha256: str | None,
+        activation_generation: int,
+    ) -> None:
+        try:
+            cached_asset = self._remote_playback_cache.prepare(
+                track_id=track_id,
+                media_url=media_url,
+                checksum_sha256=checksum_sha256,
+            )
+        except Exception as exc:
+            logger.warning("Remote playback fetch failed for {}: {}", track_id, exc)
+            self._queue_main_thread_callback(
+                lambda exc=exc: self._complete_prepare_remote_playback_asset(
+                    command_id=command_id,
+                    track_id=track_id,
+                    activation_generation=activation_generation,
+                    error=exc,
+                )
+            )
+            return
+
+        self._queue_main_thread_callback(
+            lambda cached_asset=cached_asset: self._complete_prepare_remote_playback_asset(
+                command_id=command_id,
+                track_id=track_id,
+                activation_generation=activation_generation,
+                cached_asset=cached_asset,
+            )
+        )
+
+    def _complete_prepare_remote_playback_asset(
+        self,
+        *,
+        command_id: str,
+        track_id: str,
+        activation_generation: int,
+        cached_asset: Any | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        session = self._remote_playback_session
+        if (
+            session is None
+            or session.get("command_id") != command_id
+            or session.get("track_id") != track_id
+            or session.get("activation_generation") != activation_generation
+        ):
+            return
+
+        if error is not None:
+            self._remote_playback_session = None
+            self._last_remote_playback_state = None
+            self._publish_playback_event(
+                "failed",
+                command_id=command_id,
+                payload={
+                    "trackId": track_id,
+                    "reason": "media_fetch_failed",
+                },
+            )
+            return
+
+        music_backend = getattr(self.app, "music_backend", None)
+        if music_backend is None or not getattr(music_backend, "is_connected", False):
+            self._remote_playback_session = None
+            self._last_remote_playback_state = None
+            self._publish_playback_event(
+                "failed",
+                command_id=command_id,
+                payload={
+                    "trackId": track_id,
+                    "reason": "playback_backend_error",
+                },
+            )
+            return
+
+        if session.get("stop_requested"):
+            self._remote_playback_session = None
+            self._last_remote_playback_state = None
+            self._publish_playback_event(
+                "stopped",
+                command_id=command_id,
+                payload={
+                    "trackId": track_id,
+                    "positionMs": 0,
+                },
+            )
+            return
+
+        session["cached_path"] = cached_asset.path
+        if not music_backend.load_tracks([cached_asset.path]):
+            self._remote_playback_session = None
+            self._last_remote_playback_state = None
+            self._publish_playback_event(
+                "failed",
+                command_id=command_id,
+                payload={
+                    "trackId": track_id,
+                    "reason": "decode_failed",
+                },
+            )
+
+    def _apply_store_media_command(self, command: dict[str, Any]) -> None:
+        mqtt = self._mqtt
+        command_id = str(command.get("commandId") or command.get("command_id") or "").strip()
+        payload = command.get("payload")
+        payload = payload if isinstance(payload, dict) else {}
+
+        if not command_id or mqtt is None or not mqtt.is_connected:
+            return
+
+        if command_id in self._recent_remote_command_ids:
+            mqtt.publish_ack(command_id=command_id, ok=True, payload={"duplicate": True})
+            return
+
+        media_url = str(payload.get("mediaUrl") or payload.get("media_url") or "").strip()
+        track_id = str(payload.get("trackId") or payload.get("track_id") or "").strip()
+        if not media_url or not track_id:
+            mqtt.publish_ack(command_id=command_id, ok=False, reason="invalid_command")
+            return
+
+        self._recent_remote_command_ids.append(command_id)
+        mqtt.publish_ack(command_id=command_id, ok=True, payload={"command": "store_media"})
+
+        checksum_sha256 = (
+            str(payload.get("checksumSha256") or payload.get("checksum_sha256") or "").strip()
+            or None
+        )
+        self._start_worker(
+            name=f"cloud-store-media-{command_id[:8]}",
+            work=lambda: self._run_store_media_command(
+                command_id=command_id,
+                track_id=track_id,
+                media_url=media_url,
+                checksum_sha256=checksum_sha256,
+                payload=payload,
+            ),
+        )
+
+    def _run_store_media_command(
+        self,
+        *,
+        command_id: str,
+        track_id: str,
+        media_url: str,
+        checksum_sha256: str | None,
+        payload: dict[str, Any],
+    ) -> None:
+        try:
+            cached_asset = self._remote_playback_cache.prepare(
+                track_id=track_id,
+                media_url=media_url,
+                checksum_sha256=checksum_sha256,
+            )
+            target_path = self._persist_device_media_asset(
+                track_id=track_id,
+                cached_path=Path(cached_asset.path),
+                payload=payload,
+            )
+        except Exception as exc:
+            logger.warning("Device media import failed for {}: {}", track_id, exc)
+            self._queue_main_thread_callback(
+                lambda exc=exc: self._complete_store_media_command(
+                    command_id=command_id,
+                    track_id=track_id,
+                    error=exc,
+                )
+            )
+            return
+
+        self._queue_main_thread_callback(
+            lambda target_path=target_path: self._complete_store_media_command(
+                command_id=command_id,
+                track_id=track_id,
+                target_path=target_path,
+            )
+        )
+
+    def _complete_store_media_command(
+        self,
+        *,
+        command_id: str,
+        track_id: str,
+        target_path: Path | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        if error is not None or target_path is None:
+            self._publish_media_library_event(
+                "failed",
+                command_id=command_id,
+                payload={
+                    "trackId": track_id,
+                    "reason": "media_fetch_failed",
+                },
+            )
+            return
+
+        self._publish_media_library_event(
+            "imported",
+            command_id=command_id,
+            payload={
+                "trackId": track_id,
+                "path": str(target_path),
+            },
+        )
+
+    def _persist_device_media_asset(
+        self,
+        *,
+        track_id: str,
+        cached_path: Path,
+        payload: dict[str, Any],
+    ) -> Path:
+        music_dir = self._device_music_dir()
+        uploads_dir = music_dir / "dashboard_uploads"
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+
+        preferred_name = (
+            str(payload.get("filename") or payload.get("originalFilename") or payload.get("title") or "").strip()
+        )
+        source_suffix = cached_path.suffix or ".mp3"
+        display_stem = self._safe_media_stem(preferred_name, default_stem=track_id)
+        unique_stem = self._safe_media_stem(track_id, default_stem="track")
+        if display_stem == unique_stem:
+            safe_name = f"{display_stem}{self._safe_media_suffix(source_suffix)}"
+        else:
+            safe_name = f"{display_stem}-{unique_stem}{self._safe_media_suffix(source_suffix)}"
+        target_path = uploads_dir / safe_name
+
+        shutil.copy2(cached_path, target_path)
+        self._append_dashboard_uploads_playlist(target_path)
+        return target_path
+
+    def _append_dashboard_uploads_playlist(self, target_path: Path) -> None:
+        playlist_path = self._device_music_dir() / "Dashboard Uploads.m3u"
+        playlist_path.parent.mkdir(parents=True, exist_ok=True)
+        existing_entries: set[str] = set()
+        if playlist_path.exists():
+            try:
+                existing_entries = {
+                    line.strip()
+                    for line in playlist_path.read_text(encoding="utf-8").splitlines()
+                    if line.strip()
+                }
+            except Exception:
+                existing_entries = set()
+
+        entry = str(target_path)
+        if entry in existing_entries:
+            return
+
+        with playlist_path.open("a", encoding="utf-8") as handle:
+            if playlist_path.stat().st_size > 0:
+                handle.write("\n")
+            handle.write(entry)
+
+    def _device_music_dir(self) -> Path:
+        get_media_settings = getattr(self.config_manager, "get_media_settings", None)
+        if callable(get_media_settings):
+            music_dir = get_media_settings().music.music_dir
+        else:
+            music_dir = "/home/pi/Music"
+        return Path(self.config_manager.resolve_runtime_path(music_dir)).expanduser()
+
+    @staticmethod
+    def _safe_media_filename(value: str, *, default_stem: str, suffix: str) -> str:
+        return f"{CloudManager._safe_media_stem(value, default_stem=default_stem)}{CloudManager._safe_media_suffix(suffix)}"
+
+    @staticmethod
+    def _safe_media_stem(value: str, *, default_stem: str) -> str:
+        stem = Path(value).stem if value else default_stem
+        normalized = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in stem)
+        normalized = normalized.strip(".-_")
+        if not normalized:
+            fallback = "".join(
+                char if char.isalnum() or char in {"-", "_"} else "-" for char in default_stem
+            ).strip(".-_")
+            normalized = fallback or "track"
+        return normalized
+
+    @staticmethod
+    def _safe_media_suffix(suffix: str) -> str:
+        safe_suffix = suffix if suffix.startswith(".") else f".{suffix}"
+        return safe_suffix[:16]
 
     def _is_backend_configured(self) -> bool:
         return bool(self.config_manager.get_cloud_settings().backend.api_base_url.strip())
