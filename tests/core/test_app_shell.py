@@ -33,3 +33,18 @@ def test_app_shell_run_supports_iteration_bounded_loops() -> None:
     assert seen == ["tick", "tick"]
     assert app.config is None
     assert app.integrations == {}
+
+
+def test_app_shell_tracks_recent_tick_stats() -> None:
+    app = YoyoPodAppShell(strict_bus=True)
+    app.start()
+    app.tick()
+    app.stop()
+    app.tick()
+
+    stats = app.tick_stats_snapshot()
+
+    assert stats["sample_count"] == 2
+    assert stats["drain_ms_p50"] >= 0.0
+    assert stats["drain_ms_p99"] >= stats["drain_ms_p50"]
+    assert stats["queue_depth_max"] >= 0

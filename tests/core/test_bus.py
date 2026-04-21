@@ -58,6 +58,15 @@ def test_bus_non_strict_mode_logs_and_continues() -> None:
     assert seen == ["still-runs"]
 
 
+def test_bus_reports_subscription_counts_by_event_type() -> None:
+    bus = Bus()
+    bus.subscribe(DemoEvent, lambda event: None)
+    bus.subscribe(DemoEvent, lambda event: None)
+    bus.subscribe(object, lambda event: None)
+
+    assert bus.subscription_counts() == {"DemoEvent": 2, "object": 1}
+
+
 def test_bus_strict_mode_reraises_handler_errors() -> None:
     bus = Bus(strict=True)
     bus.subscribe(DemoEvent, lambda event: (_ for _ in ()).throw(RuntimeError("boom")))

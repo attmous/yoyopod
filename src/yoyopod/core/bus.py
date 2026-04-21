@@ -48,6 +48,17 @@ class Bus:
 
         return len(self._queue)
 
+    def subscription_counts(self) -> dict[str, int]:
+        """Return subscriber counts keyed by event type name."""
+
+        return {
+            event_type.__name__: len(subscribers)
+            for event_type, subscribers in sorted(
+                self._subscribers.items(),
+                key=lambda item: item[0].__name__,
+            )
+        }
+
     def _dispatch(self, event: Any) -> None:
         handlers: list[EventHandler] = []
         for event_type, subscribers in self._subscribers.items():

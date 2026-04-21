@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import threading
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -40,6 +41,8 @@ class YoyoPodAppShell:
         self._setup_complete = False
         self._stopped = False
         self._registered_integrations: list[_RegisteredIntegration] = []
+        self._tick_durations_ms: deque[float] = deque(maxlen=100)
+        self._tick_queue_depths: deque[int] = deque(maxlen=100)
         self._ui_tick_callback: Callable[[], None] | None = None
 
     def set_ui_tick_callback(self, callback: Callable[[], None] | None) -> None:
@@ -99,11 +102,27 @@ class YoyoPodAppShell:
     def tick(self) -> int:
         """Advance queued main-thread work once."""
 
+        started_at = time.perf_counter()
+        queue_depth = self.scheduler.pending_count() + self.bus.pending_count()
         processed = self.scheduler.drain()
         processed += self.bus.drain()
         if self._ui_tick_callback is not None:
             self._ui_tick_callback()
+        self._tick_durations_ms.append((time.perf_counter() - started_at) * 1000.0)
+        self._tick_queue_depths.append(queue_depth)
         return processed
+
+    def tick_stats_snapshot(self) -> dict[str, float | int]:
+        """Return a compact summary of recent tick durations and queue depths."""
+
+        durations = list(self._tick_durations_ms)
+        queue_depths = list(self._tick_queue_depths)
+        return {
+            "sample_count": len(durations),
+            "drain_ms_p50": _percentile(durations, 0.50),
+            "drain_ms_p99": _percentile(durations, 0.99),
+            "queue_depth_max": max(queue_depths, default=0),
+        }
 
     def run(self, *, sleep_seconds: float = 0.01, max_iterations: int | None = None) -> int:
         """Run the scaffold main loop until stopped or iteration-limited."""
@@ -121,3 +140,14 @@ class YoyoPodAppShell:
             time.sleep(sleep_seconds)
 
         return total_processed
+
+
+def _percentile(values: list[float], ratio: float) -> float:
+    """Return one percentile from a non-empty list of values."""
+
+    if not values:
+        return 0.0
+
+    ordered = sorted(values)
+    index = int(round((len(ordered) - 1) * ratio))
+    return ordered[index]
