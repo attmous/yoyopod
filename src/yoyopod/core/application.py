@@ -46,7 +46,7 @@ from yoyopod.integrations.network import NetworkManager
 from yoyopod.integrations.power import PowerManager
 from yoyopod.core.bootstrap import RuntimeBootService
 from yoyopod.core.event_subscriptions import RuntimeEventSubscriptions
-from yoyopod.runtime.loop import RuntimeLoopService
+from yoyopod.core.loop import RuntimeLoopService
 from yoyopod.core.status import RuntimeMetricsStore
 from yoyopod.core.recovery import RecoveryState
 from yoyopod.integrations.call import VoiceNoteEventHandler

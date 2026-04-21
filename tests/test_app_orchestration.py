@@ -39,7 +39,7 @@ from yoyopod.integrations.call import (
     CallSessionState,
 )
 from yoyopod.power.models import BatteryState, PowerSnapshot
-from yoyopod.runtime.loop import RuntimeLoopService
+from yoyopod.core.loop import RuntimeLoopService
 from yoyopod.integrations.power import PowerAlert
 from yoyopod.integrations.network.models import ModemPhase, ModemState, SignalInfo
 from yoyopod.ui.input import InputManager, InteractionProfile

@@ -23,6 +23,7 @@ from yoyopod.app_context import (
 )
 from yoyopod.core import AppContext as CoreAppContext
 from yoyopod.core import RuntimeBootService as CoreRuntimeBootService
+from yoyopod.core import RuntimeLoopService as CoreRuntimeLoopService
 from yoyopod.core.event_subscriptions import RuntimeEventSubscriptions as CoreRuntimeEventSubscriptions
 from yoyopod.core.event_bus import EventBus as CoreEventBus
 from yoyopod.core.event_bus import EventHandler as CoreEventHandler
@@ -143,6 +144,7 @@ from yoyopod.integrations.voice import match_voice_command as integration_match_
 from yoyopod.runtime_state import PlaybackQueue as RuntimeStatePlaybackQueue
 from yoyopod.runtime_state import Track as RuntimeStateTrack
 from yoyopod.runtime import ResponsivenessWatchdogDecision as LegacyResponsivenessWatchdogDecision
+from yoyopod.runtime import RuntimeLoopService as LegacyRuntimeLoopService
 from yoyopod.runtime import evaluate_responsiveness_status as legacy_evaluate_responsiveness_status
 from yoyopod.runtime.boot import RuntimeBootService as LegacyRuntimeBootService
 from yoyopod.runtime.boot.managers_boot import ManagersBoot as LegacyManagersBoot
@@ -415,6 +417,12 @@ def test_legacy_runtime_boot_import_paths_resolve_to_core_bootstrap() -> None:
 
     assert LegacyRuntimeBootService is CoreRuntimeBootService
     assert LegacyManagersBoot is CoreManagersBoot
+
+
+def test_legacy_runtime_loop_import_paths_resolve_to_core_loop() -> None:
+    """Legacy runtime loop imports should point at the canonical core loop seam."""
+
+    assert LegacyRuntimeLoopService is CoreRuntimeLoopService
 
 
 def test_legacy_runtime_network_event_import_path_resolves_to_network_owner() -> None:

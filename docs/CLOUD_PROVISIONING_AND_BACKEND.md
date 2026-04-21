@@ -45,7 +45,7 @@ Current core files:
 - [src/yoyopod/integrations/cloud/models.py](../src/yoyopod/integrations/cloud/models.py)
 - [src/yoyopod/config/models.py](../src/yoyopod/config/models.py)
 - [src/yoyopod/core/bootstrap/__init__.py](../src/yoyopod/core/bootstrap/__init__.py)
-- [src/yoyopod/runtime/loop.py](../src/yoyopod/runtime/loop.py)
+- [src/yoyopod/core/loop.py](../src/yoyopod/core/loop.py)
 - [src/yoyopod/coordinators/power.py](../src/yoyopod/coordinators/power.py)
 
 Current architecture:
@@ -375,7 +375,7 @@ If you change the device/backend integration, review these together:
 - [src/yoyopod/backends/cloud/mqtt.py](../src/yoyopod/backends/cloud/mqtt.py)
 - [src/yoyopod/config/models.py](../src/yoyopod/config/models.py)
 - [src/yoyopod/core/bootstrap/__init__.py](../src/yoyopod/core/bootstrap/__init__.py)
-- [src/yoyopod/runtime/loop.py](../src/yoyopod/runtime/loop.py)
+- [src/yoyopod/core/loop.py](../src/yoyopod/core/loop.py)
 - [src/yoyopod/coordinators/power.py](../src/yoyopod/coordinators/power.py)
 - [tests/test_cloud_config_manager.py](../tests/test_cloud_config_manager.py)
 

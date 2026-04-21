@@ -58,7 +58,7 @@ This is the startup sequence that exists on `main` today.
    - `--simulate` is parsed before the app is constructed.
 3. `main()` constructs `YoyoPodApp(config_dir="config", simulate=simulate)`.
    - The constructor does not start hardware or backend processes yet.
-   - It allocates the typed `EventBus`, the core bootstrap service (`RuntimeBootService` from `src/yoyopod/core/bootstrap/`), runtime services (`RuntimeLoopService`, `RecoverySupervisor`, `PowerRuntimeService`, `ShutdownLifecycleService`), the canonical display-power helper (`ScreenPowerService` from `src/yoyopod/integrations/display/service.py`), and the long-lived placeholder fields for managers, screens, and shared context.
+   - It allocates the typed `EventBus`, the core bootstrap service (`RuntimeBootService` from `src/yoyopod/core/bootstrap/`), the canonical coordinator-thread loop (`RuntimeLoopService` from `src/yoyopod/core/loop.py`), the remaining runtime services (`RecoverySupervisor`, `PowerRuntimeService`, `ShutdownLifecycleService`), the canonical display-power helper (`ScreenPowerService` from `src/yoyopod/integrations/display/service.py`), and the long-lived placeholder fields for managers, screens, and shared context.
    - `RecoverySupervisor` now keeps VoIP/music recovery while `yoyopod.runtime.power_service.PowerRuntimeService` owns PiSugar polling and watchdog cadence.
    - It also registers app-level event subscriptions on the `EventBus` so later boot stages can publish typed events back onto the coordinator thread.
 4. `main()` calls `app.setup()`, which delegates to `RuntimeBootService.setup()` in `src/yoyopod/core/bootstrap/`.
@@ -183,7 +183,8 @@ yoyopod.py / yoyopod.main
 - `src/yoyopod/runtime_state.py`: focused runtime state objects owned by `AppContext`
 - `src/yoyopod/core/bootstrap/`: boot-time composition and manager wiring
 - `src/yoyopod/runtime/boot/`: compatibility shims for the historical boot import path
-- `src/yoyopod/runtime/loop.py`: coordinator-loop scheduling and queued main-thread work
+- `src/yoyopod/core/loop.py`: coordinator-loop scheduling and queued main-thread work
+- `src/yoyopod/runtime/loop.py`: compatibility shim for the historical loop import path
 - `src/yoyopod/runtime/recovery.py`: backend recovery supervision
 - `src/yoyopod/integrations/display/service.py`: screen wake/sleep policy and power overlays
 - `src/yoyopod/runtime/shutdown.py`: shutdown countdowns, hooks, and lifecycle cleanup

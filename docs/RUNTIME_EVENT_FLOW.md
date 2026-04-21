@@ -72,6 +72,10 @@ iteration drains at most 4 queued callbacks and 8 queued `EventBus` items before
 continues into protected VoIP, LVGL, watchdog, and power spans, and pending generic
 work keeps the loop on a 10 ms cadence instead of collapsing into a zero-sleep spin.
 
+Canonical owner:
+- `src/yoyopod/core/loop.py`
+- `src/yoyopod/runtime/loop.py` is now a compatibility shim only
+
 ### `CoordinatorRuntime`
 
 Owns:
@@ -354,7 +358,7 @@ If ordering looks inconsistent, this is usually the first place to check.
 
 - `src/yoyopod/app.py`
 - `src/yoyopod/core/bootstrap/`
-- `src/yoyopod/runtime/loop.py`
+- `src/yoyopod/core/loop.py`
 - `src/yoyopod/coordinators/registry.py`
 - `src/yoyopod/coordinators/call.py`
 - `src/yoyopod/coordinators/playback.py`

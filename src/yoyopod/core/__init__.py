@@ -65,6 +65,7 @@ _PUBLIC_EXPORTS = {
     "RequestRecoveryCommand": ("yoyopod.core.recovery", "RequestRecoveryCommand"),
     "RegistrationChangedEvent": ("yoyopod.core.events", "RegistrationChangedEvent"),
     "RuntimeBootService": ("yoyopod.core.bootstrap", "RuntimeBootService"),
+    "RuntimeLoopService": ("yoyopod.core.loop", "RuntimeLoopService"),
     "ScreenChangedEvent": ("yoyopod.core.events", "ScreenChangedEvent"),
     "ScreenRuntimeState": ("yoyopod.core.runtime_state", "ScreenRuntimeState"),
     "SETUP_TRACKED_CONFIG_FILES": (

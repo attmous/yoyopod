@@ -236,7 +236,7 @@ yoyopod remote rtc status --host rpi-zero
 The watchdog implementation is intentionally power-domain-owned but app-scheduled.
 
 Current model:
-- the app loop enables the PiSugar software watchdog through `PowerRuntimeService`
+- the coordinator loop in `src/yoyopod/core/loop.py` enables the PiSugar software watchdog through `PowerRuntimeService`
 - the app feeds it at a configured interval while healthy
 - ordinary app shutdown disables the watchdog
 - battery-driven emergency shutdown suppresses feeding without disabling it

@@ -12,7 +12,7 @@ from typing import Callable
 import pytest
 
 from yoyopod.core import AppContext
-from yoyopod.runtime.loop import RuntimeLoopService
+from yoyopod.core.loop import RuntimeLoopService
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InputAction, InputManager
 from yoyopod.ui.screens.base import Screen
