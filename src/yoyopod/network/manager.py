@@ -99,10 +99,12 @@ class NetworkManager:
                     logger.debug("Initial GPS query failed: {}", exc)
 
             if self._start_ppp(expected_generation=expected_generation):
-                if not self._lifecycle_generation_matches(expected_generation):
+                if not self._publish_if_lifecycle_matches(
+                    NetworkPppUpEvent(connection_type="4g"),
+                    expected_generation=expected_generation,
+                ):
                     logger.info("Skipping PPP-up publish after concurrent lifecycle change")
                     return False
-                self._publish(NetworkPppUpEvent(connection_type="4g"))
         else:
             logger.error("Modem init failed: {}", state.error)
         return True
@@ -200,6 +202,20 @@ class NetworkManager:
 
         with self._lifecycle_lock:
             return expected_generation == self._lifecycle_generation
+
+    def _publish_if_lifecycle_matches(
+        self,
+        event: object,
+        *,
+        expected_generation: int,
+    ) -> bool:
+        """Publish only when no concurrent stop has invalidated the current lifecycle."""
+
+        with self._lifecycle_lock:
+            if expected_generation != self._lifecycle_generation:
+                return False
+            self._publish(event)
+            return True
 
     def _publish(self, event: object) -> None:
         """Publish an event if the bus is available."""
