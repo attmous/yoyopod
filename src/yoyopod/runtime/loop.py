@@ -206,11 +206,23 @@ class RuntimeLoopService:
 
         return self._last_lvgl_pump_at
 
+    @last_lvgl_pump_at.setter
+    def last_lvgl_pump_at(self, value: float) -> None:
+        """Persist the monotonic timestamp of the latest LVGL pump."""
+
+        self._last_lvgl_pump_at = max(0.0, float(value))
+
     @property
     def last_loop_heartbeat_at(self) -> float:
         """Return the monotonic timestamp of the latest runtime-loop heartbeat."""
 
         return self._last_loop_heartbeat_at
+
+    @last_loop_heartbeat_at.setter
+    def last_loop_heartbeat_at(self, value: float) -> None:
+        """Persist the monotonic timestamp of the latest runtime-loop heartbeat."""
+
+        self._last_loop_heartbeat_at = max(0.0, float(value))
 
     def pending_main_thread_callback_count(self) -> int | None:
         """Return the combined generic and safety callback backlog."""

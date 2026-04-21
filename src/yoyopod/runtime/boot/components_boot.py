@@ -88,7 +88,7 @@ class ComponentsBoot:
             self.app._lvgl_backend = display.get_ui_backend()
             if self.app._lvgl_backend is not None and self.app._lvgl_backend.initialize():
                 display.refresh_backend_kind()
-                self.app._last_lvgl_pump_at = time.monotonic()
+                self.app.runtime_loop.last_lvgl_pump_at = time.monotonic()
             else:
                 self.app._lvgl_backend = None
                 display.refresh_backend_kind()

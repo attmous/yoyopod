@@ -321,7 +321,7 @@ class YoyoPodApp:
 
     @_last_lvgl_pump_at.setter
     def _last_lvgl_pump_at(self, value: float) -> None:
-        self.runtime_loop._last_lvgl_pump_at = max(0.0, float(value))
+        self.runtime_loop.last_lvgl_pump_at = value
 
     @property
     def _last_loop_heartbeat_at(self) -> float:
@@ -331,7 +331,7 @@ class YoyoPodApp:
 
     @_last_loop_heartbeat_at.setter
     def _last_loop_heartbeat_at(self, value: float) -> None:
-        self.runtime_loop._last_loop_heartbeat_at = max(0.0, float(value))
+        self.runtime_loop.last_loop_heartbeat_at = value
 
     def setup(self) -> bool:
         """Initialize all components and register callbacks."""

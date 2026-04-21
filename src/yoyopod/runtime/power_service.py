@@ -23,13 +23,97 @@ class PowerRuntimeService:
         self.app = app
         self._power_io_lock = threading.Lock()
         self._watchdog_io_lock = threading.Lock()
-        self.next_power_poll_at = 0.0
-        self.power_available: bool | None = None
-        self.power_refresh_in_flight = False
-        self.watchdog_active = False
-        self.watchdog_feed_suppressed = False
-        self.watchdog_feed_in_flight = False
-        self.next_watchdog_feed_at = 0.0
+        self._next_power_poll_at = 0.0
+        self._power_available: bool | None = None
+        self._power_refresh_in_flight = False
+        self._watchdog_active = False
+        self._watchdog_feed_suppressed = False
+        self._watchdog_feed_in_flight = False
+        self._next_watchdog_feed_at = 0.0
+
+    @property
+    def next_power_poll_at(self) -> float:
+        """Return the next scheduled power refresh deadline."""
+
+        return self._next_power_poll_at
+
+    @next_power_poll_at.setter
+    def next_power_poll_at(self, value: float) -> None:
+        """Persist the next scheduled power refresh deadline."""
+
+        self._next_power_poll_at = max(0.0, float(value))
+
+    @property
+    def power_available(self) -> bool | None:
+        """Return the last observed power availability state."""
+
+        return self._power_available
+
+    @power_available.setter
+    def power_available(self, value: bool | None) -> None:
+        """Persist the last observed power availability state."""
+
+        self._power_available = value
+
+    @property
+    def power_refresh_in_flight(self) -> bool:
+        """Return whether a background power refresh worker is active."""
+
+        return self._power_refresh_in_flight
+
+    @power_refresh_in_flight.setter
+    def power_refresh_in_flight(self, value: bool) -> None:
+        """Persist whether a background power refresh worker is active."""
+
+        self._power_refresh_in_flight = bool(value)
+
+    @property
+    def watchdog_active(self) -> bool:
+        """Return whether the PiSugar watchdog is currently enabled."""
+
+        return self._watchdog_active
+
+    @watchdog_active.setter
+    def watchdog_active(self, value: bool) -> None:
+        """Persist whether the PiSugar watchdog is currently enabled."""
+
+        self._watchdog_active = bool(value)
+
+    @property
+    def watchdog_feed_suppressed(self) -> bool:
+        """Return whether watchdog feeding is intentionally suppressed."""
+
+        return self._watchdog_feed_suppressed
+
+    @watchdog_feed_suppressed.setter
+    def watchdog_feed_suppressed(self, value: bool) -> None:
+        """Persist whether watchdog feeding is intentionally suppressed."""
+
+        self._watchdog_feed_suppressed = bool(value)
+
+    @property
+    def watchdog_feed_in_flight(self) -> bool:
+        """Return whether a background watchdog feed worker is active."""
+
+        return self._watchdog_feed_in_flight
+
+    @watchdog_feed_in_flight.setter
+    def watchdog_feed_in_flight(self, value: bool) -> None:
+        """Persist whether a background watchdog feed worker is active."""
+
+        self._watchdog_feed_in_flight = bool(value)
+
+    @property
+    def next_watchdog_feed_at(self) -> float:
+        """Return the next scheduled watchdog-feed deadline."""
+
+        return self._next_watchdog_feed_at
+
+    @next_watchdog_feed_at.setter
+    def next_watchdog_feed_at(self, value: float) -> None:
+        """Persist the next scheduled watchdog-feed deadline."""
+
+        self._next_watchdog_feed_at = max(0.0, float(value))
 
     def poll_status(self, now: float | None = None, force: bool = False) -> None:
         """Refresh PiSugar power telemetry without stalling the coordinator loop."""
