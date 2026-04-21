@@ -144,19 +144,20 @@ class NetworkManager:
         """Query GPS coordinates (may briefly interrupt PPP)."""
         from yoyopod.core import NetworkGpsFixEvent, NetworkGpsNoFixEvent
 
-        coord = self.backend.query_gps()
-        if coord is not None:
-            self._publish(
-                NetworkGpsFixEvent(
-                    lat=coord.lat,
-                    lng=coord.lng,
-                    altitude=coord.altitude,
-                    speed=coord.speed,
+        with self._lifecycle_lock:
+            coord = self.backend.query_gps()
+            if coord is not None:
+                self._publish(
+                    NetworkGpsFixEvent(
+                        lat=coord.lat,
+                        lng=coord.lng,
+                        altitude=coord.altitude,
+                        speed=coord.speed,
+                    )
                 )
-            )
-        else:
-            self._publish(NetworkGpsNoFixEvent(reason="no_fix"))
-        return coord
+            else:
+                self._publish(NetworkGpsNoFixEvent(reason="no_fix"))
+            return coord
 
     def _publish(self, event: object) -> None:
         """Publish an event if the bus is available."""

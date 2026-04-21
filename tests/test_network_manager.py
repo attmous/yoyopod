@@ -68,6 +68,22 @@ class FakeBackend:
         return self.health_online and self.state.phase == ModemPhase.ONLINE
 
 
+class RecordingLock:
+    """Track lifecycle lock usage without changing manager behavior."""
+
+    def __init__(self) -> None:
+        self.enter_calls = 0
+        self.exit_calls = 0
+
+    def __enter__(self) -> "RecordingLock":
+        self.enter_calls += 1
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.exit_calls += 1
+        return None
+
+
 def test_manager_start_full_sequence():
     """start() should open, init, and start PPP."""
     config = build_config_model(NetworkConfig, {"enabled": True, "apn": "internet"})
@@ -186,6 +202,27 @@ def test_manager_publishes_no_fix_and_clears_cached_gps_state() -> None:
     assert backend.state.gps is None
     assert len(no_fix_events) == 1
     assert isinstance(no_fix_events[0], NetworkGpsNoFixEvent)
+
+
+def test_manager_query_gps_uses_lifecycle_lock() -> None:
+    """query_gps() should serialize GPS reads with modem recovery work."""
+
+    config = build_config_model(
+        NetworkConfig,
+        {"enabled": True, "apn": "internet", "gps_enabled": True},
+    )
+    backend = FakeBackend()
+    backend.gps_coord = GpsCoordinate(lat=48.7083, lng=9.6610, altitude=328.2, speed=0.0)
+    manager = NetworkManager(config=config, backend=backend)
+    lock = RecordingLock()
+    manager._lifecycle_lock = lock
+
+    coord = manager.query_gps()
+
+    assert coord == backend.gps_coord
+    assert backend.gps_query_calls == 1
+    assert lock.enter_calls == 1
+    assert lock.exit_calls == 1
 
 
 def test_manager_from_config_manager_uses_domain_owned_network_settings(tmp_path) -> None:
