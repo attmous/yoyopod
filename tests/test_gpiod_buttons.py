@@ -245,7 +245,7 @@ def test_edge_wait_loop_samples_level_when_event_drain_fails(
 
 
 def test_read_edge_events_drains_legacy_event_queue(monkeypatch: pytest.MonkeyPatch) -> None:
-    import yoyopod.ui.gpiod_compat as gpiod_compat
+    import yoyopod.device.gpiod_compat as gpiod_compat
 
     first = object()
     second = object()
@@ -271,7 +271,7 @@ def test_read_edge_events_drains_legacy_event_queue(monkeypatch: pytest.MonkeyPa
 def test_request_input_events_supports_official_gpiod_v2_request_lines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import yoyopod.ui.gpiod_compat as gpiod_compat
+    import yoyopod.device.gpiod_compat as gpiod_compat
 
     request_calls: list[tuple[str, dict[int, object]]] = []
     inactive_token = object()
@@ -342,7 +342,7 @@ def test_request_input_events_supports_official_gpiod_v2_request_lines(
 def test_request_output_supports_official_gpiod_v2_request_lines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import yoyopod.ui.gpiod_compat as gpiod_compat
+    import yoyopod.device.gpiod_compat as gpiod_compat
 
     set_calls: list[tuple[int, object]] = []
     inactive_token = object()
@@ -395,7 +395,7 @@ def test_request_output_supports_official_gpiod_v2_request_lines(
 def test_request_output_preserves_falsey_inactive_enum_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import yoyopod.ui.gpiod_compat as gpiod_compat
+    import yoyopod.device.gpiod_compat as gpiod_compat
 
     set_calls: list[tuple[int, object]] = []
 
@@ -450,7 +450,7 @@ def test_request_output_preserves_falsey_inactive_enum_token(
 def test_request_input_events_does_not_mask_internal_type_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import yoyopod.ui.gpiod_compat as gpiod_compat
+    import yoyopod.device.gpiod_compat as gpiod_compat
 
     class FakeLineSettings:
         def __init__(self, **kwargs) -> None:
@@ -485,7 +485,7 @@ def test_request_input_events_does_not_mask_internal_type_error(
 def test_request_input_events_treats_no_keyword_type_error_as_signature_mismatch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import yoyopod.ui.gpiod_compat as gpiod_compat
+    import yoyopod.device.gpiod_compat as gpiod_compat
 
     request_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
