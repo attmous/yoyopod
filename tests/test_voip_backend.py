@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import queue
 import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -150,8 +151,10 @@ class BackgroundIterateMockVoIPBackend(MockVoIPBackend):
         )
 
 
-def build_config() -> VoIPConfig:
-    """Create a small test configuration."""
+def build_config(storage_root: Path | None = None) -> VoIPConfig:
+    """Create a small test configuration with isolated on-disk storage."""
+
+    root = storage_root or Path(tempfile.mkdtemp(prefix="yoyopod-voip-tests-"))
 
     return VoIPConfig(
         sip_server="sip.example.com",
@@ -159,8 +162,8 @@ def build_config() -> VoIPConfig:
         sip_password_ha1="hash",
         sip_identity="sip:alice@sip.example.com",
         file_transfer_server_url="https://transfer.example.com",
-        message_store_dir="data/test_messages",
-        voice_note_store_dir="data/test_voice_notes",
+        message_store_dir=str(root / "messages"),
+        voice_note_store_dir=str(root / "voice_notes"),
     )
 
 
@@ -244,8 +247,10 @@ def test_liblinphone_backend_starts_and_drains_native_events() -> None:
     assert binding.start_kwargs["lime_server_url"] == ""
     assert binding.start_kwargs["mic_gain"] == 0
     assert binding.start_kwargs["output_volume"] == 100
-    assert binding.start_kwargs["factory_config_path"].replace("\\", "/").endswith(
-        "config/communication/integrations/liblinphone_factory.conf"
+    assert (
+        binding.start_kwargs["factory_config_path"]
+        .replace("\\", "/")
+        .endswith("config/communication/integrations/liblinphone_factory.conf")
     )
 
 
@@ -382,7 +387,9 @@ def test_legacy_liblinphone_backend_module_reexports_backend() -> None:
     """The old calling.liblinphone_backend path should keep resolving the backend class."""
 
     legacy_module = importlib.import_module("yoyopod.communication.calling.liblinphone_backend")
-    relocated_module = importlib.import_module("yoyopod.communication.integrations.liblinphone.backend")
+    relocated_module = importlib.import_module(
+        "yoyopod.communication.integrations.liblinphone.backend"
+    )
 
     assert legacy_module.LiblinphoneBackend is relocated_module.LiblinphoneBackend
     assert legacy_module.time is relocated_module.time
@@ -391,7 +398,9 @@ def test_legacy_liblinphone_backend_module_reexports_backend() -> None:
 def test_liblinphone_binding_accepts_legacy_native_build_path(monkeypatch) -> None:
     """Library discovery should fall back to the legacy build directory during upgrades."""
 
-    binding_module = importlib.import_module("yoyopod.communication.integrations.liblinphone.binding")
+    binding_module = importlib.import_module(
+        "yoyopod.communication.integrations.liblinphone.binding"
+    )
     base_dir = Path(binding_module.__file__).resolve().parent
     legacy_candidate = (
         base_dir.parent
