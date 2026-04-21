@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import yoyopod.core.fsm.music as fsm_module
-from yoyopod.coordinators.registry import AppRuntimeState, CoordinatorRuntime
+from yoyopod.coordinators.registry import AppRuntimeState, BaseUIRoute, CoordinatorRuntime
 from yoyopod.core import (
     CallFSM,
     CallInterruptionPolicy,
@@ -13,7 +13,7 @@ from yoyopod.core import (
 )
 
 
-def _build_runtime() -> CoordinatorRuntime:
+def _build_runtime(ui_state: str | BaseUIRoute = AppRuntimeState.IDLE.value) -> CoordinatorRuntime:
     """Create a minimal coordinator runtime for state-derivation tests."""
     return CoordinatorRuntime(
         music_fsm=MusicFSM(),
@@ -23,6 +23,7 @@ def _build_runtime() -> CoordinatorRuntime:
         music_backend=None,
         power_manager=None,
         config_manager=None,
+        ui_state=ui_state,
     )
 
 
@@ -164,3 +165,26 @@ def test_runtime_returns_to_base_ui_state_when_music_and_calls_are_idle() -> Non
     assert state_change.entered(AppRuntimeState.IDLE)
     assert runtime.current_app_state == AppRuntimeState.IDLE
     assert runtime.ui_state == "playlists"
+
+
+def test_runtime_accepts_base_ui_route_enum_inputs() -> None:
+    """Base UI routes should stay usable via enum callers after AppRuntimeState narrowed."""
+    runtime = _build_runtime(ui_state=BaseUIRoute.HOME)
+
+    assert runtime.ui_state == BaseUIRoute.HOME.value
+
+    state_change = runtime.set_ui_state(BaseUIRoute.MENU, trigger="show_menu")
+
+    assert not state_change.changed
+    assert runtime.current_app_state == AppRuntimeState.IDLE
+    assert runtime.ui_state == BaseUIRoute.MENU.value
+
+
+def test_runtime_maps_legacy_idle_runtime_enum_to_home_route() -> None:
+    """Legacy idle enum inputs should continue to land on the home UI route."""
+    runtime = _build_runtime()
+
+    state_change = runtime.set_ui_state(AppRuntimeState.IDLE, trigger="legacy_home")
+
+    assert not state_change.changed
+    assert runtime.ui_state == BaseUIRoute.HOME.value

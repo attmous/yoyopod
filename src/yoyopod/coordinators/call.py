@@ -25,7 +25,6 @@ from yoyopod.communication.calling.history import CallHistoryEntry, CallHistoryS
 from yoyopod.communication.models import CallState, RegistrationState
 from yoyopod.core import CallSessionState
 
-
 _CONNECTED_CALL_STATES = (CallState.CONNECTED, CallState.STREAMS_RUNNING)
 
 
@@ -258,13 +257,14 @@ class CallCoordinator:
                 )
                 return
 
-        self.runtime.call_fsm.transition("connect")
-        state_change = self.runtime.sync_app_state("call_connected")
-        if state_change.entered(AppRuntimeState.CALL_ACTIVE):
-            logger.info("In call (music paused in background)")
-        self.screen_coordinator.show_in_call()
-        self.stop_ringing()
-        return
+            self.runtime.call_fsm.transition("connect")
+            state_change = self.runtime.sync_app_state("call_connected")
+            if state_change.entered(AppRuntimeState.CALL_ACTIVE):
+                logger.info("In call (music paused in background)")
+            self.screen_coordinator.show_in_call()
+            self.stop_ringing()
+            return
+
         logger.debug("Call state {} does not change coordinator phase", state.value)
 
     def handle_call_ended(self, *, reason: str = "released") -> None:

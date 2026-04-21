@@ -13,7 +13,7 @@ import time
 from loguru import logger
 
 from yoyopod.app_context import AppContext
-from yoyopod.coordinators.registry import AppRuntimeState, CoordinatorRuntime
+from yoyopod.coordinators.registry import BaseUIRoute, CoordinatorRuntime
 from yoyopod.fsm import CallFSM, CallInterruptionPolicy, MusicFSM
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InputAction, get_input_manager
@@ -71,7 +71,7 @@ def main() -> int:
         power_manager=None,
         music_backend=None,
         config_manager=None,
-        ui_state=AppRuntimeState.IDLE,
+        ui_state=BaseUIRoute.HOME,
     )
 
     def log_runtime_state(trigger: str) -> None:
@@ -80,18 +80,22 @@ def main() -> int:
         logger.info(
             "State: {} | Screen: {} | Track: {}",
             state_change.current_state.value,
-            screen_manager.get_current_screen().name if screen_manager.get_current_screen() else "none",
+            (
+                screen_manager.get_current_screen().name
+                if screen_manager.get_current_screen()
+                else "none"
+            ),
             track.title if track else "None",
         )
 
     def show_home() -> None:
-        runtime.set_ui_state(AppRuntimeState.IDLE, trigger="show_home")
+        runtime.set_ui_state(BaseUIRoute.HOME, trigger="show_home")
         screen_manager.clear_stack()
         screen_manager.replace_screen("home")
         log_runtime_state("show_home")
 
     def show_menu(push: bool) -> None:
-        runtime.set_ui_state(AppRuntimeState.MENU, trigger="show_menu")
+        runtime.set_ui_state(BaseUIRoute.MENU, trigger="show_menu")
         if push:
             screen_manager.push_screen("menu")
         else:
@@ -134,7 +138,7 @@ def main() -> int:
                 return
             if selected == "Back":
                 screen_manager.pop_screen()
-                runtime.set_ui_state(AppRuntimeState.IDLE, trigger="menu_back")
+                runtime.set_ui_state(BaseUIRoute.HOME, trigger="menu_back")
                 log_runtime_state("menu_back")
                 return
 
@@ -150,11 +154,11 @@ def main() -> int:
 
         if current_screen == menu_screen:
             screen_manager.pop_screen()
-            runtime.set_ui_state(AppRuntimeState.IDLE, trigger="back_to_home")
+            runtime.set_ui_state(BaseUIRoute.HOME, trigger="back_to_home")
             log_runtime_state("back_to_home")
         elif current_screen == now_playing_screen:
             screen_manager.pop_screen()
-            runtime.set_ui_state(AppRuntimeState.MENU, trigger="back_to_menu")
+            runtime.set_ui_state(BaseUIRoute.MENU, trigger="back_to_menu")
             log_runtime_state("back_to_menu")
 
     def handle_up(_data=None) -> None:

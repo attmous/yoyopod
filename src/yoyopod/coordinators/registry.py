@@ -34,6 +34,26 @@ class AppRuntimeState(Enum):
     CALL_ACTIVE = "call_active"
 
 
+class BaseUIRoute(Enum):
+    """Base screen routes used when the split FSMs are otherwise idle."""
+
+    HOME = "home"
+    HUB = "hub"
+    MENU = "menu"
+    ASK = "ask"
+    CALL = "call"
+    CONTACTS = "contacts"
+    LISTEN = "listen"
+    PLAYLISTS = "playlists"
+    PLAYLIST = "playlist"
+    RECENT_TRACKS = "recent_tracks"
+    POWER = "power"
+    NOW_PLAYING = "now_playing"
+    INCOMING_CALL = "incoming_call"
+    OUTGOING_CALL = "outgoing_call"
+    IN_CALL = "in_call"
+
+
 @dataclass(frozen=True, slots=True)
 class AppStateChange:
     """Describe a derived app-state refresh."""
@@ -64,7 +84,7 @@ class CoordinatorRuntime:
     config_manager: ConfigManager | None
     music_backend: MusicBackend | None = None
     context: AppContext | None = None
-    ui_state: str = AppRuntimeState.IDLE.value
+    ui_state: str | Enum = AppRuntimeState.IDLE.value
     voip_ready: bool = False
     power_available: bool = False
     power_snapshot: PowerSnapshot | None = None
@@ -72,27 +92,28 @@ class CoordinatorRuntime:
     previous_app_state: AppRuntimeState | None = field(init=False, default=None)
     state_history: list[AppRuntimeState] = field(init=False, default_factory=list)
 
-    _KNOWN_UI_ROUTES = {
-        "home",
-        "hub",
-        "menu",
-        "ask",
-        "call",
-        "contacts",
-        "listen",
-        "playlists",
-        "playlist",
-        "recent_tracks",
-        "power",
-        "now_playing",
-        "incoming_call",
-        "outgoing_call",
-        "in_call",
+    _KNOWN_UI_ROUTES = frozenset(route.value for route in BaseUIRoute)
+    _LEGACY_UI_ROUTE_ALIASES = {
+        AppRuntimeState.IDLE.value: BaseUIRoute.HOME.value,
     }
 
     def __post_init__(self) -> None:
+        self.ui_state = self._normalize_initial_ui_state(self.ui_state)
         self.current_app_state = self._derive_state()
         self.state_history = [self.current_app_state]
+
+    @staticmethod
+    def _normalize_initial_ui_state(state: str | Enum) -> str:
+        """Coerce constructor-time UI-state inputs into stored string values."""
+
+        return str(state.value if isinstance(state, Enum) else state)
+
+    @classmethod
+    def _coerce_ui_route(cls, state: str | Enum) -> str:
+        """Resolve strings or route-like enums to a known base UI route."""
+
+        ui_state = str(state.value if isinstance(state, Enum) else state)
+        return cls._LEGACY_UI_ROUTE_ALIASES.get(ui_state, ui_state)
 
     def _derive_state(self) -> AppRuntimeState:
         """Derive the current application state from the split FSMs."""
@@ -134,11 +155,11 @@ class CoordinatorRuntime:
 
     def set_ui_state(
         self,
-        state: str | AppRuntimeState,
+        state: str | Enum,
         trigger: str = "ui_state",
     ) -> AppStateChange:
         """Record the active UI route used when music/call FSMs are idle."""
-        ui_state = state.value if isinstance(state, AppRuntimeState) else str(state)
+        ui_state = self._coerce_ui_route(state)
         if ui_state not in self._KNOWN_UI_ROUTES:
             raise ValueError(f"{ui_state} is not a base UI route")
 

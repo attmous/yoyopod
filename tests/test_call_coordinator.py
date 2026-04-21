@@ -202,6 +202,26 @@ def test_connected_backend_state_ignores_connect_while_call_fsm_idle() -> None:
     assert screen_coordinator.show_in_call_calls == 0
 
 
+def test_non_connected_backend_state_does_not_force_in_call_ui() -> None:
+    """Ignore non-terminal backend states that are not real call-connect transitions."""
+    context = AppContext()
+    runtime = _build_runtime(
+        config_manager=_ConfigManagerStub(sip_username="kid@example.com"),
+        context=context,
+    )
+    screen_coordinator = _ScreenCoordinatorStub()
+    coordinator = CallCoordinator(
+        runtime=runtime,
+        screen_coordinator=screen_coordinator,
+        auto_resume_after_call=True,
+    )
+
+    coordinator.handle_call_state_change(CallState.PAUSED)
+
+    assert runtime.call_fsm.state == CallSessionState.IDLE
+    assert screen_coordinator.show_in_call_calls == 0
+
+
 def test_connected_backend_state_activates_call_fsm_when_call_is_starting() -> None:
     """Accept connected/backend-streaming states only after a call session is active."""
     context = AppContext()
