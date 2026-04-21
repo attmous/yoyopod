@@ -15,7 +15,7 @@ from yoyopod.audio import (
     RecentTrackHistoryStore,
 )
 from yoyopod.config import ConfigManager
-from yoyopod.device import AudioDeviceCatalog
+from yoyopod.core.hardware import AudioDeviceCatalog
 from yoyopod.integrations.call import CallHistoryStore, VoIPConfig, VoIPManager
 from yoyopod.integrations.cloud.manager import CloudManager
 from yoyopod.integrations.contacts.directory import PeopleManager

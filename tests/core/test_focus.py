@@ -1,9 +1,10 @@
-"""Tests for the scaffold focus integration."""
+"""Tests for the core focus controller."""
 
 from __future__ import annotations
 
-from yoyopod.core import AudioFocusGrantedEvent, AudioFocusLostEvent, build_test_app, drain_all
-from yoyopod.integrations.focus import (
+from tests.fixtures.app import build_test_app, drain_all
+from yoyopod.core import AudioFocusGrantedEvent, AudioFocusLostEvent
+from yoyopod.core.focus import (
     ReleaseFocusCommand,
     RequestFocusCommand,
     setup,
@@ -16,7 +17,7 @@ def test_focus_setup_seeds_owner_state() -> None:
 
     integration = setup(app)
 
-    assert integration is app.integrations["focus"]
+    assert integration is app.focus
     assert integration.owner is None
     assert app.states.get_value("focus.owner") is None
 
@@ -86,7 +87,7 @@ def test_focus_release_only_succeeds_for_current_owner() -> None:
     assert lost[-1] == AudioFocusLostEvent(owner="call", preempted_by=None)
 
     teardown(app)
-    assert "focus" not in app.integrations
+    assert not hasattr(app, "focus")
 
 
 def test_focus_services_reject_wrong_payload_types() -> None:

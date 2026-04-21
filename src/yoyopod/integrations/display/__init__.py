@@ -1,4 +1,4 @@
-"""Screen integration scaffold for the Phase A spine rewrite."""
+"""Display integration scaffold for the frozen Phase A spine."""
 
 from __future__ import annotations
 
@@ -7,27 +7,27 @@ from dataclasses import dataclass
 from typing import Any
 
 from yoyopod.core.events import UserActivityEvent
-from yoyopod.integrations.screen.commands import (
+from yoyopod.integrations.display.commands import (
     SetBrightnessCommand,
     SetIdleTimeoutCommand,
-    SleepScreenCommand,
-    WakeScreenCommand,
+    SleepDisplayCommand,
+    WakeDisplayCommand,
 )
-from yoyopod.integrations.screen.handlers import (
+from yoyopod.integrations.display.handlers import (
     handle_user_activity,
     resolve_idle_timeout_seconds,
     resolve_initial_brightness_percent,
-    seed_screen_state,
+    seed_display_state,
     set_brightness,
     set_idle_timeout,
-    sleep_screen,
-    wake_screen,
+    sleep_display,
+    wake_display,
 )
 
 
 @dataclass(slots=True)
-class ScreenIntegration:
-    """Runtime handles owned by the scaffold screen integration."""
+class DisplayIntegration:
+    """Runtime handles owned by the scaffold display integration."""
 
     brightness_percent: int
     idle_timeout_seconds: float
@@ -44,8 +44,8 @@ def setup(
     brightness_percent: int | None = None,
     idle_timeout_seconds: float | None = None,
     monotonic: Any = None,
-) -> ScreenIntegration:
-    """Register scaffold screen services and seed initial screen state."""
+) -> DisplayIntegration:
+    """Register display services and seed initial display state."""
 
     actual_monotonic = monotonic or time.monotonic
     actual_brightness = (
@@ -59,12 +59,12 @@ def setup(
         else max(0.0, float(idle_timeout_seconds))
     )
 
-    integration = ScreenIntegration(
+    integration = DisplayIntegration(
         brightness_percent=actual_brightness,
         idle_timeout_seconds=actual_timeout,
     )
-    app.integrations["screen"] = integration
-    seed_screen_state(
+    app.integrations["display"] = integration
+    seed_display_state(
         app,
         awake=initial_awake,
         brightness_percent=actual_brightness,
@@ -80,23 +80,15 @@ def setup(
             now=actual_monotonic(),
         ),
     )
+    app.services.register("display", "wake", lambda data: wake_display(app, integration, data))
+    app.services.register("display", "sleep", lambda data: sleep_display(app, integration, data))
     app.services.register(
-        "screen",
-        "wake",
-        lambda data: wake_screen(app, integration, data),
-    )
-    app.services.register(
-        "screen",
-        "sleep",
-        lambda data: sleep_screen(app, integration, data),
-    )
-    app.services.register(
-        "screen",
+        "display",
         "set_brightness",
         lambda data: set_brightness(app, integration, data),
     )
     app.services.register(
-        "screen",
+        "display",
         "set_idle_timeout",
         lambda data: set_idle_timeout(integration, data),
     )
@@ -104,17 +96,17 @@ def setup(
 
 
 def teardown(app: Any) -> None:
-    """Drop the scaffold screen integration handle."""
+    """Drop the scaffold display integration handle."""
 
-    app.integrations.pop("screen", None)
+    app.integrations.pop("display", None)
 
 
 __all__ = [
-    "ScreenIntegration",
+    "DisplayIntegration",
     "SetBrightnessCommand",
     "SetIdleTimeoutCommand",
-    "SleepScreenCommand",
-    "WakeScreenCommand",
+    "SleepDisplayCommand",
+    "WakeDisplayCommand",
     "setup",
     "teardown",
 ]

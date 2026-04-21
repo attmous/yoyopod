@@ -1,9 +1,9 @@
-"""Minimal app shell for the Phase A spine scaffold."""
+"""Core application object for the frozen scaffold spine."""
 
 from __future__ import annotations
 
-import time
 import threading
+import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,23 +18,23 @@ from yoyopod.core.states import States
 
 @dataclass(slots=True)
 class _RegisteredIntegration:
-    """One integration registration owned by the scaffold shell."""
+    """One integration registration owned by the scaffold application."""
 
     name: str
-    setup: Callable[["YoyoPodAppShell"], None]
-    teardown: Callable[["YoyoPodAppShell"], None] | None = None
+    setup: Callable[["YoyoPodApp"], None]
+    teardown: Callable[["YoyoPodApp"], None] | None = None
 
 
-class YoyoPodAppShell:
+class YoyoPodApp:
     """Bundle the scaffold primitives without touching the legacy runtime."""
 
     def __init__(self, strict_bus: bool = False, log_buffer_size: int = 256) -> None:
         self.main_thread_id = threading.get_ident()
+        self.log_buffer: LogBuffer[dict[str, object]] = LogBuffer(maxlen=log_buffer_size)
         self.bus = Bus(main_thread_id=self.main_thread_id, strict=strict_bus)
         self.scheduler = MainThreadScheduler(main_thread_id=self.main_thread_id)
-        self.log_buffer: LogBuffer[dict[str, object]] = LogBuffer(maxlen=log_buffer_size)
-        self.states = States(self.bus)
         self.services = Services(self.bus, diagnostics_log=self.log_buffer)
+        self.states = States(self.bus)
         self.config: object | None = None
         self.integrations: dict[str, object] = {}
         self.running = False
@@ -54,10 +54,10 @@ class YoyoPodAppShell:
         self,
         name: str,
         *,
-        setup: Callable[["YoyoPodAppShell"], None],
-        teardown: Callable[["YoyoPodAppShell"], None] | None = None,
+        setup: Callable[["YoyoPodApp"], None],
+        teardown: Callable[["YoyoPodApp"], None] | None = None,
     ) -> None:
-        """Register one integration for explicit scaffold setup/teardown."""
+        """Register one integration for explicit scaffold setup and teardown."""
 
         if self._setup_complete:
             raise RuntimeError(f"Cannot register integration {name!r} after setup()")
@@ -77,14 +77,14 @@ class YoyoPodAppShell:
         self._setup_complete = True
 
     def start(self) -> None:
-        """Mark the scaffold shell as running and queue lifecycle events."""
+        """Mark the scaffold app as running and queue lifecycle events."""
 
         self.running = True
         self.bus.publish(LifecycleEvent(phase="starting"))
         self.bus.publish(LifecycleEvent(phase="ready"))
 
     def stop(self) -> None:
-        """Queue stop lifecycle events and mark the shell as stopped."""
+        """Queue stop lifecycle events and mark the scaffold as stopped."""
 
         if self._stopped:
             return
@@ -100,7 +100,7 @@ class YoyoPodAppShell:
         self.bus.publish(LifecycleEvent(phase="stopped"))
 
     def tick(self) -> int:
-        """Advance queued main-thread work once."""
+        """Advance one scheduler-plus-bus turn and optionally tick the UI."""
 
         started_at = time.perf_counter()
         queue_depth = self.scheduler.pending_count() + self.bus.pending_count()
@@ -125,7 +125,7 @@ class YoyoPodAppShell:
         }
 
     def run(self, *, sleep_seconds: float = 0.01, max_iterations: int | None = None) -> int:
-        """Run the scaffold main loop until stopped or iteration-limited."""
+        """Run the canonical scaffold loop until stopped or iteration-limited."""
 
         iterations = 0
         total_processed = 0

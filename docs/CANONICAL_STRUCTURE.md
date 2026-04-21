@@ -93,56 +93,56 @@ YoyoPod uses a hybrid ownership model:
 - app/runtime composition owns app wiring and lifecycle
 - shared infrastructure keeps explicit shared homes
 
-Current exemplar package homes:
+Frozen canonical package homes:
 
-- `src/yoyopod/device/`
-  - device-owned helpers shared across domains
-- `src/yoyopod/integrations/network/`
-  - canonical network manager, modem models, and scaffold integration ownership
-  - `__init__.py` is the app-facing seam
-- `src/yoyopod/network/`
-  - compatibility shims for the historical network import path
-- `src/yoyopod/communication/`
-  - `calling/`
-  - legacy compatibility facades over the canonical call seam
-  - `messaging/`
-  - `integrations/`
-  - `__init__.py` is a historical compatibility facade
+- `src/yoyopod/app.py`
+  - thin bootstrap and composition shell only
+- `src/yoyopod/main.py`
+  - process entrypoint only
+- `src/yoyopod/config/`
+  - typed config loading, composition, and validation
+- `src/yoyopod/core/`
+  - framework and cross-cutting primitives
+  - `application.py`: canonical scaffold app object
+  - `bus.py`, `states.py`, `services.py`, `scheduler.py`: shared Home Assistant-style spine
+  - `focus.py`, `recovery.py`, `status.py`: cross-domain mechanics and runtime status
+  - `diagnostics/`: event log, snapshots, watchdog helpers
+  - `hardware.py`: only shared hardware metadata/helpers that do not belong to one domain
 - `src/yoyopod/integrations/call/`
-  - canonical call manager, session FSM/policy, lifecycle tracker, messaging service, models, message store, call-history store, and voice-note services
-  - `__init__.py` is the app-facing seam
-- `src/yoyopod/backends/voip/`
-  - canonical Liblinphone adapter, mock backend, protocol types, and native shim binding
-- `src/yoyopod/core/fsm/call.py` and `src/yoyopod/fsm.py`
-  - compatibility facades for the historical call FSM import paths
-- `src/yoyopod/integrations/contacts/`
-  - mutable contacts/address-book concerns
-  - owns the canonical contacts directory, models, and cloud-sync helpers
-- `src/yoyopod/people/`
-  - compatibility shims for the historical contacts import path
-- `src/yoyopod/audio/`
-  - local music/media behavior, history, output-volume coordination, and mpv backend wiring
-  - `__init__.py` is the app-facing seam
+  - canonical call-domain seam: calls, registration, messaging, history, and voice notes
+- `src/yoyopod/integrations/music/`
+  - canonical music-domain seam
 - `src/yoyopod/integrations/power/`
-  - canonical power manager, power models, and scaffold integration ownership
-  - `__init__.py` is the app-facing seam
-- `src/yoyopod/power/`
-  - compatibility shims plus the remaining power-specific events and policies
+  - canonical power-domain seam
+- `src/yoyopod/integrations/network/`
+  - canonical cellular/network seam
+- `src/yoyopod/integrations/location/`
+  - canonical GPS/location seam split from network
+- `src/yoyopod/integrations/cloud/`
+  - canonical cloud-sync and telemetry seam
+- `src/yoyopod/integrations/contacts/`
+  - canonical contacts/address-book seam
 - `src/yoyopod/integrations/voice/`
-  - canonical voice manager, service alias, and typed voice models
-  - `__init__.py` is the app-facing seam
-- `src/yoyopod/backends/voice/`
-  - concrete capture, playback, STT, and TTS adapters
-- `src/yoyopod/voice/`
-  - compatibility shims plus the remaining command grammar helpers
-  - device inventory/helpers live outside this package
-- `src/yoyopod/runtime/`, `src/yoyopod/coordinators/`, `src/yoyopod/app.py`
-  - app/runtime composition
+  - canonical voice/STT/TTS seam
+- `src/yoyopod/integrations/display/`
+  - canonical display awake/sleep/brightness/timeout seam
+- `src/yoyopod/backends/`
+  - concrete adapters only: `voip/`, `music/`, `power/`, `network/`, `location/`, `voice/`
+- `src/yoyopod/ui/`
+  - display adapters, input adapters, and screens
+  - `ui/input/` owns input adapters including GPIO compatibility helpers
+
+Temporary migration buckets are not part of the canonical target:
+
+- `src/yoyopod/runtime/`
+- `src/yoyopod/coordinators/`
+- legacy facades such as `communication/`, `network/`, `power/`, `voice/`, `cloud/`, `people/`
+- old generic hardware/package homes such as `device/`
 
 The app layer should import from domain seams such as:
 
 - `yoyopod.integrations.network`
-- `yoyopod.audio`
+- `yoyopod.integrations.music`
 - `yoyopod.integrations.power`
 - `yoyopod.integrations.call`
 - `yoyopod.integrations.contacts`
@@ -188,11 +188,11 @@ The voice migration adds the next reusable slice:
 - voice policy under `config/voice/assistant.yaml`
 - local voice capture and prompt selectors under `config/device/hardware.yaml`
   as `voice_audio.*`
-- device listing and label helpers under `src/yoyopod/device/`
+- shared audio-device listing and label helpers under `src/yoyopod/core/hardware.py`
 - `src/yoyopod/integrations/voice/` as the canonical owner of the public
   manager/models seam
-- `src/yoyopod/voice/` retained for compatibility shims plus capture/STT/TTS
-  helpers during the rewrite
+- `src/yoyopod/backends/voice/` as the canonical owner of the concrete capture,
+  playback, STT, and TTS adapters
 - voice runtime and services consuming `ConfigManager.get_voice_settings()`
   and `yoyopod.integrations.voice` instead of reading app-shell config directly
 
@@ -218,8 +218,9 @@ The media/audio migration follows the same cutover shape:
 - mutable recent-track history under `data/media/`
 - `ConfigManager.get_media_settings()` as the typed runtime seam for `music` policy
   plus device-owned `audio` routing
-- `src/yoyopod/audio/` as the domain-owned package home
-- app/runtime composition depending on the `yoyopod.audio` seam via
+- `src/yoyopod/integrations/music/` as the domain-owned public seam
+- `src/yoyopod/backends/music/` as the adapter-owned implementation seam
+- app/runtime composition depending on the `yoyopod.integrations.music` seam via
   `MusicConfig.from_config_manager()` instead of hand-mapping media fields
 
 ## Power Migration Pattern
@@ -242,11 +243,11 @@ The power migration follows the same cutover shape:
 
 When migrating another domain:
 
-1. choose one domain package home under `src/yoyopod/<domain>/`
+1. choose one public domain seam under `src/yoyopod/integrations/<domain>/`
 2. split tracked config into domain-owned files under `config/<domain>/`
 3. keep shared hardware truth in `config/device/hardware.yaml` unless the new
    setting is truly domain-owned policy
-4. define an app-facing seam in `src/yoyopod/<domain>/__init__.py`
+4. define an app-facing seam in `src/yoyopod/integrations/<domain>/__init__.py`
 5. route mutable user data into `data/`, not tracked config
 6. mirror the same relative file structure in `config/boards/<board>/`
 7. add focused tests for composition, boundaries, and bootstrap behavior

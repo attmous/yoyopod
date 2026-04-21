@@ -1,13 +1,17 @@
-"""Tests for the scaffold recovery integration."""
+"""Tests for the core recovery supervisor."""
 
 from __future__ import annotations
 
 import time
 
-from yoyopod.core import build_test_app, drain_all
+from tests.fixtures.app import build_test_app, drain_all
 from yoyopod.core.events import BackendStoppedEvent
-from yoyopod.integrations.recovery import RequestRecoveryCommand, setup, teardown
-from yoyopod.integrations.recovery.events import RecoveryAttemptedEvent
+from yoyopod.core.recovery import (
+    RecoveryAttemptedEvent,
+    RequestRecoveryCommand,
+    setup,
+    teardown,
+)
 
 
 def test_recovery_setup_registers_supervisor_and_manual_service() -> None:
@@ -30,12 +34,12 @@ def test_recovery_setup_registers_supervisor_and_manual_service() -> None:
 
     _drain_until(lambda: len(events) == 1, app)
 
-    assert integration is app.integrations["recovery"]
+    assert integration is app.recovery
     assert attempts == ["music"]
     assert events == [RecoveryAttemptedEvent(domain="music", success=True, reason="manual")]
 
     teardown(app)
-    assert "recovery" not in app.integrations
+    assert not hasattr(app, "recovery")
 
 
 def test_recovery_backend_stopped_event_triggers_retry() -> None:

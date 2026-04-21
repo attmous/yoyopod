@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from yoyopod.core import build_test_app
+from tests.fixtures.app import build_test_app
 from yoyopod.integrations.network.handlers import (
     apply_modem_status_to_state,
     apply_ppp_status_to_state,

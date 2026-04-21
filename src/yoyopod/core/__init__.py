@@ -6,13 +6,15 @@ Legacy top-level modules such as ``yoyopod.app_context``, ``yoyopod.event_bus``,
 these symbols.
 """
 
-from yoyopod.core.app_shell import YoyoPodAppShell
+from yoyopod.core.application import YoyoPodApp
 from yoyopod.core.app_context import AppContext
 from yoyopod.core.bus import Bus
+from yoyopod.core.diagnostics import DiagnosticsRuntime, EventLogWriter, SnapshotCommand
 from yoyopod.core.event_bus import EventBus
 from yoyopod.core.events import (
     AudioFocusGrantedEvent,
     AudioFocusLostEvent,
+    BackendStoppedEvent,
     CallEndedEvent,
     CallStateChangedEvent,
     IncomingCallEvent,
@@ -35,7 +37,10 @@ from yoyopod.core.events import (
     VoIPAvailabilityChangedEvent,
 )
 from yoyopod.core.fsm import CallFSM, CallInterruptionPolicy, CallSessionState, MusicFSM, MusicState
+from yoyopod.core.focus import FocusController, ReleaseFocusCommand, RequestFocusCommand
+from yoyopod.core.hardware import AudioDeviceCatalog, format_device_label
 from yoyopod.core.logbuffer import LogBuffer
+from yoyopod.core.recovery import RecoveryAttemptedEvent, RecoveryRuntime, RecoverySupervisor, RequestRecoveryCommand
 from yoyopod.core.runtime_state import (
     ActiveVoiceNoteState,
     MediaRuntimeState,
@@ -55,14 +60,14 @@ from yoyopod.core.setup_contract import (
     SETUP_TRACKED_CONFIG_FILES,
 )
 from yoyopod.core.states import StateValue, States
-from yoyopod.core.testing import assert_events_contain, build_test_app, drain_all
 
 __all__ = [
     "ActiveVoiceNoteState",
+    "AudioDeviceCatalog",
     "AudioFocusGrantedEvent",
     "AudioFocusLostEvent",
     "AppContext",
-    "assert_events_contain",
+    "BackendStoppedEvent",
     "Bus",
     "CallEndedEvent",
     "CallFSM",
@@ -70,6 +75,8 @@ __all__ = [
     "CallSessionState",
     "CallStateChangedEvent",
     "EventBus",
+    "EventLogWriter",
+    "FocusController",
     "IncomingCallEvent",
     "LifecycleEvent",
     "LogBuffer",
@@ -91,6 +98,12 @@ __all__ = [
     "PowerRuntimeState",
     "RUNTIME_REQUIRED_CONFIG_FILES",
     "RecoveryAttemptCompletedEvent",
+    "RecoveryAttemptedEvent",
+    "RecoveryRuntime",
+    "RecoverySupervisor",
+    "ReleaseFocusCommand",
+    "RequestFocusCommand",
+    "RequestRecoveryCommand",
     "RegistrationChangedEvent",
     "ScreenChangedEvent",
     "ScreenRuntimeState",
@@ -99,6 +112,7 @@ __all__ = [
     "StateValue",
     "States",
     "Services",
+    "SnapshotCommand",
     "TalkRuntimeState",
     "TrackChangedEvent",
     "UserActivityEvent",
@@ -106,7 +120,7 @@ __all__ = [
     "VoipRuntimeState",
     "VoiceInteractionState",
     "VoiceState",
-    "build_test_app",
-    "drain_all",
-    "YoyoPodAppShell",
+    "YoyoPodApp",
+    "DiagnosticsRuntime",
+    "format_device_label",
 ]

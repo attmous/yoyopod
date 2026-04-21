@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 from yoyopod.config.models import GpioPin, PimoroniGpioConfig
 from yoyopod.ui.display.hal import DisplayHAL
 
-from yoyopod.device.gpiod_compat import HAS_GPIOD, open_chip, request_output
+from yoyopod.ui.input.gpiod_compat import HAS_GPIOD, open_chip, request_output
 
 
 class CubiePimoroniAdapter(DisplayHAL):

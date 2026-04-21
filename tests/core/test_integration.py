@@ -6,14 +6,8 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from yoyopod.core import (
-    LifecycleEvent,
-    StateChangedEvent,
-    UserActivityEvent,
-    assert_events_contain,
-    build_test_app,
-    drain_all,
-)
+from tests.fixtures.app import assert_events_contain, build_test_app, drain_all
+from yoyopod.core import LifecycleEvent, StateChangedEvent, UserActivityEvent
 
 
 @dataclass(frozen=True, slots=True)

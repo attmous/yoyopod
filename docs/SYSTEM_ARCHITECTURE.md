@@ -3,7 +3,9 @@
 **Last updated:** 2026-04-21
 **Status:** Current implementation
 
-This document describes the architecture that exists on `main`.
+This document describes the frozen target architecture the Phase A rewrite is
+converging on, while calling out where the current runtime is still in
+transition.
 
 ## Overview
 
@@ -26,12 +28,19 @@ The repo exposes two equivalent application launch surfaces:
 
 Both end up in `src/yoyopod/main.py`. That entrypoint configures logging,
 writes the PID file, emits the canonical startup marker, and then constructs
-`YoyoPodApp` from `src/yoyopod/app.py`. `YoyoPodApp` is now a thin composition
-shell around focused runtime services in `src/yoyopod/runtime/`.
+`YoyoPodApp` from `src/yoyopod/app.py`.
 
-This extraction is a first pass, not the end state. `src/yoyopod/runtime/boot.py` is
-still the biggest remaining runtime hotspot and should be the next split target
-if more setup logic accumulates there.
+The frozen end state is:
+
+- `src/yoyopod/app.py`: bootstrap only
+- `src/yoyopod/core/application.py`: canonical app object
+- `src/yoyopod/core/`: cross-cutting primitives and mechanics
+- `src/yoyopod/integrations/`: domain seams
+- `src/yoyopod/backends/`: external adapters only
+- `src/yoyopod/ui/`: display, input, and screens
+
+`src/yoyopod/runtime/` and `src/yoyopod/coordinators/` are migration scaffolding
+that should disappear before the hard merge.
 
 ## Startup And Bootstrap Flow
 
@@ -162,8 +171,11 @@ yoyopod.py / yoyopod.main
 
 ### Application Layer
 
-- `src/yoyopod/app.py`: thin runtime shell and compatibility surface
+- `src/yoyopod/app.py`: thin bootstrap shell
 - `src/yoyopod/main.py`: package entry point
+- `src/yoyopod/core/application.py`: canonical scaffold app object
+- `src/yoyopod/core/bus.py`, `states.py`, `services.py`, `scheduler.py`: frozen spine primitives
+- `src/yoyopod/core/focus.py`, `recovery.py`, `status.py`, `diagnostics/`: cross-cutting core modules
 - `src/yoyopod/fsm.py`: compatibility wrapper over relocated FSM primitives
 - `src/yoyopod/coordinators/registry.py`: derived app runtime state
 - `src/yoyopod/app_context.py`: compatibility wrapper over focused shared runtime state
@@ -183,14 +195,10 @@ yoyopod.py / yoyopod.main
 - `src/yoyopod/coordinators/screen.py`: screen refresh and call-screen updates
 - `src/yoyopod/coordinators/registry.py`: derived runtime state and shared runtime references
 
-### Audio and Communication
+### Domains and Backends
 
-- `src/yoyopod/audio/local_service.py`: local playlists, shuffle source collection, recent history integration
-- `src/yoyopod/audio/music/backend.py`: `MusicBackend`, `MpvBackend`, `MockMusicBackend`
-- `src/yoyopod/audio/music/process.py`: app-managed mpv process lifecycle
-- `src/yoyopod/audio/music/ipc.py`: low-level mpv JSON IPC client
-- `src/yoyopod/audio/music/models.py`: `Track`, `Playlist`, `PlaybackQueue`, `MusicConfig`
-- `src/yoyopod/audio/volume.py`: shared ALSA and mpv output-volume coordination
+- `src/yoyopod/integrations/music/`: canonical music seam
+- `src/yoyopod/backends/music/`: concrete mpv adapters
 - `src/yoyopod/communication/__init__.py`: compatibility facade for historical communication imports
 - `src/yoyopod/integrations/call/`: canonical public call manager, session FSM/policy, lifecycle tracker, messaging service, models, message store, history, and voice-note seam
 - `src/yoyopod/backends/voip/`: canonical Liblinphone adapter, protocol types, mock backend, and native shim binding
@@ -203,15 +211,17 @@ yoyopod.py / yoyopod.main
 - `src/yoyopod/people/`: compatibility shims for the historical contacts import path
 - `config/communication/integrations/liblinphone_factory.conf`: repo-managed Liblinphone factory config for media, codec, and network defaults
 
-### Power, Network, and Voice
+### Power, Network, Voice, and Display
 
 - `src/yoyopod/integrations/power/`: canonical power manager, models, and scaffold integration ownership
 - `src/yoyopod/power/`: compatibility shims plus the remaining power-specific events and safety policy code
 - `src/yoyopod/integrations/network/`: canonical network manager, modem models, and scaffold integration ownership
 - `src/yoyopod/network/`: compatibility shims for the historical network import path
+- `src/yoyopod/integrations/location/`: canonical GPS/location seam
 - `src/yoyopod/integrations/voice/`: canonical voice manager, service alias, and typed voice models
 - `src/yoyopod/backends/voice/`: concrete capture, playback, STT, and TTS adapters
 - `src/yoyopod/voice/`: compatibility shims plus the remaining command-matching code
+- `src/yoyopod/integrations/display/`: canonical display awake/sleep/brightness/timeout seam
 
 ### UI Layer
 

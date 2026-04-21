@@ -6,8 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from yoyopod.backends.music import Track
-from yoyopod.core import AudioFocusLostEvent, build_test_app, drain_all
-from yoyopod.integrations.focus import setup as setup_focus
+from tests.fixtures.app import build_test_app, drain_all
+from yoyopod.core import AudioFocusLostEvent
+from yoyopod.core.focus import setup as setup_focus
 from yoyopod.integrations.music import (
     LoadPlaylistCommand,
     MusicIntegration,

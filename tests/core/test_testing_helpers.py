@@ -1,4 +1,4 @@
-"""Tests for scaffold testing helpers."""
+"""Tests for scaffold test-support helpers."""
 
 from __future__ import annotations
 
@@ -6,7 +6,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from yoyopod.core import YoyoPodAppShell, assert_events_contain, build_test_app, drain_all
+from tests.fixtures.app import assert_events_contain, build_test_app, drain_all
+from yoyopod.core.application import YoyoPodApp
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,7 +17,7 @@ class DemoEvent:
 
 def test_build_test_app_returns_shell() -> None:
     app = build_test_app()
-    assert isinstance(app, YoyoPodAppShell)
+    assert isinstance(app, YoyoPodApp)
 
 
 def test_drain_all_advances_scheduler_and_bus() -> None:

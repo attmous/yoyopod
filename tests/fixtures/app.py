@@ -1,23 +1,23 @@
-"""Test helpers for the Phase A spine scaffold."""
+"""Shared scaffold app builders and queue helpers for tests."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable
 from typing import Any, TypeVar
 
-from yoyopod.core.app_shell import YoyoPodAppShell
+from yoyopod.core.application import YoyoPodApp
 
 _T = TypeVar("_T")
 
 
-def build_test_app(*, strict_bus: bool = True, log_buffer_size: int = 64) -> YoyoPodAppShell:
-    """Build a scaffold shell suitable for unit tests."""
+def build_test_app(*, strict_bus: bool = True, log_buffer_size: int = 64) -> YoyoPodApp:
+    """Build a scaffold application suitable for unit tests."""
 
-    return YoyoPodAppShell(strict_bus=strict_bus, log_buffer_size=log_buffer_size)
+    return YoyoPodApp(strict_bus=strict_bus, log_buffer_size=log_buffer_size)
 
 
-def drain_all(app: YoyoPodAppShell, *, max_rounds: int = 100) -> int:
-    """Drain scheduler and bus work until the scaffold shell goes idle."""
+def drain_all(app: YoyoPodApp, *, max_rounds: int = 100) -> int:
+    """Drain scheduler and bus work until the scaffold app goes idle."""
 
     total_processed = 0
     for _ in range(max_rounds):

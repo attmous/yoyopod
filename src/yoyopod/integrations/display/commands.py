@@ -1,4 +1,4 @@
-"""Typed commands for the scaffold screen integration."""
+"""Typed commands for the scaffold display integration."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
-class WakeScreenCommand:
-    """Wake the screen immediately."""
+class WakeDisplayCommand:
+    """Wake the display immediately."""
 
     reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)
-class SleepScreenCommand:
-    """Put the screen to sleep immediately."""
+class SleepDisplayCommand:
+    """Put the display to sleep immediately."""
 
     reason: str = ""
 
@@ -28,6 +28,6 @@ class SetBrightnessCommand:
 
 @dataclass(frozen=True, slots=True)
 class SetIdleTimeoutCommand:
-    """Set the inactivity timeout used by the screen integration."""
+    """Set the inactivity timeout used by the display integration."""
 
     timeout_seconds: float

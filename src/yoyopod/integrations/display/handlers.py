@@ -1,65 +1,65 @@
-"""Handlers for the scaffold screen integration."""
+"""Handlers for the scaffold display integration."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from yoyopod.core.events import UserActivityEvent
-from yoyopod.integrations.screen.commands import (
+from yoyopod.integrations.display.commands import (
     SetBrightnessCommand,
     SetIdleTimeoutCommand,
-    SleepScreenCommand,
-    WakeScreenCommand,
+    SleepDisplayCommand,
+    WakeDisplayCommand,
 )
 
 
-def seed_screen_state(
+def seed_display_state(
     app: Any,
     *,
     awake: bool,
     brightness_percent: int,
 ) -> None:
-    """Seed the scaffold screen state rows."""
+    """Seed the scaffold display state rows."""
 
-    app.states.set("screen.awake", awake)
-    app.states.set("screen.brightness_percent", brightness_percent)
+    app.states.set("display.awake", awake)
+    app.states.set("display.brightness_percent", brightness_percent)
 
 
-def wake_screen(app: Any, integration: Any, command: WakeScreenCommand) -> bool:
-    """Wake the screen and record the command reason."""
+def wake_display(app: Any, integration: Any, command: WakeDisplayCommand) -> bool:
+    """Wake the display and record the command reason."""
 
-    if not isinstance(command, WakeScreenCommand):
-        raise TypeError("screen.wake expects WakeScreenCommand")
+    if not isinstance(command, WakeDisplayCommand):
+        raise TypeError("display.wake expects WakeDisplayCommand")
     integration.last_wake_reason = command.reason
-    app.states.set("screen.awake", True)
+    app.states.set("display.awake", True)
     return True
 
 
-def sleep_screen(app: Any, integration: Any, command: SleepScreenCommand) -> bool:
-    """Put the screen to sleep and record the command reason."""
+def sleep_display(app: Any, integration: Any, command: SleepDisplayCommand) -> bool:
+    """Put the display to sleep and record the command reason."""
 
-    if not isinstance(command, SleepScreenCommand):
-        raise TypeError("screen.sleep expects SleepScreenCommand")
+    if not isinstance(command, SleepDisplayCommand):
+        raise TypeError("display.sleep expects SleepDisplayCommand")
     integration.last_sleep_reason = command.reason
-    app.states.set("screen.awake", False)
+    app.states.set("display.awake", False)
     return False
 
 
 def set_brightness(app: Any, integration: Any, command: SetBrightnessCommand) -> int:
-    """Update the in-memory screen brightness and reflected scaffold state."""
+    """Update the in-memory display brightness and reflected scaffold state."""
 
     if not isinstance(command, SetBrightnessCommand):
-        raise TypeError("screen.set_brightness expects SetBrightnessCommand")
+        raise TypeError("display.set_brightness expects SetBrightnessCommand")
     integration.brightness_percent = _normalize_brightness_percent(command.percent)
-    app.states.set("screen.brightness_percent", integration.brightness_percent)
+    app.states.set("display.brightness_percent", integration.brightness_percent)
     return integration.brightness_percent
 
 
 def set_idle_timeout(integration: Any, command: SetIdleTimeoutCommand) -> float:
-    """Update the in-memory screen idle timeout."""
+    """Update the in-memory display idle timeout."""
 
     if not isinstance(command, SetIdleTimeoutCommand):
-        raise TypeError("screen.set_idle_timeout expects SetIdleTimeoutCommand")
+        raise TypeError("display.set_idle_timeout expects SetIdleTimeoutCommand")
     integration.idle_timeout_seconds = max(0.0, float(command.timeout_seconds))
     return integration.idle_timeout_seconds
 
@@ -71,12 +71,12 @@ def handle_user_activity(
     *,
     now: float,
 ) -> None:
-    """Record user activity and wake the screen if it is asleep."""
+    """Record user activity and wake the display if it is asleep."""
 
     integration.last_user_activity_at = now
     integration.last_user_activity_action = event.action_name
-    if not app.states.get_value("screen.awake", False):
-        app.states.set("screen.awake", True)
+    if not app.states.get_value("display.awake", False):
+        app.states.set("display.awake", True)
 
 
 def resolve_initial_brightness_percent(config: object | None, fallback: int = 80) -> int:
@@ -88,7 +88,7 @@ def resolve_initial_brightness_percent(config: object | None, fallback: int = 80
 
 
 def resolve_idle_timeout_seconds(config: object | None, fallback: float = 300.0) -> float:
-    """Resolve the effective screen timeout using the live runtime precedence."""
+    """Resolve the effective display timeout using the live runtime precedence."""
 
     display = getattr(config, "display", None)
     ui = getattr(config, "ui", None)

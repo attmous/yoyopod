@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from yoyopod.config.models import PowerConfig
-from yoyopod.core import build_test_app, drain_all
+from tests.fixtures.app import build_test_app, drain_all
 from yoyopod.integrations.power import BatteryState, PowerSnapshot, setup, teardown
 from yoyopod.integrations.power.commands import SetRtcAlarmCommand
 from yoyopod.integrations.power.handlers import snapshot_to_state_rows

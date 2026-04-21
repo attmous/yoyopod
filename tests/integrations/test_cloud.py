@@ -7,7 +7,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from yoyopod.core import build_test_app, drain_all
+from tests.fixtures.app import build_test_app, drain_all
 from yoyopod.integrations.cloud import (
     PublishTelemetryCommand,
     SyncNowCommand,
@@ -88,7 +88,7 @@ def test_cloud_forwards_selected_state_changes_and_explicit_publish() -> None:
     drain_all(app)
 
     app.states.set("power.battery_percent", 82, {"source": "pisugar"})
-    app.states.set("screen.awake", True)
+    app.states.set("display.awake", True)
     drain_all(app)
 
     assert len(mqtt.published) == 1

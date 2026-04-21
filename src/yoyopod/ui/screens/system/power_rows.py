@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from yoyopod.device import format_device_label
+from yoyopod.core.hardware import format_device_label
 
 from yoyopod.ui.screens.system.power_format import (
     _format_alarm,

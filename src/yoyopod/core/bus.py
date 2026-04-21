@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import threading
 from collections import defaultdict, deque
-from typing import Any, Callable, DefaultDict
+from typing import Any, Callable, DefaultDict, Protocol
 
 from loguru import logger
 
 EventHandler = Callable[[Any], None]
+
+
+class _DiagnosticsLog(Protocol):
+    def append(self, entry: Any) -> None:
+        """Append one diagnostics entry."""
 
 
 class Bus:
@@ -19,6 +24,12 @@ class Bus:
         self._strict = strict
         self._subscribers: DefaultDict[type[Any], list[EventHandler]] = defaultdict(list)
         self._queue: deque[Any] = deque()
+        self._diagnostics_log: _DiagnosticsLog | None = None
+
+    def set_diagnostics_log(self, diagnostics_log: _DiagnosticsLog | None) -> None:
+        """Attach or clear the diagnostics sink used for handler failures."""
+
+        self._diagnostics_log = diagnostics_log
 
     def subscribe(self, event_type: type[Any], handler: EventHandler) -> None:
         """Register a handler for one event type."""
@@ -68,7 +79,21 @@ class Bus:
         for handler in handlers:
             try:
                 handler(event)
-            except Exception:
+            except Exception as exc:
+                if self._diagnostics_log is not None:
+                    self._diagnostics_log.append(
+                        {
+                            "kind": "error",
+                            "handler": _handler_name(handler),
+                            "exc": f"{exc.__class__.__name__}: {exc}",
+                        }
+                    )
                 if self._strict:
                     raise
                 logger.exception("Error handling scaffold event {}", event.__class__.__name__)
+
+
+def _handler_name(handler: EventHandler) -> str:
+    module = getattr(handler, "__module__", "") or ""
+    qualname = getattr(handler, "__qualname__", getattr(handler, "__name__", repr(handler)))
+    return f"{module}.{qualname}".strip(".")

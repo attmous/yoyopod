@@ -24,7 +24,7 @@ except ImportError:
     spidev = None  # type: ignore[assignment]
     HAS_SPIDEV = False
 
-from yoyopod.device.gpiod_compat import HAS_GPIOD, open_chip, request_output
+from yoyopod.ui.input.gpiod_compat import HAS_GPIOD, open_chip, request_output
 
 # ST7789 command constants
 _SWRESET = 0x01

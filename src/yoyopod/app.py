@@ -30,7 +30,7 @@ from yoyopod.coordinators import (
 )
 from yoyopod.coordinators.voice import VoiceRuntimeCoordinator
 from yoyopod.core import EventBus
-from yoyopod.device import AudioDeviceCatalog
+from yoyopod.core.hardware import AudioDeviceCatalog
 from yoyopod.integrations.contacts.directory import PeopleManager
 from yoyopod.integrations.call import (
     CallFSM,

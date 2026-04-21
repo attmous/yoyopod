@@ -31,6 +31,11 @@ class Services:
             raise ValueError(f"Service already registered: {domain}.{service}")
         self._handlers[key] = handler
 
+    def set_diagnostics_log(self, diagnostics_log: _LogSink | None) -> None:
+        """Attach or clear the diagnostics sink used for command entries."""
+
+        self._diagnostics_log = diagnostics_log
+
     def call(self, domain: str, service: str, data: Any = None) -> Any:
         """Invoke one registered service on the main thread."""
 
@@ -41,16 +46,15 @@ class Services:
         if key not in self._handlers:
             raise KeyError(f"Unknown service: {domain}.{service}")
 
-        self._record({"kind": "service_call", "domain": domain, "service": service, "data": data})
+        self._record({"kind": "command", "domain": domain, "service": service, "data": data})
         try:
             return self._handlers[key](data)
         except Exception as exc:
             self._record(
                 {
-                    "kind": "service_error",
-                    "domain": domain,
-                    "service": service,
-                    "error": repr(exc),
+                    "kind": "error",
+                    "handler": f"{domain}.{service}",
+                    "exc": f"{exc.__class__.__name__}: {exc}",
                 }
             )
             raise

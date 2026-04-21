@@ -28,7 +28,7 @@ from yoyopod.integrations.call.commands import (
 )
 from yoyopod.integrations.call.events import CallHistoryUpdatedEvent, VoiceNoteSummaryChangedEvent
 from yoyopod.integrations.call.models import CallState, RegistrationState
-from yoyopod.integrations.focus import ReleaseFocusCommand, RequestFocusCommand
+from yoyopod.core.focus import ReleaseFocusCommand, RequestFocusCommand
 
 _OUTGOING_STATES = {
     CallState.OUTGOING,

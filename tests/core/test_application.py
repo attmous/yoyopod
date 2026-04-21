@@ -1,12 +1,12 @@
-"""Tests for the scaffold app shell."""
+"""Tests for the scaffold application."""
 
 from __future__ import annotations
 
-from yoyopod.core import LifecycleEvent, YoyoPodAppShell
+from yoyopod.core import LifecycleEvent, YoyoPodApp
 
 
-def test_app_shell_start_stop_and_tick_emit_lifecycle_events() -> None:
-    app = YoyoPodAppShell(strict_bus=True)
+def test_application_start_stop_and_tick_emit_lifecycle_events() -> None:
+    app = YoyoPodApp(strict_bus=True)
     seen: list[LifecycleEvent] = []
     ui_ticks: list[str] = []
     app.bus.subscribe(LifecycleEvent, seen.append)
@@ -22,8 +22,8 @@ def test_app_shell_start_stop_and_tick_emit_lifecycle_events() -> None:
     assert app.running is False
 
 
-def test_app_shell_run_supports_iteration_bounded_loops() -> None:
-    app = YoyoPodAppShell(strict_bus=True)
+def test_application_run_supports_iteration_bounded_loops() -> None:
+    app = YoyoPodApp(strict_bus=True)
     seen: list[str] = []
     app.set_ui_tick_callback(lambda: seen.append("tick"))
 
@@ -35,8 +35,8 @@ def test_app_shell_run_supports_iteration_bounded_loops() -> None:
     assert app.integrations == {}
 
 
-def test_app_shell_tracks_recent_tick_stats() -> None:
-    app = YoyoPodAppShell(strict_bus=True)
+def test_application_tracks_recent_tick_stats() -> None:
+    app = YoyoPodApp(strict_bus=True)
     app.start()
     app.tick()
     app.stop()

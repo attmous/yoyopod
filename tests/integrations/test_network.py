@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from yoyopod.core import build_test_app, drain_all
+from tests.fixtures.app import build_test_app, drain_all
 from yoyopod.integrations.network import (
     DisablePppCommand,
     EnablePppCommand,

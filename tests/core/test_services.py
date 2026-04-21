@@ -20,7 +20,7 @@ def test_services_register_and_call_records_log_entries() -> None:
     assert result == {"result": {"reason": "call"}}
     assert log_buffer.snapshot() == [
         {
-            "kind": "service_call",
+            "kind": "command",
             "domain": "music",
             "service": "pause",
             "data": {"reason": "call"},

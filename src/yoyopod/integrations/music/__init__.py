@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from yoyopod.core import AudioFocusLostEvent
-from yoyopod.integrations.focus import ReleaseFocusCommand, RequestFocusCommand
+from yoyopod.core.focus import ReleaseFocusCommand, RequestFocusCommand
 from yoyopod.integrations.music.commands import (
     LoadPlaylistCommand,
     NextTrackCommand,

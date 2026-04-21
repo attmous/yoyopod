@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from yoyopod.core import build_test_app, drain_all
+from tests.fixtures.app import build_test_app, drain_all
 from yoyopod.integrations.call import (
     CallHistoryEntry,
     CallHistoryStore,
@@ -24,7 +24,7 @@ from yoyopod.integrations.call import (
     setup,
     teardown,
 )
-from yoyopod.integrations.focus import setup as setup_focus
+from yoyopod.core.focus import setup as setup_focus
 
 
 class FakeVoipManager:

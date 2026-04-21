@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import threading
 from queue import Empty, Queue
-from typing import Callable
+from typing import Any, Callable, Protocol
+
+
+class _DiagnosticsLog(Protocol):
+    def append(self, entry: Any) -> None:
+        """Append one diagnostics entry."""
 
 
 class MainThreadScheduler:
@@ -13,6 +18,12 @@ class MainThreadScheduler:
     def __init__(self, main_thread_id: int | None = None) -> None:
         self.main_thread_id = main_thread_id or threading.get_ident()
         self._queue: Queue[Callable[[], None]] = Queue()
+        self._diagnostics_log: _DiagnosticsLog | None = None
+
+    def set_diagnostics_log(self, diagnostics_log: _DiagnosticsLog | None) -> None:
+        """Attach or clear the diagnostics sink used for task failures."""
+
+        self._diagnostics_log = diagnostics_log
 
     def run_on_main(self, fn: Callable[[], None]) -> None:
         """Schedule one callback for the main thread, or run it immediately."""
@@ -36,7 +47,18 @@ class MainThreadScheduler:
                 fn = self._queue.get_nowait()
             except Empty:
                 break
-            fn()
+            try:
+                fn()
+            except Exception as exc:
+                if self._diagnostics_log is not None:
+                    self._diagnostics_log.append(
+                        {
+                            "kind": "error",
+                            "handler": _callable_name(fn),
+                            "exc": f"{exc.__class__.__name__}: {exc}",
+                        }
+                    )
+                raise
             processed += 1
         return processed
 
@@ -44,3 +66,9 @@ class MainThreadScheduler:
         """Return the number of queued callbacks."""
 
         return self._queue.qsize()
+
+
+def _callable_name(fn: Callable[[], None]) -> str:
+    module = getattr(fn, "__module__", "") or ""
+    qualname = getattr(fn, "__qualname__", getattr(fn, "__name__", repr(fn)))
+    return f"{module}.{qualname}".strip(".")

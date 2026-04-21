@@ -1,8 +1,4 @@
-"""Helpers for listing ALSA capture/playback devices for UI selection.
-
-These functions intentionally have safe fallbacks when running in environments
-without ALSA utilities (for example the Windows simulator).
-"""
+"""Shared hardware metadata helpers that do not belong to one domain."""
 
 from __future__ import annotations
 
@@ -41,13 +37,10 @@ def _run_list(binary: str) -> list[str]:
         return []
     devices: list[str] = []
     for line in result.stdout.splitlines():
-        # Device identifiers are on non-indented lines; descriptions are indented.
         if not line or line.startswith(" "):
             continue
         device = line.strip()
-        if not device:
-            continue
-        if device in {"null"}:
+        if not device or device == "null":
             continue
         devices.append(device)
     return devices
@@ -55,8 +48,6 @@ def _run_list(binary: str) -> list[str]:
 
 @lru_cache(maxsize=1)
 def _asound_card_aliases() -> dict[str, str]:
-    """Return ALSA card-id -> friendly name mapping when available."""
-
     cards_path = Path("/proc/asound/cards")
     if not cards_path.exists():
         return {}
@@ -68,8 +59,6 @@ def _asound_card_aliases() -> dict[str, str]:
 
     aliases: dict[str, str] = {}
     for line in text.splitlines():
-        # Example:
-        #  1 [SE             ]: USB-Audio - Jabra Evolve 75 SE
         match = re.match(r"^\s*\d+\s+\[([^\]]+)\]:\s*(.+?)\s*$", line)
         if not match:
             continue
@@ -77,10 +66,8 @@ def _asound_card_aliases() -> dict[str, str]:
         rest = match.group(2).strip()
         if not card_id or not rest:
             continue
-        friendly = rest
-        if " - " in rest:
-            friendly = rest.split(" - ", 1)[1].strip() or rest
-        aliases[card_id] = friendly
+        friendly = rest.split(" - ", 1)[1].strip() if " - " in rest else rest
+        aliases[card_id] = friendly or rest
     return aliases
 
 
@@ -89,8 +76,6 @@ def _friendly_card_name(card_id: str) -> str:
 
 
 def _parse_card_dev(device: str) -> tuple[str | None, int | None]:
-    """Extract CARD and DEV fields from an ALSA selector string."""
-
     upper = device.upper()
     card = None
     dev = None
@@ -114,42 +99,32 @@ def _route_name(device: str) -> str:
 
 
 def list_playback_devices(*, aplay_binary: str = "aplay") -> list[str]:
-    """Return ALSA playback devices in a stable, UI-friendly order."""
-
     parsed = _run_list(aplay_binary)
     candidates: list[str] = []
     for device in parsed:
         if device in {"default", "sysdefault", "null"}:
             continue
         route = _route_name(device)
-        # Keep only "physical" options: one per card, prefer plughw; keep HDMI explicitly.
         if route not in {"plughw", "hw", "hdmi"}:
             continue
         card, _ = _parse_card_dev(device)
-        if not card:
-            continue
-        candidates.append(device)
+        if card:
+            candidates.append(device)
 
-    # Choose one best route per card.
     by_card: dict[str, list[str]] = {}
     for device in candidates:
         card, _ = _parse_card_dev(device)
-        if not card:
-            continue
-        by_card.setdefault(card, []).append(device)
+        if card:
+            by_card.setdefault(card, []).append(device)
 
     chosen: list[str] = []
     for card, devices in by_card.items():
-        # Prefer hdmi for HDMI cards, otherwise plughw then hw.
-        priority = ["plughw", "hw"]
-        if card.lower() in {"vc4hdmi"}:
-            priority = ["hdmi", "plughw", "hw"]
+        priority = ["hdmi", "plughw", "hw"] if card.lower() == "vc4hdmi" else ["plughw", "hw"]
         best: str | None = None
         for route in priority:
-            matches = [d for d in devices if _route_name(d) == route]
+            matches = [device for device in devices if _route_name(device) == route]
             if matches:
-                # Prefer lowest DEV if multiple.
-                matches.sort(key=lambda d: (_parse_card_dev(d)[1] or 0, d))
+                matches.sort(key=lambda device: (_parse_card_dev(device)[1] or 0, device))
                 best = matches[0]
                 break
         if best is not None:
@@ -161,20 +136,16 @@ def list_playback_devices(*, aplay_binary: str = "aplay") -> list[str]:
         friendly = _friendly_card_name(card or "").lower()
         if route == "hdmi" or (card or "").lower() == "vc4hdmi":
             return (2, friendly)
-        # Rough heuristics: keep USB-ish headsets first.
         if "usb" in friendly or "jabra" in friendly:
             return (0, friendly)
         if "blue" in friendly:
             return (1, friendly)
         return (3, friendly)
 
-    chosen = sorted(dict.fromkeys(chosen), key=sort_key)
-    return chosen
+    return sorted(dict.fromkeys(chosen), key=sort_key)
 
 
 def list_capture_devices(*, arecord_binary: str = "arecord") -> list[str]:
-    """Return ALSA capture devices in a stable, UI-friendly order."""
-
     parsed = _run_list(arecord_binary)
     candidates: list[str] = []
     for device in parsed:
@@ -184,23 +155,21 @@ def list_capture_devices(*, arecord_binary: str = "arecord") -> list[str]:
         if route not in {"plughw", "hw"}:
             continue
         card, _ = _parse_card_dev(device)
-        if not card:
-            continue
-        candidates.append(device)
+        if card:
+            candidates.append(device)
 
     by_card: dict[str, list[str]] = {}
     for device in candidates:
         card, _ = _parse_card_dev(device)
-        if not card:
-            continue
-        by_card.setdefault(card, []).append(device)
+        if card:
+            by_card.setdefault(card, []).append(device)
 
     chosen: list[str] = []
-    for card, devices in by_card.items():
+    for _card, devices in by_card.items():
         for route in ("plughw", "hw"):
-            matches = [d for d in devices if _route_name(d) == route]
+            matches = [device for device in devices if _route_name(device) == route]
             if matches:
-                matches.sort(key=lambda d: (_parse_card_dev(d)[1] or 0, d))
+                matches.sort(key=lambda device: (_parse_card_dev(device)[1] or 0, device))
                 chosen.append(matches[0])
                 break
 
@@ -213,8 +182,7 @@ def list_capture_devices(*, arecord_binary: str = "arecord") -> list[str]:
             return (1, friendly)
         return (2, friendly)
 
-    chosen = sorted(dict.fromkeys(chosen), key=sort_key)
-    return chosen
+    return sorted(dict.fromkeys(chosen), key=sort_key)
 
 
 def format_device_label(device_id: str | None) -> str:
@@ -224,24 +192,16 @@ def format_device_label(device_id: str | None) -> str:
         return "Auto"
 
     normalized = _normalize_alsa_selector(device_id)
-
     route = _route_name(normalized)
     card, dev = _parse_card_dev(normalized)
     if card:
         friendly = _friendly_card_name(card)
-        # Special-case HDMI for readability.
-        if route == "hdmi" or card.lower() == "vc4hdmi":
-            label = "HDMI"
-        else:
-            label = friendly
+        label = "HDMI" if route == "hdmi" or card.lower() == "vc4hdmi" else friendly
         if dev not in (None, 0) and len(label) <= 14:
             label = f"{label} {dev}"
         label = label.strip()
-        if len(label) > 18:
-            return label[:17] + "..."
-        return label
+        return label[:17] + "..." if len(label) > 18 else label
 
-    # Keep the full selector for power users, but avoid noisy prefixes.
     for prefix in (
         "default:",
         "sysdefault:",
@@ -260,10 +220,7 @@ def format_device_label(device_id: str | None) -> str:
     normalized = normalized.strip()
     if not normalized:
         return "Auto"
-
-    if len(normalized) > 18:
-        return normalized[:17] + "..."
-    return normalized
+    return normalized[:17] + "..." if len(normalized) > 18 else normalized
 
 
 class AudioDeviceCatalog:
@@ -284,20 +241,14 @@ class AudioDeviceCatalog:
         self._capture_devices: list[str] = []
 
     def playback_devices(self) -> list[str]:
-        """Return the latest cached playback-device options."""
-
         with self._lock:
             return list(self._playback_devices)
 
     def capture_devices(self) -> list[str]:
-        """Return the latest cached capture-device options."""
-
         with self._lock:
             return list(self._capture_devices)
 
     def refresh(self) -> None:
-        """Refresh both playback and capture options synchronously."""
-
         playback_devices = list_playback_devices(aplay_binary=self.aplay_binary)
         capture_devices = list_capture_devices(arecord_binary=self.arecord_binary)
         with self._lock:
@@ -305,8 +256,6 @@ class AudioDeviceCatalog:
             self._capture_devices = capture_devices
 
     def refresh_async(self) -> None:
-        """Refresh device options on a background thread when needed."""
-
         with self._refresh_lock:
             worker = self._refresh_thread
             if worker is not None and worker.is_alive():
