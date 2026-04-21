@@ -325,6 +325,7 @@ Integrations register their `setup(app)` in a known order (see §11.2). The app 
 | `network.signal_bars` | `int 0..5 | None` | `csq` | network |
 | `network.ppp_up` | `bool` | `reason` | network |
 | `location.fix` | `LocationFix | None` | `lat`, `lng`, `altitude`, `speed_mps`, `last_fix_at` | location |
+| `location.backend_available` | `bool` | `reason` | location |
 | `focus.owner` | `call | music | voice | None` | `preempted_by` | focus |
 | `cloud.mqtt_connected` | `bool` | `reason`, `last_sync_at` | cloud |
 | `screen.awake` | `bool` | — | screen |
@@ -430,6 +431,8 @@ app.services.call("music", "play", PlayCommand(track_uri="local:file:song.mp3"))
 **call:** `dial`, `answer`, `hangup`, `reject`, `mute`, `unmute`, `send_message`, `start_voice_note`, `stop_voice_note`, `send_voice_note`, `cancel_voice_note`, `play_voice_note`, `mark_voice_notes_seen`
 **music:** `play`, `pause`, `resume`, `stop`, `next`, `prev`, `seek`, `set_volume`
 **power:** `shutdown`, `reboot`, `set_watchdog`, `set_rtc_alarm`, `disable_rtc_alarm`, `sync_rtc_to_system`, `sync_rtc_from_system`
+**network:** `enable_ppp`, `disable_ppp`, `refresh_signal`, `set_apn`
+**location:** `request_fix`, `enable_gps`, `disable_gps`
 **focus:** `request`, `release`
 **screen:** `wake`, `sleep`, `set_brightness`, `set_idle_timeout`
 **voice:** `start_listening`, `stop_listening`, `say`
