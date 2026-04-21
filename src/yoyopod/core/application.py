@@ -18,7 +18,6 @@ from yoyopod.core.app_context import AppContext
 from yoyopod.core.bus import Bus
 from yoyopod.core.output_volume import OutputVolumeController
 from yoyopod.core.events import LifecycleEvent
-from yoyopod.core.fsm import MusicFSM
 from yoyopod.core.hardware import AudioDeviceCatalog
 from yoyopod.core.logbuffer import LogBuffer
 from yoyopod.core.scheduler import MainThreadScheduler
@@ -34,7 +33,7 @@ from yoyopod.integrations.call import (
 from yoyopod.integrations.call.coordinator import CallCoordinator
 from yoyopod.integrations.cloud.manager import CloudManager
 from yoyopod.integrations.contacts.directory import PeopleManager
-from yoyopod.integrations.music import LocalMusicService, RecentTrackHistoryStore
+from yoyopod.integrations.music import LocalMusicService, MusicFSM, RecentTrackHistoryStore
 from yoyopod.integrations.music.coordinator import PlaybackCoordinator
 from yoyopod.integrations.network import NetworkManager
 from yoyopod.integrations.power import (

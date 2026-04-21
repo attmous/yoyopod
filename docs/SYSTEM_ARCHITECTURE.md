@@ -78,7 +78,7 @@ This is the startup sequence that exists on `main` today.
       - renders the initial `YoyoPod Starting...` splash
       - creates `AppContext`
       - seeds voice and VoIP-ready status in shared runtime state
-      - constructs `MusicFSM` plus the canonical call-session seam from `yoyopod.integrations.call`
+      - constructs the canonical music and call-session seams from `yoyopod.integrations.music` and `yoyopod.integrations.call`
       - creates and starts `InputManager`
       - wires the LVGL input bridge when LVGL is active
       - creates `ScreenManager`
@@ -144,7 +144,7 @@ yoyopod.py / yoyopod.main
         -> navigation screens
         -> music screens
         -> voip screens
-     -> MusicFSM / call-session seam
+     -> music session seam / call-session seam
       -> CoordinatorRuntime
       -> CallCoordinator / PlaybackCoordinator / ScreenCoordinator / PowerCoordinator
       -> AppContext
@@ -180,7 +180,6 @@ yoyopod.py / yoyopod.main
 - `src/yoyopod/core/bus.py`, `states.py`, `services.py`, `scheduler.py`: frozen spine primitives
 - `src/yoyopod/core/events.py`: universal state-change and cross-cutting app events only
 - `src/yoyopod/core/focus.py`, `recovery.py`, `status.py`, `diagnostics/`: cross-cutting core modules
-- `src/yoyopod/core/fsm/`: canonical playback and call-session FSM primitives
 - `src/yoyopod/core/ui_state.py`: derived app runtime state
 - `src/yoyopod/core/app_context.py`: focused shared runtime state
 - `src/yoyopod/core/runtime_state.py`: focused runtime state objects owned by `AppContext`
@@ -201,13 +200,13 @@ yoyopod.py / yoyopod.main
 
 ### Domains and Backends
 
-- `src/yoyopod/integrations/music/`: canonical music seam
+- `src/yoyopod/integrations/music/`: canonical music seam, including the transitional `MusicFSM`
 - `src/yoyopod/integrations/music/events.py`: music-domain typed events
+- `src/yoyopod/integrations/music/fsm.py`: canonical music-session FSM owner during the remaining state-store cutover
 - `src/yoyopod/backends/music/`: concrete mpv adapters
 - `src/yoyopod/integrations/call/`: canonical public call manager, session FSM/policy, lifecycle tracker, messaging service, models, message store, history, and voice-note seam
 - `src/yoyopod/integrations/call/events.py`: call-domain typed events
 - `src/yoyopod/backends/voip/`: canonical Liblinphone adapter, protocol types, mock backend, and native shim binding
-- `src/yoyopod/core/fsm/call.py`: compatibility shim for the historical core-owned call FSM path
 - `src/yoyopod/integrations/contacts/`: mutable contacts/address-book domain
 - `config/communication/integrations/liblinphone_factory.conf`: repo-managed Liblinphone factory config for media, codec, and network defaults
 
@@ -289,7 +288,7 @@ Screen groups:
 
 Playback and call orchestration use composed models:
 
-- `MusicFSM` in `src/yoyopod/core/fsm/music.py`
+- `MusicFSM` in `src/yoyopod/integrations/music/fsm.py`
 - `CallFSM` in `src/yoyopod/integrations/call/session.py`
 - `CallInterruptionPolicy` in `src/yoyopod/integrations/call/session.py`
 - `CoordinatorRuntime` in `src/yoyopod/core/ui_state.py`
@@ -349,7 +348,6 @@ These are known implementation constraints, not architecture goals.
 For current behavior, trust these files over older notes or demos:
 
 - `src/yoyopod/core/application.py`
-- `src/yoyopod/core/fsm/`
 - `src/yoyopod/core/bus.py`
 - `src/yoyopod/core/scheduler.py`
 - `src/yoyopod/core/events.py`

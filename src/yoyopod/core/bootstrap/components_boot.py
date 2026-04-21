@@ -57,12 +57,12 @@ class ComponentsBoot:
         """Initialize display, context, orchestration models, input, and screen manager."""
         from yoyopod.core import AppContext
         from yoyopod.core.audio_volume import AudioVolumeController
-        from yoyopod.core import MusicFSM
         from yoyopod.integrations.call import (
             CallFSM,
             CallInterruptionPolicy,
             sync_context_voip_status,
         )
+        from yoyopod.integrations.music import MusicFSM
 
         self.logger.info("Initializing core components...")
 

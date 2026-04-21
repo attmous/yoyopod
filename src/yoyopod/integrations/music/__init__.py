@@ -56,8 +56,10 @@ __all__ = [
     "LoadPlaylistCommand",
     "LocalLibraryItem",
     "LocalMusicService",
+    "MusicFSM",
     "MusicIntegration",
     "MusicAvailabilityChangedEvent",
+    "MusicState",
     "NextTrackCommand",
     "PauseCommand",
     "PlaybackStateChangedEvent",
@@ -79,6 +81,10 @@ __all__ = [
 def __getattr__(name: str) -> Any:
     """Load relocated music exports lazily when needed."""
 
+    if name in {"MusicFSM", "MusicState"}:
+        from yoyopod.integrations.music.fsm import MusicFSM, MusicState
+
+        return {"MusicFSM": MusicFSM, "MusicState": MusicState}[name]
     if name == "PlaybackCoordinator":
         from yoyopod.integrations.music.coordinator import PlaybackCoordinator
 

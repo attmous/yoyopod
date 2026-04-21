@@ -226,7 +226,7 @@ Notable ownership detail: `CallCoordinator` directly decides music pause/resume 
 2. `PlaybackCoordinator.publish_track_change()` or `publish_playback_state_change()` publishes the music-domain events now owned by `src/yoyopod/integrations/music/events.py`.
 3. Those callbacks arrive from the mpv IPC dispatch thread, so boot wiring schedules them onto the main thread before they publish onto `Bus`.
 4. The coordinator-thread drain calls `PlaybackCoordinator.handle_track_change()` or `handle_playback_state_change()`.
-5. `PlaybackCoordinator` updates `MusicFSM`, re-derives app state, records recents, and refreshes the now-playing screen.
+5. `PlaybackCoordinator` updates the music-domain `MusicFSM`, re-derives app state, records recents, and refreshes the now-playing screen.
 
 Ownership: playback truth comes from the music backend; playback interpretation for app state belongs to `PlaybackCoordinator` plus `CoordinatorRuntime`.
 
@@ -280,9 +280,9 @@ Ownership: network state is still app-owned, not coordinator-owned. This is one 
 ### FSM state
 
 Owned by:
-- `MusicFSM`
-- `CallFSM`
-- `CallInterruptionPolicy`
+- `yoyopod.integrations.music.fsm.MusicFSM`
+- `yoyopod.integrations.call.session.CallFSM`
+- `yoyopod.integrations.call.session.CallInterruptionPolicy`
 
 ### Derived app state
 

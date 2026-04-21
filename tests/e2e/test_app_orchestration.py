@@ -31,18 +31,15 @@ from yoyopod.integrations.music.events import (
     TrackChangedEvent,
 )
 from yoyopod.core.ui_state import AppRuntimeState, CoordinatorRuntime
-from yoyopod.core import (
-    MusicFSM,
-    MusicState,
-    UserActivityEvent,
-)
 from yoyopod.integrations.call import (
     CallFSM,
     CallInterruptionPolicy,
     CallSessionState,
 )
+from yoyopod.integrations.music import MusicFSM, MusicState
 from yoyopod.integrations.power.models import BatteryState, PowerSnapshot
 from yoyopod.core.loop import RuntimeLoopService
+from yoyopod.core import UserActivityEvent
 from yoyopod.integrations.power import PowerAlert
 from yoyopod.integrations.network.models import ModemPhase, ModemState, SignalInfo
 from yoyopod.ui.input import InputManager, InteractionProfile

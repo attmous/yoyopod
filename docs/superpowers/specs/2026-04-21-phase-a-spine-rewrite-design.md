@@ -27,7 +27,7 @@ Phase A rewrites the spine to a single consistent model inspired by Home Assista
 - All state transitions recorded to `events.jsonl` as structured JSON for LLM-driven debugging.
 - `app.py` shrinks from ~685 LOC to ~150 LOC.
 - The entire "coordinator" concept (CallCoordinator, PlaybackCoordinator, ScreenCoordinator, PowerCoordinator, CoordinatorRuntime, AppRuntimeState) deleted.
-- MusicFSM, CallFSM, CallInterruptionPolicy deleted.
+- No core-owned MusicFSM / CallFSM / CallInterruptionPolicy surface remains; any transitional implementations live under the owning integrations until the state-store cutover finishes.
 - VoIPManager's 4 private callback lists deleted.
 - Adding a new cross-cutting observer (LED status, cloud telemetry, metrics) = one new file, zero changes to existing integrations.
 
@@ -514,7 +514,7 @@ Retained for human-readable `info`/`warn`/`error` lines. Complementary to the st
 
 | Class / module | File(s) | Why |
 |---|---|---|
-| `MusicFSM` | `src/yoyopod/core/fsm/music.py` | 3 states, 3 triggers; replaced by `app.states.get("music.state")` |
+| `MusicFSM` | `src/yoyopod/integrations/music/fsm.py` | Transitional 3-state seam; still planned for removal in favor of `app.states.get("music.state")` |
 | `CallFSM` | `src/yoyopod/integrations/call/session.py` | Replaced by `app.states.get("call.state")` |
 | `CallInterruptionPolicy` | `src/yoyopod/integrations/call/session.py` | Replaced by `core/focus.py` audio-focus arbitration |
 | `AppRuntimeState` enum | `src/yoyopod/core/ui_state.py` | 18 cross-product values become direct state reads per entity |

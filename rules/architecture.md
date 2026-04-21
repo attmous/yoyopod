@@ -9,7 +9,7 @@ yoyopod.py / src/yoyopod/main.py  (entry points)
     |- RuntimeRecoveryService (core/recovery.py)
     |- ShutdownLifecycleService (core/shutdown.py)
     |- ScreenPowerService (integrations/display/service.py)
-    |- MusicFSM + CallFSM -- composed playback and call state machines
+    |- music session seam + call session seam -- composed playback and call state machines
     |- CoordinatorRuntime (core/ui_state.py) -- shared derived app state
     |- VoiceRuntimeCoordinator (integrations/voice/runtime.py) -- Ask voice session orchestration
     |- AppContext (core/app_context.py)
@@ -39,7 +39,7 @@ yoyopod.py / src/yoyopod/main.py  (entry points)
 
 ## State Orchestration
 
-`MusicFSM` and `CallFSM` stay independent, while `CoordinatorRuntime` (from `core/ui_state.py`) derives combined runtime states such as `PLAYING_WITH_VOIP`, `PAUSED_BY_CALL`, and `CALL_ACTIVE_MUSIC_PAUSED`. Incoming calls can auto-pause music, and playback can auto-resume after the call ends when enabled.
+`MusicFSM` (from `integrations/music/fsm.py`) and `CallFSM` (from `integrations/call/session.py`) stay independent, while `CoordinatorRuntime` (from `core/ui_state.py`) derives combined runtime states such as `PLAYING_WITH_VOIP`, `PAUSED_BY_CALL`, and `CALL_ACTIVE_MUSIC_PAUSED`. Incoming calls can auto-pause music, and playback can auto-resume after the call ends when enabled.
 
 ## Key Patterns
 
@@ -109,6 +109,8 @@ yoyopod.py / src/yoyopod/main.py  (entry points)
 - Favor typed events and explicit seams over reaching into concrete screen instances.
 - `src/yoyopod/core/events.py` owns only cross-cutting app events.
 - Domain events belong to their owning integration packages and should not be
+  re-exported through `yoyopod.core`.
+- Domain-specific FSM/session types belong to their owning integration packages and should not be
   re-exported through `yoyopod.core`.
 
 ## Dependency Direction

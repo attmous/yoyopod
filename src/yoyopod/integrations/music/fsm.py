@@ -1,10 +1,8 @@
-"""Music-focused finite-state machine."""
+"""Canonical music-domain finite-state machine primitives."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 from loguru import logger
 
@@ -36,13 +34,14 @@ class MusicFSM:
 
     def __init__(self, initial_state: MusicState = MusicState.IDLE) -> None:
         self.state = initial_state
-        self.previous_state: Optional[MusicState] = None
+        self.previous_state: MusicState | None = None
 
     def transition(self, trigger: str) -> bool:
         """Transition using a small trigger vocabulary."""
+
         target = self._TRANSITIONS.get(self.state, {}).get(trigger)
         if target is None:
-            logger.warning(f"Invalid music transition: {self.state.value} -> {trigger}")
+            logger.warning("Invalid music transition: {} -> {}", self.state.value, trigger)
             return False
 
         if target == self.state:
@@ -60,6 +59,7 @@ class MusicFSM:
 
     def sync(self, state: MusicState) -> None:
         """Force-sync to a known state."""
+
         if self.state == state:
             return
 
@@ -67,3 +67,5 @@ class MusicFSM:
         self.state = state
         logger.debug("MusicFSM synced to {}", self.state.value)
 
+
+__all__ = ["MusicFSM", "MusicState"]

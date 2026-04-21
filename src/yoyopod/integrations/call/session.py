@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from yoyopod.core.fsm.music import MusicFSM
+if TYPE_CHECKING:
+    from yoyopod.integrations.music import MusicFSM
 
 
 class CallSessionState(Enum):

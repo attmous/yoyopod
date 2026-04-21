@@ -10,7 +10,7 @@ This document started as a plan and now serves as the completion record for the 
 ## What Is Implemented
 
 - unified `YoyoPodApp` coordinator in `src/yoyopod/app.py`
-- split orchestration models in `src/yoyopod/core/fsm/` and `src/yoyopod/integrations/call/session.py`
+- split orchestration models in `src/yoyopod/integrations/music/fsm.py` and `src/yoyopod/integrations/call/session.py`
 - derived app runtime state in `src/yoyopod/core/ui_state.py`
 - music auto-pause on incoming call
 - optional music auto-resume after call end
@@ -76,7 +76,7 @@ Key states used by the running app:
 - `PAUSED_BY_CALL`
 - `CALL_ACTIVE_MUSIC_PAUSED`
 
-See `src/yoyopod/core/fsm/music.py`, `src/yoyopod/integrations/call/session.py`, and `src/yoyopod/core/ui_state.py` for the current transition and derived-state mapping.
+See `src/yoyopod/integrations/music/fsm.py`, `src/yoyopod/integrations/call/session.py`, and `src/yoyopod/core/ui_state.py` for the current transition and derived-state mapping.
 
 ## Incoming Call Flow
 

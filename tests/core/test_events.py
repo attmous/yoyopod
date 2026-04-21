@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+
 import pytest
 
 import yoyopod.core as core_module
@@ -52,3 +54,20 @@ def test_domain_events_are_not_reexported_from_core_surface() -> None:
         assert not hasattr(core_events, event_name)
         with pytest.raises(AttributeError):
             getattr(core_module, event_name)
+
+
+def test_fsm_types_are_not_reexported_from_core_surface() -> None:
+    """Domain-specific FSM types should stay on their owning integration seams."""
+
+    for fsm_name in (
+        "CallFSM",
+        "CallInterruptionPolicy",
+        "CallSessionState",
+        "MusicFSM",
+        "MusicState",
+    ):
+        with pytest.raises(AttributeError):
+            getattr(core_module, fsm_name)
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("yoyopod.core.fsm")
