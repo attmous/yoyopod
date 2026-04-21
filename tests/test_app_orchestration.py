@@ -126,6 +126,7 @@ class FakeScreenManager:
 
     def __init__(self, screen_lookup: dict[str, RenderableScreen]) -> None:
         self.screen_lookup = screen_lookup
+        self.screens = screen_lookup
         self.screen_stack: list[RenderableScreen] = []
         self.current_screen: RenderableScreen | None = None
         self.on_screen_changed = None
@@ -139,12 +140,14 @@ class FakeScreenManager:
         self.current_screen = screen
         self._notify_screen_changed(name)
 
-    def pop_screen(self) -> None:
-        if self.screen_stack:
-            self.screen_stack.pop()
+    def pop_screen(self) -> bool:
+        if not self.screen_stack:
+            return False
+        self.screen_stack.pop()
         self.current_screen = self.screen_stack[-1] if self.screen_stack else None
         route_name = getattr(self.current_screen, "route_name", None)
         self._notify_screen_changed(route_name)
+        return True
 
     def get_current_screen(self) -> RenderableScreen | None:
         return self.current_screen
@@ -496,7 +499,9 @@ class OrchestrationScreens:
         return {
             "menu": self.menu,
             "power": self.power,
+            "now_playing": self.now_playing,
             "playlists": self.playlist,
+            "call": self.call,
             "contacts": self.contacts,
             "incoming_call": self.incoming_call,
             "outgoing_call": self.outgoing_call,

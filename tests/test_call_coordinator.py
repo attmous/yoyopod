@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 from yoyopod.core import AppContext
@@ -16,8 +15,9 @@ from yoyopod.core import CallFSM, CallInterruptionPolicy, MusicFSM
 class _ScreenCoordinatorStub:
     """Small screen-coordinator double for call-coordinator tests."""
 
-    def __init__(self) -> None:
+    def __init__(self, voip_manager: _VoipManagerStub | None = None) -> None:
         self.refresh_calls = 0
+        self._voip_manager = voip_manager
 
     def refresh_call_screen_if_visible(self) -> None:
         self.refresh_calls += 1
@@ -36,6 +36,9 @@ class _ScreenCoordinatorStub:
 
     def refresh_now_playing_screen(self) -> None:
         return
+
+    def get_call_voip_manager(self) -> _VoipManagerStub | None:
+        return self._voip_manager
 
 
 class _ConfigManagerStub:
@@ -76,23 +79,12 @@ class _VoipManagerStub:
         return action
 
 
-@dataclass
-class _ScreenStub:
-    voip_manager: _VoipManagerStub
-
-
 def _build_runtime(
     *,
     config_manager: _ConfigManagerStub,
     context: AppContext,
-    voip_manager: _VoipManagerStub | None = None,
 ) -> CoordinatorRuntime:
     """Create the minimal coordinator runtime required by CallCoordinator."""
-
-    call_screen = _ScreenStub(voip_manager) if voip_manager is not None else None
-    incoming_call_screen = _ScreenStub(voip_manager) if voip_manager is not None else None
-    outgoing_call_screen = _ScreenStub(voip_manager) if voip_manager is not None else None
-    in_call_screen = _ScreenStub(voip_manager) if voip_manager is not None else None
 
     return CoordinatorRuntime(
         music_fsm=MusicFSM(),
@@ -101,12 +93,6 @@ def _build_runtime(
         screen_manager=None,
         music_backend=None,
         power_manager=None,
-        now_playing_screen=None,
-        call_screen=call_screen,
-        power_screen=None,
-        incoming_call_screen=incoming_call_screen,
-        outgoing_call_screen=outgoing_call_screen,
-        in_call_screen=in_call_screen,
         config_manager=config_manager,
         context=context,
     )
@@ -167,11 +153,11 @@ def test_terminal_call_states_record_rejected_and_failed_history(tmp_path: Path)
     runtime = _build_runtime(
         config_manager=_ConfigManagerStub(sip_username="kid@example.com"),
         context=context,
-        voip_manager=voip_manager,
     )
+    screen_coordinator = _ScreenCoordinatorStub(voip_manager=voip_manager)
     coordinator = CallCoordinator(
         runtime=runtime,
-        screen_coordinator=_ScreenCoordinatorStub(),
+        screen_coordinator=screen_coordinator,
         auto_resume_after_call=True,
         call_history_store=CallHistoryStore(tmp_path / "call_history.json"),
     )

@@ -23,12 +23,6 @@ if TYPE_CHECKING:
     from yoyopod.power.manager import PowerManager
     from yoyopod.power.models import PowerSnapshot
     from yoyopod.ui.screens.manager import ScreenManager
-    from yoyopod.ui.screens.music.now_playing import NowPlayingScreen
-    from yoyopod.ui.screens.system.power import PowerScreen
-    from yoyopod.ui.screens.voip.in_call import InCallScreen
-    from yoyopod.ui.screens.voip.incoming_call import IncomingCallScreen
-    from yoyopod.ui.screens.voip.outgoing_call import OutgoingCallScreen
-    from yoyopod.ui.screens.voip.quick_call import CallScreen
 
 
 class AppRuntimeState(Enum):
@@ -81,12 +75,6 @@ class CoordinatorRuntime:
     call_interruption_policy: CallInterruptionPolicy
     screen_manager: ScreenManager | None
     power_manager: PowerManager | None
-    now_playing_screen: NowPlayingScreen | None
-    call_screen: CallScreen | None
-    power_screen: PowerScreen | None
-    incoming_call_screen: IncomingCallScreen | None
-    outgoing_call_screen: OutgoingCallScreen | None
-    in_call_screen: InCallScreen | None
     config_manager: ConfigManager | None
     music_backend: MusicBackend | None = None
     context: AppContext | None = None

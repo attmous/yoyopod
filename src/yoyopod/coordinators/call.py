@@ -447,18 +447,9 @@ class CallCoordinator:
         return None
 
     def _current_voip_manager(self) -> object | None:
-        """Return the shared VoIP manager from any registered call screen."""
+        """Return the shared VoIP manager from call-related UI routes."""
 
-        for screen in (
-            self.runtime.call_screen,
-            self.runtime.outgoing_call_screen,
-            self.runtime.incoming_call_screen,
-            self.runtime.in_call_screen,
-        ):
-            voip_manager = getattr(screen, "voip_manager", None)
-            if voip_manager is not None:
-                return voip_manager
-        return None
+        return self.screen_coordinator.get_call_voip_manager()
 
     def _current_caller_info(self) -> dict[str, str]:
         """Return the current caller/callee metadata from the VoIP manager."""
@@ -481,9 +472,10 @@ class CallCoordinator:
 
         draft = self._active_call_session
         call_duration = 0
-        call_voip_manager = getattr(self.runtime.call_screen, "voip_manager", None)
-        if call_voip_manager is not None:
-            call_duration = int(call_voip_manager.get_call_duration())
+        call_voip_manager = self._current_voip_manager()
+        get_call_duration = getattr(call_voip_manager, "get_call_duration", None)
+        if callable(get_call_duration):
+            call_duration = int(get_call_duration())
 
         if draft.answered:
             outcome = "completed"
