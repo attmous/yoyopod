@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from loguru import logger
 
+from yoyopod.integrations.call import HangupCommand
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.lvgl_lifecycle import current_retained_view
@@ -27,13 +28,42 @@ class OutgoingCallScreen(Screen):
         voip_manager=None,
         callee_address: str = "",
         callee_name: str = "Unknown",
+        *,
+        app: Any | None = None,
     ) -> None:
-        super().__init__(display, context, "OutgoingCall")
-        self.voip_manager = voip_manager
+        super().__init__(display, context, "OutgoingCall", app=app)
+        self._explicit_voip_manager = voip_manager
         self.callee_address = callee_address
         self.callee_name = callee_name
         self.ring_animation_frame = 0
         self._lvgl_view: "ScreenView | None" = None
+
+    @property
+    def voip_manager(self) -> object | None:
+        """Resolve the current VoIP manager from the constructor or owning app."""
+
+        if self._explicit_voip_manager is not None:
+            return self._explicit_voip_manager
+        return getattr(self.app, "voip_manager", None)
+
+    def current_callee_info(self) -> tuple[str, str]:
+        """Return the best available callee name and address."""
+
+        if self.voip_manager:
+            caller_info = self.voip_manager.get_caller_info()
+            return (
+                str(caller_info.get("display_name", self.callee_name) or "Unknown"),
+                str(caller_info.get("address", self.callee_address) or "Unknown"),
+            )
+        state = getattr(self.app, "states", None)
+        if state is not None and hasattr(state, "get"):
+            entity = state.get("call.state")
+            attrs = {} if entity is None else getattr(entity, "attrs", {})
+            return (
+                str(attrs.get("caller_name") or self.callee_name or "Unknown"),
+                str(attrs.get("caller_address") or self.callee_address or "Unknown"),
+            )
+        return (self.callee_name or "Unknown", self.callee_address or "Unknown")
 
     def enter(self) -> None:
         """Create the LVGL view when the screen becomes active."""
@@ -77,6 +107,10 @@ class OutgoingCallScreen(Screen):
     def _cancel_call(self) -> None:
         """Cancel the outgoing call."""
         logger.info("Canceling outgoing call")
+        services = getattr(self.app, "services", None)
+        if services is not None and hasattr(services, "call"):
+            services.call("call", "hangup", HangupCommand())
+            return
         if self.voip_manager:
             self.voip_manager.hangup()
 

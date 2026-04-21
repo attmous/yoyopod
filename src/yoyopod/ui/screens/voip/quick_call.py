@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
@@ -60,15 +60,45 @@ class CallScreen(Screen):
         voip_manager: Optional["VoIPManager"] = None,
         people_directory: Optional["PeopleManager"] = None,
         call_history_store: Optional["CallHistoryStore"] = None,
+        *,
+        app: Any | None = None,
     ) -> None:
-        super().__init__(display, context, "Talk")
-        self.voip_manager = voip_manager
-        self.people_directory = people_directory
-        self.call_history_store = call_history_store
+        super().__init__(display, context, "Talk", app=app)
+        self._explicit_voip_manager = voip_manager
+        self._explicit_people_directory = people_directory
+        self._explicit_call_history_store = call_history_store
         self.people: list[TalkPerson] = []
         self.deck_cards: list[TalkDeckCard] = []
         self.selected_index = 0
         self._lvgl_view: "ScreenView | None" = None
+
+    @property
+    def voip_manager(self) -> "VoIPManager | None":
+        """Resolve the current VoIP manager from the constructor or owning app."""
+
+        if self._explicit_voip_manager is not None:
+            return self._explicit_voip_manager
+        return getattr(self.app, "voip_manager", None)
+
+    @property
+    def people_directory(self) -> "PeopleManager | None":
+        """Resolve the contact directory from the constructor or owning app."""
+
+        if self._explicit_people_directory is not None:
+            return self._explicit_people_directory
+        contacts_integration = getattr(self.app, "integrations", {}).get("contacts")
+        directory = getattr(contacts_integration, "directory", None)
+        if directory is not None:
+            return directory
+        return getattr(self.app, "people_directory", None)
+
+    @property
+    def call_history_store(self) -> "CallHistoryStore | None":
+        """Resolve the call-history store from the constructor or owning app."""
+
+        if self._explicit_call_history_store is not None:
+            return self._explicit_call_history_store
+        return getattr(self.app, "call_history_store", None)
 
     def enter(self) -> None:
         """Refresh the contact deck when Talk becomes active."""

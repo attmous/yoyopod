@@ -40,12 +40,7 @@ class LvglOutgoingCallView:
         if not ensure_retained_view_built(self):
             return
 
-        callee_name = self.screen.callee_name or "Unknown"
-        callee_address = self.screen.callee_address or "Unknown"
-        if self.screen.voip_manager:
-            caller_info = self.screen.voip_manager.get_caller_info()
-            callee_name = caller_info.get("display_name", callee_name) or "Unknown"
-            callee_address = caller_info.get("address", callee_address) or "Unknown"
+        callee_name, callee_address = self.screen.current_callee_info()
 
         footer = "Hold = Cancel" if self.screen.is_one_button_mode() else "B cancel"
         context = self.screen.context

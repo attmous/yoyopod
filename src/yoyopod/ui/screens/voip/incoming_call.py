@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from loguru import logger
 
+from yoyopod.integrations.call import AnswerCommand, RejectCommand
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.lvgl_lifecycle import current_retained_view
@@ -27,13 +28,51 @@ class IncomingCallScreen(Screen):
         voip_manager=None,
         caller_address: str = "",
         caller_name: str = "Unknown",
+        *,
+        app: Any | None = None,
     ) -> None:
-        super().__init__(display, context, "IncomingCall")
-        self.voip_manager = voip_manager
+        super().__init__(display, context, "IncomingCall", app=app)
+        self._explicit_voip_manager = voip_manager
         self.caller_address = caller_address
         self.caller_name = caller_name
         self.ring_animation_frame = 0
         self._lvgl_view: "ScreenView | None" = None
+
+    @property
+    def voip_manager(self) -> object | None:
+        """Resolve the current VoIP manager from the constructor or owning app."""
+
+        if self._explicit_voip_manager is not None:
+            return self._explicit_voip_manager
+        return getattr(self.app, "voip_manager", None)
+
+    def current_caller_name(self) -> str:
+        """Return the best available caller name for the incoming call."""
+
+        if self.caller_name.strip():
+            return self.caller_name
+        state = getattr(self.app, "states", None)
+        if state is not None and hasattr(state, "get"):
+            entity = state.get("call.state")
+            attrs = {} if entity is None else getattr(entity, "attrs", {})
+            name = str(attrs.get("caller_name") or "").strip()
+            if name:
+                return name
+        return "Unknown"
+
+    def current_caller_address(self) -> str:
+        """Return the best available caller address for the incoming call."""
+
+        if self.caller_address.strip():
+            return self.caller_address
+        state = getattr(self.app, "states", None)
+        if state is not None and hasattr(state, "get"):
+            entity = state.get("call.state")
+            attrs = {} if entity is None else getattr(entity, "attrs", {})
+            address = str(attrs.get("caller_address") or "").strip()
+            if address:
+                return address
+        return "Unknown"
 
     def enter(self) -> None:
         """Create the LVGL view when the screen becomes active."""
@@ -77,12 +116,20 @@ class IncomingCallScreen(Screen):
     def _answer_call(self) -> None:
         """Answer the incoming call."""
         logger.info("Answering incoming call")
+        services = getattr(self.app, "services", None)
+        if services is not None and hasattr(services, "call"):
+            services.call("call", "answer", AnswerCommand())
+            return
         if self.voip_manager:
             self.voip_manager.answer_call()
 
     def _reject_call(self) -> None:
         """Reject the incoming call."""
         logger.info("Rejecting incoming call")
+        services = getattr(self.app, "services", None)
+        if services is not None and hasattr(services, "call"):
+            services.call("call", "reject", RejectCommand())
+            return
         if self.voip_manager:
             self.voip_manager.reject_call()
 

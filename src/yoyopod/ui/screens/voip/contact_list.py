@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 from loguru import logger
 
+from yoyopod.integrations.call import DialCommand
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.lvgl_lifecycle import current_retained_view
@@ -28,16 +29,38 @@ class ContactListScreen(Screen):
         voip_manager=None,
         people_directory=None,
         action_mode: Literal["call", "voice_note"] = "call",
+        *,
+        app: Any | None = None,
     ) -> None:
-        super().__init__(display, context, "ContactList")
-        self.voip_manager = voip_manager
-        self.people_directory = people_directory
+        super().__init__(display, context, "ContactList", app=app)
+        self._explicit_voip_manager = voip_manager
+        self._explicit_people_directory = people_directory
         self.action_mode = action_mode
         self.contacts = []
         self.selected_index = 0
         self.scroll_offset = 0
         self.max_visible_items = 4 if display.is_portrait() else 5
         self._lvgl_view: "ScreenView | None" = None
+
+    @property
+    def voip_manager(self) -> object | None:
+        """Resolve the current VoIP manager from the constructor or owning app."""
+
+        if self._explicit_voip_manager is not None:
+            return self._explicit_voip_manager
+        return getattr(self.app, "voip_manager", None)
+
+    @property
+    def people_directory(self) -> object | None:
+        """Resolve the contact directory from the constructor or owning app."""
+
+        if self._explicit_people_directory is not None:
+            return self._explicit_people_directory
+        contacts_integration = getattr(self.app, "integrations", {}).get("contacts")
+        directory = getattr(contacts_integration, "directory", None)
+        if directory is not None:
+            return directory
+        return getattr(self.app, "people_directory", None)
 
     @property
     def title_text(self) -> str:
@@ -203,12 +226,26 @@ class ContactListScreen(Screen):
             logger.warning("No contact selected")
             return
 
+        contact = self.contacts[self.selected_index]
+        logger.info(f"Calling contact: {contact.display_name} at {contact.sip_address}")
+        services = getattr(self.app, "services", None)
+        if services is not None and hasattr(services, "call"):
+            if services.call(
+                "call",
+                "dial",
+                DialCommand(
+                    sip_address=contact.sip_address,
+                    contact_name=contact.display_name,
+                ),
+            ):
+                return
+            logger.error(f"Failed to initiate call to {contact.display_name}")
+            return
+
         if not self.voip_manager:
             logger.error("Cannot make call: no VoIP manager")
             return
 
-        contact = self.contacts[self.selected_index]
-        logger.info(f"Calling contact: {contact.display_name} at {contact.sip_address}")
         if not self.voip_manager.make_call(contact.sip_address, contact_name=contact.display_name):
             logger.error(f"Failed to initiate call to {contact.display_name}")
 

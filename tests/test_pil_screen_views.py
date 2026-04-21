@@ -191,6 +191,15 @@ def _make_in_call_screen() -> object:
         def format_duration(self, seconds: int) -> str:
             return f"{seconds // 60:02d}:{seconds % 60:02d}"
 
+        def current_caller_info(self) -> dict[str, object]:
+            return dict(self.voip_manager.get_caller_info())
+
+        def current_call_duration(self) -> int:
+            return int(self.voip_manager.get_call_duration())
+
+        def is_call_muted(self) -> bool:
+            return bool(self.voip_manager.is_muted)
+
     return ScreenStub()
 
 
@@ -207,6 +216,12 @@ def _make_incoming_call_screen() -> object:
 
         def is_one_button_mode(self) -> bool:
             return False
+
+        def current_caller_name(self) -> str:
+            return self.caller_name
+
+        def current_caller_address(self) -> str:
+            return "sip:harper@test"
 
     return ScreenStub()
 
@@ -229,6 +244,13 @@ def _make_outgoing_call_screen() -> object:
 
         def is_one_button_mode(self) -> bool:
             return False
+
+        def current_callee_info(self) -> tuple[str, str]:
+            caller_info = self.voip_manager.get_caller_info()
+            return (
+                str(caller_info.get("display_name", self.callee_name)),
+                str(caller_info.get("address", self.callee_address)),
+            )
 
     return ScreenStub()
 

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from loguru import logger
 
+from yoyopod.integrations.call import DialCommand, PlayLatestVoiceNoteCommand
+from yoyopod.integrations.contacts import MarkVoiceNotesSeenCommand
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.lvgl_lifecycle import current_retained_view
@@ -36,11 +38,21 @@ class TalkContactScreen(Screen):
         display: Display,
         context: Optional["AppContext"] = None,
         voip_manager=None,
+        *,
+        app: Any | None = None,
     ) -> None:
-        super().__init__(display, context, "TalkContact")
-        self.voip_manager = voip_manager
+        super().__init__(display, context, "TalkContact", app=app)
+        self._explicit_voip_manager = voip_manager
         self.selected_index = 0
         self._lvgl_view: "ScreenView | None" = None
+
+    @property
+    def voip_manager(self) -> object | None:
+        """Resolve the current VoIP manager from the constructor or owning app."""
+
+        if self._explicit_voip_manager is not None:
+            return self._explicit_voip_manager
+        return getattr(self.app, "voip_manager", None)
 
     def enter(self) -> None:
         """Reset the action cursor and create the LVGL view when active."""
@@ -176,6 +188,16 @@ class TalkContactScreen(Screen):
         if not sip_address:
             logger.warning("Cannot place Talk call without a selected address")
             return
+        services = getattr(self.app, "services", None)
+        if services is not None and hasattr(services, "call"):
+            if services.call(
+                "call",
+                "dial",
+                DialCommand(sip_address=sip_address, contact_name=contact_name),
+            ):
+                return
+            logger.error("Failed to place Talk call to {}", contact_name)
+            return
         if self.voip_manager is None:
             logger.error("Cannot place Talk call: no VoIP manager")
             return
@@ -196,9 +218,22 @@ class TalkContactScreen(Screen):
     def _play_latest_voice_note(self) -> None:
         """Play the latest available voice note for the selected contact."""
 
+        address = self.current_contact_address()
+        services = getattr(self.app, "services", None)
+        if services is not None and hasattr(services, "call"):
+            if services.call(
+                "call",
+                "play_latest_voice_note",
+                PlayLatestVoiceNoteCommand(sip_address=address),
+            ):
+                services.call(
+                    "contacts",
+                    "mark_voice_notes_seen",
+                    MarkVoiceNotesSeenCommand(address=address),
+                )
+            return
         if self.voip_manager is None:
             return
-        address = self.current_contact_address()
         if self.voip_manager.play_latest_voice_note(address):
             self.voip_manager.mark_voice_notes_seen(address)
 

@@ -23,13 +23,9 @@ if TYPE_CHECKING:
 def render_in_call_pil(screen: "InCallScreen") -> None:
     """Render the active-call screen through the PIL display path."""
 
-    caller_info = {"display_name": "Unknown", "address": ""}
-    duration = 0
-    is_muted = False
-    if screen.voip_manager:
-        caller_info = screen.voip_manager.get_caller_info()
-        duration = screen.voip_manager.get_call_duration()
-        is_muted = screen.voip_manager.is_muted
+    caller_info = screen.current_caller_info()
+    duration = screen.current_call_duration()
+    is_muted = screen.is_call_muted()
 
     render_status_bar(screen.display, screen.context, show_time=True)
     caller_name = caller_info.get("display_name", "Unknown")

@@ -21,10 +21,7 @@ if TYPE_CHECKING:
 def render_outgoing_call_pil(screen: "OutgoingCallScreen") -> None:
     """Render the outgoing-call screen through the PIL display path."""
 
-    callee_name = screen.callee_name
-    if screen.voip_manager:
-        caller_info = screen.voip_manager.get_caller_info()
-        callee_name = caller_info.get("display_name", callee_name)
+    callee_name, _callee_address = screen.current_callee_info()
 
     render_status_bar(screen.display, screen.context, show_time=True)
     card_top = screen.display.STATUS_BAR_HEIGHT + 42

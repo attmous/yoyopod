@@ -44,13 +44,17 @@ class LvglIncomingCallView:
         if not ensure_retained_view_built(self):
             return
 
-        footer = "Tap = Answer | Hold = Decline" if self.screen.is_one_button_mode() else "A answer | B reject"
+        footer = (
+            "Tap = Answer | Hold = Decline"
+            if self.screen.is_one_button_mode()
+            else "A answer | B reject"
+        )
         context = self.screen.context
         sync_network_status(self.backend.binding, context)
 
         self.backend.binding.incoming_call_sync(
-            caller_name=self.screen.caller_name or "Unknown",
-            caller_address=self.screen.caller_address or "Unknown",
+            caller_name=self.screen.current_caller_name(),
+            caller_address=self.screen.current_caller_address(),
             footer=footer,
             voip_state=self._voip_state(context),
             battery_percent=self._battery_percent(context),

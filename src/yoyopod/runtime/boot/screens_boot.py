@@ -268,26 +268,22 @@ class ScreensBoot:
             self.app.call_screen = CallScreen(
                 display,
                 context,
-                voip_manager=self.app.voip_manager,
-                people_directory=self.app.people_directory,
-                call_history_store=self.app.call_history_store,
+                app=self.app,
             )
             self.app.call_history_screen = CallHistoryScreen(
                 display,
                 context,
-                voip_manager=self.app.voip_manager,
-                call_history_store=self.app.call_history_store,
+                app=self.app,
             )
             self.app.talk_contact_screen = TalkContactScreen(
                 display,
                 context,
-                voip_manager=self.app.voip_manager,
+                app=self.app,
             )
             self.app.contact_list_screen = ContactListScreen(
                 display,
                 context,
-                voip_manager=self.app.voip_manager,
-                people_directory=self.app.people_directory,
+                app=self.app,
             )
             self.app.voice_note_screen = VoiceNoteScreen(
                 display,
@@ -301,21 +297,21 @@ class ScreensBoot:
             self.app.incoming_call_screen = IncomingCallScreen(
                 display,
                 context,
-                voip_manager=self.app.voip_manager,
+                app=self.app,
                 caller_address="",
                 caller_name="Unknown",
             )
             self.app.outgoing_call_screen = OutgoingCallScreen(
                 display,
                 context,
-                voip_manager=self.app.voip_manager,
+                app=self.app,
                 callee_address="",
                 callee_name="Unknown",
             )
             self.app.in_call_screen = InCallScreen(
                 display,
                 context,
-                voip_manager=self.app.voip_manager,
+                app=self.app,
             )
 
             screen_manager.register_screen("hub", self.app.hub_screen)

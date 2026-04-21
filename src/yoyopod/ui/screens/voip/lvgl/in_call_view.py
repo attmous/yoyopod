@@ -40,14 +40,10 @@ class LvglInCallView:
         if not ensure_retained_view_built(self):
             return
 
-        caller_name = "Unknown"
-        duration_seconds = 0
-        is_muted = False
-        if self.screen.voip_manager:
-            caller_info = self.screen.voip_manager.get_caller_info()
-            caller_name = caller_info.get("display_name", caller_name) or "Unknown"
-            duration_seconds = self.screen.voip_manager.get_call_duration()
-            is_muted = self.screen.voip_manager.is_muted
+        caller_info = self.screen.current_caller_info()
+        caller_name = str(caller_info.get("display_name", "Unknown") or "Unknown")
+        duration_seconds = self.screen.current_call_duration()
+        is_muted = self.screen.is_call_muted()
 
         footer = (
             f"Tap = {'Unmute' if is_muted else 'Mute'} | Hold = End"

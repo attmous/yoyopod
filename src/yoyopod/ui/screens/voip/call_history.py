@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from loguru import logger
 
+from yoyopod.integrations.call import DialCommand, MarkHistorySeenCommand
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.lvgl_lifecycle import current_retained_view
@@ -27,22 +28,44 @@ class CallHistoryScreen(Screen):
         context: Optional["AppContext"] = None,
         voip_manager=None,
         call_history_store: Optional["CallHistoryStore"] = None,
+        *,
+        app: Any | None = None,
     ) -> None:
-        super().__init__(display, context, "CallHistory")
-        self.voip_manager = voip_manager
-        self.call_history_store = call_history_store
+        super().__init__(display, context, "CallHistory", app=app)
+        self._explicit_voip_manager = voip_manager
+        self._explicit_call_history_store = call_history_store
         self.entries: list["CallHistoryEntry"] = []
         self.selected_index = 0
         self.scroll_offset = 0
         self.max_visible_items = 4 if display.is_portrait() else 5
         self._lvgl_view: "ScreenView | None" = None
 
+    @property
+    def voip_manager(self) -> object | None:
+        """Resolve the current VoIP manager from the constructor or owning app."""
+
+        if self._explicit_voip_manager is not None:
+            return self._explicit_voip_manager
+        return getattr(self.app, "voip_manager", None)
+
+    @property
+    def call_history_store(self) -> "CallHistoryStore | None":
+        """Resolve the call-history store from the constructor or owning app."""
+
+        if self._explicit_call_history_store is not None:
+            return self._explicit_call_history_store
+        return getattr(self.app, "call_history_store", None)
+
     def enter(self) -> None:
         """Refresh call history and clear the unseen-missed badge count."""
         super().enter()
         self._load_entries()
         if self.call_history_store is not None:
-            self.call_history_store.mark_all_seen()
+            services = getattr(self.app, "services", None)
+            if services is not None and hasattr(services, "call"):
+                services.call("call", "mark_history_seen", MarkHistorySeenCommand())
+            else:
+                self.call_history_store.mark_all_seen()
             self._sync_context_summary()
         self._ensure_lvgl_view()
 
@@ -94,6 +117,10 @@ class CallHistoryScreen(Screen):
 
     def _is_ready_to_call(self) -> bool:
         """Return whether VoIP is ready to redial from recents."""
+
+        states = getattr(self.app, "states", None)
+        if states is not None and hasattr(states, "get_value"):
+            return states.get_value("call.registration") == "ok"
         if self.voip_manager is None:
             return False
         status = self.voip_manager.get_status()
@@ -109,7 +136,11 @@ class CallHistoryScreen(Screen):
         if not self.entries:
             return "Hold back" if self.is_one_button_mode() else "B back"
         if self._is_ready_to_call():
-            return "Tap next / Double call" if self.is_one_button_mode() else "A call | B back | X/Y move"
+            return (
+                "Tap next / Double call"
+                if self.is_one_button_mode()
+                else "A call | B back | X/Y move"
+            )
         return "Tap next / Hold back" if self.is_one_button_mode() else "B back | X/Y move"
 
     def render(self) -> None:
@@ -178,18 +209,29 @@ class CallHistoryScreen(Screen):
     def on_select(self, data=None) -> None:
         """Redial the selected recent call when VoIP is ready."""
         selected = self._selected_entry()
-        if (
-            selected is None
-            or not selected.sip_address
-            or not self._is_ready_to_call()
-            or self.voip_manager is None
-        ):
+        if selected is None or not selected.sip_address or not self._is_ready_to_call():
             return
 
         logger.info(f"Redialing recent contact: {selected.title} ({selected.sip_address})")
+        services = getattr(self.app, "services", None)
+        if services is not None and hasattr(services, "call"):
+            if services.call(
+                "call",
+                "dial",
+                DialCommand(
+                    sip_address=selected.sip_address,
+                    contact_name=selected.display_name,
+                ),
+            ):
+                return
+            logger.error(f"Failed to redial recent contact: {selected.title}")
+            return
+
+        if self.voip_manager is None:
+            return
+
         if not self.voip_manager.make_call(
-            selected.sip_address,
-            contact_name=selected.display_name,
+            selected.sip_address, contact_name=selected.display_name
         ):
             logger.error(f"Failed to redial recent contact: {selected.title}")
 
