@@ -23,6 +23,13 @@ class PowerRuntimeService:
         self.app = app
         self._power_io_lock = threading.Lock()
         self._watchdog_io_lock = threading.Lock()
+        self.next_power_poll_at = 0.0
+        self.power_available: bool | None = None
+        self.power_refresh_in_flight = False
+        self.watchdog_active = False
+        self.watchdog_feed_suppressed = False
+        self.watchdog_feed_in_flight = False
+        self.next_watchdog_feed_at = 0.0
 
     def poll_status(self, now: float | None = None, force: bool = False) -> None:
         """Refresh PiSugar power telemetry without stalling the coordinator loop."""
@@ -30,14 +37,14 @@ class PowerRuntimeService:
             return
 
         poll_now = time.monotonic() if now is None else now
-        if not force and poll_now < self.app._next_power_poll_at:
+        if not force and poll_now < self.next_power_poll_at:
             return
 
         interval = max(1.0, self.app.power_manager.config.poll_interval_seconds)
-        self.app._next_power_poll_at = poll_now + interval
+        self.next_power_poll_at = poll_now + interval
 
         if force:
-            if self.app._power_refresh_in_flight:
+            if self.power_refresh_in_flight:
                 self._publish_cached_snapshot_if_ready()
                 return
 
@@ -49,10 +56,10 @@ class PowerRuntimeService:
     def _start_power_refresh_worker(self) -> None:
         """Schedule one background refresh when no worker is already running."""
 
-        if self.app._power_refresh_in_flight:
+        if self.power_refresh_in_flight:
             return
 
-        self.app._power_refresh_in_flight = True
+        self.power_refresh_in_flight = True
         worker = threading.Thread(
             target=self.run_power_refresh_attempt,
             daemon=True,
@@ -87,7 +94,7 @@ class PowerRuntimeService:
     def _complete_refresh(self, *, snapshot: "PowerSnapshot") -> None:
         """Publish one completed power refresh back onto the coordinator thread."""
 
-        self.app._power_refresh_in_flight = False
+        self.power_refresh_in_flight = False
         self._publish_snapshot(snapshot=snapshot)
 
     def _publish_cached_snapshot_if_ready(self) -> None:
@@ -110,16 +117,16 @@ class PowerRuntimeService:
         assert self.app.coordinator_runtime is not None
         if (
             self.app.coordinator_runtime.power_snapshot == snapshot
-            and self.app._power_available == snapshot.available
+            and self.power_available == snapshot.available
         ):
             return
 
         assert self.app.power_coordinator is not None
         self.app.power_coordinator.publish_snapshot(snapshot)
 
-        if self.app._power_available is None or self.app._power_available != snapshot.available:
+        if self.power_available is None or self.power_available != snapshot.available:
             reason = snapshot.error or ("ready" if snapshot.available else "unavailable")
-            self.app._power_available = snapshot.available
+            self.power_available = snapshot.available
             self.app.power_coordinator.publish_availability_change(snapshot.available, reason)
 
     def start_watchdog(self, now: float | None = None) -> None:
@@ -127,7 +134,7 @@ class PowerRuntimeService:
         if self.app.simulate or self.app.power_manager is None:
             return
 
-        if not self.app.power_manager.config.watchdog_enabled or self.app._watchdog_active:
+        if not self.app.power_manager.config.watchdog_enabled or self.watchdog_active:
             return
 
         feed_interval = max(
@@ -149,10 +156,10 @@ class PowerRuntimeService:
             return
 
         watchdog_now = time.monotonic() if now is None else now
-        self.app._watchdog_active = True
-        self.app._watchdog_feed_in_flight = False
-        self.app._watchdog_feed_suppressed = False
-        self.app._next_watchdog_feed_at = watchdog_now + feed_interval
+        self.watchdog_active = True
+        self.watchdog_feed_in_flight = False
+        self.watchdog_feed_suppressed = False
+        self.next_watchdog_feed_at = watchdog_now + feed_interval
         logger.info(
             "Power watchdog enabled (timeout={}s, feed={}s)",
             timeout_seconds,
@@ -161,16 +168,16 @@ class PowerRuntimeService:
 
     def feed_watchdog_if_due(self, now: float) -> None:
         """Feed the PiSugar software watchdog without blocking the coordinator loop."""
-        if not self.app._watchdog_active or self.app._watchdog_feed_suppressed:
+        if not self.watchdog_active or self.watchdog_feed_suppressed:
             return
 
-        if self.app.power_manager is None or now < self.app._next_watchdog_feed_at:
+        if self.app.power_manager is None or now < self.next_watchdog_feed_at:
             return
 
-        if self.app._watchdog_feed_in_flight:
+        if self.watchdog_feed_in_flight:
             return
 
-        self.app._watchdog_feed_in_flight = True
+        self.watchdog_feed_in_flight = True
         worker = threading.Thread(
             target=self.run_watchdog_feed_attempt,
             daemon=True,
@@ -218,19 +225,19 @@ class PowerRuntimeService:
     ) -> None:
         """Update watchdog cadence after one off-thread feed attempt completes."""
 
-        self.app._watchdog_feed_in_flight = False
-        if not self.app._watchdog_active:
+        self.watchdog_feed_in_flight = False
+        if not self.watchdog_active:
             return
 
         if success:
-            self.app._next_watchdog_feed_at = completed_at + feed_interval
+            self.next_watchdog_feed_at = completed_at + feed_interval
             return
 
-        self.app._next_watchdog_feed_at = completed_at + min(feed_interval, 5.0)
+        self.next_watchdog_feed_at = completed_at + min(feed_interval, 5.0)
 
     def disable_watchdog(self) -> None:
         """Disable the PiSugar watchdog during intentional app shutdowns."""
-        if not self.app._watchdog_active:
+        if not self.watchdog_active:
             return
 
         disabled = False
@@ -242,15 +249,15 @@ class PowerRuntimeService:
         else:
             logger.warning("Failed to disable power watchdog cleanly")
 
-        self.app._watchdog_active = False
-        self.app._watchdog_feed_in_flight = False
-        self.app._watchdog_feed_suppressed = False
-        self.app._next_watchdog_feed_at = 0.0
+        self.watchdog_active = False
+        self.watchdog_feed_in_flight = False
+        self.watchdog_feed_suppressed = False
+        self.next_watchdog_feed_at = 0.0
 
     def suppress_watchdog_feeding(self, reason: str) -> None:
         """Stop feeding the watchdog without disabling it."""
-        if not self.app._watchdog_active or self.app._watchdog_feed_suppressed:
+        if not self.watchdog_active or self.watchdog_feed_suppressed:
             return
 
-        self.app._watchdog_feed_suppressed = True
+        self.watchdog_feed_suppressed = True
         logger.info(f"Power watchdog feeding suppressed: {reason}")

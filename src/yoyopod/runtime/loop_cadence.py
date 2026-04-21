@@ -33,13 +33,13 @@ def _select_loop_cadence(
 
     configured_voip_interval_seconds = max(
         0.01,
-        float(runtime_loop.app._voip_iterate_interval_seconds),
+        float(runtime_loop.configured_voip_iterate_interval_seconds),
     )
     fast_loop_sleep_seconds = min(
         runtime_loop._RELAXED_IDLE_INTERVAL_SECONDS,
         configured_voip_interval_seconds,
     )
-    pending_callbacks = max(0, runtime_loop.app._pending_main_thread_callback_count() or 0)
+    pending_callbacks = max(0, runtime_loop.pending_main_thread_callback_count() or 0)
     pending_events = max(0, runtime_loop.app.event_bus.pending_count())
     if pending_callbacks > 0 or pending_events > 0:
         return _LoopCadenceDecision(
@@ -145,11 +145,11 @@ def _apply_loop_cadence(
                 set_interval(decision.voip_iterate_interval_seconds)
             # The background worker now owns iterate timing, so the coordinator-side
             # deadline stays cleared even when the cadence decision itself is unchanged.
-            runtime_loop.app._next_voip_iterate_at = 0.0
+            runtime_loop.next_voip_iterate_at = 0.0
         else:
             # Recompute the coordinator-side deadline on every pass so manual iterate
             # scheduling stays aligned to the latest cadence and last-start timestamp.
-            runtime_loop.app._next_voip_iterate_at = _next_voip_due_at_for_cadence(
+            runtime_loop.next_voip_iterate_at = _next_voip_due_at_for_cadence(
                 runtime_loop=runtime_loop,
                 monotonic_now=monotonic_now,
                 iterate_interval_seconds=decision.voip_iterate_interval_seconds,
@@ -166,7 +166,7 @@ def _apply_loop_cadence(
         decision.reason,
         decision.loop_sleep_seconds * 1000.0,
         decision.voip_iterate_interval_seconds * 1000.0,
-        runtime_loop.app._voip_iterate_interval_seconds * 1000.0,
+        runtime_loop.configured_voip_iterate_interval_seconds * 1000.0,
         runtime_loop._current_screen_name(),
         runtime_loop._runtime_state_name(),
     )

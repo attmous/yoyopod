@@ -252,11 +252,11 @@ def _pump_app(app: "YoyoPodApp", duration_seconds: float) -> None:
     while time.monotonic() < deadline:
         app.runtime_loop.process_pending_main_thread_actions()
         now = time.monotonic()
-        app._attempt_manager_recovery()
-        app._poll_power_status(now=now)
-        app._pump_lvgl_backend(now)
-        app._feed_watchdog_if_due(now)
-        app._update_screen_power(now)
+        app.recovery_service.attempt_manager_recovery()
+        app.power_runtime.poll_status(now=now)
+        app.runtime_loop.pump_lvgl_backend(now)
+        app.power_runtime.feed_watchdog_if_due(now)
+        app.screen_power_service.update_screen_power(now)
         time.sleep(0.05)
 
 

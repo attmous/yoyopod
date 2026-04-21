@@ -39,7 +39,7 @@ def _record_blocking_span(
         "span={} duration_ms={:.1f} pending_callbacks={} pending_events={} screen={} state={}",
         span_name,
         duration_seconds * 1000.0,
-        runtime_loop.app._pending_main_thread_callback_count(),
+        runtime_loop.pending_main_thread_callback_count(),
         runtime_loop.app.event_bus.pending_count(),
         runtime_loop._current_screen_name(),
         runtime_loop._runtime_state_name(),

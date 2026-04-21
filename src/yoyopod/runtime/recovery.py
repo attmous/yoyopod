@@ -9,17 +9,22 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from yoyopod.core import RecoveryAttemptCompletedEvent
+from yoyopod.runtime.models import RecoveryState
 
 if TYPE_CHECKING:
     from yoyopod.app import YoyoPodApp
-    from yoyopod.runtime.models import RecoveryState
 
 
 class RecoverySupervisor:
     """Supervise recoverable VoIP/music backends."""
 
+    _RECOVERY_MAX_DELAY_SECONDS = 30.0
+
     def __init__(self, app: "YoyoPodApp") -> None:
         self.app = app
+        self.voip_recovery = RecoveryState()
+        self.music_recovery = RecoveryState()
+        self.network_recovery = RecoveryState()
 
     def handle_recovery_attempt_completed_event(
         self,
@@ -27,7 +32,7 @@ class RecoverySupervisor:
     ) -> None:
         """Finalize background recovery attempts on the coordinator thread."""
         if event.manager == "music":
-            self.app._music_recovery.in_flight = False
+            self.music_recovery.in_flight = False
             if self.app._stopping:
                 return
 
@@ -42,7 +47,7 @@ class RecoverySupervisor:
 
             self.finalize_recovery_attempt(
                 "Music",
-                self.app._music_recovery,
+                self.music_recovery,
                 event.recovered,
                 event.recovery_now,
             )
@@ -51,7 +56,7 @@ class RecoverySupervisor:
         if event.manager != "network":
             return
 
-        self.app._network_recovery.in_flight = False
+        self.network_recovery.in_flight = False
         if self.app._stopping:
             return
 
@@ -64,7 +69,7 @@ class RecoverySupervisor:
 
         self.finalize_recovery_attempt(
             "Network",
-            self.app._network_recovery,
+            self.network_recovery,
             event.recovered,
             event.recovery_now,
         )
@@ -85,16 +90,16 @@ class RecoverySupervisor:
             return
 
         if self.app.voip_manager.running:
-            self.app._voip_recovery.reset()
+            self.voip_recovery.reset()
             return
 
-        if recovery_now < self.app._voip_recovery.next_attempt_at:
+        if recovery_now < self.voip_recovery.next_attempt_at:
             return
 
         logger.info("Attempting VoIP recovery")
         self.finalize_recovery_attempt(
             "VoIP",
-            self.app._voip_recovery,
+            self.voip_recovery,
             self.app.voip_manager.start(),
             recovery_now,
         )
@@ -120,17 +125,17 @@ class RecoverySupervisor:
             return
 
         if self.app.music_backend.is_connected:
-            self.app._music_recovery.reset()
+            self.music_recovery.reset()
             return
 
-        if self.app._music_recovery.in_flight:
+        if self.music_recovery.in_flight:
             return
 
-        if recovery_now < self.app._music_recovery.next_attempt_at:
+        if recovery_now < self.music_recovery.next_attempt_at:
             return
 
         logger.info("Attempting music backend recovery")
-        self.app._music_recovery.in_flight = True
+        self.music_recovery.in_flight = True
         self.start_music_recovery_worker(recovery_now)
 
     def attempt_network_recovery(self, recovery_now: float) -> None:
@@ -143,18 +148,18 @@ class RecoverySupervisor:
         ):
             return
 
-        if self.app._network_recovery.in_flight:
+        if self.network_recovery.in_flight:
             return
 
         if self.app.network_manager.is_online:
-            self.app._network_recovery.reset()
+            self.network_recovery.reset()
             return
 
-        if recovery_now < self.app._network_recovery.next_attempt_at:
+        if recovery_now < self.network_recovery.next_attempt_at:
             return
 
         logger.info("Attempting network recovery")
-        self.app._network_recovery.in_flight = True
+        self.network_recovery.in_flight = True
         self.start_network_recovery_worker(recovery_now)
 
     def start_music_recovery_worker(self, recovery_now: float) -> None:
@@ -225,5 +230,5 @@ class RecoverySupervisor:
         state.next_attempt_at = recovery_now + retry_in
         state.delay_seconds = min(
             state.delay_seconds * 2.0,
-            self.app._RECOVERY_MAX_DELAY_SECONDS,
+            self._RECOVERY_MAX_DELAY_SECONDS,
         )

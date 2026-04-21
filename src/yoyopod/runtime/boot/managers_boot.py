@@ -73,8 +73,7 @@ class ManagersBoot:
                 event_scheduler=self.app.runtime_loop.queue_main_thread_callback,
                 background_iterate_enabled=True,
             )
-            self.app._voip_iterate_interval_seconds = max(
-                0.01,
+            self.app.runtime_loop.set_configured_voip_iterate_interval_seconds(
                 float(voip_config.iterate_interval_ms) / 1000.0,
             )
             if self.app.voip_manager.start():

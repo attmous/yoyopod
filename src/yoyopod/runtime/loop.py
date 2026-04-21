@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from queue import Empty
+from queue import Empty, SimpleQueue
 from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
 
 from loguru import logger
@@ -134,6 +134,12 @@ class RuntimeLoopService:
 
     def __init__(self, app: "YoyoPodApp") -> None:
         self.app = app
+        self._pending_main_thread_callbacks: SimpleQueue[Callable[[], None]] = SimpleQueue()
+        self._pending_safety_main_thread_callbacks: SimpleQueue[Callable[[], None]] = SimpleQueue()
+        self._configured_voip_iterate_interval_seconds = 0.02
+        self._next_voip_iterate_at = 0.0
+        self._last_lvgl_pump_at = 0.0
+        self._last_loop_heartbeat_at = 0.0
         self._last_loop_iteration_started_at = 0.0
         self._last_runtime_loop_gap_seconds = 0.0
         self._last_runtime_iteration_duration_seconds = 0.0
@@ -161,15 +167,59 @@ class RuntimeLoopService:
         self._current_cadence_reason = "startup"
         self._current_loop_sleep_seconds = min(
             self._RELAXED_IDLE_INTERVAL_SECONDS,
-            max(0.01, float(self.app._voip_iterate_interval_seconds)),
+            max(0.01, float(self._configured_voip_iterate_interval_seconds)),
         )
         self._current_voip_iterate_interval_seconds = max(
             0.01,
-            float(self.app._voip_iterate_interval_seconds),
+            float(self._configured_voip_iterate_interval_seconds),
         )
         self._last_cadence_selected_at = 0.0
         self._last_requested_sleep_seconds = self._current_loop_sleep_seconds
         self._last_requested_sleep_recorded_at = 0.0
+
+    @property
+    def configured_voip_iterate_interval_seconds(self) -> float:
+        """Return the configured base VoIP iterate interval in seconds."""
+
+        return self._configured_voip_iterate_interval_seconds
+
+    def set_configured_voip_iterate_interval_seconds(self, interval_seconds: float) -> None:
+        """Store the configured base VoIP iterate interval in seconds."""
+
+        self._configured_voip_iterate_interval_seconds = max(0.01, float(interval_seconds))
+
+    @property
+    def next_voip_iterate_at(self) -> float:
+        """Return the next coordinator-thread VoIP iterate deadline."""
+
+        return self._next_voip_iterate_at
+
+    @next_voip_iterate_at.setter
+    def next_voip_iterate_at(self, value: float) -> None:
+        """Persist the next coordinator-thread VoIP iterate deadline."""
+
+        self._next_voip_iterate_at = max(0.0, float(value))
+
+    @property
+    def last_lvgl_pump_at(self) -> float:
+        """Return the monotonic timestamp of the latest LVGL pump."""
+
+        return self._last_lvgl_pump_at
+
+    @property
+    def last_loop_heartbeat_at(self) -> float:
+        """Return the monotonic timestamp of the latest runtime-loop heartbeat."""
+
+        return self._last_loop_heartbeat_at
+
+    def pending_main_thread_callback_count(self) -> int | None:
+        """Return the combined generic and safety callback backlog."""
+
+        callback_backlog = _queue_depth(self._pending_main_thread_callbacks)
+        safety_backlog = _queue_depth(self._pending_safety_main_thread_callbacks)
+        if callback_backlog is None and safety_backlog is None:
+            return None
+        return max(0, callback_backlog or 0) + max(0, safety_backlog or 0)
 
     def _record_blocking_span(self, span_name: str, duration_seconds: float) -> None:
         """Persist and log one named coordinator-thread blocking span."""
@@ -273,10 +323,10 @@ class RuntimeLoopService:
         """Run safety callbacks ahead of ordinary queue work."""
 
         safety_callbacks_processed = self._drain_callback_queue(
-            self.app._pending_safety_main_thread_callbacks
+            self._pending_safety_main_thread_callbacks
         )
         regular_callbacks_processed = self._drain_callback_queue(
-            self.app._pending_main_thread_callbacks,
+            self._pending_main_thread_callbacks,
             limit=limit,
         )
         return _CallbackDrainResult(
@@ -317,7 +367,7 @@ class RuntimeLoopService:
     ) -> _MainThreadDrainResult:
         """Capture drain totals and remaining backlog after one coordinator drain."""
 
-        callback_backlog = self.app._pending_main_thread_callback_count()
+        callback_backlog = self.pending_main_thread_callback_count()
         # Deferred callback count is best-effort: queues without qsize support degrade
         # to 0 here rather than paying extra coordinator work to derive a stronger estimate.
         return _MainThreadDrainResult(
@@ -397,9 +447,9 @@ class RuntimeLoopService:
         """Schedule a callback to run on the coordinator thread."""
         if safety:
             # Safety completions must bypass the ordinary per-iteration fairness cap.
-            self.app._pending_safety_main_thread_callbacks.put(callback)
+            self._pending_safety_main_thread_callbacks.put(callback)
             return
-        self.app._pending_main_thread_callbacks.put(callback)
+        self._pending_main_thread_callbacks.put(callback)
 
     def queue_lvgl_input_action(self, action: Any, _data: Optional[Any] = None) -> None:
         """Queue semantic actions for LVGL from input polling threads."""
@@ -414,11 +464,11 @@ class RuntimeLoopService:
 
         started_at = time.monotonic()
         monotonic_now = time.monotonic() if now is None else now
-        if self.app._last_lvgl_pump_at <= 0.0:
+        if self._last_lvgl_pump_at <= 0.0:
             delta_ms = 0
         else:
-            delta_ms = int(max(0.0, monotonic_now - self.app._last_lvgl_pump_at) * 1000.0)
-        self.app._last_lvgl_pump_at = monotonic_now
+            delta_ms = int(max(0.0, monotonic_now - self._last_lvgl_pump_at) * 1000.0)
+        self._last_lvgl_pump_at = monotonic_now
 
         screen_manager = self.app.screen_manager
         flush_pending_navigation_refresh = (
@@ -455,10 +505,10 @@ class RuntimeLoopService:
             return
 
         monotonic_now = time.monotonic() if now is None else now
-        if self.app._next_voip_iterate_at <= 0.0:
-            self.app._next_voip_iterate_at = monotonic_now
+        if self._next_voip_iterate_at <= 0.0:
+            self._next_voip_iterate_at = monotonic_now
 
-        scheduled_for = self.app._next_voip_iterate_at
+        scheduled_for = self._next_voip_iterate_at
         if monotonic_now < scheduled_for:
             return
 
@@ -483,7 +533,7 @@ class RuntimeLoopService:
         self._last_voip_event_drain_duration_seconds = (
             iterate_metrics.event_drain_duration_seconds if iterate_metrics is not None else 0.0
         )
-        self.app._next_voip_iterate_at = self._next_voip_due_at_for_cadence(
+        self._next_voip_iterate_at = self._next_voip_due_at_for_cadence(
             monotonic_now=monotonic_now,
             iterate_interval_seconds=self._effective_voip_iterate_interval_seconds(),
         )
@@ -513,13 +563,13 @@ class RuntimeLoopService:
                 iterate_duration_seconds * 1000.0,
                 since_last_iterate_seconds * 1000.0,
                 self._effective_voip_iterate_interval_seconds() * 1000.0,
-                self.app._voip_iterate_interval_seconds * 1000.0,
+                self._configured_voip_iterate_interval_seconds * 1000.0,
                 self._last_voip_native_iterate_duration_seconds * 1000.0,
                 self._last_voip_event_drain_duration_seconds * 1000.0,
                 native_events,
                 self._current_cadence_mode,
                 self._current_cadence_reason,
-                self.app._pending_main_thread_callback_count(),
+                self.pending_main_thread_callback_count(),
                 self.app.event_bus.pending_count(),
                 self._current_screen_name(),
                 self._runtime_state_name(),
@@ -551,21 +601,23 @@ class RuntimeLoopService:
             and self.app.voip_manager.running
             and not self._voip_background_iterate_enabled()
         ):
-            if self.app._next_voip_iterate_at <= 0.0:
+            if self._next_voip_iterate_at <= 0.0:
                 deadlines.append(self._effective_voip_iterate_interval_seconds())
             else:
-                deadlines.append(max(0.0, self.app._next_voip_iterate_at - monotonic_now))
+                deadlines.append(max(0.0, self._next_voip_iterate_at - monotonic_now))
 
         if self.app._pending_shutdown is not None:
             deadlines.append(max(0.0, self.app._pending_shutdown.execute_at - monotonic_now))
-        if self.app._next_power_poll_at > 0.0:
-            deadlines.append(max(0.0, self.app._next_power_poll_at - monotonic_now))
+        if self.app.power_runtime.next_power_poll_at > 0.0:
+            deadlines.append(max(0.0, self.app.power_runtime.next_power_poll_at - monotonic_now))
         if (
-            self.app._watchdog_active
-            and not self.app._watchdog_feed_suppressed
-            and self.app._next_watchdog_feed_at > 0.0
+            self.app.power_runtime.watchdog_active
+            and not self.app.power_runtime.watchdog_feed_suppressed
+            and self.app.power_runtime.next_watchdog_feed_at > 0.0
         ):
-            deadlines.append(max(0.0, self.app._next_watchdog_feed_at - monotonic_now))
+            deadlines.append(
+                max(0.0, self.app.power_runtime.next_watchdog_feed_at - monotonic_now)
+            )
         if self.app._screen_awake and screen_update_interval > 0.0:
             deadlines.append(
                 max(
@@ -590,7 +642,7 @@ class RuntimeLoopService:
         """Run one coordinator-loop iteration and return the next screen refresh timestamp."""
         iteration_started_at = time.monotonic()
         self._observe_loop_gap(monotonic_now=monotonic_now)
-        self.app._last_loop_heartbeat_at = monotonic_now
+        self._last_loop_heartbeat_at = monotonic_now
         try:
             self._measure_blocking_span(
                 "voip_keepalive",
@@ -676,7 +728,7 @@ class RuntimeLoopService:
                     "Runtime iteration slow: "
                     "iteration_ms={:.1f} pending_callbacks={} pending_events={} screen={} state={}",
                     self._last_runtime_iteration_duration_seconds * 1000.0,
-                    self.app._pending_main_thread_callback_count(),
+                    self.pending_main_thread_callback_count(),
                     self.app.event_bus.pending_count(),
                     self._current_screen_name(),
                     self._runtime_state_name(),
@@ -850,7 +902,7 @@ class RuntimeLoopService:
                 if self._last_voip_iterate_started_at > 0.0
                 else None
             ),
-            "voip_iterate_interval_seconds": self.app._voip_iterate_interval_seconds,
+            "voip_iterate_interval_seconds": self._configured_voip_iterate_interval_seconds,
             "voip_effective_iterate_interval_seconds": (
                 self._current_voip_iterate_interval_seconds
             ),
@@ -941,7 +993,7 @@ class RuntimeLoopService:
             self._effective_voip_iterate_interval_seconds() * 1000.0,
             self._current_cadence_mode,
             self._current_cadence_reason,
-            self.app._pending_main_thread_callback_count(),
+            self.pending_main_thread_callback_count(),
             self.app.event_bus.pending_count(),
             self._current_screen_name(),
             self._runtime_state_name(),

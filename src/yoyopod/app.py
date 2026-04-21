@@ -8,8 +8,7 @@ from __future__ import annotations
 
 import threading
 import time
-from queue import SimpleQueue
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from loguru import logger
 
@@ -32,11 +31,7 @@ from yoyopod.coordinators import (
 )
 from yoyopod.coordinators.voice import VoiceRuntimeCoordinator
 from yoyopod.core import EventBus
-from yoyopod.core import (
-    RecoveryAttemptCompletedEvent,
-    ScreenChangedEvent,
-    UserActivityEvent,
-)
+from yoyopod.core import RecoveryAttemptCompletedEvent, ScreenChangedEvent
 from yoyopod.device import AudioDeviceCatalog
 from yoyopod.people import PeopleManager
 from yoyopod.core import CallFSM, CallInterruptionPolicy, MusicFSM
@@ -50,7 +45,6 @@ from yoyopod.runtime.recovery import RecoverySupervisor
 from yoyopod.runtime.screen_power import ScreenPowerService
 from yoyopod.runtime.shutdown import ShutdownLifecycleService
 from yoyopod.runtime.event_wiring import RuntimeEventWiring
-from yoyopod.ui.input import InteractionProfile
 from yoyopod.cloud import CloudManager
 from yoyopod.communication.calling.history import CallHistoryStore
 from yoyopod.communication.calling.manager import VoIPManager
@@ -78,20 +72,6 @@ if TYPE_CHECKING:
     from yoyopod.ui.screens.voip.talk_contact import TalkContactScreen
     from yoyopod.ui.screens.voip.voice_note import VoiceNoteScreen
 
-
-def _queue_depth(queue_obj: object) -> int | None:
-    """Return a best-effort queue depth for runtime diagnostics."""
-
-    qsize = getattr(queue_obj, "qsize", None)
-    if not callable(qsize):
-        return None
-
-    try:
-        return int(qsize())
-    except (NotImplementedError, TypeError, ValueError):
-        return None
-
-
 class YoyoPodApp:
     """
     Main YoyoPod application coordinator.
@@ -100,8 +80,6 @@ class YoyoPodApp:
     loop scheduling, recovery, screen power, and shutdown behavior to dedicated
     runtime services.
     """
-
-    _RECOVERY_MAX_DELAY_SECONDS = 30.0
 
     def __init__(self, config_dir: str = "config", simulate: bool = False) -> None:
         self.config_dir = config_dir
@@ -170,11 +148,6 @@ class YoyoPodApp:
         self.power_coordinator: Optional[PowerCoordinator] = None
 
         # Runtime state tracked across services
-        self._voip_recovery = RecoveryState()
-        self._music_recovery = RecoveryState()
-        self._network_recovery = RecoveryState()
-        self._next_power_poll_at = 0.0
-        self._power_available: bool | None = None
         self._power_alert: PowerAlert | None = None
         self._pending_shutdown: PendingShutdown | None = None
         self._power_hooks_registered = False
@@ -191,29 +164,18 @@ class YoyoPodApp:
         self._screen_timeout_seconds = 0.0
         self._active_brightness = 1.0
         self._screen_awake = True
-        self._watchdog_active = False
-        self._watchdog_feed_suppressed = False
-        self._watchdog_feed_in_flight = False
-        self._next_watchdog_feed_at = 0.0
-        self._power_refresh_in_flight = False
         self._stopped = False
         self._lvgl_backend: Optional[LvglDisplayBackend] = None
         self._lvgl_input_bridge: Optional[LvglInputBridge] = None
-        self._last_lvgl_pump_at = 0.0
-        self._last_loop_heartbeat_at = 0.0
         self._last_responsiveness_capture_at = 0.0
         self._last_responsiveness_capture_reason: str | None = None
         self._last_responsiveness_capture_scope: str | None = None
         self._last_responsiveness_capture_summary: str | None = None
         self._last_responsiveness_capture_artifacts: dict[str, str] = {}
-        self._next_voip_iterate_at = 0.0
-        self._voip_iterate_interval_seconds = 0.02
 
         # Main-thread event bus and queued callbacks
         self._main_thread_id = threading.get_ident()
         self.event_bus = EventBus(main_thread_id=self._main_thread_id)
-        self._pending_main_thread_callbacks: SimpleQueue[Callable[[], None]] = SimpleQueue()
-        self._pending_safety_main_thread_callbacks: SimpleQueue[Callable[[], None]] = SimpleQueue()
 
         # Runtime services
         self.screen_power_service = ScreenPowerService(self)
@@ -243,126 +205,234 @@ class YoyoPodApp:
         if self.call_coordinator is not None:
             self.call_coordinator.voip_registered = value
 
+    @property
+    def _voip_recovery(self) -> RecoveryState:
+        """Compatibility accessor for VoIP recovery state ownership."""
+
+        return self.recovery_service.voip_recovery
+
+    @property
+    def _music_recovery(self) -> RecoveryState:
+        """Compatibility accessor for music recovery state ownership."""
+
+        return self.recovery_service.music_recovery
+
+    @property
+    def _network_recovery(self) -> RecoveryState:
+        """Compatibility accessor for network recovery state ownership."""
+
+        return self.recovery_service.network_recovery
+
+    @property
+    def _next_power_poll_at(self) -> float:
+        """Compatibility accessor for power polling cadence ownership."""
+
+        return self.power_runtime.next_power_poll_at
+
+    @_next_power_poll_at.setter
+    def _next_power_poll_at(self, value: float) -> None:
+        self.power_runtime.next_power_poll_at = max(0.0, float(value))
+
+    @property
+    def _power_available(self) -> bool | None:
+        """Compatibility accessor for last observed power availability."""
+
+        return self.power_runtime.power_available
+
+    @_power_available.setter
+    def _power_available(self, value: bool | None) -> None:
+        self.power_runtime.power_available = value
+
+    @property
+    def _power_refresh_in_flight(self) -> bool:
+        """Compatibility accessor for power-refresh worker state."""
+
+        return self.power_runtime.power_refresh_in_flight
+
+    @_power_refresh_in_flight.setter
+    def _power_refresh_in_flight(self, value: bool) -> None:
+        self.power_runtime.power_refresh_in_flight = bool(value)
+
+    @property
+    def _watchdog_active(self) -> bool:
+        """Compatibility accessor for watchdog runtime state."""
+
+        return self.power_runtime.watchdog_active
+
+    @_watchdog_active.setter
+    def _watchdog_active(self, value: bool) -> None:
+        self.power_runtime.watchdog_active = bool(value)
+
+    @property
+    def _watchdog_feed_suppressed(self) -> bool:
+        """Compatibility accessor for watchdog-feed suppression state."""
+
+        return self.power_runtime.watchdog_feed_suppressed
+
+    @_watchdog_feed_suppressed.setter
+    def _watchdog_feed_suppressed(self, value: bool) -> None:
+        self.power_runtime.watchdog_feed_suppressed = bool(value)
+
+    @property
+    def _watchdog_feed_in_flight(self) -> bool:
+        """Compatibility accessor for watchdog-feed worker state."""
+
+        return self.power_runtime.watchdog_feed_in_flight
+
+    @_watchdog_feed_in_flight.setter
+    def _watchdog_feed_in_flight(self, value: bool) -> None:
+        self.power_runtime.watchdog_feed_in_flight = bool(value)
+
+    @property
+    def _next_watchdog_feed_at(self) -> float:
+        """Compatibility accessor for watchdog feed deadline."""
+
+        return self.power_runtime.next_watchdog_feed_at
+
+    @_next_watchdog_feed_at.setter
+    def _next_watchdog_feed_at(self, value: float) -> None:
+        self.power_runtime.next_watchdog_feed_at = max(0.0, float(value))
+
+    @property
+    def _next_voip_iterate_at(self) -> float:
+        """Compatibility accessor for next VoIP iterate deadline."""
+
+        return self.runtime_loop.next_voip_iterate_at
+
+    @_next_voip_iterate_at.setter
+    def _next_voip_iterate_at(self, value: float) -> None:
+        self.runtime_loop.next_voip_iterate_at = value
+
+    @property
+    def _voip_iterate_interval_seconds(self) -> float:
+        """Compatibility accessor for configured VoIP iterate cadence."""
+
+        return self.runtime_loop.configured_voip_iterate_interval_seconds
+
+    @_voip_iterate_interval_seconds.setter
+    def _voip_iterate_interval_seconds(self, value: float) -> None:
+        self.runtime_loop.set_configured_voip_iterate_interval_seconds(value)
+
+    @property
+    def _last_lvgl_pump_at(self) -> float:
+        """Compatibility accessor for LVGL pump timestamp."""
+
+        return self.runtime_loop.last_lvgl_pump_at
+
+    @_last_lvgl_pump_at.setter
+    def _last_lvgl_pump_at(self, value: float) -> None:
+        self.runtime_loop._last_lvgl_pump_at = max(0.0, float(value))
+
+    @property
+    def _last_loop_heartbeat_at(self) -> float:
+        """Compatibility accessor for runtime-loop heartbeat timestamp."""
+
+        return self.runtime_loop.last_loop_heartbeat_at
+
+    @_last_loop_heartbeat_at.setter
+    def _last_loop_heartbeat_at(self, value: float) -> None:
+        self.runtime_loop._last_loop_heartbeat_at = max(0.0, float(value))
+
     def setup(self) -> bool:
         """Initialize all components and register callbacks."""
         return self.boot_service.setup()
 
-    def _load_configuration(self) -> bool:
-        return self.boot_service.load_configuration()
+    def _setup_event_subscriptions(self) -> None:
+        """Compatibility wrapper for coordinator event binding."""
+
+        self.boot_service.setup_event_subscriptions()
 
     def _resolve_screen_timeout_seconds(self) -> float:
+        """Compatibility wrapper for boot-time screen-timeout resolution."""
+
         return self.boot_service.resolve_screen_timeout_seconds()
 
     def _resolve_active_brightness(self) -> float:
+        """Compatibility wrapper for boot-time brightness resolution."""
+
         return self.boot_service.resolve_active_brightness()
 
     def _configure_screen_power(self, initial_now: float | None = None) -> None:
+        """Compatibility wrapper for screen-power state initialization."""
+
         self.screen_power_service.configure_screen_power(initial_now)
 
-    def _refresh_talk_summary(self) -> None:
-        self.boot_service.refresh_talk_summary()
+    def _wake_screen(self, now: float, *, render_current: bool) -> None:
+        """Compatibility wrapper for screen wake transitions."""
 
-    def _init_core_components(self) -> bool:
-        return self.boot_service.init_core_components()
+        self.screen_power_service.wake_screen(now, render_current=render_current)
 
-    def _init_managers(self) -> bool:
-        return self.boot_service.init_managers()
+    def _sleep_screen(self, now: float) -> None:
+        """Compatibility wrapper for screen sleep transitions."""
 
-    def _setup_screens(self) -> bool:
-        return self.boot_service.setup_screens()
+        self.screen_power_service.sleep_screen(now)
 
-    def _get_interaction_profile(self) -> InteractionProfile:
-        return self.boot_service.get_interaction_profile()
+    def _update_screen_power(self, now: float) -> None:
+        """Compatibility wrapper for inactivity-driven screen power policy."""
 
-    def _get_initial_screen_name(self) -> str:
-        return self.boot_service.get_initial_screen_name()
+        self.screen_power_service.update_screen_power(now)
 
-    def _get_initial_ui_state(self) -> AppRuntimeState:
-        return self.boot_service.get_initial_ui_state()
+    def _poll_power_status(self, now: float | None = None, force: bool = False) -> None:
+        """Compatibility wrapper for power telemetry refreshes."""
 
-    def _setup_voip_callbacks(self) -> None:
-        self.boot_service.setup_voip_callbacks()
+        self.power_runtime.poll_status(now=now, force=force)
 
-    def _setup_music_callbacks(self) -> None:
-        self.boot_service.setup_music_callbacks()
+    def _start_watchdog(self, now: float | None = None) -> None:
+        """Compatibility wrapper for watchdog activation."""
 
-    def _setup_event_subscriptions(self) -> None:
-        self.boot_service.setup_event_subscriptions()
+        self.power_runtime.start_watchdog(now=now)
 
-    def _pending_main_thread_callback_count(self) -> int | None:
-        """Return the combined generic and safety callback backlog."""
+    def _feed_watchdog_if_due(self, now: float) -> None:
+        """Compatibility wrapper for watchdog feed cadence."""
 
-        callback_backlog = _queue_depth(self._pending_main_thread_callbacks)
-        safety_backlog = _queue_depth(self._pending_safety_main_thread_callbacks)
-        if callback_backlog is None and safety_backlog is None:
-            return None
-        return max(0, callback_backlog or 0) + max(0, safety_backlog or 0)
+        self.power_runtime.feed_watchdog_if_due(now)
 
-    def _pump_lvgl_backend(self, now: float | None = None) -> None:
-        self.runtime_loop.pump_lvgl_backend(now)
+    def _attempt_manager_recovery(self, now: float | None = None) -> None:
+        """Compatibility wrapper for backend recovery scans."""
 
-    def _iterate_voip_backend_if_due(self, now: float | None = None) -> None:
-        self.runtime_loop.iterate_voip_backend_if_due(now)
-
-    def _handle_screen_changed_event(self, event: ScreenChangedEvent) -> None:
-        self.event_wiring.handle_screen_changed_event(event)
-
-    def _queue_user_activity_event(self, action: Any, _data: Any | None = None) -> None:
-        self.screen_power_service.queue_user_activity_event(action, _data)
-
-    def _handle_user_activity_event(self, event: UserActivityEvent) -> None:
-        self.event_wiring.handle_user_activity_event(event)
+        self.recovery_service.attempt_manager_recovery(now)
 
     def _handle_recovery_attempt_completed_event(
         self,
         event: RecoveryAttemptCompletedEvent,
     ) -> None:
+        """Compatibility wrapper for background recovery completion events."""
+
         self.event_wiring.handle_recovery_attempt_completed_event(event)
 
-    def _register_power_shutdown_hooks(self) -> None:
-        self.shutdown_service.register_power_shutdown_hooks()
+    def _get_initial_screen_name(self) -> str:
+        """Compatibility wrapper for initial route derivation."""
 
-    def _save_shutdown_state(self) -> None:
-        self.shutdown_service.save_shutdown_state()
+        return self.boot_service.get_initial_screen_name()
 
-    def _ensure_coordinators(self) -> None:
-        self.boot_service.ensure_coordinators()
+    def _get_initial_ui_state(self) -> AppRuntimeState:
+        """Compatibility wrapper for initial UI state derivation."""
 
-    def _pop_call_screens(self) -> None:
-        """Compatibility wrapper for clearing call-related screens."""
-        self._ensure_coordinators()
-        assert self.screen_coordinator is not None
-        self.screen_coordinator.pop_call_screens()
-
-    def _update_now_playing_if_needed(self) -> None:
-        """Compatibility wrapper for periodic now-playing refreshes."""
-        self._ensure_coordinators()
-        assert self.playback_coordinator is not None
-        self.playback_coordinator.update_now_playing_if_needed()
+        return self.boot_service.get_initial_ui_state()
 
     def _update_in_call_if_needed(self) -> None:
-        """Refresh the in-call screen from the main loop when it is visible."""
-        self._ensure_coordinators()
+        """Refresh the in-call screen when it is currently visible."""
+
+        self.boot_service.ensure_coordinators()
         assert self.screen_coordinator is not None
         self.screen_coordinator.update_in_call_if_needed()
 
     def _update_power_screen_if_needed(self) -> None:
-        """Refresh the power screen from the main loop when it is visible."""
-        self._ensure_coordinators()
+        """Refresh the power screen when it is currently visible."""
+
+        self.boot_service.ensure_coordinators()
         assert self.screen_coordinator is not None
         self.screen_coordinator.update_power_screen_if_needed()
 
-    def _start_ringing(self) -> None:
-        """Compatibility wrapper for starting the call ring tone."""
-        self._ensure_coordinators()
-        assert self.call_coordinator is not None
-        self.call_coordinator.start_ringing()
+    def _register_power_shutdown_hooks(self) -> None:
+        """Compatibility wrapper for one-time shutdown hook registration."""
 
-    def _stop_ringing(self) -> None:
-        """Compatibility wrapper for stopping the call ring tone."""
-        self._ensure_coordinators()
-        assert self.call_coordinator is not None
-        self.call_coordinator.stop_ringing()
+        self.shutdown_service.register_power_shutdown_hooks()
+
+    def _process_pending_shutdown(self, now: float) -> None:
+        """Compatibility wrapper for delayed-shutdown processing."""
+
+        self.shutdown_service.process_pending_shutdown(now)
 
     def _handle_screen_changed(self, screen_name: str | None) -> None:
         """Marshal screen-state sync work onto the coordinator thread."""
@@ -393,115 +463,9 @@ class YoyoPodApp:
 
     def _sync_screen_changed(self, screen_name: str | None) -> None:
         """Keep the derived base UI state aligned with the active screen."""
-        self._ensure_coordinators()
+        self.boot_service.ensure_coordinators()
         assert self.coordinator_runtime is not None
         self.coordinator_runtime.sync_ui_state_for_screen(screen_name)
-
-    def _mark_user_activity(
-        self,
-        *,
-        now: float | None = None,
-        render_on_wake: bool,
-    ) -> None:
-        self.screen_power_service.mark_user_activity(
-            now=now,
-            render_on_wake=render_on_wake,
-        )
-
-    def _wake_screen(self, now: float, *, render_current: bool) -> None:
-        self.screen_power_service.wake_screen(now, render_current=render_current)
-
-    def _sleep_screen(self, now: float) -> None:
-        self.screen_power_service.sleep_screen(now)
-
-    def _update_screen_runtime_metrics(self, now: float) -> None:
-        self.screen_power_service.update_screen_runtime_metrics(now)
-
-    def _update_screen_power(self, now: float) -> None:
-        self.screen_power_service.update_screen_power(now)
-
-    def _attempt_manager_recovery(self, now: float | None = None) -> None:
-        self.recovery_service.attempt_manager_recovery(now)
-
-    def _poll_power_status(self, now: float | None = None, force: bool = False) -> None:
-        self.power_runtime.poll_status(now=now, force=force)
-
-    def _set_power_alert(
-        self,
-        *,
-        title: str,
-        subtitle: str,
-        color: tuple[int, int, int],
-        duration_seconds: float,
-    ) -> None:
-        self.screen_power_service.set_power_alert(
-            title=title,
-            subtitle=subtitle,
-            color=color,
-            duration_seconds=duration_seconds,
-        )
-
-    def _render_power_overlay(self, title: str, subtitle: str, color: tuple[int, int, int]) -> None:
-        self.screen_power_service.render_power_overlay(title, subtitle, color)
-
-    def _update_power_overlays(self, now: float) -> bool:
-        return self.screen_power_service.update_power_overlays(now)
-
-    def _process_pending_shutdown(self, now: float) -> None:
-        self.shutdown_service.process_pending_shutdown(now)
-
-    def _execute_pending_shutdown(self) -> None:
-        self.shutdown_service.execute_pending_shutdown()
-
-    def _start_watchdog(self, now: float | None = None) -> None:
-        self.power_runtime.start_watchdog(now=now)
-
-    def _feed_watchdog_if_due(self, now: float) -> None:
-        self.power_runtime.feed_watchdog_if_due(now)
-
-    def _disable_watchdog(self) -> None:
-        self.power_runtime.disable_watchdog()
-
-    def _suppress_watchdog_feeding(self, reason: str) -> None:
-        self.power_runtime.suppress_watchdog_feeding(reason)
-
-    def _attempt_voip_recovery(self, recovery_now: float) -> None:
-        self.recovery_service.attempt_voip_recovery(recovery_now)
-
-    def _start_music_backend(self) -> bool:
-        return self.recovery_service.start_music_backend()
-
-    def _attempt_music_recovery(self, recovery_now: float) -> None:
-        self.recovery_service.attempt_music_recovery(recovery_now)
-
-    def _attempt_network_recovery(self, recovery_now: float) -> None:
-        self.recovery_service.attempt_network_recovery(recovery_now)
-
-    def _start_music_recovery_worker(self, recovery_now: float) -> None:
-        self.recovery_service.start_music_recovery_worker(recovery_now)
-
-    def _start_network_recovery_worker(self, recovery_now: float) -> None:
-        self.recovery_service.start_network_recovery_worker(recovery_now)
-
-    def _run_music_recovery_attempt(self, recovery_now: float) -> None:
-        self.recovery_service.run_music_recovery_attempt(recovery_now)
-
-    def _run_network_recovery_attempt(self, recovery_now: float) -> None:
-        self.recovery_service.run_network_recovery_attempt(recovery_now)
-
-    def _finalize_recovery_attempt(
-        self,
-        label: str,
-        state: RecoveryState,
-        recovered: bool,
-        recovery_now: float,
-    ) -> None:
-        self.recovery_service.finalize_recovery_attempt(
-            label=label,
-            state=state,
-            recovered=recovered,
-            recovery_now=recovery_now,
-        )
 
     def run(self) -> None:
         """Run the main application loop until interrupted."""
@@ -556,7 +520,7 @@ class YoyoPodApp:
             "input_manager_running": (
                 self.input_manager.running if self.input_manager is not None else False
             ),
-            "pending_main_thread_callbacks": self._pending_main_thread_callback_count(),
+            "pending_main_thread_callbacks": self.runtime_loop.pending_main_thread_callback_count(),
             "pending_event_bus_events": self.event_bus.pending_count(),
             "input_activity_age_seconds": (
                 max(0.0, monotonic_now - self._last_input_activity_at)
@@ -608,21 +572,21 @@ class YoyoPodApp:
                 self._lvgl_backend is not None and self._lvgl_backend.initialized
             ),
             "lvgl_pump_age_seconds": (
-                max(0.0, monotonic_now - self._last_lvgl_pump_at)
-                if self._last_lvgl_pump_at > 0.0
+                max(0.0, monotonic_now - self.runtime_loop.last_lvgl_pump_at)
+                if self.runtime_loop.last_lvgl_pump_at > 0.0
                 else None
             ),
             "loop_heartbeat_age_seconds": (
-                max(0.0, monotonic_now - self._last_loop_heartbeat_at)
-                if self._last_loop_heartbeat_at > 0.0
+                max(0.0, monotonic_now - self.runtime_loop.last_loop_heartbeat_at)
+                if self.runtime_loop.last_loop_heartbeat_at > 0.0
                 else None
             ),
             "next_voip_iterate_in_seconds": (
-                max(0.0, self._next_voip_iterate_at - monotonic_now)
+                max(0.0, self.runtime_loop.next_voip_iterate_at - monotonic_now)
                 if (
                     self.voip_manager is not None
                     and self.voip_manager.running
-                    and self._next_voip_iterate_at > 0.0
+                    and self.runtime_loop.next_voip_iterate_at > 0.0
                 )
                 else None
             ),
@@ -644,9 +608,9 @@ class YoyoPodApp:
                 if self.power_manager is not None
                 else False
             ),
-            "watchdog_active": self._watchdog_active,
-            "watchdog_feed_in_flight": self._watchdog_feed_in_flight,
-            "watchdog_feed_suppressed": self._watchdog_feed_suppressed,
+            "watchdog_active": self.power_runtime.watchdog_active,
+            "watchdog_feed_in_flight": self.power_runtime.watchdog_feed_in_flight,
+            "watchdog_feed_suppressed": self.power_runtime.watchdog_feed_suppressed,
             "watchdog_timeout_seconds": (
                 self.power_manager.config.watchdog_timeout_seconds
                 if self.power_manager is not None
@@ -657,7 +621,7 @@ class YoyoPodApp:
                 if self.power_manager is not None
                 else None
             ),
-            "power_refresh_in_flight": self._power_refresh_in_flight,
+            "power_refresh_in_flight": self.power_runtime.power_refresh_in_flight,
             "responsiveness_watchdog_enabled": bool(
                 getattr(
                     getattr(self.app_settings, "diagnostics", None),
