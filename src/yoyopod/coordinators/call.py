@@ -25,6 +25,7 @@ from yoyopod.integrations.call import (
     CallSessionTracker,
     CallState,
     RegistrationState,
+    sync_context_voip_status,
 )
 
 
@@ -189,7 +190,7 @@ class CallCoordinator:
             CallState.OUTGOING_EARLY_MEDIA,
         ):
             self._pause_music_for_call(phase="outgoing")
-            session = self._session_tracker.ensure_outgoing_call(self._current_caller_info())
+            session = self._session_tracker.ensure_outgoing_call(self.runtime.current_caller_info())
             self.runtime.call_fsm.transition("dial")
             self.runtime.sync_app_state("call_outgoing")
             self.screen_coordinator.show_outgoing_call(
@@ -279,13 +280,13 @@ class CallCoordinator:
 
         self.voip_registered = state == RegistrationState.OK
         self.runtime.set_voip_ready(self.voip_registered)
-        if self.runtime.context is not None:
-            self.runtime.context.update_voip_status(
-                configured=self._is_voip_configured(),
-                ready=self.voip_registered,
-                running=True,
-                registration_state=state.value,
-            )
+        sync_context_voip_status(
+            self.runtime.context,
+            config_manager=self.runtime.config_manager,
+            ready=self.voip_registered,
+            running=True,
+            registration_state=state,
+        )
 
         if state == RegistrationState.OK:
             logger.info("VoIP ready to receive calls")
@@ -306,40 +307,29 @@ class CallCoordinator:
 
         if available:
             logger.info(f"VoIP backend available ({reason or 'ready'})")
-            if self.runtime.context is not None:
-                self.runtime.context.update_voip_status(
-                    configured=self._is_voip_configured(),
-                    ready=self.voip_registered,
-                    running=True,
-                    registration_state=registration_state.value,
-                )
+            sync_context_voip_status(
+                self.runtime.context,
+                config_manager=self.runtime.config_manager,
+                ready=self.voip_registered,
+                running=True,
+                registration_state=registration_state,
+            )
             self.screen_coordinator.refresh_call_screen_if_visible()
             return
 
         logger.warning(f"VoIP backend unavailable ({reason or 'unknown'})")
-        if self.runtime.context is not None:
-            self.runtime.context.update_voip_status(
-                configured=self._is_voip_configured(),
-                ready=False,
-                running=False,
-                registration_state=registration_state.value,
-            )
+        sync_context_voip_status(
+            self.runtime.context,
+            config_manager=self.runtime.config_manager,
+            ready=False,
+            running=False,
+            registration_state=registration_state,
+        )
         self.stop_ringing()
         self.screen_coordinator.refresh_call_screen_if_visible()
 
         if self.runtime.call_fsm.is_active or self._session_tracker.has_live_session:
             self.handle_call_ended(reason=reason or "unavailable")
-
-    def _is_voip_configured(self) -> bool:
-        """Return whether the app has meaningful SIP identity data configured."""
-
-        if self.runtime.config_manager is not None:
-            if self.runtime.config_manager.get_sip_identity().strip():
-                return True
-            if self.runtime.config_manager.get_sip_username().strip():
-                return True
-
-        return False
 
     def _pause_music_for_call(self, *, phase: str) -> None:
         """Pause active playback once when a call enters an interruption phase."""
@@ -396,44 +386,17 @@ class CallCoordinator:
     def _consume_pending_terminal_action(self) -> str | None:
         """Return any locally initiated teardown action awaiting terminal backend state."""
 
-        voip_manager = self._current_voip_manager()
+        voip_manager = self.runtime.current_voip_manager()
         consume_action = getattr(voip_manager, "consume_pending_terminal_action", None)
         if callable(consume_action):
             return consume_action()
         return None
 
-    def _current_voip_manager(self) -> object | None:
-        """Return the shared VoIP manager from any registered call screen."""
-
-        for screen in (
-            self.runtime.call_screen,
-            self.runtime.outgoing_call_screen,
-            self.runtime.incoming_call_screen,
-            self.runtime.in_call_screen,
-        ):
-            voip_manager = getattr(screen, "voip_manager", None)
-            if voip_manager is not None:
-                return voip_manager
-        return None
-
-    def _current_caller_info(self) -> dict[str, str]:
-        """Return the current caller/callee metadata from the VoIP manager."""
-
-        voip_manager = self._current_voip_manager()
-        if voip_manager is not None:
-            return dict(voip_manager.get_caller_info())
-        return {}
-
     def _finalize_call_history(self) -> None:
         """Persist the just-finished call into the Talk history store."""
 
-        call_duration = 0
-        call_voip_manager = getattr(self.runtime.call_screen, "voip_manager", None)
-        if call_voip_manager is not None:
-            call_duration = int(call_voip_manager.get_call_duration())
-
         self._session_tracker.finalize(
-            call_duration_seconds=call_duration,
+            call_duration_seconds=self.runtime.current_call_duration_seconds(),
         )
         self._publish_call_summary_to_context()
 

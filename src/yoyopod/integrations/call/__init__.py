@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         CallInterruptionPolicy,
         CallSessionState,
     )
+    from yoyopod.integrations.call.status import is_voip_configured, sync_context_voip_status
     from yoyopod.integrations.call.models import (
         BackendStopped,
         CallState,
@@ -45,6 +46,8 @@ _PUBLIC_EXPORTS = {
     "CallSessionTracker": ("yoyopod.integrations.call.lifecycle", "CallSessionTracker"),
     "CallHistoryEntry": ("yoyopod.integrations.call.history", "CallHistoryEntry"),
     "CallHistoryStore": ("yoyopod.integrations.call.history", "CallHistoryStore"),
+    "is_voip_configured": ("yoyopod.integrations.call.status", "is_voip_configured"),
+    "sync_context_voip_status": ("yoyopod.integrations.call.status", "sync_context_voip_status"),
     "CallState": ("yoyopod.integrations.call.models", "CallState"),
     "RegistrationState": ("yoyopod.integrations.call.models", "RegistrationState"),
     "MessageKind": ("yoyopod.integrations.call.models", "MessageKind"),
@@ -99,6 +102,8 @@ __all__ = [
     "CallSessionTracker",
     "CallHistoryEntry",
     "CallHistoryStore",
+    "is_voip_configured",
+    "sync_context_voip_status",
     "CallState",
     "RegistrationState",
     "MessageKind",

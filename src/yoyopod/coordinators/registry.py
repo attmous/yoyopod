@@ -216,6 +216,36 @@ class CoordinatorRuntime:
 
         return self.set_ui_state(state_by_screen[screen_name], trigger=f"screen:{screen_name}")
 
+    def current_voip_manager(self) -> object | None:
+        """Return the shared VoIP manager exposed by any registered call screen."""
+
+        for screen in (
+            self.call_screen,
+            self.outgoing_call_screen,
+            self.incoming_call_screen,
+            self.in_call_screen,
+        ):
+            voip_manager = getattr(screen, "voip_manager", None)
+            if voip_manager is not None:
+                return voip_manager
+        return None
+
+    def current_caller_info(self) -> dict[str, str]:
+        """Return the current caller/callee metadata from the shared VoIP manager."""
+
+        voip_manager = self.current_voip_manager()
+        if voip_manager is None:
+            return {}
+        return dict(voip_manager.get_caller_info())
+
+    def current_call_duration_seconds(self) -> int:
+        """Return the current call duration reported by the shared VoIP manager."""
+
+        voip_manager = self.current_voip_manager()
+        if voip_manager is None:
+            return 0
+        return int(voip_manager.get_call_duration())
+
     def get_state_name(self) -> str:
         """Return the current derived app-state name."""
         return self.current_app_state.value

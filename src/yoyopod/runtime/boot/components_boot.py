@@ -60,7 +60,11 @@ class ComponentsBoot:
         from yoyopod.audio import AudioVolumeController
         from yoyopod.core import AppContext
         from yoyopod.core import MusicFSM
-        from yoyopod.integrations.call import CallFSM, CallInterruptionPolicy
+        from yoyopod.integrations.call import (
+            CallFSM,
+            CallInterruptionPolicy,
+            sync_context_voip_status,
+        )
 
         self.logger.info("Initializing core components...")
 
@@ -124,16 +128,13 @@ class ComponentsBoot:
             )
             setattr(self.app, "audio_volume_controller", audio_volume_controller)
             self.app.context.audio_volume_controller = audio_volume_controller
-            if self.app.config_manager is not None:
-                self.app.context.update_voip_status(
-                    configured=bool(
-                        self.app.config_manager.get_sip_identity().strip()
-                        or self.app.config_manager.get_sip_username().strip()
-                    ),
-                    ready=False,
-                    running=False,
-                    registration_state="none",
-                )
+            sync_context_voip_status(
+                self.app.context,
+                config_manager=self.app.config_manager,
+                ready=False,
+                running=False,
+                registration_state="none",
+            )
             if self.app.context is not None and self.app.config_manager is not None:
                 voice_cfg = self.app.config_manager.get_voice_settings()
                 speaker_device_id = voice_cfg.audio.speaker_device_id.strip() or None

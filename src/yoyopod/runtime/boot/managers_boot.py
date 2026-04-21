@@ -40,6 +40,8 @@ class ManagersBoot:
 
     def init_managers(self) -> bool:
         """Initialize VoIP, music, power, network, and cloud managers."""
+        from yoyopod.integrations.call import sync_context_voip_status
+
         self.logger.info("Initializing managers...")
 
         assert self.app.display is not None
@@ -81,16 +83,13 @@ class ManagersBoot:
                 self.logger.info("    VoIP started successfully")
             else:
                 self.logger.warning("    VoIP failed to start (music-only mode)")
-            if self.app.context is not None and self.app.config_manager is not None:
-                self.app.context.update_voip_status(
-                    configured=bool(
-                        config_manager.get_sip_identity().strip()
-                        or config_manager.get_sip_username().strip()
-                    ),
-                    ready=False,
-                    running=self.app.voip_manager.running,
-                    registration_state=self.app.voip_manager.registration_state.value,
-                )
+            sync_context_voip_status(
+                self.app.context,
+                config_manager=config_manager,
+                ready=False,
+                running=self.app.voip_manager.running,
+                registration_state=self.app.voip_manager.registration_state,
+            )
 
             self.logger.info("  - MpvBackend")
             music_config = self.music_config_cls.from_config_manager(config_manager)

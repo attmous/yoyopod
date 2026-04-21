@@ -169,3 +169,43 @@ def test_runtime_returns_to_base_ui_state_when_music_and_calls_are_idle() -> Non
     state_change = runtime.sync_app_state("stop")
     assert state_change.entered(AppRuntimeState.PLAYLIST_BROWSER)
     assert runtime.current_app_state == AppRuntimeState.PLAYLIST_BROWSER
+
+
+def test_runtime_exposes_shared_voip_manager_helpers() -> None:
+    """CoordinatorRuntime should centralize shared VoIP manager lookups."""
+
+    class _VoipManagerStub:
+        def get_caller_info(self) -> dict[str, str]:
+            return {
+                "address": "sip:friend@example.com",
+                "display_name": "Friend",
+                "name": "Friend",
+            }
+
+        def get_call_duration(self) -> int:
+            return 42
+
+    class _ScreenStub:
+        def __init__(self, voip_manager: object) -> None:
+            self.voip_manager = voip_manager
+
+    voip_manager = _VoipManagerStub()
+    runtime = CoordinatorRuntime(
+        music_fsm=MusicFSM(),
+        call_fsm=CallFSM(),
+        call_interruption_policy=CallInterruptionPolicy(),
+        screen_manager=None,
+        music_backend=None,
+        power_manager=None,
+        now_playing_screen=None,
+        call_screen=_ScreenStub(voip_manager),
+        power_screen=None,
+        incoming_call_screen=None,
+        outgoing_call_screen=None,
+        in_call_screen=None,
+        config_manager=None,
+    )
+
+    assert runtime.current_voip_manager() is voip_manager
+    assert runtime.current_caller_info()["display_name"] == "Friend"
+    assert runtime.current_call_duration_seconds() == 42
