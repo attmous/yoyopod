@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Callable, cast
 from loguru import logger
 
 from yoyopod.backends.voip.protocol import VoIPBackend
-from yoyopod.communication.calling.messaging import MessagingService
 from yoyopod.backends.voip import LiblinphoneBackend
+from yoyopod.integrations.call.messaging import MessagingService
 from yoyopod.integrations.call.message_store import VoIPMessageStore
 from yoyopod.integrations.call.models import (
     BackendStopped,

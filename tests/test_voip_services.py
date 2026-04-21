@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from yoyopod.backends.voip import MockVoIPBackend
-from yoyopod.communication.calling.messaging import MessagingService
+from yoyopod.integrations.call.messaging import MessagingService
 from yoyopod.integrations.call.message_store import VoIPMessageStore
 from yoyopod.integrations.call.models import (
     MessageDeliveryChanged,
@@ -94,6 +94,14 @@ def test_backend_compat_module_reexports_protocol_types() -> None:
 
     assert VoIPBackend is BackendProtocol
     assert VoIPIterateMetrics is IterateMetrics
+
+
+def test_calling_messaging_compat_module_reexports_messaging_service() -> None:
+    """calling.messaging should remain a stable import path for MessagingService."""
+
+    from yoyopod.communication.calling.messaging import MessagingService as LegacyMessagingService
+
+    assert LegacyMessagingService is MessagingService
 
 
 def test_liblinphone_binding_compat_alias_reexports_binding_types() -> None:

@@ -192,7 +192,7 @@ yoyopod.py / yoyopod.main
 - `src/yoyopod/audio/music/models.py`: `Track`, `Playlist`, `PlaybackQueue`, `MusicConfig`
 - `src/yoyopod/audio/volume.py`: shared ALSA and mpv output-volume coordination
 - `src/yoyopod/communication/__init__.py`: app-facing seam for communication
-- `src/yoyopod/integrations/call/`: canonical public call manager, models, message store, history, and voice-note seam
+- `src/yoyopod/integrations/call/`: canonical public call manager, messaging service, models, message store, history, and voice-note seam
 - `src/yoyopod/backends/voip/`: canonical Liblinphone adapter, protocol types, mock backend, and native shim binding
 - `src/yoyopod/communication/calling/`: legacy compatibility shims plus remaining call helper modules
 - `src/yoyopod/communication/messaging/`: compatibility shim for the historical message-store path

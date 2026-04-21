@@ -54,6 +54,7 @@ from yoyopod.backends.voip import VoIPIterateMetrics as BackendVoIPIterateMetric
 from yoyopod.integrations.call import CallState as IntegrationCallState
 from yoyopod.integrations.call import CallHistoryEntry as IntegrationCallHistoryEntry
 from yoyopod.integrations.call import CallHistoryStore as IntegrationCallHistoryStore
+from yoyopod.integrations.call import MessagingService as IntegrationMessagingService
 from yoyopod.integrations.call import MessageDeliveryState as IntegrationMessageDeliveryState
 from yoyopod.integrations.call import RegistrationState as IntegrationRegistrationState
 from yoyopod.integrations.call import VoIPConfig as IntegrationVoIPConfig
@@ -122,6 +123,7 @@ from yoyopod.communication.calling.backend import VoIPBackend as LegacyCallingVo
 from yoyopod.communication.calling.backend import (
     VoIPIterateMetrics as LegacyCallingVoIPIterateMetrics,
 )
+from yoyopod.communication.calling.messaging import MessagingService as LegacyMessagingService
 from yoyopod.network.at_commands import AtCommandSet as LegacyAtCommandSet
 from yoyopod.network.backend import Sim7600Backend as LegacyBackendSim7600Backend
 from yoyopod.network.gps import GpsReader as LegacyGpsReader
@@ -217,6 +219,7 @@ def test_legacy_call_import_paths_resolve_to_relocated_symbols() -> None:
     assert LegacyCommunicationCallState is IntegrationCallState
     assert LegacyCallHistoryEntry is IntegrationCallHistoryEntry
     assert LegacyCallHistoryStore is IntegrationCallHistoryStore
+    assert LegacyMessagingService is IntegrationMessagingService
     assert LegacyMessageDeliveryState is IntegrationMessageDeliveryState
     assert LegacyCommunicationRegistrationState is IntegrationRegistrationState
     assert LegacyVoIPConfig is IntegrationVoIPConfig

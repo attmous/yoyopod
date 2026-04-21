@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from yoyopod.backends.voip.protocol import VoIPIterateMetrics
     from yoyopod.integrations.call.history import CallHistoryEntry, CallHistoryStore
+    from yoyopod.integrations.call.messaging import MessagingService
     from yoyopod.integrations.call.message_store import VoIPMessageStore
     from yoyopod.integrations.call.manager import VoIPManager
     from yoyopod.integrations.call.models import (
@@ -58,6 +59,7 @@ _PUBLIC_EXPORTS = {
     ),
     "MessageFailed": ("yoyopod.integrations.call.models", "MessageFailed"),
     "VoIPEvent": ("yoyopod.integrations.call.models", "VoIPEvent"),
+    "MessagingService": ("yoyopod.integrations.call.messaging", "MessagingService"),
     "VoIPMessageStore": ("yoyopod.integrations.call.message_store", "VoIPMessageStore"),
     "VoIPIterateMetrics": ("yoyopod.backends.voip.protocol", "VoIPIterateMetrics"),
     "VoIPManager": ("yoyopod.integrations.call.manager", "VoIPManager"),
@@ -97,6 +99,7 @@ __all__ = [
     "MessageDownloadCompleted",
     "MessageFailed",
     "VoIPEvent",
+    "MessagingService",
     "VoIPMessageStore",
     "VoIPIterateMetrics",
     "VoIPManager",
