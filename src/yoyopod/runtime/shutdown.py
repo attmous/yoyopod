@@ -186,9 +186,8 @@ class ShutdownLifecycleService:
         if disable_watchdog:
             self.app.power_runtime.disable_watchdog()
 
-        self.app.boot_service.ensure_coordinators()
-        assert self.app.call_coordinator is not None
-        self.app.call_coordinator.cleanup()
+        if self.app.call_coordinator is not None:
+            self.app.call_coordinator.cleanup()
 
         if self.app.network_manager is not None:
             try:

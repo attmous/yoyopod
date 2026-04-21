@@ -96,9 +96,10 @@ class PowerRuntimeService:
         if self.app.power_manager is None:
             return
 
-        self.app.boot_service.ensure_coordinators()
-        assert self.app.coordinator_runtime is not None
-        if self.app.coordinator_runtime.power_snapshot is None:
+        runtime = self.app.coordinator_runtime
+        if runtime is None or self.app.power_coordinator is None:
+            return
+        if runtime.power_snapshot is None:
             return
 
         self._publish_snapshot(snapshot=self.app.power_manager.get_snapshot())
@@ -106,21 +107,22 @@ class PowerRuntimeService:
     def _publish_snapshot(self, *, snapshot: "PowerSnapshot") -> None:
         """Publish one power snapshot onto the coordinator thread."""
 
-        self.app.boot_service.ensure_coordinators()
-        assert self.app.coordinator_runtime is not None
+        runtime = self.app.coordinator_runtime
+        power_coordinator = self.app.power_coordinator
+        if runtime is None or power_coordinator is None:
+            return
         if (
-            self.app.coordinator_runtime.power_snapshot == snapshot
+            runtime.power_snapshot == snapshot
             and self.app._power_available == snapshot.available
         ):
             return
 
-        assert self.app.power_coordinator is not None
-        self.app.power_coordinator.handle_snapshot_updated(snapshot)
+        power_coordinator.handle_snapshot_updated(snapshot)
 
         if self.app._power_available is None or self.app._power_available != snapshot.available:
             reason = snapshot.error or ("ready" if snapshot.available else "unavailable")
             self.app._power_available = snapshot.available
-            self.app.power_coordinator.handle_availability_change(snapshot.available, reason)
+            power_coordinator.handle_availability_change(snapshot.available, reason)
 
     def start_watchdog(self, now: float | None = None) -> None:
         """Enable the PiSugar software watchdog once the app loop is ready."""
