@@ -125,7 +125,7 @@ class RuntimeStatusService:
             "input_manager_running": (
                 self.app.input_manager.running if self.app.input_manager is not None else False
             ),
-            "pending_scheduler_tasks": self.app.scheduler.pending_count(),
+            "pending_scheduler_tasks": self.app.runtime_loop.pending_main_thread_callback_count(),
             "pending_bus_events": self.app.bus.pending_count(),
             "input_activity_age_seconds": (
                 max(0.0, monotonic_now - runtime_metrics.last_input_activity_at)

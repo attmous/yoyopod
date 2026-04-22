@@ -2611,8 +2611,8 @@ def test_runtime_loop_budgets_backlog_and_keeps_protected_work_running() -> None
         app.runtime_loop.process_pending_main_thread_actions()
 
 
-def test_runtime_loop_defers_watchdog_completion_with_other_scheduler_backlog() -> None:
-    """Watchdog completion should wait behind the shared scheduler budget under backlog."""
+def test_runtime_loop_prioritizes_watchdog_completion_over_scheduler_backlog() -> None:
+    """Watchdog completion should bypass generic scheduler backlog and clear in-flight state."""
 
     power_manager = FakePowerManager(
         [_power_snapshot(available=True, battery_percent=60.0)],
@@ -2638,15 +2638,13 @@ def test_runtime_loop_defers_watchdog_completion_with_other_scheduler_backlog() 
     status = app.get_status()
 
     assert power_manager.feed_watchdog_calls == 1
-    assert processed == callback_budget
+    assert processed == callback_budget + 1
     assert callback_calls == list(range(callback_budget))
-    assert status["watchdog_feed_in_flight"] is True
+    assert status["watchdog_feed_in_flight"] is False
     assert status["runtime_scheduler_tasks_drained"] == callback_budget
-    assert status["runtime_scheduler_tasks_deferred"] == (
-        queued_callbacks - callback_budget + 1
-    )
+    assert status["runtime_scheduler_tasks_deferred"] == queued_callbacks - callback_budget
     assert status["runtime_scheduler_budget_hit"] is True
-    assert status["pending_scheduler_tasks"] == queued_callbacks - callback_budget + 1
+    assert status["pending_scheduler_tasks"] == queued_callbacks - callback_budget
 
 
 def test_runtime_loop_logs_main_thread_drain_budget_hits() -> None:

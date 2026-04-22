@@ -81,7 +81,7 @@ def _record_blocking_span(
         "span={} duration_ms={:.1f} pending_scheduler_tasks={} pending_events={} screen={} state={}",
         span_name,
         duration_seconds * 1000.0,
-        runtime_loop.app.scheduler.pending_count(),
+        runtime_loop.pending_main_thread_callback_count(),
         runtime_loop.app.bus.pending_count(),
         runtime_loop._current_screen_name(),
         runtime_loop._runtime_state_name(),
@@ -193,7 +193,7 @@ def _select_loop_cadence(
         runtime_loop._RELAXED_IDLE_INTERVAL_SECONDS,
         configured_voip_interval_seconds,
     )
-    pending_scheduler_tasks = max(0, runtime_loop.app.scheduler.pending_count())
+    pending_scheduler_tasks = max(0, runtime_loop.pending_main_thread_callback_count())
     pending_events = max(0, runtime_loop.app.bus.pending_count())
     if pending_scheduler_tasks > 0 or pending_events > 0:
         return _LoopCadenceDecision(
@@ -454,7 +454,7 @@ def _sync_background_voip_timing_sample(runtime_loop: "RuntimeLoopService") -> N
             runtime_loop._last_voip_native_events,
             runtime_loop._current_cadence_mode,
             runtime_loop._current_cadence_reason,
-            runtime_loop.app.scheduler.pending_count(),
+            runtime_loop.pending_main_thread_callback_count(),
             runtime_loop.app.bus.pending_count(),
             runtime_loop._current_screen_name(),
             runtime_loop._runtime_state_name(),

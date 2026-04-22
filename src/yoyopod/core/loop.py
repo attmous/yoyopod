@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from queue import Empty, Queue
 from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
 
 from loguru import logger
@@ -44,6 +45,7 @@ _T = TypeVar("_T")
 class _MainThreadDrainResult:
     """Snapshot one coordinator-thread queue drain so backlog pressure is visible."""
 
+    safety_callbacks_processed: int = 0
     scheduled_tasks_processed: int = 0
     events_processed: int = 0
     scheduled_tasks_deferred: int = 0
@@ -53,9 +55,13 @@ class _MainThreadDrainResult:
 
     @property
     def total_processed(self) -> int:
-        """Return the total amount of generic queue work advanced in one drain."""
+        """Return the total amount of queued main-thread work advanced in one drain."""
 
-        return self.scheduled_tasks_processed + self.events_processed
+        return (
+            self.safety_callbacks_processed
+            + self.scheduled_tasks_processed
+            + self.events_processed
+        )
 
     @property
     def scheduler_budget_hit(self) -> bool:
@@ -81,6 +87,14 @@ def _queue_depth(queue_obj: object) -> int | None:
         return int(qsize())
     except (NotImplementedError, TypeError, ValueError):
         return None
+
+
+def _callable_name(fn: Callable[[], None]) -> str:
+    """Return a stable callable name for diagnostics entries."""
+
+    module = getattr(fn, "__module__", "") or ""
+    qualname = getattr(fn, "__qualname__", getattr(fn, "__name__", repr(fn)))
+    return f"{module}.{qualname}".strip(".")
 
 
 class RuntimeLoopService:
@@ -115,6 +129,7 @@ class RuntimeLoopService:
 
     def __init__(self, app: "YoyoPodApp") -> None:
         self.app = app
+        self._safety_callbacks: Queue[Callable[[], None]] = Queue()
         self._last_loop_iteration_started_at = 0.0
         self._last_runtime_loop_gap_seconds = 0.0
         self._last_runtime_iteration_duration_seconds = 0.0
@@ -187,6 +202,7 @@ class RuntimeLoopService:
     def process_pending_main_thread_actions(self, limit: Optional[int] = None) -> int:
         """Drain queued scheduler tasks and typed events."""
         started_at = time.monotonic()
+        safety_callbacks_processed = self._drain_safety_callbacks()
         scheduled_tasks_processed = self._drain_scheduler_tasks(limit)
         remaining_limit = (
             None
@@ -195,6 +211,7 @@ class RuntimeLoopService:
         )
         events_processed = self.app.bus.drain(remaining_limit)
         result = self._snapshot_main_thread_drain_result(
+            safety_callbacks_processed=safety_callbacks_processed,
             scheduled_tasks_processed=scheduled_tasks_processed,
             events_processed=events_processed,
         )
@@ -208,13 +225,15 @@ class RuntimeLoopService:
         return result.total_processed
 
     def _process_pending_main_thread_actions_for_iteration(self) -> int:
-        """Advance generic queue work with hard per-iteration fairness budgets."""
+        """Advance protected callbacks first, then generic queue work under fairness budgets."""
 
         started_at = time.monotonic()
+        safety_callbacks_processed = self._drain_safety_callbacks()
         scheduler_budget = self._scheduler_drain_budget()
         bus_budget = self._bus_drain_budget()
         scheduled_tasks_processed = self._drain_scheduler_tasks(scheduler_budget)
         result = self._snapshot_main_thread_drain_result(
+            safety_callbacks_processed=safety_callbacks_processed,
             scheduled_tasks_processed=scheduled_tasks_processed,
             events_processed=self.app.bus.drain(bus_budget),
             scheduler_budget=scheduler_budget,
@@ -255,9 +274,53 @@ class RuntimeLoopService:
 
         return self.app.scheduler.drain(limit)
 
+    def _drain_safety_callbacks(self, limit: int | None = None) -> int:
+        """Run protected main-thread callbacks ahead of the generic scheduler backlog."""
+
+        processed = 0
+        while limit is None or processed < limit:
+            try:
+                callback = self._safety_callbacks.get_nowait()
+            except Empty:
+                break
+            self._run_queued_callback(callback, lane_name="safety")
+            processed += 1
+        return processed
+
+    def _run_queued_callback(
+        self,
+        callback: Callable[[], None],
+        *,
+        lane_name: str,
+    ) -> None:
+        """Run one queued callback and mirror scheduler diagnostics on failure."""
+
+        try:
+            callback()
+        except Exception as exc:
+            self.app.log_buffer.append(
+                {
+                    "kind": "error",
+                    "handler": _callable_name(callback),
+                    "exc": f"{exc.__class__.__name__}: {exc}",
+                }
+            )
+            coord_logger.exception(
+                "Error running queued main-thread callback on {} lane",
+                lane_name,
+            )
+
+    def pending_main_thread_callback_count(self) -> int:
+        """Return the combined generic and protected main-thread callback backlog."""
+
+        generic_backlog = self.app.scheduler.pending_count()
+        safety_backlog = _queue_depth(self._safety_callbacks)
+        return max(0, generic_backlog) + max(0, safety_backlog or 0)
+
     def _snapshot_main_thread_drain_result(
         self,
         *,
+        safety_callbacks_processed: int = 0,
         scheduled_tasks_processed: int,
         events_processed: int,
         scheduler_budget: int | None = None,
@@ -269,6 +332,7 @@ class RuntimeLoopService:
         # Deferred scheduler count is best-effort: queues without qsize support degrade
         # to 0 here rather than paying extra coordinator work to derive a stronger estimate.
         return _MainThreadDrainResult(
+            safety_callbacks_processed=safety_callbacks_processed,
             scheduled_tasks_processed=scheduled_tasks_processed,
             events_processed=events_processed,
             scheduled_tasks_deferred=(
@@ -299,6 +363,7 @@ class RuntimeLoopService:
         )
         bus_budget = "all" if result.bus_budget is None else str(result.bus_budget)
         return (
+            f"safety_callbacks={result.safety_callbacks_processed} "
             f"scheduler_tasks={result.scheduled_tasks_processed}/{scheduler_budget} "
             f"events={result.events_processed}/{bus_budget} "
             f"deferred_scheduler_tasks={result.scheduled_tasks_deferred} "
@@ -345,7 +410,9 @@ class RuntimeLoopService:
         safety: bool = False,
     ) -> None:
         """Schedule a callback to run on the coordinator thread."""
-        del safety
+        if safety:
+            self._safety_callbacks.put(callback)
+            return
         self.app.scheduler.post(callback)
 
     def queue_lvgl_input_action(self, action: Any, _data: Optional[Any] = None) -> None:
@@ -466,7 +533,7 @@ class RuntimeLoopService:
                 native_events,
                 self._current_cadence_mode,
                 self._current_cadence_reason,
-                self.app.scheduler.pending_count(),
+                self.pending_main_thread_callback_count(),
                 self.app.bus.pending_count(),
                 self._current_screen_name(),
                 self._runtime_state_name(),
@@ -616,7 +683,7 @@ class RuntimeLoopService:
                     "Runtime iteration slow: "
                     "iteration_ms={:.1f} pending_scheduler_tasks={} pending_events={} screen={} state={}",
                     self._last_runtime_iteration_duration_seconds * 1000.0,
-                    self.app.scheduler.pending_count(),
+                    self.pending_main_thread_callback_count(),
                     self.app.bus.pending_count(),
                     self._current_screen_name(),
                     self._runtime_state_name(),
@@ -881,7 +948,7 @@ class RuntimeLoopService:
             self._effective_voip_iterate_interval_seconds() * 1000.0,
             self._current_cadence_mode,
             self._current_cadence_reason,
-            self.app.scheduler.pending_count(),
+            self.pending_main_thread_callback_count(),
             self.app.bus.pending_count(),
             self._current_screen_name(),
             self._runtime_state_name(),
