@@ -229,6 +229,13 @@ class RecentTracksScreen(Screen):
                         PlayRecentTrackCommand(track_uri=track_uri),
                     )
                 )
-            except Exception:
-                return False
+            except KeyError:
+                logger.debug(
+                    "music.play_recent_track service unavailable; falling back to local library"
+                )
+            except Exception as exc:
+                logger.warning(
+                    "music.play_recent_track service failed ({}); falling back to local library",
+                    exc,
+                )
         return bool(music_service.play_recent_track(track_uri))

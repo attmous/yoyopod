@@ -546,6 +546,33 @@ def test_playlist_screen_can_use_app_music_services(
     assert screen.consume_navigation_request() == NavigationRequest.route("playlist_loaded")
 
 
+def test_playlist_screen_falls_back_when_app_music_service_is_unregistered(
+    display: Display,
+    one_button_context: AppContext,
+) -> None:
+    """Playlists should fall back to the local library when the app service is absent."""
+
+    backend = FakeMusicBackend()
+    music_service = LocalMusicService(backend)
+
+    def raise_missing_service(domain: str, service: str, data=None) -> bool:
+        raise KeyError(f"Unknown service: {domain}.{service}")
+
+    app = SimpleNamespace(
+        context=one_button_context,
+        get_music_library=lambda: music_service,
+        services=SimpleNamespace(call=raise_missing_service),
+    )
+    screen = PlaylistScreen(display, app=app)
+    screen.render = lambda: None
+
+    screen.enter()
+    screen.on_select()
+
+    assert backend.loaded_playlists == ["m3u:alpha"]
+    assert screen.consume_navigation_request() == NavigationRequest.route("playlist_loaded")
+
+
 def test_recent_tracks_select_routes_to_now_playing(
     display: Display,
     one_button_context: AppContext,
@@ -566,6 +593,44 @@ def test_recent_tracks_select_routes_to_now_playing(
         )
     )
     screen = RecentTracksScreen(display, one_button_context, music_service=service)
+    screen.render = lambda: None
+
+    screen.enter()
+    screen.on_select()
+
+    assert screen.consume_navigation_request() == NavigationRequest.route("track_loaded")
+
+
+def test_recent_tracks_fall_back_when_app_music_service_is_unregistered(
+    display: Display,
+    one_button_context: AppContext,
+    tmp_path,
+) -> None:
+    """Recent playback should fall back to the local library when the app service is absent."""
+
+    backend = FakeMusicBackend()
+    service = LocalMusicService(
+        backend,
+        recent_store=RecentTrackHistoryStore(tmp_path / "recent_tracks.json"),
+    )
+    service.record_recent_track(
+        Track(
+            uri="local:track:1",
+            name="Alpha Song",
+            artists=["Artist"],
+            album="Album",
+        )
+    )
+
+    def raise_missing_service(domain: str, service: str, data=None) -> bool:
+        raise KeyError(f"Unknown service: {domain}.{service}")
+
+    app = SimpleNamespace(
+        context=one_button_context,
+        get_music_library=lambda: service,
+        services=SimpleNamespace(call=raise_missing_service),
+    )
+    screen = RecentTracksScreen(display, app=app)
     screen.render = lambda: None
 
     screen.enter()

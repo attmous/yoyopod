@@ -279,6 +279,11 @@ class PlaylistScreen(Screen):
                         LoadPlaylistCommand(playlist_uri=playlist_uri),
                     )
                 )
-            except Exception:
-                return False
+            except KeyError:
+                logger.debug("music.load_playlist service unavailable; falling back to local library")
+            except Exception as exc:
+                logger.warning(
+                    "music.load_playlist service failed ({}); falling back to local library",
+                    exc,
+                )
         return bool(music_service.load_playlist(playlist_uri))
