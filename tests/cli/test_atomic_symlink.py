@@ -49,7 +49,16 @@ def test_cleans_up_temp_on_retry(tmp_path: Path) -> None:
     stale_tmp.symlink_to(target)  # orphan from a prior crashed call
     atomic_symlink(target, link)
     assert link.is_symlink()
-    assert not stale_tmp.exists()
+    assert not stale_tmp.exists() and not stale_tmp.is_symlink()
+
+
+def test_rejects_dangling_target(tmp_path: Path) -> None:
+    nowhere = tmp_path / "does_not_exist"
+    dangling = tmp_path / "dangling"
+    dangling.symlink_to(nowhere)
+    link = tmp_path / "current"
+    with pytest.raises(FileNotFoundError):
+        atomic_symlink(dangling, link)
 
 
 def test_preserves_absolute_target(tmp_path: Path) -> None:

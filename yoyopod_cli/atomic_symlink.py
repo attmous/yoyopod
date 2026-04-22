@@ -21,8 +21,15 @@ def atomic_symlink(target: Path, link: Path) -> None:
     A sibling temp symlink (`<link>.tmp`) is created and then renamed over
     `link`. If a stale `.tmp` exists from a prior crashed call, it is
     unlinked first.
+
+    Limitations:
+    - Single-writer only: not safe when called concurrently from multiple
+      processes on the same `link` path.
+    - TOCTOU: a real file appearing at `link` between the existence check
+      and the rename could be silently clobbered. The single-writer assumption
+      prevents this in normal use.
     """
-    if not target.exists() and not target.is_symlink():
+    if not target.exists():
         raise FileNotFoundError(f"symlink target does not exist: {target}")
     if link.exists() and not link.is_symlink():
         raise FileExistsError(f"refusing to clobber non-symlink at {link}")
