@@ -9,6 +9,7 @@ from loguru import logger
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.lvgl_lifecycle import current_retained_view
+from yoyopod.ui.screens.voip.call_actions import CallActions
 from yoyopod.ui.screens.voip.incoming_call_pil_view import render_incoming_call_pil
 from yoyopod.ui.screens.voip.lvgl import LvglIncomingCallView
 
@@ -24,12 +25,13 @@ class IncomingCallScreen(Screen):
         self,
         display: Display,
         context: Optional["AppContext"] = None,
-        voip_manager=None,
+        *,
+        actions: CallActions | None = None,
         caller_address: str = "",
         caller_name: str = "Unknown",
     ) -> None:
         super().__init__(display, context, "IncomingCall")
-        self.voip_manager = voip_manager
+        self._actions = actions or CallActions()
         self.caller_address = caller_address
         self.caller_name = caller_name
         self.ring_animation_frame = 0
@@ -77,14 +79,14 @@ class IncomingCallScreen(Screen):
     def _answer_call(self) -> None:
         """Answer the incoming call."""
         logger.info("Answering incoming call")
-        if self.voip_manager:
-            self.voip_manager.answer_call()
+        if self._actions.answer_call is not None:
+            self._actions.answer_call()
 
     def _reject_call(self) -> None:
         """Reject the incoming call."""
         logger.info("Rejecting incoming call")
-        if self.voip_manager:
-            self.voip_manager.reject_call()
+        if self._actions.reject_call is not None:
+            self._actions.reject_call()
 
     def on_select(self, data=None) -> None:
         """Answer the incoming call."""

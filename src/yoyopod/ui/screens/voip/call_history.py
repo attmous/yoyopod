@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from loguru import logger
 
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.lvgl_lifecycle import current_retained_view
+from yoyopod.ui.screens.voip.call_actions import CallActions
 from yoyopod.ui.screens.voip.call_history_pil_view import render_call_history_pil
 from yoyopod.ui.screens.voip.lvgl.call_history_view import LvglCallHistoryView
 
@@ -25,11 +26,14 @@ class CallHistoryScreen(Screen):
         self,
         display: Display,
         context: Optional["AppContext"] = None,
-        voip_manager=None,
+        *,
+        actions: CallActions | None = None,
+        ready_to_call_provider: Callable[[], bool] | None = None,
         call_history_store: Optional["CallHistoryStore"] = None,
     ) -> None:
         super().__init__(display, context, "CallHistory")
-        self.voip_manager = voip_manager
+        self._actions = actions or CallActions()
+        self._ready_to_call_provider = ready_to_call_provider or (lambda: False)
         self.call_history_store = call_history_store
         self.entries: list["CallHistoryEntry"] = []
         self.selected_index = 0
@@ -94,10 +98,7 @@ class CallHistoryScreen(Screen):
 
     def _is_ready_to_call(self) -> bool:
         """Return whether VoIP is ready to redial from recents."""
-        if self.voip_manager is None:
-            return False
-        status = self.voip_manager.get_status()
-        return bool(status.get("running")) and bool(status.get("registered"))
+        return bool(self._ready_to_call_provider())
 
     def _selected_entry(self) -> "CallHistoryEntry | None":
         if not self.entries:
@@ -182,15 +183,12 @@ class CallHistoryScreen(Screen):
             selected is None
             or not selected.sip_address
             or not self._is_ready_to_call()
-            or self.voip_manager is None
+            or self._actions.make_call is None
         ):
             return
 
         logger.info(f"Redialing recent contact: {selected.title} ({selected.sip_address})")
-        if not self.voip_manager.make_call(
-            selected.sip_address,
-            contact_name=selected.display_name,
-        ):
+        if not self._actions.make_call(selected.sip_address, selected.display_name):
             logger.error(f"Failed to redial recent contact: {selected.title}")
 
     def on_back(self, data=None) -> None:

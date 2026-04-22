@@ -128,6 +128,7 @@ class WiringBoot:
             call_interruption_policy=self.app.call_interruption_policy,
             screen_manager=self.app.screen_manager,
             music_backend=self.app.music_backend,
+            voip_manager=self.app.voip_manager,
             power_manager=self.app.power_manager,
             config_manager=self.app.config_manager,
             context=self.app.context,
@@ -141,6 +142,7 @@ class WiringBoot:
             auto_resume_after_call=self.app.auto_resume_after_call,
             call_history_store=self.app.call_history_store,
             initial_voip_registered=self.app._voip_registered,
+            people_directory=self.app.people_directory,
         )
         self.app.playback_coordinator = PlaybackCoordinator(
             runtime=self.app.coordinator_runtime,

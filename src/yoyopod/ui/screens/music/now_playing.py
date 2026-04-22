@@ -23,7 +23,7 @@ from yoyopod.ui.screens.theme import (
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.audio.music.backend import MusicBackend
+    from yoyopod.audio.music.models import Track
     from yoyopod.ui.screens.view import ScreenView
 
 
@@ -39,10 +39,20 @@ class NowPlayingState:
 
 
 @dataclass(frozen=True, slots=True)
-class NowPlayingActions:
+class NowPlayingSnapshot:
+    """Read-only playback snapshot used to build the now-playing view state."""
+
+    is_connected: bool
+    track: "Track | None" = None
+    playback_state: str = "stopped"
+    time_position: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class PlaybackActions:
     """Focused playback actions exposed to the now-playing screen."""
 
-    toggle_playback: Callable[[], None] | None = None
+    toggle: Callable[[], None] | None = None
     previous_track: Callable[[], None] | None = None
     next_track: Callable[[], None] | None = None
 
@@ -50,13 +60,14 @@ class NowPlayingActions:
 def build_now_playing_state_provider(
     *,
     context: "AppContext | None" = None,
-    music_backend: "MusicBackend | None" = None,
+    snapshot_provider: Callable[[], NowPlayingSnapshot] | None = None,
 ) -> Callable[[], NowPlayingState]:
     """Build a narrow prepared-state provider for the now-playing screen."""
 
     def provider() -> NowPlayingState:
-        if music_backend is not None:
-            if not music_backend.is_connected:
+        if snapshot_provider is not None:
+            snapshot = snapshot_provider()
+            if not snapshot.is_connected:
                 return NowPlayingState(
                     title="Music Offline",
                     artist="Trying to reconnect",
@@ -65,12 +76,12 @@ def build_now_playing_state_provider(
                     is_playing=False,
                 )
 
-            current_track = music_backend.get_current_track()
-            playback_state = music_backend.get_playback_state()
+            current_track = snapshot.track
+            playback_state = snapshot.playback_state
             if current_track is not None:
                 progress = 0.0
                 if current_track.length > 0:
-                    progress = music_backend.get_time_position() / current_track.length
+                    progress = snapshot.time_position / current_track.length
                 state_label = (
                     "PLAYING"
                     if playback_state == "playing"
@@ -120,40 +131,41 @@ def build_now_playing_state_provider(
 def build_now_playing_actions(
     *,
     context: "AppContext | None" = None,
-    music_backend: "MusicBackend | None" = None,
-) -> NowPlayingActions:
-    """Build the focused playback actions for the now-playing screen."""
+    toggle_playback_action: Callable[[], None] | None = None,
+    previous_track_action: Callable[[], None] | None = None,
+    next_track_action: Callable[[], None] | None = None,
+) -> PlaybackActions:
+    """Build the focused playback actions for the now-playing screen.
+
+    When a callback is not supplied, fallback to context playback methods so
+    screens created with only the context continue to provide usable defaults.
+    """
+
+    resolved_toggle_playback: Callable[[], None] | None = toggle_playback_action
+    resolved_previous_track: Callable[[], None] | None = previous_track_action
+    resolved_next_track: Callable[[], None] | None = next_track_action
+
+    if resolved_toggle_playback is None and context is not None:
+        resolved_toggle_playback = context.toggle_playback
+    if resolved_previous_track is None and context is not None:
+        resolved_previous_track = context.previous_track
+    if resolved_next_track is None and context is not None:
+        resolved_next_track = context.next_track
 
     def toggle_playback() -> None:
-        if music_backend is not None:
-            if not music_backend.is_connected:
-                return
-            if music_backend.get_playback_state() == "playing":
-                music_backend.pause()
-            else:
-                music_backend.play()
-            return
-        if context is not None:
-            context.toggle_playback()
+        if resolved_toggle_playback is not None:
+            resolved_toggle_playback()
 
     def previous_track() -> None:
-        if music_backend is not None:
-            if music_backend.is_connected:
-                music_backend.previous_track()
-            return
-        if context is not None:
-            context.previous_track()
+        if resolved_previous_track is not None:
+            resolved_previous_track()
 
     def next_track() -> None:
-        if music_backend is not None:
-            if music_backend.is_connected:
-                music_backend.next_track()
-            return
-        if context is not None:
-            context.next_track()
+        if resolved_next_track is not None:
+            resolved_next_track()
 
-    return NowPlayingActions(
-        toggle_playback=toggle_playback,
+    return PlaybackActions(
+        toggle=toggle_playback,
         previous_track=previous_track,
         next_track=next_track,
     )
@@ -168,7 +180,7 @@ class NowPlayingScreen(Screen):
         context: Optional["AppContext"] = None,
         *,
         state_provider: Callable[[], NowPlayingState] | None = None,
-        actions: NowPlayingActions | None = None,
+        actions: PlaybackActions | None = None,
     ) -> None:
         super().__init__(display, context, "NowPlaying")
         self._state_provider = state_provider or build_now_playing_state_provider(context=context)
@@ -267,8 +279,8 @@ class NowPlayingScreen(Screen):
     def _toggle_playback(self) -> None:
         """Toggle playback via the injected action seam."""
 
-        if self._actions.toggle_playback is not None:
-            self._actions.toggle_playback()
+        if self._actions.toggle is not None:
+            self._actions.toggle()
 
     def _previous_track(self) -> None:
         """Go to the previous track via the injected action seam."""

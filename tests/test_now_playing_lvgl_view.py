@@ -6,6 +6,7 @@ from yoyopod.core import AppContext
 from yoyopod.audio import MockMusicBackend, Track
 from yoyopod.ui.input import InteractionProfile
 from yoyopod.ui.screens.music.now_playing import (
+    NowPlayingSnapshot,
     NowPlayingScreen,
     build_now_playing_actions,
     build_now_playing_state_provider,
@@ -50,6 +51,28 @@ class FakeLvglDisplay:
         return self._ui_backend
 
 
+def _snapshot_provider(backend: MockMusicBackend):
+    def provider() -> NowPlayingSnapshot:
+        return NowPlayingSnapshot(
+            is_connected=backend.is_connected,
+            track=backend.get_current_track(),
+            playback_state=backend.get_playback_state(),
+            time_position=float(backend.get_time_position()),
+        )
+
+    return provider
+
+
+def _toggle_playback_action(backend: MockMusicBackend):
+    def action() -> None:
+        if backend.get_playback_state() == "playing":
+            backend.pause()
+        else:
+            backend.play()
+
+    return action
+
+
 def test_now_playing_screen_reuses_retained_lvgl_view_across_exit_and_reentry() -> None:
     """NowPlayingScreen should retain its LVGL view across transitions."""
 
@@ -74,8 +97,16 @@ def test_now_playing_screen_reuses_retained_lvgl_view_across_exit_and_reentry() 
     screen = NowPlayingScreen(
         display,
         context,
-        state_provider=build_now_playing_state_provider(context=context, music_backend=backend),
-        actions=build_now_playing_actions(context=context, music_backend=backend),
+        state_provider=build_now_playing_state_provider(
+            context=context,
+            snapshot_provider=_snapshot_provider(backend),
+        ),
+        actions=build_now_playing_actions(
+            context=context,
+            toggle_playback_action=_toggle_playback_action(backend),
+            previous_track_action=backend.previous_track,
+            next_track_action=backend.next_track,
+        ),
     )
 
     screen.enter()
@@ -116,11 +147,13 @@ def test_now_playing_screen_syncs_offline_state_through_lvgl() -> None:
         context,
         state_provider=build_now_playing_state_provider(
             context=context,
-            music_backend=backend,
+            snapshot_provider=_snapshot_provider(backend),
         ),
         actions=build_now_playing_actions(
             context=context,
-            music_backend=backend,
+            toggle_playback_action=_toggle_playback_action(backend),
+            previous_track_action=backend.previous_track,
+            next_track_action=backend.next_track,
         ),
     )
 
@@ -156,8 +189,16 @@ def test_now_playing_screen_syncs_paused_state_through_lvgl() -> None:
     screen = NowPlayingScreen(
         display,
         context,
-        state_provider=build_now_playing_state_provider(context=context, music_backend=backend),
-        actions=build_now_playing_actions(context=context, music_backend=backend),
+        state_provider=build_now_playing_state_provider(
+            context=context,
+            snapshot_provider=_snapshot_provider(backend),
+        ),
+        actions=build_now_playing_actions(
+            context=context,
+            toggle_playback_action=_toggle_playback_action(backend),
+            previous_track_action=backend.previous_track,
+            next_track_action=backend.next_track,
+        ),
     )
 
     screen.enter()

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.lvgl_lifecycle import current_retained_view
@@ -20,9 +20,7 @@ from yoyopod.ui.screens.theme import (
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.audio import LocalMusicService
-    from yoyopod.audio.music.backend import MusicBackend
-    from yoyopod.communication.calling.manager import VoIPManager
+    from yoyopod.audio.music.models import Track
     from yoyopod.ui.screens.view import ScreenView
 
 
@@ -36,6 +34,49 @@ class HubCard:
     icon: str
 
 
+@dataclass(frozen=True, slots=True)
+class HubListenSnapshot:
+    """Read-only Listen summary used by the hub subtitle provider."""
+
+    is_connected: bool
+    track: "Track | None" = None
+    playback_state: str = "stopped"
+    playlist_count: int | None = None
+
+
+def build_hub_listen_subtitle_provider(
+    display: Display,
+    *,
+    snapshot_provider: Callable[[], HubListenSnapshot] | None = None,
+) -> Callable[[], str]:
+    """Build the compact Listen subtitle provider for the hub."""
+
+    def provider() -> str:
+        if snapshot_provider is None:
+            return ""
+
+        snapshot = snapshot_provider()
+        if not snapshot.is_connected:
+            return "Reconnect"
+
+        track = snapshot.track
+        if track is None:
+            if snapshot.playlist_count:
+                label = "playlist" if snapshot.playlist_count == 1 else "playlists"
+                return f"{snapshot.playlist_count} {label}"
+            return "On-device music"
+
+        artist = track.get_artist_string() or "Unknown"
+        artist = artist.split(",")[0]
+        if snapshot.playback_state == "playing":
+            return text_fit(display, f"Playing {artist}", 134, 12)
+        if snapshot.playback_state == "paused":
+            return "Paused"
+        return "On-device music"
+
+    return provider
+
+
 class HubScreen(Screen):
     """Carousel-style root screen for the one-button Whisplay flow."""
 
@@ -43,22 +84,19 @@ class HubScreen(Screen):
         self,
         display: Display,
         context: Optional["AppContext"] = None,
-        music_backend: Optional["MusicBackend"] = None,
-        local_music_service: Optional["LocalMusicService"] = None,
-        voip_manager: Optional["VoIPManager"] = None,
+        *,
+        listen_subtitle_provider: Callable[[], str] | None = None,
     ) -> None:
         super().__init__(display, context, "ActionHub")
-        self.music_backend = music_backend
-        self.local_music_service = local_music_service
-        self.voip_manager = voip_manager
+        self._listen_subtitle_provider = (
+            listen_subtitle_provider or build_hub_listen_subtitle_provider(display)
+        )
         self.selected_index = 0
-        self._playlist_count: int | None = None
         self._lvgl_view: "ScreenView | None" = None
 
     def enter(self) -> None:
         """Refresh lightweight summaries when the hub becomes active."""
         super().enter()
-        self._refresh_playlist_count()
         self._ensure_lvgl_view()
 
     def exit(self) -> None:
@@ -86,17 +124,6 @@ class HubScreen(Screen):
         self._lvgl_view.build()
         return self._lvgl_view
 
-    def _refresh_playlist_count(self) -> None:
-        """Refresh the cached playlist count for the Listen card."""
-        if self.local_music_service is None or not self.local_music_service.is_available:
-            self._playlist_count = None
-            return
-
-        try:
-            self._playlist_count = self.local_music_service.playlist_count()
-        except Exception:
-            self._playlist_count = None
-
     def cards(self) -> list[HubCard]:
         """Build the live root-card list."""
         return [
@@ -108,26 +135,7 @@ class HubScreen(Screen):
 
     def _listen_subtitle(self) -> str:
         """Return the compact Listen card subtitle."""
-        if self.music_backend is None:
-            return "Music offline"
-        if not self.music_backend.is_connected:
-            return "Reconnect"
-
-        track = self.music_backend.get_current_track()
-        playback_state = self.music_backend.get_playback_state()
-        if track is None:
-            if self._playlist_count:
-                label = "playlist" if self._playlist_count == 1 else "playlists"
-                return f"{self._playlist_count} {label}"
-            return "On-device music"
-
-        artist = track.get_artist_string() or "Unknown"
-        artist = artist.split(",")[0]
-        if playback_state == "playing":
-            return text_fit(self.display, f"Playing {artist}", 134, 12)
-        if playback_state == "paused":
-            return "Paused"
-        return "On-device music"
+        return self._listen_subtitle_provider()
 
     def _talk_subtitle(self) -> str:
         """Return the compact Talk card subtitle."""

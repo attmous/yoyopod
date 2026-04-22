@@ -18,6 +18,7 @@ from yoyopod.core import (
 
 if TYPE_CHECKING:
     from yoyopod.audio.music.backend import MusicBackend
+    from yoyopod.communication.calling.manager import VoIPManager
     from yoyopod.config import ConfigManager
     from yoyopod.core import AppContext
     from yoyopod.power.manager import PowerManager
@@ -83,6 +84,7 @@ class CoordinatorRuntime:
     power_manager: PowerManager | None
     config_manager: ConfigManager | None
     music_backend: MusicBackend | None = None
+    voip_manager: VoIPManager | None = None
     context: AppContext | None = None
     ui_state: str | Enum = AppRuntimeState.IDLE.value
     voip_ready: bool = False

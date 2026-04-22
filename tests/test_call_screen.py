@@ -139,8 +139,7 @@ def test_call_screen_builds_people_deck_from_contacts(display: Display) -> None:
     screen = CallScreen(
         display,
         AppContext(),
-        voip_manager=FakeVoIPManager(),
-        people_directory=FakePeopleDirectory(contacts),
+        contacts_provider=lambda: FakePeopleDirectory(contacts).get_callable_contacts(),
     )
 
     screen.enter()
@@ -158,8 +157,7 @@ def test_call_screen_select_opens_selected_contact(display: Display) -> None:
     screen = CallScreen(
         display,
         context,
-        voip_manager=FakeVoIPManager(),
-        people_directory=FakePeopleDirectory(contacts),
+        contacts_provider=lambda: FakePeopleDirectory(contacts).get_callable_contacts(),
     )
 
     screen.enter()

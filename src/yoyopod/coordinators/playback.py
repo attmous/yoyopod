@@ -4,6 +4,8 @@ Playback-event coordination for YoyoPod.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from loguru import logger
 
 from yoyopod.audio.music import LocalMusicService
@@ -16,6 +18,16 @@ from yoyopod.core import (
     PlaybackStateChangedEvent,
     TrackChangedEvent,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class PlaybackSnapshot:
+    """Coordinator-owned read-only playback state for UI consumers."""
+
+    is_connected: bool
+    track: Track | None
+    playback_state: str
+    time_position: float = 0.0
 
 
 class PlaybackCoordinator:
@@ -68,6 +80,93 @@ class PlaybackCoordinator:
     def update_now_playing_if_needed(self) -> None:
         """Refresh the now-playing screen for periodic progress updates."""
         self.screen_coordinator.update_now_playing_if_needed()
+
+    def get_playback_snapshot(self) -> PlaybackSnapshot:
+        """Return the latest playback state through a narrow UI-safe snapshot."""
+        music_backend = self.runtime.music_backend
+        if music_backend is not None:
+            is_connected = bool(music_backend.is_connected)
+            if not is_connected:
+                return PlaybackSnapshot(
+                    is_connected=False,
+                    track=None,
+                    playback_state="stopped",
+                    time_position=0.0,
+                )
+
+            return PlaybackSnapshot(
+                is_connected=True,
+                track=music_backend.get_current_track(),
+                playback_state=music_backend.get_playback_state(),
+                time_position=float(music_backend.get_time_position()),
+            )
+
+        context = self.runtime.context
+        track = context.get_current_track() if context is not None else None
+        playback_state = "stopped"
+        if context is not None and context.media.playback.is_playing:
+            playback_state = "playing"
+        elif context is not None and context.media.playback.is_paused:
+            playback_state = "paused"
+
+        time_position = 0.0
+        if track is not None and context is not None and track.length > 0:
+            time_position = context.get_playback_progress() * track.length
+
+        return PlaybackSnapshot(
+            is_connected=True,
+            track=track,
+            playback_state=playback_state,
+            time_position=time_position,
+        )
+
+    def get_playlist_count(self) -> int | None:
+        """Return the current local playlist count for Listen entry points."""
+        if self.local_music_service is None or not self.local_music_service.is_available:
+            return None
+
+        try:
+            return self.local_music_service.playlist_count()
+        except Exception as exc:
+            logger.debug("Failed to read local playlist count: {}", exc)
+            return None
+
+    def toggle_playback(self) -> None:
+        """Toggle playback through the backend or runtime fallback."""
+        music_backend = self.runtime.music_backend
+        if music_backend is not None:
+            if not music_backend.is_connected:
+                return
+            if music_backend.get_playback_state() == "playing":
+                music_backend.pause()
+            else:
+                music_backend.play()
+            return
+
+        if self.runtime.context is not None:
+            self.runtime.context.toggle_playback()
+
+    def previous_track(self) -> None:
+        """Move to the previous track through the backend or runtime fallback."""
+        music_backend = self.runtime.music_backend
+        if music_backend is not None:
+            if music_backend.is_connected:
+                music_backend.previous_track()
+            return
+
+        if self.runtime.context is not None:
+            self.runtime.context.previous_track()
+
+    def next_track(self) -> None:
+        """Move to the next track through the backend or runtime fallback."""
+        music_backend = self.runtime.music_backend
+        if music_backend is not None:
+            if music_backend.is_connected:
+                music_backend.next_track()
+            return
+
+        if self.runtime.context is not None:
+            self.runtime.context.next_track()
 
     def on_enter_playing_with_voip(self) -> None:
         """Log entry into the playing-with-VoIP-ready state."""

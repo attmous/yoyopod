@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Callable, Literal, Optional
 
 from loguru import logger
 
@@ -10,11 +10,13 @@ from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.lvgl_lifecycle import current_retained_view
 from yoyopod.ui.screens.theme import talk_monogram
+from yoyopod.ui.screens.voip.call_actions import CallActions
 from yoyopod.ui.screens.voip.contact_list_pil_view import render_contact_list_pil
 from yoyopod.ui.screens.voip.lvgl import LvglContactListView
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
+    from yoyopod.people import Contact
     from yoyopod.ui.screens.view import ScreenView
 
 
@@ -25,15 +27,16 @@ class ContactListScreen(Screen):
         self,
         display: Display,
         context: Optional["AppContext"] = None,
-        voip_manager=None,
-        people_directory=None,
+        *,
+        contacts_provider: Callable[[], list["Contact"]] | None = None,
+        actions: CallActions | None = None,
         action_mode: Literal["call", "voice_note"] = "call",
     ) -> None:
         super().__init__(display, context, "ContactList")
-        self.voip_manager = voip_manager
-        self.people_directory = people_directory
+        self._contacts_provider = contacts_provider or (lambda: [])
+        self._actions = actions or CallActions()
         self.action_mode = action_mode
-        self.contacts = []
+        self.contacts: list["Contact"] = []
         self.selected_index = 0
         self.scroll_offset = 0
         self.max_visible_items = 4 if display.is_portrait() else 5
@@ -92,15 +95,11 @@ class ContactListScreen(Screen):
 
     def load_contacts(self) -> None:
         """Load contacts from the people directory."""
-        if self.people_directory:
-            contacts = self.people_directory.get_callable_contacts(gsm_enabled=False)
-            favorites = [contact for contact in contacts if contact.favorite]
-            others = [contact for contact in contacts if not contact.favorite]
-            self.contacts = favorites + others
-            logger.info(f"Loaded {len(self.contacts)} contacts")
-        else:
-            logger.warning("No people directory available to load contacts")
-            self.contacts = []
+        contacts = list(self._contacts_provider())
+        favorites = [contact for contact in contacts if contact.favorite]
+        others = [contact for contact in contacts if not contact.favorite]
+        self.contacts = favorites + others
+        logger.info(f"Loaded {len(self.contacts)} contacts")
 
     def render(self) -> None:
         """Render the contact list."""
@@ -203,13 +202,13 @@ class ContactListScreen(Screen):
             logger.warning("No contact selected")
             return
 
-        if not self.voip_manager:
-            logger.error("Cannot make call: no VoIP manager")
+        if self._actions.make_call is None:
+            logger.error("Cannot make call: no call action")
             return
 
         contact = self.contacts[self.selected_index]
         logger.info(f"Calling contact: {contact.display_name} at {contact.sip_address}")
-        if not self.voip_manager.make_call(contact.sip_address, contact_name=contact.display_name):
+        if not self._actions.make_call(contact.sip_address, contact.display_name):
             logger.error(f"Failed to initiate call to {contact.display_name}")
 
     def choose_voice_note_recipient(self) -> None:

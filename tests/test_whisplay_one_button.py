@@ -16,15 +16,21 @@ from yoyopod.communication.calling import VoiceNoteDraft
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InteractionProfile
 from yoyopod.ui.screens.music.now_playing import (
+    NowPlayingSnapshot,
     NowPlayingScreen,
     build_now_playing_actions,
     build_now_playing_state_provider,
 )
 from yoyopod.ui.screens.music.playlist import PlaylistScreen
 from yoyopod.ui.screens.music.recent import RecentTracksScreen
-from yoyopod.ui.screens.navigation.hub import HubScreen
+from yoyopod.ui.screens.navigation.hub import (
+    HubListenSnapshot,
+    HubScreen,
+    build_hub_listen_subtitle_provider,
+)
 from yoyopod.ui.screens.navigation.listen import ListenScreen
 from yoyopod.ui.screens.router import NavigationRequest
+from yoyopod.ui.screens.voip.call_actions import CallActions
 from yoyopod.ui.screens.voip.contact_list import ContactListScreen
 from yoyopod.ui.screens.voip.in_call import InCallScreen
 from yoyopod.ui.screens.voip.incoming_call import IncomingCallScreen
@@ -226,6 +232,37 @@ class FakeVoIPManager:
         return self.active_voice_note
 
 
+def _call_actions(voip_manager: FakeVoIPManager) -> CallActions:
+    return CallActions(
+        answer_call=voip_manager.answer_call,
+        reject_call=voip_manager.reject_call,
+        hangup_call=voip_manager.hangup,
+        make_call=voip_manager.make_call,
+    )
+
+
+def _now_playing_snapshot_provider(backend: FakeMusicBackend):
+    def provider() -> NowPlayingSnapshot:
+        return NowPlayingSnapshot(
+            is_connected=backend.is_connected,
+            track=backend.get_current_track(),
+            playback_state=backend.get_playback_state(),
+            time_position=float(backend.get_time_position()),
+        )
+
+    return provider
+
+
+def _toggle_playback_action(backend: FakeMusicBackend):
+    def action() -> None:
+        if backend.get_playback_state() == "playing":
+            backend.pause()
+        else:
+            backend.play()
+
+    return action
+
+
 @pytest.fixture
 def display() -> Display:
     """Create a simulation display and clean it up after each test."""
@@ -247,13 +284,20 @@ def test_hub_advance_wraps_from_last_card_to_first(
     one_button_context: AppContext,
 ) -> None:
     """The Whisplay root hub should wrap its carousel on ADVANCE."""
-    music_service = LocalMusicService(FakeMusicBackend())
+    backend = FakeMusicBackend()
+    music_service = LocalMusicService(backend)
     hub = HubScreen(
         display,
         one_button_context,
-        music_backend=FakeMusicBackend(),
-        local_music_service=music_service,
-        voip_manager=FakeVoIPManager(),
+        listen_subtitle_provider=build_hub_listen_subtitle_provider(
+            display,
+            snapshot_provider=lambda: HubListenSnapshot(
+                is_connected=backend.is_connected,
+                track=backend.get_current_track(),
+                playback_state=backend.get_playback_state(),
+                playlist_count=music_service.playlist_count(),
+            ),
+        ),
     )
 
     hub.selected_index = 3
@@ -306,9 +350,7 @@ def test_hub_select_requests_setup_route_for_setup_card(
     hub = HubScreen(
         display,
         one_button_context,
-        music_backend=FakeMusicBackend(),
-        local_music_service=LocalMusicService(FakeMusicBackend()),
-        voip_manager=FakeVoIPManager(),
+        listen_subtitle_provider=build_hub_listen_subtitle_provider(display),
     )
 
     hub.selected_index = 3
@@ -325,9 +367,7 @@ def test_hub_cards_use_mode_specific_hero_tiles(
     hub = HubScreen(
         display,
         one_button_context,
-        music_backend=FakeMusicBackend(),
-        local_music_service=LocalMusicService(FakeMusicBackend()),
-        voip_manager=FakeVoIPManager(),
+        listen_subtitle_provider=build_hub_listen_subtitle_provider(display),
     )
 
     hub.selected_index = 0
@@ -358,9 +398,15 @@ def test_hub_listen_subtitle_handles_active_track_without_crashing(
     hub = HubScreen(
         display,
         one_button_context,
-        music_backend=backend,
-        local_music_service=LocalMusicService(FakeMusicBackend()),
-        voip_manager=FakeVoIPManager(),
+        listen_subtitle_provider=build_hub_listen_subtitle_provider(
+            display,
+            snapshot_provider=lambda: HubListenSnapshot(
+                is_connected=backend.is_connected,
+                track=backend.get_current_track(),
+                playback_state=backend.get_playback_state(),
+                playlist_count=None,
+            ),
+        ),
     )
 
     assert hub._listen_subtitle().startswith("Playing ")
@@ -385,9 +431,7 @@ def test_hub_talk_subtitle_uses_cached_context_status_without_polling_voip_manag
     hub = HubScreen(
         display,
         one_button_context,
-        music_backend=FakeMusicBackend(),
-        local_music_service=LocalMusicService(FakeMusicBackend()),
-        voip_manager=PollingVoIPManager(),
+        listen_subtitle_provider=build_hub_listen_subtitle_provider(display),
     )
 
     assert hub._talk_subtitle() == "Connecting"
@@ -404,11 +448,13 @@ def test_now_playing_advance_and_select_follow_one_button_mapping(
         one_button_context,
         state_provider=build_now_playing_state_provider(
             context=one_button_context,
-            music_backend=backend,
+            snapshot_provider=_now_playing_snapshot_provider(backend),
         ),
         actions=build_now_playing_actions(
             context=one_button_context,
-            music_backend=backend,
+            toggle_playback_action=_toggle_playback_action(backend),
+            previous_track_action=backend.previous_track,
+            next_track_action=backend.next_track,
         ),
     )
 
@@ -480,8 +526,7 @@ def test_call_screen_advance_wraps_through_contacts(
     screen = CallScreen(
         display,
         one_button_context,
-        voip_manager=FakeVoIPManager(),
-        people_directory=FakePeopleDirectory(contacts),
+        contacts_provider=lambda: FakePeopleDirectory(contacts).get_callable_contacts(),
     )
 
     screen.enter()
@@ -503,8 +548,7 @@ def test_call_screen_select_routes_to_contact_actions(
     screen = CallScreen(
         display,
         one_button_context,
-        voip_manager=FakeVoIPManager(),
-        people_directory=FakePeopleDirectory(contacts),
+        contacts_provider=lambda: FakePeopleDirectory(contacts).get_callable_contacts(),
     )
 
     screen.enter()
@@ -580,8 +624,8 @@ def test_contact_list_advance_wraps_and_select_opens_contact(
     screen = ContactListScreen(
         display,
         one_button_context,
-        voip_manager=voip_manager,
-        people_directory=FakePeopleDirectory(contacts),
+        contacts_provider=lambda: FakePeopleDirectory(contacts).get_callable_contacts(),
+        actions=_call_actions(voip_manager),
     )
 
     screen.enter()
@@ -602,7 +646,7 @@ def test_incoming_call_select_answers_and_back_rejects(
 ) -> None:
     """Incoming-call actions should defer navigation to coordinator call-state events."""
     voip_manager = FakeVoIPManager()
-    screen = IncomingCallScreen(display, one_button_context, voip_manager=voip_manager)
+    screen = IncomingCallScreen(display, one_button_context, actions=_call_actions(voip_manager))
 
     screen.on_advance()
     screen.on_select()
@@ -620,7 +664,7 @@ def test_outgoing_call_back_cancels_call(
 ) -> None:
     """Outgoing-call cancel should wait for backend teardown before navigation."""
     voip_manager = FakeVoIPManager()
-    screen = OutgoingCallScreen(display, one_button_context, voip_manager=voip_manager)
+    screen = OutgoingCallScreen(display, one_button_context, actions=_call_actions(voip_manager))
 
     screen.on_advance()
     screen.on_select()

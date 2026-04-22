@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -15,6 +16,7 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
     assert app.screen_manager is not None
 
     from yoyopod.ui.screens.music.now_playing import (
+        NowPlayingSnapshot,
         NowPlayingScreen,
         build_now_playing_actions,
         build_now_playing_state_provider,
@@ -23,7 +25,11 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
     from yoyopod.ui.screens.music.recent import RecentTracksScreen
     from yoyopod.ui.screens.navigation.ask import AskScreen
     from yoyopod.ui.screens.navigation.home import HomeScreen
-    from yoyopod.ui.screens.navigation.hub import HubScreen
+    from yoyopod.ui.screens.navigation.hub import (
+        HubListenSnapshot,
+        HubScreen,
+        build_hub_listen_subtitle_provider,
+    )
     from yoyopod.ui.screens.navigation.listen import ListenScreen
     from yoyopod.ui.screens.navigation.menu import MenuScreen
     from yoyopod.ui.screens.system.power import (
@@ -32,6 +38,7 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
         build_power_screen_state_provider,
     )
     from yoyopod.ui.screens.voip.call_history import CallHistoryScreen
+    from yoyopod.ui.screens.voip.call_actions import CallActions
     from yoyopod.ui.screens.voip.contact_list import ContactListScreen
     from yoyopod.ui.screens.voip.in_call import InCallScreen
     from yoyopod.ui.screens.voip.incoming_call import IncomingCallScreen
@@ -50,6 +57,10 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
     )
     from yoyopod.voice.models import VoiceSettings
 
+    HUB_LISTEN_PLAYLIST_CACHE_SECONDS = 30.0
+    cached_playlist_count: int | None = None
+    cached_playlist_count_valid_until = 0.0
+
     display = app.display
     context = app.context
     screen_manager = app.screen_manager
@@ -57,13 +68,149 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
     if volume_controller is None:
         raise RuntimeError("Audio volume controller is not initialized")
 
+    def _playback_snapshot() -> NowPlayingSnapshot:
+        if app.playback_coordinator is not None:
+            snapshot = app.playback_coordinator.get_playback_snapshot()
+            return NowPlayingSnapshot(
+                is_connected=snapshot.is_connected,
+                track=snapshot.track,
+                playback_state=snapshot.playback_state,
+                time_position=snapshot.time_position,
+            )
+
+        if app.music_backend is not None:
+            if not app.music_backend.is_connected:
+                return NowPlayingSnapshot(is_connected=False)
+            return NowPlayingSnapshot(
+                is_connected=True,
+                track=app.music_backend.get_current_track(),
+                playback_state=app.music_backend.get_playback_state(),
+                time_position=float(app.music_backend.get_time_position()),
+            )
+
+        track = context.get_current_track()
+        playback_state = "stopped"
+        if context.media.playback.is_playing:
+            playback_state = "playing"
+        elif context.media.playback.is_paused:
+            playback_state = "paused"
+        time_position = 0.0
+        if track is not None and track.length > 0:
+            time_position = context.get_playback_progress() * track.length
+        return NowPlayingSnapshot(
+            is_connected=True,
+            track=track,
+            playback_state=playback_state,
+            time_position=time_position,
+        )
+
+    def _hub_listen_snapshot() -> HubListenSnapshot:
+        """Return cached playback + library snapshot data for the hub card."""
+
+        def _playlist_count() -> int | None:
+            nonlocal cached_playlist_count, cached_playlist_count_valid_until
+
+            if time.monotonic() < cached_playlist_count_valid_until:
+                return cached_playlist_count
+
+            playlist_count: int | None = None
+            if app.playback_coordinator is not None:
+                playlist_count = app.playback_coordinator.get_playlist_count()
+            elif app.local_music_service is not None and app.local_music_service.is_available:
+                try:
+                    playlist_count = app.local_music_service.playlist_count()
+                except Exception:
+                    playlist_count = None
+            cached_playlist_count = playlist_count
+            cached_playlist_count_valid_until = time.monotonic() + HUB_LISTEN_PLAYLIST_CACHE_SECONDS
+            return playlist_count
+
+        snapshot = _playback_snapshot()
+        return HubListenSnapshot(
+            is_connected=snapshot.is_connected,
+            track=snapshot.track,
+            playback_state=snapshot.playback_state,
+            playlist_count=_playlist_count(),
+        )
+
+    def _list_callable_contacts():
+        if app.call_coordinator is not None:
+            return app.call_coordinator.list_callable_contacts()
+        if app.people_directory is None:
+            return []
+        contacts = list(app.people_directory.get_callable_contacts(gsm_enabled=False))
+        favorites = [contact for contact in contacts if contact.favorite]
+        others = [contact for contact in contacts if not contact.favorite]
+        return favorites + others
+
+    def _make_call(sip_address: str, contact_name: str | None = None) -> bool:
+        if app.call_coordinator is not None:
+            return app.call_coordinator.make_call(sip_address, contact_name=contact_name)
+        if app.voip_manager is None:
+            return False
+        return bool(app.voip_manager.make_call(sip_address, contact_name=contact_name))
+
+    def _answer_call() -> bool:
+        if app.call_coordinator is not None:
+            return app.call_coordinator.answer_call()
+        if app.voip_manager is None:
+            return False
+        return bool(app.voip_manager.answer_call())
+
+    def _reject_call() -> bool:
+        if app.call_coordinator is not None:
+            return app.call_coordinator.reject_call()
+        if app.voip_manager is None:
+            return False
+        return bool(app.voip_manager.reject_call())
+
+    def _hangup_call() -> bool:
+        if app.call_coordinator is not None:
+            return app.call_coordinator.hangup_call()
+        if app.voip_manager is None:
+            return False
+        return bool(app.voip_manager.hangup())
+
+    def _ready_to_call() -> bool:
+        if app.call_coordinator is not None:
+            return app.call_coordinator.is_ready_to_call()
+        if app.voip_manager is None:
+            return False
+        return bool(app.voip_manager.running and app.voip_manager.registered)
+
+    def _toggle_playback() -> None:
+        if app.playback_coordinator is not None:
+            app.playback_coordinator.toggle_playback()
+            return
+        context.toggle_playback()
+
+    def _previous_track() -> None:
+        if app.playback_coordinator is not None:
+            app.playback_coordinator.previous_track()
+            return
+        context.previous_track()
+
+    def _next_track() -> None:
+        if app.playback_coordinator is not None:
+            app.playback_coordinator.next_track()
+            return
+        context.next_track()
+
+    call_actions = CallActions(
+        answer_call=_answer_call,
+        reject_call=_reject_call,
+        hangup_call=_hangup_call,
+        make_call=_make_call,
+    )
+
     menu_items = ["Listen", "Talk", "Ask", "Setup"]
     app.hub_screen = HubScreen(
         display,
         context,
-        music_backend=app.music_backend,
-        local_music_service=app.local_music_service,
-        voip_manager=app.voip_manager,
+        listen_subtitle_provider=build_hub_listen_subtitle_provider(
+            display,
+            snapshot_provider=_hub_listen_snapshot,
+        ),
     )
     app.menu_screen = MenuScreen(display, context, items=menu_items)
     app.home_screen = HomeScreen(display, context)
@@ -206,11 +353,13 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
         context,
         state_provider=build_now_playing_state_provider(
             context=context,
-            music_backend=app.music_backend,
+            snapshot_provider=_playback_snapshot,
         ),
         actions=build_now_playing_actions(
             context=context,
-            music_backend=app.music_backend,
+            toggle_playback_action=_toggle_playback,
+            previous_track_action=_previous_track,
+            next_track_action=_next_track,
         ),
     )
     app.playlist_screen = PlaylistScreen(
@@ -226,14 +375,14 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
     app.call_screen = CallScreen(
         display,
         context,
-        voip_manager=app.voip_manager,
-        people_directory=app.people_directory,
+        contacts_provider=_list_callable_contacts,
         call_history_store=app.call_history_store,
     )
     app.call_history_screen = CallHistoryScreen(
         display,
         context,
-        voip_manager=app.voip_manager,
+        actions=call_actions,
+        ready_to_call_provider=_ready_to_call,
         call_history_store=app.call_history_store,
     )
     app.talk_contact_screen = TalkContactScreen(
@@ -244,8 +393,8 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
     app.contact_list_screen = ContactListScreen(
         display,
         context,
-        voip_manager=app.voip_manager,
-        people_directory=app.people_directory,
+        contacts_provider=_list_callable_contacts,
+        actions=call_actions,
     )
     app.voice_note_screen = VoiceNoteScreen(
         display,
@@ -259,14 +408,14 @@ def build_and_register_screens(app: "YoyoPodApp", *, logger: Any) -> None:
     app.incoming_call_screen = IncomingCallScreen(
         display,
         context,
-        voip_manager=app.voip_manager,
+        actions=call_actions,
         caller_address="",
         caller_name="Unknown",
     )
     app.outgoing_call_screen = OutgoingCallScreen(
         display,
         context,
-        voip_manager=app.voip_manager,
+        actions=call_actions,
         callee_address="",
         callee_name="Unknown",
     )

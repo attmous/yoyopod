@@ -10,6 +10,7 @@ from yoyopod.ui.screens.music.now_playing import NowPlayingScreen
 from yoyopod.ui.screens.music.recent import RecentTracksScreen
 from yoyopod.ui.screens.navigation.listen import ListenScreen
 from yoyopod.ui.screens.system.power import PowerScreen
+from yoyopod.ui.screens.voip.call_actions import CallActions
 from yoyopod.ui.screens.voip.call_history import CallHistoryScreen
 from yoyopod.ui.screens.voip.contact_list import ContactListScreen
 from yoyopod.ui.screens.voip.in_call import InCallScreen
@@ -267,6 +268,19 @@ class FakeVoipManager:
         return self._duration_seconds
 
 
+def _contacts_provider(contacts: list[FakeContact]):
+    return lambda: FakeConfigManager(contacts).get_callable_contacts()
+
+
+def _call_actions(voip_manager: FakeVoipManager) -> CallActions:
+    return CallActions(
+        answer_call=lambda: True,
+        reject_call=lambda: True,
+        hangup_call=lambda: True,
+        make_call=lambda _sip_address, _contact_name=None: True,
+    )
+
+
 def make_one_button_context() -> AppContext:
     """Create a stable one-button app context for LVGL tests."""
 
@@ -301,8 +315,7 @@ def test_call_screen_reuses_retained_lvgl_view_across_exit_and_reentry() -> None
     screen = CallScreen(
         FakeLvglDisplay(binding),
         make_one_button_context(),
-        voip_manager=FakeVoipManager(),
-        people_directory=FakeConfigManager(
+        contacts_provider=_contacts_provider(
             [
                 FakeContact("Hagar", "sip:hagar@example.com", True),
                 FakeContact("Mama", "sip:mama@example.com", True),
@@ -339,8 +352,7 @@ def test_call_screen_can_reenter_lvgl_view_without_rebuilding() -> None:
     screen = CallScreen(
         FakeLvglDisplay(binding),
         make_one_button_context(),
-        voip_manager=FakeVoipManager(),
-        people_directory=FakeConfigManager(
+        contacts_provider=_contacts_provider(
             [
                 FakeContact("Hagar", "sip:hagar@example.com", True),
                 FakeContact("Mama", "sip:mama@example.com", True),
@@ -369,8 +381,7 @@ def test_call_screen_rebuilds_retained_lvgl_view_after_backend_reset() -> None:
     screen = CallScreen(
         display,
         make_one_button_context(),
-        voip_manager=FakeVoipManager(),
-        people_directory=FakeConfigManager(
+        contacts_provider=_contacts_provider(
             [
                 FakeContact("Hagar", "sip:hagar@example.com", True),
                 FakeContact("Mama", "sip:mama@example.com", True),
@@ -458,7 +469,7 @@ def test_remaining_retained_lvgl_screens_rebuild_after_exit_and_backend_reset() 
             lambda display: CallHistoryScreen(
                 display,
                 make_one_button_context(),
-                voip_manager=FakeVoipManager(),
+                actions=CallActions(),
             ),
             "playlist_build_calls",
         ),
@@ -466,10 +477,10 @@ def test_remaining_retained_lvgl_screens_rebuild_after_exit_and_backend_reset() 
             lambda display: ContactListScreen(
                 display,
                 make_one_button_context(),
-                voip_manager=FakeVoipManager(),
-                people_directory=FakeConfigManager(
+                contacts_provider=_contacts_provider(
                     [FakeContact("Amy", "sip:amy@example.com", True, notes="Mama")]
                 ),
+                actions=CallActions(),
             ),
             "playlist_build_calls",
         ),
@@ -580,14 +591,14 @@ def test_contact_list_screen_syncs_sorted_contacts_through_lvgl() -> None:
     screen = ContactListScreen(
         FakeLvglDisplay(binding),
         make_one_button_context(),
-        voip_manager=FakeVoipManager(),
-        people_directory=FakeConfigManager(
+        contacts_provider=_contacts_provider(
             [
                 FakeContact("Zed", "sip:zed@example.com", False),
                 FakeContact("Amy", "sip:amy@example.com", True, notes="Mama"),
                 FakeContact("Mona", "sip:mona@example.com", False),
             ]
         ),
+        actions=CallActions(),
     )
 
     screen.enter()
@@ -616,15 +627,15 @@ def test_list_family_screens_replace_stale_owner_after_shared_scene_reclaim() ->
     contacts = ContactListScreen(
         display,
         make_one_button_context(),
-        voip_manager=FakeVoipManager(),
-        people_directory=FakeConfigManager(
+        contacts_provider=_contacts_provider(
             [FakeContact("Amy", "sip:amy@example.com", True, notes="Mama")]
         ),
+        actions=CallActions(),
     )
     recents = CallHistoryScreen(
         display,
         make_one_button_context(),
-        voip_manager=FakeVoipManager(),
+        actions=CallActions(),
     )
 
     contacts.enter()
@@ -651,12 +662,8 @@ def test_outgoing_call_screen_syncs_current_callee_through_lvgl() -> None:
     screen = OutgoingCallScreen(
         FakeLvglDisplay(binding),
         make_one_button_context(),
-        voip_manager=FakeVoipManager(
-            caller_info={
-                "display_name": "Parent",
-                "address": "sip:parent@example.com",
-            }
-        ),
+        callee_name="Parent",
+        callee_address="sip:parent@example.com",
     )
 
     screen.enter()

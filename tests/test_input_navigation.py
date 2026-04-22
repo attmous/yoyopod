@@ -10,6 +10,7 @@ from yoyopod.ui.input.hal import InputHAL
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.manager import ScreenManager
 from yoyopod.ui.screens.music.now_playing import NowPlayingScreen
+from yoyopod.ui.screens.music.now_playing import build_now_playing_actions
 from yoyopod.ui.screens.navigation.home import HomeScreen
 from yoyopod.ui.screens.navigation.menu import MenuScreen
 
@@ -77,7 +78,15 @@ def test_semantic_input_navigation() -> None:
 
     home = HomeScreen(display, context)
     menu = MenuScreen(display, context, items=["Now Playing", "Back"])
-    now_playing = NowPlayingScreen(display, context)
+    now_playing = NowPlayingScreen(
+        display,
+        context,
+        actions=build_now_playing_actions(
+            toggle_playback_action=context.toggle_playback,
+            previous_track_action=context.previous_track,
+            next_track_action=context.next_track,
+        ),
+    )
 
     screen_manager.register_screen("home", home)
     screen_manager.register_screen("menu", menu)

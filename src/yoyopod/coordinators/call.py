@@ -7,7 +7,7 @@ from __future__ import annotations
 import subprocess
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from loguru import logger
 
@@ -24,6 +24,9 @@ from yoyopod.core import (
 from yoyopod.communication.calling.history import CallHistoryEntry, CallHistoryStore
 from yoyopod.communication.models import CallState, RegistrationState
 from yoyopod.core import CallSessionState
+
+if TYPE_CHECKING:
+    from yoyopod.people import Contact, PeopleManager
 
 _CONNECTED_CALL_STATES = (CallState.CONNECTED, CallState.STREAMS_RUNNING)
 
@@ -51,12 +54,14 @@ class CallCoordinator:
         auto_resume_after_call: bool,
         call_history_store: CallHistoryStore | None = None,
         initial_voip_registered: bool = False,
+        people_directory: "PeopleManager | None" = None,
     ) -> None:
         self.runtime = runtime
         self.screen_coordinator = screen_coordinator
         self.auto_resume_after_call = auto_resume_after_call
         self.call_history_store = call_history_store
         self.voip_registered = initial_voip_registered
+        self.people_directory = people_directory
         self.ringing_process: Optional[subprocess.Popen] = None
         self._event_bus: Optional[EventBus] = None
         self._bound = False
@@ -162,6 +167,56 @@ class CallCoordinator:
     def cleanup(self) -> None:
         """Clean up call-related coordinator state."""
         self.stop_ringing()
+
+    def list_callable_contacts(self) -> list["Contact"]:
+        """Return the current callable contacts ordered for the Talk UI."""
+        if self.people_directory is None:
+            return []
+
+        contacts = list(self.people_directory.get_callable_contacts(gsm_enabled=False))
+        favorites = [contact for contact in contacts if contact.favorite]
+        others = [contact for contact in contacts if not contact.favorite]
+        return favorites + others
+
+    def is_ready_to_call(self) -> bool:
+        """Return whether VoIP is ready for new outgoing calls."""
+        voip_manager = self.runtime.voip_manager
+        if voip_manager is not None:
+            return bool(voip_manager.running and voip_manager.registered)
+
+        return self.voip_registered
+
+    def make_call(self, sip_address: str, *, contact_name: str | None = None) -> bool:
+        """Place an outgoing call through the shared VoIP manager."""
+        voip_manager = self.runtime.voip_manager
+        if voip_manager is None:
+            logger.error("Cannot make call: no VoIP manager")
+            return False
+        return bool(voip_manager.make_call(sip_address, contact_name=contact_name))
+
+    def answer_call(self) -> bool:
+        """Answer the current incoming call through the shared VoIP manager."""
+        voip_manager = self.runtime.voip_manager
+        if voip_manager is None:
+            logger.error("Cannot answer call: no VoIP manager")
+            return False
+        return bool(voip_manager.answer_call())
+
+    def reject_call(self) -> bool:
+        """Reject the current incoming call through the shared VoIP manager."""
+        voip_manager = self.runtime.voip_manager
+        if voip_manager is None:
+            logger.error("Cannot reject call: no VoIP manager")
+            return False
+        return bool(voip_manager.reject_call())
+
+    def hangup_call(self) -> bool:
+        """Hang up the current outgoing or active call through the shared VoIP manager."""
+        voip_manager = self.runtime.voip_manager
+        if voip_manager is None:
+            logger.error("Cannot hang up call: no VoIP manager")
+            return False
+        return bool(voip_manager.hangup())
 
     def on_enter_call_active_music_paused(self) -> None:
         """Log entry into the active-call-with-paused-music state."""

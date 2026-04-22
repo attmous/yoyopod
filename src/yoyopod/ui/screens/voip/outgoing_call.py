@@ -9,6 +9,7 @@ from loguru import logger
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
 from yoyopod.ui.screens.lvgl_lifecycle import current_retained_view
+from yoyopod.ui.screens.voip.call_actions import CallActions
 from yoyopod.ui.screens.voip.outgoing_call_pil_view import render_outgoing_call_pil
 from yoyopod.ui.screens.voip.lvgl import LvglOutgoingCallView
 
@@ -24,12 +25,13 @@ class OutgoingCallScreen(Screen):
         self,
         display: Display,
         context: Optional["AppContext"] = None,
-        voip_manager=None,
+        *,
+        actions: CallActions | None = None,
         callee_address: str = "",
         callee_name: str = "Unknown",
     ) -> None:
         super().__init__(display, context, "OutgoingCall")
-        self.voip_manager = voip_manager
+        self._actions = actions or CallActions()
         self.callee_address = callee_address
         self.callee_name = callee_name
         self.ring_animation_frame = 0
@@ -77,8 +79,8 @@ class OutgoingCallScreen(Screen):
     def _cancel_call(self) -> None:
         """Cancel the outgoing call."""
         logger.info("Canceling outgoing call")
-        if self.voip_manager:
-            self.voip_manager.hangup()
+        if self._actions.hangup_call is not None:
+            self._actions.hangup_call()
 
     def on_back(self, data=None) -> None:
         """Cancel the outgoing call."""

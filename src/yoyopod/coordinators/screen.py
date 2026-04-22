@@ -108,13 +108,8 @@ class ScreenCoordinator:
         logger.info(message)
 
     def get_call_voip_manager(self) -> object | None:
-        """Return the shared VoIP manager from call-related routes."""
-        for route_name in self._CALL_ROUTES:
-            screen = self._get_screen(route_name)
-            voip_manager = getattr(screen, "voip_manager", None)
-            if voip_manager is not None:
-                return voip_manager
-        return None
+        """Return the shared VoIP manager from coordinator-owned runtime wiring."""
+        return self.runtime.voip_manager
 
     def pop_call_screens(self) -> None:
         """Pop all call-related screens from the stack."""

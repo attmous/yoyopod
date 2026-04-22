@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from yoyopod.ui.display import Display
 from yoyopod.ui.screens.base import Screen
@@ -21,8 +21,7 @@ from yoyopod.ui.screens.voip.lvgl import LvglCallView
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
     from yoyopod.communication.calling.history import CallHistoryStore
-    from yoyopod.communication.calling.manager import VoIPManager
-    from yoyopod.people import Contact, PeopleManager
+    from yoyopod.people import Contact
     from yoyopod.ui.screens.view import ScreenView
 
 
@@ -57,13 +56,12 @@ class CallScreen(Screen):
         self,
         display: Display,
         context: Optional["AppContext"] = None,
-        voip_manager: Optional["VoIPManager"] = None,
-        people_directory: Optional["PeopleManager"] = None,
+        *,
+        contacts_provider: Callable[[], list["Contact"]] | None = None,
         call_history_store: Optional["CallHistoryStore"] = None,
     ) -> None:
         super().__init__(display, context, "Talk")
-        self.voip_manager = voip_manager
-        self.people_directory = people_directory
+        self._contacts_provider = contacts_provider or (lambda: [])
         self.call_history_store = call_history_store
         self.people: list[TalkPerson] = []
         self.deck_cards: list[TalkDeckCard] = []
@@ -106,10 +104,7 @@ class CallScreen(Screen):
     def _sorted_contacts(self) -> list["Contact"]:
         """Return contacts ordered for child-facing Talk access."""
 
-        if self.people_directory is None:
-            return []
-
-        contacts = list(self.people_directory.get_callable_contacts(gsm_enabled=False))
+        contacts = list(self._contacts_provider())
         favorites = [contact for contact in contacts if contact.favorite]
         others = [contact for contact in contacts if not contact.favorite]
         return (favorites + others)[: self._MAX_CONTACTS]
