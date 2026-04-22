@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -39,6 +40,29 @@ class NativeArtifact:
 
 def _run(command: list[str], cwd: Path | None = None) -> None:
     subprocess.run(command, cwd=str(cwd) if cwd else None, check=True)
+
+
+def _native_build_jobs() -> str:
+    """Return a safe native build parallelism level for the current machine."""
+
+    override = os.environ.get("YOYOPOD_NATIVE_BUILD_JOBS")
+    if override:
+        return override
+
+    sysconf = getattr(os, "sysconf", None)
+    if not callable(sysconf):
+        return "2"
+
+    try:
+        page_size = int(sysconf("SC_PAGE_SIZE"))
+        page_count = int(sysconf("SC_PHYS_PAGES"))
+    except (OSError, ValueError):
+        return "2"
+
+    total_mib = (page_size * page_count) / (1024 * 1024)
+    if total_mib < 1024:
+        return "1"
+    return "2"
 
 
 def _resolve_native_dir(label: str, *candidates: Path) -> Path:
@@ -127,7 +151,7 @@ def _build_lvgl(native_dir: Path, source_dir: Path, build_dir: Path) -> None:
             "-DCONFIG_LV_BUILD_DEMOS=OFF",
         ]
     )
-    _run(["cmake", "--build", str(build_dir), "--parallel", "2"])
+    _run(["cmake", "--build", str(build_dir), "--parallel", _native_build_jobs()])
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +171,7 @@ def _build_liblinphone(native_dir: Path, build_dir: Path) -> None:
             "-DCMAKE_BUILD_TYPE=Release",
         ]
     )
-    _run(["cmake", "--build", str(build_dir), "--parallel", "2"])
+    _run(["cmake", "--build", str(build_dir), "--parallel", _native_build_jobs()])
 
 
 def _default_lvgl_source_dir() -> Path:

@@ -45,6 +45,27 @@ def test_resolve_liblinphone_native_dir_points_at_package_root() -> None:
     assert (native_dir / "CMakeLists.txt").exists()
 
 
+def test_native_build_jobs_uses_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("YOYOPOD_NATIVE_BUILD_JOBS", "3")
+
+    assert build_cli._native_build_jobs() == "3"
+
+
+def test_native_build_jobs_drops_to_one_on_low_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("YOYOPOD_NATIVE_BUILD_JOBS", raising=False)
+
+    def fake_sysconf(name: str) -> int:
+        if name == "SC_PAGE_SIZE":
+            return 4096
+        if name == "SC_PHYS_PAGES":
+            return 200_000
+        raise AssertionError(f"Unexpected sysconf key: {name}")
+
+    monkeypatch.setattr(build_cli.os, "sysconf", fake_sysconf, raising=False)
+
+    assert build_cli._native_build_jobs() == "1"
+
+
 def test_build_lvgl_uses_resolved_native_dir(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
