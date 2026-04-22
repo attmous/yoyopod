@@ -296,8 +296,24 @@ def _dispatch_action(app: "YoyoPodApp", action: InputAction) -> None:
 def _reset_selection(screen: object) -> None:
     """Reset retained carousel/list selection when the screen supports it."""
 
-    if hasattr(screen, "selected_index"):
-        screen.selected_index = 0
+    if not hasattr(screen, "selected_index"):
+        return
+
+    route_name = str(getattr(screen, "route_name", "") or getattr(screen, "name", ""))
+    if route_name == "hub":
+        cards = getattr(screen, "cards", None)
+        if callable(cards):
+            try:
+                hub_cards = cards()
+            except Exception:
+                hub_cards = None
+            if hub_cards:
+                for index, card in enumerate(hub_cards):
+                    if getattr(card, "title", "") != "Watch":
+                        screen.selected_index = index
+                        return
+
+    screen.selected_index = 0
 
 
 def _wait_for_route(

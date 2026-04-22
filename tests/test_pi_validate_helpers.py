@@ -29,6 +29,28 @@ def test_wait_for_route_accepts_transition_completed_in_final_pump(
     helpers._wait_for_route(object(), "ask", timeout_seconds=1.0)
 
 
+def test_reset_selection_skips_watch_card_when_hub_exposes_it() -> None:
+    class _Card:
+        def __init__(self, title: str) -> None:
+            self.title = title
+
+    class _HubScreen:
+        route_name = "hub"
+        name = "hub"
+
+        def __init__(self) -> None:
+            self.selected_index = 4
+
+        def cards(self) -> list[_Card]:
+            return [_Card("Watch"), _Card("Listen"), _Card("Talk"), _Card("Ask"), _Card("Setup")]
+
+    screen = _HubScreen()
+
+    helpers._reset_selection(screen)
+
+    assert screen.selected_index == 1
+
+
 def test_navigation_idle_soak_resets_hub_selection_between_cycles(
     monkeypatch,
 ) -> None:
