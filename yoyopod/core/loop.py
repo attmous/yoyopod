@@ -450,7 +450,7 @@ class RuntimeLoopService:
             "lvgl pump",
             started_at=started_at,
             threshold_seconds=self._SLOW_LVGL_PUMP_WARNING_SECONDS,
-            detail=f"delta_ms={delta_ms}",
+            detail_factory=lambda: f"delta_ms={delta_ms}",
         )
 
     def iterate_voip_backend_if_due(self, now: float | None = None) -> None:
@@ -542,7 +542,10 @@ class RuntimeLoopService:
             "voip iterate",
             started_at=started_at,
             threshold_seconds=self._SLOW_VOIP_ITERATE_WARNING_SECONDS,
-            detail=(f"screen={self._current_screen_name()} " f"state={self._runtime_state_name()}"),
+            detail_factory=lambda: (
+                f"screen={self._current_screen_name()} "
+                f"state={self._runtime_state_name()}"
+            ),
         )
 
     def next_sleep_interval_seconds(
@@ -1042,6 +1045,7 @@ class RuntimeLoopService:
         started_at: float,
         threshold_seconds: float,
         detail: str = "",
+        detail_factory: Callable[[], str] | None = None,
     ) -> None:
         """Emit a targeted warning when one coordinator-loop phase runs unusually long."""
 
@@ -1051,4 +1055,5 @@ class RuntimeLoopService:
             started_at=started_at,
             threshold_seconds=threshold_seconds,
             detail=detail,
+            detail_factory=detail_factory,
         )

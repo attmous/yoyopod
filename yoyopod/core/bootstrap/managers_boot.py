@@ -111,8 +111,19 @@ class ManagersBoot:
             )
             if self.app.network_manager.config.enabled and not self.app.simulate:
                 try:
-                    self.app.network_manager.start()
                     self.app.network_events.sync_network_context_from_manager()
+                    start_background = getattr(self.app.network_manager, "start_background", None)
+                    if callable(start_background):
+                        start_background(
+                            on_failure=lambda exc: self.logger.error(
+                                "Network manager background start failed: {}",
+                                exc,
+                            )
+                        )
+                        self.logger.info("    Network bring-up started in background")
+                    else:
+                        self.app.network_manager.start()
+                        self.app.network_events.sync_network_context_from_manager()
                 except Exception as exc:
                     self.logger.error("Network manager start failed: {}", exc)
                     if self.app.context is not None:

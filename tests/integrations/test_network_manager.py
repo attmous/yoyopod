@@ -139,6 +139,28 @@ def test_manager_start_full_sequence():
     assert backend.ppp_started is True
 
 
+def test_manager_start_background_runs_full_sequence() -> None:
+    """start_background() should run the same bring-up flow off the caller thread."""
+
+    config = build_config_model(NetworkConfig, {"enabled": True, "apn": "internet"})
+    backend = FakeBackend()
+    published: list[object] = []
+    manager = NetworkManager(
+        config=config,
+        backend=backend,
+        event_publisher=published.append,
+    )
+
+    worker = manager.start_background()
+    worker.join(timeout=1.0)
+
+    assert worker.is_alive() is False
+    assert backend.opened is True
+    assert backend.inited is True
+    assert backend.ppp_started is True
+    assert any(isinstance(event, NetworkPppUpEvent) for event in published)
+
+
 def test_manager_stop():
     """stop() should close the backend."""
     config = build_config_model(NetworkConfig, {"enabled": True, "apn": "internet"})

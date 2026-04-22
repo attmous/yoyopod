@@ -48,3 +48,15 @@ def test_application_tracks_recent_tick_stats() -> None:
     assert stats["drain_ms_p50"] >= 0.0
     assert stats["drain_ms_p99"] >= stats["drain_ms_p50"]
     assert stats["queue_depth_max"] >= 0
+
+
+def test_application_stop_dispatches_final_lifecycle_events_without_extra_tick() -> None:
+    app = YoyoPodApp(strict_bus=True)
+    seen: list[LifecycleEvent] = []
+    app.bus.subscribe(LifecycleEvent, seen.append)
+
+    app.start()
+    app.tick()
+    app.stop()
+
+    assert [event.phase for event in seen] == ["starting", "ready", "stopping", "stopped"]

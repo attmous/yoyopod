@@ -47,6 +47,29 @@ class NetworkManager:
 
         self._start_flow()
 
+    def start_background(
+        self,
+        *,
+        on_failure: Callable[[Exception], None] | None = None,
+    ) -> threading.Thread:
+        """Run bring-up on a background thread for boot paths that must stay responsive."""
+
+        def _run() -> None:
+            try:
+                self._start_flow()
+            except Exception as exc:
+                logger.error("Network manager background start failed: {}", exc)
+                if on_failure is not None:
+                    on_failure(exc)
+
+        worker = threading.Thread(
+            target=_run,
+            daemon=True,
+            name="network-start",
+        )
+        worker.start()
+        return worker
+
     def _start_flow(self, *, expected_generation: int | None = None) -> bool:
         """Run the one-shot modem bring-up flow."""
 

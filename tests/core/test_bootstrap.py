@@ -532,6 +532,7 @@ def test_managers_boot_starts_network_and_syncs_context_without_event_wiring() -
         def __init__(self) -> None:
             self.config = SimpleNamespace(enabled=True)
             self.started = False
+            self.started_in_background = False
 
         @classmethod
         def from_config_manager(cls, _config_manager, event_publisher=None):
@@ -540,6 +541,10 @@ def test_managers_boot_starts_network_and_syncs_context_without_event_wiring() -
 
         def start(self) -> None:
             self.started = True
+
+        def start_background(self, *, on_failure=None):
+            self.started_in_background = True
+            return SimpleNamespace()
 
     class _FakeCloudManager:
         def __init__(self, *, app, config_manager) -> None:
@@ -594,5 +599,6 @@ def test_managers_boot_starts_network_and_syncs_context_without_event_wiring() -
 
     assert service.init_managers() is True
     assert app.music_backend.start_calls == 0
-    assert app.network_manager.started is True
+    assert app.network_manager.started is False
+    assert app.network_manager.started_in_background is True
     assert sync_calls == ["synced"]

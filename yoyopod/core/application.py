@@ -312,6 +312,8 @@ class YoyoPodApp:
         self.running = False
         self._stopped = True
         self.bus.publish(LifecycleEvent(phase="stopped"))
+        self.scheduler.drain()
+        self.bus.drain()
 
     def tick(self) -> int:
         """Advance one scheduler-plus-bus turn and optionally tick the scaffold UI."""

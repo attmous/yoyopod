@@ -151,3 +151,92 @@ def test_cloud_manager_backs_off_refresh_after_network_failure(
     assert manager.status.backend_reachable is False
     assert manager._next_refresh_at == 130.0
     assert manager._next_config_poll_at == 130.0
+
+
+def test_cloud_manager_throttles_tick_work_until_interval_or_explicit_wakeup(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """tick() should not rerun filesystem/config work at coordinator-loop cadence."""
+
+    config_manager = ConfigManager(config_dir=str(tmp_path))
+    manager = CloudManager(
+        app=_FakeApp(),
+        config_manager=config_manager,
+        client=SimpleNamespace(),
+    )
+    calls: list[tuple[bool, float]] = []
+
+    monkeypatch.setattr(
+        manager,
+        "_reload_provisioning",
+        lambda *, force, now: calls.append((force, now)),
+    )
+
+    manager.tick(now=10.0)
+    manager.tick(now=10.1)
+    manager.tick(now=10.9)
+
+    assert calls == [(False, 10.0)]
+
+    manager.request_immediate_poll()
+    manager.tick(now=10.2)
+
+    assert calls == [(False, 10.0), (False, 10.2)]
+
+
+def test_cloud_manager_network_wakeup_bypasses_tick_throttle(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Connectivity restoration should wake the next cloud tick immediately."""
+
+    _write_yaml(
+        tmp_path / "cloud" / "backend.yaml",
+        "\n".join(
+            [
+                "backend:",
+                '  api_base_url: "https://backend.example.test"',
+            ]
+        ),
+    )
+
+    config_manager = ConfigManager(config_dir=str(tmp_path))
+    manager = CloudManager(
+        app=_FakeApp(),
+        config_manager=config_manager,
+        client=SimpleNamespace(),
+    )
+    current_monotonic = {"value": 20.0}
+    reload_calls: list[float] = []
+    auth_calls: list[float] = []
+
+    manager.status.provisioning_state = "provisioned"
+    monkeypatch.setattr(
+        cloud_manager_module.time,
+        "monotonic",
+        lambda: current_monotonic["value"],
+    )
+    monkeypatch.setattr(
+        manager,
+        "_reload_provisioning",
+        lambda *, force, now: reload_calls.append(now),
+    )
+    monkeypatch.setattr(
+        manager,
+        "_start_authentication",
+        lambda now: auth_calls.append(now),
+    )
+
+    manager.tick(now=20.0)
+    manager.tick(now=20.2)
+
+    assert reload_calls == [20.0]
+    assert auth_calls == [20.0]
+
+    current_monotonic["value"] = 20.25
+    manager.note_network_change(connected=True)
+    manager.tick(now=20.3)
+
+    assert reload_calls == [20.0, 20.3]
+    assert auth_calls == [20.0, 20.3]

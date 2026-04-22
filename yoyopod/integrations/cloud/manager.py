@@ -25,6 +25,7 @@ class CloudManager:
     _NETWORK_RETRY_DELAYS_SECONDS = (30.0, 60.0, 120.0, 300.0)
     _INVALID_CREDENTIALS_CODES = {"invalid_credentials", "invalid_device"}
     _TOKEN_RETRY_CODES = {"unauthorized", "token_revoked"}
+    _DEFAULT_TICK_INTERVAL_SECONDS = 1.0
 
     def __init__(
         self,
@@ -50,6 +51,8 @@ class CloudManager:
         self._next_auth_attempt_at = 0.0
         self._next_refresh_at = 0.0
         self._next_config_poll_at = 0.0
+        self._next_tick_at = 0.0
+        self._tick_interval_seconds = self._DEFAULT_TICK_INTERVAL_SECONDS
         self._network_retry_index = 0
         self._secrets_fingerprint: tuple[bool, int, int] | None = None
         self._last_persisted_status_payload: dict[str, Any] | None = None
@@ -63,11 +66,15 @@ class CloudManager:
         """Load secrets/cache and start MQTT before the runtime loop begins."""
 
         self._reload_provisioning(force=True, now=time.monotonic())
+        self._next_tick_at = 0.0
 
     def tick(self, now: float | None = None) -> None:
         """Advance auth/config sync on the coordinator loop."""
 
         monotonic_now = time.monotonic() if now is None else now
+        if monotonic_now < self._next_tick_at:
+            return
+        self._next_tick_at = monotonic_now + max(0.1, self._tick_interval_seconds)
         self._reload_provisioning(force=False, now=monotonic_now)
 
         if not self._is_backend_configured():
@@ -115,12 +122,14 @@ class CloudManager:
             self._next_auth_attempt_at = now
         else:
             self._next_config_poll_at = now
+        self._next_tick_at = 0.0
         self._persist_status()
 
     def request_immediate_poll(self) -> None:
         """Reset the config-poll timer so the next tick polls immediately."""
 
         self._next_config_poll_at = 0.0
+        self._next_tick_at = 0.0
 
     def publish_battery(self, *, level: int, charging: bool, now: float) -> None:
         """Send a battery telemetry event via MQTT if the interval has elapsed."""

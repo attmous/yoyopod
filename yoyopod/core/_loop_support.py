@@ -111,12 +111,16 @@ def _warn_if_slow(
     started_at: float,
     threshold_seconds: float,
     detail: str = "",
+    detail_factory: Callable[[], str] | None = None,
 ) -> None:
     """Emit a targeted warning when one coordinator-loop phase runs unusually long."""
 
     elapsed_seconds = time.monotonic() - started_at
     if elapsed_seconds < threshold_seconds:
         return
+
+    if detail_factory is not None:
+        detail = detail_factory()
 
     # Keep generic warnings under the default logger to preserve historical behavior.
     logger.warning(
