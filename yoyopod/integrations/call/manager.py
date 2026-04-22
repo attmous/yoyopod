@@ -275,6 +275,17 @@ class VoIPManager:
         return self._messaging_service.send_text_message(sip_address, text, display_name)
 
     def start_voice_note_recording(self, recipient_address: str, recipient_name: str = "") -> bool:
+        if self.call_state not in (
+            CallState.IDLE,
+            CallState.RELEASED,
+            CallState.END,
+            CallState.ERROR,
+        ):
+            logger.warning(
+                "Cannot start voice-note recording while call state is {}",
+                self.call_state.value,
+            )
+            return False
         return self._voice_note_service.start_voice_note_recording(
             recipient_address, recipient_name
         )
@@ -551,6 +562,20 @@ class VoIPManager:
         old_state = self.call_state
         self.call_state = state
         logger.info("Call state: {} -> {}", old_state.value, state.value)
+
+        if state in (
+            CallState.INCOMING,
+            CallState.OUTGOING,
+            CallState.OUTGOING_PROGRESS,
+            CallState.OUTGOING_RINGING,
+            CallState.OUTGOING_EARLY_MEDIA,
+            CallState.CONNECTED,
+            CallState.STREAMS_RUNNING,
+            CallState.PAUSED,
+            CallState.PAUSED_BY_REMOTE,
+            CallState.UPDATED_BY_REMOTE,
+        ):
+            self._stop_voice_note_playback()
 
         if state in (CallState.CONNECTED, CallState.STREAMS_RUNNING) and self.call_start_time is None:
             self._start_call_timer()

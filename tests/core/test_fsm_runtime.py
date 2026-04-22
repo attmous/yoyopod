@@ -163,4 +163,8 @@ def test_app_runtime_state_maps_screen_names_to_base_ui_states() -> None:
 
     assert AppRuntimeState.ui_state_for_screen_name("menu") == AppRuntimeState.MENU
     assert AppRuntimeState.ui_state_for_screen_name("hub") == AppRuntimeState.HUB
-    assert AppRuntimeState.ui_state_for_screen_name("incoming_call") is None
+    assert AppRuntimeState.ui_state_for_screen_name("talk_contact") == AppRuntimeState.CALL_IDLE
+    assert AppRuntimeState.ui_state_for_screen_name("voice_note") == AppRuntimeState.CALL_IDLE
+    assert AppRuntimeState.ui_state_for_screen_name("incoming_call") == AppRuntimeState.CALL_INCOMING
+    assert AppRuntimeState.ui_state_for_screen_name("outgoing_call") == AppRuntimeState.CALL_OUTGOING
+    assert AppRuntimeState.ui_state_for_screen_name("in_call") == AppRuntimeState.CALL_ACTIVE

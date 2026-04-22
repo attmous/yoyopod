@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 
 from tests.fixtures.app import build_test_app, drain_all
 from yoyopod.core.events import BackendStoppedEvent
 from yoyopod.core.recovery import (
     RecoveryAttemptedEvent,
     RequestRecoveryCommand,
+    RecoveryState,
+    RuntimeRecoveryService,
     setup,
     teardown,
 )
@@ -99,6 +102,25 @@ def test_recovery_service_rejects_wrong_payload_type() -> None:
         assert str(exc) == "recovery.request_recovery expects RequestRecoveryCommand"
     else:
         raise AssertionError("recovery.request_recovery accepted an untyped payload")
+
+
+def test_runtime_recovery_skips_music_restart_during_active_call() -> None:
+    """Music recovery should not start while the call FSM is active."""
+
+    app = SimpleNamespace(
+        music_backend=SimpleNamespace(is_connected=False, startup_in_progress=False),
+        app_state_runtime=SimpleNamespace(call_fsm=SimpleNamespace(is_active=True)),
+        _music_recovery=RecoveryState(),
+        _stopping=False,
+    )
+    service = RuntimeRecoveryService(app)
+    started: list[float] = []
+    service.start_music_recovery_worker = lambda recovery_now: started.append(recovery_now)
+
+    service.attempt_music_recovery(12.5)
+
+    assert started == []
+    assert app._music_recovery.in_flight is False
 
 
 def _drain_until(predicate, app, *, timeout_seconds: float = 0.5) -> None:

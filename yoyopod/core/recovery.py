@@ -337,6 +337,11 @@ class RuntimeRecoveryService:
         if self.app.music_backend is None:
             return
 
+        app_state_runtime = getattr(self.app, "app_state_runtime", None)
+        call_fsm = getattr(app_state_runtime, "call_fsm", None)
+        if call_fsm is not None and getattr(call_fsm, "is_active", False):
+            return
+
         if self.app.music_backend.is_connected:
             self.app._music_recovery.reset()
             return

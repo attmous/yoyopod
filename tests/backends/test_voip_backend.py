@@ -551,6 +551,30 @@ def test_voip_manager_times_out_stuck_voice_note_send() -> None:
     assert drained_events == 0
 
 
+def test_voip_manager_rejects_voice_note_recording_during_active_call() -> None:
+    """Voice-note recording should be blocked while a call is active."""
+
+    backend = MockVoIPBackend()
+    manager = VoIPManager(build_config(), backend=backend)
+    manager.call_state = CallState.CONNECTED
+
+    assert manager.start_voice_note_recording("sip:mom@example.com", recipient_name="Mom") is False
+    assert manager.get_active_voice_note() is None
+
+
+def test_voip_manager_stops_voice_note_playback_when_call_enters_active_state() -> None:
+    """Incoming or active call phases should stop any local voice-note playback."""
+
+    backend = MockVoIPBackend()
+    manager = VoIPManager(build_config(), backend=backend)
+    stopped: list[str] = []
+    manager._voice_note_service.stop_voice_note_playback = lambda: stopped.append("stop")
+
+    manager._update_call_state(CallState.INCOMING)
+
+    assert stopped == ["stop"]
+
+
 def test_voip_manager_queues_backend_events_back_to_main_thread(tmp_path: Path) -> None:
     """App-mode VoIP events should be marshaled back through the main-thread scheduler."""
 

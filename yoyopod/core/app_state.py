@@ -73,6 +73,12 @@ _STATE_BY_SCREEN_NAME = {
     "power": AppRuntimeState.POWER,
     "call": AppRuntimeState.CALL_IDLE,
     "contacts": AppRuntimeState.CALL_IDLE,
+    "talk_contact": AppRuntimeState.CALL_IDLE,
+    "call_history": AppRuntimeState.CALL_IDLE,
+    "voice_note": AppRuntimeState.CALL_IDLE,
+    "incoming_call": AppRuntimeState.CALL_INCOMING,
+    "outgoing_call": AppRuntimeState.CALL_OUTGOING,
+    "in_call": AppRuntimeState.CALL_ACTIVE,
 }
 
 

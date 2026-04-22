@@ -88,6 +88,23 @@ class _FakeEventThenResponseSocket(_FakeSocket):
             return b""
 
 
+class _FakeLateResponseSocket(_FakeSocket):
+    def sendall(self, data: bytes) -> None:
+        request = json.loads(data.decode().strip())
+
+        def _send_response() -> None:
+            time.sleep(0.05)
+            response = {
+                "request_id": request["request_id"],
+                "error": "success",
+                "data": "late",
+            }
+            self._next_recv = (json.dumps(response) + "\n").encode()
+            self._has_data.set()
+
+        threading.Thread(target=_send_response, daemon=True).start()
+
+
 def test_connect_and_send_command(tmp_path: Path) -> None:
     if not hasattr(socket, "AF_UNIX"):
         fake_socket = _FakeSocket()
@@ -227,3 +244,27 @@ def test_disconnect_wakes_blocked_dispatch_thread(tmp_path: Path) -> None:
     client.disconnect()
 
     assert client._dispatch_thread is None
+
+
+def test_send_command_timeout_discards_late_response(tmp_path: Path) -> None:
+    fake_socket = _FakeLateResponseSocket()
+
+    with patch.object(socket, "AF_UNIX", 1, create=True), patch(
+        "yoyopod.backends.music.ipc.socket.socket",
+        return_value=fake_socket,
+    ):
+        client = MpvIpcClient(str(tmp_path / "test-mpv.sock"))
+        assert client.connect() is True
+
+        try:
+            client.send_command(["get_property", "path"], timeout=0.01)
+        except TimeoutError:
+            pass
+        else:
+            raise AssertionError("mpv IPC command unexpectedly succeeded")
+
+        time.sleep(0.1)
+
+        assert client._pending == {}
+        assert client._responses == {}
+        client.disconnect()

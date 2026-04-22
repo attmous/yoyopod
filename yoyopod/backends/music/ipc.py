@@ -89,22 +89,25 @@ class MpvIpcClient:
         with self._lock:
             self._request_id += 1
             req_id = self._request_id
-
-        ready = threading.Event()
-        self._pending[req_id] = ready
+            ready = threading.Event()
+            self._pending[req_id] = ready
 
         payload = json.dumps({"command": args, "request_id": req_id}) + "\n"
         try:
             self._send_data(payload.encode())
         except Exception as exc:
-            self._pending.pop(req_id, None)
+            with self._lock:
+                self._pending.pop(req_id, None)
             raise ConnectionError(f"Failed to send mpv command: {exc}") from exc
 
         if not ready.wait(timeout):
-            self._pending.pop(req_id, None)
+            with self._lock:
+                self._pending.pop(req_id, None)
+                self._responses.pop(req_id, None)
             raise TimeoutError(f"mpv command timed out: {args}")
 
-        return self._responses.pop(req_id, {})
+        with self._lock:
+            return self._responses.pop(req_id, {})
 
     def observe_property(self, name: str, observe_id: int | None = None) -> None:
         """Ask mpv to push property-change events for the named property."""
@@ -175,8 +178,10 @@ class MpvIpcClient:
 
                     if "request_id" in msg:
                         req_id = msg["request_id"]
-                        self._responses[req_id] = msg
-                        event = self._pending.pop(req_id, None)
+                        with self._lock:
+                            event = self._pending.pop(req_id, None)
+                            if event is not None:
+                                self._responses[req_id] = msg
                         if event is not None:
                             event.set()
                     elif "event" in msg:
