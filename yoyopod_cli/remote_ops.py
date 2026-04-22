@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import shlex
 import subprocess
+import time
 from pathlib import Path
 
 import typer
 
 from yoyopod_cli.common import configure_logging
 from yoyopod_cli.paths import HOST, PiPaths, load_pi_paths
-from yoyopod_cli.remote_shared import build_remote_app, pi_conn
+from yoyopod_cli.remote_shared import RemoteConnection, build_remote_app, pi_conn
 from yoyopod_cli.remote_transport import (
     run_remote,
     run_remote_capture,
@@ -64,6 +66,23 @@ def _build_startup_verification(pi: PiPaths, *, attempts: int = 20) -> str:
                 "sleep 1; "
                 "done"
             ),
+            f'grep -F {marker} {log} | tail -n 1 | grep -F "pid=$pid"',
+        ]
+    )
+
+
+def _build_startup_probe(pi: PiPaths) -> str:
+    """Build a single-shot startup verification probe for polling."""
+    pid = shell_quote(pi.pid_file)
+    log = shell_quote(pi.log_file)
+    marker = shell_quote(pi.startup_marker)
+    return " && ".join(
+        [
+            f"test -f {pid}",
+            f"pid=\"$(tr -d '\\n' < {pid})\"",
+            'test -n "$pid"',
+            'kill -0 "$pid"',
+            f"test -f {log}",
             f'grep -F {marker} {log} | tail -n 1 | grep -F "pid=$pid"',
         ]
     )
@@ -124,28 +143,55 @@ def _build_native_shim_refresh(pi: PiPaths) -> str:
     )
 
 
-def _build_restart(pi: PiPaths) -> str:
-    """Build the shell that restarts the app and waits for startup verification."""
+def _kill_match_pattern(proc: str, *, start_cmd: str) -> str:
+    """Return a safe ``pkill -f`` pattern for a configured process token.
+
+    The default Pi config historically used ``python`` which is too broad on
+    shared boards. When the app starts from a Python script, prefer that
+    entrypoint filename so restart cleanup only targets YoyoPod itself.
+    """
+    normalized = proc.strip()
+    if not normalized:
+        return normalized
+    if not Path(normalized).name.startswith("python"):
+        return normalized
+
+    for token in shlex.split(start_cmd):
+        candidate = token.strip()
+        if not candidate.endswith(".py"):
+            continue
+        return Path(candidate).name
+    return normalized
+
+
+def _build_restart_body(pi: PiPaths) -> str:
+    """Build the remote shell body that restarts the app."""
     pid = shell_quote(pi.pid_file)
     activate = shell_quote(_activate_script_path(pi.venv))
     service_name = 'yoyopod@"$(id -un)".service'
     cleanup_commands = [f"rm -f {pid}"]
-    cleanup_commands.extend(f"pkill -f {shell_quote(proc)} || true" for proc in pi.kill_processes)
+    cleanup_commands.extend(
+        f"pkill -f {shell_quote(_kill_match_pattern(proc, start_cmd=pi.start_cmd))} || true"
+        for proc in pi.kill_processes
+    )
     cleanup = " ; ".join(cleanup_commands)
     manual_restart = (
         f"{cleanup} ; " f"source {activate} && (nohup {pi.start_cmd} > /dev/null 2>&1 &)"
     )
     managed_restart = (
         f"if systemctl cat {service_name} >/dev/null 2>&1; then "
-        f"sudo systemctl stop {service_name} >/dev/null 2>&1 || true; "
-        f"{cleanup} ; "
-        f"sudo systemctl start {service_name}; "
+        f"rm -f {pid} ; "
+        f"sudo systemctl restart {service_name}; "
         f"else {manual_restart}; "
         "fi"
     )
-    return " && ".join(
-        [_build_native_shim_refresh(pi), managed_restart, _build_startup_verification(pi)]
-    )
+    return " && ".join([_build_native_shim_refresh(pi), managed_restart])
+
+
+def _build_restart(pi: PiPaths) -> str:
+    """Build the shell that launches restart work detached from the SSH session."""
+    body = shell_quote(_build_restart_body(pi))
+    return f"nohup bash -lc {body} > /tmp/yoyopod_remote_restart.log 2>&1 < /dev/null &"
 
 
 def _build_logs_tail(
@@ -233,7 +279,10 @@ def restart(ctx: typer.Context, verbose: bool = typer.Option(False, "--verbose")
     conn = pi_conn(ctx)
     validate_config(conn)
     pi = load_pi_paths()
-    raise typer.Exit(run_remote(conn, _build_restart(pi)))
+    launch_code = run_remote(conn, _build_restart(pi))
+    if launch_code != 0:
+        raise typer.Exit(launch_code)
+    raise typer.Exit(_wait_for_startup(conn, pi))
 
 
 @app.command()
@@ -261,7 +310,41 @@ def sync(ctx: typer.Context, verbose: bool = typer.Option(False, "--verbose")) -
     conn = pi_conn(ctx)
     validate_config(conn)
     pi = load_pi_paths()
-    raise typer.Exit(run_remote(conn, _build_sync(pi, conn.branch)))
+    sync_code = run_remote(conn, _build_sync(pi, conn.branch))
+    if sync_code != 0:
+        raise typer.Exit(sync_code)
+    raise typer.Exit(_wait_for_startup(conn, pi))
+
+
+def _wait_for_startup(
+    conn: RemoteConnection,
+    pi: PiPaths,
+    *,
+    attempts: int = 40,
+    sleep_seconds: float = 1.0,
+) -> int:
+    """Poll the Pi over fresh SSH sessions until the app reports startup."""
+    last_error = ""
+    for _ in range(attempts):
+        result = run_remote_capture(conn, _build_startup_probe(pi))
+        if result.returncode == 0:
+            marker_line = result.stdout.strip()
+            if marker_line:
+                typer.echo(marker_line)
+            return 0
+        stderr = result.stderr.strip()
+        if stderr:
+            last_error = stderr
+        time.sleep(sleep_seconds)
+
+    typer.echo(
+        "Remote app did not report a healthy startup before timeout. "
+        "Check `yoyopod remote logs --lines 40` and `yoyopod remote service status`.",
+        err=True,
+    )
+    if last_error:
+        typer.echo(last_error, err=True)
+    return 1
 
 
 @app.command()

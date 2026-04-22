@@ -10,9 +10,12 @@ from yoyopod_cli.remote_ops import (
     _build_native_shim_refresh,
     _build_status,
     _build_restart,
+    _build_restart_body,
     _build_logs_tail,
+    _build_startup_probe,
     _build_sync,
     _build_startup_verification,
+    _kill_match_pattern,
     _build_screenshot_alive_check,
     _build_screenshot_clear,
     _build_screenshot_signal,
@@ -36,18 +39,31 @@ def test_build_restart_uses_configured_processes() -> None:
         kill_processes=("python", "linphonec"),
     )
     shell = _build_restart(pi)
-    assert "python" in shell
-    assert "linphonec" in shell
-    assert "pkill" in shell
-    assert "systemctl cat" in shell
-    assert "sudo systemctl start" in shell
-    assert "nohup python yoyopod.py --simulate" in shell
-    assert _activate_script_path(pi.venv) in shell
-    assert "'yoyopod', 'build', 'lvgl'" in shell
-    assert "'yoyopod', 'build', 'liblinphone'" in shell
-    assert pi.pid_file in shell
-    assert pi.log_file in shell
-    assert pi.startup_marker in shell
+    body = _build_restart_body(pi)
+    assert "nohup bash -lc" in shell
+    assert "pkill -f yoyopod.py" in body
+    assert "pkill -f python" not in body
+    assert "linphonec" in body
+    assert "pkill" in body
+    assert "systemctl cat" in body
+    assert "sudo systemctl restart" in body
+    assert "nohup python yoyopod.py --simulate" in body
+    assert _activate_script_path(pi.venv) in body
+    assert "'yoyopod', 'build', 'lvgl'" in body
+    assert "'yoyopod', 'build', 'liblinphone'" in body
+    assert pi.pid_file in body
+
+
+def test_kill_match_pattern_prefers_python_entrypoint_script() -> None:
+    assert (
+        _kill_match_pattern("python", start_cmd="./.venv/bin/python ./yoyopod.py --simulate")
+        == "yoyopod.py"
+    )
+    assert (
+        _kill_match_pattern("/usr/bin/python3", start_cmd="python scripts/helper.py")
+        == "helper.py"
+    )
+    assert _kill_match_pattern("linphonec", start_cmd="python yoyopod.py") == "linphonec"
 
 
 def test_build_native_shim_refresh_rebuilds_lvgl_and_liblinphone_when_stale() -> None:
@@ -68,6 +84,16 @@ def test_build_startup_verification_waits_for_pid_and_marker() -> None:
     assert "pid=\"$(tr -d '\\n' < " in shell
     assert 'kill -0 "$pid"' in shell
     assert f"grep -F '{pi.startup_marker}'" in shell or f'grep -F "{pi.startup_marker}"' in shell
+
+
+def test_build_startup_probe_checks_pid_and_marker_once() -> None:
+    pi = PiPaths()
+    shell = _build_startup_probe(pi)
+    assert "for _ in $(seq" not in shell
+    assert pi.pid_file in shell
+    assert pi.log_file in shell
+    assert pi.startup_marker in shell
+    assert 'kill -0 "$pid"' in shell
 
 
 def test_build_logs_tail_defaults() -> None:
@@ -114,7 +140,7 @@ def test_build_sync_includes_branch_and_restart() -> None:
     )
     # sync ends with a restart pipeline
     assert "pkill" in shell
-    assert "grep -F" in shell
+    assert "nohup bash -lc" in shell
 
 
 def test_status_cli_invokes_run_remote(monkeypatch) -> None:
@@ -134,6 +160,42 @@ def test_status_cli_invokes_run_remote(monkeypatch) -> None:
     conn, cmd = calls[0]
     assert conn.host == "rpi-zero"
     assert "git rev-parse HEAD" in cmd
+
+
+def test_restart_cli_launches_restart_then_polls_for_startup(monkeypatch) -> None:
+    import types
+
+    remote_calls: list[str] = []
+    capture_calls: list[str] = []
+    capture_results = iter(
+        [
+            types.SimpleNamespace(returncode=255, stdout="", stderr="ssh lost"),
+            types.SimpleNamespace(
+                returncode=0,
+                stdout="2026-04-22 19:30:48.688 | INFO | ===== YoyoPod starting (pid=11741) =====\n",
+                stderr="",
+            ),
+        ]
+    )
+
+    monkeypatch.setattr(
+        "yoyopod_cli.remote_ops.run_remote",
+        lambda conn, cmd, tty=False: (remote_calls.append(cmd), 0)[1],
+    )
+    monkeypatch.setattr(
+        "yoyopod_cli.remote_ops.run_remote_capture",
+        lambda conn, cmd: (capture_calls.append(cmd), next(capture_results))[1],
+    )
+    monkeypatch.setattr("yoyopod_cli.remote_ops.time.sleep", lambda _: None)
+    monkeypatch.setenv("YOYOPOD_PI_HOST", "rpi-zero")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["restart"])
+    assert result.exit_code == 0, result.output
+    assert len(remote_calls) == 1
+    assert "nohup bash -lc" in remote_calls[0]
+    assert len(capture_calls) == 2
+    assert all("kill -0" in call for call in capture_calls)
 
 
 # ---- screenshot builder tests -----------------------------------------------

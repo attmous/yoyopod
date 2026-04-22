@@ -34,10 +34,16 @@ def test_status_alias_invokes_same_handler(monkeypatch) -> None:
 
 def test_deploy_alias_invokes_sync(monkeypatch) -> None:
     calls: list[str] = []
+    capture_calls: list[str] = []
     monkeypatch.setattr(
         "yoyopod_cli.remote_ops.run_remote",
         lambda conn, cmd, tty=False: (calls.append(cmd), 0)[1],
     )
+    monkeypatch.setattr(
+        "yoyopod_cli.remote_ops.run_remote_capture",
+        lambda conn, cmd: (capture_calls.append(cmd), SimpleNamespace(returncode=0, stdout="", stderr=""))[1],
+    )
+    monkeypatch.setattr("yoyopod_cli.remote_ops.time.sleep", lambda _: None)
     monkeypatch.setenv("YOYOPOD_PI_HOST", "rpi-zero")
 
     runner = CliRunner()
@@ -46,6 +52,7 @@ def test_deploy_alias_invokes_sync(monkeypatch) -> None:
     assert len(calls) == 1
     assert "git fetch --prune origin" in calls[0]
     assert "git clean -fd" in calls[0]
+    assert len(capture_calls) == 1
 
 
 def test_logs_alias_respects_follow_flag(monkeypatch) -> None:
