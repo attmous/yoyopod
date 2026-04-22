@@ -65,7 +65,7 @@ media_audio:
 
 ## Music Domain Models
 
-`src/yoyopod/backends/music/models.py` is the canonical ownership point for shared music-domain data.
+`yoyopod/backends/music/models.py` is the canonical ownership point for shared music-domain data.
 
 - `Track` is the shared track model used by mpv metadata, recent-history persistence, and UI playback reads.
 - `Playlist` is the discovered local-playlist summary returned by library scans.
@@ -222,14 +222,14 @@ They are separate software paths that meet at the same codec/hardware.
 
 ## Source Files
 
-- `src/yoyopod/app.py`
-- `src/yoyopod/integrations/music/library.py`
-- `src/yoyopod/integrations/music/history.py`
-- `src/yoyopod/backends/music/mpv.py`
-- `src/yoyopod/backends/music/process.py`
-- `src/yoyopod/backends/music/ipc.py`
-- `src/yoyopod/backends/music/models.py`
-- `src/yoyopod/core/audio_volume.py`
+- `yoyopod/app.py`
+- `yoyopod/integrations/music/library.py`
+- `yoyopod/integrations/music/history.py`
+- `yoyopod/backends/music/mpv.py`
+- `yoyopod/backends/music/process.py`
+- `yoyopod/backends/music/ipc.py`
+- `yoyopod/backends/music/models.py`
+- `yoyopod/core/audio_volume.py`
 - `config/audio/music.yaml`
 - `config/device/hardware.yaml`
 - `config/communication/calling.yaml`

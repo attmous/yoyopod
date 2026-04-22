@@ -15,13 +15,13 @@ runtime.
 
 ## Current Files
 
-- `src/yoyopod/ui/display/hal.py`: HAL interface
-- `src/yoyopod/ui/display/manager.py`: `Display` facade
-- `src/yoyopod/ui/display/factory.py`: adapter selection and simulation startup
-- `src/yoyopod/ui/display/adapters/whisplay.py`: Whisplay hardware adapter
-- `src/yoyopod/ui/display/adapters/pimoroni.py`: Pimoroni/ST7789 hardware adapter
-- `src/yoyopod/ui/display/adapters/simulation.py`: simulation adapter on the shared LVGL path
-- `src/yoyopod/ui/display/rgb565.py`: framebuffer and PNG helpers used by the adapter
+- `yoyopod/ui/display/hal.py`: HAL interface
+- `yoyopod/ui/display/manager.py`: `Display` facade
+- `yoyopod/ui/display/factory.py`: adapter selection and simulation startup
+- `yoyopod/ui/display/adapters/whisplay.py`: Whisplay hardware adapter
+- `yoyopod/ui/display/adapters/pimoroni.py`: Pimoroni/ST7789 hardware adapter
+- `yoyopod/ui/display/adapters/simulation.py`: simulation adapter on the shared LVGL path
+- `yoyopod/ui/display/rgb565.py`: framebuffer and PNG helpers used by the adapter
 
 ## Architecture
 
@@ -53,7 +53,7 @@ Display
 
 - `240x280`
 - portrait
-- browser preview via `src/yoyopod/ui/display/adapters/simulation_web/server.py`
+- browser preview via `yoyopod/ui/display/adapters/simulation_web/server.py`
 - same LVGL/RGB565 render contract as hardware
 
 ## Backward Compatibility Contract

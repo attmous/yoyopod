@@ -25,16 +25,16 @@ This module is responsible for:
 ## Architecture
 
 Main files:
-- `src/yoyopod/integrations/power/models.py`
-- `src/yoyopod/integrations/power/manager.py`
-- `src/yoyopod/integrations/power/events.py`
-- `src/yoyopod/integrations/power/policies.py`
-- `src/yoyopod/integrations/power/service.py`
-- `src/yoyopod/integrations/power/__init__.py`
-- `src/yoyopod/backends/power/pisugar.py`
-- `src/yoyopod/backends/power/watchdog.py`
-- `src/yoyopod/ui/screens/system/power_screen.py`
-- `src/yoyopod/cli/pi/power.py` (`yoyopod pi power battery`, `yoyopod pi power rtc`)
+- `yoyopod/integrations/power/models.py`
+- `yoyopod/integrations/power/manager.py`
+- `yoyopod/integrations/power/events.py`
+- `yoyopod/integrations/power/policies.py`
+- `yoyopod/integrations/power/service.py`
+- `yoyopod/integrations/power/__init__.py`
+- `yoyopod/backends/power/pisugar.py`
+- `yoyopod/backends/power/watchdog.py`
+- `yoyopod/ui/screens/system/power_screen.py`
+- `yoyopod_cli/pi_power.py` (`yoyopod pi power battery`, `yoyopod pi power rtc`)
 
 Runtime flow:
 
@@ -56,13 +56,13 @@ The app schedules PiSugar polling and watchdog work through `integrations.power.
 publishes typed power events, updates shared runtime state, refreshes visible power
 UI when needed, and then applies safety behavior from those events.
 
-`src/yoyopod/integrations/power/` is now the canonical public ownership seam for
+`yoyopod/integrations/power/` is now the canonical public ownership seam for
 the power manager, typed models, power-domain events, and safety policy.
-The historical top-level `src/yoyopod/power/` facade has been removed.
+The historical top-level `yoyopod/power/` facade has been removed.
 
 ## Backends And Transports
 
-`PowerManager` in `src/yoyopod/integrations/power/manager.py` is the app-facing facade.
+`PowerManager` in `yoyopod/integrations/power/manager.py` is the app-facing facade.
 
 `PiSugarBackend` currently supports:
 - automatic transport selection
@@ -233,7 +233,7 @@ yoyopod remote rtc status --host rpi-zero
 The watchdog implementation is intentionally power-domain-owned but app-scheduled.
 
 Current model:
-- the main-thread loop in `src/yoyopod/core/loop.py` enables the PiSugar software watchdog through `integrations.power.PowerRuntimeService`
+- the main-thread loop in `yoyopod/core/loop.py` enables the PiSugar software watchdog through `integrations.power.PowerRuntimeService`
 - the app feeds it at a configured interval while healthy
 - ordinary app shutdown disables the watchdog
 - battery-driven emergency shutdown suppresses feeding without disabling it
@@ -258,7 +258,7 @@ Current production unit:
 There is now a dedicated `Power Status` screen in the standard menu flow.
 
 Implementation:
-- `src/yoyopod/ui/screens/system/power.py`
+- `yoyopod/ui/screens/system/power.py`
 
 Current screen design:
 - page 1: battery / charging / external power / voltage / RTC / alarm

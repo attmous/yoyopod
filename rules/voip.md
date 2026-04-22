@@ -1,12 +1,12 @@
 # Communication (Liblinphone)
 
-Applies to: `src/yoyopod/communication/**`, `src/yoyopod/people/**`
+Applies to: `yoyopod/integrations/call/**`, `yoyopod/integrations/contacts/**`, `yoyopod/backends/voip/**`
 
 ## Overview
 
 The production VoIP path is Liblinphone-only:
 
-- native Liblinphone shim under `src/yoyopod/communication/integrations/liblinphone_binding/`
+- native Liblinphone shim under `yoyopod/backends/voip/shim_native/`
 - CPython `cffi` binding against the shim header only
 - `VoIPManager` as the app-facing facade for registration, calls, text messages, and voice notes
 

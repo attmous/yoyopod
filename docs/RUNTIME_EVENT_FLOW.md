@@ -5,7 +5,7 @@
 
 This document maps how runtime events move through the current app and which layer owns each decision.
 
-It is intentionally descriptive, not aspirational. If code and docs disagree, trust the code under `src/yoyopod/`.
+It is intentionally descriptive, not aspirational. If code and docs disagree, trust the code under `yoyopod/`.
 
 ## Big picture
 
@@ -55,7 +55,7 @@ Owns:
 This is where the app decides which backend signals become typed runtime events and which runtime helpers exist around the initialized managers and screens.
 
 Canonical owner:
-- `src/yoyopod/core/bootstrap/`
+- `yoyopod/core/bootstrap/`
 
 ### `RuntimeLoopService`
 
@@ -71,7 +71,7 @@ continues into protected VoIP, LVGL, watchdog, and power spans, and pending gene
 work keeps the loop on a 10 ms cadence instead of collapsing into a zero-sleep spin.
 
 Canonical owner:
-- `src/yoyopod/core/loop.py`
+- `yoyopod/core/loop.py`
 
 ### `AppStateRuntime`
 
@@ -125,7 +125,7 @@ Owns:
 It reacts to `ScreenChangedEvent`, `UserActivityEvent`, and low-battery events, but it does not own app navigation.
 
 Canonical owner:
-- `src/yoyopod/integrations/display/service.py`
+- `yoyopod/integrations/display/service.py`
 
 ### `RuntimeRecoveryService`
 
@@ -134,7 +134,7 @@ Owns:
 - publishing recovery completion events
 
 Canonical owner:
-- `src/yoyopod/core/recovery.py`
+- `yoyopod/core/recovery.py`
 
 ### `integrations.power.PowerRuntimeService`
 
@@ -214,7 +214,7 @@ Ownership: call behavior belongs to `CallRuntime`; derived app state belongs to 
 ### Call state change flow
 
 1. `VoIPManager` reports `CallState`.
-2. `CallRuntime` publishes the call-domain events owned by `src/yoyopod/integrations/call/events.py`: `CallStateChangedEvent`, and `CallEndedEvent` for `RELEASED`.
+2. `CallRuntime` publishes the call-domain events owned by `yoyopod/integrations/call/events.py`: `CallStateChangedEvent`, and `CallEndedEvent` for `RELEASED`.
 3. The main-thread drain calls `CallRuntime.handle_call_state_change()` or `handle_call_ended()`.
 4. Those methods update the call FSM, derived app state, call screens, call history, and optional music resume.
 
@@ -223,7 +223,7 @@ Notable ownership detail: `CallRuntime` directly decides music pause/resume arou
 ### Playback change flow
 
 1. `MpvBackend` invokes callbacks registered in `RuntimeBootService.setup_music_callbacks()`.
-2. `MusicRuntime.handle_track_change()` or `handle_playback_state_change()` publishes the music-domain events now owned by `src/yoyopod/integrations/music/events.py` when other subscribers need them.
+2. `MusicRuntime.handle_track_change()` or `handle_playback_state_change()` publishes the music-domain events now owned by `yoyopod/integrations/music/events.py` when other subscribers need them.
 3. Those callbacks arrive from the mpv IPC dispatch thread, so boot wiring schedules them onto the main thread before they publish onto `Bus`.
 4. The main-thread drain calls `MusicRuntime.handle_track_change()` or `handle_playback_state_change()`.
 5. `MusicRuntime` updates the music-domain `MusicFSM`, re-derives app state, records recents, and refreshes the now-playing screen.
@@ -260,7 +260,7 @@ Ownership: route-change bookkeeping is split. `ScreenManager` knows when the rou
 
 ### Network status flow
 
-1. `NetworkManager` uses the app-provided event publisher to schedule the typed network/location events from `src/yoyopod/integrations/network/events.py` and `src/yoyopod/integrations/location/events.py` onto the main thread and publish them to `Bus`.
+1. `NetworkManager` uses the app-provided event publisher to schedule the typed network/location events from `yoyopod/integrations/network/events.py` and `yoyopod/integrations/location/events.py` onto the main thread and publish them to `Bus`.
 2. `YoyoPodApp` subscribes to those events in its constructor.
 3. App handlers call `_sync_network_context_from_manager()` or update `AppContext` directly.
 
@@ -355,20 +355,20 @@ If ordering looks inconsistent, check scheduler backlog first and bus backlog se
 
 ## Source files to trust
 
-- `src/yoyopod/app.py`
-- `src/yoyopod/core/application.py`
-- `src/yoyopod/core/bootstrap/`
-- `src/yoyopod/core/loop.py`
-- `src/yoyopod/core/recovery.py`
-- `src/yoyopod/core/app_state.py`
-- `src/yoyopod/integrations/call/coordinator.py`
-- `src/yoyopod/integrations/music/coordinator.py`
-- `src/yoyopod/integrations/power/coordinator.py`
-- `src/yoyopod/ui/screens/coordinator.py`
-- `src/yoyopod/core/bus.py`
-- `src/yoyopod/core/scheduler.py`
-- `src/yoyopod/core/events.py`
-- `src/yoyopod/integrations/network/manager.py`
+- `yoyopod/app.py`
+- `yoyopod/core/application.py`
+- `yoyopod/core/bootstrap/`
+- `yoyopod/core/loop.py`
+- `yoyopod/core/recovery.py`
+- `yoyopod/core/app_state.py`
+- `yoyopod/integrations/call/coordinator.py`
+- `yoyopod/integrations/music/coordinator.py`
+- `yoyopod/integrations/power/coordinator.py`
+- `yoyopod/ui/screens/coordinator.py`
+- `yoyopod/core/bus.py`
+- `yoyopod/core/scheduler.py`
+- `yoyopod/core/events.py`
+- `yoyopod/integrations/network/manager.py`
 
 ## Bottom line
 

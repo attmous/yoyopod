@@ -95,13 +95,13 @@ YoyoPod uses a hybrid ownership model:
 
 Frozen canonical package homes:
 
-- `src/yoyopod/app.py`
+- `yoyopod/app.py`
   - thin bootstrap and composition shell only
-- `src/yoyopod/main.py`
+- `yoyopod/main.py`
   - process entrypoint only
-- `src/yoyopod/config/`
+- `yoyopod/config/`
   - typed config loading, composition, and validation
-- `src/yoyopod/core/`
+- `yoyopod/core/`
   - framework and cross-cutting primitives
   - `application.py`: canonical scaffold app object
   - `bus.py`, `states.py`, `services.py`, `scheduler.py`: shared Home Assistant-style spine
@@ -110,35 +110,35 @@ Frozen canonical package homes:
   - `focus.py`, `recovery.py`, `status.py`: cross-domain mechanics and runtime status
   - `diagnostics/`: event log, snapshots, watchdog helpers
   - `hardware.py`: only shared hardware metadata/helpers that do not belong to one domain
-- `src/yoyopod/integrations/call/`
+- `yoyopod/integrations/call/`
   - canonical call-domain seam: calls, registration, messaging, history, and voice notes
   - owns call-domain typed events in `events.py`
   - `runtime.py` owns call-flow orchestration and screen transitions
-- `src/yoyopod/integrations/music/`
+- `yoyopod/integrations/music/`
   - canonical music-domain seam
   - owns music-domain typed events in `events.py`
   - `runtime.py` owns playback-flow orchestration and visible now-playing refreshes
-- `src/yoyopod/integrations/power/`
+- `yoyopod/integrations/power/`
   - canonical power-domain seam
   - owns power-domain typed events in `events.py` and battery safety policy in `policies.py`
   - `service.py` owns live power polling, watchdog cadence, power snapshot application, and safety-event emission
-- `src/yoyopod/integrations/network/`
+- `yoyopod/integrations/network/`
   - canonical cellular/network seam
   - owns modem / PPP / signal events in `events.py`
-- `src/yoyopod/integrations/location/`
+- `yoyopod/integrations/location/`
   - canonical GPS/location seam split from network
   - owns GPS fix/no-fix events in `events.py`
-- `src/yoyopod/integrations/cloud/`
+- `yoyopod/integrations/cloud/`
   - canonical cloud-sync and telemetry seam
-- `src/yoyopod/integrations/contacts/`
+- `yoyopod/integrations/contacts/`
   - canonical contacts/address-book seam
-- `src/yoyopod/integrations/voice/`
+- `yoyopod/integrations/voice/`
   - canonical voice/STT/TTS seam
-- `src/yoyopod/integrations/display/`
+- `yoyopod/integrations/display/`
   - canonical display awake/sleep/brightness/timeout seam
-- `src/yoyopod/backends/`
+- `yoyopod/backends/`
   - concrete adapters only: `voip/`, `music/`, `power/`, `network/`, `location/`, `voice/`
-- `src/yoyopod/ui/`
+- `yoyopod/ui/`
   - display adapters, input adapters, and screens
   - `ui/input/` owns input adapters including GPIO compatibility helpers
 
@@ -170,7 +170,7 @@ Core package exports should follow the same rule:
 
 ## Canonical Test Layout
 
-The test tree should mirror the same ownership split as `src/yoyopod/`.
+The test tree should mirror the same ownership split as `yoyopod/`.
 
 - `tests/core/`
   - core primitives and cross-cutting runtime helpers
@@ -196,12 +196,12 @@ tests should keep moving into these buckets as their ownership becomes clearer.
 
 The call + contacts cut establishes:
 
-- public call-domain ownership under `src/yoyopod/integrations/call/`
-- contacts under `src/yoyopod/integrations/contacts/`
+- public call-domain ownership under `yoyopod/integrations/call/`
+- contacts under `yoyopod/integrations/contacts/`
 - communication config separated from mutable people data
 - runtime people data seeded into `data/people/contacts.yaml` from
   `config/people/contacts.seed.yaml` only when needed
-- the historical facade packages (`communication/`, `people/`) removed from `src/yoyopod/`
+- the historical facade packages (`communication/`, `people/`) removed from `yoyopod/`
 
 Contacts are not communication config. The tracked people config file only says
 where the mutable address book lives and which seed file can bootstrap it.
@@ -212,10 +212,10 @@ The call migration follows the same cutover shape:
 
 - communication policy remains under `config/communication/calling.yaml` and
   `config/communication/messaging.yaml`
-- `src/yoyopod/integrations/call/` is the canonical owner of the public
+- `yoyopod/integrations/call/` is the canonical owner of the public
   call manager, session FSM/policy, lifecycle tracker, messaging service, models, message store,
   call-history, and voice-note seam
-- `src/yoyopod/backends/voip/` is the canonical owner of the concrete
+- `yoyopod/backends/voip/` is the canonical owner of the concrete
   Liblinphone and mock backend adapters plus protocol/binding types
 - app/runtime composition depends on `yoyopod.integrations.call` instead of historical
   communication-package import paths
@@ -227,10 +227,10 @@ The voice migration adds the next reusable slice:
 - voice policy under `config/voice/assistant.yaml`
 - local voice capture and prompt selectors under `config/device/hardware.yaml`
   as `voice_audio.*`
-- shared audio-device listing and label helpers under `src/yoyopod/core/hardware.py`
-- `src/yoyopod/integrations/voice/` as the canonical owner of the public
+- shared audio-device listing and label helpers under `yoyopod/core/hardware.py`
+- `yoyopod/integrations/voice/` as the canonical owner of the public
   manager/models seam
-- `src/yoyopod/backends/voice/` as the canonical owner of the concrete capture,
+- `yoyopod/backends/voice/` as the canonical owner of the concrete capture,
   playback, STT, and TTS adapters
 - voice runtime and services consuming `ConfigManager.get_voice_settings()`
   and `yoyopod.integrations.voice` instead of reading app-shell config directly
@@ -241,7 +241,7 @@ The network migration follows the same cutover shape:
 
 - network policy under `config/network/cellular.yaml`
 - `ConfigManager.get_network_settings()` as the typed runtime seam
-- `src/yoyopod/integrations/network/` as the canonical owner of the public
+- `yoyopod/integrations/network/` as the canonical owner of the public
   manager/models seam
 - app/runtime composition depending on `yoyopod.integrations.network.NetworkManager`
   instead of reading network state from app-shell config
@@ -255,8 +255,8 @@ The media/audio migration follows the same cutover shape:
 - mutable recent-track history under `data/media/`
 - `ConfigManager.get_media_settings()` as the typed runtime seam for `music` policy
   plus device-owned `audio` routing
-- `src/yoyopod/integrations/music/` as the domain-owned public seam
-- `src/yoyopod/backends/music/` as the adapter-owned implementation seam
+- `yoyopod/integrations/music/` as the domain-owned public seam
+- `yoyopod/backends/music/` as the adapter-owned implementation seam
 - app/runtime composition depending on the `yoyopod.integrations.music` seam via
   `MusicConfig.from_config_manager()` instead of hand-mapping media fields
 
@@ -266,23 +266,23 @@ The power migration follows the same cutover shape:
 
 - power backend and shutdown policy under `config/power/backend.yaml`
 - `ConfigManager.get_power_settings()` as the typed runtime seam
-- `src/yoyopod/integrations/power/` as the canonical owner of the public
+- `yoyopod/integrations/power/` as the canonical owner of the public
   manager/models/events/policies seam
 - app/runtime composition depending on `yoyopod.integrations.power.PowerManager`
   and `PowerManager.from_config_manager()`
   instead of reading power state from app-shell config
 - power polling and PiSugar watchdog cadence owned by the power domain via
-  `src/yoyopod/integrations/power/service.py`
+  `yoyopod/integrations/power/service.py`
 
 ## Template For Future Migrations
 
 When migrating another domain:
 
-1. choose one public domain seam under `src/yoyopod/integrations/<domain>/`
+1. choose one public domain seam under `yoyopod/integrations/<domain>/`
 2. split tracked config into domain-owned files under `config/<domain>/`
 3. keep shared hardware truth in `config/device/hardware.yaml` unless the new
    setting is truly domain-owned policy
-4. define an app-facing seam in `src/yoyopod/integrations/<domain>/__init__.py`
+4. define an app-facing seam in `yoyopod/integrations/<domain>/__init__.py`
 5. route mutable user data into `data/`, not tracked config
 6. mirror the same relative file structure in `config/boards/<board>/`
 7. add focused tests for composition, boundaries, and bootstrap behavior

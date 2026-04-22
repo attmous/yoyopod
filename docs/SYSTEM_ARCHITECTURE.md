@@ -25,20 +25,20 @@ The repo exposes two equivalent application launch surfaces:
 - `python yoyopod.py`
 - the installed `yoyopod` console entrypoint from `pyproject.toml`
 
-Both end up in `src/yoyopod/main.py`. That entrypoint configures logging,
+Both end up in `yoyopod/main.py`. That entrypoint configures logging,
 writes the PID file, emits the canonical startup marker, and then constructs
-`YoyoPodApp` from `src/yoyopod/app.py`.
+`YoyoPodApp` from `yoyopod/app.py`.
 
 The frozen end state is:
 
-- `src/yoyopod/app.py`: bootstrap only
-- `src/yoyopod/core/application.py`: canonical app object
-- `src/yoyopod/core/`: cross-cutting primitives and mechanics
-- `src/yoyopod/integrations/`: domain seams
-- `src/yoyopod/backends/`: external adapters only
-- `src/yoyopod/ui/`: display, input, and screens
+- `yoyopod/app.py`: bootstrap only
+- `yoyopod/core/application.py`: canonical app object
+- `yoyopod/core/`: cross-cutting primitives and mechanics
+- `yoyopod/integrations/`: domain seams
+- `yoyopod/backends/`: external adapters only
+- `yoyopod/ui/`: display, input, and screens
 
-`src/yoyopod/runtime/`, `src/yoyopod/coordinators/`, `src/yoyopod/audio/`,
+`yoyopod/runtime/`, `yoyopod/coordinators/`, `yoyopod/audio/`,
 and the legacy domain-facade packages are now gone. The remaining cleanup is
 mostly documentation and test-layout polish, not live runtime ownership.
 
@@ -46,7 +46,7 @@ mostly documentation and test-layout polish, not live runtime ownership.
 
 This is the startup sequence that exists on `main` today.
 
-1. Launch enters the `yoyopod.main:main` entrypoint implemented in `src/yoyopod/main.py`.
+1. Launch enters the `yoyopod.main:main` entrypoint implemented in `yoyopod/main.py`.
    - `yoyopod.py` is only a thin launcher.
    - The installed `yoyopod` console script in `pyproject.toml` also targets `yoyopod.main:main`.
 2. `main()` configures process-level runtime plumbing before app setup starts.
@@ -58,10 +58,10 @@ This is the startup sequence that exists on `main` today.
    - `--simulate` is parsed before the app is constructed.
 3. `main()` constructs `YoyoPodApp(config_dir="config", simulate=simulate)`.
    - The constructor does not start hardware or backend processes yet.
-  - It allocates the typed `Bus`, the shared `MainThreadScheduler`, the core bootstrap service (`RuntimeBootService` from `src/yoyopod/core/bootstrap/`), the canonical main-thread loop (`RuntimeLoopService` from `src/yoyopod/core/loop.py`), the remaining live services (`RuntimeRecoveryService` from `src/yoyopod/core/recovery.py`, `PowerRuntimeService` from `src/yoyopod/integrations/power/service.py`, `ShutdownLifecycleService` from `src/yoyopod/core/shutdown.py`), the canonical display-power helper (`ScreenPowerService` from `src/yoyopod/integrations/display/service.py`), and the long-lived placeholder fields for managers, screens, and shared context.
+  - It allocates the typed `Bus`, the shared `MainThreadScheduler`, the core bootstrap service (`RuntimeBootService` from `yoyopod/core/bootstrap/`), the canonical main-thread loop (`RuntimeLoopService` from `yoyopod/core/loop.py`), the remaining live services (`RuntimeRecoveryService` from `yoyopod/core/recovery.py`, `PowerRuntimeService` from `yoyopod/integrations/power/service.py`, `ShutdownLifecycleService` from `yoyopod/core/shutdown.py`), the canonical display-power helper (`ScreenPowerService` from `yoyopod/integrations/display/service.py`), and the long-lived placeholder fields for managers, screens, and shared context.
 - `RuntimeRecoveryService` now keeps VoIP/music/network recovery while `yoyopod.integrations.power.service.PowerRuntimeService` owns PiSugar polling and watchdog cadence.
 - It also registers app-level event subscriptions on the `Bus` so later boot stages can publish typed events back onto the main thread.
-4. `main()` calls `app.setup()`, which delegates to `RuntimeBootService.setup()` in `src/yoyopod/core/bootstrap/`.
+4. `main()` calls `app.setup()`, which delegates to `RuntimeBootService.setup()` in `yoyopod/core/bootstrap/`.
 5. `RuntimeBootService.setup()` currently executes boot in this order:
    1. `load_configuration()`
       - builds `ConfigManager`
@@ -114,7 +114,7 @@ This is the startup sequence that exists on `main` today.
 
 ## Startup Differences Between Hardware And Simulation
 
-- The boot order is the same in both modes: `main()` still configures logging, constructs `YoyoPodApp`, and calls `RuntimeBootService.setup()` from `src/yoyopod/core/bootstrap/`.
+- The boot order is the same in both modes: `main()` still configures logging, constructs `YoyoPodApp`, and calls `RuntimeBootService.setup()` from `yoyopod/core/bootstrap/`.
 - Simulation mode changes adapter selection and input behavior by asking the display and input factories for simulation backends, and `main()` logs the browser-based workflow banner before setup.
 - `NetworkManager` is created in both modes, but it is only started when networking is enabled and `simulate` is false.
 - The initial root route still depends on the resolved interaction profile, not on a separate dev-only code path.
@@ -146,7 +146,7 @@ yoyopod.py / yoyopod.main
       -> CallRuntime / MusicRuntime
       -> AppContext
          -> focused runtime state objects (`media`, `power`, `network`, `screen`, `voip`, `talk`, `voice`)
-         -> media state composes with canonical music models from `src/yoyopod/backends/music/models.py`
+         -> media state composes with canonical music models from `yoyopod/backends/music/models.py`
       -> LocalMusicService
       -> MpvBackend
         -> MpvProcess
@@ -171,63 +171,63 @@ yoyopod.py / yoyopod.main
 
 ### Application Layer
 
-- `src/yoyopod/app.py`: thin bootstrap shell
-- `src/yoyopod/main.py`: package entry point
-- `src/yoyopod/core/application.py`: canonical scaffold app object
-- `src/yoyopod/core/bus.py`, `states.py`, `services.py`, `scheduler.py`: frozen spine primitives
-- `src/yoyopod/core/events.py`: universal state-change and cross-cutting app events only
-- `src/yoyopod/core/focus.py`, `recovery.py`, `status.py`, `diagnostics/`: cross-cutting core modules
-- `src/yoyopod/core/app_state.py`: derived app runtime state
-- `src/yoyopod/core/app_context.py`: focused shared runtime state
-- `src/yoyopod/core/app_context.py`: `AppContext` plus the focused runtime state objects it owns
-- `src/yoyopod/core/bootstrap/`: boot-time composition and manager wiring
-- `src/yoyopod/core/loop.py`: main-thread loop scheduling and queued main-thread work
-- `src/yoyopod/core/recovery.py`: backend recovery supervision and retry services
-- `src/yoyopod/integrations/display/service.py`: screen wake/sleep policy and power overlays
-- `src/yoyopod/core/shutdown.py`: shutdown countdowns, hooks, and lifecycle cleanup
-- `src/yoyopod/integrations/power/service.py`: power polling and watchdog cadence
+- `yoyopod/app.py`: thin bootstrap shell
+- `yoyopod/main.py`: package entry point
+- `yoyopod/core/application.py`: canonical scaffold app object
+- `yoyopod/core/bus.py`, `states.py`, `services.py`, `scheduler.py`: frozen spine primitives
+- `yoyopod/core/events.py`: universal state-change and cross-cutting app events only
+- `yoyopod/core/focus.py`, `recovery.py`, `status.py`, `diagnostics/`: cross-cutting core modules
+- `yoyopod/core/app_state.py`: derived app runtime state
+- `yoyopod/core/app_context.py`: focused shared runtime state
+- `yoyopod/core/app_context.py`: `AppContext` plus the focused runtime state objects it owns
+- `yoyopod/core/bootstrap/`: boot-time composition and manager wiring
+- `yoyopod/core/loop.py`: main-thread loop scheduling and queued main-thread work
+- `yoyopod/core/recovery.py`: backend recovery supervision and retry services
+- `yoyopod/integrations/display/service.py`: screen wake/sleep policy and power overlays
+- `yoyopod/core/shutdown.py`: shutdown countdowns, hooks, and lifecycle cleanup
+- `yoyopod/integrations/power/service.py`: power polling and watchdog cadence
 
 ### Runtime Ownership
 
-- `src/yoyopod/integrations/call/runtime.py`: call-flow orchestration and screen transitions
-- `src/yoyopod/integrations/music/runtime.py`: playback-flow orchestration and now-playing refreshes
-- `src/yoyopod/integrations/power/service.py`: power polling, power snapshot application, watchdog cadence, and safety-policy event emission
-- `src/yoyopod/ui/screens/manager.py`: screen refresh helpers and call-screen stack updates
-- `src/yoyopod/core/app_state.py`: derived runtime state and shared runtime references
+- `yoyopod/integrations/call/runtime.py`: call-flow orchestration and screen transitions
+- `yoyopod/integrations/music/runtime.py`: playback-flow orchestration and now-playing refreshes
+- `yoyopod/integrations/power/service.py`: power polling, power snapshot application, watchdog cadence, and safety-policy event emission
+- `yoyopod/ui/screens/manager.py`: screen refresh helpers and call-screen stack updates
+- `yoyopod/core/app_state.py`: derived runtime state and shared runtime references
 
 ### Domains and Backends
 
-- `src/yoyopod/integrations/music/`: canonical music seam, including the transitional `MusicFSM`
-- `src/yoyopod/integrations/music/events.py`: music-domain typed events
-- `src/yoyopod/integrations/music/fsm.py`: canonical music-session FSM owner during the remaining state-store cutover
-- `src/yoyopod/backends/music/`: concrete mpv adapters
-- `src/yoyopod/integrations/call/`: canonical public call manager, session FSM/policy, lifecycle tracker, messaging service, models, message store, history, and voice-note seam
-- `src/yoyopod/integrations/call/events.py`: call-domain typed events
-- `src/yoyopod/backends/voip/`: canonical Liblinphone adapter, protocol types, mock backend, and native shim binding
-- `src/yoyopod/integrations/contacts/`: mutable contacts/address-book domain
+- `yoyopod/integrations/music/`: canonical music seam, including the transitional `MusicFSM`
+- `yoyopod/integrations/music/events.py`: music-domain typed events
+- `yoyopod/integrations/music/fsm.py`: canonical music-session FSM owner during the remaining state-store cutover
+- `yoyopod/backends/music/`: concrete mpv adapters
+- `yoyopod/integrations/call/`: canonical public call manager, session FSM/policy, lifecycle tracker, messaging service, models, message store, history, and voice-note seam
+- `yoyopod/integrations/call/events.py`: call-domain typed events
+- `yoyopod/backends/voip/`: canonical Liblinphone adapter, protocol types, mock backend, and native shim binding
+- `yoyopod/integrations/contacts/`: mutable contacts/address-book domain
 - `config/communication/integrations/liblinphone_factory.conf`: repo-managed Liblinphone factory config for media, codec, and network defaults
 
 ### Power, Network, Voice, and Display
 
-- `src/yoyopod/integrations/power/`: canonical power manager, models, and scaffold integration ownership
-- `src/yoyopod/integrations/network/`: canonical network manager, modem models, and scaffold integration ownership
-- `src/yoyopod/integrations/network/events.py`: modem / PPP / signal events
-- `src/yoyopod/integrations/location/`: canonical GPS/location seam
-- `src/yoyopod/integrations/location/events.py`: GPS fix/no-fix events
-- `src/yoyopod/integrations/voice/`: canonical voice manager, service alias, and typed voice models
-- `src/yoyopod/backends/voice/`: concrete capture, playback, STT, and TTS adapters
-- `src/yoyopod/integrations/display/`: canonical display awake/sleep/brightness/timeout seam, including the live screen-power helper
+- `yoyopod/integrations/power/`: canonical power manager, models, and scaffold integration ownership
+- `yoyopod/integrations/network/`: canonical network manager, modem models, and scaffold integration ownership
+- `yoyopod/integrations/network/events.py`: modem / PPP / signal events
+- `yoyopod/integrations/location/`: canonical GPS/location seam
+- `yoyopod/integrations/location/events.py`: GPS fix/no-fix events
+- `yoyopod/integrations/voice/`: canonical voice manager, service alias, and typed voice models
+- `yoyopod/backends/voice/`: concrete capture, playback, STT, and TTS adapters
+- `yoyopod/integrations/display/`: canonical display awake/sleep/brightness/timeout seam, including the live screen-power helper
 
 ### UI Layer
 
-- `src/yoyopod/ui/display/`: display HAL and adapters
-- `src/yoyopod/ui/input/`: input HAL, semantic actions, adapters
-- `src/yoyopod/ui/screens/`: screen classes split by feature
-- `src/yoyopod/ui/web_server.py`: simulation browser server
+- `yoyopod/ui/display/`: display HAL and adapters
+- `yoyopod/ui/input/`: input HAL, semantic actions, adapters
+- `yoyopod/ui/screens/`: screen classes split by feature
+- `yoyopod/ui/web_server.py`: simulation browser server
 
 ## Display Architecture
 
-`Display` in `src/yoyopod/ui/display/manager.py` is a facade over the HAL interface in `src/yoyopod/ui/display/hal.py`.
+`Display` in `yoyopod/ui/display/manager.py` is a facade over the HAL interface in `yoyopod/ui/display/hal.py`.
 
 Supported adapters:
 
@@ -235,7 +235,7 @@ Supported adapters:
 - `PimoroniDisplayAdapter`: 320x240 landscape ST7789/GPIO hardware path
 - `SimulationDisplayAdapter`: browser preview transport backed by the same LVGL/RGB565 adapter contract
 
-Selection happens in `src/yoyopod/ui/display/factory.py` using:
+Selection happens in `yoyopod/ui/display/factory.py` using:
 
 1. explicit `display.hardware` config
 2. `YOYOPOD_DISPLAY` environment variable
@@ -271,9 +271,9 @@ Current adapters:
 
 Screen groups:
 
-- `src/yoyopod/ui/screens/navigation/`
-- `src/yoyopod/ui/screens/music/`
-- `src/yoyopod/ui/screens/voip/`
+- `yoyopod/ui/screens/navigation/`
+- `yoyopod/ui/screens/music/`
+- `yoyopod/ui/screens/voip/`
 
 `Screen` now exposes semantic handlers only:
 
@@ -285,10 +285,10 @@ Screen groups:
 
 Playback and call orchestration use composed models:
 
-- `MusicFSM` in `src/yoyopod/integrations/music/fsm.py`
-- `CallFSM` in `src/yoyopod/integrations/call/session.py`
-- `CallInterruptionPolicy` in `src/yoyopod/integrations/call/session.py`
-- `AppStateRuntime` in `src/yoyopod/core/app_state.py`
+- `MusicFSM` in `yoyopod/integrations/music/fsm.py`
+- `CallFSM` in `yoyopod/integrations/call/session.py`
+- `CallInterruptionPolicy` in `yoyopod/integrations/call/session.py`
+- `AppStateRuntime` in `yoyopod/core/app_state.py`
 
 `AppStateRuntime` derives the current application status from those models, including:
 
@@ -325,7 +325,7 @@ Use that document when you need:
 - current incoming-call, playback, power, network, and recovery paths
 - known seams where runtime ownership is still split or overloaded
 
-Shared music-domain model ownership now lives in `src/yoyopod/backends/music/models.py`.
+Shared music-domain model ownership now lives in `yoyopod/backends/music/models.py`.
 `Track` is the canonical track shape, `Playlist` is the local-library playlist
 summary, and `PlaybackQueue` is the runtime ordered queue used when the app
 needs selected-track state.
@@ -346,23 +346,23 @@ These are known implementation constraints, not architecture goals.
 
 For current behavior, trust these files over older notes or demos:
 
-- `src/yoyopod/core/application.py`
-- `src/yoyopod/core/bus.py`
-- `src/yoyopod/core/scheduler.py`
-- `src/yoyopod/core/events.py`
-- `src/yoyopod/core/app_context.py`
-- `src/yoyopod/core/app_context.py`
-- `src/yoyopod/core/app_state.py`
-- `src/yoyopod/backends/music/`
-- `src/yoyopod/integrations/music/`
-- `src/yoyopod/backends/voip/`
-- `src/yoyopod/integrations/call/`
-- `src/yoyopod/integrations/power/`
-- `src/yoyopod/integrations/contacts/`
-- `src/yoyopod/integrations/network/`
-- `src/yoyopod/integrations/voice/`
-- `src/yoyopod/core/bootstrap/`
-- `src/yoyopod/core/loop.py`
-- `src/yoyopod/ui/display/`
-- `src/yoyopod/ui/input/`
-- `src/yoyopod/ui/screens/`
+- `yoyopod/core/application.py`
+- `yoyopod/core/bus.py`
+- `yoyopod/core/scheduler.py`
+- `yoyopod/core/events.py`
+- `yoyopod/core/app_context.py`
+- `yoyopod/core/app_context.py`
+- `yoyopod/core/app_state.py`
+- `yoyopod/backends/music/`
+- `yoyopod/integrations/music/`
+- `yoyopod/backends/voip/`
+- `yoyopod/integrations/call/`
+- `yoyopod/integrations/power/`
+- `yoyopod/integrations/contacts/`
+- `yoyopod/integrations/network/`
+- `yoyopod/integrations/voice/`
+- `yoyopod/core/bootstrap/`
+- `yoyopod/core/loop.py`
+- `yoyopod/ui/display/`
+- `yoyopod/ui/input/`
+- `yoyopod/ui/screens/`

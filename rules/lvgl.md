@@ -1,6 +1,6 @@
 # LVGL Display Pipeline
 
-Applies to: `src/yoyopod/ui/lvgl_binding/**`, `src/yoyopod/ui/display/adapters/whisplay.py`
+Applies to: `yoyopod/ui/lvgl_binding/**`, `yoyopod/ui/display/adapters/whisplay.py`
 
 ## Overview
 

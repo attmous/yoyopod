@@ -19,10 +19,10 @@ Phase 2 was the point where the integrated application stopped being a set of se
 
 The integration work lives in:
 
-- `src/yoyopod/app.py`
+- `yoyopod/app.py`
 - `yoyopod.py`
 
-The older reference to `src/yoyopod/yoyopod_app.py` is no longer correct.
+The older reference to `yoyopod/yoyopod_app.py` is no longer correct.
 
 ## Screen Set Registered By The App
 
@@ -32,14 +32,14 @@ The older reference to `src/yoyopod/yoyopod_app.py` is no longer correct.
 
 ## Important Helper
 
-`YoyoPodApp._pop_call_screens()` remains the key guard against call-screen stack buildup. That logic still exists in `src/yoyopod/app.py`.
+`YoyoPodApp._pop_call_screens()` remains the key guard against call-screen stack buildup. That logic still exists in `yoyopod/app.py`.
 
 ## Later Refactor Note
 
 After Phase 2, the UI package was refactored:
 
-- `screens.py` was split into `src/yoyopod/ui/screens/`
-- `screen_manager.py` moved to `src/yoyopod/ui/screens/manager.py`
+- `screens.py` was split into `yoyopod/ui/screens/`
+- `screen_manager.py` moved to `yoyopod/ui/screens/manager.py`
 - input and display were moved behind HAL packages
 
 So the Phase 2 behavior is still relevant, but the old module layout is not.

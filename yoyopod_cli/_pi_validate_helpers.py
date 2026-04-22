@@ -1,6 +1,6 @@
 """yoyopod_cli/_pi_validate_helpers.py — inlined soak helpers for pi_validate.
 
-All helpers here were migrated from src/yoyopod/cli/pi/{stability,navigation}.py.
+All helpers here were migrated from yoyopod/cli/pi/{stability,navigation}.py.
 No imports from yoyopod.cli.* are allowed in this file.
 """
 
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from yoyopod.app import YoyoPodApp
 
 # ---------------------------------------------------------------------------
-# Stability soak (ported from src/yoyopod/cli/pi/stability.py)
+# Stability soak (ported from yoyopod/cli/pi/stability.py)
 # Used by: `yoyopod_cli pi_validate stability` and `yoyopod_cli pi_validate lvgl`
 # ---------------------------------------------------------------------------
 
@@ -502,7 +502,7 @@ def run_navigation_idle_soak(
 
 
 # ---------------------------------------------------------------------------
-# Navigation soak (ported from src/yoyopod/cli/pi/navigation.py)
+# Navigation soak (ported from yoyopod/cli/pi/navigation.py)
 # Used by: `yoyopod_cli pi_validate navigation`
 # ---------------------------------------------------------------------------
 

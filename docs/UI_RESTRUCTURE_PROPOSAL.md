@@ -3,7 +3,7 @@
 **Last updated:** 2026-04-02
 **Status:** Historical implementation record, mostly implemented
 
-> Current note: this file records the UI refactor milestone and what it accomplished. It is useful for historical context and remaining cleanup notes, but it is not the top-level source of truth for the current runtime shape. For current behavior, trust `docs/SYSTEM_ARCHITECTURE.md`, UI subsystem docs, and the current code under `src/yoyopod/ui/`.
+> Current note: this file records the UI refactor milestone and what it accomplished. It is useful for historical context and remaining cleanup notes, but it is not the top-level source of truth for the current runtime shape. For current behavior, trust `docs/SYSTEM_ARCHITECTURE.md`, UI subsystem docs, and the current code under `yoyopod/ui/`.
 
 This document replaces the old proposal-only version and records what the refactor actually accomplished.
 
@@ -17,7 +17,7 @@ This document replaces the old proposal-only version and records what the refact
 ## Current Structure
 
 ```text
-src/yoyopod/ui/
+yoyopod/ui/
   __init__.py
   web_server.py
   display/
@@ -53,7 +53,7 @@ src/yoyopod/ui/
 
 Status: done
 
-- display code moved under `src/yoyopod/ui/display/`
+- display code moved under `yoyopod/ui/display/`
 - facade, factory, and adapters are separate files
 
 ### Phase 2: Screen split
@@ -61,7 +61,7 @@ Status: done
 Status: done
 
 - `screens.py` was split by feature area
-- `screen_manager.py` became `src/yoyopod/ui/screens/manager.py`
+- `screen_manager.py` became `yoyopod/ui/screens/manager.py`
 
 ### Phase 3: Semantic input migration
 

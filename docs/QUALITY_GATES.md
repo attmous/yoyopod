@@ -22,11 +22,8 @@ Use `ci` as the default local before-PR command when you want the same gate-plus
 The staged gate currently covers the developer-workflow surface tracked in `[tool.yoyopod_quality]` inside `pyproject.toml`:
 
 - `scripts/quality.py`
-- `src/yoyopod/main.py`
-- `src/yoyopod/cli/__init__.py`
-- `src/yoyopod/cli/common.py`
-- `src/yoyopod/cli/build.py`
-- `src/yoyopod/cli/remote/`
+- `yoyopod/main.py`
+- `yoyopod_cli/`
 
 The gate enforces:
 

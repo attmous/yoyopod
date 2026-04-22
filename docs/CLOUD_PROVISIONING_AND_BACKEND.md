@@ -12,11 +12,11 @@ It covers:
 
 When this file and older plans disagree, trust the current code in:
 
-- `src/yoyopod/integrations/cloud/`
-- `src/yoyopod/backends/cloud/`
-- `src/yoyopod/core/bootstrap/`
-- `src/yoyopod/core/loop.py`
-- `src/yoyopod/integrations/power/coordinator.py`
+- `yoyopod/integrations/cloud/`
+- `yoyopod/backends/cloud/`
+- `yoyopod/core/bootstrap/`
+- `yoyopod/core/loop.py`
+- `yoyopod/integrations/power/coordinator.py`
 
 ## 1. Device-Side Concept
 
@@ -39,14 +39,14 @@ This subsystem does not own parent claiming UX. Claiming is a backend and dashbo
 
 Current core files:
 
-- [src/yoyopod/integrations/cloud/manager.py](../src/yoyopod/integrations/cloud/manager.py)
-- [src/yoyopod/backends/cloud/http.py](../src/yoyopod/backends/cloud/http.py)
-- [src/yoyopod/backends/cloud/mqtt.py](../src/yoyopod/backends/cloud/mqtt.py)
-- [src/yoyopod/integrations/cloud/models.py](../src/yoyopod/integrations/cloud/models.py)
-- [src/yoyopod/config/models.py](../src/yoyopod/config/models.py)
-- [src/yoyopod/core/bootstrap/__init__.py](../src/yoyopod/core/bootstrap/__init__.py)
-- [src/yoyopod/core/loop.py](../src/yoyopod/core/loop.py)
-- [src/yoyopod/integrations/power/coordinator.py](../src/yoyopod/integrations/power/coordinator.py)
+- [yoyopod/integrations/cloud/manager.py](../yoyopod/integrations/cloud/manager.py)
+- [yoyopod/backends/cloud/http.py](../yoyopod/backends/cloud/http.py)
+- [yoyopod/backends/cloud/mqtt.py](../yoyopod/backends/cloud/mqtt.py)
+- [yoyopod/integrations/cloud/models.py](../yoyopod/integrations/cloud/models.py)
+- [yoyopod/config/models.py](../yoyopod/config/models.py)
+- [yoyopod/core/bootstrap/__init__.py](../yoyopod/core/bootstrap/__init__.py)
+- [yoyopod/core/loop.py](../yoyopod/core/loop.py)
+- [yoyopod/integrations/power/coordinator.py](../yoyopod/integrations/power/coordinator.py)
 
 Current architecture:
 
@@ -71,7 +71,7 @@ core bootstrap
 
 Current cloud config model is defined in:
 
-- [src/yoyopod/config/models.py](/home/raouf/YoyoPod_Core/src/yoyopod/config/models.py)
+- [yoyopod/config/models.py](/home/raouf/YoyoPod_Core/yoyopod/config/models.py)
 
 Tracked backend settings include:
 
@@ -132,7 +132,7 @@ Important distinction:
 
 Current boot wiring happens in:
 
-- [src/yoyopod/core/bootstrap/__init__.py](../src/yoyopod/core/bootstrap/__init__.py)
+- [yoyopod/core/bootstrap/__init__.py](../yoyopod/core/bootstrap/__init__.py)
 
 At boot:
 
@@ -149,7 +149,7 @@ This lets the device start with cached config even before reaching the backend.
 
 Current HTTP client:
 
-- [src/yoyopod/backends/cloud/http.py](../src/yoyopod/backends/cloud/http.py)
+- [yoyopod/backends/cloud/http.py](../yoyopod/backends/cloud/http.py)
 
 Current operations:
 
@@ -229,7 +229,7 @@ So remote config is not just cached; parts of it are actively enforced into the 
 
 Current MQTT implementation:
 
-- [src/yoyopod/backends/cloud/mqtt.py](../src/yoyopod/backends/cloud/mqtt.py)
+- [yoyopod/backends/cloud/mqtt.py](../yoyopod/backends/cloud/mqtt.py)
 
 Current topic usage:
 
@@ -273,7 +273,7 @@ The safest claim is what is definitely wired today.
 
 Battery telemetry is currently wired through:
 
-- [src/yoyopod/integrations/power/coordinator.py](/home/raouf/YoyoPod_Core/src/yoyopod/integrations/power/coordinator.py)
+- [yoyopod/integrations/power/coordinator.py](/home/raouf/YoyoPod_Core/yoyopod/integrations/power/coordinator.py)
 
 When power snapshots update:
 
@@ -291,8 +291,8 @@ Heartbeat is currently emitted:
 
 Relevant references:
 
-- [src/yoyopod/integrations/cloud/manager.py](../src/yoyopod/integrations/cloud/manager.py)
-- [src/yoyopod/integrations/display/service.py](../src/yoyopod/integrations/display/service.py)
+- [yoyopod/integrations/cloud/manager.py](../yoyopod/integrations/cloud/manager.py)
+- [yoyopod/integrations/display/service.py](../yoyopod/integrations/display/service.py)
 
 ### Connectivity change awareness
 
@@ -303,7 +303,7 @@ The runtime tells `CloudManager` when backend/network connectivity changes:
 
 Relevant references:
 
-- [src/yoyopod/app.py](/home/raouf/YoyoPod_Core/src/yoyopod/app.py)
+- [yoyopod/app.py](/home/raouf/YoyoPod_Core/yoyopod/app.py)
 
 ## 11. Current Device-Side Gaps Relative To Backend Expectations
 
@@ -370,13 +370,13 @@ The dashboard then reads stored backend state back over REST.
 
 If you change the device/backend integration, review these together:
 
-- [src/yoyopod/integrations/cloud/manager.py](../src/yoyopod/integrations/cloud/manager.py)
-- [src/yoyopod/backends/cloud/http.py](../src/yoyopod/backends/cloud/http.py)
-- [src/yoyopod/backends/cloud/mqtt.py](../src/yoyopod/backends/cloud/mqtt.py)
-- [src/yoyopod/config/models.py](../src/yoyopod/config/models.py)
-- [src/yoyopod/core/bootstrap/__init__.py](../src/yoyopod/core/bootstrap/__init__.py)
-- [src/yoyopod/core/loop.py](../src/yoyopod/core/loop.py)
-- [src/yoyopod/integrations/power/coordinator.py](../src/yoyopod/integrations/power/coordinator.py)
+- [yoyopod/integrations/cloud/manager.py](../yoyopod/integrations/cloud/manager.py)
+- [yoyopod/backends/cloud/http.py](../yoyopod/backends/cloud/http.py)
+- [yoyopod/backends/cloud/mqtt.py](../yoyopod/backends/cloud/mqtt.py)
+- [yoyopod/config/models.py](../yoyopod/config/models.py)
+- [yoyopod/core/bootstrap/__init__.py](../yoyopod/core/bootstrap/__init__.py)
+- [yoyopod/core/loop.py](../yoyopod/core/loop.py)
+- [yoyopod/integrations/power/coordinator.py](../yoyopod/integrations/power/coordinator.py)
 - [tests/test_cloud_config_manager.py](../tests/test_cloud_config_manager.py)
 
 Pair those with:

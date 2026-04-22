@@ -79,17 +79,17 @@ Small anti-aliasing or color differences can be tolerated. Geometry drift should
 
 ## File Ownership
 
-- `src/yoyopod/ui/display/factory.py`
+- `yoyopod/ui/display/factory.py`
   - owns adapter selection and preview startup
-- `src/yoyopod/ui/display/adapters/whisplay.py`
+- `yoyopod/ui/display/adapters/whisplay.py`
   - owns Whisplay output behavior
-- `src/yoyopod/ui/display/adapters/simulation.py`
+- `yoyopod/ui/display/adapters/simulation.py`
   - owns the simulation adapter surface while reusing the shared LVGL contract
-- `src/yoyopod/ui/display/rgb565.py`
+- `yoyopod/ui/display/rgb565.py`
   - owns the framebuffer and PNG encoding helpers used by the adapter
-- `src/yoyopod/ui/display/adapters/simulation_web/server.py`
+- `yoyopod/ui/display/adapters/simulation_web/server.py`
   - owns browser preview transport only
-- `src/yoyopod/ui/lvgl_binding/`
+- `yoyopod/ui/lvgl_binding/`
   - owns the LVGL scene/backend path
 - `tests/ui/test_display.py`
 - `tests/ui/test_whisplay_adapter.py`

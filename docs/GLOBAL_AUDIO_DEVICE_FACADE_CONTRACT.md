@@ -34,19 +34,19 @@ That means the app does not yet have one global audio hardware contract. Device 
 
 ### Music
 
-- `src/yoyopod/backends/music/process.py` launches `mpv` with one ALSA target
-- `src/yoyopod/core/audio_volume.py` owns app-facing output volume and writes selected ALSA output controls
+- `yoyopod/backends/music/process.py` launches `mpv` with one ALSA target
+- `yoyopod/core/audio_volume.py` owns app-facing output volume and writes selected ALSA output controls
 
 ### Calls
 
 - `config/device/hardware.yaml` carries shared communication audio device IDs
-- `src/yoyopod/backends/voip/liblinphone.py` directly issues startup `amixer` capture-tuning commands
+- `yoyopod/backends/voip/liblinphone.py` directly issues startup `amixer` capture-tuning commands
 
 ### Voice Commands
 
-- `src/yoyopod/backends/voice/capture.py` resolves `arecord` capture candidates
-- `src/yoyopod/backends/voice/output.py` resolves `aplay` playback candidates
-- `src/yoyopod/backends/voice/tts.py` depends on that playback helper for spoken prompts
+- `yoyopod/backends/voice/capture.py` resolves `arecord` capture candidates
+- `yoyopod/backends/voice/output.py` resolves `aplay` playback candidates
+- `yoyopod/backends/voice/tts.py` depends on that playback helper for spoken prompts
 
 The effect is that one physical audio stack is managed by several different policy owners.
 
@@ -115,8 +115,8 @@ Add one app-facing facade, for example:
 
 Suggested home:
 
-- `src/yoyopod/core/hardware.py`
-- or a focused `src/yoyopod/core/audio_hardware.py` split if the model grows
+- `yoyopod/core/hardware.py`
+- or a focused `yoyopod/core/audio_hardware.py` split if the model grows
 
 Primary responsibilities:
 

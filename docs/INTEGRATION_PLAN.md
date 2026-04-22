@@ -3,15 +3,15 @@
 **Last updated:** 2026-04-07
 **Status:** Historical implementation record, implemented on `main`
 
-> Current note: this file explains the integration milestone that brought VoIP and local music into one app flow. It is useful for understanding how the current runtime came together, but it is not the primary source of truth for the current architecture. For current contracts, trust `docs/SYSTEM_ARCHITECTURE.md`, current subsystem docs, and the code under `src/yoyopod/`.
+> Current note: this file explains the integration milestone that brought VoIP and local music into one app flow. It is useful for understanding how the current runtime came together, but it is not the primary source of truth for the current architecture. For current contracts, trust `docs/SYSTEM_ARCHITECTURE.md`, current subsystem docs, and the code under `yoyopod/`.
 
 This document started as a plan and now serves as the completion record for the VoIP + local music integration that ships on `main`.
 
 ## What Is Implemented
 
-- unified `YoyoPodApp` coordinator in `src/yoyopod/app.py`
-- split orchestration models in `src/yoyopod/integrations/music/fsm.py` and `src/yoyopod/integrations/call/session.py`
-- derived app runtime state in `src/yoyopod/core/app_state.py`
+- unified `YoyoPodApp` coordinator in `yoyopod/app.py`
+- split orchestration models in `yoyopod/integrations/music/fsm.py` and `yoyopod/integrations/call/session.py`
+- derived app runtime state in `yoyopod/core/app_state.py`
 - music auto-pause on incoming call
 - optional music auto-resume after call end
 - screen stack transitions for incoming, outgoing, and active calls
@@ -22,7 +22,7 @@ This document started as a plan and now serves as the completion record for the 
 
 ### Coordinator
 
-- `src/yoyopod/app.py`
+- `yoyopod/app.py`
 
 Responsibilities:
 
@@ -34,8 +34,8 @@ Responsibilities:
 
 ### Music Layer
 
-- `src/yoyopod/backends/music/mpv.py`
-- `src/yoyopod/integrations/music/library.py`
+- `yoyopod/backends/music/mpv.py`
+- `yoyopod/integrations/music/library.py`
 
 Responsibilities:
 
@@ -45,7 +45,7 @@ Responsibilities:
 
 ### VoIP Layer
 
-- `src/yoyopod/voip/manager.py`
+- `yoyopod/voip/manager.py`
 
 Responsibilities:
 
@@ -56,9 +56,9 @@ Responsibilities:
 
 ### UI Layer
 
-- `src/yoyopod/ui/display/`
-- `src/yoyopod/ui/input/`
-- `src/yoyopod/ui/screens/`
+- `yoyopod/ui/display/`
+- `yoyopod/ui/input/`
+- `yoyopod/ui/screens/`
 
 The older `display.py`, `screens.py`, `screen_manager.py`, and `input_handler.py` layout is no longer current.
 
@@ -76,7 +76,7 @@ Key states used by the running app:
 - `PAUSED_BY_CALL`
 - `CALL_ACTIVE_MUSIC_PAUSED`
 
-See `src/yoyopod/integrations/music/fsm.py`, `src/yoyopod/integrations/call/session.py`, and `src/yoyopod/core/app_state.py` for the current transition and derived-state mapping.
+See `yoyopod/integrations/music/fsm.py`, `yoyopod/integrations/call/session.py`, and `yoyopod/core/app_state.py` for the current transition and derived-state mapping.
 
 ## Incoming Call Flow
 

@@ -243,7 +243,7 @@ The following has been validated on-device:
 - **Button X requires I2S0 disabled.** Re-enabling I2S0 (for WM8960 audio) will block Button X.
 - **SPI `no_cs` not supported** by the Allwinner SPI driver. The driver uses hardware CS on PIN_24 (CS0) which does not reach the Pimoroni HAT's CE1 trace (PIN_26). Software CS via GPIO on PIN_26 is used as a fallback.
 - **Whisplay adapter import side effects.** The Whisplay vendor driver claims GPIO pins at import time. Display adapter imports are lazy to prevent this, but importing the Whisplay adapter module (e.g., for testing) while Pimoroni is active will cause GPIO conflicts.
-- **gpiod 1.x API.** The Cubie runs gpiod 1.6.2 (lowercase `gpiod.chip()`). A compatibility layer at `src/yoyopod/ui/gpiod_compat.py` normalizes this with the gpiod 2.x API.
+- **gpiod 1.x API.** The Cubie runs gpiod 1.6.2 (lowercase `gpiod.chip()`). A compatibility layer at `yoyopod/ui/gpiod_compat.py` normalizes this with the gpiod 2.x API.
 
 ## Switching Back to Whisplay
 

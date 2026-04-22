@@ -1,7 +1,7 @@
 # Architecture
 
 ```text
-yoyopod.py / src/yoyopod/main.py  (entry points)
+yoyopod.py / yoyopod/main.py  (entry points)
         |
     YoyoPodApp (core/application.py)
     |- RuntimeBootService (core/bootstrap/)
@@ -19,7 +19,7 @@ yoyopod.py / src/yoyopod/main.py  (entry points)
     |  |- MpvProcess (backends/music/process.py)
     |  `- MpvIpcClient (backends/music/ipc.py) -- mpv JSON IPC
     |- VoIPManager (integrations/call/manager.py)
-    |  `- LiblinphoneBackend (backends/voip/backend.py)
+    |  `- LiblinphoneBackend (backends/voip/liblinphone.py)
     |- Display HAL (ui/display/) -- LVGL-backed Whisplay, Pimoroni, and simulation adapters
     |- Input HAL (ui/input/) -- four-button Pimoroni, one-button Whisplay, and simulation input
     `- ScreenManager (ui/screens/manager.py) -- stack-based navigation
@@ -53,33 +53,33 @@ yoyopod.py / src/yoyopod/main.py  (entry points)
 
 ### Entry points and composition
 
-- `yoyopod.py`, `src/yoyopod/main.py`, and `src/yoyopod/app.py` are composition and lifecycle layers.
+- `yoyopod.py`, `yoyopod/main.py`, and `yoyopod/app.py` are composition and lifecycle layers.
 - Do not turn entrypoint files into feature homes for UI, business rules, or backend-specific logic.
 - If `YoyoPodApp` grows, extract focused runtime services instead of adding more feature logic there.
 - Treat runtime extraction as incremental work: if a service like `runtime/boot.py` becomes the new blob, split it again instead of calling the cleanup finished.
 
 ### Screens and UI
 
-- `src/yoyopod/ui/screens/` owns presentation, user interaction, and screen-local state.
+- `yoyopod/ui/screens/` owns presentation, user interaction, and screen-local state.
 - Screens should not own hardware lifecycle, process supervision, watchdog behavior, or cross-feature orchestration.
 - Heavy voice, playback, call, or power policy should live outside screens and be consumed by screens.
 
 ### Orchestration
 
-- Shared derived state and runtime references live in `src/yoyopod/core/app_state.py`.
+- Shared derived state and runtime references live in `yoyopod/core/app_state.py`.
 - Cross-domain coordination lives with the owning domain seam:
-  - `src/yoyopod/integrations/call/runtime.py`
-  - `src/yoyopod/integrations/music/runtime.py`
-  - `src/yoyopod/integrations/power/service.py`
-  - `src/yoyopod/integrations/voice/runtime.py`
-  - `src/yoyopod/ui/screens/manager.py`
+  - `yoyopod/integrations/call/runtime.py`
+  - `yoyopod/integrations/music/runtime.py`
+  - `yoyopod/integrations/power/service.py`
+  - `yoyopod/integrations/voice/runtime.py`
+  - `yoyopod/ui/screens/manager.py`
 - Orchestration code may translate events into runtime state changes and navigation changes.
 - Orchestration code should not contain rendering code, hardware-driver code, or long-lived persistence logic.
 
 ### Subsystem managers and backends
 
-- `src/yoyopod/integrations/` owns domain behavior and app-facing facades.
-- `src/yoyopod/backends/` owns concrete I/O, process, hardware, and protocol adapters.
+- `yoyopod/integrations/` owns domain behavior and app-facing facades.
+- `yoyopod/backends/` owns concrete I/O, process, hardware, and protocol adapters.
 - `backend.py` is the low-level I/O or protocol driver (one concrete driver implementation per module family).
 - `manager.py` is the domain-owned app-facing facade for that subsystem.
 - Keep backend-specific details behind the subsystem boundary whenever possible.
@@ -88,15 +88,15 @@ yoyopod.py / src/yoyopod/main.py  (entry points)
 
 - Raw hardware behavior stays behind `ui/display/`, `ui/input/`, or the relevant subsystem backend.
 - Keep Whisplay, GPIO, LVGL, PiSugar, and modem-specific details out of generic UI and orchestration layers.
-- Raw LVGL usage should remain confined to `src/yoyopod/ui/lvgl_binding/` and LVGL-specific view code.
+- Raw LVGL usage should remain confined to `yoyopod/ui/lvgl_binding/` and LVGL-specific view code.
 
 ### State and models
 
 - Prefer canonical typed models over parallel shape duplication across UI and runtime layers.
 - `AppContext` is shared runtime state, not a dumping ground for every new feature field.
-- Prefer adding new mutable runtime fields to the focused state objects in `src/yoyopod/core/app_context.py`
+- Prefer adding new mutable runtime fields to the focused state objects in `yoyopod/core/app_context.py`
   before extending `AppContext` directly.
-- Music runtime state should compose with the canonical models in `src/yoyopod/backends/music/models.py`.
+- Music runtime state should compose with the canonical models in `yoyopod/backends/music/models.py`.
 - Use `PlaybackQueue` for ordered playback state instead of defining alternate runtime `Track` or
   `Playlist` shapes under `AppContext` or `core/app_context.py`.
 - New domain objects should be introduced in clear model modules before being copied into screen-only state.
@@ -107,7 +107,7 @@ yoyopod.py / src/yoyopod/main.py  (entry points)
 - Only main-thread code should publish typed events onto `Bus`.
 - Do not mutate UI state directly from background threads.
 - Favor typed events and explicit seams over reaching into concrete screen instances.
-- `src/yoyopod/core/events.py` owns only cross-cutting app events.
+- `yoyopod/core/events.py` owns only cross-cutting app events.
 - Domain events belong to their owning integration packages and should not be
   re-exported through `yoyopod.core`.
 - Domain-specific FSM/session types belong to their owning integration packages and should not be

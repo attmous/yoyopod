@@ -9,7 +9,7 @@ Purpose
 - For detail, read the referenced docs instead of stuffing more into this file.
 
 Guidance order
-1. Current code in `src/yoyopod/`
+1. Current code in `yoyopod/`
 2. `README.md` and `docs/README.md`
 3. `rules/` for constraints and style
 4. This file for quick operating context
@@ -36,25 +36,25 @@ Canonical deploy/debug skills
 
 Current runtime summary
 - Entrypoint: `yoyopod.py` -> `yoyopod.main` -> `YoyoPodApp`
-- Main packages: `src/yoyopod/core/`, `src/yoyopod/integrations/`, `src/yoyopod/backends/`, `src/yoyopod/ui/`, `src/yoyopod/config/`
-- Runtime structure: canonical `YoyoPodApp` in `src/yoyopod/core/application.py`, boot in `src/yoyopod/core/bootstrap/`, loop in `src/yoyopod/core/loop.py`, and the shared `scheduler -> bus -> ui` runtime seam under `src/yoyopod/core/`
-- Production audio: mpv backend under `src/yoyopod/backends/music/`
-- Production VoIP: Liblinphone under `src/yoyopod/backends/voip/`
-- Production LVGL path: `src/yoyopod/ui/lvgl_binding/`
+- Main packages: `yoyopod/core/`, `yoyopod/integrations/`, `yoyopod/backends/`, `yoyopod/ui/`, `yoyopod/config/`
+- Runtime structure: canonical `YoyoPodApp` in `yoyopod/core/application.py`, boot in `yoyopod/core/bootstrap/`, loop in `yoyopod/core/loop.py`, and the shared `scheduler -> bus -> ui` runtime seam under `yoyopod/core/`
+- Production audio: mpv backend under `yoyopod/backends/music/`
+- Production VoIP: Liblinphone under `yoyopod/backends/voip/`
+- Production LVGL path: `yoyopod/ui/lvgl_binding/`
 - Production service templates: `deploy/systemd/`
 - CLI package: `yoyopod_cli/` (flat, single `yoyopod` entry point)
 
 Source-of-truth files
-- `src/yoyopod/core/application.py`
-- `src/yoyopod/core/bootstrap/`
-- `src/yoyopod/core/loop.py`
-- `src/yoyopod/core/bus.py`
-- `src/yoyopod/core/scheduler.py`
-- `src/yoyopod/core/events.py`
-- `src/yoyopod/core/app_state.py`
-- `src/yoyopod/integrations/`
-- `src/yoyopod/backends/`
-- `src/yoyopod/ui/`
+- `yoyopod/core/application.py`
+- `yoyopod/core/bootstrap/`
+- `yoyopod/core/loop.py`
+- `yoyopod/core/bus.py`
+- `yoyopod/core/scheduler.py`
+- `yoyopod/core/events.py`
+- `yoyopod/core/app_state.py`
+- `yoyopod/integrations/`
+- `yoyopod/backends/`
+- `yoyopod/ui/`
 - `yoyopod_cli/main.py`
 - `yoyopod_cli/COMMANDS.md`
 - `README.md`
@@ -85,7 +85,7 @@ Hardware modes
 
 Guardrails
 - Prefer narrow, reviewable changes.
-- Keep raw LVGL confined to `src/yoyopod/ui/lvgl_binding/` and display-layer code.
+- Keep raw LVGL confined to `yoyopod/ui/lvgl_binding/` and display-layer code.
 - Prefer `yoyopod remote` over ad-hoc SSH sequences.
 - Current code and runtime docs beat old plan docs when they disagree.
 - `docs/archive/` is history, not truth.

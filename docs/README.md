@@ -13,7 +13,7 @@ If you are new here, read these first:
 
 When docs disagree, trust sources in this order:
 
-1. Current code in `src/yoyopod/`
+1. Current code in `yoyopod/`
 2. Current runtime and setup docs in this section
 3. Rules and agent guidance in `rules/`, `AGENTS.md`, and `skills/`
 4. Plans, checklists, and design specs
@@ -125,7 +125,7 @@ Archive files are for historical context only. They are not the source of truth 
 2. `docs/CLOUD_PROVISIONING_AND_BACKEND.md` when the work touches backend auth, provisioning, config, or telemetry
 3. subsystem doc for the area you are changing
 4. `AGENTS.md`
-5. relevant files under `src/yoyopod/`
+5. relevant files under `yoyopod/`
 
 ### Working on Raspberry Pi deployment
 

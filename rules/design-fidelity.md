@@ -22,13 +22,13 @@ When implementing or refining Whisplay UI from Figma, preserve the product's exi
 
 ## Implementation Split
 
-- Shared visual tokens belong in `src/yoyopod/ui/screens/theme.py`.
-- Screen controller behavior belongs in the Python screen implementations under `src/yoyopod/ui/screens/**`.
-- LVGL screen lifecycle stays in `src/yoyopod/ui/screens/**/lvgl/*.py`.
+- Shared visual tokens belong in `yoyopod/ui/screens/theme.py`.
+- Screen controller behavior belongs in the Python screen implementations under `yoyopod/ui/screens/**`.
+- LVGL screen lifecycle stays in `yoyopod/ui/screens/**/lvgl/*.py`.
 - Native Whisplay scene parity belongs in:
-  - `src/yoyopod/ui/lvgl_binding/binding.py`
-  - `src/yoyopod/ui/lvgl_binding/native/lvgl_shim.c`
-  - `src/yoyopod/ui/lvgl_binding/native/lvgl_shim.h`
+  - `yoyopod/ui/lvgl_binding/binding.py`
+  - `yoyopod/ui/lvgl_binding/native/lvgl_shim.c`
+  - `yoyopod/ui/lvgl_binding/native/lvgl_shim.h`
 - Raw LVGL layout logic should remain confined to the LVGL binding layer. Do not spread direct LVGL object code across unrelated app modules.
 
 ## Recommended Order Of Work
@@ -99,7 +99,7 @@ Use all three appropriately:
 
 ## Native Rebuild Rule
 
-- If `src/yoyopod/ui/lvgl_binding/native/lvgl_shim.c`, `lvgl_shim.h`, `binding.py`, or LVGL config changes, the native shim must be rebuilt on the Pi before judging the hardware result.
+- If `yoyopod/ui/lvgl_binding/native/lvgl_shim.c`, `lvgl_shim.h`, `binding.py`, or LVGL config changes, the native shim must be rebuilt on the Pi before judging the hardware result.
 - `yoyopod remote validate` and `yoyopod remote restart` may rebuild stale native shims automatically. Do not assume a stale Pi build reflects local code.
 
 ## Whisplay-Specific Acceptance Criteria

@@ -803,7 +803,7 @@ def test_liblinphone_shim_records_voice_notes_as_wav() -> None:
     """The native recorder shim should explicitly match the .wav files used by the app."""
 
     shim_source = Path(
-        "src/yoyopod/backends/voip/shim_native/liblinphone_shim.c"
+        "yoyopod/backends/voip/shim_native/liblinphone_shim.c"
     ).read_text(encoding="utf-8")
 
     assert (
@@ -816,7 +816,7 @@ def test_liblinphone_shim_wires_incoming_message_debug_paths() -> None:
     """The native shim should cover aggregated and undecryptable incoming message paths."""
 
     shim_source = Path(
-        "src/yoyopod/backends/voip/shim_native/liblinphone_shim.c"
+        "yoyopod/backends/voip/shim_native/liblinphone_shim.c"
     ).read_text(encoding="utf-8")
 
     assert (
