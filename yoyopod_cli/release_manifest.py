@@ -9,6 +9,7 @@ diff-artifact fields reserved for a future OTA daemon.
 from __future__ import annotations
 
 import json
+import typing
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Literal
@@ -16,10 +17,10 @@ from typing import Literal
 SCHEMA_VERSION = 1
 
 Channel = Literal["dev", "beta", "stable"]
-_VALID_CHANNELS: tuple[str, ...] = ("dev", "beta", "stable")
+_VALID_CHANNELS: tuple[str, ...] = typing.get_args(Channel)
 
 ArtifactType = Literal["full", "diff"]
-_VALID_ARTIFACT_TYPES: tuple[str, ...] = ("full", "diff")
+_VALID_ARTIFACT_TYPES: tuple[str, ...] = typing.get_args(ArtifactType)
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,8 @@ class Artifact:
             raise ValueError("Artifact.base_version is required when type='diff'")
         if len(self.sha256) != 64:
             raise ValueError("Artifact.sha256 must be a 64-char hex digest")
+        if not all(c in "0123456789abcdef" for c in self.sha256.lower()):
+            raise ValueError("Artifact.sha256 must be lowercase hex")
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,12 @@ class Requirements:
     min_os_version: str = "0.0.0"
     min_battery_pct: int = 0
     min_free_mb: int = 0
+
+    def __post_init__(self) -> None:
+        if self.min_battery_pct < 0:
+            raise ValueError("min_battery_pct must be >= 0")
+        if self.min_free_mb < 0:
+            raise ValueError("min_free_mb must be >= 0")
 
 
 @dataclass(frozen=True)
@@ -103,5 +112,5 @@ def load_manifest(path: Path) -> ReleaseManifest:
             requires=requires,
             signature=raw.get("signature"),
         )
-    except (KeyError, TypeError) as exc:
+    except (KeyError, TypeError, AttributeError) as exc:
         raise ValueError(f"Invalid manifest structure: {exc}") from exc

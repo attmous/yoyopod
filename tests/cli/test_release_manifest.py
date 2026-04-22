@@ -24,8 +24,6 @@ def test_roundtrip_minimal_manifest(tmp_path: Path) -> None:
                 type="full",
                 sha256="a" * 64,
                 size=1024,
-                url=None,
-                base_version=None,
             ),
         },
         requires=Requirements(),
@@ -59,8 +57,17 @@ def test_load_rejects_unknown_schema_version(tmp_path: Path) -> None:
 
 def test_load_rejects_missing_required_fields(tmp_path: Path) -> None:
     path = tmp_path / "manifest.json"
-    path.write_text(json.dumps({"schema": 1, "version": "x"}))
-    with pytest.raises(ValueError):
+    path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "version": "x",
+                "channel": "dev",
+                "artifacts": {"full": {"type": "full", "sha256": "a" * 64, "size": 1}},
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="released_at"):
         load_manifest(path)
 
 
@@ -89,3 +96,36 @@ def test_signature_field_is_reserved_and_optional() -> None:
         requires=Requirements(),
     )
     assert manifest.signature is None
+
+
+def test_load_rejects_non_dict_artifacts(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "version": "x",
+                "channel": "dev",
+                "released_at": "2026-04-22T10:00:00Z",
+                "artifacts": "not a dict",
+                "requires": {},
+            }
+        )
+    )
+    with pytest.raises(ValueError):
+        load_manifest(path)
+
+
+def test_artifact_sha256_must_be_hex() -> None:
+    with pytest.raises(ValueError, match="hex"):
+        Artifact(type="full", sha256="z" * 64, size=10)
+
+
+def test_requirements_rejects_negative_battery_pct() -> None:
+    with pytest.raises(ValueError, match="min_battery_pct"):
+        Requirements(min_battery_pct=-1)
+
+
+def test_requirements_rejects_negative_free_mb() -> None:
+    with pytest.raises(ValueError, match="min_free_mb"):
+        Requirements(min_free_mb=-1)
