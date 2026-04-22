@@ -50,12 +50,21 @@ class LvglHubView:
         theme = theme_for(selected_card.mode)
         context = self.screen.context
         sync_network_status(self.backend.binding, context)
+        subtitle = ""
+        footer = "Tap = Next | 2x Tap = Open"
+        if selected_card.title == "Watch":
+            subtitle = selected_card.subtitle
+            footer = (
+                "Tap Face | 2x Save | Hold Back"
+                if self.screen.watch_picker_active
+                else "Tap Next | 2x Picker | Hold Ask"
+            )
 
         self.backend.binding.hub_sync(
             icon_key=selected_card.icon,
             title=selected_card.title,
-            subtitle="",
-            footer="Tap = Next | 2x Tap = Open",
+            subtitle=subtitle,
+            footer=footer,
             time_text=datetime.now().strftime("%H:%M"),
             accent=theme.accent,
             selected_index=self.screen.selected_index,

@@ -53,6 +53,7 @@ static const uint32_t YOYOPOD_THEME_NEUTRAL_RGB = 0x9CA3AF;
 static const uint32_t YOYOPOD_MODE_LISTEN_RGB = 0x00FF88;
 static const uint32_t YOYOPOD_MODE_TALK_RGB = 0x00D4FF;
 static const int YOYOPOD_STATUS_SIGNAL_BAR_HEIGHTS[4] = {4, 7, 10, 13};
+#define YOYOPOD_HUB_MAX_DOTS 5
 static yoyopod_status_bar_state_t g_status_bar_state = {0, 0, 0, 0, 0};
 
 typedef struct {
@@ -66,7 +67,7 @@ typedef struct {
     lv_obj_t * subtitle_label;
     lv_obj_t * footer_bar;
     lv_obj_t * footer_label;
-    lv_obj_t * dots[4];
+    lv_obj_t * dots[YOYOPOD_HUB_MAX_DOTS];
 } yoyopod_hub_scene_t;
 
 typedef struct {
@@ -1184,14 +1185,14 @@ int yoyopod_lvgl_hub_build(void) {
     lv_obj_set_style_text_align(g_hub_scene.title_label, LV_TEXT_ALIGN_CENTER, 0);
 
     g_hub_scene.subtitle_label = lv_label_create(g_hub_scene.screen);
-    lv_obj_set_width(g_hub_scene.subtitle_label, 120);
-    lv_obj_set_pos(g_hub_scene.subtitle_label, 60, 204);
-    lv_label_set_long_mode(g_hub_scene.subtitle_label, LV_LABEL_LONG_MODE_CLIP);
+    lv_obj_set_width(g_hub_scene.subtitle_label, 180);
+    lv_obj_set_pos(g_hub_scene.subtitle_label, 30, 202);
+    lv_label_set_long_mode(g_hub_scene.subtitle_label, LV_LABEL_LONG_MODE_DOTS);
     lv_obj_set_style_text_font(g_hub_scene.subtitle_label, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_align(g_hub_scene.subtitle_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_add_flag(g_hub_scene.subtitle_label, LV_OBJ_FLAG_HIDDEN);
 
-    for(int index = 0; index < 4; ++index) {
+    for(int index = 0; index < YOYOPOD_HUB_MAX_DOTS; ++index) {
         g_hub_scene.dots[index] = lv_obj_create(g_hub_scene.screen);
         lv_obj_remove_style_all(g_hub_scene.dots[index]);
         lv_obj_set_style_bg_opa(g_hub_scene.dots[index], LV_OPA_COVER, 0);
@@ -1263,16 +1264,22 @@ int yoyopod_lvgl_hub_sync(
     lv_obj_center(g_hub_scene.icon_image);
     lv_label_set_text(g_hub_scene.title_label, title != NULL ? title : "");
     lv_obj_set_style_text_color(g_hub_scene.title_label, ink, 0);
-    lv_label_set_text(g_hub_scene.subtitle_label, "");
-    lv_obj_add_flag(g_hub_scene.subtitle_label, LV_OBJ_FLAG_HIDDEN);
+    int show_subtitle = subtitle != NULL && subtitle[0] != '\0';
+    lv_label_set_text(g_hub_scene.subtitle_label, show_subtitle ? subtitle : "");
+    lv_obj_set_style_text_color(g_hub_scene.subtitle_label, muted_dim, 0);
+    if(show_subtitle) {
+        lv_obj_clear_flag(g_hub_scene.subtitle_label, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(g_hub_scene.subtitle_label, LV_OBJ_FLAG_HIDDEN);
+    }
     lv_obj_set_style_bg_color(g_hub_scene.footer_bar, footer_fill, 0);
     yoyopod_apply_footer_label(g_hub_scene.footer_label, footer, muted_dim);
 
     if(total_cards < 1) {
         total_cards = 1;
     }
-    if(total_cards > 4) {
-        total_cards = 4;
+    if(total_cards > YOYOPOD_HUB_MAX_DOTS) {
+        total_cards = YOYOPOD_HUB_MAX_DOTS;
     }
 
     selected_index = selected_index % total_cards;
@@ -1283,7 +1290,8 @@ int yoyopod_lvgl_hub_sync(
     int dot_spacing = 10;
     int dots_width = ((total_cards - 1) * dot_spacing) + 4;
     int first_x = (240 - dots_width) / 2;
-    for(int index = 0; index < 4; ++index) {
+    int dots_y = show_subtitle ? 226 : 218;
+    for(int index = 0; index < YOYOPOD_HUB_MAX_DOTS; ++index) {
         if(index >= total_cards) {
             lv_obj_add_flag(g_hub_scene.dots[index], LV_OBJ_FLAG_HIDDEN);
             continue;
@@ -1291,7 +1299,7 @@ int yoyopod_lvgl_hub_sync(
 
         int selected = index == selected_index;
         lv_obj_clear_flag(g_hub_scene.dots[index], LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_pos(g_hub_scene.dots[index], first_x + (index * dot_spacing), 218);
+        lv_obj_set_pos(g_hub_scene.dots[index], first_x + (index * dot_spacing), dots_y);
         yoyopod_hub_style_dot(g_hub_scene.dots[index], ink, selected);
     }
 

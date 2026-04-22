@@ -130,7 +130,11 @@ class HubScreen(LvglScreen):
             HubCard("Setup", self._setup_subtitle(), "setup", "setup"),
         ]
         if self.is_one_button_mode():
-            watch_face_name = self.watch_faces[self.active_watch_face_index].label
+            watch_face_name = (
+                self.picker_watch_face().label
+                if self.watch_picker_active
+                else self.active_watch_face().label
+            )
             cards.insert(0, HubCard("Watch", watch_face_name, "setup", "clock"))
         return cards
 

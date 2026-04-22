@@ -69,8 +69,8 @@ def test_hub_screen_reuses_retained_lvgl_view_across_exit_and_reentry() -> None:
     assert len(binding.hub_sync_payloads) == 1
     first_payload = binding.hub_sync_payloads[-1]
     assert first_payload["title"] == "Watch"
-    assert first_payload["subtitle"] == ""
-    assert first_payload["footer"] == "Tap = Next | 2x Tap = Open"
+    assert first_payload["subtitle"] == "Minimal digital"
+    assert first_payload["footer"] == "Tap Next | 2x Picker | Hold Ask"
     assert first_payload["selected_index"] == 0
     assert first_payload["total_cards"] == 5
     assert first_payload["voip_state"] == 1
@@ -93,6 +93,41 @@ def test_hub_screen_reuses_retained_lvgl_view_across_exit_and_reentry() -> None:
 
     assert binding.hub_build_calls == 1
     assert len(binding.hub_sync_payloads) == 3
+
+
+def test_hub_screen_watch_picker_updates_lvgl_payload_during_preview() -> None:
+    """Watch picker should stay visible and update subtitle/footer in LVGL mode."""
+
+    binding = FakeLvglBinding()
+    display = FakeLvglDisplay(binding)
+    screen = HubScreen(display, AppContext(interaction_profile=InteractionProfile.ONE_BUTTON))
+
+    screen.enter()
+    screen.render()
+    screen.on_select()
+    screen.render()
+
+    picker_payload = binding.hub_sync_payloads[-1]
+    assert picker_payload["title"] == "Watch"
+    assert picker_payload["subtitle"] == "Minimal digital"
+    assert picker_payload["footer"] == "Tap Face | 2x Save | Hold Back"
+    assert picker_payload["selected_index"] == 0
+
+    screen.on_advance()
+    screen.render()
+
+    advanced_payload = binding.hub_sync_payloads[-1]
+    assert advanced_payload["subtitle"] == "Analog-style"
+    assert advanced_payload["footer"] == "Tap Face | 2x Save | Hold Back"
+    assert advanced_payload["selected_index"] == 0
+
+    screen.on_select()
+    screen.render()
+
+    committed_payload = binding.hub_sync_payloads[-1]
+    assert committed_payload["subtitle"] == "Analog-style"
+    assert committed_payload["footer"] == "Tap Next | 2x Picker | Hold Ask"
+    assert committed_payload["selected_index"] == 0
 
 
 def test_hub_screen_rebuilds_retained_lvgl_view_after_backend_reset() -> None:
