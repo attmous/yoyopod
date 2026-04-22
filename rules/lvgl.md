@@ -14,6 +14,7 @@ For the Figma-to-Whisplay implementation workflow, screen extraction order, and 
 - `display.whisplay_renderer: lvgl` is the only supported production setting for Whisplay hardware.
 - If the Whisplay driver, hardware init, or LVGL shim/backend is unavailable, startup must fail loudly instead of silently degrading to another renderer.
 - `python yoyopod.py --simulate` reuses the Whisplay LVGL render contract and browser preview transport; it is not a separate PIL renderer.
+- Simulation also requires the native LVGL shim. If the shim is missing, the correct fix is to build it, not to fall back to PIL.
 
 ## Rendering Pipeline
 
@@ -53,7 +54,9 @@ Minimal config enabling only what YoYoPod uses:
 ## Building
 
 ```bash
-yoyopod build lvgl   # clones LVGL 9.5.0, compiles shim
+yoyopod build simulation   # most direct way to prepare `python yoyopod.py --simulate`
+yoyopod build lvgl         # clones LVGL 9.5.0, compiles shim
+yoyopod build ensure-native
 ```
 
 Must rebuild on Pi after changing `lv_conf.h` or `lvgl_shim.c`.

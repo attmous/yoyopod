@@ -318,6 +318,9 @@ def _log_setup_failure_guidance(app_log: Any) -> None:
     app_log.error(
         "  - Whisplay production runs have a working LVGL shim and do not rely on PIL or simulation fallback"
     )
+    app_log.error(
+        "  - simulation and other LVGL paths also require the native shim; run `yoyopod build simulation`"
+    )
 
 
 def _resolve_responsiveness_capture_dir(app: object) -> Path:

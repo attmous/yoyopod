@@ -53,6 +53,17 @@ class ComponentsBoot:
         raw_volume = media_cfg.music.default_volume if media_cfg is not None else 100
         return max(0, min(100, int(raw_volume)))
 
+    @staticmethod
+    def _lvgl_runtime_required_message() -> str:
+        """Return the canonical LVGL-only startup failure guidance."""
+
+        return (
+            "LVGL backend initialization failed during startup. "
+            "YoYoPod has no non-LVGL fallback for Whisplay, Pimoroni, or simulation. "
+            "Build the native shim with `yoyopod build simulation` "
+            "(or `yoyopod build ensure-native`) and try again."
+        )
+
     def init_core_components(self) -> bool:
         """Initialize display, context, orchestration models, input, and screen manager."""
         from yoyopod.core import AppContext
@@ -100,7 +111,7 @@ class ComponentsBoot:
                     requested_renderer=whisplay_renderer,
                 ):
                     raise self.contract_error_cls(self.build_contract_message_fn(error_message))
-                raise RuntimeError(error_message)
+                raise RuntimeError(self._lvgl_runtime_required_message())
             self.logger.info(f"    Active UI backend: {display.backend_kind}")
             self.app.screen_power_service.configure_screen_power(initial_now=time.monotonic())
 

@@ -84,6 +84,7 @@ def main() -> int:
                         "=" * 60,
                         "SIMULATION MODE",
                         "Running without physical hardware",
+                        "Requires the native LVGL shim; run `yoyopod build simulation` if needed",
                         "Web server will start on http://localhost:5000",
                         "Open the URL in your browser to view the display",
                         "Use keyboard (Arrow keys, Enter, Esc) or browser controls for input",

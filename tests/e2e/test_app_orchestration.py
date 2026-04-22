@@ -2845,6 +2845,7 @@ def test_runtime_loop_logs_named_blocking_spans(
     )
     app.voip_manager = FakeRuntimeLoopVoIPManager()
     app._voip_iterate_interval_seconds = 0.02
+    app.runtime_loop.process_pending_main_thread_actions()
 
     messages: list[str] = []
     sink_id = logger.add(

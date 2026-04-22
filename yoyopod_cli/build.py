@@ -315,3 +315,26 @@ def ensure_native(
         typer.echo(f"Ensured native shims: {', '.join(rebuilt)}")
         return
     typer.echo("Native shims already current")
+
+
+@app.command("simulation")
+def build_simulation(
+    skip_fetch: Annotated[
+        bool,
+        typer.Option(
+            "--skip-fetch",
+            help="Skip cloning/updating the pinned LVGL source checkout before rebuilding.",
+        ),
+    ] = False,
+) -> None:
+    """Build the LVGL native shim required by ``python yoyopod.py --simulate``."""
+
+    native_dir = _resolve_lvgl_native_dir()
+    source_dir = _default_lvgl_source_dir()
+    build_dir = native_dir / "build"
+
+    if not skip_fetch:
+        _ensure_lvgl_source(source_dir)
+
+    _build_lvgl(native_dir, source_dir, build_dir)
+    typer.echo(f"Built simulation LVGL shim in {build_dir}")

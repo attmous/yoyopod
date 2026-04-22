@@ -13,6 +13,7 @@ uv run yoyopod setup verify-host
 
 # Run the app
 python yoyopod.py
+yoyopod build simulation
 python yoyopod.py --simulate
 
 # Local CI mirror

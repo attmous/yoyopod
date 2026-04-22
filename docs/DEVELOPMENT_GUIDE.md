@@ -146,6 +146,7 @@ python yoyopod.py
 Simulation:
 
 ```bash
+yoyopod build simulation
 python yoyopod.py --simulate
 ```
 

@@ -45,6 +45,7 @@ Use `--with-remote-tools --with-github` together when you plan to both validate 
 Simulation run:
 
 ```bash
+yoyopod build simulation
 python yoyopod.py --simulate
 ```
 

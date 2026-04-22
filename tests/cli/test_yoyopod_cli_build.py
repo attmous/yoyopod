@@ -31,6 +31,13 @@ def test_ensure_native_help() -> None:
     assert "native" in result.output.lower()
 
 
+def test_simulation_help() -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["simulation", "--help"])
+    assert result.exit_code == 0
+    assert "simulate" in result.output.lower()
+
+
 def test_resolve_lvgl_native_dir_points_at_package_root() -> None:
     native_dir = build_cli._resolve_lvgl_native_dir()
 
@@ -110,6 +117,31 @@ def test_build_liblinphone_uses_resolved_native_dir(
     assert captured == {
         "native_dir": build_cli._REPO_ROOT / "yoyopod" / "backends" / "voip" / "shim_native",
         "build_dir": build_dir,
+    }
+
+
+def test_build_simulation_builds_lvgl_shim(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, Path] = {}
+
+    monkeypatch.setattr(build_cli, "_ensure_lvgl_source", lambda _source_dir: None)
+
+    def fake_build(native_dir: Path, source_dir: Path, build_dir: Path) -> None:
+        captured["native_dir"] = native_dir
+        captured["source_dir"] = source_dir
+        captured["build_dir"] = build_dir
+
+    monkeypatch.setattr(build_cli, "_build_lvgl", fake_build)
+    monkeypatch.setattr(build_cli, "_default_lvgl_source_dir", lambda: tmp_path / "lvgl-source")
+
+    build_cli.build_simulation(skip_fetch=True)
+
+    assert captured == {
+        "native_dir": build_cli._REPO_ROOT / "yoyopod" / "ui" / "lvgl_binding" / "native",
+        "source_dir": tmp_path / "lvgl-source",
+        "build_dir": build_cli._REPO_ROOT / "yoyopod" / "ui" / "lvgl_binding" / "native" / "build",
     }
 
 

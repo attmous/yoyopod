@@ -18,6 +18,11 @@ The supported portrait UI has one visual source of truth:
 
 The browser is transport, not a second layout engine.
 
+That also means simulation requires the native LVGL shim. If the shim is not
+available, startup should fail loudly instead of silently reviving a second
+renderer. The supported fix is to build the shim first with
+`yoyopod build simulation` (or `yoyopod build ensure-native`).
+
 ## Implemented Direction
 
 Simulation now reuses the same render contract as hardware:
@@ -97,7 +102,7 @@ Small anti-aliasing or color differences can be tolerated. Geometry drift should
 ## Acceptance Criteria
 
 - `python yoyopod.py --simulate` shows the same layout geometry as the current
-  Whisplay UI for the required parity screens
+  Whisplay UI for the required parity screens when the native LVGL shim has been built
 - simulation no longer relies on a second drifting copy of Whisplay-first
   layout behavior
 - the browser preview remains usable both locally and from the Pi IP
