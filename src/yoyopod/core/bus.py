@@ -34,19 +34,20 @@ class Bus:
     def subscribe(self, event_type: type[Any], handler: EventHandler) -> None:
         """Register a handler for one event type."""
 
+        self._require_main_thread("Bus.subscribe()")
         self._subscribers[event_type].append(handler)
         logger.trace("Subscribed scaffold bus handler for {}", event_type.__name__)
 
     def publish(self, event: Any) -> None:
         """Queue one event for later main-thread dispatch."""
 
-        if threading.get_ident() != self.main_thread_id:
-            raise RuntimeError("Bus.publish() must be called on the main thread")
+        self._require_main_thread("Bus.publish()")
         self._queue.append(event)
 
     def drain(self, limit: int | None = None) -> int:
         """Dispatch queued events in FIFO order."""
 
+        self._require_main_thread("Bus.drain()")
         processed = 0
         while self._queue and (limit is None or processed < limit):
             event = self._queue.popleft()
@@ -72,9 +73,9 @@ class Bus:
 
     def _dispatch(self, event: Any) -> None:
         handlers: list[EventHandler] = []
-        for event_type, subscribers in self._subscribers.items():
+        for event_type, subscribers in list(self._subscribers.items()):
             if isinstance(event, event_type):
-                handlers.extend(subscribers)
+                handlers.extend(list(subscribers))
 
         for handler in handlers:
             try:
@@ -91,6 +92,10 @@ class Bus:
                 if self._strict:
                     raise
                 logger.exception("Error handling scaffold event {}", event.__class__.__name__)
+
+    def _require_main_thread(self, operation: str) -> None:
+        if threading.get_ident() != self.main_thread_id:
+            raise RuntimeError(f"{operation} must be called on the main thread")
 
 
 def _handler_name(handler: EventHandler) -> str:

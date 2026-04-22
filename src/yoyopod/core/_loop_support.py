@@ -183,7 +183,7 @@ def _select_loop_cadence(
     last_input_activity_at = (
         runtime_metrics.last_input_activity_at
         if runtime_metrics is not None
-        else getattr(runtime_loop.app, "_last_input_activity_at", 0.0)
+        else 0.0
     )
     configured_voip_interval_seconds = max(
         0.01,

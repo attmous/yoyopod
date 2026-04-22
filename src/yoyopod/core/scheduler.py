@@ -1,4 +1,8 @@
-"""Main-thread task scheduler for the Phase A spine scaffold."""
+"""Main-thread task scheduler for the Phase A spine scaffold.
+
+`run_on_main()` executes inline when the caller already owns the main thread.
+Use `post()` when work must always be deferred until a later drain turn.
+"""
 
 from __future__ import annotations
 
@@ -28,7 +32,7 @@ class MainThreadScheduler:
         self._diagnostics_log = diagnostics_log
 
     def run_on_main(self, fn: Callable[[], None]) -> None:
-        """Schedule one callback for the main thread, or run it immediately."""
+        """Run on the main thread now, or queue for the next drain when off-thread."""
 
         if threading.get_ident() == self.main_thread_id:
             fn()

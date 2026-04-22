@@ -30,6 +30,36 @@ def test_bus_publish_requires_main_thread() -> None:
     assert errors == ["Bus.publish() must be called on the main thread"]
 
 
+def test_bus_subscribe_requires_main_thread() -> None:
+    bus = Bus()
+    errors: list[str] = []
+
+    worker = threading.Thread(
+        target=lambda: _capture_subscribe_error(bus=bus, errors=errors),
+        name="bus-subscriber",
+    )
+    worker.start()
+    worker.join()
+
+    assert errors == ["Bus.subscribe() must be called on the main thread"]
+
+
+def test_bus_drain_requires_main_thread() -> None:
+    bus = Bus()
+    bus.publish(DemoEvent(value="queued"))
+    errors: list[str] = []
+
+    worker = threading.Thread(
+        target=lambda: _capture_drain_error(bus=bus, errors=errors),
+        name="bus-drain-worker",
+    )
+    worker.start()
+    worker.join()
+
+    assert errors == ["Bus.drain() must be called on the main thread"]
+    assert bus.pending_count() == 1
+
+
 def test_bus_publish_queues_until_drain() -> None:
     bus = Bus()
     seen: list[str] = []
@@ -102,5 +132,19 @@ def test_bus_strict_mode_reraises_handler_errors() -> None:
 def _capture_publish_error(*, bus: Bus, errors: list[str]) -> None:
     try:
         bus.publish(DemoEvent(value="off-main"))
+    except RuntimeError as exc:
+        errors.append(str(exc))
+
+
+def _capture_subscribe_error(*, bus: Bus, errors: list[str]) -> None:
+    try:
+        bus.subscribe(DemoEvent, lambda event: None)
+    except RuntimeError as exc:
+        errors.append(str(exc))
+
+
+def _capture_drain_error(*, bus: Bus, errors: list[str]) -> None:
+    try:
+        bus.drain()
     except RuntimeError as exc:
         errors.append(str(exc))

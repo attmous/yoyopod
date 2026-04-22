@@ -2440,7 +2440,7 @@ def test_runtime_loop_restores_fast_cadence_for_recent_input() -> None:
     assert idle_sleep_seconds == pytest.approx(0.05)
 
     app._next_voip_iterate_at = 1.05
-    app._last_input_activity_at = 0.9
+    app.runtime_metrics.last_input_activity_at = 0.9
     fast_sleep_seconds = app.runtime_loop.next_sleep_interval_seconds(
         monotonic_now=1.0,
         current_time=1.0,

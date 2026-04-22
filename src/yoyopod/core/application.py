@@ -114,6 +114,7 @@ class YoyoPodApp:
         self.integrations: dict[str, object] = {}
         self.running = False
         self._setup_complete = False
+        # Test-only scaffold seam used by focused core/integration tests.
         self._registered_integrations: list[_RegisteredIntegration] = []
         self._tick_durations_ms: deque[float] = deque(maxlen=100)
         self._tick_queue_depths: deque[int] = deque(maxlen=100)
@@ -257,7 +258,7 @@ class YoyoPodApp:
         setup: Callable[["YoyoPodApp"], None],
         teardown: Callable[["YoyoPodApp"], None] | None = None,
     ) -> None:
-        """Register one integration for explicit scaffold setup and teardown."""
+        """Register one test-only scaffold integration for explicit setup/teardown."""
 
         if self._setup_complete:
             raise RuntimeError(f"Cannot register integration {name!r} after setup()")
@@ -269,6 +270,8 @@ class YoyoPodApp:
         """Initialize scaffold registrations or the live runtime, depending on use."""
 
         if self._registered_integrations:
+            # Focused scaffold tests use explicit registrations; production boot
+            # should flow through RuntimeBootService instead.
             if self._setup_complete:
                 return True
             for integration in self._registered_integrations:
@@ -360,96 +363,6 @@ class YoyoPodApp:
             time.sleep(sleep_seconds)
 
         return total_processed
-
-    @property
-    def _last_input_activity_at(self) -> float:
-        """Expose the latest raw input timestamp through the legacy app field."""
-
-        return self.runtime_metrics.last_input_activity_at
-
-    @_last_input_activity_at.setter
-    def _last_input_activity_at(self, value: float) -> None:
-        self.runtime_metrics.last_input_activity_at = value
-
-    @property
-    def _last_input_activity_action_name(self) -> str | None:
-        """Expose the latest raw input action through the legacy app field."""
-
-        return self.runtime_metrics.last_input_activity_action_name
-
-    @_last_input_activity_action_name.setter
-    def _last_input_activity_action_name(self, value: str | None) -> None:
-        self.runtime_metrics.last_input_activity_action_name = value
-
-    @property
-    def _last_input_handled_at(self) -> float:
-        """Expose the latest handled input timestamp through the legacy app field."""
-
-        return self.runtime_metrics.last_input_handled_at
-
-    @_last_input_handled_at.setter
-    def _last_input_handled_at(self, value: float) -> None:
-        self.runtime_metrics.last_input_handled_at = value
-
-    @property
-    def _last_input_handled_action_name(self) -> str | None:
-        """Expose the latest handled input action through the legacy app field."""
-
-        return self.runtime_metrics.last_input_handled_action_name
-
-    @_last_input_handled_action_name.setter
-    def _last_input_handled_action_name(self, value: str | None) -> None:
-        self.runtime_metrics.last_input_handled_action_name = value
-
-    @property
-    def _last_responsiveness_capture_at(self) -> float:
-        """Expose the latest responsiveness capture timestamp through the legacy field."""
-
-        return self.runtime_metrics.last_responsiveness_capture_at
-
-    @_last_responsiveness_capture_at.setter
-    def _last_responsiveness_capture_at(self, value: float) -> None:
-        self.runtime_metrics.last_responsiveness_capture_at = value
-
-    @property
-    def _last_responsiveness_capture_reason(self) -> str | None:
-        """Expose the latest responsiveness capture reason through the legacy field."""
-
-        return self.runtime_metrics.last_responsiveness_capture_reason
-
-    @_last_responsiveness_capture_reason.setter
-    def _last_responsiveness_capture_reason(self, value: str | None) -> None:
-        self.runtime_metrics.last_responsiveness_capture_reason = value
-
-    @property
-    def _last_responsiveness_capture_scope(self) -> str | None:
-        """Expose the latest responsiveness capture scope through the legacy field."""
-
-        return self.runtime_metrics.last_responsiveness_capture_scope
-
-    @_last_responsiveness_capture_scope.setter
-    def _last_responsiveness_capture_scope(self, value: str | None) -> None:
-        self.runtime_metrics.last_responsiveness_capture_scope = value
-
-    @property
-    def _last_responsiveness_capture_summary(self) -> str | None:
-        """Expose the latest responsiveness capture summary through the legacy field."""
-
-        return self.runtime_metrics.last_responsiveness_capture_summary
-
-    @_last_responsiveness_capture_summary.setter
-    def _last_responsiveness_capture_summary(self, value: str | None) -> None:
-        self.runtime_metrics.last_responsiveness_capture_summary = value
-
-    @property
-    def _last_responsiveness_capture_artifacts(self) -> dict[str, str]:
-        """Expose the latest responsiveness capture artifacts through the legacy field."""
-
-        return self.runtime_metrics.last_responsiveness_capture_artifacts
-
-    @_last_responsiveness_capture_artifacts.setter
-    def _last_responsiveness_capture_artifacts(self, value: dict[str, str]) -> None:
-        self.runtime_metrics.last_responsiveness_capture_artifacts = dict(value)
 
     def _pending_main_thread_callback_count(self) -> int | None:
         """Return the queued main-thread scheduler backlog."""
