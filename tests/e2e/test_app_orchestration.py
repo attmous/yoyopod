@@ -274,6 +274,7 @@ class FakeRecoveringMusicBackend(MockMusicBackend):
         super().__init__()
         self._start_results = start_results
         self.start_calls = 0
+        self.startup_in_progress = False
 
     def start(self) -> bool:
         self.start_calls += 1
@@ -1362,6 +1363,25 @@ def test_recovery_service_schedules_music_reconnect_off_main_thread() -> None:
     assert scheduled_attempts == [0.0]
     assert app._music_recovery.in_flight
     assert app._voip_recovery.next_attempt_at == 1.0
+
+
+def test_recovery_service_skips_music_recovery_while_warm_start_is_in_progress() -> None:
+    """Music recovery should not race a background warm-start already in flight."""
+
+    app = YoyoPodApp(simulate=True)
+    app.music_backend = FakeRecoveringMusicBackend([True])
+    app.music_backend.startup_in_progress = True
+    scheduled_attempts: list[float] = []
+
+    app.recovery_service.start_music_recovery_worker = (
+        lambda recovery_now: scheduled_attempts.append(recovery_now)
+    )
+
+    app.recovery_service.attempt_manager_recovery(now=0.0)
+
+    assert app.music_backend.start_calls == 0
+    assert scheduled_attempts == []
+    assert app._music_recovery.in_flight is False
 
 
 def test_recovery_service_skips_unconfigured_voip_recovery() -> None:

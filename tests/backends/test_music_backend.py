@@ -165,6 +165,104 @@ def test_mpv_backend_waits_for_delayed_ipc_ready(monkeypatch) -> None:
     assert backend.is_connected is True
 
 
+def test_mpv_backend_play_load_starts_backend_on_demand(monkeypatch) -> None:
+    class FakeProcess:
+        def spawn(self) -> bool:
+            return True
+
+        def kill(self) -> None:
+            return None
+
+        def is_alive(self) -> bool:
+            return True
+
+    class FakeIpc:
+        def __init__(self) -> None:
+            self.connected = False
+            self.commands: list[list[object]] = []
+
+        def connect(self) -> bool:
+            self.connected = True
+            return True
+
+        def on_event(self, callback) -> None:
+            self._callback = callback
+
+        def start_reader(self) -> None:
+            return None
+
+        def observe_property(self, name: str, observe_id: int) -> None:
+            return None
+
+        def send_command(self, args: list[object]) -> dict[str, object]:
+            self.commands.append(list(args))
+            return {"error": "success"}
+
+        def disconnect(self) -> None:
+            self.connected = False
+
+    backend = MpvBackend(MusicConfig())
+    fake_ipc = FakeIpc()
+    backend._process = FakeProcess()
+    backend._ipc = fake_ipc
+    monkeypatch.setattr("yoyopod.backends.music.mpv.time.sleep", lambda _: None)
+
+    assert backend.load_tracks(["/music/a.mp3"]) is True
+
+    assert backend.is_connected is True
+    assert ["get_property", "path"] in fake_ipc.commands
+    assert ["loadfile", "/music/a.mp3", "replace"] in fake_ipc.commands
+
+
+def test_mpv_backend_warm_start_only_spawns_one_background_thread(monkeypatch) -> None:
+    started_threads: list[tuple[object, bool, str | None]] = []
+
+    class FakeThread:
+        def __init__(self, *, target, daemon: bool, name: str | None = None) -> None:
+            self._target = target
+            self.daemon = daemon
+            self.name = name
+            self._alive = False
+            started_threads.append((target, daemon, name))
+
+        def is_alive(self) -> bool:
+            return self._alive
+
+        def start(self) -> None:
+            self._alive = True
+
+    backend = MpvBackend(MusicConfig())
+    monkeypatch.setattr("yoyopod.backends.music.mpv.threading.Thread", FakeThread)
+
+    backend.warm_start()
+    backend.warm_start()
+
+    assert len(started_threads) == 1
+    assert started_threads[0][1] is True
+    assert started_threads[0][2] == "mpv-warm-start"
+
+
+def test_mpv_backend_reports_startup_in_progress_while_warm_start_thread_is_alive(
+    monkeypatch,
+) -> None:
+    class FakeThread:
+        def __init__(self, *, target, daemon: bool, name: str | None = None) -> None:
+            self._alive = False
+
+        def is_alive(self) -> bool:
+            return self._alive
+
+        def start(self) -> None:
+            self._alive = True
+
+    backend = MpvBackend(MusicConfig())
+    monkeypatch.setattr("yoyopod.backends.music.mpv.threading.Thread", FakeThread)
+
+    backend.warm_start()
+
+    assert backend.startup_in_progress is True
+
+
 def test_mpv_backend_retries_spawn_when_early_launches_never_open_ipc(
     monkeypatch,
 ) -> None:

@@ -27,7 +27,7 @@ class MpvIpcClient:
         self._event_callbacks: list[Callable[[dict[str, Any]], None]] = []
         self._event_queue: queue.Queue[dict[str, Any] | None] | None = None
 
-    def connect(self) -> bool:
+    def connect(self, *, log_failure: bool = True) -> bool:
         """Connect to the mpv IPC socket."""
         try:
             if self.socket_path.startswith("\\\\.\\pipe\\"):
@@ -43,7 +43,8 @@ class MpvIpcClient:
             self.start_reader()
             return True
         except Exception as exc:
-            logger.error("Failed to connect to mpv IPC at {}: {}", self.socket_path, exc)
+            if log_failure:
+                logger.error("Failed to connect to mpv IPC at {}: {}", self.socket_path, exc)
             self._sock = None
             return False
 

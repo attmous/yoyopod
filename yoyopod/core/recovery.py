@@ -341,6 +341,9 @@ class RuntimeRecoveryService:
             self.app._music_recovery.reset()
             return
 
+        if getattr(self.app.music_backend, "startup_in_progress", False):
+            return
+
         if self.app._music_recovery.in_flight:
             return
 

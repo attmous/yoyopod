@@ -87,10 +87,7 @@ class ManagersBoot:
             if self.app.audio_volume_controller is not None:
                 self.app.audio_volume_controller.attach_music_backend(self.app.music_backend)
                 self.app.audio_volume_controller.attach_output_volume(self.app.output_volume)
-            if self.app.music_backend.start():
-                self.logger.info("    Music backend started successfully")
-            else:
-                self.logger.warning("    Music backend failed to start (VoIP-only mode)")
+            self.logger.info("    Music backend warmup deferred until callback wiring completes")
 
             if self.app.audio_volume_controller is not None:
                 self.app.audio_volume_controller.apply_default_music_volume()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
 from typing import Callable, Protocol, runtime_checkable
 
 from loguru import logger
@@ -60,7 +61,7 @@ class MusicBackend(Protocol):
 class MpvBackend:
     """Production music backend driven by an app-managed mpv process."""
 
-    _STARTUP_CONNECT_RETRIES = 30
+    _STARTUP_CONNECT_TIMEOUT_SECONDS = 10.0
     _STARTUP_CONNECT_DELAY = 0.1
     _STARTUP_SPAWN_ATTEMPTS = 4
     # A second-resolution progress bar does not need every mpv time-pos event.
@@ -72,6 +73,9 @@ class MpvBackend:
         self._process = MpvProcess(config)
         self._ipc = MpvIpcClient(config.mpv_socket)
         self._connected = False
+        self._starting = False
+        self._start_lock = threading.Lock()
+        self._warm_start_thread: threading.Thread | None = None
         self._current_track: Track | None = None
         self._playback_state = "stopped"
         self._event_handler_registered = False
@@ -90,58 +94,141 @@ class MpvBackend:
 
     def start(self) -> bool:
         """Spawn mpv, connect IPC, subscribe to events."""
-        for attempt in range(1, self._STARTUP_SPAWN_ATTEMPTS + 1):
-            if not self._process.spawn():
-                return False
+        with self._start_lock:
+            if self.is_connected:
+                return True
+            self._starting = True
+            try:
+                for attempt in range(1, self._STARTUP_SPAWN_ATTEMPTS + 1):
+                    if not self._process.spawn():
+                        return False
 
-            for _ in range(self._STARTUP_CONNECT_RETRIES):
-                if self._ipc.connect():
-                    break
-                time.sleep(self._STARTUP_CONNECT_DELAY)
-            else:
-                self._process.kill()
-                if attempt == self._STARTUP_SPAWN_ATTEMPTS:
-                    logger.error(
-                        "Failed to connect to mpv IPC after {} spawn attempts",
-                        self._STARTUP_SPAWN_ATTEMPTS,
+                    connect_deadline = (
+                        time.monotonic() + self._STARTUP_CONNECT_TIMEOUT_SECONDS
                     )
-                    return False
-                logger.warning(
-                    "mpv IPC did not become ready on spawn attempt {}/{}; retrying",
-                    attempt,
-                    self._STARTUP_SPAWN_ATTEMPTS,
-                )
-                continue
-            break
+                    connected = False
+                    while time.monotonic() < connect_deadline:
+                        if (
+                            self._can_attempt_ipc_connect()
+                            and self._connect_ipc_quietly()
+                        ):
+                            connected = True
+                            break
+                        if not self._process.is_alive():
+                            break
+                        time.sleep(self._STARTUP_CONNECT_DELAY)
 
-        if not self._event_handler_registered:
-            self._ipc.on_event(self._handle_mpv_event)
-            self._event_handler_registered = True
-        self._ipc.start_reader()
+                    if not connected:
+                        process_alive = self._process.is_alive()
+                        self._process.kill()
+                        if attempt == self._STARTUP_SPAWN_ATTEMPTS:
+                            if process_alive:
+                                logger.error(
+                                    "Failed to connect to mpv IPC after {} spawn attempts "
+                                    "(waited {:.1f}s each)",
+                                    self._STARTUP_SPAWN_ATTEMPTS,
+                                    self._STARTUP_CONNECT_TIMEOUT_SECONDS,
+                                )
+                            else:
+                                logger.error(
+                                    "mpv exited before IPC became ready after {} spawn attempts",
+                                    self._STARTUP_SPAWN_ATTEMPTS,
+                                )
+                            return False
+                        if process_alive:
+                            logger.warning(
+                                "mpv IPC was not ready after {:.1f}s on spawn attempt {}/{}; "
+                                "retrying",
+                                self._STARTUP_CONNECT_TIMEOUT_SECONDS,
+                                attempt,
+                                self._STARTUP_SPAWN_ATTEMPTS,
+                            )
+                        else:
+                            logger.warning(
+                                "mpv exited before IPC became ready on spawn attempt {}/{}; "
+                                "retrying",
+                                attempt,
+                                self._STARTUP_SPAWN_ATTEMPTS,
+                            )
+                        continue
 
+                    if connected:
+                        break
+
+                if not self._event_handler_registered:
+                    self._ipc.on_event(self._handle_mpv_event)
+                    self._event_handler_registered = True
+                self._ipc.start_reader()
+
+                try:
+                    self._ipc.observe_property("media-title", 1)
+                    self._ipc.observe_property("metadata", 2)
+                    self._ipc.observe_property("pause", 3)
+                    self._ipc.observe_property("idle-active", 4)
+                    self._ipc.observe_property("duration", 5)
+                    self._ipc.observe_property("path", 6)
+                    self._ipc.observe_property("time-pos", 7)
+                except Exception as exc:
+                    logger.warning("Failed to observe mpv properties: {}", exc)
+                try:
+                    self._prime_track_cache_from_ipc()
+                except Exception as exc:
+                    logger.warning("Failed to prime mpv track cache: {}", exc)
+
+                self._connected = True
+                self._fire_connection_change(True, "connected")
+                logger.info("MpvBackend started")
+                return True
+            finally:
+                self._starting = False
+
+    def _can_attempt_ipc_connect(self) -> bool:
+        """Avoid noisy connect attempts before the Unix socket file exists."""
+
+        socket_path = getattr(self._ipc, "socket_path", None)
+        if not isinstance(socket_path, str) or not socket_path:
+            return True
+        if socket_path.startswith("\\\\.\\pipe\\"):
+            return True
+        return Path(socket_path).exists()
+
+    def _connect_ipc_quietly(self) -> bool:
+        """Connect to mpv IPC without requiring every test double to support kwargs."""
+
+        connect = getattr(self._ipc, "connect")
         try:
-            self._ipc.observe_property("media-title", 1)
-            self._ipc.observe_property("metadata", 2)
-            self._ipc.observe_property("pause", 3)
-            self._ipc.observe_property("idle-active", 4)
-            self._ipc.observe_property("duration", 5)
-            self._ipc.observe_property("path", 6)
-            self._ipc.observe_property("time-pos", 7)
-        except Exception as exc:
-            logger.warning("Failed to observe mpv properties: {}", exc)
-        try:
-            self._prime_track_cache_from_ipc()
-        except Exception as exc:
-            logger.warning("Failed to prime mpv track cache: {}", exc)
+            return bool(connect(log_failure=False))
+        except TypeError:
+            return bool(connect())
 
-        self._connected = True
-        self._fire_connection_change(True, "connected")
-        logger.info("MpvBackend started")
-        return True
+    def warm_start(self) -> None:
+        """Warm the backend in the background without blocking boot or navigation."""
+
+        if self.is_connected or self.startup_in_progress:
+            return
+
+        existing = self._warm_start_thread
+        if existing is not None and existing.is_alive():
+            return
+
+        def _run() -> None:
+            try:
+                self.start()
+            finally:
+                self._warm_start_thread = None
+
+        thread = threading.Thread(
+            target=_run,
+            daemon=True,
+            name="mpv-warm-start",
+        )
+        self._warm_start_thread = thread
+        thread.start()
 
     def stop(self) -> None:
         """Disconnect IPC and kill mpv."""
         self._connected = False
+        self._starting = False
         self._clear_track_cache()
         self._ipc.disconnect()
         self._process.kill()
@@ -151,7 +238,16 @@ class MpvBackend:
     def is_connected(self) -> bool:
         return self._connected and self._process.is_alive() and self._ipc.connected
 
+    @property
+    def startup_in_progress(self) -> bool:
+        """Return True while a warm-start or synchronous start is still running."""
+
+        thread = self._warm_start_thread
+        return self._starting or (thread is not None and thread.is_alive())
+
     def play(self) -> bool:
+        if not self._ensure_started_for_playback():
+            return False
         return self._set_property("pause", False)
 
     def pause(self) -> bool:
@@ -229,6 +325,8 @@ class MpvBackend:
     def load_tracks(self, uris: list[str]) -> bool:
         if not uris:
             return False
+        if not self._ensure_started_for_playback():
+            return False
         try:
             if not self._command(["loadfile", uris[0], "replace"]):
                 return False
@@ -241,6 +339,8 @@ class MpvBackend:
             return False
 
     def load_playlist_file(self, path: str) -> bool:
+        if not self._ensure_started_for_playback():
+            return False
         return self._command(["loadlist", path, "replace"])
 
     def on_track_change(self, callback: Callable[[Track | None], None]) -> None:
@@ -447,6 +547,13 @@ class MpvBackend:
             if self._connected:
                 self._connected = False
                 self._fire_connection_change(False, "connection_lost")
+
+    def _ensure_started_for_playback(self) -> bool:
+        """Start mpv on demand when playback is requested before warmup completes."""
+
+        if self.is_connected:
+            return True
+        return self.start()
 
 
 class MockMusicBackend:

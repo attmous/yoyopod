@@ -188,6 +188,7 @@ class _FakeMusicBackend:
         self.track_callback = None
         self.playback_state_callback = None
         self.connection_change_callbacks: list[object] = []
+        self.warm_start_calls = 0
 
     def on_track_change(self, callback) -> None:
         self.track_callback = callback
@@ -197,6 +198,9 @@ class _FakeMusicBackend:
 
     def on_connection_change(self, callback) -> None:
         self.connection_change_callbacks.append(callback)
+
+    def warm_start(self) -> None:
+        self.warm_start_calls += 1
 
 
 class _FakeCallRuntime:
@@ -392,6 +396,7 @@ def test_setup_music_callbacks_schedule_playback_handlers_on_main_thread() -> No
         ("volume", (True, "connected")),
         ("availability", (True, "connected")),
     ]
+    assert music_backend.warm_start_calls == 1
 
 
 def test_setup_event_subscriptions_keeps_legacy_runtime_helper_flow() -> None:
@@ -436,8 +441,10 @@ def test_managers_boot_starts_network_and_syncs_context_without_event_wiring() -
     class _FakeMusicBackend:
         def __init__(self, _config) -> None:
             self.is_connected = False
+            self.start_calls = 0
 
         def start(self) -> bool:
+            self.start_calls += 1
             return False
 
     class _FakeLocalMusicService:
@@ -521,5 +528,6 @@ def test_managers_boot_starts_network_and_syncs_context_without_event_wiring() -
     )
 
     assert service.init_managers() is True
+    assert app.music_backend.start_calls == 0
     assert app.network_manager.started is True
     assert sync_calls == ["synced"]

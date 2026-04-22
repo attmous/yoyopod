@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -96,4 +97,23 @@ class CallbacksBoot:
                 )
             )
         )
+        self._warm_music_backend()
         self.logger.info("  Music callbacks registered")
+
+    def _warm_music_backend(self) -> None:
+        """Kick off non-blocking music backend warmup after callbacks are registered."""
+
+        music_backend = self.app.music_backend
+        if music_backend is None:
+            return
+
+        warm_start = getattr(music_backend, "warm_start", None)
+        if callable(warm_start):
+            warm_start()
+            return
+
+        threading.Thread(
+            target=music_backend.start,
+            daemon=True,
+            name="music-backend-warm-start",
+        ).start()
