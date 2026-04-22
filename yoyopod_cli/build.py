@@ -31,6 +31,44 @@ def _run(command: list[str], cwd: Path | None = None) -> None:
     subprocess.run(command, cwd=str(cwd) if cwd else None, check=True)
 
 
+def _resolve_native_dir(label: str, *candidates: Path) -> Path:
+    """Return the first native source directory that still exists in this checkout."""
+
+    for candidate in candidates:
+        if (candidate / "CMakeLists.txt").exists():
+            return candidate
+
+    searched = ", ".join(str(candidate) for candidate in candidates)
+    raise SystemExit(f"Could not find the {label} native source directory. Checked: {searched}")
+
+
+def _resolve_lvgl_native_dir() -> Path:
+    """Resolve the LVGL shim native source directory for the current repo layout."""
+
+    return _resolve_native_dir(
+        "LVGL",
+        _REPO_ROOT / "yoyopod" / "ui" / "lvgl_binding" / "native",
+        _REPO_ROOT / "src" / "yoyopod" / "ui" / "lvgl_binding" / "native",
+    )
+
+
+def _resolve_liblinphone_native_dir() -> Path:
+    """Resolve the Liblinphone shim native source directory for the current repo layout."""
+
+    return _resolve_native_dir(
+        "Liblinphone",
+        _REPO_ROOT / "yoyopod" / "backends" / "voip" / "shim_native",
+        _REPO_ROOT / "src" / "yoyopod" / "backends" / "voip" / "shim_native",
+        _REPO_ROOT
+        / "src"
+        / "yoyopod"
+        / "communication"
+        / "integrations"
+        / "liblinphone"
+        / "native",
+    )
+
+
 # ---------------------------------------------------------------------------
 # LVGL helpers (inlined from scripts/lvgl_build.py)
 # ---------------------------------------------------------------------------
@@ -123,7 +161,7 @@ def build_lvgl(
     ] = False,
 ) -> None:
     """Build the pinned LVGL shim for the current platform."""
-    native_dir = _REPO_ROOT / "src" / "yoyopod" / "ui" / "lvgl_binding" / "native"
+    native_dir = _resolve_lvgl_native_dir()
     resolved_source = (
         source_dir
         if source_dir is not None
@@ -146,9 +184,7 @@ def build_liblinphone(
     ] = None,
 ) -> None:
     """Build the native Liblinphone shim for the current platform."""
-    native_dir = (
-        _REPO_ROOT / "src" / "yoyopod" / "communication" / "integrations" / "liblinphone" / "native"
-    )
+    native_dir = _resolve_liblinphone_native_dir()
     resolved_build = build_dir if build_dir is not None else native_dir / "build"
 
     _build_liblinphone(native_dir, resolved_build)
