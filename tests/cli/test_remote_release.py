@@ -62,6 +62,7 @@ def test_rsync_to_pi_uses_ssh_transport(
     assert rc == 0
     assert command[:4] == ["rsync", "-az", "-e", "ssh"]
     assert "chmod 755" in run_remote_mock.call_args[0][1]
+    assert run_remote_mock.call_args.kwargs["workdir"] is None
 
 
 @patch("yoyopod_cli.remote_release.run_remote")
@@ -86,6 +87,8 @@ def test_rsync_to_pi_falls_back_to_scp_when_rsync_fails(
     assert "2026.04.22-abc/." in run_mock.call_args_list[1][0][0][2]
     assert run_remote_mock.call_count == 2
     assert "chmod 755" in run_remote_mock.call_args_list[1][0][1]
+    assert run_remote_mock.call_args_list[0].kwargs["workdir"] is None
+    assert run_remote_mock.call_args_list[1].kwargs["workdir"] is None
 
 
 @patch("yoyopod_cli.remote_release._slot_exists_state")
@@ -512,6 +515,7 @@ def test_status_command_uses_shell_only_status_check(capture: MagicMock) -> None
     assert "systemctl is-active --quiet" in cmd
     assert "/proc/$pid/cwd" in cmd
     assert "YOYOPOD_RELEASE_MANIFEST=" not in cmd
+    assert capture.call_args.kwargs["workdir"] is None
 
 
 @patch("yoyopod_cli.remote_release.run_remote")
@@ -532,6 +536,7 @@ def test_hydrate_slot_uses_build_subapp_entrypoint(run_remote_mock: MagicMock) -
     assert "PYTHONPATH=" not in cmd
     assert "libyoyopod_lvgl_shim.so" in cmd
     assert "libyoyopod_liblinphone_shim.so" in cmd
+    assert run_remote_mock.call_args.kwargs["workdir"] is None
 
 
 def test_slot_subapp_command_prepends_slot_app_to_sys_path() -> None:

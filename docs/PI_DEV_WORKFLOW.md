@@ -21,6 +21,11 @@ Dirty-tree sync still exists, but only as a rare debugging override.
 
 The Raspberry Pi should reuse one stable checkout path, configured by `project_dir` in `deploy/pi-deploy.yaml`.
 
+Exception: `yoyopod remote release ...` no longer needs that checkout after the
+board has been bootstrapped for slot deploy. The checkout is still required for
+the legacy `remote sync`, `remote validate`, and `remote setup` flows described
+in this guide.
+
 Why this is the default:
 
 - `uv sync` is expensive on Pi Zero hardware

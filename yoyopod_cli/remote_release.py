@@ -37,6 +37,16 @@ def _slot_dir(version: str) -> str:
     return f"{_slots().releases_dir()}/{version}"
 
 
+def _run_slot_remote(conn: object, command: str, *, tty: bool = False) -> int:
+    """Execute one slot-deploy SSH command without depending on a repo checkout."""
+    return run_remote(conn, command, tty=tty, workdir=None)  # type: ignore[arg-type]
+
+
+def _run_slot_remote_capture(conn: object, command: str) -> subprocess.CompletedProcess[str]:
+    """Capture one slot-deploy SSH command without depending on a repo checkout."""
+    return run_remote_capture(conn, command, workdir=None)  # type: ignore[arg-type]
+
+
 def _slot_subapp_command(
     base: str,
     module: str,
@@ -76,9 +86,9 @@ def _rsync_to_pi(conn: RemoteConnection, slot: Path, version: str) -> int:
     rsync_cmd = ["rsync", "-az", "-e", "ssh", "--delete", f"{slot_arg}/", target]
     rsync_result = subprocess.run(rsync_cmd, check=False)
     if rsync_result.returncode == 0:
-        return run_remote(conn, f"chmod 755 {shlex.quote(launch_path)}")
+        return _run_slot_remote(conn, f"chmod 755 {shlex.quote(launch_path)}")
 
-    prepare_remote = run_remote(
+    prepare_remote = _run_slot_remote(
         conn,
         f"rm -rf {shlex.quote(target_dir)} && mkdir -p {shlex.quote(target_dir)}",
     )
@@ -89,7 +99,7 @@ def _rsync_to_pi(conn: RemoteConnection, slot: Path, version: str) -> int:
     scp_result = subprocess.run(scp_cmd, check=False)
     if scp_result.returncode != 0:
         return scp_result.returncode
-    return run_remote(conn, f"chmod 755 {shlex.quote(launch_path)}")
+    return _run_slot_remote(conn, f"chmod 755 {shlex.quote(launch_path)}")
 
 
 def _run_preflight_on_pi(conn: object, version: str) -> int:
@@ -102,7 +112,7 @@ def _run_preflight_on_pi(conn: object, version: str) -> int:
         "--slot",
         slot_dir,
     )
-    return run_remote(conn, cmd)  # type: ignore[arg-type]
+    return _run_slot_remote(conn, cmd)
 
 
 def _hydrate_slot_on_pi(conn: object, version: str) -> int:
@@ -154,7 +164,7 @@ def _hydrate_slot_on_pi(conn: object, version: str) -> int:
         f"fi; "
         f"{_slot_subapp_command(slot_dir, 'yoyopod_cli.build', 'ensure-native')}"
     )
-    return run_remote(conn, cmd)  # type: ignore[arg-type]
+    return _run_slot_remote(conn, cmd)
 
 
 def _flip_symlinks_on_pi(conn: object, version: str) -> int:
@@ -173,7 +183,7 @@ def _flip_symlinks_on_pi(conn: object, version: str) -> int:
         f"mv -T {shlex.quote(current_path)}.new {shlex.quote(current_path)} && "
         "sudo systemctl restart yoyopod-slot.service"
     )
-    return run_remote(conn, script)  # type: ignore[arg-type]
+    return _run_slot_remote(conn, script)
 
 
 def _live_status_shell(service: str = "yoyopod-slot.service") -> str:
@@ -202,12 +212,12 @@ def _run_live_probe_on_pi(conn: object, version: str, timeout_s: int = 60) -> in
         f'echo "version={version}"; exit 0; fi; '
         "sleep 1; done; exit 1"
     )
-    return run_remote(conn, cmd)  # type: ignore[arg-type]
+    return _run_slot_remote(conn, cmd)
 
 
 def _rollback_on_pi(conn: object) -> int:
     """Invoke the rollback script on the Pi (swaps current <-> previous)."""
-    return run_remote(conn, f"sudo {_slots().bin_dir()}/rollback.sh")  # type: ignore[arg-type]
+    return _run_slot_remote(conn, f"sudo {_slots().bin_dir()}/rollback.sh")
 
 
 def _status_from_pi(conn: object) -> str:
@@ -222,7 +232,7 @@ def _status_from_pi(conn: object) -> str:
         'if [ -n "$prev" ]; then echo previous=$(basename "$prev"); else echo previous=NONE; fi; '
         f"echo health=$({health_cmd} >/dev/null 2>&1 && echo ok || echo fail)"
     )
-    result = run_remote_capture(conn, cmd)  # type: ignore[arg-type]
+    result = _run_slot_remote_capture(conn, cmd)
     if result.returncode != 0:
         stderr = (result.stderr or "").strip()
         msg = f"status check failed (exit {result.returncode})"
@@ -235,13 +245,13 @@ def _status_from_pi(conn: object) -> str:
 
 def _cleanup_remote_slot(conn: object, version: str) -> None:
     """Remove a partially-uploaded slot from the Pi."""
-    run_remote(conn, f"rm -rf {shlex.quote(_slot_dir(version))}")  # type: ignore[arg-type]
+    _run_slot_remote(conn, f"rm -rf {shlex.quote(_slot_dir(version))}")
 
 
 def _check_rollback_available(conn: object) -> int:
     """Return 0 if previous symlink exists as a symlink on the Pi, nonzero otherwise."""
     cmd = f"test -L {shlex.quote(_slots().previous_path())}"
-    return run_remote(conn, cmd)  # type: ignore[arg-type]
+    return _run_slot_remote(conn, cmd)
 
 
 def _slot_exists_state(conn: object, version: str) -> str:
@@ -259,7 +269,7 @@ def _slot_exists_state(conn: object, version: str) -> str:
         f'"$(readlink -f {shlex.quote(target)} 2>/dev/null)" ]; then echo CURRENT; '
         "else echo EXISTS; fi"
     )
-    return run_remote_capture(conn, cmd).stdout.strip()  # type: ignore[arg-type]
+    return _run_slot_remote_capture(conn, cmd).stdout.strip()
 
 
 @app.command("push")

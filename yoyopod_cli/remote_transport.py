@@ -5,8 +5,16 @@ from __future__ import annotations
 import shlex
 import subprocess
 from collections.abc import Sequence
+from typing import Final
 
 from yoyopod_cli.remote_shared import RemoteConnection
+
+
+class _DefaultRemoteWorkdir:
+    """Sentinel for callers that want the connection's configured workdir."""
+
+
+_DEFAULT_REMOTE_WORKDIR: Final = _DefaultRemoteWorkdir()
 
 
 def shell_quote(value: str) -> str:
@@ -51,9 +59,22 @@ def build_ssh_command(
     remote_command: str,
     *,
     tty: bool = False,
+    workdir: str | None | _DefaultRemoteWorkdir = _DEFAULT_REMOTE_WORKDIR,
 ) -> list[str]:
-    """Build an SSH command targeting the Pi."""
-    wrapped = f"cd {quote_remote_project_dir(conn.project_dir)} && {remote_command}"
+    """Build an SSH command targeting the Pi.
+
+    By default, commands start in ``conn.project_dir``. Callers may pass
+    ``workdir=None`` to run directly without a remote ``cd`` step.
+    """
+    resolved_workdir: str | None
+    if isinstance(workdir, _DefaultRemoteWorkdir):
+        resolved_workdir = conn.project_dir
+    else:
+        resolved_workdir = workdir
+    if resolved_workdir is None:
+        wrapped = remote_command
+    else:
+        wrapped = f"cd {quote_remote_project_dir(resolved_workdir)} && {remote_command}"
     cmd = ["ssh"]
     if tty:
         cmd.append("-t")
@@ -61,12 +82,25 @@ def build_ssh_command(
     return cmd
 
 
-def run_remote(conn: RemoteConnection, remote_command: str, *, tty: bool = False) -> int:
+def run_remote(
+    conn: RemoteConnection,
+    remote_command: str,
+    *,
+    tty: bool = False,
+    workdir: str | None | _DefaultRemoteWorkdir = _DEFAULT_REMOTE_WORKDIR,
+) -> int:
     """Execute a command on the Pi via SSH. Returns the exit code."""
-    ssh_cmd = build_ssh_command(conn, remote_command, tty=tty)
+    resolved_workdir: str | None
+    if isinstance(workdir, _DefaultRemoteWorkdir):
+        resolved_workdir = conn.project_dir
+    else:
+        resolved_workdir = workdir
+    ssh_cmd = build_ssh_command(conn, remote_command, tty=tty, workdir=workdir)
     print("")
     print(f"[yoyopod-remote] host={conn.ssh_target}")
-    print(f"[yoyopod-remote] dir={conn.project_dir}")
+    print(
+        f"[yoyopod-remote] dir={resolved_workdir if resolved_workdir is not None else '(direct)'}"
+    )
     print(f"[yoyopod-remote] cmd={remote_command}")
     print("")
     completed = subprocess.run(ssh_cmd, check=False)
@@ -76,9 +110,11 @@ def run_remote(conn: RemoteConnection, remote_command: str, *, tty: bool = False
 def run_remote_capture(
     conn: RemoteConnection,
     remote_command: str,
+    *,
+    workdir: str | None | _DefaultRemoteWorkdir = _DEFAULT_REMOTE_WORKDIR,
 ) -> subprocess.CompletedProcess[str]:
     """Execute an SSH command and capture stdout/stderr."""
-    ssh_cmd = build_ssh_command(conn, remote_command)
+    ssh_cmd = build_ssh_command(conn, remote_command, workdir=workdir)
     return subprocess.run(ssh_cmd, check=False, capture_output=True, text=True)
 
 

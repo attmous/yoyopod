@@ -3,9 +3,10 @@
 This is the operator guide for the slot-deploy path.
 
 Use slot deploy when you want immutable release directories under `/opt/yoyopod`,
-atomic `current`/`previous` flips, and rollback support. Keep the legacy
-`~/yoyopod-core` checkout as the control plane for `yoyopod remote ...`; the
-running app moves to `/opt/yoyopod`.
+atomic `current`/`previous` flips, and rollback support. The running app lives
+under `/opt/yoyopod`. As of the current implementation, `yoyopod remote release`
+no longer depends on a repo checkout on the Pi; the older `remote sync`,
+`remote validate`, and `remote setup` flows still do.
 
 ## Current Status
 
@@ -76,15 +77,19 @@ Recommended local settings:
 
 - `host`: your SSH alias or Pi IP
 - `user`: the Pi login user that should run the app
-- `project_dir`: stable checkout path on the Pi, usually `~/yoyopod-core`
+- `project_dir`: only needed for the legacy `remote sync/validate/setup` flows
 - `slot.root`: `/opt/yoyopod` unless you intentionally use another root
 
 ### Pi prerequisites
 
-The Pi still needs a stable checkout path because `yoyopod remote ...` SSH
-commands begin by `cd`-ing into `project_dir` before they operate on `/opt/yoyopod`.
+For `yoyopod remote release ...`, the Pi does not need a live repo checkout after
+bootstrap. Those commands now operate directly on `/opt/yoyopod`.
 
-Default expectation:
+The older `yoyopod remote sync`, `yoyopod remote validate`, and
+`yoyopod remote setup` flows still use the configured `project_dir` and therefore
+still need a stable checkout on the board.
+
+If you still use those legacy remote flows, the default checkout path is:
 
 ```bash
 ~/yoyopod-core
@@ -96,9 +101,9 @@ If you choose a different path, it must match `project_dir` in your deploy confi
 
 Use this when the board does not already have a YoYoPod deployment.
 
-### 1. Clone the repo to the stable control-plane path on the Pi
+### 1. Clone the repo on the Pi for bootstrap
 
-SSH to the Pi and clone into the configured `project_dir`:
+SSH to the Pi and clone the repo somewhere convenient for bootstrap:
 
 ```bash
 ssh tifo@rpi-zero
@@ -108,7 +113,8 @@ cd ~/yoyopod-core
 
 ### 2. Install the board prerequisites
 
-From the dev machine, run the repo-owned setup flow against that checkout:
+From the dev machine, run the repo-owned setup flow against that checkout if you
+want the legacy `remote setup/validate` tooling available:
 
 ```bash
 uv run yoyopod remote setup --with-pisugar
@@ -134,6 +140,9 @@ sudo -E ./deploy/scripts/bootstrap_pi.sh --root=/srv/yoyopod-alt
 ```
 
 That value must match `slot.root` in `deploy/pi-deploy.local.yaml`.
+
+After bootstrap completes, `yoyopod remote release ...` no longer needs this
+checkout to remain on the Pi.
 
 ### 4. Build the first slot locally
 
@@ -194,7 +203,6 @@ Use this when the board already runs the legacy working-tree deployment under
 
 Before cutover, verify these points:
 
-- the stable checkout path on the Pi is correct and reachable
 - any important local config edits under `~/yoyopod-core/config/` are reviewed
 - you understand that slot deploy runs the bundled slot `config/`, not `state/config/`
 - you have a maintenance window for the first cutover because `--first-deploy`
@@ -323,11 +331,12 @@ ssh tifo@rpi-zero 'readlink -f /opt/yoyopod/current && readlink -f /opt/yoyopod/
 
 These are the issues found while bringing the flow up on a real Pi Zero 2W.
 
-### Stable checkout is still required
+### Release commands no longer need a repo checkout, but legacy remote flows still do
 
-Slot deploy moves the runtime to `/opt/yoyopod`, but remote commands still use
-the stable `project_dir` checkout as their SSH entrypoint. Do not delete
-`~/yoyopod-core` after migration unless the remote transport contract changes too.
+`yoyopod remote release ...` now talks directly to `/opt/yoyopod`, so it does not
+need `~/yoyopod-core` after bootstrap. The older `remote sync`, `remote validate`,
+and `remote setup` flows still depend on `project_dir`, so only remove the checkout
+if you are intentionally dropping those workflows.
 
 ### First deploy has no safety net
 
@@ -350,8 +359,8 @@ from scratch in the new slot.
 
 Pi-side helper commands like `health preflight` and `build ensure-native` must
 import from the slot's `app/` tree, not whatever still exists in
-`~/yoyopod-core`. Otherwise a later SSH session can accidentally execute the wrong
-code.
+the older board checkout. Otherwise a later SSH session can accidentally execute
+the wrong code.
 
 ### Windows upload path needs permission repair
 

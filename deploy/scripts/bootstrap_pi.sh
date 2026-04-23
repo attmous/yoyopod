@@ -109,6 +109,10 @@ Next steps on the dev machine:
 Then on the Pi:
   sudo systemctl enable --now yoyopod-slot.service
 
+After bootstrap, `yoyopod remote release ...` talks directly to ${ROOT}
+and does not require this repo checkout to stay on the Pi. Keep the checkout
+only if you still use `remote sync`, `remote validate`, or `remote setup`.
+
 NOTE: the running app does not yet honour YOYOPOD_STATE_DIR/config/ -
 the config loader still reads from the slot's relative ./config dir.
 Migrated config in ${ROOT}/state/config/ is preserved for reference,
