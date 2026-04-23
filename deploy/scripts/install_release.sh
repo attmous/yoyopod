@@ -48,7 +48,11 @@ if [ -z "${ARTIFACT}" ] && [ -z "${URL}" ]; then
     exit 2
 fi
 
-TMP_DIR="$(mktemp -d /tmp/yoyopod-install.XXXXXX)"
+install -d -m 0755 "${ROOT}" "${ROOT}/releases" "${ROOT}/state" "${ROOT}/state/tmp" "${ROOT}/bin"
+
+# Do not stage large artifacts in /tmp on the Pi: it is typically a small tmpfs.
+TMP_ROOT="${ROOT}/state/tmp"
+TMP_DIR="$(mktemp -d "${TMP_ROOT%/}/yoyopod-install.XXXXXX")"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 STAGE_DIR="${TMP_DIR}/stage"
 META_ENV="${TMP_DIR}/slot.env"
@@ -173,8 +177,6 @@ _live_probe() {
     return 1
 }
 
-install -d -m 0755 "${ROOT}" "${ROOT}/releases" "${ROOT}/state" "${ROOT}/bin"
-
 ARTIFACT_PATH="${ARTIFACT}"
 if [ -n "${URL}" ]; then
     ARTIFACT_PATH="${TMP_DIR}/release.tar.gz"
@@ -222,7 +224,9 @@ fi
 ln -sfn "${TARGET_DIR}" "${CURRENT_LINK}.new"
 mv -T "${CURRENT_LINK}.new" "${CURRENT_LINK}"
 
-if command -v systemctl >/dev/null 2>&1; then
+if [ "${YOYOPOD_SKIP_SYSTEMCTL:-0}" = "1" ]; then
+    echo "install-release: skipping systemctl"
+elif command -v systemctl >/dev/null 2>&1; then
     echo "install-release: restart yoyopod-slot.service"
     systemctl restart yoyopod-slot.service
     if ! _live_probe "${ROOT}" "${VERSION}"; then
