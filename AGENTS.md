@@ -33,6 +33,7 @@ Canonical deploy/debug skills
 - `skills/yoyopod-restart/SKILL.md`
 - `skills/yoyopod-status/SKILL.md`
 - `skills/yoyopod-screenshot/SKILL.md`
+- `docs/SLOT_DEPLOY.md` (slot-deploy + OTA-ready flow; coexists with the legacy skills above)
 
 Current runtime summary
 - Entrypoint: `yoyopod.py` -> `yoyopod.main` -> `YoyoPodApp`

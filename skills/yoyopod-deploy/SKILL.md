@@ -43,3 +43,13 @@ If the file does not exist yet, run `yoyopod remote config edit` first. That com
    Include the relevant error output in your response.
 
 6. **Report the result.** Include the deployed branch, exact SHA, whether validation passed, and that the app was left running for manual testing when the flow succeeded.
+
+## Slot-deploy alternative (OTA-ready)
+
+For Pis bootstrapped via `deploy/scripts/bootstrap_pi.sh`, use:
+
+  yoyopod remote release push ./build/releases/<version>
+
+This replaces the git-branch+validate flow with an atomic slot flip.
+See `docs/SLOT_DEPLOY.md`. The classic flow above remains the default
+until all Pis are migrated.
