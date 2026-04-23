@@ -84,12 +84,15 @@ def _flip_symlinks_on_pi(conn: object, version: str) -> int:
 
 def _run_live_probe_on_pi(conn: object, version: str, timeout_s: int = 60) -> int:
     """Poll the Pi until the new version reports as live, or timeout."""
-    current_path = _slots().current_path()
+    paths = _slots()
+    current_path = paths.current_path()
     # Live probe runs against the CURRENT slot (after flip), so use current_path
-    # to find the active venv.
+    # to find the active venv.  Export YOYOPOD_RELEASE_MANIFEST so that
+    # health live reads the manifest from the correct (non-default) slot root.
     cmd = (
         f"for i in $(seq 1 {timeout_s}); do "
-        f"out=$(PYTHONPATH={current_path}/app:{current_path}/venv "
+        f"out=$(YOYOPOD_RELEASE_MANIFEST={current_path}/manifest.json "
+        f"PYTHONPATH={current_path}/app:{current_path}/venv "
         f"python3 -m yoyopod_cli health live 2>/dev/null) && "
         f"echo \"$out\" | grep -q {shlex.quote('version=' + version)} && exit 0; "
         f"sleep 1; done; exit 1"
@@ -104,12 +107,16 @@ def _rollback_on_pi(conn: object) -> int:
 
 def _status_from_pi(conn: object) -> str:
     """Return the status output from the Pi, or raise typer.Exit on SSH failure."""
-    current_path = _slots().current_path()
-    previous_path = _slots().previous_path()
+    paths = _slots()
+    current_path = paths.current_path()
+    previous_path = paths.previous_path()
+    # Export YOYOPOD_RELEASE_MANIFEST so health live reads from the correct slot
+    # root when slot.root is non-default.
     cmd = (
         f"echo current=$(readlink -f {current_path} 2>/dev/null | xargs -n1 basename); "
         f"echo previous=$(readlink -f {previous_path} 2>/dev/null | xargs -n1 basename); "
-        f"echo health=$(PYTHONPATH={current_path}/app:{current_path}/venv "
+        f"echo health=$(YOYOPOD_RELEASE_MANIFEST={current_path}/manifest.json "
+        f"PYTHONPATH={current_path}/app:{current_path}/venv "
         f"python3 -m yoyopod_cli health live >/dev/null 2>&1 && echo ok || echo fail)"
     )
     result = run_remote_capture(conn, cmd)  # type: ignore[arg-type]

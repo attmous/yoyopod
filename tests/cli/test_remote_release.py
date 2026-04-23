@@ -397,6 +397,47 @@ def test_push_with_force_overwrites_non_current_slot(
     rsync.assert_called_once()
 
 
+# --- New tests for Fix 3: YOYOPOD_RELEASE_MANIFEST in SSH health invocations ---
+
+
+@patch("yoyopod_cli.remote_release.run_remote")
+def test_live_probe_command_exports_release_manifest_env(
+    run_remote_mock: MagicMock,
+) -> None:
+    """The SSH command for the live probe must export YOYOPOD_RELEASE_MANIFEST."""
+    fake_conn = MagicMock()
+    fake_conn.host = "pi"
+    fake_conn.user = "user"
+    run_remote_mock.return_value = 0
+    from yoyopod_cli.remote_release import _run_live_probe_on_pi
+
+    _run_live_probe_on_pi(fake_conn, "2026.04.22-abc", timeout_s=1)
+    cmd = run_remote_mock.call_args[0][1]
+    assert "YOYOPOD_RELEASE_MANIFEST=" in cmd
+    assert "/current/manifest.json" in cmd
+
+
+@patch("yoyopod_cli.remote_release.run_remote_capture")
+def test_status_command_exports_release_manifest_env(
+    capture: MagicMock,
+) -> None:
+    """The SSH command for status must export YOYOPOD_RELEASE_MANIFEST."""
+    fake_conn = MagicMock()
+    fake_conn.host = "pi"
+    fake_conn.user = "user"
+    fake_result = MagicMock()
+    fake_result.returncode = 0
+    fake_result.stdout = ""
+    fake_result.stderr = ""
+    capture.return_value = fake_result
+    from yoyopod_cli.remote_release import _status_from_pi
+
+    _status_from_pi(fake_conn)
+    cmd = capture.call_args[0][1]
+    assert "YOYOPOD_RELEASE_MANIFEST=" in cmd
+    assert "/current/manifest.json" in cmd
+
+
 @patch("yoyopod_cli.remote_release._slot_exists_state")
 @patch("yoyopod_cli.remote_release._check_rollback_available")
 @patch("yoyopod_cli.remote_release._rsync_to_pi")
