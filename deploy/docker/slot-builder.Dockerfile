@@ -18,6 +18,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
+COPY yoyopod/__init__.py yoyopod/_version.py /src/yoyopod/
 COPY yoyopod_cli /src/yoyopod_cli
 COPY yoyopod/ui/lvgl_binding/native /src/yoyopod/ui/lvgl_binding/native
 COPY yoyopod/backends/voip/shim_native /src/yoyopod/backends/voip/shim_native
