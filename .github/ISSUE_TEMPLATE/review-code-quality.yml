@@ -1,0 +1,111 @@
+name: Review finding — Code quality
+description: File a code-quality finding from a codebase review (error handling, logging, dead code, naming, idioms, perf hot-paths, security).
+title: "[CQ] "
+labels: ["code-quality", "review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for code-quality findings produced during a codebase review.
+        Perf and security findings ride on this form via the `Concern type` dropdown
+        until finding volume justifies their own templates.
+        See `.github/ISSUE_TEMPLATE/README.md` for the reviewer contract.
+
+  - type: input
+    id: finding-id
+    attributes:
+      label: Finding ID
+      description: Short reviewer-assigned ID, e.g. `CQ01`. Optional but helpful for cross-referencing a review summary issue.
+      placeholder: CQ01
+    validations:
+      required: false
+
+  - type: input
+    id: source-commit-sha
+    attributes:
+      label: Source commit SHA
+      description: The exact commit SHA the finding was observed against. Pins the finding so it remains triage-able after future refactors.
+      placeholder: 8f624ed2...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: concern-type
+    attributes:
+      label: Concern type
+      description: Which code-quality concern does this finding hit?
+      options:
+        - error-handling
+        - logging
+        - dead-code
+        - naming
+        - idioms
+        - perf-hotpath
+        - security
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - critical
+        - high
+        - medium
+        - low
+    validations:
+      required: true
+
+  - type: dropdown
+    id: effort
+    attributes:
+      label: Effort
+      options:
+        - small
+        - medium
+        - large
+    validations:
+      required: true
+
+  - type: textarea
+    id: files-affected
+    attributes:
+      label: Files affected
+      description: Code paths, one per line. Line numbers are optional — paths are primary because they survive refactors better than line numbers.
+      placeholder: |
+        yoyopod/core/bus.py
+    validations:
+      required: true
+
+  - type: textarea
+    id: finding
+    attributes:
+      label: Finding
+      description: What's wrong, observed at the pinned SHA. Describe the current behaviour concretely.
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: What breaks, what's risked, or which rule/doc it violates. Explain why this finding matters.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested-direction
+    attributes:
+      label: Suggested direction
+      description: Observational, not prescriptive. State a principle or property to restore.
+    validations:
+      required: false
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Links to `rules/*.md`, `docs/*.md`, prior issues, or external best-practice references.
+    validations:
+      required: false
