@@ -21,6 +21,7 @@ from pathlib import Path
 import typer
 
 from yoyopod.core.release import current_release
+from yoyopod.core.setup_contract import RUNTIME_REQUIRED_CONFIG_FILES
 from yoyopod_cli.release_manifest import load_manifest
 
 app = typer.Typer(name="health", help="Slot-deploy health probes.")
@@ -46,6 +47,12 @@ def preflight(
     for required in ("venv", "app", "config"):
         if not (slot / required).is_dir():
             errors.append(f"{required}/ missing in {slot}")
+
+    # Each runtime-required config file must be present in the slot.
+    for relative in RUNTIME_REQUIRED_CONFIG_FILES:
+        target = slot / relative
+        if not target.is_file():
+            errors.append(f"required config file missing: {relative}")
 
     launch = slot / "bin" / "launch"
     if not launch.exists():
