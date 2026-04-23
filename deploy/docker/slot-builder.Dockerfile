@@ -32,10 +32,10 @@ RUN python -c "import sys; sys.path.insert(0, '/src'); from yoyopod_cli.build im
 
 COPY . /src
 
-RUN if [ -n \"$VERSION\" ]; then \
-        python /src/scripts/build_release.py --output /out --channel \"$CHANNEL\" --version \"$VERSION\" --with-venv --python-version 3.12; \
+RUN if [ -n "$VERSION" ]; then \
+        python /src/scripts/build_release.py --output /out --channel "$CHANNEL" --version "$VERSION" --with-venv --python-version 3.12; \
     else \
-        python /src/scripts/build_release.py --output /out --channel \"$CHANNEL\" --with-venv --python-version 3.12; \
+        python /src/scripts/build_release.py --output /out --channel "$CHANNEL" --with-venv --python-version 3.12; \
     fi
 
 FROM scratch AS export
