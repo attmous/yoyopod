@@ -3,15 +3,20 @@
 Produces:
   <output_root>/<version>/
     ├── app/              # yoyopod + yoyopod_cli source trees
-    ├── venv/             # uv-resolved site-packages (skipped with --skip-venv)
+    ├── config/           # repo's top-level config/ tree (default app config)
+    ├── venv/             # uv-resolved site-packages (only when --with-venv)
     ├── bin/launch        # copy of deploy/scripts/launch.sh
     ├── assets/           # currently empty; reserved for fonts/images
     └── manifest.json     # schema-v1 release manifest
 
-The output is rsync-ready: every path is relative, the launch script is
-executable, and the manifest's `full` artifact records a sha256 + size of
-a tarball of this directory (the tarball is also written alongside so
-future OTA can serve it).
+VENV NOTE: --with-venv is OFF by default. Cross-compiling a Pi-aarch64
+venv from a dev machine is unreliable because not every YoyoPod dep
+ships an aarch64 wheel and source builds for the target can't run on
+the host. Without --with-venv, the slot ships an empty venv/ dir and
+the launcher falls back to the Pi's system Python (which already has
+deps installed via the legacy `uv sync` flow). Use --with-venv only
+when running this script in a proper Linux/aarch64 build environment
+(CI runner, qemu, buildx container).
 """
 
 from __future__ import annotations
@@ -153,12 +158,14 @@ def build(
     output_root: Path,
     version: str,
     channel: str,
-    skip_venv: bool = False,
+    skip_venv: bool = True,
     python_version: str = "3.12",
 ) -> Path:
     """Produce a slot directory at <output_root>/<version>/.
 
-    Returns the slot directory path.
+    Returns the slot directory path. Venv resolution is skipped by default
+    (skip_venv=True); pass skip_venv=False only in a Linux/aarch64 build
+    environment where cross-compile constraints can be satisfied.
     """
     valid_channels = ("dev", "beta", "stable")
     if channel not in valid_channels:
@@ -219,7 +226,16 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True, help="Output root dir")
     parser.add_argument("--channel", choices=["dev", "beta", "stable"], default="dev")
     parser.add_argument("--version", type=str, default=None)
-    parser.add_argument("--skip-venv", action="store_true", help="Skip wheel resolution")
+    parser.add_argument(
+        "--with-venv",
+        action="store_true",
+        help=(
+            "Resolve and bundle a venv into the slot. OFF by default — "
+            "cross-platform venv resolution is unreliable; the slot launcher "
+            "falls back to the Pi's system Python. Use this only in a Linux/"
+            "aarch64 build environment."
+        ),
+    )
     parser.add_argument("--python-version", default="3.12")
     args = parser.parse_args()
 
@@ -233,7 +249,7 @@ def main() -> None:
         output_root=args.output,
         version=version,
         channel=args.channel,
-        skip_venv=args.skip_venv,
+        skip_venv=not args.with_venv,
         python_version=args.python_version,
     )
     print(str(slot))

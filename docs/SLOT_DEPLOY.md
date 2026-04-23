@@ -43,6 +43,12 @@ uv run python scripts/build_release.py --output ./build/releases --channel dev
 yoyopod remote release push ./build/releases/<version>
 ```
 
+> **Venv note:** `--with-venv` is OFF by default. The slot ships an empty
+> `venv/` directory and the launcher falls back to the Pi's system Python
+> (which has deps installed via `uv sync`). Pass `--with-venv` only when
+> running in a proper Linux/aarch64 build environment (CI runner, qemu,
+> buildx container) where cross-compile wheel resolution can succeed.
+
 This does:
 1. rsync the slot dir to `/opt/yoyopod/releases/<version>/`
 2. `yoyopod health preflight --slot /opt/yoyopod/releases/<version>` over SSH

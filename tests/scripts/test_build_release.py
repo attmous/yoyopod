@@ -117,6 +117,34 @@ def test_build_uses_real_launcher_from_deploy_scripts(tmp_path: Path) -> None:
     assert first_line.startswith("#!/usr/bin/env bash")
 
 
+def test_build_skips_venv_by_default(tmp_path: Path) -> None:
+    fake_repo = tmp_path / "repo"
+    (fake_repo / "yoyopod").mkdir(parents=True)
+    (fake_repo / "yoyopod" / "__init__.py").write_text("")
+    (fake_repo / "yoyopod_cli").mkdir()
+    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
+    (fake_repo / "config" / "app").mkdir(parents=True)
+    (fake_repo / "config" / "app" / "core.yaml").write_text("test: true\n")
+    (fake_repo / "deploy" / "scripts").mkdir(parents=True)
+    launch = fake_repo / "deploy" / "scripts" / "launch.sh"
+    launch.write_text("#!/bin/sh\nexit 0\n")
+    launch.chmod(0o755)
+
+    out = tmp_path / "out"
+    # Note: NOT passing skip_venv — defaults to True now.
+    slot = build_release.build(
+        repo_root=fake_repo,
+        output_root=out,
+        version="2026.04.22-default",
+        channel="dev",
+    )
+    # venv/ must exist (as empty dir) — required by preflight.
+    assert (slot / "venv").is_dir()
+    # And it must be empty since we skipped resolution.
+    assert list((slot / "venv").iterdir()) == []
+
+
 def test_build_rejects_invalid_channel(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
     (fake_repo / "yoyopod").mkdir(parents=True)
