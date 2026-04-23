@@ -9,6 +9,7 @@ diff-artifact fields reserved for a future OTA daemon.
 from __future__ import annotations
 
 import json
+import re
 import typing
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -21,6 +22,18 @@ _VALID_CHANNELS: tuple[str, ...] = typing.get_args(Channel)
 
 ArtifactType = Literal["full", "diff"]
 _VALID_ARTIFACT_TYPES: tuple[str, ...] = typing.get_args(ArtifactType)
+_RELEASE_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
+
+
+def validate_release_version(version: str) -> None:
+    """Reject release versions that could escape slot path construction."""
+
+    if not version:
+        raise ValueError("version must be non-empty")
+    if version in {".", ".."} or not _RELEASE_VERSION_RE.fullmatch(version):
+        raise ValueError(
+            "version must be a safe path segment using only letters, numbers, '.', '_', '+', '-'"
+        )
 
 
 @dataclass(frozen=True)
@@ -83,8 +96,7 @@ class ReleaseManifest:
     def __post_init__(self) -> None:
         if self.channel not in _VALID_CHANNELS:
             raise ValueError(f"channel must be one of {_VALID_CHANNELS}")
-        if not self.version:
-            raise ValueError("version must be non-empty")
+        validate_release_version(self.version)
         if "full" not in self.artifacts:
             raise ValueError("artifacts must include a 'full' entry")
 
@@ -98,6 +110,8 @@ def dump_manifest(manifest: ReleaseManifest, path: Path) -> None:
 def load_manifest(path: Path) -> ReleaseManifest:
     """Parse a manifest JSON file. Raises ValueError on schema mismatch or bad shape."""
     raw = json.loads(path.read_text())
+    if not isinstance(raw, dict):
+        raise ValueError("Invalid manifest structure: root must be an object")
     schema = raw.get("schema")
     if schema != SCHEMA_VERSION:
         raise ValueError(f"Unsupported manifest schema: {schema!r} (expected {SCHEMA_VERSION})")

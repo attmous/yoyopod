@@ -5,6 +5,7 @@ StartLimitBurst=2
 
 [Service]
 Type=oneshot
-ExecStart=/opt/yoyopod/bin/rollback.sh
+EnvironmentFile=-/etc/default/yoyopod-slot
+ExecStart=/usr/bin/env bash -lc 'exec "$${YOYOPOD_ROOT:-/opt/yoyopod}/bin/rollback.sh"'
 StandardOutput=journal
 StandardError=journal

@@ -14,6 +14,7 @@ from typing import Annotated
 import typer
 
 from yoyopod_cli.common import REPO_ROOT, checkout_python_path
+from yoyopod_cli.paths import load_pi_paths
 from yoyopod.core import SETUP_TRACKED_CONFIG_FILES
 
 app = typer.Typer(
@@ -277,9 +278,10 @@ def collect_pi_setup_checks(
     """Collect Raspberry Pi dependency verification checks."""
 
     checks: list[SetupCheck] = []
+    pi = load_pi_paths()
     checks.extend(_file_check(path) for path in TRACKED_CONFIG_PATHS)
     checks.append(_tool_check("python3"))
-    checks.append(_file_check(REPO_ROOT / _pi_venv_python()))
+    checks.append(_file_check(REPO_ROOT / _pi_venv_python(pi.venv)))
     checks.extend(
         _apt_package_check(package)
         for package in pi_package_list(

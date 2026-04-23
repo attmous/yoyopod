@@ -45,7 +45,7 @@ jobs:
           git diff --name-only "${BASE_SHA}" "${GITHUB_SHA}" > changed-files.txt
           cat changed-files.txt
 
-          if grep -Eq '^(\.github/workflows/(ci|release)\.yml|\.python-version|pyproject\.toml|yoyopod\.py|config/|deploy/docker/slot-builder\.Dockerfile|deploy/scripts/(install_release|launch)\.sh|scripts/(build_release|build_slot_artifact_ci)\.sh|yoyopod/|yoyopod_cli/)' changed-files.txt; then
+          if grep -Eq '^(\.github/workflows/(ci|release)\.yml|\.python-version|pyproject\.toml|yoyopod\.py|config/|deploy/docker/slot-builder\.Dockerfile|deploy/scripts/(install_release|launch)\.sh|scripts/(build_release\.py|build_slot_artifact_ci\.sh)|yoyopod/|yoyopod_cli/)' changed-files.txt; then
             echo "slot_arm64=true" >> "${GITHUB_OUTPUT}"
           else
             echo "slot_arm64=false" >> "${GITHUB_OUTPUT}"

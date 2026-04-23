@@ -19,7 +19,7 @@ INSTALL_RELEASE_SH = (
 )
 
 
-def _make_slot_artifact(tmp_path: Path, version: str) -> Path:
+def _make_slot_artifact(tmp_path: Path, version: str, *, manifest_version: str | None = None) -> Path:
     slot = tmp_path / version
     artifact = tmp_path / f"{version}.tar.gz"
 
@@ -46,7 +46,7 @@ def _make_slot_artifact(tmp_path: Path, version: str) -> Path:
 
     manifest = slot / "manifest.json"
     manifest.write_text(
-        json.dumps({"version": version, "channel": "dev"}, indent=2) + "\n",
+        json.dumps({"version": manifest_version or version, "channel": "dev"}, indent=2) + "\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -84,4 +84,32 @@ def test_install_release_uses_slot_state_tmp_and_supports_file_urls(tmp_path: Pa
     assert result.returncode == 0, result.stderr
     assert str(root / "state" / "tmp") in result.stderr
     assert (root / "current").resolve() == (root / "releases" / version).resolve()
+    assert not (root / "previous").exists()
     assert "install-release: skipping systemctl" in result.stdout
+
+
+def test_install_release_rejects_path_like_manifest_version(tmp_path: Path) -> None:
+    artifact = _make_slot_artifact(tmp_path, "safe-slot", manifest_version="../../escape")
+    root = tmp_path / "yoyopod"
+    env = {
+        **os.environ,
+        "YOYOPOD_INSTALL_RELEASE_ALLOW_NON_ROOT": "1",
+        "YOYOPOD_SKIP_SYSTEMCTL": "1",
+    }
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(INSTALL_RELEASE_SH),
+            f"--root={root}",
+            f"--artifact={artifact}",
+            "--first-deploy",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "unsafe version" in result.stderr.lower()
+    assert not (tmp_path / "escape").exists()

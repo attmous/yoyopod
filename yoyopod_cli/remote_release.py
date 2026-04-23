@@ -15,7 +15,7 @@ import typer
 
 from yoyopod_cli.common import checkout_python_path
 from yoyopod_cli.paths import SlotPaths, load_pi_paths, load_slot_paths
-from yoyopod_cli.release_manifest import ReleaseManifest, load_manifest
+from yoyopod_cli.release_manifest import ReleaseManifest, load_manifest, validate_release_version
 from yoyopod_cli.remote_shared import RemoteConnection, pi_conn
 from yoyopod_cli.remote_transport import run_remote, run_remote_capture, validate_config
 from yoyopod_cli.slot_contract import is_self_contained_slot, missing_self_contained_paths
@@ -60,6 +60,7 @@ def _conn(ctx: typer.Context) -> RemoteConnection:
 
 
 def _slot_dir(version: str) -> str:
+    validate_release_version(version)
     return f"{_slots().releases_dir()}/{version}"
 
 
@@ -107,6 +108,10 @@ def _safe_extract_tarball(artifact: Path, destination: Path) -> None:
     destination_root = destination.resolve()
     with tarfile.open(artifact, "r:*") as handle:
         for member in handle.getmembers():
+            if member.issym() or member.islnk():
+                raise ValueError(f"tarball contains unsafe link: {member.name}")
+            if not (member.isdir() or member.isreg()):
+                raise ValueError(f"tarball contains unsafe member type: {member.name}")
             target = (destination / member.name).resolve()
             try:
                 target.relative_to(destination_root)
@@ -235,24 +240,22 @@ def _hydrate_slot_on_pi(conn: object, version: str) -> int:
         "else "
         '  python3 -m venv "$tmp_venv"; '
         '  "$tmp_venv/bin/python" -m pip install --upgrade pip setuptools wheel; '
-        f"  if [ -s {shlex.quote(requirements_path)} ]; then "
-        f'    "$tmp_venv/bin/python" -m pip install -r {shlex.quote(requirements_path)}; '
-        "  fi; "
         f"fi; "
+        f"if [ -s {shlex.quote(requirements_path)} ]; then "
+        f'  "$tmp_venv/bin/python" -m pip install -r {shlex.quote(requirements_path)}; '
+        "fi; "
         f"rm -rf {shlex.quote(venv_dir)}; "
         f'mv "$tmp_venv" {shlex.quote(venv_dir)}; '
         "trap - EXIT; "
         f"if [ -f {shlex.quote(current_lvgl_shim)} ]; then "
         f"  rm -rf {shlex.quote(slot_lvgl_build)} && mkdir -p {shlex.quote(slot_lvgl_build)} && "
-        f"  cp -aL {shlex.quote(current_lvgl_shim)} {shlex.quote(slot_lvgl_shim)} && "
-        f"  touch {shlex.quote(slot_lvgl_shim)}; "
+        f"  cp -aL {shlex.quote(current_lvgl_shim)} {shlex.quote(slot_lvgl_shim)}; "
         f"fi; "
         f"if [ -f {shlex.quote(current_liblinphone_shim)} ]; then "
         f"  rm -rf {shlex.quote(slot_liblinphone_build)} && "
         f"  mkdir -p {shlex.quote(slot_liblinphone_build)} && "
         f"  cp -aL {shlex.quote(current_liblinphone_shim)} "
-        f"{shlex.quote(slot_liblinphone_shim)} && "
-        f"  touch {shlex.quote(slot_liblinphone_shim)}; "
+        f"{shlex.quote(slot_liblinphone_shim)}; "
         f"fi; "
         f"{_slot_subapp_command(slot_dir, 'yoyopod_cli.build', 'ensure-native')}"
     )
@@ -266,8 +269,8 @@ def _flip_symlinks_on_pi(conn: object, version: str) -> int:
     current_path = _slots().current_path()
     script = (
         "set -e; "
-        f"prev=$(readlink -f {shlex.quote(current_path)} 2>/dev/null || echo NONE); "
-        'if [ "$prev" != "NONE" ]; then '
+        f"if test -L {shlex.quote(current_path)} && "
+        f"prev=$(readlink -e {shlex.quote(current_path)} 2>/dev/null); then "
         f'  ln -sfn "$prev" {shlex.quote(prev_path)}.new && '
         f"  mv -T {shlex.quote(prev_path)}.new {shlex.quote(prev_path)}; "
         "fi; "
@@ -361,7 +364,17 @@ def _slot_exists_state(conn: object, version: str) -> str:
         f'"$(readlink -f {shlex.quote(target)} 2>/dev/null)" ]; then echo CURRENT; '
         "else echo EXISTS; fi"
     )
-    return _run_slot_remote_capture(conn, cmd).stdout.strip()
+    result = _run_slot_remote_capture(conn, cmd)
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        msg = f"slot state probe failed (exit {result.returncode})"
+        if stderr:
+            msg += f": {stderr}"
+        raise RuntimeError(msg)
+    state = result.stdout.strip()
+    if state not in {"NEW", "EXISTS", "CURRENT"}:
+        raise RuntimeError(f"slot state probe returned unexpected output: {state!r}")
+    return state
 
 
 def _remote_build_pi_command(*, channel: str, version: str | None, python_version: str) -> str:
@@ -370,12 +383,12 @@ def _remote_build_pi_command(*, channel: str, version: str | None, python_versio
     python_bin = shlex.quote(checkout_python_path(pi.venv))
     version_arg = f" --version {shlex.quote(version)}" if version else ""
     return (
-        "set -e; "
+        "set -euo pipefail; "
         "build_root=$(mktemp -d /tmp/yoyopod-release-build.XXXXXX); "
         f"{python_bin} -m yoyopod_cli.main build ensure-native; "
         f'slot=$({python_bin} scripts/build_release.py --output "$build_root" --channel '
         f"{shlex.quote(channel)}{version_arg} --with-venv --python-version "
-        f"{shlex.quote(python_version)}); "
+        f"{shlex.quote(python_version)} | tail -n 1); "
         'artifact="${slot}.tar.gz"; '
         'test -f "$artifact"; '
         'printf "YOYOPOD_BUILD_ROOT=%s\\n" "$build_root"; '
@@ -534,7 +547,8 @@ def push(
             typer.echo(f"rsync -> {user}@{host}:{_slots().releases_dir()}/{manifest.version}/")
             rc = _rsync_to_pi(conn, prepared.slot_dir, manifest.version)
             if rc != 0:
-                typer.echo("rsync failed", err=True)
+                typer.echo("rsync failed -- removing uploaded slot", err=True)
+                _cleanup_remote_slot(conn, manifest.version)
                 raise typer.Exit(code=rc)
 
             if prepared.self_contained:

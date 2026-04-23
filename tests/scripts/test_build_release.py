@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -69,6 +70,8 @@ def test_build_writes_manifest(tmp_path: Path) -> None:
     assert "full" in manifest["artifacts"]
     assert manifest["artifacts"]["full"]["type"] == "full"
     assert manifest["artifacts"]["full"]["size"] > 0
+    with tarfile.open(out / "2026.04.22-test.tar.gz", "r:gz") as handle:
+        assert "2026.04.22-test/manifest.json" in handle.getnames()
 
 
 def test_build_writes_runtime_requirements_from_pyproject(tmp_path: Path) -> None:
@@ -171,6 +174,7 @@ def test_build_release_script_runs_without_installed_checkout(tmp_path: Path) ->
             "dev",
             "--version",
             "2026.04.22-no-site",
+            "--skip-venv",
         ],
         cwd=real_repo,
         capture_output=True,
@@ -209,7 +213,7 @@ def test_build_normalizes_launcher_to_lf(tmp_path: Path) -> None:
     assert contents.startswith(b"#!/usr/bin/env bash\n")
 
 
-def test_build_skips_venv_by_default(tmp_path: Path) -> None:
+def test_build_can_skip_venv_when_requested(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
     (fake_repo / "yoyopod").mkdir(parents=True)
     (fake_repo / "yoyopod" / "__init__.py").write_text("")
@@ -224,17 +228,80 @@ def test_build_skips_venv_by_default(tmp_path: Path) -> None:
     launch.chmod(0o755)
 
     out = tmp_path / "out"
-    # Note: NOT passing skip_venv — defaults to True now.
     slot = build_release.build(
         repo_root=fake_repo,
         output_root=out,
         version="2026.04.22-default",
         channel="dev",
+        skip_venv=True,
     )
-    # venv/ must exist (as empty dir) — required by preflight.
     assert (slot / "venv").is_dir()
-    # And it must be empty since we skipped resolution.
     assert list((slot / "venv").iterdir()) == []
+
+
+def test_build_release_cli_bundles_venv_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, object] = {}
+
+    def fake_build(**kwargs: object) -> Path:
+        calls.update(kwargs)
+        slot = tmp_path / "out" / "2026.04.22-default"
+        slot.mkdir(parents=True)
+        return slot
+
+    monkeypatch.setattr(build_release, "build", fake_build)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_release.py",
+            "--output",
+            str(tmp_path / "out"),
+            "--channel",
+            "dev",
+            "--version",
+            "2026.04.22-default",
+        ],
+    )
+
+    build_release.main()
+
+    assert calls["skip_venv"] is False
+
+
+def test_build_release_cli_can_skip_venv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, object] = {}
+
+    def fake_build(**kwargs: object) -> Path:
+        calls.update(kwargs)
+        slot = tmp_path / "out" / "2026.04.22-skip"
+        slot.mkdir(parents=True)
+        return slot
+
+    monkeypatch.setattr(build_release, "build", fake_build)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_release.py",
+            "--output",
+            str(tmp_path / "out"),
+            "--channel",
+            "dev",
+            "--version",
+            "2026.04.22-skip",
+            "--skip-venv",
+        ],
+    )
+
+    build_release.main()
+
+    assert calls["skip_venv"] is True
 
 
 def test_build_rejects_invalid_channel(tmp_path: Path) -> None:

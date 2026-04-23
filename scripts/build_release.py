@@ -9,12 +9,10 @@ Produces:
     ├── assets/           # currently empty; reserved for fonts/images
     └── manifest.json     # schema-v1 release manifest
 
-SELF-CONTAINED NOTE: --with-venv is OFF by default. Cross-compiling a
-Pi-runnable slot from a Windows or non-aarch64 dev machine is unreliable
-because not every YoyoPod dependency ships a compatible wheel and the
-target-native venv layout is POSIX-only. Use --with-venv only in a proper
-Linux/aarch64 build environment, or build on a Pi checkout via
-`yoyopod remote release build-pi`.
+SELF-CONTAINED NOTE: venv bundling is ON by default. Build deployable Pi
+artifacts in a Linux/aarch64 environment, CI slot builder, or via
+`yoyopod remote release build-pi`. Use --skip-venv only for structure tests
+or legacy source-only compatibility flows.
 """
 
 from __future__ import annotations
@@ -267,14 +265,13 @@ def build(
     output_root: Path,
     version: str,
     channel: str,
-    skip_venv: bool = True,
+    skip_venv: bool = False,
     python_version: str = "3.12",
 ) -> Path:
     """Produce a slot directory at <output_root>/<version>/.
 
-    Returns the slot directory path. Venv resolution is skipped by default
-    (skip_venv=True); pass skip_venv=False only in a Linux/aarch64 build
-    environment where a self-contained Pi runtime can be produced.
+    Returns the slot directory path. Venv resolution is enabled by default;
+    pass skip_venv=True only for structure tests or legacy source-only slots.
     """
     valid_channels = ("dev", "beta", "stable")
     if channel not in valid_channels:
@@ -299,8 +296,6 @@ def build(
         _validate_self_contained_slot(slot_dir)
 
     tarball = output_root / f"{version}.tar.gz"
-    _make_tarball(slot_dir, tarball)
-
     manifest = ReleaseManifest(
         version=version,
         channel=channel,  # type: ignore[arg-type]
@@ -310,13 +305,31 @@ def build(
         artifacts={
             "full": Artifact(
                 type="full",
+                sha256="0" * 64,
+                size=0,
+                url=None,
+                base_version=None,
+            ),
+        },
+        requires=Requirements(min_os_version="0.0.0", min_battery_pct=0, min_free_mb=100),
+    )
+    dump_manifest(manifest, slot_dir / "manifest.json")
+    _make_tarball(slot_dir, tarball)
+    manifest = ReleaseManifest(
+        version=manifest.version,
+        channel=manifest.channel,
+        released_at=manifest.released_at,
+        artifacts={
+            "full": Artifact(
+                type="full",
                 sha256=_sha256(tarball),
                 size=tarball.stat().st_size,
                 url=None,
                 base_version=None,
             ),
         },
-        requires=Requirements(min_os_version="0.0.0", min_battery_pct=0, min_free_mb=100),
+        requires=manifest.requires,
+        signature=manifest.signature,
     )
     dump_manifest(manifest, slot_dir / "manifest.json")
     return slot_dir
@@ -341,11 +354,12 @@ def main() -> None:
     parser.add_argument(
         "--with-venv",
         action="store_true",
-        help=(
-            "Resolve and bundle a self-contained runtime venv into the slot. "
-            "OFF by default because target-native builds are only reliable in "
-            "a Linux/aarch64 environment or via `yoyopod remote release build-pi`."
-        ),
+        help="Deprecated compatibility flag; venv bundling is now the default.",
+    )
+    parser.add_argument(
+        "--skip-venv",
+        action="store_true",
+        help="Create an empty venv placeholder instead of a deployable runtime.",
     )
     parser.add_argument("--python-version", default="3.12")
     args = parser.parse_args()
@@ -360,7 +374,7 @@ def main() -> None:
         output_root=args.output,
         version=version,
         channel=args.channel,
-        skip_venv=not args.with_venv,
+        skip_venv=args.skip_venv,
         python_version=args.python_version,
     )
     print(str(slot))

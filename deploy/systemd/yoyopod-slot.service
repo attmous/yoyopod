@@ -10,8 +10,8 @@ OnFailure=yoyopod-rollback.service
 Type=simple
 EnvironmentFile=-/etc/default/yoyopod-slot
 Environment=PYTHONUNBUFFERED=1
-WorkingDirectory=/opt/yoyopod
-ExecStart=/opt/yoyopod/current/bin/launch
+WorkingDirectory=/
+ExecStart=/usr/bin/env bash -lc 'exec "$${YOYOPOD_ROOT:-/opt/yoyopod}/current/bin/launch"'
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM

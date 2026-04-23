@@ -55,6 +55,25 @@ def test_load_rejects_unknown_schema_version(tmp_path: Path) -> None:
         load_manifest(path)
 
 
+def test_load_rejects_non_object_manifest_root(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(["not", "an", "object"]))
+
+    with pytest.raises(ValueError, match="object"):
+        load_manifest(path)
+
+
+def test_manifest_rejects_path_like_versions() -> None:
+    with pytest.raises(ValueError, match="version"):
+        ReleaseManifest(
+            version="../../state",
+            channel="dev",
+            released_at="2026-04-22T10:00:00Z",
+            artifacts={"full": Artifact(type="full", sha256="a" * 64, size=10)},
+            requires=Requirements(),
+        )
+
+
 def test_load_rejects_missing_required_fields(tmp_path: Path) -> None:
     path = tmp_path / "manifest.json"
     path.write_text(

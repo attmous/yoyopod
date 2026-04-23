@@ -27,12 +27,22 @@ if [ ! -L "${PREVIOUS}" ]; then
     echo "rollback: ${PREVIOUS} is not a symlink (nothing to roll back to)" >&2
     exit 2
 fi
+CURRENT_TARGET="$(readlink -e "${CURRENT}" 2>/dev/null || true)"
+PREVIOUS_TARGET="$(readlink -e "${PREVIOUS}" 2>/dev/null || true)"
+if [ -z "${CURRENT_TARGET}" ]; then
+    echo "rollback: ${CURRENT} target is dangling or does not resolve" >&2
+    exit 2
+fi
+if [ -z "${PREVIOUS_TARGET}" ]; then
+    echo "rollback: ${PREVIOUS} target is dangling or does not resolve" >&2
+    exit 2
+fi
 
 # Swap current <-> previous atomically via a temp rename dance.
 # Linux rename(2) of a symlink over another symlink on the same filesystem is atomic.
 TMP="${ROOT}/current.tmp"
-ln -sfn "$(readlink "${CURRENT}")" "${TMP}"
-ln -sfn "$(readlink "${PREVIOUS}")" "${CURRENT}.new"
+ln -sfn "${CURRENT_TARGET}" "${TMP}"
+ln -sfn "${PREVIOUS_TARGET}" "${CURRENT}.new"
 mv -T "${CURRENT}.new" "${CURRENT}"
 mv -T "${TMP}" "${PREVIOUS}.new"
 mv -T "${PREVIOUS}.new" "${PREVIOUS}"
@@ -41,5 +51,6 @@ echo "rollback: swapped current <- $(readlink "${CURRENT}")"
 
 # Only attempt systemctl if we're on a systemd host (skipped in tests).
 if command -v systemctl >/dev/null 2>&1 && [ -z "${YOYOPOD_SKIP_SYSTEMCTL:-}" ]; then
+    systemctl reset-failed yoyopod-slot.service || true
     systemctl restart yoyopod-slot.service
 fi

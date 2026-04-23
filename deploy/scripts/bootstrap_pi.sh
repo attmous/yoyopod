@@ -55,8 +55,10 @@ INVOKING_GROUP="$(id -gn "${INVOKING_USER}")"
 echo "bootstrap: user=${INVOKING_USER} group=${INVOKING_GROUP} root=${ROOT}"
 
 # 1. Create directory skeleton.
+install -d -m 0755 -o root -g root \
+    "${ROOT}" "${ROOT}/bin"
 install -d -m 0755 -o "${INVOKING_USER}" -g "${INVOKING_GROUP}" \
-    "${ROOT}" "${ROOT}/releases" "${ROOT}/state" "${ROOT}/bin"
+    "${ROOT}/releases" "${ROOT}/state" "${ROOT}/state/tmp"
 
 # 2. Install rollback helper (owned by root, invoked by systemd).
 install -m 0755 -o root -g root \
@@ -74,26 +76,6 @@ install -m 0644 -o root -g root \
     "${REPO_ROOT}/deploy/systemd/yoyopod-rollback.service" \
     "${UNIT_DIR}/yoyopod-rollback.service"
 
-# Substitute placeholder paths in the installed unit files when a non-default root is used.
-if [ "${ROOT}" != "/opt/yoyopod" ]; then
-    sed -i "s|/opt/yoyopod|${ROOT}|g" \
-        "${UNIT_DIR}/yoyopod-slot.service" \
-        "${UNIT_DIR}/yoyopod-rollback.service"
-fi
-
-if [ -n "${RELEASE_ARCHIVE}" ] || [ -n "${RELEASE_URL}" ]; then
-    INSTALL_CMD=("${ROOT}/bin/install-release.sh" "--root=${ROOT}" "--first-deploy")
-    if [ -n "${RELEASE_ARCHIVE}" ]; then
-        INSTALL_CMD+=("--artifact=${RELEASE_ARCHIVE}")
-    fi
-    if [ -n "${RELEASE_URL}" ]; then
-        INSTALL_CMD+=("--url=${RELEASE_URL}")
-    fi
-    echo "bootstrap: install initial release"
-    "${INSTALL_CMD[@]}"
-    systemctl enable --now yoyopod-slot.service
-fi
-
 # 4. EnvironmentFile with the user/group the slot service should run as.
 cat > "/etc/default/yoyopod-slot" <<EOF
 # /etc/default/yoyopod-slot - written by bootstrap_pi.sh
@@ -110,6 +92,19 @@ if ! grep -q "^User=" "${UNIT_DIR}/yoyopod-slot.service"; then
 fi
 
 systemctl daemon-reload
+
+if [ -n "${RELEASE_ARCHIVE}" ] || [ -n "${RELEASE_URL}" ]; then
+    INSTALL_CMD=("${ROOT}/bin/install-release.sh" "--root=${ROOT}" "--first-deploy")
+    if [ -n "${RELEASE_ARCHIVE}" ]; then
+        INSTALL_CMD+=("--artifact=${RELEASE_ARCHIVE}")
+    fi
+    if [ -n "${RELEASE_URL}" ]; then
+        INSTALL_CMD+=("--url=${RELEASE_URL}")
+    fi
+    echo "bootstrap: install initial release"
+    "${INSTALL_CMD[@]}"
+    systemctl enable --now yoyopod-slot.service
+fi
 
 # 5. Optional migration from ~/yoyopod-core/ -> /opt/yoyopod/state/
 if [ "${MIGRATE}" -eq 1 ]; then

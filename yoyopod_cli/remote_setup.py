@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import shlex
-
 import typer
 
-from yoyopod_cli.common import checkout_module_command, configure_logging
+from yoyopod_cli.common import (
+    checkout_module_command,
+    configure_logging,
+    shell_join_preserving_home,
+)
 from yoyopod_cli.paths import load_pi_paths
 from yoyopod_cli.remote_shared import build_remote_app, pi_conn
 from yoyopod_cli.setup import SetupCommand, build_pi_setup_commands
@@ -18,7 +20,7 @@ app = build_remote_app("setup_remote", "Run setup on the Pi via SSH.")
 def _render_remote_setup_shell(*, commands: tuple[SetupCommand, ...]) -> str:
     """Render setup command tuples into one remote shell pipeline."""
 
-    return " && ".join(shlex.join(step.command) for step in commands)
+    return " && ".join(shell_join_preserving_home(step.command) for step in commands)
 
 
 def _build_setup(
@@ -41,6 +43,8 @@ def _build_setup(
     )
     shell = _render_remote_setup_shell(commands=commands)
     if dry_run:
+        import shlex
+
         return f"printf '%s\\n' {shlex.quote(shell)}"
     return shell
 

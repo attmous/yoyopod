@@ -87,6 +87,7 @@ _extract_artifact() {
 
     python3 - "$artifact_path" "$stage_dir" "$meta_env" <<'PY'
 import json
+import re
 import shlex
 import sys
 import tarfile
@@ -101,6 +102,12 @@ if not artifact.is_file():
 
 with tarfile.open(artifact, "r:*") as handle:
     for member in handle.getmembers():
+        if member.issym() or member.islnk():
+            raise SystemExit(f"install-release: tarball contains unsafe link: {member.name}")
+        if not (member.isdir() or member.isreg()):
+            raise SystemExit(
+                f"install-release: tarball contains unsafe member type: {member.name}"
+            )
         target = (stage_dir / member.name).resolve()
         try:
             target.relative_to(stage_dir)
@@ -125,6 +132,8 @@ data = json.loads(manifest_path.read_text(encoding="utf-8"))
 version = str(data.get("version", "")).strip()
 if not version:
     raise SystemExit(f"install-release: manifest missing version: {manifest_path}")
+if version in {".", ".."} or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*", version):
+    raise SystemExit(f"install-release: unsafe version in manifest: {version!r}")
 
 meta_env.write_text(
     f"VERSION={shlex.quote(version)}\nSLOT_DIR={shlex.quote(str(slot_dir))}\n",
@@ -216,7 +225,10 @@ _preflight_slot "${TARGET_DIR}"
 
 PREVIOUS_LINK="${ROOT}/previous"
 CURRENT_LINK="${ROOT}/current"
-PREV_TARGET="$(readlink -f "${CURRENT_LINK}" 2>/dev/null || true)"
+PREV_TARGET=""
+if [ -L "${CURRENT_LINK}" ]; then
+    PREV_TARGET="$(readlink -e "${CURRENT_LINK}" 2>/dev/null || true)"
+fi
 if [ -n "${PREV_TARGET}" ]; then
     ln -sfn "${PREV_TARGET}" "${PREVIOUS_LINK}.new"
     mv -T "${PREVIOUS_LINK}.new" "${PREVIOUS_LINK}"

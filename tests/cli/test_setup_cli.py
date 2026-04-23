@@ -10,6 +10,7 @@ pytest.importorskip("typer")
 
 import yoyopod_cli.setup as setup_cli_module
 from yoyopod.core import RUNTIME_REQUIRED_CONFIG_FILES
+from yoyopod_cli.paths import PiPaths
 from yoyopod_cli.setup import (
     SetupCheck,
     build_host_setup_commands,
@@ -187,7 +188,6 @@ def test_collect_pi_setup_checks_require_packages_native_artifacts_and_service(
         "which",
         lambda program: "/usr/bin/python3" if program == "python3" else None,
     )
-
     def fake_run(command, check=False, capture_output=False, text=False):
         if command[:2] == ["dpkg-query", "-W"]:
             return SimpleNamespace(returncode=0, stdout="install ok installed", stderr="")
@@ -204,6 +204,38 @@ def test_collect_pi_setup_checks_require_packages_native_artifacts_and_service(
     assert any(check.label == "apt:mpv" for check in checks)
     assert any(check.label == "apt:pisugar-server" for check in checks)
     assert any(check.label == "service:pisugar-server" for check in checks)
+
+
+def test_collect_pi_setup_checks_uses_configured_venv_path(tmp_path, monkeypatch) -> None:
+    custom_python = tmp_path / "custom-venv" / "bin" / "python"
+    custom_python.parent.mkdir(parents=True)
+    custom_python.write_text("ok\n", encoding="utf-8")
+
+    monkeypatch.setattr(setup_cli_module, "TRACKED_CONFIG_PATHS", ())
+    monkeypatch.setattr(setup_cli_module, "NATIVE_ARTIFACTS", ())
+    monkeypatch.setattr(setup_cli_module, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(setup_cli_module, "load_pi_paths", lambda: PiPaths(venv="custom-venv"))
+    monkeypatch.setattr(
+        setup_cli_module.shutil,
+        "which",
+        lambda program: "/usr/bin/python3" if program == "python3" else None,
+    )
+    monkeypatch.setattr(
+        setup_cli_module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout="install ok installed",
+            stderr="",
+        ),
+    )
+
+    checks = collect_pi_setup_checks(with_voice=False, with_network=False, with_pisugar=False)
+
+    assert any(
+        "custom-venv" in check.label and check.label.endswith("python") and check.ok
+        for check in checks
+    )
 
 
 def test_collect_host_setup_checks_fail_when_power_backend_config_is_missing(

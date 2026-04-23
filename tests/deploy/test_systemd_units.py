@@ -15,7 +15,9 @@ def _parse(unit_name: str) -> configparser.ConfigParser:
 
 def test_slot_unit_references_launch_script() -> None:
     cfg = _parse("yoyopod-slot.service")
-    assert cfg["Service"]["ExecStart"] == "/opt/yoyopod/current/bin/launch"
+    assert cfg["Service"]["WorkingDirectory"] == "/"
+    assert "YOYOPOD_ROOT" in cfg["Service"]["ExecStart"]
+    assert "/current/bin/launch" in cfg["Service"]["ExecStart"]
 
 
 def test_slot_unit_has_onfailure_rollback() -> None:
@@ -31,7 +33,9 @@ def test_slot_unit_has_start_limit_burst() -> None:
 
 def test_rollback_unit_calls_rollback_script() -> None:
     cfg = _parse("yoyopod-rollback.service")
-    assert cfg["Service"]["ExecStart"] == "/opt/yoyopod/bin/rollback.sh"
+    assert cfg["Service"]["EnvironmentFile"] == "-/etc/default/yoyopod-slot"
+    assert "YOYOPOD_ROOT" in cfg["Service"]["ExecStart"]
+    assert "/bin/rollback.sh" in cfg["Service"]["ExecStart"]
     assert cfg["Service"]["Type"] == "oneshot"
 
 

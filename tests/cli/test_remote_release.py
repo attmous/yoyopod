@@ -249,6 +249,42 @@ def test_push_accepts_self_contained_tarball(
     assert uploaded_slot.name == "2026.04.22-abc"
 
 
+def test_safe_extract_tarball_rejects_symlink_escape_on_legacy_python(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from yoyopod_cli.remote_release import _safe_extract_tarball
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    artifact = tmp_path / "malicious.tar.gz"
+    payload = tmp_path / "payload.txt"
+    payload.write_text("owned\n", encoding="utf-8")
+    with tarfile.open(artifact, "w:gz") as handle:
+        link = tarfile.TarInfo("slot/link")
+        link.type = tarfile.SYMTYPE
+        link.linkname = str(outside)
+        handle.addfile(link)
+        handle.add(payload, arcname="slot/link/pwned.txt")
+
+    original_extractall = tarfile.TarFile.extractall
+
+    def python311_extractall(self, path=".", members=None, *, numeric_owner=False, filter=None):
+        if filter is not None:
+            raise TypeError("filter is unsupported")
+        return original_extractall(self, path, members, numeric_owner=numeric_owner)
+
+    monkeypatch.setattr(tarfile.TarFile, "extractall", python311_extractall)
+
+    try:
+        _safe_extract_tarball(artifact, tmp_path / "stage")
+    except ValueError as exc:
+        assert "unsafe" in str(exc).lower()
+    else:
+        raise AssertionError("expected unsafe tarball to be rejected")
+    assert not (outside / "pwned.txt").exists()
+
+
 @patch("yoyopod_cli.remote_release._slot_exists_state")
 @patch("yoyopod_cli.remote_release._check_rollback_available")
 @patch("yoyopod_cli.remote_release._conn")
@@ -272,6 +308,31 @@ def test_push_aborts_and_cleans_up_on_hydration_fail(
     hydrate.return_value = 1
 
     result = runner.invoke(release_app, ["push", str(slot), "--hydrate-on-target"])
+    assert result.exit_code != 0
+    cleanup.assert_called_once()
+
+
+@patch("yoyopod_cli.remote_release._slot_exists_state")
+@patch("yoyopod_cli.remote_release._check_rollback_available")
+@patch("yoyopod_cli.remote_release._conn")
+@patch("yoyopod_cli.remote_release._rsync_to_pi")
+@patch("yoyopod_cli.remote_release._cleanup_remote_slot")
+def test_push_aborts_and_cleans_up_on_transfer_fail(
+    cleanup: MagicMock,
+    rsync: MagicMock,
+    conn: MagicMock,
+    check_rb: MagicMock,
+    state: MagicMock,
+    tmp_path: Path,
+) -> None:
+    conn.return_value = _fake_conn()
+    check_rb.return_value = 0
+    state.return_value = "NEW"
+    slot = _write_slot(tmp_path, "2026.04.22-abc", self_contained=True)
+    rsync.return_value = 12
+
+    result = runner.invoke(release_app, ["push", str(slot)])
+
     assert result.exit_code != 0
     cleanup.assert_called_once()
 
@@ -615,6 +676,21 @@ def test_live_probe_command_uses_shell_only_status_check(run_remote_mock: MagicM
     assert "from yoyopod_cli.health import app; app()" not in cmd
 
 
+@patch("yoyopod_cli.remote_release.run_remote")
+def test_flip_symlinks_only_sets_previous_when_current_resolves(run_remote_mock: MagicMock) -> None:
+    fake_conn = MagicMock()
+    fake_conn.host = "pi"
+    fake_conn.user = "user"
+    run_remote_mock.return_value = 0
+
+    from yoyopod_cli.remote_release import _flip_symlinks_on_pi
+
+    _flip_symlinks_on_pi(fake_conn, "2026.04.22-abc")
+    cmd = run_remote_mock.call_args[0][1]
+    assert "test -L /opt/yoyopod/current" in cmd
+    assert "readlink -e /opt/yoyopod/current" in cmd
+
+
 @patch("yoyopod_cli.remote_release.run_remote_capture")
 def test_status_command_uses_shell_only_status_check(capture: MagicMock) -> None:
     fake_conn = MagicMock()
@@ -654,6 +730,8 @@ def test_hydrate_slot_uses_build_subapp_entrypoint(run_remote_mock: MagicMock) -
     assert "PYTHONPATH=" not in cmd
     assert "libyoyopod_lvgl_shim.so" in cmd
     assert "libyoyopod_liblinphone_shim.so" in cmd
+    assert "pip install -r /opt/yoyopod/releases/2026.04.22-abc/runtime-requirements.txt" in cmd
+    assert "touch /opt/yoyopod/releases/2026.04.22-abc" not in cmd
     assert "command -v python3.12" not in cmd
     assert run_remote_mock.call_args.kwargs["workdir"] is None
 
@@ -729,6 +807,8 @@ def test_build_pi_downloads_artifact_and_cleans_up_remote_root(
     remote_cmd = capture.call_args[0][1]
     assert ".venv/bin/python -m yoyopod_cli.main build ensure-native" in remote_cmd
     assert "scripts/build_release.py" in remote_cmd
+    assert "tail -n 1" in remote_cmd
+    assert "set -euo pipefail" in remote_cmd
     assert "--with-venv" in remote_cmd
     assert "--python-version 3.12" in remote_cmd
     scp_cmd = run_mock.call_args[0][0]
@@ -798,3 +878,22 @@ def test_install_url_invokes_root_installer_script_directly(
     assert "--force" in command
     assert run_remote_mock.call_args.kwargs["workdir"] is None
     assert run_remote_mock.call_args.kwargs["tty"] is True
+
+
+@patch("yoyopod_cli.remote_release.run_remote_capture")
+def test_slot_exists_state_fails_closed_on_ssh_error(capture: MagicMock) -> None:
+    from yoyopod_cli.remote_release import _slot_exists_state
+
+    fake_conn = _fake_conn()
+    fake_result = MagicMock()
+    fake_result.returncode = 255
+    fake_result.stdout = ""
+    fake_result.stderr = "ssh failed"
+    capture.return_value = fake_result
+
+    try:
+        _slot_exists_state(fake_conn, "2026.04.22-abc")
+    except RuntimeError as exc:
+        assert "slot state probe failed" in str(exc)
+    else:
+        raise AssertionError("expected slot state probe failure")

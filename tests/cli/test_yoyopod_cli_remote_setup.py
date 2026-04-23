@@ -22,6 +22,21 @@ def test_build_setup_calls_pi_setup() -> None:
     assert ".venv/bin/python -m yoyopod_cli.main build lvgl" in shell
 
 
+def test_build_setup_preserves_home_relative_venv_expansion() -> None:
+    shell = _build_setup(
+        venv_relpath="~/.venv",
+        with_voice=False,
+        with_network=False,
+        with_pisugar=False,
+        skip_uv_sync=False,
+        skip_builds=False,
+        dry_run=False,
+    )
+
+    assert '"$HOME/.venv/bin/python"' in shell
+    assert "'~/.venv" not in shell
+
+
 def test_build_verify_setup_calls_pi_verify() -> None:
     shell = _build_verify_setup(
         venv_relpath=".venv",
@@ -30,6 +45,17 @@ def test_build_verify_setup_calls_pi_verify() -> None:
         with_pisugar=False,
     )
     assert ".venv/bin/python -m yoyopod_cli.main setup verify-pi" in shell
+
+
+def test_build_verify_setup_preserves_home_relative_venv_expansion() -> None:
+    shell = _build_verify_setup(
+        venv_relpath="~/.venv",
+        with_voice=False,
+        with_network=False,
+        with_pisugar=False,
+    )
+
+    assert '"$HOME/.venv/bin/python" -m yoyopod_cli.main setup verify-pi' in shell
 
 
 def test_setup_help() -> None:
