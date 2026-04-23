@@ -89,6 +89,29 @@ def test_build_refuses_existing_output_dir(tmp_path: Path) -> None:
         )
 
 
+def test_build_uses_real_launcher_from_deploy_scripts(tmp_path: Path) -> None:
+    """The real deploy/scripts/launch.sh in the repo is picked up by the build."""
+    # Use the real repo root, not a fake.
+    real_repo = Path(__file__).resolve().parents[2]
+    # Confirm the real launcher exists (this also documents the contract).
+    real_launcher = real_repo / "deploy" / "scripts" / "launch.sh"
+    assert real_launcher.exists(), f"deploy/scripts/launch.sh missing at {real_launcher}"
+
+    out = tmp_path / "out"
+    slot = build_release.build(
+        repo_root=real_repo,
+        output_root=out,
+        version="2026.04.22-launcher-test",
+        channel="dev",
+        skip_venv=True,
+    )
+    bundled = slot / "bin" / "launch"
+    assert bundled.exists()
+    # First line should be the bash shebang.
+    first_line = bundled.read_text().splitlines()[0]
+    assert first_line.startswith("#!/usr/bin/env bash")
+
+
 def test_build_rejects_invalid_channel(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
     (fake_repo / "yoyopod").mkdir(parents=True)
