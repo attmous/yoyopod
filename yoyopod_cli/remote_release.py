@@ -127,6 +127,25 @@ def _check_rollback_available(conn: object) -> int:
     return run_remote(conn, cmd)  # type: ignore[arg-type]
 
 
+def _slot_exists_state(conn: object, version: str) -> str:
+    """Return one of: 'NEW', 'EXISTS', 'CURRENT'.
+
+    NEW: slot dir doesn't exist on the Pi.
+    EXISTS: slot dir exists but is not the active release.
+    CURRENT: slot dir exists AND is what `current` resolves to.
+    """
+    paths = _slots()
+    quoted = shlex.quote(version)
+    target = f"{paths.releases_dir()}/{quoted}"
+    cmd = (
+        f"if [ ! -d {target} ]; then echo NEW; "
+        f'elif [ "$(readlink -f {paths.current_path()} 2>/dev/null)" = '
+        f'"$(readlink -f {target} 2>/dev/null)" ]; then echo CURRENT; '
+        f"else echo EXISTS; fi"
+    )
+    return run_remote_capture(conn, cmd).stdout.strip()  # type: ignore[arg-type]
+
+
 @app.command("push")
 def push(
     ctx: typer.Context,
@@ -138,6 +157,11 @@ def push(
             "Acknowledge there is no rollback path "
             "(required when previous symlink doesn't exist on the Pi)."
         ),
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help=("Overwrite an existing release slot of the same version " "(never the active one)."),
     ),
 ) -> None:
     """Push a pre-built slot dir to the Pi and atomically switch to it."""
@@ -152,6 +176,24 @@ def push(
         raise typer.Exit(code=2) from exc
 
     conn = _conn(ctx)
+
+    # Immutability guard: refuse to overwrite existing slots.
+    state = _slot_exists_state(conn, manifest.version)
+    if state == "CURRENT":
+        typer.echo(
+            f"ERROR: slot {manifest.version} is the currently-active release on the Pi.\n"
+            "Refusing to overwrite. Bump the version.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if state == "EXISTS" and not force:
+        typer.echo(
+            f"ERROR: slot {manifest.version} already exists on the Pi.\n"
+            "Releases are immutable; bump the version, or pass --force to overwrite "
+            "(only allowed when the slot is not the active release).",
+            err=True,
+        )
+        raise typer.Exit(code=2)
 
     # Pre-flight: confirm a rollback path exists, unless operator opted out.
     if not first_deploy:
