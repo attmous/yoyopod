@@ -15,18 +15,17 @@
 
 set -euo pipefail
 
-ROOT="/opt/yoyopod"
 UNIT_DIR="/etc/systemd/system"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
+ROOT="/opt/yoyopod"
 MIGRATE=0
 for arg in "$@"; do
     case "$arg" in
         --migrate) MIGRATE=1 ;;
-        --help|-h)
-            echo "Usage: $0 [--migrate]"
-            exit 0
-            ;;
+        --root=*) ROOT="${arg#--root=}" ;;
+        --root) echo "use --root=<path> form" >&2; exit 2 ;;
+        --help|-h) echo "Usage: $0 [--migrate] [--root=<path>]"; exit 0 ;;
         *) echo "unknown arg: $arg" >&2; exit 2 ;;
     esac
 done
@@ -58,9 +57,17 @@ install -m 0644 -o root -g root \
     "${REPO_ROOT}/deploy/systemd/yoyopod-rollback.service" \
     "${UNIT_DIR}/yoyopod-rollback.service"
 
+# Substitute placeholder paths in the installed unit files when a non-default root is used.
+if [ "${ROOT}" != "/opt/yoyopod" ]; then
+    sed -i "s|/opt/yoyopod|${ROOT}|g" \
+        "${UNIT_DIR}/yoyopod-slot.service" \
+        "${UNIT_DIR}/yoyopod-rollback.service"
+fi
+
 # 4. EnvironmentFile with the user/group the slot service should run as.
 cat > "/etc/default/yoyopod-slot" <<EOF
 # /etc/default/yoyopod-slot — written by bootstrap_pi.sh
+YOYOPOD_ROOT=${ROOT}
 YOYOPOD_STATE_DIR=${ROOT}/state
 EOF
 
@@ -93,7 +100,7 @@ fi
 
 cat <<EOF
 
-bootstrap complete.
+bootstrap complete.  slot root: ${ROOT}
 
 Next steps on the dev machine:
   uv run python scripts/build_release.py --output ./build/releases --channel dev
@@ -104,9 +111,12 @@ Then on the Pi:
 
 NOTE: the running app does not yet honour YOYOPOD_STATE_DIR/config/ —
 the config loader still reads from the slot's relative ./config dir.
-Migrated config in /opt/yoyopod/state/config/ will be unused until that
+Migrated config in ${ROOT}/state/config/ will be unused until that
 follow-up ticket lands. For now, the app runs with default settings.
 This does NOT affect VoIP/music functionality if your old config was
 already merged into the slot's config/ dir at build time.
+
+If you used a non-default --root, ensure slot.root in pi-deploy.local.yaml
+matches: slot.root: ${ROOT}
 
 EOF

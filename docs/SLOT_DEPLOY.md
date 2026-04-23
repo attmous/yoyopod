@@ -33,6 +33,15 @@ that edit files in place.
    ```bash
    sudo -E ./deploy/scripts/bootstrap_pi.sh --migrate
    ```
+   To install into a non-default root (e.g. `/srv/yoyopod-alt`):
+   ```bash
+   sudo -E ./deploy/scripts/bootstrap_pi.sh --migrate --root=/srv/yoyopod-alt
+   ```
+   The `--root` value **must match** `slot.root` in `pi-deploy.local.yaml` on the
+   dev machine. When `--root` differs from the default `/opt/yoyopod`, bootstrap
+   substitutes the path in the installed systemd unit files and writes
+   `YOYOPOD_ROOT` to `/etc/default/yoyopod-slot` so that `rollback.sh` and
+   `health live` use the correct tree.
 4. Push your first release from the dev machine (next section).
 5. On the Pi: `sudo systemctl enable --now yoyopod-slot.service`.
 
