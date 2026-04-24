@@ -87,6 +87,7 @@ def _build_status(lanes: LanePaths, slot: SlotPaths) -> str:
     prod_ota_timer = shlex.quote(lanes.prod_ota_timer)
     dev_checkout = shlex.quote(lanes.dev_checkout)
     prod_current = shlex.quote(slot.current_path())
+    legacy_slot_service = shlex.quote(lanes.legacy_slot_service)
     legacy_pattern = shlex.quote("yoyopod@*.service")
     manual_pattern = shlex.quote(r"python(3)? .*yoyopod(\.py|\.main)")
     return (
@@ -94,8 +95,12 @@ def _build_status(lanes: LanePaths, slot: SlotPaths) -> str:
         f"prod_active=$(systemctl is-active {prod_service} 2>/dev/null || true); "
         f"prod_ota_active=$(systemctl is-active {prod_ota_service} 2>/dev/null || true); "
         f"prod_ota_timer_active=$(systemctl is-active {prod_ota_timer} 2>/dev/null || true); "
-        f"legacy_units=$(systemctl list-units --type=service --state=active --plain --no-legend "
+        f"legacy_template_units=$(systemctl list-units --type=service --state=active --plain --no-legend "
         f"{legacy_pattern} 2>/dev/null | awk '{{print $1}}' | tr '\\n' ' ' | sed 's/[[:space:]]*$//' || true); "
+        f"legacy_slot_unit={legacy_slot_service}; "
+        'legacy_slot_active=$(systemctl is-active "$legacy_slot_unit" 2>/dev/null || true); '
+        'legacy_units="$legacy_template_units"; '
+        'if [ "$legacy_slot_active" = active ]; then legacy_units="${legacy_units:+$legacy_units }$legacy_slot_unit"; fi; '
         f"dev_pid=$(systemctl show -p MainPID --value {dev_service} 2>/dev/null || true); "
         f"prod_pid=$(systemctl show -p MainPID --value {prod_service} 2>/dev/null || true); "
         "legacy_pids=$(for unit in $legacy_units; do "

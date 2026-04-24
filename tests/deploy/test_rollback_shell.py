@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -10,6 +11,15 @@ import pytest
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="bash script")
 
 ROLLBACK_SH = Path(__file__).resolve().parents[2] / "deploy" / "scripts" / "rollback.sh"
+
+
+def _install_rollback_script(root: Path) -> Path:
+    bin_dir = root / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    rollback_in_root = bin_dir / "rollback.sh"
+    shutil.copy(ROLLBACK_SH, rollback_in_root)
+    rollback_in_root.chmod(0o755)
+    return rollback_in_root
 
 
 def _make_layout(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
@@ -28,9 +38,10 @@ def _make_layout(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
 
 
 def _run(root: Path) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ, "YOYOPOD_ROOT": str(root), "YOYOPOD_SKIP_SYSTEMCTL": "1"}
+    rollback = _install_rollback_script(root)
+    env = {**os.environ, "YOYOPOD_SKIP_SYSTEMCTL": "1"}
     return subprocess.run(
-        ["bash", str(ROLLBACK_SH)],
+        ["bash", str(rollback)],
         env=env,
         capture_output=True,
         text=True,
@@ -99,12 +110,12 @@ def test_rollback_resets_systemd_start_limit_before_restart(tmp_path: Path) -> N
     env = {
         **os.environ,
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-        "YOYOPOD_ROOT": str(root),
         "YOYOPOD_SYSTEMCTL_CALLS": str(calls),
     }
+    rollback = _install_rollback_script(root)
 
     result = subprocess.run(
-        ["bash", str(ROLLBACK_SH)],
+        ["bash", str(rollback)],
         env=env,
         capture_output=True,
         text=True,
@@ -120,21 +131,15 @@ def test_rollback_resets_systemd_start_limit_before_restart(tmp_path: Path) -> N
 
 def test_rollback_self_locates_root_from_script_path(tmp_path: Path) -> None:
     """When YOYOPOD_ROOT is unset, ROOT is derived from the script's own path."""
-    import shutil
-
     root = tmp_path / "yoyopod-alt"
-    bin_dir = root / "bin"
     releases = root / "releases"
-    bin_dir.mkdir(parents=True)
+    root.mkdir()
     releases.mkdir()
     (releases / "v1").mkdir()
     (releases / "v2").mkdir()
     (root / "current").symlink_to(releases / "v2")
     (root / "previous").symlink_to(releases / "v1")
-    # Copy rollback.sh into the fake root.
-    rollback_in_fake_root = bin_dir / "rollback.sh"
-    shutil.copy(ROLLBACK_SH, rollback_in_fake_root)
-    rollback_in_fake_root.chmod(0o755)
+    rollback_in_fake_root = _install_rollback_script(root)
     env = {**os.environ, "YOYOPOD_SKIP_SYSTEMCTL": "1"}
     # Note: YOYOPOD_ROOT NOT set — script must self-locate.
     env.pop("YOYOPOD_ROOT", None)

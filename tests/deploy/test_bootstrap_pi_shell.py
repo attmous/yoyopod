@@ -63,6 +63,16 @@ def test_bootstrap_disables_legacy_slot_before_enabling_prod() -> None:
     assert disable_legacy_pos < enable_prod_pos
 
 
+def test_bootstrap_disables_legacy_template_units_before_enabling_prod() -> None:
+    script = BOOTSTRAP_SH.read_text(encoding="utf-8")
+
+    find_legacy_pos = script.index("yoyopod@*.service")
+    disable_legacy_pos = script.index("systemctl disable --now ${legacy_template_units}")
+    enable_prod_pos = script.index("systemctl enable --now yoyopod-prod.service")
+
+    assert find_legacy_pos < disable_legacy_pos < enable_prod_pos
+
+
 def test_bootstrap_installs_prod_ota_lane_guard() -> None:
     script = BOOTSTRAP_SH.read_text(encoding="utf-8")
 

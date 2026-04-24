@@ -117,6 +117,15 @@ done
 
 systemctl daemon-reload
 systemctl disable --now yoyopod-slot.service >/dev/null 2>&1 || true
+legacy_template_units="$(
+    {
+        systemctl list-units --type=service --all --plain --no-legend 'yoyopod@*.service' 2>/dev/null || true
+        systemctl list-unit-files --type=service --plain --no-legend 'yoyopod@*.service' 2>/dev/null || true
+    } | awk '{print $1}' | sort -u
+)"
+if [ -n "${legacy_template_units}" ]; then
+    systemctl disable --now ${legacy_template_units} >/dev/null 2>&1 || true
+fi
 
 if [ -n "${RELEASE_ARCHIVE}" ] || [ -n "${RELEASE_URL}" ]; then
     INSTALL_CMD=("${ROOT}/bin/install-release.sh" "--root=${ROOT}" "--first-deploy")

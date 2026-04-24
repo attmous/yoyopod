@@ -69,6 +69,7 @@ def test_status_detects_legacy_units_and_manual_processes() -> None:
     command = _build_status(LanePaths(), SlotPaths())
 
     assert "yoyopod@*.service" in command
+    assert "yoyopod-slot.service" in command
     assert "legacy_units=" in command
     assert "pgrep -af" in command
     assert "manual_processes=" in command
@@ -81,6 +82,17 @@ def test_status_checks_only_active_legacy_template_units() -> None:
 
     assert "list-units --type=service --state=active --plain --no-legend" in command
     assert "list-units --type=service --all --plain --no-legend" not in command
+
+
+def test_status_counts_legacy_slot_service_as_lane_owner() -> None:
+    command = _build_status(LanePaths(), SlotPaths())
+
+    slot_check_pos = command.index('legacy_slot_active=$(systemctl is-active "$legacy_slot_unit"')
+    lane_count_pos = command.index('if [ -n "$legacy_units" ]; then lane_count=')
+
+    assert slot_check_pos < lane_count_pos
+    assert "legacy_slot_unit=yoyopod-slot.service" in command
+    assert 'legacy_units="${legacy_units:+$legacy_units }$legacy_slot_unit"' in command
 
 
 def test_status_reports_prod_ota_conflict_when_dev_is_active() -> None:
