@@ -27,11 +27,12 @@ The repo exposes two equivalent application launch surfaces:
 
 Both end up in `yoyopod/main.py`. That entrypoint configures logging,
 writes the PID file, emits the canonical startup marker, and then constructs
-`YoyoPodApp` from `yoyopod/app.py`.
+`YoyoPodApp` (re-exported from `yoyopod/core/application` via `yoyopod/app.py`).
 
 The frozen end state is:
 
-- `yoyopod/app.py`: bootstrap only
+- `yoyopod/app.py`: thin compatibility re-export of `YoyoPodApp`
+- `yoyopod/main.py`: process entrypoint and bootstrap plumbing
 - `yoyopod/core/application.py`: canonical app object
 - `yoyopod/core/`: cross-cutting primitives and mechanics
 - `yoyopod/integrations/`: domain seams
@@ -171,8 +172,8 @@ yoyopod.py / yoyopod.main
 
 ### Application Layer
 
-- `yoyopod/app.py`: thin bootstrap shell
-- `yoyopod/main.py`: package entry point
+- `yoyopod/app.py`: thin compatibility re-export of `YoyoPodApp`
+- `yoyopod/main.py`: process entrypoint and bootstrap plumbing
 - `yoyopod/core/application.py`: canonical scaffold app object
 - `yoyopod/core/bus.py`, `states.py`, `services.py`, `scheduler.py`: frozen spine primitives
 - `yoyopod/core/events.py`: universal state-change and cross-cutting app events only

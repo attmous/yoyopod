@@ -53,7 +53,7 @@ yoyopod.py / yoyopod/main.py  (entry points)
 
 ### Entry points and composition
 
-- `yoyopod.py`, `yoyopod/main.py`, and `yoyopod/app.py` are composition and lifecycle layers.
+- `yoyopod.py` is a thin launcher and `yoyopod/main.py` is the process entrypoint and bootstrap plumbing; `yoyopod/app.py` is a thin compatibility re-export of `YoyoPodApp` (real composition lives in `yoyopod/core/application.py` and `yoyopod/core/bootstrap/`).
 - Do not turn entrypoint files into feature homes for UI, business rules, or backend-specific logic.
 - If `YoyoPodApp` grows, extract focused runtime services instead of adding more feature logic there.
 - Treat runtime extraction as incremental work: if a service like `runtime/boot.py` becomes the new blob, split it again instead of calling the cleanup finished.

@@ -96,9 +96,9 @@ YoYoPod uses a hybrid ownership model:
 Frozen canonical package homes:
 
 - `yoyopod/app.py`
-  - thin bootstrap and composition shell only
+  - thin compatibility re-export of `YoyoPodApp` (imports from `yoyopod.core.application`)
 - `yoyopod/main.py`
-  - process entrypoint only
+  - process entrypoint and bootstrap plumbing
 - `yoyopod/config/`
   - typed config loading, composition, and validation
 - `yoyopod/core/`
