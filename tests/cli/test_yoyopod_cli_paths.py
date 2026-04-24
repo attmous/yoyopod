@@ -101,6 +101,27 @@ def test_load_lane_paths_applies_lane_overrides(tmp_path) -> None:
     assert result.prod_root == "/opt/yoyopod-prod"
 
 
+def test_load_pi_paths_prefers_lane_dev_overrides_over_base_top_level_defaults(
+    tmp_path,
+) -> None:
+    base_yaml = tmp_path / "base.yaml"
+    base_yaml.write_text(
+        "project_dir: /opt/yoyopod-dev/checkout\n"
+        "venv: /opt/yoyopod-dev/venv\n"
+        "lane:\n"
+        "  dev_root: /opt/yoyopod-dev\n"
+        "  dev_checkout: /opt/yoyopod-dev/checkout\n"
+        "  dev_venv: /opt/yoyopod-dev/venv\n"
+    )
+    local_yaml = tmp_path / "local.yaml"
+    local_yaml.write_text("lane:\n  dev_root: /srv/yoyopod-dev\n")
+
+    result = load_pi_paths(base_path=base_yaml, local_path=local_yaml)
+
+    assert result.project_dir == "/srv/yoyopod-dev/checkout"
+    assert result.venv == "/srv/yoyopod-dev/venv"
+
+
 def test_load_lane_paths_derives_dev_subpaths_from_dev_root(tmp_path) -> None:
     base_yaml = tmp_path / "base.yaml"
     base_yaml.write_text("lane:\n  dev_root: /srv/yoyopod-dev\n")
@@ -112,6 +133,26 @@ def test_load_lane_paths_derives_dev_subpaths_from_dev_root(tmp_path) -> None:
     assert result.dev_venv == "/srv/yoyopod-dev/venv"
     assert result.dev_state == "/srv/yoyopod-dev/state"
     assert result.dev_logs == "/srv/yoyopod-dev/logs"
+
+
+def test_load_lane_paths_derives_subpaths_from_local_dev_root_over_base_defaults(
+    tmp_path,
+) -> None:
+    base_yaml = tmp_path / "base.yaml"
+    base_yaml.write_text(
+        "lane:\n"
+        "  dev_root: /opt/yoyopod-dev\n"
+        "  dev_checkout: /opt/yoyopod-dev/checkout\n"
+        "  dev_venv: /opt/yoyopod-dev/venv\n"
+    )
+    local_yaml = tmp_path / "local.yaml"
+    local_yaml.write_text("lane:\n  dev_root: /srv/yoyopod-dev\n")
+
+    result = load_lane_paths(base_path=base_yaml, local_path=local_yaml)
+
+    assert result.dev_root == "/srv/yoyopod-dev"
+    assert result.dev_checkout == "/srv/yoyopod-dev/checkout"
+    assert result.dev_venv == "/srv/yoyopod-dev/venv"
 
 
 def test_load_pi_paths_applies_local_override(tmp_path) -> None:

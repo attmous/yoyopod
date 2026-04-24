@@ -46,7 +46,10 @@ def _resolve_remote_connection(
     branch: str,
 ) -> RemoteConnection:
     """Merge CLI flags (highest) -> env (already handled by Typer) -> YAML defaults."""
-    pi = load_pi_paths()
+    pi = load_pi_paths(
+        base_path=HOST.deploy_config,
+        local_path=HOST.deploy_config_local,
+    )
 
     defaults: dict[str, object] = {}
     for layer in (_load_yaml(HOST.deploy_config), _load_yaml(HOST.deploy_config_local)):
@@ -57,7 +60,7 @@ def _resolve_remote_connection(
     return RemoteConnection(
         host=host or _coerce_text(defaults.get("host"), ""),
         user=user or _coerce_text(defaults.get("user"), ""),
-        project_dir=project_dir or _coerce_text(defaults.get("project_dir"), pi.project_dir),
+        project_dir=project_dir or pi.project_dir,
         branch=branch or _coerce_text(defaults.get("branch"), "main"),
     )
 

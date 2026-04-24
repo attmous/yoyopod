@@ -94,7 +94,7 @@ def _build_status(lanes: LanePaths) -> str:
         f"prod_active=$(systemctl is-active {prod_service} 2>/dev/null || true); "
         f"prod_ota_active=$(systemctl is-active {prod_ota_service} 2>/dev/null || true); "
         f"prod_ota_timer_active=$(systemctl is-active {prod_ota_timer} 2>/dev/null || true); "
-        f"legacy_units=$(systemctl list-units --type=service --all --plain --no-legend "
+        f"legacy_units=$(systemctl list-units --type=service --state=active --plain --no-legend "
         f"{legacy_pattern} 2>/dev/null | awk '{{print $1}}' | tr '\\n' ' ' | sed 's/[[:space:]]*$//' || true); "
         f"dev_pid=$(systemctl show -p MainPID --value {dev_service} 2>/dev/null || true); "
         f"prod_pid=$(systemctl show -p MainPID --value {prod_service} 2>/dev/null || true); "

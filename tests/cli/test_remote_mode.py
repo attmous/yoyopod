@@ -34,10 +34,12 @@ def test_activate_prod_stops_dev_lane_before_starting_prod() -> None:
     command = _build_activate("prod", lanes)
 
     stop_dev = command.index("disable --now yoyopod-dev.service")
+    stop_legacy_slot = command.index("disable --now yoyopod-slot.service")
     stop_legacy_template = command.index("yoyopod@*.service")
     start_prod = command.index("enable --now yoyopod-prod.service")
 
     assert stop_dev < start_prod
+    assert stop_legacy_slot < start_prod
     assert stop_legacy_template < start_prod
     assert "reset-failed yoyopod-prod.service" in command
     assert "enable --now yoyopod-prod-ota.timer" in command
@@ -72,6 +74,13 @@ def test_status_detects_legacy_units_and_manual_processes() -> None:
     assert "manual_processes=" in command
     assert "manual-process" in command
     assert "active_lane=conflict" in command
+
+
+def test_status_checks_only_active_legacy_template_units() -> None:
+    command = _build_status(LanePaths())
+
+    assert "list-units --type=service --state=active --plain --no-legend" in command
+    assert "list-units --type=service --all --plain --no-legend" not in command
 
 
 def test_status_reports_prod_ota_conflict_when_dev_is_active() -> None:

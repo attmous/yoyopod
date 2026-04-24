@@ -125,6 +125,37 @@ def test_build_remote_app_defaults_from_yaml(tmp_path, monkeypatch) -> None:
     assert captured["project_dir"] == "/yaml/proj"
 
 
+def test_build_remote_app_project_dir_follows_lane_dev_root_override(
+    tmp_path, monkeypatch
+) -> None:
+    """Remote commands should use the resolved dev lane checkout by default."""
+    from yoyopod_cli import remote_shared as _remote_shared
+
+    base_yaml = tmp_path / "pi-deploy.yaml"
+    base_yaml.write_text(
+        "host: yaml-host\n"
+        "project_dir: /opt/yoyopod-dev/checkout\n"
+        "lane:\n"
+        "  dev_root: /opt/yoyopod-dev\n"
+        "  dev_checkout: /opt/yoyopod-dev/checkout\n"
+    )
+    local_yaml = tmp_path / "pi-deploy.local.yaml"
+    local_yaml.write_text("lane:\n  dev_root: /srv/yoyopod-dev\n")
+
+    class FakeHost:
+        repo_root = tmp_path
+        deploy_config = base_yaml
+        deploy_config_local = local_yaml
+        systemd_unit_template = tmp_path / "yoyopod@.service"
+
+    monkeypatch.setattr(_remote_shared, "HOST", FakeHost)
+    monkeypatch.delenv("YOYOPOD_PI_PROJECT_DIR", raising=False)
+
+    config = _remote_shared._resolve_remote_connection("", "", "", "")
+
+    assert config.project_dir == "/srv/yoyopod-dev/checkout"
+
+
 def test_resolve_remote_connection_treats_null_local_overrides_as_unset(
     tmp_path, monkeypatch
 ) -> None:

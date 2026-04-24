@@ -151,6 +151,14 @@ def _str_field(value: object, default: str) -> str:
     return text or default
 
 
+def _optional_str_field(value: object) -> str | None:
+    """Normalize a YAML scalar into a non-empty string, or None when unset."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _as_str_tuple(value: object, default: tuple[str, ...]) -> tuple[str, ...]:
     """Normalize a YAML list into a tuple of non-empty strings.
 
@@ -166,6 +174,34 @@ def _as_str_tuple(value: object, default: tuple[str, ...]) -> tuple[str, ...]:
     return normalized or default
 
 
+def _lane_section_has_path_key(data: dict[str, object], keys: tuple[str, ...]) -> bool:
+    """Return whether a YAML mapping explicitly configures one of the lane keys."""
+    lane_section = data.get("lane", {})
+    if not isinstance(lane_section, dict):
+        return False
+    return any(_optional_str_field(lane_section.get(key)) is not None for key in keys)
+
+
+def _dev_lane_path_field(
+    *,
+    field: str,
+    base_data: dict[str, object],
+    local_data: dict[str, object],
+    lane_value: str,
+    default: str,
+    lane_keys: tuple[str, ...],
+) -> str:
+    """Resolve legacy top-level dev path fields against canonical lane config."""
+    local_override = _optional_str_field(local_data.get(field))
+    if local_override is not None:
+        return local_override
+    if _lane_section_has_path_key(base_data, lane_keys) or _lane_section_has_path_key(
+        local_data, lane_keys
+    ):
+        return lane_value
+    return _str_field(base_data.get(field), default)
+
+
 def load_pi_paths(
     *,
     base_path: Path | None = None,
@@ -178,9 +214,11 @@ def load_pi_paths(
     base = base_path if base_path is not None else HOST.deploy_config
     local = local_path if local_path is not None else HOST.deploy_config_local
 
+    base_data = _load_yaml(base)
+    local_data = _load_yaml(local)
     merged: dict[str, object] = {}
-    merged.update(_load_yaml(base))
-    merged.update(_load_yaml(local))
+    merged.update(base_data)
+    merged.update(local_data)
     lanes = load_lane_paths(base_path=base, local_path=local)
 
     # Note: host, user, and branch keys in the YAML are connection concerns handled
@@ -188,8 +226,22 @@ def load_pi_paths(
     # They're silently ignored here.
     return replace(
         PI_DEFAULTS,
-        project_dir=_str_field(merged.get("project_dir"), lanes.dev_checkout),
-        venv=_str_field(merged.get("venv"), lanes.dev_venv),
+        project_dir=_dev_lane_path_field(
+            field="project_dir",
+            base_data=base_data,
+            local_data=local_data,
+            lane_value=lanes.dev_checkout,
+            default=PI_DEFAULTS.project_dir,
+            lane_keys=("dev_root", "dev_checkout"),
+        ),
+        venv=_dev_lane_path_field(
+            field="venv",
+            base_data=base_data,
+            local_data=local_data,
+            lane_value=lanes.dev_venv,
+            default=PI_DEFAULTS.venv,
+            lane_keys=("dev_root", "dev_venv"),
+        ),
         start_cmd=_str_field(merged.get("start_cmd"), PI_DEFAULTS.start_cmd),
         log_file=_str_field(merged.get("log_file"), PI_DEFAULTS.log_file),
         error_log_file=_str_field(merged.get("error_log_file"), PI_DEFAULTS.error_log_file),
@@ -213,34 +265,44 @@ def load_lane_paths(
     base = base_path if base_path is not None else HOST.deploy_config
     local = local_path if local_path is not None else HOST.deploy_config_local
 
-    merged: dict[str, object] = {}
-    for yaml_path in (base, local):
-        data = _load_yaml(yaml_path)
-        lane_section = data.get("lane", {})
-        if isinstance(lane_section, dict):
-            merged.update(lane_section)
+    base_section = _load_yaml(base).get("lane", {})
+    local_section = _load_yaml(local).get("lane", {})
+    base_lane: dict[str, object] = base_section if isinstance(base_section, dict) else {}
+    local_lane: dict[str, object] = local_section if isinstance(local_section, dict) else {}
 
-    dev_root = _str_field(merged.get("dev_root"), LANES.dev_root).rstrip("/")
-    prod_root = _str_field(merged.get("prod_root"), LANES.prod_root).rstrip("/")
+    def lane_field(key: str, default: str) -> str:
+        return (
+            _optional_str_field(local_lane.get(key))
+            or _optional_str_field(base_lane.get(key))
+            or default
+        )
+
+    dev_root = lane_field("dev_root", LANES.dev_root).rstrip("/")
+    prod_root = lane_field("prod_root", LANES.prod_root).rstrip("/")
+    local_dev_root = _optional_str_field(local_lane.get("dev_root")) is not None
+
+    def dev_subpath(key: str, suffix: str) -> str:
+        local_value = _optional_str_field(local_lane.get(key))
+        if local_value is not None:
+            return local_value
+        if local_dev_root:
+            return f"{dev_root}/{suffix}"
+        return _optional_str_field(base_lane.get(key)) or f"{dev_root}/{suffix}"
 
     return replace(
         LANES,
         dev_root=dev_root,
-        dev_checkout=_str_field(merged.get("dev_checkout"), f"{dev_root}/checkout"),
-        dev_venv=_str_field(merged.get("dev_venv"), f"{dev_root}/venv"),
-        dev_state=_str_field(merged.get("dev_state"), f"{dev_root}/state"),
-        dev_logs=_str_field(merged.get("dev_logs"), f"{dev_root}/logs"),
+        dev_checkout=dev_subpath("dev_checkout", "checkout"),
+        dev_venv=dev_subpath("dev_venv", "venv"),
+        dev_state=dev_subpath("dev_state", "state"),
+        dev_logs=dev_subpath("dev_logs", "logs"),
         prod_root=prod_root,
-        prod_service=_str_field(merged.get("prod_service"), LANES.prod_service),
-        prod_rollback_service=_str_field(
-            merged.get("prod_rollback_service"), LANES.prod_rollback_service
-        ),
-        prod_ota_service=_str_field(merged.get("prod_ota_service"), LANES.prod_ota_service),
-        prod_ota_timer=_str_field(merged.get("prod_ota_timer"), LANES.prod_ota_timer),
-        dev_service=_str_field(merged.get("dev_service"), LANES.dev_service),
-        legacy_slot_service=_str_field(
-            merged.get("legacy_slot_service"), LANES.legacy_slot_service
-        ),
+        prod_service=lane_field("prod_service", LANES.prod_service),
+        prod_rollback_service=lane_field("prod_rollback_service", LANES.prod_rollback_service),
+        prod_ota_service=lane_field("prod_ota_service", LANES.prod_ota_service),
+        prod_ota_timer=lane_field("prod_ota_timer", LANES.prod_ota_timer),
+        dev_service=lane_field("dev_service", LANES.dev_service),
+        legacy_slot_service=lane_field("legacy_slot_service", LANES.legacy_slot_service),
     )
 
 
