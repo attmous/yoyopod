@@ -15,7 +15,7 @@ from pathlib import Path
 import typer
 
 from yoyopod_cli.common import checkout_python_path, shell_quote_preserving_home
-from yoyopod_cli.paths import SlotPaths, load_pi_paths, load_slot_paths
+from yoyopod_cli.paths import LanePaths, SlotPaths, load_lane_paths, load_pi_paths, load_slot_paths
 from yoyopod_cli.release_manifest import ReleaseManifest, load_manifest, validate_release_version
 from yoyopod_cli.remote_shared import RemoteConnection, pi_conn
 from yoyopod_cli.remote_transport import run_remote, run_remote_capture, validate_config
@@ -28,6 +28,7 @@ app = typer.Typer(name="release", help="Slot-deploy push/rollback/status.", no_a
 
 # Cache the slot paths per process - load once, not per-helper-call.
 _slot_paths_cache: SlotPaths | None = None
+_lane_paths_cache: LanePaths | None = None
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,13 @@ def _slots() -> SlotPaths:
     if _slot_paths_cache is None:
         _slot_paths_cache = load_slot_paths()
     return _slot_paths_cache
+
+
+def _lanes() -> LanePaths:
+    global _lane_paths_cache
+    if _lane_paths_cache is None:
+        _lane_paths_cache = load_lane_paths()
+    return _lane_paths_cache
 
 
 def _conn(ctx: typer.Context) -> RemoteConnection:
@@ -313,15 +321,16 @@ def _flip_symlinks_on_pi(conn: object, version: str) -> int:
         "fi; "
         f"ln -sfn {shlex.quote(new_slot)} {shlex.quote(current_path)}.new && "
         f"mv -T {shlex.quote(current_path)}.new {shlex.quote(current_path)} && "
-        "sudo systemctl restart yoyopod-slot.service"
+        f"(sudo systemctl reset-failed {shlex.quote(_lanes().prod_service)} || true) && "
+        f"sudo systemctl restart {shlex.quote(_lanes().prod_service)}"
     )
     return _run_slot_remote(conn, script)
 
 
-def _live_status_shell(service: str = "yoyopod-slot.service") -> str:
+def _live_status_shell(service: str | None = None) -> str:
     """Return a shell snippet that validates the active slot without starting Python."""
     current_path = _slots().current_path()
-    service_q = shlex.quote(service)
+    service_q = shlex.quote(service or _lanes().prod_service)
     current_q = shlex.quote(current_path)
     return (
         f"systemctl is-active --quiet {service_q} && "
@@ -342,11 +351,12 @@ def _run_live_probe_on_pi(
     """Poll the Pi until the new version reports as live, or timeout."""
     current_path = _slots().current_path()
     live_cmd = _live_status_shell()
+    service_q = shlex.quote(_lanes().prod_service)
     cmd = (
         f"stable=0; required_stable={required_stable_s}; last_pid=; "
         f"for i in $(seq 1 {timeout_s}); do "
         f"slot=$(readlink -f {shlex.quote(current_path)} 2>/dev/null || true) && "
-        "pid=$(systemctl show -p MainPID --value yoyopod-slot.service 2>/dev/null || true); "
+        f"pid=$(systemctl show -p MainPID --value {service_q} 2>/dev/null || true); "
         f'if {live_cmd} && [ "$(basename "$slot")" = {shlex.quote(version)} ]; then '
         'if [ "$pid" != "$last_pid" ]; then stable=0; last_pid="$pid"; fi; '
         "stable=$((stable + 1)); "
@@ -359,7 +369,13 @@ def _run_live_probe_on_pi(
 
 def _rollback_on_pi(conn: object) -> int:
     """Invoke the rollback script on the Pi (swaps current <-> previous)."""
-    return _run_slot_remote(conn, f"sudo {_slots().bin_dir()}/rollback.sh")
+    cmd = [
+        "sudo",
+        "env",
+        f"YOYOPOD_SERVICE_NAME={_lanes().prod_service}",
+        f"{_slots().bin_dir()}/rollback.sh",
+    ]
+    return _run_slot_remote(conn, " ".join(shlex.quote(part) for part in cmd))
 
 
 def _status_from_pi(conn: object) -> str:

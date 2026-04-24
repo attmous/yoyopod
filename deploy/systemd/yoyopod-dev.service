@@ -1,0 +1,23 @@
+[Unit]
+Description=YoyoPod dev lane (mutable checkout)
+After=network-online.target sound.target pisugar-server.service
+Wants=network-online.target
+Conflicts=yoyopod-prod.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/yoyopod-dev
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/
+ExecStartPre=/usr/bin/env bash -lc 'CHECKOUT="$${YOYOPOD_DEV_CHECKOUT:-/opt/yoyopod-dev/checkout}"; VENV="$${YOYOPOD_DEV_VENV:-/opt/yoyopod-dev/venv}"; test -f "$$CHECKOUT/pyproject.toml"; test -x "$$VENV/bin/python"; cd "$$CHECKOUT"; exec "$$VENV/bin/python" -m yoyopod_cli.main build ensure-native'
+ExecStart=/usr/bin/env bash -lc 'CHECKOUT="$${YOYOPOD_DEV_CHECKOUT:-/opt/yoyopod-dev/checkout}"; VENV="$${YOYOPOD_DEV_VENV:-/opt/yoyopod-dev/venv}"; cd "$$CHECKOUT"; exec "$$VENV/bin/python" yoyopod.py'
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,25 @@
+[Unit]
+Description=YoyoPod prod lane (slot deploy, OTA-ready)
+After=network-online.target sound.target pisugar-server.service
+Wants=network-online.target
+Conflicts=yoyopod-dev.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+OnFailure=yoyopod-prod-rollback.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/yoyopod-prod
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/
+ExecStart=/usr/bin/env bash -lc 'exec "$${YOYOPOD_ROOT:-/opt/yoyopod-prod}/current/bin/launch"'
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=YoyoPod prod rollback after repeated slot failures
+StartLimitIntervalSec=3600
+StartLimitBurst=2
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/yoyopod-prod
+ExecStart=/usr/bin/env bash -lc 'exec "$${YOYOPOD_ROOT:-/opt/yoyopod-prod}/bin/rollback.sh"'
+StandardOutput=journal
+StandardError=journal

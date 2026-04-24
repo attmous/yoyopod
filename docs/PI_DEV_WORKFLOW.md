@@ -3,9 +3,10 @@
 This guide covers the normal dev-machine-to-board loop for YoYoPod.
 
 If the board is already on the slot-deploy path, read
-[`docs/SLOT_DEPLOY.md`](SLOT_DEPLOY.md) alongside this file. That document covers
-fresh-board bootstrap, migration from `~/yoyopod-core`, rollback, and the
-operator-facing release flow under `/opt/yoyopod`.
+[`docs/DEV_PROD_LANES.md`](DEV_PROD_LANES.md) and
+[`docs/SLOT_DEPLOY.md`](SLOT_DEPLOY.md) alongside this file. Those documents
+cover fresh-board bootstrap, migration from `~/yoyopod-core`, rollback, and the
+operator-facing release flow under `/opt/yoyopod-prod`.
 
 The default contract is:
 
@@ -19,7 +20,9 @@ Dirty-tree sync still exists, but only as a rare debugging override.
 
 ## Stable Board Checkout
 
-The Raspberry Pi should reuse one stable checkout path, configured by `project_dir` in `deploy/pi-deploy.yaml`.
+The Raspberry Pi should reuse one stable dev checkout path, configured by
+`project_dir` in `deploy/pi-deploy.yaml`. The tracked default is
+`/opt/yoyopod-dev/checkout`.
 
 Exception: `yoyopod remote release ...` no longer needs that checkout after the
 board has been bootstrapped for slot deploy. The checkout is still required for
@@ -85,19 +88,18 @@ Optional environment defaults:
 
 ```bash
 export YOYOPOD_PI_HOST=rpi-zero
-export YOYOPOD_PI_PROJECT_DIR=~/yoyopod-core
+export YOYOPOD_PI_PROJECT_DIR=/opt/yoyopod-dev/checkout
 ```
 
 On Windows PowerShell:
 
 ```powershell
 $env:YOYOPOD_PI_HOST="rpi-zero"
-$env:YOYOPOD_PI_PROJECT_DIR="~/yoyopod-core"
+$env:YOYOPOD_PI_PROJECT_DIR="/opt/yoyopod-dev/checkout"
 ```
 
 If your actual deployed board uses a different stable checkout path, set that in
-your local override instead of assuming the repo default. For example, the live
-`piz` board in this environment uses `~/yoyopod-core`.
+your local override instead of assuming the repo default.
 
 ## Default Validate-On-Board Flow
 

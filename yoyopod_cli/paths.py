@@ -30,8 +30,8 @@ class HostPaths:
 class PiPaths:
     """Default Pi-side paths (overridable via pi-deploy.local.yaml)."""
 
-    project_dir: str = "~/yoyopod-core"
-    venv: str = ".venv"
+    project_dir: str = "/opt/yoyopod-dev/checkout"
+    venv: str = "/opt/yoyopod-dev/venv"
     start_cmd: str = "python yoyopod.py"
     log_file: str = "logs/yoyopod.log"
     error_log_file: str = "logs/yoyopod_errors.log"
@@ -52,6 +52,24 @@ class PiPaths:
         "node_modules/",
         "*.egg-info/",
     )
+
+
+@dataclass(frozen=True)
+class LanePaths:
+    """Dev/prod lane roots and systemd unit names on the Pi."""
+
+    dev_root: str = "/opt/yoyopod-dev"
+    dev_checkout: str = "/opt/yoyopod-dev/checkout"
+    dev_venv: str = "/opt/yoyopod-dev/venv"
+    dev_state: str = "/opt/yoyopod-dev/state"
+    dev_logs: str = "/opt/yoyopod-dev/logs"
+    prod_root: str = "/opt/yoyopod-prod"
+    prod_service: str = "yoyopod-prod.service"
+    prod_rollback_service: str = "yoyopod-prod-rollback.service"
+    prod_ota_service: str = "yoyopod-prod-ota.service"
+    prod_ota_timer: str = "yoyopod-prod-ota.timer"
+    dev_service: str = "yoyopod-dev.service"
+    legacy_slot_service: str = "yoyopod-slot.service"
 
 
 @dataclass(frozen=True)
@@ -78,6 +96,7 @@ class ProcessNames:
 
 
 HOST = HostPaths()
+LANES = LanePaths()
 PI_DEFAULTS = PiPaths()
 CONFIGS = ConfigFiles()
 PROCS = ProcessNames()
@@ -87,7 +106,7 @@ PROCS = ProcessNames()
 class SlotPaths:
     """Slot-deploy paths on the Pi (overridable via pi-deploy.local.yaml)."""
 
-    root: str = "/opt/yoyopod"
+    root: str = "/opt/yoyopod-prod"
     releases_subdir: str = "releases"
     state_subdir: str = "state"
     bin_subdir: str = "bin"
@@ -162,14 +181,15 @@ def load_pi_paths(
     merged: dict[str, object] = {}
     merged.update(_load_yaml(base))
     merged.update(_load_yaml(local))
+    lanes = load_lane_paths(base_path=base, local_path=local)
 
     # Note: host, user, and branch keys in the YAML are connection concerns handled
     # by yoyopod_cli.remote_shared._resolve_remote_connection, not path concerns.
     # They're silently ignored here.
     return replace(
         PI_DEFAULTS,
-        project_dir=_str_field(merged.get("project_dir"), PI_DEFAULTS.project_dir),
-        venv=_str_field(merged.get("venv"), PI_DEFAULTS.venv),
+        project_dir=_str_field(merged.get("project_dir"), lanes.dev_checkout),
+        venv=_str_field(merged.get("venv"), lanes.dev_venv),
         start_cmd=_str_field(merged.get("start_cmd"), PI_DEFAULTS.start_cmd),
         log_file=_str_field(merged.get("log_file"), PI_DEFAULTS.log_file),
         error_log_file=_str_field(merged.get("error_log_file"), PI_DEFAULTS.error_log_file),
@@ -181,6 +201,46 @@ def load_pi_paths(
         startup_marker=_str_field(merged.get("startup_marker"), PI_DEFAULTS.startup_marker),
         kill_processes=_as_str_tuple(merged.get("kill_processes"), PI_DEFAULTS.kill_processes),
         rsync_exclude=_as_str_tuple(merged.get("rsync_exclude"), PI_DEFAULTS.rsync_exclude),
+    )
+
+
+def load_lane_paths(
+    *,
+    base_path: Path | None = None,
+    local_path: Path | None = None,
+) -> LanePaths:
+    """Return LanePaths with base + local YAML overrides applied to `lane:`."""
+    base = base_path if base_path is not None else HOST.deploy_config
+    local = local_path if local_path is not None else HOST.deploy_config_local
+
+    merged: dict[str, object] = {}
+    for yaml_path in (base, local):
+        data = _load_yaml(yaml_path)
+        lane_section = data.get("lane", {})
+        if isinstance(lane_section, dict):
+            merged.update(lane_section)
+
+    dev_root = _str_field(merged.get("dev_root"), LANES.dev_root).rstrip("/")
+    prod_root = _str_field(merged.get("prod_root"), LANES.prod_root).rstrip("/")
+
+    return replace(
+        LANES,
+        dev_root=dev_root,
+        dev_checkout=_str_field(merged.get("dev_checkout"), f"{dev_root}/checkout"),
+        dev_venv=_str_field(merged.get("dev_venv"), f"{dev_root}/venv"),
+        dev_state=_str_field(merged.get("dev_state"), f"{dev_root}/state"),
+        dev_logs=_str_field(merged.get("dev_logs"), f"{dev_root}/logs"),
+        prod_root=prod_root,
+        prod_service=_str_field(merged.get("prod_service"), LANES.prod_service),
+        prod_rollback_service=_str_field(
+            merged.get("prod_rollback_service"), LANES.prod_rollback_service
+        ),
+        prod_ota_service=_str_field(merged.get("prod_ota_service"), LANES.prod_ota_service),
+        prod_ota_timer=_str_field(merged.get("prod_ota_timer"), LANES.prod_ota_timer),
+        dev_service=_str_field(merged.get("dev_service"), LANES.dev_service),
+        legacy_slot_service=_str_field(
+            merged.get("legacy_slot_service"), LANES.legacy_slot_service
+        ),
     )
 
 
@@ -199,10 +259,11 @@ def load_slot_paths(
         slot_section = data.get("slot", {})
         if isinstance(slot_section, dict):
             merged.update(slot_section)
+    lanes = load_lane_paths(base_path=base, local_path=local)
 
     return replace(
         SLOT_DEFAULTS,
-        root=_str_field(merged.get("root"), SLOT_DEFAULTS.root),
+        root=_str_field(merged.get("root"), lanes.prod_root),
         releases_subdir=_str_field(merged.get("releases_subdir"), SLOT_DEFAULTS.releases_subdir),
         state_subdir=_str_field(merged.get("state_subdir"), SLOT_DEFAULTS.state_subdir),
         bin_subdir=_str_field(merged.get("bin_subdir"), SLOT_DEFAULTS.bin_subdir),

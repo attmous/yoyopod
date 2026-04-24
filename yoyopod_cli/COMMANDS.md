@@ -20,6 +20,9 @@ For live help, use `yoyopod <cmd> --help`.
 | `yoyopod remote config edit` | Open deploy/pi-deploy.local.yaml in $EDITOR. |
 | `yoyopod remote config show` | Print the effective pi-deploy config (base merged with local override). |
 | `yoyopod remote logs` | Tail yoyopod logs on the Pi. |
+| `yoyopod remote mode activate` | Activate one lane, stopping the other lane first. |
+| `yoyopod remote mode deactivate` | Deactivate one lane without enabling the other. |
+| `yoyopod remote mode status` | Show which lane is active and where each lane points. |
 | `yoyopod remote power` | Query PiSugar state remotely. |
 | `yoyopod remote preflight` | Run host-side preflight checks (dirty tree + quality gate) before any remote work. |
 | `yoyopod remote release build-pi` | Build a self-contained release artifact on the Pi checkout and download it locally. |

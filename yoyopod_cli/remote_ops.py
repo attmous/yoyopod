@@ -8,7 +8,7 @@ from pathlib import Path
 import typer
 
 from yoyopod_cli.common import checkout_module_command, configure_logging
-from yoyopod_cli.paths import HOST, PiPaths, load_pi_paths
+from yoyopod_cli.paths import HOST, LanePaths, PiPaths, load_lane_paths, load_pi_paths
 from yoyopod_cli.remote_shared import build_remote_app, pi_conn
 from yoyopod_cli.remote_transport import (
     run_remote,
@@ -74,10 +74,12 @@ def _build_native_shim_refresh(pi: PiPaths) -> str:
     return "{ " f"{checkout_module_command(pi.venv, 'build', 'ensure-native')}" " ; }"
 
 
-def _build_restart(pi: PiPaths) -> str:
+def _build_restart(pi: PiPaths, lanes: LanePaths | None = None) -> str:
     """Build the shell that restarts the app and waits for startup verification."""
+    lane_paths = lanes or load_lane_paths()
     pid = shell_quote(pi.pid_file)
     activate = shell_quote(_activate_script_path(pi.venv))
+    dev_service = shell_quote(lane_paths.dev_service)
     service_name = 'yoyopod@"$(id -un)".service'
     cleanup_commands = [f"rm -f {pid}"]
     cleanup_commands.extend(f"pkill -f {shell_quote(proc)} || true" for proc in pi.kill_processes)
@@ -86,7 +88,12 @@ def _build_restart(pi: PiPaths) -> str:
         f"{cleanup} ; " f"source {activate} && (nohup {pi.start_cmd} > /dev/null 2>&1 &)"
     )
     managed_restart = (
-        f"if systemctl cat {service_name} >/dev/null 2>&1; then "
+        f"if systemctl cat {dev_service} >/dev/null 2>&1; then "
+        f"sudo systemctl stop {dev_service} >/dev/null 2>&1 || true; "
+        f"{cleanup} ; "
+        f"sudo systemctl reset-failed {dev_service} >/dev/null 2>&1 || true; "
+        f"sudo systemctl start {dev_service}; "
+        f"elif systemctl cat {service_name} >/dev/null 2>&1; then "
         f"sudo systemctl stop {service_name} >/dev/null 2>&1 || true; "
         f"{cleanup} ; "
         f"sudo systemctl start {service_name}; "

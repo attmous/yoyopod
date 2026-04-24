@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # deploy/scripts/launch.sh
 #
-# Slot launcher — run from systemd via /opt/yoyopod/current/bin/launch.
+# Slot launcher - run from systemd via /opt/yoyopod-prod/current/bin/launch.
 # Resolves the slot dir from $0, sets env vars the app needs, exec's python.
 #
 # This script MUST work when invoked through the `current` symlink. We
@@ -15,7 +15,7 @@ SCRIPT_PATH="$(readlink -f "$0")"
 SLOT_DIR="$(dirname "$(dirname "$SCRIPT_PATH")")"
 
 export YOYOPOD_RELEASE_MANIFEST="${SLOT_DIR}/manifest.json"
-export YOYOPOD_STATE_DIR="${YOYOPOD_STATE_DIR:-/opt/yoyopod/state}"
+export YOYOPOD_STATE_DIR="${YOYOPOD_STATE_DIR:-/opt/yoyopod-prod/state}"
 export PYTHONPATH="${SLOT_DIR}/app"
 export PYTHONUNBUFFERED=1
 

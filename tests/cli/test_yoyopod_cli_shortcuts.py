@@ -87,8 +87,8 @@ def test_validate_alias_with_flags(monkeypatch) -> None:
     result = runner.invoke(app, ["validate", "--with-music", "--with-voip"])
     assert result.exit_code == 0, result.output
     assert len(calls) == 1
-    assert ".venv/bin/python -m yoyopod_cli.main pi validate music" in calls[0]
-    assert ".venv/bin/python -m yoyopod_cli.main pi validate voip" in calls[0]
+    assert "/opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main pi validate music" in calls[0]
+    assert "/opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main pi validate voip" in calls[0]
 
 
 def test_validate_alias_with_power_and_rtc_flags(monkeypatch) -> None:
@@ -116,5 +116,7 @@ def test_validate_alias_with_power_and_rtc_flags(monkeypatch) -> None:
     assert result.exit_code == 0, result.output
     assert len(calls) == 1
     assert (
-        ".venv/bin/python -m yoyopod_cli.main pi validate smoke --with-power --with-rtc" in calls[0]
+        "/opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main pi validate smoke "
+        "--with-power --with-rtc"
+        in calls[0]
     )

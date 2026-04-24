@@ -1,6 +1,6 @@
 # Raspberry Pi deploy contract for YoYoPod.
 # This is the shared source of truth for `yoyopod remote` and the Pi skills.
-# The board should reuse one stable checkout path at `project_dir`.
+# Dev lane checkouts live under /opt/yoyopod-dev; prod slots live under /opt/yoyopod-prod.
 # Machine-specific connection overrides belong in deploy/pi-deploy.local.yaml.
 # Leave host/user blank in the tracked file; do not commit personal Pi values here.
 # Create or edit that file with:
@@ -13,9 +13,9 @@
 
 host: ""
 user: ""
-project_dir: ~/yoyopod-core
+project_dir: /opt/yoyopod-dev/checkout
 branch: main
-venv: .venv
+venv: /opt/yoyopod-dev/venv
 start_cmd: python yoyopod.py
 kill_processes:
   - python
@@ -39,8 +39,14 @@ rsync_exclude:
   - "*.egg-info/"
 
 # Slot-deploy layout on the Pi. Override fields in pi-deploy.local.yaml.
+lane:
+  dev_root: /opt/yoyopod-dev
+  dev_checkout: /opt/yoyopod-dev/checkout
+  dev_venv: /opt/yoyopod-dev/venv
+  prod_root: /opt/yoyopod-prod
+
 slot:
-  root: /opt/yoyopod
+  root: /opt/yoyopod-prod
   releases_subdir: releases
   state_subdir: state
   bin_subdir: bin

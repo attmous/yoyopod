@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # deploy/scripts/install_release.sh
 #
-# Install one self-contained slot artifact into /opt/yoyopod and flip it live.
+# Install one self-contained slot artifact into /opt/yoyopod-prod and flip it live.
 # The artifact is expected to be the tar.gz emitted by scripts/build_release.py
 # in a Linux/aarch64 build environment or by the CI slot build pipeline.
 
 set -euo pipefail
 
-ROOT="/opt/yoyopod"
+ROOT="/opt/yoyopod-prod"
+SERVICE_NAME="${YOYOPOD_SERVICE_NAME:-yoyopod-prod.service}"
 ARTIFACT=""
 URL=""
 FIRST_DEPLOY=0
@@ -23,7 +24,7 @@ for arg in "$@"; do
         --help|-h)
             cat <<'EOF'
 Usage: install_release.sh [--artifact=/path/to/release.tar.gz | --url=https://...]
-                          [--root=/opt/yoyopod] [--first-deploy] [--force]
+                          [--root=/opt/yoyopod-prod] [--first-deploy] [--force]
 EOF
             exit 0
             ;;
@@ -206,9 +207,9 @@ _live_probe() {
     local last_pid=""
 
     for _ in $(seq 1 180); do
-        if systemctl is-active --quiet yoyopod-slot.service; then
+        if systemctl is-active --quiet "${SERVICE_NAME}"; then
             local pid
-            pid="$(systemctl show -p MainPID --value yoyopod-slot.service 2>/dev/null || true)"
+            pid="$(systemctl show -p MainPID --value "${SERVICE_NAME}" 2>/dev/null || true)"
             if [ -n "${pid}" ] && [ "${pid}" != "0" ]; then
                 local current_path cwd
                 current_path="$(readlink -f "${root}/current" 2>/dev/null || true)"
@@ -303,9 +304,9 @@ mv -T "${CURRENT_LINK}.new" "${CURRENT_LINK}"
 if [ "${YOYOPOD_SKIP_SYSTEMCTL:-0}" = "1" ]; then
     echo "install-release: skipping systemctl"
 elif command -v systemctl >/dev/null 2>&1; then
-    echo "install-release: restart yoyopod-slot.service"
-    systemctl reset-failed yoyopod-slot.service || true
-    if ! systemctl restart yoyopod-slot.service; then
+    echo "install-release: restart ${SERVICE_NAME}"
+    systemctl reset-failed "${SERVICE_NAME}" || true
+    if ! systemctl restart "${SERVICE_NAME}"; then
         if [ -x "${ROOT}/bin/rollback.sh" ] && [ -L "${ROOT}/previous" ]; then
             echo "install-release: restart failed, attempting rollback" >&2
             if ! "${ROOT}/bin/rollback.sh"; then

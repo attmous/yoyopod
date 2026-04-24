@@ -50,6 +50,18 @@ def test_build_restart_uses_configured_processes() -> None:
     assert pi.startup_marker in shell
 
 
+def test_build_restart_prefers_dev_lane_service_when_installed() -> None:
+    shell = _build_restart(PiPaths())
+
+    dev_probe = shell.index("systemctl cat yoyopod-dev.service")
+    legacy_probe = shell.index('systemctl cat yoyopod@"$(id -un)".service')
+    dev_start = shell.index("sudo systemctl start yoyopod-dev.service")
+
+    assert dev_probe < legacy_probe
+    assert dev_probe < dev_start
+    assert "sudo systemctl reset-failed yoyopod-dev.service" in shell
+
+
 def test_build_native_shim_refresh_rebuilds_lvgl_and_liblinphone_when_stale() -> None:
     pi = PiPaths(venv="venv")
     shell = _build_native_shim_refresh(pi)

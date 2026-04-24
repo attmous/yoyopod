@@ -183,6 +183,7 @@ def test_collect_pi_setup_checks_require_packages_native_artifacts_and_service(
     monkeypatch.setattr(setup_cli_module, "TRACKED_CONFIG_PATHS", tracked_config)
     monkeypatch.setattr(setup_cli_module, "NATIVE_ARTIFACTS", native_artifacts)
     monkeypatch.setattr(setup_cli_module, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(setup_cli_module, "load_pi_paths", lambda: PiPaths(venv=".venv"))
     monkeypatch.setattr(
         setup_cli_module.shutil,
         "which",

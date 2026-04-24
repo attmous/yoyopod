@@ -113,8 +113,8 @@ def test_rollback_resets_systemd_start_limit_before_restart(tmp_path: Path) -> N
     assert result.returncode == 0, result.stderr
     assert current.resolve() == v1.resolve()
     assert calls.read_text(encoding="utf-8").splitlines() == [
-        "reset-failed yoyopod-slot.service",
-        "restart yoyopod-slot.service",
+        "reset-failed yoyopod-prod.service",
+        "restart yoyopod-prod.service",
     ]
 
 

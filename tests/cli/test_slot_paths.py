@@ -9,7 +9,7 @@ from yoyopod_cli.paths import SlotPaths, load_slot_paths
 
 def test_defaults_match_spec() -> None:
     slot = SlotPaths()
-    assert slot.root == "/opt/yoyopod"
+    assert slot.root == "/opt/yoyopod-prod"
     assert slot.releases_subdir == "releases"
     assert slot.state_subdir == "state"
     assert slot.current_link == "current"
@@ -29,11 +29,11 @@ def test_absent_slot_section_uses_defaults(tmp_path: Path) -> None:
     base = tmp_path / "base.yaml"
     base.write_text("host: example.com\nuser: pi\n")
     result = load_slot_paths(base_path=base, local_path=tmp_path / "missing.yaml")
-    assert result.root == "/opt/yoyopod"
+    assert result.root == "/opt/yoyopod-prod"
 
 
 def test_releases_dir_and_state_dir_helpers() -> None:
     slot = SlotPaths()
-    assert slot.releases_dir() == "/opt/yoyopod/releases"
-    assert slot.state_dir() == "/opt/yoyopod/state"
-    assert slot.current_path() == "/opt/yoyopod/current"
+    assert slot.releases_dir() == "/opt/yoyopod-prod/releases"
+    assert slot.state_dir() == "/opt/yoyopod-prod/state"
+    assert slot.current_path() == "/opt/yoyopod-prod/current"

@@ -83,7 +83,7 @@ roughly 20-minute ARM builder unless that label is present. Tagged releases and
 `main` pushes continue to build the ARM64 slot automatically.
 
 The published ARM64 slot artifact is intended to be installed directly under
-`/opt/yoyopod/releases/<version>/` and consumed by:
+`/opt/yoyopod-prod/releases/<version>/` and consumed by:
 
 - `deploy/scripts/install_release.sh`
 - `yoyopod remote release install-url <artifact-url>`

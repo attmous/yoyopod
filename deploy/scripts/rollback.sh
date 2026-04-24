@@ -2,12 +2,12 @@
 # deploy/scripts/rollback.sh
 #
 # Rollback: swap `current` and `previous` symlinks, then restart the service.
-# Intended to be called by yoyopod-rollback.service (triggered by
-# yoyopod-slot.service's OnFailure=) or manually by an operator.
+# Intended to be called by yoyopod-prod-rollback.service (triggered by
+# yoyopod-prod.service's OnFailure=) or manually by an operator.
 #
 # Contract:
-#   * /opt/yoyopod/current must be a symlink
-#   * /opt/yoyopod/previous must be a symlink
+#   * /opt/yoyopod-prod/current must be a symlink
+#   * /opt/yoyopod-prod/previous must be a symlink
 # If either precondition fails, exit nonzero and DO NOT touch anything.
 
 set -euo pipefail
@@ -16,6 +16,7 @@ set -euo pipefail
 # YOYOPOD_ROOT env override remains for tests.
 SCRIPT_PATH="$(readlink -f "$0")"
 ROOT="${YOYOPOD_ROOT:-$(dirname "$(dirname "${SCRIPT_PATH}")")}"
+SERVICE_NAME="${YOYOPOD_SERVICE_NAME:-yoyopod-prod.service}"
 CURRENT="${ROOT}/current"
 PREVIOUS="${ROOT}/previous"
 
@@ -51,6 +52,6 @@ echo "rollback: swapped current <- $(readlink "${CURRENT}")"
 
 # Only attempt systemctl if we're on a systemd host (skipped in tests).
 if command -v systemctl >/dev/null 2>&1 && [ -z "${YOYOPOD_SKIP_SYSTEMCTL:-}" ]; then
-    systemctl reset-failed yoyopod-slot.service || true
-    systemctl restart yoyopod-slot.service
+    systemctl reset-failed "${SERVICE_NAME}" || true
+    systemctl restart "${SERVICE_NAME}"
 fi

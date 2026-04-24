@@ -39,6 +39,7 @@ Plan docs are useful, but they are not automatically the current implementation 
 - [`SETUP_CONTRACT.md`](SETUP_CONTRACT.md), repo-owned setup and dependency contract
 - [`QUALITY_GATES.md`](QUALITY_GATES.md), current staged quality gate and audit contract
 - [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md), semantic versioning and release packaging flow
+- [`DEV_PROD_LANES.md`](DEV_PROD_LANES.md), split dev/prod lane paths, services, and activation contract
 - [`SLOT_DEPLOY.md`](SLOT_DEPLOY.md), fresh-board install, legacy-board migration, rollback, and OTA-ready release operations
 - [`PI_PROFILING_WORKFLOW.md`](PI_PROFILING_WORKFLOW.md), bounded profiling and Pi investigation workflow
 - [`DEPLOYED_PI_DEPENDENCIES.md`](DEPLOYED_PI_DEPENDENCIES.md), deployed/runtime dependency inventory
@@ -136,6 +137,7 @@ Archive files are for historical context only. They are not the source of truth 
 1. `docs/CONTRIBUTOR_WORKFLOW.md`
 2. `docs/SETUP_CONTRACT.md`
 3. `docs/DEVELOPMENT_GUIDE.md`
-4. `docs/SLOT_DEPLOY.md`
-5. `docs/PI_DEV_WORKFLOW.md`
-6. `docs/RPI_SMOKE_VALIDATION.md`
+4. `docs/DEV_PROD_LANES.md`
+5. `docs/SLOT_DEPLOY.md`
+6. `docs/PI_DEV_WORKFLOW.md`
+7. `docs/RPI_SMOKE_VALIDATION.md`

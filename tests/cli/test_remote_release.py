@@ -850,8 +850,8 @@ def test_flip_symlinks_only_sets_previous_when_current_resolves(run_remote_mock:
 
     _flip_symlinks_on_pi(fake_conn, "2026.04.22-abc")
     cmd = run_remote_mock.call_args[0][1]
-    assert "test -L /opt/yoyopod/current" in cmd
-    assert "readlink -e /opt/yoyopod/current" in cmd
+    assert "test -L /opt/yoyopod-prod/current" in cmd
+    assert "readlink -e /opt/yoyopod-prod/current" in cmd
 
 
 @patch("yoyopod_cli.remote_release.run_remote_capture")
@@ -889,14 +889,14 @@ def test_hydrate_slot_uses_build_subapp_entrypoint(run_remote_mock: MagicMock) -
     assert "from yoyopod_cli.build import app; app()" in cmd
     assert "-m yoyopod_cli.main" not in cmd
     assert "sys.path.insert(0," in cmd
-    assert "/opt/yoyopod/releases/2026.04.22-abc/app" in cmd
+    assert "/opt/yoyopod-prod/releases/2026.04.22-abc/app" in cmd
     assert "PYTHONPATH=" not in cmd
     assert "libyoyopod_lvgl_shim.so" in cmd
     assert "libyoyopod_liblinphone_shim.so" in cmd
-    assert "pip install -r /opt/yoyopod/releases/2026.04.22-abc/runtime-requirements.txt" in cmd
+    assert "pip install -r /opt/yoyopod-prod/releases/2026.04.22-abc/runtime-requirements.txt" in cmd
     assert 'python3 -m venv "$tmp_venv"' in cmd
-    assert "cp -aL /opt/yoyopod/current/venv" not in cmd
-    assert "touch /opt/yoyopod/releases/2026.04.22-abc" not in cmd
+    assert "cp -aL /opt/yoyopod-prod/current/venv" not in cmd
+    assert "touch /opt/yoyopod-prod/releases/2026.04.22-abc" not in cmd
     assert "command -v python3.12" not in cmd
     assert run_remote_mock.call_args.kwargs["workdir"] is None
 
@@ -904,9 +904,11 @@ def test_hydrate_slot_uses_build_subapp_entrypoint(run_remote_mock: MagicMock) -
 def test_slot_subapp_command_requires_slot_python() -> None:
     from yoyopod_cli.remote_release import _slot_subapp_command
 
-    cmd = _slot_subapp_command("/opt/yoyopod/releases/2026.04.22-abc", "yoyopod_cli.health", "live")
+    cmd = _slot_subapp_command(
+        "/opt/yoyopod-prod/releases/2026.04.22-abc", "yoyopod_cli.health", "live"
+    )
     assert "sys.path.insert(0," in cmd
-    assert "/opt/yoyopod/releases/2026.04.22-abc/app" in cmd
+    assert "/opt/yoyopod-prod/releases/2026.04.22-abc/app" in cmd
     assert "from yoyopod_cli.health import app; app()" in cmd
     assert "command -v python3.12" not in cmd
     assert "test -x" in cmd
@@ -970,7 +972,7 @@ def test_build_pi_downloads_artifact_and_cleans_up_remote_root(
     result = runner.invoke(release_app, ["build-pi", "--output", str(tmp_path)])
     assert result.exit_code == 0, result.stdout
     remote_cmd = capture.call_args[0][1]
-    assert ".venv/bin/python -m yoyopod_cli.main build ensure-native" in remote_cmd
+    assert "/opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main build ensure-native" in remote_cmd
     assert "scripts/build_release.py" in remote_cmd
     assert "tail -n 1" in remote_cmd
     assert "set -euo pipefail" in remote_cmd
@@ -1072,8 +1074,8 @@ def test_check_rollback_available_requires_resolved_target(run_remote_mock: Magi
 
     assert _check_rollback_available(_fake_conn()) == 0
     command = run_remote_mock.call_args[0][1]
-    assert "test -L /opt/yoyopod/previous" in command
-    assert "readlink -e /opt/yoyopod/previous" in command
+    assert "test -L /opt/yoyopod-prod/previous" in command
+    assert "readlink -e /opt/yoyopod-prod/previous" in command
     assert 'test -n "$target"' in command
 
 
@@ -1098,8 +1100,8 @@ def test_install_url_invokes_root_installer_script_directly(
     assert result.exit_code == 0, result.stdout
     command = run_remote_mock.call_args[0][1]
     assert "sudo" in command
-    assert "/opt/yoyopod/bin/install-release.sh" in command
-    assert "--root=/opt/yoyopod" in command
+    assert "/opt/yoyopod-prod/bin/install-release.sh" in command
+    assert "--root=/opt/yoyopod-prod" in command
     assert "--url=https://example.com/yoyopod-slot-v0.2.0-linux-arm64.tar.gz" in command
     assert "--first-deploy" in command
     assert "--force" in command

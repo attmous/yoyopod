@@ -82,6 +82,7 @@ app.add_typer(_setup.app, name="setup")
 from yoyopod_cli import (  # noqa: E402
     remote_config as _remote_config,
     remote_infra as _remote_infra,
+    remote_mode as _remote_mode,
     remote_ops as _remote_ops,
     remote_release as _remote_release,
     remote_setup as _remote_setup,
@@ -116,6 +117,9 @@ remote_app.add_typer(_remote_config.app, name="config")
 
 # release (slot-deploy push/rollback/status)
 remote_app.add_typer(_remote_release.app, name="release")
+
+# mode (dev/prod lane switch)
+remote_app.add_typer(_remote_mode.app, name="mode")
 
 app.add_typer(remote_app, name="remote")
 
