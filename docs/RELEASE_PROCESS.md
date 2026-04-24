@@ -76,6 +76,12 @@ The workflow:
 7. uploads the built artifacts
 8. creates or updates the matching GitHub Release
 
+On pull requests, the expensive ARM64 slot build is label-gated. Add the
+`build-arm-slot` label when you need a PR commit to produce a slot artifact.
+Normal PR commits still run the `quality` and `test` jobs, but they skip the
+roughly 20-minute ARM builder unless that label is present. Tagged releases and
+`main` pushes continue to build the ARM64 slot automatically.
+
 The published ARM64 slot artifact is intended to be installed directly under
 `/opt/yoyopod/releases/<version>/` and consumed by:
 
@@ -114,3 +120,6 @@ The published ARM64 slot artifact is intended to be installed directly under
 - The ARM64 slot tarball is the OTA-style deploy asset. It already contains the
   bundled config tree, native `.so` shims, launcher, manifest, and slot-local
   runtime venv expected by the slot installer.
+- The slot tarball is published with a `.sha256` sidecar for the archive bytes.
+  The embedded `manifest.json` records the unpacked slot payload digest instead
+  of the digest of the tarball that contains the manifest.

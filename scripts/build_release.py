@@ -340,9 +340,54 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def _slot_payload_digest(slot_dir: Path) -> tuple[str, int]:
+    """Return a stable digest of the unpacked slot payload.
+
+    The embedded manifest cannot safely contain the sha256 of the tarball that
+    contains that same manifest. Instead, the slot manifest records the payload
+    digest for files that become live on disk, excluding manifest.json itself.
+    The tarball byte digest is written as a sidecar after archive creation.
+    """
+
+    digest = hashlib.sha256()
+    total_size = 0
+    for path in sorted(slot_dir.rglob("*"), key=lambda item: item.relative_to(slot_dir).as_posix()):
+        relative = path.relative_to(slot_dir).as_posix()
+        if relative == "manifest.json" or path.is_dir():
+            continue
+
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        if path.is_symlink():
+            target = path.readlink().as_posix()
+            payload = target.encode("utf-8")
+            digest.update(b"symlink\0")
+            digest.update(payload)
+            total_size += len(payload)
+            continue
+
+        digest.update(b"file\0")
+        size = path.stat().st_size
+        total_size += size
+        digest.update(str(size).encode("ascii"))
+        digest.update(b"\0")
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(block)
+    return digest.hexdigest(), total_size
+
+
 def _make_tarball(slot_dir: Path, out_path: Path) -> None:
     with tarfile.open(out_path, "w:gz") as tf:
         tf.add(slot_dir, arcname=slot_dir.name)
+
+
+def _write_tarball_sha256_sidecar(tarball: Path) -> None:
+    digest = _sha256(tarball)
+    tarball.with_suffix(tarball.suffix + ".sha256").write_text(
+        f"{digest}  {tarball.name}\n",
+        encoding="utf-8",
+    )
 
 
 def build(
@@ -382,6 +427,7 @@ def build(
         _resolve_venv(slot_dir / "venv", slot_dir / "runtime-requirements.txt", python_version)
         _validate_self_contained_slot(slot_dir, python_version)
 
+    payload_sha256, payload_size = _slot_payload_digest(slot_dir)
     tarball = output_root / f"{version}.tar.gz"
     manifest = ReleaseManifest(
         version=version,
@@ -392,8 +438,8 @@ def build(
         artifacts={
             "full": Artifact(
                 type="full",
-                sha256="0" * 64,
-                size=0,
+                sha256=payload_sha256,
+                size=payload_size,
                 url=None,
                 base_version=None,
             ),
@@ -402,24 +448,7 @@ def build(
     )
     dump_manifest(manifest, slot_dir / "manifest.json")
     _make_tarball(slot_dir, tarball)
-    manifest = ReleaseManifest(
-        version=manifest.version,
-        channel=manifest.channel,
-        released_at=manifest.released_at,
-        artifacts={
-            "full": Artifact(
-                type="full",
-                sha256=_sha256(tarball),
-                size=tarball.stat().st_size,
-                url=None,
-                base_version=None,
-            ),
-        },
-        requires=manifest.requires,
-        signature=manifest.signature,
-    )
-    dump_manifest(manifest, slot_dir / "manifest.json")
-    _make_tarball(slot_dir, tarball)
+    _write_tarball_sha256_sidecar(tarball)
     return slot_dir
 
 

@@ -24,7 +24,11 @@ import typer
 from yoyopod.core.release import current_release
 from yoyopod.core.setup_contract import RUNTIME_REQUIRED_CONFIG_FILES
 from yoyopod_cli.release_manifest import load_manifest
-from yoyopod_cli.slot_contract import SLOT_REQUIRED_DIRS, missing_self_contained_paths
+from yoyopod_cli.slot_contract import (
+    SLOT_REQUIRED_DIRS,
+    missing_hydrated_runtime_paths,
+    missing_self_contained_paths,
+)
 
 app = typer.Typer(name="health", help="Slot-deploy health probes.")
 
@@ -32,6 +36,14 @@ app = typer.Typer(name="health", help="Slot-deploy health probes.")
 @app.command("preflight")
 def preflight(
     slot: Path = typer.Option(..., help="Path to the release slot dir (before flip)."),
+    allow_hydrated_runtime: bool = typer.Option(
+        False,
+        "--allow-hydrated-runtime",
+        help=(
+            "Accept a legacy source slot after Pi-side hydration. "
+            "Default requires a fully self-contained slot."
+        ),
+    ),
 ) -> None:
     """Offline structural check of a release slot. Exit 0 = OK."""
     slot = slot.resolve()
@@ -50,7 +62,12 @@ def preflight(
         if not (slot / required).is_dir():
             errors.append(f"{required}/ missing in {slot}")
 
-    for relative in missing_self_contained_paths(slot):
+    runtime_missing = (
+        missing_hydrated_runtime_paths(slot)
+        if allow_hydrated_runtime
+        else missing_self_contained_paths(slot)
+    )
+    for relative in runtime_missing:
         errors.append(f"required runtime file missing: {relative.as_posix()}")
 
     # Each runtime-required config file must be present in the slot.

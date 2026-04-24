@@ -40,8 +40,11 @@ def validate_release_version(version: str) -> None:
 class Artifact:
     """A downloadable artifact for a release.
 
-    `type="full"` is a complete release tarball. `type="diff"` is a
+    `type="full"` is a complete release payload. `type="diff"` is a
     zstd-patch-from-base delta; requires `base_version` to be set.
+    In embedded slot manifests, `sha256` and `size` describe the unpacked
+    slot payload excluding manifest.json to avoid a self-referential archive
+    digest. The tarball byte digest is distributed as a `.sha256` sidecar.
     `url` is optional: during a local-deploy push the artifact is rsync'd
     directly and never hits an HTTP URL.
     """

@@ -11,15 +11,21 @@ from yoyopod.core.setup_contract import RUNTIME_REQUIRED_CONFIG_FILES
 from yoyopod_cli.remote_release import app as release_app
 from yoyopod_cli.slot_contract import (
     APP_NATIVE_RUNTIME_ARTIFACTS,
-    SLOT_PYTHON_BIN,
-    SLOT_PYTHON_STDLIB_MARKER,
     SLOT_VENV_PYTHON,
+    slot_python_bin,
+    slot_python_stdlib_marker,
 )
 
 runner = CliRunner()
 
 
-def _write_slot(tmp_path: Path, version: str, *, self_contained: bool = True) -> Path:
+def _write_slot(
+    tmp_path: Path,
+    version: str,
+    *,
+    self_contained: bool = True,
+    python_version: str = "3.12",
+) -> Path:
     slot = tmp_path / version
     slot.mkdir()
     (slot / "manifest.json").write_text(
@@ -50,10 +56,10 @@ def _write_slot(tmp_path: Path, version: str, *, self_contained: bool = True) ->
         python_bin.parent.mkdir(parents=True, exist_ok=True)
         python_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         python_bin.chmod(0o755)
-        runtime_python = slot / SLOT_PYTHON_BIN
+        runtime_python = slot / slot_python_bin(python_version)
         runtime_python.parent.mkdir(parents=True, exist_ok=True)
         runtime_python.write_text("python\n", encoding="utf-8")
-        runtime_stdlib = slot / SLOT_PYTHON_STDLIB_MARKER
+        runtime_stdlib = slot / slot_python_stdlib_marker(python_version)
         runtime_stdlib.parent.mkdir(parents=True, exist_ok=True)
         runtime_stdlib.write_text("# stdlib marker\n", encoding="utf-8")
         for relative in APP_NATIVE_RUNTIME_ARTIFACTS:
@@ -66,8 +72,19 @@ def _write_slot(tmp_path: Path, version: str, *, self_contained: bool = True) ->
     return slot
 
 
-def _write_slot_tarball(tmp_path: Path, version: str, *, self_contained: bool = True) -> Path:
-    slot = _write_slot(tmp_path, version, self_contained=self_contained)
+def _write_slot_tarball(
+    tmp_path: Path,
+    version: str,
+    *,
+    self_contained: bool = True,
+    python_version: str = "3.12",
+) -> Path:
+    slot = _write_slot(
+        tmp_path,
+        version,
+        self_contained=self_contained,
+        python_version=python_version,
+    )
     artifact = tmp_path / f"{version}.tar.gz"
     with tarfile.open(artifact, "w:gz") as handle:
         handle.add(slot, arcname=slot.name)
@@ -221,7 +238,11 @@ def test_push_hydrates_source_only_slot_when_flag_is_set(
     result = runner.invoke(release_app, ["push", str(slot), "--hydrate-on-target"])
     assert result.exit_code == 0, result.stdout
     hydrate.assert_called_once()
-    preflight.assert_called_once()
+    preflight.assert_called_once_with(
+        conn.return_value,
+        "2026.04.22-abc",
+        allow_hydrated_runtime=True,
+    )
 
 
 @patch("yoyopod_cli.remote_release._slot_exists_state")
@@ -258,6 +279,50 @@ def test_push_accepts_self_contained_tarball(
     rsync.assert_called_once()
     uploaded_slot = rsync.call_args[0][1]
     assert uploaded_slot.name == "2026.04.22-abc"
+
+
+@patch("yoyopod_cli.remote_release._slot_exists_state")
+@patch("yoyopod_cli.remote_release._check_rollback_available")
+@patch("yoyopod_cli.remote_release._conn")
+@patch("yoyopod_cli.remote_release._rsync_to_pi")
+@patch("yoyopod_cli.remote_release._hydrate_slot_on_pi")
+@patch("yoyopod_cli.remote_release._run_preflight_on_pi")
+@patch("yoyopod_cli.remote_release._flip_symlinks_on_pi")
+@patch("yoyopod_cli.remote_release._run_live_probe_on_pi")
+def test_push_accepts_self_contained_tarball_with_non_default_python(
+    live_probe: MagicMock,
+    flip: MagicMock,
+    preflight: MagicMock,
+    hydrate: MagicMock,
+    rsync: MagicMock,
+    conn: MagicMock,
+    check_rb: MagicMock,
+    state: MagicMock,
+    tmp_path: Path,
+) -> None:
+    conn.return_value = _fake_conn()
+    check_rb.return_value = 0
+    state.return_value = "NEW"
+    artifact = _write_slot_tarball(
+        tmp_path,
+        "2026.04.22-py311",
+        self_contained=True,
+        python_version="3.11",
+    )
+    rsync.return_value = 0
+    preflight.return_value = 0
+    flip.return_value = 0
+    live_probe.return_value = 0
+
+    result = runner.invoke(release_app, ["push", str(artifact)])
+
+    assert result.exit_code == 0, result.stdout
+    hydrate.assert_not_called()
+    preflight.assert_called_once_with(
+        conn.return_value,
+        "2026.04.22-py311",
+        allow_hydrated_runtime=False,
+    )
 
 
 def test_safe_extract_tarball_rejects_symlink_escape_on_legacy_python(
@@ -829,6 +894,8 @@ def test_hydrate_slot_uses_build_subapp_entrypoint(run_remote_mock: MagicMock) -
     assert "libyoyopod_lvgl_shim.so" in cmd
     assert "libyoyopod_liblinphone_shim.so" in cmd
     assert "pip install -r /opt/yoyopod/releases/2026.04.22-abc/runtime-requirements.txt" in cmd
+    assert 'python3 -m venv "$tmp_venv"' in cmd
+    assert "cp -aL /opt/yoyopod/current/venv" not in cmd
     assert "touch /opt/yoyopod/releases/2026.04.22-abc" not in cmd
     assert "command -v python3.12" not in cmd
     assert run_remote_mock.call_args.kwargs["workdir"] is None
@@ -907,6 +974,9 @@ def test_build_pi_downloads_artifact_and_cleans_up_remote_root(
     assert "scripts/build_release.py" in remote_cmd
     assert "tail -n 1" in remote_cmd
     assert "set -euo pipefail" in remote_cmd
+    assert "trap cleanup_build_root EXIT" in remote_cmd
+    assert 'rm -rf "$build_root"' in remote_cmd
+    assert "trap - EXIT" in remote_cmd
     assert "--with-venv" in remote_cmd
     assert "--python-version 3.12" in remote_cmd
     scp_cmd = run_mock.call_args[0][0]

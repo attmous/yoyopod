@@ -19,7 +19,10 @@ from yoyopod_cli.paths import SlotPaths, load_pi_paths, load_slot_paths
 from yoyopod_cli.release_manifest import ReleaseManifest, load_manifest, validate_release_version
 from yoyopod_cli.remote_shared import RemoteConnection, pi_conn
 from yoyopod_cli.remote_transport import run_remote, run_remote_capture, validate_config
-from yoyopod_cli.slot_contract import is_self_contained_slot, missing_self_contained_paths
+from yoyopod_cli.slot_contract import (
+    detect_self_contained_python_version,
+    missing_self_contained_paths,
+)
 
 app = typer.Typer(name="release", help="Slot-deploy push/rollback/status.", no_args_is_help=True)
 
@@ -35,6 +38,7 @@ class PreparedSlotArtifact:
     slot_dir: Path
     manifest: ReleaseManifest
     self_contained: bool
+    python_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -188,11 +192,13 @@ def _prepared_slot_artifact(artifact: Path) -> Iterator[PreparedSlotArtifact]:
 
         manifest = load_manifest(manifest_path)
         resolved_slot = slot_dir.resolve()
+        python_version = detect_self_contained_python_version(resolved_slot)
         yield PreparedSlotArtifact(
             source=artifact,
             slot_dir=resolved_slot,
             manifest=manifest,
-            self_contained=is_self_contained_slot(resolved_slot),
+            self_contained=python_version is not None,
+            python_version=python_version,
         )
     finally:
         if tempdir is not None:
@@ -229,15 +235,21 @@ def _rsync_to_pi(conn: RemoteConnection, slot: Path, version: str) -> int:
     return _run_slot_remote(conn, f"chmod 755 {shlex.quote(launch_path)}")
 
 
-def _run_preflight_on_pi(conn: object, version: str) -> int:
+def _run_preflight_on_pi(
+    conn: object,
+    version: str,
+    *,
+    allow_hydrated_runtime: bool = False,
+) -> int:
     """Run the preflight health check for the uploaded slot on the Pi."""
     slot_dir = _slot_dir(version)
+    args = ["preflight", "--slot", slot_dir]
+    if allow_hydrated_runtime:
+        args.append("--allow-hydrated-runtime")
     cmd = _slot_subapp_command(
         slot_dir,
         "yoyopod_cli.health",
-        "preflight",
-        "--slot",
-        slot_dir,
+        *args,
     )
     return _run_slot_remote(conn, cmd)
 
@@ -249,7 +261,6 @@ def _hydrate_slot_on_pi(conn: object, version: str) -> int:
     venv_dir = f"{slot_dir}/venv"
     requirements_path = f"{slot_dir}/runtime-requirements.txt"
     tmp_root = f"{_slots().state_dir()}/tmp"
-    current_venv = f"{current_path}/venv"
     current_lvgl_build = f"{current_path}/app/yoyopod/ui/lvgl_binding/native/build"
     current_liblinphone_build = f"{current_path}/app/yoyopod/backends/voip/shim_native/build"
     slot_lvgl_build = f"{slot_dir}/app/yoyopod/ui/lvgl_binding/native/build"
@@ -265,12 +276,8 @@ def _hydrate_slot_on_pi(conn: object, version: str) -> int:
         f"export TMPDIR={shlex.quote(tmp_root)}; "
         'tmp_venv=$(mktemp -d "$TMPDIR/yoyopod-slot-venv.XXXXXX"); '
         "trap 'rm -rf \"$tmp_venv\"' EXIT; "
-        f"if [ -e {shlex.quote(current_venv)} ]; then "
-        f'  cp -aL {shlex.quote(current_venv)}/. "$tmp_venv"/; '
-        "else "
-        '  python3 -m venv "$tmp_venv"; '
-        '  "$tmp_venv/bin/python" -m pip install --upgrade pip setuptools wheel; '
-        f"fi; "
+        'python3 -m venv "$tmp_venv"; '
+        '"$tmp_venv/bin/python" -m pip install --upgrade pip setuptools wheel; '
         f"if [ -s {shlex.quote(requirements_path)} ]; then "
         f'  "$tmp_venv/bin/python" -m pip install -r {shlex.quote(requirements_path)}; '
         "fi; "
@@ -425,6 +432,10 @@ def _remote_build_pi_command(*, channel: str, version: str | None, python_versio
     version_arg = f" --version {shlex.quote(version)}" if version else ""
     return (
         "set -euo pipefail; "
+        "build_root=; "
+        'cleanup_build_root() { rc=$?; if [ "$rc" -ne 0 ] && '
+        '[ -n "${build_root:-}" ]; then rm -rf "$build_root"; fi; exit "$rc"; }; '
+        "trap cleanup_build_root EXIT; "
         "build_root=$(mktemp -d /tmp/yoyopod-release-build.XXXXXX); "
         f"{python_bin} -m yoyopod_cli.main build ensure-native; "
         f'slot=$({python_bin} scripts/build_release.py --output "$build_root" --channel '
@@ -432,6 +443,7 @@ def _remote_build_pi_command(*, channel: str, version: str | None, python_versio
         f"{shlex.quote(python_version)} | tail -n 1); "
         'artifact="${slot}.tar.gz"; '
         'test -f "$artifact"; '
+        "trap - EXIT; "
         'printf "YOYOPOD_BUILD_ROOT=%s\\n" "$build_root"; '
         'printf "YOYOPOD_SLOT=%s\\n" "$slot"; '
         'printf "YOYOPOD_ARTIFACT=%s\\n" "$artifact"'
@@ -603,7 +615,11 @@ def push(
                     raise typer.Exit(code=rc)
 
             typer.echo("preflight...")
-            rc = _run_preflight_on_pi(conn, manifest.version)
+            rc = _run_preflight_on_pi(
+                conn,
+                manifest.version,
+                allow_hydrated_runtime=not prepared.self_contained and hydrate_on_target,
+            )
             if rc != 0:
                 typer.echo("preflight failed -- removing uploaded slot", err=True)
                 _cleanup_remote_slot(conn, manifest.version)

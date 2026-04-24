@@ -104,6 +104,20 @@ def test_preflight_fails_on_missing_self_contained_python(tmp_path: Path) -> Non
     assert "venv/bin/python" in (result.stderr or result.stdout)
 
 
+def test_preflight_allows_hydrated_runtime_without_bundled_python(tmp_path: Path) -> None:
+    release_dir = _write_release_dir(tmp_path)
+    shutil.rmtree(release_dir / "python")
+
+    strict = runner.invoke(health_app, ["preflight", "--slot", str(release_dir)])
+    assert strict.exit_code == 1
+
+    hydrated = runner.invoke(
+        health_app,
+        ["preflight", "--slot", str(release_dir), "--allow-hydrated-runtime"],
+    )
+    assert hydrated.exit_code == 0, hydrated.stdout
+
+
 def test_preflight_fails_on_missing_native_runtime_shim(tmp_path: Path) -> None:
     release_dir = _write_release_dir(tmp_path)
     missing = release_dir / "app" / APP_NATIVE_RUNTIME_ARTIFACTS[0]

@@ -124,6 +124,39 @@ def test_install_release_rejects_path_like_manifest_version(tmp_path: Path) -> N
     assert not (tmp_path / "escape").exists()
 
 
+def test_install_release_rejects_non_object_manifest(tmp_path: Path) -> None:
+    version = "bad-manifest-root"
+    artifact = _make_slot_artifact(tmp_path, version)
+    with tarfile.open(artifact, "r:gz") as source:
+        source.extractall(tmp_path / "rewrite", filter="data")
+    manifest = tmp_path / "rewrite" / version / "manifest.json"
+    manifest.write_text(json.dumps(["not", "an", "object"]), encoding="utf-8")
+    with tarfile.open(artifact, "w:gz") as output:
+        output.add(tmp_path / "rewrite" / version, arcname=version)
+    root = tmp_path / "yoyopod"
+    env = {
+        **os.environ,
+        "YOYOPOD_INSTALL_RELEASE_ALLOW_NON_ROOT": "1",
+        "YOYOPOD_SKIP_SYSTEMCTL": "1",
+    }
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(INSTALL_RELEASE_SH),
+            f"--root={root}",
+            f"--artifact={artifact}",
+            "--first-deploy",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "manifest root must be an object" in result.stderr.lower()
+
+
 def test_install_release_rejects_dangling_previous_symlink(tmp_path: Path) -> None:
     version = "dangling-previous"
     artifact = _make_slot_artifact(tmp_path, version)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -77,13 +78,21 @@ def test_build_writes_manifest(tmp_path: Path) -> None:
     assert "full" in manifest["artifacts"]
     assert manifest["artifacts"]["full"]["type"] == "full"
     assert manifest["artifacts"]["full"]["size"] > 0
-    with tarfile.open(out / "2026.04.22-test.tar.gz", "r:gz") as handle:
+    tarball = out / "2026.04.22-test.tar.gz"
+    with tarfile.open(tarball, "r:gz") as handle:
         assert "2026.04.22-test/manifest.json" in handle.getnames()
         bundled_manifest = json.loads(
             handle.extractfile("2026.04.22-test/manifest.json").read().decode("utf-8")  # type: ignore[union-attr]
         )
     assert bundled_manifest == manifest
     assert bundled_manifest["artifacts"]["full"]["sha256"] != "0" * 64
+    payload_sha, payload_size = build_release._slot_payload_digest(result_dir)
+    assert bundled_manifest["artifacts"]["full"]["sha256"] == payload_sha
+    assert bundled_manifest["artifacts"]["full"]["size"] == payload_size
+
+    tar_digest = hashlib.sha256(tarball.read_bytes()).hexdigest()
+    sidecar = out / "2026.04.22-test.tar.gz.sha256"
+    assert sidecar.read_text(encoding="utf-8") == (f"{tar_digest}  2026.04.22-test.tar.gz\n")
 
 
 def test_build_writes_runtime_requirements_from_pyproject(tmp_path: Path) -> None:

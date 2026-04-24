@@ -26,6 +26,8 @@ Current contract:
 - Pi-side hydration is now a legacy compatibility path used only with `--hydrate-on-target`
 - `yoyopod remote release build-pi` builds a self-contained artifact on the Pi checkout and downloads it locally
 - CI and tagged releases can publish a ready-to-install ARM64 slot tarball
+- PR slot artifacts are built only when the PR has the `build-arm-slot` label
+  or the CI workflow is run manually
 - `deploy/scripts/install_release.sh` installs a published slot tarball directly under `/opt/yoyopod`
 - tracked repo `config/` is bundled into every slot
 - `YOYOPOD_STATE_DIR` exists for persistent state, but runtime config is still read
@@ -343,6 +345,11 @@ For published artifacts:
 uv run yoyopod remote release install-url <artifact-url>
 uv run yoyopod remote release status
 ```
+
+The published `.tar.gz` also has a `.tar.gz.sha256` sidecar for validating the
+archive bytes. The `manifest.json` inside the slot records a stable digest of
+the unpacked slot payload, excluding `manifest.json` itself; it intentionally
+does not try to hash the tarball that contains it.
 
 What happens during `release push`:
 

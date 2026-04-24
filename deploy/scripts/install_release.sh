@@ -164,6 +164,8 @@ if len(manifests) != 1:
 slot_dir = manifests[0].resolve()
 manifest_path = slot_dir / "manifest.json"
 data = json.loads(manifest_path.read_text(encoding="utf-8"))
+if not isinstance(data, dict):
+    raise SystemExit(f"install-release: manifest root must be an object: {manifest_path}")
 version = str(data.get("version", "")).strip()
 if not version:
     raise SystemExit(f"install-release: manifest missing version: {manifest_path}")
