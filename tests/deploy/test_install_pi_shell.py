@@ -45,3 +45,18 @@ def test_active_docs_use_curl_installer_not_manual_temp_checkout() -> None:
     assert "/tmp/yoyopod-bootstrap" not in combined
     assert "git clone <repo-url> /tmp" not in combined
     assert "cd ~/yoyopod-core" not in combined
+
+
+def test_readme_describes_lane_based_pi_bringup() -> None:
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "Fresh Raspberry Pi Install" in readme
+    assert "Local Developer Setup" in readme
+    assert "Hardware Validation" in readme
+    assert "curl -fsSL" in readme
+    assert "install_pi.sh" in readme
+    assert "remote mode activate dev" in readme
+    assert "remote release status" in readme
+    assert "Typical bring-up flow" not in readme
+    assert "Basic hardware validation" not in readme
+    assert "yoyopod pi validate smoke" not in readme

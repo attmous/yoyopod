@@ -63,22 +63,48 @@ This repo is Raspberry Pi hardware-first. To work on the real device path, plan 
 - current Whisplay-based prototype hardware
 - the modem path if you want to validate 4G/GPS behavior
 
-Typical bring-up flow:
+### Local Developer Setup
 
 ```bash
 uv sync --extra dev
 uv run yoyopod setup host
 uv run yoyopod setup verify-host --with-remote-tools
-python yoyopod.py
+uv run python yoyopod.py --simulate
 ```
 
-Basic hardware validation:
+Use `python yoyopod.py` without `--simulate` only when you intentionally want to launch against directly attached local hardware.
+
+### Fresh Raspberry Pi Install
+
+On the Pi, install the supported dev/prod lane structure with the curl installer:
 
 ```bash
-yoyopod pi validate smoke
+curl -fsSL https://raw.githubusercontent.com/moustafattia/yoyopod-core/main/deploy/scripts/install_pi.sh | sudo -E bash -s --
 ```
 
-For remote deploy, Pi sync, and troubleshooting, use the `yoyopod remote ...` and `yoyopod pi ...` commands documented below.
+For a first prod slot install from a published artifact:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/moustafattia/yoyopod-core/main/deploy/scripts/install_pi.sh | sudo -E bash -s -- --release-url=<artifact-url>
+```
+
+### Hardware Validation
+
+For PR hardware testing, use the mutable dev lane from your dev machine:
+
+```bash
+uv run yoyopod remote mode activate dev
+uv run yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip
+```
+
+For packaged prod slot validation, use the immutable prod lane:
+
+```bash
+uv run yoyopod remote mode activate prod
+uv run yoyopod remote release status
+```
+
+For deeper deploy, lane, and troubleshooting flows, read [Dev/Prod Lanes](docs/DEV_PROD_LANES.md), [Slot Deploy](docs/SLOT_DEPLOY.md), and [Pi Dev Workflow](docs/PI_DEV_WORKFLOW.md).
 
 ## Read More
 
