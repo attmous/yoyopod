@@ -33,7 +33,7 @@ For live help, use `yoyopod <cmd> --help`.
 | `yoyopod remote restart` | Restart the yoyopod app on the Pi. |
 | `yoyopod remote rtc` | Inspect or control PiSugar RTC remotely. |
 | `yoyopod remote screenshot` | Capture a screenshot from the Pi's display and copy it locally. |
-| `yoyopod remote service` | Manage the yoyopod@<user> systemd unit on the Pi. |
+| `yoyopod remote service` | Unsupported legacy yoyopod@ service manager. |
 | `yoyopod remote setup` | Run full Pi setup remotely. Flags forward to `yoyopod setup pi` on the target. |
 | `yoyopod remote status` | Show repo SHA, processes, and log tail on the Pi. |
 | `yoyopod remote sync` | Update the dev lane checkout from Git and restart the dev app service. |

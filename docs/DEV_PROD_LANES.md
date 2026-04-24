@@ -54,14 +54,17 @@ Per-board overrides still belong in `deploy/pi-deploy.local.yaml`.
 - `yoyopod-prod-rollback.service` is triggered by prod service failure.
 - `yoyopod-prod-ota.timer` and `yoyopod-prod-ota.service` are reserved for the OTA poller.
 
-The dev and prod app units conflict with each other. Lane activation also stops
-old `yoyopod-slot.service` and `yoyopod@<user>.service` units so a migrated
-board does not accidentally keep a previous app service running.
+The dev and prod app units conflict with each other. Lane activation also
+disables and removes unsupported old `yoyopod-slot.service` and
+`yoyopod@<user>.service` unit files, removes `/etc/default/yoyopod`, and stops
+unmanaged `python ... yoyopod.py` app processes before starting the requested
+lane.
 
 Before changing lanes, run `yoyopod remote mode status`. It reports:
 
 - `active_lane`: `dev`, `prod`, `legacy`, `manual-process`, `conflict`, or `none`.
-- `legacy_units`: old `yoyopod@*.service` units that can still own hardware.
+- `legacy_units`: unsupported old `yoyopod@*.service` or `yoyopod-slot.service`
+  units that can still own hardware.
 - `manual_processes`: ad hoc `python ... yoyopod.py` or `yoyopod.main` processes.
 - `prod_ota_conflict`: whether prod OTA is active while dev owns the board.
 - `conflict_reasons`: the active conflict sources.
@@ -140,11 +143,19 @@ cd ~/yoyopod-core
 sudo -E ./deploy/scripts/bootstrap_pi.sh --migrate
 ```
 
-`--migrate` copies the old checkout into `/opt/yoyopod-dev/checkout` when the
-dev checkout is empty, then removes stale `.venv`, `build`, and `logs` folders
-from that copy. It also preserves old config/log files under prod state for
-reference. After migration, treat the old `~/yoyopod-core` checkout as an
-archive only; the live dev truth is `/opt/yoyopod-dev/checkout`.
+Use the old checkout only as a convenient place to run the bootstrap script.
+`--migrate` preserves old config/log files under prod state for reference, but
+it does not copy the legacy checkout into the dev lane. After migration, treat
+the old `~/yoyopod-core` checkout as an archive only; the live dev truth is
+`/opt/yoyopod-dev/checkout`.
+
+Populate the dev lane explicitly before using `remote sync`:
+
+```bash
+sudo chown -R <user>:<user> /opt/yoyopod-dev
+sudo -u <user> git clone <repo-url> /opt/yoyopod-dev/checkout
+uv run yoyopod remote setup
+```
 
 Then activate the desired lane:
 
@@ -167,8 +178,8 @@ publishing a prod slot.
 
 - Do not run dev and prod app services together; they share hardware, audio, and
   the PID file contract.
-- Do not ignore `active_lane=conflict`; stop the listed legacy/manual owner
-  before testing audio/display behavior.
+- Do not ignore `active_lane=conflict`; `remote mode activate dev|prod` is the
+  supported cleanup path for legacy/manual owners.
 - Do not mutate prod release directories in place; publish a new version and
   flip `current`.
 - Do not depend on `uv` on the Pi; dev uses `/opt/yoyopod-dev/venv`, prod slots

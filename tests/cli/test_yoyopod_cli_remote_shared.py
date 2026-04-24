@@ -94,7 +94,6 @@ def test_build_remote_app_defaults_from_yaml(tmp_path, monkeypatch) -> None:
         repo_root = tmp_path
         deploy_config = base_yaml
         deploy_config_local = local_yaml
-        systemd_unit_template = tmp_path / "yoyopod@.service"
 
     monkeypatch.setattr(_remote_shared, "HOST", FakeHost)
 
@@ -146,7 +145,6 @@ def test_build_remote_app_project_dir_follows_lane_dev_root_override(
         repo_root = tmp_path
         deploy_config = base_yaml
         deploy_config_local = local_yaml
-        systemd_unit_template = tmp_path / "yoyopod@.service"
 
     monkeypatch.setattr(_remote_shared, "HOST", FakeHost)
     monkeypatch.delenv("YOYOPOD_PI_PROJECT_DIR", raising=False)
@@ -173,7 +171,6 @@ def test_resolve_remote_connection_treats_null_local_overrides_as_unset(
         repo_root = tmp_path
         deploy_config = base_yaml
         deploy_config_local = local_yaml
-        systemd_unit_template = tmp_path / "yoyopod@.service"
 
     monkeypatch.setattr(_remote_shared, "HOST", FakeHost)
     monkeypatch.delenv("YOYOPOD_PI_HOST", raising=False)

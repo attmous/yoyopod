@@ -32,8 +32,8 @@ The Raspberry Pi should reuse one stable dev checkout path, configured by
 
 Exception: `yoyopod remote release ...` no longer needs that checkout after the
 board has been bootstrapped for slot deploy. The checkout is still required for
-the legacy `remote sync`, `remote validate`, and `remote setup` flows described
-in this guide, but those legacy flows now use the checkout-local `.venv`
+the dev-lane `remote sync`, `remote validate`, and `remote setup` flows
+described in this guide, but those flows use the checkout-local `.venv`
 directly and do not require `uv` to be installed on the Pi.
 
 Why this is the default:
@@ -316,16 +316,17 @@ input side is still alive and the stall is likely between input delivery and the
 thread. If both are stale and `loop_heartbeat_age_seconds` is also stale, treat it as a broader
 runtime stall.
 
-### Production systemd service
+### Lane systemd services
 
 ```bash
-yoyopod remote service status
-yoyopod remote service install
-yoyopod remote service restart
-yoyopod remote service logs --lines 150
+yoyopod remote mode status
+yoyopod remote mode activate dev
+yoyopod remote mode activate prod
 ```
 
-This installs `deploy/systemd/yoyopod@.service` onto the Pi as `yoyopod@<remote-user>.service`, enables it at boot, and records the merged `project_dir` in `/etc/default/yoyopod` so the service follows the same stable checkout path.
+`yoyopod remote service ...` is intentionally unsupported now. Use
+`yoyopod-dev.service` for mutable hardware testing and `yoyopod-prod.service`
+for packaged slot releases.
 
 ### PiSugar helpers
 
@@ -406,6 +407,6 @@ yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-nav
 
 - `yoyopod remote validate` is the default board-validation contract for branches and PRs.
 - `yoyopod remote preflight` is intentionally non-launching.
-- `yoyopod remote service install` expects passwordless `sudo` or an interactive sudo policy on the Pi.
+- `yoyopod remote service ...` is a hard-cut legacy command; bootstrap and lane activation own systemd now.
 - `yoyopod remote sync` used as a dirty-tree override is a debugging escape hatch, not the normal deploy story.
 - For deeper hardware debugging, use `docs/RPI_SMOKE_VALIDATION.md`.

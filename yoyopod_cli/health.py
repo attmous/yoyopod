@@ -92,7 +92,7 @@ def preflight(
 @app.command("live")
 def live(
     service: str = typer.Option(
-        "yoyopod-slot.service",
+        "yoyopod-prod.service",
         "--service",
         help="systemd unit to check for activity.",
     ),

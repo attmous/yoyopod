@@ -78,62 +78,32 @@ def _build_restart(pi: PiPaths, lanes: LanePaths | None = None) -> str:
     """Build the shell that restarts the app and waits for startup verification."""
     lane_paths = lanes or load_lane_paths()
     pid = shell_quote(pi.pid_file)
-    activate = shell_quote(_activate_script_path(pi.venv))
     dev_service = shell_quote(lane_paths.dev_service)
-    service_name = 'yoyopod@"$(id -un)".service'
     selected_checkout_guard = (
         'selected_checkout="$(pwd -P)"; '
         'dev_service_checkout="$(set -a; '
         "[ -f /etc/default/yoyopod-dev ] && . /etc/default/yoyopod-dev; "
         'printf "%s" "${YOYOPOD_DEV_CHECKOUT:-/opt/yoyopod-dev/checkout}")"; '
         'dev_service_checkout="$(cd "$dev_service_checkout" 2>/dev/null && '
-        'pwd -P || printf "%s" "$dev_service_checkout")"; '
-        'legacy_service_checkout="$(set -a; '
-        "[ -f /etc/default/yoyopod ] && . /etc/default/yoyopod; "
-        'printf "%s" "${YOYOPOD_PROJECT_DIR:-$HOME/yoyopod-core}")"; '
-        'case "$legacy_service_checkout" in '
-        '"~") legacy_service_checkout="$HOME" ;; '
-        '"~/"*) legacy_service_checkout="$HOME/${legacy_service_checkout#~/}" ;; '
-        "esac; "
-        'if [ ! -f "$legacy_service_checkout/pyproject.toml" ] && '
-        '[ -f "$HOME/YoyoPod_Core/pyproject.toml" ]; then '
-        'legacy_service_checkout="$HOME/YoyoPod_Core"; '
-        "fi; "
-        'if [ ! -f "$legacy_service_checkout/pyproject.toml" ] && '
-        '[ -f "$HOME/yoyo-py/pyproject.toml" ]; then '
-        'legacy_service_checkout="$HOME/yoyo-py"; '
-        "fi; "
-        'legacy_service_checkout="$(cd "$legacy_service_checkout" 2>/dev/null && '
-        'pwd -P || printf "%s" "$legacy_service_checkout")"'
+        'pwd -P || printf "%s" "$dev_service_checkout")"'
     )
     cleanup_commands = [f"rm -f {pid}"]
     cleanup_commands.extend(f"pkill -f {shell_quote(proc)} || true" for proc in pi.kill_processes)
     cleanup = " ; ".join(cleanup_commands)
-    manual_restart = (
-        f"{cleanup} ; " f"source {activate} && (nohup {pi.start_cmd} > /dev/null 2>&1 &)"
-    )
     managed_restart = (
         f"{selected_checkout_guard}; "
-        "managed_started=0; "
-        f"if systemctl cat {dev_service} >/dev/null 2>&1; then "
+        f"if ! systemctl cat {dev_service} >/dev/null 2>&1; then "
+        "echo 'remote restart: dev lane service is not installed; run board bootstrap first' "
+        ">&2; exit 2; "
+        "fi; "
+        'if [ "$selected_checkout" != "$dev_service_checkout" ]; then '
+        'echo "remote restart: selected checkout $selected_checkout does not match '
+        'dev lane checkout $dev_service_checkout" >&2; exit 2; '
+        "fi; "
         f"sudo systemctl stop {dev_service} >/dev/null 2>&1 || true; "
-        'if [ "$selected_checkout" = "$dev_service_checkout" ]; then '
         f"{cleanup} ; "
         f"sudo systemctl reset-failed {dev_service} >/dev/null 2>&1 || true; "
-        f"sudo systemctl start {dev_service} || exit $?; "
-        "managed_started=1; "
-        "fi; "
-        "fi; "
-        f'if [ "$managed_started" -eq 0 ] && '
-        f"systemctl cat {service_name} >/dev/null 2>&1; then "
-        f"sudo systemctl stop {service_name} >/dev/null 2>&1 || true; "
-        'if [ "$selected_checkout" = "$legacy_service_checkout" ]; then '
-        f"{cleanup} ; "
-        f"sudo systemctl start {service_name} || exit $?; "
-        "managed_started=1; "
-        "fi; "
-        "fi; "
-        f'if [ "$managed_started" -eq 0 ]; then {manual_restart}; fi'
+        f"sudo systemctl start {dev_service} || exit $?"
     )
     return " && ".join(
         [_build_native_shim_refresh(pi), managed_restart, _build_startup_verification(pi)]

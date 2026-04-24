@@ -167,7 +167,8 @@ def _entrypoint_check(deploy_config: Any) -> _CheckResult:
     """Validate repo entrypoints and the configured virtualenv activation path."""
     required_paths = {
         "app": REPO_ROOT / "yoyopod.py",
-        "systemd": REPO_ROOT / "deploy" / "systemd" / "yoyopod@.service",
+        "dev_systemd": REPO_ROOT / "deploy" / "systemd" / "yoyopod-dev.service",
+        "prod_systemd": REPO_ROOT / "deploy" / "systemd" / "yoyopod-prod.service",
     }
 
     normalized_venv = Path(deploy_config.venv.rstrip("/"))

@@ -15,6 +15,11 @@ from yoyopod_cli.remote_transport import (
 
 app = build_remote_app("infra", "Remote power, rtc, and service commands.")
 
+LEGACY_SERVICE_UNSUPPORTED = (
+    "Legacy yoyopod@ service management is no longer supported. "
+    "Bootstrap dev/prod lanes and use `yoyopod remote mode activate dev|prod`."
+)
+
 
 def _build_power(*, venv_relpath: str) -> str:
     """Invoke ``yoyopod pi power battery`` on the Pi."""
@@ -29,33 +34,6 @@ def _build_rtc(action: str, *, venv_relpath: str, time_iso: str, repeat_mask: in
             raise typer.BadParameter("set-alarm requires --time")
         cmd += f" --time {shell_quote(time_iso)} --repeat-mask {repeat_mask}"
     return cmd
-
-
-def _build_service_install() -> str:
-    """Shell that installs the systemd unit and writes the env file."""
-    return (
-        "sudo tee /etc/default/yoyopod > /dev/null <<ENV_EOF && "
-        "sudo cp deploy/systemd/yoyopod@.service /etc/systemd/system/ && "
-        "sudo systemctl daemon-reload && "
-        "sudo systemctl enable --now yoyopod@$USER\n"
-        'YOYOPOD_PROJECT_DIR="$PWD"\n'
-        "ENV_EOF"
-    )
-
-
-def _build_service_uninstall() -> str:
-    """Shell that removes the systemd unit and its env file."""
-    return (
-        "sudo systemctl disable --now yoyopod@$USER && "
-        "sudo rm -f /etc/systemd/system/yoyopod@.service && "
-        "sudo rm -f /etc/default/yoyopod && "
-        "sudo systemctl daemon-reload"
-    )
-
-
-def _build_service_action(action: str) -> str:
-    """Build `sudo systemctl <action> yoyopod@$USER`."""
-    return f"sudo systemctl {action} yoyopod@$USER"
 
 
 @app.command()
@@ -94,20 +72,10 @@ def rtc(
 
 @app.command()
 def service(
-    ctx: typer.Context,
-    action: str = typer.Argument(..., help="install | uninstall | status | start | stop"),
+    action: str = typer.Argument(..., help="Legacy service action (unsupported)."),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
-    """Manage the yoyopod@<user> systemd unit on the Pi."""
+    """Unsupported legacy yoyopod@ service manager."""
     configure_logging(verbose)
-    conn = pi_conn(ctx)
-    validate_config(conn)
-    if action == "install":
-        cmd = _build_service_install()
-    elif action == "uninstall":
-        cmd = _build_service_uninstall()
-    elif action in ("status", "start", "stop"):
-        cmd = _build_service_action(action)
-    else:
-        raise typer.BadParameter(f"unknown action: {action}")
-    raise typer.Exit(run_remote(conn, cmd))
+    typer.echo(f"{LEGACY_SERVICE_UNSUPPORTED} Requested legacy action: {action}.", err=True)
+    raise typer.Exit(2)

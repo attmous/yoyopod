@@ -23,7 +23,6 @@ class HostPaths:
     repo_root: Path = REPO_ROOT
     deploy_config: Path = REPO_ROOT / "deploy" / "pi-deploy.yaml"
     deploy_config_local: Path = REPO_ROOT / "deploy" / "pi-deploy.local.yaml"
-    systemd_unit_template: Path = REPO_ROOT / "deploy" / "systemd" / "yoyopod@.service"
 
 
 @dataclass(frozen=True)

@@ -251,7 +251,7 @@ Important expectation:
 - YoYoPod should be started by `systemd` on boot when watchdog mode is used
 
 Current production unit:
-- `deploy/systemd/yoyopod@.service`
+- `deploy/systemd/yoyopod-prod.service`
 
 ## User-Facing UI
 
@@ -384,4 +384,4 @@ Not yet productized:
 - `README.md`
 - `docs/RPI_SMOKE_VALIDATION.md`
 - `docs/PI_DEV_WORKFLOW.md`
-- `deploy/systemd/yoyopod@.service`
+- `deploy/systemd/yoyopod-prod.service`

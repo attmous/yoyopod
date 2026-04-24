@@ -8,11 +8,7 @@ from yoyopod_cli.remote_infra import (
     app,
     _build_power,
     _build_rtc,
-    _build_service_install,
-    _build_service_uninstall,
-    _build_service_action,
 )
-from yoyopod_cli.paths import HOST
 
 
 def test_build_power_invokes_pi_power_battery() -> None:
@@ -44,22 +40,6 @@ def test_build_rtc_set_alarm_without_time_fails() -> None:
 
     with pytest.raises(typer.BadParameter):
         _build_rtc("set-alarm", venv_relpath=".venv", time_iso="", repeat_mask=127)
-
-
-def test_build_service_install_uses_relative_template_path() -> None:
-    shell = _build_service_install()
-    assert "deploy/systemd/yoyopod@.service" in shell
-    assert "systemctl daemon-reload" in shell
-    assert "systemctl enable" in shell
-    # Must NOT contain an absolute host path
-    assert "/home/" not in shell
-    assert "/Users/" not in shell
-    assert "c:/users" not in shell.lower()
-
-
-def test_build_service_action_start() -> None:
-    shell = _build_service_action("start")
-    assert shell == "sudo systemctl start yoyopod@$USER"
 
 
 def test_power_cli_invokes_run_remote(monkeypatch) -> None:
@@ -95,45 +75,17 @@ def test_build_rtc_uses_checkout_python_module_invocation() -> None:
     assert "uv run" not in shell
 
 
-# --- Fix 4: service install persists env file ---
+def test_legacy_service_command_fails_locally(monkeypatch) -> None:
+    def fail_run_remote(*args, **kwargs):
+        raise AssertionError("legacy service command must not SSH to the Pi")
 
+    monkeypatch.setattr("yoyopod_cli.remote_infra.run_remote", fail_run_remote)
+    monkeypatch.setenv("YOYOPOD_PI_HOST", "rpi-zero")
 
-def test_build_service_install_persists_project_dir_env_file() -> None:
-    shell = _build_service_install()
-    assert "/etc/default/yoyopod" in shell
-    assert "YOYOPOD_PROJECT_DIR=" in shell
-    # Must use $PWD (= conn.project_dir after cd) not a host-absolute path
-    assert "$PWD" in shell
-    # Must NOT embed the systemd unit host-absolute path
-    assert "/home/" not in shell
-    assert "/Users/" not in shell
+    runner = CliRunner()
+    result = runner.invoke(app, ["service", "status"])
 
-
-def test_build_service_install_chains_env_write_with_copy_and_enable() -> None:
-    shell = _build_service_install()
-    assert "<<ENV_EOF && sudo cp deploy/systemd/yoyopod@.service" in shell
-    assert "<<'ENV_EOF'" not in shell
-    assert "sudo systemctl enable --now yoyopod@$USER" in shell
-
-
-def test_build_service_install_copies_template_and_reloads() -> None:
-    shell = _build_service_install()
-    assert "deploy/systemd/yoyopod@.service" in shell
-    assert "systemctl daemon-reload" in shell
-    assert "systemctl enable" in shell
-
-
-def test_build_service_uninstall_removes_env_file() -> None:
-    """Uninstall should clean up /etc/default/yoyopod for a clean system."""
-    shell = _build_service_uninstall()
-    assert "/etc/default/yoyopod" in shell
-    assert "systemctl disable" in shell
-    assert "systemctl daemon-reload" in shell
-
-
-def test_systemd_template_refreshes_native_shims_before_start() -> None:
-    template = HOST.systemd_unit_template.read_text(encoding="utf-8")
-
-    assert "ExecStartPre=" in template
-    assert ".venv/bin/python" in template
-    assert "-m yoyopod_cli.main build ensure-native" in template
+    assert result.exit_code == 2
+    assert "Legacy yoyopod@ service management is no longer supported" in (
+        result.stderr or result.output
+    )

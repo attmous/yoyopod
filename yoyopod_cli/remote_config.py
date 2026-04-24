@@ -79,7 +79,7 @@ def edit() -> None:
             "# Host-specific overrides for deploy/pi-deploy.yaml\n"
             "# host: rpi-zero\n"
             "# user: pi\n"
-            "# project_dir: ~/yoyopod-core\n"
+            "# project_dir: /opt/yoyopod-dev/checkout\n"
             f"# test_music_target_dir: {DEFAULT_TEST_MUSIC_TARGET_DIR}\n",
             encoding="utf-8",
         )

@@ -6,7 +6,6 @@ from typer.testing import CliRunner
 
 from yoyopod_cli.remote_ops import (
     app,
-    _activate_script_path,
     _build_native_shim_refresh,
     _build_status,
     _build_restart,
@@ -42,24 +41,25 @@ def test_build_restart_uses_configured_processes() -> None:
     assert "pkill" in shell
     assert "systemctl cat" in shell
     assert "sudo systemctl start" in shell
-    assert "nohup python yoyopod.py --simulate" in shell
-    assert _activate_script_path(pi.venv) in shell
+    assert "nohup" not in shell
+    assert "source venv" not in shell
+    assert "python yoyopod.py --simulate" not in shell
     assert "venv/bin/python -m yoyopod_cli.main build ensure-native" in shell
     assert pi.pid_file in shell
     assert pi.log_file in shell
     assert pi.startup_marker in shell
 
 
-def test_build_restart_prefers_dev_lane_service_when_installed() -> None:
+def test_build_restart_requires_dev_lane_service() -> None:
     shell = _build_restart(PiPaths())
 
     dev_probe = shell.index("systemctl cat yoyopod-dev.service")
-    legacy_probe = shell.index('systemctl cat yoyopod@"$(id -un)".service')
     dev_start = shell.index("sudo systemctl start yoyopod-dev.service")
 
-    assert dev_probe < legacy_probe
     assert dev_probe < dev_start
+    assert "dev lane service is not installed" in shell
     assert "sudo systemctl reset-failed yoyopod-dev.service" in shell
+    assert "yoyopod@" not in shell
 
 
 def test_build_restart_only_starts_managed_service_for_selected_checkout() -> None:
@@ -68,24 +68,19 @@ def test_build_restart_only_starts_managed_service_for_selected_checkout() -> No
     assert 'selected_checkout="$(pwd -P)"' in shell
     assert "/etc/default/yoyopod-dev" in shell
     assert "YOYOPOD_DEV_CHECKOUT" in shell
-    assert "/etc/default/yoyopod" in shell
-    assert "YOYOPOD_PROJECT_DIR" in shell
-    assert '[ "$selected_checkout" = "$dev_service_checkout" ]' in shell
-    assert '[ "$selected_checkout" = "$legacy_service_checkout" ]' in shell
+    assert "[ -f /etc/default/yoyopod ]" not in shell
+    assert "YOYOPOD_PROJECT_DIR" not in shell
+    assert '[ "$selected_checkout" != "$dev_service_checkout" ]' in shell
+    assert "selected checkout" in shell
 
 
-def test_build_restart_mirrors_legacy_unit_checkout_fallbacks() -> None:
+def test_build_restart_has_no_legacy_checkout_fallbacks() -> None:
     shell = _build_restart(PiPaths())
 
-    yoyo_core_fallback = 'legacy_service_checkout="$HOME/YoyoPod_Core"'
-    yoyo_py_fallback = 'legacy_service_checkout="$HOME/yoyo-py"'
-    legacy_match = '[ "$selected_checkout" = "$legacy_service_checkout" ]'
-
-    assert '$HOME/yoyopod-core' in shell
-    assert yoyo_core_fallback in shell
-    assert yoyo_py_fallback in shell
-    assert shell.index(yoyo_core_fallback) < shell.index(legacy_match)
-    assert shell.index(yoyo_py_fallback) < shell.index(legacy_match)
+    assert "$HOME/yoyopod-core" not in shell
+    assert "$HOME/YoyoPod_Core" not in shell
+    assert "$HOME/yoyo-py" not in shell
+    assert "legacy_service_checkout" not in shell
 
 
 def test_build_native_shim_refresh_rebuilds_lvgl_and_liblinphone_when_stale() -> None:

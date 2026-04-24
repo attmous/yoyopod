@@ -291,7 +291,7 @@ Only use it when:
 
 ## Failure Triage
 
-- `deploy` fails: verify the checkout still has `deploy/pi-deploy.yaml`, `deploy/systemd/yoyopod@.service`, the configured virtualenv, and writable runtime path parents
+- `deploy` fails: verify the checkout still has `deploy/pi-deploy.yaml`, `deploy/systemd/yoyopod-dev.service`, `deploy/systemd/yoyopod-prod.service`, the configured virtualenv, and writable runtime path parents
 - `display` fails: check attached HAT, driver and library install, and `display.hardware` config
 - `input` fails: check the matching display adapter initialized correctly first
 - `music` fails: verify `mpv` is installed, the configured socket path is writable, and the provision target under `test_music_target_dir` is writable when deterministic seeding is enabled

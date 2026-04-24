@@ -49,8 +49,9 @@ Pi lanes and bootstrap
 - Dev lane: mutable hardware-testing checkout at `/opt/yoyopod-dev/checkout`, venv at `/opt/yoyopod-dev/venv`, service `yoyopod-dev.service`.
 - Prod lane: immutable packaged slots under `/opt/yoyopod-prod`, service `yoyopod-prod.service`; use `remote release ...`, not `remote sync`.
 - Check lane ownership first with `yoyopod remote mode status`; dev/prod services should not own hardware together.
-- Fresh board: from a temporary Pi checkout run `sudo -E ./deploy/scripts/bootstrap_pi.sh`; add `--migrate` for old `~/yoyopod-core`, or `--release-url=<artifact-url>` for first prod install.
-- After migration, `~/yoyopod-core` is archive/history only; live dev truth is `/opt/yoyopod-dev/checkout`.
+- Fresh board: from a temporary Pi checkout run `sudo -E ./deploy/scripts/bootstrap_pi.sh`; add `--release-url=<artifact-url>` for first prod install.
+- Migration: `--migrate` preserves old config/logs for reference only. It does not copy old `~/yoyopod-core` into dev; live dev truth is `/opt/yoyopod-dev/checkout`.
+- Hard cut: supported runtime owners are only `yoyopod-dev.service` and `yoyopod-prod.service`; `yoyopod@*.service`, `yoyopod-slot.service`, unmanaged `python yoyopod.py`, and `remote service ...` are legacy contamination paths.
 - Dev deploy loop: `yoyopod remote mode activate dev`, then `yoyopod remote setup` once, then `yoyopod remote sync --branch <branch>`; add `--clean-native` after native/CMake/lib changes or branch switches.
 - Lane details live in `docs/DEV_PROD_LANES.md`, dev workflow in `docs/PI_DEV_WORKFLOW.md`, prod slot/OTA flow in `docs/SLOT_DEPLOY.md`.
 

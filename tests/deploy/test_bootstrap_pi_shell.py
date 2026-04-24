@@ -73,6 +73,18 @@ def test_bootstrap_disables_legacy_template_units_before_enabling_prod() -> None
     assert find_legacy_pos < disable_legacy_pos < enable_prod_pos
 
 
+def test_bootstrap_removes_legacy_unit_files_and_env_before_enabling_prod() -> None:
+    script = BOOTSTRAP_SH.read_text(encoding="utf-8")
+
+    remove_legacy_pos = script.index("/etc/systemd/system/yoyopod@.service")
+    enable_prod_pos = script.index("systemctl enable --now yoyopod-prod.service")
+
+    assert remove_legacy_pos < enable_prod_pos
+    assert "/etc/systemd/system/yoyopod-slot.service" in script
+    assert "/etc/default/yoyopod" in script
+    assert "systemctl daemon-reload" in script[remove_legacy_pos:enable_prod_pos]
+
+
 def test_bootstrap_installs_prod_ota_lane_guard() -> None:
     script = BOOTSTRAP_SH.read_text(encoding="utf-8")
 
@@ -80,9 +92,10 @@ def test_bootstrap_installs_prod_ota_lane_guard() -> None:
     assert '"${ROOT}/bin/prod-ota-guard.sh"' in script
 
 
-def test_bootstrap_migration_seeds_dev_checkout_from_legacy_checkout() -> None:
+def test_bootstrap_migration_does_not_seed_dev_checkout_from_legacy_checkout() -> None:
     script = BOOTSTRAP_SH.read_text(encoding="utf-8")
 
     assert '"${DEV_ROOT}/checkout"' in script
-    assert 'cp -a "${OLD}/."' in script
-    assert 'rm -rf "${DEV_ROOT}/checkout/.venv"' in script
+    assert 'cp -a "${OLD}/." "${DEV_ROOT}/checkout/"' not in script
+    assert 'rm -rf "${DEV_ROOT}/checkout/.venv"' not in script
+    assert "legacy checkout is not copied" in script

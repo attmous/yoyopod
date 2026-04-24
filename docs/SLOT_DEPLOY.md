@@ -163,9 +163,9 @@ uv run yoyopod remote mode activate prod
 
 The migration preserves old `config/` and `logs/` under
 `/opt/yoyopod-prod/state/` for reference. The live prod app reads the bundled
-slot `config/`, not the preserved state copy. If `/opt/yoyopod-dev/checkout`
-is empty, migration also seeds it from the old checkout and removes stale
-`.venv`, `build`, and `logs` directories from that copy.
+slot `config/`, not the preserved state copy. Migration does not seed
+`/opt/yoyopod-dev/checkout` from the old checkout; clone the repo there
+explicitly if you want to return to the dev lane.
 
 ## Pitfalls Found During Bring-Up
 

@@ -29,10 +29,44 @@ def _disable_legacy_template_services() -> str:
     """Disable old yoyopod@<user> services that predate the lane split."""
     pattern = shlex.quote("yoyopod@*.service")
     return (
-        f"legacy_units=$(systemctl list-units --type=service --all --plain --no-legend "
-        f"{pattern} 2>/dev/null | awk '{{print $1}}' || true); "
+        "legacy_units=$( { "
+        f"systemctl list-units --type=service --all --plain --no-legend {pattern} "
+        "2>/dev/null || true; "
+        f"systemctl list-unit-files --type=service --plain --no-legend {pattern} "
+        "2>/dev/null || true; "
+        "} | awk '{print $1}' | sort -u); "
         'if [ -n "$legacy_units" ]; then '
         "sudo systemctl disable --now $legacy_units >/dev/null 2>&1 || true; "
+        "fi"
+    )
+
+
+def _purge_legacy_artifacts(lanes: LanePaths) -> str:
+    """Remove unsupported pre-lane unit files/env after stopping their services."""
+    legacy_template_path = shlex.quote("/etc/systemd/system/yoyopod@.service")
+    legacy_slot_path = shlex.quote(f"/etc/systemd/system/{lanes.legacy_slot_service}")
+    legacy_env_path = shlex.quote("/etc/default/yoyopod")
+    return " && ".join(
+        [
+            _sudo_systemctl("disable --now", lanes.legacy_slot_service, optional=True),
+            _disable_legacy_template_services(),
+            (
+                f"sudo rm -f {legacy_template_path} {legacy_slot_path} {legacy_env_path} "
+                ">/dev/null 2>&1 || true"
+            ),
+            "sudo systemctl daemon-reload >/dev/null 2>&1 || true",
+        ]
+    )
+
+
+def _stop_unmanaged_app_processes() -> str:
+    """Stop unsupported manual app launches before handing hardware to a lane."""
+    pattern = shlex.quote(r"python(3)? .*yoyopod(\.py|\.main)")
+    return (
+        f"manual_pids=$(pgrep -f {pattern} 2>/dev/null || true); "
+        'if [ -n "$manual_pids" ]; then '
+        "sudo kill $manual_pids >/dev/null 2>&1 || "
+        "kill $manual_pids >/dev/null 2>&1 || true; "
         "fi"
     )
 
@@ -44,16 +78,16 @@ def _build_activate(lane: str, lanes: LanePaths) -> str:
             _sudo_systemctl("disable --now", lanes.prod_ota_timer, optional=True),
             _sudo_systemctl("disable --now", lanes.prod_ota_service, optional=True),
             _sudo_systemctl("disable --now", lanes.prod_service, optional=True),
-            _sudo_systemctl("disable --now", lanes.legacy_slot_service, optional=True),
-            _disable_legacy_template_services(),
+            _purge_legacy_artifacts(lanes),
+            _stop_unmanaged_app_processes(),
             _sudo_systemctl("reset-failed", lanes.dev_service, optional=True),
             _sudo_systemctl("enable --now", lanes.dev_service),
         ]
     elif lane == "prod":
         steps = [
             _sudo_systemctl("disable --now", lanes.dev_service, optional=True),
-            _sudo_systemctl("disable --now", lanes.legacy_slot_service, optional=True),
-            _disable_legacy_template_services(),
+            _purge_legacy_artifacts(lanes),
+            _stop_unmanaged_app_processes(),
             _sudo_systemctl("reset-failed", lanes.prod_service, optional=True),
             _sudo_systemctl("enable --now", lanes.prod_service),
             _sudo_systemctl("enable --now", lanes.prod_ota_timer, optional=True),

@@ -20,13 +20,18 @@ def test_activate_dev_stops_prod_lane_before_starting_dev() -> None:
     stop_ota = command.index("disable --now yoyopod-prod-ota.timer")
     stop_prod = command.index("disable --now yoyopod-prod.service")
     stop_legacy_template = command.index("yoyopod@*.service")
+    stop_manual = command.index("manual_pids=$(pgrep -f")
     start_dev = command.index("enable --now yoyopod-dev.service")
 
     assert stop_ota < start_dev
     assert stop_prod < start_dev
     assert stop_legacy_template < start_dev
+    assert stop_manual < start_dev
     assert "reset-failed yoyopod-dev.service" in command
-    assert "yoyopod-slot.service" in command  # legacy prod alias is stopped defensively
+    assert "yoyopod-slot.service" in command
+    assert "/etc/systemd/system/yoyopod@.service" in command
+    assert "/etc/systemd/system/yoyopod-slot.service" in command
+    assert "/etc/default/yoyopod" in command
 
 
 def test_activate_prod_stops_dev_lane_before_starting_prod() -> None:
@@ -36,11 +41,13 @@ def test_activate_prod_stops_dev_lane_before_starting_prod() -> None:
     stop_dev = command.index("disable --now yoyopod-dev.service")
     stop_legacy_slot = command.index("disable --now yoyopod-slot.service")
     stop_legacy_template = command.index("yoyopod@*.service")
+    stop_manual = command.index("manual_pids=$(pgrep -f")
     start_prod = command.index("enable --now yoyopod-prod.service")
 
     assert stop_dev < start_prod
     assert stop_legacy_slot < start_prod
     assert stop_legacy_template < start_prod
+    assert stop_manual < start_prod
     assert "reset-failed yoyopod-prod.service" in command
     assert "enable --now yoyopod-prod-ota.timer" in command
 
@@ -75,6 +82,29 @@ def test_status_detects_legacy_units_and_manual_processes() -> None:
     assert "manual_processes=" in command
     assert "manual-process" in command
     assert "active_lane=conflict" in command
+
+
+def test_activate_purges_loaded_and_enabled_legacy_template_units() -> None:
+    command = _build_activate("dev", LanePaths())
+
+    list_units = command.index("systemctl list-units --type=service --all --plain --no-legend")
+    list_unit_files = command.index("systemctl list-unit-files --type=service --plain --no-legend")
+    disable = command.index("sudo systemctl disable --now $legacy_units")
+    start_dev = command.index("enable --now yoyopod-dev.service")
+
+    assert list_units < disable < start_dev
+    assert list_unit_files < disable < start_dev
+
+
+def test_activate_stops_unmanaged_app_processes_before_enabling_lane() -> None:
+    command = _build_activate("prod", LanePaths())
+
+    cleanup = command.index("manual_pids=$(pgrep -f")
+    start_prod = command.index("enable --now yoyopod-prod.service")
+
+    assert cleanup < start_prod
+    assert "python(3)? .*yoyopod(\\.py|\\.main)" in command
+    assert "kill $manual_pids" in command
 
 
 def test_status_checks_only_active_legacy_template_units() -> None:

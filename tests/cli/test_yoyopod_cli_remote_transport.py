@@ -20,7 +20,7 @@ def test_shell_quote_escapes() -> None:
 
 def test_quote_remote_project_dir_tilde() -> None:
     assert quote_remote_project_dir("~") == '"$HOME"'
-    assert quote_remote_project_dir("~/yoyopod-core") == '"$HOME/yoyopod-core"'
+    assert quote_remote_project_dir("~/dev checkout") == '"$HOME/dev checkout"'
 
 
 def test_quote_remote_project_dir_absolute() -> None:
@@ -34,13 +34,18 @@ def test_quote_remote_project_dir_escapes_shell_metacharacters() -> None:
 
 
 def test_build_ssh_command_without_tty() -> None:
-    conn = RemoteConnection(host="rpi-zero", user="pi", project_dir="~/yoyopod-core", branch="main")
+    conn = RemoteConnection(
+        host="rpi-zero",
+        user="pi",
+        project_dir="/opt/yoyopod-dev/checkout",
+        branch="main",
+    )
     parts = build_ssh_command(conn, "ls")
     assert len(parts) == 3
     assert parts[0] == "ssh"
     assert parts[1] == "pi@rpi-zero"
     assert parts[2].startswith("bash -lc ")
-    assert '"$HOME/yoyopod-core"' in parts[2]
+    assert "/opt/yoyopod-dev/checkout" in parts[2]
     assert "&& ls" in parts[2]
 
 
@@ -55,22 +60,32 @@ def test_build_ssh_command_with_tty() -> None:
 
 
 def test_build_ssh_command_without_workdir_skips_cd_wrapper() -> None:
-    conn = RemoteConnection(host="rpi-zero", user="pi", project_dir="~/yoyopod-core", branch="main")
-    parts = build_ssh_command(conn, "systemctl is-active yoyopod-slot.service", workdir=None)
+    conn = RemoteConnection(
+        host="rpi-zero",
+        user="pi",
+        project_dir="/opt/yoyopod-dev/checkout",
+        branch="main",
+    )
+    parts = build_ssh_command(conn, "systemctl is-active yoyopod-prod.service", workdir=None)
     assert len(parts) == 3
     assert parts[0] == "ssh"
     assert parts[1] == "pi@rpi-zero"
     assert parts[2].startswith("bash -lc ")
     assert "cd " not in parts[2]
-    assert "systemctl is-active yoyopod-slot.service" in parts[2]
+    assert "systemctl is-active yoyopod-prod.service" in parts[2]
 
 
 def test_validate_config_raises_on_empty_host() -> None:
-    conn = RemoteConnection(host="", user="pi", project_dir="~/yoyopod-core", branch="main")
+    conn = RemoteConnection(host="", user="pi", project_dir="/opt/yoyopod-dev/checkout", branch="main")
     with pytest.raises(SystemExit, match="Missing Raspberry Pi host"):
         validate_config(conn)
 
 
 def test_validate_config_accepts_non_empty_host() -> None:
-    conn = RemoteConnection(host="rpi-zero", user="pi", project_dir="~/yoyopod-core", branch="main")
+    conn = RemoteConnection(
+        host="rpi-zero",
+        user="pi",
+        project_dir="/opt/yoyopod-dev/checkout",
+        branch="main",
+    )
     validate_config(conn)

@@ -9,7 +9,7 @@
 # - Writes /etc/default/yoyopod-prod and /etc/default/yoyopod-dev
 # - Copies deploy/scripts/rollback.sh to /opt/yoyopod-prod/bin/rollback.sh
 # - Copies deploy/scripts/install_release.sh to /opt/yoyopod-prod/bin/install-release.sh
-# - Optional: migrates config + data from ~/yoyopod-core/ to /opt/yoyopod-prod/state/
+# - Optional: migrates config + logs from ~/yoyopod-core/ to /opt/yoyopod-prod/state/
 # - Optional: installs a first release artifact after bootstrap
 #
 # Requires sudo. Invoke as the user who will run the app:
@@ -126,6 +126,11 @@ legacy_template_units="$(
 if [ -n "${legacy_template_units}" ]; then
     systemctl disable --now ${legacy_template_units} >/dev/null 2>&1 || true
 fi
+rm -f \
+    /etc/systemd/system/yoyopod@.service \
+    /etc/systemd/system/yoyopod-slot.service \
+    /etc/default/yoyopod
+systemctl daemon-reload
 
 if [ -n "${RELEASE_ARCHIVE}" ] || [ -n "${RELEASE_URL}" ]; then
     INSTALL_CMD=("${ROOT}/bin/install-release.sh" "--root=${ROOT}" "--first-deploy")
@@ -140,18 +145,12 @@ if [ -n "${RELEASE_ARCHIVE}" ] || [ -n "${RELEASE_URL}" ]; then
     systemctl enable --now yoyopod-prod.service
 fi
 
-# 5. Optional migration from ~/yoyopod-core/ -> /opt/yoyopod-prod/state/
+# 5. Optional migration from old config/logs -> /opt/yoyopod-prod/state/
 if [ "${MIGRATE}" -eq 1 ]; then
     OLD="/home/${INVOKING_USER}/yoyopod-core"
     if [ -d "${OLD}" ]; then
         echo "bootstrap: migrating from ${OLD} -> ${ROOT}/state/"
-        if [ ! -f "${DEV_ROOT}/checkout/pyproject.toml" ]; then
-            echo "bootstrap: seeding dev checkout from ${OLD}"
-            cp -a "${OLD}/." "${DEV_ROOT}/checkout/"
-            rm -rf "${DEV_ROOT}/checkout/.venv" "${DEV_ROOT}/checkout/build" \
-                "${DEV_ROOT}/checkout/logs"
-            chown -R "${INVOKING_USER}:${INVOKING_GROUP}" "${DEV_ROOT}/checkout"
-        fi
+        echo "bootstrap: legacy checkout is not copied; clone the repo into ${DEV_ROOT}/checkout before remote sync"
         for sub in config logs; do
             if [ -d "${OLD}/${sub}" ]; then
                 install -d -o "${INVOKING_USER}" -g "${INVOKING_GROUP}" \

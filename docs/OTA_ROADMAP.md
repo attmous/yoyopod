@@ -13,8 +13,8 @@ This doc lists the exact extension points.
 - **Atomic slot flip**: `yoyopod_cli/atomic_symlink.py` + `rollback.sh`
   are the only state-mutating primitives. An OTA daemon calls the same
   primitives after downloading an artifact.
-- **Rollback on failure**: `yoyopod-slot.service` has `OnFailure=`
-  pointing at `yoyopod-rollback.service`. An OTA-applied update that
+- **Rollback on failure**: `yoyopod-prod.service` has `OnFailure=`
+  pointing at `yoyopod-prod-rollback.service`. An OTA-applied update that
   crash-loops triggers rollback without daemon involvement.
 - **Health probes**: `yoyopod health preflight` + `yoyopod health live`
   are the same entry points the deploy CLI uses.

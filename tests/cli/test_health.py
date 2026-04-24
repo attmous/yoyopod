@@ -223,10 +223,11 @@ def test_live_passes_when_systemctl_reports_active(
     monkeypatch.setenv("YOYOPOD_RELEASE_MANIFEST", str(manifest_path))
     fake_result = MagicMock()
     fake_result.stdout = "active\n"
-    with patch("yoyopod_cli.health.subprocess.run", return_value=fake_result):
+    with patch("yoyopod_cli.health.subprocess.run", return_value=fake_result) as run_mock:
         result = runner.invoke(health_app, ["live"])
     assert result.exit_code == 0
     assert "version=2026.04.22-abc" in result.stdout
+    assert run_mock.call_args.args[0] == ["systemctl", "is-active", "yoyopod-prod.service"]
 
 
 def test_preflight_fails_when_required_config_file_missing(tmp_path: Path) -> None:
