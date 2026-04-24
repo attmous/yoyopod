@@ -7,7 +7,22 @@
 
 set -euo pipefail
 
-ROOT="/opt/yoyopod-prod"
+YOYOPOD_ROOT_ENV="${YOYOPOD_ROOT-}"
+YOYOPOD_ROOT_WAS_SET="${YOYOPOD_ROOT+x}"
+YOYOPOD_SERVICE_NAME_ENV="${YOYOPOD_SERVICE_NAME-}"
+YOYOPOD_SERVICE_NAME_WAS_SET="${YOYOPOD_SERVICE_NAME+x}"
+if [ -f /etc/default/yoyopod-prod ]; then
+    # shellcheck disable=SC1091
+    . /etc/default/yoyopod-prod
+fi
+if [ -n "${YOYOPOD_ROOT_WAS_SET}" ]; then
+    YOYOPOD_ROOT="${YOYOPOD_ROOT_ENV}"
+fi
+if [ -n "${YOYOPOD_SERVICE_NAME_WAS_SET}" ]; then
+    YOYOPOD_SERVICE_NAME="${YOYOPOD_SERVICE_NAME_ENV}"
+fi
+
+ROOT="${YOYOPOD_ROOT:-/opt/yoyopod-prod}"
 SERVICE_NAME="${YOYOPOD_SERVICE_NAME:-yoyopod-prod.service}"
 ARTIFACT=""
 URL=""

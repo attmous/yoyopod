@@ -19,3 +19,14 @@ def test_prod_ota_guard_requires_prod_lane_to_be_active() -> None:
 
     assert "yoyopod-prod.service" in script
     assert "prod lane is not active" in script
+
+
+def test_prod_ota_guard_loads_prod_env_before_defaulting_service_name() -> None:
+    script = GUARD_SH.read_text(encoding="utf-8")
+
+    load_env_pos = script.index(". /etc/default/yoyopod-prod")
+    service_default_pos = script.index(
+        'PROD_SERVICE="${YOYOPOD_SERVICE_NAME:-yoyopod-prod.service}"'
+    )
+
+    assert load_env_pos < service_default_pos

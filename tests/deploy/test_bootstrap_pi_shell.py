@@ -52,7 +52,15 @@ def test_bootstrap_installs_lane_services() -> None:
     assert "deploy/systemd/yoyopod-prod-rollback.service" in script
     assert "deploy/systemd/yoyopod-dev.service" in script
     assert "systemctl enable --now yoyopod-prod.service" in script
-    assert "yoyopod-slot.service" not in script
+
+
+def test_bootstrap_disables_legacy_slot_before_enabling_prod() -> None:
+    script = BOOTSTRAP_SH.read_text(encoding="utf-8")
+
+    disable_legacy_pos = script.index("systemctl disable --now yoyopod-slot.service")
+    enable_prod_pos = script.index("systemctl enable --now yoyopod-prod.service")
+
+    assert disable_legacy_pos < enable_prod_pos
 
 
 def test_bootstrap_installs_prod_ota_lane_guard() -> None:

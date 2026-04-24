@@ -6,6 +6,16 @@
 
 set -euo pipefail
 
+YOYOPOD_SERVICE_NAME_ENV="${YOYOPOD_SERVICE_NAME-}"
+YOYOPOD_SERVICE_NAME_WAS_SET="${YOYOPOD_SERVICE_NAME+x}"
+if [ -f /etc/default/yoyopod-prod ]; then
+    # shellcheck disable=SC1091
+    . /etc/default/yoyopod-prod
+fi
+if [ -n "${YOYOPOD_SERVICE_NAME_WAS_SET}" ]; then
+    YOYOPOD_SERVICE_NAME="${YOYOPOD_SERVICE_NAME_ENV}"
+fi
+
 DEV_SERVICE="${YOYOPOD_DEV_SERVICE:-yoyopod-dev.service}"
 PROD_SERVICE="${YOYOPOD_SERVICE_NAME:-yoyopod-prod.service}"
 

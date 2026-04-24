@@ -116,6 +116,7 @@ for unit in yoyopod-prod.service yoyopod-dev.service; do
 done
 
 systemctl daemon-reload
+systemctl disable --now yoyopod-slot.service >/dev/null 2>&1 || true
 
 if [ -n "${RELEASE_ARCHIVE}" ] || [ -n "${RELEASE_URL}" ]; then
     INSTALL_CMD=("${ROOT}/bin/install-release.sh" "--root=${ROOT}" "--first-deploy")
