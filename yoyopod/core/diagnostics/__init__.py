@@ -47,6 +47,7 @@ def setup(
     app.bus.set_diagnostics_log(event_log)
     app.scheduler.set_diagnostics_log(event_log)
     app.services.set_diagnostics_log(event_log)
+    app.background.set_diagnostics_log(event_log)
     app.bus.subscribe(object, event_log.append_event)
     app.services.register(
         "diagnostics",
@@ -70,6 +71,7 @@ def teardown(app: Any) -> None:
     app.bus.set_diagnostics_log(None)
     app.scheduler.set_diagnostics_log(None)
     app.services.set_diagnostics_log(app.log_buffer)
+    app.background.set_diagnostics_log(app.log_buffer)
 
 
 def _coerce_snapshot_command(data: object) -> SnapshotCommand:

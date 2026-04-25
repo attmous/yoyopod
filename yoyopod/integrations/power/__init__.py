@@ -104,6 +104,7 @@ def setup(
         scheduler=app.scheduler,
         on_snapshot=lambda snapshot: apply_snapshot(app, snapshot),
         poll_interval_seconds=poll_interval_seconds,
+        background=getattr(app, "background", None),
     )
     integration = PowerIntegration(backend=actual_backend, poller=poller)
 

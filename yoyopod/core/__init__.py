@@ -14,6 +14,8 @@ _PUBLIC_EXPORTS = {
     "AppRuntimeState": ("yoyopod.core.app_state", "AppRuntimeState"),
     "AppStateRuntime": ("yoyopod.core.app_state", "AppStateRuntime"),
     "BackendStoppedEvent": ("yoyopod.core.events", "BackendStoppedEvent"),
+    "BackgroundExecutor": ("yoyopod.core.background", "BackgroundExecutor"),
+    "BackgroundPool": ("yoyopod.core.background", "BackgroundPool"),
     "Bus": ("yoyopod.core.bus", "Bus"),
     "DiagnosticsRuntime": ("yoyopod.core.diagnostics", "DiagnosticsRuntime"),
     "EventLogWriter": ("yoyopod.core.diagnostics", "EventLogWriter"),

@@ -49,6 +49,9 @@ class NetworkPoller:
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True, name="network-poller")
         self._thread.start()
+        background = getattr(self.app, "background", None)
+        if background is not None:
+            background.register_long_running(self._thread, name="network-poller")
 
     def stop(self) -> None:
         """Stop the background modem poll loop."""

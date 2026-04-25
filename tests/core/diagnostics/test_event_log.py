@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -89,3 +90,48 @@ def test_diagnostics_snapshot_rejects_untyped_payload(tmp_path: Path) -> None:
         assert str(exc) == "diagnostics.snapshot expects SnapshotCommand"
     else:
         raise AssertionError("diagnostics.snapshot accepted an untyped payload")
+
+
+def test_diagnostics_setup_persists_background_errors_to_event_log(tmp_path: Path) -> None:
+    """Background pool errors must reach ``events.jsonl`` after diagnostics setup.
+
+    ``YoyoPodApp`` constructs ``app.background`` with ``log_buffer`` as the
+    diagnostics sink; if diagnostics setup does not propagate the swap to
+    ``EventLogWriter``, off-thread failures stay in memory only and disappear
+    across restarts while bus/scheduler/services errors are persisted.
+    """
+
+    app = build_test_app()
+    logs_dir = tmp_path / "logs"
+    setup(app, snapshot_dir=logs_dir)
+
+    def boom() -> None:
+        raise RuntimeError("background-after-diag-setup")
+
+    future = app.background.io.submit_and_post(boom, on_done=lambda fut: None)
+    try:
+        future.result(timeout=2.0)
+    except RuntimeError:
+        pass
+
+    # Drain the scheduler so the done-callback runs and records the entry.
+    deadline = time.monotonic() + 2.0
+    while app.scheduler.pending_count() == 0 and time.monotonic() < deadline:
+        time.sleep(0.005)
+    app.scheduler.drain()
+
+    event_log_path = logs_dir / "events.jsonl"
+    assert event_log_path.exists(), f"events.jsonl not created at {event_log_path}"
+    lines = event_log_path.read_text(encoding="utf-8").splitlines()
+    background_errors = [
+        json.loads(line)
+        for line in lines
+        if json.loads(line).get("kind") == "background_error"
+    ]
+    assert background_errors, f"no background_error in events.jsonl; lines={lines!r}"
+    assert background_errors[0]["pool"] == "io"
+    assert "background-after-diag-setup" in background_errors[0]["exc"]
+
+    teardown(app)
+    # After teardown the sink reverts to log_buffer to match services' behaviour.
+    assert app.background._diagnostics_log is app.log_buffer

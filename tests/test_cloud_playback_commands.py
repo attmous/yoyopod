@@ -135,6 +135,7 @@ def test_play_track_command_acks_and_publishes_buffering_then_playing() -> None:
     manager._remote_playback_cache = _FakePlaybackCache()
     manager._bind_playback_callbacks()
     manager._start_worker = lambda *, name, work: work()  # type: ignore[method-assign]
+    manager._start_media_worker = lambda *, name, work: work()  # type: ignore[method-assign]
 
     manager._apply_mqtt_command(
         {
@@ -240,6 +241,7 @@ def test_stopped_callback_during_pending_remote_fetch_does_not_clear_session() -
 
     queued_work: list[object] = []
     manager._start_worker = lambda *, name, work: queued_work.append(work)  # type: ignore[method-assign]
+    manager._start_media_worker = lambda *, name, work: queued_work.append(work)  # type: ignore[method-assign]
 
     manager._apply_mqtt_command(
         {
@@ -276,6 +278,7 @@ def test_stop_during_buffering_prevents_late_load_after_fetch_completes() -> Non
 
     queued_work: list[object] = []
     manager._start_worker = lambda *, name, work: queued_work.append(work)  # type: ignore[method-assign]
+    manager._start_media_worker = lambda *, name, work: queued_work.append(work)  # type: ignore[method-assign]
     manager._remote_playback_cache = _FakePlaybackCache()
 
     manager._apply_mqtt_command(
@@ -328,6 +331,7 @@ def test_store_media_command_acks_and_publishes_imported_event(tmp_path) -> None
         prepare=lambda **kwargs: SimpleNamespace(path=str(cached_path), cache_hit=False)
     )
     manager._start_worker = lambda *, name, work: work()  # type: ignore[method-assign]
+    manager._start_media_worker = lambda *, name, work: work()  # type: ignore[method-assign]
 
     manager._apply_mqtt_command(
         {
@@ -375,6 +379,7 @@ def test_store_media_sanitizes_fallback_track_id_in_target_filename(tmp_path) ->
         prepare=lambda **kwargs: SimpleNamespace(path=str(cached_path), cache_hit=False)
     )
     manager._start_worker = lambda *, name, work: work()  # type: ignore[method-assign]
+    manager._start_media_worker = lambda *, name, work: work()  # type: ignore[method-assign]
 
     manager._apply_mqtt_command(
         {
@@ -402,6 +407,7 @@ def test_stopped_after_asset_load_is_not_dropped_when_activation_pending() -> No
     manager._mqtt = _FakeMqttClient()
     manager._bind_playback_callbacks()
     manager._start_worker = lambda *, name, work: work()  # type: ignore[method-assign]
+    manager._start_media_worker = lambda *, name, work: work()  # type: ignore[method-assign]
     manager._remote_playback_cache = _FakePlaybackCache()
 
     manager._apply_mqtt_command(
@@ -447,6 +453,7 @@ def test_store_media_keeps_distinct_files_for_same_title(tmp_path) -> None:
         prepare=lambda **kwargs: SimpleNamespace(path=str(cached_path), cache_hit=False)
     )
     manager._start_worker = lambda *, name, work: work()  # type: ignore[method-assign]
+    manager._start_media_worker = lambda *, name, work: work()  # type: ignore[method-assign]
 
     for command_id, track_id in (("cmd-10", "track-10"), ("cmd-11", "track-11")):
         manager._apply_mqtt_command(

@@ -55,12 +55,7 @@ class PowerRuntimeService:
             return
 
         self.app._power_refresh_in_flight = True
-        worker = threading.Thread(
-            target=self.run_power_refresh_attempt,
-            daemon=True,
-            name="power-refresh",
-        )
-        worker.start()
+        self.app.background.power.submit(self.run_power_refresh_attempt)
 
     def run_power_refresh_attempt(self) -> None:
         """Collect one PiSugar snapshot off the coordinator thread."""
@@ -112,10 +107,7 @@ class PowerRuntimeService:
         runtime = self.app.app_state_runtime
         if runtime is None:
             return
-        if (
-            runtime.power_snapshot == snapshot
-            and self.app._power_available == snapshot.available
-        ):
+        if runtime.power_snapshot == snapshot and self.app._power_available == snapshot.available:
             return
 
         self.handle_snapshot_updated(snapshot)
@@ -129,7 +121,9 @@ class PowerRuntimeService:
         """Apply the latest power telemetry to runtime and UI state."""
 
         previous_signature = self._snapshot_signature(
-            self.app.app_state_runtime.power_snapshot if self.app.app_state_runtime is not None else None
+            self.app.app_state_runtime.power_snapshot
+            if self.app.app_state_runtime is not None
+            else None
         )
         current_screen = (
             self.app.screen_manager.get_current_screen()
@@ -273,12 +267,7 @@ class PowerRuntimeService:
             return
 
         self.app._watchdog_feed_in_flight = True
-        worker = threading.Thread(
-            target=self.run_watchdog_feed_attempt,
-            daemon=True,
-            name="power-watchdog-feed",
-        )
-        worker.start()
+        self.app.background.watchdog.submit(self.run_watchdog_feed_attempt)
 
     def run_watchdog_feed_attempt(self) -> None:
         """Feed the watchdog off the coordinator thread and report the outcome."""

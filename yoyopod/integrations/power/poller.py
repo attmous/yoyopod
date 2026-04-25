@@ -21,6 +21,7 @@ class PowerPoller:
         poll_interval_seconds: float = 30.0,
         monotonic: Callable[[], float] | None = None,
         sleep: Callable[[float], None] | None = None,
+        background: object | None = None,
     ) -> None:
         self.backend = backend
         self.scheduler = scheduler
@@ -30,6 +31,7 @@ class PowerPoller:
         self._sleep = sleep or time.sleep
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._background = background
 
     def poll_once(self) -> PowerSnapshot:
         """Collect one snapshot and schedule its main-thread handler."""
@@ -46,6 +48,10 @@ class PowerPoller:
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True, name="power-poller")
         self._thread.start()
+        if self._background is not None:
+            register = getattr(self._background, "register_long_running", None)
+            if callable(register):
+                register(self._thread, name="power-poller")
 
     def stop(self) -> None:
         """Stop the background poll loop."""
