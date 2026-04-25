@@ -196,6 +196,12 @@ class RuntimeLoopService:
             and getattr(self.app.voip_manager, "background_iterate_enabled", False)
         )
 
+    @property
+    def configured_voip_iterate_interval_seconds(self) -> float:
+        """Return the configured VoIP iterate cadence before runtime adaptation."""
+
+        return float(self.app._voip_iterate_interval_seconds)
+
     def _sync_background_voip_timing_sample(self) -> None:
         """Pull the latest background iterate sample into runtime timing snapshots."""
 

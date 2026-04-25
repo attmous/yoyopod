@@ -90,6 +90,13 @@ def test_timing_snapshot_includes_drain_duration() -> None:
     assert snapshot["runtime_main_thread_drain_seconds"] is not None
 
 
+def test_runtime_loop_exposes_configured_voip_iterate_interval() -> None:
+    app = YoyoPodApp()
+    app._voip_iterate_interval_seconds = 0.125
+
+    assert app.runtime_loop.configured_voip_iterate_interval_seconds == 0.125
+
+
 def test_runtime_status_includes_responsiveness_and_loop_timing() -> None:
     app = YoyoPodApp()
     screen_manager = _ScreenManager()
