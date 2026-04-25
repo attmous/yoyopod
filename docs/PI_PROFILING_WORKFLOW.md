@@ -14,6 +14,61 @@ For the Raspberry Pi Zero 2 W, treat target-hardware results as the source of
 truth. Desktop simulation is still useful, but it is a fast triage step, not
 proof that the Pi will behave the same way.
 
+## Runtime Hybrid Phase 0 Baseline
+
+Use this workflow before moving voice and network work into sidecar workers.
+The goal is to capture responsiveness and PSS/RSS with the current
+single-supervisor runtime so Phase 2/3 changes can be compared against a real
+target-hardware baseline.
+
+Enable responsiveness captures for the dev-lane run:
+
+```bash
+export YOYOPOD_RESPONSIVENESS_WATCHDOG_ENABLED=true
+export YOYOPOD_RESPONSIVENESS_STALL_THRESHOLD_SECONDS=5
+export YOYOPOD_RESPONSIVENESS_RECENT_INPUT_WINDOW_SECONDS=3
+```
+
+Deploy and confirm the dev lane:
+
+```bash
+yoyopod remote mode activate dev
+yoyopod remote sync --branch <branch>
+yoyopod remote status
+```
+
+Capture a status snapshot and recent logs after the exercise:
+
+```bash
+yoyopod remote logs --lines 200
+```
+
+Record these fields from logs, status output, and any generated responsiveness
+captures:
+
+- `responsiveness_input_to_action_p95_ms`
+- `responsiveness_action_to_visible_p95_ms`
+- `runtime_loop_gap_seconds`
+- `runtime_main_thread_drain_seconds`
+- `runtime_blocking_span_name`
+- `runtime_blocking_span_seconds`
+- `process_memory_rss_kb`
+- `process_memory_pss_kb`
+- `workers`
+
+Run a one-hour mixed soak that covers:
+
+- idle screen wake/sleep
+- music navigation and playback
+- incoming or simulated VoIP state changes
+- voice command path with current local settings
+- cellular/network reconnect or status polling
+- low-risk power/status screen navigation
+
+The pre-worker baseline is not pass/fail. Use it to identify the top stalls
+and memory pressure before Phase 2/3, then keep the raw notes with the branch
+or release artifacts they describe.
+
 ## 1. Install the profiling tools
 
 The repo now tracks the common Python-side tools in the `dev` extra:
