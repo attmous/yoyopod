@@ -74,12 +74,19 @@ class FakeLvglPumpBackend:
 class FakeLvglPumpApp:
     """Small app double that exposes only the LVGL pump dependencies."""
 
-    def __init__(self, *, screen_manager: ScreenManager, backend: FakeLvglPumpBackend) -> None:
+    def __init__(
+        self,
+        *,
+        screen_manager: ScreenManager,
+        backend: FakeLvglPumpBackend,
+        overlay_runtime: object | None = None,
+    ) -> None:
         self.screen_manager = screen_manager
         self._lvgl_backend = backend
         self._lvgl_input_bridge = None
         self._last_lvgl_pump_at = 0.0
         self._voip_iterate_interval_seconds = 0.02
+        self.cross_screen_overlays = overlay_runtime
         self.app_state_runtime = None
         self.bus = SimpleNamespace(pending_count=lambda: 0)
         self.scheduler = SimpleNamespace(pending_count=lambda: 0)
@@ -335,6 +342,45 @@ def test_lvgl_navigation_burst_coalesces_to_one_render_on_runtime_pump() -> None
     assert len(backend.pump_calls) == 2
     assert backend.pump_calls[0] == 0
     assert backend.pump_calls[1] > 0
+
+
+def test_lvgl_pump_runs_overlay_runtime_between_navigation_flush_and_backend_pump() -> None:
+    """Cross-screen overlays should render in the LVGL pump before backend timer work."""
+
+    events: list[str] = []
+
+    class _OrderedScreen(HookAwareStubScreen):
+        def render(self) -> None:
+            events.append("screen")
+            super().render()
+
+    class _OverlayRuntimeStub:
+        def update(self, now: float, *, render: bool) -> bool:
+            if render:
+                events.append("overlay")
+            return False
+
+    class _OrderedBackend(FakeLvglPumpBackend):
+        def pump(self, delta_ms: int) -> None:
+            events.append("backend")
+            super().pump(delta_ms)
+
+    display = SimpleNamespace(backend_kind="lvgl")
+    screen_manager = ScreenManager(display, input_manager=None)
+    screen = _OrderedScreen(display, AppContext())
+    screen_manager.register_screen("power", screen)
+    screen_manager.replace_screen("power")
+
+    runtime_loop = RuntimeLoopService(
+        FakeLvglPumpApp(
+            screen_manager=screen_manager,
+            backend=_OrderedBackend(),
+            overlay_runtime=_OverlayRuntimeStub(),
+        )
+    )
+    runtime_loop.pump_lvgl_backend(now=10.0)
+
+    assert events[:3] == ["screen", "overlay", "backend"]
 
 
 def test_screen_manager_routes_whisplay_hub_cards_through_stack(display: Display) -> None:

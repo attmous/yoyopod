@@ -17,6 +17,7 @@ _PUBLIC_EXPORTS = {
     "BackgroundExecutor": ("yoyopod.core.background", "BackgroundExecutor"),
     "BackgroundPool": ("yoyopod.core.background", "BackgroundPool"),
     "Bus": ("yoyopod.core.bus", "Bus"),
+    "CrossScreenOverlayRuntime": ("yoyopod.core.overlays", "CrossScreenOverlayRuntime"),
     "DiagnosticsRuntime": ("yoyopod.core.diagnostics", "DiagnosticsRuntime"),
     "EventLogWriter": ("yoyopod.core.diagnostics", "EventLogWriter"),
     "FocusController": ("yoyopod.core.focus", "FocusController"),

@@ -445,6 +445,9 @@ class RuntimeLoopService:
 
         if self.app._lvgl_input_bridge is not None:
             self.app._lvgl_input_bridge.process_pending()
+        overlay_runtime = getattr(self.app, "cross_screen_overlays", None)
+        if overlay_runtime is not None:
+            overlay_runtime.update(monotonic_now, render=True)
         self.app._lvgl_backend.pump(delta_ms)
         self._warn_if_slow(
             "lvgl pump",
@@ -650,12 +653,14 @@ class RuntimeLoopService:
                 "screen_power",
                 lambda: self.app.screen_power_service.update_screen_power(monotonic_now),
             )
-            overlay_active = self._measure_blocking_span(
-                "power_overlay",
-                lambda: self.app.screen_power_service.update_power_overlays(monotonic_now),
-            )
-            if overlay_active:
-                return current_time
+            overlay_runtime = getattr(self.app, "cross_screen_overlays", None)
+            if overlay_runtime is not None:
+                overlay_active = self._measure_blocking_span(
+                    "cross_screen_overlay_state",
+                    lambda: overlay_runtime.update(monotonic_now, render=False),
+                )
+                if overlay_active:
+                    return current_time
 
             if not self.app._screen_awake:
                 return current_time

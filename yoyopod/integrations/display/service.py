@@ -1,4 +1,4 @@
-"""Live display wake/sleep policy and power overlay helpers."""
+"""Live display wake/sleep policy and power overlay integration."""
 
 from __future__ import annotations
 
@@ -17,7 +17,10 @@ if TYPE_CHECKING:
 
 
 class ScreenPowerService:
-    """Own screen-power policy and lightweight power overlay rendering."""
+    """Own screen-power policy and the canonical power overlay implementation."""
+
+    name = "power"
+    priority = 100
 
     def __init__(self, app: "YoyoPodApp") -> None:
         self.app = app
@@ -251,18 +254,9 @@ class ScreenPowerService:
         )
         ui_backend.force_refresh()
 
-    def update_power_overlays(self, now: float) -> bool:
-        """Render pending power overlays and return True when one is active."""
+    def is_active(self, now: float) -> bool:
+        """Return whether the power overlay should be active."""
         if self.app._pending_shutdown is not None:
-            seconds_remaining = max(0, int(self.app._pending_shutdown.execute_at - now + 0.999))
-            subtitle = "Saving state and powering off"
-            if seconds_remaining > 0:
-                subtitle = f"Shutdown in {seconds_remaining}s"
-            self.render_power_overlay(
-                "Critical Battery",
-                subtitle,
-                self.app.display.COLOR_RED if self.app.display is not None else (255, 0, 0),
-            )
             return True
 
         if self.app._power_alert is None:
@@ -274,9 +268,34 @@ class ScreenPowerService:
                 self.app.screen_manager.refresh_current_screen()
             return False
 
+        return True
+
+    def render(self, now: float) -> None:
+        """Render the current power overlay state when active."""
+        if self.app._pending_shutdown is not None:
+            seconds_remaining = max(0, int(self.app._pending_shutdown.execute_at - now + 0.999))
+            subtitle = "Saving state and powering off"
+            if seconds_remaining > 0:
+                subtitle = f"Shutdown in {seconds_remaining}s"
+            self.render_power_overlay(
+                "Critical Battery",
+                subtitle,
+                self.app.display.COLOR_RED if self.app.display is not None else (255, 0, 0),
+            )
+            return
+
+        if self.app._power_alert is None:
+            return
+
         self.render_power_overlay(
             self.app._power_alert.title,
             self.app._power_alert.subtitle,
             self.app._power_alert.color,
         )
+
+    def update_power_overlays(self, now: float) -> bool:
+        """Compatibility helper for callers still using the old power-overlay API."""
+        if not self.is_active(now):
+            return False
+        self.render(now)
         return True

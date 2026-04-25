@@ -21,6 +21,7 @@ from yoyopod.core.audio_volume import OutputVolumeController
 from yoyopod.core.events import LifecycleEvent
 from yoyopod.core.hardware import AudioDeviceCatalog
 from yoyopod.core.logbuffer import LogBuffer
+from yoyopod.core.overlays import CrossScreenOverlayRuntime
 from yoyopod.core.scheduler import MainThreadScheduler
 from yoyopod.core.services import Services
 from yoyopod.core.states import States
@@ -214,9 +215,11 @@ class YoyoPodApp:
         self._voip_iterate_interval_seconds = 0.02
 
         self.runtime_metrics = RuntimeMetricsStore()
+        self.cross_screen_overlays = CrossScreenOverlayRuntime()
 
         # Runtime services
         self.screen_power_service = ScreenPowerService(self)
+        self.cross_screen_overlays.register(self.screen_power_service)
         self.recovery_service = RuntimeRecoveryService(self)
         self.power_runtime = PowerRuntimeService(self)
         self.shutdown_service = ShutdownLifecycleService(self)
