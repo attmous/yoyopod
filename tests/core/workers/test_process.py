@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 from pathlib import Path
 
 from yoyopod.core.workers.process import WorkerProcessConfig, WorkerProcessRuntime
@@ -80,7 +81,7 @@ sys.stdout.flush()
     runtime.start()
     try:
         assert runtime.wait_until_exited(timeout_seconds=2.0)
-        runtime.drain_messages()
+        runtime.stop(grace_seconds=0.1)
         snapshot = runtime.snapshot()
     finally:
         runtime.stop(grace_seconds=0.1)
@@ -103,6 +104,41 @@ time.sleep(60)
 
     runtime.start()
     runtime.stop(grace_seconds=0.05)
+
+    snapshot = runtime.snapshot()
+    assert snapshot.running is False
+    assert snapshot.terminated is True
+
+
+def test_worker_process_stop_is_bounded_when_send_lock_is_busy(tmp_path: Path) -> None:
+    worker = _write_worker(
+        tmp_path,
+        """
+import time
+time.sleep(60)
+""".strip(),
+    )
+    runtime = WorkerProcessRuntime(
+        WorkerProcessConfig(name="contended", argv=[sys.executable, "-u", str(worker)])
+    )
+
+    runtime.start()
+    runtime._stdin_lock.acquire()
+    stop_thread = threading.Thread(
+        target=runtime.stop,
+        kwargs={"grace_seconds": 0.05},
+        daemon=True,
+    )
+
+    try:
+        stop_thread.start()
+        stop_thread.join(timeout=0.5)
+        assert stop_thread.is_alive() is False
+    finally:
+        if runtime._stdin_lock.locked():
+            runtime._stdin_lock.release()
+        stop_thread.join(timeout=2.0)
+        runtime.stop(grace_seconds=0.05)
 
     snapshot = runtime.snapshot()
     assert snapshot.running is False

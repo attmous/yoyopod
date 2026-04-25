@@ -171,14 +171,13 @@ class WorkerProcessRuntime:
         if process is None:
             return
         if process.poll() is None:
-            try:
-                self.send_command(
-                    type="worker.stop",
-                    payload={},
-                    deadline_ms=int(grace_seconds * 1000),
-                )
-            except Exception as exc:
-                logger.debug("worker {} graceful stop send failed: {}", self.config.name, exc)
+            envelope = make_envelope(
+                kind="command",
+                type="worker.stop",
+                payload={},
+                deadline_ms=int(grace_seconds * 1000),
+            )
+            self._send_with_lock_timeout(envelope, timeout_seconds=min(0.05, grace_seconds))
             deadline = time.monotonic() + max(0.0, grace_seconds)
             while process.poll() is None and time.monotonic() < deadline:
                 time.sleep(0.01)
@@ -190,8 +189,36 @@ class WorkerProcessRuntime:
             except subprocess.TimeoutExpired:
                 process.kill()
                 self._killed = True
-                process.wait(timeout=1.0)
+                try:
+                    process.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    logger.warning("worker {} did not exit after kill", self.config.name)
         self._join_readers(timeout_seconds=0.2)
+
+    def _send_with_lock_timeout(
+        self,
+        envelope: WorkerEnvelope,
+        *,
+        timeout_seconds: float,
+    ) -> bool:
+        process = self._process
+        if process is None or process.stdin is None or process.poll() is not None:
+            return False
+        acquired = self._stdin_lock.acquire(timeout=max(0.0, timeout_seconds))
+        if not acquired:
+            logger.debug("worker {} graceful stop skipped; stdin lock busy", self.config.name)
+            return False
+        try:
+            if process.poll() is not None:
+                return False
+            try:
+                process.stdin.write(encode_envelope(envelope))
+                process.stdin.flush()
+            except (BrokenPipeError, OSError, ValueError):
+                return False
+        finally:
+            self._stdin_lock.release()
+        return True
 
     def snapshot(self) -> WorkerProcessSnapshot:
         """Return the observable process state."""
