@@ -29,7 +29,11 @@ class _WorkerSlot:
 
 
 class WorkerSupervisor:
-    """Own worker lifecycle while publishing only on the supervisor main thread."""
+    """Own worker lifecycle from the main-thread runtime loop.
+
+    The scheduler is retained for the Task 7 app/loop integration seam; this
+    phase publishes directly because the supervisor itself is main-thread owned.
+    """
 
     def __init__(
         self,
@@ -56,11 +60,33 @@ class WorkerSupervisor:
         """Start one worker domain."""
 
         slot = self._workers[domain]
+        if slot.runtime is not None and slot.runtime.running:
+            raise RuntimeError(f"worker domain {domain!r} is already running")
+        self._start_runtime(
+            domain,
+            slot,
+            state_reason="started",
+            failure_reason="start_failed",
+        )
+
+    def _start_runtime(
+        self,
+        domain: str,
+        slot: _WorkerSlot,
+        *,
+        state_reason: str,
+        failure_reason: str,
+    ) -> None:
         runtime = WorkerProcessRuntime(slot.config)
-        runtime.start()
+        try:
+            runtime.start()
+        except Exception:
+            slot.next_restart_at = 0.0
+            self._set_state(domain, slot, "degraded", failure_reason)
+            raise
         slot.runtime = runtime
         slot.next_restart_at = 0.0
-        self._set_state(domain, slot, "running", "started")
+        self._set_state(domain, slot, "running", state_reason)
 
     def stop_all(self, *, grace_seconds: float = 1.0) -> None:
         """Stop all registered workers with bounded waits."""
@@ -93,7 +119,7 @@ class WorkerSupervisor:
                 and slot.next_restart_at > 0.0
                 and now >= slot.next_restart_at
             ):
-                self._restart_if_allowed(domain, slot)
+                self._restart_if_allowed(domain, slot, now=now)
         return processed
 
     def send_request(
@@ -203,13 +229,24 @@ class WorkerSupervisor:
         slot.next_restart_at = now + self._restart_backoff_seconds
         self._set_state(domain, slot, "degraded", "process_exited")
 
-    def _restart_if_allowed(self, domain: str, slot: _WorkerSlot) -> None:
+    def _restart_if_allowed(self, domain: str, slot: _WorkerSlot, *, now: float) -> None:
         if slot.restart_count >= self._max_restarts:
             slot.next_restart_at = 0.0
             self._set_state(domain, slot, "disabled", "max_restarts_exceeded")
             return
         slot.restart_count += 1
-        self.start(domain)
+        try:
+            self._start_runtime(
+                domain,
+                slot,
+                state_reason="started",
+                failure_reason="restart_failed",
+            )
+        except Exception:
+            if slot.restart_count >= self._max_restarts:
+                slot.next_restart_at = 0.0
+            else:
+                slot.next_restart_at = now + self._restart_backoff_seconds
 
     def _set_state(self, domain: str, slot: _WorkerSlot, state: str, reason: str) -> None:
         if slot.state == state and slot.last_reason == reason:
