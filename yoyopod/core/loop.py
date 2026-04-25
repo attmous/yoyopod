@@ -688,11 +688,12 @@ class RuntimeLoopService:
                 if screen_manager is None:
                     return current_time
 
-                self._measure_blocking_span(
+                refreshed_visible_screen = self._measure_blocking_span(
                     "visible_screen_refresh",
                     screen_manager.refresh_current_screen_for_visible_tick,
                 )
-                self.app.note_visible_refresh(refreshed_at=time.monotonic())
+                if refreshed_visible_screen:
+                    self.app.note_visible_refresh(refreshed_at=time.monotonic())
                 return current_time
 
             return last_screen_update
