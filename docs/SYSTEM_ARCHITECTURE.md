@@ -59,7 +59,7 @@ This is the startup sequence that exists on `main` today.
    - `--simulate` is parsed before the app is constructed.
 3. `main()` constructs `YoyoPodApp(config_dir="config", simulate=simulate)`.
    - The constructor does not start hardware or backend processes yet.
-  - It allocates the typed `Bus`, the shared `MainThreadScheduler`, the core bootstrap service (`RuntimeBootService` from `yoyopod/core/bootstrap/`), the canonical main-thread loop (`RuntimeLoopService` from `yoyopod/core/loop.py`), the remaining live services (`RuntimeRecoveryService` from `yoyopod/core/recovery.py`, `PowerRuntimeService` from `yoyopod/integrations/power/service.py`, `ShutdownLifecycleService` from `yoyopod/core/shutdown.py`), the canonical display-power helper (`ScreenPowerService` from `yoyopod/integrations/display/service.py`), and the long-lived placeholder fields for managers, screens, and shared context.
+  - It allocates the typed `Bus`, the shared `MainThreadScheduler`, the core bootstrap service (`RuntimeBootService` from `yoyopod/core/bootstrap/`), the canonical main-thread loop (`RuntimeLoopService` from `yoyopod/core/loop.py`), the shared cross-screen overlay runtime (`CrossScreenOverlayRuntime` from `yoyopod/core/overlays.py`), the remaining live services (`RuntimeRecoveryService` from `yoyopod/core/recovery.py`, `PowerRuntimeService` from `yoyopod/integrations/power/service.py`, `ShutdownLifecycleService` from `yoyopod/core/shutdown.py`), the canonical display-power helper (`ScreenPowerService` from `yoyopod/integrations/display/service.py`), and the long-lived placeholder fields for managers, screens, and shared context.
 - `RuntimeRecoveryService` now keeps VoIP/music/network recovery while `yoyopod.integrations.power.service.PowerRuntimeService` owns PiSugar polling and watchdog cadence.
 - It also registers app-level event subscriptions on the `Bus` so later boot stages can publish typed events back onto the main thread.
 4. `main()` calls `app.setup()`, which delegates to `RuntimeBootService.setup()` in `yoyopod/core/bootstrap/`.
@@ -129,6 +129,7 @@ yoyopod.py / yoyopod.main
      -> RuntimeLoopService
      -> RuntimeRecoveryService
      -> PowerRuntimeService
+     -> CrossScreenOverlayRuntime
      -> integrations.display.ScreenPowerService
      -> core.shutdown.ShutdownLifecycleService
      -> MainThreadScheduler
@@ -183,8 +184,9 @@ yoyopod.py / yoyopod.main
 - `yoyopod/core/app_context.py`: `AppContext` plus the focused runtime state objects it owns
 - `yoyopod/core/bootstrap/`: boot-time composition and manager wiring
 - `yoyopod/core/loop.py`: main-thread loop scheduling and queued main-thread work
+- `yoyopod/core/overlays.py`: cross-screen overlay contract and ordering runtime
 - `yoyopod/core/recovery.py`: backend recovery supervision and retry services
-- `yoyopod/integrations/display/service.py`: screen wake/sleep policy and power overlays
+- `yoyopod/integrations/display/service.py`: screen wake/sleep policy and power-overlay implementation
 - `yoyopod/core/shutdown.py`: shutdown countdowns, hooks, and lifecycle cleanup
 - `yoyopod/integrations/power/service.py`: power polling and watchdog cadence
 
@@ -193,6 +195,7 @@ yoyopod.py / yoyopod.main
 - `yoyopod/integrations/call/runtime.py`: call-flow orchestration and screen transitions
 - `yoyopod/integrations/music/runtime.py`: playback-flow orchestration and now-playing refreshes
 - `yoyopod/integrations/power/service.py`: power polling, power snapshot application, watchdog cadence, and safety-policy event emission
+- `yoyopod/core/overlays.py`: priority-ordered cross-screen overlay activation and rendering
 - `yoyopod/ui/screens/manager.py`: screen refresh helpers and call-screen stack updates
 - `yoyopod/core/app_state.py`: derived runtime state and shared runtime references
 

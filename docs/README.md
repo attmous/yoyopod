@@ -50,6 +50,7 @@ Plan docs are useful, but they are not automatically the current implementation 
 ### Core runtime architecture
 
 - [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md), top-level runtime topology plus startup/bootstrap flow
+- [`CROSS_SCREEN_OVERLAYS.md`](CROSS_SCREEN_OVERLAYS.md), first-class contract for cross-screen overlay ownership and ordering
 - [`CANONICAL_STRUCTURE.md`](CANONICAL_STRUCTURE.md), canonical config topology and domain package ownership
 - [`CLOUD_PROVISIONING_AND_BACKEND.md`](CLOUD_PROVISIONING_AND_BACKEND.md), claimed-device auth, config sync, cache/status files, MQTT telemetry, and current backend-integration status
 - [`RUNTIME_EVENT_FLOW.md`](RUNTIME_EVENT_FLOW.md), current event pipeline and coordinator ownership
