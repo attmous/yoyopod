@@ -613,10 +613,29 @@ class CloudManager:
         self._maybe_bootstrap_local_contacts(payload=payload, completed_at=completed_at)
 
     def _start_worker(self, *, name: str, work: Callable[[], None]) -> None:
-        """Run one cloud worker on the shared background pool for centralized shutdown."""
+        """Run one cloud control-plane worker on the shared `io` pool.
+
+        Used for short, latency-sensitive cloud work (auth, token refresh,
+        config sync, contacts bootstrap, MQTT). Long-running media downloads
+        must use :meth:`_start_media_worker` so they cannot starve this pool.
+        """
 
         del name  # Background pool uses its own thread names; the label aids only diagnostics.
         self.app.background.io.submit(work)
+
+    def _start_media_worker(self, *, name: str, work: Callable[[], None]) -> None:
+        """Run one cloud media/download worker on the dedicated `media` pool.
+
+        Long-running media downloads (``store_media``, remote playback asset
+        fetch) must not starve control-plane work on the shared `io` pool.
+        Control-plane callers set ``_request_in_flight=True`` before queuing,
+        so a queued (not yet running) auth/refresh/config task suppresses
+        subsequent cloud ticks until a worker frees up — that pathway is
+        broken if media downloads occupy all `io` workers.
+        """
+
+        del name  # Background pool uses its own thread names; the label aids only diagnostics.
+        self.app.background.media.submit(work)
 
     def _matches_current_provisioning(self, *, device_id: str, generation: int) -> bool:
         return (
@@ -1114,7 +1133,7 @@ class CloudManager:
                 str(payload.get("checksumSha256") or payload.get("checksum_sha256") or "").strip()
                 or None
             )
-            self._start_worker(
+            self._start_media_worker(
                 name=f"cloud-playback-fetch-{command_id[:8]}",
                 work=lambda: self._run_prepare_remote_playback_asset(
                     command_id=command_id,
@@ -1452,7 +1471,7 @@ class CloudManager:
             str(payload.get("checksumSha256") or payload.get("checksum_sha256") or "").strip()
             or None
         )
-        self._start_worker(
+        self._start_media_worker(
             name=f"cloud-store-media-{command_id[:8]}",
             work=lambda: self._run_store_media_command(
                 command_id=command_id,

@@ -296,12 +296,14 @@ def test_pool_workers_are_daemon_and_skip_atexit_registry() -> None:
 
     # Materialize at least one worker per pool by running one task each.
     executor.io.submit(lambda: None).result(timeout=2.0)
+    executor.media.submit(lambda: None).result(timeout=2.0)
     executor.subprocess.submit(lambda: None).result(timeout=2.0)
     executor.watchdog.submit(lambda: None).result(timeout=2.0)
     executor.power.submit(lambda: None).result(timeout=2.0)
 
     pools_to_check = [
         ("io", executor._io_executor),
+        ("media", executor._media_executor),
         ("subprocess", executor._subprocess_executor),
         ("watchdog", executor._watchdog_executor),
         ("power", executor._power_executor),
@@ -430,4 +432,62 @@ def test_set_diagnostics_log_propagates_to_power_pool() -> None:
     ]
     assert matching, f"no power-pool error recorded; saw {diagnostics}"
 
+    executor.shutdown()
+
+
+def test_set_diagnostics_log_propagates_to_media_pool() -> None:
+    """Diagnostics sink must reach the dedicated media pool too."""
+
+    scheduler = MainThreadScheduler()
+    executor = BackgroundExecutor(scheduler)
+    diagnostics: list[dict[str, Any]] = []
+    executor.set_diagnostics_log(diagnostics)
+
+    def boom() -> None:
+        raise RuntimeError("media-attached")
+
+    future = executor.media.submit_and_post(boom, on_done=lambda fut: None)
+    with pytest.raises(RuntimeError):
+        future.result(timeout=2.0)
+
+    _wait_for_pending(scheduler)
+    scheduler.drain()
+
+    matching = [
+        entry
+        for entry in diagnostics
+        if entry["pool"] == "media" and "media-attached" in entry["exc"]
+    ]
+    assert matching, f"no media-pool error recorded; saw {diagnostics}"
+
+    executor.shutdown()
+
+
+def test_media_pool_isolated_from_io_pool() -> None:
+    """A long-running media download must not delay control-plane io work.
+
+    Cloud control-plane calls (auth, token refresh, config sync) gate on
+    ``_request_in_flight``. If media downloads share the io pool, a queued
+    auth task can sit behind store_media bytes and stall token refresh in
+    production.
+    """
+
+    scheduler = MainThreadScheduler()
+    executor = BackgroundExecutor(scheduler, media_workers=1)
+    media_started = threading.Event()
+    media_release = threading.Event()
+
+    def slow_media() -> None:
+        media_started.set()
+        media_release.wait(timeout=2.0)
+
+    blocker = executor.media.submit(slow_media)
+    assert media_started.wait(timeout=1.0)
+
+    # io control-plane must remain responsive while media is busy.
+    io_done = executor.io.submit(lambda: "io-ok")
+    assert io_done.result(timeout=1.0) == "io-ok"
+
+    media_release.set()
+    blocker.result(timeout=2.0)
     executor.shutdown()

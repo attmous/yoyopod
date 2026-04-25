@@ -1,13 +1,23 @@
 """Central background-work executor for off-thread I/O and subprocess operations.
 
-Four named `ThreadPoolExecutor` pools (`io`, `subprocess`, `watchdog`, `power`)
-run blocking work off the coordinator thread, and a registry of long-running
-poller threads provides centralized shutdown discipline. All Future results
-return to the coordinator via :meth:`MainThreadScheduler.post` so call sites
-never touch threading primitives directly. The `watchdog` and `power` pools
-are reserved for safety-critical PiSugar work — watchdog feeds (`watchdog`)
-and battery-state refreshes feeding ``PowerSafetyPolicy.evaluate`` (`power`)
-— and never share workers with the general-purpose `io` pool.
+Five named `ThreadPoolExecutor` pools (`io`, `media`, `subprocess`, `watchdog`,
+`power`) run blocking work off the coordinator thread, and a registry of
+long-running poller threads provides centralized shutdown discipline. All
+Future results return to the coordinator via :meth:`MainThreadScheduler.post`
+so call sites never touch threading primitives directly.
+
+Pool semantics:
+
+- ``io`` — short HTTP/socket I/O including cloud control-plane work (auth,
+  token refresh, config sync, MQTT) and network polling.
+- ``media`` — long-running cloud media downloads (e.g. ``store_media`` and
+  remote playback asset fetch); kept off ``io`` so a burst of bytes-heavy
+  jobs cannot starve the latency-sensitive control-plane.
+- ``subprocess`` — process lifecycle and shell-outs.
+- ``watchdog`` — PiSugar watchdog feed; safety-critical, must never wait
+  behind cloud work.
+- ``power`` — PiSugar battery refresh feeding ``PowerSafetyPolicy.evaluate``;
+  safety-relevant, kept off ``io`` for the same reason.
 """
 
 from __future__ import annotations
@@ -84,6 +94,7 @@ class _DiagnosticsLog(Protocol):
 
 _T = TypeVar("_T")
 _DEFAULT_IO_WORKERS = 4
+_DEFAULT_MEDIA_WORKERS = 2
 _DEFAULT_SUBPROCESS_WORKERS = 2
 _DEFAULT_WATCHDOG_WORKERS = 1
 _DEFAULT_POWER_WORKERS = 1
@@ -239,6 +250,7 @@ class BackgroundExecutor:
         *,
         diagnostics_log: _DiagnosticsLog | None = None,
         io_workers: int = _DEFAULT_IO_WORKERS,
+        media_workers: int = _DEFAULT_MEDIA_WORKERS,
         subprocess_workers: int = _DEFAULT_SUBPROCESS_WORKERS,
         watchdog_workers: int = _DEFAULT_WATCHDOG_WORKERS,
         power_workers: int = _DEFAULT_POWER_WORKERS,
@@ -247,6 +259,9 @@ class BackgroundExecutor:
         self._diagnostics_log = diagnostics_log
         self._io_executor = _DaemonThreadPoolExecutor(
             max_workers=io_workers, thread_name_prefix="yp-io"
+        )
+        self._media_executor = _DaemonThreadPoolExecutor(
+            max_workers=media_workers, thread_name_prefix="yp-media"
         )
         self._subprocess_executor = _DaemonThreadPoolExecutor(
             max_workers=subprocess_workers, thread_name_prefix="yp-sub"
@@ -262,6 +277,12 @@ class BackgroundExecutor:
             scheduler=scheduler,
             diagnostics_log=diagnostics_log,
             pool_name="io",
+        )
+        self.media = BackgroundPool(
+            executor=self._media_executor,
+            scheduler=scheduler,
+            diagnostics_log=diagnostics_log,
+            pool_name="media",
         )
         self.subprocess = BackgroundPool(
             executor=self._subprocess_executor,
@@ -306,6 +327,7 @@ class BackgroundExecutor:
 
         self._diagnostics_log = diagnostics_log
         self.io._set_diagnostics_log(diagnostics_log)
+        self.media._set_diagnostics_log(diagnostics_log)
         self.subprocess._set_diagnostics_log(diagnostics_log)
         self.watchdog._set_diagnostics_log(diagnostics_log)
         self.power._set_diagnostics_log(diagnostics_log)
@@ -339,6 +361,7 @@ class BackgroundExecutor:
 
         deadline = time.monotonic() + max(0.0, timeout)
         self._shutdown_pool_bounded(self._io_executor, "io", deadline)
+        self._shutdown_pool_bounded(self._media_executor, "media", deadline)
         self._shutdown_pool_bounded(self._subprocess_executor, "subprocess", deadline)
         self._shutdown_pool_bounded(self._watchdog_executor, "watchdog", deadline)
         self._shutdown_pool_bounded(self._power_executor, "power", deadline)

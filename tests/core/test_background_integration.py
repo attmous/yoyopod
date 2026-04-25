@@ -139,6 +139,43 @@ def test_app_background_watchdog_pool_isolated_from_io_pool() -> None:
     app.stop()
 
 
+def test_app_background_media_pool_isolated_from_io_pool() -> None:
+    """``app.background.media`` must keep control-plane io work responsive.
+
+    ``CloudManager._start_media_worker`` routes long-running ``store_media``
+    and remote playback asset fetch through this pool so they cannot starve
+    auth/refresh/config (which set ``_request_in_flight`` before queuing).
+    """
+
+    app = YoyoPodApp(strict_bus=True)
+    app.start()
+    media_started = threading.Event()
+    media_release = threading.Event()
+
+    def slow_media() -> None:
+        media_started.set()
+        media_release.wait(timeout=2.0)
+
+    # Saturate every media worker.
+    blockers = [
+        app.background.media.submit(slow_media)
+        for _ in range(2)  # default _DEFAULT_MEDIA_WORKERS = 2
+    ]
+    assert media_started.wait(timeout=1.0)
+
+    io_future: Future[str] = app.background.io.submit(lambda: "io-ok")
+    assert io_future.result(timeout=1.0) == "io-ok"
+    assert app.background.media is not app.background.io
+
+    media_release.set()
+    for blocker in blockers:
+        try:
+            blocker.result(timeout=2.0)
+        except Exception:
+            pass
+    app.stop()
+
+
 def test_app_background_power_pool_isolated_from_io_pool() -> None:
     """``app.background.power`` must run independently of cloud-saturated io.
 
