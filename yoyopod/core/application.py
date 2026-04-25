@@ -385,10 +385,16 @@ class YoyoPodApp:
 
         return self.scheduler.pending_count()
 
-    def note_input_activity(self, action: object, _data: Any | None = None) -> None:
+    def note_input_activity(
+        self,
+        action: object,
+        _data: Any | None = None,
+        *,
+        captured_at: float | None = None,
+    ) -> None:
         """Record raw or semantic input activity before the coordinator drains it."""
 
-        self.runtime_metrics.note_input_activity(action, _data)
+        self.runtime_metrics.note_input_activity(action, _data, captured_at=captured_at)
 
     def note_handled_input(
         self,
@@ -402,6 +408,11 @@ class YoyoPodApp:
             action_name=action_name,
             handled_at=handled_at,
         )
+
+    def note_visible_refresh(self, *, refreshed_at: float) -> None:
+        """Record that a visible screen refresh happened on the coordinator thread."""
+
+        self.runtime_metrics.note_visible_refresh(refreshed_at=refreshed_at)
 
     def record_responsiveness_capture(
         self,
