@@ -16,7 +16,7 @@ from yoyopod.core.events import (
 from yoyopod.core.application import YoyoPodApp
 from yoyopod.core.scheduler import MainThreadScheduler
 from yoyopod.core.workers.process import WorkerProcessConfig
-from yoyopod.core.workers.protocol import make_envelope
+from yoyopod.core.workers.protocol import WorkerEnvelope, make_envelope
 from yoyopod.core.workers.supervisor import WorkerSupervisor
 
 
@@ -183,7 +183,7 @@ def test_supervisor_drops_late_result_after_request_timeout() -> None:
         object,
         SimpleNamespace(
             running=True,
-            drain_messages=lambda: [],
+            drain_messages=lambda limit=None: [],
             send_command=lambda **_kwargs: False,
         ),
     )
@@ -197,7 +197,7 @@ def test_supervisor_drops_late_result_after_request_timeout() -> None:
         object,
         SimpleNamespace(
             running=True,
-            drain_messages=lambda: [
+            drain_messages=lambda limit=None: [
                 make_envelope(
                     kind="result",
                     type="voice.transcribe",
@@ -227,7 +227,7 @@ def test_supervisor_drops_stale_cancelled_payload_without_cancel_ack_type() -> N
         object,
         SimpleNamespace(
             running=True,
-            drain_messages=lambda: [
+            drain_messages=lambda limit=None: [
                 make_envelope(
                     kind="result",
                     type="voice.transcribe",
@@ -259,7 +259,7 @@ def test_supervisor_expires_request_before_processing_late_result_in_same_poll()
         object,
         SimpleNamespace(
             running=True,
-            drain_messages=lambda: [
+            drain_messages=lambda limit=None: [
                 make_envelope(
                     kind="result",
                     type="voice.transcribe",
@@ -294,7 +294,7 @@ def test_supervisor_accepts_retry_with_same_request_id_after_timeout() -> None:
         object,
         SimpleNamespace(
             running=True,
-            drain_messages=lambda: [],
+            drain_messages=lambda limit=None: [],
             send_command=lambda **_kwargs: True,
         ),
     )
@@ -316,7 +316,7 @@ def test_supervisor_accepts_retry_with_same_request_id_after_timeout() -> None:
         object,
         SimpleNamespace(
             running=True,
-            drain_messages=lambda: [
+            drain_messages=lambda limit=None: [
                 make_envelope(
                     kind="result",
                     type="voice.transcribe",
@@ -353,7 +353,7 @@ def test_supervisor_ignores_late_cancel_ack_after_retry_reuses_request_id() -> N
         object,
         SimpleNamespace(
             running=True,
-            drain_messages=lambda: [],
+            drain_messages=lambda limit=None: [],
             send_command=lambda **_kwargs: True,
         ),
     )
@@ -375,7 +375,7 @@ def test_supervisor_ignores_late_cancel_ack_after_retry_reuses_request_id() -> N
         object,
         SimpleNamespace(
             running=True,
-            drain_messages=lambda: [
+            drain_messages=lambda limit=None: [
                 make_envelope(
                     kind="result",
                     type="voice.cancelled",
@@ -393,6 +393,54 @@ def test_supervisor_ignores_late_cancel_ack_after_retry_reuses_request_id() -> N
     assert message_events == []
     assert slot.request_deadlines["req-retry"] == pytest.approx(retry_deadline)
     assert len(slot.request_deadlines) == 1
+
+
+def test_supervisor_caps_published_worker_messages_per_poll() -> None:
+    bus = Bus()
+    scheduler = MainThreadScheduler()
+    message_events: list[WorkerMessageReceivedEvent] = []
+    drain_limits: list[int | None] = []
+    bus.subscribe(WorkerMessageReceivedEvent, message_events.append)
+    supervisor = WorkerSupervisor(
+        scheduler=scheduler,
+        bus=bus,
+        max_messages_per_poll=2,
+    )
+    supervisor.register("voice", WorkerProcessConfig(name="voice", argv=["unused"]))
+    worker_messages = [
+        make_envelope(
+            kind="event",
+            type="voice.event",
+            request_id=None,
+            payload={"index": index},
+        )
+        for index in range(3)
+    ]
+
+    def drain_messages(limit: int | None = None) -> list[WorkerEnvelope]:
+        drain_limits.append(limit)
+        count = len(worker_messages) if limit is None else min(limit, len(worker_messages))
+        drained = worker_messages[:count]
+        del worker_messages[:count]
+        return drained
+
+    slot = supervisor._workers["voice"]
+    slot.runtime = cast(
+        object,
+        SimpleNamespace(
+            running=True,
+            drain_messages=drain_messages,
+            send_command=lambda **_kwargs: True,
+        ),
+    )
+    slot.state = "running"
+
+    assert supervisor.poll(monotonic_now=1.0) == 2
+    bus.drain()
+
+    assert drain_limits == [2]
+    assert [event.payload["index"] for event in message_events] == [0, 1]
+    assert [message.payload["index"] for message in worker_messages] == [2]
 
 
 def test_supervisor_rejects_duplicate_start_without_replacing_runtime(tmp_path: Path) -> None:

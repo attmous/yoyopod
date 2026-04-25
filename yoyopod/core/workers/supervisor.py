@@ -37,6 +37,7 @@ class WorkerSupervisor:
     """
 
     _STALE_REQUEST_RETENTION_SECONDS = 30.0
+    _DEFAULT_MAX_MESSAGES_PER_POLL = 8
 
     def __init__(
         self,
@@ -45,11 +46,13 @@ class WorkerSupervisor:
         bus: Bus,
         restart_backoff_seconds: float = 1.0,
         max_restarts: int = 3,
+        max_messages_per_poll: int = _DEFAULT_MAX_MESSAGES_PER_POLL,
     ) -> None:
         self._scheduler = scheduler
         self._bus = bus
         self._restart_backoff_seconds = max(0.0, restart_backoff_seconds)
         self._max_restarts = max(0, max_restarts)
+        self._max_messages_per_poll = max(1, int(max_messages_per_poll))
         self._workers: dict[str, _WorkerSlot] = {}
 
     def register(self, domain: str, config: WorkerProcessConfig) -> None:
@@ -110,13 +113,17 @@ class WorkerSupervisor:
 
         now = time.monotonic() if monotonic_now is None else monotonic_now
         processed = 0
+        remaining_message_budget = self._max_messages_per_poll
         for domain, slot in self._workers.items():
             runtime = slot.runtime
             if runtime is None:
                 continue
             self._expire_requests(domain, slot, now=now)
-            messages = runtime.drain_messages()
+            if remaining_message_budget <= 0:
+                continue
+            messages = runtime.drain_messages(limit=remaining_message_budget)
             processed += len(messages)
+            remaining_message_budget -= len(messages)
             for message in messages:
                 self._publish_message(domain, slot, message)
             if not runtime.running and slot.state == "running":
