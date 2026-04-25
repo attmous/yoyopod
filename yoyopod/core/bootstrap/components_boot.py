@@ -180,6 +180,8 @@ class ComponentsBoot:
                 display,
                 self.app.input_manager,
                 action_scheduler=self.app.scheduler.run_on_main,
+                on_action_handled=self.app.note_handled_input,
+                on_visible_refresh=self.app.note_visible_refresh,
             )
             return True
         except Exception:

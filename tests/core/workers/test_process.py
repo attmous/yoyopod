@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, cast
 
@@ -205,3 +206,48 @@ def test_worker_process_stop_is_bounded_when_graceful_send_blocks() -> None:
         stop_thread.join(timeout=2.0)
 
     assert process.terminated is True
+
+
+def test_worker_process_send_uses_bounded_outbound_queue_when_stdin_blocks() -> None:
+    runtime = WorkerProcessRuntime(
+        WorkerProcessConfig(
+            name="blocked-send",
+            argv=["unused"],
+            send_queue_size=1,
+        )
+    )
+    process = _FakeProcess()
+    runtime._process = cast(Any, process)
+    runtime._start_writer()
+
+    try:
+        assert runtime.send_command(type="voice.transcribe", payload={}, request_id="req-1")
+        assert process.stdin.write_entered.wait(timeout=0.5)
+        assert runtime.send_command(type="voice.transcribe", payload={}, request_id="req-2")
+
+        started_at = time.monotonic()
+        assert (
+            runtime.send_command(type="voice.transcribe", payload={}, request_id="req-3")
+            is False
+        )
+        elapsed_seconds = time.monotonic() - started_at
+        snapshot = runtime.snapshot()
+    finally:
+        process.stdin.release_write.set()
+
+    assert elapsed_seconds < 0.1
+    assert snapshot.dropped_sends == 1
+    assert snapshot.queued_sends == 1
+
+
+def test_worker_process_writer_exits_after_process_exit() -> None:
+    runtime = WorkerProcessRuntime(WorkerProcessConfig(name="exited", argv=["unused"]))
+    process = _FakeProcess()
+    process.returncode = 7
+    runtime._process = cast(Any, process)
+
+    runtime._start_writer()
+    assert runtime._writer_thread is not None
+    runtime._writer_thread.join(timeout=0.5)
+
+    assert runtime._writer_thread.is_alive() is False

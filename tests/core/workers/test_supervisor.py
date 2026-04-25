@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Callable, cast
 
 import pytest
@@ -15,6 +16,7 @@ from yoyopod.core.events import (
 from yoyopod.core.application import YoyoPodApp
 from yoyopod.core.scheduler import MainThreadScheduler
 from yoyopod.core.workers.process import WorkerProcessConfig
+from yoyopod.core.workers.protocol import make_envelope
 from yoyopod.core.workers.supervisor import WorkerSupervisor
 
 
@@ -168,6 +170,49 @@ for line in sys.stdin:
     assert snapshot["voice"]["request_timeouts"] == 1
     assert snapshot["voice"]["pending_requests"] == 0
     assert any(message.type == "voice.cancelled" for message in message_events)
+
+
+def test_supervisor_drops_late_result_after_request_timeout() -> None:
+    bus = Bus()
+    scheduler = MainThreadScheduler()
+    message_events: list[WorkerMessageReceivedEvent] = []
+    bus.subscribe(WorkerMessageReceivedEvent, message_events.append)
+    supervisor = WorkerSupervisor(scheduler=scheduler, bus=bus)
+    supervisor.register("voice", WorkerProcessConfig(name="voice", argv=["unused"]))
+    runtime = cast(
+        object,
+        SimpleNamespace(
+            running=True,
+            drain_messages=lambda: [],
+            send_command=lambda **_kwargs: False,
+        ),
+    )
+    slot = supervisor._workers["voice"]
+    slot.runtime = runtime
+    slot.state = "running"
+    slot.request_deadlines["req-timeout"] = 1.0
+
+    supervisor.poll(monotonic_now=2.0)
+    runtime = cast(
+        object,
+        SimpleNamespace(
+            running=True,
+            drain_messages=lambda: [
+                make_envelope(
+                    kind="result",
+                    type="voice.transcribe",
+                    request_id="req-timeout",
+                    payload={"text": "late"},
+                )
+            ],
+            send_command=lambda **_kwargs: False,
+        ),
+    )
+    slot.runtime = runtime
+    supervisor.poll(monotonic_now=2.1)
+    bus.drain()
+
+    assert message_events == []
 
 
 def test_supervisor_rejects_duplicate_start_without_replacing_runtime(tmp_path: Path) -> None:
@@ -334,6 +379,32 @@ def test_supervisor_restart_spawn_failure_stays_contained(tmp_path: Path) -> Non
     assert snapshot["next_restart_at"] == 0.0
     assert events[-1].state == "degraded"
     assert events[-1].reason == "restart_failed"
+
+
+def test_supervisor_initial_spawn_failure_stays_contained(tmp_path: Path) -> None:
+    missing_dir = tmp_path / "missing-cwd"
+    bus = Bus()
+    scheduler = MainThreadScheduler()
+    events: list[WorkerDomainStateChangedEvent] = []
+    bus.subscribe(WorkerDomainStateChangedEvent, events.append)
+    supervisor = WorkerSupervisor(scheduler=scheduler, bus=bus)
+    supervisor.register(
+        "voice",
+        WorkerProcessConfig(
+            name="voice",
+            argv=[sys.executable, "-u", "-c", "print('unused')"],
+            cwd=str(missing_dir),
+        ),
+    )
+
+    assert supervisor.start("voice") is False
+    bus.drain()
+    snapshot = supervisor.snapshot()["voice"]
+
+    assert snapshot["state"] == "degraded"
+    assert snapshot["last_reason"] == "start_failed"
+    assert events[-1].state == "degraded"
+    assert events[-1].reason == "start_failed"
 
 
 def test_app_owns_worker_supervisor() -> None:

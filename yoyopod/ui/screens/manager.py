@@ -64,6 +64,8 @@ class ScreenManager:
         router: Optional[ScreenRouter] = None,
         on_screen_changed: Optional[Callable[[Optional[str]], None]] = None,
         action_scheduler: Optional[Callable[[Callable[[], None]], None]] = None,
+        on_action_handled: Optional[Callable[[Optional[str], float], None]] = None,
+        on_visible_refresh: Optional[Callable[[float], None]] = None,
     ) -> None:
         """
         Initialize the screen manager.
@@ -80,6 +82,8 @@ class ScreenManager:
         self.router = router or ScreenRouter()
         self.on_screen_changed = on_screen_changed
         self.action_scheduler = action_scheduler
+        self.on_action_handled = on_action_handled
+        self.on_visible_refresh = on_visible_refresh
         self._navigation_refresh_pending = False
         self._input_dispatch_registered = False
 
@@ -207,6 +211,22 @@ class ScreenManager:
     def refresh_current_screen(self) -> None:
         """Re-render the current screen."""
         self._navigation_refresh_pending = False
+        if self.current_screen:
+            started_at = time.monotonic()
+            refresh_for_visible_tick = getattr(
+                self.current_screen, "refresh_for_visible_tick", None
+            )
+            if callable(refresh_for_visible_tick):
+                refresh_for_visible_tick()
+            self.current_screen.render()
+            if self.on_visible_refresh is not None:
+                self.on_visible_refresh(refreshed_at=time.monotonic())
+            self._warn_if_slow(
+                "refresh_current_screen",
+                started_at=started_at,
+                threshold_seconds=self._SLOW_RENDER_WARNING_SECONDS,
+                detail=f"screen={self.current_screen.route_name or self.current_screen.name}",
+            )
         if self.current_screen is None:
             return
 
@@ -425,6 +445,9 @@ class ScreenManager:
             return
 
         previous_screen.handle_action(action, data)
+        handled_at = time.monotonic()
+        if self.on_action_handled is not None:
+            self.on_action_handled(action_name=action.value, handled_at=handled_at)
         navigation_request = previous_screen.consume_navigation_request()
         if navigation_request is not None:
             self.apply_navigation_request(navigation_request, source_screen=previous_screen)

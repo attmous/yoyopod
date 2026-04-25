@@ -146,6 +146,12 @@ class _FakeApp:
     def note_input_activity(self, _data=None) -> None:
         return None
 
+    def note_handled_input(self, *, action_name: str | None, handled_at: float) -> None:
+        return None
+
+    def note_visible_refresh(self, *, refreshed_at: float) -> None:
+        return None
+
 
 class _FakeVoipManager:
     def __init__(self) -> None:
@@ -242,14 +248,24 @@ def test_init_core_components_schedules_screen_actions_for_lvgl_backend(monkeypa
         lambda **_kwargs: fake_input_manager,
     )
 
-    def _capture_screen_manager(display, input_manager, action_scheduler=None):
+    def _capture_screen_manager(
+        display,
+        input_manager,
+        action_scheduler=None,
+        on_action_handled=None,
+        on_visible_refresh=None,
+    ):
         captured["display"] = display
         captured["input_manager"] = input_manager
         captured["action_scheduler"] = action_scheduler
+        captured["on_action_handled"] = on_action_handled
+        captured["on_visible_refresh"] = on_visible_refresh
         return SimpleNamespace(
             display=display,
             input_manager=input_manager,
             action_scheduler=action_scheduler,
+            on_action_handled=on_action_handled,
+            on_visible_refresh=on_visible_refresh,
         )
 
     monkeypatch.setattr(boot_module, "ScreenManager", _capture_screen_manager)
@@ -260,6 +276,10 @@ def test_init_core_components_schedules_screen_actions_for_lvgl_backend(monkeypa
     assert captured["display"].backend_kind == "lvgl"
     assert captured["input_manager"] is fake_input_manager
     assert captured["action_scheduler"] is scheduled_callback
+    assert captured["on_action_handled"].__self__ is app
+    assert captured["on_action_handled"].__func__ is _FakeApp.note_handled_input
+    assert captured["on_visible_refresh"].__self__ is app
+    assert captured["on_visible_refresh"].__func__ is _FakeApp.note_visible_refresh
     assert fake_input_manager.started is True
 
 

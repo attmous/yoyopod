@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from yoyopod.core.application import YoyoPodApp
+from yoyopod.core.events import UserActivityEvent
 
 
 class _ScreenManager:
@@ -63,6 +64,19 @@ def test_visible_screen_refresh_ignores_noop_visible_tick() -> None:
 
     snapshot = app.runtime_metrics.responsiveness_snapshot(now=101.0)
     assert screen_manager.refresh_count == 1
+    assert snapshot["responsiveness_action_to_visible_count"] == 0
+
+
+def test_user_activity_event_does_not_record_handled_action_latency() -> None:
+    app = YoyoPodApp()
+    app.note_input_activity(SimpleNamespace(value="select"), 0, captured_at=100.0)
+
+    app.screen_power_service.handle_user_activity_event(
+        UserActivityEvent(action_name="select")
+    )
+
+    snapshot = app.runtime_metrics.responsiveness_snapshot(now=101.0)
+    assert snapshot["responsiveness_input_to_action_count"] == 0
     assert snapshot["responsiveness_action_to_visible_count"] == 0
 
 

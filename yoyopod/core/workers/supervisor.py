@@ -24,6 +24,7 @@ class _WorkerSlot:
     restart_count: int = 0
     next_restart_at: float = 0.0
     request_deadlines: dict[str, float] = field(default_factory=dict)
+    stale_request_ids: dict[str, float] = field(default_factory=dict)
     request_timeouts: int = 0
     last_reason: str = ""
 
@@ -34,6 +35,8 @@ class WorkerSupervisor:
     The scheduler is retained for the Task 7 app/loop integration seam; this
     phase publishes directly because the supervisor itself is main-thread owned.
     """
+
+    _STALE_REQUEST_RETENTION_SECONDS = 30.0
 
     def __init__(
         self,
@@ -56,13 +59,13 @@ class WorkerSupervisor:
             raise ValueError(f"worker domain {domain!r} is already registered")
         self._workers[domain] = _WorkerSlot(config=config)
 
-    def start(self, domain: str) -> None:
+    def start(self, domain: str) -> bool:
         """Start one worker domain."""
 
         slot = self._workers[domain]
         if slot.runtime is not None and slot.runtime.running:
             raise RuntimeError(f"worker domain {domain!r} is already running")
-        self._start_runtime(
+        return self._start_runtime(
             domain,
             slot,
             state_reason="started",
@@ -76,17 +79,20 @@ class WorkerSupervisor:
         *,
         state_reason: str,
         failure_reason: str,
-    ) -> None:
+    ) -> bool:
         runtime = WorkerProcessRuntime(slot.config)
         try:
             runtime.start()
         except Exception:
             slot.next_restart_at = 0.0
+            slot.stale_request_ids.clear()
             self._set_state(domain, slot, "degraded", failure_reason)
-            raise
+            return False
         slot.runtime = runtime
         slot.next_restart_at = 0.0
+        slot.stale_request_ids.clear()
         self._set_state(domain, slot, "running", state_reason)
+        return True
 
     def stop_all(self, *, grace_seconds: float = 1.0) -> None:
         """Stop all registered workers with bounded waits."""
@@ -95,6 +101,7 @@ class WorkerSupervisor:
             if slot.runtime is not None:
                 slot.runtime.stop(grace_seconds=grace_seconds)
             slot.request_deadlines.clear()
+            slot.stale_request_ids.clear()
             slot.next_restart_at = 0.0
             self._set_state(domain, slot, "stopped", "stop_all")
 
@@ -187,6 +194,18 @@ class WorkerSupervisor:
                 "dropped_messages": (
                     process_snapshot.dropped_messages if process_snapshot is not None else 0
                 ),
+                "sent_messages": (
+                    process_snapshot.sent_messages if process_snapshot is not None else 0
+                ),
+                "queued_sends": (
+                    process_snapshot.queued_sends if process_snapshot is not None else 0
+                ),
+                "dropped_sends": (
+                    process_snapshot.dropped_sends if process_snapshot is not None else 0
+                ),
+                "send_failures": (
+                    process_snapshot.send_failures if process_snapshot is not None else 0
+                ),
             }
         return result
 
@@ -196,6 +215,9 @@ class WorkerSupervisor:
         slot: _WorkerSlot,
         message: WorkerEnvelope,
     ) -> None:
+        if message.request_id is not None and message.request_id in slot.stale_request_ids:
+            if not self._is_timeout_cancel_ack(domain, message):
+                return
         if message.request_id is not None:
             slot.request_deadlines.pop(message.request_id, None)
         self._bus.publish(
@@ -209,12 +231,14 @@ class WorkerSupervisor:
         )
 
     def _expire_requests(self, domain: str, slot: _WorkerSlot, *, now: float) -> None:
+        self._prune_stale_request_ids(slot, now=now)
         expired = [
             request_id for request_id, deadline in slot.request_deadlines.items() if deadline <= now
         ]
         for request_id in expired:
             slot.request_deadlines.pop(request_id, None)
             slot.request_timeouts += 1
+            slot.stale_request_ids[request_id] = now + self._STALE_REQUEST_RETENTION_SECONDS
             if slot.runtime is not None:
                 slot.runtime.send_command(
                     type=f"{domain}.cancel",
@@ -226,8 +250,23 @@ class WorkerSupervisor:
 
     def _handle_exit(self, domain: str, slot: _WorkerSlot, *, now: float) -> None:
         slot.request_deadlines.clear()
+        slot.stale_request_ids.clear()
         slot.next_restart_at = now + self._restart_backoff_seconds
         self._set_state(domain, slot, "degraded", "process_exited")
+
+    def _prune_stale_request_ids(self, slot: _WorkerSlot, *, now: float) -> None:
+        expired_stale_ids = [
+            request_id
+            for request_id, stale_until in slot.stale_request_ids.items()
+            if stale_until <= now
+        ]
+        for request_id in expired_stale_ids:
+            slot.stale_request_ids.pop(request_id, None)
+
+    def _is_timeout_cancel_ack(self, domain: str, message: WorkerEnvelope) -> bool:
+        if message.type == f"{domain}.cancelled":
+            return True
+        return bool(message.payload.get("cancelled"))
 
     def _restart_if_allowed(self, domain: str, slot: _WorkerSlot, *, now: float) -> None:
         if slot.restart_count >= self._max_restarts:
@@ -235,14 +274,13 @@ class WorkerSupervisor:
             self._set_state(domain, slot, "disabled", "max_restarts_exceeded")
             return
         slot.restart_count += 1
-        try:
-            self._start_runtime(
-                domain,
-                slot,
-                state_reason="started",
-                failure_reason="restart_failed",
-            )
-        except Exception:
+        started = self._start_runtime(
+            domain,
+            slot,
+            state_reason="started",
+            failure_reason="restart_failed",
+        )
+        if not started:
             if slot.restart_count >= self._max_restarts:
                 slot.next_restart_at = 0.0
             else:

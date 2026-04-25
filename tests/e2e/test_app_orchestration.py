@@ -1978,10 +1978,9 @@ def test_status_exposes_input_and_responsiveness_markers() -> None:
 
     app, _, _ = _build_app(playback_state="stopped")
 
-    app.note_input_activity(SimpleNamespace(value="select"))
-    _publish_from_worker(app, UserActivityEvent(action_name="select"))
-
-    assert app.runtime_loop.process_pending_main_thread_actions() >= 1
+    captured_at = time.monotonic() - 0.02
+    app.note_input_activity(SimpleNamespace(value="select"), captured_at=captured_at)
+    app.note_handled_input(action_name="select", handled_at=time.monotonic())
 
     app.record_responsiveness_capture(
         captured_at=time.monotonic(),
@@ -1997,6 +1996,7 @@ def test_status_exposes_input_and_responsiveness_markers() -> None:
     assert status["last_input_action"] == "select"
     assert status["handled_input_activity_age_seconds"] is not None
     assert status["last_handled_input_action"] == "select"
+    assert status["responsiveness_input_to_action_count"] == 1
     assert status["responsiveness_last_capture_reason"] == "coordinator_stall_after_input"
     assert status["responsiveness_last_capture_scope"] == "input_to_runtime_handoff"
     assert status["responsiveness_last_capture_artifacts"] == {"snapshot": "/tmp/test.json"}

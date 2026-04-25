@@ -29,6 +29,7 @@ class WorkerProcessConfig:
     cwd: str | None = None
     env: dict[str, str] | None = None
     receive_queue_size: int = 64
+    send_queue_size: int = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,10 @@ class WorkerProcessSnapshot:
     received_messages: int
     protocol_errors: int
     dropped_messages: int
+    sent_messages: int
+    queued_sends: int
+    dropped_sends: int
+    send_failures: int
     stderr_lines: int
     terminated: bool
     killed: bool
@@ -54,11 +59,19 @@ class WorkerProcessRuntime:
         self.config = config
         self._process: subprocess.Popen[str] | None = None
         self._messages: Queue[WorkerEnvelope] = Queue(maxsize=max(1, config.receive_queue_size))
+        self._outbound: Queue[WorkerEnvelope | None] = Queue(
+            maxsize=max(1, config.send_queue_size)
+        )
         self._stdin_lock = threading.Lock()
         self._reader_threads: list[threading.Thread] = []
+        self._writer_thread: threading.Thread | None = None
+        self._writer_stop_requested = threading.Event()
         self._received_messages = 0
         self._protocol_errors = 0
         self._dropped_messages = 0
+        self._sent_messages = 0
+        self._dropped_sends = 0
+        self._send_failures = 0
         self._stderr_lines = 0
         self._terminated = False
         self._killed = False
@@ -74,6 +87,7 @@ class WorkerProcessRuntime:
 
         if self.running:
             return
+        self._writer_stop_requested.clear()
         self._process = subprocess.Popen(
             self.config.argv,
             cwd=self.config.cwd,
@@ -90,6 +104,7 @@ class WorkerProcessRuntime:
             self._start_reader("stdout", self._process.stdout),
             self._start_reader("stderr", self._process.stderr),
         ]
+        self._start_writer()
 
     def send_command(
         self,
@@ -113,17 +128,16 @@ class WorkerProcessRuntime:
         return self.send(envelope)
 
     def send(self, envelope: WorkerEnvelope) -> bool:
-        """Write one envelope to worker stdin and report whether it was accepted."""
+        """Queue one envelope for worker stdin and report whether it was accepted."""
 
         process = self._process
         if process is None or process.stdin is None or process.poll() is not None:
             return False
-        with self._stdin_lock:
-            try:
-                process.stdin.write(encode_envelope(envelope))
-                process.stdin.flush()
-            except (BrokenPipeError, OSError, ValueError):
-                return False
+        try:
+            self._outbound.put_nowait(envelope)
+        except Full:
+            self._dropped_sends += 1
+            return False
         return True
 
     def drain_messages(self, limit: int | None = None) -> list[WorkerEnvelope]:
@@ -177,10 +191,9 @@ class WorkerProcessRuntime:
                 payload={},
                 deadline_ms=int(grace_seconds * 1000),
             )
-            self._send_graceful_stop_async(
-                envelope,
-                lock_timeout_seconds=min(0.05, grace_seconds),
-            )
+            if self._writer_thread is None:
+                self._start_writer()
+            self.send(envelope)
             deadline = time.monotonic() + max(0.0, grace_seconds)
             while process.poll() is None and time.monotonic() < deadline:
                 time.sleep(0.01)
@@ -196,37 +209,40 @@ class WorkerProcessRuntime:
                     process.wait(timeout=1.0)
                 except subprocess.TimeoutExpired:
                     logger.warning("worker {} did not exit after kill", self.config.name)
+        self._request_writer_shutdown()
         self._join_readers(timeout_seconds=0.2)
+        self._join_writer(timeout_seconds=0.2)
 
-    def _send_graceful_stop_async(
-        self,
-        envelope: WorkerEnvelope,
-        *,
-        lock_timeout_seconds: float,
-    ) -> None:
+    def _start_writer(self) -> None:
+        if self._writer_thread is not None and self._writer_thread.is_alive():
+            return
         thread = threading.Thread(
-            target=self._send_with_lock_timeout,
-            args=(envelope,),
-            kwargs={"timeout_seconds": lock_timeout_seconds},
-            name=f"yoyopod-worker-{self.config.name}-graceful-stop",
+            target=self._write_outbound,
+            name=f"yoyopod-worker-{self.config.name}-stdin",
             daemon=True,
         )
         thread.start()
+        self._writer_thread = thread
 
-    def _send_with_lock_timeout(
-        self,
-        envelope: WorkerEnvelope,
-        *,
-        timeout_seconds: float,
-    ) -> bool:
+    def _write_outbound(self) -> None:
+        while not self._writer_stop_requested.is_set() or not self._outbound.empty():
+            try:
+                envelope = self._outbound.get(timeout=0.05)
+            except Empty:
+                process = self._process
+                if process is None or process.poll() is not None:
+                    return
+                continue
+            if envelope is None:
+                return
+            if not self._write_envelope(envelope):
+                self._send_failures += 1
+
+    def _write_envelope(self, envelope: WorkerEnvelope) -> bool:
         process = self._process
         if process is None or process.stdin is None or process.poll() is not None:
             return False
-        acquired = self._stdin_lock.acquire(timeout=max(0.0, timeout_seconds))
-        if not acquired:
-            logger.debug("worker {} graceful stop skipped; stdin lock busy", self.config.name)
-            return False
-        try:
+        with self._stdin_lock:
             if process.poll() is not None:
                 return False
             try:
@@ -234,9 +250,17 @@ class WorkerProcessRuntime:
                 process.stdin.flush()
             except (BrokenPipeError, OSError, ValueError):
                 return False
-        finally:
-            self._stdin_lock.release()
+        self._sent_messages += 1
         return True
+
+    def _request_writer_shutdown(self) -> None:
+        if self._writer_thread is None:
+            return
+        self._writer_stop_requested.set()
+        try:
+            self._outbound.put_nowait(None)
+        except Full:
+            return
 
     def snapshot(self) -> WorkerProcessSnapshot:
         """Return the observable process state."""
@@ -250,6 +274,10 @@ class WorkerProcessRuntime:
             received_messages=self._received_messages,
             protocol_errors=self._protocol_errors,
             dropped_messages=self._dropped_messages,
+            sent_messages=self._sent_messages,
+            queued_sends=self._outbound.qsize(),
+            dropped_sends=self._dropped_sends,
+            send_failures=self._send_failures,
             stderr_lines=self._stderr_lines,
             terminated=self._terminated,
             killed=self._killed,
@@ -285,3 +313,7 @@ class WorkerProcessRuntime:
     def _join_readers(self, *, timeout_seconds: float) -> None:
         for thread in self._reader_threads:
             thread.join(timeout=timeout_seconds)
+
+    def _join_writer(self, *, timeout_seconds: float) -> None:
+        if self._writer_thread is not None:
+            self._writer_thread.join(timeout=timeout_seconds)
