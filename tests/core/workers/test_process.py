@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import threading
 from pathlib import Path
+from typing import Any, cast
 
 from yoyopod.core.workers.process import WorkerProcessConfig, WorkerProcessRuntime
 
@@ -11,6 +12,44 @@ def _write_worker(tmp_path: Path, body: str) -> Path:
     path = tmp_path / "fake_worker.py"
     path.write_text(body, encoding="utf-8")
     return path
+
+
+class _BlockingStdin:
+    def __init__(self) -> None:
+        self.write_entered = threading.Event()
+        self.release_write = threading.Event()
+
+    def write(self, _data: str) -> int:
+        self.write_entered.set()
+        self.release_write.wait(timeout=5.0)
+        return 0
+
+    def flush(self) -> None:
+        return None
+
+
+class _FakeProcess:
+    pid = 1234
+
+    def __init__(self) -> None:
+        self.stdin = _BlockingStdin()
+        self.returncode: int | None = None
+        self.terminated = False
+        self.killed = False
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.returncode = -15
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode or 0
 
 
 def test_worker_process_round_trips_envelopes(tmp_path: Path) -> None:
@@ -123,6 +162,7 @@ time.sleep(60)
     )
 
     runtime.start()
+    # Intentionally reaches into the private lock to reproduce send/stop contention.
     runtime._stdin_lock.acquire()
     stop_thread = threading.Thread(
         target=runtime.stop,
@@ -143,3 +183,25 @@ time.sleep(60)
     snapshot = runtime.snapshot()
     assert snapshot.running is False
     assert snapshot.terminated is True
+
+
+def test_worker_process_stop_is_bounded_when_graceful_send_blocks() -> None:
+    runtime = WorkerProcessRuntime(WorkerProcessConfig(name="blocked", argv=["unused"]))
+    process = _FakeProcess()
+    runtime._process = cast(Any, process)
+    stop_thread = threading.Thread(
+        target=runtime.stop,
+        kwargs={"grace_seconds": 0.05},
+        daemon=True,
+    )
+
+    try:
+        stop_thread.start()
+        assert process.stdin.write_entered.wait(timeout=0.5)
+        stop_thread.join(timeout=0.5)
+        assert stop_thread.is_alive() is False
+    finally:
+        process.stdin.release_write.set()
+        stop_thread.join(timeout=2.0)
+
+    assert process.terminated is True

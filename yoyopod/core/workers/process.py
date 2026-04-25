@@ -177,7 +177,10 @@ class WorkerProcessRuntime:
                 payload={},
                 deadline_ms=int(grace_seconds * 1000),
             )
-            self._send_with_lock_timeout(envelope, timeout_seconds=min(0.05, grace_seconds))
+            self._send_graceful_stop_async(
+                envelope,
+                lock_timeout_seconds=min(0.05, grace_seconds),
+            )
             deadline = time.monotonic() + max(0.0, grace_seconds)
             while process.poll() is None and time.monotonic() < deadline:
                 time.sleep(0.01)
@@ -194,6 +197,21 @@ class WorkerProcessRuntime:
                 except subprocess.TimeoutExpired:
                     logger.warning("worker {} did not exit after kill", self.config.name)
         self._join_readers(timeout_seconds=0.2)
+
+    def _send_graceful_stop_async(
+        self,
+        envelope: WorkerEnvelope,
+        *,
+        lock_timeout_seconds: float,
+    ) -> None:
+        thread = threading.Thread(
+            target=self._send_with_lock_timeout,
+            args=(envelope,),
+            kwargs={"timeout_seconds": lock_timeout_seconds},
+            name=f"yoyopod-worker-{self.config.name}-graceful-stop",
+            daemon=True,
+        )
+        thread.start()
 
     def _send_with_lock_timeout(
         self,
