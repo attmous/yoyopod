@@ -27,6 +27,7 @@ const (
 	defaultSTTSampleRate  = 16000
 	defaultSTTChannels    = 1
 	sttBytesPerSample     = 2
+	unknownWAVChunkSize   = int64(0xffffffff)
 )
 
 var ErrMissingAPIKey = errors.New("OPENAI_API_KEY is not set")
@@ -300,7 +301,7 @@ func wavDurationSeconds(path string) (float64, bool) {
 	}
 
 	var byteRate uint32
-	var dataSize uint32
+	var dataSize int64
 	var haveFormat bool
 	var haveData bool
 	var probed int64 = 12
@@ -329,7 +330,23 @@ func wavDurationSeconds(path string) (float64, bool) {
 			}
 			probed += chunkSize - 16 + chunkSize%2
 		case "data":
-			dataSize = uint32(chunkSize)
+			if chunkSize == unknownWAVChunkSize {
+				dataStart, err := file.Seek(0, io.SeekCurrent)
+				if err != nil {
+					return 0, false
+				}
+				info, err := file.Stat()
+				if err != nil || info.Size() < dataStart {
+					return 0, false
+				}
+				dataSize = info.Size() - dataStart
+				haveData = true
+				if haveFormat {
+					return float64(dataSize) / float64(byteRate), true
+				}
+				return 0, false
+			}
+			dataSize = chunkSize
 			haveData = true
 			if _, err := file.Seek(chunkSize+chunkSize%2, io.SeekCurrent); err != nil {
 				return 0, false

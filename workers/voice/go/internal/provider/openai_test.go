@@ -138,6 +138,20 @@ func TestOpenAIProviderTranscribeRejectsOverLimitUnknownAudioBeforeUpload(t *tes
 	}
 }
 
+func TestWAVDurationUsesActualFileSizeForStreamingDataChunk(t *testing.T) {
+	dataBytes := 24000 * 2
+	audioPath := writeTestWAV(t, makeStreamingDataSizeWAV(24000, 1, 16, dataBytes))
+
+	duration, ok := wavDurationSeconds(audioPath)
+
+	if !ok {
+		t.Fatalf("wavDurationSeconds ok = false, want true")
+	}
+	if duration != 1.0 {
+		t.Fatalf("duration = %v, want 1.0", duration)
+	}
+}
+
 func TestOpenAIProviderSpeakPostsJSONAndWritesWAV(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/audio/speech" {
@@ -320,6 +334,13 @@ func makeTestWAV(sampleRateHz int, channels int, bitsPerSample int, dataBytes in
 	putUint16LE(wav[34:36], uint16(bitsPerSample))
 	copy(wav[36:40], "data")
 	putUint32LE(wav[40:44], uint32(dataBytes))
+	return wav
+}
+
+func makeStreamingDataSizeWAV(sampleRateHz int, channels int, bitsPerSample int, dataBytes int) []byte {
+	wav := makeTestWAV(sampleRateHz, channels, bitsPerSample, dataBytes)
+	putUint32LE(wav[4:8], uint32(unknownWAVChunkSize))
+	putUint32LE(wav[40:44], uint32(unknownWAVChunkSize))
 	return wav
 }
 
