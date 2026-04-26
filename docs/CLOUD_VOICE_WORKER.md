@@ -71,6 +71,7 @@ OpenAI provider:
 
 ```bash
 cd /opt/yoyopod-dev/checkout
+/opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main build voice-worker
 set -a
 . /etc/default/yoyopod-dev
 set +a
