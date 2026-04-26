@@ -351,6 +351,16 @@ class NowPlayingScreen(Screen):
 
         return None
 
+    @staticmethod
+    def should_render_for_visible_tick() -> bool:
+        """Keep rendering while playback progress remains time-driven.
+
+        This intentionally bypasses dirty gating because progress advances even
+        when no state-change event fires.
+        """
+
+        return True
+
     def get_footer_text(self, *, is_playing: bool, state_label: str | None = None) -> str:
         """Return the gesture hint for the active playback state."""
 

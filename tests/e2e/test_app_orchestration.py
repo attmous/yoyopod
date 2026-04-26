@@ -43,6 +43,7 @@ from yoyopod.core import UserActivityEvent
 from yoyopod.integrations.power import PowerAlert
 from yoyopod.integrations.network.models import ModemPhase, ModemState, SignalInfo
 from yoyopod.ui.input import InputManager, InteractionProfile
+from yoyopod.ui.screens.manager import VisibleTickRefreshResult
 
 
 class RenderableScreen(Protocol):
@@ -55,6 +56,10 @@ class RenderableScreen(Protocol):
     def render(self) -> None: ...
 
     def refresh_for_visible_tick(self) -> None: ...
+
+    def clear_dirty(self) -> None: ...
+
+    def should_render_for_visible_tick(self) -> bool: ...
 
 
 class IncomingCallScreenLike(RenderableScreen, Protocol):
@@ -73,15 +78,25 @@ class FakeScreen:
         self.refresh_for_visible_tick_calls = 0
         self.route_name: str | None = None
         self.visible_tick_refresh_enabled = False
+        self.keep_visible_tick_dirty = False
+        self._dirty = True
 
     def render(self) -> None:
         self.render_calls += 1
 
     def refresh_for_visible_tick(self) -> None:
         self.refresh_for_visible_tick_calls += 1
+        if self.keep_visible_tick_dirty:
+            self._dirty = True
 
     def wants_visible_tick_refresh(self) -> bool:
         return self.visible_tick_refresh_enabled
+
+    def clear_dirty(self) -> None:
+        self._dirty = False
+
+    def should_render_for_visible_tick(self) -> bool:
+        return self.keep_visible_tick_dirty or self._dirty
 
 
 class FakeIncomingCallScreen(FakeScreen):
@@ -159,10 +174,11 @@ class FakeScreenManager:
             return
         self.current_screen.refresh_for_visible_tick()
         self.current_screen.render()
+        self.current_screen.clear_dirty()
 
-    def refresh_current_screen_for_visible_tick(self) -> bool:
+    def refresh_current_screen_for_visible_tick(self) -> VisibleTickRefreshResult:
         if self.current_screen is None:
-            return False
+            return VisibleTickRefreshResult.NOT_ELIGIBLE
         wants_visible_tick_refresh = getattr(
             self.current_screen,
             "wants_visible_tick_refresh",
@@ -173,13 +189,26 @@ class FakeScreenManager:
             "refresh_for_visible_tick",
             None,
         )
+        refresh_for_visible_tick_callback = (
+            refresh_for_visible_tick if callable(refresh_for_visible_tick) else None
+        )
         if callable(wants_visible_tick_refresh):
             if not wants_visible_tick_refresh():
-                return False
-        elif not callable(refresh_for_visible_tick):
-            return False
-        self.refresh_current_screen()
-        return True
+                return VisibleTickRefreshResult.NOT_ELIGIBLE
+        elif refresh_for_visible_tick_callback is None:
+            return VisibleTickRefreshResult.NOT_ELIGIBLE
+        if refresh_for_visible_tick_callback is not None:
+            refresh_for_visible_tick_callback()
+        should_render_for_visible_tick = getattr(
+            self.current_screen,
+            "should_render_for_visible_tick",
+            None,
+        )
+        if callable(should_render_for_visible_tick) and not should_render_for_visible_tick():
+            return VisibleTickRefreshResult.CLEAN
+        self.current_screen.render()
+        self.current_screen.clear_dirty()
+        return VisibleTickRefreshResult.RENDERED
 
     def pop_call_screens(self) -> None:
         call_route_names = {"in_call", "incoming_call", "outgoing_call"}
@@ -192,11 +221,13 @@ class FakeScreenManager:
         if self.current_screen is None or self.current_screen.route_name != "now_playing":
             return
         self.current_screen.render()
+        self.current_screen.clear_dirty()
 
     def refresh_call_screen_if_visible(self) -> None:
         if self.current_screen is None or self.current_screen.route_name != "call":
             return
         self.current_screen.render()
+        self.current_screen.clear_dirty()
 
     def show_incoming_call(self, caller_address: str, caller_name: str) -> None:
         screen = self.screen_lookup["incoming_call"]
@@ -619,6 +650,8 @@ class OrchestrationHarness:
         screens.power.visible_tick_refresh_enabled = True
         screens.now_playing.visible_tick_refresh_enabled = True
         screens.in_call.visible_tick_refresh_enabled = True
+        screens.now_playing.keep_visible_tick_dirty = True
+        screens.in_call.keep_visible_tick_dirty = True
         app.menu_screen = screens.menu
         app.power_screen = screens.power
         app.now_playing_screen = screens.now_playing
@@ -1160,15 +1193,24 @@ def test_periodic_in_call_refresh_only_renders_visible_call_screen() -> None:
     app, _, screen_manager = _build_app(playback_state="stopped")
 
     assert app.screen_manager is not None
-    assert app.screen_manager.refresh_current_screen_for_visible_tick() is False
+    assert (
+        app.screen_manager.refresh_current_screen_for_visible_tick()
+        is VisibleTickRefreshResult.NOT_ELIGIBLE
+    )
     assert app.in_call_screen.render_calls == 0
 
     screen_manager.push_screen("in_call")
-    assert app.screen_manager.refresh_current_screen_for_visible_tick() is True
+    assert (
+        app.screen_manager.refresh_current_screen_for_visible_tick()
+        is VisibleTickRefreshResult.RENDERED
+    )
     assert app.in_call_screen.render_calls == 1
 
     screen_manager.pop_screen()
-    assert app.screen_manager.refresh_current_screen_for_visible_tick() is False
+    assert (
+        app.screen_manager.refresh_current_screen_for_visible_tick()
+        is VisibleTickRefreshResult.NOT_ELIGIBLE
+    )
     assert app.in_call_screen.render_calls == 1
 
 
@@ -1177,11 +1219,17 @@ def test_periodic_visible_tick_refreshes_visible_now_playing_screen() -> None:
     harness = OrchestrationHarness.build(playback_state="playing")
 
     assert harness.app.screen_manager is not None
-    assert harness.app.screen_manager.refresh_current_screen_for_visible_tick() is False
+    assert (
+        harness.app.screen_manager.refresh_current_screen_for_visible_tick()
+        is VisibleTickRefreshResult.NOT_ELIGIBLE
+    )
     assert harness.screens.now_playing.render_calls == 0
 
     harness.show_now_playing()
-    assert harness.app.screen_manager.refresh_current_screen_for_visible_tick() is True
+    assert (
+        harness.app.screen_manager.refresh_current_screen_for_visible_tick()
+        is VisibleTickRefreshResult.RENDERED
+    )
     assert harness.screens.now_playing.render_calls == 1
     assert harness.screens.now_playing.refresh_for_visible_tick_calls == 1
 
@@ -1629,12 +1677,18 @@ def test_periodic_power_refresh_only_renders_visible_power_screen() -> None:
     )
 
     assert app.screen_manager is not None
-    assert app.screen_manager.refresh_current_screen_for_visible_tick() is False
+    assert (
+        app.screen_manager.refresh_current_screen_for_visible_tick()
+        is VisibleTickRefreshResult.NOT_ELIGIBLE
+    )
     assert app.power_screen.render_calls == 0
     assert app.power_screen.refresh_for_visible_tick_calls == 0
 
     screen_manager.push_screen("power")
-    assert app.screen_manager.refresh_current_screen_for_visible_tick() is True
+    assert (
+        app.screen_manager.refresh_current_screen_for_visible_tick()
+        is VisibleTickRefreshResult.RENDERED
+    )
     assert app.power_screen.render_calls == 1
     assert app.power_screen.refresh_for_visible_tick_calls == 1
 

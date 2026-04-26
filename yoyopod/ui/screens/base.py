@@ -53,6 +53,7 @@ class Screen(ABC):
         self.screen_manager: Optional["ScreenManager"] = None
         self.route_name: Optional[str] = None
         self._pending_navigation: Optional[NavigationRequest] = None
+        self._is_dirty = True
         logger.debug(f"Screen '{name}' initialized")
 
     def set_screen_manager(self, manager: "ScreenManager") -> None:
@@ -95,6 +96,23 @@ class Screen(ABC):
         request = self._pending_navigation
         self._pending_navigation = None
         return request
+
+    def mark_dirty(self) -> None:
+        """Declare that the current screen contents should be re-rendered."""
+        self._is_dirty = True
+
+    def clear_dirty(self) -> None:
+        """Declare that the current screen contents are up to date."""
+        self._is_dirty = False
+
+    @property
+    def is_dirty(self) -> bool:
+        """Return whether the screen has changed since its last render."""
+        return self._is_dirty
+
+    def should_render_for_visible_tick(self) -> bool:
+        """Return whether a periodic visible tick should trigger a render."""
+        return self.is_dirty
 
     def get_interaction_profile(self) -> InteractionProfile:
         """Return the current interaction profile for the active device."""
