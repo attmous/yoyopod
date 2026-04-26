@@ -26,6 +26,7 @@ class _VoiceWorkerClient(Protocol):
         sample_rate_hz: int,
         language: str,
         max_audio_seconds: float,
+        model: str = "",
     ) -> VoiceWorkerTranscribeResult:
         """Return a transcription result for one local WAV file."""
 
@@ -75,6 +76,7 @@ class CloudWorkerSpeechToTextBackend:
                 sample_rate_hz=settings.sample_rate_hz,
                 language="en",
                 max_audio_seconds=settings.cloud_worker_max_audio_seconds,
+                model=settings.cloud_worker_stt_model,
             )
         except Exception as exc:
             logger.warning("Cloud worker transcription failed: {}", exc)

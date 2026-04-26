@@ -376,9 +376,12 @@ def _build_cloud_screen_app(*, stt_backend: str, tts_backend: str) -> SimpleName
     )
 
 
-def test_setup_voice_worker_registers_starts_and_subscribes_when_cloud_enabled() -> None:
+def test_setup_voice_worker_registers_starts_and_subscribes_when_cloud_enabled(
+    monkeypatch,
+) -> None:
     """Cloud voice mode should wire the worker process and client exactly once."""
 
+    monkeypatch.setenv("OPENAI_API_KEY", "secret-from-process")
     scheduler = MainThreadScheduler()
     bus = Bus(main_thread_id=scheduler.main_thread_id)
     registered: list[tuple[str, WorkerProcessConfig]] = []
@@ -399,8 +402,13 @@ def test_setup_voice_worker_registers_starts_and_subscribes_when_cloud_enabled()
                 worker=SimpleNamespace(
                     enabled=True,
                     domain="voice",
+                    provider="openai",
                     argv=["python", "fake_worker.py"],
                     request_timeout_seconds=3.5,
+                    stt_model="stt-from-yaml",
+                    tts_model="tts-from-yaml",
+                    tts_voice="voice-from-yaml",
+                    tts_instructions="instructions from yaml",
                 ),
             )
         ),
@@ -414,17 +422,19 @@ def test_setup_voice_worker_registers_starts_and_subscribes_when_cloud_enabled()
     assert boot.setup_voice_worker() is True
 
     assert app.voice_worker_client is not None
-    assert registered == [
-        (
-            "voice",
-            WorkerProcessConfig(
-                name="voice",
-                argv=["python", "fake_worker.py"],
-                cwd=None,
-                env=None,
-            ),
-        )
-    ]
+    assert len(registered) == 1
+    domain, worker_config = registered[0]
+    assert domain == "voice"
+    assert worker_config.name == "voice"
+    assert worker_config.argv == ["python", "fake_worker.py"]
+    assert worker_config.cwd is None
+    assert worker_config.env is not None
+    assert worker_config.env["OPENAI_API_KEY"] == "secret-from-process"
+    assert worker_config.env["YOYOPOD_VOICE_WORKER_PROVIDER"] == "openai"
+    assert worker_config.env["YOYOPOD_CLOUD_STT_MODEL"] == "stt-from-yaml"
+    assert worker_config.env["YOYOPOD_CLOUD_TTS_MODEL"] == "tts-from-yaml"
+    assert worker_config.env["YOYOPOD_CLOUD_TTS_VOICE"] == "voice-from-yaml"
+    assert worker_config.env["YOYOPOD_CLOUD_TTS_INSTRUCTIONS"] == "instructions from yaml"
     assert started == ["voice"]
     assert bus.subscription_counts()["WorkerMessageReceivedEvent"] == 1
 

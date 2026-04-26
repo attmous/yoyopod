@@ -9,6 +9,7 @@ from yoyopod_cli.slot_contract import (
     SLOT_PYTHON_BIN,
     SLOT_PYTHON_STDLIB_MARKER,
     SLOT_VENV_PYTHON,
+    SLOT_VOICE_WORKER_ARTIFACT,
     detect_self_contained_python_version,
     is_self_contained_slot,
     missing_hydrated_runtime_paths,
@@ -36,6 +37,9 @@ def test_self_contained_contract_rejects_symlinked_launch_python(
         target = slot / "app" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("shim\n", encoding="utf-8")
+    worker = slot / SLOT_VOICE_WORKER_ARTIFACT
+    worker.parent.mkdir(parents=True, exist_ok=True)
+    worker.write_text("worker\n", encoding="utf-8")
 
     original_is_symlink = Path.is_symlink
 
@@ -65,6 +69,9 @@ def test_self_contained_contract_derives_python_runtime_paths(tmp_path: Path) ->
         target = slot / "app" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("shim\n", encoding="utf-8")
+    worker = slot / SLOT_VOICE_WORKER_ARTIFACT
+    worker.parent.mkdir(parents=True, exist_ok=True)
+    worker.write_text("worker\n", encoding="utf-8")
 
     assert missing_self_contained_paths(slot, "3.11") == ()
     assert is_self_contained_slot(slot, "3.11") is True
@@ -81,6 +88,29 @@ def test_hydrated_runtime_contract_allows_target_python_venv(tmp_path: Path) -> 
         target = slot / "app" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("shim\n", encoding="utf-8")
+    worker = slot / SLOT_VOICE_WORKER_ARTIFACT
+    worker.parent.mkdir(parents=True, exist_ok=True)
+    worker.write_text("worker\n", encoding="utf-8")
 
     assert missing_hydrated_runtime_paths(slot) == ()
     assert detect_self_contained_python_version(slot) is None
+
+
+def test_slot_contract_requires_default_voice_worker_artifact(tmp_path: Path) -> None:
+    slot = tmp_path / "slot"
+    python_bin = slot / SLOT_VENV_PYTHON
+    python_bin.parent.mkdir(parents=True)
+    python_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    runtime_python = slot / SLOT_PYTHON_BIN
+    runtime_python.parent.mkdir(parents=True, exist_ok=True)
+    runtime_python.write_text("python\n", encoding="utf-8")
+    runtime_stdlib = slot / SLOT_PYTHON_STDLIB_MARKER
+    runtime_stdlib.parent.mkdir(parents=True, exist_ok=True)
+    runtime_stdlib.write_text("# stdlib marker\n", encoding="utf-8")
+    for relative in APP_NATIVE_RUNTIME_ARTIFACTS:
+        target = slot / "app" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("shim\n", encoding="utf-8")
+
+    assert SLOT_VOICE_WORKER_ARTIFACT in missing_self_contained_paths(slot)
+    assert SLOT_VOICE_WORKER_ARTIFACT not in missing_hydrated_runtime_paths(slot)

@@ -1,3 +1,9 @@
+FROM golang:1.22-bookworm AS voice-worker
+
+WORKDIR /src/workers/voice/go
+COPY workers/voice/go /src/workers/voice/go
+RUN go build -o /out/yoyopod-voice-worker ./cmd/yoyopod-voice-worker
+
 FROM python:3.12-bookworm AS build
 
 ARG CHANNEL=dev
@@ -22,6 +28,8 @@ COPY yoyopod/__init__.py yoyopod/_version.py /src/yoyopod/
 COPY yoyopod_cli /src/yoyopod_cli
 COPY yoyopod/ui/lvgl_binding/native /src/yoyopod/ui/lvgl_binding/native
 COPY yoyopod/backends/voip/shim_native /src/yoyopod/backends/voip/shim_native
+COPY workers/voice/go /src/workers/voice/go
+COPY --from=voice-worker /out/yoyopod-voice-worker /src/workers/voice/go/build/yoyopod-voice-worker
 
 # Keep the builder environment intentionally minimal. The release builder itself
 # resolves the runtime venv inside the output slot.

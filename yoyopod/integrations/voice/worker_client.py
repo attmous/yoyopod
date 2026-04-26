@@ -90,6 +90,7 @@ class VoiceWorkerClient:
         sample_rate_hz: int,
         language: str,
         max_audio_seconds: float,
+        model: str = "",
     ) -> VoiceWorkerTranscribeResult:
         """Send one transcription request and wait for its normalized result."""
 
@@ -99,6 +100,7 @@ class VoiceWorkerClient:
             sample_rate_hz=sample_rate_hz,
             language=language,
             max_audio_seconds=max_audio_seconds,
+            model=model,
         )
         pending = self._send(
             request_type="voice.transcribe",

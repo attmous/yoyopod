@@ -21,6 +21,7 @@ def test_build_transcribe_payload_uses_file_metadata() -> None:
         audio_path=Path("/tmp/input.wav"),
         sample_rate_hz=16000,
         language="en",
+        model="gpt-4o-transcribe",
         max_audio_seconds=30.0,
     )
 
@@ -30,6 +31,7 @@ def test_build_transcribe_payload_uses_file_metadata() -> None:
         "sample_rate_hz": 16000,
         "channels": 1,
         "language": "en",
+        "model": "gpt-4o-transcribe",
         "max_audio_seconds": 30.0,
         "delete_input_on_success": False,
     }

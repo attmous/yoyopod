@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -86,6 +87,7 @@ class ComponentsBoot:
 
         domain = str(getattr(worker_cfg, "domain", "voice"))
         timeout_seconds = float(getattr(worker_cfg, "request_timeout_seconds", 12.0))
+        worker_env = _voice_worker_env(worker_cfg)
         client = VoiceWorkerClient(
             scheduler=self.app.scheduler,
             worker_supervisor=self.app.worker_supervisor,
@@ -100,7 +102,7 @@ class ComponentsBoot:
                 name=domain,
                 argv=list(getattr(worker_cfg, "argv", [])),
                 cwd=None,
-                env=None,
+                env=worker_env,
             ),
         )
         return self.app.worker_supervisor.start(domain)
@@ -230,3 +232,21 @@ class ComponentsBoot:
         except Exception:
             self.logger.exception("Failed to initialize core components")
             return False
+
+
+def _voice_worker_env(worker_cfg: Any) -> dict[str, str]:
+    """Return process env with config-derived cloud worker settings applied."""
+
+    env = dict(os.environ)
+    config_env = {
+        "YOYOPOD_VOICE_WORKER_PROVIDER": getattr(worker_cfg, "provider", "mock"),
+        "YOYOPOD_CLOUD_STT_MODEL": getattr(worker_cfg, "stt_model", ""),
+        "YOYOPOD_CLOUD_TTS_MODEL": getattr(worker_cfg, "tts_model", ""),
+        "YOYOPOD_CLOUD_TTS_VOICE": getattr(worker_cfg, "tts_voice", ""),
+        "YOYOPOD_CLOUD_TTS_INSTRUCTIONS": getattr(worker_cfg, "tts_instructions", ""),
+    }
+    for key, value in config_env.items():
+        normalized = str(value).strip()
+        if normalized:
+            env[key] = normalized
+    return env

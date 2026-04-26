@@ -183,6 +183,15 @@ def _voice_worker_binary_path() -> Path:
     return _voice_worker_dir() / "build" / f"yoyopod-voice-worker{suffix}"
 
 
+def _voice_worker_sources() -> tuple[Path, ...]:
+    worker_dir = _voice_worker_dir()
+    return (
+        worker_dir / "go.mod",
+        worker_dir / "cmd",
+        worker_dir / "internal",
+    )
+
+
 def build_voice_worker() -> Path:
     """Build the Go cloud voice worker and return the binary path."""
 
@@ -290,6 +299,15 @@ def _ensure_native_shims(*, skip_lvgl_fetch: bool = False) -> tuple[str, ...]:
         else:
             raise SystemExit(f"Unknown native artifact: {artifact.label}")
         rebuilt.append(artifact.label)
+
+    voice_worker_output = _voice_worker_binary_path()
+    if (
+        _is_stale(voice_worker_output, _voice_worker_sources())
+        and (_voice_worker_dir() / "go.mod").is_file()
+        and shutil.which("go") is not None
+    ):
+        build_voice_worker()
+        rebuilt.append("Go voice worker")
 
     return tuple(rebuilt)
 

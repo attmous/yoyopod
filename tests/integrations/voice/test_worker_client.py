@@ -102,6 +102,7 @@ def test_transcribe_schedules_request_on_main_and_resolves_result() -> None:
                 audio_path=Path("/tmp/input.wav"),
                 sample_rate_hz=16000,
                 language="en",
+                model="gpt-4o-transcribe",
                 max_audio_seconds=5.0,
             )
         )
@@ -125,6 +126,7 @@ def test_transcribe_schedules_request_on_main_and_resolves_result() -> None:
         "sample_rate_hz": 16000,
         "channels": 1,
         "language": "en",
+        "model": "gpt-4o-transcribe",
         "max_audio_seconds": 5.0,
         "delete_input_on_success": False,
     }

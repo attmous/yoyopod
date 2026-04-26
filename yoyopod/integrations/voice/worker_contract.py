@@ -43,10 +43,11 @@ def build_transcribe_payload(
     sample_rate_hz: int,
     language: str,
     max_audio_seconds: float,
+    model: str = "",
 ) -> dict[str, Any]:
     """Build a worker payload for audio transcription."""
 
-    return {
+    payload: dict[str, Any] = {
         "audio_path": audio_path.as_posix(),
         "format": "wav",
         "sample_rate_hz": sample_rate_hz,
@@ -55,6 +56,9 @@ def build_transcribe_payload(
         "max_audio_seconds": max_audio_seconds,
         "delete_input_on_success": False,
     }
+    if model:
+        payload["model"] = model
+    return payload
 
 
 def build_speak_payload(

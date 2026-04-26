@@ -8,6 +8,7 @@ SLOT_REQUIRED_DIRS: tuple[str, ...] = ("venv", "app", "config")
 SLOT_VENV_PYTHON = Path("venv") / "bin" / "python"
 SLOT_PYTHON_BIN = Path("python") / "bin" / "python3.12"
 SLOT_PYTHON_STDLIB_MARKER = Path("python") / "lib" / "python3.12" / "os.py"
+SLOT_VOICE_WORKER_ARTIFACT = Path("workers") / "voice" / "go" / "build" / "yoyopod-voice-worker"
 
 APP_NATIVE_RUNTIME_ARTIFACTS: tuple[Path, ...] = (
     Path("yoyopod") / "ui" / "lvgl_binding" / "native" / "build" / "libyoyopod_lvgl_shim.so",
@@ -33,6 +34,7 @@ SELF_CONTAINED_REQUIRED_FILES: tuple[Path, ...] = (
     SLOT_PYTHON_BIN,
     SLOT_PYTHON_STDLIB_MARKER,
     *SLOT_NATIVE_RUNTIME_ARTIFACTS,
+    SLOT_VOICE_WORKER_ARTIFACT,
 )
 
 
@@ -50,6 +52,7 @@ def self_contained_required_files(python_version: str = "3.12") -> tuple[Path, .
         slot_python_bin(python_version),
         slot_python_stdlib_marker(python_version),
         *SLOT_NATIVE_RUNTIME_ARTIFACTS,
+        SLOT_VOICE_WORKER_ARTIFACT,
     )
 
 

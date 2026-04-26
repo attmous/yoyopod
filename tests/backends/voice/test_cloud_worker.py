@@ -31,6 +31,7 @@ class VoiceSettingsOverrides(TypedDict):
     sample_rate_hz: NotRequired[int]
     cloud_worker_enabled: NotRequired[bool]
     cloud_worker_max_audio_seconds: NotRequired[float]
+    cloud_worker_stt_model: NotRequired[str]
     cloud_worker_tts_model: NotRequired[str]
     cloud_worker_tts_voice: NotRequired[str]
     cloud_worker_tts_instructions: NotRequired[str]
@@ -66,6 +67,7 @@ class FakeVoiceWorkerClient:
         audio_path: Path,
         sample_rate_hz: int,
         language: str,
+        model: str,
         max_audio_seconds: float,
     ) -> VoiceWorkerTranscribeResult:
         self.transcribe_calls.append(
@@ -73,6 +75,7 @@ class FakeVoiceWorkerClient:
                 "audio_path": audio_path,
                 "sample_rate_hz": sample_rate_hz,
                 "language": language,
+                "model": model,
                 "max_audio_seconds": max_audio_seconds,
             }
         )
@@ -136,6 +139,7 @@ def cloud_settings(**overrides: Unpack[VoiceSettingsOverrides]) -> VoiceSettings
         tts_backend="cloud-worker",
         cloud_worker_enabled=True,
         cloud_worker_max_audio_seconds=11.5,
+        cloud_worker_stt_model="stt-test-model",
         cloud_worker_tts_model="tts-test-model",
         cloud_worker_tts_voice="verse",
         cloud_worker_tts_instructions="Short handheld response.",
@@ -176,6 +180,7 @@ def test_stt_transcribe_delegates_to_client_and_maps_transcript() -> None:
             "audio_path": audio_path,
             "sample_rate_hz": 22050,
             "language": "en",
+            "model": "stt-test-model",
             "max_audio_seconds": 11.5,
         }
     ]
