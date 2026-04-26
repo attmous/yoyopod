@@ -7,6 +7,13 @@ from typer.testing import CliRunner
 from yoyopod_cli import pi_validate
 
 
+def _collect_option_names(click_cmd: object) -> set[str]:
+    names: set[str] = set()
+    for param in getattr(click_cmd, "params", []):
+        names.update(getattr(param, "opts", []))
+    return names
+
+
 def test_load_env_file_parses_service_style_assignments(tmp_path: Path, monkeypatch) -> None:
     env_file = tmp_path / "yoyopod-dev.env"
     env_file.write_text(
@@ -77,6 +84,11 @@ def test_cloud_voice_command_help_exposes_repeatable_options() -> None:
     result = CliRunner().invoke(pi_validate.app, ["cloud-voice", "--help"], terminal_width=200)
 
     assert result.exit_code == 0
-    assert "--cycles" in result.output
-    assert "--phrase" in result.output
-    assert "--env-file" in result.output
+    import typer.main
+
+    click_cmd = typer.main.get_command(pi_validate.app)
+    cloud_voice_cmd = click_cmd.commands["cloud-voice"]  # type: ignore[attr-defined]
+    names = _collect_option_names(cloud_voice_cmd)
+    assert "--cycles" in names
+    assert "--phrase" in names
+    assert "--env-file" in names
