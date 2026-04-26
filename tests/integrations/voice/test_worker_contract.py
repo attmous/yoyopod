@@ -5,12 +5,16 @@ from pathlib import Path
 import pytest
 
 from yoyopod.integrations.voice.worker_contract import (
+    VoiceWorkerAskResult,
+    VoiceWorkerAskTurn,
     VoiceWorkerError,
     VoiceWorkerHealthResult,
     VoiceWorkerSpeakResult,
     VoiceWorkerTranscribeResult,
+    build_ask_payload,
     build_speak_payload,
     build_transcribe_payload,
+    parse_ask_result,
     parse_health_result,
     parse_speak_result,
     parse_transcribe_result,
@@ -81,6 +85,53 @@ def test_build_speak_payload_includes_provider_options() -> None:
         "format": "wav",
         "sample_rate_hz": 16000,
     }
+
+
+def test_build_ask_payload_includes_bounded_history_and_policy() -> None:
+    payload = build_ask_payload(
+        question="  What is playing?  ",
+        history=[
+            VoiceWorkerAskTurn(role="user", text="  hi  "),
+            VoiceWorkerAskTurn(role="assistant", text="  hello  "),
+            VoiceWorkerAskTurn(role="system", text="ignore me"),
+            VoiceWorkerAskTurn(role="user", text="   "),
+        ],
+        model="  gpt-4o-mini  ",
+        instructions="  Be brief.  ",
+        max_output_chars=320,
+    )
+
+    assert payload == {
+        "question": "What is playing?",
+        "history": [
+            {"role": "user", "text": "hi"},
+            {"role": "assistant", "text": "hello"},
+        ],
+        "model": "gpt-4o-mini",
+        "instructions": "Be brief.",
+        "max_output_chars": 320,
+    }
+
+
+def test_parse_ask_result_normalizes_answer() -> None:
+    result = parse_ask_result(
+        {
+            "answer": "  The song is playing.  ",
+            "model": "  gpt-4o-mini  ",
+            "provider_latency_ms": "150",
+        }
+    )
+
+    assert result == VoiceWorkerAskResult(
+        answer="The song is playing.",
+        model="gpt-4o-mini",
+        provider_latency_ms=150,
+    )
+
+
+def test_parse_ask_result_rejects_empty_answer() -> None:
+    with pytest.raises(ValueError, match="answer"):
+        parse_ask_result({"answer": "   "})
 
 
 def test_parse_speak_result_requires_audio_path() -> None:

@@ -5,12 +5,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from yoyopod.integrations.voice.worker_contract import (
+    VoiceWorkerAskResult,
+    VoiceWorkerAskTurn,
     VoiceWorkerError,
     VoiceWorkerHealthResult,
     VoiceWorkerSpeakResult,
     VoiceWorkerTranscribeResult,
+    build_ask_payload,
     build_speak_payload,
     build_transcribe_payload,
+    parse_ask_result,
     parse_health_result,
     parse_speak_result,
     parse_transcribe_result,
@@ -57,6 +61,14 @@ _PUBLIC_EXPORTS = {
     "VoiceSettings": ("yoyopod.integrations.voice.models", "VoiceSettings"),
     "VoiceSettingsResolver": ("yoyopod.integrations.voice.settings", "VoiceSettingsResolver"),
     "VoiceTranscript": ("yoyopod.integrations.voice.models", "VoiceTranscript"),
+    "VoiceWorkerAskResult": (
+        "yoyopod.integrations.voice.worker_contract",
+        "VoiceWorkerAskResult",
+    ),
+    "VoiceWorkerAskTurn": (
+        "yoyopod.integrations.voice.worker_contract",
+        "VoiceWorkerAskTurn",
+    ),
     "VoiceWorkerError": ("yoyopod.integrations.voice.worker_contract", "VoiceWorkerError"),
     "VoiceWorkerHealthResult": (
         "yoyopod.integrations.voice.worker_contract",
@@ -76,12 +88,14 @@ _PUBLIC_EXPORTS = {
         "yoyopod.integrations.voice.worker_client",
         "VoiceWorkerUnavailable",
     ),
+    "build_ask_payload": ("yoyopod.integrations.voice.worker_contract", "build_ask_payload"),
     "build_speak_payload": ("yoyopod.integrations.voice.worker_contract", "build_speak_payload"),
     "build_transcribe_payload": (
         "yoyopod.integrations.voice.worker_contract",
         "build_transcribe_payload",
     ),
     "match_voice_command": ("yoyopod.integrations.voice.commands", "match_voice_command"),
+    "parse_ask_result": ("yoyopod.integrations.voice.worker_contract", "parse_ask_result"),
     "parse_speak_result": ("yoyopod.integrations.voice.worker_contract", "parse_speak_result"),
     "parse_health_result": ("yoyopod.integrations.voice.worker_contract", "parse_health_result"),
     "parse_transcribe_result": (
@@ -119,6 +133,8 @@ __all__ = [
     "VoiceSettings",
     "VoiceSettingsResolver",
     "VoiceTranscript",
+    "VoiceWorkerAskResult",
+    "VoiceWorkerAskTurn",
     "VoiceWorkerClient",
     "VoiceWorkerError",
     "VoiceWorkerHealthResult",
@@ -126,9 +142,11 @@ __all__ = [
     "VoiceWorkerTimeout",
     "VoiceWorkerTranscribeResult",
     "VoiceWorkerUnavailable",
+    "build_ask_payload",
     "build_speak_payload",
     "build_transcribe_payload",
     "match_voice_command",
+    "parse_ask_result",
     "parse_speak_result",
     "parse_health_result",
     "parse_transcribe_result",

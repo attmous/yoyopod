@@ -30,6 +30,23 @@ class VoiceWorkerSpeakResult:
 
 
 @dataclass(slots=True, frozen=True)
+class VoiceWorkerAskTurn:
+    """One normalized conversation turn sent to a voice worker."""
+
+    role: str
+    text: str
+
+
+@dataclass(slots=True, frozen=True)
+class VoiceWorkerAskResult:
+    """Normalized answer result returned by a voice worker."""
+
+    answer: str
+    model: str
+    provider_latency_ms: int | None = None
+
+
+@dataclass(slots=True, frozen=True)
 class VoiceWorkerHealthResult:
     """Normalized health result returned by a voice worker."""
 
@@ -89,6 +106,28 @@ def build_speak_payload(
     }
 
 
+def build_ask_payload(
+    question: str,
+    history: list[VoiceWorkerAskTurn],
+    model: str,
+    instructions: str,
+    max_output_chars: int,
+) -> dict[str, Any]:
+    """Build a worker payload for question answering."""
+
+    return {
+        "question": question.strip(),
+        "history": [
+            {"role": turn.role, "text": text}
+            for turn in history
+            if turn.role in {"user", "assistant"} and (text := turn.text.strip())
+        ],
+        "model": model.strip(),
+        "instructions": instructions.strip(),
+        "max_output_chars": int(max_output_chars),
+    }
+
+
 def parse_transcribe_result(payload: Mapping[str, Any]) -> VoiceWorkerTranscribeResult:
     """Parse and normalize a transcription response payload."""
 
@@ -117,6 +156,20 @@ def parse_speak_result(payload: Mapping[str, Any]) -> VoiceWorkerSpeakResult:
         format=str(payload.get("format", "wav")),
         sample_rate_hz=int(payload.get("sample_rate_hz", 16000)),
         duration_ms=_optional_int(payload, "duration_ms"),
+        provider_latency_ms=_optional_int(payload, "provider_latency_ms"),
+    )
+
+
+def parse_ask_result(payload: Mapping[str, Any]) -> VoiceWorkerAskResult:
+    """Parse and normalize a question answering response payload."""
+
+    answer = _required_string(payload, "answer").strip()
+    if not answer:
+        raise ValueError("answer must be a non-empty string")
+
+    return VoiceWorkerAskResult(
+        answer=answer,
+        model=str(payload.get("model", "")).strip(),
         provider_latency_ms=_optional_int(payload, "provider_latency_ms"),
     )
 
@@ -166,12 +219,16 @@ def _optional_int(payload: Mapping[str, Any], key: str) -> int | None:
 
 
 __all__ = [
+    "VoiceWorkerAskResult",
+    "VoiceWorkerAskTurn",
     "VoiceWorkerError",
     "VoiceWorkerHealthResult",
     "VoiceWorkerSpeakResult",
     "VoiceWorkerTranscribeResult",
+    "build_ask_payload",
     "build_speak_payload",
     "build_transcribe_payload",
+    "parse_ask_result",
     "parse_health_result",
     "parse_speak_result",
     "parse_transcribe_result",

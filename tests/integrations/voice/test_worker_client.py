@@ -13,6 +13,8 @@ from yoyopod.integrations.voice.worker_client import (
     VoiceWorkerUnavailable,
 )
 from yoyopod.integrations.voice.worker_contract import (
+    VoiceWorkerAskResult,
+    VoiceWorkerAskTurn,
     VoiceWorkerHealthResult,
     VoiceWorkerSpeakResult,
     VoiceWorkerTranscribeResult,
@@ -1280,6 +1282,121 @@ def test_speak_schedules_request_on_main_and_resolves_result() -> None:
             duration_ms=830,
         )
     ]
+    assert client.pending_count == 0
+
+
+def test_ask_schedules_request_on_main_and_resolves_result() -> None:
+    scheduler = _Scheduler()
+    supervisor = _Supervisor()
+    client = VoiceWorkerClient(
+        scheduler=scheduler,
+        worker_supervisor=supervisor,
+        request_timeout_seconds=0.25,
+    )
+    results: list[VoiceWorkerAskResult] = []
+
+    thread = threading.Thread(
+        target=lambda: results.append(
+            client.ask(
+                question="  What is playing?  ",
+                history=[
+                    VoiceWorkerAskTurn(role="user", text="  hi  "),
+                    VoiceWorkerAskTurn(role="assistant", text="  hello  "),
+                ],
+                model="  gpt-4o-mini  ",
+                instructions="  Be brief.  ",
+                max_output_chars=320,
+            )
+        )
+    )
+    thread.start()
+
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    scheduler.drain()
+    request = supervisor.requests[0]
+
+    assert request["domain"] == "voice"
+    assert request["type"] == "voice.ask"
+    assert request["payload"] == {
+        "question": "What is playing?",
+        "history": [
+            {"role": "user", "text": "hi"},
+            {"role": "assistant", "text": "hello"},
+        ],
+        "model": "gpt-4o-mini",
+        "instructions": "Be brief.",
+        "max_output_chars": 320,
+    }
+
+    client.handle_worker_message(
+        WorkerMessageReceivedEvent(
+            domain="voice",
+            kind="result",
+            type="voice.ask.result",
+            request_id=str(request["request_id"]),
+            payload={
+                "answer": "  The song is playing.  ",
+                "model": "gpt-4o-mini",
+                "provider_latency_ms": 150,
+            },
+        )
+    )
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert results == [
+        VoiceWorkerAskResult(
+            answer="The song is playing.",
+            model="gpt-4o-mini",
+            provider_latency_ms=150,
+        )
+    ]
+    assert client.pending_count == 0
+
+
+def test_ask_cancel_event_sends_worker_cancel_and_unblocks_waiter() -> None:
+    scheduler = _Scheduler()
+    supervisor = _Supervisor()
+    client = VoiceWorkerClient(
+        scheduler=scheduler,
+        worker_supervisor=supervisor,
+        request_timeout_seconds=0.25,
+    )
+    cancel_event = threading.Event()
+    errors: list[BaseException] = []
+
+    thread = threading.Thread(
+        target=lambda: _capture_error(
+            errors,
+            lambda: client.ask(
+                question="What is playing?",
+                history=[],
+                model="gpt-4o-mini",
+                instructions="Be brief.",
+                max_output_chars=320,
+                cancel_event=cancel_event,
+            ),
+        )
+    )
+    thread.start()
+
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    scheduler.drain()
+    request_id = str(supervisor.requests[0]["request_id"])
+
+    cancel_event.set()
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    scheduler.drain()
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], VoiceWorkerUnavailable)
+    assert supervisor.requests[0]["type"] == "voice.ask"
+    assert supervisor.requests[1]["type"] == "voice.cancel"
+    assert supervisor.requests[1]["request_id"] == request_id
+    assert supervisor.requests[1]["payload"] == {"request_id": request_id}
+    assert supervisor.requests[1]["timeout_seconds"] == 1.0
     assert client.pending_count == 0
 
 

@@ -10,11 +10,15 @@ from typing import Any, Callable, Protocol
 
 from yoyopod.core.events import WorkerMessageReceivedEvent
 from yoyopod.integrations.voice.worker_contract import (
+    VoiceWorkerAskResult,
+    VoiceWorkerAskTurn,
     VoiceWorkerHealthResult,
     VoiceWorkerSpeakResult,
     VoiceWorkerTranscribeResult,
+    build_ask_payload,
     build_speak_payload,
     build_transcribe_payload,
+    parse_ask_result,
     parse_health_result,
     parse_speak_result,
     parse_transcribe_result,
@@ -54,9 +58,13 @@ class _PendingRequest:
     expected_type: str
     send_lock: threading.Lock = field(default_factory=threading.Lock)
     event: threading.Event = field(default_factory=threading.Event)
-    result: VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult | VoiceWorkerHealthResult | None = (
-        None
-    )
+    result: (
+        VoiceWorkerTranscribeResult
+        | VoiceWorkerSpeakResult
+        | VoiceWorkerAskResult
+        | VoiceWorkerHealthResult
+        | None
+    ) = None
     error: BaseException | None = None
     cancel_sent: bool = False
 
@@ -119,9 +127,7 @@ class VoiceWorkerClient:
         for pending in pending_requests:
             self._complete_once(
                 pending,
-                error=VoiceWorkerUnavailable(
-                    f"voice worker unavailable: {normalized_reason}"
-                ),
+                error=VoiceWorkerUnavailable(f"voice worker unavailable: {normalized_reason}"),
             )
 
     def health(self) -> VoiceWorkerHealthResult:
@@ -208,6 +214,36 @@ class VoiceWorkerClient:
             return result
         raise VoiceWorkerUnavailable("voice worker did not return a speech result")
 
+    def ask(
+        self,
+        *,
+        question: str,
+        history: list[VoiceWorkerAskTurn],
+        model: str,
+        instructions: str,
+        max_output_chars: int,
+        cancel_event: threading.Event | None = None,
+    ) -> VoiceWorkerAskResult:
+        """Send one question answering request and wait for its normalized result."""
+
+        self._raise_if_called_on_main_thread()
+        payload = build_ask_payload(
+            question=question,
+            history=history,
+            model=model,
+            instructions=instructions,
+            max_output_chars=max_output_chars,
+        )
+        pending = self._send(
+            request_type="voice.ask",
+            expected_type="voice.ask.result",
+            payload=payload,
+        )
+        result = self._wait_for(pending, cancel_event=cancel_event)
+        if isinstance(result, VoiceWorkerAskResult):
+            return result
+        raise VoiceWorkerUnavailable("voice worker did not return an ask result")
+
     def handle_worker_message(self, event: WorkerMessageReceivedEvent) -> None:
         """Resolve a pending request from one worker message when it matches."""
 
@@ -280,7 +316,12 @@ class VoiceWorkerClient:
         pending: _PendingRequest,
         *,
         cancel_event: threading.Event | None = None,
-    ) -> VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult | VoiceWorkerHealthResult:
+    ) -> (
+        VoiceWorkerTranscribeResult
+        | VoiceWorkerSpeakResult
+        | VoiceWorkerAskResult
+        | VoiceWorkerHealthResult
+    ):
         wait_seconds = self._request_timeout_seconds + self._WAIT_GRACE_SECONDS
         completed = self._wait_until_complete_or_cancel(
             pending,
@@ -362,7 +403,13 @@ class VoiceWorkerClient:
         self,
         pending: _PendingRequest,
         *,
-        result: VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult | VoiceWorkerHealthResult | None = None,
+        result: (
+            VoiceWorkerTranscribeResult
+            | VoiceWorkerSpeakResult
+            | VoiceWorkerAskResult
+            | VoiceWorkerHealthResult
+            | None
+        ) = None,
         error: BaseException | None = None,
     ) -> None:
         with self._lock:
@@ -378,11 +425,18 @@ class VoiceWorkerClient:
         self, pending: _PendingRequest, event: WorkerMessageReceivedEvent
     ) -> None:
         try:
-            result: VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult
+            result: (
+                VoiceWorkerTranscribeResult
+                | VoiceWorkerSpeakResult
+                | VoiceWorkerAskResult
+                | VoiceWorkerHealthResult
+            )
             if event.type == "voice.transcribe.result":
                 result = parse_transcribe_result(event.payload)
             elif event.type == "voice.speak.result":
                 result = parse_speak_result(event.payload)
+            elif event.type == "voice.ask.result":
+                result = parse_ask_result(event.payload)
             elif event.type == "voice.health.result":
                 result = parse_health_result(event.payload)
             else:
