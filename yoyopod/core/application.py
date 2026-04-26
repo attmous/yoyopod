@@ -49,6 +49,7 @@ from yoyopod.core.event_subscriptions import RuntimeEventSubscriptions
 from yoyopod.core.loop import RuntimeLoopService
 from yoyopod.core.status import RuntimeMetricsStore
 from yoyopod.core.recovery import RecoveryState, RuntimeRecoveryService
+from yoyopod.core.workers import WorkerSupervisor
 from yoyopod.integrations.call import VoiceNoteEventHandler
 from yoyopod.integrations.network import NetworkEventHandler
 from yoyopod.integrations.display import ScreenPowerService
@@ -216,6 +217,7 @@ class YoyoPodApp:
 
         self.runtime_metrics = RuntimeMetricsStore()
         self.cross_screen_overlays = CrossScreenOverlayRuntime()
+        self.worker_supervisor = WorkerSupervisor(scheduler=self.scheduler, bus=self.bus)
 
         # Runtime services
         self.screen_power_service = ScreenPowerService(self)
@@ -306,6 +308,7 @@ class YoyoPodApp:
             return
 
         self.bus.publish(LifecycleEvent(phase="stopping"))
+        self.worker_supervisor.stop_all(grace_seconds=1.0)
         self._teardown_registered_integrations()
 
         if self._legacy_setup_complete or self._has_runtime_resources():
@@ -385,10 +388,16 @@ class YoyoPodApp:
 
         return self.scheduler.pending_count()
 
-    def note_input_activity(self, action: object, _data: Any | None = None) -> None:
+    def note_input_activity(
+        self,
+        action: object,
+        _data: Any | None = None,
+        *,
+        captured_at: float | None = None,
+    ) -> None:
         """Record raw or semantic input activity before the coordinator drains it."""
 
-        self.runtime_metrics.note_input_activity(action, _data)
+        self.runtime_metrics.note_input_activity(action, _data, captured_at=captured_at)
 
     def note_handled_input(
         self,
@@ -402,6 +411,11 @@ class YoyoPodApp:
             action_name=action_name,
             handled_at=handled_at,
         )
+
+    def note_visible_refresh(self, *, refreshed_at: float) -> None:
+        """Record that a visible screen refresh happened on the coordinator thread."""
+
+        self.runtime_metrics.note_visible_refresh(refreshed_at=refreshed_at)
 
     def record_responsiveness_capture(
         self,

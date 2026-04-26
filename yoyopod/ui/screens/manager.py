@@ -64,6 +64,9 @@ class ScreenManager:
         router: Optional[ScreenRouter] = None,
         on_screen_changed: Optional[Callable[[Optional[str]], None]] = None,
         action_scheduler: Optional[Callable[[Callable[[], None]], None]] = None,
+        on_action_handled: Optional[Callable[[Optional[str], float], None]] = None,
+        on_visible_refresh: Optional[Callable[[float], None]] = None,
+        is_screen_visible: Optional[Callable[[], bool]] = None,
     ) -> None:
         """
         Initialize the screen manager.
@@ -80,6 +83,9 @@ class ScreenManager:
         self.router = router or ScreenRouter()
         self.on_screen_changed = on_screen_changed
         self.action_scheduler = action_scheduler
+        self.on_action_handled = on_action_handled
+        self.on_visible_refresh = on_visible_refresh
+        self.is_screen_visible = is_screen_visible
         self._navigation_refresh_pending = False
         self._input_dispatch_registered = False
 
@@ -207,18 +213,19 @@ class ScreenManager:
     def refresh_current_screen(self) -> None:
         """Re-render the current screen."""
         self._navigation_refresh_pending = False
-        if self.current_screen is None:
+        screen = self.current_screen
+        if screen is None:
             return
 
         started_at = time.monotonic()
         refresh_for_visible_tick = getattr(
-            self.current_screen,
+            screen,
             "refresh_for_visible_tick",
             None,
         )
         if callable(refresh_for_visible_tick):
             refresh_for_visible_tick()
-        self._render_screen(self.current_screen, started_at=started_at)
+        self._render_screen(screen, started_at=started_at)
 
     def refresh_current_screen_for_visible_tick(self) -> VisibleTickRefreshResult:
         """Refresh the current screen when it opts into periodic visible ticks.
@@ -348,6 +355,12 @@ class ScreenManager:
         route_name = self.current_screen.route_name if self.current_screen else None
         self.on_screen_changed(route_name)
 
+    def _is_screen_visible(self) -> bool:
+        """Return whether a refresh can be counted as visible to the user."""
+        if self.is_screen_visible is None:
+            return True
+        return self.is_screen_visible()
+
     def _refresh_after_navigation(self) -> None:
         """Refresh immediately or defer to the LVGL pump after a navigation change."""
         if getattr(self.display, "backend_kind", "unavailable") == "lvgl":
@@ -425,6 +438,9 @@ class ScreenManager:
             return
 
         previous_screen.handle_action(action, data)
+        handled_at = time.monotonic()
+        if self.on_action_handled is not None:
+            self.on_action_handled(action_name=action.value, handled_at=handled_at)
         navigation_request = previous_screen.consume_navigation_request()
         if navigation_request is not None:
             self.apply_navigation_request(navigation_request, source_screen=previous_screen)
@@ -479,6 +495,8 @@ class ScreenManager:
         render_started_at = time.monotonic() if started_at is None else started_at
         screen.render()
         screen.clear_dirty()
+        if self.on_visible_refresh is not None and self._is_screen_visible():
+            self.on_visible_refresh(refreshed_at=time.monotonic())
         self._warn_if_slow(
             "refresh_current_screen",
             started_at=render_started_at,

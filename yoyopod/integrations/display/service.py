@@ -79,10 +79,6 @@ class ScreenPowerService:
         """Wake the display and reset the inactivity timer on user activity."""
         logger.debug(f"User activity received: {event.action_name or 'unknown'}")
         handled_now = time.monotonic()
-        self.app.note_handled_input(
-            action_name=event.action_name,
-            handled_at=handled_now,
-        )
         self.mark_user_activity(
             now=handled_now,
             render_on_wake=event.action_name is not None,

@@ -104,6 +104,21 @@ class _DynamicModeScreen(Screen):
         return self.simple_one_button_navigation
 
 
+class _ActionRecordingScreen(Screen):
+    """Minimal screen double that records semantic actions and renders."""
+
+    def __init__(self, display: Display) -> None:
+        super().__init__(display, AppContext(), "ActionRecording")
+        self.select_calls = 0
+        self.render_calls = 0
+
+    def on_select(self, data: Optional[Any] = None) -> None:
+        self.select_calls += 1
+
+    def render(self) -> None:
+        self.render_calls += 1
+
+
 def test_semantic_input_navigation() -> None:
     """Semantic actions should drive the registered screens correctly."""
     display = Display(simulate=True)
@@ -226,6 +241,73 @@ def test_screen_manager_refreshes_input_modes_without_rebinding_callbacks() -> N
         assert adapter.double_tap_select_enabled is False
         assert input_manager.registration_calls == list(InputAction)
         assert input_manager.clear_calls == 0
+    finally:
+        display.cleanup()
+
+
+def test_screen_manager_reports_actual_action_and_visible_refresh() -> None:
+    """Input latency should be sampled from the screen action, not only activity."""
+    display = Display(simulate=True)
+    input_manager = InputManager()
+    handled_actions: list[str | None] = []
+    visible_refreshes: list[float] = []
+
+    def record_visible_refresh(*, refreshed_at: float) -> None:
+        visible_refreshes.append(refreshed_at)
+
+    screen_manager = ScreenManager(
+        display,
+        input_manager,
+        on_action_handled=lambda action_name, handled_at: handled_actions.append(
+            action_name
+        ),
+        on_visible_refresh=record_visible_refresh,
+    )
+    screen = _ActionRecordingScreen(display)
+    screen_manager.register_screen("action", screen)
+
+    try:
+        screen_manager.replace_screen("action")
+        handled_actions.clear()
+        visible_refreshes.clear()
+
+        input_manager.simulate_action(InputAction.SELECT)
+
+        assert screen.select_calls == 1
+        assert handled_actions == ["select"]
+        assert len(visible_refreshes) == 1
+        assert screen.render_calls >= 2
+    finally:
+        display.cleanup()
+
+
+def test_screen_manager_skips_visible_refresh_metric_when_display_asleep() -> None:
+    """A render while asleep should not consume the pending visible-refresh marker."""
+    display = Display(simulate=True)
+    input_manager = InputManager()
+    visible_refreshes: list[float] = []
+
+    def record_visible_refresh(*, refreshed_at: float) -> None:
+        visible_refreshes.append(refreshed_at)
+
+    screen_manager = ScreenManager(
+        display,
+        input_manager,
+        on_visible_refresh=record_visible_refresh,
+        is_screen_visible=lambda: False,
+    )
+    screen = _ActionRecordingScreen(display)
+    screen_manager.register_screen("action", screen)
+
+    try:
+        screen_manager.replace_screen("action")
+        visible_refreshes.clear()
+
+        input_manager.simulate_action(InputAction.SELECT)
+
+        assert screen.select_calls == 1
+        assert visible_refreshes == []
+        assert screen.render_calls >= 2
     finally:
         display.cleanup()
 

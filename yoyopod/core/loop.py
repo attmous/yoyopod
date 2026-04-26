@@ -133,6 +133,8 @@ class RuntimeLoopService:
         self._last_loop_iteration_started_at = 0.0
         self._last_runtime_loop_gap_seconds = 0.0
         self._last_runtime_iteration_duration_seconds = 0.0
+        self._last_main_thread_drain_duration_seconds = 0.0
+        self._main_thread_drain_recorded = False
         self._last_voip_iterate_started_at = 0.0
         self._last_voip_timing_sample_id = 0
         self._last_voip_schedule_delay_seconds = 0.0
@@ -194,6 +196,12 @@ class RuntimeLoopService:
             and getattr(self.app.voip_manager, "background_iterate_enabled", False)
         )
 
+    @property
+    def configured_voip_iterate_interval_seconds(self) -> float:
+        """Return the configured VoIP iterate cadence before runtime adaptation."""
+
+        return float(self.app._voip_iterate_interval_seconds)
+
     def _sync_background_voip_timing_sample(self) -> None:
         """Pull the latest background iterate sample into runtime timing snapshots."""
 
@@ -222,6 +230,11 @@ class RuntimeLoopService:
             threshold_seconds=self._SLOW_MAIN_THREAD_DRAIN_WARNING_SECONDS,
             detail=self._main_thread_drain_detail(result),
         )
+        self._last_main_thread_drain_duration_seconds = max(
+            0.0,
+            time.monotonic() - started_at,
+        )
+        self._main_thread_drain_recorded = True
         return result.total_processed
 
     def _process_pending_main_thread_actions_for_iteration(self) -> int:
@@ -247,6 +260,11 @@ class RuntimeLoopService:
             threshold_seconds=self._SLOW_MAIN_THREAD_DRAIN_WARNING_SECONDS,
             detail=self._main_thread_drain_detail(result),
         )
+        self._last_main_thread_drain_duration_seconds = max(
+            0.0,
+            time.monotonic() - started_at,
+        )
+        self._main_thread_drain_recorded = True
         return result.total_processed
 
     def _scheduler_drain_budget(self) -> int:
@@ -621,6 +639,10 @@ class RuntimeLoopService:
                 self._process_pending_main_thread_actions_for_iteration,
             )
             self._measure_blocking_span(
+                "worker_poll",
+                self.app.worker_supervisor.poll,
+            )
+            self._measure_blocking_span(
                 "manager_recovery",
                 lambda: self.app.recovery_service.attempt_manager_recovery(now=monotonic_now),
             )
@@ -676,10 +698,12 @@ class RuntimeLoopService:
                 if screen_manager is None:
                     return current_time
 
-                self._measure_blocking_span(
+                refreshed_visible_screen = self._measure_blocking_span(
                     "visible_screen_refresh",
                     screen_manager.refresh_current_screen_for_visible_tick,
                 )
+                if refreshed_visible_screen:
+                    self.app.note_visible_refresh(refreshed_at=time.monotonic())
                 return current_time
 
             return last_screen_update
@@ -829,6 +853,13 @@ class RuntimeLoopService:
                 if self._last_loop_iteration_started_at > 0.0
                 else None
             ),
+            "runtime_main_thread_drain_seconds": (
+                self._last_main_thread_drain_duration_seconds
+                if self._last_loop_iteration_started_at > 0.0
+                or self._main_thread_drain_recorded
+                else None
+            ),
+            "runtime_worker_count": len(self.app.worker_supervisor.snapshot()),
             "voip_schedule_delay_seconds": (
                 self._last_voip_schedule_delay_seconds
                 if self._last_voip_iterate_started_at > 0.0

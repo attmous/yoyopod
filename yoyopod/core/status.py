@@ -3,10 +3,31 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any
+from collections import deque
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from yoyopod.core.application import YoyoPodApp
+
+
+LatencyKind = Literal["input_to_action", "action_to_visible"]
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeLatencySample:
+    """One user-visible responsiveness measurement."""
+
+    kind: LatencyKind
+    action_name: str | None
+    duration_seconds: float
+    recorded_at: float
+
+
+@dataclass(frozen=True, slots=True)
+class _InputActivityMarker:
+    action_name: str | None
+    captured_at: float
 
 
 class RuntimeMetricsStore:
@@ -22,6 +43,11 @@ class RuntimeMetricsStore:
         self.last_responsiveness_capture_scope: str | None = None
         self.last_responsiveness_capture_summary: str | None = None
         self.last_responsiveness_capture_artifacts: dict[str, str] = {}
+        self._input_to_action_samples: deque[RuntimeLatencySample] = deque(maxlen=256)
+        self._action_to_visible_samples: deque[RuntimeLatencySample] = deque(maxlen=256)
+        self._pending_input_activities: deque[_InputActivityMarker] = deque(maxlen=256)
+        self._last_handled_input_for_refresh_at = 0.0
+        self._last_handled_input_for_refresh_action_name: str | None = None
 
     def note_input_activity(
         self,
@@ -34,6 +60,13 @@ class RuntimeMetricsStore:
 
         self.last_input_activity_at = time.monotonic() if captured_at is None else captured_at
         self.last_input_activity_action_name = getattr(action, "value", None)
+        if self.last_input_activity_action_name is not None:
+            self._pending_input_activities.append(
+                _InputActivityMarker(
+                    action_name=self.last_input_activity_action_name,
+                    captured_at=self.last_input_activity_at,
+                )
+            )
 
     def note_handled_input(
         self,
@@ -45,6 +78,78 @@ class RuntimeMetricsStore:
 
         self.last_input_handled_at = handled_at
         self.last_input_handled_action_name = action_name
+        self._last_handled_input_for_refresh_at = handled_at
+        self._last_handled_input_for_refresh_action_name = action_name
+        input_marker = self._pop_matching_input_activity(action_name)
+        if input_marker is not None:
+            input_activity_at = input_marker.captured_at
+        elif self.last_input_activity_action_name is None:
+            input_activity_at = 0.0
+        else:
+            input_activity_at = self.last_input_activity_at
+        if input_activity_at <= 0.0:
+            return
+
+        duration_seconds = max(0.0, handled_at - input_activity_at)
+        self._input_to_action_samples.append(
+            RuntimeLatencySample(
+                kind="input_to_action",
+                action_name=action_name,
+                duration_seconds=duration_seconds,
+                recorded_at=handled_at,
+            )
+        )
+
+    def note_visible_refresh(self, *, refreshed_at: float) -> None:
+        """Record the first visible refresh after the latest handled input."""
+
+        if self._last_handled_input_for_refresh_at <= 0.0:
+            return
+
+        duration_seconds = max(0.0, refreshed_at - self._last_handled_input_for_refresh_at)
+        self._action_to_visible_samples.append(
+            RuntimeLatencySample(
+                kind="action_to_visible",
+                action_name=self._last_handled_input_for_refresh_action_name,
+                duration_seconds=duration_seconds,
+                recorded_at=refreshed_at,
+            )
+        )
+        self._last_handled_input_for_refresh_at = 0.0
+        self._last_handled_input_for_refresh_action_name = None
+
+    def responsiveness_snapshot(self, *, now: float) -> dict[str, float | int | str | None]:
+        """Return compact responsiveness metrics for status and diagnostics."""
+
+        input_samples = list(self._input_to_action_samples)
+        visible_samples = list(self._action_to_visible_samples)
+        last_input = input_samples[-1] if input_samples else None
+        last_visible = visible_samples[-1] if visible_samples else None
+        return {
+            "responsiveness_input_to_action_count": len(input_samples),
+            "responsiveness_input_to_action_p50_ms": _percentile_ms(input_samples, 0.50),
+            "responsiveness_input_to_action_p95_ms": _percentile_ms(input_samples, 0.95),
+            "responsiveness_input_to_action_max_ms": _max_ms(input_samples),
+            "responsiveness_input_to_action_last_ms": _sample_ms(last_input),
+            "responsiveness_last_input_to_action_name": (
+                last_input.action_name if last_input is not None else None
+            ),
+            "responsiveness_action_to_visible_count": len(visible_samples),
+            "responsiveness_action_to_visible_p50_ms": _percentile_ms(
+                visible_samples,
+                0.50,
+            ),
+            "responsiveness_action_to_visible_p95_ms": _percentile_ms(
+                visible_samples,
+                0.95,
+            ),
+            "responsiveness_action_to_visible_max_ms": _max_ms(visible_samples),
+            "responsiveness_action_to_visible_last_ms": _sample_ms(last_visible),
+            "responsiveness_last_visible_action_name": (
+                last_visible.action_name if last_visible is not None else None
+            ),
+            "responsiveness_snapshot_age_seconds": 0.0 if now > 0.0 else None,
+        }
 
     def record_responsiveness_capture(
         self,
@@ -63,6 +168,19 @@ class RuntimeMetricsStore:
         self.last_responsiveness_capture_summary = summary
         self.last_responsiveness_capture_artifacts = dict(artifacts or {})
 
+    def _pop_matching_input_activity(
+        self,
+        action_name: str | None,
+    ) -> _InputActivityMarker | None:
+        if action_name is None:
+            return self._pending_input_activities.popleft() if self._pending_input_activities else None
+
+        while self._pending_input_activities:
+            input_marker = self._pending_input_activities.popleft()
+            if input_marker.action_name == action_name:
+                return input_marker
+        return None
+
 
 class RuntimeStatusService:
     """Assemble the current runtime status snapshot for diagnostics and UI queries."""
@@ -73,7 +191,10 @@ class RuntimeStatusService:
     def get_status(self, *, refresh_output_volume: bool = False) -> dict[str, Any]:
         """Return the current application status."""
 
+        from yoyopod.core.diagnostics.memory import collect_process_memory
+
         monotonic_now = time.monotonic()
+        process_memory = collect_process_memory()
         runtime_metrics = self.app.runtime_metrics
         pending_shutdown_in_seconds = None
         if self.app._pending_shutdown is not None:
@@ -193,6 +314,12 @@ class RuntimeStatusService:
                 if self.app._last_lvgl_pump_at > 0.0
                 else None
             ),
+            "process_memory_pid": process_memory.pid,
+            "process_memory_rss_kb": process_memory.rss_kb,
+            "process_memory_pss_kb": process_memory.pss_kb,
+            "process_memory_private_dirty_kb": process_memory.private_dirty_kb,
+            "process_memory_source": process_memory.source,
+            "workers": self.app.worker_supervisor.snapshot(),
             "loop_heartbeat_age_seconds": (
                 max(0.0, monotonic_now - self.app._last_loop_heartbeat_at)
                 if self.app._last_loop_heartbeat_at > 0.0
@@ -272,6 +399,7 @@ class RuntimeStatusService:
             "responsiveness_last_capture_artifacts": dict(
                 runtime_metrics.last_responsiveness_capture_artifacts
             ),
+            **runtime_metrics.responsiveness_snapshot(now=monotonic_now),
             **self.app.runtime_loop.timing_snapshot(now=monotonic_now),
         }
 
@@ -292,6 +420,27 @@ def build_runtime_status(app: Any) -> dict[str, object]:
         "services": [f"{domain}.{service}" for domain, service in app.services.registered()],
         "tick_stats_last_100": app.tick_stats_snapshot(),
     }
+
+
+def _sample_ms(sample: RuntimeLatencySample | None) -> float | None:
+    if sample is None:
+        return None
+    return round(sample.duration_seconds * 1000.0, 3)
+
+
+def _max_ms(samples: list[RuntimeLatencySample]) -> float | None:
+    if not samples:
+        return None
+    return round(max(sample.duration_seconds for sample in samples) * 1000.0, 3)
+
+
+def _percentile_ms(samples: list[RuntimeLatencySample], ratio: float) -> float | None:
+    if not samples:
+        return None
+    ordered = sorted(sample.duration_seconds for sample in samples)
+    position = (len(ordered) - 1) * min(1.0, max(0.0, ratio))
+    index = int(position + 0.5)
+    return round(ordered[index] * 1000.0, 3)
 
 
 def _jsonify(value: object) -> object:

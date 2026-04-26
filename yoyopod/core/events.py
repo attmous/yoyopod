@@ -74,6 +74,26 @@ class BackendStoppedEvent:
     reason: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class WorkerDomainStateChangedEvent:
+    """Published when one worker-backed domain changes availability."""
+
+    domain: str
+    state: str
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerMessageReceivedEvent:
+    """Published when a worker emits a protocol event or result."""
+
+    domain: str
+    kind: str
+    type: str
+    request_id: str | None
+    payload: dict[str, Any]
+
+
 __all__ = [
     "AudioFocusGrantedEvent",
     "AudioFocusLostEvent",
@@ -84,6 +104,6 @@ __all__ = [
     "ScreenChangedEvent",
     "StateChangedEvent",
     "UserActivityEvent",
+    "WorkerDomainStateChangedEvent",
+    "WorkerMessageReceivedEvent",
 ]
-
-

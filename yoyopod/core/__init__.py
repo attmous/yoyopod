@@ -64,6 +64,14 @@ _PUBLIC_EXPORTS = {
     "VoipRuntimeState": ("yoyopod.core.app_context", "VoipRuntimeState"),
     "VoiceInteractionState": ("yoyopod.core.app_context", "VoiceInteractionState"),
     "VoiceState": ("yoyopod.core.app_context", "VoiceState"),
+    "WorkerDomainStateChangedEvent": (
+        "yoyopod.core.events",
+        "WorkerDomainStateChangedEvent",
+    ),
+    "WorkerMessageReceivedEvent": (
+        "yoyopod.core.events",
+        "WorkerMessageReceivedEvent",
+    ),
     "YoyoPodApp": ("yoyopod.core.application", "YoyoPodApp"),
     "build_logging_runtime_config": ("yoyopod.core.logging", "build_logging_runtime_config"),
     "format_device_label": ("yoyopod.core.hardware", "format_device_label"),
