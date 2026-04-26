@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 from pathlib import Path
 from typing import Protocol
 
@@ -27,6 +28,7 @@ class _VoiceWorkerClient(Protocol):
         language: str,
         max_audio_seconds: float,
         model: str = "",
+        cancel_event: threading.Event | None = None,
     ) -> VoiceWorkerTranscribeResult:
         """Return a transcription result for one local WAV file."""
 
@@ -38,8 +40,13 @@ class _VoiceWorkerClient(Protocol):
         model: str,
         instructions: str,
         sample_rate_hz: int,
+        cancel_event: threading.Event | None = None,
     ) -> VoiceWorkerSpeakResult:
         """Return a synthesized WAV result for one text prompt."""
+
+    @property
+    def is_available(self) -> bool:
+        """Return whether the worker is currently usable."""
 
 
 class _PlayWav(Protocol):
@@ -64,9 +71,16 @@ class CloudWorkerSpeechToTextBackend:
             settings.cloud_worker_enabled
             and settings.stt_enabled
             and settings.stt_backend == "cloud-worker"
+            and self._client.is_available
         )
 
-    def transcribe(self, audio_path: Path, settings: VoiceSettings) -> VoiceTranscript:
+    def transcribe(
+        self,
+        audio_path: Path,
+        settings: VoiceSettings,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> VoiceTranscript:
         if not self.is_available(settings):
             return _empty_transcript()
 
@@ -77,6 +91,7 @@ class CloudWorkerSpeechToTextBackend:
                 language="en",
                 max_audio_seconds=settings.cloud_worker_max_audio_seconds,
                 model=settings.cloud_worker_stt_model,
+                cancel_event=cancel_event,
             )
         except Exception as exc:
             logger.warning("Cloud worker transcription failed: {}", exc)
@@ -106,6 +121,7 @@ class CloudWorkerTextToSpeechBackend:
             settings.cloud_worker_enabled
             and settings.tts_enabled
             and settings.tts_backend == "cloud-worker"
+            and self._client.is_available
         )
 
     def speak(self, text: str, settings: VoiceSettings) -> bool:

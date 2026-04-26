@@ -6,10 +6,12 @@ from typing import TYPE_CHECKING, Any
 
 from yoyopod.integrations.voice.worker_contract import (
     VoiceWorkerError,
+    VoiceWorkerHealthResult,
     VoiceWorkerSpeakResult,
     VoiceWorkerTranscribeResult,
     build_speak_payload,
     build_transcribe_payload,
+    parse_health_result,
     parse_speak_result,
     parse_transcribe_result,
     parse_worker_error,
@@ -56,6 +58,10 @@ _PUBLIC_EXPORTS = {
     "VoiceSettingsResolver": ("yoyopod.integrations.voice.settings", "VoiceSettingsResolver"),
     "VoiceTranscript": ("yoyopod.integrations.voice.models", "VoiceTranscript"),
     "VoiceWorkerError": ("yoyopod.integrations.voice.worker_contract", "VoiceWorkerError"),
+    "VoiceWorkerHealthResult": (
+        "yoyopod.integrations.voice.worker_contract",
+        "VoiceWorkerHealthResult",
+    ),
     "VoiceWorkerClient": ("yoyopod.integrations.voice.worker_client", "VoiceWorkerClient"),
     "VoiceWorkerSpeakResult": (
         "yoyopod.integrations.voice.worker_contract",
@@ -77,6 +83,7 @@ _PUBLIC_EXPORTS = {
     ),
     "match_voice_command": ("yoyopod.integrations.voice.commands", "match_voice_command"),
     "parse_speak_result": ("yoyopod.integrations.voice.worker_contract", "parse_speak_result"),
+    "parse_health_result": ("yoyopod.integrations.voice.worker_contract", "parse_health_result"),
     "parse_transcribe_result": (
         "yoyopod.integrations.voice.worker_contract",
         "parse_transcribe_result",
@@ -114,6 +121,7 @@ __all__ = [
     "VoiceTranscript",
     "VoiceWorkerClient",
     "VoiceWorkerError",
+    "VoiceWorkerHealthResult",
     "VoiceWorkerSpeakResult",
     "VoiceWorkerTimeout",
     "VoiceWorkerTranscribeResult",
@@ -122,6 +130,7 @@ __all__ = [
     "build_transcribe_payload",
     "match_voice_command",
     "parse_speak_result",
+    "parse_health_result",
     "parse_transcribe_result",
     "parse_worker_error",
 ]

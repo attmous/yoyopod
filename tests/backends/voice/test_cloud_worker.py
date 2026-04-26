@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict, Unpack
@@ -58,8 +59,13 @@ class FakeVoiceWorkerClient:
             sample_rate_hz=24000,
         )
         self.exc = exc
+        self.available = True
         self.transcribe_calls: list[dict[str, Any]] = []
         self.speak_calls: list[dict[str, Any]] = []
+
+    @property
+    def is_available(self) -> bool:
+        return self.available
 
     def transcribe(
         self,
@@ -69,6 +75,7 @@ class FakeVoiceWorkerClient:
         language: str,
         model: str,
         max_audio_seconds: float,
+        cancel_event: threading.Event | None = None,
     ) -> VoiceWorkerTranscribeResult:
         self.transcribe_calls.append(
             {
@@ -77,6 +84,7 @@ class FakeVoiceWorkerClient:
                 "language": language,
                 "model": model,
                 "max_audio_seconds": max_audio_seconds,
+                "cancel_event": cancel_event,
             }
         )
         if self.exc is not None:
@@ -91,6 +99,7 @@ class FakeVoiceWorkerClient:
         model: str,
         instructions: str,
         sample_rate_hz: int,
+        cancel_event: threading.Event | None = None,
     ) -> VoiceWorkerSpeakResult:
         self.speak_calls.append(
             {
@@ -161,6 +170,14 @@ def test_stt_is_available_only_when_enabled_and_cloud_backend() -> None:
     assert not backend.is_available(cloud_settings(cloud_worker_enabled=False))
 
 
+def test_stt_is_unavailable_when_worker_health_is_down() -> None:
+    client = FakeVoiceWorkerClient()
+    client.available = False
+    backend = CloudWorkerSpeechToTextBackend(client=client)
+
+    assert not backend.is_available(cloud_settings())
+
+
 def test_stt_transcribe_delegates_to_client_and_maps_transcript() -> None:
     client = FakeVoiceWorkerClient(
         transcript=VoiceWorkerTranscribeResult(
@@ -182,8 +199,19 @@ def test_stt_transcribe_delegates_to_client_and_maps_transcript() -> None:
             "language": "en",
             "model": "stt-test-model",
             "max_audio_seconds": 11.5,
+            "cancel_event": None,
         }
     ]
+
+
+def test_stt_transcribe_passes_cancel_event_to_client() -> None:
+    client = FakeVoiceWorkerClient()
+    backend = CloudWorkerSpeechToTextBackend(client=client)
+    cancel_event = threading.Event()
+
+    backend.transcribe(Path("input.wav"), cloud_settings(), cancel_event=cancel_event)
+
+    assert client.transcribe_calls[0]["cancel_event"] is cancel_event
 
 
 def test_stt_unavailable_returns_empty_final_transcript_without_calling_client() -> None:
@@ -229,6 +257,14 @@ def test_tts_is_available_only_when_enabled_and_cloud_backend() -> None:
     assert not backend.is_available(cloud_settings(tts_enabled=False))
     assert not backend.is_available(cloud_settings(tts_backend="espeak-ng"))
     assert not backend.is_available(cloud_settings(cloud_worker_enabled=False))
+
+
+def test_tts_is_unavailable_when_worker_health_is_down() -> None:
+    client = FakeVoiceWorkerClient()
+    client.available = False
+    backend = CloudWorkerTextToSpeechBackend(client=client, play_wav=FakeWavPlayer())
+
+    assert not backend.is_available(cloud_settings())
 
 
 def test_tts_speak_delegates_to_client_and_plays_returned_wav() -> None:

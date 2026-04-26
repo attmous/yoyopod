@@ -332,4 +332,3 @@ Each step should keep the old path available until the worker path passes hardwa
 - Supervisor scope: policy, UI state, app state, and event application.
 - Ownership rule: one process owns the modem serial port and PPP lifecycle when worker mode is enabled.
 - Primary success metric: no UI-loop serial stalls and bounded recovery, not RAM reduction.
-

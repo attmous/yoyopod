@@ -160,7 +160,12 @@ class _FakeVoiceService:
         path.write_bytes(b"RIFF")
         return VoiceCaptureResult(audio_path=path, recorded=True)
 
-    def transcribe(self, audio_path: Path) -> VoiceTranscript:
+    def transcribe(
+        self,
+        audio_path: Path,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> VoiceTranscript:
         return VoiceTranscript(text=self.transcript, confidence=0.91)
 
     def speak(self, text: str) -> bool:
@@ -317,7 +322,12 @@ def test_listening_cycle_uses_cloud_worker_transcript(tmp_path: Path) -> None:
         def capture_audio(self, _request) -> VoiceCaptureResult:
             return VoiceCaptureResult(audio_path=audio_path, recorded=True)
 
-        def transcribe(self, path: Path) -> VoiceTranscript:
+        def transcribe(
+            self,
+            path: Path,
+            *,
+            cancel_event: threading.Event | None = None,
+        ) -> VoiceTranscript:
             assert path == audio_path
             return VoiceTranscript(text="play music", confidence=1.0, is_final=True)
 
@@ -455,6 +465,67 @@ def test_cloud_voice_unavailable_uses_service_settings_snapshot() -> None:
     assert service_settings == [VoiceSettings(mode="cloud")]
     assert coordinator.state.headline == "Speech Offline"
     assert "Cloud speech is unavailable" in coordinator.state.body
+
+
+def test_runtime_cancel_reaches_in_flight_cloud_transcription(tmp_path: Path) -> None:
+    audio_path = tmp_path / "input.wav"
+    audio_path.write_bytes(b"RIFF")
+    transcribe_started = threading.Event()
+    cancel_seen = threading.Event()
+    outcomes: list[VoiceCommandOutcome] = []
+
+    class _CancellableVoiceService:
+        def capture_available(self) -> bool:
+            return True
+
+        def stt_available(self) -> bool:
+            return True
+
+        def tts_available(self) -> bool:
+            return False
+
+        def capture_audio(self, _request) -> VoiceCaptureResult:
+            return VoiceCaptureResult(audio_path=audio_path, recorded=True)
+
+        def transcribe(
+            self,
+            path: Path,
+            *,
+            cancel_event: threading.Event | None = None,
+        ) -> VoiceTranscript:
+            assert path == audio_path
+            assert cancel_event is not None
+            transcribe_started.set()
+            if cancel_event.wait(timeout=1.0):
+                cancel_seen.set()
+            return VoiceTranscript(text="play music", confidence=1.0, is_final=True)
+
+        def speak(self, _text: str) -> bool:
+            return False
+
+    coordinator = VoiceRuntimeCoordinator(
+        context=None,
+        settings_resolver=VoiceSettingsResolver(
+            context=None,
+            settings_provider=lambda: VoiceSettings(mode="cloud"),
+        ),
+        command_executor=VoiceCommandExecutor(context=None),
+        voice_service_factory=lambda _settings: _CancellableVoiceService(),
+        output_player=_FakeOutputPlayer(),
+    )
+    coordinator.bind(
+        state_listener=None,
+        outcome_listener=outcomes.append,
+        dispatcher=lambda callback: callback(),
+    )
+
+    coordinator.begin_listening(async_capture=True)
+    assert transcribe_started.wait(timeout=1.0)
+    coordinator.cancel()
+
+    assert cancel_seen.wait(timeout=1.0)
+    _wait_until(lambda: not audio_path.exists())
+    assert outcomes == []
 
 
 def test_voice_runtime_coordinator_ptt_no_audio_resolves_to_no_speech() -> None:

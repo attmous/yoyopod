@@ -83,6 +83,61 @@ func TestOpenAIProviderTranscribeBuildsMultipartRequest(t *testing.T) {
 	}
 }
 
+func TestOpenAIProviderTranscribeRejectsOverLimitWAVBeforeUpload(t *testing.T) {
+	audioPath := writeTestWAV(t, makeTestWAV(16000, 1, 16, 2*16000*2))
+	uploaded := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uploaded = true
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	_, err := OpenAIProvider{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	}.Transcribe(context.Background(), TranscribeRequest{
+		AudioPath:       audioPath,
+		MaxAudioSeconds: 1,
+	})
+
+	if err == nil {
+		t.Fatalf("Transcribe returned nil error for over-limit WAV")
+	}
+	if uploaded {
+		t.Fatalf("Transcribe uploaded over-limit WAV")
+	}
+}
+
+func TestOpenAIProviderTranscribeRejectsOverLimitUnknownAudioBeforeUpload(t *testing.T) {
+	audioPath := filepath.Join(t.TempDir(), "input.bin")
+	if err := os.WriteFile(audioPath, make([]byte, 40000), 0600); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	uploaded := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uploaded = true
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	_, err := OpenAIProvider{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	}.Transcribe(context.Background(), TranscribeRequest{
+		AudioPath:        audioPath,
+		MaxAudioSeconds:  1,
+		SampleRateHz:     16000,
+		Channels:         1,
+	})
+
+	if err == nil {
+		t.Fatalf("Transcribe returned nil error for over-limit unknown audio")
+	}
+	if uploaded {
+		t.Fatalf("Transcribe uploaded over-limit unknown audio")
+	}
+}
+
 func TestOpenAIProviderSpeakPostsJSONAndWritesWAV(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/audio/speech" {
@@ -245,6 +300,39 @@ func writeTestWAV(t *testing.T, content []byte) string {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
 	return path
+}
+
+func makeTestWAV(sampleRateHz int, channels int, bitsPerSample int, dataBytes int) []byte {
+	blockAlign := channels * bitsPerSample / 8
+	byteRate := sampleRateHz * blockAlign
+	riffSize := 36 + dataBytes
+	wav := make([]byte, 44+dataBytes)
+	copy(wav[0:4], "RIFF")
+	putUint32LE(wav[4:8], uint32(riffSize))
+	copy(wav[8:12], "WAVE")
+	copy(wav[12:16], "fmt ")
+	putUint32LE(wav[16:20], 16)
+	putUint16LE(wav[20:22], 1)
+	putUint16LE(wav[22:24], uint16(channels))
+	putUint32LE(wav[24:28], uint32(sampleRateHz))
+	putUint32LE(wav[28:32], uint32(byteRate))
+	putUint16LE(wav[32:34], uint16(blockAlign))
+	putUint16LE(wav[34:36], uint16(bitsPerSample))
+	copy(wav[36:40], "data")
+	putUint32LE(wav[40:44], uint32(dataBytes))
+	return wav
+}
+
+func putUint16LE(target []byte, value uint16) {
+	target[0] = byte(value)
+	target[1] = byte(value >> 8)
+}
+
+func putUint32LE(target []byte, value uint32) {
+	target[0] = byte(value)
+	target[1] = byte(value >> 8)
+	target[2] = byte(value >> 16)
+	target[3] = byte(value >> 24)
 }
 
 func isMissingAPIKeyError(err error) bool {

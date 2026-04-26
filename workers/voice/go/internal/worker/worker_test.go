@@ -28,6 +28,8 @@ type ignoringCancelProvider struct {
 	release chan struct{}
 }
 
+type invalidPayloadProvider struct{}
+
 type recordingWriter struct {
 	lines chan string
 }
@@ -104,6 +106,18 @@ func (p *ignoringCancelProvider) Speak(ctx context.Context, request provider.Spe
 	close(p.entered)
 	<-p.release
 	return provider.SpeakResult{AudioPath: "/tmp/late.wav", Format: "wav", SampleRateHz: 16000}, nil
+}
+
+func (p invalidPayloadProvider) Health(ctx context.Context) (provider.HealthResult, error) {
+	return provider.HealthResult{Healthy: true, Provider: "invalid-payload"}, nil
+}
+
+func (p invalidPayloadProvider) Transcribe(ctx context.Context, request provider.TranscribeRequest) (provider.TranscribeResult, error) {
+	return provider.TranscribeResult{}, provider.InvalidPayload("audio too long")
+}
+
+func (p invalidPayloadProvider) Speak(ctx context.Context, request provider.SpeakRequest) (provider.SpeakResult, error) {
+	return provider.SpeakResult{}, provider.InvalidPayload("text too long")
 }
 
 func newRecordingWriter() *recordingWriter {
@@ -274,6 +288,32 @@ func TestWorkerRejectsConcurrentActiveWorkAsBusy(t *testing.T) {
 		t.Fatalf("retryable = %v, want true", errorEnvelope.Payload["retryable"])
 	}
 	findEnvelope(t, envelopes, "voice.transcribe.result")
+}
+
+func TestWorkerMapsProviderInvalidPayloadToNonRetryableError(t *testing.T) {
+	envelopes, _ := runWorker(
+		t,
+		invalidPayloadProvider{},
+		protocol.Envelope{
+			Kind:      "command",
+			Type:      "voice.transcribe",
+			RequestID: "req-invalid",
+			Payload: map[string]any{
+				"audio_path": "/tmp/input.wav",
+			},
+		},
+	)
+
+	errorEnvelope := findEnvelope(t, envelopes, "voice.error")
+	if errorEnvelope.RequestID != "req-invalid" {
+		t.Fatalf("RequestID = %q, want req-invalid", errorEnvelope.RequestID)
+	}
+	if errorEnvelope.Payload["code"] != "invalid_payload" {
+		t.Fatalf("code = %v, want invalid_payload", errorEnvelope.Payload["code"])
+	}
+	if errorEnvelope.Payload["retryable"] != false {
+		t.Fatalf("retryable = %v, want false", errorEnvelope.Payload["retryable"])
+	}
 }
 
 func TestWorkerCancelEmitsCancelledResult(t *testing.T) {
@@ -510,3 +550,4 @@ func waitForEnvelope(
 
 var _ provider.Provider = (*blockingProvider)(nil)
 var _ provider.Provider = (*ignoringCancelProvider)(nil)
+var _ provider.Provider = invalidPayloadProvider{}

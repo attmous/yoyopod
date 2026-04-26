@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from typing import TYPE_CHECKING, Any
 
-from yoyopod.core.events import WorkerMessageReceivedEvent
+from yoyopod.core.events import WorkerDomainStateChangedEvent, WorkerMessageReceivedEvent
 from yoyopod.core.workers import WorkerProcessConfig
 from yoyopod.integrations.voice.worker_client import VoiceWorkerClient
 
@@ -96,6 +97,14 @@ class ComponentsBoot:
         )
         self.app.voice_worker_client = client
         self.app.bus.subscribe(WorkerMessageReceivedEvent, client.handle_worker_message)
+        self.app.bus.subscribe(
+            WorkerDomainStateChangedEvent,
+            lambda event: _mark_voice_worker_unavailable_on_degraded_state(
+                client,
+                domain=domain,
+                event=event,
+            ),
+        )
         self.app.worker_supervisor.register(
             domain,
             WorkerProcessConfig(
@@ -105,7 +114,13 @@ class ComponentsBoot:
                 env=worker_env,
             ),
         )
-        return self.app.worker_supervisor.start(domain)
+        started = self.app.worker_supervisor.start(domain)
+        if not started:
+            client.mark_unavailable("start_failed")
+            self.app.voice_worker_client = None
+            return False
+        _start_voice_worker_health_probe(client, logger=self.logger)
+        return True
 
     def init_core_components(self) -> bool:
         """Initialize display, context, orchestration models, input, and screen manager."""
@@ -250,3 +265,35 @@ def _voice_worker_env(worker_cfg: Any) -> dict[str, str]:
         if normalized:
             env[key] = normalized
     return env
+
+
+def _mark_voice_worker_unavailable_on_degraded_state(
+    client: VoiceWorkerClient,
+    *,
+    domain: str,
+    event: WorkerDomainStateChangedEvent,
+) -> None:
+    """Reflect worker lifecycle failures in client availability."""
+
+    if event.domain != domain:
+        return
+    if event.state in {"degraded", "disabled", "stopped"}:
+        client.mark_unavailable(event.reason or event.state)
+
+
+def _start_voice_worker_health_probe(client: VoiceWorkerClient, *, logger: Any) -> None:
+    """Probe provider health off the main thread after the runtime starts."""
+
+    def probe() -> None:
+        try:
+            result = client.health()
+        except Exception as exc:
+            logger.warning("Cloud voice worker health probe failed: {}", exc)
+            return
+        logger.info("Cloud voice worker ready: provider={}", result.provider)
+
+    threading.Thread(
+        target=probe,
+        daemon=True,
+        name="VoiceWorkerHealthProbe",
+    ).start()

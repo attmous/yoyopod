@@ -316,4 +316,3 @@ Each step should remain mergeable on its own. Production cloud provider credenti
 - Local fallback: non-speech feedback only.
 - Provider strategy: one provider in the first production worker, with a provider-neutral supervisor protocol.
 - Audio boundary: temp files across the process boundary for Phase 2.
-

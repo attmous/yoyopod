@@ -30,6 +30,15 @@ class VoiceWorkerSpeakResult:
 
 
 @dataclass(slots=True, frozen=True)
+class VoiceWorkerHealthResult:
+    """Normalized health result returned by a voice worker."""
+
+    healthy: bool
+    provider: str
+    message: str = ""
+
+
+@dataclass(slots=True, frozen=True)
 class VoiceWorkerError:
     """Normalized error returned by a voice worker."""
 
@@ -112,6 +121,19 @@ def parse_speak_result(payload: Mapping[str, Any]) -> VoiceWorkerSpeakResult:
     )
 
 
+def parse_health_result(payload: Mapping[str, Any]) -> VoiceWorkerHealthResult:
+    """Parse and normalize a worker health response payload."""
+
+    provider = _required_string(payload, "provider").strip()
+    if not provider:
+        raise ValueError("provider must be a non-empty string")
+    return VoiceWorkerHealthResult(
+        healthy=bool(payload.get("healthy", False)),
+        provider=provider,
+        message=str(payload.get("message", "")).strip(),
+    )
+
+
 def parse_worker_error(payload: Mapping[str, Any]) -> VoiceWorkerError:
     """Parse and normalize an error response payload."""
 
@@ -145,10 +167,12 @@ def _optional_int(payload: Mapping[str, Any], key: str) -> int | None:
 
 __all__ = [
     "VoiceWorkerError",
+    "VoiceWorkerHealthResult",
     "VoiceWorkerSpeakResult",
     "VoiceWorkerTranscribeResult",
     "build_speak_payload",
     "build_transcribe_payload",
+    "parse_health_result",
     "parse_speak_result",
     "parse_transcribe_result",
     "parse_worker_error",

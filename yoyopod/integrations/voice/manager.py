@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from yoyopod.backends.voice import (
@@ -57,10 +58,19 @@ class VoiceManager:
 
         return self.capture_backend.capture(request, self.settings)
 
-    def transcribe(self, audio_path: Path) -> VoiceTranscript:
+    def transcribe(
+        self,
+        audio_path: Path,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> VoiceTranscript:
         """Transcribe an audio sample using the configured STT backend."""
 
-        return self.stt_backend.transcribe(audio_path, self.settings)
+        return self.stt_backend.transcribe(
+            audio_path,
+            self.settings,
+            cancel_event=cancel_event,
+        )
 
     def capture_and_transcribe(self, request: VoiceCaptureRequest) -> VoiceTranscript:
         """Capture a short audio sample and return a transcript."""
@@ -70,7 +80,7 @@ class VoiceManager:
             return VoiceTranscript(text="", confidence=0.0, is_final=True)
         should_cleanup = capture_result.recorded and request.audio_path is None
         try:
-            return self.transcribe(capture_result.audio_path)
+            return self.transcribe(capture_result.audio_path, cancel_event=request.cancel_event)
         finally:
             if should_cleanup:
                 capture_result.audio_path.unlink(missing_ok=True)

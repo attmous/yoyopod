@@ -386,6 +386,11 @@ def test_setup_voice_worker_registers_starts_and_subscribes_when_cloud_enabled(
     bus = Bus(main_thread_id=scheduler.main_thread_id)
     registered: list[tuple[str, WorkerProcessConfig]] = []
     started: list[str] = []
+    health_probes: list[object] = []
+    monkeypatch.setattr(
+        "yoyopod.core.bootstrap.components_boot._start_voice_worker_health_probe",
+        lambda client, logger: health_probes.append(client),
+    )
 
     class _FakeWorkerSupervisor:
         def register(self, domain: str, config: WorkerProcessConfig) -> None:
@@ -437,6 +442,8 @@ def test_setup_voice_worker_registers_starts_and_subscribes_when_cloud_enabled(
     assert worker_config.env["YOYOPOD_CLOUD_TTS_INSTRUCTIONS"] == "instructions from yaml"
     assert started == ["voice"]
     assert bus.subscription_counts()["WorkerMessageReceivedEvent"] == 1
+    assert bus.subscription_counts()["WorkerDomainStateChangedEvent"] == 1
+    assert health_probes == [app.voice_worker_client]
 
     first_client = app.voice_worker_client
     assert boot.setup_voice_worker() is False
@@ -444,6 +451,48 @@ def test_setup_voice_worker_registers_starts_and_subscribes_when_cloud_enabled(
     assert app.voice_worker_client is first_client
     assert len(registered) == 1
     assert started == ["voice"]
+
+
+def test_setup_voice_worker_clears_client_when_start_fails(monkeypatch) -> None:
+    """A failed worker start should leave cloud STT/TTS unavailable at setup time."""
+
+    scheduler = MainThreadScheduler()
+    bus = Bus(main_thread_id=scheduler.main_thread_id)
+    health_probes: list[object] = []
+    monkeypatch.setattr(
+        "yoyopod.core.bootstrap.components_boot._start_voice_worker_health_probe",
+        lambda client, logger: health_probes.append(client),
+    )
+
+    class _FailingWorkerSupervisor:
+        def register(self, domain: str, config: WorkerProcessConfig) -> None:
+            return None
+
+        def start(self, domain: str) -> bool:
+            return False
+
+    app = SimpleNamespace(
+        config_manager=SimpleNamespace(
+            get_voice_settings=lambda: SimpleNamespace(
+                assistant=SimpleNamespace(mode="cloud"),
+                worker=SimpleNamespace(
+                    enabled=True,
+                    domain="voice",
+                    provider="mock",
+                    argv=["python", "fake_worker.py"],
+                    request_timeout_seconds=3.5,
+                ),
+            )
+        ),
+        scheduler=scheduler,
+        bus=bus,
+        worker_supervisor=_FailingWorkerSupervisor(),
+        voice_worker_client=None,
+    )
+
+    assert _components_boot_for(app).setup_voice_worker() is False
+    assert app.voice_worker_client is None
+    assert health_probes == []
 
 
 def test_cloud_voice_factory_preserves_local_stt_when_only_tts_uses_worker(monkeypatch) -> None:

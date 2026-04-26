@@ -10,10 +10,12 @@ from typing import Any, Callable, Protocol
 
 from yoyopod.core.events import WorkerMessageReceivedEvent
 from yoyopod.integrations.voice.worker_contract import (
+    VoiceWorkerHealthResult,
     VoiceWorkerSpeakResult,
     VoiceWorkerTranscribeResult,
     build_speak_payload,
     build_transcribe_payload,
+    parse_health_result,
     parse_speak_result,
     parse_transcribe_result,
     parse_worker_error,
@@ -52,8 +54,11 @@ class _PendingRequest:
     expected_type: str
     send_lock: threading.Lock = field(default_factory=threading.Lock)
     event: threading.Event = field(default_factory=threading.Event)
-    result: VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult | None = None
+    result: VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult | VoiceWorkerHealthResult | None = (
+        None
+    )
     error: BaseException | None = None
+    cancel_sent: bool = False
 
 
 class VoiceWorkerClient:
@@ -75,6 +80,8 @@ class VoiceWorkerClient:
         self._request_timeout_seconds = max(0.0, request_timeout_seconds)
         self._lock = threading.Lock()
         self._pending: dict[str, _PendingRequest] = {}
+        self._available = False
+        self._availability_reason = "not_checked"
 
     @property
     def pending_count(self) -> int:
@@ -82,6 +89,49 @@ class VoiceWorkerClient:
 
         with self._lock:
             return len(self._pending)
+
+    @property
+    def is_available(self) -> bool:
+        """Return whether the worker has passed its latest health check."""
+
+        with self._lock:
+            return self._available
+
+    @property
+    def availability_reason(self) -> str:
+        """Return a concise reason for the current availability state."""
+
+        with self._lock:
+            return self._availability_reason
+
+    def mark_unavailable(self, reason: str) -> None:
+        """Mark the worker unavailable after a lifecycle or provider failure."""
+
+        self._set_available(False, reason or "unavailable")
+
+    def health(self) -> VoiceWorkerHealthResult:
+        """Probe worker/provider health and update availability."""
+
+        self._raise_if_called_on_main_thread()
+        pending = self._send(
+            request_type="voice.health",
+            expected_type="voice.health.result",
+            payload={},
+        )
+        try:
+            result = self._wait_for(pending)
+        except Exception as exc:
+            if self.availability_reason == "not_checked":
+                self._set_available(False, str(exc) or "health_failed")
+            raise
+        if not isinstance(result, VoiceWorkerHealthResult):
+            self._set_available(False, "malformed_health_result")
+            raise VoiceWorkerUnavailable("voice worker did not return a health result")
+        if not result.healthy:
+            self._set_available(False, result.message or "unhealthy")
+            raise VoiceWorkerUnavailable(result.message or "voice worker unhealthy")
+        self._set_available(True, result.provider)
+        return result
 
     def transcribe(
         self,
@@ -91,6 +141,7 @@ class VoiceWorkerClient:
         language: str,
         max_audio_seconds: float,
         model: str = "",
+        cancel_event: threading.Event | None = None,
     ) -> VoiceWorkerTranscribeResult:
         """Send one transcription request and wait for its normalized result."""
 
@@ -107,7 +158,7 @@ class VoiceWorkerClient:
             expected_type="voice.transcribe.result",
             payload=payload,
         )
-        result = self._wait_for(pending)
+        result = self._wait_for(pending, cancel_event=cancel_event)
         if isinstance(result, VoiceWorkerTranscribeResult):
             return result
         raise VoiceWorkerUnavailable("voice worker did not return a transcription result")
@@ -120,6 +171,7 @@ class VoiceWorkerClient:
         model: str,
         instructions: str,
         sample_rate_hz: int,
+        cancel_event: threading.Event | None = None,
     ) -> VoiceWorkerSpeakResult:
         """Send one speech synthesis request and wait for its normalized result."""
 
@@ -136,7 +188,7 @@ class VoiceWorkerClient:
             expected_type="voice.speak.result",
             payload=payload,
         )
-        result = self._wait_for(pending)
+        result = self._wait_for(pending, cancel_event=cancel_event)
         if isinstance(result, VoiceWorkerSpeakResult):
             return result
         raise VoiceWorkerUnavailable("voice worker did not return a speech result")
@@ -209,10 +261,17 @@ class VoiceWorkerClient:
             raise VoiceWorkerUnavailable("voice worker client cannot block the main thread")
 
     def _wait_for(
-        self, pending: _PendingRequest
-    ) -> VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult:
+        self,
+        pending: _PendingRequest,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult | VoiceWorkerHealthResult:
         wait_seconds = self._request_timeout_seconds + self._WAIT_GRACE_SECONDS
-        completed = pending.event.wait(wait_seconds)
+        completed = self._wait_until_complete_or_cancel(
+            pending,
+            wait_seconds=wait_seconds,
+            cancel_event=cancel_event,
+        )
         with pending.send_lock:
             with self._lock:
                 self._pending.pop(pending.request_id, None)
@@ -225,18 +284,70 @@ class VoiceWorkerClient:
             raise VoiceWorkerUnavailable("voice worker did not return a result")
         return pending.result
 
+    def _wait_until_complete_or_cancel(
+        self,
+        pending: _PendingRequest,
+        *,
+        wait_seconds: float,
+        cancel_event: threading.Event | None,
+    ) -> bool:
+        if cancel_event is None:
+            return pending.event.wait(wait_seconds)
+
+        deadline = threading.Event()
+        timer = threading.Timer(wait_seconds, deadline.set)
+        timer.daemon = True
+        timer.start()
+        try:
+            while not pending.event.is_set():
+                if cancel_event.is_set():
+                    self._request_cancel(pending)
+                    self._complete_once(
+                        pending,
+                        error=VoiceWorkerUnavailable("voice worker request cancelled"),
+                    )
+                    return True
+                if deadline.wait(0.01):
+                    return pending.event.is_set()
+            return True
+        finally:
+            timer.cancel()
+
+    def _request_cancel(self, pending: _PendingRequest) -> None:
+        with self._lock:
+            if self._pending.get(pending.request_id) is not pending:
+                return
+            if pending.cancel_sent:
+                return
+            pending.cancel_sent = True
+
+        def send_cancel_on_main() -> None:
+            try:
+                self._worker_supervisor.send_request(
+                    self._domain,
+                    type=f"{self._domain}.cancel",
+                    payload={"request_id": pending.request_id},
+                    request_id=pending.request_id,
+                    timeout_seconds=1.0,
+                )
+            except Exception:
+                return
+
+        self._scheduler.run_on_main(send_cancel_on_main)
+
     def _complete_send_failure(
         self,
         pending: _PendingRequest,
         error: VoiceWorkerUnavailable,
     ) -> None:
+        self._set_available(False, str(error) or "send_failed")
         self._complete_once(pending, error=error)
 
     def _complete_once(
         self,
         pending: _PendingRequest,
         *,
-        result: VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult | None = None,
+        result: VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult | VoiceWorkerHealthResult | None = None,
         error: BaseException | None = None,
     ) -> None:
         with self._lock:
@@ -257,6 +368,8 @@ class VoiceWorkerClient:
                 result = parse_transcribe_result(event.payload)
             elif event.type == "voice.speak.result":
                 result = parse_speak_result(event.payload)
+            elif event.type == "voice.health.result":
+                result = parse_health_result(event.payload)
             else:
                 return
         except Exception as exc:
@@ -278,10 +391,17 @@ class VoiceWorkerClient:
                 error=VoiceWorkerUnavailable(f"malformed voice worker error: {exc}"),
             )
         else:
+            if worker_error.code in {"provider_error", "provider_unavailable"}:
+                self._set_available(False, worker_error.message or worker_error.code)
             self._complete_once(
                 pending,
                 error=VoiceWorkerUnavailable(f"{worker_error.code}: {worker_error.message}"),
             )
+
+    def _set_available(self, available: bool, reason: str) -> None:
+        with self._lock:
+            self._available = available
+            self._availability_reason = reason
 
 
 __all__ = [

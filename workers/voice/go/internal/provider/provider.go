@@ -1,11 +1,31 @@
 package provider
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 type Provider interface {
 	Health(context.Context) (HealthResult, error)
 	Transcribe(context.Context, TranscribeRequest) (TranscribeResult, error)
 	Speak(context.Context, SpeakRequest) (SpeakResult, error)
+}
+
+type InvalidPayloadError struct {
+	Message string
+}
+
+func (e InvalidPayloadError) Error() string {
+	return e.Message
+}
+
+func InvalidPayload(message string) error {
+	return InvalidPayloadError{Message: message}
+}
+
+func IsInvalidPayload(err error) bool {
+	var target InvalidPayloadError
+	return errors.As(err, &target)
 }
 
 type HealthResult struct {

@@ -3,6 +3,7 @@ package provider
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,11 @@ const (
 	defaultOpenAITTSModel = "gpt-4o-mini-tts"
 	defaultOpenAITTSVoice = "alloy"
 	maxErrorBodyBytes     = 4096
+	wavHeaderProbeBytes   = 1024 * 1024
+	audioSizeAllowance    = 4096
+	defaultSTTSampleRate  = 16000
+	defaultSTTChannels    = 1
+	sttBytesPerSample     = 2
 )
 
 var ErrMissingAPIKey = errors.New("OPENAI_API_KEY is not set")
@@ -59,6 +65,9 @@ func (p OpenAIProvider) Health(ctx context.Context) (HealthResult, error) {
 func (p OpenAIProvider) Transcribe(ctx context.Context, request TranscribeRequest) (TranscribeResult, error) {
 	startedAt := time.Now()
 	if err := p.requireAPIKey(); err != nil {
+		return TranscribeResult{}, err
+	}
+	if err := validateTranscriptionAudio(request); err != nil {
 		return TranscribeResult{}, err
 	}
 
@@ -244,6 +253,112 @@ func (p OpenAIProvider) httpClient() *http.Client {
 func (p OpenAIProvider) httpError(operation string, response *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes))
 	return fmt.Errorf("openai %s failed: status=%d body=%s", operation, response.StatusCode, string(body))
+}
+
+func validateTranscriptionAudio(request TranscribeRequest) error {
+	if request.MaxAudioSeconds <= 0 {
+		return nil
+	}
+	info, err := os.Stat(request.AudioPath)
+	if err != nil {
+		return err
+	}
+	if duration, ok := wavDurationSeconds(request.AudioPath); ok {
+		if duration > request.MaxAudioSeconds {
+			return InvalidPayload(fmt.Sprintf(
+				"audio duration %.3fs exceeds max_audio_seconds %.3fs",
+				duration,
+				request.MaxAudioSeconds,
+			))
+		}
+		return nil
+	}
+	maxBytes := conservativeAudioByteLimit(request)
+	if info.Size() > maxBytes {
+		return InvalidPayload(fmt.Sprintf(
+			"audio size %d bytes exceeds conservative max_audio_seconds cap %d bytes",
+			info.Size(),
+			maxBytes,
+		))
+	}
+	return nil
+}
+
+func wavDurationSeconds(path string) (float64, bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, false
+	}
+	defer file.Close()
+
+	header := make([]byte, 12)
+	if _, err := io.ReadFull(file, header); err != nil {
+		return 0, false
+	}
+	if string(header[0:4]) != "RIFF" || string(header[8:12]) != "WAVE" {
+		return 0, false
+	}
+
+	var byteRate uint32
+	var dataSize uint32
+	var haveFormat bool
+	var haveData bool
+	var probed int64 = 12
+	for probed < wavHeaderProbeBytes {
+		chunkHeader := make([]byte, 8)
+		if _, err := io.ReadFull(file, chunkHeader); err != nil {
+			return 0, false
+		}
+		probed += int64(len(chunkHeader))
+		chunkID := string(chunkHeader[0:4])
+		chunkSize := int64(binary.LittleEndian.Uint32(chunkHeader[4:8]))
+		switch chunkID {
+		case "fmt ":
+			if chunkSize < 16 {
+				return 0, false
+			}
+			format := make([]byte, 16)
+			if _, err := io.ReadFull(file, format); err != nil {
+				return 0, false
+			}
+			probed += int64(len(format))
+			byteRate = binary.LittleEndian.Uint32(format[8:12])
+			haveFormat = byteRate > 0
+			if _, err := file.Seek(chunkSize-16+chunkSize%2, io.SeekCurrent); err != nil {
+				return 0, false
+			}
+			probed += chunkSize - 16 + chunkSize%2
+		case "data":
+			dataSize = uint32(chunkSize)
+			haveData = true
+			if _, err := file.Seek(chunkSize+chunkSize%2, io.SeekCurrent); err != nil {
+				return 0, false
+			}
+			probed += chunkSize + chunkSize%2
+		default:
+			if _, err := file.Seek(chunkSize+chunkSize%2, io.SeekCurrent); err != nil {
+				return 0, false
+			}
+			probed += chunkSize + chunkSize%2
+		}
+		if haveFormat && haveData {
+			return float64(dataSize) / float64(byteRate), true
+		}
+	}
+	return 0, false
+}
+
+func conservativeAudioByteLimit(request TranscribeRequest) int64 {
+	sampleRateHz := request.SampleRateHz
+	if sampleRateHz <= 0 {
+		sampleRateHz = defaultSTTSampleRate
+	}
+	channels := request.Channels
+	if channels <= 0 {
+		channels = defaultSTTChannels
+	}
+	limit := request.MaxAudioSeconds * float64(sampleRateHz*channels*sttBytesPerSample)
+	return int64(limit) + audioSizeAllowance
 }
 
 func envOrDefault(key string, defaultValue string) string {

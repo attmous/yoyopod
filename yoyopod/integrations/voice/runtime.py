@@ -317,7 +317,10 @@ class VoiceRuntimeCoordinator:
             return
 
         try:
-            transcript = voice_service.transcribe(capture_result.audio_path)
+            transcript = voice_service.transcribe(
+                capture_result.audio_path,
+                cancel_event=cancel_event,
+            )
         except Exception as exc:
             logger.warning("Voice command transcription failed: {}", exc)
             self.dispatch_listen_result("", capture_failed=True, generation=generation)
@@ -372,7 +375,10 @@ class VoiceRuntimeCoordinator:
                 generation,
             )
             try:
-                transcript = voice_service.transcribe(capture_result.audio_path)
+                transcript = voice_service.transcribe(
+                    capture_result.audio_path,
+                    cancel_event=cancel_event,
+                )
             except Exception as exc:
                 logger.warning("PTT transcription failed: {}", exc)
                 self.dispatch_listen_result("", capture_failed=True, generation=generation)

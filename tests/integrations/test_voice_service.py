@@ -38,7 +38,13 @@ class FakeSttBackend:
     def is_available(self, settings: VoiceSettings) -> bool:
         return settings.stt_enabled
 
-    def transcribe(self, audio_path: Path, settings: VoiceSettings) -> VoiceTranscript:
+    def transcribe(
+        self,
+        audio_path: Path,
+        settings: VoiceSettings,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> VoiceTranscript:
         self.calls.append((audio_path, settings))
         return VoiceTranscript(text="call mom", confidence=0.91)
 

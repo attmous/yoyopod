@@ -6,10 +6,12 @@ import pytest
 
 from yoyopod.integrations.voice.worker_contract import (
     VoiceWorkerError,
+    VoiceWorkerHealthResult,
     VoiceWorkerSpeakResult,
     VoiceWorkerTranscribeResult,
     build_speak_payload,
     build_transcribe_payload,
+    parse_health_result,
     parse_speak_result,
     parse_transcribe_result,
     parse_worker_error,
@@ -119,4 +121,20 @@ def test_parse_worker_error_preserves_retryable_code() -> None:
         code="provider_unavailable",
         message="provider down",
         retryable=True,
+    )
+
+
+def test_parse_health_result_normalizes_provider_status() -> None:
+    result = parse_health_result(
+        {
+            "healthy": True,
+            "provider": " mock ",
+            "message": "ready",
+        }
+    )
+
+    assert result == VoiceWorkerHealthResult(
+        healthy=True,
+        provider="mock",
+        message="ready",
     )

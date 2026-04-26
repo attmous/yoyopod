@@ -13,6 +13,7 @@ from yoyopod.integrations.voice.worker_client import (
     VoiceWorkerUnavailable,
 )
 from yoyopod.integrations.voice.worker_contract import (
+    VoiceWorkerHealthResult,
     VoiceWorkerSpeakResult,
     VoiceWorkerTranscribeResult,
 )
@@ -149,6 +150,81 @@ def test_transcribe_schedules_request_on_main_and_resolves_result() -> None:
     assert client.pending_count == 0
 
 
+def test_health_probe_marks_client_available() -> None:
+    scheduler = _Scheduler()
+    supervisor = _Supervisor()
+    client = VoiceWorkerClient(
+        scheduler=scheduler,
+        worker_supervisor=supervisor,
+        request_timeout_seconds=0.25,
+    )
+    results: list[VoiceWorkerHealthResult] = []
+
+    thread = threading.Thread(target=lambda: results.append(client.health()))
+    thread.start()
+
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    scheduler.drain()
+    request = supervisor.requests[0]
+    assert request["type"] == "voice.health"
+
+    client.handle_worker_message(
+        WorkerMessageReceivedEvent(
+            domain="voice",
+            kind="result",
+            type="voice.health.result",
+            request_id=str(request["request_id"]),
+            payload={"healthy": True, "provider": "mock"},
+        )
+    )
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert results == [VoiceWorkerHealthResult(healthy=True, provider="mock")]
+    assert client.is_available is True
+    assert client.availability_reason == "mock"
+
+
+def test_health_probe_failure_marks_client_unavailable() -> None:
+    scheduler = _Scheduler()
+    supervisor = _Supervisor()
+    client = VoiceWorkerClient(
+        scheduler=scheduler,
+        worker_supervisor=supervisor,
+        request_timeout_seconds=0.25,
+    )
+    errors: list[BaseException] = []
+
+    thread = threading.Thread(
+        target=lambda: _capture_error(errors, client.health),
+    )
+    thread.start()
+
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    scheduler.drain()
+    request = supervisor.requests[0]
+    client.handle_worker_message(
+        WorkerMessageReceivedEvent(
+            domain="voice",
+            kind="error",
+            type="voice.error",
+            request_id=str(request["request_id"]),
+            payload={
+                "code": "provider_error",
+                "message": "OPENAI_API_KEY is not set",
+                "retryable": True,
+            },
+        )
+    )
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], VoiceWorkerUnavailable)
+    assert client.is_available is False
+    assert client.availability_reason == "OPENAI_API_KEY is not set"
+
+
 def test_worker_error_raises_unavailable_with_error_code() -> None:
     scheduler = _Scheduler()
     supervisor = _Supervisor()
@@ -195,6 +271,50 @@ def test_worker_error_raises_unavailable_with_error_code() -> None:
     assert len(errors) == 1
     assert isinstance(errors[0], VoiceWorkerUnavailable)
     assert "provider_unavailable" in str(errors[0])
+    assert client.pending_count == 0
+
+
+def test_cancel_event_sends_worker_cancel_and_unblocks_waiter() -> None:
+    scheduler = _Scheduler()
+    supervisor = _Supervisor()
+    client = VoiceWorkerClient(
+        scheduler=scheduler,
+        worker_supervisor=supervisor,
+        request_timeout_seconds=0.25,
+    )
+    cancel_event = threading.Event()
+    errors: list[BaseException] = []
+
+    thread = threading.Thread(
+        target=lambda: _capture_error(
+            errors,
+            lambda: client.transcribe(
+                audio_path=Path("/tmp/input.wav"),
+                sample_rate_hz=16000,
+                language="en",
+                max_audio_seconds=5.0,
+                cancel_event=cancel_event,
+            ),
+        )
+    )
+    thread.start()
+
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    scheduler.drain()
+    request_id = str(supervisor.requests[0]["request_id"])
+
+    cancel_event.set()
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    scheduler.drain()
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], VoiceWorkerUnavailable)
+    assert supervisor.requests[1]["type"] == "voice.cancel"
+    assert supervisor.requests[1]["request_id"] == request_id
+    assert supervisor.requests[1]["payload"] == {"request_id": request_id}
+    assert supervisor.requests[1]["timeout_seconds"] == 1.0
     assert client.pending_count == 0
 
 

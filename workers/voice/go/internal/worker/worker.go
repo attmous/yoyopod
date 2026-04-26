@@ -154,6 +154,10 @@ func (w *Worker) handleTranscribe(ctx context.Context, envelope protocol.Envelop
 			w.emitCancelled(envelope.RequestID, cancellationReason(ctx))
 			return
 		}
+		if provider.IsInvalidPayload(err) {
+			w.emitError(envelope, "invalid_payload", err.Error(), false)
+			return
+		}
 		w.emitError(envelope, "provider_error", err.Error(), true)
 		return
 	}
@@ -170,6 +174,10 @@ func (w *Worker) handleSpeak(ctx context.Context, envelope protocol.Envelope) {
 	if err != nil || ctx.Err() != nil {
 		if isContextCancelled(ctx, err) || ctx.Err() != nil {
 			w.emitCancelled(envelope.RequestID, cancellationReason(ctx))
+			return
+		}
+		if provider.IsInvalidPayload(err) {
+			w.emitError(envelope, "invalid_payload", err.Error(), false)
 			return
 		}
 		w.emitError(envelope, "provider_error", err.Error(), true)

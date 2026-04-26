@@ -744,7 +744,7 @@ class _FakeVoiceService:
         self.last_audio_path = path
         return VoiceCaptureResult(audio_path=path, recorded=True)
 
-    def transcribe(self, audio_path) -> VoiceTranscript:
+    def transcribe(self, audio_path, *, cancel_event=None) -> VoiceTranscript:
         return VoiceTranscript(text=self.transcript, confidence=0.92)
 
     def match_command(self, transcript: str):
