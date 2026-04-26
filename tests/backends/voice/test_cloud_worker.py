@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict, Unpack
+
+from pytest import MonkeyPatch
 
 from yoyopod.backends.voice import (
     CloudWorkerSpeechToTextBackend,
@@ -26,6 +29,7 @@ class VoiceSettingsOverrides(TypedDict):
     tts_backend: NotRequired[str]
     speaker_device_id: NotRequired[str | None]
     sample_rate_hz: NotRequired[int]
+    cloud_worker_enabled: NotRequired[bool]
     cloud_worker_max_audio_seconds: NotRequired[float]
     cloud_worker_tts_model: NotRequired[str]
     cloud_worker_tts_voice: NotRequired[str]
@@ -130,6 +134,7 @@ def cloud_settings(**overrides: Unpack[VoiceSettingsOverrides]) -> VoiceSettings
     defaults = VoiceSettings(
         stt_backend="cloud-worker",
         tts_backend="cloud-worker",
+        cloud_worker_enabled=True,
         cloud_worker_max_audio_seconds=11.5,
         cloud_worker_tts_model="tts-test-model",
         cloud_worker_tts_voice="verse",
@@ -149,6 +154,7 @@ def test_stt_is_available_only_when_enabled_and_cloud_backend() -> None:
     assert backend.is_available(cloud_settings())
     assert not backend.is_available(cloud_settings(stt_enabled=False))
     assert not backend.is_available(cloud_settings(stt_backend="vosk"))
+    assert not backend.is_available(cloud_settings(cloud_worker_enabled=False))
 
 
 def test_stt_transcribe_delegates_to_client_and_maps_transcript() -> None:
@@ -185,6 +191,19 @@ def test_stt_unavailable_returns_empty_final_transcript_without_calling_client()
     assert client.transcribe_calls == []
 
 
+def test_stt_cloud_worker_disabled_returns_empty_final_transcript_without_calling_client() -> None:
+    client = FakeVoiceWorkerClient()
+    backend = CloudWorkerSpeechToTextBackend(client=client)
+
+    transcript = backend.transcribe(
+        Path("input.wav"),
+        cloud_settings(cloud_worker_enabled=False),
+    )
+
+    assert transcript == empty_final_transcript()
+    assert client.transcribe_calls == []
+
+
 def test_stt_client_exception_returns_empty_final_transcript() -> None:
     client = FakeVoiceWorkerClient(exc=RuntimeError("worker unavailable"))
     backend = CloudWorkerSpeechToTextBackend(client=client)
@@ -204,6 +223,7 @@ def test_tts_is_available_only_when_enabled_and_cloud_backend() -> None:
     assert backend.is_available(cloud_settings())
     assert not backend.is_available(cloud_settings(tts_enabled=False))
     assert not backend.is_available(cloud_settings(tts_backend="espeak-ng"))
+    assert not backend.is_available(cloud_settings(cloud_worker_enabled=False))
 
 
 def test_tts_speak_delegates_to_client_and_plays_returned_wav() -> None:
@@ -281,6 +301,16 @@ def test_tts_empty_text_returns_false_without_calling_client() -> None:
     assert play_wav.calls == []
 
 
+def test_tts_cloud_worker_disabled_returns_false_without_calling_client() -> None:
+    client = FakeVoiceWorkerClient()
+    play_wav = FakeWavPlayer()
+    backend = CloudWorkerTextToSpeechBackend(client=client, play_wav=play_wav)
+
+    assert not backend.speak("Hello", cloud_settings(cloud_worker_enabled=False))
+    assert client.speak_calls == []
+    assert play_wav.calls == []
+
+
 def test_tts_client_exception_returns_false() -> None:
     client = FakeVoiceWorkerClient(exc=RuntimeError("worker unavailable"))
     play_wav = FakeWavPlayer()
@@ -328,6 +358,31 @@ def test_tts_cleanup_does_not_raise_for_directory_output_path(tmp_path: Path) ->
     assert not backend.speak("Hello", cloud_settings())
     assert audio_path.exists()
     assert audio_path.is_dir()
+
+
+def test_tts_does_not_delete_regular_wav_outside_worker_temp_dir(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    worker_temp_dir = tmp_path / "worker-temp"
+    worker_temp_dir.mkdir()
+    outside_temp_dir = tmp_path / "outside-temp"
+    outside_temp_dir.mkdir()
+    audio_path = outside_temp_dir / "answer.wav"
+    audio_path.write_bytes(b"RIFF")
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(worker_temp_dir))
+    client = FakeVoiceWorkerClient(
+        speech=VoiceWorkerSpeakResult(
+            audio_path=audio_path,
+            format="wav",
+            sample_rate_hz=22050,
+        )
+    )
+    backend = CloudWorkerTextToSpeechBackend(client=client, play_wav=FakeWavPlayer())
+
+    assert backend.speak("Hello", cloud_settings())
+    assert audio_path.exists()
+    assert audio_path.is_file()
 
 
 def test_tts_passes_configured_speaker_device_to_playback() -> None:

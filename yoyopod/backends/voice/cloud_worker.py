@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import Protocol
 
@@ -58,7 +59,11 @@ class CloudWorkerSpeechToTextBackend:
         self._client = client
 
     def is_available(self, settings: VoiceSettings) -> bool:
-        return bool(settings.stt_enabled and settings.stt_backend == "cloud-worker")
+        return bool(
+            settings.cloud_worker_enabled
+            and settings.stt_enabled
+            and settings.stt_backend == "cloud-worker"
+        )
 
     def transcribe(self, audio_path: Path, settings: VoiceSettings) -> VoiceTranscript:
         if not self.is_available(settings):
@@ -95,7 +100,11 @@ class CloudWorkerTextToSpeechBackend:
         self._play_wav = play_wav if play_wav is not None else AlsaOutputPlayer().play_wav
 
     def is_available(self, settings: VoiceSettings) -> bool:
-        return bool(settings.tts_enabled and settings.tts_backend == "cloud-worker")
+        return bool(
+            settings.cloud_worker_enabled
+            and settings.tts_enabled
+            and settings.tts_backend == "cloud-worker"
+        )
 
     def speak(self, text: str, settings: VoiceSettings) -> bool:
         normalized_text = text.strip()
@@ -139,7 +148,13 @@ def _empty_transcript() -> VoiceTranscript:
 
 def _unlink_output_audio(path: Path) -> None:
     try:
-        if path.is_file():
+        resolved_path = path.resolve()
+        temp_root = Path(tempfile.gettempdir()).resolve()
+        if (
+            path.is_file()
+            and resolved_path.suffix.lower() == ".wav"
+            and resolved_path.is_relative_to(temp_root)
+        ):
             path.unlink(missing_ok=True)
     except OSError as exc:
         logger.warning("Cloud worker speech output cleanup failed for {}: {}", path, exc)
