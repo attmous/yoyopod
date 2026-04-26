@@ -50,6 +50,7 @@ class _WorkerSupervisor(Protocol):
 class _PendingRequest:
     request_id: str
     expected_type: str
+    send_lock: threading.Lock = field(default_factory=threading.Lock)
     event: threading.Event = field(default_factory=threading.Event)
     result: VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult | None = None
     error: BaseException | None = None
@@ -171,9 +172,10 @@ class VoiceWorkerClient:
             self._pending[request_id] = pending
 
         def send_on_main() -> None:
-            with self._lock:
-                if self._pending.get(request_id) is not pending:
-                    return
+            with pending.send_lock:
+                with self._lock:
+                    if self._pending.get(request_id) is not pending:
+                        return
                 try:
                     sent = self._worker_supervisor.send_request(
                         self._domain,
@@ -183,12 +185,16 @@ class VoiceWorkerClient:
                         timeout_seconds=self._request_timeout_seconds,
                     )
                 except Exception as exc:
-                    pending.error = VoiceWorkerUnavailable(str(exc) or "voice worker unavailable")
-                    pending.event.set()
+                    self._complete_send_failure(
+                        pending,
+                        VoiceWorkerUnavailable(str(exc) or "voice worker unavailable"),
+                    )
                     return
                 if not sent:
-                    pending.error = VoiceWorkerUnavailable("voice worker unavailable")
-                    pending.event.set()
+                    self._complete_send_failure(
+                        pending,
+                        VoiceWorkerUnavailable("voice worker unavailable"),
+                    )
 
         self._scheduler.run_on_main(send_on_main)
         return pending
@@ -203,16 +209,30 @@ class VoiceWorkerClient:
     ) -> VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult:
         wait_seconds = self._request_timeout_seconds + self._WAIT_GRACE_SECONDS
         completed = pending.event.wait(wait_seconds)
-        with self._lock:
-            self._pending.pop(pending.request_id, None)
+        with pending.send_lock:
+            with self._lock:
+                self._pending.pop(pending.request_id, None)
 
-        if not completed:
+        if not completed and not pending.event.is_set():
             raise VoiceWorkerTimeout(f"voice worker request {pending.request_id} timed out")
         if pending.error is not None:
             raise pending.error
         if pending.result is None:
             raise VoiceWorkerUnavailable("voice worker did not return a result")
         return pending.result
+
+    def _complete_send_failure(
+        self,
+        pending: _PendingRequest,
+        error: VoiceWorkerUnavailable,
+    ) -> None:
+        with self._lock:
+            if self._pending.get(pending.request_id) is not pending:
+                return
+            if pending.event.is_set():
+                return
+            pending.error = error
+            pending.event.set()
 
     def _complete_with_result(
         self, pending: _PendingRequest, event: WorkerMessageReceivedEvent

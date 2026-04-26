@@ -60,6 +60,28 @@ class _BlockingSupervisor(_Supervisor):
         return super().send_request(domain, **kwargs)
 
 
+class _ReentrantSupervisor(_Supervisor):
+    def __init__(self) -> None:
+        super().__init__()
+        self.client: VoiceWorkerClient | None = None
+
+    def send_request(self, domain: str, **kwargs: object) -> bool:
+        client = self.client
+        assert client is not None
+        request_id = kwargs["request_id"]
+        assert isinstance(request_id, str)
+        client.handle_worker_message(
+            WorkerMessageReceivedEvent(
+                domain=domain,
+                kind="result",
+                type="voice.transcribe.result",
+                request_id=request_id,
+                payload={"text": "reentrant result", "confidence": 0.7, "is_final": True},
+            )
+        )
+        return super().send_request(domain, **kwargs)
+
+
 def test_transcribe_schedules_request_on_main_and_resolves_result() -> None:
     scheduler = _Scheduler()
     supervisor = _Supervisor()
@@ -537,6 +559,53 @@ def test_timeout_cleanup_cannot_interleave_with_in_flight_send() -> None:
     assert not request_thread.is_alive()
     assert len(errors) == 1
     assert isinstance(errors[0], VoiceWorkerTimeout)
+    assert client.pending_count == 0
+
+
+def test_reentrant_worker_message_during_send_does_not_deadlock() -> None:
+    scheduler = _Scheduler()
+    supervisor = _ReentrantSupervisor()
+    client = VoiceWorkerClient(
+        scheduler=scheduler,
+        worker_supervisor=supervisor,
+        request_timeout_seconds=0.25,
+    )
+    supervisor.client = client
+    results: list[VoiceWorkerTranscribeResult] = []
+    errors: list[BaseException] = []
+
+    request_thread = threading.Thread(
+        target=lambda: _capture_error(
+            errors,
+            lambda: results.append(
+                client.transcribe(
+                    audio_path=Path("/tmp/input.wav"),
+                    sample_rate_hz=16000,
+                    language="en",
+                    max_audio_seconds=5.0,
+                )
+            ),
+        ),
+        daemon=True,
+    )
+    request_thread.start()
+
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    drain_thread = threading.Thread(target=scheduler.drain, daemon=True)
+    drain_thread.start()
+    drain_thread.join(timeout=1.0)
+    request_thread.join(timeout=1.0)
+
+    assert not drain_thread.is_alive()
+    assert not request_thread.is_alive()
+    assert errors == []
+    assert results == [
+        VoiceWorkerTranscribeResult(
+            text="reentrant result",
+            confidence=0.7,
+            is_final=True,
+        )
+    ]
     assert client.pending_count == 0
 
 
