@@ -297,7 +297,10 @@ class SubprocessAudioCaptureBackend:
             device = line.strip()
             if not device or device.startswith(" "):
                 continue
-            if device in {"null", "default", "sysdefault"}:
+            if device in {"null", "playback", "dmixed"}:
+                continue
+            if device in {"capture", "array", "default", "sysdefault"}:
+                parsed_devices.append(device)
                 continue
             if device.startswith(
                 (
@@ -326,6 +329,10 @@ class SubprocessAudioCaptureBackend:
         normalized_target = self._normalize_alsa_name(capture_device_id)
         if self._looks_like_arecord_device(capture_device_id):
             candidates.append(capture_device_id)
+        elif "capture" in discovered_devices:
+            candidates.append("capture")
+        elif "default" in discovered_devices:
+            candidates.append("default")
 
         for device in discovered_devices:
             if normalized_target and normalized_target in self._normalize_alsa_name(device):
@@ -336,12 +343,12 @@ class SubprocessAudioCaptureBackend:
     def _looks_like_arecord_device(device: str) -> bool:
         """Return True when the config already looks like an arecord device selector."""
 
-        return device.startswith(
+        return device in {"capture", "array", "default", "sysdefault"} or device.startswith(
             (
                 "plughw:",
                 "hw:",
-                "default",
-                "sysdefault",
+                "default:",
+                "sysdefault:",
                 "front:",
                 "dsnoop:",
             )
@@ -360,19 +367,27 @@ class SubprocessAudioCaptureBackend:
     def _device_sort_key(device: str) -> tuple[int, str]:
         """Prefer plughw/default-style routes over raw hw devices."""
 
-        if device.startswith("plughw:"):
+        if device == "capture":
             return (0, device)
-        if device.startswith("default:CARD="):
+        if device == "array":
             return (1, device)
-        if device.startswith("sysdefault:CARD="):
+        if device == "default":
             return (2, device)
-        if device.startswith("front:CARD="):
+        if device == "sysdefault":
             return (3, device)
-        if device.startswith("dsnoop:CARD="):
+        if device.startswith("plughw:"):
             return (4, device)
-        if device.startswith("hw:"):
+        if device.startswith("default:CARD="):
             return (5, device)
-        return (6, device)
+        if device.startswith("sysdefault:CARD="):
+            return (6, device)
+        if device.startswith("front:CARD="):
+            return (7, device)
+        if device.startswith("dsnoop:CARD="):
+            return (8, device)
+        if device.startswith("hw:"):
+            return (9, device)
+        return (10, device)
 
     @staticmethod
     def _unique_devices(devices: list[str | None]) -> list[str | None]:
