@@ -7,7 +7,11 @@ from collections.abc import Callable
 import pytest
 
 from yoyopod.core.events import WorkerMessageReceivedEvent
-from yoyopod.integrations.voice.worker_client import VoiceWorkerClient, VoiceWorkerTimeout
+from yoyopod.integrations.voice.worker_client import (
+    VoiceWorkerClient,
+    VoiceWorkerTimeout,
+    VoiceWorkerUnavailable,
+)
 from yoyopod.integrations.voice.worker_contract import (
     VoiceWorkerSpeakResult,
     VoiceWorkerTranscribeResult,
@@ -26,6 +30,12 @@ class _Scheduler:
         self.callbacks.clear()
         for callback in callbacks:
             callback()
+
+
+class _MainThreadScheduler(_Scheduler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.main_thread_id = threading.get_ident()
 
 
 class _Supervisor:
@@ -111,7 +121,7 @@ def test_transcribe_schedules_request_on_main_and_resolves_result() -> None:
     assert client.pending_count == 0
 
 
-def test_worker_error_raises_runtime_error_with_error_code() -> None:
+def test_worker_error_raises_unavailable_with_error_code() -> None:
     scheduler = _Scheduler()
     supervisor = _Supervisor()
     client = VoiceWorkerClient(
@@ -155,7 +165,7 @@ def test_worker_error_raises_runtime_error_with_error_code() -> None:
 
     assert not thread.is_alive()
     assert len(errors) == 1
-    assert isinstance(errors[0], RuntimeError)
+    assert isinstance(errors[0], VoiceWorkerUnavailable)
     assert "provider_unavailable" in str(errors[0])
     assert client.pending_count == 0
 
@@ -178,6 +188,273 @@ def test_transcribe_raises_timeout_when_no_result_arrives() -> None:
         )
 
     assert scheduler.callbacks
+    assert supervisor.requests == []
+    assert client.pending_count == 0
+
+
+def test_cancelled_message_raises_unavailable_and_cleans_pending() -> None:
+    scheduler = _Scheduler()
+    supervisor = _Supervisor()
+    client = VoiceWorkerClient(
+        scheduler=scheduler,
+        worker_supervisor=supervisor,
+        request_timeout_seconds=0.25,
+    )
+    errors: list[BaseException] = []
+
+    thread = threading.Thread(
+        target=lambda: _capture_error(
+            errors,
+            lambda: client.transcribe(
+                audio_path=Path("/tmp/input.wav"),
+                sample_rate_hz=16000,
+                language="en",
+                max_audio_seconds=5.0,
+            ),
+        )
+    )
+    thread.start()
+
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    scheduler.drain()
+
+    client.handle_worker_message(
+        WorkerMessageReceivedEvent(
+            domain="voice",
+            kind="result",
+            type="voice.cancelled",
+            request_id=str(supervisor.requests[0]["request_id"]),
+            payload={},
+        )
+    )
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], VoiceWorkerUnavailable)
+    assert client.pending_count == 0
+
+
+def test_missing_request_id_message_is_ignored_and_request_can_resolve() -> None:
+    scheduler = _Scheduler()
+    supervisor = _Supervisor()
+    client = VoiceWorkerClient(
+        scheduler=scheduler,
+        worker_supervisor=supervisor,
+        request_timeout_seconds=0.25,
+    )
+    results: list[VoiceWorkerTranscribeResult] = []
+
+    thread = threading.Thread(
+        target=lambda: results.append(
+            client.transcribe(
+                audio_path=Path("/tmp/input.wav"),
+                sample_rate_hz=16000,
+                language="en",
+                max_audio_seconds=5.0,
+            )
+        )
+    )
+    thread.start()
+
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    scheduler.drain()
+    request_id = str(supervisor.requests[0]["request_id"])
+
+    client.handle_worker_message(
+        WorkerMessageReceivedEvent(
+            domain="voice",
+            kind="result",
+            type="voice.transcribe.result",
+            request_id=None,
+            payload={"text": "wrong", "confidence": 1.0, "is_final": True},
+        )
+    )
+
+    assert results == []
+    assert client.pending_count == 1
+
+    client.handle_worker_message(
+        WorkerMessageReceivedEvent(
+            domain="voice",
+            kind="result",
+            type="voice.transcribe.result",
+            request_id=request_id,
+            payload={"text": "correct", "confidence": 0.8, "is_final": True},
+        )
+    )
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert results == [VoiceWorkerTranscribeResult(text="correct", confidence=0.8, is_final=True)]
+    assert client.pending_count == 0
+
+
+def test_non_matching_expected_result_type_is_ignored() -> None:
+    scheduler = _Scheduler()
+    supervisor = _Supervisor()
+    client = VoiceWorkerClient(
+        scheduler=scheduler,
+        worker_supervisor=supervisor,
+        request_timeout_seconds=0.25,
+    )
+    results: list[VoiceWorkerTranscribeResult] = []
+
+    thread = threading.Thread(
+        target=lambda: results.append(
+            client.transcribe(
+                audio_path=Path("/tmp/input.wav"),
+                sample_rate_hz=16000,
+                language="en",
+                max_audio_seconds=5.0,
+            )
+        )
+    )
+    thread.start()
+
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    scheduler.drain()
+    request_id = str(supervisor.requests[0]["request_id"])
+
+    client.handle_worker_message(
+        WorkerMessageReceivedEvent(
+            domain="voice",
+            kind="result",
+            type="voice.speak.result",
+            request_id=request_id,
+            payload={
+                "audio_path": "/tmp/wrong.wav",
+                "format": "wav",
+                "sample_rate_hz": 16000,
+            },
+        )
+    )
+
+    assert results == []
+    assert client.pending_count == 1
+
+    client.handle_worker_message(
+        WorkerMessageReceivedEvent(
+            domain="voice",
+            kind="result",
+            type="voice.transcribe.result",
+            request_id=request_id,
+            payload={"text": "correct", "confidence": 0.8, "is_final": True},
+        )
+    )
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert results == [VoiceWorkerTranscribeResult(text="correct", confidence=0.8, is_final=True)]
+    assert client.pending_count == 0
+
+
+def test_unavailable_send_result_raises_unavailable_and_cleans_pending() -> None:
+    scheduler = _Scheduler()
+    supervisor = _Supervisor()
+    supervisor.send_result = False
+    client = VoiceWorkerClient(
+        scheduler=scheduler,
+        worker_supervisor=supervisor,
+        request_timeout_seconds=0.25,
+    )
+    errors: list[BaseException] = []
+
+    thread = threading.Thread(
+        target=lambda: _capture_error(
+            errors,
+            lambda: client.transcribe(
+                audio_path=Path("/tmp/input.wav"),
+                sample_rate_hz=16000,
+                language="en",
+                max_audio_seconds=5.0,
+            ),
+        )
+    )
+    thread.start()
+
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    scheduler.drain()
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], VoiceWorkerUnavailable)
+    assert client.pending_count == 0
+
+
+def test_unavailable_send_exception_raises_unavailable_and_cleans_pending() -> None:
+    class _RaisingSupervisor(_Supervisor):
+        def send_request(self, domain: str, **kwargs: object) -> bool:
+            raise RuntimeError("worker queue closed")
+
+    scheduler = _Scheduler()
+    supervisor = _RaisingSupervisor()
+    client = VoiceWorkerClient(
+        scheduler=scheduler,
+        worker_supervisor=supervisor,
+        request_timeout_seconds=0.25,
+    )
+    errors: list[BaseException] = []
+
+    thread = threading.Thread(
+        target=lambda: _capture_error(
+            errors,
+            lambda: client.transcribe(
+                audio_path=Path("/tmp/input.wav"),
+                sample_rate_hz=16000,
+                language="en",
+                max_audio_seconds=5.0,
+            ),
+        )
+    )
+    thread.start()
+
+    _wait_until(lambda: len(scheduler.callbacks) == 1)
+    scheduler.drain()
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], VoiceWorkerUnavailable)
+    assert "worker queue closed" in str(errors[0])
+    assert client.pending_count == 0
+
+
+def test_package_level_exports_include_worker_client_types() -> None:
+    from yoyopod.integrations.voice import (
+        VoiceWorkerClient as ExportedVoiceWorkerClient,
+    )
+    from yoyopod.integrations.voice import (
+        VoiceWorkerTimeout as ExportedVoiceWorkerTimeout,
+    )
+    from yoyopod.integrations.voice import (
+        VoiceWorkerUnavailable as ExportedVoiceWorkerUnavailable,
+    )
+
+    assert ExportedVoiceWorkerClient is VoiceWorkerClient
+    assert ExportedVoiceWorkerTimeout is VoiceWorkerTimeout
+    assert ExportedVoiceWorkerUnavailable is VoiceWorkerUnavailable
+
+
+def test_transcribe_fast_fails_on_main_thread_without_scheduling() -> None:
+    scheduler = _MainThreadScheduler()
+    supervisor = _Supervisor()
+    client = VoiceWorkerClient(
+        scheduler=scheduler,
+        worker_supervisor=supervisor,
+        request_timeout_seconds=0.25,
+    )
+
+    with pytest.raises(VoiceWorkerUnavailable, match="main thread"):
+        client.transcribe(
+            audio_path=Path("/tmp/input.wav"),
+            sample_rate_hz=16000,
+            language="en",
+            max_audio_seconds=5.0,
+        )
+
+    assert scheduler.callbacks == []
     assert supervisor.requests == []
     assert client.pending_count == 0
 

@@ -92,6 +92,7 @@ class VoiceWorkerClient:
     ) -> VoiceWorkerTranscribeResult:
         """Send one transcription request and wait for its normalized result."""
 
+        self._raise_if_called_on_main_thread()
         payload = build_transcribe_payload(
             audio_path=audio_path,
             sample_rate_hz=sample_rate_hz,
@@ -119,6 +120,7 @@ class VoiceWorkerClient:
     ) -> VoiceWorkerSpeakResult:
         """Send one speech synthesis request and wait for its normalized result."""
 
+        self._raise_if_called_on_main_thread()
         payload = build_speak_payload(
             text=text,
             voice=voice,
@@ -191,6 +193,11 @@ class VoiceWorkerClient:
         self._scheduler.run_on_main(send_on_main)
         return pending
 
+    def _raise_if_called_on_main_thread(self) -> None:
+        main_thread_id = getattr(self._scheduler, "main_thread_id", None)
+        if main_thread_id is not None and threading.get_ident() == main_thread_id:
+            raise VoiceWorkerUnavailable("voice worker client cannot block the main thread")
+
     def _wait_for(
         self, pending: _PendingRequest
     ) -> VoiceWorkerTranscribeResult | VoiceWorkerSpeakResult:
@@ -229,7 +236,7 @@ class VoiceWorkerClient:
         except Exception as exc:
             pending.error = exc
         else:
-            pending.error = RuntimeError(f"{worker_error.code}: {worker_error.message}")
+            pending.error = VoiceWorkerUnavailable(f"{worker_error.code}: {worker_error.message}")
         pending.event.set()
 
 
