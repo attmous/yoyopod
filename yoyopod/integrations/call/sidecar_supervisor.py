@@ -315,6 +315,16 @@ class SidecarSupervisor:
     def _record_failure_and_maybe_restart(self, *, reason: str) -> None:
         """Caller must hold ``self._lock``."""
 
+        # Drop the stale pipe so callers cannot send on a dead connection
+        # while we wait for the restart timer to fire.
+        stale_conn = self._parent_conn
+        self._parent_conn = None
+        if stale_conn is not None:
+            try:
+                stale_conn.close()
+            except OSError:
+                pass
+
         now = time.monotonic()
         self._failure_times.append(now)
         window_start = now - self._restart_policy.failure_window_seconds
@@ -329,6 +339,11 @@ class SidecarSupervisor:
             )
             logger.error("Sidecar permanently failed: {}", self._permanent_failure_reason)
             return
+
+        # Demote state during the backoff window so ``state_snapshot()``
+        # cannot report "running" with a closed pipe and ``send()`` raises
+        # cleanly until the restart timer fires and re-handshakes.
+        self._state = "starting"
 
         backoff = self._next_backoff_seconds()
         self._restart_count += 1

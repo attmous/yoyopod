@@ -103,6 +103,37 @@ def test_malformed_payload_raises() -> None:
         decode_command(junk)
 
 
+def test_decode_with_missing_required_field_raises_protocol_error() -> None:
+    """Frames missing required dataclass fields must raise ProtocolError, not TypeError.
+
+    Reader threads and the sidecar command loop only catch ProtocolError, so
+    a TypeError leaking out of dataclass construction would crash them.
+    """
+
+    import msgpack
+
+    # ``Dial`` requires ``uri`` — a frame that omits it must surface as ProtocolError.
+    junk = msgpack.packb({"type": "Dial", "data": {"cmd_id": 9}})
+    with pytest.raises(ProtocolError, match="Cannot construct Dial"):
+        decode_command(junk)
+
+
+def test_decode_silently_ignores_unknown_extra_fields() -> None:
+    """Unknown fields are filtered out by ``_construct`` (forward compat).
+
+    This complements :func:`test_decode_with_missing_required_field_raises_protocol_error`
+    by documenting the asymmetric handling: missing required fields are an
+    error, but unknown extra fields are silently dropped so newer peers can
+    add fields without breaking older readers.
+    """
+
+    import msgpack
+
+    payload = msgpack.packb({"type": "Ping", "data": {"cmd_id": 7, "future_field": "ignored"}})
+    decoded = decode_command(payload)
+    assert decoded == Ping(cmd_id=7)
+
+
 def test_send_and_recv_command_over_pipe() -> None:
     parent_conn: Connection
     child_conn: Connection

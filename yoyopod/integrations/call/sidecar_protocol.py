@@ -283,7 +283,14 @@ def _construct(cls: type[Any], fields: dict[str, Any]) -> Any:
             converted[field.name] = tuple(value)
         else:
             converted[field.name] = value
-    return cls(**converted)
+    try:
+        return cls(**converted)
+    except TypeError as exc:
+        # Missing required fields or unknown keys raise TypeError from the
+        # dataclass ``__init__``. Surface them as ProtocolError so the
+        # readers (``run_sidecar``, ``SidecarSupervisor._reader_loop``) can
+        # keep handling frames instead of crashing the thread/process.
+        raise ProtocolError(f"Cannot construct {cls.__name__} from frame fields: {exc}") from exc
 
 
 def _expects_tuple(annotation: Any) -> bool:

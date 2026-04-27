@@ -268,6 +268,51 @@ def test_unexpected_exit_triggers_restart(event_handler: Callable[[Any], None]) 
         supervisor.stop(timeout_seconds=SPAWN_BUDGET_SECONDS)
 
 
+def test_state_demotes_from_running_after_unexpected_exit(
+    event_handler: Callable[[Any], None],
+) -> None:
+    """After a sidecar dies, ``state_snapshot()`` must not report ``running``
+    until the restart re-handshakes; ``send()`` must raise during the
+    backoff window instead of trying to write to a dead pipe."""
+
+    long_backoff = 5.0  # longer than the test's observation window
+    supervisor = SidecarSupervisor(
+        on_event=event_handler,
+        start_method="spawn",
+        sidecar_target=_exit_after_first_command_target,
+        handshake_timeout_seconds=SPAWN_BUDGET_SECONDS,
+        restart_policy=RestartPolicy(
+            max_failures=5,
+            failure_window_seconds=60.0,
+            backoff_initial_seconds=long_backoff,
+            backoff_factor=1.0,
+            backoff_max_seconds=long_backoff,
+        ),
+    )
+    try:
+        supervisor.start()
+        assert supervisor.wait_for_state("running", timeout_seconds=SPAWN_BUDGET_SECONDS)
+        supervisor.send(Ping(cmd_id=1))
+
+        # Wait for state to fall out of "running" once the sidecar dies.
+        deadline = time.monotonic() + SPAWN_BUDGET_SECONDS
+        while time.monotonic() < deadline:
+            if supervisor.state_snapshot().state != "running":
+                break
+            time.sleep(0.02)
+
+        snapshot = supervisor.state_snapshot()
+        assert snapshot.state != "running", snapshot
+        assert snapshot.state != "failed", snapshot
+
+        # send() must raise cleanly while the supervisor is in backoff —
+        # the previous bug let it fall through to a dead pipe write.
+        with pytest.raises(RuntimeError, match=r"sidecar state is"):
+            supervisor.send(Ping(cmd_id=2))
+    finally:
+        supervisor.stop(timeout_seconds=SPAWN_BUDGET_SECONDS)
+
+
 def test_intentional_stop_does_not_trigger_restart(
     event_handler: Callable[[Any], None],
 ) -> None:
