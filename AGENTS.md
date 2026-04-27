@@ -1,6 +1,6 @@
 # YoYoPod - Agent Instructions
 
-Last Updated: 2026-04-24
+Last Updated: 2026-04-27
 Target Hardware: Raspberry Pi Zero 2W
 Project: iPod-inspired VoIP + local music device with small-screen button UI
 
@@ -38,12 +38,13 @@ Canonical deploy/debug skills
 Current runtime summary
 - Entrypoint: `yoyopod.py` -> `yoyopod.main` -> `YoyoPodApp`
 - Main packages: `yoyopod/core/`, `yoyopod/integrations/`, `yoyopod/backends/`, `yoyopod/ui/`, `yoyopod/config/`
-- Runtime structure: canonical `YoyoPodApp` in `yoyopod/core/application.py`, boot in `yoyopod/core/bootstrap/`, loop in `yoyopod/core/loop.py`, and the shared `scheduler -> bus -> ui` runtime seam under `yoyopod/core/`
-- Production audio: mpv backend under `yoyopod/backends/music/`
-- Production VoIP: Liblinphone under `yoyopod/backends/voip/`
-- Production LVGL path: `yoyopod/ui/lvgl_binding/`
+- Runtime structure: canonical `YoyoPodApp` in `yoyopod/core/application.py`, boot in `yoyopod/core/bootstrap/`, loop in `yoyopod/core/loop.py`, workers in `yoyopod/core/workers/`, diagnostics in `yoyopod/core/diagnostics/`; shared `scheduler -> bus -> ui` runtime seam under `yoyopod/core/`
+- Backends: `yoyopod/backends/{music,voip,voice,cloud,network,power,location}/` — production audio is mpv (`music/`), production VoIP is Liblinphone (`voip/`)
+- UI: `yoyopod/ui/{lvgl_binding,display,input,screens}/` — raw LVGL confined to `lvgl_binding/`
+- Cross-language: Go cloud voice worker under `workers/voice/go/` (separate Go module, gated by CI)
 - Production service templates: `deploy/systemd/`
 - CLI package: `yoyopod_cli/` (flat, single `yoyopod` entry point)
+- Tests: `tests/` (pytest testpath; Python 3.12+)
 
 Pi lanes and bootstrap
 - Dev lane: mutable hardware-testing checkout at `/opt/yoyopod-dev/checkout`, venv at `/opt/yoyopod-dev/venv`, service `yoyopod-dev.service`.
@@ -76,6 +77,8 @@ Source-of-truth files
 - `docs/POWER_MODULE.md`
 - `docs/LVGL_MIGRATION_PLAN.md`
 - `docs/LOCAL_FIRST_MUSIC_PLAN.md`
+- `docs/RUNTIME_EVENT_FLOW.md`
+- `docs/QUALITY_GATES.md`
 
 High-value commands
 - Install/test env: `uv sync --extra dev`
