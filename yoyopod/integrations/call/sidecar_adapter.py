@@ -48,6 +48,7 @@ from yoyopod.integrations.call.models import (
 from yoyopod.integrations.call.sidecar_protocol import (
     Accept,
     CallStateChanged,
+    CancelVoiceNoteRecording,
     Configure,
     Dial,
     Error,
@@ -65,8 +66,11 @@ from yoyopod.integrations.call.sidecar_protocol import (
     RegistrationStateChanged,
     Reject,
     SendTextMessage,
+    SendVoiceNote,
     SetMute,
     SetVolume,
+    StartVoiceNoteRecording,
+    StopVoiceNoteRecording,
     Unregister,
     send_message,
 )
@@ -157,6 +161,22 @@ class SidecarBackendAdapter:
 
         if isinstance(command, SendTextMessage):
             self._handle_send_text_message(command)
+            return
+
+        if isinstance(command, StartVoiceNoteRecording):
+            self._handle_start_voice_note_recording(command)
+            return
+
+        if isinstance(command, StopVoiceNoteRecording):
+            self._handle_stop_voice_note_recording(command)
+            return
+
+        if isinstance(command, CancelVoiceNoteRecording):
+            self._handle_cancel_voice_note_recording(command)
+            return
+
+        if isinstance(command, SendVoiceNote):
+            self._handle_send_voice_note(command)
             return
 
         self._safe_send(
@@ -455,6 +475,106 @@ class SidecarBackendAdapter:
                 Error(
                     code="send_text_failed",
                     message="backend.send_text_message returned no id",
+                    cmd_id=command.cmd_id,
+                )
+            )
+            return
+        with self._message_id_lock:
+            self._outbound_message_id_map[backend_id] = command.client_id
+
+    def _handle_start_voice_note_recording(self, command: StartVoiceNoteRecording) -> None:
+        backend = self._require_backend(command.cmd_id)
+        if backend is None:
+            return
+        try:
+            success = backend.start_voice_note_recording(command.file_path)
+        except Exception as exc:
+            self._safe_send(
+                Error(
+                    code="start_voice_note_failed",
+                    message=f"backend.start_voice_note_recording raised: {exc}",
+                    cmd_id=command.cmd_id,
+                )
+            )
+            return
+        if not success:
+            self._safe_send(
+                Error(
+                    code="start_voice_note_failed",
+                    message="backend.start_voice_note_recording returned False",
+                    cmd_id=command.cmd_id,
+                )
+            )
+
+    def _handle_stop_voice_note_recording(self, command: StopVoiceNoteRecording) -> None:
+        backend = self._require_backend(command.cmd_id)
+        if backend is None:
+            return
+        try:
+            # Return value (duration) is intentionally discarded — main computes
+            # an optimistic monotonic-elapsed duration on its side and the
+            # corrected value travels back via the eventual MessageReceived
+            # event for the voice-note kind. Discarding here keeps the
+            # protocol command/event symmetric with the rest of the surface.
+            backend.stop_voice_note_recording()
+        except Exception as exc:
+            self._safe_send(
+                Error(
+                    code="stop_voice_note_failed",
+                    message=f"backend.stop_voice_note_recording raised: {exc}",
+                    cmd_id=command.cmd_id,
+                )
+            )
+
+    def _handle_cancel_voice_note_recording(self, command: CancelVoiceNoteRecording) -> None:
+        backend = self._require_backend(command.cmd_id)
+        if backend is None:
+            return
+        try:
+            success = backend.cancel_voice_note_recording()
+        except Exception as exc:
+            self._safe_send(
+                Error(
+                    code="cancel_voice_note_failed",
+                    message=f"backend.cancel_voice_note_recording raised: {exc}",
+                    cmd_id=command.cmd_id,
+                )
+            )
+            return
+        if not success:
+            self._safe_send(
+                Error(
+                    code="cancel_voice_note_failed",
+                    message="backend.cancel_voice_note_recording returned False",
+                    cmd_id=command.cmd_id,
+                )
+            )
+
+    def _handle_send_voice_note(self, command: SendVoiceNote) -> None:
+        backend = self._require_backend(command.cmd_id)
+        if backend is None:
+            return
+        try:
+            backend_id = backend.send_voice_note(
+                command.uri,
+                file_path=command.file_path,
+                duration_ms=command.duration_ms,
+                mime_type=command.mime_type,
+            )
+        except Exception as exc:
+            self._safe_send(
+                Error(
+                    code="send_voice_note_failed",
+                    message=f"backend.send_voice_note raised: {exc}",
+                    cmd_id=command.cmd_id,
+                )
+            )
+            return
+        if not backend_id:
+            self._safe_send(
+                Error(
+                    code="send_voice_note_failed",
+                    message="backend.send_voice_note returned no id",
                     cmd_id=command.cmd_id,
                 )
             )

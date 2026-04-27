@@ -38,6 +38,7 @@ from yoyopod.integrations.call.sidecar_adapter import SidecarBackendAdapter
 from yoyopod.integrations.call.sidecar_protocol import (
     Accept,
     CallStateChanged,
+    CancelVoiceNoteRecording,
     Configure,
     Dial,
     Error,
@@ -55,8 +56,11 @@ from yoyopod.integrations.call.sidecar_protocol import (
     RegistrationStateChanged,
     Reject,
     SendTextMessage,
+    SendVoiceNote,
     SetMute,
     SetVolume,
+    StartVoiceNoteRecording,
+    StopVoiceNoteRecording,
     Unregister,
     decode_event,
 )
@@ -1148,3 +1152,277 @@ def test_backend_message_failed_forwards_and_drops_mapping(
     assert matches and matches[-1].message_id == "client-msg-F"
     assert matches[-1].reason == "timeout"
     assert adapter._outbound_message_id_map == {}
+
+
+# ---------------------------------------------------------------------------
+# Voice notes (Phase 2B.4b)
+# ---------------------------------------------------------------------------
+
+
+def test_start_voice_note_recording_invokes_backend(
+    adapter: SidecarBackendAdapter,
+    parent_conn: Connection,
+    mock_backend: MockVoIPBackend,
+) -> None:
+    adapter.handle_command(Configure(config=_config_dict()))
+    adapter.handle_command(Register(cmd_id=1))
+    _drain(parent_conn)
+
+    adapter.handle_command(
+        StartVoiceNoteRecording(file_path="/tmp/voice-1.wav", cmd_id=50)
+    )
+    assert mock_backend.recording_active is True
+    assert mock_backend.recording_path == "/tmp/voice-1.wav"
+    events = _drain(parent_conn, timeout=0.1)
+    assert not any(isinstance(event, Error) for event in events), events
+
+
+def test_start_voice_note_recording_before_configure_returns_not_configured(
+    adapter: SidecarBackendAdapter, parent_conn: Connection
+) -> None:
+    adapter.handle_command(
+        StartVoiceNoteRecording(file_path="/tmp/voice-1.wav", cmd_id=51)
+    )
+    events = _drain(parent_conn)
+    errors = [event for event in events if isinstance(event, Error)]
+    assert any(error.code == "not_configured" and error.cmd_id == 51 for error in errors), events
+
+
+def test_start_voice_note_recording_when_backend_returns_false_emits_error(
+    parent_conn: Connection, child_conn: Connection
+) -> None:
+    class _RecordRefusingBackend(MockVoIPBackend):
+        def start_voice_note_recording(self, file_path: str) -> bool:  # type: ignore[override]
+            return False
+
+    backend = _RecordRefusingBackend()
+    adapter = SidecarBackendAdapter(conn=child_conn, backend_factory=lambda _config: backend)
+    try:
+        adapter.handle_command(Configure(config=_config_dict()))
+        _drain(parent_conn)
+        adapter.handle_command(
+            StartVoiceNoteRecording(file_path="/tmp/voice-1.wav", cmd_id=52)
+        )
+        events = _drain(parent_conn)
+        errors = [event for event in events if isinstance(event, Error)]
+        assert any(
+            error.code == "start_voice_note_failed" and error.cmd_id == 52 for error in errors
+        ), events
+    finally:
+        adapter.shutdown()
+
+
+def test_start_voice_note_recording_when_backend_raises_emits_error(
+    parent_conn: Connection, child_conn: Connection
+) -> None:
+    class _RaisingBackend(MockVoIPBackend):
+        def start_voice_note_recording(self, file_path: str) -> bool:  # type: ignore[override]
+            raise RuntimeError("alsa busy")
+
+    backend = _RaisingBackend()
+    adapter = SidecarBackendAdapter(conn=child_conn, backend_factory=lambda _config: backend)
+    try:
+        adapter.handle_command(Configure(config=_config_dict()))
+        _drain(parent_conn)
+        adapter.handle_command(
+            StartVoiceNoteRecording(file_path="/tmp/voice-1.wav", cmd_id=53)
+        )
+        events = _drain(parent_conn)
+        errors = [event for event in events if isinstance(event, Error)]
+        assert any(
+            error.code == "start_voice_note_failed"
+            and error.cmd_id == 53
+            and "alsa busy" in error.message
+            for error in errors
+        ), events
+    finally:
+        adapter.shutdown()
+
+
+def test_stop_voice_note_recording_invokes_backend(
+    adapter: SidecarBackendAdapter,
+    parent_conn: Connection,
+    mock_backend: MockVoIPBackend,
+) -> None:
+    adapter.handle_command(Configure(config=_config_dict()))
+    adapter.handle_command(Register(cmd_id=1))
+    _drain(parent_conn)
+
+    adapter.handle_command(
+        StartVoiceNoteRecording(file_path="/tmp/voice-1.wav", cmd_id=60)
+    )
+    _drain(parent_conn, timeout=0.1)
+
+    adapter.handle_command(StopVoiceNoteRecording(cmd_id=61))
+    assert "record-stop" in mock_backend.commands
+    assert mock_backend.recording_active is False
+    events = _drain(parent_conn, timeout=0.1)
+    assert not any(isinstance(event, Error) for event in events), events
+
+
+def test_stop_voice_note_recording_when_backend_raises_emits_error(
+    parent_conn: Connection, child_conn: Connection
+) -> None:
+    class _RaisingStopBackend(MockVoIPBackend):
+        def stop_voice_note_recording(self) -> int | None:  # type: ignore[override]
+            raise RuntimeError("file finalize failed")
+
+    backend = _RaisingStopBackend()
+    adapter = SidecarBackendAdapter(conn=child_conn, backend_factory=lambda _config: backend)
+    try:
+        adapter.handle_command(Configure(config=_config_dict()))
+        _drain(parent_conn)
+
+        adapter.handle_command(StopVoiceNoteRecording(cmd_id=62))
+        events = _drain(parent_conn)
+        errors = [event for event in events if isinstance(event, Error)]
+        assert any(
+            error.code == "stop_voice_note_failed"
+            and error.cmd_id == 62
+            and "file finalize failed" in error.message
+            for error in errors
+        ), events
+    finally:
+        adapter.shutdown()
+
+
+def test_cancel_voice_note_recording_invokes_backend(
+    adapter: SidecarBackendAdapter,
+    parent_conn: Connection,
+    mock_backend: MockVoIPBackend,
+) -> None:
+    adapter.handle_command(Configure(config=_config_dict()))
+    adapter.handle_command(Register(cmd_id=1))
+    _drain(parent_conn)
+
+    adapter.handle_command(
+        StartVoiceNoteRecording(file_path="/tmp/voice-1.wav", cmd_id=70)
+    )
+    _drain(parent_conn, timeout=0.1)
+    adapter.handle_command(CancelVoiceNoteRecording(cmd_id=71))
+    assert "record-cancel" in mock_backend.commands
+    assert mock_backend.recording_active is False
+    events = _drain(parent_conn, timeout=0.1)
+    assert not any(isinstance(event, Error) for event in events), events
+
+
+def test_cancel_voice_note_recording_when_backend_returns_false_emits_error(
+    parent_conn: Connection, child_conn: Connection
+) -> None:
+    class _CancelRefusingBackend(MockVoIPBackend):
+        def cancel_voice_note_recording(self) -> bool:  # type: ignore[override]
+            return False
+
+    backend = _CancelRefusingBackend()
+    adapter = SidecarBackendAdapter(conn=child_conn, backend_factory=lambda _config: backend)
+    try:
+        adapter.handle_command(Configure(config=_config_dict()))
+        _drain(parent_conn)
+
+        adapter.handle_command(CancelVoiceNoteRecording(cmd_id=72))
+        events = _drain(parent_conn)
+        errors = [event for event in events if isinstance(event, Error)]
+        assert any(
+            error.code == "cancel_voice_note_failed" and error.cmd_id == 72 for error in errors
+        ), events
+    finally:
+        adapter.shutdown()
+
+
+def test_send_voice_note_records_id_mapping(
+    adapter: SidecarBackendAdapter,
+    parent_conn: Connection,
+    mock_backend: MockVoIPBackend,
+) -> None:
+    adapter.handle_command(Configure(config=_config_dict()))
+    adapter.handle_command(Register(cmd_id=1))
+    _drain(parent_conn)
+
+    mock_backend.next_voice_note_id = "backend-vn-7"
+    adapter.handle_command(
+        SendVoiceNote(
+            uri="sip:bob@example.com",
+            file_path="/tmp/voice-7.wav",
+            duration_ms=4200,
+            mime_type="audio/wav",
+            client_id="client-msg-vn-7",
+            cmd_id=80,
+        )
+    )
+
+    assert any(
+        cmd.startswith("voice-note sip:bob@example.com voice-7.wav 4200 audio/wav")
+        for cmd in mock_backend.commands
+    ), mock_backend.commands
+    events = _drain(parent_conn, timeout=0.1)
+    assert not any(isinstance(event, Error) for event in events), events
+    assert adapter._outbound_message_id_map == {"backend-vn-7": "client-msg-vn-7"}
+
+
+def test_send_voice_note_when_backend_returns_no_id_emits_error(
+    parent_conn: Connection, child_conn: Connection
+) -> None:
+    class _NoIdBackend(MockVoIPBackend):
+        def send_voice_note(self, *args: Any, **kwargs: Any) -> str | None:  # type: ignore[override]
+            return None
+
+    backend = _NoIdBackend()
+    adapter = SidecarBackendAdapter(conn=child_conn, backend_factory=lambda _config: backend)
+    try:
+        adapter.handle_command(Configure(config=_config_dict()))
+        _drain(parent_conn)
+
+        adapter.handle_command(
+            SendVoiceNote(
+                uri="sip:bob@example.com",
+                file_path="/tmp/voice.wav",
+                duration_ms=3000,
+                mime_type="audio/wav",
+                client_id="client-msg-noid",
+                cmd_id=81,
+            )
+        )
+        events = _drain(parent_conn)
+        errors = [event for event in events if isinstance(event, Error)]
+        assert any(
+            error.code == "send_voice_note_failed" and error.cmd_id == 81 for error in errors
+        ), events
+        assert adapter._outbound_message_id_map == {}
+    finally:
+        adapter.shutdown()
+
+
+def test_send_voice_note_when_backend_raises_emits_error(
+    parent_conn: Connection, child_conn: Connection
+) -> None:
+    class _RaisingSendBackend(MockVoIPBackend):
+        def send_voice_note(self, *args: Any, **kwargs: Any) -> str | None:  # type: ignore[override]
+            raise RuntimeError("file transfer rejected")
+
+    backend = _RaisingSendBackend()
+    adapter = SidecarBackendAdapter(conn=child_conn, backend_factory=lambda _config: backend)
+    try:
+        adapter.handle_command(Configure(config=_config_dict()))
+        _drain(parent_conn)
+
+        adapter.handle_command(
+            SendVoiceNote(
+                uri="sip:bob@example.com",
+                file_path="/tmp/voice.wav",
+                duration_ms=3000,
+                mime_type="audio/wav",
+                client_id="client-msg-raise",
+                cmd_id=82,
+            )
+        )
+        events = _drain(parent_conn)
+        errors = [event for event in events if isinstance(event, Error)]
+        assert any(
+            error.code == "send_voice_note_failed"
+            and error.cmd_id == 82
+            and "file transfer rejected" in error.message
+            for error in errors
+        ), events
+        assert adapter._outbound_message_id_map == {}
+    finally:
+        adapter.shutdown()

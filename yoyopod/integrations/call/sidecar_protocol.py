@@ -135,6 +135,61 @@ class SendTextMessage:
 
 
 @dataclass(frozen=True, slots=True)
+class StartVoiceNoteRecording:
+    """Begin recording a voice note into ``file_path`` on the sidecar's filesystem.
+
+    Main and sidecar share the host filesystem on the Pi, so ``file_path``
+    is a path the main process picked under
+    :attr:`yoyopod.integrations.call.models.VoIPConfig.voice_note_store_dir`
+    that the sidecar writes into directly. Main also records the start
+    time on its own clock so :class:`StopVoiceNoteRecording` can return
+    an optimistic duration synchronously without a round-trip.
+    """
+
+    file_path: str
+    cmd_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StopVoiceNoteRecording:
+    """Finalize the active voice-note recording.
+
+    The sidecar's actual file duration may differ from main's
+    monotonic-elapsed measurement by a small amount (IPC start/stop
+    latency + WAV header finalization). The corrected value travels
+    back in the eventual :class:`MessageReceived` event for the
+    voice-note kind.
+    """
+
+    cmd_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CancelVoiceNoteRecording:
+    """Discard the active voice-note recording without sending it."""
+
+    cmd_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SendVoiceNote:
+    """Send a previously-recorded voice note to the given URI.
+
+    ``client_id`` follows the same mint-on-main-side pattern used by
+    :class:`SendTextMessage`. ``duration_ms`` is the optimistic duration
+    main computed from monotonic-elapsed; the sidecar passes it straight
+    through to liblinphone so the peer sees it in the message metadata.
+    """
+
+    uri: str
+    file_path: str
+    duration_ms: int
+    mime_type: str
+    client_id: str
+    cmd_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Ping:
     """Liveness probe. Sidecar must echo back :class:`Pong`."""
 
@@ -303,6 +358,10 @@ _COMMAND_REGISTRY: dict[str, type[Any]] = {
     "SetMute": SetMute,
     "SetVolume": SetVolume,
     "SendTextMessage": SendTextMessage,
+    "StartVoiceNoteRecording": StartVoiceNoteRecording,
+    "StopVoiceNoteRecording": StopVoiceNoteRecording,
+    "CancelVoiceNoteRecording": CancelVoiceNoteRecording,
+    "SendVoiceNote": SendVoiceNote,
     "Ping": Ping,
     "Shutdown": Shutdown,
 }

@@ -36,6 +36,7 @@ from yoyopod.integrations.call.sidecar_main import run_sidecar
 from yoyopod.integrations.call.sidecar_protocol import (
     Accept,
     CallStateChanged,
+    CancelVoiceNoteRecording,
     Configure,
     Dial,
     Hangup,
@@ -47,6 +48,9 @@ from yoyopod.integrations.call.sidecar_protocol import (
     Register,
     RegistrationStateChanged,
     SendTextMessage,
+    SendVoiceNote,
+    StartVoiceNoteRecording,
+    StopVoiceNoteRecording,
     Unregister,
 )
 from yoyopod.integrations.call.sidecar_supervisor import SidecarSupervisor
@@ -321,6 +325,95 @@ def test_inbound_message_received_round_trips(
             and event.text == "ping from bob"
             and event.kind == MessageKind.TEXT.value
             and event.unread is True
+            for event in collected_events
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# Voice notes round-trip (Phase 2B.4b)
+# ---------------------------------------------------------------------------
+
+
+def test_voice_note_record_stop_round_trips(
+    supervisor: SidecarSupervisor,
+    shared_mock_backend: MockVoIPBackend,
+    collected_events: list[Any],
+) -> None:
+    """Start + Stop voice-note commands invoke the backend through the wire."""
+
+    supervisor.send(Configure(config=_serialized_config(), cmd_id=1))
+    supervisor.send(Register(cmd_id=2))
+    assert _wait_for(lambda: shared_mock_backend.running)
+
+    supervisor.send(StartVoiceNoteRecording(file_path="/tmp/voice-loop.wav", cmd_id=3))
+    assert _wait_for(lambda: shared_mock_backend.recording_active)
+
+    supervisor.send(StopVoiceNoteRecording(cmd_id=4))
+    assert _wait_for(lambda: not shared_mock_backend.recording_active)
+    assert "record-stop" in shared_mock_backend.commands
+
+
+def test_voice_note_cancel_round_trips(
+    supervisor: SidecarSupervisor,
+    shared_mock_backend: MockVoIPBackend,
+    collected_events: list[Any],
+) -> None:
+    supervisor.send(Configure(config=_serialized_config(), cmd_id=1))
+    supervisor.send(Register(cmd_id=2))
+    assert _wait_for(lambda: shared_mock_backend.running)
+
+    supervisor.send(StartVoiceNoteRecording(file_path="/tmp/voice-cancel.wav", cmd_id=3))
+    assert _wait_for(lambda: shared_mock_backend.recording_active)
+
+    supervisor.send(CancelVoiceNoteRecording(cmd_id=4))
+    assert _wait_for(lambda: not shared_mock_backend.recording_active)
+    assert "record-cancel" in shared_mock_backend.commands
+
+
+def test_send_voice_note_round_trips_with_id_translation(
+    supervisor: SidecarSupervisor,
+    shared_mock_backend: MockVoIPBackend,
+    collected_events: list[Any],
+) -> None:
+    """SendVoiceNote -> backend.send_voice_note + delivery event re-keyed to client_id."""
+
+    supervisor.send(Configure(config=_serialized_config(), cmd_id=1))
+    supervisor.send(Register(cmd_id=2))
+    assert _wait_for(lambda: shared_mock_backend.running)
+
+    shared_mock_backend.next_voice_note_id = "backend-vn-loop"
+    supervisor.send(
+        SendVoiceNote(
+            uri="sip:bob@example.com",
+            file_path="/tmp/voice-7.wav",
+            duration_ms=4200,
+            mime_type="audio/wav",
+            client_id="client-msg-vn-loop",
+            cmd_id=5,
+        )
+    )
+    assert _wait_for(
+        lambda: any(
+            cmd.startswith("voice-note sip:bob@example.com voice-7.wav 4200 audio/wav")
+            for cmd in shared_mock_backend.commands
+        )
+    )
+
+    # Drive the delivery event from the backend; sidecar must re-key the
+    # backend id to the client id main minted, so the on-wire delivery
+    # event carries ``client-msg-vn-loop``.
+    shared_mock_backend.emit(
+        BackendMessageDeliveryChanged(
+            message_id="backend-vn-loop",
+            delivery_state=MessageDeliveryState.DELIVERED,
+        )
+    )
+    assert _wait_for(
+        lambda: any(
+            isinstance(event, MessageDeliveryChanged)
+            and event.message_id == "client-msg-vn-loop"
+            and event.delivery_state == MessageDeliveryState.DELIVERED.value
             for event in collected_events
         )
     )

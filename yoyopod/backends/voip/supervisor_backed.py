@@ -19,16 +19,20 @@ Translation responsibilities:
   to the callbacks registered via :meth:`on_event` so callers do not
   need to know whether the backend is in-process or sidecar-backed.
 
-Phase 2B.3 ships the call surface only. Messaging and voice-note
-methods raise :class:`NotImplementedError` so callers fail loud rather
-than silently dropping IM frames; Phase 2B.4 will extend the protocol
-and wire those through.
+Phase 2B.4 wired text messaging. Phase 2B.4b adds voice-note recording
+and sending. :meth:`stop_voice_note_recording` returns an optimistic
+duration computed from main's monotonic clock (start-to-stop elapsed)
+so the existing synchronous :class:`VoIPBackend` contract is preserved
+without a blocking pipe round-trip; the sidecar's actual file duration
+arrives later in the corresponding :class:`MessageReceived` event and
+the manager can reconcile it into the persisted record.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -57,6 +61,7 @@ from yoyopod.integrations.call.models import (
 from yoyopod.integrations.call.sidecar_protocol import (
     Accept,
     CallStateChanged as ProtocolCallStateChanged,
+    CancelVoiceNoteRecording,
     Configure,
     Dial,
     Error as ProtocolError,
@@ -75,16 +80,13 @@ from yoyopod.integrations.call.sidecar_protocol import (
     RegistrationStateChanged as ProtocolRegistrationStateChanged,
     Reject,
     SendTextMessage,
+    SendVoiceNote,
     SetMute,
+    StartVoiceNoteRecording,
+    StopVoiceNoteRecording,
     Unregister,
 )
 from yoyopod.integrations.call.sidecar_supervisor import SidecarSupervisor
-
-_NOT_SUPPORTED_MESSAGE = (
-    "Messaging and voice notes are not yet wired through the VoIP sidecar; "
-    "Phase 2B.4 will extend the protocol. Disable YOYOPOD_VOIP_SIDECAR to "
-    "fall back to the in-process backend if you need them now."
-)
 
 
 # States that mean the call has fully ended and the tracked id should be cleared.
@@ -159,6 +161,17 @@ class SupervisorBackedBackend:
         self._call_lock = threading.Lock()
         self._current_call_id: str | None = None
 
+        # Voice-note recording timing. ``stop_voice_note_recording`` is
+        # called inline from the LVGL UI event handler and must return a
+        # duration synchronously (per the ``VoIPBackend`` contract). We
+        # therefore record the start time on the main side when the
+        # recording command is sent, and report ``now - start`` on stop.
+        # The sidecar's actual file duration arrives later in the
+        # ``MessageReceived`` event for the voice-note kind; the manager
+        # can reconcile the persisted record then.
+        self._recording_lock = threading.Lock()
+        self._recording_start_monotonic: float | None = None
+
     # ------------------------------------------------------------------
     # VoIPBackend surface
     # ------------------------------------------------------------------
@@ -206,6 +219,7 @@ class SupervisorBackedBackend:
         self._supervisor.stop()
         self.running = False
         self._reset_call_state()
+        self._reset_recording_state()
 
     def _on_supervisor_ready(self) -> None:
         """Re-issue Configure + Register after the supervisor (re)starts the sidecar.
@@ -235,6 +249,11 @@ class SupervisorBackedBackend:
         # the sidecar bounced and we are re-registering.
         self._dispatch(BackendRegistrationStateChanged(state=RegistrationState.PROGRESS))
         self._reset_call_state()
+        # The fresh sidecar has no in-flight recording, so any tracked
+        # start time on the main side is stale. Drop it so a follow-up
+        # stop_voice_note_recording call does not return a duration
+        # measured against a recording that no longer exists.
+        self._reset_recording_state()
         logger.info("VoIP sidecar re-Configured after supervisor restart")
 
     def iterate(self) -> int:
@@ -319,19 +338,67 @@ class SupervisorBackedBackend:
         return client_id
 
     def start_voice_note_recording(self, file_path: str) -> bool:
-        """Not yet supported in sidecar mode."""
+        """Start a sidecar-side voice-note recording into ``file_path``.
 
-        raise NotImplementedError(_NOT_SUPPORTED_MESSAGE)
+        Records the start time on the main side so
+        :meth:`stop_voice_note_recording` can return an optimistic
+        duration synchronously without a pipe round-trip. Returns
+        ``False`` if the supervisor refuses the command (sidecar down /
+        permanently failed); on success returns ``True`` immediately,
+        any backend-side failure surfaces later as a sidecar
+        ``Error(code="start_voice_note_failed")`` and is logged.
+        """
+
+        try:
+            self._supervisor.send(StartVoiceNoteRecording(file_path=file_path))
+        except Exception as exc:
+            logger.error("VoIP sidecar refused StartVoiceNoteRecording: {}", exc)
+            return False
+        with self._recording_lock:
+            self._recording_start_monotonic = time.monotonic()
+        return True
 
     def stop_voice_note_recording(self) -> int | None:
-        """Not yet supported in sidecar mode."""
+        """Return the optimistic monotonic-elapsed duration in milliseconds.
 
-        raise NotImplementedError(_NOT_SUPPORTED_MESSAGE)
+        Sends the stop command to the sidecar (best-effort) and returns
+        the elapsed wall time since
+        :meth:`start_voice_note_recording`. Returns ``None`` if no
+        recording was started, or if the start time was already
+        consumed by a prior stop/cancel.
+        """
+
+        with self._recording_lock:
+            start = self._recording_start_monotonic
+            self._recording_start_monotonic = None
+        if start is None:
+            return None
+        try:
+            self._supervisor.send(StopVoiceNoteRecording())
+        except Exception as exc:
+            logger.error("VoIP sidecar refused StopVoiceNoteRecording: {}", exc)
+            # Returning the elapsed duration here is still useful — main can
+            # surface "recording too long" UX immediately even if the
+            # sidecar's stop command did not land. The cancel path would
+            # have returned False instead.
+        return max(0, int((time.monotonic() - start) * 1000))
 
     def cancel_voice_note_recording(self) -> bool:
-        """Not yet supported in sidecar mode."""
+        """Discard the active voice-note recording.
 
-        raise NotImplementedError(_NOT_SUPPORTED_MESSAGE)
+        Clears the start-time tracker locally and best-effort-sends the
+        cancel command to the sidecar. Returns ``False`` only if the
+        supervisor refuses the command outright.
+        """
+
+        with self._recording_lock:
+            self._recording_start_monotonic = None
+        try:
+            self._supervisor.send(CancelVoiceNoteRecording())
+        except Exception as exc:
+            logger.error("VoIP sidecar refused CancelVoiceNoteRecording: {}", exc)
+            return False
+        return True
 
     def send_voice_note(
         self,
@@ -341,9 +408,29 @@ class SupervisorBackedBackend:
         duration_ms: int,
         mime_type: str,
     ) -> str | None:
-        """Not yet supported in sidecar mode."""
+        """Send a previously-recorded voice note via the sidecar.
 
-        raise NotImplementedError(_NOT_SUPPORTED_MESSAGE)
+        Mints a ``client_id`` on the main side and includes it in the
+        :class:`SendVoiceNote` command; the sidecar adapter records the
+        ``backend_id -> client_id`` mapping so subsequent message
+        events for this voice note are re-keyed before they reach main.
+        """
+
+        client_id = f"client-msg-{uuid.uuid4()}"
+        try:
+            self._supervisor.send(
+                SendVoiceNote(
+                    uri=sip_address,
+                    file_path=file_path,
+                    duration_ms=duration_ms,
+                    mime_type=mime_type,
+                    client_id=client_id,
+                )
+            )
+        except Exception as exc:
+            logger.error("VoIP sidecar refused SendVoiceNote: {}", exc)
+            return None
+        return client_id
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -370,6 +457,10 @@ class SupervisorBackedBackend:
     def _reset_call_state(self) -> None:
         self._set_current_call_id(None)
 
+    def _reset_recording_state(self) -> None:
+        with self._recording_lock:
+            self._recording_start_monotonic = None
+
     def _on_protocol_event(self, event: Any) -> None:
         """Translate a protocol event from the sidecar into a ``VoIPEvent``."""
 
@@ -393,6 +484,7 @@ class SupervisorBackedBackend:
             # recovery paths can react.
             if event.code == "backend_stopped":
                 self._reset_call_state()
+                self._reset_recording_state()
                 self._dispatch(BackendStopped(reason=event.message))
                 return
             # Non-terminal sidecar errors that nonetheless mean the call did

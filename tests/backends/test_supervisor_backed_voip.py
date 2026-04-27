@@ -39,6 +39,7 @@ from yoyopod.integrations.call.models import (
 from yoyopod.integrations.call.sidecar_main import run_sidecar
 from yoyopod.integrations.call.sidecar_protocol import (
     Accept,
+    CancelVoiceNoteRecording,
     Configure,
     Dial,
     Error as ProtocolError,
@@ -51,7 +52,10 @@ from yoyopod.integrations.call.sidecar_protocol import (
     Ready,
     Register,
     RegistrationStateChanged as ProtocolRegistrationStateChanged,
+    SendVoiceNote,
     SetMute,
+    StartVoiceNoteRecording,
+    StopVoiceNoteRecording,
     Unregister,
     CallStateChanged as ProtocolCallStateChanged,
 )
@@ -200,31 +204,6 @@ def test_iterate_returns_zero_and_get_iterate_metrics_returns_none() -> None:
     backend = SupervisorBackedBackend(_config(), supervisor=_FakeSupervisor())
     assert backend.iterate() == 0
     assert backend.get_iterate_metrics() is None
-
-
-@pytest.mark.parametrize(
-    "method, args",
-    [
-        # Voice note methods still raise NotImplementedError in Phase 2B.4;
-        # ``send_text_message`` was wired in this phase and now sends a
-        # SendTextMessage command (covered by its own dedicated tests below).
-        ("start_voice_note_recording", ("/tmp/note.wav",)),
-        ("stop_voice_note_recording", ()),
-        ("cancel_voice_note_recording", ()),
-    ],
-)
-def test_voice_note_methods_raise_not_implemented(method: str, args: tuple) -> None:
-    backend = SupervisorBackedBackend(_config(), supervisor=_FakeSupervisor())
-    with pytest.raises(NotImplementedError, match="Messaging and voice notes"):
-        getattr(backend, method)(*args)
-
-
-def test_send_voice_note_raises_not_implemented() -> None:
-    backend = SupervisorBackedBackend(_config(), supervisor=_FakeSupervisor())
-    with pytest.raises(NotImplementedError, match="Messaging and voice notes"):
-        backend.send_voice_note(
-            "sip:bob", file_path="/tmp/note.wav", duration_ms=1500, mime_type="audio/wav"
-        )
 
 
 def test_stop_sends_unregister_and_clears_call_state() -> None:
@@ -660,6 +639,185 @@ def test_unknown_registration_state_logs_and_drops() -> None:
 
     backend._on_protocol_event(ProtocolRegistrationStateChanged(state="bogus", reason=None))
     assert received == []
+
+
+# ---------------------------------------------------------------------------
+# Voice notes (Phase 2B.4b)
+# ---------------------------------------------------------------------------
+
+
+def test_start_voice_note_recording_sends_command_and_records_start_time() -> None:
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+
+    assert backend.start_voice_note_recording("/tmp/voice-1.wav") is True
+    assert isinstance(fake.sent[-1], StartVoiceNoteRecording)
+    assert fake.sent[-1].file_path == "/tmp/voice-1.wav"
+    assert backend._recording_start_monotonic is not None
+
+
+def test_start_voice_note_recording_returns_false_when_supervisor_send_fails() -> None:
+    fake = _FakeSupervisor()
+    fake.send_should_raise = RuntimeError("sidecar pipe closed")
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+
+    assert backend.start_voice_note_recording("/tmp/voice-1.wav") is False
+    # Start time must not be recorded if the command did not even ship.
+    assert backend._recording_start_monotonic is None
+
+
+def test_stop_voice_note_recording_returns_optimistic_duration() -> None:
+    """Duration is computed from monotonic-elapsed since start, in milliseconds."""
+
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+
+    # Plant a known start time roughly 250ms in the past.
+    fake_start = time.monotonic() - 0.25
+    backend._recording_start_monotonic = fake_start
+
+    duration = backend.stop_voice_note_recording()
+    assert duration is not None
+    # Small tolerance under 250ms to absorb floating-point rounding in int().
+    assert duration >= 245
+    # Generous upper bound for slow CI; 250ms baseline + any test scheduling jitter.
+    assert duration < 5000
+    assert isinstance(fake.sent[-1], StopVoiceNoteRecording)
+    # Start time was consumed.
+    assert backend._recording_start_monotonic is None
+
+
+def test_stop_voice_note_recording_returns_none_when_no_start() -> None:
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+
+    assert backend.stop_voice_note_recording() is None
+    # Nothing to stop -> no command shipped.
+    assert not any(isinstance(cmd, StopVoiceNoteRecording) for cmd in fake.sent)
+
+
+def test_stop_voice_note_recording_still_returns_duration_when_send_fails() -> None:
+    """If the pipe drops between start and stop we still surface the optimistic duration.
+
+    The recording exists locally on the sidecar's filesystem if it was
+    actually started; the user already saw "recording" feedback. Returning
+    a duration here lets the manager render the review screen / "too long"
+    UX even when the cancel command itself cannot land.
+    """
+
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+    backend._recording_start_monotonic = time.monotonic() - 0.1
+
+    fake.send_should_raise = RuntimeError("sidecar pipe closed mid-recording")
+    duration = backend.stop_voice_note_recording()
+
+    assert duration is not None
+    # Floating-point rounding in ``int()`` can shave off a millisecond, so
+    # leave a small tolerance below the 100ms seed.
+    assert duration >= 95
+    # And the start time still gets consumed so a follow-up stop returns None.
+    assert backend._recording_start_monotonic is None
+    assert backend.stop_voice_note_recording() is None
+
+
+def test_cancel_voice_note_recording_clears_start_time_and_sends_command() -> None:
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+    backend._recording_start_monotonic = time.monotonic()
+
+    assert backend.cancel_voice_note_recording() is True
+    assert backend._recording_start_monotonic is None
+    assert isinstance(fake.sent[-1], CancelVoiceNoteRecording)
+
+
+def test_cancel_voice_note_recording_returns_false_when_send_fails() -> None:
+    fake = _FakeSupervisor()
+    fake.send_should_raise = RuntimeError("sidecar pipe closed")
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+    backend._recording_start_monotonic = time.monotonic()
+
+    assert backend.cancel_voice_note_recording() is False
+    # Local state is still cleared so a subsequent stop does not return a stale duration.
+    assert backend._recording_start_monotonic is None
+
+
+def test_send_voice_note_returns_client_id_and_sends_command() -> None:
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+
+    result = backend.send_voice_note(
+        "sip:bob@example.com",
+        file_path="/tmp/voice-1.wav",
+        duration_ms=4200,
+        mime_type="audio/wav",
+    )
+    assert result is not None
+    assert result.startswith("client-msg-")
+    assert isinstance(fake.sent[-1], SendVoiceNote)
+    assert fake.sent[-1].uri == "sip:bob@example.com"
+    assert fake.sent[-1].file_path == "/tmp/voice-1.wav"
+    assert fake.sent[-1].duration_ms == 4200
+    assert fake.sent[-1].mime_type == "audio/wav"
+    assert fake.sent[-1].client_id == result
+
+
+def test_send_voice_note_returns_none_when_supervisor_send_fails() -> None:
+    fake = _FakeSupervisor()
+    fake.send_should_raise = RuntimeError("sidecar pipe closed")
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+
+    result = backend.send_voice_note(
+        "sip:bob@example.com",
+        file_path="/tmp/voice-1.wav",
+        duration_ms=4200,
+        mime_type="audio/wav",
+    )
+    assert result is None
+
+
+def test_stop_clears_recording_state() -> None:
+    """``stop()`` must reset any in-flight recording start time."""
+
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+    backend.start()
+    backend._recording_start_monotonic = time.monotonic()
+
+    backend.stop()
+    assert backend._recording_start_monotonic is None
+
+
+def test_on_supervisor_ready_clears_recording_state_after_restart() -> None:
+    """A transparent supervisor restart drops any in-flight recording.
+
+    The fresh sidecar has no idea about the recording the previous
+    sidecar was capturing, so retaining the start time would let
+    ``stop_voice_note_recording`` return a duration measured against
+    a recording that no longer exists. Reset on restart.
+    """
+
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+    backend.start()
+    backend._recording_start_monotonic = time.monotonic()
+    fake.sent.clear()
+
+    backend._on_supervisor_ready()
+    assert backend._recording_start_monotonic is None
+
+
+def test_backend_stopped_error_clears_recording_state() -> None:
+    """If the sidecar's backend dies mid-recording, drop the local start time."""
+
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+    backend._recording_start_monotonic = time.monotonic()
+
+    backend._on_protocol_event(
+        ProtocolError(code="backend_stopped", message="iterate failed", cmd_id=None)
+    )
+    assert backend._recording_start_monotonic is None
 
 
 # ---------------------------------------------------------------------------
