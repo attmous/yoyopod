@@ -10,6 +10,7 @@ import pytest
 from yoyopod.integrations.call.sidecar_protocol import (
     Accept,
     CallStateChanged,
+    Configure,
     Dial,
     Error,
     Hangup,
@@ -46,7 +47,16 @@ def test_protocol_version_is_pinned() -> None:
     "message",
     [
         Hello(version=1, capabilities=("voip", "messaging")),
-        Register(server="sip.example.com", user="alice", password="hunter2", cmd_id=7),
+        Configure(
+            config={
+                "sip_server": "sip.example.com",
+                "sip_username": "alice",
+                "sip_password": "hunter2",
+                "transport": "tcp",
+            },
+            cmd_id=5,
+        ),
+        Register(cmd_id=7),
         Unregister(),
         Dial(uri="sip:bob@example.com", cmd_id=42),
         Accept(call_id="c-1", cmd_id=8),
@@ -90,7 +100,7 @@ def test_unknown_command_type_raises() -> None:
 
 
 def test_unknown_event_type_raises() -> None:
-    payload = encode(Register(server="x", user="y", password="z"))
+    payload = encode(Register(cmd_id=1))
     with pytest.raises(ProtocolError, match="Unknown event type"):
         decode_event(payload)
 
@@ -139,13 +149,13 @@ def test_send_and_recv_command_over_pipe() -> None:
     child_conn: Connection
     parent_conn, child_conn = multiprocessing.Pipe(duplex=True)
     try:
-        send_message(parent_conn, Register(server="s", user="u", password="p", cmd_id=1))
+        send_message(parent_conn, Register(cmd_id=1))
         send_message(parent_conn, Dial(uri="sip:peer@s", cmd_id=2))
 
         first = recv_command(child_conn)
         second = recv_command(child_conn)
 
-        assert first == Register(server="s", user="u", password="p", cmd_id=1)
+        assert first == Register(cmd_id=1)
         assert second == Dial(uri="sip:peer@s", cmd_id=2)
     finally:
         parent_conn.close()

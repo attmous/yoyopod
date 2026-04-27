@@ -1,54 +1,49 @@
 """VoIP sidecar process entry point.
 
-Phase 2A ships a scaffold sidecar: it completes the protocol handshake,
-echoes :class:`Ping` to :class:`Pong`, and emits a :class:`Log` event
-acknowledging each accepted command without performing any liblinphone
-work. Phase 2B replaces :func:`_dispatch_command` with the real
-:class:`LiblinphoneBackend` integration.
+The sidecar runs the protocol handshake, owns a :class:`VoIPBackend`
+instance, and routes incoming commands and outgoing events through a
+:class:`SidecarBackendAdapter`. The default backend factory lazily imports
+:class:`yoyopod.backends.voip.LiblinphoneBackend` so the import chain is
+only paid in the sidecar process; tests inject a mock-backend factory
+instead.
 
 The function :func:`run_sidecar` is what
-``yoyopod.integrations.call.sidecar_supervisor.SidecarSupervisor`` passes to
-``multiprocessing.Process(target=...)``, so it must remain importable at
-module level for both ``spawn`` and ``forkserver`` start methods.
+:class:`yoyopod.integrations.call.sidecar_supervisor.SidecarSupervisor`
+passes to ``multiprocessing.Process(target=...)`` (or to the loopback
+thread runner), so it must remain importable at module level for
+``spawn`` and ``forkserver`` start methods.
 """
 
 from __future__ import annotations
 
 import sys
 from multiprocessing.connection import Connection
-from typing import Any
 
+from yoyopod.integrations.call.sidecar_adapter import (
+    BackendFactory,
+    SidecarBackendAdapter,
+)
 from yoyopod.integrations.call.sidecar_protocol import (
-    Accept,
-    CallStateChanged,
-    Dial,
     Error,
-    Hangup,
     Hello,
-    Log,
     PROTOCOL_VERSION,
-    Ping,
-    Pong,
     ProtocolError,
     Ready,
-    Register,
-    Reject,
-    SetMute,
-    SetVolume,
     Shutdown,
-    Unregister,
     recv_command,
     send_message,
 )
 
 
-def run_sidecar(conn: Connection) -> None:
+def run_sidecar(conn: Connection, backend_factory: BackendFactory | None = None) -> None:
     """Run the sidecar command loop until :class:`Shutdown` or the pipe closes."""
 
     _set_parent_death_signal()
 
+    factory = backend_factory or _default_liblinphone_factory
+
     try:
-        send_message(conn, Hello(version=PROTOCOL_VERSION, capabilities=("scaffold",)))
+        send_message(conn, Hello(version=PROTOCOL_VERSION, capabilities=("voip",)))
     except (BrokenPipeError, EOFError, OSError):
         return
 
@@ -79,79 +74,27 @@ def run_sidecar(conn: Connection) -> None:
     if not _safe_send(conn, Ready()):
         return
 
-    while True:
-        try:
-            command = recv_command(conn)
-        except (BrokenPipeError, EOFError, OSError):
-            return
-        except ProtocolError as exc:
-            if not _safe_send(conn, Error(code="protocol_error", message=str(exc))):
+    adapter = SidecarBackendAdapter(conn=conn, backend_factory=factory)
+    try:
+        while True:
+            try:
+                command = recv_command(conn)
+            except (BrokenPipeError, EOFError, OSError):
                 return
-            continue
+            except ProtocolError as exc:
+                if not _safe_send(conn, Error(code="protocol_error", message=str(exc))):
+                    return
+                continue
 
-        if isinstance(command, Shutdown):
-            return
+            if isinstance(command, Shutdown):
+                return
 
-        if not _dispatch_command(conn, command):
-            return
-
-
-def _dispatch_command(conn: Connection, command: Any) -> bool:
-    """Handle one command in the Phase 2A scaffold mode. Returns False on pipe close."""
-
-    if isinstance(command, Ping):
-        return _safe_send(conn, Pong(cmd_id=command.cmd_id))
-
-    if isinstance(command, Register):
-        return _safe_send(
-            conn,
-            Log(
-                level="INFO",
-                message=f"scaffold sidecar: would register user={command.user!r}",
-            ),
-        )
-
-    if isinstance(command, Unregister):
-        return _safe_send(conn, Log(level="INFO", message="scaffold sidecar: would unregister"))
-
-    if isinstance(command, Dial):
-        return _safe_send(
-            conn,
-            Log(
-                level="INFO",
-                message=f"scaffold sidecar: would dial uri={command.uri!r}",
-            ),
-        )
-
-    if isinstance(command, (Accept, Reject, Hangup)):
-        action = type(command).__name__.lower()
-        return _safe_send(
-            conn,
-            CallStateChanged(call_id=command.call_id, state=f"scaffold_{action}"),
-        )
-
-    if isinstance(command, (SetMute, SetVolume)):
-        verb = "mute" if isinstance(command, SetMute) else "volume"
-        return _safe_send(
-            conn,
-            Log(
-                level="DEBUG",
-                message=(
-                    f"scaffold sidecar: ignored {verb} change for call_id={command.call_id!r}"
-                ),
-            ),
-        )
-
-    return _safe_send(
-        conn,
-        Log(
-            level="DEBUG",
-            message=f"scaffold sidecar: unhandled command type={type(command).__name__}",
-        ),
-    )
+            adapter.handle_command(command)
+    finally:
+        adapter.shutdown()
 
 
-def _safe_send(conn: Connection, message: Any) -> bool:
+def _safe_send(conn: Connection, message: object) -> bool:
     """Send one message, returning False if the parent has closed the pipe."""
 
     try:
@@ -178,3 +121,21 @@ def _set_parent_death_signal() -> None:
         # If prctl is unavailable the supervisor still detects death via the
         # closed pipe; this is a defense-in-depth signal, not a hard requirement.
         pass
+
+
+def _default_liblinphone_factory(config: object) -> object:
+    """Lazily construct a :class:`LiblinphoneBackend` from the supplied config.
+
+    The import happens here so the sidecar process pays it only once on first
+    :class:`Configure` and tests that inject a different factory never trigger
+    the native shim load.
+    """
+
+    from yoyopod.backends.voip import LiblinphoneBackend
+    from yoyopod.integrations.call.models import VoIPConfig
+
+    if not isinstance(config, VoIPConfig):
+        raise TypeError(
+            f"_default_liblinphone_factory expected VoIPConfig, got {type(config).__name__}"
+        )
+    return LiblinphoneBackend(config)
