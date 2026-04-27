@@ -84,6 +84,23 @@ def _stuck_loopback_target(conn: Connection) -> None:
     _STUCK_LOOPBACK_RELEASE.wait(timeout=10.0)
 
 
+# Released by the handshake-failure test below.
+_STUCK_HANDSHAKE_RELEASE = threading.Event()
+
+
+def _stuck_during_handshake_target(_conn: Connection) -> None:
+    """Loopback target that blocks before sending Hello / Ready.
+
+    The supervisor's handshake will time out, and ``terminate``/``kill`` on
+    the loopback runner are no-ops, so the runner remains alive after the
+    teardown chain in ``_launch_locked``. The supervisor must mark the
+    state as ``"failed"`` instead of scheduling a restart that would
+    spawn a second loopback runner concurrently with this stuck one.
+    """
+
+    _STUCK_HANDSHAKE_RELEASE.wait(timeout=10.0)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -271,6 +288,59 @@ def test_loopback_uses_thread_runner_not_subprocess(
         assert isinstance(supervisor._process, threading.Thread)
     finally:
         supervisor.stop(timeout_seconds=LOOPBACK_BUDGET_SECONDS)
+
+
+def test_loopback_handshake_failure_with_alive_runner_marks_failed(
+    event_handler: Callable[[Any], None],
+) -> None:
+    """Restart must not fire while a stuck handshake-stage runner is alive.
+
+    Codex follow-up on #378: ``_launch_locked``'s handshake-failure cleanup
+    calls ``process.terminate(); process.join(1.0)`` then schedules a
+    restart. For the loopback runner those two calls are no-ops, so a
+    target that blocks during startup leaves the original thread alive
+    while the restart timer launches a second loopback runner alongside it.
+    The supervisor must mark the state ``"failed"`` instead.
+    """
+
+    _STUCK_HANDSHAKE_RELEASE.clear()
+    supervisor = SidecarSupervisor(
+        on_event=event_handler,
+        sidecar_target=_stuck_during_handshake_target,
+        use_loopback=True,
+        handshake_timeout_seconds=0.2,
+        # max_failures is intentionally high so the assertion below proves the
+        # "failed" transition came from the alive-runner check, not from the
+        # cumulative-failures policy.
+        restart_policy=RestartPolicy(
+            max_failures=10,
+            failure_window_seconds=60.0,
+            backoff_initial_seconds=0.05,
+            backoff_factor=1.0,
+            backoff_max_seconds=0.05,
+        ),
+    )
+    try:
+        supervisor.start()
+
+        deadline = time.monotonic() + LOOPBACK_BUDGET_SECONDS
+        while time.monotonic() < deadline:
+            snap = supervisor.state_snapshot()
+            if snap.state == "failed":
+                break
+            time.sleep(0.01)
+
+        snap = supervisor.state_snapshot()
+        assert snap.state == "failed", snap
+        assert snap.permanent_failure_reason is not None
+        assert "did not exit after handshake failure" in snap.permanent_failure_reason
+        # Restart was never scheduled — alive-runner check short-circuits
+        # before _record_failure_and_maybe_restart is reached.
+        assert snap.restart_count == 0, snap
+    finally:
+        # Release the stuck thread so the test process does not carry a leaked
+        # thread into subsequent tests.
+        _STUCK_HANDSHAKE_RELEASE.set()
 
 
 def test_loopback_stop_marks_failed_when_runner_will_not_exit(

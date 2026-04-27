@@ -306,6 +306,23 @@ class SidecarSupervisor:
             if process.is_alive():
                 process.terminate()
                 process.join(timeout=1.0)
+
+            # ``_LoopbackThreadRunner.terminate``/``kill`` are no-ops because
+            # CPython does not expose force-stop for a thread. If the loopback
+            # target blocked during startup and never reached Ready, the
+            # original runner is still alive here. Scheduling a restart in
+            # that state would launch a second loopback runner concurrently
+            # and corrupt test state — surface a permanent failure instead.
+            if process.is_alive():
+                self._state = "failed"
+                self._permanent_failure_reason = (
+                    f"sidecar runner {process.name!r} did not exit after handshake "
+                    "failure; force-termination is unavailable for the loopback runner"
+                )
+                logger.error("Sidecar permanently failed: {}", self._permanent_failure_reason)
+                self._parent_conn = None
+                return
+
             self._process = None
             self._parent_conn = None
             self._record_failure_and_maybe_restart(reason="handshake failed")
