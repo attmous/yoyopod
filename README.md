@@ -120,3 +120,17 @@ For deeper deploy, lane, and troubleshooting flows, read [Dev/Prod Lanes](docs/D
 - [LVGL Migration Plan](docs/LVGL_MIGRATION_PLAN.md)
 
 Historical notes are kept under [docs/archive](docs/archive). Current code and current runtime docs are the source of truth when older plans drift.
+
+## License
+
+YoYoPod is licensed under the **GNU Affero General Public License v3.0 or later** (AGPLv3+). See [LICENSE](LICENSE) for the full text.
+
+The project's own source could be permissively licensed in isolation, but YoYoPod's VoIP backend links [liblinphone](https://gitlab.linphone.org/BC/public/liblinphone), which is itself AGPLv3 (with a paid commercial-license alternative from Belledonne Communications). Distributed binaries that include the liblinphone link therefore fall under AGPLv3 as a combined work.
+
+In practical terms:
+
+- The full source is published in this repository.
+- Anyone receiving a YoYoPod device or firmware artifact is entitled to the corresponding source under the same license.
+- Modifications and derivative works must remain AGPLv3 and must publish their source.
+
+Section 13 of the AGPL ("network use") triggers source-disclosure for software that interacts with users remotely over a network. YoYoPod's typical use (a local user holding the device) does not trigger that clause; a hypothetical future cloud companion that exposes liblinphone functionality remotely would.

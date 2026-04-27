@@ -4,6 +4,8 @@ dynamic = ["version"]
 description = "YoYoPod integrated VoIP and local-first mpv player for Raspberry Pi"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [
     { name = "YoYoPod Team" }
 ]
@@ -11,7 +13,7 @@ keywords = ["yoyopod", "raspberry-pi", "voip", "mpv", "audio-player", "local-fir
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]
