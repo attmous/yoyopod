@@ -124,18 +124,7 @@ remote_app.add_typer(_remote_mode.app, name="mode")
 app.add_typer(remote_app, name="remote")
 
 # --- pi group (commands that run on the Pi directly)
-from yoyopod_cli import (  # noqa: E402
-    pi_network as _pi_network,
-    pi_power as _pi_power,
-    pi_validate as _pi_validate,
-    pi_voip as _pi_voip,
-)
-
-pi_app = typer.Typer(name="pi", help="Commands that run on the Raspberry Pi.", no_args_is_help=True)
-pi_app.add_typer(_pi_validate.app, name="validate")
-pi_app.add_typer(_pi_voip.app, name="voip")
-pi_app.add_typer(_pi_power.app, name="power")
-pi_app.add_typer(_pi_network.app, name="network")
+from yoyopod_cli.pi import app as pi_app  # noqa: E402
 
 app.add_typer(pi_app, name="pi")
 

@@ -1,9 +1,9 @@
-﻿"""Tests for yoyopod_cli.pi_power."""
+﻿"""Tests for yoyopod_cli.pi.power."""
 from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from yoyopod_cli.pi_power import app
+from yoyopod_cli.pi.power import app
 
 
 def test_battery_help() -> None:

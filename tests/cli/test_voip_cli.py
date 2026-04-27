@@ -12,8 +12,9 @@ pytest.importorskip("typer")
 
 from typer.testing import CliRunner
 
-import yoyopod_cli.pi_validate as voip_cli
-import yoyopod_cli.pi_voip as voip_check_cli
+from yoyopod_cli.pi.validate import voip as voip_cli
+from yoyopod_cli.pi.validate import app as pi_validate_app
+import yoyopod_cli.pi.voip as voip_check_cli
 from yoyopod.integrations.call.models import CallState, RegistrationState
 
 runner = CliRunner()
@@ -183,7 +184,7 @@ def test_registration_stability_writes_pass_artifacts(
     monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.app,
+        pi_validate_app,
         [
             "voip",
             "--soak", "registration",
@@ -219,7 +220,7 @@ def test_registration_stability_fails_when_registration_flaps_during_hold(
     monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.app,
+        pi_validate_app,
         [
             "voip",
             "--soak", "registration",
@@ -252,7 +253,7 @@ def test_registration_stability_fails_when_manager_start_fails(
     monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.app,
+        pi_validate_app,
         [
             "voip",
             "--soak", "registration",
@@ -283,7 +284,7 @@ def test_registration_stability_fails_when_registration_never_reaches_ok(
     monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.app,
+        pi_validate_app,
         [
             "voip",
             "--soak", "registration",
@@ -330,7 +331,7 @@ def test_reconnect_drill_fails_when_registration_never_recovers(
     monkeypatch.setattr(voip_cli, "_run_shell_hook", fake_hook)
 
     result = runner.invoke(
-        voip_cli.app,
+        pi_validate_app,
         [
             "voip",
             "--soak", "reconnect",
@@ -388,7 +389,7 @@ def test_reconnect_drill_recovers_after_temporary_drop(
     monkeypatch.setattr(voip_cli, "_run_shell_hook", fake_hook)
 
     result = runner.invoke(
-        voip_cli.app,
+        pi_validate_app,
         [
             "voip",
             "--soak", "reconnect",
@@ -442,7 +443,7 @@ def test_reconnect_drill_without_hooks_exercises_manual_operator_path(
     monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.app,
+        pi_validate_app,
         [
             "voip",
             "--soak", "reconnect",
@@ -526,7 +527,7 @@ def test_reconnect_drill_fails_when_hook_command_returns_non_zero(
         ]
     )
 
-    result = runner.invoke(voip_cli.app, args)
+    result = runner.invoke(pi_validate_app, args)
 
     assert result.exit_code == 1
     summary = _load_summary(tmp_path)
@@ -599,7 +600,7 @@ def test_call_soak_writes_pass_summary(
     monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.app,
+        pi_validate_app,
         [
             "voip",
             "--soak", "call",
@@ -647,7 +648,7 @@ def test_call_soak_fails_when_call_never_reaches_connected_media(
     monkeypatch.setattr(manager, "make_call", fake_make_call)
 
     result = runner.invoke(
-        voip_cli.app,
+        pi_validate_app,
         [
             "voip",
             "--soak", "call",
@@ -693,7 +694,7 @@ def test_call_soak_fails_fast_when_call_returns_to_idle(
     monkeypatch.setattr(manager, "make_call", fake_make_call)
 
     result = runner.invoke(
-        voip_cli.app,
+        pi_validate_app,
         [
             "voip",
             "--soak", "call",
@@ -732,7 +733,7 @@ def test_call_soak_fails_when_manager_start_fails(
     monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.app,
+        pi_validate_app,
         [
             "voip",
             "--soak", "call",
@@ -763,7 +764,7 @@ def test_call_soak_fails_when_call_cannot_be_initiated(
     monkeypatch.setattr(voip_cli, "_build_voip_manager_for_drill", lambda _config_dir: manager)
 
     result = runner.invoke(
-        voip_cli.app,
+        pi_validate_app,
         [
             "voip",
             "--soak", "call",

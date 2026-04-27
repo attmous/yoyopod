@@ -7,7 +7,8 @@ from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
-from yoyopod_cli import pi_validate
+from yoyopod_cli.pi.validate import cloud_voice as pi_validate_cv
+from yoyopod_cli.pi.validate import app as pi_validate_app
 
 
 def _collect_option_names(click_cmd: object) -> set[str]:
@@ -44,22 +45,22 @@ def test_load_env_file_parses_service_style_assignments(tmp_path: Path, monkeypa
     monkeypatch.delenv("YOYOPOD_VOICE_MODE", raising=False)
     monkeypatch.delenv("YOYOPOD_VOICE_WORKER_ENABLED", raising=False)
 
-    loaded = pi_validate._load_cloud_voice_env_file(env_file)
+    loaded = pi_validate_cv._load_cloud_voice_env_file(env_file)
 
     assert loaded == ["OPENAI_API_KEY", "YOYOPOD_VOICE_MODE", "YOYOPOD_VOICE_WORKER_ENABLED"]
-    assert pi_validate.os.environ["OPENAI_API_KEY"] == "sk-test"
-    assert pi_validate.os.environ["YOYOPOD_VOICE_MODE"] == "cloud"
+    assert pi_validate_cv.os.environ["OPENAI_API_KEY"] == "sk-test"
+    assert pi_validate_cv.os.environ["YOYOPOD_VOICE_MODE"] == "cloud"
 
 
 def test_cloud_voice_settings_check_requires_cloud_worker_mode() -> None:
-    settings = pi_validate.VoiceSettings(
+    settings = pi_validate_cv.VoiceSettings(
         mode="local",
         stt_backend="vosk",
         tts_backend="espeak-ng",
         cloud_worker_enabled=False,
     )
 
-    result = pi_validate._cloud_voice_settings_check(settings, provider="mock")
+    result = pi_validate_cv._cloud_voice_settings_check(settings, provider="mock")
 
     assert result.status == "fail"
     assert "mode=local" in result.details
@@ -67,7 +68,7 @@ def test_cloud_voice_settings_check_requires_cloud_worker_mode() -> None:
 
 def test_cloud_voice_settings_check_redacts_openai_key(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "sk-secret")
-    settings = pi_validate.VoiceSettings(
+    settings = pi_validate_cv.VoiceSettings(
         mode="cloud",
         stt_backend="cloud-worker",
         tts_backend="cloud-worker",
@@ -77,7 +78,7 @@ def test_cloud_voice_settings_check_redacts_openai_key(monkeypatch) -> None:
         capture_device_id="capture",
     )
 
-    result = pi_validate._cloud_voice_settings_check(settings, provider="openai")
+    result = pi_validate_cv._cloud_voice_settings_check(settings, provider="openai")
 
     assert result.status == "pass"
     assert "OPENAI_API_KEY=set" in result.details
@@ -85,7 +86,7 @@ def test_cloud_voice_settings_check_redacts_openai_key(monkeypatch) -> None:
 
 
 def test_cloud_voice_command_match_check_reports_transcript() -> None:
-    result = pi_validate._cloud_voice_command_match_check("please play music")
+    result = pi_validate_cv._cloud_voice_command_match_check("please play music")
 
     assert result.status == "pass"
     assert "intent=play_music" in result.details
@@ -93,12 +94,12 @@ def test_cloud_voice_command_match_check_reports_transcript() -> None:
 
 
 def test_cloud_voice_command_help_exposes_repeatable_options() -> None:
-    result = CliRunner().invoke(pi_validate.app, ["cloud-voice", "--help"], terminal_width=200)
+    result = CliRunner().invoke(pi_validate_app, ["cloud-voice", "--help"], terminal_width=200)
 
     assert result.exit_code == 0
     import typer.main
 
-    click_cmd = typer.main.get_command(pi_validate.app)
+    click_cmd = typer.main.get_command(pi_validate_app)
     cloud_voice_cmd = click_cmd.commands["cloud-voice"]  # type: ignore[attr-defined]
     names = _collect_option_names(cloud_voice_cmd)
     assert "--cycles" in names
@@ -108,22 +109,22 @@ def test_cloud_voice_command_help_exposes_repeatable_options() -> None:
 
 
 def test_cloud_voice_worker_argv_preserves_configured_arguments(monkeypatch) -> None:
-    monkeypatch.setattr(pi_validate.shutil, "which", lambda binary: f"/usr/bin/{binary}")
+    monkeypatch.setattr(pi_validate_cv.shutil, "which", lambda binary: f"/usr/bin/{binary}")
     config_manager = SimpleNamespace(
         get_voice_settings=lambda: SimpleNamespace(
             worker=SimpleNamespace(argv=["python3", "-m", "fake.worker"])
         )
     )
 
-    argv = pi_validate._resolve_cloud_voice_worker_argv(config_manager, "")
+    argv = pi_validate_cv._resolve_cloud_voice_worker_argv(config_manager, "")
 
     assert argv == ["/usr/bin/python3", "-m", "fake.worker"]
 
 
 def test_cloud_voice_worker_binary_check_accepts_path_executable(monkeypatch) -> None:
-    monkeypatch.setattr(pi_validate.shutil, "which", lambda binary: f"/usr/bin/{binary}")
+    monkeypatch.setattr(pi_validate_cv.shutil, "which", lambda binary: f"/usr/bin/{binary}")
 
-    result = pi_validate._cloud_voice_worker_binary_check("python3")
+    result = pi_validate_cv._cloud_voice_worker_binary_check("python3")
 
     assert result.status == "pass"
     assert result.details == "/usr/bin/python3"
@@ -166,7 +167,7 @@ def test_voice_worker_protocol_close_does_not_wait_for_stop_response() -> None:
             self.returncode = -9
 
     proc = _Process()
-    client = pi_validate._VoiceWorkerProtocolClient(["worker"], env={})
+    client = pi_validate_cv._VoiceWorkerProtocolClient(["worker"], env={})
     client._proc = proc
 
     client.close()
@@ -222,16 +223,16 @@ def test_cloud_voice_acoustic_loopback_records_and_transcribes_physical_route(
         def kill(self) -> None:
             self.returncode = -9
 
-    monkeypatch.setattr(pi_validate.shutil, "which", lambda binary: f"/usr/bin/{binary}")
-    monkeypatch.setattr(pi_validate.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(pi_validate_cv.shutil, "which", lambda binary: f"/usr/bin/{binary}")
+    monkeypatch.setattr(pi_validate_cv.subprocess, "Popen", FakePopen)
     monkeypatch.setattr(
         "yoyopod.backends.voice.output.AlsaOutputPlayer.play_wav",
         lambda self, audio_path, **_kwargs: audio_path.exists(),
     )
 
-    results = pi_validate._cloud_voice_acoustic_loopback_check(
+    results = pi_validate_cv._cloud_voice_acoustic_loopback_check(
         FakeClient(),
-        settings=pi_validate.VoiceSettings(
+        settings=pi_validate_cv.VoiceSettings(
             mode="cloud",
             stt_backend="cloud-worker",
             tts_backend="cloud-worker",
@@ -292,16 +293,16 @@ def test_cloud_voice_acoustic_loopback_reports_empty_transcript_artifact(
         def kill(self) -> None:
             self.returncode = -9
 
-    monkeypatch.setattr(pi_validate.shutil, "which", lambda binary: f"/usr/bin/{binary}")
-    monkeypatch.setattr(pi_validate.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(pi_validate_cv.shutil, "which", lambda binary: f"/usr/bin/{binary}")
+    monkeypatch.setattr(pi_validate_cv.subprocess, "Popen", FakePopen)
     monkeypatch.setattr(
         "yoyopod.backends.voice.output.AlsaOutputPlayer.play_wav",
         lambda self, audio_path, **_kwargs: audio_path.exists(),
     )
 
-    results = pi_validate._cloud_voice_acoustic_loopback_check(
+    results = pi_validate_cv._cloud_voice_acoustic_loopback_check(
         FakeClient(),
-        settings=pi_validate.VoiceSettings(
+        settings=pi_validate_cv.VoiceSettings(
             mode="cloud",
             stt_backend="cloud-worker",
             tts_backend="cloud-worker",

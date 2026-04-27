@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from yoyopod_cli.pi_network import app
+from yoyopod_cli.pi.network import app
 
 
 def test_probe_help() -> None:

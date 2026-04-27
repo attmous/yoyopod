@@ -1,9 +1,9 @@
-"""Tests for yoyopod_cli.pi_voip — on-device VoIP diagnostics."""
+"""Tests for yoyopod_cli.pi.voip — on-device VoIP diagnostics."""
 from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from yoyopod_cli.pi_voip import app
+from yoyopod_cli.pi.voip import app
 
 
 def test_check_help() -> None:
