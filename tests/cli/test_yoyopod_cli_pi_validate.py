@@ -6,9 +6,9 @@ from types import ModuleType
 
 from typer.testing import CliRunner
 
-import yoyopod_cli.pi_validate as pi_validate
-
-app = pi_validate.app
+from yoyopod_cli import pi_validate
+from yoyopod_cli.pi_validate import app
+from yoyopod_cli.pi_validate import system as _system
 
 
 def _collect_option_names(click_cmd: object) -> set[str]:
@@ -179,7 +179,7 @@ def test_display_check_prefers_lvgl_probe_when_ui_backend_is_available(
     fake_display_module.detect_hardware = lambda: "whisplay"
     monkeypatch.setitem(sys.modules, "yoyopod.ui.display", fake_display_module)
 
-    result, _display = pi_validate._display_check({"display": {"hardware": "auto"}}, 0.0)
+    result, _display = _system._display_check({"display": {"hardware": "auto"}}, 0.0)
 
     assert result.status == "pass"
     assert "backend=lvgl" in result.details
@@ -232,7 +232,7 @@ def test_display_check_keeps_immediate_draw_path_without_ui_backend(monkeypatch)
     fake_display_module.detect_hardware = lambda: "pimoroni"
     monkeypatch.setitem(sys.modules, "yoyopod.ui.display", fake_display_module)
 
-    result, _display = pi_validate._display_check({"display": {"hardware": "auto"}}, 0.0)
+    result, _display = _system._display_check({"display": {"hardware": "auto"}}, 0.0)
 
     assert result.status == "pass"
     assert "backend=pil" in result.details
