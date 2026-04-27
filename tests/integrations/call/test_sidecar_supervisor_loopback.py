@@ -165,10 +165,12 @@ def test_loopback_send_ping_round_trips_to_pong(
         supervisor.stop(timeout_seconds=LOOPBACK_BUDGET_SECONDS)
 
 
-def test_loopback_register_command_flows_to_log_event(
+def test_loopback_register_before_configure_returns_not_configured_error(
     collected_events: list[Any], event_handler: Callable[[Any], None]
 ) -> None:
-    """Verify the scaffold ack-as-Log path works through the loopback runner."""
+    """Sending Register before Configure should produce a not_configured Error."""
+
+    from yoyopod.integrations.call.sidecar_protocol import Error
 
     supervisor = SidecarSupervisor(
         on_event=event_handler,
@@ -179,19 +181,19 @@ def test_loopback_register_command_flows_to_log_event(
     try:
         supervisor.start()
         assert supervisor.wait_for_state("running", timeout_seconds=LOOPBACK_BUDGET_SECONDS)
-        supervisor.send(Register(server="sip.example.com", user="alice", password="x", cmd_id=1))
+        supervisor.send(Register(cmd_id=11))
 
         deadline = time.monotonic() + LOOPBACK_BUDGET_SECONDS
         while time.monotonic() < deadline:
-            log_events = [event for event in collected_events if type(event).__name__ == "Log"]
-            if any("alice" in event.message for event in log_events):
+            errors = [event for event in collected_events if isinstance(event, Error)]
+            if any(error.code == "not_configured" and error.cmd_id == 11 for error in errors):
                 break
             time.sleep(0.01)
 
-        log_events = [event for event in collected_events if type(event).__name__ == "Log"]
+        errors = [event for event in collected_events if isinstance(event, Error)]
         assert any(
-            "alice" in event.message for event in log_events
-        ), f"never saw Register ack log; collected {collected_events!r}"
+            error.code == "not_configured" and error.cmd_id == 11 for error in errors
+        ), f"never saw not_configured error; collected {collected_events!r}"
     finally:
         supervisor.stop(timeout_seconds=LOOPBACK_BUDGET_SECONDS)
 

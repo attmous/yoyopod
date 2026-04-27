@@ -39,12 +39,23 @@ class Hello:
 
 
 @dataclass(frozen=True, slots=True)
-class Register:
-    """Initiate SIP registration with the configured account."""
+class Configure:
+    """Send the serialized ``VoIPConfig`` to the sidecar before registration.
 
-    server: str
-    user: str
-    password: str
+    ``config`` carries a ``dataclasses.asdict``-style payload of
+    :class:`yoyopod.integrations.call.models.VoIPConfig`. The sidecar
+    reconstructs the dataclass and asks the backend factory for a fresh
+    backend; idempotent calls replace the prior backend cleanly.
+    """
+
+    config: dict[str, Any]
+    cmd_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Register:
+    """Initiate SIP registration with the previously :class:`Configure`-d account."""
+
     cmd_id: int | None = None
 
 
@@ -202,6 +213,7 @@ class Log:
 # can decode the handshake without special-casing.
 _COMMAND_REGISTRY: dict[str, type[Any]] = {
     "Hello": Hello,
+    "Configure": Configure,
     "Register": Register,
     "Unregister": Unregister,
     "Dial": Dial,

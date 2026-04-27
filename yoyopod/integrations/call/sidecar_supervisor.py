@@ -350,8 +350,12 @@ class SidecarSupervisor:
 
         deadline = time.monotonic() + self._handshake_timeout_seconds
         while time.monotonic() < deadline:
-            if not conn.poll(timeout=0.1):
-                continue
+            try:
+                if not conn.poll(timeout=0.1):
+                    continue
+            except (BrokenPipeError, EOFError, OSError) as exc:
+                logger.warning("Sidecar handshake poll failed: {}", exc)
+                return False
             try:
                 event = recv_event(conn)
             except (BrokenPipeError, EOFError, OSError) as exc:
