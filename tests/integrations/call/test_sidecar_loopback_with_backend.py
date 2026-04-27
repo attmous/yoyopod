@@ -22,9 +22,15 @@ from yoyopod.integrations.call.models import (
     CallState,
     CallStateChanged as BackendCallStateChanged,
     IncomingCallDetected,
+    MessageDeliveryChanged as BackendMessageDeliveryChanged,
+    MessageDeliveryState,
+    MessageDirection,
+    MessageKind,
+    MessageReceived as BackendMessageReceived,
     RegistrationState,
     RegistrationStateChanged as BackendRegistrationStateChanged,
     VoIPConfig,
+    VoIPMessageRecord,
 )
 from yoyopod.integrations.call.sidecar_main import run_sidecar
 from yoyopod.integrations.call.sidecar_protocol import (
@@ -34,10 +40,13 @@ from yoyopod.integrations.call.sidecar_protocol import (
     Dial,
     Hangup,
     IncomingCall,
+    MessageDeliveryChanged,
+    MessageReceived,
     Ping,
     Pong,
     Register,
     RegistrationStateChanged,
+    SendTextMessage,
     Unregister,
 )
 from yoyopod.integrations.call.sidecar_supervisor import SidecarSupervisor
@@ -229,4 +238,89 @@ def test_ping_works_without_configure(
     supervisor.send(Ping(cmd_id=77))
     assert _wait_for(
         lambda: any(isinstance(event, Pong) and event.cmd_id == 77 for event in collected_events)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Messaging round-trip (Phase 2B.4)
+# ---------------------------------------------------------------------------
+
+
+def test_send_text_message_round_trips_with_id_translation(
+    supervisor: SidecarSupervisor,
+    shared_mock_backend: MockVoIPBackend,
+    collected_events: list[Any],
+) -> None:
+    """Outbound text message: SendTextMessage -> backend.send_text_message -> mapped delivery event."""
+
+    supervisor.send(Configure(config=_serialized_config(), cmd_id=1))
+    supervisor.send(Register(cmd_id=2))
+    assert _wait_for(lambda: shared_mock_backend.running)
+
+    shared_mock_backend.next_text_message_id = "backend-msg-loop"
+    supervisor.send(
+        SendTextMessage(
+            uri="sip:bob@example.com",
+            text="loopback hello",
+            client_id="client-msg-loop",
+            cmd_id=3,
+        )
+    )
+    assert _wait_for(
+        lambda: "text sip:bob@example.com loopback hello" in shared_mock_backend.commands
+    )
+
+    # Drive the delivery event from the backend; sidecar should re-key the
+    # backend id to the client id main minted, so the on-wire delivery event
+    # carries ``client-msg-loop``.
+    shared_mock_backend.emit(
+        BackendMessageDeliveryChanged(
+            message_id="backend-msg-loop",
+            delivery_state=MessageDeliveryState.DELIVERED,
+        )
+    )
+    assert _wait_for(
+        lambda: any(
+            isinstance(event, MessageDeliveryChanged)
+            and event.message_id == "client-msg-loop"
+            and event.delivery_state == MessageDeliveryState.DELIVERED.value
+            for event in collected_events
+        )
+    )
+
+
+def test_inbound_message_received_round_trips(
+    supervisor: SidecarSupervisor,
+    shared_mock_backend: MockVoIPBackend,
+    collected_events: list[Any],
+) -> None:
+    """Inbound MessageReceived flows through the wire as flat fields."""
+
+    supervisor.send(Configure(config=_serialized_config(), cmd_id=1))
+    supervisor.send(Register(cmd_id=2))
+    assert _wait_for(lambda: shared_mock_backend.running)
+
+    record = VoIPMessageRecord(
+        id="inbound-loop-1",
+        peer_sip_address="sip:bob@example.com",
+        sender_sip_address="sip:bob@example.com",
+        recipient_sip_address="sip:alice@example.com",
+        kind=MessageKind.TEXT,
+        direction=MessageDirection.INCOMING,
+        delivery_state=MessageDeliveryState.DELIVERED,
+        created_at="2026-04-25T12:00:00+00:00",
+        updated_at="2026-04-25T12:00:00+00:00",
+        text="ping from bob",
+        unread=True,
+    )
+    shared_mock_backend.emit(BackendMessageReceived(message=record))
+    assert _wait_for(
+        lambda: any(
+            isinstance(event, MessageReceived)
+            and event.message_id == "inbound-loop-1"
+            and event.text == "ping from bob"
+            and event.kind == MessageKind.TEXT.value
+            and event.unread is True
+            for event in collected_events
+        )
     )

@@ -117,6 +117,24 @@ class SetVolume:
 
 
 @dataclass(frozen=True, slots=True)
+class SendTextMessage:
+    """Send a SIP text message to the given URI.
+
+    ``client_id`` is minted on the main side so the sender can return it
+    synchronously from :meth:`VoIPBackend.send_text_message`. The sidecar
+    adapter records the mapping ``backend_id -> client_id`` internally;
+    every subsequent message event the sidecar emits for this message
+    uses ``client_id`` as its ``message_id``, so the main process never
+    has to know the underlying liblinphone-assigned id.
+    """
+
+    uri: str
+    text: str
+    client_id: str
+    cmd_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Ping:
     """Liveness probe. Sidecar must echo back :class:`Pong`."""
 
@@ -181,6 +199,68 @@ class DTMFReceived:
 
 
 @dataclass(frozen=True, slots=True)
+class MessageReceived:
+    """An inbound SIP message arrived.
+
+    Mirrors the flat fields of
+    :class:`yoyopod.integrations.call.models.VoIPMessageRecord` so the
+    main process can reconstruct the record without nested-dict
+    serialization. Enum-valued fields (``kind``, ``direction``,
+    ``delivery_state``) are sent as their ``.value`` strings.
+    """
+
+    message_id: str
+    peer_sip_address: str
+    sender_sip_address: str
+    recipient_sip_address: str
+    kind: str
+    direction: str
+    delivery_state: str
+    created_at: str
+    updated_at: str
+    text: str = ""
+    local_file_path: str = ""
+    mime_type: str = ""
+    duration_ms: int = 0
+    unread: bool = False
+    display_name: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class MessageDeliveryChanged:
+    """Delivery state of a known message changed.
+
+    For outbound messages, ``message_id`` carries the ``client_id`` that
+    main minted in :class:`SendTextMessage`; the adapter's
+    ``backend_id -> client_id`` map performs the translation. For inbound
+    messages it carries whatever id the sidecar assigned (typically the
+    backend's id passed straight through).
+    """
+
+    message_id: str
+    delivery_state: str
+    local_file_path: str = ""
+    error: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class MessageDownloadCompleted:
+    """An inbound message attachment finished downloading on the sidecar side."""
+
+    message_id: str
+    local_file_path: str
+    mime_type: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class MessageFailed:
+    """A message send or receive operation failed on the sidecar side."""
+
+    message_id: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
 class Pong:
     """Liveness response to :class:`Ping`."""
 
@@ -222,6 +302,7 @@ _COMMAND_REGISTRY: dict[str, type[Any]] = {
     "Hangup": Hangup,
     "SetMute": SetMute,
     "SetVolume": SetVolume,
+    "SendTextMessage": SendTextMessage,
     "Ping": Ping,
     "Shutdown": Shutdown,
 }
@@ -234,6 +315,10 @@ _EVENT_REGISTRY: dict[str, type[Any]] = {
     "CallStateChanged": CallStateChanged,
     "MediaStateChanged": MediaStateChanged,
     "DTMFReceived": DTMFReceived,
+    "MessageReceived": MessageReceived,
+    "MessageDeliveryChanged": MessageDeliveryChanged,
+    "MessageDownloadCompleted": MessageDownloadCompleted,
+    "MessageFailed": MessageFailed,
     "Pong": Pong,
     "Error": Error,
     "Log": Log,

@@ -35,10 +35,15 @@ from yoyopod.integrations.call.models import (
     CallState,
     CallStateChanged as BackendCallStateChanged,
     IncomingCallDetected,
+    MessageDeliveryChanged as BackendMessageDeliveryChanged,
+    MessageDownloadCompleted as BackendMessageDownloadCompleted,
+    MessageFailed as BackendMessageFailed,
+    MessageReceived as BackendMessageReceived,
     RegistrationState,
     RegistrationStateChanged as BackendRegistrationStateChanged,
     VoIPConfig,
     VoIPEvent,
+    VoIPMessageRecord,
 )
 from yoyopod.integrations.call.sidecar_protocol import (
     Accept,
@@ -50,11 +55,16 @@ from yoyopod.integrations.call.sidecar_protocol import (
     IncomingCall,
     Log,
     MediaStateChanged,
+    MessageDeliveryChanged,
+    MessageDownloadCompleted,
+    MessageFailed,
+    MessageReceived,
     Ping,
     Pong,
     Register,
     RegistrationStateChanged,
     Reject,
+    SendTextMessage,
     SetMute,
     SetVolume,
     Unregister,
@@ -83,6 +93,14 @@ class SidecarBackendAdapter:
         self._iterate_thread: threading.Thread | None = None
         self._iterate_stop = threading.Event()
         self._iterate_interval_seconds = self._ITERATE_INTERVAL_FALLBACK_SECONDS
+
+        # Outbound message id mapping. Main mints ``client_id`` for each
+        # outgoing message and includes it in :class:`SendTextMessage`. After
+        # ``backend.send_text_message`` returns the liblinphone-assigned id
+        # we record ``backend_id -> client_id`` so subsequent message events
+        # the backend emits can be re-keyed before they leave the sidecar.
+        self._message_id_lock = threading.Lock()
+        self._outbound_message_id_map: dict[str, str] = {}
 
         self._call_lock = threading.Lock()
         self._next_call_id = 0
@@ -135,6 +153,10 @@ class SidecarBackendAdapter:
 
         if isinstance(command, SetVolume):
             self._handle_set_volume(command)
+            return
+
+        if isinstance(command, SendTextMessage):
+            self._handle_send_text_message(command)
             return
 
         self._safe_send(
@@ -413,6 +435,33 @@ class SidecarBackendAdapter:
         self._speaker_volume = max(0.0, min(1.0, float(command.level)))
         self._emit_media_state_locked()
 
+    def _handle_send_text_message(self, command: SendTextMessage) -> None:
+        backend = self._require_backend(command.cmd_id)
+        if backend is None:
+            return
+        try:
+            backend_id = backend.send_text_message(command.uri, command.text)
+        except Exception as exc:
+            self._safe_send(
+                Error(
+                    code="send_text_failed",
+                    message=f"backend.send_text_message raised: {exc}",
+                    cmd_id=command.cmd_id,
+                )
+            )
+            return
+        if not backend_id:
+            self._safe_send(
+                Error(
+                    code="send_text_failed",
+                    message="backend.send_text_message returned no id",
+                    cmd_id=command.cmd_id,
+                )
+            )
+            return
+        with self._message_id_lock:
+            self._outbound_message_id_map[backend_id] = command.client_id
+
     # ------------------------------------------------------------------
     # Backend event translation
     # ------------------------------------------------------------------
@@ -468,8 +517,25 @@ class SidecarBackendAdapter:
                 )
                 return
 
-            # Messaging and voice-note events are out of scope for Phase 2B.2;
-            # forward them as a debug log so callers can see them in flight.
+            if isinstance(event, BackendMessageReceived):
+                self._forward_message_received(event.message)
+                return
+
+            if isinstance(event, BackendMessageDeliveryChanged):
+                self._forward_message_delivery_changed(event)
+                return
+
+            if isinstance(event, BackendMessageDownloadCompleted):
+                self._forward_message_download_completed(event)
+                return
+
+            if isinstance(event, BackendMessageFailed):
+                self._forward_message_failed(event)
+                return
+
+            # Anything else (DTMF, future events, ...) — forward as a debug
+            # log so they don't silently disappear; explicit handling gets
+            # added here when a new event becomes load-bearing.
             self._safe_send(
                 Log(
                     level="DEBUG",
@@ -628,6 +694,77 @@ class SidecarBackendAdapter:
                 send_message(self._conn, message)
             except (BrokenPipeError, EOFError, OSError):
                 pass
+
+    def _translate_message_id(self, backend_id: str, *, terminal: bool = False) -> str:
+        """Return the wire-side message id, translating outbound backend ids.
+
+        For outbound messages we mapped ``backend_id -> client_id`` when
+        :class:`SendTextMessage` succeeded; subsequent events for that
+        message must use the client id so main can correlate. For inbound
+        messages the id is forwarded unchanged (main only sees whatever
+        the sidecar emits, so a fresh id from the backend works fine).
+        ``terminal`` lets the caller drop the mapping once delivery has
+        reached a final state.
+        """
+
+        with self._message_id_lock:
+            client_id = self._outbound_message_id_map.get(backend_id)
+            if terminal and client_id is not None:
+                self._outbound_message_id_map.pop(backend_id, None)
+        return client_id if client_id is not None else backend_id
+
+    def _forward_message_received(self, record: VoIPMessageRecord) -> None:
+        self._safe_send(
+            MessageReceived(
+                message_id=record.id,
+                peer_sip_address=record.peer_sip_address,
+                sender_sip_address=record.sender_sip_address,
+                recipient_sip_address=record.recipient_sip_address,
+                kind=record.kind.value,
+                direction=record.direction.value,
+                delivery_state=record.delivery_state.value,
+                created_at=record.created_at,
+                updated_at=record.updated_at,
+                text=record.text,
+                local_file_path=record.local_file_path,
+                mime_type=record.mime_type,
+                duration_ms=record.duration_ms,
+                unread=record.unread,
+                display_name=record.display_name,
+            )
+        )
+
+    def _forward_message_delivery_changed(
+        self, event: BackendMessageDeliveryChanged
+    ) -> None:
+        terminal = event.delivery_state.value in {"delivered", "failed"}
+        message_id = self._translate_message_id(event.message_id, terminal=terminal)
+        self._safe_send(
+            MessageDeliveryChanged(
+                message_id=message_id,
+                delivery_state=event.delivery_state.value,
+                local_file_path=event.local_file_path,
+                error=event.error,
+            )
+        )
+
+    def _forward_message_download_completed(
+        self, event: BackendMessageDownloadCompleted
+    ) -> None:
+        message_id = self._translate_message_id(event.message_id)
+        self._safe_send(
+            MessageDownloadCompleted(
+                message_id=message_id,
+                local_file_path=event.local_file_path,
+                mime_type=event.mime_type,
+            )
+        )
+
+    def _forward_message_failed(self, event: BackendMessageFailed) -> None:
+        message_id = self._translate_message_id(event.message_id, terminal=True)
+        self._safe_send(
+            MessageFailed(message_id=message_id, reason=event.reason)
+        )
 
     # ------------------------------------------------------------------
     # Test seams

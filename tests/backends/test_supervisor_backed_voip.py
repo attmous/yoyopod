@@ -205,13 +205,15 @@ def test_iterate_returns_zero_and_get_iterate_metrics_returns_none() -> None:
 @pytest.mark.parametrize(
     "method, args",
     [
-        ("send_text_message", ("sip:bob", "hi")),
+        # Voice note methods still raise NotImplementedError in Phase 2B.4;
+        # ``send_text_message`` was wired in this phase and now sends a
+        # SendTextMessage command (covered by its own dedicated tests below).
         ("start_voice_note_recording", ("/tmp/note.wav",)),
         ("stop_voice_note_recording", ()),
         ("cancel_voice_note_recording", ()),
     ],
 )
-def test_messaging_methods_raise_not_implemented(method: str, args: tuple) -> None:
+def test_voice_note_methods_raise_not_implemented(method: str, args: tuple) -> None:
     backend = SupervisorBackedBackend(_config(), supervisor=_FakeSupervisor())
     with pytest.raises(NotImplementedError, match="Messaging and voice notes"):
         getattr(backend, method)(*args)
@@ -479,6 +481,158 @@ def test_unrelated_error_codes_do_not_dispatch_voip_event() -> None:
         ProtocolError(code="invalid_config", message="bogus field", cmd_id=1)
     )
     assert received == []
+
+
+# ---------------------------------------------------------------------------
+# Messaging (Phase 2B.4)
+# ---------------------------------------------------------------------------
+
+
+def test_send_text_message_returns_client_id_and_sends_command() -> None:
+    """Phase 2B.4: ``send_text_message`` mints a client_id and ships SendTextMessage."""
+
+    from yoyopod.integrations.call.sidecar_protocol import SendTextMessage
+
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+
+    result = backend.send_text_message("sip:bob@example.com", "hi")
+
+    assert result is not None
+    assert result.startswith("client-msg-")
+    assert isinstance(fake.sent[-1], SendTextMessage)
+    assert fake.sent[-1].uri == "sip:bob@example.com"
+    assert fake.sent[-1].text == "hi"
+    assert fake.sent[-1].client_id == result
+
+
+def test_send_text_message_returns_none_when_supervisor_send_fails() -> None:
+    fake = _FakeSupervisor()
+    fake.send_should_raise = RuntimeError("sidecar pipe closed")
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+
+    assert backend.send_text_message("sip:bob@example.com", "hi") is None
+
+
+def test_protocol_message_received_translates_to_backend_message_received() -> None:
+    """``MessageReceived`` from the wire reconstructs a ``VoIPMessageRecord``."""
+
+    from yoyopod.integrations.call.models import (
+        MessageDeliveryState,
+        MessageDirection,
+        MessageKind,
+        MessageReceived as BackendMessageReceived,
+    )
+    from yoyopod.integrations.call.sidecar_protocol import (
+        MessageReceived as ProtocolMessageReceived,
+    )
+
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+    received: list[VoIPEvent] = []
+    backend.on_event(received.append)
+
+    backend._on_protocol_event(
+        ProtocolMessageReceived(
+            message_id="msg-42",
+            peer_sip_address="sip:bob@example.com",
+            sender_sip_address="sip:bob@example.com",
+            recipient_sip_address="sip:alice@example.com",
+            kind="text",
+            direction="incoming",
+            delivery_state="delivered",
+            created_at="2026-04-28T10:00:00+00:00",
+            updated_at="2026-04-28T10:00:00+00:00",
+            text="hello",
+            unread=True,
+            display_name="Bob",
+        )
+    )
+    matches = [event for event in received if isinstance(event, BackendMessageReceived)]
+    assert matches, received
+    record = matches[-1].message
+    assert record.id == "msg-42"
+    assert record.kind == MessageKind.TEXT
+    assert record.direction == MessageDirection.INCOMING
+    assert record.delivery_state == MessageDeliveryState.DELIVERED
+    assert record.text == "hello"
+    assert record.unread is True
+
+
+def test_protocol_message_received_with_unknown_enum_drops_silently() -> None:
+    from yoyopod.integrations.call.sidecar_protocol import (
+        MessageReceived as ProtocolMessageReceived,
+    )
+
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+    received: list[VoIPEvent] = []
+    backend.on_event(received.append)
+
+    backend._on_protocol_event(
+        ProtocolMessageReceived(
+            message_id="msg-43",
+            peer_sip_address="sip:bob",
+            sender_sip_address="sip:bob",
+            recipient_sip_address="sip:alice",
+            kind="not-a-real-kind",
+            direction="incoming",
+            delivery_state="delivered",
+            created_at="x",
+            updated_at="x",
+        )
+    )
+    assert received == []
+
+
+def test_protocol_message_delivery_changed_translates() -> None:
+    from yoyopod.integrations.call.models import (
+        MessageDeliveryChanged as BackendMessageDeliveryChanged,
+        MessageDeliveryState,
+    )
+    from yoyopod.integrations.call.sidecar_protocol import (
+        MessageDeliveryChanged as ProtocolMessageDeliveryChanged,
+    )
+
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+    received: list[VoIPEvent] = []
+    backend.on_event(received.append)
+
+    backend._on_protocol_event(
+        ProtocolMessageDeliveryChanged(
+            message_id="client-msg-x",
+            delivery_state="delivered",
+            local_file_path="",
+            error="",
+        )
+    )
+    matches = [
+        event for event in received if isinstance(event, BackendMessageDeliveryChanged)
+    ]
+    assert matches and matches[-1].message_id == "client-msg-x"
+    assert matches[-1].delivery_state == MessageDeliveryState.DELIVERED
+
+
+def test_protocol_message_failed_translates() -> None:
+    from yoyopod.integrations.call.models import (
+        MessageFailed as BackendMessageFailed,
+    )
+    from yoyopod.integrations.call.sidecar_protocol import (
+        MessageFailed as ProtocolMessageFailed,
+    )
+
+    fake = _FakeSupervisor()
+    backend = SupervisorBackedBackend(_config(), supervisor=fake)
+    received: list[VoIPEvent] = []
+    backend.on_event(received.append)
+
+    backend._on_protocol_event(
+        ProtocolMessageFailed(message_id="client-msg-y", reason="peer offline")
+    )
+    matches = [event for event in received if isinstance(event, BackendMessageFailed)]
+    assert matches and matches[-1].message_id == "client-msg-y"
+    assert matches[-1].reason == "peer offline"
 
 
 def test_protocol_only_events_are_ignored() -> None:

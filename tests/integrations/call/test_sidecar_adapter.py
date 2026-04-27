@@ -22,9 +22,17 @@ from yoyopod.integrations.call.models import (
     CallState,
     CallStateChanged as BackendCallStateChanged,
     IncomingCallDetected,
+    MessageDeliveryChanged as BackendMessageDeliveryChanged,
+    MessageDeliveryState,
+    MessageDirection,
+    MessageDownloadCompleted as BackendMessageDownloadCompleted,
+    MessageFailed as BackendMessageFailed,
+    MessageKind,
+    MessageReceived as BackendMessageReceived,
     RegistrationState,
     RegistrationStateChanged as BackendRegistrationStateChanged,
     VoIPConfig,
+    VoIPMessageRecord,
 )
 from yoyopod.integrations.call.sidecar_adapter import SidecarBackendAdapter
 from yoyopod.integrations.call.sidecar_protocol import (
@@ -37,11 +45,16 @@ from yoyopod.integrations.call.sidecar_protocol import (
     IncomingCall,
     Log,
     MediaStateChanged,
+    MessageDeliveryChanged,
+    MessageDownloadCompleted,
+    MessageFailed,
+    MessageReceived,
     Ping,
     Pong,
     Register,
     RegistrationStateChanged,
     Reject,
+    SendTextMessage,
     SetMute,
     SetVolume,
     Unregister,
@@ -803,3 +816,335 @@ def test_reject_with_correct_call_id_calls_backend(
 
     adapter.handle_command(Reject(call_id=incoming.call_id, cmd_id=15))
     assert "decline" in mock_backend.commands
+
+
+# ---------------------------------------------------------------------------
+# Messaging (Phase 2B.4)
+# ---------------------------------------------------------------------------
+
+
+def _voice_record(**overrides: Any) -> VoIPMessageRecord:
+    base = dict(
+        id="msg-1",
+        peer_sip_address="sip:bob@example.com",
+        sender_sip_address="sip:bob@example.com",
+        recipient_sip_address="sip:alice@example.com",
+        kind=MessageKind.TEXT,
+        direction=MessageDirection.INCOMING,
+        delivery_state=MessageDeliveryState.DELIVERED,
+        created_at="2026-04-25T10:00:00+00:00",
+        updated_at="2026-04-25T10:00:00+00:00",
+        text="hi",
+    )
+    base.update(overrides)
+    return VoIPMessageRecord(**base)  # type: ignore[arg-type]
+
+
+def test_send_text_message_before_configure_returns_not_configured(
+    adapter: SidecarBackendAdapter, parent_conn: Connection
+) -> None:
+    adapter.handle_command(
+        SendTextMessage(
+            uri="sip:bob@example.com", text="hi", client_id="client-msg-x", cmd_id=44
+        )
+    )
+    events = _drain(parent_conn)
+    errors = [event for event in events if isinstance(event, Error)]
+    assert any(error.code == "not_configured" and error.cmd_id == 44 for error in errors), events
+
+
+def test_send_text_message_invokes_backend_and_records_id_mapping(
+    adapter: SidecarBackendAdapter,
+    parent_conn: Connection,
+    mock_backend: MockVoIPBackend,
+) -> None:
+    adapter.handle_command(Configure(config=_config_dict()))
+    adapter.handle_command(Register(cmd_id=1))
+    _drain(parent_conn)
+
+    mock_backend.next_text_message_id = "backend-msg-7"
+    adapter.handle_command(
+        SendTextMessage(
+            uri="sip:bob@example.com",
+            text="hello",
+            client_id="client-msg-7",
+            cmd_id=10,
+        )
+    )
+
+    assert mock_backend.commands[-1] == "text sip:bob@example.com hello"
+    # No error events should have been emitted on the happy path.
+    events = _drain(parent_conn, timeout=0.1)
+    assert not any(isinstance(event, Error) for event in events), events
+    # Mapping recorded so subsequent backend events can be re-keyed to client id.
+    assert adapter._outbound_message_id_map == {"backend-msg-7": "client-msg-7"}
+
+
+def test_send_text_message_when_backend_returns_falsy_emits_error(
+    parent_conn: Connection, child_conn: Connection
+) -> None:
+    backend = MockVoIPBackend()
+    backend.next_text_message_id = ""  # type: ignore[assignment]
+
+    adapter = SidecarBackendAdapter(conn=child_conn, backend_factory=lambda _config: backend)
+    try:
+        adapter.handle_command(Configure(config=_config_dict()))
+        adapter.handle_command(Register(cmd_id=1))
+        _drain(parent_conn)
+
+        adapter.handle_command(
+            SendTextMessage(
+                uri="sip:bob@example.com",
+                text="hi",
+                client_id="client-msg-empty",
+                cmd_id=33,
+            )
+        )
+        events = _drain(parent_conn)
+        errors = [event for event in events if isinstance(event, Error)]
+        assert any(
+            error.code == "send_text_failed" and error.cmd_id == 33 for error in errors
+        ), events
+        assert adapter._outbound_message_id_map == {}
+    finally:
+        adapter.shutdown()
+
+
+def test_send_text_message_when_backend_raises_emits_error(
+    parent_conn: Connection, child_conn: Connection
+) -> None:
+    class _RaisingBackend(MockVoIPBackend):
+        def send_text_message(self, sip_address: str, text: str) -> str | None:  # type: ignore[override]
+            raise RuntimeError("simulated send failure")
+
+    backend = _RaisingBackend()
+    adapter = SidecarBackendAdapter(conn=child_conn, backend_factory=lambda _config: backend)
+    try:
+        adapter.handle_command(Configure(config=_config_dict()))
+        adapter.handle_command(Register(cmd_id=1))
+        _drain(parent_conn)
+
+        adapter.handle_command(
+            SendTextMessage(
+                uri="sip:bob@example.com",
+                text="hi",
+                client_id="client-msg-boom",
+                cmd_id=34,
+            )
+        )
+        events = _drain(parent_conn)
+        errors = [event for event in events if isinstance(event, Error)]
+        assert any(
+            error.code == "send_text_failed"
+            and error.cmd_id == 34
+            and "simulated send failure" in error.message
+            for error in errors
+        ), events
+        assert adapter._outbound_message_id_map == {}
+    finally:
+        adapter.shutdown()
+
+
+def test_backend_message_received_forwards_with_flat_fields(
+    adapter: SidecarBackendAdapter,
+    parent_conn: Connection,
+    mock_backend: MockVoIPBackend,
+) -> None:
+    adapter.handle_command(Configure(config=_config_dict()))
+    _drain(parent_conn)
+
+    record = _voice_record(
+        id="inbound-1",
+        kind=MessageKind.VOICE_NOTE,
+        local_file_path="/tmp/voice.opus",
+        mime_type="audio/opus",
+        duration_ms=4200,
+        unread=True,
+        text="",
+    )
+    mock_backend.emit(BackendMessageReceived(message=record))
+    events = _drain(parent_conn)
+    matches = [event for event in events if isinstance(event, MessageReceived)]
+    assert matches, events
+    forwarded = matches[-1]
+    assert forwarded.message_id == "inbound-1"
+    assert forwarded.kind == MessageKind.VOICE_NOTE.value
+    assert forwarded.direction == MessageDirection.INCOMING.value
+    assert forwarded.delivery_state == MessageDeliveryState.DELIVERED.value
+    assert forwarded.local_file_path == "/tmp/voice.opus"
+    assert forwarded.mime_type == "audio/opus"
+    assert forwarded.duration_ms == 4200
+    assert forwarded.unread is True
+
+
+def test_backend_message_delivery_changed_translates_outbound_id_and_drops_on_terminal(
+    adapter: SidecarBackendAdapter,
+    parent_conn: Connection,
+    mock_backend: MockVoIPBackend,
+) -> None:
+    adapter.handle_command(Configure(config=_config_dict()))
+    adapter.handle_command(Register(cmd_id=1))
+    _drain(parent_conn)
+
+    mock_backend.next_text_message_id = "backend-msg-A"
+    adapter.handle_command(
+        SendTextMessage(
+            uri="sip:bob@example.com",
+            text="hi",
+            client_id="client-msg-A",
+            cmd_id=20,
+        )
+    )
+    _drain(parent_conn, timeout=0.1)
+    assert adapter._outbound_message_id_map == {"backend-msg-A": "client-msg-A"}
+
+    # Non-terminal delivery state — mapping retained, id translated.
+    mock_backend.emit(
+        BackendMessageDeliveryChanged(
+            message_id="backend-msg-A",
+            delivery_state=MessageDeliveryState.SENT,
+        )
+    )
+    events = _drain(parent_conn)
+    matches = [event for event in events if isinstance(event, MessageDeliveryChanged)]
+    assert matches and matches[-1].message_id == "client-msg-A"
+    assert matches[-1].delivery_state == MessageDeliveryState.SENT.value
+    assert adapter._outbound_message_id_map == {"backend-msg-A": "client-msg-A"}
+
+    # Terminal delivery state drops the mapping so the dict does not grow unboundedly.
+    mock_backend.emit(
+        BackendMessageDeliveryChanged(
+            message_id="backend-msg-A",
+            delivery_state=MessageDeliveryState.DELIVERED,
+        )
+    )
+    events = _drain(parent_conn)
+    matches = [event for event in events if isinstance(event, MessageDeliveryChanged)]
+    assert matches[-1].message_id == "client-msg-A"
+    assert matches[-1].delivery_state == MessageDeliveryState.DELIVERED.value
+    assert adapter._outbound_message_id_map == {}
+
+
+def test_backend_message_delivery_failed_drops_mapping(
+    adapter: SidecarBackendAdapter,
+    parent_conn: Connection,
+    mock_backend: MockVoIPBackend,
+) -> None:
+    adapter.handle_command(Configure(config=_config_dict()))
+    adapter.handle_command(Register(cmd_id=1))
+    _drain(parent_conn)
+
+    mock_backend.next_text_message_id = "backend-msg-fail"
+    adapter.handle_command(
+        SendTextMessage(
+            uri="sip:bob@example.com",
+            text="hi",
+            client_id="client-msg-fail",
+            cmd_id=21,
+        )
+    )
+    _drain(parent_conn, timeout=0.1)
+
+    mock_backend.emit(
+        BackendMessageDeliveryChanged(
+            message_id="backend-msg-fail",
+            delivery_state=MessageDeliveryState.FAILED,
+            error="peer offline",
+        )
+    )
+    events = _drain(parent_conn)
+    matches = [event for event in events if isinstance(event, MessageDeliveryChanged)]
+    assert matches and matches[-1].message_id == "client-msg-fail"
+    assert matches[-1].error == "peer offline"
+    assert adapter._outbound_message_id_map == {}
+
+
+def test_backend_message_delivery_changed_passes_inbound_id_unchanged(
+    adapter: SidecarBackendAdapter,
+    parent_conn: Connection,
+    mock_backend: MockVoIPBackend,
+) -> None:
+    """Inbound (non-tracked) ids forward as-is — only outbound ids get re-keyed."""
+
+    adapter.handle_command(Configure(config=_config_dict()))
+    _drain(parent_conn)
+
+    mock_backend.emit(
+        BackendMessageDeliveryChanged(
+            message_id="inbound-msg-9",
+            delivery_state=MessageDeliveryState.DELIVERED,
+        )
+    )
+    events = _drain(parent_conn)
+    matches = [event for event in events if isinstance(event, MessageDeliveryChanged)]
+    assert matches and matches[-1].message_id == "inbound-msg-9"
+    # No mapping was ever recorded for the inbound id.
+    assert adapter._outbound_message_id_map == {}
+
+
+def test_backend_message_download_completed_forwards_without_dropping_mapping(
+    adapter: SidecarBackendAdapter,
+    parent_conn: Connection,
+    mock_backend: MockVoIPBackend,
+) -> None:
+    """Download completion is not terminal for the outbound mapping."""
+
+    adapter.handle_command(Configure(config=_config_dict()))
+    adapter.handle_command(Register(cmd_id=1))
+    _drain(parent_conn)
+
+    mock_backend.next_text_message_id = "backend-msg-D"
+    adapter.handle_command(
+        SendTextMessage(
+            uri="sip:bob@example.com",
+            text="hi",
+            client_id="client-msg-D",
+            cmd_id=30,
+        )
+    )
+    _drain(parent_conn, timeout=0.1)
+
+    mock_backend.emit(
+        BackendMessageDownloadCompleted(
+            message_id="backend-msg-D",
+            local_file_path="/tmp/asset.opus",
+            mime_type="audio/opus",
+        )
+    )
+    events = _drain(parent_conn)
+    matches = [event for event in events if isinstance(event, MessageDownloadCompleted)]
+    assert matches and matches[-1].message_id == "client-msg-D"
+    assert matches[-1].local_file_path == "/tmp/asset.opus"
+    assert matches[-1].mime_type == "audio/opus"
+    # Download completion is not terminal — mapping should still be live.
+    assert adapter._outbound_message_id_map == {"backend-msg-D": "client-msg-D"}
+
+
+def test_backend_message_failed_forwards_and_drops_mapping(
+    adapter: SidecarBackendAdapter,
+    parent_conn: Connection,
+    mock_backend: MockVoIPBackend,
+) -> None:
+    adapter.handle_command(Configure(config=_config_dict()))
+    adapter.handle_command(Register(cmd_id=1))
+    _drain(parent_conn)
+
+    mock_backend.next_text_message_id = "backend-msg-F"
+    adapter.handle_command(
+        SendTextMessage(
+            uri="sip:bob@example.com",
+            text="hi",
+            client_id="client-msg-F",
+            cmd_id=40,
+        )
+    )
+    _drain(parent_conn, timeout=0.1)
+
+    mock_backend.emit(
+        BackendMessageFailed(message_id="backend-msg-F", reason="timeout")
+    )
+    events = _drain(parent_conn)
+    matches = [event for event in events if isinstance(event, MessageFailed)]
+    assert matches and matches[-1].message_id == "client-msg-F"
+    assert matches[-1].reason == "timeout"
+    assert adapter._outbound_message_id_map == {}

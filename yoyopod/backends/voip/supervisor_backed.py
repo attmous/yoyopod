@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import dataclasses
 import threading
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -40,10 +41,18 @@ from yoyopod.integrations.call.models import (
     CallState,
     CallStateChanged as BackendCallStateChanged,
     IncomingCallDetected,
+    MessageDeliveryChanged as BackendMessageDeliveryChanged,
+    MessageDeliveryState,
+    MessageDirection,
+    MessageDownloadCompleted as BackendMessageDownloadCompleted,
+    MessageFailed as BackendMessageFailed,
+    MessageKind,
+    MessageReceived as BackendMessageReceived,
     RegistrationState,
     RegistrationStateChanged as BackendRegistrationStateChanged,
     VoIPConfig,
     VoIPEvent,
+    VoIPMessageRecord,
 )
 from yoyopod.integrations.call.sidecar_protocol import (
     Accept,
@@ -56,11 +65,16 @@ from yoyopod.integrations.call.sidecar_protocol import (
     IncomingCall,
     Log as ProtocolLog,
     MediaStateChanged,
+    MessageDeliveryChanged as ProtocolMessageDeliveryChanged,
+    MessageDownloadCompleted as ProtocolMessageDownloadCompleted,
+    MessageFailed as ProtocolMessageFailed,
+    MessageReceived as ProtocolMessageReceived,
     Pong,
     Ready,
     Register,
     RegistrationStateChanged as ProtocolRegistrationStateChanged,
     Reject,
+    SendTextMessage,
     SetMute,
     Unregister,
 )
@@ -284,9 +298,25 @@ class SupervisorBackedBackend:
         return self._send_or_log(SetMute(call_id=call_id, on=False), label="SetMute(off)")
 
     def send_text_message(self, sip_address: str, text: str) -> str | None:
-        """Not yet supported in sidecar mode."""
+        """Send a text message via the sidecar.
 
-        raise NotImplementedError(_NOT_SUPPORTED_MESSAGE)
+        Mints a ``client_id`` locally and includes it in the
+        :class:`SendTextMessage` command so the call site has an id to
+        track delivery against immediately. The sidecar adapter records
+        the mapping ``backend_id -> client_id`` so subsequent message
+        events for this message are re-keyed before they reach the main
+        process.
+        """
+
+        client_id = f"client-msg-{uuid.uuid4()}"
+        try:
+            self._supervisor.send(
+                SendTextMessage(uri=sip_address, text=text, client_id=client_id)
+            )
+        except Exception as exc:
+            logger.error("VoIP sidecar refused SendTextMessage: {}", exc)
+            return None
+        return client_id
 
     def start_voice_note_recording(self, file_path: str) -> bool:
         """Not yet supported in sidecar mode."""
@@ -416,12 +446,86 @@ class SupervisorBackedBackend:
             self._dispatch(BackendCallStateChanged(state=state))
             return
 
+        if isinstance(event, ProtocolMessageReceived):
+            record = self._build_voip_message_record(event)
+            if record is not None:
+                self._dispatch(BackendMessageReceived(message=record))
+            return
+
+        if isinstance(event, ProtocolMessageDeliveryChanged):
+            try:
+                delivery_state = MessageDeliveryState(event.delivery_state)
+            except ValueError:
+                logger.warning(
+                    "Sidecar emitted unknown message delivery state {!r}",
+                    event.delivery_state,
+                )
+                return
+            self._dispatch(
+                BackendMessageDeliveryChanged(
+                    message_id=event.message_id,
+                    delivery_state=delivery_state,
+                    local_file_path=event.local_file_path,
+                    error=event.error,
+                )
+            )
+            return
+
+        if isinstance(event, ProtocolMessageDownloadCompleted):
+            self._dispatch(
+                BackendMessageDownloadCompleted(
+                    message_id=event.message_id,
+                    local_file_path=event.local_file_path,
+                    mime_type=event.mime_type,
+                )
+            )
+            return
+
+        if isinstance(event, ProtocolMessageFailed):
+            self._dispatch(
+                BackendMessageFailed(
+                    message_id=event.message_id, reason=event.reason
+                )
+            )
+            return
+
         # Anything else (DTMFReceived, etc.) — log and drop. Future events get
         # explicit handling here as they're added.
         logger.debug(
             "SupervisorBackedBackend dropping unhandled event {}",
             type(event).__name__,
         )
+
+    def _build_voip_message_record(
+        self, event: ProtocolMessageReceived
+    ) -> VoIPMessageRecord | None:
+        try:
+            return VoIPMessageRecord(
+                id=event.message_id,
+                peer_sip_address=event.peer_sip_address,
+                sender_sip_address=event.sender_sip_address,
+                recipient_sip_address=event.recipient_sip_address,
+                kind=MessageKind(event.kind),
+                direction=MessageDirection(event.direction),
+                delivery_state=MessageDeliveryState(event.delivery_state),
+                created_at=event.created_at,
+                updated_at=event.updated_at,
+                text=event.text,
+                local_file_path=event.local_file_path,
+                mime_type=event.mime_type,
+                duration_ms=event.duration_ms,
+                unread=event.unread,
+                display_name=event.display_name,
+            )
+        except ValueError:
+            logger.warning(
+                "Sidecar emitted MessageReceived with unknown enum value: "
+                "kind={!r} direction={!r} delivery_state={!r}",
+                event.kind,
+                event.direction,
+                event.delivery_state,
+            )
+            return None
 
     def _dispatch(self, event: VoIPEvent) -> None:
         """Fire a translated VoIP event to all registered callbacks."""
