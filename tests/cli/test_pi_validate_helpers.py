@@ -3,8 +3,17 @@ from __future__ import annotations
 import sys
 from types import ModuleType, SimpleNamespace
 
-from yoyopod_cli import _pi_validate_helpers as helpers
-from yoyopod_cli import pi_validate_helpers as public_helpers
+from yoyopod_cli.pi_validate._navigation_soak import pump as helpers
+from yoyopod_cli.pi_validate._navigation_soak import handle as _handle
+from yoyopod_cli.pi_validate._navigation_soak import idle as _idle
+from yoyopod_cli.pi_validate._navigation_soak import (
+    NavigationSoakRunner,
+    NavigationSoakStep,
+    build_navigation_soak_plan,
+    run_navigation_idle_soak,
+    run_navigation_soak,
+)
+from yoyopod.ui.input import InputAction
 
 
 def test_wait_for_route_accepts_transition_completed_in_final_pump(
@@ -61,9 +70,9 @@ def test_default_app_factory_wraps_imported_app_with_stable_soak_surface(
     fake_app_module = ModuleType("yoyopod.app")
     fake_app_module.YoyoPodApp = _FakeApp
     monkeypatch.setitem(sys.modules, "yoyopod.app", fake_app_module)
-    monkeypatch.setattr(helpers.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(_handle.time, "monotonic", lambda: 100.0)
 
-    handle = helpers._default_app_factory(config_dir="test-config", simulate=True)
+    handle = _handle._default_app_factory(config_dir="test-config", simulate=True)
     wrapped_app = getattr(handle, "_app")
 
     assert handle.config_dir == "test-config"
@@ -76,10 +85,6 @@ def test_default_app_factory_wraps_imported_app_with_stable_soak_surface(
 
     assert wrapped_app._last_user_activity_at == 93.0
 
-
-def test_public_pi_validate_helpers_alias_reexports_internal_helpers() -> None:
-    assert public_helpers.run_navigation_soak is helpers.run_navigation_soak
-    assert public_helpers.run_navigation_idle_soak is helpers.run_navigation_idle_soak
 
 
 def test_pump_app_polls_worker_supervisor(monkeypatch) -> None:
@@ -155,29 +160,29 @@ def test_navigation_idle_soak_resets_hub_selection_between_cycles(
     fake_app_module = ModuleType("yoyopod.app")
     fake_app_module.YoyoPodApp = _FakeApp
     monkeypatch.setitem(sys.modules, "yoyopod.app", fake_app_module)
-    monkeypatch.setattr(helpers, "_pump_app", lambda app, duration_seconds: None)
+    monkeypatch.setattr(_idle, "_pump_app", lambda app, duration_seconds: None)
     monkeypatch.setattr(
-        helpers,
+        _idle,
         "build_navigation_soak_plan",
         lambda *, with_music: (
-            helpers.NavigationSoakStep("replace", "Reset to the root hub", target="hub"),
-            helpers.NavigationSoakStep(
+            NavigationSoakStep("replace", "Reset to the root hub", target="hub"),
+            NavigationSoakStep(
                 "action",
                 "Open Listen from the hub",
-                action=helpers.InputAction.SELECT,
+                action=InputAction.SELECT,
                 wait_for_route="listen",
             ),
-            helpers.NavigationSoakStep(
+            NavigationSoakStep(
                 "action",
                 "Return to the hub",
-                action=helpers.InputAction.BACK,
+                action=InputAction.BACK,
                 wait_for_route="hub",
             ),
         ),
     )
 
-    def fake_dispatch_action(app: _FakeApp, action: helpers.InputAction) -> None:
-        if action == helpers.InputAction.SELECT:
+    def fake_dispatch_action(app: _FakeApp, action: InputAction) -> None:
+        if action == InputAction.SELECT:
             app.screen_manager.current_screen = (
                 app.screen_manager.listen
                 if app.screen_manager.hub.selected_index == 0
@@ -185,16 +190,16 @@ def test_navigation_idle_soak_resets_hub_selection_between_cycles(
             )
             return
 
-        if action == helpers.InputAction.BACK:
+        if action == InputAction.BACK:
             app.screen_manager.hub.selected_index = 3
             app.screen_manager.current_screen = app.screen_manager.hub
             return
 
         raise AssertionError(f"unexpected action: {action}")
 
-    monkeypatch.setattr(helpers, "_dispatch_action", fake_dispatch_action)
+    monkeypatch.setattr(_idle, "_dispatch_action", fake_dispatch_action)
 
-    report = helpers.run_navigation_idle_soak(
+    report = run_navigation_idle_soak(
         cycles=2,
         hold_seconds=0.1,
         idle_seconds=0.0,
@@ -242,43 +247,43 @@ def test_navigation_idle_soak_resets_reopened_listen_selection(
     fake_app_module = ModuleType("yoyopod.app")
     fake_app_module.YoyoPodApp = _FakeApp
     monkeypatch.setitem(sys.modules, "yoyopod.app", fake_app_module)
-    monkeypatch.setattr(helpers, "_pump_app", lambda app, duration_seconds: None)
+    monkeypatch.setattr(_idle, "_pump_app", lambda app, duration_seconds: None)
     monkeypatch.setattr(
-        helpers,
+        _idle,
         "build_navigation_soak_plan",
         lambda *, with_music: (
-            helpers.NavigationSoakStep("replace", "Reset to the root hub", target="hub"),
-            helpers.NavigationSoakStep(
+            NavigationSoakStep("replace", "Reset to the root hub", target="hub"),
+            NavigationSoakStep(
                 "action",
                 "Open Listen from the hub",
-                action=helpers.InputAction.SELECT,
+                action=InputAction.SELECT,
                 wait_for_route="listen",
                 reset_selection_after_wait=True,
             ),
-            helpers.NavigationSoakStep(
+            NavigationSoakStep(
                 "action",
                 "Open Playlists from Listen",
-                action=helpers.InputAction.SELECT,
+                action=InputAction.SELECT,
                 wait_for_route="playlists",
                 reset_selection_after_wait=True,
             ),
-            helpers.NavigationSoakStep(
+            NavigationSoakStep(
                 "action",
                 "Return to Listen",
-                action=helpers.InputAction.BACK,
+                action=InputAction.BACK,
                 wait_for_route="listen",
                 reset_selection_after_wait=True,
             ),
         ),
     )
 
-    def fake_dispatch_action(app: _FakeApp, action: helpers.InputAction) -> None:
+    def fake_dispatch_action(app: _FakeApp, action: InputAction) -> None:
         current_route = app.screen_manager.current_screen.route_name
-        if current_route == "hub" and action == helpers.InputAction.SELECT:
+        if current_route == "hub" and action == InputAction.SELECT:
             app.screen_manager.current_screen = app.screen_manager.listen
             return
 
-        if current_route == "listen" and action == helpers.InputAction.SELECT:
+        if current_route == "listen" and action == InputAction.SELECT:
             app.screen_manager.current_screen = (
                 app.screen_manager.playlists
                 if app.screen_manager.listen.selected_index == 0
@@ -286,16 +291,16 @@ def test_navigation_idle_soak_resets_reopened_listen_selection(
             )
             return
 
-        if current_route in {"playlists", "recent_tracks"} and action == helpers.InputAction.BACK:
+        if current_route in {"playlists", "recent_tracks"} and action == InputAction.BACK:
             app.screen_manager.listen.selected_index = 1
             app.screen_manager.current_screen = app.screen_manager.listen
             return
 
         raise AssertionError(f"unexpected route/action: {current_route} / {action}")
 
-    monkeypatch.setattr(helpers, "_dispatch_action", fake_dispatch_action)
+    monkeypatch.setattr(_idle, "_dispatch_action", fake_dispatch_action)
 
-    report = helpers.run_navigation_idle_soak(
+    report = run_navigation_idle_soak(
         cycles=2,
         hold_seconds=0.1,
         idle_seconds=0.0,
@@ -342,50 +347,50 @@ def test_navigation_idle_soak_preserves_hub_progress_within_cycle(
     fake_app_module = ModuleType("yoyopod.app")
     fake_app_module.YoyoPodApp = _FakeApp
     monkeypatch.setitem(sys.modules, "yoyopod.app", fake_app_module)
-    monkeypatch.setattr(helpers, "_pump_app", lambda app, duration_seconds: None)
+    monkeypatch.setattr(_idle, "_pump_app", lambda app, duration_seconds: None)
     monkeypatch.setattr(
-        helpers,
+        _idle,
         "build_navigation_soak_plan",
         lambda *, with_music: (
-            helpers.NavigationSoakStep("replace", "Reset to the root hub", target="hub"),
-            helpers.NavigationSoakStep(
+            NavigationSoakStep("replace", "Reset to the root hub", target="hub"),
+            NavigationSoakStep(
                 "action",
                 "Advance to Talk",
-                action=helpers.InputAction.ADVANCE,
+                action=InputAction.ADVANCE,
             ),
-            helpers.NavigationSoakStep(
+            NavigationSoakStep(
                 "action",
                 "Open Talk",
-                action=helpers.InputAction.SELECT,
+                action=InputAction.SELECT,
                 wait_for_route="call",
             ),
-            helpers.NavigationSoakStep(
+            NavigationSoakStep(
                 "action",
                 "Return to the hub from Talk",
-                action=helpers.InputAction.BACK,
+                action=InputAction.BACK,
                 wait_for_route="hub",
             ),
-            helpers.NavigationSoakStep(
+            NavigationSoakStep(
                 "action",
                 "Advance to Ask",
-                action=helpers.InputAction.ADVANCE,
+                action=InputAction.ADVANCE,
             ),
-            helpers.NavigationSoakStep(
+            NavigationSoakStep(
                 "action",
                 "Open Ask",
-                action=helpers.InputAction.SELECT,
+                action=InputAction.SELECT,
                 wait_for_route="ask",
             ),
         ),
     )
 
-    def fake_dispatch_action(app: _FakeApp, action: helpers.InputAction) -> None:
+    def fake_dispatch_action(app: _FakeApp, action: InputAction) -> None:
         current_route = app.screen_manager.current_screen.route_name
-        if current_route == "hub" and action == helpers.InputAction.ADVANCE:
+        if current_route == "hub" and action == InputAction.ADVANCE:
             app.screen_manager.hub.selected_index += 1
             return
 
-        if current_route == "hub" and action == helpers.InputAction.SELECT:
+        if current_route == "hub" and action == InputAction.SELECT:
             app.screen_manager.current_screen = (
                 app.screen_manager.call
                 if app.screen_manager.hub.selected_index == 1
@@ -393,15 +398,15 @@ def test_navigation_idle_soak_preserves_hub_progress_within_cycle(
             )
             return
 
-        if current_route == "call" and action == helpers.InputAction.BACK:
+        if current_route == "call" and action == InputAction.BACK:
             app.screen_manager.current_screen = app.screen_manager.hub
             return
 
         raise AssertionError(f"unexpected route/action: {current_route} / {action}")
 
-    monkeypatch.setattr(helpers, "_dispatch_action", fake_dispatch_action)
+    monkeypatch.setattr(_idle, "_dispatch_action", fake_dispatch_action)
 
-    report = helpers.run_navigation_idle_soak(
+    report = run_navigation_idle_soak(
         cycles=1,
         hold_seconds=0.1,
         idle_seconds=0.0,
@@ -426,7 +431,7 @@ def test_navigation_soak_runner_hub_mode_uses_public_cards_method() -> None:
             return [_Card("listen"), _Card("talk"), _Card("ask")]
 
     hub_screen = _HubScreen()
-    runner = helpers.NavigationSoakRunner(
+    runner = NavigationSoakRunner(
         config_dir="config",
         cycles=1,
         hold_seconds=0.1,
@@ -449,7 +454,7 @@ def test_navigation_soak_runner_clips_playback_idle_to_avoid_exhausting_fixture_
 
     idle_calls: list[tuple[str, float]] = []
     simulated_actions: list[str] = []
-    runner = helpers.NavigationSoakRunner(
+    runner = NavigationSoakRunner(
         config_dir="config",
         cycles=1,
         hold_seconds=0.1,
