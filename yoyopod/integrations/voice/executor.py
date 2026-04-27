@@ -166,7 +166,12 @@ class VoiceCommandExecutor:
             return VoiceCommandOutcome("Music Off", "Local music playback is not ready yet.")
         if not self._play_music_action():
             return VoiceCommandOutcome("Music Empty", "I could not find any local music to play.")
-        return VoiceCommandOutcome("Playing", "Starting local music.", route_name="shuffle_started")
+        return VoiceCommandOutcome(
+            "Playing",
+            "Starting local music.",
+            should_speak=False,
+            route_name="shuffle_started",
+        )
 
     def _handle_call_command(self, spoken_name: str) -> VoiceCommandOutcome:
         contact = self._find_contact(spoken_name)

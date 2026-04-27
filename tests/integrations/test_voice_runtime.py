@@ -500,17 +500,17 @@ def test_voice_runtime_coordinator_runs_capture_and_emits_route() -> None:
     coordinator.begin_listening(async_capture=False)
 
     assert service.capture_calls == 1
-    _wait_until(lambda: service.speak_calls == ["Starting local music."])
-    assert service.speak_calls == ["Starting local music."]
+    assert service.speak_calls == []
     assert outcomes == [
         VoiceCommandOutcome(
             "Playing",
             "Starting local music.",
+            should_speak=False,
             route_name="shuffle_started",
         )
     ]
     assert context.voice.last_transcript == "play music"
-    assert context.voice.last_spoken_text == "Starting local music."
+    assert context.voice.last_spoken_text == ""
     assert context.voice.interaction.phase == "reply"
     assert context.voice.interaction.headline == "Playing"
 
