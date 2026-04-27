@@ -153,6 +153,45 @@ def test_voice_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> N
     assert settings.audio.capture_device_id == ""
 
 
+def test_voice_trace_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> None:
+    """Missing voice config should still resolve to bounded trace defaults."""
+
+    monkeypatch.delenv("YOYOPOD_VOICE_TRACE_ENABLED", raising=False)
+    monkeypatch.delenv("YOYOPOD_VOICE_TRACE_PATH", raising=False)
+    monkeypatch.delenv("YOYOPOD_VOICE_TRACE_MAX_TURNS", raising=False)
+    monkeypatch.delenv("YOYOPOD_VOICE_TRACE_INCLUDE_TRANSCRIPTS", raising=False)
+    monkeypatch.delenv("YOYOPOD_VOICE_TRACE_BODY_PREVIEW_CHARS", raising=False)
+
+    config_file = tmp_path / "voice" / "assistant.yaml"
+    settings = load_config_model_from_yaml(VoiceConfig, config_file)
+
+    assert not config_file.exists()
+    assert settings.trace.enabled is True
+    assert settings.trace.path == "logs/voice/turns.jsonl"
+    assert settings.trace.max_turns == 50
+    assert settings.trace.include_transcripts is True
+    assert settings.trace.body_preview_chars == 160
+
+
+def test_voice_trace_config_env_overrides(tmp_path, monkeypatch) -> None:
+    """Voice trace settings should be overridable through typed env fields."""
+
+    monkeypatch.setenv("YOYOPOD_VOICE_TRACE_ENABLED", "false")
+    monkeypatch.setenv("YOYOPOD_VOICE_TRACE_PATH", "/tmp/yoyopod/voice.jsonl")
+    monkeypatch.setenv("YOYOPOD_VOICE_TRACE_MAX_TURNS", "200")
+    monkeypatch.setenv("YOYOPOD_VOICE_TRACE_INCLUDE_TRANSCRIPTS", "false")
+    monkeypatch.setenv("YOYOPOD_VOICE_TRACE_BODY_PREVIEW_CHARS", "64")
+
+    config_file = tmp_path / "voice" / "assistant.yaml"
+    settings = load_config_model_from_yaml(VoiceConfig, config_file)
+
+    assert settings.trace.enabled is False
+    assert settings.trace.path == "/tmp/yoyopod/voice.jsonl"
+    assert settings.trace.max_turns == 200
+    assert settings.trace.include_transcripts is False
+    assert settings.trace.body_preview_chars == 64
+
+
 def test_voice_config_includes_cloud_worker_defaults(tmp_path, monkeypatch) -> None:
     """Cloud voice settings should have safe defaults without requiring credentials."""
 

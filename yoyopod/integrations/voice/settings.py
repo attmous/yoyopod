@@ -77,11 +77,13 @@ class VoiceSettingsResolver:
         speaker_device_id = None
         assistant_cfg = None
         worker_cfg = None
+        trace_cfg = None
         if self._config_manager is not None:
             voice_cfg = getattr(self._config_manager, "get_voice_settings", lambda: None)()
             if voice_cfg is not None:
                 assistant_cfg = getattr(voice_cfg, "assistant", None)
                 worker_cfg = getattr(voice_cfg, "worker", None)
+                trace_cfg = getattr(voice_cfg, "trace", None)
                 audio_cfg = getattr(voice_cfg, "audio", None)
                 if audio_cfg is not None:
                     capture_device_id = getattr(audio_cfg, "capture_device_id", "").strip() or None
@@ -124,6 +126,21 @@ class VoiceSettingsResolver:
         defaults = VoiceSettings(
             capture_device_id=capture_device_id,
             speaker_device_id=speaker_device_id or None,
+            voice_trace_enabled=getattr(trace_cfg, "enabled", VoiceSettings.voice_trace_enabled),
+            voice_trace_path=getattr(trace_cfg, "path", VoiceSettings.voice_trace_path),
+            voice_trace_max_turns=getattr(
+                trace_cfg, "max_turns", VoiceSettings.voice_trace_max_turns
+            ),
+            voice_trace_include_transcripts=getattr(
+                trace_cfg,
+                "include_transcripts",
+                VoiceSettings.voice_trace_include_transcripts,
+            ),
+            voice_trace_body_preview_chars=getattr(
+                trace_cfg,
+                "body_preview_chars",
+                VoiceSettings.voice_trace_body_preview_chars,
+            ),
         )
         if self._config_manager is None:
             return defaults
@@ -191,6 +208,31 @@ class VoiceSettingsResolver:
                 routing_cfg,
                 "fallback_min_command_confidence",
                 defaults.fallback_min_command_confidence,
+            ),
+            voice_trace_enabled=getattr(
+                trace_cfg,
+                "enabled",
+                defaults.voice_trace_enabled,
+            ),
+            voice_trace_path=getattr(
+                trace_cfg,
+                "path",
+                defaults.voice_trace_path,
+            ),
+            voice_trace_max_turns=getattr(
+                trace_cfg,
+                "max_turns",
+                defaults.voice_trace_max_turns,
+            ),
+            voice_trace_include_transcripts=getattr(
+                trace_cfg,
+                "include_transcripts",
+                defaults.voice_trace_include_transcripts,
+            ),
+            voice_trace_body_preview_chars=getattr(
+                trace_cfg,
+                "body_preview_chars",
+                defaults.voice_trace_body_preview_chars,
             ),
             cloud_worker_enabled=getattr(
                 worker_cfg,

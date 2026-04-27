@@ -41,6 +41,26 @@ class VoiceCommandRoutingConfig:
 
 
 @dataclass(slots=True)
+class VoiceTraceConfig:
+    """Bounded local voice-turn trace policy."""
+
+    enabled: bool = config_value(default=True, env="YOYOPOD_VOICE_TRACE_ENABLED")
+    path: str = config_value(
+        default="logs/voice/turns.jsonl",
+        env="YOYOPOD_VOICE_TRACE_PATH",
+    )
+    max_turns: int = config_value(default=50, env="YOYOPOD_VOICE_TRACE_MAX_TURNS")
+    include_transcripts: bool = config_value(
+        default=True,
+        env="YOYOPOD_VOICE_TRACE_INCLUDE_TRANSCRIPTS",
+    )
+    body_preview_chars: int = config_value(
+        default=160,
+        env="YOYOPOD_VOICE_TRACE_BODY_PREVIEW_CHARS",
+    )
+
+
+@dataclass(slots=True)
 class VoiceAssistantConfig:
     """Voice-command and spoken-response policy."""
 
@@ -141,3 +161,4 @@ class VoiceConfig:
     assistant: VoiceAssistantConfig = config_value(default_factory=VoiceAssistantConfig)
     audio: VoiceAudioConfig = config_value(default_factory=VoiceAudioConfig)
     worker: VoiceWorkerConfig = config_value(default_factory=VoiceWorkerConfig)
+    trace: VoiceTraceConfig = config_value(default_factory=VoiceTraceConfig)

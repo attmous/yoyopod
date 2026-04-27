@@ -50,6 +50,11 @@ class VoiceSettings:
     command_routing_mode: str = "command_first"
     ask_fallback_enabled: bool = True
     fallback_min_command_confidence: float = 0.82
+    voice_trace_enabled: bool = True
+    voice_trace_path: str = "logs/voice/turns.jsonl"
+    voice_trace_max_turns: int = 50
+    voice_trace_include_transcripts: bool = True
+    voice_trace_body_preview_chars: int = 160
     cloud_worker_enabled: bool = True
     cloud_worker_domain: str = "voice"
     cloud_worker_provider: str = "mock"

@@ -2063,6 +2063,29 @@ def test_voice_settings_resolver_includes_command_routing_config() -> None:
     assert settings.fallback_min_command_confidence == 0.91
 
 
+def test_voice_settings_resolver_includes_trace_config() -> None:
+    config_manager = _FakeConfigManager([])
+    voice_cfg = config_manager.get_voice_settings()
+    voice_cfg.trace = SimpleNamespace(
+        enabled=False,
+        path="logs/voice/test-turns.jsonl",
+        max_turns=123,
+        include_transcripts=False,
+        body_preview_chars=44,
+    )
+
+    settings = VoiceSettingsResolver(
+        context=None,
+        config_manager=config_manager,
+    ).defaults()
+
+    assert settings.voice_trace_enabled is False
+    assert settings.voice_trace_path == "logs/voice/test-turns.jsonl"
+    assert settings.voice_trace_max_turns == 123
+    assert settings.voice_trace_include_transcripts is False
+    assert settings.voice_trace_body_preview_chars == 44
+
+
 def test_voice_settings_resolver_falls_back_for_empty_routing_config() -> None:
     default_settings = VoiceSettings()
     config_manager = _FakeConfigManager([])
