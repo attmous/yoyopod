@@ -76,10 +76,12 @@ class VoiceSettingsResolver:
         capture_device_id = None
         speaker_device_id = None
         assistant_cfg = None
+        worker_cfg = None
         if self._config_manager is not None:
             voice_cfg = getattr(self._config_manager, "get_voice_settings", lambda: None)()
             if voice_cfg is not None:
                 assistant_cfg = getattr(voice_cfg, "assistant", None)
+                worker_cfg = getattr(voice_cfg, "worker", None)
                 audio_cfg = getattr(voice_cfg, "audio", None)
                 if audio_cfg is not None:
                     capture_device_id = getattr(audio_cfg, "capture_device_id", "").strip() or None
@@ -103,7 +105,9 @@ class VoiceSettingsResolver:
                         )
 
             if capture_device_id is None:
-                capture_device_id = getattr(self._config_manager, "get_capture_device_id", lambda: None)()
+                capture_device_id = getattr(
+                    self._config_manager, "get_capture_device_id", lambda: None
+                )()
             if speaker_device_id is None:
                 speaker_device_id = getattr(
                     self._config_manager,
@@ -132,15 +136,28 @@ class VoiceSettingsResolver:
             output_volume = int(get_default_output_volume())
 
         return VoiceSettings(
-            commands_enabled=assistant_cfg.commands_enabled,
-            ai_requests_enabled=assistant_cfg.ai_requests_enabled,
-            screen_read_enabled=assistant_cfg.screen_read_enabled,
-            stt_enabled=assistant_cfg.stt_enabled,
-            tts_enabled=assistant_cfg.tts_enabled,
+            mode=getattr(assistant_cfg, "mode", defaults.mode),
+            commands_enabled=getattr(assistant_cfg, "commands_enabled", defaults.commands_enabled),
+            ai_requests_enabled=getattr(
+                assistant_cfg,
+                "ai_requests_enabled",
+                defaults.ai_requests_enabled,
+            ),
+            screen_read_enabled=getattr(
+                assistant_cfg,
+                "screen_read_enabled",
+                defaults.screen_read_enabled,
+            ),
+            stt_enabled=getattr(assistant_cfg, "stt_enabled", defaults.stt_enabled),
+            tts_enabled=getattr(assistant_cfg, "tts_enabled", defaults.tts_enabled),
             output_volume=output_volume,
-            stt_backend=assistant_cfg.stt_backend,
-            tts_backend=assistant_cfg.tts_backend,
-            vosk_model_path=assistant_cfg.vosk_model_path,
+            stt_backend=getattr(assistant_cfg, "stt_backend", defaults.stt_backend),
+            tts_backend=getattr(assistant_cfg, "tts_backend", defaults.tts_backend),
+            vosk_model_path=getattr(
+                assistant_cfg,
+                "vosk_model_path",
+                defaults.vosk_model_path,
+            ),
             vosk_model_keep_loaded=getattr(
                 assistant_cfg,
                 "vosk_model_keep_loaded",
@@ -148,8 +165,83 @@ class VoiceSettingsResolver:
             ),
             speaker_device_id=speaker_device_id,
             capture_device_id=capture_device_id,
-            sample_rate_hz=assistant_cfg.sample_rate_hz,
-            record_seconds=assistant_cfg.record_seconds,
-            tts_rate_wpm=assistant_cfg.tts_rate_wpm,
-            tts_voice=assistant_cfg.tts_voice,
+            sample_rate_hz=getattr(assistant_cfg, "sample_rate_hz", defaults.sample_rate_hz),
+            record_seconds=getattr(assistant_cfg, "record_seconds", defaults.record_seconds),
+            tts_rate_wpm=getattr(assistant_cfg, "tts_rate_wpm", defaults.tts_rate_wpm),
+            tts_voice=getattr(assistant_cfg, "tts_voice", defaults.tts_voice),
+            cloud_worker_enabled=getattr(
+                worker_cfg,
+                "enabled",
+                defaults.cloud_worker_enabled,
+            ),
+            cloud_worker_domain=getattr(
+                worker_cfg,
+                "domain",
+                defaults.cloud_worker_domain,
+            ),
+            cloud_worker_provider=getattr(
+                worker_cfg,
+                "provider",
+                defaults.cloud_worker_provider,
+            ),
+            cloud_worker_request_timeout_seconds=getattr(
+                worker_cfg,
+                "request_timeout_seconds",
+                defaults.cloud_worker_request_timeout_seconds,
+            ),
+            cloud_worker_max_audio_seconds=getattr(
+                worker_cfg,
+                "max_audio_seconds",
+                defaults.cloud_worker_max_audio_seconds,
+            ),
+            cloud_worker_stt_model=getattr(
+                worker_cfg,
+                "stt_model",
+                defaults.cloud_worker_stt_model,
+            ),
+            cloud_worker_tts_model=getattr(
+                worker_cfg,
+                "tts_model",
+                defaults.cloud_worker_tts_model,
+            ),
+            cloud_worker_tts_voice=getattr(
+                worker_cfg,
+                "tts_voice",
+                defaults.cloud_worker_tts_voice,
+            ),
+            cloud_worker_tts_instructions=getattr(
+                worker_cfg,
+                "tts_instructions",
+                defaults.cloud_worker_tts_instructions,
+            ),
+            cloud_worker_ask_model=getattr(
+                worker_cfg,
+                "ask_model",
+                defaults.cloud_worker_ask_model,
+            ),
+            cloud_worker_ask_timeout_seconds=getattr(
+                worker_cfg,
+                "ask_timeout_seconds",
+                defaults.cloud_worker_ask_timeout_seconds,
+            ),
+            cloud_worker_ask_max_history_turns=getattr(
+                worker_cfg,
+                "ask_max_history_turns",
+                defaults.cloud_worker_ask_max_history_turns,
+            ),
+            cloud_worker_ask_max_response_chars=getattr(
+                worker_cfg,
+                "ask_max_response_chars",
+                defaults.cloud_worker_ask_max_response_chars,
+            ),
+            cloud_worker_ask_instructions=getattr(
+                worker_cfg,
+                "ask_instructions",
+                defaults.cloud_worker_ask_instructions,
+            ),
+            local_feedback_enabled=getattr(
+                worker_cfg,
+                "local_feedback_enabled",
+                defaults.local_feedback_enabled,
+            ),
         )

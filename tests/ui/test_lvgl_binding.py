@@ -33,9 +33,14 @@ class FakeLib:
 
     def __init__(self) -> None:
         self.hub_sync_calls: list[tuple[object, ...]] = []
+        self.ask_sync_calls: list[tuple[object, ...]] = []
 
     def yoyopod_lvgl_hub_sync(self, *args: object) -> int:
         self.hub_sync_calls.append(args)
+        return 0
+
+    def yoyopod_lvgl_ask_sync(self, *args: object) -> int:
+        self.ask_sync_calls.append(args)
         return 0
 
 
@@ -128,3 +133,29 @@ def test_hub_sync_cache_evicts_old_dynamic_entries() -> None:
     assert "listen" in binding._hub_sync_string_cache
     assert "" in binding._hub_sync_string_cache
     assert "Tap = Next | 2x Tap = Open" in binding._hub_sync_string_cache
+
+
+def test_ask_sync_normalizes_typographic_punctuation_for_lvgl_fonts() -> None:
+    """Ask text should avoid unsupported punctuation glyphs in the LVGL font path."""
+
+    binding, ffi, lib = _make_binding()
+
+    binding.ask_sync(
+        icon_key="ask",
+        title_text="It\u2019s story time",
+        subtitle_text="It\u00b4s okay to say \u201cyes\u201d.",
+        footer="A ask again",
+        voip_state=0,
+        battery_percent=100,
+        charging=False,
+        power_available=True,
+        accent=(1, 2, 3),
+    )
+
+    assert [allocation.value for allocation in ffi.allocations[:4]] == [
+        b"ask",
+        b"It's story time",
+        b"It's okay to say \"yes\".",
+        b"A ask again",
+    ]
+    assert len(lib.ask_sync_calls) == 1

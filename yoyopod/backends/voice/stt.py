@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import threading
 import wave
 from pathlib import Path
 from typing import Protocol
@@ -19,7 +20,13 @@ class SpeechToTextBackend(Protocol):
     def is_available(self, settings: VoiceSettings) -> bool:
         """Return True when the STT backend can be used."""
 
-    def transcribe(self, audio_path: Path, settings: VoiceSettings) -> VoiceTranscript:
+    def transcribe(
+        self,
+        audio_path: Path,
+        settings: VoiceSettings,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> VoiceTranscript:
         """Return the transcript for the provided audio sample."""
 
 
@@ -29,7 +36,13 @@ class NullSpeechToTextBackend:
     def is_available(self, settings: VoiceSettings) -> bool:
         return bool(settings.stt_enabled)
 
-    def transcribe(self, audio_path: Path, settings: VoiceSettings) -> VoiceTranscript:
+    def transcribe(
+        self,
+        audio_path: Path,
+        settings: VoiceSettings,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> VoiceTranscript:
         return VoiceTranscript(text="", confidence=0.0, is_final=True)
 
 
@@ -46,7 +59,13 @@ class VoskSpeechToTextBackend:
             return False
         return self._resolve_model_path(settings).exists()
 
-    def transcribe(self, audio_path: Path, settings: VoiceSettings) -> VoiceTranscript:
+    def transcribe(
+        self,
+        audio_path: Path,
+        settings: VoiceSettings,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> VoiceTranscript:
         if not self.is_available(settings):
             return VoiceTranscript(text="", confidence=0.0, is_final=True)
 

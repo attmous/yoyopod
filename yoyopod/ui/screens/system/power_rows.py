@@ -129,6 +129,7 @@ def _build_voice_rows(
         return rows
 
     voice = context.voice
+    volume_level = context.output_volume_level(voice.output_volume)
     rows = [
         ("Voice Cmds", "On" if voice.commands_enabled else "Off"),
         ("AI Requests", "On" if voice.ai_requests_enabled else "Off"),
@@ -136,7 +137,7 @@ def _build_voice_rows(
         ("Speaker", format_device_label(voice.speaker_device_id)),
         ("Mic Device", format_device_label(voice.capture_device_id)),
         ("Mic", "Muted" if voice.mic_muted else "Live"),
-        ("Volume", f"{voice.output_volume}%"),
+        ("Volume", f"{volume_level}/10"),
     ]
 
     if summary_mode:

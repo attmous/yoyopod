@@ -15,6 +15,7 @@ from yoyopod_cli.slot_contract import (
     SLOT_PYTHON_BIN,
     SLOT_PYTHON_STDLIB_MARKER,
     SLOT_VENV_PYTHON,
+    SLOT_VOICE_WORKER_ARTIFACT,
     slot_python_bin,
     slot_python_stdlib_marker,
 )
@@ -424,6 +425,9 @@ def test_build_copies_native_runtime_artifacts_when_present(tmp_path: Path) -> N
         target = fake_repo / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("shim\n")
+    worker = fake_repo / SLOT_VOICE_WORKER_ARTIFACT
+    worker.parent.mkdir(parents=True, exist_ok=True)
+    worker.write_text("worker\n", encoding="utf-8")
 
     slot = build_release.build(
         repo_root=fake_repo,
@@ -435,6 +439,32 @@ def test_build_copies_native_runtime_artifacts_when_present(tmp_path: Path) -> N
 
     for relative in APP_NATIVE_RUNTIME_ARTIFACTS:
         assert (slot / "app" / relative).is_file()
+
+
+def test_build_copies_voice_worker_runtime_artifact_when_present(tmp_path: Path) -> None:
+    fake_repo = tmp_path / "repo"
+    (fake_repo / "yoyopod").mkdir(parents=True)
+    (fake_repo / "yoyopod" / "__init__.py").write_text("")
+    (fake_repo / "yoyopod_cli").mkdir()
+    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
+    (fake_repo / "deploy" / "scripts").mkdir(parents=True)
+    launch = fake_repo / "deploy" / "scripts" / "launch.sh"
+    launch.write_text("#!/bin/sh\nexit 0\n")
+    launch.chmod(0o755)
+    worker = fake_repo / SLOT_VOICE_WORKER_ARTIFACT
+    worker.parent.mkdir(parents=True, exist_ok=True)
+    worker.write_text("worker\n", encoding="utf-8")
+
+    slot = build_release.build(
+        repo_root=fake_repo,
+        output_root=tmp_path / "out",
+        version="2026.04.22-worker",
+        channel="dev",
+        skip_venv=True,
+    )
+
+    assert (slot / SLOT_VOICE_WORKER_ARTIFACT).is_file()
 
 
 def test_build_with_venv_rejects_missing_native_runtime_artifacts(tmp_path: Path) -> None:
@@ -478,6 +508,9 @@ def test_build_with_venv_validates_self_contained_runtime_contract(tmp_path: Pat
         target = fake_repo / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("shim\n")
+    worker = fake_repo / SLOT_VOICE_WORKER_ARTIFACT
+    worker.parent.mkdir(parents=True, exist_ok=True)
+    worker.write_text("worker\n", encoding="utf-8")
 
     def _fake_resolve_venv(dest_venv: Path, requirements_path: Path, python_version: str) -> None:
         del requirements_path, python_version
@@ -529,6 +562,9 @@ def test_build_self_contained_contract_uses_requested_python_version(
         target = fake_repo / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("shim\n")
+    worker = fake_repo / SLOT_VOICE_WORKER_ARTIFACT
+    worker.parent.mkdir(parents=True, exist_ok=True)
+    worker.write_text("worker\n", encoding="utf-8")
 
     def _fake_resolve_venv(dest_venv: Path, requirements_path: Path, python_version: str) -> None:
         del requirements_path

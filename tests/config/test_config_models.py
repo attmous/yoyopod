@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 from yoyopod.config import (
@@ -14,6 +15,19 @@ from yoyopod.config import (
     VoiceConfig,
     YoyoPodConfig,
     load_config_model_from_yaml,
+)
+
+ASK_INSTRUCTIONS = (
+    "You are YoYoPod's friendly Ask helper for a child using a small handheld audio device. "
+    "Answer in simple language a child can understand. Keep answers to 1-3 short sentences "
+    "unless the child asks for a story. Be warm, calm, and encouraging. Do not use scary "
+    "detail. Do not ask for private information. For medical, legal, safety, emergency, or "
+    "adult topics, give a brief safe answer and say to ask a grown-up. If you are unsure, "
+    "say so simply. Do not claim to browse the internet or know live facts."
+)
+TTS_INSTRUCTIONS = (
+    "Speak warmly and calmly for a child. Use simple words, friendly pacing, and brief answers. "
+    "Avoid scary emphasis."
 )
 
 
@@ -141,6 +155,156 @@ def test_voice_config_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> N
     assert settings.assistant.tts_rate_wpm == 155
     assert settings.audio.speaker_device_id == ""
     assert settings.audio.capture_device_id == ""
+
+
+def test_voice_config_includes_cloud_worker_defaults(tmp_path, monkeypatch) -> None:
+    """Cloud voice settings should have safe defaults without requiring credentials."""
+
+    for key in [
+        "YOYOPOD_VOICE_MODE",
+        "YOYOPOD_VOICE_WORKER_ENABLED",
+        "YOYOPOD_VOICE_WORKER_DOMAIN",
+        "YOYOPOD_VOICE_WORKER_PROVIDER",
+        "YOYOPOD_VOICE_WORKER_ARGV",
+        "YOYOPOD_VOICE_WORKER_TIMEOUT_SECONDS",
+        "YOYOPOD_VOICE_WORKER_MAX_AUDIO_SECONDS",
+        "YOYOPOD_CLOUD_STT_MODEL",
+        "YOYOPOD_CLOUD_TTS_MODEL",
+        "YOYOPOD_CLOUD_TTS_VOICE",
+        "YOYOPOD_CLOUD_TTS_INSTRUCTIONS",
+        "YOYOPOD_CLOUD_ASK_MODEL",
+        "YOYOPOD_CLOUD_ASK_TIMEOUT_SECONDS",
+        "YOYOPOD_CLOUD_ASK_MAX_HISTORY_TURNS",
+        "YOYOPOD_CLOUD_ASK_MAX_RESPONSE_CHARS",
+        "YOYOPOD_CLOUD_ASK_INSTRUCTIONS",
+        "YOYOPOD_VOICE_LOCAL_FEEDBACK_ENABLED",
+    ]:
+        monkeypatch.delenv(key, raising=False)
+
+    config_file = tmp_path / "voice" / "assistant.yaml"
+    settings = load_config_model_from_yaml(VoiceConfig, config_file)
+
+    assert settings.assistant.mode == "local"
+    assert settings.worker.enabled is False
+    assert settings.worker.domain == "voice"
+    assert settings.worker.provider == "mock"
+    assert settings.worker.argv == ["workers/voice/go/build/yoyopod-voice-worker"]
+    assert settings.worker.request_timeout_seconds == 12.0
+    assert settings.worker.max_audio_seconds == 30.0
+    assert settings.worker.stt_model == "gpt-4o-mini-transcribe"
+    assert settings.worker.tts_model == "gpt-4o-mini-tts"
+    assert settings.worker.tts_voice == "coral"
+    assert settings.worker.tts_instructions == TTS_INSTRUCTIONS
+    assert settings.worker.ask_model == "gpt-4.1-mini"
+    assert settings.worker.ask_timeout_seconds == 12.0
+    assert settings.worker.ask_max_history_turns == 4
+    assert settings.worker.ask_max_response_chars == 480
+    assert settings.worker.ask_instructions == ASK_INSTRUCTIONS
+    assert settings.worker.local_feedback_enabled is True
+
+
+def test_voice_config_cloud_worker_ask_env_overrides(tmp_path, monkeypatch) -> None:
+    """Cloud Ask settings should be overridable through typed env fields."""
+
+    monkeypatch.setenv("YOYOPOD_CLOUD_ASK_MODEL", "ask-env-model")
+    monkeypatch.setenv("YOYOPOD_CLOUD_ASK_TIMEOUT_SECONDS", "7.5")
+    monkeypatch.setenv("YOYOPOD_CLOUD_ASK_MAX_HISTORY_TURNS", "6")
+    monkeypatch.setenv("YOYOPOD_CLOUD_ASK_MAX_RESPONSE_CHARS", "321")
+    monkeypatch.setenv("YOYOPOD_CLOUD_ASK_INSTRUCTIONS", "Answer from env.")
+
+    config_file = tmp_path / "voice" / "assistant.yaml"
+    settings = load_config_model_from_yaml(VoiceConfig, config_file)
+
+    assert settings.worker.ask_model == "ask-env-model"
+    assert settings.worker.ask_timeout_seconds == 7.5
+    assert settings.worker.ask_max_history_turns == 6
+    assert settings.worker.ask_max_response_chars == 321
+    assert settings.worker.ask_instructions == "Answer from env."
+
+
+def test_voice_worker_argv_env_override_parses_json_list(tmp_path, monkeypatch) -> None:
+    """Worker argv env overrides should use deterministic JSON-array syntax."""
+
+    monkeypatch.setenv("YOYOPOD_VOICE_WORKER_ARGV", '["python", "-m", "worker"]')
+
+    config_file = tmp_path / "voice" / "assistant.yaml"
+    settings = load_config_model_from_yaml(VoiceConfig, config_file)
+
+    assert settings.worker.argv == ["python", "-m", "worker"]
+
+
+def test_voice_worker_argv_env_override_rejects_non_string_items(tmp_path, monkeypatch) -> None:
+    """Worker argv env overrides should reject non-string list items."""
+
+    monkeypatch.setenv("YOYOPOD_VOICE_WORKER_ARGV", '["python", 7]')
+
+    config_file = tmp_path / "voice" / "assistant.yaml"
+    with pytest.raises(ValueError, match="list item"):
+        load_config_model_from_yaml(VoiceConfig, config_file)
+
+
+@pytest.mark.parametrize(
+    "env_value",
+    [
+        "python -m worker",
+        '"python -m worker"',
+    ],
+)
+def test_voice_worker_argv_env_override_requires_json_list(
+    tmp_path,
+    monkeypatch,
+    env_value: str,
+) -> None:
+    """Invalid list env overrides should fail with a list-parsing error."""
+
+    monkeypatch.setenv("YOYOPOD_VOICE_WORKER_ARGV", env_value)
+
+    config_file = tmp_path / "voice" / "assistant.yaml"
+    with pytest.raises(ValueError, match="list parsing"):
+        load_config_model_from_yaml(VoiceConfig, config_file)
+
+
+def test_authored_voice_config_includes_cloud_worker_defaults(monkeypatch) -> None:
+    """Repo-authored voice YAML should include cloud worker defaults."""
+
+    for key in [
+        "YOYOPOD_VOICE_MODE",
+        "YOYOPOD_VOICE_WORKER_ENABLED",
+        "YOYOPOD_VOICE_WORKER_DOMAIN",
+        "YOYOPOD_VOICE_WORKER_PROVIDER",
+        "YOYOPOD_VOICE_WORKER_ARGV",
+        "YOYOPOD_CLOUD_STT_MODEL",
+        "YOYOPOD_CLOUD_TTS_MODEL",
+        "YOYOPOD_CLOUD_TTS_VOICE",
+        "YOYOPOD_CLOUD_TTS_INSTRUCTIONS",
+        "YOYOPOD_CLOUD_ASK_MODEL",
+        "YOYOPOD_CLOUD_ASK_TIMEOUT_SECONDS",
+        "YOYOPOD_CLOUD_ASK_MAX_HISTORY_TURNS",
+        "YOYOPOD_CLOUD_ASK_MAX_RESPONSE_CHARS",
+        "YOYOPOD_CLOUD_ASK_INSTRUCTIONS",
+        "YOYOPOD_VOICE_LOCAL_FEEDBACK_ENABLED",
+    ]:
+        monkeypatch.delenv(key, raising=False)
+
+    settings = load_config_model_from_yaml(VoiceConfig, Path("config/voice/assistant.yaml"))
+
+    assert settings.assistant.mode == "local"
+    assert settings.worker.enabled is False
+    assert settings.worker.domain == "voice"
+    assert settings.worker.provider == "mock"
+    assert settings.worker.argv == ["workers/voice/go/build/yoyopod-voice-worker"]
+    assert settings.worker.request_timeout_seconds == 12.0
+    assert settings.worker.max_audio_seconds == 30.0
+    assert settings.worker.stt_model == "gpt-4o-mini-transcribe"
+    assert settings.worker.tts_model == "gpt-4o-mini-tts"
+    assert settings.worker.tts_voice == "coral"
+    assert settings.worker.tts_instructions == TTS_INSTRUCTIONS
+    assert settings.worker.ask_model == "gpt-4.1-mini"
+    assert settings.worker.ask_timeout_seconds == 12.0
+    assert settings.worker.ask_max_history_turns == 4
+    assert settings.worker.ask_max_response_chars == 480
+    assert settings.worker.ask_instructions == ASK_INSTRUCTIONS
+    assert settings.worker.local_feedback_enabled is True
 
 
 def test_config_manager_app_config_merges_yaml_and_env(tmp_path, monkeypatch) -> None:

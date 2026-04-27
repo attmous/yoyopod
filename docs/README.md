@@ -53,6 +53,7 @@ Plan docs are useful, but they are not automatically the current implementation 
 - [`CROSS_SCREEN_OVERLAYS.md`](CROSS_SCREEN_OVERLAYS.md), first-class contract for cross-screen overlay ownership and ordering
 - [`CANONICAL_STRUCTURE.md`](CANONICAL_STRUCTURE.md), canonical config topology and domain package ownership
 - [`CLOUD_PROVISIONING_AND_BACKEND.md`](CLOUD_PROVISIONING_AND_BACKEND.md), claimed-device auth, config sync, cache/status files, MQTT telemetry, and current backend-integration status
+- [`CLOUD_VOICE_WORKER.md`](CLOUD_VOICE_WORKER.md), OpenAI cloud STT/TTS worker setup, secrets, and smoke validation
 - [`RUNTIME_EVENT_FLOW.md`](RUNTIME_EVENT_FLOW.md), current event pipeline and coordinator ownership
 - [`VOICE_STT_MODEL_LIFECYCLE.md`](VOICE_STT_MODEL_LIFECYCLE.md), offline Vosk retention policy and measured footprint
 - [`DISPLAY_HAL_ARCHITECTURE.md`](DISPLAY_HAL_ARCHITECTURE.md), display abstraction and adapters

@@ -17,7 +17,7 @@ _REPO_ROOT = REPO_ROOT
 
 app = typer.Typer(
     name="build",
-    help="Build native C extensions.",
+    help="Build native extensions and worker binaries.",
     no_args_is_help=True,
 )
 
@@ -38,8 +38,12 @@ class NativeArtifact:
     sources: tuple[Path, ...]
 
 
-def _run(command: list[str], cwd: Path | None = None) -> None:
-    subprocess.run(command, cwd=str(cwd) if cwd else None, check=True)
+def _run(
+    command: list[str],
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> None:
+    subprocess.run(command, cwd=str(cwd) if cwd else None, env=env, check=True)
 
 
 def _native_build_jobs() -> str:
@@ -63,6 +67,20 @@ def _native_build_jobs() -> str:
     if total_mib < 1024:
         return "1"
     return "2"
+
+
+def _voice_worker_build_env() -> dict[str, str]:
+    """Return a Go build environment sized for the current device."""
+
+    jobs = _native_build_jobs()
+    env = dict(os.environ)
+    env.setdefault("GOMAXPROCS", jobs)
+
+    goflags = env.get("GOFLAGS", "").split()
+    if not any(flag == "-p" or flag.startswith("-p=") for flag in goflags):
+        goflags.append(f"-p={jobs}")
+    env["GOFLAGS"] = " ".join(goflags)
+    return env
 
 
 def _resolve_native_dir(label: str, *candidates: Path) -> Path:
@@ -174,6 +192,38 @@ def _build_liblinphone(native_dir: Path, build_dir: Path) -> None:
     _run(["cmake", "--build", str(build_dir), "--parallel", _native_build_jobs()])
 
 
+def _voice_worker_dir() -> Path:
+    return _REPO_ROOT / "workers" / "voice" / "go"
+
+
+def _voice_worker_binary_path() -> Path:
+    suffix = ".exe" if os.name == "nt" else ""
+    return _voice_worker_dir() / "build" / f"yoyopod-voice-worker{suffix}"
+
+
+def _voice_worker_sources() -> tuple[Path, ...]:
+    worker_dir = _voice_worker_dir()
+    return (
+        worker_dir / "go.mod",
+        worker_dir / "cmd",
+        worker_dir / "internal",
+    )
+
+
+def build_voice_worker() -> Path:
+    """Build the Go cloud voice worker and return the binary path."""
+
+    worker_dir = _voice_worker_dir()
+    output = _voice_worker_binary_path()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    _run(
+        ["go", "build", "-o", str(output), "./cmd/yoyopod-voice-worker"],
+        cwd=worker_dir,
+        env=_voice_worker_build_env(),
+    )
+    return output
+
+
 def _default_lvgl_source_dir() -> Path:
     """Return the stable cache path for the pinned LVGL source checkout."""
 
@@ -200,6 +250,8 @@ def _is_stale(binary: Path, sources: tuple[Path, ...]) -> bool:
     """Return True when one native artifact is missing or older than its sources."""
 
     if not binary.exists():
+        return True
+    if binary.stat().st_size == 0:
         return True
     return _newest_mtime(sources) > binary.stat().st_mtime
 
@@ -269,12 +321,29 @@ def _ensure_native_shims(*, skip_lvgl_fetch: bool = False) -> tuple[str, ...]:
             raise SystemExit(f"Unknown native artifact: {artifact.label}")
         rebuilt.append(artifact.label)
 
+    voice_worker_output = _voice_worker_binary_path()
+    if (
+        _is_stale(voice_worker_output, _voice_worker_sources())
+        and (_voice_worker_dir() / "go.mod").is_file()
+        and shutil.which("go") is not None
+    ):
+        build_voice_worker()
+        rebuilt.append("Go voice worker")
+
     return tuple(rebuilt)
 
 
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
+
+
+@app.command("voice-worker")
+def build_voice_worker_command() -> None:
+    """Build the Go cloud voice worker for the current platform."""
+
+    output = build_voice_worker()
+    typer.echo(f"Built Go voice worker: {output}")
 
 
 @app.command("lvgl")

@@ -60,6 +60,10 @@ class _NavigationSoakAppHandle(Protocol):
         """Return the runtime loop service."""
 
     @property
+    def worker_supervisor(self) -> Any:
+        """Return the managed worker supervisor."""
+
+    @property
     def recovery_service(self) -> Any:
         """Return the recovery service."""
 
@@ -146,6 +150,10 @@ class _YoyoPodAppNavigationSoakHandle:
     @property
     def runtime_loop(self) -> Any:
         return self._app.runtime_loop
+
+    @property
+    def worker_supervisor(self) -> Any:
+        return self._app.worker_supervisor
 
     @property
     def recovery_service(self) -> Any:
@@ -444,6 +452,9 @@ def _pump_app(app: _NavigationSoakAppHandle, duration_seconds: float) -> None:
     deadline = time.monotonic() + max(0.0, duration_seconds)
     while time.monotonic() < deadline:
         app.runtime_loop.process_pending_main_thread_actions()
+        worker_supervisor = getattr(app, "worker_supervisor", None)
+        if worker_supervisor is not None:
+            worker_supervisor.poll()
         now = time.monotonic()
         app.recovery_service.attempt_manager_recovery()
         app.power_runtime.poll_status(now=now)

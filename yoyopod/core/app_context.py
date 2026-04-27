@@ -490,11 +490,48 @@ class AppContext:
         self.voice.output_volume = cached_volume
         return cached_volume
 
+    def max_output_volume(self) -> int:
+        """Return the configured raw output ceiling used for the 0-10 user scale."""
+
+        return max(0, min(100, int(self.settings.get("max_volume", 100))))
+
+    def output_volume_level(self, volume: int | None = None) -> int:
+        """Map a raw output volume to the user-facing 0-10 scale."""
+
+        raw_volume = self.media.playback.volume if volume is None else volume
+        max_volume = self.max_output_volume()
+        if max_volume <= 0:
+            return 0
+        clamped = max(0, min(max_volume, int(raw_volume)))
+        return max(0, min(10, int(round((clamped * 10) / max_volume))))
+
+    def output_volume_from_level(self, level: int) -> int:
+        """Map a user-facing 0-10 volume level to a raw output volume."""
+
+        max_volume = self.max_output_volume()
+        clamped_level = max(0, min(10, int(level)))
+        if max_volume <= 0 or clamped_level == 0:
+            return 0
+        return max(0, min(max_volume, int(round((max_volume * clamped_level) / 10))))
+
+    def volume_level_up(self, step: int = 1) -> int:
+        """Increase volume by user-facing levels and return the raw output volume."""
+
+        level = self.output_volume_level() + max(1, int(step))
+        self.set_volume(self.output_volume_from_level(level))
+        return self.media.playback.volume
+
+    def volume_level_down(self, step: int = 1) -> int:
+        """Decrease volume by user-facing levels and return the raw output volume."""
+
+        level = self.output_volume_level() - max(1, int(step))
+        self.set_volume(self.output_volume_from_level(level))
+        return self.media.playback.volume
+
     def set_volume(self, volume: int) -> None:
         """Set playback volume while respecting the configured max volume."""
 
-        max_volume = self.settings.get("max_volume", 100)
-        volume = max(0, min(int(volume), int(max_volume)))
+        volume = max(0, min(int(volume), self.max_output_volume()))
         if self.audio_volume_controller is not None:
             applied = self.audio_volume_controller.set_output_volume(volume)
             if not applied:

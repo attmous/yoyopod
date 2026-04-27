@@ -157,6 +157,25 @@ def test_button_press_fires_raw_activity_immediately() -> None:
     assert activity_events == [{"timestamp": 0.25, "pressed": True}]
 
 
+def test_raw_press_transition_fires_wake_activity_before_debounce_resolution() -> None:
+    """A sleeping screen should wake on the physical edge, even before debounce accepts it."""
+    adapter = PTTInputAdapter(
+        simulate=True,
+        enable_navigation=True,
+        debounce_time=0.05,
+    )
+    activity_events: list[dict] = []
+    actions = _record_actions(adapter)
+    adapter.on_activity(lambda data=None: activity_events.append(data or {}))
+
+    adapter._observe_raw_state(True, 0.10)
+
+    assert activity_events == [
+        {"timestamp": 0.10, "pressed": True, "stage": "raw_press"},
+    ]
+    assert actions == []
+
+
 def test_poll_loop_preserves_double_tap_window_across_debounce(monkeypatch) -> None:
     """A second tap near the timeout should still resolve to SELECT, not ADVANCE."""
     adapter = PTTInputAdapter(

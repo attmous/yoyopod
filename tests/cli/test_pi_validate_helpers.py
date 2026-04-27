@@ -82,6 +82,42 @@ def test_public_pi_validate_helpers_alias_reexports_internal_helpers() -> None:
     assert public_helpers.run_navigation_idle_soak is helpers.run_navigation_idle_soak
 
 
+def test_pump_app_polls_worker_supervisor(monkeypatch) -> None:
+    calls: list[str] = []
+    monotonic_values = iter([0.0, 0.0, 0.01, 0.2])
+
+    app = SimpleNamespace(
+        runtime_loop=SimpleNamespace(
+            process_pending_main_thread_actions=lambda: calls.append("main"),
+            pump_lvgl_backend=lambda now: calls.append(f"lvgl:{now}"),
+        ),
+        worker_supervisor=SimpleNamespace(poll=lambda: calls.append("worker")),
+        recovery_service=SimpleNamespace(attempt_manager_recovery=lambda: calls.append("recovery")),
+        power_runtime=SimpleNamespace(
+            poll_status=lambda *, now: calls.append(f"power:{now}"),
+            feed_watchdog_if_due=lambda now: calls.append(f"watchdog:{now}"),
+        ),
+        screen_power_service=SimpleNamespace(
+            update_screen_power=lambda now: calls.append(f"screen:{now}"),
+        ),
+    )
+
+    monkeypatch.setattr(helpers.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(helpers.time, "sleep", lambda _seconds: None)
+
+    helpers._pump_app(app, 0.1)
+
+    assert calls == [
+        "main",
+        "worker",
+        "recovery",
+        "power:0.01",
+        "lvgl:0.01",
+        "watchdog:0.01",
+        "screen:0.01",
+    ]
+
+
 def test_navigation_idle_soak_resets_hub_selection_between_cycles(
     monkeypatch,
 ) -> None:

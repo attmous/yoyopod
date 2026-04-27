@@ -112,6 +112,7 @@ def _build_validate(
     with_voip: bool,
     with_power: bool = False,
     with_rtc: bool = False,
+    with_cloud_voice: bool = False,
     with_lvgl_soak: bool,
     with_navigation: bool,
 ) -> str:
@@ -143,6 +144,8 @@ def _build_validate(
     if with_rtc:
         smoke_cmd += " --with-rtc"
     steps.extend([validate_deploy_cmd, smoke_cmd])
+    if with_cloud_voice:
+        steps.append(checkout_module_command(venv_relpath, "pi", "validate", "cloud-voice"))
     if with_music:
         steps.append(checkout_module_command(venv_relpath, "pi", "validate", "music"))
     if with_voip:
@@ -177,6 +180,11 @@ def validate(
     with_voip: bool = typer.Option(False, "--with-voip"),
     with_power: bool = typer.Option(False, "--with-power"),
     with_rtc: bool = typer.Option(False, "--with-rtc"),
+    with_cloud_voice: bool = typer.Option(
+        False,
+        "--with-cloud-voice",
+        help="Also validate cloud STT/TTS worker boundaries on the target.",
+    ),
     with_lvgl_soak: bool = typer.Option(False, "--with-lvgl-soak"),
     with_navigation: bool = typer.Option(False, "--with-navigation"),
     verbose: bool = typer.Option(False, "--verbose"),
@@ -195,6 +203,7 @@ def validate(
         with_voip=with_voip,
         with_power=with_power,
         with_rtc=with_rtc,
+        with_cloud_voice=with_cloud_voice,
         with_lvgl_soak=with_lvgl_soak,
         with_navigation=with_navigation,
     )

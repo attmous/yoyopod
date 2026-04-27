@@ -76,6 +76,48 @@ The pre-worker baseline is not pass/fail. Use it to identify the top stalls
 and memory pressure before Phase 2/3, then keep the raw notes with the branch
 or release artifacts they describe.
 
+## Runtime Hybrid Phase 2 Cloud Voice Measurement
+
+Use this after the Go cloud voice worker is wired behind the feature flag.
+
+### Build and deploy
+
+```bash
+uv run yoyopod build voice-worker
+yoyopod remote mode activate dev
+yoyopod remote sync --branch <branch>
+```
+
+### Required scenarios
+
+Capture status and process memory for each scenario:
+
+- voice disabled
+- local Vosk configured and one transcription attempted
+- Go voice worker idle with mock provider
+- Go voice worker cloud STT request
+- Go voice worker cloud TTS request
+- provider unavailable or missing credentials
+- worker crash and supervisor restart
+
+### Fields to record
+
+- supervisor PSS/RSS
+- voice worker PSS/RSS
+- total process tree PSS/RSS
+- `responsiveness_input_to_action_p95_ms`
+- `responsiveness_action_to_visible_p95_ms`
+- `runtime_main_thread_drain_seconds`
+- voice worker pending requests
+- voice worker restart count
+- protocol errors and dropped messages
+
+### Acceptance target
+
+Cloud voice mode is acceptable only if STT/TTS requests avoid UI-loop stalls
+and total PSS is lower than the current local Vosk command path when Vosk is
+resident.
+
 ## 1. Install the profiling tools
 
 The repo now tracks the common Python-side tools in the `dev` extra:

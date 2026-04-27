@@ -10,6 +10,10 @@ if TYPE_CHECKING:
         NullAudioCaptureBackend,
         SubprocessAudioCaptureBackend,
     )
+    from yoyopod.backends.voice.cloud_worker import (
+        CloudWorkerSpeechToTextBackend,
+        CloudWorkerTextToSpeechBackend,
+    )
     from yoyopod.backends.voice.output import AlsaOutputPlayer
     from yoyopod.backends.voice.stt import (
         NullSpeechToTextBackend,
@@ -26,6 +30,14 @@ if TYPE_CHECKING:
 _EXPORTS = {
     "AlsaOutputPlayer": ("yoyopod.backends.voice.output", "AlsaOutputPlayer"),
     "AudioCaptureBackend": ("yoyopod.backends.voice.capture", "AudioCaptureBackend"),
+    "CloudWorkerSpeechToTextBackend": (
+        "yoyopod.backends.voice.cloud_worker",
+        "CloudWorkerSpeechToTextBackend",
+    ),
+    "CloudWorkerTextToSpeechBackend": (
+        "yoyopod.backends.voice.cloud_worker",
+        "CloudWorkerTextToSpeechBackend",
+    ),
     "EspeakNgTextToSpeechBackend": (
         "yoyopod.backends.voice.tts",
         "EspeakNgTextToSpeechBackend",
@@ -58,6 +70,8 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "AlsaOutputPlayer",
     "AudioCaptureBackend",
+    "CloudWorkerSpeechToTextBackend",
+    "CloudWorkerTextToSpeechBackend",
     "EspeakNgTextToSpeechBackend",
     "NullAudioCaptureBackend",
     "NullSpeechToTextBackend",

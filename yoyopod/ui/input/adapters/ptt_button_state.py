@@ -247,6 +247,14 @@ class PTTButtonStateMachine:
 
         self._state._raw_button_state = current_state
         self._state._button_transition_time = observed_at
+        if current_state:
+            self._emit_activity(
+                {
+                    "timestamp": observed_at,
+                    "pressed": True,
+                    "stage": "raw_press",
+                }
+            )
 
     def advance_debounced_state(self, current_time: float) -> None:
         """Resolve a debounced physical state change into press/release handlers."""

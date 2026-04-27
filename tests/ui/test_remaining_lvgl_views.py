@@ -922,7 +922,7 @@ def test_power_screen_one_button_voice_page_wraps_immediately() -> None:
         "AI Requests: On",
         "Screen Read: Off",
         "Mic: Live",
-        "Volume: 50%",
+        "Volume: 6/10",
     ]
 
     screen.on_advance()

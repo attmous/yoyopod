@@ -54,6 +54,7 @@ from yoyopod.integrations.call import VoiceNoteEventHandler
 from yoyopod.integrations.network import NetworkEventHandler
 from yoyopod.integrations.display import ScreenPowerService
 from yoyopod.integrations.voice.runtime import VoiceRuntimeCoordinator
+from yoyopod.integrations.voice.worker_client import VoiceWorkerClient
 from yoyopod.core.shutdown import ShutdownLifecycleService
 from yoyopod.core.status import RuntimeStatusService
 
@@ -147,6 +148,7 @@ class YoyoPodApp:
         self.recent_track_store: Optional[RecentTrackHistoryStore] = None
         self.audio_device_catalog: Optional[AudioDeviceCatalog] = None
         self.voice_runtime: Optional[VoiceRuntimeCoordinator] = None
+        self.voice_worker_client: VoiceWorkerClient | None = None
 
         # Screen instances
         self.hub_screen: Optional[HubScreen] = None

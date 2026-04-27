@@ -78,6 +78,7 @@ class PowerScreen(Screen):
         audio_volume_controller = getattr(app, "audio_volume_controller", None)
         voip_manager = getattr(app, "voip_manager", None)
         status_provider_from_app = getattr(app, "get_status", None)
+        self._volume_action_step = 5
         self._state_provider = (
             state_provider
             if state_provider is not None
@@ -99,28 +100,38 @@ class PowerScreen(Screen):
                 ),
             )
         )
-        self._actions = actions or build_power_screen_actions(
-            network_manager=network_manager,
-            refresh_voice_device_options_action=getattr(
-                audio_device_catalog,
-                "refresh_async",
-                None,
-            ),
-            persist_speaker_device_action=getattr(
-                config_manager,
-                "set_voice_speaker_device_id",
-                None,
-            ),
-            persist_capture_device_action=getattr(
-                config_manager,
-                "set_voice_capture_device_id",
-                None,
-            ),
-            volume_up_action=getattr(audio_volume_controller, "volume_up", None),
-            volume_down_action=getattr(audio_volume_controller, "volume_down", None),
-            mute_action=getattr(voip_manager, "mute", None),
-            unmute_action=getattr(voip_manager, "unmute", None),
-        )
+        if actions is not None:
+            self._actions = actions
+        else:
+            volume_up_action = getattr(audio_volume_controller, "volume_level_up", None)
+            volume_down_action = getattr(audio_volume_controller, "volume_level_down", None)
+            if callable(volume_up_action) and callable(volume_down_action):
+                self._volume_action_step = 1
+            else:
+                volume_up_action = getattr(audio_volume_controller, "volume_up", None)
+                volume_down_action = getattr(audio_volume_controller, "volume_down", None)
+            self._actions = build_power_screen_actions(
+                network_manager=network_manager,
+                refresh_voice_device_options_action=getattr(
+                    audio_device_catalog,
+                    "refresh_async",
+                    None,
+                ),
+                persist_speaker_device_action=getattr(
+                    config_manager,
+                    "set_voice_speaker_device_id",
+                    None,
+                ),
+                persist_capture_device_action=getattr(
+                    config_manager,
+                    "set_voice_capture_device_id",
+                    None,
+                ),
+                volume_up_action=volume_up_action,
+                volume_down_action=volume_down_action,
+                mute_action=getattr(voip_manager, "mute", None),
+                unmute_action=getattr(voip_manager, "unmute", None),
+            )
         self.page_index = 0
         self.selected_row = 0
         self.in_detail = False
@@ -651,12 +662,14 @@ class PowerScreen(Screen):
             return
         current = None
         if direction > 0 and self._actions.volume_up is not None:
-            current = self._actions.volume_up(5)
+            current = self._actions.volume_up(self._volume_action_step)
         elif direction < 0 and self._actions.volume_down is not None:
-            current = self._actions.volume_down(5)
+            current = self._actions.volume_down(self._volume_action_step)
         else:
-            volume = self.context.voice.output_volume + (5 * direction)
-            self.context.set_volume(max(0, min(100, volume)))
+            if direction > 0:
+                self.context.volume_level_up(1)
+            else:
+                self.context.volume_level_down(1)
             return
         self._sync_context_output_volume(current)
 

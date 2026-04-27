@@ -154,6 +154,25 @@ def test_media_config_composes_domain_policy_with_device_owned_routing(tmp_path:
     )
 
 
+def test_rpi_zero_music_dir_inherits_device_owner_library() -> None:
+    """Packaged RPi Zero config should use the shared dev/prod device-owner library."""
+
+    manager = ConfigManager(config_dir="config", config_board="rpi-zero-2w")
+
+    assert manager.get_media_settings().music.music_dir == "/home/tifo/Music"
+
+
+def test_packaged_hardware_audio_uses_shared_alsa_facades() -> None:
+    """Packaged Pi config should route app audio through shared ALSA facade PCMs."""
+
+    config_path = Path("config/device/hardware.yaml")
+    payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+
+    assert payload["media_audio"]["alsa_device"] == "default"
+    assert payload["voice_audio"]["speaker_device_id"] == "playback"
+    assert payload["voice_audio"]["capture_device_id"] == "capture"
+
+
 def test_power_config_loads_from_canonical_domain_backend_file(tmp_path: Path) -> None:
     """Power should load from its domain-owned backend file instead of app-shell config."""
 

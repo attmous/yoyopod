@@ -20,6 +20,7 @@ from .scenes import (
     StatusBarSceneMixin,
     TalkSceneMixin,
 )
+from .text import normalize_lvgl_text
 
 SHIM_CDEF = """
 typedef void (*yoyopod_lvgl_flush_cb_t)(
@@ -343,7 +344,7 @@ class LvglBinding(
         return ((int(red) & 0xFF) << 16) | ((int(green) & 0xFF) << 8) | (int(blue) & 0xFF)
 
     def _new_char_array(self, value: str) -> object:
-        return self.ffi.new("char[]", value.encode("utf-8"))
+        return self.ffi.new("char[]", normalize_lvgl_text(value).encode("utf-8"))
 
     def _get_cached_char_array(
         self,

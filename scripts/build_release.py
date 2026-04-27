@@ -40,6 +40,7 @@ try:
     )
     from yoyopod_cli.slot_contract import (
         APP_NATIVE_RUNTIME_ARTIFACTS,
+        SLOT_VOICE_WORKER_ARTIFACT,
         missing_self_contained_paths,
     )
 except ImportError:
@@ -53,6 +54,7 @@ except ImportError:
     )
     from yoyopod_cli.slot_contract import (  # noqa: E402
         APP_NATIVE_RUNTIME_ARTIFACTS,
+        SLOT_VOICE_WORKER_ARTIFACT,
         missing_self_contained_paths,
     )
 
@@ -301,6 +303,19 @@ def _copy_native_runtime_artifacts(repo_root: Path, dest_app: Path, *, required:
         shutil.copy2(src, dest)
 
 
+def _copy_voice_worker_runtime_artifact(repo_root: Path, slot_dir: Path, *, required: bool) -> None:
+    """Copy the Go voice worker binary to the path used by default worker argv."""
+
+    src = repo_root / SLOT_VOICE_WORKER_ARTIFACT
+    dest = slot_dir / SLOT_VOICE_WORKER_ARTIFACT
+    if not src.is_file():
+        if required:
+            raise FileNotFoundError(f"required voice worker runtime artifact missing: {src}")
+        return
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dest)
+
+
 def _validate_self_contained_slot(slot_dir: Path, python_version: str) -> None:
     """Raise when the slot does not satisfy the self-contained runtime contract."""
 
@@ -420,6 +435,7 @@ def build(
     _write_runtime_requirements(repo_root, slot_dir / "runtime-requirements.txt")
     (slot_dir / "assets").mkdir(exist_ok=True)
     _copy_native_runtime_artifacts(repo_root, slot_dir / "app", required=not skip_venv)
+    _copy_voice_worker_runtime_artifact(repo_root, slot_dir, required=False)
 
     if skip_venv:
         (slot_dir / "venv").mkdir()

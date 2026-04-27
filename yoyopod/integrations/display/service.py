@@ -137,7 +137,7 @@ class ScreenPowerService:
             self.app.cloud_manager.request_immediate_poll()
             self.app.cloud_manager.publish_heartbeat()
 
-        logger.debug("Screen woke from inactivity")
+        logger.info("Screen woke from inactivity")
 
     def sleep_screen(self, now: float) -> None:
         """Turn off the display backlight and retain cumulative screen-on time."""

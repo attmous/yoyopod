@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 
 _PERCENT_RE = re.compile(r"\[(\d{1,3})%\]")
+_ALSA_CARD_RE = re.compile(r"card\s+(\d+):\s*([^\s\[]+)", re.IGNORECASE)
 
 
 class OutputVolumeController:
@@ -24,10 +25,12 @@ class OutputVolumeController:
         music_backend: "MusicBackend | None" = None,
         *,
         amixer_binary: str = "amixer",
+        aplay_binary: str = "aplay",
         mixer_control: str = "Master",
     ) -> None:
         self.music_backend = music_backend
         self.amixer_binary = amixer_binary
+        self.aplay_binary = aplay_binary
         self.mixer_control = mixer_control
         self._last_requested_volume: int | None = None
         self._last_system_volume_available: bool | None = None
@@ -147,15 +150,47 @@ class OutputVolumeController:
         """Pin WM8960 output stages high and leave user volume to mpv."""
 
         successes = 0
-        for command in (
-            [self.amixer_binary, "-c", "1", "sset", "Playback", "100%"],
-            [self.amixer_binary, "-c", "1", "sset", "Speaker", "100%"],
-            [self.amixer_binary, "-c", "1", "sset", "Headphone", "100%"],
-        ):
-            result = self._run_amixer(command)
-            if result is not None and result.returncode == 0:
-                successes += 1
+        for card in self._wm8960_output_card_candidates():
+            card_successes = 0
+            for control in ("Playback", "Speaker", "Headphone"):
+                command = [self.amixer_binary, "-c", card, "sset", control, "100%"]
+                result = self._run_amixer(command)
+                if result is not None and result.returncode == 0:
+                    card_successes += 1
+            if card_successes:
+                successes += card_successes
+                break
         return successes > 0
+
+    def _wm8960_output_card_candidates(self) -> list[str]:
+        """Return likely ALSA card indices for the WM8960 output codec."""
+
+        detected: list[str] = []
+        try:
+            result = subprocess.run(
+                [self.aplay_binary, "-l"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        except (FileNotFoundError, OSError, subprocess.SubprocessError):
+            result = None
+
+        if result is not None and result.returncode == 0:
+            for line in result.stdout.splitlines():
+                match = _ALSA_CARD_RE.search(line)
+                if match is None:
+                    continue
+                card, label = match.groups()
+                if "wm8960" in line.lower() or "wm8960" in label.lower():
+                    detected.append(card)
+
+        candidates: list[str] = []
+        for card in [*detected, "1", "0"]:
+            if card not in candidates:
+                candidates.append(card)
+        return candidates
 
     def _amixer_get_candidates(self) -> list[list[str]]:
         """Return candidate amixer reads in priority order."""
@@ -334,6 +369,33 @@ class AudioVolumeController:
         resolved = self.get_output_volume()
         self._cache_context_volume(resolved if resolved is not None else target)
         return applied
+
+    def get_output_volume_level(self, *, refresh_system: bool = True) -> int:
+        """Return the current shared output volume on the 0-10 user scale."""
+
+        return self._context.output_volume_level(
+            self.get_output_volume(refresh_system=refresh_system)
+        )
+
+    def set_output_volume_level(self, level: int) -> int | None:
+        """Set shared output volume from a 0-10 user-facing level."""
+
+        target = self._context.output_volume_from_level(level)
+        self.set_output_volume(target)
+        resolved = self.get_output_volume(refresh_system=False)
+        return resolved if resolved is not None else target
+
+    def volume_level_up(self, step: int = 1) -> int | None:
+        """Increase shared output volume by one or more user-facing levels."""
+
+        current_level = self.get_output_volume_level()
+        return self.set_output_volume_level(current_level + max(1, int(step)))
+
+    def volume_level_down(self, step: int = 1) -> int | None:
+        """Decrease shared output volume by one or more user-facing levels."""
+
+        current_level = self.get_output_volume_level()
+        return self.set_output_volume_level(current_level - max(1, int(step)))
 
     def volume_up(self, step: int = 5) -> int | None:
         """Increase shared output volume."""

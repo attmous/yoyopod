@@ -318,8 +318,7 @@ def test_screen_manager_skips_visible_tick_render_when_screen_stays_clean(
     assert power.render_calls == 1
     assert power.refresh_for_visible_tick_calls == 1
     assert (
-        screen_manager.refresh_current_screen_for_visible_tick()
-        is VisibleTickRefreshResult.CLEAN
+        screen_manager.refresh_current_screen_for_visible_tick() is VisibleTickRefreshResult.CLEAN
     )
     assert power.render_calls == 1
     assert power.refresh_for_visible_tick_calls == 2
@@ -542,6 +541,9 @@ class _StubVoiceRuntime:
             generation=0,
         )
         self.begin_entry_cycle_calls: list[tuple[bool, bool]] = []
+        self.begin_ask_calls: list[bool] = []
+        self.reset_conversation_calls = 0
+        self.begin_listening_calls: list[bool] = []
 
     def bind(self, **_: object) -> None:
         return
@@ -552,8 +554,14 @@ class _StubVoiceRuntime:
     def begin_entry_cycle(self, *, quick_command: bool, async_capture: bool) -> None:
         self.begin_entry_cycle_calls.append((quick_command, async_capture))
 
+    def begin_ask(self, *, async_capture: bool) -> None:
+        self.begin_ask_calls.append(async_capture)
+
+    def reset_conversation(self) -> None:
+        self.reset_conversation_calls += 1
+
     def begin_listening(self, *, async_capture: bool) -> None:
-        return
+        self.begin_listening_calls.append(async_capture)
 
     def finish_ptt_capture(self) -> None:
         return
@@ -611,6 +619,66 @@ def test_ask_screen_skips_deferred_entry_cycle_after_navigation_away() -> None:
     scheduler.callbacks.pop()()
 
     assert runtime.begin_entry_cycle_calls == []
+
+
+def test_ask_screen_select_starts_normal_ask_by_default() -> None:
+    """Selecting normal Ask should use the conversational Ask runtime path."""
+
+    runtime = _StubVoiceRuntime()
+    ask = AskScreen(
+        display=object(),
+        context=AppContext(),
+        voice_runtime=runtime,
+    )
+
+    ask.on_select()
+
+    assert runtime.begin_ask_calls == [True]
+    assert runtime.begin_listening_calls == []
+
+
+def test_ask_screen_select_starts_quick_command_listening() -> None:
+    """Selecting quick-command Ask should preserve direct command listening."""
+
+    runtime = _StubVoiceRuntime()
+    ask = AskScreen(
+        display=object(),
+        context=AppContext(),
+        voice_runtime=runtime,
+    )
+    ask.set_quick_command(True)
+
+    ask.on_select()
+
+    assert runtime.begin_listening_calls == [True]
+    assert runtime.begin_ask_calls == []
+
+
+def test_ask_screen_summary_matches_entry_mode() -> None:
+    """Screen-read summaries should describe the active Ask entry mode."""
+
+    ask = AskScreen(display=object(), context=AppContext(), voice_runtime=_StubVoiceRuntime())
+
+    assert ask._screen_summary() == "You are on Ask. Ask a question, or go back to exit."
+
+    ask.set_quick_command(True)
+
+    assert ask._screen_summary() == "You are on quick Ask. Say a direct command now."
+
+
+def test_ask_screen_exit_resets_conversation() -> None:
+    """Leaving Ask should clear the shared conversation context."""
+
+    runtime = _StubVoiceRuntime()
+    ask = AskScreen(
+        display=object(),
+        context=AppContext(),
+        voice_runtime=runtime,
+    )
+
+    ask.exit()
+
+    assert runtime.reset_conversation_calls == 1
 
 
 class _FakeContact:
@@ -744,7 +812,7 @@ class _FakeVoiceService:
         self.last_audio_path = path
         return VoiceCaptureResult(audio_path=path, recorded=True)
 
-    def transcribe(self, audio_path) -> VoiceTranscript:
+    def transcribe(self, audio_path, *, cancel_event=None) -> VoiceTranscript:
         return VoiceTranscript(text=self.transcript, confidence=0.92)
 
     def match_command(self, transcript: str):
@@ -770,6 +838,7 @@ def test_ask_screen_applies_local_device_actions() -> None:
     """Voice commands should update mic and volume state through local hooks."""
 
     context = AppContext()
+    context.settings["max_volume"] = 55
     volume_up_calls: list[int] = []
     voip_manager = _FakeVoipManager()
     screen = AskScreen(
@@ -782,8 +851,8 @@ def test_ask_screen_applies_local_device_actions() -> None:
     )
 
     screen.on_voice_command({"transcript": "volume up"})
-    assert volume_up_calls == [5]
-    assert context.voice.last_spoken_text == "Volume is 55."
+    assert volume_up_calls == [1]
+    assert context.voice.last_spoken_text == "Volume is 10 out of 10."
 
     screen.on_voice_command({"transcript": "mute mic"})
     assert context.voice.mic_muted is True
@@ -800,6 +869,7 @@ def test_ask_screen_can_resolve_dependencies_from_app() -> None:
     """AskScreen should resolve call, music, and volume hooks from the owning app seam."""
 
     context = AppContext()
+    context.settings["max_volume"] = 55
     volume_up_calls: list[int] = []
     voip_manager = _FakeVoipManager()
     app = SimpleNamespace(
@@ -830,8 +900,8 @@ def test_ask_screen_can_resolve_dependencies_from_app() -> None:
     assert screen.consume_navigation_request() == NavigationRequest.route("shuffle_started")
 
     screen.on_voice_command({"transcript": "volume up"})
-    assert volume_up_calls == [5]
-    assert context.voice.last_spoken_text == "Volume is 55."
+    assert volume_up_calls == [1]
+    assert context.voice.last_spoken_text == "Volume is 10 out of 10."
 
 
 def test_ask_screen_can_start_music_from_local_hook() -> None:
@@ -933,6 +1003,7 @@ def test_ask_screen_select_can_capture_and_execute_command() -> None:
         voice_settings_provider=lambda: VoiceSettings(),
         voice_service_factory=lambda _settings: service,
     )
+    screen.set_quick_command(True)
 
     screen.on_select()
 
@@ -958,6 +1029,7 @@ def test_ask_screen_select_in_simulation_still_uses_local_capture() -> None:
         voice_settings_provider=lambda: VoiceSettings(),
         voice_service_factory=lambda _settings: service,
     )
+    screen.set_quick_command(True)
 
     screen.on_select()
 

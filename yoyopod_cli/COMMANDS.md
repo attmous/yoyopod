@@ -52,6 +52,7 @@ For live help, use `yoyopod <cmd> --help`.
 | `yoyopod pi power rtc status` | Show current RTC and alarm state. |
 | `yoyopod pi power rtc sync-from` | Sync PiSugar RTC time to the Raspberry Pi system clock. |
 | `yoyopod pi power rtc sync-to` | Sync Raspberry Pi system time to the PiSugar RTC. |
+| `yoyopod pi validate cloud-voice` | Validate cloud STT/TTS and local voice command routing on the target. |
 | `yoyopod pi validate deploy` | Validate deploy-readiness for the current target checkout without launching the app. |
 | `yoyopod pi validate lvgl` | Run a deterministic LVGL navigation and idle soak pass against YoYoPod. |
 | `yoyopod pi validate music` | Validate the mpv music backend on the target without starting the full app. |
@@ -71,6 +72,7 @@ For live help, use `yoyopod <cmd> --help`.
 | `yoyopod build liblinphone` | Build the native Liblinphone shim for the current platform. |
 | `yoyopod build lvgl` | Build the pinned LVGL shim for the current platform. |
 | `yoyopod build simulation` | Build the LVGL native shim required by ``python yoyopod.py --simulate``. |
+| `yoyopod build voice-worker` | Build the Go cloud voice worker for the current platform. |
 
 ## `yoyopod release`
 

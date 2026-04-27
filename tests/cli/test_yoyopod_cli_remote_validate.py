@@ -31,6 +31,7 @@ def test_build_validate_minimal() -> None:
         with_voip=False,
         with_power=False,
         with_rtc=False,
+        with_cloud_voice=False,
         with_lvgl_soak=False,
         with_navigation=False,
     )
@@ -59,10 +60,12 @@ def test_build_validate_all_flags() -> None:
         with_voip=True,
         with_power=True,
         with_rtc=True,
+        with_cloud_voice=True,
         with_lvgl_soak=True,
         with_navigation=True,
     )
     assert ".venv/bin/python -m yoyopod_cli.main pi validate smoke --with-power --with-rtc" in shell
+    assert ".venv/bin/python -m yoyopod_cli.main pi validate cloud-voice" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate music" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate voip" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate lvgl" in shell
@@ -78,6 +81,7 @@ def test_build_validate_only_music() -> None:
         with_voip=False,
         with_power=False,
         with_rtc=False,
+        with_cloud_voice=False,
         with_lvgl_soak=False,
         with_navigation=False,
     )
@@ -94,6 +98,7 @@ def test_build_validate_syncs_branch_before_validation_stages() -> None:
         with_voip=False,
         with_power=False,
         with_rtc=False,
+        with_cloud_voice=False,
         with_lvgl_soak=False,
         with_navigation=False,
     )
@@ -118,6 +123,7 @@ def test_build_validate_cleans_untracked_files_before_and_after_checkout() -> No
         with_voip=False,
         with_power=False,
         with_rtc=False,
+        with_cloud_voice=False,
         with_lvgl_soak=False,
         with_navigation=False,
     )
@@ -146,6 +152,7 @@ def test_build_validate_force_resets_branch_before_validation() -> None:
         with_voip=False,
         with_power=False,
         with_rtc=False,
+        with_cloud_voice=False,
         with_lvgl_soak=False,
         with_navigation=False,
     )
@@ -171,6 +178,7 @@ def test_validate_has_all_with_flags() -> None:
         "--with-voip",
         "--with-power",
         "--with-rtc",
+        "--with-cloud-voice",
         "--with-lvgl-soak",
         "--with-navigation",
     ):
@@ -190,6 +198,7 @@ def test_build_validate_uses_checkout_python_for_checkout_local_invocations() ->
         with_voip=False,
         with_power=False,
         with_rtc=False,
+        with_cloud_voice=False,
         with_lvgl_soak=False,
         with_navigation=False,
     )
@@ -211,6 +220,7 @@ def test_build_validate_with_sha_pins_and_checks_ancestry() -> None:
         with_voip=False,
         with_power=False,
         with_rtc=False,
+        with_cloud_voice=False,
         with_lvgl_soak=False,
         with_navigation=False,
     )
@@ -233,6 +243,7 @@ def test_build_validate_without_sha_uses_branch_tip() -> None:
         with_voip=False,
         with_power=False,
         with_rtc=False,
+        with_cloud_voice=False,
         with_lvgl_soak=False,
         with_navigation=False,
     )

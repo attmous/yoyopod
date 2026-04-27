@@ -27,10 +27,10 @@ class AskSceneMixin:
         power_available: bool,
         accent: tuple[int, int, int],
     ) -> None:
-        icon_raw = self.ffi.new("char[]", icon_key.encode("utf-8"))
-        title_raw = self.ffi.new("char[]", title_text.encode("utf-8"))
-        subtitle_raw = self.ffi.new("char[]", subtitle_text.encode("utf-8"))
-        footer_raw = self.ffi.new("char[]", footer.encode("utf-8"))
+        icon_raw = self._new_char_array(icon_key)
+        title_raw = self._new_char_array(title_text)
+        subtitle_raw = self._new_char_array(subtitle_text)
+        footer_raw = self._new_char_array(footer)
         self._raise_if_error(
             self.lib.yoyopod_lvgl_ask_sync(
                 icon_raw,

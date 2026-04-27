@@ -9,8 +9,12 @@ from pathlib import Path
 import subprocess
 import sys
 import threading
+import time
 import types
 
+import pytest
+
+import yoyopod.backends.voice.output as voice_output
 from yoyopod.backends.voice import (
     AlsaOutputPlayer,
     EspeakNgTextToSpeechBackend,
@@ -38,7 +42,13 @@ class FakeSttBackend:
     def is_available(self, settings: VoiceSettings) -> bool:
         return settings.stt_enabled
 
-    def transcribe(self, audio_path: Path, settings: VoiceSettings) -> VoiceTranscript:
+    def transcribe(
+        self,
+        audio_path: Path,
+        settings: VoiceSettings,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> VoiceTranscript:
         self.calls.append((audio_path, settings))
         return VoiceTranscript(text="call mom", confidence=0.91)
 
@@ -50,13 +60,19 @@ class FakeTtsBackend:
     """Simple TTS double for service wiring tests."""
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, VoiceSettings]] = []
+        self.calls: list[tuple[str, VoiceSettings, threading.Event | None]] = []
 
     def is_available(self, settings: VoiceSettings) -> bool:
         return settings.tts_enabled
 
-    def speak(self, text: str, settings: VoiceSettings) -> bool:
-        self.calls.append((text, settings))
+    def speak(
+        self,
+        text: str,
+        settings: VoiceSettings,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> bool:
+        self.calls.append((text, settings, cancel_event))
         return True
 
 
@@ -97,12 +113,177 @@ def test_match_voice_command_extracts_contact_name() -> None:
     assert match.is_command is True
 
 
+@pytest.mark.parametrize(
+    ("phrase", "expected_contact_name"),
+    [
+        ("call mama", "mama"),
+        ("call mommy", "mommy"),
+        ("call my mama", "mama"),
+        ("please call my mom", "mom"),
+        ("ring mama", "mama"),
+        ("phone mom", "mom"),
+        ("call daddy", "daddy"),
+        ("call papa", "papa"),
+        ("ring papa", "papa"),
+    ],
+)
+def test_match_voice_command_handles_family_call_variations(
+    phrase: str, expected_contact_name: str
+) -> None:
+    """Family call variants should resolve to a contact-bearing call command."""
+
+    match = match_voice_command(phrase)
+
+    assert match.intent is VoiceCommandIntent.CALL_CONTACT
+    assert match.contact_name == expected_contact_name
+
+
+@pytest.mark.parametrize(
+    ("phrase", "expected_intent"),
+    [
+        ("play a song", VoiceCommandIntent.PLAY_MUSIC),
+        ("play songs", VoiceCommandIntent.PLAY_MUSIC),
+        ("put on music", VoiceCommandIntent.PLAY_MUSIC),
+        ("start songs", VoiceCommandIntent.PLAY_MUSIC),
+        ("play kids music", VoiceCommandIntent.PLAY_MUSIC),
+        ("louder", VoiceCommandIntent.VOLUME_UP),
+        ("make it louder", VoiceCommandIntent.VOLUME_UP),
+        ("too quiet", VoiceCommandIntent.VOLUME_UP),
+        ("quieter", VoiceCommandIntent.VOLUME_DOWN),
+        ("make it quieter", VoiceCommandIntent.VOLUME_DOWN),
+        ("too loud", VoiceCommandIntent.VOLUME_DOWN),
+    ],
+)
+def test_match_voice_command_handles_music_and_volume_variations(
+    phrase: str, expected_intent: VoiceCommandIntent
+) -> None:
+    """Common kid-friendly music and volume phrasings should match fixed commands."""
+
+    assert match_voice_command(phrase).intent is expected_intent
+
+
+@pytest.mark.parametrize(
+    ("phrase", "expected_intent"),
+    [
+        ("read this", VoiceCommandIntent.READ_SCREEN),
+        ("what is on the screen", VoiceCommandIntent.READ_SCREEN),
+        ("tell me what is on the screen", VoiceCommandIntent.READ_SCREEN),
+        ("turn off the mic", VoiceCommandIntent.MUTE_MIC),
+        ("turn off microphone", VoiceCommandIntent.MUTE_MIC),
+        ("turn off the microphone", VoiceCommandIntent.MUTE_MIC),
+        ("mute the mic", VoiceCommandIntent.MUTE_MIC),
+        ("mute the microphone", VoiceCommandIntent.MUTE_MIC),
+        ("turn on the mic", VoiceCommandIntent.UNMUTE_MIC),
+        ("turn on microphone", VoiceCommandIntent.UNMUTE_MIC),
+        ("turn on the microphone", VoiceCommandIntent.UNMUTE_MIC),
+        ("unmute the mic", VoiceCommandIntent.UNMUTE_MIC),
+        ("unmute the microphone", VoiceCommandIntent.UNMUTE_MIC),
+    ],
+)
+def test_match_voice_command_handles_screen_and_mic_variations(
+    phrase: str, expected_intent: VoiceCommandIntent
+) -> None:
+    """Screen reading and mic state phrases should match existing intents."""
+
+    assert match_voice_command(phrase).intent is expected_intent
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "loud",
+        "quiet",
+        "not louder",
+        "not quieter",
+        "not make it louder",
+        "do not make it louder",
+        "not make it quieter",
+        "do not make it quieter",
+        "make it not louder",
+        "turn volume not up",
+        "volume not down",
+        "not too loud",
+        "it is not too quiet",
+        "read this book",
+        "read this message",
+        "read this contact",
+        "turn on the music",
+        "turn off the music",
+        "turn on the light",
+        "turn off the light",
+        "mute music",
+        "unmute music",
+        "play a game",
+        "put on jacket",
+        "put on shoes",
+        "put on headphones",
+        "do not call mom",
+        "don't call mom",
+        "never call dad",
+        "can't call mom",
+        "cannot call mom",
+        "won't call mom",
+        "do n't call mom",
+        "can t call mom",
+        "do nt call mom",
+        "do n t call mom",
+        "don t call mom",
+        "won t call mom",
+        "please don t call mom",
+        "call not mom",
+    ],
+)
+def test_match_voice_command_rejects_nearby_non_commands(phrase: str) -> None:
+    """Short command phrases should not match negations or object-reading requests."""
+
+    assert match_voice_command(phrase).intent is VoiceCommandIntent.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    ("phrase", "expected_intent"),
+    [
+        ("read this please", VoiceCommandIntent.READ_SCREEN),
+        ("play a song please", VoiceCommandIntent.PLAY_MUSIC),
+        ("turn off the mic please", VoiceCommandIntent.MUTE_MIC),
+        ("turn on microphone now", VoiceCommandIntent.UNMUTE_MIC),
+    ],
+)
+def test_match_voice_command_accepts_polite_exact_trigger_suffixes(
+    phrase: str, expected_intent: VoiceCommandIntent
+) -> None:
+    """Exact triggers should allow harmless polite suffixes."""
+
+    assert match_voice_command(phrase).intent is expected_intent
+
+
+@pytest.mark.parametrize("template", VOICE_COMMAND_GRAMMAR)
+def test_voice_command_grammar_examples_match_template_intents(template) -> None:
+    """Each declared example should be executable by the deterministic matcher."""
+
+    for example in template.examples:
+        assert match_voice_command(example).intent is template.intent
+
+
+@pytest.mark.parametrize("template", VOICE_COMMAND_GRAMMAR)
+def test_voice_command_exact_trigger_phrases_are_declared_triggers(template) -> None:
+    """Exact-match trigger declarations should stay tied to real trigger phrases."""
+
+    assert set(template.exact_trigger_phrases) <= set(template.trigger_phrases)
+
+
 def test_match_voice_command_handles_basic_device_actions() -> None:
     """Volume and mic commands should resolve deterministically."""
 
     assert match_voice_command("volume up").intent is VoiceCommandIntent.VOLUME_UP
     assert match_voice_command("mute microphone").intent is VoiceCommandIntent.MUTE_MIC
     assert match_voice_command("what time is it").intent is VoiceCommandIntent.UNKNOWN
+
+
+def test_match_voice_command_handles_cloud_stt_script_transliterated_controls() -> None:
+    """Cloud STT can return English command words in Arabic/Persian script."""
+
+    assert match_voice_command("وولیوم اپ").intent is VoiceCommandIntent.VOLUME_UP
+    assert match_voice_command("پلی موزیک").intent is VoiceCommandIntent.PLAY_MUSIC
 
 
 def test_match_voice_command_accepts_fuzzy_basic_phrases() -> None:
@@ -131,7 +312,19 @@ def test_voice_service_uses_injected_backends() -> None:
     assert command.intent is VoiceCommandIntent.CALL_CONTACT
     assert command.contact_name == "mom"
     assert spoken is True
-    assert tts_backend.calls == [("Calling mom", settings)]
+    assert tts_backend.calls == [("Calling mom", settings, None)]
+
+
+def test_voice_service_passes_cancel_event_to_tts_backend() -> None:
+    """Service-level TTS should propagate cancellation to concrete backends."""
+
+    settings = VoiceSettings()
+    tts_backend = FakeTtsBackend()
+    service = VoiceService(settings=settings, tts_backend=tts_backend)
+    cancel_event = threading.Event()
+
+    assert service.speak("A long answer", cancel_event=cancel_event) is True
+    assert tts_backend.calls == [("A long answer", settings, cancel_event)]
 
 
 def test_voice_service_release_resources_clears_stt_backend_cache() -> None:
@@ -338,6 +531,54 @@ def test_subprocess_audio_capture_backend_falls_back_to_discovered_device(monkey
     assert popen_calls[0][popen_calls[0].index("-D") + 1] == "plughw:CARD=wm8960soundcard,DEV=0"
 
 
+def test_subprocess_audio_capture_backend_respects_configured_card_before_capture_facade(
+    monkeypatch,
+) -> None:
+    """Configured card labels should be tried before generic capture facade routes."""
+
+    pcm = _make_pcm(100, 3) + _make_pcm(800, 4) + _make_pcm(100, 6)
+    popen_calls: list[list[str]] = []
+
+    def fake_popen(args: list[str], **_kwargs) -> _FakePopen:
+        popen_calls.append(args)
+        if "-D" in args and args[args.index("-D") + 1] == "plughw:CARD=wm8960soundcard,DEV=0":
+            return _FakePopen(args, data=pcm, returncode=0)
+        return _FakePopen(args, data=b"", returncode=1)
+
+    def fake_run(args: list[str], **_kwargs) -> subprocess.CompletedProcess[str]:
+        if args == ["arecord", "-L"]:
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                (
+                    "default\n"
+                    "playback\n"
+                    "capture\n"
+                    "array\n"
+                    "plughw:CARD=wm8960soundcard,DEV=0\n"
+                    "hw:CARD=wm8960soundcard,DEV=0\n"
+                ),
+                "",
+            )
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(
+        "yoyopod.backends.voice.capture.shutil.which",
+        lambda b: "/usr/bin/arecord" if b == "arecord" else None,
+    )
+    monkeypatch.setattr("yoyopod.backends.voice.capture.subprocess.run", fake_run)
+    monkeypatch.setattr("yoyopod.backends.voice.capture.subprocess.Popen", fake_popen)
+
+    backend = SubprocessAudioCaptureBackend()
+    result = backend.capture(
+        VoiceCaptureRequest(mode="voice_commands", timeout_seconds=2.0),
+        VoiceSettings(capture_device_id="ALSA: wm8960-soundcard"),
+    )
+
+    assert result.recorded is True
+    assert popen_calls[0][popen_calls[0].index("-D") + 1] == "plughw:CARD=wm8960soundcard,DEV=0"
+
+
 def test_subprocess_audio_capture_backend_falls_back_when_preferred_device_breaks(
     monkeypatch,
 ) -> None:
@@ -489,6 +730,100 @@ def test_espeak_backend_builds_expected_command(monkeypatch) -> None:
     assert playback_calls == [Path(calls[0][2])]
 
 
+def test_espeak_backend_passes_cancel_event_to_playback(monkeypatch) -> None:
+    """Rendered local TTS playback should remain cancellable."""
+
+    cancel_event = threading.Event()
+
+    class _SuccessfulEspeakPopen:
+        def __init__(self, args: list[str], **_kwargs) -> None:
+            self.args = args
+            self.returncode = 0
+            Path(args[2]).write_bytes(b"RIFF")
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def communicate(self) -> tuple[str, str]:
+            return "", ""
+
+    monkeypatch.setattr(
+        "yoyopod.backends.voice.tts.shutil.which",
+        lambda binary: "/usr/bin/espeak-ng" if binary == "espeak-ng" else None,
+    )
+    monkeypatch.setattr(
+        "yoyopod.backends.voice.tts.subprocess.Popen",
+        lambda args, **kwargs: _SuccessfulEspeakPopen(args, **kwargs),
+    )
+
+    backend = EspeakNgTextToSpeechBackend()
+    playback_cancel_events: list[threading.Event | None] = []
+    monkeypatch.setattr(
+        backend.output_player,
+        "play_wav",
+        lambda path, timeout_seconds=10.0, cancel_event=None: playback_cancel_events.append(
+            cancel_event
+        )
+        or True,
+    )
+
+    assert backend.speak("Calling mama", VoiceSettings(), cancel_event=cancel_event) is True
+    assert playback_cancel_events == [cancel_event]
+
+
+def test_espeak_backend_cancel_event_terminates_active_render(monkeypatch) -> None:
+    """Cancellable local TTS should stop an active espeak-ng render process."""
+
+    cancel_event = threading.Event()
+    popens: list[object] = []
+
+    class _BlockingEspeakPopen:
+        def __init__(self, args: list[str], **_kwargs) -> None:
+            self.args = args
+            self.returncode: int | None = None
+            self.terminated = False
+            self.killed = False
+            self.poll_calls = 0
+
+        def poll(self) -> int | None:
+            self.poll_calls += 1
+            if self.poll_calls == 1:
+                cancel_event.set()
+            return self.returncode
+
+        def terminate(self) -> None:
+            self.terminated = True
+            self.returncode = -15
+
+        def wait(self, timeout: float | None = None) -> int:
+            return self.returncode if self.returncode is not None else 0
+
+        def kill(self) -> None:
+            self.killed = True
+            self.returncode = -9
+
+        def communicate(self) -> tuple[str, str]:
+            return "", ""
+
+    def fake_popen(args: list[str], **kwargs) -> _BlockingEspeakPopen:
+        proc = _BlockingEspeakPopen(args, **kwargs)
+        popens.append(proc)
+        return proc
+
+    monkeypatch.setattr(
+        "yoyopod.backends.voice.tts.shutil.which",
+        lambda binary: "/usr/bin/espeak-ng" if binary == "espeak-ng" else None,
+    )
+    monkeypatch.setattr("yoyopod.backends.voice.tts.subprocess.Popen", fake_popen)
+
+    backend = EspeakNgTextToSpeechBackend()
+
+    assert backend.speak("Calling mama", VoiceSettings(), cancel_event=cancel_event) is False
+    assert len(popens) == 1
+    assert popens[0].args[:2] == ["espeak-ng", "-w"]
+    assert popens[0].terminated is True
+
+
 def test_alsa_output_player_prefers_usb_card_routes(monkeypatch, tmp_path) -> None:
     """Playback should prefer discovered non-HDMI ALSA devices."""
 
@@ -524,6 +859,198 @@ def test_alsa_output_player_prefers_usb_card_routes(monkeypatch, tmp_path) -> No
 
     assert player.play_wav(audio_path) is True
     assert calls[1][:4] == ["aplay", "-q", "-D", "plughw:CARD=SE,DEV=0"]
+
+
+def test_alsa_output_player_respects_configured_card_before_playback_facade(
+    monkeypatch, tmp_path
+) -> None:
+    """Configured card labels should be tried before generic playback facade routes."""
+
+    calls: list[list[str]] = []
+    audio_path = tmp_path / "tone.wav"
+    audio_path.write_bytes(b"RIFF")
+
+    def fake_run(args: list[str], **_kwargs) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        if args == ["aplay", "-L"]:
+            return subprocess.CompletedProcess(
+                args=args,
+                returncode=0,
+                stdout=(
+                    "default\n"
+                    "playback\n"
+                    "capture\n"
+                    "dmixed\n"
+                    "plughw:CARD=wm8960soundcard,DEV=0\n"
+                    "sysdefault:CARD=wm8960soundcard\n"
+                ),
+                stderr="",
+            )
+        if args[:4] == ["aplay", "-q", "-D", "plughw:CARD=wm8960soundcard,DEV=0"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="busy")
+
+    monkeypatch.setattr(
+        "yoyopod.backends.voice.output.shutil.which",
+        lambda binary: "/usr/bin/aplay" if binary == "aplay" else None,
+    )
+    monkeypatch.setattr("yoyopod.backends.voice.output.subprocess.run", fake_run)
+
+    player = AlsaOutputPlayer()
+
+    assert player.play_wav(audio_path, device_id="ALSA: wm8960-soundcard") is True
+    assert calls[1][:4] == ["aplay", "-q", "-D", "plughw:CARD=wm8960soundcard,DEV=0"]
+
+
+def test_alsa_output_player_can_skip_when_playback_lock_is_busy(monkeypatch, tmp_path) -> None:
+    """Local feedback should be able to avoid blocking behind an active TTS playback."""
+
+    audio_path = tmp_path / "tone.wav"
+    audio_path.write_bytes(b"RIFF")
+    monkeypatch.setattr(
+        "yoyopod.backends.voice.output.shutil.which",
+        lambda binary: "/usr/bin/aplay" if binary == "aplay" else None,
+    )
+
+    assert voice_output._PLAYBACK_LOCK.acquire(blocking=False)
+    try:
+        player = AlsaOutputPlayer()
+        started_at = time.monotonic()
+
+        assert player.play_wav(audio_path, block_if_busy=False) is False
+        assert time.monotonic() - started_at < 0.1
+    finally:
+        voice_output._PLAYBACK_LOCK.release()
+
+
+def test_alsa_output_player_tries_next_route_after_playback_timeout(monkeypatch, tmp_path) -> None:
+    """A timeout on one ALSA route should not block a later configured fallback."""
+
+    calls: list[list[str]] = []
+    audio_path = tmp_path / "tone.wav"
+    audio_path.write_bytes(b"RIFF")
+
+    def fake_run(args: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        if args == ["aplay", "-L"]:
+            return subprocess.CompletedProcess(
+                args=args,
+                returncode=0,
+                stdout="playback\nplughw:CARD=wm8960soundcard,DEV=0\n",
+                stderr="",
+            )
+        if args[:4] == ["aplay", "-q", "-D", "playback"]:
+            raise subprocess.TimeoutExpired(args, kwargs.get("timeout"))
+        if args[:4] == ["aplay", "-q", "-D", "plughw:CARD=wm8960soundcard,DEV=0"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="bad")
+
+    monkeypatch.setattr(
+        "yoyopod.backends.voice.output.shutil.which",
+        lambda binary: "/usr/bin/aplay" if binary == "aplay" else None,
+    )
+    monkeypatch.setattr("yoyopod.backends.voice.output.subprocess.run", fake_run)
+
+    player = AlsaOutputPlayer()
+
+    assert player.play_wav(audio_path, device_id="playback", timeout_seconds=0.01) is True
+    assert calls == [
+        ["aplay", "-L"],
+        ["aplay", "-q", "-D", "playback", str(audio_path)],
+        ["aplay", "-q", "-D", "plughw:CARD=wm8960soundcard,DEV=0", str(audio_path)],
+    ]
+
+
+def test_alsa_output_player_cancel_event_terminates_active_aplay(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Cancellable playback should stop an active aplay process promptly."""
+
+    audio_path = tmp_path / "tone.wav"
+    audio_path.write_bytes(b"RIFF")
+    cancel_event = threading.Event()
+    popens: list[object] = []
+
+    class _BlockingAplayPopen:
+        def __init__(self, args: list[str], **_kwargs) -> None:
+            self.args = args
+            self.returncode: int | None = None
+            self.terminated = False
+            self.killed = False
+            self.stdout = b""
+            self.stderr = b""
+            self.poll_calls = 0
+
+        def poll(self) -> int | None:
+            self.poll_calls += 1
+            if self.poll_calls == 1:
+                cancel_event.set()
+            return self.returncode
+
+        def terminate(self) -> None:
+            self.terminated = True
+            self.returncode = -15
+
+        def wait(self, timeout: float | None = None) -> int:
+            return self.returncode if self.returncode is not None else 0
+
+        def kill(self) -> None:
+            self.killed = True
+            self.returncode = -9
+
+        def communicate(self) -> tuple[str, str]:
+            return "", ""
+
+    def fake_popen(args: list[str], **kwargs) -> _BlockingAplayPopen:
+        proc = _BlockingAplayPopen(args, **kwargs)
+        popens.append(proc)
+        return proc
+
+    def fake_run(args: list[str], **_kwargs) -> subprocess.CompletedProcess[str]:
+        assert args == ["aplay", "-L"]
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="playback\n", stderr="")
+
+    monkeypatch.setattr(
+        "yoyopod.backends.voice.output.shutil.which",
+        lambda binary: "/usr/bin/aplay" if binary == "aplay" else None,
+    )
+    monkeypatch.setattr("yoyopod.backends.voice.output.subprocess.run", fake_run)
+    monkeypatch.setattr("yoyopod.backends.voice.output.subprocess.Popen", fake_popen)
+
+    player = AlsaOutputPlayer()
+
+    assert player.play_wav(audio_path, device_id="playback", cancel_event=cancel_event) is False
+    assert len(popens) == 1
+    assert popens[0].args == ["aplay", "-q", "-D", "playback", str(audio_path)]
+    assert popens[0].terminated is True
+    assert popens[0].killed is False
+
+
+def test_alsa_output_player_pre_cancel_skips_device_scan(monkeypatch, tmp_path) -> None:
+    """Already-cancelled playback should not block on ALSA device discovery."""
+
+    audio_path = tmp_path / "tone.wav"
+    audio_path.write_bytes(b"RIFF")
+    cancel_event = threading.Event()
+    cancel_event.set()
+
+    monkeypatch.setattr(
+        "yoyopod.backends.voice.output.shutil.which",
+        lambda binary: "/usr/bin/aplay" if binary == "aplay" else None,
+    )
+
+    scan_calls: list[list[str]] = []
+
+    def fake_scan(args: list[str], **_kwargs) -> subprocess.CompletedProcess[str]:
+        scan_calls.append(args)
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="playback\n", stderr="")
+
+    monkeypatch.setattr("yoyopod.backends.voice.output.subprocess.run", fake_scan)
+    player = AlsaOutputPlayer()
+
+    assert player.play_wav(audio_path, cancel_event=cancel_event) is False
+    assert scan_calls == []
 
 
 def test_vosk_backend_requires_module_and_model(tmp_path, monkeypatch) -> None:

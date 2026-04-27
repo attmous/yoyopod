@@ -1,4 +1,4 @@
 # Raspberry Pi Zero 2W board overrides.
-
-audio:
-  music_dir: "/home/pi/Music"
+#
+# Keep music_dir inherited from config/audio/music.yaml. The dev/prod lane
+# installer runs YoYoPod as the device owner and seeds shared music there.

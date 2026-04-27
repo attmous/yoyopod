@@ -16,6 +16,7 @@ from yoyopod_cli.slot_contract import (
     SLOT_PYTHON_BIN,
     SLOT_PYTHON_STDLIB_MARKER,
     SLOT_VENV_PYTHON,
+    SLOT_VOICE_WORKER_ARTIFACT,
 )
 
 runner = CliRunner()
@@ -57,6 +58,9 @@ def _write_release_dir(tmp_path: Path) -> Path:
         target = release_dir / "app" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("shim\n", encoding="utf-8")
+    worker = release_dir / SLOT_VOICE_WORKER_ARTIFACT
+    worker.parent.mkdir(parents=True, exist_ok=True)
+    worker.write_text("worker\n", encoding="utf-8")
 
     (release_dir / "bin").mkdir(exist_ok=True)
     launch = release_dir / "bin" / "launch"
