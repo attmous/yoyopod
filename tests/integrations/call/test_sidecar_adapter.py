@@ -347,6 +347,66 @@ def test_unregister_clears_current_call_id(
     ), f"call_in_progress leaked across unregister: {errors!r}"
 
 
+def test_register_with_stale_iterate_thread_returns_iterate_thread_busy() -> None:
+    """Register must not silently start a backend when a stale iterate thread blocks the start.
+
+    Codex follow-up review on #389 (P1): the round-1 fix retains the
+    iterate-thread handle when ``join`` times out, so
+    ``_start_iterate_thread`` silently returns to avoid racing two iterate
+    threads against the same backend. But callers also need that visibility:
+    a follow-up ``Configure + Register`` would otherwise start a fresh
+    backend with no iterate driver, registration/call events would stop
+    flowing, and the command path would still report success. The fixed
+    handler surfaces ``iterate_thread_busy`` and leaves the freshly created
+    backend untouched so ``main`` can retry once the stale thread exits.
+    """
+
+    parent, child = multiprocessing.Pipe(duplex=True)
+    try:
+        backend = MockVoIPBackend()
+        adapter = SidecarBackendAdapter(
+            conn=child,
+            backend_factory=lambda _config: backend,
+        )
+        # Plant a stuck stale iterate thread directly.
+        release = threading.Event()
+        stuck_thread = threading.Thread(
+            target=lambda: release.wait(timeout=10.0),
+            daemon=True,
+            name="voip-sidecar-iterate-stale-stub",
+        )
+        stuck_thread.start()
+        adapter._iterate_thread = stuck_thread
+
+        # Configure to install the backend, then attempt Register.
+        adapter.handle_command(Configure(config=_config_dict()))
+        _drain(parent)
+
+        adapter.handle_command(Register(cmd_id=99))
+        events = _drain(parent)
+        errors = [event for event in events if isinstance(event, Error)]
+        assert any(
+            error.code == "iterate_thread_busy" and error.cmd_id == 99 for error in errors
+        ), events
+        # backend.start() must NOT have been called — the stale-thread check
+        # short-circuits Register before the backend is touched.
+        assert (
+            backend.running is False
+        ), "Register must not start backend when iterate-thread is busy"
+
+        release.set()
+        stuck_thread.join(timeout=1.0)
+    finally:
+        try:
+            parent.close()
+        except OSError:
+            pass
+        try:
+            child.close()
+        except OSError:
+            pass
+
+
 def test_stop_iterate_thread_retains_handle_on_join_timeout() -> None:
     """A stuck iterate thread must not be silently forgotten.
 

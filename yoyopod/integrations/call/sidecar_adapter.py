@@ -214,6 +214,29 @@ class SidecarBackendAdapter:
         backend = self._require_backend(command.cmd_id)
         if backend is None:
             return
+
+        # The iterate thread from a prior backend may still be alive — e.g.
+        # ``_stop_iterate_thread`` retained the handle when its join timed
+        # out (round-1 fix). ``_start_iterate_thread`` silently short-circuits
+        # in that case to avoid racing two iterate threads against the same
+        # backend, but that means a fresh backend would have no iterate
+        # driver and the SIP keep-alives / event drains would not flow even
+        # though Register reported success. Surface the situation as a
+        # caller-visible error instead of starting the backend in a
+        # half-broken state. ``main`` can retry once the stale thread exits.
+        if self._iterate_thread is not None and self._iterate_thread.is_alive():
+            self._safe_send(
+                Error(
+                    code="iterate_thread_busy",
+                    message=(
+                        "cannot register: previous iterate thread is still alive; "
+                        "retry once it exits"
+                    ),
+                    cmd_id=command.cmd_id,
+                )
+            )
+            return
+
         try:
             started = backend.start()
         except Exception as exc:
