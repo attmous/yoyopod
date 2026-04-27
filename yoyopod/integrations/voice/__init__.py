@@ -56,6 +56,11 @@ if TYPE_CHECKING:
         VoiceRouter,
     )
     from yoyopod.integrations.voice.settings import VoiceCommandOutcome, VoiceSettingsResolver
+    from yoyopod.integrations.voice.wake import (
+        NoopWakeDetector,
+        WakeDetectionResult,
+        WakeDetector,
+    )
     from yoyopod.integrations.voice.worker_client import (
         VoiceWorkerClient,
         VoiceWorkerTimeout,
@@ -68,6 +73,7 @@ _PUBLIC_EXPORTS = {
         "yoyopod.integrations.voice.ask_conversation",
         "AskConversationState",
     ),
+    "NoopWakeDetector": ("yoyopod.integrations.voice.wake", "NoopWakeDetector"),
     "SAFE_VOICE_ROUTE_ACTIONS": (
         "yoyopod.integrations.voice.dictionary",
         "SAFE_VOICE_ROUTE_ACTIONS",
@@ -102,6 +108,8 @@ _PUBLIC_EXPORTS = {
     "VoiceSettings": ("yoyopod.integrations.voice.models", "VoiceSettings"),
     "VoiceSettingsResolver": ("yoyopod.integrations.voice.settings", "VoiceSettingsResolver"),
     "VoiceTranscript": ("yoyopod.integrations.voice.models", "VoiceTranscript"),
+    "WakeDetectionResult": ("yoyopod.integrations.voice.wake", "WakeDetectionResult"),
+    "WakeDetector": ("yoyopod.integrations.voice.wake", "WakeDetector"),
     "VoiceWorkerAskResult": (
         "yoyopod.integrations.voice.worker_contract",
         "VoiceWorkerAskResult",
@@ -169,6 +177,7 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
     "AskConversationState",
+    "NoopWakeDetector",
     "SAFE_VOICE_ROUTE_ACTIONS",
     "VOICE_COMMAND_GRAMMAR",
     "VoiceActivationNormalizer",
@@ -191,6 +200,8 @@ __all__ = [
     "VoiceSettings",
     "VoiceSettingsResolver",
     "VoiceTranscript",
+    "WakeDetectionResult",
+    "WakeDetector",
     "VoiceWorkerAskResult",
     "VoiceWorkerAskTurn",
     "VoiceWorkerClient",
