@@ -245,6 +245,7 @@ class _FakeAskClient:
         instructions: str,
         max_output_chars: int,
         cancel_event: threading.Event | None = None,
+        timeout_seconds: float | None = None,
     ) -> VoiceWorkerAskResult:
         self.ask_calls.append(
             {
@@ -254,6 +255,7 @@ class _FakeAskClient:
                 "instructions": instructions,
                 "max_output_chars": max_output_chars,
                 "cancel_event": cancel_event,
+                "timeout_seconds": timeout_seconds,
             }
         )
         return VoiceWorkerAskResult(answer=self.answers.pop(0), model=model)
@@ -595,6 +597,7 @@ def test_ask_success_appends_bounded_history_and_speaks_answer() -> None:
             "instructions": "Answer safely.",
             "max_output_chars": 12,
             "cancel_event": ask_client.ask_calls[0]["cancel_event"],
+            "timeout_seconds": 12.0,
         }
     ]
     assert coordinator._ask_conversation._turns == [("tell me abou", "Mars is red ")]
@@ -651,6 +654,7 @@ def test_async_ask_thinking_transition_uses_dispatcher() -> None:
             instructions: str,
             max_output_chars: int,
             cancel_event: threading.Event | None = None,
+            timeout_seconds: float | None = None,
         ) -> VoiceWorkerAskResult:
             ask_started.set()
             release_ask.wait(timeout=1.0)
@@ -661,6 +665,7 @@ def test_async_ask_thinking_transition_uses_dispatcher() -> None:
                 instructions=instructions,
                 max_output_chars=max_output_chars,
                 cancel_event=cancel_event,
+                timeout_seconds=timeout_seconds,
             )
 
     ask_client = _BlockingAskClient(["Mars is a planet."])
@@ -699,7 +704,13 @@ def test_cancelled_ask_answer_is_not_spoken_or_recorded() -> None:
     speak_calls: list[str] = []
 
     class _BlockingVoiceService:
-        def speak(self, text: str) -> bool:
+        def speak(
+            self,
+            text: str,
+            *,
+            cancel_event: threading.Event | None = None,
+        ) -> bool:
+            del cancel_event
             speak_calls.append(text)
             if text == "Blocking command":
                 first_started.set()
@@ -900,7 +911,13 @@ def test_listening_cycle_uses_cloud_worker_transcript(tmp_path: Path) -> None:
             assert path == audio_path
             return VoiceTranscript(text="play music", confidence=1.0, is_final=True)
 
-        def speak(self, _text: str) -> bool:
+        def speak(
+            self,
+            _text: str,
+            *,
+            cancel_event: threading.Event | None = None,
+        ) -> bool:
+            del cancel_event
             return False
 
     class _CommandExecutor:
@@ -1114,7 +1131,13 @@ def test_runtime_cancel_reaches_in_flight_cloud_transcription(tmp_path: Path) ->
                 cancel_seen.set()
             return VoiceTranscript(text="play music", confidence=1.0, is_final=True)
 
-        def speak(self, _text: str) -> bool:
+        def speak(
+            self,
+            _text: str,
+            *,
+            cancel_event: threading.Event | None = None,
+        ) -> bool:
+            del cancel_event
             return False
 
     coordinator = VoiceRuntimeCoordinator(
@@ -1179,7 +1202,13 @@ def test_ptt_release_transcribes_with_fresh_cancel_event(tmp_path: Path) -> None
             transcribe_cancel_events.append(cancel_event)
             return VoiceTranscript(text="play music", confidence=1.0, is_final=True)
 
-        def speak(self, _text: str) -> bool:
+        def speak(
+            self,
+            _text: str,
+            *,
+            cancel_event: threading.Event | None = None,
+        ) -> bool:
+            del cancel_event
             return False
 
     class _CommandExecutor:
@@ -1321,6 +1350,38 @@ def test_voice_runtime_coordinator_releases_cached_service_when_settings_change(
     assert created_services[1].released is False
 
 
+def test_voice_runtime_coordinator_caches_factory_service_until_settings_change() -> None:
+    current_settings = VoiceSettings(tts_voice="en")
+    created_services: list[_FakeVoiceService] = []
+
+    def factory(settings: VoiceSettings) -> _FakeVoiceService:
+        service = _FakeVoiceService("")
+        service.settings = settings
+        created_services.append(service)
+        return service
+
+    coordinator = VoiceRuntimeCoordinator(
+        context=None,
+        settings_resolver=VoiceSettingsResolver(
+            context=None,
+            settings_provider=lambda: current_settings,
+        ),
+        command_executor=VoiceCommandExecutor(context=None),
+        voice_service_factory=factory,
+    )
+
+    first = coordinator._voice_service()
+    second = coordinator._voice_service()
+    current_settings = replace(current_settings, tts_voice="en-us")
+    third = coordinator._voice_service()
+
+    assert first is second
+    assert third is not first
+    assert len(created_services) == 2
+    assert created_services[0].release_calls == 1
+    assert created_services[1].release_calls == 0
+
+
 def test_voice_settings_resolver_includes_cloud_worker_config() -> None:
     config_manager = _FakeConfigManager([])
     voice_cfg = config_manager.get_voice_settings()
@@ -1373,7 +1434,13 @@ def test_spoken_outcome_does_not_block_main_thread() -> None:
     release = threading.Event()
 
     class _VoiceService:
-        def speak(self, _text: str) -> bool:
+        def speak(
+            self,
+            _text: str,
+            *,
+            cancel_event: threading.Event | None = None,
+        ) -> bool:
+            del cancel_event
             started.set()
             release.wait(timeout=2.0)
             return True
@@ -1395,9 +1462,57 @@ def test_spoken_outcome_does_not_block_main_thread() -> None:
     release.set()
 
 
+def test_begin_listening_cancels_active_tts_before_capture() -> None:
+    speak_started = threading.Event()
+    tts_cancel_seen = threading.Event()
+    capture_started = threading.Event()
+
+    class _RaceVoiceService(_NoAudioVoiceService):
+        def speak(
+            self,
+            _text: str,
+            *,
+            cancel_event: threading.Event | None = None,
+        ) -> bool:
+            assert cancel_event is not None
+            speak_started.set()
+            if cancel_event.wait(timeout=1.0):
+                tts_cancel_seen.set()
+            return False
+
+        def capture_audio(self, request) -> VoiceCaptureResult:
+            assert tts_cancel_seen.is_set()
+            capture_started.set()
+            return super().capture_audio(request)
+
+    service = _RaceVoiceService()
+    coordinator = VoiceRuntimeCoordinator(
+        context=None,
+        settings_resolver=VoiceSettingsResolver(context=None),
+        command_executor=VoiceCommandExecutor(context=None),
+        voice_service_factory=lambda _settings: service,
+        output_player=_FakeOutputPlayer(),
+    )
+
+    coordinator._apply_outcome(VoiceCommandOutcome("Done", "Long reply", should_speak=True))
+    assert speak_started.wait(timeout=1.0)
+
+    coordinator.begin_listening(async_capture=True)
+
+    assert tts_cancel_seen.wait(timeout=1.0)
+    assert capture_started.wait(timeout=1.0)
+    coordinator._tts_queue.join()
+
+
 def test_spoken_outcome_failure_does_not_change_successful_command_outcome() -> None:
     class _VoiceService:
-        def speak(self, _text: str) -> bool:
+        def speak(
+            self,
+            _text: str,
+            *,
+            cancel_event: threading.Event | None = None,
+        ) -> bool:
+            del cancel_event
             return False
 
     runtime = VoiceRuntimeCoordinator(
@@ -1423,7 +1538,13 @@ def test_voice_outcome_speaks_on_background_thread_and_returns_quickly() -> None
     thread_names: list[str] = []
 
     class _BlockingVoiceService:
-        def speak(self, _text: str) -> bool:
+        def speak(
+            self,
+            _text: str,
+            *,
+            cancel_event: threading.Event | None = None,
+        ) -> bool:
+            del cancel_event
             thread_names.append(threading.current_thread().name)
             started.set()
             release.wait(timeout=0.5)
@@ -1461,7 +1582,13 @@ def test_voice_outcome_speech_is_serialized_without_overlap() -> None:
     speak_calls: list[str] = []
 
     class _BlockingVoiceService:
-        def speak(self, text: str) -> bool:
+        def speak(
+            self,
+            text: str,
+            *,
+            cancel_event: threading.Event | None = None,
+        ) -> bool:
+            del cancel_event
             nonlocal active_speakers, max_active_speakers
             with lock:
                 active_speakers += 1

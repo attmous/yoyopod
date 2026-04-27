@@ -104,7 +104,7 @@ class AlsaOutputPlayer:
                     device or "default",
                     timeout_seconds,
                 )
-                return False
+                continue
             except Exception as exc:
                 logger.debug("ALSA playback failed for {}: {}", device or "default", exc)
                 continue
@@ -259,16 +259,17 @@ class AlsaOutputPlayer:
         normalized_selector = self._normalize_alsa_selector(configured_device_id)
         if self._looks_like_aplay_device(normalized_selector):
             candidates.append(normalized_selector)
-        elif "playback" in discovered_devices:
-            candidates.append("playback")
-        elif "default" in discovered_devices:
-            candidates.append("default")
 
         normalized_target = self._normalize_alsa_name(configured_device_id)
         for device in discovered_devices:
             if normalized_target and normalized_target in self._normalize_alsa_name(device):
                 candidates.append(device)
-        return sorted(self._unique(candidates), key=self._device_sort_key)
+        if not candidates:
+            if "playback" in discovered_devices:
+                candidates.append("playback")
+            elif "default" in discovered_devices:
+                candidates.append("default")
+        return [device for device in self._unique(candidates) if device is not None]
 
     @staticmethod
     def _normalize_alsa_selector(value: str) -> str:

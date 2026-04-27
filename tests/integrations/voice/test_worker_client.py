@@ -235,6 +235,7 @@ def test_worker_error_raises_unavailable_with_error_code() -> None:
         worker_supervisor=supervisor,
         request_timeout_seconds=0.25,
     )
+    client._set_available(True, "mock")
     errors: list[BaseException] = []
 
     thread = threading.Thread(
@@ -273,6 +274,8 @@ def test_worker_error_raises_unavailable_with_error_code() -> None:
     assert len(errors) == 1
     assert isinstance(errors[0], VoiceWorkerUnavailable)
     assert "provider_unavailable" in str(errors[0])
+    assert client.is_available is True
+    assert client.availability_reason == "mock"
     assert client.pending_count == 0
 
 
@@ -1306,6 +1309,7 @@ def test_ask_schedules_request_on_main_and_resolves_result() -> None:
                 model="  gpt-4o-mini  ",
                 instructions="  Be brief.  ",
                 max_output_chars=320,
+                timeout_seconds=6.5,
             )
         )
     )
@@ -1317,6 +1321,7 @@ def test_ask_schedules_request_on_main_and_resolves_result() -> None:
 
     assert request["domain"] == "voice"
     assert request["type"] == "voice.ask"
+    assert request["timeout_seconds"] == 6.5
     assert request["payload"] == {
         "question": "What is playing?",
         "history": [

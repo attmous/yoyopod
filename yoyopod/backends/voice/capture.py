@@ -329,15 +329,16 @@ class SubprocessAudioCaptureBackend:
         normalized_target = self._normalize_alsa_name(capture_device_id)
         if self._looks_like_arecord_device(capture_device_id):
             candidates.append(capture_device_id)
-        elif "capture" in discovered_devices:
-            candidates.append("capture")
-        elif "default" in discovered_devices:
-            candidates.append("default")
 
         for device in discovered_devices:
             if normalized_target and normalized_target in self._normalize_alsa_name(device):
                 candidates.append(device)
-        return sorted(self._unique_devices(candidates), key=self._device_sort_key)
+        if not candidates:
+            if "capture" in discovered_devices:
+                candidates.append("capture")
+            elif "default" in discovered_devices:
+                candidates.append("default")
+        return [device for device in self._unique_devices(candidates) if device is not None]
 
     @staticmethod
     def _looks_like_arecord_device(device: str) -> bool:

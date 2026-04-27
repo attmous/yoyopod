@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from yoyopod.core.events import WorkerDomainStateChangedEvent, WorkerMessageReceivedEvent
 from yoyopod.core.workers import WorkerProcessConfig
@@ -13,6 +13,8 @@ from yoyopod.integrations.voice.worker_client import VoiceWorkerClient
 
 if TYPE_CHECKING:
     from yoyopod.core.application import YoyoPodApp
+
+_VOICE_WORKER_HEALTH_RETRY_DELAY_SECONDS = 2.0
 
 
 class ComponentsBoot:
@@ -86,7 +88,13 @@ class ComponentsBoot:
         if getattr(self.app, "voice_worker_client", None) is not None:
             return False
 
-        domain = str(getattr(worker_cfg, "domain", "voice"))
+        configured_domain = str(getattr(worker_cfg, "domain", "voice")).strip() or "voice"
+        if configured_domain != "voice":
+            self.logger.warning(
+                "Ignoring unsupported voice worker domain {!r}; voice protocol uses domain 'voice'",
+                configured_domain,
+            )
+        domain = "voice"
         timeout_seconds = float(getattr(worker_cfg, "request_timeout_seconds", 12.0))
         worker_env = _voice_worker_env(worker_cfg)
         client = VoiceWorkerClient(
@@ -298,18 +306,23 @@ class _VoiceWorkerLifecycleHandler:
         self._logger = logger
         self._scheduler = scheduler
         self._health_probe_requested = False
+        self._worker_running = True
 
     def handle(self, event: WorkerDomainStateChangedEvent) -> None:
         if event.domain != self._domain:
             return
         if event.state == "running":
+            self._worker_running = True
             self.schedule_health_probe()
             return
         if event.state in {"degraded", "disabled", "stopped"}:
+            self._worker_running = False
             self._health_probe_requested = False
             self._client.fail_pending_requests(event.reason or event.state)
 
     def schedule_health_probe(self) -> None:
+        if not self._worker_running:
+            return
         if self._health_probe_requested:
             return
         self._health_probe_requested = True
@@ -317,7 +330,26 @@ class _VoiceWorkerLifecycleHandler:
             self._client,
             logger=self._logger,
             scheduler=self._scheduler,
+            on_complete=self._handle_health_probe_complete,
         )
+
+    def _handle_health_probe_complete(self, succeeded: bool) -> None:
+        self._health_probe_requested = False
+        if succeeded or not self._worker_running:
+            return
+        self._schedule_health_probe_retry()
+
+    def _schedule_health_probe_retry(self) -> None:
+        def request_retry() -> None:
+            post = getattr(self._scheduler, "post", None)
+            if callable(post):
+                post(self.schedule_health_probe)
+            else:
+                self._scheduler.run_on_main(self.schedule_health_probe)
+
+        timer = threading.Timer(_VOICE_WORKER_HEALTH_RETRY_DELAY_SECONDS, request_retry)
+        timer.daemon = True
+        timer.start()
 
 
 def _start_voice_worker_health_probe(
@@ -325,16 +357,31 @@ def _start_voice_worker_health_probe(
     *,
     logger: Any,
     scheduler: Any,
+    on_complete: Callable[[bool], None] | None = None,
 ) -> None:
     """Probe provider health off the main thread once the loop drains scheduled work."""
 
     def probe() -> None:
+        succeeded = False
         try:
             result = client.health()
         except Exception as exc:
             logger.warning("Cloud voice worker health probe failed: {}", exc)
-            return
-        logger.info("Cloud voice worker ready: provider={}", result.provider)
+        else:
+            succeeded = True
+            logger.info("Cloud voice worker ready: provider={}", result.provider)
+        finally:
+            if on_complete is None:
+                return
+
+            def complete() -> None:
+                on_complete(succeeded)
+
+            post_complete = getattr(scheduler, "post", None)
+            if callable(post_complete):
+                post_complete(complete)
+            else:
+                scheduler.run_on_main(complete)
 
     def start_probe() -> None:
         threading.Thread(

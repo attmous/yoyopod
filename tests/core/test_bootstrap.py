@@ -409,7 +409,7 @@ def test_setup_voice_worker_registers_starts_and_subscribes_when_cloud_enabled(
     health_probes: list[object] = []
     monkeypatch.setattr(
         "yoyopod.core.bootstrap.components_boot._start_voice_worker_health_probe",
-        lambda client, logger, scheduler: health_probes.append((client, scheduler)),
+        lambda client, logger, scheduler, **_kwargs: health_probes.append((client, scheduler)),
     )
 
     class _FakeWorkerSupervisor:
@@ -426,7 +426,7 @@ def test_setup_voice_worker_registers_starts_and_subscribes_when_cloud_enabled(
                 assistant=SimpleNamespace(mode="cloud"),
                 worker=SimpleNamespace(
                     enabled=True,
-                    domain="voice",
+                    domain="voice-cloud",
                     provider="openai",
                     argv=["python", "fake_worker.py"],
                     request_timeout_seconds=3.5,
@@ -491,7 +491,7 @@ def test_setup_voice_worker_clears_client_when_start_fails(monkeypatch) -> None:
     health_probes: list[object] = []
     monkeypatch.setattr(
         "yoyopod.core.bootstrap.components_boot._start_voice_worker_health_probe",
-        lambda client, logger, scheduler: health_probes.append((client, scheduler)),
+        lambda client, logger, scheduler, **_kwargs: health_probes.append((client, scheduler)),
     )
 
     class _FailingWorkerSupervisor:
@@ -533,7 +533,7 @@ def test_voice_worker_running_state_schedules_health_probe_after_restart(monkeyp
     health_probes: list[object] = []
     monkeypatch.setattr(
         "yoyopod.core.bootstrap.components_boot._start_voice_worker_health_probe",
-        lambda client, logger, scheduler: health_probes.append((client, scheduler)),
+        lambda client, logger, scheduler, **_kwargs: health_probes.append((client, scheduler)),
     )
 
     class _FakeWorkerSupervisor:

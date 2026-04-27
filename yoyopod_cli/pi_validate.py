@@ -343,8 +343,13 @@ def _cloud_voice_command_match_check(transcript: str) -> _CheckResult:
 class _VoiceWorkerProtocolClient:
     """Small synchronous worker-protocol client for Pi validation."""
 
-    def __init__(self, binary_path: Path, *, env: dict[str, str]) -> None:
-        self.binary_path = binary_path
+    def __init__(self, worker_argv: list[str] | Path, *, env: dict[str, str]) -> None:
+        if isinstance(worker_argv, Path):
+            worker_argv = [str(worker_argv)]
+        if not worker_argv:
+            raise ValueError("voice worker argv must not be empty")
+        self.worker_argv = [str(arg) for arg in worker_argv]
+        self.binary_path = Path(self.worker_argv[0])
         self.env = env
         self._proc: subprocess.Popen[str] | None = None
         self._stdout_lines: queue.Queue[str] = queue.Queue()
@@ -360,7 +365,7 @@ class _VoiceWorkerProtocolClient:
 
     def start(self) -> None:
         self._proc = subprocess.Popen(
-            [str(self.binary_path)],
+            self.worker_argv,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -392,7 +397,13 @@ class _VoiceWorkerProtocolClient:
             return
         if proc.poll() is None:
             try:
-                self.request("worker.stop", {}, timeout_seconds=2.0)
+                self._write_command(
+                    "worker.stop",
+                    {},
+                    request_id=f"cloud-voice-stop-{uuid4().hex}",
+                    deadline_ms=1000,
+                )
+                proc.wait(timeout=2.0)
             except Exception:
                 pass
         if proc.poll() is None:
@@ -410,21 +421,13 @@ class _VoiceWorkerProtocolClient:
         *,
         timeout_seconds: float,
     ) -> dict[str, Any]:
-        proc = self._require_process()
-        assert proc.stdin is not None
         request_id = f"cloud-voice-validate-{uuid4().hex}"
-        proc.stdin.write(
-            encode_envelope(
-                make_envelope(
-                    kind="command",
-                    type=request_type,
-                    request_id=request_id,
-                    deadline_ms=max(1, int(timeout_seconds * 1000)),
-                    payload=payload,
-                )
-            )
+        self._write_command(
+            request_type,
+            payload,
+            request_id=request_id,
+            deadline_ms=max(1, int(timeout_seconds * 1000)),
         )
-        proc.stdin.flush()
         deadline = time.monotonic() + timeout_seconds + 2.0
         while time.monotonic() < deadline:
             envelope = self._read_envelope(timeout_seconds=max(0.01, deadline - time.monotonic()))
@@ -435,6 +438,29 @@ class _VoiceWorkerProtocolClient:
                 raise RuntimeError(str(message))
             return envelope.payload
         raise TimeoutError(f"voice worker request timed out: {request_type}")
+
+    def _write_command(
+        self,
+        request_type: str,
+        payload: dict[str, Any],
+        *,
+        request_id: str,
+        deadline_ms: int,
+    ) -> None:
+        proc = self._require_process()
+        assert proc.stdin is not None
+        proc.stdin.write(
+            encode_envelope(
+                make_envelope(
+                    kind="command",
+                    type=request_type,
+                    request_id=request_id,
+                    deadline_ms=deadline_ms,
+                    payload=payload,
+                )
+            )
+        )
+        proc.stdin.flush()
 
     def _wait_for_ready(self, *, timeout_seconds: float) -> None:
         deadline = time.monotonic() + timeout_seconds
@@ -487,23 +513,38 @@ class _VoiceWorkerProtocolClient:
         return self._proc
 
 
-def _cloud_voice_worker_binary_check(binary_path: Path) -> _CheckResult:
-    if not binary_path.exists():
+def _cloud_voice_worker_binary_check(binary_path: Path | str) -> _CheckResult:
+    binary_text = str(binary_path)
+    path = Path(binary_text)
+    if not path.is_absolute() and path.parent == Path("."):
+        resolved = shutil.which(binary_text)
+        if resolved is None:
+            return _CheckResult(
+                name="cloud_voice_worker_binary",
+                status="fail",
+                details=f"missing executable {binary_text}",
+            )
         return _CheckResult(
             name="cloud_voice_worker_binary",
-            status="fail",
-            details=f"missing {binary_path}",
+            status="pass",
+            details=resolved,
         )
-    if not os.access(binary_path, os.X_OK):
+    if not path.exists():
         return _CheckResult(
             name="cloud_voice_worker_binary",
             status="fail",
-            details=f"not executable {binary_path}",
+            details=f"missing {path}",
+        )
+    if not os.access(path, os.X_OK):
+        return _CheckResult(
+            name="cloud_voice_worker_binary",
+            status="fail",
+            details=f"not executable {path}",
         )
     return _CheckResult(
         name="cloud_voice_worker_binary",
         status="pass",
-        details=str(binary_path),
+        details=str(path),
     )
 
 
@@ -513,19 +554,39 @@ def _resolve_cloud_voice_worker_binary(
 ) -> Path:
     """Resolve the configured voice worker binary path for target validation."""
 
+    return Path(_resolve_cloud_voice_worker_argv(config_manager, worker_binary)[0])
+
+
+def _resolve_cloud_voice_worker_argv(
+    config_manager: Any,
+    worker_binary: str,
+) -> list[str]:
+    """Resolve the full configured voice worker argv for target validation."""
+
+    argv: list[str]
     if worker_binary.strip():
-        path = Path(worker_binary.strip())
+        argv = [worker_binary.strip()]
     else:
-        argv: list[str] = []
+        argv = []
         try:
             voice_config = config_manager.get_voice_settings()
             argv = list(getattr(getattr(voice_config, "worker", None), "argv", []) or [])
         except Exception:
             argv = []
-        path = Path(argv[0] if argv else "workers/voice/go/build/yoyopod-voice-worker")
+        if not argv:
+            argv = ["workers/voice/go/build/yoyopod-voice-worker"]
+    argv = [str(arg) for arg in argv if str(arg).strip()]
+    if not argv:
+        argv = ["workers/voice/go/build/yoyopod-voice-worker"]
+    path = Path(argv[0])
     if not path.is_absolute():
-        path = REPO_ROOT / path
-    return path
+        if path.parent == Path("."):
+            resolved = shutil.which(argv[0])
+            if resolved is not None:
+                argv[0] = resolved
+        else:
+            argv[0] = str(REPO_ROOT / path)
+    return argv
 
 
 def _cloud_voice_worker_health_check(
@@ -2373,7 +2434,8 @@ def cloud_voice(
     if provider.strip():
         os.environ["YOYOPOD_VOICE_WORKER_PROVIDER"] = selected_provider
 
-    binary_path = _resolve_cloud_voice_worker_binary(config_manager, worker_binary)
+    worker_argv = _resolve_cloud_voice_worker_argv(config_manager, worker_binary)
+    binary_path = Path(worker_argv[0])
     results.extend(
         [
             _cloud_voice_settings_check(settings, provider=selected_provider),
@@ -2388,7 +2450,7 @@ def cloud_voice(
         worker_env["YOYOPOD_VOICE_WORKER_PROVIDER"] = selected_provider
         timeout_seconds = max(5.0, settings.cloud_worker_request_timeout_seconds)
         try:
-            with _VoiceWorkerProtocolClient(binary_path, env=worker_env) as client:
+            with _VoiceWorkerProtocolClient(worker_argv, env=worker_env) as client:
                 health_result = _cloud_voice_worker_health_check(
                     client,
                     timeout_seconds=timeout_seconds,

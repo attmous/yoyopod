@@ -230,6 +230,30 @@ func TestWorkerAskCommandReturnsMockResult(t *testing.T) {
 	}
 }
 
+func TestWorkerAcceptsLargeCommandEnvelope(t *testing.T) {
+	envelopes, stderr := runWorker(
+		t,
+		provider.MockProvider{},
+		protocol.Envelope{
+			Kind:      "command",
+			Type:      "voice.ask",
+			RequestID: "req-large",
+			Payload: map[string]any{
+				"question": strings.Repeat("hello ", 15000),
+				"model":    "mock-large",
+			},
+		},
+	)
+
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	result := findEnvelope(t, envelopes, "voice.ask.result")
+	if result.RequestID != "req-large" {
+		t.Fatalf("RequestID = %q, want req-large", result.RequestID)
+	}
+}
+
 func TestProtocolNormalizesNilPayloadAndEncodeDefaults(t *testing.T) {
 	envelope, err := protocol.Decode([]byte(`{
 		"schema_version": 1,

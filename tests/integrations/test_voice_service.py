@@ -531,15 +531,17 @@ def test_subprocess_audio_capture_backend_falls_back_to_discovered_device(monkey
     assert popen_calls[0][popen_calls[0].index("-D") + 1] == "plughw:CARD=wm8960soundcard,DEV=0"
 
 
-def test_subprocess_audio_capture_backend_prefers_shared_capture_facade(monkeypatch) -> None:
-    """Pi audio facade routes should be preferred over direct card capture devices."""
+def test_subprocess_audio_capture_backend_respects_configured_card_before_capture_facade(
+    monkeypatch,
+) -> None:
+    """Configured card labels should be tried before generic capture facade routes."""
 
     pcm = _make_pcm(100, 3) + _make_pcm(800, 4) + _make_pcm(100, 6)
     popen_calls: list[list[str]] = []
 
     def fake_popen(args: list[str], **_kwargs) -> _FakePopen:
         popen_calls.append(args)
-        if "-D" in args and args[args.index("-D") + 1] == "capture":
+        if "-D" in args and args[args.index("-D") + 1] == "plughw:CARD=wm8960soundcard,DEV=0":
             return _FakePopen(args, data=pcm, returncode=0)
         return _FakePopen(args, data=b"", returncode=1)
 
@@ -574,7 +576,7 @@ def test_subprocess_audio_capture_backend_prefers_shared_capture_facade(monkeypa
     )
 
     assert result.recorded is True
-    assert popen_calls[0][popen_calls[0].index("-D") + 1] == "capture"
+    assert popen_calls[0][popen_calls[0].index("-D") + 1] == "plughw:CARD=wm8960soundcard,DEV=0"
 
 
 def test_subprocess_audio_capture_backend_falls_back_when_preferred_device_breaks(
@@ -859,8 +861,10 @@ def test_alsa_output_player_prefers_usb_card_routes(monkeypatch, tmp_path) -> No
     assert calls[1][:4] == ["aplay", "-q", "-D", "plughw:CARD=SE,DEV=0"]
 
 
-def test_alsa_output_player_prefers_shared_playback_facade(monkeypatch, tmp_path) -> None:
-    """Pi audio facade routes should be preferred over direct card playback devices."""
+def test_alsa_output_player_respects_configured_card_before_playback_facade(
+    monkeypatch, tmp_path
+) -> None:
+    """Configured card labels should be tried before generic playback facade routes."""
 
     calls: list[list[str]] = []
     audio_path = tmp_path / "tone.wav"
@@ -882,7 +886,7 @@ def test_alsa_output_player_prefers_shared_playback_facade(monkeypatch, tmp_path
                 ),
                 stderr="",
             )
-        if args[:4] == ["aplay", "-q", "-D", "playback"]:
+        if args[:4] == ["aplay", "-q", "-D", "plughw:CARD=wm8960soundcard,DEV=0"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="busy")
 
@@ -895,7 +899,7 @@ def test_alsa_output_player_prefers_shared_playback_facade(monkeypatch, tmp_path
     player = AlsaOutputPlayer()
 
     assert player.play_wav(audio_path, device_id="ALSA: wm8960-soundcard") is True
-    assert calls[1][:4] == ["aplay", "-q", "-D", "playback"]
+    assert calls[1][:4] == ["aplay", "-q", "-D", "plughw:CARD=wm8960soundcard,DEV=0"]
 
 
 def test_alsa_output_player_can_skip_when_playback_lock_is_busy(monkeypatch, tmp_path) -> None:
@@ -919,8 +923,8 @@ def test_alsa_output_player_can_skip_when_playback_lock_is_busy(monkeypatch, tmp
         voice_output._PLAYBACK_LOCK.release()
 
 
-def test_alsa_output_player_does_not_retry_after_playback_timeout(monkeypatch, tmp_path) -> None:
-    """A timeout should not replay the same prompt through every ALSA fallback route."""
+def test_alsa_output_player_tries_next_route_after_playback_timeout(monkeypatch, tmp_path) -> None:
+    """A timeout on one ALSA route should not block a later configured fallback."""
 
     calls: list[list[str]] = []
     audio_path = tmp_path / "tone.wav"
@@ -935,7 +939,11 @@ def test_alsa_output_player_does_not_retry_after_playback_timeout(monkeypatch, t
                 stdout="playback\nplughw:CARD=wm8960soundcard,DEV=0\n",
                 stderr="",
             )
-        raise subprocess.TimeoutExpired(args, kwargs.get("timeout"))
+        if args[:4] == ["aplay", "-q", "-D", "playback"]:
+            raise subprocess.TimeoutExpired(args, kwargs.get("timeout"))
+        if args[:4] == ["aplay", "-q", "-D", "plughw:CARD=wm8960soundcard,DEV=0"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="bad")
 
     monkeypatch.setattr(
         "yoyopod.backends.voice.output.shutil.which",
@@ -945,10 +953,11 @@ def test_alsa_output_player_does_not_retry_after_playback_timeout(monkeypatch, t
 
     player = AlsaOutputPlayer()
 
-    assert player.play_wav(audio_path, device_id="playback", timeout_seconds=0.01) is False
+    assert player.play_wav(audio_path, device_id="playback", timeout_seconds=0.01) is True
     assert calls == [
         ["aplay", "-L"],
         ["aplay", "-q", "-D", "playback", str(audio_path)],
+        ["aplay", "-q", "-D", "plughw:CARD=wm8960soundcard,DEV=0", str(audio_path)],
     ]
 
 

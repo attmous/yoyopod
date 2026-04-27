@@ -96,7 +96,7 @@ def test_hydrated_runtime_contract_allows_target_python_venv(tmp_path: Path) -> 
     assert detect_self_contained_python_version(slot) is None
 
 
-def test_slot_contract_requires_default_voice_worker_artifact(tmp_path: Path) -> None:
+def test_slot_contract_treats_default_voice_worker_artifact_as_optional(tmp_path: Path) -> None:
     slot = tmp_path / "slot"
     python_bin = slot / SLOT_VENV_PYTHON
     python_bin.parent.mkdir(parents=True)
@@ -112,5 +112,5 @@ def test_slot_contract_requires_default_voice_worker_artifact(tmp_path: Path) ->
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("shim\n", encoding="utf-8")
 
-    assert SLOT_VOICE_WORKER_ARTIFACT in missing_self_contained_paths(slot)
+    assert SLOT_VOICE_WORKER_ARTIFACT not in missing_self_contained_paths(slot)
     assert SLOT_VOICE_WORKER_ARTIFACT not in missing_hydrated_runtime_paths(slot)

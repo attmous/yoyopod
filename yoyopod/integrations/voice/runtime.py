@@ -58,6 +58,7 @@ class _AskClient(Protocol):
         instructions: str,
         max_output_chars: int,
         cancel_event: threading.Event | None = None,
+        timeout_seconds: float | None = None,
     ) -> VoiceWorkerAskResult:
         """Return one answer from the cloud Ask worker."""
         ...
@@ -94,6 +95,9 @@ class VoiceRuntimeCoordinator:
         self._tts_thread: threading.Thread | None = None
         self._tts_thread_lock = threading.Lock()
         self._tts_cancel_lock = threading.Lock()
+        self._tts_idle = threading.Event()
+        self._tts_idle.set()
+        self._tts_cancel_events: set[threading.Event] = set()
         self._generation_scoped_tts_cancel_events: set[threading.Event] = set()
 
     @property
@@ -150,6 +154,7 @@ class VoiceRuntimeCoordinator:
 
         if self._state.capture_in_flight:
             return
+        self._cancel_pending_speech_before_capture()
         voice_service, settings = self._voice_service_with_settings()
         readiness_error = self._prepare_ask_capture(
             voice_service=voice_service,
@@ -201,6 +206,7 @@ class VoiceRuntimeCoordinator:
 
         if self._state.capture_in_flight:
             return
+        self._cancel_pending_speech_before_capture()
         voice_service, settings = self._voice_service_with_settings()
         readiness_error = self._prepare_capture(voice_service=voice_service, settings=settings)
         if readiness_error is not None:
@@ -230,6 +236,7 @@ class VoiceRuntimeCoordinator:
     def begin_ptt_capture(self) -> None:
         """Start an open-ended PTT capture that ends on release."""
 
+        self._cancel_pending_speech_before_capture()
         voice_service, settings = self._voice_service_with_settings()
         readiness_error = self._prepare_capture(
             voice_service=voice_service,
@@ -482,20 +489,39 @@ class VoiceRuntimeCoordinator:
 
     def _voice_service_with_settings(self) -> tuple[VoiceManager, VoiceSettings]:
         settings = self._settings_resolver.current()
-        if self._voice_service_factory is not None:
-            return self._voice_service_factory(settings), settings
         if self._cached_voice_service is None:
-            self._cached_voice_service = VoiceManager(settings=settings)
+            self._cached_voice_service = self._build_voice_service(settings)
             return self._cached_voice_service, settings
-        if self._cached_voice_service.settings != settings:
-            self._cached_voice_service.release_resources()
-            self._cached_voice_service = VoiceManager(settings=settings)
+        if getattr(self._cached_voice_service, "settings", settings) != settings:
+            release_resources = getattr(self._cached_voice_service, "release_resources", None)
+            if callable(release_resources):
+                release_resources()
+            self._cached_voice_service = self._build_voice_service(settings)
         return self._cached_voice_service, settings
+
+    def _build_voice_service(self, settings: VoiceSettings) -> VoiceManager:
+        if self._voice_service_factory is not None:
+            service = self._voice_service_factory(settings)
+            if getattr(service, "settings", None) is None:
+                try:
+                    setattr(service, "settings", settings)
+                except Exception:
+                    pass
+            return service
+        return VoiceManager(settings=settings)
 
     def _next_generation(self) -> int:
         self._cancel_generation_scoped_tts()
         self._state.generation += 1
         return self._state.generation
+
+    def _cancel_pending_speech_before_capture(self) -> None:
+        with self._tts_cancel_lock:
+            cancel_events = list(self._tts_cancel_events)
+        for cancel_event in cancel_events:
+            cancel_event.set()
+        if cancel_events:
+            self._tts_idle.wait(timeout=1.0)
 
     def _cancel_generation_scoped_tts(self) -> None:
         with self._tts_cancel_lock:
@@ -634,6 +660,7 @@ class VoiceRuntimeCoordinator:
                 instructions=settings.cloud_worker_ask_instructions,
                 max_output_chars=self._ask_conversation.max_text_chars,
                 cancel_event=cancel_event,
+                timeout_seconds=settings.cloud_worker_ask_timeout_seconds,
             )
         except Exception as exc:
             logger.warning("Ask worker request failed: {}", exc)
@@ -801,9 +828,10 @@ class VoiceRuntimeCoordinator:
         """Speak an outcome outside the main-thread UI path."""
 
         self._ensure_tts_worker()
-        cancel_event = None
+        cancel_event = threading.Event()
+        with self._tts_cancel_lock:
+            self._tts_cancel_events.add(cancel_event)
         if generation is not None:
-            cancel_event = threading.Event()
             with self._tts_cancel_lock:
                 self._generation_scoped_tts_cancel_events.add(cancel_event)
         self._tts_queue.put(
@@ -850,13 +878,11 @@ class VoiceRuntimeCoordinator:
                     len(item.text.strip()),
                     _preview_voice_text(item.text),
                 )
-                if item.cancel_event is None:
-                    spoken = self._voice_service().speak(item.text)
-                else:
-                    spoken = self._voice_service().speak(
-                        item.text,
-                        cancel_event=item.cancel_event,
-                    )
+                self._tts_idle.clear()
+                spoken = self._voice_service().speak(
+                    item.text,
+                    cancel_event=item.cancel_event,
+                )
                 if not spoken:
                     logger.debug("Voice response not spoken: {}", item.text)
                 if (
@@ -877,8 +903,11 @@ class VoiceRuntimeCoordinator:
             finally:
                 if item.cancel_event is not None:
                     with self._tts_cancel_lock:
+                        self._tts_cancel_events.discard(item.cancel_event)
                         self._generation_scoped_tts_cancel_events.discard(item.cancel_event)
                 self._tts_queue.task_done()
+                if self._tts_queue.empty():
+                    self._tts_idle.set()
 
     def _set_state(
         self,

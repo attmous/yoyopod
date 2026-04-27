@@ -435,7 +435,7 @@ def build(
     _write_runtime_requirements(repo_root, slot_dir / "runtime-requirements.txt")
     (slot_dir / "assets").mkdir(exist_ok=True)
     _copy_native_runtime_artifacts(repo_root, slot_dir / "app", required=not skip_venv)
-    _copy_voice_worker_runtime_artifact(repo_root, slot_dir, required=not skip_venv)
+    _copy_voice_worker_runtime_artifact(repo_root, slot_dir, required=False)
 
     if skip_venv:
         (slot_dir / "venv").mkdir()

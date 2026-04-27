@@ -132,8 +132,6 @@ def parse_transcribe_result(payload: Mapping[str, Any]) -> VoiceWorkerTranscribe
     """Parse and normalize a transcription response payload."""
 
     text = _required_string(payload, "text").strip()
-    if not text:
-        raise ValueError("text must be a non-empty string")
 
     return VoiceWorkerTranscribeResult(
         text=text,

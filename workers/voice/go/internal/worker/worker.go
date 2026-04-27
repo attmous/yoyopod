@@ -58,6 +58,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	}
 
 	scanner := bufio.NewScanner(w.in)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():

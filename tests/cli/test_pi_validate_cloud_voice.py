@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import wave
 from pathlib import Path
+from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
@@ -104,6 +105,76 @@ def test_cloud_voice_command_help_exposes_repeatable_options() -> None:
     assert "--phrase" in names
     assert "--env-file" in names
     assert "--acoustic-loopback" in names
+
+
+def test_cloud_voice_worker_argv_preserves_configured_arguments(monkeypatch) -> None:
+    monkeypatch.setattr(pi_validate.shutil, "which", lambda binary: f"/usr/bin/{binary}")
+    config_manager = SimpleNamespace(
+        get_voice_settings=lambda: SimpleNamespace(
+            worker=SimpleNamespace(argv=["python3", "-m", "fake.worker"])
+        )
+    )
+
+    argv = pi_validate._resolve_cloud_voice_worker_argv(config_manager, "")
+
+    assert argv == ["/usr/bin/python3", "-m", "fake.worker"]
+
+
+def test_cloud_voice_worker_binary_check_accepts_path_executable(monkeypatch) -> None:
+    monkeypatch.setattr(pi_validate.shutil, "which", lambda binary: f"/usr/bin/{binary}")
+
+    result = pi_validate._cloud_voice_worker_binary_check("python3")
+
+    assert result.status == "pass"
+    assert result.details == "/usr/bin/python3"
+
+
+def test_voice_worker_protocol_close_does_not_wait_for_stop_response() -> None:
+    writes: list[str] = []
+
+    class _Stdin:
+        def write(self, data: str) -> int:
+            writes.append(data)
+            return len(data)
+
+        def flush(self) -> None:
+            return None
+
+    class _Process:
+        stdin = _Stdin()
+        returncode: int | None = None
+        wait_calls: list[float | None]
+        terminated = False
+        killed = False
+
+        def __init__(self) -> None:
+            self.wait_calls = []
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float | None = None) -> int:
+            self.wait_calls.append(timeout)
+            self.returncode = 0
+            return 0
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            self.killed = True
+            self.returncode = -9
+
+    proc = _Process()
+    client = pi_validate._VoiceWorkerProtocolClient(["worker"], env={})
+    client._proc = proc
+
+    client.close()
+
+    assert "\"type\":\"worker.stop\"" in "".join(writes)
+    assert proc.wait_calls == [2.0]
+    assert proc.terminated is False
+    assert proc.killed is False
 
 
 def test_cloud_voice_acoustic_loopback_records_and_transcribes_physical_route(

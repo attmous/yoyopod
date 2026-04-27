@@ -56,6 +56,7 @@ class _WorkerSupervisor(Protocol):
 class _PendingRequest:
     request_id: str
     expected_type: str
+    timeout_seconds: float
     send_lock: threading.Lock = field(default_factory=threading.Lock)
     event: threading.Event = field(default_factory=threading.Event)
     result: (
@@ -223,6 +224,7 @@ class VoiceWorkerClient:
         instructions: str,
         max_output_chars: int,
         cancel_event: threading.Event | None = None,
+        timeout_seconds: float | None = None,
     ) -> VoiceWorkerAskResult:
         """Send one question answering request and wait for its normalized result."""
 
@@ -238,6 +240,7 @@ class VoiceWorkerClient:
             request_type="voice.ask",
             expected_type="voice.ask.result",
             payload=payload,
+            timeout_seconds=timeout_seconds,
         )
         result = self._wait_for(pending, cancel_event=cancel_event)
         if isinstance(result, VoiceWorkerAskResult):
@@ -272,9 +275,15 @@ class VoiceWorkerClient:
         request_type: str,
         expected_type: str,
         payload: dict[str, Any],
+        timeout_seconds: float | None = None,
     ) -> _PendingRequest:
         request_id = f"voice-{uuid.uuid4().hex}"
-        pending = _PendingRequest(request_id=request_id, expected_type=expected_type)
+        request_timeout_seconds = self._normalized_timeout_seconds(timeout_seconds)
+        pending = _PendingRequest(
+            request_id=request_id,
+            expected_type=expected_type,
+            timeout_seconds=request_timeout_seconds,
+        )
         with self._lock:
             self._pending[request_id] = pending
 
@@ -289,7 +298,7 @@ class VoiceWorkerClient:
                         type=request_type,
                         payload=payload,
                         request_id=request_id,
-                        timeout_seconds=self._request_timeout_seconds,
+                        timeout_seconds=request_timeout_seconds,
                     )
                 except Exception as exc:
                     self._complete_send_failure(
@@ -322,7 +331,7 @@ class VoiceWorkerClient:
         | VoiceWorkerAskResult
         | VoiceWorkerHealthResult
     ):
-        wait_seconds = self._request_timeout_seconds + self._WAIT_GRACE_SECONDS
+        wait_seconds = pending.timeout_seconds + self._WAIT_GRACE_SECONDS
         completed = self._wait_until_complete_or_cancel(
             pending,
             wait_seconds=wait_seconds,
@@ -460,12 +469,20 @@ class VoiceWorkerClient:
                 error=VoiceWorkerUnavailable(f"malformed voice worker error: {exc}"),
             )
         else:
-            if worker_error.code in {"provider_error", "provider_unavailable"}:
+            if (
+                pending.expected_type == "voice.health.result"
+                and worker_error.code in {"provider_error", "provider_unavailable"}
+            ):
                 self._set_available(False, worker_error.message or worker_error.code)
             self._complete_once(
                 pending,
                 error=VoiceWorkerUnavailable(f"{worker_error.code}: {worker_error.message}"),
             )
+
+    def _normalized_timeout_seconds(self, timeout_seconds: float | None) -> float:
+        if timeout_seconds is None:
+            return self._request_timeout_seconds
+        return max(0.0, float(timeout_seconds))
 
     def _set_available(self, available: bool, reason: str) -> None:
         with self._lock:

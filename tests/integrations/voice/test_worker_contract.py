@@ -68,6 +68,18 @@ def test_parse_transcribe_result_normalizes_values() -> None:
     )
 
 
+def test_parse_transcribe_result_accepts_empty_no_speech_text() -> None:
+    result = parse_transcribe_result(
+        {
+            "text": "",
+            "confidence": 0.0,
+            "is_final": True,
+        }
+    )
+
+    assert result == VoiceWorkerTranscribeResult(text="", confidence=0.0, is_final=True)
+
+
 def test_build_speak_payload_includes_provider_options() -> None:
     payload = build_speak_payload(
         text="Playing music",

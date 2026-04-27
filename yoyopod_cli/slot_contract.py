@@ -34,7 +34,6 @@ SELF_CONTAINED_REQUIRED_FILES: tuple[Path, ...] = (
     SLOT_PYTHON_BIN,
     SLOT_PYTHON_STDLIB_MARKER,
     *SLOT_NATIVE_RUNTIME_ARTIFACTS,
-    SLOT_VOICE_WORKER_ARTIFACT,
 )
 
 
@@ -52,7 +51,6 @@ def self_contained_required_files(python_version: str = "3.12") -> tuple[Path, .
         slot_python_bin(python_version),
         slot_python_stdlib_marker(python_version),
         *SLOT_NATIVE_RUNTIME_ARTIFACTS,
-        SLOT_VOICE_WORKER_ARTIFACT,
     )
 
 
