@@ -179,6 +179,7 @@ VOICE_COMMAND_GRAMMAR: tuple[VoiceCommandTemplate, ...] = (
         intent=VoiceCommandIntent.PLAY_MUSIC,
         trigger_phrases=(
             "play music",
+            "play",
             "play some music",
             "start music",
             "start some music",
@@ -192,6 +193,7 @@ VOICE_COMMAND_GRAMMAR: tuple[VoiceCommandTemplate, ...] = (
         ),
         examples=("play music", "play some music", "start music", "play a song"),
         exact_trigger_phrases=(
+            "play",
             "play a song",
             "play songs",
             "put on music",

@@ -162,6 +162,7 @@ def test_match_voice_command_handles_observed_stt_noise_for_call_mama(phrase: st
         ("put on music", VoiceCommandIntent.PLAY_MUSIC),
         ("start songs", VoiceCommandIntent.PLAY_MUSIC),
         ("play kids music", VoiceCommandIntent.PLAY_MUSIC),
+        ("play", VoiceCommandIntent.PLAY_MUSIC),
         ("\u63a8,\u97f3\u4e50", VoiceCommandIntent.PLAY_MUSIC),
         ("louder", VoiceCommandIntent.VOLUME_UP),
         ("make it louder", VoiceCommandIntent.VOLUME_UP),
