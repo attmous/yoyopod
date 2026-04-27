@@ -115,6 +115,7 @@ def _build_validate(
     with_cloud_voice: bool = False,
     with_lvgl_soak: bool,
     with_navigation: bool,
+    with_rust_ui_poc: bool = False,
 ) -> str:
     """Shell that fast-forwards the branch on the Pi, then runs staged validation.
 
@@ -155,6 +156,9 @@ def _build_validate(
         steps.append(checkout_module_command(venv_relpath, "pi", "validate", "lvgl"))
     if with_navigation:
         steps.append(checkout_module_command(venv_relpath, "pi", "validate", "navigation"))
+    if with_rust_ui_poc:
+        steps.append(checkout_module_command(venv_relpath, "build", "rust-ui-poc"))
+        steps.append(checkout_module_command(venv_relpath, "pi", "rust-ui-poc"))
     return " && ".join(steps)
 
 
@@ -187,6 +191,11 @@ def validate(
     ),
     with_lvgl_soak: bool = typer.Option(False, "--with-lvgl-soak"),
     with_navigation: bool = typer.Option(False, "--with-navigation"),
+    with_rust_ui_poc: bool = typer.Option(
+        False,
+        "--with-rust-ui-poc",
+        help="Build and run the Whisplay-only Rust UI hardware I/O PoC on the target.",
+    ),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     """Run staged Pi validation. Pass --with-* to add optional stages."""
@@ -206,5 +215,6 @@ def validate(
         with_cloud_voice=with_cloud_voice,
         with_lvgl_soak=with_lvgl_soak,
         with_navigation=with_navigation,
+        with_rust_ui_poc=with_rust_ui_poc,
     )
     raise typer.Exit(run_remote(conn, cmd, tty=True))

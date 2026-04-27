@@ -148,3 +148,31 @@ def test_validate_alias_with_cloud_voice_flag(monkeypatch) -> None:
     assert (
         "/opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main pi validate cloud-voice" in calls[0]
     )
+
+
+def test_validate_alias_with_rust_ui_poc_flag(monkeypatch) -> None:
+    calls: list[str] = []
+
+    def fake_local(argv: list[str]) -> SimpleNamespace:
+        if argv == ["git", "show-ref", "--verify", "--quiet", "refs/heads/main"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv == ["git", "rev-list", "--count", "origin/main..main"]:
+            return SimpleNamespace(returncode=0, stdout="0\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "yoyopod_cli.remote_validate.run_local_capture",
+        fake_local,
+    )
+    monkeypatch.setattr(
+        "yoyopod_cli.remote_validate.run_remote",
+        lambda conn, cmd, tty=False: (calls.append(cmd), 0)[1],
+    )
+    monkeypatch.setenv("YOYOPOD_PI_HOST", "rpi-zero")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["validate", "--with-rust-ui-poc"])
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    assert "/opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main build rust-ui-poc" in calls[0]
+    assert "/opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main pi rust-ui-poc" in calls[0]

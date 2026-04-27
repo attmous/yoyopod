@@ -238,6 +238,11 @@ def _validate_shortcut(
     ),
     with_lvgl_soak: bool = typer.Option(False, "--with-lvgl-soak"),
     with_navigation: bool = typer.Option(False, "--with-navigation"),
+    with_rust_ui_poc: bool = typer.Option(
+        False,
+        "--with-rust-ui-poc",
+        help="Build and run the Whisplay-only Rust UI hardware I/O PoC on the target.",
+    ),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     """Run staged Pi validation (alias for `remote validate`)."""
@@ -251,6 +256,7 @@ def _validate_shortcut(
         with_cloud_voice=with_cloud_voice,
         with_lvgl_soak=with_lvgl_soak,
         with_navigation=with_navigation,
+        with_rust_ui_poc=with_rust_ui_poc,
         verbose=verbose,
     )
 
