@@ -268,6 +268,10 @@ class VoiceCommandExecutor:
             cls._normalize_label(contact.name),
             cls._normalize_label(contact.display_name),
             cls._normalize_label(getattr(contact, "notes", "")),
+            *{
+                cls._normalize_label(alias)
+                for alias in getattr(contact, "aliases", [])
+            },
         }
         labels.discard("")
 

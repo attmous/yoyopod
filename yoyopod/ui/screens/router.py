@@ -112,6 +112,10 @@ class ScreenRouter:
                 "back": NavigationRequest.pop(),
                 "call_started": NavigationRequest.push("outgoing_call"),
                 "shuffle_started": NavigationRequest.push("now_playing"),
+                "open_talk": NavigationRequest.push("call"),
+                "open_listen": NavigationRequest.push("listen"),
+                "open_setup": NavigationRequest.push("power"),
+                "go_home": NavigationRequest.replace("hub"),
             },
             "power": {
                 "back": NavigationRequest.pop(),

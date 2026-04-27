@@ -130,6 +130,7 @@ class PeopleManager:
         sip_address: str,
         favorite: bool = False,
         notes: str = "",
+        aliases: list[str] | None = None,
     ) -> Contact:
         """Append one contact and persist the updated address book."""
 
@@ -138,10 +139,28 @@ class PeopleManager:
             sip_address=sip_address,
             favorite=favorite,
             notes=notes,
+            aliases=list(aliases or []),
         )
         self.contacts.append(contact)
         self.save()
         return contact
+
+    def get_contact_by_alias(self, alias: str) -> Contact | None:
+        """Return one contact matched by name, display name, notes, or alias."""
+
+        normalized = " ".join(alias.strip().lower().split())
+        if not normalized:
+            return None
+        for contact in self.contacts:
+            labels = {
+                contact.name,
+                contact.display_name,
+                contact.notes,
+                *contact.aliases,
+            }
+            if normalized in {" ".join(label.strip().lower().split()) for label in labels if label}:
+                return contact
+        return None
 
     def remove_contact(self, name: str) -> bool:
         """Remove one contact by source name."""

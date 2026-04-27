@@ -5,6 +5,10 @@ contacts:
     sip_address: "sip:hagarmo@sip.linphone.org"
     favorite: true
     notes: "Mama"
+    aliases:
+      - "mama"
+      - "mom"
+      - "mommy"
 
 speed_dial:
   1: "sip:hagarmo@sip.linphone.org"

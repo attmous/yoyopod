@@ -185,6 +185,18 @@ def test_screen_router_covers_ask_routes() -> None:
     assert router.resolve("ask", "shuffle_started") == NavigationRequest.push("now_playing")
 
 
+def test_ask_router_supports_safe_voice_route_actions() -> None:
+    from yoyopod.ui.screens.router import ScreenRouter
+
+    router = ScreenRouter()
+
+    assert router.resolve("ask", "open_talk").target == "call"
+    assert router.resolve("ask", "open_listen").target == "listen"
+    assert router.resolve("ask", "open_setup").target == "power"
+    assert router.resolve("ask", "go_home").operation == "replace"
+    assert router.resolve("ask", "go_home").target == "hub"
+
+
 def test_screen_router_covers_hub_hold_ask() -> None:
     """Hold on the Hub should route to the Ask screen."""
     router = ScreenRouter()

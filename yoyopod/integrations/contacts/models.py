@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -19,6 +19,7 @@ class Contact:
     sync_origin: str = "local"
     can_call: bool = True
     can_receive: bool = True
+    aliases: list[str] = field(default_factory=list)
 
     @property
     def display_name(self) -> str:
@@ -64,6 +65,7 @@ def contacts_from_mapping(data: dict[str, Any]) -> tuple[list[Contact], dict[int
             sync_origin=contact_data.get("sync_origin", "local"),
             can_call=contact_data.get("can_call", True),
             can_receive=contact_data.get("can_receive", True),
+            aliases=_contact_aliases_from_value(contact_data.get("aliases")),
         )
         for contact_data in data.get("contacts", [])
     ]
@@ -74,6 +76,14 @@ def contacts_from_mapping(data: dict[str, Any]) -> tuple[list[Contact], dict[int
         if str(slot).isdigit() and str(address).strip()
     }
     return contacts, speed_dial
+
+
+def _contact_aliases_from_value(value: object) -> list[str]:
+    """Return cleaned aliases when the serialized shape is list-like."""
+
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [str(alias).strip() for alias in value if str(alias).strip()]
 
 
 def contacts_to_mapping(
@@ -100,6 +110,8 @@ def contacts_to_mapping(
             entry["can_call"] = contact.can_call
         if not contact.can_receive:
             entry["can_receive"] = contact.can_receive
+        if contact.aliases:
+            entry["aliases"] = list(contact.aliases)
         serialized_contacts.append(entry)
 
     return {

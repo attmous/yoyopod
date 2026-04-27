@@ -11,6 +11,7 @@ from tempfile import NamedTemporaryFile
 from types import SimpleNamespace
 
 from yoyopod.core import AppContext
+from yoyopod.integrations.contacts.models import contacts_from_mapping
 from yoyopod.integrations.voice import (
     AskConversationState,
     VoiceCommandExecutor,
@@ -376,6 +377,75 @@ def test_voice_command_executor_routes_call_and_updates_context() -> None:
     assert context.talk.selected_contact_name == "Mama"
     assert voip_manager.make_calls == [("sip:mama@example.com", "Mama")]
     assert context.voice.last_transcript == "call mom"
+
+
+def test_voice_command_executor_uses_contact_aliases() -> None:
+    context = AppContext()
+    voip_manager = _FakeVoipManager()
+    contact = _FakeContact("Hagar", "sip:mama@example.com", notes="Mama")
+    contact.aliases = ["banana phone"]
+    executor = _build_executor(
+        context=context,
+        config_manager=_FakeConfigManager([contact]),
+        voip_manager=voip_manager,
+    )
+
+    outcome = executor.execute("call banana phone")
+
+    assert outcome == VoiceCommandOutcome(
+        "Calling",
+        "Calling Mama.",
+        auto_return=False,
+    )
+    assert voip_manager.make_calls == [("sip:mama@example.com", "Mama")]
+
+
+def test_contacts_from_mapping_ignores_missing_or_invalid_aliases() -> None:
+    contacts, _speed_dial = contacts_from_mapping(
+        {
+            "contacts": [
+                {"name": "Absent", "sip_address": "sip:absent@example.com"},
+                {
+                    "name": "Empty",
+                    "sip_address": "sip:empty@example.com",
+                    "aliases": [],
+                },
+                {
+                    "name": "Null",
+                    "sip_address": "sip:null@example.com",
+                    "aliases": None,
+                },
+                {
+                    "name": "Scalar",
+                    "sip_address": "sip:scalar@example.com",
+                    "aliases": "banana phone",
+                },
+                {
+                    "name": "Mapping",
+                    "sip_address": "sip:mapping@example.com",
+                    "aliases": {"short": "map"},
+                },
+            ]
+        }
+    )
+
+    assert [contact.aliases for contact in contacts] == [[], [], [], [], []]
+
+
+def test_contacts_from_mapping_strips_blank_aliases() -> None:
+    contacts, _speed_dial = contacts_from_mapping(
+        {
+            "contacts": [
+                {
+                    "name": "Hagar",
+                    "sip_address": "sip:mama@example.com",
+                    "aliases": [" banana phone ", "", "   ", "hags"],
+                },
+            ]
+        }
+    )
+
+    assert contacts[0].aliases == ["banana phone", "hags"]
 
 
 def test_voice_command_executor_handles_local_device_actions() -> None:
