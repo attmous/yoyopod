@@ -45,7 +45,7 @@ body:
     attributes:
       label: Doc location
       description: Path to the affected doc, or "N/A — doc missing" if the doc should exist but does not.
-      placeholder: docs/SYSTEM_ARCHITECTURE.md
+      placeholder: docs/architecture/SYSTEM_ARCHITECTURE.md
     validations:
       required: true
 
@@ -86,7 +86,7 @@ body:
       label: Files affected
       description: Doc paths (plus any related code paths), one per line.
       placeholder: |
-        docs/SYSTEM_ARCHITECTURE.md
+        docs/architecture/SYSTEM_ARCHITECTURE.md
         yoyopod/core/application.py
     validations:
       required: true

@@ -6,7 +6,7 @@
 **Target:** 240x280 Whisplay portrait display
 **Rendering path:** LVGL-driven Ask scene in `yoyopod/ui/screens/navigation/ask/__init__.py`
 
-> Current note: use this file for intended interaction and visual design. For what actually exists on `main`, trust `docs/SYSTEM_ARCHITECTURE.md`, the current `AskScreen` implementation, and the current router/screen registration code.
+> Current note: use this file for intended interaction and visual design. For what actually exists on `main`, trust `docs/architecture/SYSTEM_ARCHITECTURE.md`, the current `AskScreen` implementation, and the current router/screen registration code.
 
 ---
 

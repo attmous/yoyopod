@@ -73,4 +73,4 @@ yoyopod remote release status
 
 Add `--first-deploy` to `release push` when the Pi has no previous prod slot yet.
 
-Prod release commands target `/opt/yoyopod-prod` and do not require `uv` or a repo checkout on the Pi after curl bootstrap. See `docs/SLOT_DEPLOY.md`.
+Prod release commands target `/opt/yoyopod-prod` and do not require `uv` or a repo checkout on the Pi after curl bootstrap. See `docs/operations/SLOT_DEPLOY.md`.

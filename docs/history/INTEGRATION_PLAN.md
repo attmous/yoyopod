@@ -3,7 +3,7 @@
 **Last updated:** 2026-04-07
 **Status:** Historical implementation record, implemented on `main`
 
-> Current note: this file explains the integration milestone that brought VoIP and local music into one app flow. It is useful for understanding how the current runtime came together, but it is not the primary source of truth for the current architecture. For current contracts, trust `docs/SYSTEM_ARCHITECTURE.md`, current subsystem docs, and the code under `yoyopod/`.
+> Current note: this file explains the integration milestone that brought VoIP and local music into one app flow. It is useful for understanding how the current runtime came together, but it is not the primary source of truth for the current architecture. For current contracts, trust `docs/architecture/SYSTEM_ARCHITECTURE.md`, current subsystem docs, and the code under `yoyopod/`.
 
 This document started as a plan and now serves as the completion record for the VoIP + local music integration that ships on `main`.
 

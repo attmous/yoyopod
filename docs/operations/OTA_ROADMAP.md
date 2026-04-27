@@ -1,6 +1,6 @@
 # OTA Roadmap
 
-The slot-deploy foundation (`docs/SLOT_DEPLOY.md`) is designed so a future
+The slot-deploy foundation (`docs/operations/SLOT_DEPLOY.md`) is designed so a future
 OTA daemon can be added without changing any of the core deploy pieces.
 This doc lists the exact extension points.
 
@@ -46,4 +46,4 @@ This doc lists the exact extension points.
 7. **Channel rollout** — server-side manifest variants + a device-ID
    hash check on the client.
 
-See `docs/SLOT_DEPLOY.md` for the current ops flow.
+See `docs/operations/SLOT_DEPLOY.md` for the current ops flow.

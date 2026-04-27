@@ -3,7 +3,7 @@
 **Last updated:** 2026-04-02
 **Status:** Historical implementation record, mostly implemented
 
-> Current note: this file records the UI refactor milestone and what it accomplished. It is useful for historical context and remaining cleanup notes, but it is not the top-level source of truth for the current runtime shape. For current behavior, trust `docs/SYSTEM_ARCHITECTURE.md`, UI subsystem docs, and the current code under `yoyopod/ui/`.
+> Current note: this file records the UI refactor milestone and what it accomplished. It is useful for historical context and remaining cleanup notes, but it is not the top-level source of truth for the current runtime shape. For current behavior, trust `docs/architecture/SYSTEM_ARCHITECTURE.md`, UI subsystem docs, and the current code under `yoyopod/ui/`.
 
 This document replaces the old proposal-only version and records what the refactor actually accomplished.
 

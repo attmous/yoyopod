@@ -4,18 +4,18 @@ This guide holds the operational detail that does not belong on the repo landing
 
 If you are new here, read these first:
 
-1. [`../README.md`](../README.md)
-2. [`README.md`](README.md)
+1. [`../README.md`](../../README.md)
+2. [`README.md`](../README.md)
 3. [`CONTRIBUTOR_WORKFLOW.md`](CONTRIBUTOR_WORKFLOW.md)
-4. [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md)
+4. [`SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md)
 
 ## Source of truth
 
 For current behavior, trust:
-- current code in `src/yoyopod/`
+- current code in `yoyopod/`
 - this guide for setup and workflow
-- [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md) for runtime topology
-- [`../AGENTS.md`](../AGENTS.md) and `rules/` for repo guidance
+- [`SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) for runtime topology
+- [`../AGENTS.md`](../../AGENTS.md) and `rules/` for repo guidance
 
 Treat plan docs and checklists as supporting context unless they explicitly state they are current.
 
@@ -180,7 +180,7 @@ Use `uv run python scripts/quality.py ci` as the local wrapper when you want bot
 Optional extra syntax/import smoke for broad tree changes:
 
 ```bash
-python -m compileall src/yoyopod tests demos scripts
+python -m compileall yoyopod tests demos scripts
 ```
 
 Full quality audit of the current repo debt:
@@ -246,8 +246,8 @@ brief `github.com` reachability blips.
 
 The detailed deploy and validation flows live in:
 
-- `docs/PI_DEV_WORKFLOW.md`
-- `docs/RPI_SMOKE_VALIDATION.md`
+- `docs/operations/PI_DEV_WORKFLOW.md`
+- `docs/operations/RPI_SMOKE_VALIDATION.md`
 - `rules/deploy.md`
 
 ## Logging
@@ -274,54 +274,42 @@ yoyopod remote logs --follow --filter ERROR
 ## Package Layout
 
 ```text
-src/yoyopod/
+yoyopod/
   app.py
   main.py
-  fsm.py
-  app_context.py
-  coordinators/
-  runtime/
-    boot.py
+  core/
+    application.py
+    bootstrap/
     loop.py
-    recovery.py
-    screen_power.py
-    shutdown.py
-    models.py
-  cli/
-    setup.py
-    remote/
-      setup.py
-      ops.py
-      infra.py
-      lvgl.py
-  audio/
-    history.py
-    local_service.py
-    volume.py
-    music/
-      backend.py
-      ipc.py
-      models.py
-      process.py
+    bus.py
+    scheduler.py
+    diagnostics/
   config/
     manager.py
     models.py
-  communication/
-    calling/
-    integrations/
-    messaging/
-  people/
-    directory.py
-    models.py
-  network/
-  power/
+  integrations/
+    call/
+    cloud/
+    contacts/
+    display/
+    location/
+    music/
+    network/
+    power/
+    voice/
+  backends/
+    music/
+    network/
+    power/
+    voice/
+    voip/
   ui/
     display/
     input/
     lvgl_binding/
     screens/
-    web_server.py
-  voice/
+yoyopod_cli/
+  main.py
 scripts/
   quality.py
 sitecustomize.py
@@ -329,18 +317,18 @@ sitecustomize.py
 
 ## Current Active Docs
 
-Start with [`README.md`](README.md) for the full docs map.
+Start with [`README.md`](../README.md) for the full docs map.
 
 Current contributor, runtime, and setup docs:
-- `docs/CONTRIBUTOR_WORKFLOW.md`
-- `docs/QUALITY_GATES.md`
-- `docs/SETUP_CONTRACT.md`
-- `docs/SYSTEM_ARCHITECTURE.md`
-- `docs/POWER_MODULE.md`
-- `docs/LOCAL_FIRST_MUSIC_PLAN.md`
-- `docs/MPV_DEPENDENCIES.md`
-- `docs/PI_DEV_WORKFLOW.md`
-- `docs/RPI_SMOKE_VALIDATION.md`
+- `docs/operations/CONTRIBUTOR_WORKFLOW.md`
+- `docs/operations/QUALITY_GATES.md`
+- `docs/operations/SETUP_CONTRACT.md`
+- `docs/architecture/SYSTEM_ARCHITECTURE.md`
+- `docs/hardware/POWER_MODULE.md`
+- `docs/features/LOCAL_FIRST_MUSIC_PLAN.md`
+- `docs/features/MPV_DEPENDENCIES.md`
+- `docs/operations/PI_DEV_WORKFLOW.md`
+- `docs/operations/RPI_SMOKE_VALIDATION.md`
 
 Plan and migration docs can still be useful, but they are not automatically the source of truth.
 

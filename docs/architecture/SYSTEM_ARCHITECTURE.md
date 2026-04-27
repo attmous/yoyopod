@@ -315,7 +315,7 @@ and updates:
 - state machine state
 - focused runtime state objects through `AppContext`
 
-For a fuller map of the typed runtime event pipeline and coordinator boundaries, see [`docs/RUNTIME_EVENT_FLOW.md`](RUNTIME_EVENT_FLOW.md).
+For a fuller map of the typed runtime event pipeline and coordinator boundaries, see [`docs/architecture/RUNTIME_EVENT_FLOW.md`](RUNTIME_EVENT_FLOW.md).
 
 ## Event Flows
 

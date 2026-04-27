@@ -53,7 +53,7 @@ This repository contains the software that runs the current YoYoPod prototype:
 - `yoyopod/ui/` - the device UI, LVGL binding, screens, and input/display glue.
 - `yoyopod_cli/` - developer and device operations tooling for setup, deploy, validation, and diagnostics.
 
-If you want the architecture view instead of the product view, start with [docs/SYSTEM_ARCHITECTURE.md](docs/SYSTEM_ARCHITECTURE.md).
+If you want the architecture view instead of the product view, start with [docs/architecture/SYSTEM_ARCHITECTURE.md](docs/architecture/SYSTEM_ARCHITECTURE.md).
 
 ## Bring Up The Prototype
 
@@ -104,20 +104,21 @@ uv run yoyopod remote mode activate prod
 uv run yoyopod remote release status
 ```
 
-For deeper deploy, lane, and troubleshooting flows, read [Dev/Prod Lanes](docs/DEV_PROD_LANES.md), [Slot Deploy](docs/SLOT_DEPLOY.md), and [Pi Dev Workflow](docs/PI_DEV_WORKFLOW.md).
+For deeper deploy, lane, and troubleshooting flows, read [Dev/Prod Lanes](docs/operations/DEV_PROD_LANES.md), [Slot Deploy](docs/operations/SLOT_DEPLOY.md), and [Pi Dev Workflow](docs/operations/PI_DEV_WORKFLOW.md).
 
 ## Read More
 
 - [Documentation Guide](docs/README.md)
-- [Contributor Workflow](docs/CONTRIBUTOR_WORKFLOW.md)
-- [Development Guide](docs/DEVELOPMENT_GUIDE.md)
-- [Release Process](docs/RELEASE_PROCESS.md)
-- [Slot Deploy](docs/SLOT_DEPLOY.md)
-- [Pi Dev Workflow](docs/PI_DEV_WORKFLOW.md)
-- [Pi Smoke Validation](docs/RPI_SMOKE_VALIDATION.md)
-- [System Architecture](docs/SYSTEM_ARCHITECTURE.md)
-- [Power Module](docs/POWER_MODULE.md)
-- [LVGL Migration Plan](docs/LVGL_MIGRATION_PLAN.md)
+- [Contributor Workflow](docs/operations/CONTRIBUTOR_WORKFLOW.md)
+- [Development Guide](docs/operations/DEVELOPMENT_GUIDE.md)
+- [Release Process](docs/operations/RELEASE_PROCESS.md)
+- [Slot Deploy](docs/operations/SLOT_DEPLOY.md)
+- [Pi Dev Workflow](docs/operations/PI_DEV_WORKFLOW.md)
+- [Pi Smoke Validation](docs/operations/RPI_SMOKE_VALIDATION.md)
+- [System Architecture](docs/architecture/SYSTEM_ARCHITECTURE.md)
+- [Power Module](docs/hardware/POWER_MODULE.md)
+- [Design Docs](docs/design/README.md)
+- [Feature Docs](docs/features/README.md)
 
 Historical notes are kept under [docs/archive](docs/archive). Current code and current runtime docs are the source of truth when older plans drift.
 

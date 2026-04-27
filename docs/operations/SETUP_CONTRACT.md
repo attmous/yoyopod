@@ -27,7 +27,7 @@ The repo should own:
 - the shared Pi deploy contract in `deploy/pi-deploy.yaml`
 - the tracked app config in `config/`
 - the documented system dependency list in this file
-- the validation commands in `docs/DEVELOPMENT_GUIDE.md` and `docs/RPI_SMOKE_VALIDATION.md`
+- the validation commands in `docs/operations/DEVELOPMENT_GUIDE.md` and `docs/operations/RPI_SMOKE_VALIDATION.md`
 - the remote workflow exposed through `yoyopod remote`
 
 Machine-local values should stay out of tracked files.
@@ -156,7 +156,7 @@ These are not universal for every contributor machine, but the repo should still
 
 See:
 
-- `docs/CUBIE_A7Z_BRINGUP.md`
+- `docs/hardware/CUBIE_A7Z_BRINGUP.md`
 
 ## Repo-owned configuration contract
 

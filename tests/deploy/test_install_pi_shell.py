@@ -34,8 +34,8 @@ def test_install_pi_script_exposes_professional_curl_command() -> None:
 def test_active_docs_use_curl_installer_not_manual_temp_checkout() -> None:
     active_docs = [
         REPO_ROOT / "AGENTS.md",
-        REPO_ROOT / "docs" / "DEV_PROD_LANES.md",
-        REPO_ROOT / "docs" / "SLOT_DEPLOY.md",
+        REPO_ROOT / "docs" / "operations" / "DEV_PROD_LANES.md",
+        REPO_ROOT / "docs" / "operations" / "SLOT_DEPLOY.md",
     ]
     combined = "\n".join(path.read_text(encoding="utf-8") for path in active_docs)
 

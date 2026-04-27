@@ -10,8 +10,8 @@ This directory holds generated plans and design specs from earlier agent-assiste
 
 For current truth, trust in this order:
 
-1. current code under `src/yoyopod/`
-2. top-level runtime/setup docs such as `docs/SYSTEM_ARCHITECTURE.md`, `docs/DEVELOPMENT_GUIDE.md`, and `docs/SETUP_CONTRACT.md`
+1. current code under `yoyopod/`
+2. current runtime/setup docs such as `docs/architecture/SYSTEM_ARCHITECTURE.md`, `docs/operations/DEVELOPMENT_GUIDE.md`, and `docs/operations/SETUP_CONTRACT.md`
 3. current repo guidance in `AGENTS.md` and `rules/`
 
 ## What is here

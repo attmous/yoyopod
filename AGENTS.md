@@ -33,7 +33,7 @@ Canonical deploy/debug skills
 - `skills/yoyopod-restart/SKILL.md`
 - `skills/yoyopod-status/SKILL.md`
 - `skills/yoyopod-screenshot/SKILL.md`
-- `docs/SLOT_DEPLOY.md` (slot-deploy + OTA-ready flow; coexists with the legacy skills above)
+- `docs/operations/SLOT_DEPLOY.md` (slot-deploy + OTA-ready flow; coexists with the legacy skills above)
 
 Current runtime summary
 - Entrypoint: `yoyopod.py` -> `yoyopod.main` -> `YoyoPodApp`
@@ -54,7 +54,7 @@ Pi lanes and bootstrap
 - Migration: `--migrate` preserves old config/logs for reference only. It does not copy old `~/yoyopod-core` into dev; live dev truth is `/opt/yoyopod-dev/checkout`.
 - Hard cut: supported runtime owners are only `yoyopod-dev.service` and `yoyopod-prod.service`; `yoyopod@*.service`, `yoyopod-slot.service`, unmanaged `python yoyopod.py`, and `remote service ...` are legacy contamination paths.
 - Dev deploy loop: `yoyopod remote mode activate dev`, then `yoyopod remote setup` once, then `yoyopod remote sync --branch <branch>`; add `--clean-native` after native/CMake/lib changes or branch switches.
-- Lane details live in `docs/DEV_PROD_LANES.md`, dev workflow in `docs/PI_DEV_WORKFLOW.md`, prod slot/OTA flow in `docs/SLOT_DEPLOY.md`.
+- Lane details live in `docs/operations/DEV_PROD_LANES.md`, dev workflow in `docs/operations/PI_DEV_WORKFLOW.md`, prod slot/OTA flow in `docs/operations/SLOT_DEPLOY.md`.
 
 Source-of-truth files
 - `yoyopod/core/application.py`
@@ -70,15 +70,16 @@ Source-of-truth files
 - `yoyopod_cli/main.py`
 - `yoyopod_cli/COMMANDS.md`
 - `README.md`
-- `docs/SYSTEM_ARCHITECTURE.md`
-- `docs/DEV_PROD_LANES.md`
-- `docs/PI_DEV_WORKFLOW.md`
-- `docs/SLOT_DEPLOY.md`
-- `docs/POWER_MODULE.md`
-- `docs/LVGL_MIGRATION_PLAN.md`
-- `docs/LOCAL_FIRST_MUSIC_PLAN.md`
-- `docs/RUNTIME_EVENT_FLOW.md`
-- `docs/QUALITY_GATES.md`
+- `docs/architecture/SYSTEM_ARCHITECTURE.md`
+- `docs/operations/DEV_PROD_LANES.md`
+- `docs/operations/PI_DEV_WORKFLOW.md`
+- `docs/operations/SLOT_DEPLOY.md`
+- `docs/hardware/POWER_MODULE.md`
+- `docs/architecture/DISPLAY_HAL_ARCHITECTURE.md`
+- `docs/design/WHISPLAY_SIMULATION_PARITY_CONTRACT.md`
+- `docs/features/LOCAL_FIRST_MUSIC_PLAN.md`
+- `docs/architecture/RUNTIME_EVENT_FLOW.md`
+- `docs/operations/QUALITY_GATES.md`
 
 High-value commands
 - Install/test env: `uv sync --extra dev`
@@ -106,6 +107,6 @@ Guardrails
 - Keep raw LVGL confined to `yoyopod/ui/lvgl_binding/` and display-layer code.
 - Prefer `yoyopod remote` over ad-hoc SSH sequences.
 - Current code and runtime docs beat old plan docs when they disagree.
-- `docs/archive/` is history, not truth.
+- `docs/history/` and `docs/archive/` are history, not truth.
 
 If you need more than this file gives you, read the referenced rules/docs instead of expanding this file again.

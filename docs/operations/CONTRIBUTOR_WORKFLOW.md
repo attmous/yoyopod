@@ -10,10 +10,10 @@ It is the day-to-day contributor path.
 
 If you are new here, read in this order:
 
-1. [`../README.md`](../README.md)
-2. [`README.md`](README.md)
+1. [`../README.md`](../../README.md)
+2. [`README.md`](../README.md)
 3. [`DEVELOPMENT_GUIDE.md`](DEVELOPMENT_GUIDE.md)
-4. [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md)
+4. [`SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md)
 5. [`QUALITY_GATES.md`](QUALITY_GATES.md)
 6. `rules/project.md`
 7. `rules/architecture.md`
@@ -73,7 +73,7 @@ Use `audit` when you want to see the broader repo debt without pretending it is 
 
 Read:
 
-1. [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md)
+1. [`SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md)
 2. subsystem docs for the area you are touching
 3. `rules/architecture.md`
 4. the relevant files under `yoyopod/`
@@ -112,8 +112,8 @@ For direct on-Pi validation commands such as `yoyopod pi validate smoke`, use [`
 
 Read:
 
-1. [`README.md`](../README.md)
-2. [`README.md`](README.md)
+1. [`README.md`](../../README.md)
+2. [`README.md`](../README.md)
 3. this file
 4. `rules/project.md`
 5. `rules/architecture.md`

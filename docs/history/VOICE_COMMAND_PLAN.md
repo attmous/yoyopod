@@ -2,7 +2,7 @@
 
 **Status:** Transitional design record, partly stale relative to the current `Ask` flow
 
-> Current note: this document captures the original design direction for local voice control. The current codebase now uses a unified `AskScreen` instead of the earlier split `Voice Commands` and `AI Requests` menu shape described below. Keep using this file for design context and future direction, but trust the current code and `docs/SYSTEM_ARCHITECTURE.md` for what exists on `main`.
+> Current note: this document captures the original design direction for local voice control. The current codebase now uses a unified `AskScreen` instead of the earlier split `Voice Commands` and `AI Requests` menu shape described below. Keep using this file for design context and future direction, but trust the current code and `docs/architecture/SYSTEM_ARCHITECTURE.md` for what exists on `main`.
 
 > Read this as a direction and constraint document, not as proof that every flow, menu shape, or setting below is what ships today.
 

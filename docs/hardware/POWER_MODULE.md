@@ -382,6 +382,6 @@ Not yet productized:
 ## Related Documents
 
 - `README.md`
-- `docs/RPI_SMOKE_VALIDATION.md`
-- `docs/PI_DEV_WORKFLOW.md`
+- `docs/operations/RPI_SMOKE_VALIDATION.md`
+- `docs/operations/PI_DEV_WORKFLOW.md`
 - `deploy/systemd/yoyopod-prod.service`

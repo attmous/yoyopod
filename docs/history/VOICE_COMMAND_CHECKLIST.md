@@ -1,4 +1,4 @@
-# Voice Command Implementation Checklist
+﻿# Voice Command Implementation Checklist
 
 **Status:** Historical implementation checklist, not the current implementation contract
 
@@ -28,42 +28,42 @@ The file references below were captured at the time of writing. Their links have
 
 ### Ask Navigation and Rendering
 
-- [yoyopod/ui/screens/navigation/ask.py](../yoyopod/ui/screens/navigation/ask.py)
-- [yoyopod/ui/screens/navigation/lvgl/ask_view.py](../yoyopod/ui/screens/navigation/lvgl/ask_view.py)
-- [yoyopod/ui/screens/router.py](../yoyopod/ui/screens/router.py)
-- [yoyopod/app.py](../yoyopod/app.py)
+- [yoyopod/ui/screens/navigation/ask/__init__.py](../../yoyopod/ui/screens/navigation/ask/__init__.py)
+- [yoyopod/ui/screens/navigation/lvgl/ask_view.py](../../yoyopod/ui/screens/navigation/lvgl/ask_view.py)
+- [yoyopod/ui/screens/router.py](../../yoyopod/ui/screens/router.py)
+- [yoyopod/app.py](../../yoyopod/app.py)
 
 ### Setup / Device Settings Screen
 
-- [yoyopod/ui/screens/system/power.py](../yoyopod/ui/screens/system/power.py)
-- [yoyopod/ui/screens/system/lvgl/power_view.py](../yoyopod/ui/screens/system/lvgl/power_view.py)
+- [yoyopod/ui/screens/system/power.py](../../yoyopod/ui/screens/system/power.py)
+- [yoyopod/ui/screens/system/lvgl/power_view.py](../../yoyopod/ui/screens/system/lvgl/power_view.py)
 
 ### Shared App State
 
-- [yoyopod/core/app_context.py](../yoyopod/core/app_context.py)
+- [yoyopod/core/app_context.py](../../yoyopod/core/app_context.py)
 
 ### Config Models and Persistence
 
-- [yoyopod/config/models.py](../yoyopod/config/models.py)
-- [yoyopod/config/manager.py](../yoyopod/config/manager.py)
-- [config/yoyopod_config.yaml](../config/yoyopod_config.yaml)
+- [yoyopod/config/models/](../../yoyopod/config/models/)
+- [yoyopod/config/manager.py](../../yoyopod/config/manager.py)
+- [config/voice/assistant.yaml](../../config/voice/assistant.yaml)
 
 ### Output Volume and Audio
 
-- [yoyopod/core/audio_volume.py](../yoyopod/core/audio_volume.py)
-- [docs/AUDIO_STACK.md](AUDIO_STACK.md)
+- [yoyopod/core/audio_volume.py](../../yoyopod/core/audio_volume.py)
+- [docs/hardware/AUDIO_STACK.md](../hardware/AUDIO_STACK.md)
 
 ### Contact Calling / VoIP
 
-- [yoyopod/integrations/call/manager.py](../yoyopod/integrations/call/manager.py)
-- [yoyopod/config/manager.py](../yoyopod/config/manager.py)
-- [config/contacts.yaml](../config/contacts.yaml)
+- [yoyopod/integrations/call/manager.py](../../yoyopod/integrations/call/manager.py)
+- [yoyopod/config/manager.py](../../yoyopod/config/manager.py)
+- [config/people/contacts.seed.yaml](../../config/people/contacts.seed.yaml)
 
 ### Tests to Extend
 
-- [tests/config/test_models.py](../tests/config/test_models.py)
-- [tests/ui/test_screen_routing.py](../tests/ui/test_screen_routing.py)
-- [tests/core/test_audio_volume.py](../tests/core/test_audio_volume.py)
+- [tests/config/test_config_models.py](../../tests/config/test_config_models.py)
+- [tests/ui/test_screen_routing.py](../../tests/ui/test_screen_routing.py)
+- [tests/core/test_audio_volume.py](../../tests/core/test_audio_volume.py)
 - add new focused voice tests under `tests/integrations/` and `tests/ui/`
 
 ## Work Breakdown
@@ -72,8 +72,8 @@ The file references below were captured at the time of writing. Their links have
 
 Files:
 
-- [yoyopod/config/models.py](../yoyopod/config/models.py)
-- [config/yoyopod_config.yaml](../config/yoyopod_config.yaml)
+- [yoyopod/config/models/](../../yoyopod/config/models/)
+- [config/voice/assistant.yaml](../../config/voice/assistant.yaml)
 
 Checklist:
 
@@ -94,8 +94,8 @@ Notes:
 
 Files:
 
-- [yoyopod/config/manager.py](../yoyopod/config/manager.py)
-- [yoyopod/core/app_context.py](../yoyopod/core/app_context.py)
+- [yoyopod/config/manager.py](../../yoyopod/config/manager.py)
+- [yoyopod/core/app_context.py](../../yoyopod/core/app_context.py)
 
 Checklist:
 
@@ -113,7 +113,7 @@ Notes:
 
 Files to add:
 
-- [yoyopod/voice](../yoyopod/voice)
+- [yoyopod/integrations/voice/](../../yoyopod/integrations/voice/)
 - suggested:
   - `../yoyopod/voice/__init__.py`
   - `../yoyopod/voice/models.py`
@@ -139,10 +139,10 @@ Notes:
 
 Files:
 
-- [yoyopod/ui/screens/navigation/ask.py](../yoyopod/ui/screens/navigation/ask.py)
-- [yoyopod/ui/screens/navigation/lvgl/ask_view.py](../yoyopod/ui/screens/navigation/lvgl/ask_view.py)
-- [yoyopod/ui/screens/router.py](../yoyopod/ui/screens/router.py)
-- [yoyopod/app.py](../yoyopod/app.py)
+- [yoyopod/ui/screens/navigation/ask/__init__.py](../../yoyopod/ui/screens/navigation/ask/__init__.py)
+- [yoyopod/ui/screens/navigation/lvgl/ask_view.py](../../yoyopod/ui/screens/navigation/lvgl/ask_view.py)
+- [yoyopod/ui/screens/router.py](../../yoyopod/ui/screens/router.py)
+- [yoyopod/app.py](../../yoyopod/app.py)
 
 Checklist:
 
@@ -163,9 +163,9 @@ Notes:
 
 Files:
 
-- [yoyopod/integrations/voice/commands.py](../yoyopod/integrations/voice/commands.py)
-- [yoyopod/config/manager.py](../yoyopod/config/manager.py)
-- [config/contacts.yaml](../config/contacts.yaml)
+- [yoyopod/integrations/voice/commands.py](../../yoyopod/integrations/voice/commands.py)
+- [yoyopod/config/manager.py](../../yoyopod/config/manager.py)
+- [config/people/contacts.seed.yaml](../../config/people/contacts.seed.yaml)
 
 Checklist:
 
@@ -186,17 +186,17 @@ Checklist:
 
 Notes:
 
-- do not classify “AI-like” requests by transcript content
+- do not classify â€œAI-likeâ€ requests by transcript content
 - Ask submenu selection should decide command mode vs AI mode
 
 ### 6. Execute Commands Through Existing Services
 
 Files:
 
-- [yoyopod/app.py](../yoyopod/app.py)
-- [yoyopod/core/audio_volume.py](../yoyopod/core/audio_volume.py)
-- [yoyopod/integrations/call/manager.py](../yoyopod/integrations/call/manager.py)
-- [yoyopod/core/app_context.py](../yoyopod/core/app_context.py)
+- [yoyopod/app.py](../../yoyopod/app.py)
+- [yoyopod/core/audio_volume.py](../../yoyopod/core/audio_volume.py)
+- [yoyopod/integrations/call/manager.py](../../yoyopod/integrations/call/manager.py)
+- [yoyopod/core/app_context.py](../../yoyopod/core/app_context.py)
 
 Checklist:
 
@@ -216,9 +216,9 @@ Notes:
 
 Files:
 
-- [yoyopod/ui/screens/system/power.py](../yoyopod/ui/screens/system/power.py)
-- [yoyopod/ui/screens/system/lvgl/power_view.py](../yoyopod/ui/screens/system/lvgl/power_view.py)
-- [yoyopod/app.py](../yoyopod/app.py)
+- [yoyopod/ui/screens/system/power.py](../../yoyopod/ui/screens/system/power.py)
+- [yoyopod/ui/screens/system/lvgl/power_view.py](../../yoyopod/ui/screens/system/lvgl/power_view.py)
+- [yoyopod/app.py](../../yoyopod/app.py)
 
 Checklist:
 
@@ -234,20 +234,20 @@ Checklist:
 Notes:
 
 - current `PowerScreen` is already acting as the `Setup` screen
-- this is the existing home for “device care” state, so it is the least disruptive first integration point
+- this is the existing home for â€œdevice careâ€ state, so it is the least disruptive first integration point
 
 ### 8. Add Screen Read Support
 
 Files:
 
-- [yoyopod/ui/screens/base.py](../yoyopod/ui/screens/base.py)
+- [yoyopod/ui/screens/base.py](../../yoyopod/ui/screens/base.py)
 - selected concrete screen files such as:
-  - [yoyopod/ui/screens/navigation/menu.py](../yoyopod/ui/screens/navigation/menu.py)
-  - [yoyopod/ui/screens/navigation/hub.py](../yoyopod/ui/screens/navigation/hub.py)
-  - [yoyopod/ui/screens/navigation/ask.py](../yoyopod/ui/screens/navigation/ask.py)
-  - [yoyopod/ui/screens/system/power.py](../yoyopod/ui/screens/system/power.py)
-  - [yoyopod/ui/screens/voip/contact_list.py](../yoyopod/ui/screens/voip/contact_list.py)
-  - [yoyopod/ui/screens/voip/talk_contact.py](../yoyopod/ui/screens/voip/talk_contact.py)
+  - [yoyopod/ui/screens/navigation/menu.py](../../yoyopod/ui/screens/navigation/menu.py)
+  - [yoyopod/ui/screens/navigation/hub.py](../../yoyopod/ui/screens/navigation/hub.py)
+  - [yoyopod/ui/screens/navigation/ask/__init__.py](../../yoyopod/ui/screens/navigation/ask/__init__.py)
+  - [yoyopod/ui/screens/system/power.py](../../yoyopod/ui/screens/system/power.py)
+  - [yoyopod/ui/screens/voip/contact_list.py](../../yoyopod/ui/screens/voip/contact_list.py)
+  - [yoyopod/ui/screens/voip/talk_contact.py](../../yoyopod/ui/screens/voip/talk_contact.py)
 
 Checklist:
 
@@ -265,8 +265,8 @@ Notes:
 
 Files:
 
-- [yoyopod/ui/screens/navigation/ask.py](../yoyopod/ui/screens/navigation/ask.py)
-- [yoyopod/voice/service.py](../yoyopod/voice/service.py)
+- [yoyopod/ui/screens/navigation/ask/__init__.py](../../yoyopod/ui/screens/navigation/ask/__init__.py)
+- [yoyopod/integrations/voice/manager.py](../../yoyopod/integrations/voice/manager.py)
 
 Checklist:
 
@@ -279,9 +279,9 @@ Checklist:
 
 Files:
 
-- [pyproject.toml](../pyproject.toml)
-- [docs/AUDIO_STACK.md](AUDIO_STACK.md)
-- [README.md](../README.md)
+- [pyproject.toml](../../pyproject.toml)
+- [docs/hardware/AUDIO_STACK.md](../hardware/AUDIO_STACK.md)
+- [README.md](../../README.md)
 
 Checklist:
 
@@ -295,9 +295,9 @@ Checklist:
 
 Files to add or update:
 
-- [tests/config/test_models.py](../tests/config/test_models.py)
-- [tests/ui/test_screen_routing.py](../tests/ui/test_screen_routing.py)
-- [tests/core/test_audio_volume.py](../tests/core/test_audio_volume.py)
+- [tests/config/test_config_models.py](../../tests/config/test_config_models.py)
+- [tests/ui/test_screen_routing.py](../../tests/ui/test_screen_routing.py)
+- [tests/core/test_audio_volume.py](../../tests/core/test_audio_volume.py)
 - suggested new tests:
   - `../tests/integrations/test_voice_commands.py`
   - `../tests/integrations/test_voice_service.py`
@@ -345,8 +345,8 @@ Checklist:
 
 Start with the low-risk backbone:
 
-- [yoyopod/config/models.py](../yoyopod/config/models.py)
-- [yoyopod/core/app_context.py](../yoyopod/core/app_context.py)
+- [yoyopod/config/models/](../../yoyopod/config/models/)
+- [yoyopod/core/app_context.py](../../yoyopod/core/app_context.py)
 - new `yoyopod/voice/` package skeleton
 
 That gives the rest of the UI work a stable typed target.

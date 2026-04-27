@@ -11,7 +11,7 @@ The Pimoroni HAT was designed for the Raspberry Pi. On the Cubie, the Pi-specifi
 ## Prerequisites
 
 - Radxa Cubie A7Z with Debian Bullseye and vendor BSP kernel `5.15.147-18-a733`
-- SPI1 enabled via `sun60iw2p1-spi1-spidev.dtbo` overlay (see `docs/CUBIE_A7Z_BRINGUP.md`)
+- SPI1 enabled via `sun60iw2p1-spi1-spidev.dtbo` overlay (see `docs/hardware/CUBIE_A7Z_BRINGUP.md`)
 - YoYoPod project deployed at `~/yoyopod-core` with Python 3.12 venv
 - `dtc` (device tree compiler) installed: `sudo apt install device-tree-compiler`
 

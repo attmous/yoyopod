@@ -3,8 +3,8 @@
 This guide covers the normal dev-machine-to-board loop for YoYoPod.
 
 If the board is already on the slot-deploy path, read
-[`docs/DEV_PROD_LANES.md`](DEV_PROD_LANES.md) and
-[`docs/SLOT_DEPLOY.md`](SLOT_DEPLOY.md) alongside this file. Those documents
+[`docs/operations/DEV_PROD_LANES.md`](DEV_PROD_LANES.md) and
+[`docs/operations/SLOT_DEPLOY.md`](SLOT_DEPLOY.md) alongside this file. Those documents
 cover fresh-board bootstrap, migration from `~/yoyopod-core`, rollback, and the
 operator-facing release flow under `/opt/yoyopod-prod`.
 
@@ -409,4 +409,4 @@ yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-nav
 - `yoyopod remote preflight` is intentionally non-launching.
 - `yoyopod remote service ...` is a hard-cut legacy command; bootstrap and lane activation own systemd now.
 - `yoyopod remote sync` used as a dirty-tree override is a debugging escape hatch, not the normal deploy story.
-- For deeper hardware debugging, use `docs/RPI_SMOKE_VALIDATION.md`.
+- For deeper hardware debugging, use `docs/operations/RPI_SMOKE_VALIDATION.md`.

@@ -61,7 +61,7 @@ yoyopod/core/application.py
 
 ### References
 rules/architecture.md
-docs/SYSTEM_ARCHITECTURE.md
+docs/architecture/SYSTEM_ARCHITECTURE.md
 EOF
 )" \
   --label "architecture" \
