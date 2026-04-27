@@ -723,8 +723,8 @@ def test_ask_screen_keeps_its_retained_lvgl_view_on_exit() -> None:
 
     assert binding.ask_build_calls == 1
     payload = binding.ask_sync_payloads[-1]
-    assert payload["title_text"] == "Ask"
-    assert payload["subtitle_text"] == "Ask me anything..."
+    assert payload["title_text"] == "YoYo"
+    assert payload["subtitle_text"] == "How can I help?"
     assert payload["footer"] == "Double listen / Hold back"
     assert payload["icon_key"] == "ask"
 

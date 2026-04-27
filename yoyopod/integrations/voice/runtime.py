@@ -25,7 +25,9 @@ from yoyopod.integrations.voice import (
     VoiceWorkerAskTurn,
 )
 
+from yoyopod.integrations.voice.dictionary import load_voice_command_dictionary
 from yoyopod.integrations.voice.executor import VoiceCommandExecutor
+from yoyopod.integrations.voice.router import VoiceRouteKind, VoiceRouter
 from yoyopod.integrations.voice.settings import VoiceCommandOutcome, VoiceSettingsResolver
 
 if TYPE_CHECKING:
@@ -85,7 +87,7 @@ class VoiceRuntimeCoordinator:
         self._ask_client = ask_client
         self._ask_conversation = AskConversationState()
         self._cached_voice_service: VoiceManager | None = None
-        self._state = VoiceInteractionState()
+        self._state = VoiceInteractionState(headline="YoYo", body="How can I help?")
         self._active_capture_cancel: threading.Event | None = None
         self._active_capture_cancel_lock = threading.Lock()
         self._state_listener: Callable[[VoiceInteractionState], None] | None = None
@@ -133,7 +135,7 @@ class VoiceRuntimeCoordinator:
         """Return the interaction to its ready state."""
 
         self.cancel()
-        self._set_state("idle", "Ask", "Ask me anything...")
+        self._set_state("idle", "YoYo", "How can I help?")
 
     def begin_entry_cycle(self, *, quick_command: bool, async_capture: bool) -> None:
         """Start the default Ask entry behavior for the current mode."""
@@ -187,7 +189,7 @@ class VoiceRuntimeCoordinator:
         self._set_state(
             "listening",
             "Listening",
-            "Ask your question...",
+            "Say YoYo, then ask or command...",
             capture_in_flight=True,
             generation=generation,
         )
@@ -302,6 +304,11 @@ class VoiceRuntimeCoordinator:
         """Execute one already-captured transcript through the shared command seam."""
 
         self._set_state("thinking", "Thinking", "Just a moment...")
+        outcome = self._execute_command_transcript(transcript)
+        self._apply_outcome(outcome)
+        return outcome
+
+    def _execute_command_transcript(self, transcript: str) -> VoiceCommandOutcome:
         outcome = self._command_executor.execute(transcript)
         logger.info(
             "Voice command outcome headline={} should_speak={} route={} auto_return={} transcript={}",
@@ -311,7 +318,6 @@ class VoiceRuntimeCoordinator:
             outcome.auto_return,
             _preview_voice_text(transcript),
         )
-        self._apply_outcome(outcome)
         return outcome
 
     def dispatch_listen_result(
@@ -510,6 +516,21 @@ class VoiceRuntimeCoordinator:
             return service
         return VoiceManager(settings=settings)
 
+    def _voice_router(self, settings: VoiceSettings) -> VoiceRouter:
+        return VoiceRouter(
+            dictionary=load_voice_command_dictionary(settings.command_dictionary_path),
+            activation_prefixes=settings.activation_prefixes,
+            ask_fallback_enabled=settings.ask_fallback_enabled,
+        )
+
+    def _local_voice_help_outcome(self) -> VoiceCommandOutcome:
+        return VoiceCommandOutcome(
+            "Try Again",
+            "Try saying call mom, play music, or volume up.",
+            should_speak=False,
+            auto_return=False,
+        )
+
     def _next_generation(self) -> int:
         self._cancel_generation_scoped_tts()
         self._state.generation += 1
@@ -635,6 +656,17 @@ class VoiceRuntimeCoordinator:
                 generation,
             )
             return
+
+        router = self._voice_router(settings)
+        decision = router.route(question)
+        if decision.kind is VoiceRouteKind.COMMAND and decision.command is not None:
+            self._dispatch_ask_outcome(
+                self._execute_command_transcript(decision.normalized_text),
+                generation,
+            )
+            return
+
+        question = decision.normalized_text
         if self._ask_conversation.is_exit_request(question):
             self._dispatch_ask_outcome(
                 VoiceCommandOutcome(
@@ -646,6 +678,9 @@ class VoiceRuntimeCoordinator:
                 ),
                 generation,
             )
+            return
+        if decision.kind is VoiceRouteKind.LOCAL_HELP:
+            self._dispatch_ask_outcome(self._local_voice_help_outcome(), generation)
             return
 
         self._dispatch_ask_thinking(generation)

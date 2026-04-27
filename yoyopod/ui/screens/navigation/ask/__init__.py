@@ -132,8 +132,8 @@ class AskScreen(Screen):
             resolved_voice_runtime is not None or voice_service_factory is None
         )
         self._state: str = "idle"
-        self._headline: str = "Ask"
-        self._body: str = "Ask me anything..."
+        self._headline: str = "YoYo"
+        self._body: str = "How can I help?"
         self._capture_in_flight = False
         self._listen_generation = 0
         self._quick_command = False
@@ -182,8 +182,8 @@ class AskScreen(Screen):
         """Return the current screen summary for spoken playback."""
 
         if self._quick_command:
-            return "You are on quick Ask. Say a direct command now."
-        return "You are on Ask. Ask a question, or go back to exit."
+            return "You are using YoYo. Say a command or question now."
+        return "You are on YoYo. Ask a question or say a command."
 
     def on_select(self, data=None) -> None:
         """Start listening, or ask again from the reply state."""

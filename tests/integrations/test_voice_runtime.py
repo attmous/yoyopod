@@ -594,6 +594,139 @@ def test_voice_runtime_coordinator_runs_capture_and_emits_route() -> None:
     assert context.voice.interaction.headline == "Playing"
 
 
+def test_begin_ask_runs_command_before_ask_fallback() -> None:
+    context = AppContext()
+    service = _FakeVoiceService("hey yoyo play music")
+    ask_client = _FakeAskClient(["unused"])
+    outcomes: list[VoiceCommandOutcome] = []
+    coordinator = VoiceRuntimeCoordinator(
+        context=context,
+        settings_resolver=VoiceSettingsResolver(
+            context=context,
+            settings_provider=lambda: VoiceSettings(
+                mode="cloud",
+                activation_prefixes=("hey yoyo", "yoyo"),
+                ask_fallback_enabled=True,
+            ),
+        ),
+        command_executor=_build_executor(context=context, play_music_action=lambda: True),
+        voice_service_factory=lambda settings: service,
+        output_player=_FakeOutputPlayer(),
+        ask_client=ask_client,
+    )
+    coordinator.bind(state_listener=lambda state: None, outcome_listener=outcomes.append)
+
+    coordinator.begin_ask(async_capture=False)
+
+    assert ask_client.ask_calls == []
+    assert outcomes[-1] == VoiceCommandOutcome(
+        "Playing",
+        "Starting local music.",
+        should_speak=False,
+        route_name="shuffle_started",
+    )
+    assert context.voice.last_transcript == "play music"
+
+
+def test_begin_ask_falls_back_to_ask_for_non_command() -> None:
+    context = AppContext()
+    service = _FakeVoiceService("hey yoyo why is the sky blue")
+    ask_client = _FakeAskClient(["Because sunlight scatters in the air."])
+    outcomes: list[VoiceCommandOutcome] = []
+    coordinator = VoiceRuntimeCoordinator(
+        context=context,
+        settings_resolver=VoiceSettingsResolver(
+            context=context,
+            settings_provider=lambda: VoiceSettings(
+                mode="cloud",
+                activation_prefixes=("hey yoyo", "yoyo"),
+                ask_fallback_enabled=True,
+            ),
+        ),
+        command_executor=_build_executor(context=context),
+        voice_service_factory=lambda settings: service,
+        output_player=_FakeOutputPlayer(),
+        ask_client=ask_client,
+    )
+    coordinator.bind(state_listener=lambda state: None, outcome_listener=outcomes.append)
+
+    coordinator.begin_ask(async_capture=False)
+
+    assert ask_client.ask_calls[0]["question"] == "why is the sky blue"
+    assert outcomes[-1] == VoiceCommandOutcome(
+        "Answer",
+        "Because sunlight scatters in the air.",
+        auto_return=False,
+    )
+
+
+def test_begin_ask_returns_local_help_when_fallback_disabled() -> None:
+    context = AppContext()
+    service = _FakeVoiceService("hey yoyo tell me a story")
+    ask_client = _FakeAskClient(["unused"])
+    outcomes: list[VoiceCommandOutcome] = []
+    coordinator = VoiceRuntimeCoordinator(
+        context=context,
+        settings_resolver=VoiceSettingsResolver(
+            context=context,
+            settings_provider=lambda: VoiceSettings(
+                mode="cloud",
+                activation_prefixes=("hey yoyo", "yoyo"),
+                ask_fallback_enabled=False,
+            ),
+        ),
+        command_executor=_build_executor(context=context),
+        voice_service_factory=lambda settings: service,
+        output_player=_FakeOutputPlayer(),
+        ask_client=ask_client,
+    )
+    coordinator.bind(state_listener=lambda state: None, outcome_listener=outcomes.append)
+
+    coordinator.begin_ask(async_capture=False)
+
+    assert ask_client.ask_calls == []
+    assert outcomes[-1] == VoiceCommandOutcome(
+        "Try Again",
+        "Try saying call mom, play music, or volume up.",
+        should_speak=False,
+        auto_return=False,
+    )
+
+
+def test_begin_ask_exit_phrase_works_when_fallback_disabled() -> None:
+    context = AppContext()
+    service = _FakeVoiceService("hey yoyo go back")
+    ask_client = _FakeAskClient(["unused"])
+    outcomes: list[VoiceCommandOutcome] = []
+    coordinator = VoiceRuntimeCoordinator(
+        context=context,
+        settings_resolver=VoiceSettingsResolver(
+            context=context,
+            settings_provider=lambda: VoiceSettings(
+                mode="cloud",
+                activation_prefixes=("hey yoyo", "yoyo"),
+                ask_fallback_enabled=False,
+            ),
+        ),
+        command_executor=_build_executor(context=context),
+        voice_service_factory=lambda settings: service,
+        output_player=_FakeOutputPlayer(),
+        ask_client=ask_client,
+    )
+    coordinator.bind(state_listener=lambda state: None, outcome_listener=outcomes.append)
+
+    coordinator.begin_ask(async_capture=False)
+
+    assert ask_client.ask_calls == []
+    assert outcomes[-1] == VoiceCommandOutcome(
+        "Ask",
+        "Going back.",
+        should_speak=False,
+        route_name="back",
+        auto_return=False,
+    )
+
+
 def test_entry_cycle_uses_ask_mode_for_non_quick_and_ptt_for_quick() -> None:
     context = AppContext()
     ask_service = _FakeVoiceService("what is space")

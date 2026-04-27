@@ -511,8 +511,8 @@ def test_ask_screen_state_transitions() -> None:
 
     ask = AskScreen(display=object(), context=AppContext())
     assert ask._state == "idle"
-    assert ask._headline == "Ask"
-    assert ask._body == "Ask me anything..."
+    assert ask._headline == "YoYo"
+    assert ask._body == "How can I help?"
 
     ask._set_state("listening", "Listening", "Speak now...")
     assert ask._state == "listening"
@@ -546,8 +546,8 @@ class _StubVoiceRuntime:
     def __init__(self) -> None:
         self.state = SimpleNamespace(
             phase="idle",
-            headline="Ask",
-            body="Ask me anything...",
+            headline="YoYo",
+            body="How can I help?",
             capture_in_flight=False,
             ptt_active=False,
             generation=0,
@@ -671,11 +671,29 @@ def test_ask_screen_summary_matches_entry_mode() -> None:
 
     ask = AskScreen(display=object(), context=AppContext(), voice_runtime=_StubVoiceRuntime())
 
-    assert ask._screen_summary() == "You are on Ask. Ask a question, or go back to exit."
+    assert ask._screen_summary() == "You are on YoYo. Ask a question or say a command."
 
     ask.set_quick_command(True)
 
-    assert ask._screen_summary() == "You are on quick Ask. Say a direct command now."
+    assert ask._screen_summary() == "You are using YoYo. Say a command or question now."
+
+
+def test_ask_screen_uses_yoyo_surface_copy() -> None:
+    ask = AskScreen(display=object(), context=AppContext(), voice_runtime=_StubVoiceRuntime())
+
+    ask._on_voice_runtime_state_changed(
+        SimpleNamespace(
+            phase="idle",
+            headline="YoYo",
+            body="How can I help?",
+            capture_in_flight=False,
+            ptt_active=False,
+            generation=0,
+        )
+    )
+
+    assert ask.current_view_model()[0] == "YoYo"
+    assert ask.current_view_model()[1] == "How can I help?"
 
 
 def test_ask_screen_exit_resets_conversation() -> None:
