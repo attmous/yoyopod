@@ -31,8 +31,13 @@ pub fn open_from_env() -> Result<(WhisplayDisplay, WhisplayButton)> {
     let button_gpio = env_u8("YOYOPOD_WHISPLAY_BUTTON_GPIO", 26)?;
     let button_active_low = env_bool("YOYOPOD_WHISPLAY_BUTTON_ACTIVE_LOW", true)?;
 
-    let spi = Spi::new(spi_bus_from_u8(spi_bus)?, spi_cs_from_u8(spi_cs)?, spi_hz, Mode::Mode0)
-        .context("opening Whisplay SPI")?;
+    let spi = Spi::new(
+        spi_bus_from_u8(spi_bus)?,
+        spi_cs_from_u8(spi_cs)?,
+        spi_hz,
+        Mode::Mode0,
+    )
+    .context("opening Whisplay SPI")?;
     let gpio = Gpio::new().context("opening GPIO")?;
     let dc = gpio.get(dc_gpio)?.into_output();
     let reset = match reset_gpio {
@@ -225,7 +230,9 @@ mod tests {
         let payload = vec![0u8; WIDTH * HEIGHT * 2];
         let chunk_lengths: Vec<usize> = spi_chunks(&payload).map(|chunk| chunk.len()).collect();
 
-        assert!(chunk_lengths.iter().all(|length| *length <= SPI_CHUNK_BYTES));
+        assert!(chunk_lengths
+            .iter()
+            .all(|length| *length <= SPI_CHUNK_BYTES));
         assert_eq!(chunk_lengths.iter().sum::<usize>(), payload.len());
         assert_eq!(chunk_lengths[0], SPI_CHUNK_BYTES);
         assert_eq!(*chunk_lengths.last().unwrap(), 3328);

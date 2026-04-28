@@ -10,10 +10,13 @@ import yoyopod_cli.pi.rust_ui_poc as rust_ui_poc
 
 
 class _FakeSupervisor:
+    instances: list["_FakeSupervisor"] = []
+
     def __init__(self, argv: list[str], cwd: Path | None = None) -> None:
         self.argv = argv
         self.cwd = cwd
         self.sent: list[UiEnvelope] = []
+        self.instances.append(self)
 
     def start(self) -> UiEnvelope:
         return UiEnvelope(
@@ -47,6 +50,7 @@ def test_rust_ui_poc_help() -> None:
 def test_rust_ui_poc_runs_supervisor(monkeypatch, tmp_path: Path) -> None:
     worker = tmp_path / "yoyopod-rust-ui-poc"
     worker.write_text("fake", encoding="utf-8")
+    _FakeSupervisor.instances.clear()
     monkeypatch.setattr(rust_ui_poc, "RustUiSidecarSupervisor", _FakeSupervisor)
 
     runner = CliRunner()
@@ -55,3 +59,32 @@ def test_rust_ui_poc_runs_supervisor(monkeypatch, tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "ready" in result.output.lower()
     assert "frames=1" in result.output
+
+
+def test_rust_ui_poc_can_request_static_hub(monkeypatch, tmp_path: Path) -> None:
+    worker = tmp_path / "yoyopod-rust-ui-poc"
+    worker.write_text("fake", encoding="utf-8")
+    _FakeSupervisor.instances.clear()
+    monkeypatch.setattr(rust_ui_poc, "RustUiSidecarSupervisor", _FakeSupervisor)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "rust-ui-poc",
+            "--worker",
+            str(worker),
+            "--frames",
+            "1",
+            "--screen",
+            "hub",
+            "--hub-renderer",
+            "lvgl",
+        ],
+    )
+
+    assert result.exit_code == 0
+    sent = _FakeSupervisor.instances[-1].sent[0]
+    assert sent.type == "ui.show_hub"
+    assert sent.payload["renderer"] == "lvgl"
+    assert sent.payload["title"] == "Listen"

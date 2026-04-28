@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from yoyopod.ui.rust_sidecar.hub import RustHubSnapshot
 from yoyopod.ui.rust_sidecar.protocol import UiEnvelope, UiProtocolError
 
 
@@ -27,3 +28,23 @@ def test_command_encoder_uses_ui_prefix() -> None:
 def test_rejects_non_object_payload() -> None:
     with pytest.raises(UiProtocolError, match="payload"):
         UiEnvelope.from_json_line('{"kind":"event","type":"ui.ready","payload":[]}')
+
+
+def test_static_hub_payload_uses_lvgl_sync_contract_names() -> None:
+    payload = RustHubSnapshot.static().to_payload(renderer="lvgl")
+
+    assert payload == {
+        "renderer": "lvgl",
+        "icon_key": "listen",
+        "title": "Listen",
+        "subtitle": "",
+        "footer": "Tap = Next | 2x Tap = Open",
+        "time_text": "12:00",
+        "accent": 0x00FF88,
+        "selected_index": 0,
+        "total_cards": 4,
+        "voip_state": 1,
+        "battery_percent": 100,
+        "charging": False,
+        "power_available": True,
+    }

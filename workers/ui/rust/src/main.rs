@@ -1,6 +1,8 @@
 mod framebuffer;
 mod hardware;
+mod hub;
 mod input;
+mod lvgl_bridge;
 mod protocol;
 mod render;
 mod worker;

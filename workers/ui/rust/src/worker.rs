@@ -5,9 +5,11 @@ use serde_json::json;
 
 use crate::framebuffer::Framebuffer;
 use crate::hardware::{ButtonDevice, DisplayDevice};
+use crate::hub::{HubCommand, HubRenderer};
 use crate::input::{ButtonTiming, OneButtonMachine};
+use crate::lvgl_bridge::render_hub_with_lvgl;
 use crate::protocol::{Envelope, EnvelopeKind};
-use crate::render::render_test_scene;
+use crate::render::{render_hub_fallback, render_test_scene};
 
 pub fn run_worker<R, W, E, D, B>(
     input: R,
@@ -26,6 +28,7 @@ where
     let mut framebuffer = Framebuffer::new(display.width(), display.height());
     let mut frames = 0usize;
     let mut input_events = 0usize;
+    let mut last_hub_renderer = String::new();
     let mut button_machine = OneButtonMachine::new(ButtonTiming::default());
 
     emit(
@@ -66,6 +69,41 @@ where
                         display.flush_full_frame(&framebuffer)?;
                         frames += 1;
                     }
+                    "ui.show_hub" => {
+                        let command = HubCommand::from_payload(&envelope.payload)?;
+                        match command.renderer {
+                            HubRenderer::Auto => {
+                                match render_hub_with_lvgl(
+                                    &mut framebuffer,
+                                    &command.snapshot,
+                                    None,
+                                ) {
+                                    Ok(()) => {
+                                        last_hub_renderer = HubRenderer::Lvgl.as_str().to_string();
+                                    }
+                                    Err(err) => {
+                                        writeln!(
+                                            errors,
+                                            "LVGL Hub renderer unavailable; falling back: {err}"
+                                        )?;
+                                        render_hub_fallback(&mut framebuffer, &command.snapshot);
+                                        last_hub_renderer =
+                                            HubRenderer::Framebuffer.as_str().to_string();
+                                    }
+                                }
+                            }
+                            HubRenderer::Framebuffer => {
+                                render_hub_fallback(&mut framebuffer, &command.snapshot);
+                                last_hub_renderer = HubRenderer::Framebuffer.as_str().to_string();
+                            }
+                            HubRenderer::Lvgl => {
+                                render_hub_with_lvgl(&mut framebuffer, &command.snapshot, None)?;
+                                last_hub_renderer = HubRenderer::Lvgl.as_str().to_string();
+                            }
+                        }
+                        display.flush_full_frame(&framebuffer)?;
+                        frames += 1;
+                    }
                     "ui.set_backlight" => {
                         let brightness = envelope
                             .payload
@@ -101,6 +139,7 @@ where
                                 json!({
                                     "frames": frames,
                                     "button_events": input_events,
+                                    "last_hub_renderer": last_hub_renderer,
                                 }),
                             ),
                         )?;
@@ -151,5 +190,25 @@ mod tests {
         assert!(stdout.contains("\"type\":\"ui.ready\""));
         assert!(stdout.contains("\"type\":\"ui.health\""));
         assert!(stdout.contains("\"frames\":1"));
+    }
+
+    #[test]
+    fn worker_renders_static_hub_with_framebuffer_renderer() {
+        let input =
+            br#"{"kind":"command","type":"ui.show_hub","payload":{"renderer":"framebuffer"}}
+{"kind":"command","type":"ui.health","payload":{}}
+{"kind":"command","type":"ui.shutdown","payload":{}}
+"#;
+        let mut output = Vec::new();
+        let mut errors = Vec::new();
+        let display = MockDisplay::new(240, 280);
+        let button = MockButton::new();
+
+        run_worker(input.as_slice(), &mut output, &mut errors, display, button)
+            .expect("worker exits cleanly");
+
+        let stdout = String::from_utf8(output).expect("utf8");
+        assert!(stdout.contains("\"frames\":1"));
+        assert!(stdout.contains("\"last_hub_renderer\":\"framebuffer\""));
     }
 }

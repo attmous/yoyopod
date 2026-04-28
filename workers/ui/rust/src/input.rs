@@ -111,6 +111,7 @@ impl OneButtonMachine {
         events
     }
 
+    #[allow(dead_code)]
     pub fn tick(&mut self, now_ms: u64) -> Vec<InputEvent> {
         self.advance(now_ms)
     }
@@ -242,7 +243,9 @@ mod tests {
 
         assert_eq!(first, vec![InputEvent::back(800)]);
         assert!(second.is_empty());
-        assert!(release.iter().all(|event| event.action != InputAction::Back));
+        assert!(release
+            .iter()
+            .all(|event| event.action != InputAction::Back));
     }
 
     #[test]
