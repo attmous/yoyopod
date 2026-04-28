@@ -10,7 +10,7 @@ use crate::input::{ButtonTiming, InputAction, OneButtonMachine};
 use crate::lvgl_bridge::{render_hub_with_lvgl, render_view_with_lvgl};
 use crate::protocol::{Envelope, EnvelopeKind};
 use crate::render::{render_hub_fallback, render_test_scene, render_ui_view_fallback};
-use crate::ui_state::{RuntimeSnapshot, UiIntent, UiRuntime, UiScreen};
+use crate::runtime::{RuntimeSnapshot, UiIntent, UiRuntime, UiScreen};
 
 pub fn run_worker<R, W, E, D, B>(
     input: R,

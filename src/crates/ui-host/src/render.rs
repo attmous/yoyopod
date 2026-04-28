@@ -1,6 +1,6 @@
 use crate::framebuffer::{rgb565, Framebuffer};
 use crate::hub::HubSnapshot;
-use crate::ui_state::{RuntimeSnapshot, UiScreen, UiView};
+use crate::runtime::{RuntimeSnapshot, UiScreen, UiView};
 
 pub fn render_test_scene(framebuffer: &mut Framebuffer, counter: u64) {
     framebuffer.clear(rgb565(8, 10, 14));
@@ -120,7 +120,7 @@ fn render_screen_body(framebuffer: &mut Framebuffer, view: &UiView) {
             framebuffer.fill_rect(60, 178, 120, 8, rgb565(122, 125, 132));
             framebuffer.fill_rect(60, 178, 64, 8, rgb565(0, 255, 136));
         }
-        UiScreen::Ask => {
+        UiScreen::Ask | UiScreen::VoiceNote => {
             framebuffer.fill_rect(62, 52, 116, 116, rgb565(99, 102, 241));
             framebuffer.fill_rect(94, 78, 52, 68, rgb565(255, 255, 255));
         }

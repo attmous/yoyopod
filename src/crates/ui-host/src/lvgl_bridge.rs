@@ -7,7 +7,7 @@ use libloading::Library;
 
 use crate::framebuffer::Framebuffer;
 use crate::hub::HubSnapshot;
-use crate::ui_state::{RuntimeSnapshot, UiScreen, UiView};
+use crate::runtime::{ListItemSnapshot, RuntimeSnapshot, UiScreen, UiView};
 
 type LvglFlushCb =
     unsafe extern "C" fn(c_int, c_int, c_int, c_int, *const c_uchar, u32, *mut c_void);
@@ -434,13 +434,16 @@ unsafe fn render_view_with_loaded_shim(
     match view.screen {
         UiScreen::Hub => unsafe { sync_hub_view(shim, view, snapshot)? },
         UiScreen::Listen => unsafe { sync_listen_view(shim, view, snapshot)? },
-        UiScreen::Playlists => unsafe { sync_playlist_view(shim, view, snapshot)? },
+        UiScreen::Playlists
+        | UiScreen::RecentTracks
+        | UiScreen::Contacts
+        | UiScreen::CallHistory => unsafe { sync_playlist_view(shim, view, snapshot)? },
         UiScreen::NowPlaying => unsafe { sync_now_playing_view(shim, view, snapshot)? },
-        UiScreen::Call => unsafe { sync_talk_view(shim, view, snapshot)? },
+        UiScreen::Talk => unsafe { sync_talk_view(shim, view, snapshot)? },
         UiScreen::IncomingCall => unsafe { sync_incoming_call_view(shim, view, snapshot)? },
         UiScreen::OutgoingCall => unsafe { sync_outgoing_call_view(shim, view, snapshot)? },
         UiScreen::InCall => unsafe { sync_in_call_view(shim, view, snapshot)? },
-        UiScreen::Ask | UiScreen::Loading | UiScreen::Error => unsafe {
+        UiScreen::Ask | UiScreen::VoiceNote | UiScreen::Loading | UiScreen::Error => unsafe {
             sync_ask_view(shim, view, snapshot)?
         },
         UiScreen::Power => unsafe { sync_power_view(shim, view, snapshot)? },
@@ -838,7 +841,7 @@ fn c_string(name: &str, value: &str) -> Result<CString> {
 
 fn fixed_item_strings<F>(view: &UiView, count: usize, field: F) -> Result<Vec<CString>>
 where
-    F: Fn(&crate::ui_state::ListItemSnapshot) -> &str,
+    F: Fn(&ListItemSnapshot) -> &str,
 {
     let mut values = Vec::with_capacity(count);
     for index in 0..count {
@@ -924,7 +927,7 @@ mod tests {
     use super::*;
     use crate::framebuffer::Framebuffer;
     use crate::hub::HubSnapshot;
-    use crate::ui_state::{RuntimeSnapshot, UiRuntime};
+    use crate::runtime::{RuntimeSnapshot, UiRuntime};
     use std::path::Path;
 
     #[test]

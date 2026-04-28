@@ -5,7 +5,8 @@ mod input;
 mod lvgl_bridge;
 mod protocol;
 mod render;
-mod ui_state;
+mod runtime;
+mod screens;
 mod whisplay_panel;
 mod worker;
 
