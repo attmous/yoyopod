@@ -78,6 +78,7 @@ deploy/pi-deploy.local.yaml
 *.bak
 *.swp
 .cache/
+.artifacts/
 data/*.json
 data/communication/
 data/cloud/

@@ -39,10 +39,17 @@ The first hardware backend reads explicit GPIO/SPI settings:
 - `YOYOPOD_WHISPLAY_DC_GPIO`
 - `YOYOPOD_WHISPLAY_RESET_GPIO`
 - `YOYOPOD_WHISPLAY_BACKLIGHT_GPIO`
+- `YOYOPOD_WHISPLAY_BACKLIGHT_ACTIVE_LOW`
 - `YOYOPOD_WHISPLAY_BUTTON_GPIO`
 - `YOYOPOD_WHISPLAY_BUTTON_ACTIVE_LOW`
 
-The button default is GPIO 26, active low, matching the current Python fallback.
+The Whisplay defaults match the vendor board mapping:
+
+- SPI bus `0`, chip select `0`, speed `100000000`
+- DC GPIO `27`
+- reset GPIO `4`
+- backlight GPIO `22`, active low
+- button GPIO `17`, active high
 
 ## Run On Pi
 

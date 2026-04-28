@@ -4,9 +4,12 @@ use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
 
 use crate::framebuffer::Framebuffer;
 use crate::hardware::{ButtonDevice, DisplayDevice};
+use crate::whisplay_panel::{
+    backlight_output_high, whisplay_address_window, whisplay_init_sequence,
+    DEFAULT_BACKLIGHT_ACTIVE_LOW, DEFAULT_BACKLIGHT_GPIO, DEFAULT_BUTTON_ACTIVE_LOW,
+    DEFAULT_BUTTON_GPIO, DEFAULT_DC_GPIO, DEFAULT_RESET_GPIO, DEFAULT_SPI_HZ, HEIGHT, WIDTH,
+};
 
-const WIDTH: usize = 240;
-const HEIGHT: usize = 280;
 const SPI_CHUNK_BYTES: usize = 4096;
 
 pub struct WhisplayDisplay {
@@ -14,6 +17,7 @@ pub struct WhisplayDisplay {
     dc: OutputPin,
     reset: Option<OutputPin>,
     backlight: Option<OutputPin>,
+    backlight_active_low: bool,
 }
 
 pub struct WhisplayButton {
@@ -24,12 +28,20 @@ pub struct WhisplayButton {
 pub fn open_from_env() -> Result<(WhisplayDisplay, WhisplayButton)> {
     let spi_bus = env_u8("YOYOPOD_WHISPLAY_SPI_BUS", 0)?;
     let spi_cs = env_u8("YOYOPOD_WHISPLAY_SPI_CS", 0)?;
-    let spi_hz = env_u32("YOYOPOD_WHISPLAY_SPI_HZ", 32_000_000)?;
-    let dc_gpio = required_env_u8("YOYOPOD_WHISPLAY_DC_GPIO")?;
-    let reset_gpio = optional_env_u8("YOYOPOD_WHISPLAY_RESET_GPIO")?;
-    let backlight_gpio = optional_env_u8("YOYOPOD_WHISPLAY_BACKLIGHT_GPIO")?;
-    let button_gpio = env_u8("YOYOPOD_WHISPLAY_BUTTON_GPIO", 26)?;
-    let button_active_low = env_bool("YOYOPOD_WHISPLAY_BUTTON_ACTIVE_LOW", true)?;
+    let spi_hz = env_u32("YOYOPOD_WHISPLAY_SPI_HZ", DEFAULT_SPI_HZ)?;
+    let dc_gpio = env_u8("YOYOPOD_WHISPLAY_DC_GPIO", DEFAULT_DC_GPIO)?;
+    let reset_gpio = optional_env_u8("YOYOPOD_WHISPLAY_RESET_GPIO")?.or(Some(DEFAULT_RESET_GPIO));
+    let backlight_gpio =
+        optional_env_u8("YOYOPOD_WHISPLAY_BACKLIGHT_GPIO")?.or(Some(DEFAULT_BACKLIGHT_GPIO));
+    let backlight_active_low = env_bool(
+        "YOYOPOD_WHISPLAY_BACKLIGHT_ACTIVE_LOW",
+        DEFAULT_BACKLIGHT_ACTIVE_LOW,
+    )?;
+    let button_gpio = env_u8("YOYOPOD_WHISPLAY_BUTTON_GPIO", DEFAULT_BUTTON_GPIO)?;
+    let button_active_low = env_bool(
+        "YOYOPOD_WHISPLAY_BUTTON_ACTIVE_LOW",
+        DEFAULT_BUTTON_ACTIVE_LOW,
+    )?;
 
     let spi = Spi::new(
         spi_bus_from_u8(spi_bus)?,
@@ -55,6 +67,7 @@ pub fn open_from_env() -> Result<(WhisplayDisplay, WhisplayButton)> {
         dc,
         reset,
         backlight,
+        backlight_active_low,
     };
     display.init_panel()?;
 
@@ -70,20 +83,21 @@ pub fn open_from_env() -> Result<(WhisplayDisplay, WhisplayButton)> {
 impl WhisplayDisplay {
     fn init_panel(&mut self) -> Result<()> {
         if let Some(reset) = self.reset.as_mut() {
+            reset.set_high();
+            std::thread::sleep(std::time::Duration::from_millis(100));
             reset.set_low();
-            std::thread::sleep(std::time::Duration::from_millis(30));
+            std::thread::sleep(std::time::Duration::from_millis(100));
             reset.set_high();
             std::thread::sleep(std::time::Duration::from_millis(120));
         }
 
-        self.command(0x01, &[])?; // software reset
-        std::thread::sleep(std::time::Duration::from_millis(150));
-        self.command(0x11, &[])?; // sleep out
-        std::thread::sleep(std::time::Duration::from_millis(120));
-        self.command(0x3A, &[0x55])?; // RGB565
-        self.command(0x36, &[0x00])?; // memory access control, portrait baseline
-        self.command(0x29, &[])?; // display on
-        std::thread::sleep(std::time::Duration::from_millis(20));
+        for panel_command in whisplay_init_sequence() {
+            self.command(panel_command.command, panel_command.data)?;
+            if panel_command.delay_ms > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(panel_command.delay_ms));
+            }
+        }
+        self.set_backlight(1.0)?;
         Ok(())
     }
 
@@ -105,15 +119,9 @@ impl WhisplayDisplay {
     }
 
     fn set_address_window(&mut self, x0: u16, y0: u16, x1: u16, y1: u16) -> Result<()> {
-        let mut x_data = [0u8; 4];
-        x_data[0..2].copy_from_slice(&x0.to_be_bytes());
-        x_data[2..4].copy_from_slice(&x1.to_be_bytes());
-        self.command(0x2A, &x_data)?;
-
-        let mut y_data = [0u8; 4];
-        y_data[0..2].copy_from_slice(&y0.to_be_bytes());
-        y_data[2..4].copy_from_slice(&y1.to_be_bytes());
-        self.command(0x2B, &y_data)?;
+        let window = whisplay_address_window(x0, y0, x1, y1);
+        self.command(0x2A, &window.x)?;
+        self.command(0x2B, &window.y)?;
         self.command(0x2C, &[])?;
         Ok(())
     }
@@ -136,8 +144,9 @@ impl DisplayDevice for WhisplayDisplay {
     }
 
     fn set_backlight(&mut self, brightness: f32) -> Result<()> {
+        let output_high = backlight_output_high(brightness, self.backlight_active_low);
         if let Some(pin) = self.backlight.as_mut() {
-            if brightness > 0.0 {
+            if output_high {
                 pin.set_high();
             } else {
                 pin.set_low();
@@ -152,13 +161,6 @@ impl ButtonDevice for WhisplayButton {
         let is_low = self.pin.read() == Level::Low;
         Ok(if self.active_low { is_low } else { !is_low })
     }
-}
-
-fn required_env_u8(name: &str) -> Result<u8> {
-    let value = std::env::var(name).with_context(|| format!("{name} is required"))?;
-    value
-        .parse::<u8>()
-        .with_context(|| format!("parsing {name}={value}"))
 }
 
 fn optional_env_u8(name: &str) -> Result<Option<u8>> {

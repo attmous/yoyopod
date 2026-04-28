@@ -5,6 +5,7 @@ mod input;
 mod lvgl_bridge;
 mod protocol;
 mod render;
+mod whisplay_panel;
 mod worker;
 
 use anyhow::Result;
