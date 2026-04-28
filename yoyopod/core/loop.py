@@ -58,9 +58,7 @@ class _MainThreadDrainResult:
         """Return the total amount of queued main-thread work advanced in one drain."""
 
         return (
-            self.safety_callbacks_processed
-            + self.scheduled_tasks_processed
-            + self.events_processed
+            self.safety_callbacks_processed + self.scheduled_tasks_processed + self.events_processed
         )
 
     @property
@@ -212,11 +210,7 @@ class RuntimeLoopService:
         started_at = time.monotonic()
         safety_callbacks_processed = self._drain_safety_callbacks()
         scheduled_tasks_processed = self._drain_scheduler_tasks(limit)
-        remaining_limit = (
-            None
-            if limit is None
-            else max(0, limit - scheduled_tasks_processed)
-        )
+        remaining_limit = None if limit is None else max(0, limit - scheduled_tasks_processed)
         events_processed = self.app.bus.drain(remaining_limit)
         result = self._snapshot_main_thread_drain_result(
             safety_callbacks_processed=safety_callbacks_processed,
@@ -491,7 +485,9 @@ class RuntimeLoopService:
             return
 
         if self._voip_background_iterate_enabled():
-            ensure_running = getattr(self.app.voip_manager, "ensure_background_iterate_running", None)
+            ensure_running = getattr(
+                self.app.voip_manager, "ensure_background_iterate_running", None
+            )
             if callable(ensure_running):
                 ensure_running()
             poll_housekeeping = getattr(self.app.voip_manager, "poll_housekeeping", None)
@@ -575,8 +571,7 @@ class RuntimeLoopService:
             started_at=started_at,
             threshold_seconds=self._SLOW_VOIP_ITERATE_WARNING_SECONDS,
             detail_factory=lambda: (
-                f"screen={self._current_screen_name()} "
-                f"state={self._runtime_state_name()}"
+                f"screen={self._current_screen_name()} " f"state={self._runtime_state_name()}"
             ),
         )
 
@@ -652,6 +647,10 @@ class RuntimeLoopService:
             self._measure_blocking_span(
                 "worker_poll",
                 self.app.worker_supervisor.poll,
+            )
+            self._measure_blocking_span(
+                "rust_ui_host",
+                self.tick_rust_ui_host,
             )
             self._measure_blocking_span(
                 "manager_recovery",
@@ -866,8 +865,7 @@ class RuntimeLoopService:
             ),
             "runtime_main_thread_drain_seconds": (
                 self._last_main_thread_drain_duration_seconds
-                if self._last_loop_iteration_started_at > 0.0
-                or self._main_thread_drain_recorded
+                if self._last_loop_iteration_started_at > 0.0 or self._main_thread_drain_recorded
                 else None
             ),
             "runtime_worker_count": len(self.app.worker_supervisor.snapshot()),
@@ -921,13 +919,9 @@ class RuntimeLoopService:
             "runtime_bus_events_drained": self._last_bus_events_drained,
             "runtime_scheduler_tasks_deferred": self._last_scheduler_tasks_deferred,
             "runtime_bus_events_deferred": self._last_bus_events_deferred,
-            "runtime_scheduler_drain_budget": (
-                self._last_scheduler_drain_budget
-            ),
+            "runtime_scheduler_drain_budget": (self._last_scheduler_drain_budget),
             "runtime_bus_drain_budget": self._last_bus_drain_budget,
-            "runtime_scheduler_budget_hit": (
-                self._last_scheduler_budget_hit
-            ),
+            "runtime_scheduler_budget_hit": (self._last_scheduler_budget_hit),
             "runtime_bus_event_budget_hit": self._last_bus_event_budget_hit,
             "runtime_blocking_span_name": self._last_runtime_blocking_span_name,
             "runtime_blocking_span_seconds": (

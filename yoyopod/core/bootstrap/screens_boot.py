@@ -451,6 +451,80 @@ class ScreensBoot:
             self.logger.exception("Failed to setup screens")
             return False
 
+    def setup_screenless_voice_runtime(self) -> None:
+        """Initialize voice runtime pieces that do not require Python screens."""
+
+        if self.app.voice_runtime is not None:
+            return
+        context = self.app.context
+        if context is None:
+            return
+        volume_controller = self.app.audio_volume_controller
+        if volume_controller is None:
+            return
+
+        voice_worker_client = getattr(self.app, "voice_worker_client", None)
+
+        def voice_service_factory(settings: VoiceSettings) -> VoiceManager:
+            stt_backend = (
+                CloudWorkerSpeechToTextBackend(client=voice_worker_client)
+                if voice_worker_client is not None and settings.stt_backend == "cloud-worker"
+                else None
+            )
+            tts_backend = (
+                CloudWorkerTextToSpeechBackend(client=voice_worker_client)
+                if voice_worker_client is not None and settings.tts_backend == "cloud-worker"
+                else None
+            )
+            return VoiceManager(
+                settings=settings,
+                stt_backend=stt_backend,
+                tts_backend=tts_backend,
+            )
+
+        def handoff_voice_music_pause_to_call() -> bool:
+            call_interruption_policy = getattr(self.app, "call_interruption_policy", None)
+            music_fsm = getattr(self.app, "music_fsm", None)
+            if call_interruption_policy is None or music_fsm is None:
+                return False
+            call_interruption_policy.mark_paused_for_call(music_fsm)
+            app_state_runtime = getattr(self.app, "app_state_runtime", None)
+            if app_state_runtime is not None:
+                app_state_runtime.sync_app_state("voice_call_handoff")
+            return True
+
+        self.app.voice_runtime = VoiceRuntimeCoordinator(
+            context=context,
+            settings_resolver=VoiceSettingsResolver(
+                context=context,
+                config_manager=self.app.config_manager,
+            ),
+            command_executor=VoiceCommandExecutor(
+                context=context,
+                config_manager=self.app.config_manager,
+                people_directory=self.app.people_directory,
+                voip_manager=self.app.voip_manager,
+                volume_up_action=volume_controller.volume_up,
+                volume_down_action=volume_controller.volume_down,
+                mute_action=(
+                    self.app.voip_manager.mute if self.app.voip_manager is not None else None
+                ),
+                unmute_action=(
+                    self.app.voip_manager.unmute if self.app.voip_manager is not None else None
+                ),
+                play_music_action=(
+                    self.app.local_music_service.shuffle_all
+                    if self.app.local_music_service is not None
+                    else None
+                ),
+                screen_summary_provider=lambda: "You are on the Rust Ask screen.",
+            ),
+            voice_service_factory=voice_service_factory,
+            ask_client=voice_worker_client,
+            music_backend=getattr(self.app, "music_backend", None),
+            call_music_handoff=handoff_voice_music_pause_to_call,
+        )
+
     def get_interaction_profile(self) -> InteractionProfile:
         """Return the active hardware interaction profile."""
         if self.app.input_manager is not None:

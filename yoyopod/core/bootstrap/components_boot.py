@@ -61,6 +61,11 @@ class ComponentsBoot:
         raw_volume = media_cfg.music.default_volume if media_cfg is not None else 100
         return max(0, min(100, int(raw_volume)))
 
+    def _rust_ui_host_enabled(self) -> bool:
+        settings = getattr(self.app, "app_settings", None)
+        display = getattr(settings, "display", None)
+        return bool(getattr(display, "rust_ui_enabled", False))
+
     @staticmethod
     def _lvgl_runtime_required_message() -> str:
         """Return the canonical LVGL-only startup failure guidance."""
@@ -134,129 +139,144 @@ class ComponentsBoot:
 
     def init_core_components(self) -> bool:
         """Initialize display, context, orchestration models, input, and screen manager."""
-        from yoyopod.core import AppContext
-        from yoyopod.core.audio_volume import AudioVolumeController
-        from yoyopod.integrations.call import (
-            CallFSM,
-            CallInterruptionPolicy,
-            sync_context_voip_status,
-        )
-        from yoyopod.integrations.music import MusicFSM
-
         self.logger.info("Initializing core components...")
 
         try:
             assert self.app.app_settings is not None
-            self.logger.info("  - Display")
-            display_hardware = (
-                self.app.app_settings.display.hardware if self.app.app_settings else "auto"
-            )
-            whisplay_renderer = (
-                self.app.app_settings.display.whisplay_renderer
-                if self.app.app_settings is not None
-                else "lvgl"
-            )
-            self.logger.info(f"    Hardware: {display_hardware}")
-            self.logger.info(f"    Whisplay renderer: {whisplay_renderer}")
-            self.app.display = self.display_cls(
-                hardware=display_hardware,
-                simulate=self.app.simulate,
-                whisplay_renderer=whisplay_renderer,
-                whisplay_lvgl_buffer_lines=self.app.app_settings.display.lvgl_buffer_lines,
-            )
-            display = self.app.display
-            self.logger.info(f"    Dimensions: {display.WIDTH}x{display.HEIGHT}")
-            self.logger.info(f"    Orientation: {display.ORIENTATION}")
-            self.app._lvgl_backend = display.get_ui_backend()
-            if self.app._lvgl_backend is not None and self.app._lvgl_backend.initialize():
-                display.refresh_backend_kind()
-                self.app.runtime_loop.last_lvgl_pump_at = time.monotonic()
+            if not self._rust_ui_host_enabled():
+                self._init_python_ui_hardware()
+            self._init_app_context()
+            self._init_orchestration_models()
+            if not self._rust_ui_host_enabled():
+                self._init_python_input_and_screen_manager()
             else:
-                self.app._lvgl_backend = None
-                display.refresh_backend_kind()
-                error_message = "Whisplay LVGL backend initialization failed during startup"
-                if self._whisplay_production_contract_required(
-                    requested_renderer=whisplay_renderer,
-                ):
-                    raise self.contract_error_cls(self.build_contract_message_fn(error_message))
-                raise RuntimeError(self._lvgl_runtime_required_message())
-            self.logger.info(f"    Active UI backend: {display.backend_kind}")
-            self.app.screen_power_service.configure_screen_power(initial_now=time.monotonic())
-
-            self.logger.info("  - AppContext")
-            self.app.context = AppContext()
-            audio_volume_controller = AudioVolumeController(
-                context=self.app.context,
-                default_music_volume_provider=self._default_music_volume,
-                output_volume=getattr(self.app, "output_volume", None),
-                music_backend=getattr(self.app, "music_backend", None),
-            )
-            setattr(self.app, "audio_volume_controller", audio_volume_controller)
-            self.app.context.audio_volume_controller = audio_volume_controller
-            sync_context_voip_status(
-                self.app.context,
-                config_manager=self.app.config_manager,
-                ready=False,
-                running=False,
-                registration_state="none",
-            )
-            if self.app.context is not None and self.app.config_manager is not None:
-                voice_cfg = self.app.config_manager.get_voice_settings()
-                speaker_device_id = voice_cfg.audio.speaker_device_id.strip() or None
-                capture_device_id = voice_cfg.audio.capture_device_id.strip() or None
-                self.app.context.configure_voice(
-                    commands_enabled=voice_cfg.assistant.commands_enabled,
-                    ai_requests_enabled=voice_cfg.assistant.ai_requests_enabled,
-                    screen_read_enabled=voice_cfg.assistant.screen_read_enabled,
-                    stt_enabled=voice_cfg.assistant.stt_enabled,
-                    tts_enabled=voice_cfg.assistant.tts_enabled,
-                    speaker_device_id=speaker_device_id,
-                    capture_device_id=capture_device_id,
-                )
-                self.app.voice_note_events.sync_talk_summary_context()
-                self.setup_voice_worker()
-            self.app.screen_power_service.update_screen_runtime_metrics(time.monotonic())
-
-            self.logger.info("  - Orchestration Models")
-            self.app.music_fsm = MusicFSM()
-            self.app.call_fsm = CallFSM()
-            self.app.call_interruption_policy = CallInterruptionPolicy()
-
-            self.logger.info("  - InputManager")
-            self.app.input_manager = self.get_input_manager_fn(
-                display_adapter=display.get_adapter(),
-                input_settings=self.app.app_settings.input,
-                simulate=self.app.simulate,
-            )
-            if self.app.input_manager:
-                self.app.context.interaction_profile = self.app.input_manager.interaction_profile
-                self.app.input_manager.on_activity(self.app.note_input_activity)
-                self.app.input_manager.on_activity(
-                    self.app.screen_power_service.queue_user_activity_event
-                )
-                if self.app._lvgl_backend is not None:
-                    self.app._lvgl_input_bridge = self.lvgl_input_bridge_cls(self.app._lvgl_backend)
-                    self.app.input_manager.on_activity(
-                        self.app.runtime_loop.queue_lvgl_input_action
-                    )
-                self.app.input_manager.start()
-                self.logger.info("    Input system initialized")
-            else:
-                self.logger.info("    No input hardware available")
-
-            self.logger.info("  - ScreenManager")
-            self.app.screen_manager = self.screen_manager_cls(
-                display,
-                self.app.input_manager,
-                action_scheduler=self.app.scheduler.run_on_main,
-                on_action_handled=self.app.note_handled_input,
-                on_visible_refresh=self.app.note_visible_refresh,
-                is_screen_visible=lambda: self.app._screen_awake,
-            )
+                self.logger.info("  - Rust UI Host owns display/input/screens")
             return True
         except Exception:
             self.logger.exception("Failed to initialize core components")
             return False
+
+    def _init_python_ui_hardware(self) -> None:
+        self.logger.info("  - Display")
+        display_hardware = (
+            self.app.app_settings.display.hardware if self.app.app_settings else "auto"
+        )
+        whisplay_renderer = (
+            self.app.app_settings.display.whisplay_renderer
+            if self.app.app_settings is not None
+            else "lvgl"
+        )
+        self.logger.info(f"    Hardware: {display_hardware}")
+        self.logger.info(f"    Whisplay renderer: {whisplay_renderer}")
+        self.app.display = self.display_cls(
+            hardware=display_hardware,
+            simulate=self.app.simulate,
+            whisplay_renderer=whisplay_renderer,
+            whisplay_lvgl_buffer_lines=self.app.app_settings.display.lvgl_buffer_lines,
+        )
+        display = self.app.display
+        self.logger.info(f"    Dimensions: {display.WIDTH}x{display.HEIGHT}")
+        self.logger.info(f"    Orientation: {display.ORIENTATION}")
+        self.app._lvgl_backend = display.get_ui_backend()
+        if self.app._lvgl_backend is not None and self.app._lvgl_backend.initialize():
+            display.refresh_backend_kind()
+            self.app.runtime_loop.last_lvgl_pump_at = time.monotonic()
+        else:
+            self.app._lvgl_backend = None
+            display.refresh_backend_kind()
+            error_message = "Whisplay LVGL backend initialization failed during startup"
+            if self._whisplay_production_contract_required(
+                requested_renderer=whisplay_renderer,
+            ):
+                raise self.contract_error_cls(self.build_contract_message_fn(error_message))
+            raise RuntimeError(self._lvgl_runtime_required_message())
+        self.logger.info(f"    Active UI backend: {display.backend_kind}")
+        self.app.screen_power_service.configure_screen_power(initial_now=time.monotonic())
+
+    def _init_app_context(self) -> None:
+        from yoyopod.core import AppContext
+        from yoyopod.core.audio_volume import AudioVolumeController
+        from yoyopod.integrations.call import sync_context_voip_status
+        from yoyopod.ui.input import InteractionProfile
+
+        self.logger.info("  - AppContext")
+        self.app.context = AppContext()
+        if self._rust_ui_host_enabled():
+            self.app.context.interaction_profile = InteractionProfile.ONE_BUTTON
+        audio_volume_controller = AudioVolumeController(
+            context=self.app.context,
+            default_music_volume_provider=self._default_music_volume,
+            output_volume=getattr(self.app, "output_volume", None),
+            music_backend=getattr(self.app, "music_backend", None),
+        )
+        setattr(self.app, "audio_volume_controller", audio_volume_controller)
+        self.app.context.audio_volume_controller = audio_volume_controller
+        sync_context_voip_status(
+            self.app.context,
+            config_manager=self.app.config_manager,
+            ready=False,
+            running=False,
+            registration_state="none",
+        )
+        if self.app.context is not None and self.app.config_manager is not None:
+            voice_cfg = self.app.config_manager.get_voice_settings()
+            speaker_device_id = voice_cfg.audio.speaker_device_id.strip() or None
+            capture_device_id = voice_cfg.audio.capture_device_id.strip() or None
+            self.app.context.configure_voice(
+                commands_enabled=voice_cfg.assistant.commands_enabled,
+                ai_requests_enabled=voice_cfg.assistant.ai_requests_enabled,
+                screen_read_enabled=voice_cfg.assistant.screen_read_enabled,
+                stt_enabled=voice_cfg.assistant.stt_enabled,
+                tts_enabled=voice_cfg.assistant.tts_enabled,
+                speaker_device_id=speaker_device_id,
+                capture_device_id=capture_device_id,
+            )
+            self.app.voice_note_events.sync_talk_summary_context()
+            self.setup_voice_worker()
+        self.app.screen_power_service.update_screen_runtime_metrics(time.monotonic())
+
+    def _init_orchestration_models(self) -> None:
+        from yoyopod.integrations.call import CallFSM, CallInterruptionPolicy
+        from yoyopod.integrations.music import MusicFSM
+
+        self.logger.info("  - Orchestration Models")
+        self.app.music_fsm = MusicFSM()
+        self.app.call_fsm = CallFSM()
+        self.app.call_interruption_policy = CallInterruptionPolicy()
+
+    def _init_python_input_and_screen_manager(self) -> None:
+        self.logger.info("  - InputManager")
+        display = self.app.display
+        if display is None:
+            raise RuntimeError("Display must be initialized before Python input")
+        self.app.input_manager = self.get_input_manager_fn(
+            display_adapter=display.get_adapter(),
+            input_settings=self.app.app_settings.input,
+            simulate=self.app.simulate,
+        )
+        if self.app.input_manager:
+            self.app.context.interaction_profile = self.app.input_manager.interaction_profile
+            self.app.input_manager.on_activity(self.app.note_input_activity)
+            self.app.input_manager.on_activity(
+                self.app.screen_power_service.queue_user_activity_event
+            )
+            if self.app._lvgl_backend is not None:
+                self.app._lvgl_input_bridge = self.lvgl_input_bridge_cls(self.app._lvgl_backend)
+                self.app.input_manager.on_activity(self.app.runtime_loop.queue_lvgl_input_action)
+            self.app.input_manager.start()
+            self.logger.info("    Input system initialized")
+        else:
+            self.logger.info("    No input hardware available")
+
+        self.logger.info("  - ScreenManager")
+        self.app.screen_manager = self.screen_manager_cls(
+            display,
+            self.app.input_manager,
+            action_scheduler=self.app.scheduler.run_on_main,
+            on_action_handled=self.app.note_handled_input,
+            on_visible_refresh=self.app.note_visible_refresh,
+            is_screen_visible=lambda: self.app._screen_awake,
+        )
 
 
 def _voice_worker_env(worker_cfg: Any) -> dict[str, str]:

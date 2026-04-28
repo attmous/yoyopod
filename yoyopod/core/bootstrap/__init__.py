@@ -10,6 +10,7 @@ from loguru import logger
 from yoyopod.backends.music import MpvBackend, MusicConfig
 from yoyopod.config import ConfigManager
 from yoyopod.core.audio_volume import OutputVolumeController
+from yoyopod.core.events import WorkerMessageReceivedEvent
 from yoyopod.core.hardware import AudioDeviceCatalog
 from yoyopod.integrations.call import CallHistoryStore, VoIPConfig, VoIPManager
 from yoyopod.integrations.cloud.manager import CloudManager
@@ -93,13 +94,19 @@ class RuntimeBootService:
                 logger.error("Failed to initialize managers")
                 return False
 
-            if not self.setup_screens():
-                logger.error("Failed to setup screens")
-                return False
+            if not self.rust_ui_host_enabled():
+                if not self.setup_screens():
+                    logger.error("Failed to setup screens")
+                    return False
+            else:
+                logger.info("Skipping Python screen construction because Rust UI Host is enabled")
+                self.setup_screenless_voice_runtime()
 
             self.ensure_runtime_helpers()
             self.setup_voip_callbacks()
             self.setup_music_callbacks()
+            if self.rust_ui_host_enabled() and not self.setup_rust_ui_host():
+                return False
             self.app.shutdown_service.register_power_shutdown_hooks()
             self.app.power_runtime.poll_status(force=True, now=time.monotonic())
 
@@ -120,6 +127,29 @@ class RuntimeBootService:
 
     def setup_screens(self) -> bool:
         return self._screens_boot.setup_screens()
+
+    def rust_ui_host_enabled(self) -> bool:
+        settings = getattr(self.app, "app_settings", None)
+        display = getattr(settings, "display", None)
+        return bool(getattr(display, "rust_ui_enabled", False))
+
+    def setup_screenless_voice_runtime(self) -> None:
+        self._screens_boot.setup_screenless_voice_runtime()
+
+    def setup_rust_ui_host(self) -> bool:
+        from yoyopod.ui.rust_host import RustUiFacade
+
+        assert self.app.app_settings is not None
+        worker_path = self.app.app_settings.display.rust_ui_worker_path
+        facade = RustUiFacade(self.app, worker_domain="ui")
+        self.app.rust_ui_host = facade
+        self.app.bus.subscribe(WorkerMessageReceivedEvent, facade.handle_worker_message)
+        started = facade.start_worker(worker_path, hardware="whisplay")
+        if not started:
+            logger.error("Failed to start Rust UI Host")
+            return False
+        facade.send_snapshot()
+        return True
 
     def get_initial_screen_name(self) -> str:
         return self._screens_boot.get_initial_screen_name()
