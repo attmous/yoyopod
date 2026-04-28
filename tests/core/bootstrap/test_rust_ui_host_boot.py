@@ -30,7 +30,20 @@ class _Settings:
     input = SimpleNamespace()
 
 
+class _ScreenPowerService:
+    def __init__(self) -> None:
+        self.configured_at: float | None = None
+        self.metrics_updates: list[float] = []
+
+    def configure_screen_power(self, initial_now: float) -> None:
+        self.configured_at = initial_now
+
+    def update_screen_runtime_metrics(self, now: float) -> None:
+        self.metrics_updates.append(now)
+
+
 def test_components_boot_skips_python_ui_hardware_when_rust_ui_enabled() -> None:
+    screen_power_service = _ScreenPowerService()
     app = SimpleNamespace(
         simulate=False,
         app_settings=_Settings(),
@@ -41,10 +54,7 @@ def test_components_boot_skips_python_ui_hardware_when_rust_ui_enabled() -> None
         output_volume=None,
         music_backend=None,
         audio_volume_controller=None,
-        screen_power_service=SimpleNamespace(
-            configure_screen_power=lambda initial_now: None,
-            update_screen_runtime_metrics=lambda now: None,
-        ),
+        screen_power_service=screen_power_service,
         voice_note_events=SimpleNamespace(sync_talk_summary_context=lambda: None),
         music_fsm=None,
         call_fsm=None,
@@ -78,3 +88,4 @@ def test_components_boot_skips_python_ui_hardware_when_rust_ui_enabled() -> None
     assert app.input_manager is None
     assert app.screen_manager is None
     assert app.context is not None
+    assert screen_power_service.configured_at is not None

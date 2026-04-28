@@ -18,7 +18,7 @@ class _RustUiHost:
         return True
 
 
-def test_tick_rust_ui_host_sends_snapshot_then_lvgl_tick() -> None:
+def test_tick_rust_ui_host_sends_snapshot_then_auto_tick() -> None:
     rust_ui_host = _RustUiHost()
     app = SimpleNamespace(
         _voip_iterate_interval_seconds=0.02,
@@ -28,7 +28,7 @@ def test_tick_rust_ui_host_sends_snapshot_then_lvgl_tick() -> None:
 
     loop.tick_rust_ui_host()
 
-    assert rust_ui_host.calls == [("snapshot", None), ("tick", "lvgl")]
+    assert rust_ui_host.calls == [("snapshot", None), ("tick", "auto")]
 
 
 def test_tick_rust_ui_host_noops_when_absent() -> None:

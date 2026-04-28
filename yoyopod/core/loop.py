@@ -442,7 +442,7 @@ class RuntimeLoopService:
         if callable(send_snapshot):
             send_snapshot()
         if callable(send_tick):
-            send_tick(renderer="lvgl")
+            send_tick(renderer="auto")
 
     def pump_lvgl_backend(self, now: float | None = None) -> None:
         """Pump LVGL timers and queued input on the coordinator thread."""

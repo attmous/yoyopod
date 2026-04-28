@@ -145,6 +145,10 @@ class ComponentsBoot:
             assert self.app.app_settings is not None
             if not self._rust_ui_host_enabled():
                 self._init_python_ui_hardware()
+            else:
+                self.app.screen_power_service.configure_screen_power(
+                    initial_now=time.monotonic()
+                )
             self._init_app_context()
             self._init_orchestration_models()
             if not self._rust_ui_host_enabled():
