@@ -1036,7 +1036,11 @@ def test_setup_voip_callbacks_subscribes_worker_message_handler() -> None:
     call_runtime = _FakeCallRuntime()
     subscribed: list[tuple[object, object]] = []
     handler = lambda *_args: None
-    voip_manager.backend = SimpleNamespace(handle_worker_message=handler)
+    state_handler = lambda *_args: None
+    voip_manager.backend = SimpleNamespace(
+        handle_worker_message=handler,
+        handle_worker_state_change=state_handler,
+    )
     voice_note_events = SimpleNamespace(
         handle_voice_note_summary_changed=lambda *_args: None,
         handle_voice_note_activity_changed=lambda *_args: None,
@@ -1058,6 +1062,7 @@ def test_setup_voip_callbacks_subscribes_worker_message_handler() -> None:
     RuntimeBootService(app).setup_voip_callbacks()
 
     assert (WorkerMessageReceivedEvent, handler) in subscribed
+    assert (WorkerDomainStateChangedEvent, state_handler) in subscribed
 
 
 def test_setup_music_callbacks_schedule_playback_handlers_on_main_thread() -> None:

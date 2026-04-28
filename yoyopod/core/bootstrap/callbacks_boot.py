@@ -57,11 +57,17 @@ class CallbacksBoot:
 
         backend = getattr(self.app.voip_manager, "backend", None)
         handle_worker_message = getattr(backend, "handle_worker_message", None)
+        handle_worker_state_change = getattr(backend, "handle_worker_state_change", None)
         bus = getattr(self.app, "bus", None)
         if callable(handle_worker_message) and bus is not None:
-            from yoyopod.core.events import WorkerMessageReceivedEvent
+            from yoyopod.core.events import (
+                WorkerDomainStateChangedEvent,
+                WorkerMessageReceivedEvent,
+            )
 
             bus.subscribe(WorkerMessageReceivedEvent, handle_worker_message)
+            if callable(handle_worker_state_change):
+                bus.subscribe(WorkerDomainStateChangedEvent, handle_worker_state_change)
 
         self.logger.info("  VoIP callbacks registered")
 

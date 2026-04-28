@@ -218,12 +218,12 @@ fn handle_command(
                 json!({"muted": muted}),
             ))?;
         }
-        "voip.shutdown" => {
+        "voip.shutdown" | "worker.stop" => {
             if let Some(mut backend_ref) = backend.take() {
                 host.unregister(&mut backend_ref);
             }
             write_envelope(&WorkerEnvelope::result(
-                "voip.shutdown",
+                envelope.message_type,
                 envelope.request_id,
                 json!({"shutdown": true}),
             ))?;
@@ -309,5 +309,28 @@ mod tests {
         assert_eq!(envelope.message_type, "voip.incoming_call");
         assert_eq!(envelope.payload["call_id"], "call-1");
         assert_eq!(envelope.payload["from_uri"], "sip:bob@example.com");
+    }
+
+    #[test]
+    fn worker_stop_uses_shutdown_path() {
+        let mut host = VoipHost::default();
+        let mut backend = None;
+        let action = handle_command(
+            WorkerEnvelope {
+                schema_version: protocol::SUPPORTED_SCHEMA_VERSION,
+                kind: protocol::EnvelopeKind::Command,
+                message_type: "worker.stop".to_string(),
+                request_id: Some("stop-1".to_string()),
+                timestamp_ms: 0,
+                deadline_ms: 0,
+                payload: json!({}),
+            },
+            &mut host,
+            &mut backend,
+            None,
+        )
+        .expect("worker.stop should be handled");
+
+        assert!(matches!(action, LoopAction::Shutdown));
     }
 }

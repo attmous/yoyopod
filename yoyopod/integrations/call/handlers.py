@@ -167,7 +167,7 @@ def handle_availability_changed_event(
         event.registration_state.value,
         {"reason": event.reason or "availability_changed"},
     )
-    if not event.available and event.reason in {"backend_stopped", "start_failed"}:
+    if not event.available and _should_request_call_recovery(event.reason):
         app.bus.publish(BackendStoppedEvent(domain="call", reason=event.reason))
     if not event.available:
         _stop_ringer(integration)
@@ -461,3 +461,17 @@ def _as_registration_state(value: object) -> RegistrationState:
         return RegistrationState(str(value or RegistrationState.NONE.value))
     except ValueError:
         return RegistrationState.NONE
+
+
+def _should_request_call_recovery(reason: str) -> bool:
+    normalized = str(reason or "").strip()
+    if normalized in {
+        "backend_stopped",
+        "process_exited",
+        "restart_failed",
+        "start_failed",
+        "max_restarts_exceeded",
+        "worker_ready_reconfigure_failed",
+    }:
+        return True
+    return normalized.startswith("voip.")

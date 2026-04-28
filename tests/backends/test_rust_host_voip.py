@@ -21,6 +21,7 @@ class _FakeSupervisor:
         self.started: list[str] = []
         self.stopped: list[tuple[str, float]] = []
         self.sent: list[tuple[str, str, dict[str, Any]]] = []
+        self.request_ids: list[str | None] = []
 
     def register(self, domain: str, config: Any) -> None:
         self.registered.append((domain, config))
@@ -42,8 +43,9 @@ class _FakeSupervisor:
         timestamp_ms: int = 0,
         deadline_ms: int = 0,
     ) -> bool:
-        del request_id, timestamp_ms, deadline_ms
+        del timestamp_ms, deadline_ms
         self.sent.append((domain, type, payload or {}))
+        self.request_ids.append(request_id)
         return True
 
 
@@ -59,6 +61,27 @@ def _event(message_type: str, payload: dict[str, Any], *, domain: str = "voip") 
     return SimpleNamespace(domain=domain, kind="event", type=message_type, payload=payload)
 
 
+def _reply(
+    kind: str,
+    message_type: str,
+    payload: dict[str, Any],
+    *,
+    request_id: str | None,
+    domain: str = "voip",
+) -> Any:
+    return SimpleNamespace(
+        domain=domain,
+        kind=kind,
+        type=message_type,
+        request_id=request_id,
+        payload=payload,
+    )
+
+
+def _state(state: str, reason: str, *, domain: str = "voip") -> Any:
+    return SimpleNamespace(domain=domain, state=state, reason=reason)
+
+
 def test_start_registers_worker_and_sends_configure_register() -> None:
     supervisor = _FakeSupervisor()
     backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
@@ -70,6 +93,7 @@ def test_start_registers_worker_and_sends_configure_register() -> None:
     assert supervisor.started == ["voip"]
     assert [item[1] for item in supervisor.sent] == ["voip.configure", "voip.register"]
     assert supervisor.sent[0][2]["sip_identity"] == "sip:alice@example.com"
+    assert supervisor.request_ids == ["voip-voip_configure-1", "voip-voip_register-2"]
     assert backend.running is True
 
 
@@ -128,6 +152,53 @@ def test_worker_events_translate_to_voip_events() -> None:
     assert isinstance(received[3], BackendStopped)
     assert received[3].reason == "iterate failed"
     assert len(received) == 4
+
+
+def test_worker_startup_error_marks_backend_stopped() -> None:
+    supervisor = _FakeSupervisor()
+    backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
+    received: list[object] = []
+    backend.on_event(received.append)
+    backend.start()
+
+    backend.handle_worker_message(
+        _reply(
+            "error",
+            "voip.error",
+            {"code": "command_failed", "message": "shim missing"},
+            request_id=supervisor.request_ids[1],
+        )
+    )
+
+    assert backend.running is False
+    assert isinstance(received[0], BackendStopped)
+    assert received[0].reason == "voip.register command_failed: shim missing"
+
+
+def test_ready_after_worker_restart_resends_configure_register() -> None:
+    supervisor = _FakeSupervisor()
+    backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
+    received: list[object] = []
+    backend.on_event(received.append)
+    backend.start()
+
+    backend.handle_worker_state_change(_state("running", "started"))
+    backend.handle_worker_message(_event("voip.ready", {"capabilities": ["calls"]}))
+    assert [item[1] for item in supervisor.sent] == ["voip.configure", "voip.register"]
+
+    backend.handle_worker_state_change(_state("degraded", "process_exited"))
+    backend.handle_worker_state_change(_state("running", "started"))
+    backend.handle_worker_message(_event("voip.ready", {"capabilities": ["calls"]}))
+
+    assert [item[1] for item in supervisor.sent] == [
+        "voip.configure",
+        "voip.register",
+        "voip.configure",
+        "voip.register",
+    ]
+    assert backend.running is True
+    assert isinstance(received[0], BackendStopped)
+    assert received[0].reason == "process_exited"
 
 
 def test_iterate_is_noop_and_unsupported_messaging_fails() -> None:

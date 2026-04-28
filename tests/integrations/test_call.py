@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from tests.fixtures.app import build_test_app, drain_all
+from yoyopod.core.events import BackendStoppedEvent
 from yoyopod.integrations.call import (
     CallHistoryEntry,
     CallHistoryStore,
@@ -162,6 +163,10 @@ class FakeVoipManager:
         for callback in self.call_state_callbacks:
             callback(state)
 
+    def emit_availability(self, available: bool, reason: str) -> None:
+        for callback in self.availability_callbacks:
+            callback(available, reason, SimpleNamespace(value="failed"))
+
     def emit_message_summary(
         self,
         unread_count: int,
@@ -216,6 +221,21 @@ def test_call_setup_seeds_state_helpers_and_history(tmp_path: Path) -> None:
 
     teardown(app)
     assert "call" not in app.integrations
+
+
+def test_unexpected_call_worker_exit_requests_recovery(tmp_path: Path) -> None:
+    app = build_test_app()
+    stopped_events: list[BackendStoppedEvent] = []
+    app.bus.subscribe(BackendStoppedEvent, stopped_events.append)
+    history_store = CallHistoryStore(tmp_path / "call_history.json")
+    manager = FakeVoipManager()
+    setup(app, manager=manager, call_history_store=history_store, ringer=FakeRinger())
+    drain_all(app)
+
+    manager.emit_availability(False, "process_exited")
+    drain_all(app)
+
+    assert stopped_events == [BackendStoppedEvent(domain="call", reason="process_exited")]
 
 
 def test_call_flow_updates_focus_mute_and_history(tmp_path: Path) -> None:
