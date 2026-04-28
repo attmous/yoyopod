@@ -41,6 +41,22 @@ It contains the ARM64 Linux binary that should be installed at:
 /opt/yoyopod-dev/checkout/workers/ui/rust/build/yoyopod-rust-ui-poc
 ```
 
+## Rust VoIP Host Artifact
+
+The Rust VoIP Host artifact is:
+
+```bash
+yoyopod-voip-host-<sha>
+```
+
+Install it at:
+
+```bash
+/opt/yoyopod-dev/checkout/src/crates/voip-host/build/yoyopod-voip-host
+```
+
+Do not build `yoyopod-voip-host` on the Raspberry Pi Zero 2W.
+
 ## Steps
 
 1. **Check local git status.** Run `git status --short`. If there are local
