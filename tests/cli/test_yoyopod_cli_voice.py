@@ -55,6 +55,22 @@ def test_voice_trace_last_prints_recent_rows(tmp_path: Path) -> None:
     assert "turn-1" not in result.output
 
 
+def test_voice_trace_last_uses_configured_default_path(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    trace_path = tmp_path / "configured-turns.jsonl"
+    store = VoiceTraceStore(path=trace_path, max_turns=5)
+    store.append(_entry("turn-configured", "call mama"))
+    monkeypatch.setenv("YOYOPOD_VOICE_TRACE_PATH", str(trace_path))
+
+    result = runner.invoke(app, ["voice", "trace", "last", "--limit", "1"])
+
+    assert result.exit_code == 0
+    assert "turn-configured" in result.output
+    assert "call mama" in result.output
+
+
 def test_voice_trace_last_tolerates_missing_file(tmp_path: Path) -> None:
     trace_path = tmp_path / "missing.jsonl"
 
@@ -107,6 +123,34 @@ def test_voice_dictionary_validate_accepts_valid_file(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "OK voice dictionary" in result.output
+
+
+def test_voice_dictionary_validate_uses_configured_default_path(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    commands_file = tmp_path / "commands.yaml"
+    commands_file.write_text(
+        yaml.safe_dump(
+            {
+                "intents": {
+                    "volume_up": {
+                        "aliases": ["boost sound"],
+                        "examples": ["boost sound"],
+                    }
+                }
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("YOYOPOD_VOICE_COMMAND_DICTIONARY", str(commands_file))
+
+    result = runner.invoke(app, ["voice", "dictionary", "validate"])
+
+    assert result.exit_code == 0
+    assert str(commands_file) in result.output
+    assert "built-ins only" not in result.output
 
 
 def test_voice_dictionary_validate_fails_on_errors(tmp_path: Path) -> None:
@@ -165,6 +209,7 @@ def test_voice_dictionary_validate_default_missing_uses_builtins(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("YOYOPOD_VOICE_COMMAND_DICTIONARY", raising=False)
 
     result = runner.invoke(app, ["voice", "dictionary", "validate"])
 

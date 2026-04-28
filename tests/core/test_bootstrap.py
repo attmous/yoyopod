@@ -714,6 +714,41 @@ def test_cloud_voice_settings_provider_includes_trace_settings(monkeypatch) -> N
     assert settings.voice_trace_body_preview_chars == 24
 
 
+def test_cloud_voice_settings_provider_includes_command_routing_settings(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    _install_dummy_screen_modules(monkeypatch)
+
+    class _CapturingVoiceRuntime:
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "yoyopod.core.bootstrap.screens_boot.VoiceRuntimeCoordinator",
+        _CapturingVoiceRuntime,
+    )
+    app = _build_cloud_screen_app(stt_backend="cloud-worker", tts_backend="cloud-worker")
+    voice_cfg = _cloud_voice_config(stt_backend="cloud-worker", tts_backend="cloud-worker")
+    voice_cfg.assistant.activation_prefixes = ["yo pod", " hey pod "]
+    voice_cfg.assistant.command_dictionary_path = "config/voice/custom-commands.yaml"
+    voice_cfg.assistant.command_routing = SimpleNamespace(
+        mode="command_only",
+        ask_fallback_enabled=False,
+        fallback_min_command_confidence=0.91,
+    )
+    app.config_manager = SimpleNamespace(get_voice_settings=lambda: voice_cfg)
+
+    assert ScreensBoot(app, logger=_quiet_logger()).setup_screens() is True
+
+    resolver = captured["settings_resolver"]
+    settings = resolver.current()
+
+    assert settings.activation_prefixes == ("yo pod", "hey pod")
+    assert settings.command_dictionary_path == "config/voice/custom-commands.yaml"
+    assert settings.command_routing_mode == "command_only"
+    assert settings.ask_fallback_enabled is False
+    assert settings.fallback_min_command_confidence == 0.91
+
+
 def test_boot_voice_runtime_uses_ask_screen_summary_provider(monkeypatch) -> None:
     captured: dict[str, object] = {}
     _install_dummy_screen_modules(monkeypatch)

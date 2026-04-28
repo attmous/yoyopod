@@ -71,12 +71,13 @@ class ScreensBoot:
                 if self.app.config_manager is not None
                 else None
             )
+            assistant_cfg = getattr(voice_cfg, "assistant", None) if voice_cfg is not None else None
             worker_cfg = getattr(voice_cfg, "worker", None) if voice_cfg is not None else None
             voice_worker_client = getattr(self.app, "voice_worker_client", None)
             voice_service_factory = None
             if (
                 voice_cfg is not None
-                and getattr(voice_cfg.assistant, "mode", "local") == "cloud"
+                and getattr(assistant_cfg, "mode", "local") == "cloud"
                 and voice_worker_client is not None
             ):
 
@@ -98,7 +99,27 @@ class ScreensBoot:
                     )
 
             voice_settings_defaults = VoiceSettings()
+            routing_cfg = (
+                getattr(assistant_cfg, "command_routing", None)
+                if assistant_cfg is not None
+                else None
+            )
             trace_cfg = getattr(voice_cfg, "trace", None) if voice_cfg is not None else None
+
+            def configured_activation_prefixes() -> tuple[str, ...]:
+                values = (
+                    getattr(
+                        assistant_cfg,
+                        "activation_prefixes",
+                        voice_settings_defaults.activation_prefixes,
+                    )
+                    if assistant_cfg is not None
+                    else voice_settings_defaults.activation_prefixes
+                )
+                prefixes = tuple(
+                    str(prefix).strip() for prefix in (values or ()) if str(prefix).strip()
+                )
+                return prefixes or voice_settings_defaults.activation_prefixes
 
             def ask_screen_summary() -> str:
                 ask_screen = getattr(self.app, "ask_screen", None)
@@ -125,8 +146,8 @@ class ScreensBoot:
                     config_manager=self.app.config_manager,
                     settings_provider=lambda: VoiceSettings(
                         mode=(
-                            getattr(voice_cfg.assistant, "mode", "local")
-                            if voice_cfg is not None
+                            getattr(assistant_cfg, "mode", voice_settings_defaults.mode)
+                            if assistant_cfg is not None
                             else "local"
                         ),
                         commands_enabled=(
@@ -166,13 +187,21 @@ class ScreensBoot:
                             else 50
                         ),
                         stt_backend=(
-                            voice_cfg.assistant.stt_backend
-                            if voice_cfg is not None
+                            getattr(
+                                assistant_cfg,
+                                "stt_backend",
+                                voice_settings_defaults.stt_backend,
+                            )
+                            if assistant_cfg is not None
                             else "cloud-worker"
                         ),
                         tts_backend=(
-                            voice_cfg.assistant.tts_backend
-                            if voice_cfg is not None
+                            getattr(
+                                assistant_cfg,
+                                "tts_backend",
+                                voice_settings_defaults.tts_backend,
+                            )
+                            if assistant_cfg is not None
                             else "cloud-worker"
                         ),
                         speaker_device_id=(
@@ -196,15 +225,74 @@ class ScreensBoot:
                             )
                         ),
                         sample_rate_hz=(
-                            voice_cfg.assistant.sample_rate_hz if voice_cfg is not None else 16000
+                            getattr(
+                                assistant_cfg,
+                                "sample_rate_hz",
+                                voice_settings_defaults.sample_rate_hz,
+                            )
+                            if assistant_cfg is not None
+                            else 16000
                         ),
                         record_seconds=(
-                            voice_cfg.assistant.record_seconds if voice_cfg is not None else 4
+                            getattr(
+                                assistant_cfg,
+                                "record_seconds",
+                                voice_settings_defaults.record_seconds,
+                            )
+                            if assistant_cfg is not None
+                            else 4
                         ),
                         tts_rate_wpm=(
-                            voice_cfg.assistant.tts_rate_wpm if voice_cfg is not None else 155
+                            getattr(
+                                assistant_cfg,
+                                "tts_rate_wpm",
+                                voice_settings_defaults.tts_rate_wpm,
+                            )
+                            if assistant_cfg is not None
+                            else 155
                         ),
-                        tts_voice=voice_cfg.assistant.tts_voice if voice_cfg is not None else "en",
+                        tts_voice=(
+                            getattr(assistant_cfg, "tts_voice", voice_settings_defaults.tts_voice)
+                            if assistant_cfg is not None
+                            else "en"
+                        ),
+                        activation_prefixes=configured_activation_prefixes(),
+                        command_dictionary_path=(
+                            getattr(
+                                assistant_cfg,
+                                "command_dictionary_path",
+                                voice_settings_defaults.command_dictionary_path,
+                            )
+                            if assistant_cfg is not None
+                            else voice_settings_defaults.command_dictionary_path
+                        ),
+                        command_routing_mode=(
+                            getattr(
+                                routing_cfg,
+                                "mode",
+                                voice_settings_defaults.command_routing_mode,
+                            )
+                            if routing_cfg is not None
+                            else voice_settings_defaults.command_routing_mode
+                        ),
+                        ask_fallback_enabled=(
+                            getattr(
+                                routing_cfg,
+                                "ask_fallback_enabled",
+                                voice_settings_defaults.ask_fallback_enabled,
+                            )
+                            if routing_cfg is not None
+                            else voice_settings_defaults.ask_fallback_enabled
+                        ),
+                        fallback_min_command_confidence=(
+                            getattr(
+                                routing_cfg,
+                                "fallback_min_command_confidence",
+                                voice_settings_defaults.fallback_min_command_confidence,
+                            )
+                            if routing_cfg is not None
+                            else voice_settings_defaults.fallback_min_command_confidence
+                        ),
                         cloud_worker_enabled=(
                             getattr(worker_cfg, "enabled", False)
                             if worker_cfg is not None
