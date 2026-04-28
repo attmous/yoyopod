@@ -333,6 +333,11 @@ This design is accepted when:
 - Python can run with Rust as the exclusive UI/display/input owner
 - Python runtime services continue to respond to Rust UI intents
 - Whisplay hardware validation passes using a CI-built artifact
+- Rust code follows idiomatic Rust guidelines, including `rustfmt`, clear
+  ownership, explicit error handling, and narrow module boundaries
+- production Rust code is written for human readability first: descriptive names,
+  small focused units, simple control flow, and no clever abstractions unless
+  they remove real complexity
 
 ## Non-Goals
 
