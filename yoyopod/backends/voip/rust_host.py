@@ -32,6 +32,7 @@ _CALL_CONTROL_COMMANDS = frozenset(
         "voip.set_mute",
     }
 )
+_INTENTIONAL_STOP_REASONS = frozenset({"stop", "stop_all"})
 
 
 class RustHostBackend:
@@ -108,10 +109,11 @@ class RustHostBackend:
     def stop(self) -> None:
         self._stopping = True
         try:
-            self._send("voip.unregister", {})
-            stop = getattr(self.worker_supervisor, "stop", None)
-            if callable(stop):
-                stop(self.domain, grace_seconds=1.0)
+            if self._registered_with_supervisor:
+                self._send("voip.unregister", {})
+                stop = getattr(self.worker_supervisor, "stop", None)
+                if callable(stop):
+                    stop(self.domain, grace_seconds=1.0)
         finally:
             self._pending_commands.clear()
             self._startup_commands_sent = False
@@ -217,8 +219,9 @@ class RustHostBackend:
                 self._reconfigure_on_ready = True
             return
         if state in {"degraded", "disabled", "stopped"}:
-            self._reconfigure_on_ready = not self._stopping
-            if self._stopping:
+            intentional_stop = state == "stopped" and reason in _INTENTIONAL_STOP_REASONS
+            self._reconfigure_on_ready = not self._stopping and not intentional_stop
+            if self._stopping or intentional_stop:
                 self.running = False
                 return
             self._mark_stopped(reason)

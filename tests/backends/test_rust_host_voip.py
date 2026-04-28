@@ -49,6 +49,34 @@ class _FakeSupervisor:
         return True
 
 
+class _StrictSupervisor(_FakeSupervisor):
+    def stop(self, domain: str, *, grace_seconds: float = 1.0) -> None:
+        if not any(registered_domain == domain for registered_domain, _config in self.registered):
+            raise KeyError(domain)
+        super().stop(domain, grace_seconds=grace_seconds)
+
+    def send_command(
+        self,
+        domain: str,
+        *,
+        type: str,
+        payload: dict[str, Any] | None = None,
+        request_id: str | None = None,
+        timestamp_ms: int = 0,
+        deadline_ms: int = 0,
+    ) -> bool:
+        if not any(registered_domain == domain for registered_domain, _config in self.registered):
+            raise KeyError(domain)
+        return super().send_command(
+            domain,
+            type=type,
+            payload=payload,
+            request_id=request_id,
+            timestamp_ms=timestamp_ms,
+            deadline_ms=deadline_ms,
+        )
+
+
 def _config() -> VoIPConfig:
     return VoIPConfig(
         sip_server="sip.example.com",
@@ -95,6 +123,31 @@ def test_start_registers_worker_and_sends_configure_register() -> None:
     assert supervisor.sent[0][2]["sip_identity"] == "sip:alice@example.com"
     assert supervisor.request_ids == ["voip-voip_configure-1", "voip-voip_register-2"]
     assert backend.running is True
+
+
+def test_stop_before_worker_registration_is_noop() -> None:
+    supervisor = _StrictSupervisor()
+    backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
+
+    backend.stop()
+
+    assert supervisor.sent == []
+    assert supervisor.stopped == []
+    assert backend.running is False
+
+
+def test_delayed_intentional_stop_state_does_not_emit_backend_stopped() -> None:
+    supervisor = _StrictSupervisor()
+    backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
+    received: list[object] = []
+    backend.on_event(received.append)
+    backend.start()
+
+    backend.stop()
+    backend.handle_worker_state_change(_state("stopped", "stop"))
+
+    assert not received
+    assert backend.running is False
 
 
 def test_call_commands_send_worker_commands() -> None:
