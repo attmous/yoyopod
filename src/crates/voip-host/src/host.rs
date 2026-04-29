@@ -302,6 +302,7 @@ impl VoipHost {
         self.active_call_id = None;
         self.active_call_peer.clear();
         self.call_state = "released".to_string();
+        self.muted = false;
         Ok(())
     }
 
@@ -310,6 +311,7 @@ impl VoipHost {
         self.active_call_id = None;
         self.active_call_peer.clear();
         self.call_state = "released".to_string();
+        self.muted = false;
         Ok(())
     }
 
@@ -1053,6 +1055,7 @@ mod command_tests {
             host.health_payload()["active_call_id"],
             serde_json::Value::Null
         );
+        assert_eq!(host.session_snapshot_payload()["muted"], false);
     }
 
     #[test]
@@ -1337,13 +1340,21 @@ mod command_tests {
         host.configure(config());
         host.register(&mut backend).unwrap();
         host.dial(&mut backend, "sip:bob@example.com").unwrap();
+        host.set_muted(&mut backend, true).expect("mute");
 
         host.reject(&mut backend).expect("reject");
+        assert_eq!(host.session_snapshot_payload()["muted"], false);
         host.unregister(&mut backend);
 
         assert_eq!(
             backend.calls,
-            vec!["start", "dial:sip:bob@example.com", "reject", "stop"]
+            vec![
+                "start",
+                "dial:sip:bob@example.com",
+                "mute:true",
+                "reject",
+                "stop"
+            ]
         );
         assert_eq!(host.health_payload()["registered"], false);
         assert_eq!(
