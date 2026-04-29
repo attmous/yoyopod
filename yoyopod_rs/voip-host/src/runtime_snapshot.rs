@@ -31,6 +31,7 @@ impl RuntimeSnapshot<'_> {
             "active_call_id": self.call.active_call_id(),
             "active_call_peer": self.call.active_peer(),
             "muted": self.call.muted(),
+            "call_session": self.call.session_payload(),
             "pending_outbound_messages": self.pending_outbound_messages,
             "voice_note": self.voice_note.payload(),
             "last_message": last_message,

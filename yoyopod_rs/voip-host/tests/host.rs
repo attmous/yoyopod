@@ -134,6 +134,82 @@ fn session_snapshot_tracks_call_message_and_voice_note_state() {
 }
 
 #[test]
+fn call_session_snapshot_tracks_direction_terminal_outcome_and_duration() {
+    let mut host = VoipHost::default();
+    let mut backend = FakeBackend::default();
+    host.configure(config());
+    host.register(&mut backend).expect("register");
+
+    host.dial(&mut backend, "sip:bob@example.com")
+        .expect("dial");
+    let snapshot = host.session_snapshot_payload();
+    assert_eq!(snapshot["call_session"]["active"], true);
+    assert_eq!(snapshot["call_session"]["session_id"], "call-outgoing");
+    assert_eq!(snapshot["call_session"]["direction"], "outgoing");
+    assert_eq!(
+        snapshot["call_session"]["peer_sip_address"],
+        "sip:bob@example.com"
+    );
+    assert_eq!(snapshot["call_session"]["answered"], false);
+
+    poll_one(
+        &mut host,
+        BackendEvent::CallStateChanged {
+            call_id: "call-outgoing".to_string(),
+            state: "streams_running".to_string(),
+        },
+    );
+    assert_eq!(
+        host.session_snapshot_payload()["call_session"]["answered"],
+        true
+    );
+
+    host.hangup(&mut backend).expect("hangup");
+    let snapshot = host.session_snapshot_payload();
+    assert_eq!(snapshot["call_session"]["active"], false);
+    assert_eq!(snapshot["call_session"]["session_id"], "call-outgoing");
+    assert_eq!(snapshot["call_session"]["terminal_state"], "released");
+    assert_eq!(snapshot["call_session"]["local_end_action"], "hangup");
+    assert_eq!(snapshot["call_session"]["history_outcome"], "completed");
+    assert!(snapshot["call_session"]["duration_seconds"]
+        .as_u64()
+        .is_some());
+}
+
+#[test]
+fn incoming_call_session_snapshot_reports_missed_terminal_outcome() {
+    let mut host = VoipHost::default();
+    host.configure(config());
+
+    poll_one(
+        &mut host,
+        BackendEvent::IncomingCall {
+            call_id: "call-incoming".to_string(),
+            from_uri: "sip:mama@example.com".to_string(),
+        },
+    );
+    let snapshot = host.session_snapshot_payload();
+    assert_eq!(snapshot["call_session"]["active"], true);
+    assert_eq!(snapshot["call_session"]["direction"], "incoming");
+    assert_eq!(
+        snapshot["call_session"]["peer_sip_address"],
+        "sip:mama@example.com"
+    );
+
+    poll_one(
+        &mut host,
+        BackendEvent::CallStateChanged {
+            call_id: "call-incoming".to_string(),
+            state: "released".to_string(),
+        },
+    );
+    let snapshot = host.session_snapshot_payload();
+    assert_eq!(snapshot["call_session"]["active"], false);
+    assert_eq!(snapshot["call_session"]["terminal_state"], "released");
+    assert_eq!(snapshot["call_session"]["history_outcome"], "missed");
+}
+
+#[test]
 fn register_starts_backend_and_health_reports_registered() {
     let mut host = VoipHost::default();
     let mut backend = FakeBackend::default();

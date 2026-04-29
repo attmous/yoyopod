@@ -529,6 +529,17 @@ def test_worker_snapshot_dispatches_typed_runtime_snapshot() -> None:
                     "local_file_path": "/tmp/note.wav",
                     "error": "",
                 },
+                "call_session": {
+                    "active": False,
+                    "session_id": "call-1",
+                    "direction": "outgoing",
+                    "peer_sip_address": "sip:bob@example.com",
+                    "answered": True,
+                    "terminal_state": "released",
+                    "local_end_action": "hangup",
+                    "duration_seconds": 17,
+                    "history_outcome": "completed",
+                },
             },
         )
     )
@@ -554,6 +565,11 @@ def test_worker_snapshot_dispatches_typed_runtime_snapshot() -> None:
     assert snapshot.last_message.message_id == "msg-1"
     assert snapshot.last_message.kind == MessageKind.VOICE_NOTE
     assert snapshot.last_message.delivery_state == MessageDeliveryState.SENT
+    assert snapshot.call_session.session_id == "call-1"
+    assert snapshot.call_session.direction == "outgoing"
+    assert snapshot.call_session.peer_sip_address == "sip:bob@example.com"
+    assert snapshot.call_session.history_outcome == "completed"
+    assert snapshot.call_session.duration_seconds == 17
 
 
 def test_worker_message_events_translate_to_voip_events() -> None:

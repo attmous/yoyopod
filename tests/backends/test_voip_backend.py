@@ -611,6 +611,56 @@ def test_voip_manager_publishes_runtime_snapshot_callbacks_without_call_state_ch
     assert manager.is_muted is True
 
 
+def test_voip_manager_derives_availability_from_rust_lifecycle_snapshots() -> None:
+    """Rust lifecycle snapshots should drive recovery availability without side events."""
+
+    backend = SnapshotOwnedMockVoIPBackend()
+    manager = VoIPManager(build_config(), backend=backend)
+    availability_changes: list[tuple[bool, str, RegistrationState]] = []
+    manager.on_availability_change(
+        lambda available, reason, registration_state: availability_changes.append(
+            (available, reason, registration_state)
+        )
+    )
+
+    assert manager.start()
+    availability_changes.clear()
+
+    failed_snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=False,
+        registration_state=RegistrationState.FAILED,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="failed",
+            reason="process_exited",
+            backend_available=False,
+        ),
+    )
+    backend.emit(VoIPRuntimeSnapshotChanged(snapshot=failed_snapshot))
+
+    assert manager.running is False
+    assert manager.registered is False
+    assert availability_changes == [
+        (False, "process_exited", RegistrationState.FAILED),
+    ]
+
+    recovered_snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+    )
+    backend.emit(VoIPRuntimeSnapshotChanged(snapshot=recovered_snapshot))
+
+    assert manager.running is True
+    assert manager.registered is True
+    assert availability_changes[-1] == (True, "registered", RegistrationState.OK)
+
+
 def test_voip_manager_starts_timer_on_streams_running_without_connected() -> None:
     """Streams-running callbacks should start live duration tracking on their own."""
 

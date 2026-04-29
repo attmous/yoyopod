@@ -205,13 +205,13 @@ impl VoipHost {
 
     pub fn reject<B: CallBackend>(&mut self, backend: &mut B) -> Result<(), String> {
         backend.reject_call()?;
-        self.call.clear_with_state("released");
+        self.call.clear_with_state_and_action("released", "reject");
         Ok(())
     }
 
     pub fn hangup<B: CallBackend>(&mut self, backend: &mut B) -> Result<(), String> {
         backend.hangup()?;
-        self.call.clear_with_state("released");
+        self.call.clear_with_state_and_action("released", "hangup");
         Ok(())
     }
 
@@ -328,7 +328,7 @@ impl VoipHost {
                 self.registration_state = "failed".to_string();
                 self.lifecycle.mark_recovery_pending();
                 self.lifecycle.record("failed", reason, false);
-                self.call.clear();
+                self.call.clear_with_state("error");
                 self.outbound_message_ids.clear();
             }
             BackendEvent::MessageReceived { message } => {

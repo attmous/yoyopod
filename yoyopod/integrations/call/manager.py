@@ -100,6 +100,7 @@ class VoIPManager:
         self.incoming_call_callbacks: list[Callable[[str, str], None]] = []
         self.availability_callbacks: list[Callable[[bool, str, RegistrationState], None]] = []
         self.runtime_snapshot_callbacks: list[Callable[[VoIPRuntimeSnapshot], None]] = []
+        self._last_lifecycle_availability: tuple[bool, str, RegistrationState] | None = None
         self._event_scheduler = event_scheduler
         self._background_iterate_enabled = bool(background_iterate_enabled and event_scheduler)
         if background_iterate_enabled and event_scheduler is None:
@@ -574,6 +575,7 @@ class VoIPManager:
         self._sync_call_identity(snapshot)
         self.is_muted = snapshot.muted
         self._update_call_state(snapshot.call_state)
+        self._notify_lifecycle_availability_from_snapshot(snapshot)
         self._voice_note_service.apply_runtime_snapshot(snapshot)
         self._messaging_service.apply_runtime_snapshot(snapshot)
         self._notify_runtime_snapshot_change(snapshot)
@@ -705,11 +707,26 @@ class VoIPManager:
         self.registration_state = RegistrationState.NONE
 
     def _notify_availability_change(self, available: bool, reason: str) -> None:
+        self._last_lifecycle_availability = (available, reason, self.registration_state)
         for callback in self.availability_callbacks:
             try:
                 callback(available, reason, self.registration_state)
             except Exception as exc:
                 logger.error("Error in availability callback: {}", exc)
+
+    def _notify_lifecycle_availability_from_snapshot(
+        self,
+        snapshot: VoIPRuntimeSnapshot,
+    ) -> None:
+        lifecycle_state = snapshot.lifecycle.state.strip().lower()
+        if not lifecycle_state:
+            return
+        reason = snapshot.lifecycle.reason or lifecycle_state
+        available = bool(snapshot.lifecycle.backend_available)
+        key = (available, reason, self.registration_state)
+        if self._last_lifecycle_availability == key:
+            return
+        self._notify_availability_change(available, reason)
 
     def _notify_runtime_snapshot_change(self, snapshot: VoIPRuntimeSnapshot) -> None:
         for callback in self.runtime_snapshot_callbacks:

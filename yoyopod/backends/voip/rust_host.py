@@ -29,6 +29,7 @@ from yoyopod.integrations.call.models import (
     MessageReceived,
     RegistrationState,
     RegistrationStateChanged,
+    VoIPCallSessionSnapshot,
     VoIPConfig,
     VoIPEvent,
     VoIPLifecycleSnapshot,
@@ -588,6 +589,7 @@ def _message_record(payload: dict[str, Any]) -> VoIPMessageRecord | None:
 
 def _runtime_snapshot(payload: dict[str, Any]) -> VoIPRuntimeSnapshot:
     lifecycle_payload = _dict_payload(payload.get("lifecycle"))
+    call_session_payload = _dict_payload(payload.get("call_session"))
     voice_note_payload = _dict_payload(payload.get("voice_note"))
     return VoIPRuntimeSnapshot(
         configured=_bool_payload(payload.get("configured", False)),
@@ -602,6 +604,17 @@ def _runtime_snapshot(payload: dict[str, Any]) -> VoIPRuntimeSnapshot:
             state=str(lifecycle_payload.get("state", "unconfigured") or "unconfigured"),
             reason=str(lifecycle_payload.get("reason", "") or ""),
             backend_available=_bool_payload(lifecycle_payload.get("backend_available", False)),
+        ),
+        call_session=VoIPCallSessionSnapshot(
+            active=_bool_payload(call_session_payload.get("active", False)),
+            session_id=str(call_session_payload.get("session_id", "") or ""),
+            direction=str(call_session_payload.get("direction", "") or ""),
+            peer_sip_address=str(call_session_payload.get("peer_sip_address", "") or ""),
+            answered=_bool_payload(call_session_payload.get("answered", False)),
+            terminal_state=str(call_session_payload.get("terminal_state", "") or ""),
+            local_end_action=str(call_session_payload.get("local_end_action", "") or ""),
+            duration_seconds=_duration_ms(call_session_payload.get("duration_seconds")),
+            history_outcome=str(call_session_payload.get("history_outcome", "") or ""),
         ),
         voice_note=VoIPVoiceNoteSnapshot(
             state=str(voice_note_payload.get("state", "idle") or "idle"),
