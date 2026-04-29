@@ -380,6 +380,7 @@ class RustHostBackend:
         return merged
 
     def _send_startup_commands(self) -> bool:
+        self._last_lifecycle_state = "starting"
         if not self._send("voip.configure", self._config_payload()):
             return False
         if not self._send("voip.register", {}):

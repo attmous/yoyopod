@@ -576,6 +576,32 @@ def test_worker_lifecycle_failure_owns_startup_stopped_event() -> None:
     assert stopped[0].reason == "shim missing"
 
 
+def test_restart_register_error_without_lifecycle_event_reports_backend_stopped() -> None:
+    supervisor = _SingleRunningSupervisor()
+    backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
+    received: list[object] = []
+    backend.on_event(received.append)
+    backend.start()
+
+    backend.stop()
+    received.clear()
+
+    assert backend.start() is True
+    backend.handle_worker_message(
+        _reply(
+            "error",
+            "voip.error",
+            {"code": "command_failed", "message": "shim missing"},
+            request_id=supervisor.request_ids[-1],
+        )
+    )
+
+    assert backend.running is False
+    stopped = [event for event in received if isinstance(event, BackendStopped)]
+    assert len(stopped) == 1
+    assert stopped[0].reason == "voip.register command_failed: shim missing"
+
+
 def test_startup_send_failure_stops_worker_before_returning_false() -> None:
     supervisor = _RejectingStartupSupervisor("voip.register")
     backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
