@@ -475,7 +475,7 @@ def test_rust_owned_terminal_session_snapshot_releases_focus_without_python_hist
     assert app.states.get_value("call.history_unread_count") == 0
 
 
-def test_rust_owned_call_history_uses_snapshot_instead_of_python_store(
+def test_rust_owned_call_history_syncs_snapshot_to_python_store(
     tmp_path: Path,
 ) -> None:
     app = build_test_app()
@@ -513,12 +513,16 @@ def test_rust_owned_call_history_uses_snapshot_instead_of_python_store(
 
     assert app.states.get_value("call.history_unread_count") == 2
     assert app.states.get("call.history_unread_count").attrs == {"recent_preview": ["bob"]}
-    assert history_store.list_recent(1) == []
+    recent_entry = history_store.list_recent(1)[0]
+    assert recent_entry.sip_address == "sip:bob@example.com"
+    assert recent_entry.title == "bob"
+    assert recent_entry.outcome == "missed"
+    assert recent_entry.seen is False
 
-    assert app.services.call("call", "mark_history_seen", MarkHistorySeenCommand()) == 2
+    assert app.services.call("call", "mark_history_seen", MarkHistorySeenCommand()) == 0
     drain_all(app)
     assert manager.mark_history_calls == [""]
-    assert history_store.list_recent(1) == []
+    assert history_store.list_recent(1)[0].seen is True
 
 
 def test_rust_owned_terminal_session_snapshot_does_not_write_python_history(

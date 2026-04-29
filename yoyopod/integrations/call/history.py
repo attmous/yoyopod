@@ -152,6 +152,12 @@ class CallHistoryStore:
         self._entries = self._entries[: self.max_entries]
         self.save()
 
+    def replace_entries(self, entries: list[CallHistoryEntry]) -> None:
+        """Replace the mirrored history rows and persist them."""
+
+        self._entries = list(entries[: self.max_entries])
+        self.save()
+
     def list_recent(self, limit: int | None = None) -> list[CallHistoryEntry]:
         """Return recent history entries, newest first."""
 

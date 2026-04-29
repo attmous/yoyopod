@@ -368,22 +368,13 @@ pub fn handle_command(
                 .and_then(|value| value.as_str())
                 .unwrap_or("")
                 .trim();
-            if uri.is_empty() {
-                write_envelope(&WorkerEnvelope::error(
-                    "voip.error",
-                    envelope.request_id,
-                    "invalid_command",
-                    "voip.mark_call_history_seen requires uri",
-                ))?;
-            } else {
-                host.mark_call_history_seen(uri);
-                write_envelope(&WorkerEnvelope::result(
-                    "voip.mark_call_history_seen",
-                    envelope.request_id,
-                    json!({"marked_seen": true}),
-                ))?;
-                write_session_snapshot(host)?;
-            }
+            host.mark_call_history_seen(uri);
+            write_envelope(&WorkerEnvelope::result(
+                "voip.mark_call_history_seen",
+                envelope.request_id,
+                json!({"marked_seen": true}),
+            ))?;
+            write_session_snapshot(host)?;
         }
         "voip.play_voice_note" => {
             let file_path = envelope.payload["file_path"].as_str().unwrap_or("").trim();

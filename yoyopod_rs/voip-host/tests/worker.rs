@@ -194,7 +194,7 @@ fn mark_call_history_seen_command_updates_snapshot_summary() {
             request_id: Some("mark-history-1".to_string()),
             timestamp_ms: 0,
             deadline_ms: 0,
-            payload: json!({"uri": "sip:mom@example.com"}),
+            payload: json!({"uri": ""}),
         },
         &mut host,
         &mut backend,

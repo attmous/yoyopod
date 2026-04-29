@@ -28,6 +28,7 @@ from yoyopod.integrations.call.commands import (
     UnmuteCommand,
 )
 from yoyopod.integrations.call.events import CallHistoryUpdatedEvent, VoiceNoteSummaryChangedEvent
+from yoyopod.integrations.call.history import CallHistoryEntry
 from yoyopod.integrations.call.models import (
     CallState,
     RegistrationState,
@@ -142,9 +143,7 @@ def handle_call_state_changed_event(
             local_end_action=_consume_pending_terminal_action(manager),
         )
         integration.session_tracker.clear_pending_incoming_call()
-        integration.session_tracker.finalize(
-            call_duration_seconds=_call_duration_seconds(manager)
-        )
+        integration.session_tracker.finalize(call_duration_seconds=_call_duration_seconds(manager))
         publish_call_history_updated(app, integration)
         _release_focus_if_owned(app)
 
@@ -271,12 +270,10 @@ def handle_voice_note_summary_changed_event(
 
     integration.last_voice_note_unread_count = max(0, int(event.unread_count))
     integration.last_voice_note_unread_by_address = {
-        str(address): max(0, int(count))
-        for address, count in event.unread_by_address.items()
+        str(address): max(0, int(count)) for address, count in event.unread_by_address.items()
     }
     integration.last_voice_note_summary = {
-        str(address): dict(summary)
-        for address, summary in event.latest_by_contact.items()
+        str(address): dict(summary) for address, summary in event.latest_by_contact.items()
     }
 
 
@@ -383,9 +380,7 @@ def start_voice_note_recording(
     """Start recording one voice note draft."""
 
     if not isinstance(command, StartVoiceNoteRecordingCommand):
-        raise TypeError(
-            "call.start_voice_note_recording expects StartVoiceNoteRecordingCommand"
-        )
+        raise TypeError("call.start_voice_note_recording expects StartVoiceNoteRecordingCommand")
     return bool(
         integration.manager.start_voice_note_recording(
             command.recipient_address,
@@ -409,9 +404,7 @@ def cancel_voice_note_recording(
     """Cancel the active voice-note draft."""
 
     if not isinstance(command, CancelVoiceNoteRecordingCommand):
-        raise TypeError(
-            "call.cancel_voice_note_recording expects CancelVoiceNoteRecordingCommand"
-        )
+        raise TypeError("call.cancel_voice_note_recording expects CancelVoiceNoteRecordingCommand")
     return bool(integration.manager.cancel_voice_note_recording())
 
 
@@ -438,10 +431,16 @@ def mark_history_seen(app: Any, integration: Any, command: MarkHistorySeenComman
         raise TypeError("call.mark_history_seen expects MarkHistorySeenCommand")
     if _manager_owns_runtime_snapshot(integration.manager):
         mark_seen = getattr(integration.manager, "mark_call_history_seen", None)
-        if callable(mark_seen):
-            mark_seen("")
-        publish_call_history_updated(app, integration)
-        return _runtime_call_history_unread_count(integration.manager)
+        marked = bool(mark_seen("")) if callable(mark_seen) else False
+        _sync_runtime_call_history_store(integration)
+        if marked and integration.history_store is not None:
+            integration.history_store.mark_all_seen()
+        _publish_call_history_updated(
+            app,
+            0 if marked else _runtime_call_history_unread_count(integration.manager),
+            _call_history_recent_preview(integration),
+        )
+        return 0 if marked else _runtime_call_history_unread_count(integration.manager)
     if integration.history_store is None:
         publish_call_history_updated(app, integration)
         return 0
@@ -454,19 +453,20 @@ def publish_call_history_updated(app: Any, integration: Any) -> None:
     """Publish one typed history-summary update event."""
 
     if _manager_owns_runtime_snapshot(integration.manager):
+        _sync_runtime_call_history_store(integration)
         unread_count = _runtime_call_history_unread_count(integration.manager)
-        recent_preview = _runtime_call_history_preview(integration.manager)
-        app.bus.publish(
-            CallHistoryUpdatedEvent(
-                unread_count=unread_count,
-                recent_preview=recent_preview,
-            )
-        )
+        _publish_call_history_updated(app, unread_count, _call_history_recent_preview(integration))
         return
 
     history_store = integration.history_store
     unread_count = 0 if history_store is None else history_store.missed_count()
     recent_preview = () if history_store is None else tuple(history_store.recent_preview())
+    _publish_call_history_updated(app, unread_count, recent_preview)
+
+
+def _publish_call_history_updated(
+    app: Any, unread_count: int, recent_preview: tuple[str, ...]
+) -> None:
     app.bus.publish(
         CallHistoryUpdatedEvent(
             unread_count=unread_count,
@@ -582,6 +582,98 @@ def _runtime_call_history_preview(manager: Any) -> tuple[str, ...]:
     if not isinstance(raw_preview, (list, tuple)):
         return ()
     return tuple(str(value) for value in raw_preview if str(value).strip())
+
+
+def _call_history_recent_preview(integration: Any) -> tuple[str, ...]:
+    history_store = integration.history_store
+    if history_store is not None:
+        return tuple(history_store.recent_preview())
+    return _runtime_call_history_preview(integration.manager)
+
+
+def _sync_runtime_call_history_store(integration: Any) -> None:
+    history_store = integration.history_store
+    if history_store is None:
+        return
+    get_snapshot = getattr(integration.manager, "get_runtime_snapshot", None)
+    snapshot = (
+        get_snapshot()
+        if callable(get_snapshot)
+        else getattr(integration.manager, "runtime_snapshot", None)
+    )
+    if snapshot is None:
+        return
+    replace_entries = getattr(history_store, "replace_entries", None)
+    if not callable(replace_entries):
+        return
+    replace_entries(_runtime_call_history_entries(integration.manager, snapshot))
+
+
+def _runtime_call_history_entries(
+    manager: Any, snapshot: VoIPRuntimeSnapshot
+) -> list[CallHistoryEntry]:
+    entries: list[CallHistoryEntry] = []
+    for raw_entry in snapshot.recent_call_history:
+        if not isinstance(raw_entry, dict):
+            continue
+        entry = _runtime_call_history_entry(manager, raw_entry)
+        if entry is not None:
+            entries.append(entry)
+    return entries
+
+
+def _runtime_call_history_entry(
+    manager: Any, raw_entry: dict[str, object]
+) -> CallHistoryEntry | None:
+    sip_address = str(raw_entry.get("peer_sip_address", "") or "").strip()
+    if not sip_address:
+        return None
+    direction = str(raw_entry.get("direction", "") or "").strip()
+    if direction not in {"incoming", "outgoing"}:
+        direction = "incoming"
+    outcome = str(raw_entry.get("outcome", "") or "").strip()
+    if outcome not in {"missed", "completed", "cancelled", "rejected", "failed"}:
+        outcome = "failed"
+    session_id = str(raw_entry.get("session_id", "") or "").strip()
+    data = {
+        "id": session_id or sip_address,
+        "direction": direction,
+        "display_name": _session_display_name(manager, sip_address),
+        "sip_address": sip_address,
+        "outcome": outcome,
+        "duration_seconds": _duration_seconds_from_value(raw_entry.get("duration_seconds")),
+        "seen": _bool_from_value(raw_entry.get("seen", False)),
+    }
+    return CallHistoryEntry.from_dict(data)
+
+
+def _session_display_name(manager: Any, sip_address: str) -> str:
+    lookup_contact_name = getattr(manager, "_lookup_contact_name", None)
+    if callable(lookup_contact_name):
+        name = str(lookup_contact_name(sip_address) or "").strip()
+        if name:
+            return name
+    caller = _caller_info(manager)
+    if str(caller.get("address") or "").strip() == sip_address:
+        display_name = str(caller.get("display_name") or caller.get("name") or "").strip()
+        if display_name:
+            return display_name
+    return _extract_username(sip_address)
+
+
+def _duration_seconds_from_value(value: object) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _bool_from_value(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def _as_registration_state(value: object) -> RegistrationState:
