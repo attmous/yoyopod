@@ -72,11 +72,7 @@ class VoiceNoteService:
             return False
 
         self.discard_active_voice_note()
-        voice_note_dir = Path(self.config.voice_note_store_dir)
-        voice_note_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        file_name = f"voice-note-{timestamp}.wav"
-        file_path = str(voice_note_dir / file_name)
+        file_path = self.build_recording_file_path(self.config)
 
         if not self.backend.start_voice_note_recording(file_path):
             return False
@@ -313,6 +309,13 @@ class VoiceNoteService:
         if draft.message_id:
             self._message_store.update_delivery(draft.message_id, MessageDeliveryState.FAILED)
         self._notify_message_summary_change()
+
+    @staticmethod
+    def build_recording_file_path(config: VoIPConfig) -> str:
+        voice_note_dir = Path(config.voice_note_store_dir)
+        voice_note_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        return str(voice_note_dir / f"voice-note-{timestamp}.wav")
 
     @staticmethod
     def build_voice_note_playback_command(file_path: str) -> list[str]:

@@ -564,6 +564,109 @@ def test_voip_manager_does_not_persist_rust_owned_message_events_to_python_store
     assert manager._message_store.get("incoming-note-1") is None
 
 
+def test_voip_manager_derives_rust_owned_active_voice_note_from_snapshot() -> None:
+    """Rust snapshots should be enough to expose active voice-note UI state."""
+
+    backend = SnapshotOwnedMockVoIPBackend()
+    manager = VoIPManager(build_config(), backend=backend)
+
+    assert manager.start()
+    snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+        voice_note=VoIPVoiceNoteSnapshot(
+            state="recording",
+            file_path="/tmp/rust-note.wav",
+            mime_type="audio/wav",
+        ),
+    )
+    backend.runtime_snapshot = snapshot
+    backend.emit(VoIPRuntimeSnapshotChanged(snapshot=snapshot))
+
+    active = manager.get_active_voice_note()
+    assert active is not None
+    assert active.file_path == "/tmp/rust-note.wav"
+    assert active.send_state == "recording"
+    assert active.status_text == "Recording..."
+
+
+def test_voip_manager_sends_rust_owned_voice_note_without_python_message_store(
+    tmp_path: Path,
+) -> None:
+    """Rust-owned voice-note sends should not create Python message records."""
+
+    backend = SnapshotOwnedMockVoIPBackend()
+    manager = VoIPManager(build_config(tmp_path), backend=backend)
+
+    assert manager.start()
+    assert manager.start_voice_note_recording("sip:mom@example.com", recipient_name="Mom")
+    draft = manager.stop_voice_note_recording()
+    assert draft is not None
+
+    assert manager.send_active_voice_note() is True
+
+    assert backend.commands == [
+        f"record-start {draft.file_path}",
+        "record-stop",
+        f"voice-note sip:mom@example.com {Path(draft.file_path).name} 1500 audio/wav",
+    ]
+    assert manager.get_active_voice_note().send_state == "sending"
+    assert manager._message_store.get("mock-note-1") is None
+
+
+def test_voip_manager_ignores_direct_delivery_events_when_rust_owns_voice_notes(
+    tmp_path: Path,
+) -> None:
+    """Rust-owned voice-note delivery state should change only through snapshots."""
+
+    backend = SnapshotOwnedMockVoIPBackend()
+    manager = VoIPManager(build_config(tmp_path), backend=backend)
+
+    assert manager.start()
+    assert manager.start_voice_note_recording("sip:mom@example.com", recipient_name="Mom")
+    assert manager.stop_voice_note_recording() is not None
+    assert manager.send_active_voice_note() is True
+
+    backend.emit(
+        MessageDeliveryChanged(
+            message_id="mock-note-1",
+            delivery_state=MessageDeliveryState.SENT,
+            local_file_path="/tmp/rust-note.wav",
+        )
+    )
+
+    assert manager.get_active_voice_note().send_state == "sending"
+    assert manager._message_store.get("mock-note-1") is None
+
+
+def test_voip_manager_skips_python_send_timeout_when_rust_owns_voice_notes(
+    tmp_path: Path,
+) -> None:
+    """Rust runtime recovery owns stuck voice-note sends in snapshot mode."""
+
+    backend = SnapshotOwnedMockVoIPBackend()
+    manager = VoIPManager(build_config(tmp_path), backend=backend)
+
+    assert manager.start()
+    assert manager.start_voice_note_recording("sip:mom@example.com", recipient_name="Mom")
+    assert manager.stop_voice_note_recording() is not None
+    assert manager.send_active_voice_note() is True
+
+    active = manager.get_active_voice_note()
+    assert active is not None
+    active.send_started_at = time.monotonic() - 30.0
+
+    assert manager.iterate() == 0
+    assert manager.get_active_voice_note().send_state == "sending"
+    assert manager._message_store.get("mock-note-1") is None
+
+
 def test_voip_manager_derives_availability_from_rust_lifecycle_snapshots() -> None:
     """Rust lifecycle snapshots should drive recovery availability without side events."""
 

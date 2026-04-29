@@ -93,6 +93,7 @@ class VoIPManager:
             | None
         ) = None
         self._pending_terminal_action: str | None = None
+        self._rust_active_voice_note: VoiceNoteDraft | None = None
         self._message_store = message_store or self._build_message_store()
         self._messaging_service = MessagingService(
             config=self.config,
@@ -180,7 +181,8 @@ class VoIPManager:
         drained_events = 0
         if self.running:
             drained_events = self.backend.iterate()
-        self._check_active_voice_note_timeout()
+        if not self._backend_owns_runtime_snapshot():
+            self._check_active_voice_note_timeout()
         return drained_events
 
     @property
@@ -241,6 +243,8 @@ class VoIPManager:
     def poll_housekeeping(self) -> None:
         """Run lightweight coordinator-thread-only maintenance alongside background iterate."""
 
+        if self._backend_owns_runtime_snapshot():
+            return
         self._check_active_voice_note_timeout()
 
     def make_call(self, sip_address: str, contact_name: str | None = None) -> bool:
@@ -323,23 +327,40 @@ class VoIPManager:
                 self.call_state.value,
             )
             return False
+        if self._backend_owns_runtime_snapshot():
+            return self._start_rust_voice_note_recording(recipient_address, recipient_name)
         return self._voice_note_service.start_voice_note_recording(
             recipient_address, recipient_name
         )
 
     def stop_voice_note_recording(self) -> VoiceNoteDraft | None:
+        if self._backend_owns_runtime_snapshot():
+            return self._stop_rust_voice_note_recording()
         return self._voice_note_service.stop_voice_note_recording()
 
     def cancel_voice_note_recording(self) -> bool:
+        if self._backend_owns_runtime_snapshot():
+            success = self.backend.cancel_voice_note_recording()
+            self._rust_active_voice_note = None
+            return success
         return self._voice_note_service.cancel_voice_note_recording()
 
     def send_active_voice_note(self) -> bool:
+        if self._backend_owns_runtime_snapshot():
+            return self._send_rust_active_voice_note()
         return self._voice_note_service.send_active_voice_note()
 
     def get_active_voice_note(self) -> VoiceNoteDraft | None:
+        if self._backend_owns_runtime_snapshot():
+            if self._rust_active_voice_note is None:
+                self._refresh_rust_voice_note_snapshot()
+            return self._rust_active_voice_note
         return self._voice_note_service.get_active_voice_note()
 
     def discard_active_voice_note(self) -> None:
+        if self._backend_owns_runtime_snapshot():
+            self._rust_active_voice_note = None
+            return
         self._voice_note_service.discard_active_voice_note()
 
     def latest_voice_note_for_contact(self, sip_address: str) -> VoIPMessageRecord | None:
@@ -623,9 +644,9 @@ class VoIPManager:
             self._messaging_service.handle_message_received(event.message)
             return
         if isinstance(event, MessageDeliveryChanged):
-            self._voice_note_service.handle_message_delivery_changed(event)
             if self._backend_owns_runtime_snapshot():
                 return
+            self._voice_note_service.handle_message_delivery_changed(event)
             self._messaging_service.handle_message_delivery_changed(event)
             return
         if isinstance(event, MessageDownloadCompleted):
@@ -634,9 +655,9 @@ class VoIPManager:
             self._messaging_service.handle_message_download_completed(event)
             return
         if isinstance(event, MessageFailed):
-            self._voice_note_service.handle_message_failed(event)
             if self._backend_owns_runtime_snapshot():
                 return
+            self._voice_note_service.handle_message_failed(event)
             self._messaging_service.handle_message_failed(event)
 
     def _apply_runtime_snapshot(self, snapshot: VoIPRuntimeSnapshot) -> None:
@@ -652,12 +673,134 @@ class VoIPManager:
         self.is_muted = snapshot.muted
         self._update_call_state(snapshot.call_state)
         self._notify_lifecycle_availability_from_snapshot(snapshot)
-        self._voice_note_service.apply_runtime_snapshot(snapshot)
         if self._backend_owns_runtime_snapshot():
+            self._apply_rust_voice_note_snapshot(snapshot)
             self._notify_rust_message_summary_change(snapshot)
         else:
+            self._voice_note_service.apply_runtime_snapshot(snapshot)
             self._messaging_service.apply_runtime_snapshot(snapshot)
         self._notify_runtime_snapshot_change(snapshot)
+
+    def _start_rust_voice_note_recording(
+        self,
+        recipient_address: str,
+        recipient_name: str,
+    ) -> bool:
+        if not recipient_address:
+            logger.error("Cannot start voice-note recording without a recipient address")
+            return False
+
+        file_path = VoiceNoteService.build_recording_file_path(self.config)
+        if not self.backend.start_voice_note_recording(file_path):
+            return False
+
+        self._rust_active_voice_note = VoiceNoteDraft(
+            recipient_address=recipient_address,
+            recipient_name=recipient_name or self._lookup_contact_name(recipient_address),
+            file_path=file_path,
+            send_state="recording",
+            status_text="Recording...",
+        )
+        return True
+
+    def _stop_rust_voice_note_recording(self) -> VoiceNoteDraft | None:
+        draft = self.get_active_voice_note()
+        if draft is None:
+            return None
+
+        duration_ms = self.backend.stop_voice_note_recording()
+        if duration_ms is None:
+            return None
+
+        draft.duration_ms = max(0, int(duration_ms))
+        draft.send_state = "review"
+        draft.status_text = "Ready to send"
+        return draft
+
+    def _send_rust_active_voice_note(self) -> bool:
+        draft = self.get_active_voice_note()
+        if draft is None:
+            return False
+        if not draft.recipient_address:
+            logger.error("Cannot send Rust-owned voice note without a recipient address")
+            return False
+
+        draft.send_state = "sending"
+        draft.status_text = "Sending..."
+        draft.send_started_at = time.monotonic()
+        message_id = self.backend.send_voice_note(
+            draft.recipient_address,
+            file_path=draft.file_path,
+            duration_ms=draft.duration_ms,
+            mime_type=draft.mime_type,
+        )
+        if not message_id:
+            draft.send_state = "failed"
+            draft.status_text = "Couldn't send"
+            draft.send_started_at = 0.0
+            return False
+
+        draft.message_id = message_id
+        return True
+
+    def _refresh_rust_voice_note_snapshot(self) -> None:
+        get_snapshot = getattr(self.backend, "get_runtime_snapshot", None)
+        if not callable(get_snapshot):
+            return
+        snapshot = cast(VoIPRuntimeSnapshot | None, get_snapshot())
+        if snapshot is None:
+            return
+        self._runtime_snapshot = snapshot
+        self._apply_rust_voice_note_snapshot(snapshot)
+
+    def _apply_rust_voice_note_snapshot(self, snapshot: VoIPRuntimeSnapshot) -> None:
+        voice_note = snapshot.voice_note
+        state = voice_note.state.strip().lower() or "idle"
+        if state == "idle":
+            return
+
+        draft = self._rust_active_voice_note
+        if draft is None:
+            draft = VoiceNoteDraft(
+                recipient_address="",
+                recipient_name="",
+                file_path=voice_note.file_path,
+                mime_type=voice_note.mime_type or "audio/wav",
+            )
+            self._rust_active_voice_note = draft
+
+        if voice_note.file_path:
+            draft.file_path = voice_note.file_path
+        if voice_note.duration_ms > 0:
+            draft.duration_ms = voice_note.duration_ms
+        if voice_note.mime_type:
+            draft.mime_type = voice_note.mime_type
+        if voice_note.message_id:
+            draft.message_id = voice_note.message_id
+
+        if state == "recording":
+            draft.send_state = "recording"
+            draft.status_text = "Recording..."
+            return
+        if state == "recorded":
+            draft.send_state = "review"
+            draft.status_text = "Ready to send"
+            return
+        if state == "sending":
+            draft.send_state = "sending"
+            draft.status_text = "Sending..."
+            if draft.send_started_at <= 0.0:
+                draft.send_started_at = time.monotonic()
+            return
+        if state == "sent":
+            draft.send_state = "sent"
+            draft.status_text = "Sent"
+            draft.send_started_at = 0.0
+            return
+        if state == "failed":
+            draft.send_state = "failed"
+            draft.status_text = _snapshot_failure_text(snapshot)
+            draft.send_started_at = 0.0
 
     def _notify_rust_message_summary_change(self, snapshot: VoIPRuntimeSnapshot) -> None:
         summary = {
