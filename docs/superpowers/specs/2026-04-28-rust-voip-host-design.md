@@ -275,8 +275,8 @@ exact commit being tested.
 
 Required CI additions:
 
-- `cargo fmt --manifest-path src/Cargo.toml`
-- `cargo test --manifest-path src/Cargo.toml --workspace --locked`
+- `cargo fmt --manifest-path yoyopod_rs/Cargo.toml`
+- `cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked`
 - `cargo build --release -p yoyopod-voip-host --locked`
 - upload `yoyopod-voip-host-<sha>`
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 CI_YML = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
 REPO_ROOT = CI_YML.parents[2]
-RUST_UI_LOCK = REPO_ROOT / "src" / "Cargo.lock"
+RUST_UI_LOCK = REPO_ROOT / "yoyopod_rs" / "Cargo.lock"
 
 
 def test_slot_arm64_change_detector_matches_python_release_builder() -> None:
@@ -27,9 +27,9 @@ def test_rust_ui_ci_builds_arm64_binary_artifact() -> None:
     workflow = CI_YML.read_text(encoding="utf-8")
 
     assert "runs-on: ubuntu-24.04-arm" in workflow
-    assert "working-directory: src" in workflow
+    assert "working-directory: yoyopod_rs" in workflow
     assert "bazelbuild/setup-bazelisk" in workflow
-    assert "bazel test //src/ui-host/... //src/voip-host/..." in workflow
+    assert "bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/voip-host/..." in workflow
     assert "cargo test --workspace --locked --features whisplay-hardware" in workflow
     assert (
         "cargo build --release -p yoyopod-ui-host --features whisplay-hardware --locked"
@@ -37,20 +37,20 @@ def test_rust_ui_ci_builds_arm64_binary_artifact() -> None:
     )
     assert "uses: actions/upload-artifact@v4" in workflow
     assert "name: yoyopod-ui-host-${{ github.sha }}" in workflow
-    assert "src/ui-host/build/yoyopod-ui-host" in workflow
-    assert "src/voip-host/build/yoyopod-voip-host" in workflow
+    assert "yoyopod_rs/ui-host/build/yoyopod-ui-host" in workflow
+    assert "yoyopod_rs/voip-host/build/yoyopod-voip-host" in workflow
 
 
 def test_rust_bazel_feature_folder_layout_is_checked_in() -> None:
     assert (REPO_ROOT / "MODULE.bazel").exists()
     assert (REPO_ROOT / "BUILD.bazel").exists()
     assert (REPO_ROOT / "defs.bzl").exists()
-    assert (REPO_ROOT / "src" / "BUILD.bazel").exists()
-    assert (REPO_ROOT / "src" / "ui-host" / "BUILD.bazel").exists()
-    assert (REPO_ROOT / "src" / "ui-host" / "tests" / "README.md").exists()
-    assert (REPO_ROOT / "src" / "voip-host" / "BUILD.bazel").exists()
-    assert (REPO_ROOT / "src" / "voip-host" / "tests" / "README.md").exists()
-    assert not (REPO_ROOT / "src" / "crates").exists()
+    assert (REPO_ROOT / "yoyopod_rs" / "BUILD.bazel").exists()
+    assert (REPO_ROOT / "yoyopod_rs" / "ui-host" / "BUILD.bazel").exists()
+    assert (REPO_ROOT / "yoyopod_rs" / "ui-host" / "tests" / "README.md").exists()
+    assert (REPO_ROOT / "yoyopod_rs" / "voip-host" / "BUILD.bazel").exists()
+    assert (REPO_ROOT / "yoyopod_rs" / "voip-host" / "tests" / "README.md").exists()
+    assert not (REPO_ROOT / "yoyopod_rs" / "crates").exists()
 
 
 def test_rust_ui_worker_lockfile_is_committable_for_locked_ci_builds() -> None:

@@ -130,14 +130,14 @@ jobs:
         uses: bazelbuild/setup-bazelisk@v3
 
       - name: Run Bazel Rust host tests
-        run: bazel test //src/ui-host/... //src/voip-host/...
+        run: bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/voip-host/...
 
       - name: Run Rust UI host tests
-        working-directory: src
+        working-directory: yoyopod_rs
         run: cargo test --workspace --locked --features whisplay-hardware
 
       - name: Build Rust UI Whisplay host
-        working-directory: src
+        working-directory: yoyopod_rs
         run: |
           set -euo pipefail
           cargo build --release -p yoyopod-ui-host --features whisplay-hardware --locked
@@ -148,11 +148,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: yoyopod-ui-host-${{ github.sha }}
-          path: src/ui-host/build/yoyopod-ui-host
+          path: yoyopod_rs/ui-host/build/yoyopod-ui-host
           if-no-files-found: error
 
       - name: Build Rust VoIP host
-        working-directory: src
+        working-directory: yoyopod_rs
         run: |
           set -euo pipefail
           cargo build --release -p yoyopod-voip-host --locked
@@ -163,7 +163,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: yoyopod-voip-host-${{ github.sha }}
-          path: src/voip-host/build/yoyopod-voip-host
+          path: yoyopod_rs/voip-host/build/yoyopod-voip-host
           if-no-files-found: error
 
   slot-arm64:

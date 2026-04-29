@@ -39,7 +39,7 @@ yoyopod-ui-host-<sha>
 It contains the ARM64 Linux binary that should be installed at:
 
 ```bash
-/opt/yoyopod-dev/checkout/src/ui-host/build/yoyopod-ui-host
+/opt/yoyopod-dev/checkout/yoyopod_rs/ui-host/build/yoyopod-ui-host
 ```
 
 Do not build `yoyopod-ui-host` on the Raspberry Pi Zero 2W.
@@ -55,7 +55,7 @@ yoyopod-voip-host-<sha>
 Install it at:
 
 ```bash
-/opt/yoyopod-dev/checkout/src/voip-host/build/yoyopod-voip-host
+/opt/yoyopod-dev/checkout/yoyopod_rs/voip-host/build/yoyopod-voip-host
 ```
 
 Do not build `yoyopod-voip-host` on the Raspberry Pi Zero 2W.
@@ -106,16 +106,16 @@ Do not build `yoyopod-voip-host` on the Raspberry Pi Zero 2W.
 7. **Install the CI-built Rust binary on the Pi.**
 
    ```bash
-   ssh <user>@<host> 'mkdir -p /opt/yoyopod-dev/checkout/src/ui-host/build'
-   scp .artifacts/rust-ui/<sha>/yoyopod-ui-host <user>@<host>:/opt/yoyopod-dev/checkout/src/ui-host/build/yoyopod-ui-host
-   ssh <user>@<host> 'chmod +x /opt/yoyopod-dev/checkout/src/ui-host/build/yoyopod-ui-host'
+   ssh <user>@<host> 'mkdir -p /opt/yoyopod-dev/checkout/yoyopod_rs/ui-host/build'
+   scp .artifacts/rust-ui/<sha>/yoyopod-ui-host <user>@<host>:/opt/yoyopod-dev/checkout/yoyopod_rs/ui-host/build/yoyopod-ui-host
+   ssh <user>@<host> 'chmod +x /opt/yoyopod-dev/checkout/yoyopod_rs/ui-host/build/yoyopod-ui-host'
    ```
 
 8. **Run the Rust UI hardware command from the Pi checkout.** For Whisplay hub
    validation:
 
    ```bash
-   ssh <user>@<host> 'cd /opt/yoyopod-dev/checkout && YOYOPOD_WHISPLAY_DC_GPIO=27 YOYOPOD_WHISPLAY_RESET_GPIO=4 YOYOPOD_WHISPLAY_BUTTON_GPIO=17 YOYOPOD_WHISPLAY_BUTTON_ACTIVE_LOW=0 LD_LIBRARY_PATH=/opt/yoyopod-dev/checkout/yoyopod/ui/lvgl_binding/native/build/lvgl/lib:/opt/yoyopod-dev/checkout/yoyopod/ui/lvgl_binding/native/build:$LD_LIBRARY_PATH /opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main pi rust-ui-host --worker src/ui-host/build/yoyopod-ui-host --screen hub --hub-renderer lvgl --frames 1'
+   ssh <user>@<host> 'cd /opt/yoyopod-dev/checkout && YOYOPOD_WHISPLAY_DC_GPIO=27 YOYOPOD_WHISPLAY_RESET_GPIO=4 YOYOPOD_WHISPLAY_BUTTON_GPIO=17 YOYOPOD_WHISPLAY_BUTTON_ACTIVE_LOW=0 LD_LIBRARY_PATH=/opt/yoyopod-dev/checkout/yoyopod/ui/lvgl_binding/native/build/lvgl/lib:/opt/yoyopod-dev/checkout/yoyopod/ui/lvgl_binding/native/build:$LD_LIBRARY_PATH /opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main pi rust-ui-host --worker yoyopod_rs/ui-host/build/yoyopod-ui-host --screen hub --hub-renderer lvgl --frames 1'
    ```
 
 9. **Report exact provenance.** Include the branch, commit SHA, CI run ID,

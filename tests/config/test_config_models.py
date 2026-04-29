@@ -56,7 +56,7 @@ def test_app_shell_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> None
     assert settings.display.rust_ui_sidecar_enabled is False
     assert (
         settings.display.rust_ui_worker
-        == "src/ui-host/build/yoyopod-ui-host"
+        == "yoyopod_rs/ui-host/build/yoyopod-ui-host"
     )
     assert settings.logging.file == "logs/yoyopod.log"
     assert settings.logging.error_file == "logs/yoyopod_errors.log"

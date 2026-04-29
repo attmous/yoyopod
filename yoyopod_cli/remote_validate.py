@@ -21,7 +21,7 @@ from yoyopod_cli.remote_transport import (
 
 app = build_remote_app("validate_app", "Validate commit + health on the Pi.")
 
-_RUST_UI_HOST_WORKER = "src/ui-host/build/yoyopod-ui-host"
+_RUST_UI_HOST_WORKER = "yoyopod_rs/ui-host/build/yoyopod-ui-host"
 _RUST_UI_POC_WORKER = _RUST_UI_HOST_WORKER
 
 

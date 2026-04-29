@@ -45,7 +45,7 @@ def _rust_voip_host_worker_path() -> str:
 
     return os.environ.get(
         "YOYOPOD_RUST_VOIP_HOST_WORKER",
-        "src/voip-host/build/yoyopod-voip-host",
+        "yoyopod_rs/voip-host/build/yoyopod-voip-host",
     ).strip()
 
 

@@ -29,17 +29,17 @@ uv run pytest -q
 - For Rust changes, also run the relevant Cargo commands from the new top-level Rust workspace:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml --workspace --locked
-cargo test --manifest-path src/Cargo.toml --workspace --features whisplay-hardware --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --features whisplay-hardware --locked
 ```
 
 ## File Structure
 
 Create or modify these files during the full implementation:
 
-- Create: `src/Cargo.toml` - production Rust workspace root.
-- Move: `workers/ui/rust/Cargo.lock` -> `src/Cargo.lock`.
+- Create: `yoyopod_rs/Cargo.toml` - production Rust workspace root.
+- Move: `workers/ui/rust/Cargo.lock` -> `yoyopod_rs/Cargo.lock`.
 - Move: `workers/ui/rust/Cargo.toml` -> `src/crates/ui-host/Cargo.toml`.
 - Move: `workers/ui/rust/src/**` -> `src/crates/ui-host/src/**`.
 - Modify: `.github/workflows/ci.yml` - build/test/upload `yoyopod-ui-host` from `src/`.
@@ -76,8 +76,8 @@ Create or modify these files during the full implementation:
 ## Task 1: Move Rust UI Source To `src/` And Rename The Crate
 
 **Files:**
-- Create: `src/Cargo.toml`
-- Move: `workers/ui/rust/Cargo.lock` -> `src/Cargo.lock`
+- Create: `yoyopod_rs/Cargo.toml`
+- Move: `workers/ui/rust/Cargo.lock` -> `yoyopod_rs/Cargo.lock`
 - Move: `workers/ui/rust/Cargo.toml` -> `src/crates/ui-host/Cargo.toml`
 - Move: `workers/ui/rust/src/**` -> `src/crates/ui-host/src/**`
 - Modify: `src/crates/ui-host/Cargo.toml`
@@ -92,7 +92,7 @@ rg --files workers/ui/rust
 Test-Path src
 ```
 
-Expected: Rust UI sources are under `workers/ui/rust`; `src/Cargo.toml` does not exist before this task starts.
+Expected: Rust UI sources are under `workers/ui/rust`; `yoyopod_rs/Cargo.toml` does not exist before this task starts.
 
 - [ ] **Step 2: Move the crate with Git tracking**
 
@@ -101,7 +101,7 @@ Run from the repo root:
 ```bash
 New-Item -ItemType Directory -Force src/crates/ui-host
 git mv workers/ui/rust/Cargo.toml src/crates/ui-host/Cargo.toml
-git mv workers/ui/rust/Cargo.lock src/Cargo.lock
+git mv workers/ui/rust/Cargo.lock yoyopod_rs/Cargo.lock
 git mv workers/ui/rust/src src/crates/ui-host/src
 ```
 
@@ -116,7 +116,7 @@ Expected: `git status --short` shows renames or deletes/adds for the Rust crate 
 
 - [ ] **Step 3: Create the top-level Rust workspace manifest**
 
-Create `src/Cargo.toml`:
+Create `yoyopod_rs/Cargo.toml`:
 
 ```toml
 [workspace]
@@ -183,19 +183,19 @@ with:
 Run:
 
 ```bash
-cargo generate-lockfile --manifest-path src/Cargo.toml
+cargo generate-lockfile --manifest-path yoyopod_rs/Cargo.toml
 ```
 
-Expected: `src/Cargo.lock` references `name = "yoyopod-ui-host"` and not `name = "yoyopod-rust-ui-poc"`.
+Expected: `yoyopod_rs/Cargo.lock` references `name = "yoyopod-ui-host"` and not `name = "yoyopod-rust-ui-poc"`.
 
 - [ ] **Step 7: Run Rust formatting and tests from the new workspace**
 
 Run:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml --workspace --locked
-cargo test --manifest-path src/Cargo.toml --workspace --features whisplay-hardware --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --features whisplay-hardware --locked
 ```
 
 Expected: all Rust tests pass from the new `src/` workspace.
@@ -425,11 +425,11 @@ In `.github/workflows/ci.yml`, change the `ui-rust` job:
 
 ```yaml
       - name: Run Rust UI host tests
-        working-directory: src
+        working-directory: yoyopod_rs
         run: cargo test --workspace --locked --features whisplay-hardware
 
       - name: Build Rust UI Whisplay host
-        working-directory: src
+        working-directory: yoyopod_rs
         run: |
           set -euo pipefail
           cargo build --release -p yoyopod-ui-host --features whisplay-hardware --locked
@@ -573,9 +573,9 @@ Expected: `yoyopod_cli/COMMANDS.md` includes `yoyopod build rust-ui-host` and `y
 Run:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml --workspace --locked
-cargo test --manifest-path src/Cargo.toml --workspace --features whisplay-hardware --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --features whisplay-hardware --locked
 uv run python scripts/quality.py gate
 uv run pytest -q
 ```
@@ -1546,7 +1546,7 @@ mod tests {
 Run:
 
 ```bash
-cargo test --manifest-path src/Cargo.toml -p yoyopod-ui-host runtime::state_machine
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui-host runtime::state_machine
 ```
 
 Expected: fails until `RecentTracks`, `Talk`, `Contacts`, `CallHistory`, and `VoiceNote` screen variants and view models exist.
@@ -1715,10 +1715,10 @@ impl ListItemSnapshot {
 Run:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml -p yoyopod-ui-host runtime::state_machine
-cargo test --manifest-path src/Cargo.toml --workspace --locked
-cargo test --manifest-path src/Cargo.toml --workspace --features whisplay-hardware --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui-host runtime::state_machine
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --features whisplay-hardware --locked
 ```
 
 Expected: Rust UI state-machine tests pass and no Rust file grows into a large mixed-responsibility module.
@@ -1782,7 +1782,7 @@ mod tests {
 Run:
 
 ```bash
-cargo test --manifest-path src/Cargo.toml -p yoyopod-ui-host render::lvgl
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui-host render::lvgl
 ```
 
 Expected: fails until renderer module and types exist.
@@ -1917,10 +1917,10 @@ LVGL runtime renderer unavailable; using framebuffer diagnostic renderer
 Run:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml -p yoyopod-ui-host render::lvgl
-cargo test --manifest-path src/Cargo.toml --workspace --locked
-cargo test --manifest-path src/Cargo.toml --workspace --features whisplay-hardware --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui-host render::lvgl
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --features whisplay-hardware --locked
 ```
 
 Expected: renderer tests pass; no per-render LVGL init/shutdown remains in the hot render path.
@@ -2093,9 +2093,9 @@ Expected: reviewers can see that the Rust UI Host path was validated on Whisplay
 Run locally:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml --workspace --locked
-cargo test --manifest-path src/Cargo.toml --workspace --features whisplay-hardware --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --features whisplay-hardware --locked
 uv run python scripts/quality.py gate
 uv run pytest -q
 ```

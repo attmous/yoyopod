@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-RUST_UI_MANIFEST = Path("src/Cargo.toml")
+RUST_UI_MANIFEST = Path("yoyopod_rs/Cargo.toml")
 
 
 def test_rust_ui_worker_mock_contract() -> None:

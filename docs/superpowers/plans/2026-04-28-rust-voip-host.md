@@ -39,13 +39,13 @@ uv run pytest -q
 - For Rust changes also run:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml --workspace --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
 ```
 
 ## File Structure
 
-- Modify: `src/Cargo.toml` - add `crates/voip-host`.
+- Modify: `yoyopod_rs/Cargo.toml` - add `crates/voip-host`.
 - Create: `src/crates/voip-host/Cargo.toml` - Rust VoIP Host crate manifest.
 - Create: `src/crates/voip-host/src/main.rs` - process entrypoint and stdin/stdout loop.
 - Create: `src/crates/voip-host/src/protocol.rs` - worker envelope, commands, events.
@@ -63,7 +63,7 @@ cargo test --manifest-path src/Cargo.toml --workspace --locked
 ## Task 1: Add Rust VoIP Host Crate Skeleton
 
 **Files:**
-- Modify: `src/Cargo.toml`
+- Modify: `yoyopod_rs/Cargo.toml`
 - Create: `src/crates/voip-host/Cargo.toml`
 - Create: `src/crates/voip-host/src/main.rs`
 - Create: `src/crates/voip-host/src/protocol.rs`
@@ -163,14 +163,14 @@ mod tests {
 Run:
 
 ```bash
-cargo test --manifest-path src/Cargo.toml -p yoyopod-voip-host protocol
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip-host protocol
 ```
 
 Expected: fails because the crate is not in the workspace yet.
 
 - [ ] **Step 2: Add the crate manifest**
 
-Append the crate to `src/Cargo.toml`:
+Append the crate to `yoyopod_rs/Cargo.toml`:
 
 ```toml
 [workspace]
@@ -374,9 +374,9 @@ fn write_envelope(envelope: &WorkerEnvelope) -> Result<()> {
 Run:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml -p yoyopod-voip-host --locked
-cargo test --manifest-path src/Cargo.toml --workspace --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip-host --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
 ```
 
 Expected: new protocol tests pass and existing UI host tests still pass.
@@ -555,7 +555,7 @@ mod tests {
 Run:
 
 ```bash
-cargo test --manifest-path src/Cargo.toml -p yoyopod-voip-host config
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip-host config
 ```
 
 Expected: passes after `mod config;` is added in `main.rs`.
@@ -701,7 +701,7 @@ mod tests {
 Run:
 
 ```bash
-cargo test --manifest-path src/Cargo.toml -p yoyopod-voip-host events
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip-host events
 ```
 
 Expected: event mapping tests pass.
@@ -776,7 +776,7 @@ mod tests {
 Run:
 
 ```bash
-cargo test --manifest-path src/Cargo.toml -p yoyopod-voip-host host
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip-host host
 ```
 
 Expected: host state test passes after adding `mod host;`.
@@ -831,9 +831,9 @@ match envelope.message_type.as_str() {
 Run:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml -p yoyopod-voip-host --locked
-cargo test --manifest-path src/Cargo.toml --workspace --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip-host --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
 uv run python scripts/quality.py gate
 uv run pytest -q
 ```
@@ -935,7 +935,7 @@ mod tests {
 Run:
 
 ```bash
-cargo test --manifest-path src/Cargo.toml -p yoyopod-voip-host shim
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip-host shim
 ```
 
 Expected: fails until `mod shim;` is added.
@@ -1107,9 +1107,9 @@ Pass `explicit_shim_path.as_deref()` into host registration in Task 4.
 Run:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml -p yoyopod-voip-host --locked
-cargo test --manifest-path src/Cargo.toml --workspace --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip-host --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
 uv run python scripts/quality.py gate
 uv run pytest -q
 ```
@@ -1238,7 +1238,7 @@ mod command_tests {
 Run:
 
 ```bash
-cargo test --manifest-path src/Cargo.toml -p yoyopod-voip-host host::command_tests
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip-host host::command_tests
 ```
 
 Expected: fails until command methods exist.
@@ -1542,9 +1542,9 @@ The implementation plan for the next slice can replace command-coupled iterate w
 Run:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml -p yoyopod-voip-host --locked
-cargo test --manifest-path src/Cargo.toml --workspace --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip-host --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
 uv run python scripts/quality.py gate
 uv run pytest -q
 ```
@@ -2109,7 +2109,7 @@ In `.github/workflows/ci.yml`, extend the Rust job after UI host build:
 
 ```yaml
       - name: Build Rust VoIP host
-        working-directory: src
+        working-directory: yoyopod_rs
         run: |
           set -euo pipefail
           cargo build --release -p yoyopod-voip-host --locked
@@ -2161,8 +2161,8 @@ In `docs/hardware/DEPLOYED_PI_DEPENDENCIES.md`, add a bullet under native/runtim
 Run:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml --workspace --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
 uv run python scripts/quality.py gate
 uv run pytest -q
 ```
@@ -2187,8 +2187,8 @@ Expected: CI will build and upload both UI and VoIP Rust host artifacts.
 Run:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml --workspace --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
 uv run python scripts/quality.py gate
 uv run pytest -q
 ```
@@ -2303,8 +2303,8 @@ Expected: reviewer can verify the exact Rust binary tested on hardware.
 Run locally:
 
 ```bash
-cargo fmt --manifest-path src/Cargo.toml
-cargo test --manifest-path src/Cargo.toml --workspace --locked
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
 uv run python scripts/quality.py gate
 uv run pytest -q
 ```

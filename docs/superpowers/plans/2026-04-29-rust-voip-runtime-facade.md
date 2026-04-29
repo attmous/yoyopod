@@ -104,8 +104,8 @@ Note: the Rust host implementation and tests already satisfied this task in the 
 - Modify docs only if the runtime contract changes beyond current docs.
 
 - [x] Run focused Python tests after each task.
-- [x] Run `cargo fmt --manifest-path src/Cargo.toml --all --check`.
-- [x] Run `cargo test --manifest-path src/Cargo.toml --workspace --locked`.
+- [x] Run `cargo fmt --manifest-path yoyopod_rs/Cargo.toml --all --check`.
+- [x] Run `cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked`.
 - [x] Run `uv run python scripts/quality.py gate`.
 - [x] Run `uv run pytest -q`.
 - [ ] Commit and push once the full gate passes.

@@ -223,7 +223,7 @@ Whisplay UI should use LVGL unless a later measured decision replaces it.
 
 - Move Rust source of truth from `workers/ui/rust/` to
   `src/crates/ui-host/`.
-- Add top-level `src/Cargo.toml` workspace.
+- Add top-level `yoyopod_rs/Cargo.toml` workspace.
 - Rename the crate and binary to `yoyopod-ui-host`.
 - Update CI to build and upload `yoyopod-ui-host-<sha>`.
 - Update docs and config defaults to the new binary path.

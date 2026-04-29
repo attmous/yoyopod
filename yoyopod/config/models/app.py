@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from yoyopod.config.models.core import config_value
 from yoyopod.config.models.power import PimoroniGpioConfig, PimoroniGpioInputConfig
 
-_RUST_UI_HOST_DEFAULT_WORKER = "src/ui-host/build/yoyopod-ui-host"
+_RUST_UI_HOST_DEFAULT_WORKER = "yoyopod_rs/ui-host/build/yoyopod-ui-host"
 
 
 @dataclass(slots=True)

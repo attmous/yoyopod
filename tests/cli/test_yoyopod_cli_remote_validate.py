@@ -88,11 +88,11 @@ def test_build_validate_with_rust_ui_poc() -> None:
     )
 
     assert "build rust-ui-poc" not in shell
-    assert "test -x src/ui-host/build/yoyopod-ui-host" in shell
+    assert "test -x yoyopod_rs/ui-host/build/yoyopod-ui-host" in shell
     assert "CI-built Rust UI artifact" in shell
     assert (
         "venv/bin/python -m yoyopod_cli.main pi rust-ui-host "
-        "--worker src/ui-host/build/yoyopod-ui-host"
+        "--worker yoyopod_rs/ui-host/build/yoyopod-ui-host"
     ) in shell
 
 
@@ -112,10 +112,10 @@ def test_build_validate_with_rust_ui_host() -> None:
     )
 
     assert "build rust-ui-host" not in shell
-    assert "test -x src/ui-host/build/yoyopod-ui-host" in shell
+    assert "test -x yoyopod_rs/ui-host/build/yoyopod-ui-host" in shell
     assert (
         "venv/bin/python -m yoyopod_cli.main pi rust-ui-host "
-        "--worker src/ui-host/build/yoyopod-ui-host"
+        "--worker yoyopod_rs/ui-host/build/yoyopod-ui-host"
     ) in shell
 
 

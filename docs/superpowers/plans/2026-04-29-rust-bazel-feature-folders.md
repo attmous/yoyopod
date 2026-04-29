@@ -34,8 +34,8 @@ src/crates/voip-host/build/yoyopod-voip-host
 with:
 
 ```text
-src/ui-host/build/yoyopod-ui-host
-src/voip-host/build/yoyopod-voip-host
+yoyopod_rs/ui-host/build/yoyopod-ui-host
+yoyopod_rs/voip-host/build/yoyopod-voip-host
 ```
 
 - [ ] **Step 2: Add CI assertions for Bazel**
@@ -44,9 +44,9 @@ In `tests/deploy/test_ci_workflows.py`, assert the workflow contains:
 
 ```python
 assert "bazelbuild/setup-bazelisk" in workflow
-assert "bazel test //src/ui-host/... //src/voip-host/..." in workflow
-assert "src/ui-host/build/yoyopod-ui-host" in workflow
-assert "src/voip-host/build/yoyopod-voip-host" in workflow
+assert "bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/voip-host/..." in workflow
+assert "yoyopod_rs/ui-host/build/yoyopod-ui-host" in workflow
+assert "yoyopod_rs/voip-host/build/yoyopod-voip-host" in workflow
 ```
 
 - [ ] **Step 3: Add layout assertions**
@@ -78,19 +78,19 @@ Expected: FAIL because paths and Bazel files have not moved yet.
 ### Task 2: Move Rust Feature Folders
 
 **Files:**
-- Move: `src/crates/ui-host/` -> `src/ui-host/`
-- Move: `src/crates/voip-host/` -> `src/voip-host/`
-- Modify: `src/Cargo.toml`
-- Create: `src/ui-host/tests/README.md`
-- Create: `src/voip-host/tests/README.md`
+- Move: `src/crates/ui-host/` -> `yoyopod_rs/ui-host/`
+- Move: `src/crates/voip-host/` -> `yoyopod_rs/voip-host/`
+- Modify: `yoyopod_rs/Cargo.toml`
+- Create: `yoyopod_rs/ui-host/tests/README.md`
+- Create: `yoyopod_rs/voip-host/tests/README.md`
 
 - [ ] **Step 1: Move the feature folders with git**
 
 Run:
 
 ```text
-git mv src/crates/ui-host src/ui-host
-git mv src/crates/voip-host src/voip-host
+git mv src/crates/ui-host yoyopod_rs/ui-host
+git mv src/crates/voip-host yoyopod_rs/voip-host
 ```
 
 - [ ] **Step 2: Remove the empty `src/crates` directory**
@@ -99,7 +99,7 @@ If the directory remains empty after `git mv`, remove it.
 
 - [ ] **Step 3: Update Cargo workspace members**
 
-Set `src/Cargo.toml` to:
+Set `yoyopod_rs/Cargo.toml` to:
 
 ```toml
 [workspace]
@@ -112,7 +112,7 @@ members = [
 
 - [ ] **Step 4: Add integration-test homes**
 
-Create `src/ui-host/tests/README.md`:
+Create `yoyopod_rs/ui-host/tests/README.md`:
 
 ```markdown
 # UI Host Integration Tests
@@ -122,7 +122,7 @@ that exercise private module details may remain inline beside the source they
 cover.
 ```
 
-Create `src/voip-host/tests/README.md`:
+Create `yoyopod_rs/voip-host/tests/README.md`:
 
 ```markdown
 # VoIP Host Integration Tests
@@ -138,15 +138,15 @@ cover.
 - Create: `MODULE.bazel`
 - Create: `BUILD.bazel`
 - Create: `defs.bzl`
-- Create: `src/BUILD.bazel`
-- Create: `src/ui-host/BUILD.bazel`
-- Create: `src/voip-host/BUILD.bazel`
+- Create: `yoyopod_rs/BUILD.bazel`
+- Create: `yoyopod_rs/ui-host/BUILD.bazel`
+- Create: `yoyopod_rs/voip-host/BUILD.bazel`
 
 - [ ] **Step 1: Add root Bazel module**
 
 Create `MODULE.bazel` with `rules_rust` Bzlmod setup, a stable Rust toolchain
-matching the CI/toolchain reality, and crate universe reading `src/Cargo.toml`
-plus `src/Cargo.lock`.
+matching the CI/toolchain reality, and crate universe reading `yoyopod_rs/Cargo.toml`
+plus `yoyopod_rs/Cargo.lock`.
 
 - [ ] **Step 2: Add root package marker**
 
@@ -179,18 +179,18 @@ actual `rules_rust` crate universe output.
 
 - [ ] **Step 4: Add feature BUILD files**
 
-`src/ui-host/BUILD.bazel` should expose:
+`yoyopod_rs/ui-host/BUILD.bazel` should expose:
 
 ```text
-//src/ui-host:yoyopod-ui-host
-//src/ui-host:tests
+//yoyopod_rs/ui-host:yoyopod-ui-host
+//yoyopod_rs/ui-host:tests
 ```
 
-`src/voip-host/BUILD.bazel` should expose:
+`yoyopod_rs/voip-host/BUILD.bazel` should expose:
 
 ```text
-//src/voip-host:yoyopod-voip-host
-//src/voip-host:tests
+//yoyopod_rs/voip-host:yoyopod-voip-host
+//yoyopod_rs/voip-host:tests
 ```
 
 ### Task 4: Update Runtime Paths, CI, Docs, And Skills
@@ -219,8 +219,8 @@ src/crates/voip-host/build/yoyopod-voip-host
 with:
 
 ```text
-src/ui-host/build/yoyopod-ui-host
-src/voip-host/build/yoyopod-voip-host
+yoyopod_rs/ui-host/build/yoyopod-ui-host
+yoyopod_rs/voip-host/build/yoyopod-voip-host
 ```
 
 - [ ] **Step 2: Update Rust UI local build helper**
@@ -251,8 +251,8 @@ voip-host/build
 and upload:
 
 ```text
-src/ui-host/build/yoyopod-ui-host
-src/voip-host/build/yoyopod-voip-host
+yoyopod_rs/ui-host/build/yoyopod-ui-host
+yoyopod_rs/voip-host/build/yoyopod-voip-host
 ```
 
 - [ ] **Step 5: Add CI Bazel validation**
@@ -260,7 +260,7 @@ src/voip-host/build/yoyopod-voip-host
 Add a Bazelisk setup step and:
 
 ```text
-bazel test //src/ui-host/... //src/voip-host/...
+bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/voip-host/...
 ```
 
 ### Task 5: Verify And Commit
@@ -273,7 +273,7 @@ bazel test //src/ui-host/... //src/voip-host/...
 Run:
 
 ```text
-cargo fmt --manifest-path src/Cargo.toml --all --check
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml --all --check
 ```
 
 Expected: PASS.
@@ -283,7 +283,7 @@ Expected: PASS.
 Run:
 
 ```text
-cargo test --manifest-path src/Cargo.toml --workspace --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
 ```
 
 Expected: PASS.
@@ -293,7 +293,7 @@ Expected: PASS.
 Run:
 
 ```text
-bazel test //src/ui-host/... //src/voip-host/...
+bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/voip-host/...
 ```
 
 If local Windows Bazel is unavailable, use Bazelisk. Expected: PASS locally or

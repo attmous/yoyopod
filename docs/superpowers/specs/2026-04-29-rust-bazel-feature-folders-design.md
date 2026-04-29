@@ -106,8 +106,8 @@ src/
 Meaning:
 
 - `src/` remains the Rust workspace root.
-- `src/ui-host/` is the production Rust UI host feature folder.
-- `src/voip-host/` is the production Rust VoIP host feature folder.
+- `yoyopod_rs/ui-host/` is the production Rust UI host feature folder.
+- `yoyopod_rs/voip-host/` is the production Rust VoIP host feature folder.
 - Each feature folder owns its own Cargo manifest, Bazel target file, source
   tree, and external integration-test home.
 - Existing inline Rust unit tests may remain beside the modules they test.
@@ -131,11 +131,11 @@ src/
 Move the current crates with `git mv`:
 
 ```text
-src/crates/ui-host/   -> src/ui-host/
-src/crates/voip-host/ -> src/voip-host/
+src/crates/ui-host/   -> yoyopod_rs/ui-host/
+src/crates/voip-host/ -> yoyopod_rs/voip-host/
 ```
 
-Update `src/Cargo.toml` workspace members:
+Update `yoyopod_rs/Cargo.toml` workspace members:
 
 ```toml
 [workspace]
@@ -156,8 +156,8 @@ yoyopod-voip-host
 The build output staging paths do change:
 
 ```text
-src/ui-host/build/yoyopod-ui-host
-src/voip-host/build/yoyopod-voip-host
+yoyopod_rs/ui-host/build/yoyopod-ui-host
+yoyopod_rs/voip-host/build/yoyopod-voip-host
 ```
 
 ## Bazel Design
@@ -196,10 +196,10 @@ human-readable and feature-local.
 Expected public targets:
 
 ```text
-//src/ui-host:yoyopod-ui-host
-//src/ui-host:tests
-//src/voip-host:yoyopod-voip-host
-//src/voip-host:tests
+//yoyopod_rs/ui-host:yoyopod-ui-host
+//yoyopod_rs/ui-host:tests
+//yoyopod_rs/voip-host:yoyopod-voip-host
+//yoyopod_rs/voip-host:tests
 ```
 
 If `rules_rust` makes per-module test targets more idiomatic than one `:tests`
@@ -208,7 +208,7 @@ target names above.
 
 Third-party Rust dependencies should be sourced from the existing Cargo lock
 file where possible. The preferred path is `rules_rust` crate universe support
-from `src/Cargo.lock`, so Cargo and Bazel do not drift into independent
+from `yoyopod_rs/Cargo.lock`, so Cargo and Bazel do not drift into independent
 dependency graphs.
 
 ## CI Design
@@ -225,14 +225,14 @@ cargo build --release -p yoyopod-voip-host --locked
 Artifact staging should become:
 
 ```text
-src/ui-host/build/yoyopod-ui-host
-src/voip-host/build/yoyopod-voip-host
+yoyopod_rs/ui-host/build/yoyopod-ui-host
+yoyopod_rs/voip-host/build/yoyopod-voip-host
 ```
 
 Add a Bazel Rust validation step:
 
 ```text
-bazel test //src/ui-host/... //src/voip-host/...
+bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/voip-host/...
 ```
 
 If CI does not already have Bazel, use Bazelisk in CI. The implementation should
@@ -254,10 +254,10 @@ paths:
 
 ```text
 old: src/crates/ui-host/build/yoyopod-ui-host
-new: src/ui-host/build/yoyopod-ui-host
+new: yoyopod_rs/ui-host/build/yoyopod-ui-host
 
 old: src/crates/voip-host/build/yoyopod-voip-host
-new: src/voip-host/build/yoyopod-voip-host
+new: yoyopod_rs/voip-host/build/yoyopod-voip-host
 ```
 
 Known update areas:
@@ -282,9 +282,9 @@ current operational docs. The current docs and skills should be accurate.
 Required local validation before commit and push:
 
 ```text
-cargo fmt --manifest-path src/Cargo.toml --all --check
-cargo test --manifest-path src/Cargo.toml --workspace --locked
-bazel test //src/ui-host/... //src/voip-host/...
+cargo fmt --manifest-path yoyopod_rs/Cargo.toml --all --check
+cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/voip-host/...
 uv run python scripts/quality.py gate
 uv run pytest -q
 ```
@@ -315,13 +315,13 @@ This design is accepted when:
 - production Rust sources live directly under top-level `src/<feature>/`
 - `src/crates/` is removed
 - no `src/rust/` layer is introduced
-- UI host has `src/ui-host/{Cargo.toml,BUILD.bazel,src/,tests/}`
-- VoIP host has `src/voip-host/{Cargo.toml,BUILD.bazel,src/,tests/}`
+- UI host has `yoyopod_rs/ui-host/{Cargo.toml,BUILD.bazel,src/,tests/}`
+- VoIP host has `yoyopod_rs/voip-host/{Cargo.toml,BUILD.bazel,src/,tests/}`
 - Cargo workspace members point to `ui-host` and `voip-host`
 - Bazel can build and test the Rust hosts through checked-in Bazel targets
 - CI runs the Bazel Rust validation path
-- deploy artifact paths are updated to `src/ui-host/build/...` and
-  `src/voip-host/build/...`
+- deploy artifact paths are updated to `yoyopod_rs/ui-host/build/...` and
+  `yoyopod_rs/voip-host/build/...`
 - Python runtime defaults and CLI validators use the new paths
 - current operational docs and deploy skills use the new paths
 - Rust code and Bazel files follow clean code and Rust guidelines:
@@ -336,8 +336,8 @@ This design is accepted when:
 ## Implementation Sequence
 
 1. Add Bazel root files and minimal Rust target plumbing.
-2. Move `src/crates/ui-host` to `src/ui-host`.
-3. Move `src/crates/voip-host` to `src/voip-host`.
+2. Move `src/crates/ui-host` to `yoyopod_rs/ui-host`.
+3. Move `src/crates/voip-host` to `yoyopod_rs/voip-host`.
 4. Add `tests/README.md` placeholders for both feature folders.
 5. Update Cargo workspace members.
 6. Update CI artifact staging and upload paths.
