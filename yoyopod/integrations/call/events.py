@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from yoyopod.integrations.call.models import CallState, RegistrationState
+from yoyopod.integrations.call.models import CallState, RegistrationState, VoIPRuntimeSnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +46,13 @@ class VoIPAvailabilityChangedEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class VoIPRuntimeSnapshotChangedEvent:
+    """Published when the Rust VoIP host reports a runtime snapshot."""
+
+    snapshot: VoIPRuntimeSnapshot
+
+
+@dataclass(frozen=True, slots=True)
 class CallHistoryUpdatedEvent:
     """Published when missed-call history counters change."""
 
@@ -70,4 +77,5 @@ __all__ = [
     "RegistrationChangedEvent",
     "VoiceNoteSummaryChangedEvent",
     "VoIPAvailabilityChangedEvent",
+    "VoIPRuntimeSnapshotChangedEvent",
 ]

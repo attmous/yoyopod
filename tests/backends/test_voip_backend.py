@@ -581,6 +581,36 @@ def test_voip_manager_waits_for_rust_snapshot_before_mute_state() -> None:
     assert manager.is_muted is False
 
 
+def test_voip_manager_publishes_runtime_snapshot_callbacks_without_call_state_change() -> None:
+    """Rust snapshots should surface facts that do not emit call-state callbacks."""
+
+    backend = SnapshotOwnedMockVoIPBackend()
+    manager = VoIPManager(build_config(), backend=backend)
+    snapshots: list[VoIPRuntimeSnapshot] = []
+    call_states: list[CallState] = []
+    manager.on_runtime_snapshot_change(snapshots.append)
+    manager.on_call_state_change(call_states.append)
+
+    assert manager.start()
+    muted_snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        muted=True,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+    )
+
+    backend.emit(VoIPRuntimeSnapshotChanged(snapshot=muted_snapshot))
+
+    assert snapshots == [muted_snapshot]
+    assert call_states == []
+    assert manager.is_muted is True
+
+
 def test_voip_manager_starts_timer_on_streams_running_without_connected() -> None:
     """Streams-running callbacks should start live duration tracking on their own."""
 

@@ -16,11 +16,14 @@ from yoyopod.integrations.call import (
     MarkHistorySeenCommand,
     MuteCommand,
     PlayLatestVoiceNoteCommand,
+    RegistrationState,
     SendActiveVoiceNoteCommand,
     SendTextMessageCommand,
     StartVoiceNoteRecordingCommand,
     StopVoiceNoteRecordingCommand,
     UnmuteCommand,
+    VoIPLifecycleSnapshot,
+    VoIPRuntimeSnapshot,
     VoiceNoteSummaryChangedEvent,
     setup,
     teardown,
@@ -31,7 +34,7 @@ from yoyopod.core.focus import setup as setup_focus
 class FakeVoipManager:
     """Minimal manager double for scaffold call integration tests."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, runtime_snapshot_owned: bool = False) -> None:
         self.running = False
         self.registration_state = "none"
         self.call_state = CallState.IDLE
@@ -53,6 +56,8 @@ class FakeVoipManager:
         self.incoming_call_callbacks = []
         self.availability_callbacks = []
         self.message_summary_callbacks = []
+        self.runtime_snapshot_callbacks = []
+        self.runtime_snapshot_owned = runtime_snapshot_owned
 
     def start(self) -> bool:
         self.start_calls += 1
@@ -152,6 +157,12 @@ class FakeVoipManager:
     def on_message_summary_change(self, callback) -> None:
         self.message_summary_callbacks.append(callback)
 
+    def on_runtime_snapshot_change(self, callback) -> None:
+        self.runtime_snapshot_callbacks.append(callback)
+
+    def owns_runtime_snapshot(self) -> bool:
+        return self.runtime_snapshot_owned
+
     def emit_incoming_call(self, caller_address: str, caller_name: str) -> None:
         self.caller_address = caller_address
         self.caller_name = caller_name
@@ -174,6 +185,15 @@ class FakeVoipManager:
     ) -> None:
         for callback in self.message_summary_callbacks:
             callback(unread_count, latest_by_contact)
+
+    def emit_runtime_snapshot(self, snapshot: VoIPRuntimeSnapshot) -> None:
+        self.call_state = snapshot.call_state
+        self.current_call_id = snapshot.active_call_id or None
+        self.caller_address = snapshot.active_call_peer
+        self.caller_name = snapshot.active_call_peer
+        self.is_muted = snapshot.muted
+        for callback in self.runtime_snapshot_callbacks:
+            callback(snapshot)
 
 
 class FakeRinger:
@@ -276,6 +296,86 @@ def test_call_flow_updates_focus_mute_and_history(tmp_path: Path) -> None:
     assert recent_entry.display_name == "Ada"
     assert recent_entry.outcome == "completed"
     assert recent_entry.duration_seconds == 17
+
+
+def test_rust_owned_call_runtime_waits_for_snapshot_before_mirroring_state(
+    tmp_path: Path,
+) -> None:
+    app = build_test_app()
+    setup_focus(app)
+    history_store = CallHistoryStore(tmp_path / "call_history.json")
+    manager = FakeVoipManager(runtime_snapshot_owned=True)
+    setup(app, manager=manager, call_history_store=history_store, ringer=FakeRinger())
+    drain_all(app)
+
+    assert app.services.call(
+        "call",
+        "dial",
+        DialCommand(sip_address="sip:ada@example.com", contact_name="Ada"),
+    )
+    drain_all(app)
+
+    assert manager.dial_calls == [("sip:ada@example.com", "Ada")]
+    assert app.states.get_value("focus.owner") is None
+    assert app.states.get_value("call.state") == "idle"
+
+    manager.emit_runtime_snapshot(
+        VoIPRuntimeSnapshot(
+            configured=True,
+            registered=True,
+            registration_state=RegistrationState.OK,
+            call_state=CallState.OUTGOING,
+            active_call_id="call-1",
+            active_call_peer="sip:ada@example.com",
+            lifecycle=VoIPLifecycleSnapshot(
+                state="registered",
+                reason="registered",
+                backend_available=True,
+            ),
+        )
+    )
+    manager.emit_call_state(CallState.OUTGOING)
+    drain_all(app)
+
+    assert app.states.get_value("focus.owner") == "call"
+    assert app.states.get_value("call.state") == "outgoing"
+    assert app.states.get("call.state").attrs["caller_address"] == "sip:ada@example.com"
+
+
+def test_rust_owned_mute_waits_for_snapshot_before_mirroring_state(
+    tmp_path: Path,
+) -> None:
+    app = build_test_app()
+    setup_focus(app)
+    history_store = CallHistoryStore(tmp_path / "call_history.json")
+    manager = FakeVoipManager(runtime_snapshot_owned=True)
+    setup(app, manager=manager, call_history_store=history_store, ringer=FakeRinger())
+    drain_all(app)
+
+    assert app.services.call("call", "mute", MuteCommand()) is True
+    drain_all(app)
+    assert app.states.get_value("call.muted") is False
+
+    manager.emit_runtime_snapshot(
+        VoIPRuntimeSnapshot(
+            configured=True,
+            registered=True,
+            registration_state=RegistrationState.OK,
+            call_state=CallState.STREAMS_RUNNING,
+            active_call_id="call-1",
+            active_call_peer="sip:ada@example.com",
+            muted=True,
+            lifecycle=VoIPLifecycleSnapshot(
+                state="registered",
+                reason="registered",
+                backend_available=True,
+            ),
+        )
+    )
+    drain_all(app)
+
+    assert app.states.get_value("call.muted") is True
+    assert app.states.get_value("call.state") == "active"
 
 
 def test_incoming_calls_ring_and_history_can_be_marked_seen(tmp_path: Path) -> None:

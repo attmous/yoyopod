@@ -30,6 +30,7 @@ if TYPE_CHECKING:
         RegistrationChangedEvent,
         VoiceNoteSummaryChangedEvent,
         VoIPAvailabilityChangedEvent,
+        VoIPRuntimeSnapshotChangedEvent,
     )
     from yoyopod.integrations.call.runtime import CallRuntime
     from yoyopod.integrations.call.history import CallHistoryEntry, CallHistoryStore
@@ -169,6 +170,10 @@ _PUBLIC_EXPORTS = {
         "yoyopod.integrations.call.events",
         "VoIPAvailabilityChangedEvent",
     ),
+    "VoIPRuntimeSnapshotChangedEvent": (
+        "yoyopod.integrations.call.events",
+        "VoIPRuntimeSnapshotChangedEvent",
+    ),
     "VoiceNoteDraft": ("yoyopod.integrations.call.voice_notes", "VoiceNoteDraft"),
     "VoiceNoteEventHandler": ("yoyopod.integrations.call.voice_notes", "VoiceNoteEventHandler"),
     "VoiceNoteService": ("yoyopod.integrations.call.voice_notes", "VoiceNoteService"),
@@ -215,6 +220,7 @@ def setup(
         RegistrationChangedEvent,
         VoiceNoteSummaryChangedEvent,
         VoIPAvailabilityChangedEvent,
+        VoIPRuntimeSnapshotChangedEvent,
     )
     from yoyopod.integrations.call.handlers import (
         answer,
@@ -225,6 +231,7 @@ def setup(
         handle_call_state_changed_event,
         handle_incoming_call_event,
         handle_registration_changed_event,
+        handle_runtime_snapshot_changed_event,
         handle_voice_note_summary_changed_event,
         hangup,
         mark_history_seen,
@@ -288,6 +295,10 @@ def setup(
         lambda event: handle_availability_changed_event(app, integration, event),
     )
     app.bus.subscribe(
+        VoIPRuntimeSnapshotChangedEvent,
+        lambda event: handle_runtime_snapshot_changed_event(app, integration, event),
+    )
+    app.bus.subscribe(
         CallHistoryUpdatedEvent,
         lambda event: handle_call_history_updated_event(app, integration, event),
     )
@@ -316,6 +327,11 @@ def setup(
             )
         )
     )
+    on_runtime_snapshot_change = getattr(actual_manager, "on_runtime_snapshot_change", None)
+    if callable(on_runtime_snapshot_change):
+        on_runtime_snapshot_change(
+            lambda snapshot: app.bus.publish(VoIPRuntimeSnapshotChangedEvent(snapshot=snapshot))
+        )
     actual_manager.on_message_summary_change(
         lambda unread_count, latest_by_contact: app.bus.publish(
             VoiceNoteSummaryChangedEvent(
@@ -603,6 +619,7 @@ __all__ = [
     "VoIPIterateMetrics",
     "VoIPManager",
     "VoIPAvailabilityChangedEvent",
+    "VoIPRuntimeSnapshotChangedEvent",
     "VoiceNoteDraft",
     "VoiceNoteEventHandler",
     "VoiceNoteService",

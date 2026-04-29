@@ -10,6 +10,7 @@ from yoyopod.integrations.call.events import (
     IncomingCallEvent,
     RegistrationChangedEvent,
     VoIPAvailabilityChangedEvent,
+    VoIPRuntimeSnapshotChangedEvent,
 )
 from yoyopod.integrations.call.commands import (
     AnswerCommand,
@@ -173,6 +174,17 @@ def handle_availability_changed_event(
         _stop_ringer(integration)
 
 
+def handle_runtime_snapshot_changed_event(
+    app: Any,
+    integration: Any,
+    event: VoIPRuntimeSnapshotChangedEvent,
+) -> None:
+    """Mirror Rust-owned runtime facts that may change without a call-state transition."""
+
+    _apply_call_state(app, integration.manager, event.snapshot.call_state)
+    app.states.set("call.muted", bool(event.snapshot.muted), {})
+
+
 def handle_call_history_updated_event(
     app: Any,
     _integration: Any,
@@ -206,13 +218,15 @@ def handle_voice_note_summary_changed_event(
 
 
 def dial(app: Any, integration: Any, command: DialCommand) -> bool:
-    """Place an outgoing call and seed optimistic outgoing state."""
+    """Place an outgoing call and mirror state only when Python owns call runtime."""
 
     if not isinstance(command, DialCommand):
         raise TypeError("call.dial expects DialCommand")
     success = bool(integration.manager.make_call(command.sip_address, command.contact_name))
     if not success:
         return False
+    if _manager_owns_runtime_snapshot(integration.manager):
+        return True
     _request_focus(app)
     integration.session_tracker.ensure_outgoing_call(
         {
@@ -263,23 +277,23 @@ def reject(integration: Any, command: RejectCommand) -> bool:
 
 
 def mute(app: Any, integration: Any, command: MuteCommand) -> bool:
-    """Mute the active call and mirror the new mute flag."""
+    """Mute the active call and mirror state only when Python owns call runtime."""
 
     if not isinstance(command, MuteCommand):
         raise TypeError("call.mute expects MuteCommand")
     success = bool(integration.manager.mute())
-    if success:
+    if success and not _manager_owns_runtime_snapshot(integration.manager):
         app.states.set("call.muted", True, {})
     return success
 
 
 def unmute(app: Any, integration: Any, command: UnmuteCommand) -> bool:
-    """Unmute the active call and mirror the new mute flag."""
+    """Unmute the active call and mirror state only when Python owns call runtime."""
 
     if not isinstance(command, UnmuteCommand):
         raise TypeError("call.unmute expects UnmuteCommand")
     success = bool(integration.manager.unmute())
-    if success:
+    if success and not _manager_owns_runtime_snapshot(integration.manager):
         app.states.set("call.muted", False, {})
     return success
 
@@ -452,6 +466,13 @@ def _call_duration_seconds(manager: Any) -> int:
     if not callable(get_call_duration):
         return 0
     return max(0, int(get_call_duration() or 0))
+
+
+def _manager_owns_runtime_snapshot(manager: Any) -> bool:
+    owns_runtime_snapshot = getattr(manager, "owns_runtime_snapshot", None)
+    if not callable(owns_runtime_snapshot):
+        return False
+    return bool(owns_runtime_snapshot())
 
 
 def _as_registration_state(value: object) -> RegistrationState:

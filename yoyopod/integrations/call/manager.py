@@ -99,6 +99,7 @@ class VoIPManager:
         self.call_state_callbacks: list[Callable[[CallState], None]] = []
         self.incoming_call_callbacks: list[Callable[[str, str], None]] = []
         self.availability_callbacks: list[Callable[[bool, str, RegistrationState], None]] = []
+        self.runtime_snapshot_callbacks: list[Callable[[VoIPRuntimeSnapshot], None]] = []
         self._event_scheduler = event_scheduler
         self._background_iterate_enabled = bool(background_iterate_enabled and event_scheduler)
         if background_iterate_enabled and event_scheduler is None:
@@ -216,6 +217,11 @@ class VoIPManager:
         """Return the latest Rust-owned VoIP runtime snapshot when available."""
 
         return self._runtime_snapshot
+
+    def owns_runtime_snapshot(self) -> bool:
+        """Return whether the backend is the source of truth for live runtime facts."""
+
+        return self._backend_owns_runtime_snapshot()
 
     def poll_housekeeping(self) -> None:
         """Run lightweight coordinator-thread-only maintenance alongside background iterate."""
@@ -353,6 +359,12 @@ class VoIPManager:
         callback: Callable[[bool, str, RegistrationState], None],
     ) -> None:
         self.availability_callbacks.append(callback)
+
+    def on_runtime_snapshot_change(
+        self,
+        callback: Callable[[VoIPRuntimeSnapshot], None],
+    ) -> None:
+        self.runtime_snapshot_callbacks.append(callback)
 
     def on_message_received(self, callback: Callable[[VoIPMessageRecord], None]) -> None:
         self._messaging_service.on_message_received(callback)
@@ -560,10 +572,11 @@ class VoIPManager:
         }
         self._update_registration_state(snapshot.registration_state)
         self._sync_call_identity(snapshot)
-        self._update_call_state(snapshot.call_state)
         self.is_muted = snapshot.muted
+        self._update_call_state(snapshot.call_state)
         self._voice_note_service.apply_runtime_snapshot(snapshot)
         self._messaging_service.apply_runtime_snapshot(snapshot)
+        self._notify_runtime_snapshot_change(snapshot)
 
     def _sync_call_identity(self, snapshot: VoIPRuntimeSnapshot) -> None:
         has_active_call = bool(snapshot.active_call_id or snapshot.active_call_peer)
@@ -697,6 +710,13 @@ class VoIPManager:
                 callback(available, reason, self.registration_state)
             except Exception as exc:
                 logger.error("Error in availability callback: {}", exc)
+
+    def _notify_runtime_snapshot_change(self, snapshot: VoIPRuntimeSnapshot) -> None:
+        for callback in self.runtime_snapshot_callbacks:
+            try:
+                callback(snapshot)
+            except Exception as exc:
+                logger.error("Error in runtime snapshot callback: {}", exc)
 
     def _stop_voice_note_playback(self) -> None:
         self._voice_note_service.stop_voice_note_playback()
