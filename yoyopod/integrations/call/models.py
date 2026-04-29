@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import TypeAlias
 
@@ -196,6 +196,54 @@ class VoIPMessageRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class VoIPLifecycleSnapshot:
+    """Rust-owned VoIP host lifecycle facts."""
+
+    state: str = "unconfigured"
+    reason: str = ""
+    backend_available: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class VoIPVoiceNoteSnapshot:
+    """Rust-owned active voice-note facts."""
+
+    state: str = "idle"
+    file_path: str = ""
+    duration_ms: int = 0
+    mime_type: str = ""
+    message_id: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class VoIPMessageSnapshot:
+    """Rust-owned last-message facts from the VoIP worker."""
+
+    message_id: str
+    kind: MessageKind | None = None
+    direction: MessageDirection | None = None
+    delivery_state: MessageDeliveryState | None = None
+    local_file_path: str = ""
+    error: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class VoIPRuntimeSnapshot:
+    """Canonical live VoIP state reported by the Rust worker."""
+
+    configured: bool = False
+    registered: bool = False
+    registration_state: RegistrationState = RegistrationState.NONE
+    call_state: CallState = CallState.IDLE
+    active_call_id: str = ""
+    active_call_peer: str = ""
+    pending_outbound_messages: int = 0
+    lifecycle: VoIPLifecycleSnapshot = field(default_factory=VoIPLifecycleSnapshot)
+    voice_note: VoIPVoiceNoteSnapshot = field(default_factory=VoIPVoiceNoteSnapshot)
+    last_message: VoIPMessageSnapshot | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class RegistrationStateChanged:
     """Typed event emitted when SIP registration changes."""
 
@@ -264,6 +312,13 @@ class MessageFailed:
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class VoIPRuntimeSnapshotChanged:
+    """Typed event emitted when Rust reports its canonical runtime snapshot."""
+
+    snapshot: VoIPRuntimeSnapshot
+
+
 VoIPEvent: TypeAlias = (
     RegistrationStateChanged
     | CallStateChanged
@@ -274,4 +329,5 @@ VoIPEvent: TypeAlias = (
     | MessageDeliveryChanged
     | MessageDownloadCompleted
     | MessageFailed
+    | VoIPRuntimeSnapshotChanged
 )

@@ -61,7 +61,12 @@ if TYPE_CHECKING:
         RegistrationStateChanged,
         VoIPConfig,
         VoIPEvent,
+        VoIPLifecycleSnapshot,
+        VoIPMessageSnapshot,
         VoIPMessageRecord,
+        VoIPRuntimeSnapshot,
+        VoIPRuntimeSnapshotChanged,
+        VoIPVoiceNoteSnapshot,
     )
     from yoyopod.integrations.call.voice_notes import VoiceNoteDraft, VoiceNoteService
 
@@ -118,7 +123,21 @@ _PUBLIC_EXPORTS = {
     "MessageDirection": ("yoyopod.integrations.call.models", "MessageDirection"),
     "MessageDeliveryState": ("yoyopod.integrations.call.models", "MessageDeliveryState"),
     "VoIPConfig": ("yoyopod.integrations.call.models", "VoIPConfig"),
+    "VoIPLifecycleSnapshot": (
+        "yoyopod.integrations.call.models",
+        "VoIPLifecycleSnapshot",
+    ),
+    "VoIPMessageSnapshot": ("yoyopod.integrations.call.models", "VoIPMessageSnapshot"),
     "VoIPMessageRecord": ("yoyopod.integrations.call.models", "VoIPMessageRecord"),
+    "VoIPRuntimeSnapshot": ("yoyopod.integrations.call.models", "VoIPRuntimeSnapshot"),
+    "VoIPRuntimeSnapshotChanged": (
+        "yoyopod.integrations.call.models",
+        "VoIPRuntimeSnapshotChanged",
+    ),
+    "VoIPVoiceNoteSnapshot": (
+        "yoyopod.integrations.call.models",
+        "VoIPVoiceNoteSnapshot",
+    ),
     "RegistrationChangedEvent": (
         "yoyopod.integrations.call.events",
         "RegistrationChangedEvent",
@@ -303,8 +322,7 @@ def setup(
                 unread_count=max(0, int(unread_count)),
                 unread_by_address=_voice_note_unread_by_address(actual_manager),
                 latest_by_contact={
-                    str(address): dict(summary)
-                    for address, summary in latest_by_contact.items()
+                    str(address): dict(summary) for address, summary in latest_by_contact.items()
                 },
             )
         )
@@ -434,25 +452,17 @@ def _resolve_voip_config(app: Any, *, explicit: object | None) -> Any:
         ),
         transport=str(getattr(account, "transport", defaults.transport)),
         stun_server=str(getattr(network, "stun_server", "")),
-        conference_factory_uri=str(
-            getattr(messaging, "conference_factory_uri", "")
-        ),
-        file_transfer_server_url=str(
-            getattr(messaging, "file_transfer_server_url", "")
-        ),
+        conference_factory_uri=str(getattr(messaging, "conference_factory_uri", "")),
+        file_transfer_server_url=str(getattr(messaging, "file_transfer_server_url", "")),
         lime_server_url=str(getattr(messaging, "lime_server_url", "")),
         iterate_interval_ms=int(
             getattr(messaging, "iterate_interval_ms", defaults.iterate_interval_ms)
         ),
-        message_store_dir=str(
-            getattr(messaging, "message_store_dir", defaults.message_store_dir)
-        ),
+        message_store_dir=str(getattr(messaging, "message_store_dir", defaults.message_store_dir)),
         voice_note_store_dir=str(
             getattr(messaging, "voice_note_store_dir", defaults.voice_note_store_dir)
         ),
-        call_history_file=str(
-            getattr(calling, "call_history_file", defaults.call_history_file)
-        ),
+        call_history_file=str(getattr(calling, "call_history_file", defaults.call_history_file)),
         voice_note_max_duration_seconds=int(
             getattr(
                 messaging,
@@ -467,13 +477,9 @@ def _resolve_voip_config(app: Any, *, explicit: object | None) -> Any:
                 defaults.auto_download_incoming_voice_recordings,
             )
         ),
-        playback_dev_id=str(
-            getattr(audio, "playback_device_id", defaults.playback_dev_id)
-        ),
+        playback_dev_id=str(getattr(audio, "playback_device_id", defaults.playback_dev_id)),
         ringer_dev_id=str(getattr(audio, "ringer_device_id", defaults.ringer_dev_id)),
-        capture_dev_id=str(
-            getattr(audio, "capture_device_id", defaults.capture_dev_id)
-        ),
+        capture_dev_id=str(getattr(audio, "capture_device_id", defaults.capture_dev_id)),
         media_dev_id=str(getattr(audio, "media_device_id", defaults.media_dev_id)),
         mic_gain=int(getattr(audio, "mic_gain", defaults.mic_gain)),
         output_volume=int(getattr(config, "default_volume", defaults.output_volume)),
@@ -496,7 +502,9 @@ def _restart_manager(manager: object) -> bool:
         return False
     started = bool(start())
     if started:
-        ensure_background_iterate_running = getattr(manager, "ensure_background_iterate_running", None)
+        ensure_background_iterate_running = getattr(
+            manager, "ensure_background_iterate_running", None
+        )
         if callable(ensure_background_iterate_running):
             ensure_background_iterate_running()
     return started
@@ -573,7 +581,12 @@ __all__ = [
     "MessageDirection",
     "MessageDeliveryState",
     "VoIPConfig",
+    "VoIPLifecycleSnapshot",
+    "VoIPMessageSnapshot",
     "VoIPMessageRecord",
+    "VoIPRuntimeSnapshot",
+    "VoIPRuntimeSnapshotChanged",
+    "VoIPVoiceNoteSnapshot",
     "RegistrationChangedEvent",
     "RegistrationStateChanged",
     "CallStateChanged",

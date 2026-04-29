@@ -15,7 +15,10 @@ from yoyopod.integrations.call.models import (
     MessageFailed,
     MessageKind,
     VoIPConfig,
+    VoIPMessageSnapshot,
     VoIPMessageRecord,
+    VoIPRuntimeSnapshot,
+    VoIPVoiceNoteSnapshot,
 )
 from yoyopod.integrations.call import VoiceNoteService
 
@@ -138,6 +141,66 @@ def test_messaging_service_decorates_and_persists_incoming_messages(tmp_path: Pa
     assert stored is not None
     assert stored.display_name == "Mom"
     assert received[-1].display_name == "Mom"
+
+
+def test_messaging_service_applies_runtime_snapshot_to_known_message_once(
+    tmp_path: Path,
+) -> None:
+    """Rust last-message snapshots should mirror known records without duplicate summaries."""
+
+    config = build_config(tmp_path)
+    service = MessagingService(
+        config=config,
+        backend=MockVoIPBackend(),
+        message_store=build_message_store(config),
+        lookup_contact_name=lookup_contact_name,
+    )
+    summary_events: list[str] = []
+    service.on_message_summary_change(lambda _unread, _summary: summary_events.append("changed"))
+    service.message_store.upsert(
+        VoIPMessageRecord(
+            id="msg-1",
+            peer_sip_address="sip:mom@example.com",
+            sender_sip_address="sip:alice@example.com",
+            recipient_sip_address="sip:mom@example.com",
+            kind=MessageKind.VOICE_NOTE,
+            direction=MessageDirection.OUTGOING,
+            delivery_state=MessageDeliveryState.SENDING,
+            created_at="2026-04-29T00:00:00+00:00",
+            updated_at="2026-04-29T00:00:00+00:00",
+            local_file_path="",
+        )
+    )
+    snapshot = VoIPRuntimeSnapshot(
+        last_message=VoIPMessageSnapshot(
+            message_id="msg-1",
+            kind=MessageKind.VOICE_NOTE,
+            direction=MessageDirection.OUTGOING,
+            delivery_state=MessageDeliveryState.DELIVERED,
+            local_file_path="/tmp/note.wav",
+        )
+    )
+
+    service.apply_runtime_snapshot(snapshot)
+    service.apply_runtime_snapshot(snapshot)
+    service.apply_runtime_snapshot(
+        VoIPRuntimeSnapshot(
+            last_message=VoIPMessageSnapshot(
+                message_id="unknown",
+                kind=MessageKind.VOICE_NOTE,
+                direction=MessageDirection.OUTGOING,
+                delivery_state=MessageDeliveryState.DELIVERED,
+                local_file_path="/tmp/unknown.wav",
+            )
+        )
+    )
+
+    stored = service.message_store.get("msg-1")
+    assert stored is not None
+    assert stored.delivery_state == MessageDeliveryState.DELIVERED
+    assert stored.local_file_path == "/tmp/note.wav"
+    assert service.message_store.get("unknown") is None
+    assert summary_events == ["changed"]
 
 
 def test_message_store_tracks_unread_voice_note_counts_by_contact(tmp_path: Path) -> None:
@@ -288,6 +351,72 @@ def test_voice_note_service_updates_active_draft_on_delivery_and_failure(
     assert failed is not None
     assert failed.send_state == "failed"
     assert failed.status_text == "Upload failed"
+
+
+def test_voice_note_service_applies_runtime_snapshot_to_active_draft(
+    tmp_path: Path,
+) -> None:
+    """Rust voice-note snapshots should update state without wiping local draft metadata."""
+
+    config = build_config(tmp_path)
+    service = VoiceNoteService(
+        config=config,
+        backend=MockVoIPBackend(),
+        message_store=build_message_store(config),
+        lookup_contact_name=lookup_contact_name,
+        notify_message_summary_change=lambda: None,
+    )
+    assert service.start_voice_note_recording("sip:mom@example.com", "Mom")
+    assert service.stop_voice_note_recording() is not None
+    assert service.send_active_voice_note() is True
+    draft = service.get_active_voice_note()
+    assert draft is not None
+    original_path = draft.file_path
+    draft.send_started_at = 42.0
+
+    service.apply_runtime_snapshot(
+        VoIPRuntimeSnapshot(
+            voice_note=VoIPVoiceNoteSnapshot(
+                state="sending",
+                file_path="",
+                duration_ms=2400,
+                mime_type="audio/ogg",
+                message_id="rust-msg-1",
+            )
+        )
+    )
+
+    sending = service.get_active_voice_note()
+    assert sending is not None
+    assert sending.recipient_address == "sip:mom@example.com"
+    assert sending.recipient_name == "Mom"
+    assert sending.file_path == original_path
+    assert sending.duration_ms == 2400
+    assert sending.mime_type == "audio/ogg"
+    assert sending.message_id == "rust-msg-1"
+    assert sending.send_state == "sending"
+    assert sending.status_text == "Sending..."
+    assert sending.send_started_at == 42.0
+
+    service.apply_runtime_snapshot(
+        VoIPRuntimeSnapshot(
+            voice_note=VoIPVoiceNoteSnapshot(
+                state="failed",
+                message_id="rust-msg-1",
+            ),
+            last_message=VoIPMessageSnapshot(
+                message_id="rust-msg-1",
+                delivery_state=MessageDeliveryState.FAILED,
+                error="Upload failed",
+            ),
+        )
+    )
+
+    failed = service.get_active_voice_note()
+    assert failed is not None
+    assert failed.send_state == "failed"
+    assert failed.status_text == "Upload failed"
+    assert failed.send_started_at == 0.0
 
 
 def test_voice_note_service_enforces_send_timeout_and_marks_store_failed(tmp_path: Path) -> None:

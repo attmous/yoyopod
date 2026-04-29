@@ -29,6 +29,8 @@ from yoyopod.integrations.call.models import (
     VoIPConfig,
     VoIPEvent,
     VoIPMessageRecord,
+    VoIPRuntimeSnapshot,
+    VoIPRuntimeSnapshotChanged,
 )
 from yoyopod.integrations.call.voice_notes import VoiceNoteDraft, VoiceNoteService
 
@@ -521,6 +523,9 @@ class VoIPManager:
             self._update_registration_state(RegistrationState.PROGRESS)
             self._notify_availability_change(True, event.reason or "backend_recovered")
             return
+        if isinstance(event, VoIPRuntimeSnapshotChanged):
+            self._apply_runtime_snapshot(event.snapshot)
+            return
         if isinstance(event, MessageReceived):
             self._messaging_service.handle_message_received(event.message)
             return
@@ -534,6 +539,37 @@ class VoIPManager:
         if isinstance(event, MessageFailed):
             self._voice_note_service.handle_message_failed(event)
             self._messaging_service.handle_message_failed(event)
+
+    def _apply_runtime_snapshot(self, snapshot: VoIPRuntimeSnapshot) -> None:
+        lifecycle_state = snapshot.lifecycle.state.strip().lower()
+        self.running = snapshot.lifecycle.backend_available or lifecycle_state not in {
+            "failed",
+            "stopped",
+            "unconfigured",
+        }
+        self._update_registration_state(snapshot.registration_state)
+        self._sync_call_identity(snapshot)
+        self._update_call_state(snapshot.call_state)
+        self._voice_note_service.apply_runtime_snapshot(snapshot)
+        self._messaging_service.apply_runtime_snapshot(snapshot)
+
+    def _sync_call_identity(self, snapshot: VoIPRuntimeSnapshot) -> None:
+        has_active_call = bool(snapshot.active_call_id or snapshot.active_call_peer)
+        if has_active_call:
+            self.current_call_id = snapshot.active_call_id or None
+            if snapshot.active_call_peer:
+                self.caller_address = snapshot.active_call_peer
+                self.caller_name = self._lookup_contact_name(snapshot.active_call_peer)
+            return
+        if snapshot.call_state in (
+            CallState.IDLE,
+            CallState.RELEASED,
+            CallState.END,
+            CallState.ERROR,
+        ):
+            self.current_call_id = None
+            self.caller_address = None
+            self.caller_name = None
 
     def _notify_message_summary_change(self) -> None:
         self._messaging_service.notify_message_summary_change()
@@ -584,7 +620,10 @@ class VoIPManager:
         ):
             self._stop_voice_note_playback()
 
-        if state in (CallState.CONNECTED, CallState.STREAMS_RUNNING) and self.call_start_time is None:
+        if (
+            state in (CallState.CONNECTED, CallState.STREAMS_RUNNING)
+            and self.call_start_time is None
+        ):
             self._start_call_timer()
         elif state in (CallState.RELEASED, CallState.END, CallState.ERROR):
             self._clear_call_session()

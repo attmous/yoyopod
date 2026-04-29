@@ -21,6 +21,7 @@ from yoyopod.integrations.call.models import (
     MessageKind,
     VoIPConfig,
     VoIPMessageRecord,
+    VoIPRuntimeSnapshot,
 )
 
 if TYPE_CHECKING:
@@ -227,7 +228,10 @@ class VoiceNoteService:
             self._playback_process = None
 
     def handle_message_delivery_changed(self, event: MessageDeliveryChanged) -> None:
-        if self._active_voice_note is None or self._active_voice_note.message_id != event.message_id:
+        if (
+            self._active_voice_note is None
+            or self._active_voice_note.message_id != event.message_id
+        ):
             return
 
         if event.delivery_state in (MessageDeliveryState.SENT, MessageDeliveryState.DELIVERED):
@@ -242,11 +246,59 @@ class VoiceNoteService:
             self._active_voice_note.send_started_at = 0.0
 
     def handle_message_failed(self, event: MessageFailed) -> None:
-        if self._active_voice_note is None or self._active_voice_note.message_id != event.message_id:
+        if (
+            self._active_voice_note is None
+            or self._active_voice_note.message_id != event.message_id
+        ):
             return
         self._active_voice_note.send_state = "failed"
         self._active_voice_note.status_text = event.reason or "Couldn't send"
         self._active_voice_note.send_started_at = 0.0
+
+    def apply_runtime_snapshot(self, snapshot: VoIPRuntimeSnapshot) -> None:
+        """Mirror Rust-owned active voice-note state into the current draft."""
+
+        draft = self._active_voice_note
+        if draft is None:
+            return
+
+        voice_note = snapshot.voice_note
+        state = voice_note.state.strip().lower() or "idle"
+        if state == "idle":
+            return
+
+        if voice_note.file_path and not draft.file_path:
+            draft.file_path = voice_note.file_path
+        if voice_note.duration_ms > 0:
+            draft.duration_ms = voice_note.duration_ms
+        if voice_note.mime_type:
+            draft.mime_type = voice_note.mime_type
+        if voice_note.message_id:
+            draft.message_id = voice_note.message_id
+
+        if state == "recording":
+            draft.send_state = "recording"
+            draft.status_text = "Recording..."
+            return
+        if state == "recorded":
+            draft.send_state = "review"
+            draft.status_text = "Ready to send"
+            return
+        if state == "sending":
+            draft.send_state = "sending"
+            draft.status_text = "Sending..."
+            if draft.send_started_at <= 0.0:
+                draft.send_started_at = time.monotonic()
+            return
+        if state == "sent":
+            draft.send_state = "sent"
+            draft.status_text = "Sent"
+            draft.send_started_at = 0.0
+            return
+        if state == "failed":
+            draft.send_state = "failed"
+            draft.status_text = _snapshot_failure_text(snapshot)
+            draft.send_started_at = 0.0
 
     def check_active_voice_note_timeout(self) -> None:
         draft = self._active_voice_note
@@ -281,6 +333,13 @@ class VoiceNoteService:
     @staticmethod
     def _iso_now() -> str:
         return datetime.now(timezone.utc).isoformat()
+
+
+def _snapshot_failure_text(snapshot: VoIPRuntimeSnapshot) -> str:
+    message = snapshot.last_message
+    if message is not None and message.error:
+        return message.error
+    return "Couldn't send"
 
 
 class VoiceNoteEventHandler:

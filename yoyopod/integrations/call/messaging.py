@@ -20,6 +20,7 @@ from yoyopod.integrations.call.models import (
     MessageKind,
     VoIPConfig,
     VoIPMessageRecord,
+    VoIPRuntimeSnapshot,
 )
 
 
@@ -155,6 +156,36 @@ class MessagingService:
                 callback(event.message_id, event.reason)
             except Exception as exc:
                 logger.error("Error in message failure callback: {}", exc)
+        self.notify_message_summary_change()
+
+    def apply_runtime_snapshot(self, snapshot: VoIPRuntimeSnapshot) -> None:
+        """Mirror Rust-owned last-message facts into known persisted records."""
+
+        message = snapshot.last_message
+        if message is None or not message.message_id:
+            return
+
+        record = self.message_store.get(message.message_id)
+        if record is None:
+            return
+
+        delivery_state = message.delivery_state or record.delivery_state
+        local_file_path = message.local_file_path or record.local_file_path
+        if delivery_state == record.delivery_state and local_file_path == record.local_file_path:
+            return
+
+        updated = replace(
+            record,
+            delivery_state=delivery_state,
+            local_file_path=local_file_path,
+            updated_at=self._iso_now(),
+        )
+        self.message_store.upsert(updated)
+        for callback in self.message_delivery_callbacks:
+            try:
+                callback(updated)
+            except Exception as exc:
+                logger.error("Error in message snapshot callback: {}", exc)
         self.notify_message_summary_change()
 
     def unread_voice_note_count(self) -> int:

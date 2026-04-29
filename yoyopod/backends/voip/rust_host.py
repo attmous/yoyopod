@@ -31,7 +31,12 @@ from yoyopod.integrations.call.models import (
     RegistrationStateChanged,
     VoIPConfig,
     VoIPEvent,
+    VoIPLifecycleSnapshot,
+    VoIPMessageSnapshot,
     VoIPMessageRecord,
+    VoIPRuntimeSnapshot,
+    VoIPRuntimeSnapshotChanged,
+    VoIPVoiceNoteSnapshot,
 )
 
 _STARTUP_COMMANDS = frozenset({"voip.configure", "voip.register"})
@@ -87,6 +92,7 @@ class RustHostBackend:
         self._stopping = False
         self._last_stop_reason: str | None = None
         self._recording_start_monotonic: float | None = None
+        self._runtime_snapshot: VoIPRuntimeSnapshot | None = None
         self._snapshot_registration_state = RegistrationState.NONE
         self._snapshot_call_state = CallState.IDLE
         self._last_lifecycle_state = "unconfigured"
@@ -150,6 +156,7 @@ class RustHostBackend:
             self._ready_seen = False
             self._reconfigure_on_ready = False
             self._recording_start_monotonic = None
+            self._runtime_snapshot = None
             self._snapshot_registration_state = RegistrationState.NONE
             self._snapshot_call_state = CallState.IDLE
             self._last_lifecycle_state = "stopped"
@@ -161,6 +168,11 @@ class RustHostBackend:
 
     def get_iterate_metrics(self) -> VoIPIterateMetrics | None:
         return None
+
+    def get_runtime_snapshot(self) -> VoIPRuntimeSnapshot | None:
+        """Return the latest canonical runtime snapshot emitted by the Rust worker."""
+
+        return self._runtime_snapshot
 
     def make_call(self, sip_address: str) -> bool:
         return self._send("voip.dial", {"uri": sip_address})
@@ -451,6 +463,7 @@ class RustHostBackend:
         self._ready_seen = False
         self._reconfigure_on_ready = False
         self._recording_start_monotonic = None
+        self._runtime_snapshot = None
         self._snapshot_registration_state = RegistrationState.NONE
         self._snapshot_call_state = CallState.IDLE
         self._last_lifecycle_state = "failed"
@@ -467,9 +480,7 @@ class RustHostBackend:
         reason = str(payload.get("reason", "") or "").strip() or state
         recovered = _bool_payload(payload.get("recovered", False))
         self._last_lifecycle_state = state
-        if state == "stopped" and (
-            self._stopping or reason in _INTENTIONAL_LIFECYCLE_STOP_REASONS
-        ):
+        if state == "stopped" and (self._stopping or reason in _INTENTIONAL_LIFECYCLE_STOP_REASONS):
             self.running = False
             return
         if state in {"failed", "stopped"}:
@@ -483,13 +494,11 @@ class RustHostBackend:
             self._last_stop_reason = None
 
     def _handle_session_snapshot(self, payload: dict[str, Any]) -> None:
-        registration_state = str(payload.get("registration_state", "") or "").strip()
-        if not registration_state:
-            registration_state = (
-                "ok" if _bool_payload(payload.get("registered", False)) else "none"
-            )
-        self._dispatch_registration_state(_registration_state(registration_state))
-        self._dispatch_call_state(_call_state(str(payload.get("call_state", "idle"))))
+        snapshot = _runtime_snapshot(payload)
+        self._runtime_snapshot = snapshot
+        self._dispatch_registration_state(snapshot.registration_state)
+        self._dispatch_call_state(snapshot.call_state)
+        self._dispatch(VoIPRuntimeSnapshotChanged(snapshot=snapshot))
 
     def _dispatch_registration_state(self, state: RegistrationState) -> None:
         if state == self._snapshot_registration_state:
@@ -575,6 +584,61 @@ def _message_record(payload: dict[str, Any]) -> VoIPMessageRecord | None:
         unread=_bool_payload(payload.get("unread", False)),
         display_name=str(payload.get("display_name", "")),
     )
+
+
+def _runtime_snapshot(payload: dict[str, Any]) -> VoIPRuntimeSnapshot:
+    lifecycle_payload = _dict_payload(payload.get("lifecycle"))
+    voice_note_payload = _dict_payload(payload.get("voice_note"))
+    return VoIPRuntimeSnapshot(
+        configured=_bool_payload(payload.get("configured", False)),
+        registered=_bool_payload(payload.get("registered", False)),
+        registration_state=_registration_state(_snapshot_registration_value(payload)),
+        call_state=_call_state(str(payload.get("call_state", "idle"))),
+        active_call_id=str(payload.get("active_call_id", "") or ""),
+        active_call_peer=str(payload.get("active_call_peer", "") or ""),
+        pending_outbound_messages=_duration_ms(payload.get("pending_outbound_messages")),
+        lifecycle=VoIPLifecycleSnapshot(
+            state=str(lifecycle_payload.get("state", "unconfigured") or "unconfigured"),
+            reason=str(lifecycle_payload.get("reason", "") or ""),
+            backend_available=_bool_payload(lifecycle_payload.get("backend_available", False)),
+        ),
+        voice_note=VoIPVoiceNoteSnapshot(
+            state=str(voice_note_payload.get("state", "idle") or "idle"),
+            file_path=str(voice_note_payload.get("file_path", "") or ""),
+            duration_ms=_duration_ms(voice_note_payload.get("duration_ms")),
+            mime_type=str(voice_note_payload.get("mime_type", "") or ""),
+            message_id=str(voice_note_payload.get("message_id", "") or ""),
+        ),
+        last_message=_message_snapshot(payload.get("last_message")),
+    )
+
+
+def _snapshot_registration_value(payload: dict[str, Any]) -> str:
+    registration_state = str(payload.get("registration_state", "") or "").strip()
+    if registration_state:
+        return registration_state
+    return "ok" if _bool_payload(payload.get("registered", False)) else "none"
+
+
+def _message_snapshot(payload: object) -> VoIPMessageSnapshot | None:
+    message_payload = _dict_payload(payload)
+    message_id = str(message_payload.get("message_id", "") or "")
+    if not message_id:
+        return None
+    return VoIPMessageSnapshot(
+        message_id=message_id,
+        kind=_message_kind(str(message_payload.get("kind", ""))),
+        direction=_message_direction(str(message_payload.get("direction", ""))),
+        delivery_state=_message_delivery_state(str(message_payload.get("delivery_state", ""))),
+        local_file_path=str(message_payload.get("local_file_path", "") or ""),
+        error=str(message_payload.get("error", "") or ""),
+    )
+
+
+def _dict_payload(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}
 
 
 def _message_kind(value: str) -> MessageKind | None:

@@ -20,6 +20,7 @@ from yoyopod.integrations.call.models import (
     RegistrationState,
     RegistrationStateChanged,
     VoIPConfig,
+    VoIPRuntimeSnapshotChanged,
 )
 
 
@@ -474,9 +475,83 @@ def test_worker_snapshot_updates_registration_and_call_state_without_duplicates(
         )
     )
 
-    assert [type(event) for event in received] == [RegistrationStateChanged, CallStateChanged]
-    assert received[0].state == RegistrationState.OK
-    assert received[1].state == CallState.STREAMS_RUNNING
+    compatibility_events = [
+        event
+        for event in received
+        if isinstance(event, RegistrationStateChanged | CallStateChanged)
+    ]
+    snapshot_events = [event for event in received if isinstance(event, VoIPRuntimeSnapshotChanged)]
+
+    assert [type(event) for event in compatibility_events] == [
+        RegistrationStateChanged,
+        CallStateChanged,
+    ]
+    assert compatibility_events[0].state == RegistrationState.OK
+    assert compatibility_events[1].state == CallState.STREAMS_RUNNING
+    assert len(snapshot_events) == 2
+
+
+def test_worker_snapshot_dispatches_typed_runtime_snapshot() -> None:
+    supervisor = _FakeSupervisor()
+    backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
+    received: list[object] = []
+    backend.on_event(received.append)
+
+    backend.handle_worker_message(
+        _event(
+            "voip.snapshot",
+            {
+                "configured": True,
+                "registered": True,
+                "registration_state": "ok",
+                "call_state": "streams_running",
+                "active_call_id": "call-1",
+                "active_call_peer": "sip:bob@example.com",
+                "pending_outbound_messages": 2,
+                "lifecycle": {
+                    "state": "registered",
+                    "reason": "registered",
+                    "backend_available": True,
+                },
+                "voice_note": {
+                    "state": "sending",
+                    "file_path": "/tmp/note.wav",
+                    "duration_ms": 1200,
+                    "mime_type": "audio/wav",
+                    "message_id": "msg-1",
+                },
+                "last_message": {
+                    "message_id": "msg-1",
+                    "kind": "voice_note",
+                    "direction": "outgoing",
+                    "delivery_state": "sent",
+                    "local_file_path": "/tmp/note.wav",
+                    "error": "",
+                },
+            },
+        )
+    )
+
+    snapshot_events = [event for event in received if isinstance(event, VoIPRuntimeSnapshotChanged)]
+    assert len(snapshot_events) == 1
+    snapshot = snapshot_events[0].snapshot
+    assert backend.get_runtime_snapshot() == snapshot
+    assert snapshot.configured is True
+    assert snapshot.registered is True
+    assert snapshot.registration_state == RegistrationState.OK
+    assert snapshot.call_state == CallState.STREAMS_RUNNING
+    assert snapshot.active_call_id == "call-1"
+    assert snapshot.active_call_peer == "sip:bob@example.com"
+    assert snapshot.pending_outbound_messages == 2
+    assert snapshot.lifecycle.state == "registered"
+    assert snapshot.lifecycle.backend_available is True
+    assert snapshot.voice_note.state == "sending"
+    assert snapshot.voice_note.file_path == "/tmp/note.wav"
+    assert snapshot.voice_note.message_id == "msg-1"
+    assert snapshot.last_message is not None
+    assert snapshot.last_message.message_id == "msg-1"
+    assert snapshot.last_message.kind == MessageKind.VOICE_NOTE
+    assert snapshot.last_message.delivery_state == MessageDeliveryState.SENT
 
 
 def test_worker_message_events_translate_to_voip_events() -> None:

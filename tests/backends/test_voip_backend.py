@@ -31,7 +31,12 @@ from yoyopod.integrations.call.models import (
     RegistrationStateChanged,
     VoIPConfig,
     VoIPEvent,
+    VoIPLifecycleSnapshot,
+    VoIPMessageSnapshot,
     VoIPMessageRecord,
+    VoIPRuntimeSnapshot,
+    VoIPRuntimeSnapshotChanged,
+    VoIPVoiceNoteSnapshot,
 )
 from yoyopod.integrations.call import VoIPManager
 
@@ -420,6 +425,47 @@ def test_voip_manager_applies_backend_events_and_resolves_contact_names() -> Non
     assert manager.get_caller_info()["display_name"] == "Parent"
 
 
+def test_voip_manager_mirrors_rust_runtime_snapshot_without_duplicate_callbacks() -> None:
+    """Rust-owned runtime snapshots should become the app-facing live VoIP state."""
+
+    backend = MockVoIPBackend()
+    people_directory = FakePeopleDirectory({"sip:bob@example.com": "Bob"})
+    manager = VoIPManager(build_config(), people_directory=people_directory, backend=backend)
+    registration_states: list[RegistrationState] = []
+    call_states: list[CallState] = []
+    manager.on_registration_change(registration_states.append)
+    manager.on_call_state_change(call_states.append)
+
+    assert manager.start()
+    snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        call_state=CallState.STREAMS_RUNNING,
+        active_call_id="call-1",
+        active_call_peer="sip:bob@example.com",
+        pending_outbound_messages=1,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+    )
+
+    backend.emit(VoIPRuntimeSnapshotChanged(snapshot=snapshot))
+    backend.emit(VoIPRuntimeSnapshotChanged(snapshot=snapshot))
+
+    assert manager.running is True
+    assert manager.registered is True
+    assert manager.registration_state == RegistrationState.OK
+    assert manager.call_state == CallState.STREAMS_RUNNING
+    assert manager.current_call_id == "call-1"
+    assert manager.caller_address == "sip:bob@example.com"
+    assert manager.get_caller_info()["display_name"] == "Bob"
+    assert registration_states == [RegistrationState.OK]
+    assert call_states == [CallState.STREAMS_RUNNING]
+
+
 def test_voip_manager_delegates_outgoing_commands_to_backend() -> None:
     """Outgoing commands should not invent local call phases before backend events arrive."""
 
@@ -494,6 +540,48 @@ def test_voip_manager_tracks_voice_note_send_and_delivery() -> None:
     )
 
     assert manager.get_active_voice_note().send_state == "sent"
+
+
+def test_voip_manager_routes_rust_runtime_snapshot_to_voice_note_and_message_mirrors() -> None:
+    """VoIPManager should fan Rust snapshots into its compatibility services."""
+
+    backend = MockVoIPBackend()
+    manager = VoIPManager(build_config(), backend=backend)
+
+    assert manager.start()
+    assert manager.start_voice_note_recording("sip:mom@example.com", recipient_name="Mom")
+    assert manager.stop_voice_note_recording() is not None
+    assert manager.send_active_voice_note()
+    draft = manager.get_active_voice_note()
+    assert draft is not None
+
+    backend.emit(
+        VoIPRuntimeSnapshotChanged(
+            snapshot=VoIPRuntimeSnapshot(
+                voice_note=VoIPVoiceNoteSnapshot(
+                    state="sent",
+                    file_path=draft.file_path,
+                    duration_ms=draft.duration_ms,
+                    mime_type=draft.mime_type,
+                    message_id=draft.message_id,
+                ),
+                last_message=VoIPMessageSnapshot(
+                    message_id=draft.message_id,
+                    kind=MessageKind.VOICE_NOTE,
+                    direction=MessageDirection.OUTGOING,
+                    delivery_state=MessageDeliveryState.DELIVERED,
+                    local_file_path=draft.file_path,
+                ),
+            )
+        )
+    )
+
+    active = manager.get_active_voice_note()
+    assert active is not None
+    assert active.send_state == "sent"
+    stored = manager.latest_voice_note_for_contact("sip:mom@example.com")
+    assert stored is not None
+    assert stored.delivery_state == MessageDeliveryState.DELIVERED
 
 
 def test_voip_manager_fails_voice_note_send_without_transfer_server() -> None:
@@ -841,9 +929,9 @@ def test_voip_manager_builds_message_store_under_directory(tmp_path: Path) -> No
 def test_liblinphone_shim_records_voice_notes_as_wav() -> None:
     """The native recorder shim should explicitly match the .wav files used by the app."""
 
-    shim_source = Path(
-        "yoyopod/backends/voip/shim_native/liblinphone_shim.c"
-    ).read_text(encoding="utf-8")
+    shim_source = Path("yoyopod/backends/voip/shim_native/liblinphone_shim.c").read_text(
+        encoding="utf-8"
+    )
 
     assert (
         "linphone_recorder_params_set_file_format(params, LinphoneRecorderFileFormatWav);"
@@ -854,9 +942,9 @@ def test_liblinphone_shim_records_voice_notes_as_wav() -> None:
 def test_liblinphone_shim_wires_incoming_message_debug_paths() -> None:
     """The native shim should cover aggregated and undecryptable incoming message paths."""
 
-    shim_source = Path(
-        "yoyopod/backends/voip/shim_native/liblinphone_shim.c"
-    ).read_text(encoding="utf-8")
+    shim_source = Path("yoyopod/backends/voip/shim_native/liblinphone_shim.c").read_text(
+        encoding="utf-8"
+    )
 
     assert (
         "linphone_core_cbs_set_messages_received(g_state.core_cbs, yoyopod_on_messages_received);"
