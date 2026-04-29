@@ -241,6 +241,7 @@ fn handle_command(
                 envelope.request_id,
                 json!({"muted": muted}),
             ))?;
+            write_session_snapshot(host)?;
         }
         "voip.send_text_message" => {
             let uri = envelope.payload["uri"].as_str().unwrap_or("").trim();

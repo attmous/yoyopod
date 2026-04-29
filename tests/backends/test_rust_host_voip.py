@@ -507,6 +507,7 @@ def test_worker_snapshot_dispatches_typed_runtime_snapshot() -> None:
                 "call_state": "streams_running",
                 "active_call_id": "call-1",
                 "active_call_peer": "sip:bob@example.com",
+                "muted": True,
                 "pending_outbound_messages": 2,
                 "lifecycle": {
                     "state": "registered",
@@ -542,6 +543,7 @@ def test_worker_snapshot_dispatches_typed_runtime_snapshot() -> None:
     assert snapshot.call_state == CallState.STREAMS_RUNNING
     assert snapshot.active_call_id == "call-1"
     assert snapshot.active_call_peer == "sip:bob@example.com"
+    assert snapshot.muted is True
     assert snapshot.pending_outbound_messages == 2
     assert snapshot.lifecycle.state == "registered"
     assert snapshot.lifecycle.backend_available is True

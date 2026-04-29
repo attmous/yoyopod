@@ -78,6 +78,7 @@ class VoIPManager:
         self.caller_name: str | None = None
         self.call_start_time: float | None = None
         self.is_muted = False
+        self._runtime_snapshot: VoIPRuntimeSnapshot | None = None
         self._pending_terminal_action: str | None = None
         self._message_store = message_store or self._build_message_store()
         self._messaging_service = MessagingService(
@@ -211,6 +212,11 @@ class VoIPManager:
         with self._iterate_state_lock:
             return self._iterate_snapshot
 
+    def get_runtime_snapshot(self) -> VoIPRuntimeSnapshot | None:
+        """Return the latest Rust-owned VoIP runtime snapshot when available."""
+
+        return self._runtime_snapshot
+
     def poll_housekeeping(self) -> None:
         """Run lightweight coordinator-thread-only maintenance alongside background iterate."""
 
@@ -221,12 +227,14 @@ class VoIPManager:
             logger.error("Cannot make call: not registered")
             return False
 
-        self.caller_address = sip_address
-        self.caller_name = contact_name or self._lookup_contact_name(sip_address)
-        logger.info("Making call to: {} ({})", self.caller_name, sip_address)
+        resolved_name = contact_name or self._lookup_contact_name(sip_address)
+        logger.info("Making call to: {} ({})", resolved_name, sip_address)
         if not self.backend.make_call(sip_address):
             return False
 
+        if not self._backend_owns_runtime_snapshot():
+            self.caller_address = sip_address
+            self.caller_name = resolved_name
         self._pending_terminal_action = None
         return True
 
@@ -255,7 +263,8 @@ class VoIPManager:
         if self.is_muted:
             return False
         if self.backend.mute():
-            self.is_muted = True
+            if not self._backend_owns_runtime_snapshot():
+                self.is_muted = True
             return True
         return False
 
@@ -263,7 +272,8 @@ class VoIPManager:
         if not self.is_muted:
             return False
         if self.backend.unmute():
-            self.is_muted = False
+            if not self._backend_owns_runtime_snapshot():
+                self.is_muted = False
             return True
         return False
 
@@ -541,6 +551,7 @@ class VoIPManager:
             self._messaging_service.handle_message_failed(event)
 
     def _apply_runtime_snapshot(self, snapshot: VoIPRuntimeSnapshot) -> None:
+        self._runtime_snapshot = snapshot
         lifecycle_state = snapshot.lifecycle.state.strip().lower()
         self.running = snapshot.lifecycle.backend_available or lifecycle_state not in {
             "failed",
@@ -550,6 +561,7 @@ class VoIPManager:
         self._update_registration_state(snapshot.registration_state)
         self._sync_call_identity(snapshot)
         self._update_call_state(snapshot.call_state)
+        self.is_muted = snapshot.muted
         self._voice_note_service.apply_runtime_snapshot(snapshot)
         self._messaging_service.apply_runtime_snapshot(snapshot)
 
@@ -570,6 +582,9 @@ class VoIPManager:
             self.current_call_id = None
             self.caller_address = None
             self.caller_name = None
+
+    def _backend_owns_runtime_snapshot(self) -> bool:
+        return callable(getattr(self.backend, "get_runtime_snapshot", None))
 
     def _notify_message_summary_change(self) -> None:
         self._messaging_service.notify_message_summary_change()

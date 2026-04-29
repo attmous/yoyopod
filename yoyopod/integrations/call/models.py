@@ -237,6 +237,7 @@ class VoIPRuntimeSnapshot:
     call_state: CallState = CallState.IDLE
     active_call_id: str = ""
     active_call_peer: str = ""
+    muted: bool = False
     pending_outbound_messages: int = 0
     lifecycle: VoIPLifecycleSnapshot = field(default_factory=VoIPLifecycleSnapshot)
     voice_note: VoIPVoiceNoteSnapshot = field(default_factory=VoIPVoiceNoteSnapshot)

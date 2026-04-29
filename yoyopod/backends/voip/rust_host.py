@@ -596,6 +596,7 @@ def _runtime_snapshot(payload: dict[str, Any]) -> VoIPRuntimeSnapshot:
         call_state=_call_state(str(payload.get("call_state", "idle"))),
         active_call_id=str(payload.get("active_call_id", "") or ""),
         active_call_peer=str(payload.get("active_call_peer", "") or ""),
+        muted=_bool_payload(payload.get("muted", False)),
         pending_outbound_messages=_duration_ms(payload.get("pending_outbound_messages")),
         lifecycle=VoIPLifecycleSnapshot(
             state=str(lifecycle_payload.get("state", "unconfigured") or "unconfigured"),

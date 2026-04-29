@@ -155,6 +155,17 @@ class BackgroundIterateMockVoIPBackend(MockVoIPBackend):
         )
 
 
+class SnapshotOwnedMockVoIPBackend(MockVoIPBackend):
+    """Mock backend that marks runtime facts as Rust-snapshot owned."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.runtime_snapshot: VoIPRuntimeSnapshot | None = None
+
+    def get_runtime_snapshot(self) -> VoIPRuntimeSnapshot | None:
+        return self.runtime_snapshot
+
+
 def build_config(storage_root: Path | None = None) -> VoIPConfig:
     """Create a small test configuration with isolated on-disk storage."""
 
@@ -481,6 +492,93 @@ def test_voip_manager_delegates_outgoing_commands_to_backend() -> None:
     assert call_states == []
     assert manager.call_state == CallState.IDLE
     assert manager.get_caller_info()["display_name"] == "Bob"
+
+
+def test_voip_manager_waits_for_rust_snapshot_before_call_identity() -> None:
+    """Rust-host mode should not invent active-call identity before Rust reports it."""
+
+    backend = SnapshotOwnedMockVoIPBackend()
+    people_directory = FakePeopleDirectory({"sip:bob@example.com": "Bob"})
+    manager = VoIPManager(build_config(), people_directory=people_directory, backend=backend)
+
+    assert manager.start()
+    backend.emit(RegistrationStateChanged(state=RegistrationState.OK))
+
+    assert manager.make_call("sip:bob@example.com", contact_name="Bob")
+    assert backend.commands == ["call sip:bob@example.com"]
+    assert manager.caller_address is None
+    assert manager.caller_name is None
+    assert manager.get_caller_info()["display_name"] == "Unknown"
+
+    snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        call_state=CallState.OUTGOING,
+        active_call_id="call-1",
+        active_call_peer="sip:bob@example.com",
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+    )
+    backend.runtime_snapshot = snapshot
+    backend.emit(VoIPRuntimeSnapshotChanged(snapshot=snapshot))
+
+    assert manager.current_call_id == "call-1"
+    assert manager.caller_address == "sip:bob@example.com"
+    assert manager.get_caller_info()["display_name"] == "Bob"
+
+
+def test_voip_manager_waits_for_rust_snapshot_before_mute_state() -> None:
+    """Rust-host mode should mirror mute state only after Rust snapshots report it."""
+
+    backend = SnapshotOwnedMockVoIPBackend()
+    manager = VoIPManager(build_config(), backend=backend)
+
+    assert manager.start()
+    assert manager.is_muted is False
+
+    assert manager.mute()
+    assert backend.commands == ["mute"]
+    assert manager.is_muted is False
+
+    muted_snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        muted=True,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+    )
+    backend.runtime_snapshot = muted_snapshot
+    backend.emit(VoIPRuntimeSnapshotChanged(snapshot=muted_snapshot))
+
+    assert manager.is_muted is True
+
+    assert manager.unmute()
+    assert backend.commands == ["mute", "unmute"]
+    assert manager.is_muted is True
+
+    unmuted_snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        muted=False,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+    )
+    backend.runtime_snapshot = unmuted_snapshot
+    backend.emit(VoIPRuntimeSnapshotChanged(snapshot=unmuted_snapshot))
+
+    assert manager.is_muted is False
 
 
 def test_voip_manager_starts_timer_on_streams_running_without_connected() -> None:
