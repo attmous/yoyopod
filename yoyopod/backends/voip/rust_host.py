@@ -53,6 +53,7 @@ _VOICE_NOTE_RECORDING_COMMANDS = frozenset(
     }
 )
 _INTENTIONAL_STOP_REASONS = frozenset({"stop", "stop_all"})
+_INTENTIONAL_LIFECYCLE_STOP_REASONS = frozenset({"unregistered", "shutdown"})
 
 
 class RustHostBackend:
@@ -466,6 +467,11 @@ class RustHostBackend:
         reason = str(payload.get("reason", "") or "").strip() or state
         recovered = _bool_payload(payload.get("recovered", False))
         self._last_lifecycle_state = state
+        if state == "stopped" and (
+            self._stopping or reason in _INTENTIONAL_LIFECYCLE_STOP_REASONS
+        ):
+            self.running = False
+            return
         if state in {"failed", "stopped"}:
             self._mark_stopped(reason)
             return

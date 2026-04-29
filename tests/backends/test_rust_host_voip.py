@@ -200,6 +200,30 @@ def test_delayed_intentional_stop_state_does_not_emit_backend_stopped() -> None:
     assert backend.running is False
 
 
+def test_delayed_intentional_lifecycle_stop_does_not_emit_backend_stopped() -> None:
+    supervisor = _StrictSupervisor()
+    backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
+    received: list[object] = []
+    backend.on_event(received.append)
+    backend.start()
+
+    backend.stop()
+    backend.handle_worker_message(
+        _event(
+            "voip.lifecycle_changed",
+            {
+                "state": "stopped",
+                "previous_state": "registered",
+                "reason": "unregistered",
+                "recovered": False,
+            },
+        )
+    )
+
+    assert not received
+    assert backend.running is False
+
+
 def test_call_commands_send_worker_commands() -> None:
     supervisor = _FakeSupervisor()
     backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
