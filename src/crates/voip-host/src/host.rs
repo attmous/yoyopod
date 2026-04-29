@@ -12,6 +12,16 @@ pub trait CallBackend {
     fn hangup(&mut self) -> Result<(), String>;
     fn set_muted(&mut self, muted: bool) -> Result<(), String>;
     fn send_text_message(&mut self, sip_address: &str, text: &str) -> Result<String, String>;
+    fn start_voice_recording(&mut self, file_path: &str) -> Result<(), String>;
+    fn stop_voice_recording(&mut self) -> Result<i32, String>;
+    fn cancel_voice_recording(&mut self) -> Result<(), String>;
+    fn send_voice_note(
+        &mut self,
+        sip_address: &str,
+        file_path: &str,
+        duration_ms: i32,
+        mime_type: &str,
+    ) -> Result<String, String>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -169,14 +179,44 @@ impl VoipHost {
             return Err("voip text message requires client_id".to_string());
         }
         let backend_id = backend.send_text_message(sip_address, text)?;
-        let backend_id = backend_id.trim();
-        if backend_id.is_empty() {
-            return Err("voip text message backend returned empty message id".to_string());
+        self.remember_outbound_message_id(&backend_id, client_id, "voip text message")?;
+        Ok(client_id.to_string())
+    }
+
+    pub fn start_voice_recording<B: CallBackend>(
+        &mut self,
+        backend: &mut B,
+        file_path: &str,
+    ) -> Result<(), String> {
+        backend.start_voice_recording(file_path)
+    }
+
+    pub fn stop_voice_recording<B: CallBackend>(&mut self, backend: &mut B) -> Result<i32, String> {
+        backend.stop_voice_recording()
+    }
+
+    pub fn cancel_voice_recording<B: CallBackend>(
+        &mut self,
+        backend: &mut B,
+    ) -> Result<(), String> {
+        backend.cancel_voice_recording()
+    }
+
+    pub fn send_voice_note<B: CallBackend>(
+        &mut self,
+        backend: &mut B,
+        sip_address: &str,
+        file_path: &str,
+        duration_ms: i32,
+        mime_type: &str,
+        client_id: &str,
+    ) -> Result<String, String> {
+        let client_id = client_id.trim();
+        if client_id.is_empty() {
+            return Err("voip voice note requires client_id".to_string());
         }
-        if backend_id != client_id {
-            self.outbound_message_ids
-                .insert(backend_id.to_string(), client_id.to_string());
-        }
+        let backend_id = backend.send_voice_note(sip_address, file_path, duration_ms, mime_type)?;
+        self.remember_outbound_message_id(&backend_id, client_id, "voip voice note")?;
         Ok(client_id.to_string())
     }
 
@@ -274,6 +314,23 @@ impl VoipHost {
         }
         client_id.unwrap_or_else(|| backend_id.to_string())
     }
+
+    fn remember_outbound_message_id(
+        &mut self,
+        backend_id: &str,
+        client_id: &str,
+        label: &str,
+    ) -> Result<(), String> {
+        let backend_id = backend_id.trim();
+        if backend_id.is_empty() {
+            return Err(format!("{label} backend returned empty message id"));
+        }
+        if backend_id != client_id {
+            self.outbound_message_ids
+                .insert(backend_id.to_string(), client_id.to_string());
+        }
+        Ok(())
+    }
 }
 
 fn is_terminal_delivery_state(value: &str) -> bool {
@@ -360,6 +417,34 @@ mod command_tests {
         fn send_text_message(&mut self, sip_address: &str, text: &str) -> Result<String, String> {
             self.calls.push(format!("text:{sip_address}:{text}"));
             Ok("backend-msg-1".to_string())
+        }
+
+        fn start_voice_recording(&mut self, file_path: &str) -> Result<(), String> {
+            self.calls.push(format!("record:{file_path}"));
+            Ok(())
+        }
+
+        fn stop_voice_recording(&mut self) -> Result<i32, String> {
+            self.calls.push("stop_recording".to_string());
+            Ok(1250)
+        }
+
+        fn cancel_voice_recording(&mut self) -> Result<(), String> {
+            self.calls.push("cancel_recording".to_string());
+            Ok(())
+        }
+
+        fn send_voice_note(
+            &mut self,
+            sip_address: &str,
+            file_path: &str,
+            duration_ms: i32,
+            mime_type: &str,
+        ) -> Result<String, String> {
+            self.calls.push(format!(
+                "voice:{sip_address}:{file_path}:{duration_ms}:{mime_type}"
+            ));
+            Ok("backend-vn-1".to_string())
         }
     }
 
@@ -473,6 +558,28 @@ mod command_tests {
                 self.calls.push(format!("text:{sip_address}:{text}"));
                 Ok("backend-msg-1".to_string())
             }
+
+            fn start_voice_recording(&mut self, _file_path: &str) -> Result<(), String> {
+                Ok(())
+            }
+
+            fn stop_voice_recording(&mut self) -> Result<i32, String> {
+                Ok(1250)
+            }
+
+            fn cancel_voice_recording(&mut self) -> Result<(), String> {
+                Ok(())
+            }
+
+            fn send_voice_note(
+                &mut self,
+                _sip_address: &str,
+                _file_path: &str,
+                _duration_ms: i32,
+                _mime_type: &str,
+            ) -> Result<String, String> {
+                Ok("backend-vn-1".to_string())
+            }
         }
 
         let mut host = VoipHost::default();
@@ -507,6 +614,150 @@ mod command_tests {
                 message_id: "client-msg-1".to_string(),
                 delivery_state: "delivered".to_string(),
                 local_file_path: "".to_string(),
+                error: "".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn voice_note_recording_commands_forward_to_backend() {
+        let mut host = VoipHost::default();
+        let mut backend = FakeBackend::default();
+        host.configure(config());
+        host.register(&mut backend).unwrap();
+
+        host.start_voice_recording(&mut backend, "/tmp/a.wav")
+            .expect("start voice recording");
+        let duration_ms = host
+            .stop_voice_recording(&mut backend)
+            .expect("stop voice recording");
+        host.cancel_voice_recording(&mut backend)
+            .expect("cancel voice recording");
+
+        assert_eq!(duration_ms, 1250);
+        assert_eq!(
+            backend.calls,
+            vec![
+                "start",
+                "record:/tmp/a.wav",
+                "stop_recording",
+                "cancel_recording"
+            ]
+        );
+    }
+
+    #[test]
+    fn send_voice_note_returns_client_id_and_maps_delivery_back_to_client_id() {
+        let mut host = VoipHost::default();
+        let mut backend = FakeBackend::default();
+        host.configure(config());
+        host.register(&mut backend).unwrap();
+
+        let message_id = host
+            .send_voice_note(
+                &mut backend,
+                "sip:bob@example.com",
+                "/tmp/a.wav",
+                1250,
+                "audio/wav",
+                "client-vn-1",
+            )
+            .expect("send voice note");
+
+        assert_eq!(message_id, "client-vn-1");
+        assert_eq!(
+            backend.calls,
+            vec![
+                "start",
+                "voice:sip:bob@example.com:/tmp/a.wav:1250:audio/wav"
+            ]
+        );
+
+        struct EventBackend {
+            events: Vec<BackendEvent>,
+        }
+
+        impl CallBackend for EventBackend {
+            fn start(&mut self, _config: &VoipConfig) -> Result<(), String> {
+                Ok(())
+            }
+
+            fn stop(&mut self) {}
+
+            fn iterate(&mut self) -> Result<Vec<BackendEvent>, String> {
+                Ok(std::mem::take(&mut self.events))
+            }
+
+            fn make_call(&mut self, _sip_address: &str) -> Result<String, String> {
+                Ok("call-outgoing".to_string())
+            }
+
+            fn answer_call(&mut self) -> Result<(), String> {
+                Ok(())
+            }
+
+            fn reject_call(&mut self) -> Result<(), String> {
+                Ok(())
+            }
+
+            fn hangup(&mut self) -> Result<(), String> {
+                Ok(())
+            }
+
+            fn set_muted(&mut self, _muted: bool) -> Result<(), String> {
+                Ok(())
+            }
+
+            fn send_text_message(
+                &mut self,
+                _sip_address: &str,
+                _text: &str,
+            ) -> Result<String, String> {
+                Ok("backend-msg-1".to_string())
+            }
+
+            fn start_voice_recording(&mut self, _file_path: &str) -> Result<(), String> {
+                Ok(())
+            }
+
+            fn stop_voice_recording(&mut self) -> Result<i32, String> {
+                Ok(1250)
+            }
+
+            fn cancel_voice_recording(&mut self) -> Result<(), String> {
+                Ok(())
+            }
+
+            fn send_voice_note(
+                &mut self,
+                _sip_address: &str,
+                _file_path: &str,
+                _duration_ms: i32,
+                _mime_type: &str,
+            ) -> Result<String, String> {
+                Ok("backend-vn-1".to_string())
+            }
+        }
+
+        let mut event_backend = EventBackend {
+            events: vec![BackendEvent::MessageDeliveryChanged {
+                message_id: "backend-vn-1".to_string(),
+                delivery_state: "delivered".to_string(),
+                local_file_path: "/tmp/a.wav".to_string(),
+                error: "".to_string(),
+            }],
+        };
+
+        let events = host
+            .poll_backend_events(&mut event_backend)
+            .expect("poll voice note delivery");
+
+        assert_eq!(
+            events,
+            vec![BackendEvent::MessageDeliveryChanged {
+                message_id: "client-vn-1".to_string(),
+                delivery_state: "delivered".to_string(),
+                local_file_path: "/tmp/a.wav".to_string(),
                 error: "".to_string(),
             }]
         );
@@ -577,6 +828,28 @@ mod command_tests {
                 _text: &str,
             ) -> Result<String, String> {
                 Ok("backend-msg-1".to_string())
+            }
+
+            fn start_voice_recording(&mut self, _file_path: &str) -> Result<(), String> {
+                Ok(())
+            }
+
+            fn stop_voice_recording(&mut self) -> Result<i32, String> {
+                Ok(1250)
+            }
+
+            fn cancel_voice_recording(&mut self) -> Result<(), String> {
+                Ok(())
+            }
+
+            fn send_voice_note(
+                &mut self,
+                _sip_address: &str,
+                _file_path: &str,
+                _duration_ms: i32,
+                _mime_type: &str,
+            ) -> Result<String, String> {
+                Ok("backend-vn-1".to_string())
             }
         }
 

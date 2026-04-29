@@ -78,6 +78,16 @@ type MakeCallFn = unsafe extern "C" fn(*const c_char) -> c_int;
 type SetMutedFn = unsafe extern "C" fn(i32) -> c_int;
 type SendTextMessageFn =
     unsafe extern "C" fn(*const c_char, *const c_char, *mut c_char, u32) -> c_int;
+type StartVoiceRecordingFn = unsafe extern "C" fn(*const c_char) -> c_int;
+type StopVoiceRecordingFn = unsafe extern "C" fn(*mut i32) -> c_int;
+type SendVoiceNoteFn = unsafe extern "C" fn(
+    *const c_char,
+    *const c_char,
+    i32,
+    *const c_char,
+    *mut c_char,
+    u32,
+) -> c_int;
 type LastErrorFn = unsafe extern "C" fn() -> *const c_char;
 
 pub struct LiblinphoneShim {
@@ -94,6 +104,10 @@ pub struct LiblinphoneShim {
     hangup: SimpleCallFn,
     set_muted: SetMutedFn,
     send_text_message: SendTextMessageFn,
+    start_voice_recording: StartVoiceRecordingFn,
+    stop_voice_recording: StopVoiceRecordingFn,
+    cancel_voice_recording: SimpleCallFn,
+    send_voice_note: SendVoiceNoteFn,
     last_error: LastErrorFn,
 }
 
@@ -173,6 +187,16 @@ impl LiblinphoneShim {
             send_text_message: unsafe {
                 symbol(&library, b"yoyopod_liblinphone_send_text_message\0")
             }?,
+            start_voice_recording: unsafe {
+                symbol(&library, b"yoyopod_liblinphone_start_voice_recording\0")
+            }?,
+            stop_voice_recording: unsafe {
+                symbol(&library, b"yoyopod_liblinphone_stop_voice_recording\0")
+            }?,
+            cancel_voice_recording: unsafe {
+                symbol(&library, b"yoyopod_liblinphone_cancel_voice_recording\0")
+            }?,
+            send_voice_note: unsafe { symbol(&library, b"yoyopod_liblinphone_send_voice_note\0") }?,
             last_error: unsafe { symbol(&library, b"yoyopod_liblinphone_last_error\0") }?,
             _library: library,
         })
@@ -279,6 +303,45 @@ impl LiblinphoneShim {
         Ok(c_string(&message_id))
     }
 
+    pub fn start_voice_recording(&self, file_path: &str) -> Result<(), ShimError> {
+        let file_path = CString::new(file_path)?;
+        self.check(unsafe { (self.start_voice_recording)(file_path.as_ptr()) })
+    }
+
+    pub fn stop_voice_recording(&self) -> Result<i32, ShimError> {
+        let mut duration_ms = 0;
+        self.check(unsafe { (self.stop_voice_recording)(&mut duration_ms) })?;
+        Ok(duration_ms)
+    }
+
+    pub fn cancel_voice_recording(&self) -> Result<(), ShimError> {
+        self.check(unsafe { (self.cancel_voice_recording)() })
+    }
+
+    pub fn send_voice_note(
+        &self,
+        sip_address: &str,
+        file_path: &str,
+        duration_ms: i32,
+        mime_type: &str,
+    ) -> Result<String, ShimError> {
+        let sip_address = CString::new(sip_address)?;
+        let file_path = CString::new(file_path)?;
+        let mime_type = CString::new(mime_type)?;
+        let mut message_id = [0 as c_char; 128];
+        self.check(unsafe {
+            (self.send_voice_note)(
+                sip_address.as_ptr(),
+                file_path.as_ptr(),
+                duration_ms,
+                mime_type.as_ptr(),
+                message_id.as_mut_ptr(),
+                message_id.len() as u32,
+            )
+        })?;
+        Ok(c_string(&message_id))
+    }
+
     fn last_error(&self) -> String {
         unsafe {
             let raw = (self.last_error)();
@@ -368,6 +431,36 @@ impl CallBackend for ShimBackend {
     fn send_text_message(&mut self, sip_address: &str, text: &str) -> Result<String, String> {
         self.shim
             .send_text_message(sip_address, text)
+            .map_err(|error| error.to_string())
+    }
+
+    fn start_voice_recording(&mut self, file_path: &str) -> Result<(), String> {
+        self.shim
+            .start_voice_recording(file_path)
+            .map_err(|error| error.to_string())
+    }
+
+    fn stop_voice_recording(&mut self) -> Result<i32, String> {
+        self.shim
+            .stop_voice_recording()
+            .map_err(|error| error.to_string())
+    }
+
+    fn cancel_voice_recording(&mut self) -> Result<(), String> {
+        self.shim
+            .cancel_voice_recording()
+            .map_err(|error| error.to_string())
+    }
+
+    fn send_voice_note(
+        &mut self,
+        sip_address: &str,
+        file_path: &str,
+        duration_ms: i32,
+        mime_type: &str,
+    ) -> Result<String, String> {
+        self.shim
+            .send_voice_note(sip_address, file_path, duration_ms, mime_type)
             .map_err(|error| error.to_string())
     }
 }

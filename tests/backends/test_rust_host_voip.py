@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+from yoyopod.backends.voip import rust_host
 from yoyopod.backends.voip.rust_host import RustHostBackend
 from yoyopod.integrations.call.models import (
     BackendRecovered,
@@ -289,6 +290,102 @@ def test_text_message_command_error_emits_message_failed() -> None:
     assert failures[-1].reason == "voip.send_text_message command_failed: peer offline"
 
 
+def test_voice_note_recording_commands_send_worker_commands(monkeypatch) -> None:
+    monotonic_values = iter([100.0, 102.5])
+    monkeypatch.setattr(rust_host.time, "monotonic", lambda: next(monotonic_values))
+    supervisor = _FakeSupervisor()
+    backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
+    backend.start()
+    supervisor.sent.clear()
+
+    assert backend.start_voice_note_recording("/tmp/a.wav") is True
+    assert backend.stop_voice_note_recording() == 2500
+    assert backend.cancel_voice_note_recording() is True
+
+    assert supervisor.sent == [
+        ("voip", "voip.start_voice_note_recording", {"file_path": "/tmp/a.wav"}),
+        ("voip", "voip.stop_voice_note_recording", {}),
+        ("voip", "voip.cancel_voice_note_recording", {}),
+    ]
+
+
+def test_stop_voice_note_without_active_recording_returns_none() -> None:
+    backend = RustHostBackend(
+        _config(), worker_supervisor=_FakeSupervisor(), worker_path="/bin/voip"
+    )
+
+    assert backend.stop_voice_note_recording() is None
+
+
+def test_send_voice_note_returns_client_id_and_sends_worker_command() -> None:
+    supervisor = _FakeSupervisor()
+    backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
+    backend.start()
+    supervisor.sent.clear()
+
+    message_id = backend.send_voice_note(
+        "sip:bob@example.com",
+        file_path="/tmp/a.wav",
+        duration_ms=1200,
+        mime_type="audio/wav",
+    )
+
+    assert message_id is not None
+    assert message_id.startswith("rust-msg-")
+    assert supervisor.sent == [
+        (
+            "voip",
+            "voip.send_voice_note",
+            {
+                "uri": "sip:bob@example.com",
+                "file_path": "/tmp/a.wav",
+                "duration_ms": 1200,
+                "mime_type": "audio/wav",
+                "client_id": message_id,
+            },
+        )
+    ]
+
+
+def test_voice_note_command_errors_emit_message_failed() -> None:
+    supervisor = _FakeSupervisor()
+    backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
+    received: list[object] = []
+    backend.on_event(received.append)
+    backend.start()
+
+    assert backend.start_voice_note_recording("/tmp/a.wav") is True
+    backend.handle_worker_message(
+        _reply(
+            "error",
+            "voip.error",
+            {"code": "command_failed", "message": "mic unavailable"},
+            request_id=supervisor.request_ids[-1],
+        )
+    )
+
+    message_id = backend.send_voice_note(
+        "sip:bob@example.com",
+        file_path="/tmp/a.wav",
+        duration_ms=1200,
+        mime_type="audio/wav",
+    )
+    backend.handle_worker_message(
+        _reply(
+            "error",
+            "voip.error",
+            {"code": "command_failed", "message": "upload failed"},
+            request_id=supervisor.request_ids[-1],
+        )
+    )
+
+    failures = [event for event in received if isinstance(event, MessageFailed)]
+    assert failures[0].message_id == ""
+    assert failures[0].reason == "voip.start_voice_note_recording command_failed: mic unavailable"
+    assert failures[1].message_id == message_id
+    assert failures[1].reason == "voip.send_voice_note command_failed: upload failed"
+
+
 def test_worker_events_translate_to_voip_events() -> None:
     supervisor = _FakeSupervisor()
     backend = RustHostBackend(_config(), worker_supervisor=supervisor, worker_path="/bin/voip")
@@ -476,22 +573,10 @@ def test_ready_after_worker_restart_resends_configure_register() -> None:
     assert received[1].reason == "worker_ready"
 
 
-def test_iterate_is_noop_and_unsupported_voice_notes_fail() -> None:
+def test_iterate_is_noop() -> None:
     backend = RustHostBackend(
         _config(), worker_supervisor=_FakeSupervisor(), worker_path="/bin/voip"
     )
 
     assert backend.iterate() == 0
     assert backend.get_iterate_metrics() is None
-    assert backend.start_voice_note_recording("/tmp/a.wav") is False
-    assert backend.stop_voice_note_recording() is None
-    assert backend.cancel_voice_note_recording() is False
-    assert (
-        backend.send_voice_note(
-            "sip:bob@example.com",
-            file_path="/tmp/a.wav",
-            duration_ms=1000,
-            mime_type="audio/wav",
-        )
-        is None
-    )

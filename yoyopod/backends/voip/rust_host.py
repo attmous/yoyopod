@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import time
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -43,7 +44,14 @@ _CALL_CONTROL_COMMANDS = frozenset(
         "voip.set_mute",
     }
 )
-_TEXT_MESSAGE_COMMANDS = frozenset({"voip.send_text_message"})
+_MESSAGE_SEND_COMMANDS = frozenset({"voip.send_text_message", "voip.send_voice_note"})
+_VOICE_NOTE_RECORDING_COMMANDS = frozenset(
+    {
+        "voip.start_voice_note_recording",
+        "voip.stop_voice_note_recording",
+        "voip.cancel_voice_note_recording",
+    }
+)
 _INTENTIONAL_STOP_REASONS = frozenset({"stop", "stop_all"})
 
 
@@ -77,6 +85,7 @@ class RustHostBackend:
         self._reconfigure_on_ready = False
         self._stopping = False
         self._last_stop_reason: str | None = None
+        self._recording_start_monotonic: float | None = None
 
     def on_event(self, callback: Callable[[VoIPEvent], None]) -> None:
         self.event_callbacks.append(callback)
@@ -136,6 +145,7 @@ class RustHostBackend:
             self._startup_commands_sent = False
             self._ready_seen = False
             self._reconfigure_on_ready = False
+            self._recording_start_monotonic = None
             self.running = False
             self._stopping = False
 
@@ -175,15 +185,26 @@ class RustHostBackend:
         return message_id
 
     def start_voice_note_recording(self, file_path: str) -> bool:
-        del file_path
-        logger.warning("Rust VoIP Host does not support voice notes in calls-only mode")
-        return False
+        request_id = self._send_with_request_id(
+            "voip.start_voice_note_recording", {"file_path": file_path}
+        )
+        if request_id is None:
+            return False
+        self._recording_start_monotonic = time.monotonic()
+        return True
 
     def stop_voice_note_recording(self) -> int | None:
-        return None
+        start = self._recording_start_monotonic
+        if start is None:
+            return None
+        if self._send_with_request_id("voip.stop_voice_note_recording", {}) is None:
+            return None
+        self._recording_start_monotonic = None
+        return max(0, int((time.monotonic() - start) * 1000))
 
     def cancel_voice_note_recording(self) -> bool:
-        return False
+        self._recording_start_monotonic = None
+        return self._send("voip.cancel_voice_note_recording", {})
 
     def send_voice_note(
         self,
@@ -193,8 +214,21 @@ class RustHostBackend:
         duration_ms: int,
         mime_type: str,
     ) -> str | None:
-        del sip_address, file_path, duration_ms, mime_type
-        return None
+        message_id = self._next_message_id()
+        request_id = self._send_with_request_id(
+            "voip.send_voice_note",
+            {
+                "uri": sip_address,
+                "file_path": file_path,
+                "duration_ms": int(duration_ms),
+                "mime_type": mime_type,
+                "client_id": message_id,
+            },
+        )
+        if request_id is None:
+            return None
+        self._pending_message_ids[request_id] = message_id
+        return message_id
 
     def handle_worker_message(self, event: Any) -> None:
         if getattr(event, "domain", self.domain) != self.domain:
@@ -368,11 +402,15 @@ class RustHostBackend:
             logger.warning("Rust VoIP Host call command failed: {}", reason)
             self._dispatch(CallStateChanged(state=CallState.ERROR))
             return
-        if command in _TEXT_MESSAGE_COMMANDS:
+        if command in _VOICE_NOTE_RECORDING_COMMANDS:
+            self._recording_start_monotonic = None
+            self._dispatch(MessageFailed(message_id="", reason=reason))
+            return
+        if command in _MESSAGE_SEND_COMMANDS:
             if message_id:
                 self._dispatch(MessageFailed(message_id=message_id, reason=reason))
             else:
-                logger.warning("Rust VoIP Host text message command failed: {}", reason)
+                logger.warning("Rust VoIP Host message command failed: {}", reason)
             return
         logger.warning("Rust VoIP Host command failed: {}", reason)
 
@@ -401,6 +439,7 @@ class RustHostBackend:
         self._startup_commands_sent = False
         self._ready_seen = False
         self._reconfigure_on_ready = False
+        self._recording_start_monotonic = None
         self.running = False
         if notify_backend_stopped:
             self._mark_stopped(reason)
