@@ -22,6 +22,7 @@ from yoyopod.integrations.call import (
     StartVoiceNoteRecordingCommand,
     StopVoiceNoteRecordingCommand,
     UnmuteCommand,
+    VoIPCallSessionSnapshot,
     VoIPLifecycleSnapshot,
     VoIPRuntimeSnapshot,
     VoiceNoteSummaryChangedEvent,
@@ -332,6 +333,12 @@ def test_rust_owned_call_runtime_waits_for_snapshot_before_mirroring_state(
                 reason="registered",
                 backend_available=True,
             ),
+            call_session=VoIPCallSessionSnapshot(
+                active=True,
+                session_id="call-1",
+                direction="outgoing",
+                peer_sip_address="sip:ada@example.com",
+            ),
         )
     )
     manager.emit_call_state(CallState.OUTGOING)
@@ -376,6 +383,195 @@ def test_rust_owned_mute_waits_for_snapshot_before_mirroring_state(
 
     assert app.states.get_value("call.muted") is True
     assert app.states.get_value("call.state") == "active"
+
+
+def test_rust_owned_terminal_session_snapshot_persists_history_once(
+    tmp_path: Path,
+) -> None:
+    app = build_test_app()
+    setup_focus(app)
+    history_store = CallHistoryStore(tmp_path / "call_history.json")
+    manager = FakeVoipManager(runtime_snapshot_owned=True)
+    setup(app, manager=manager, call_history_store=history_store, ringer=FakeRinger())
+    drain_all(app)
+
+    manager.emit_runtime_snapshot(
+        VoIPRuntimeSnapshot(
+            configured=True,
+            registered=True,
+            registration_state=RegistrationState.OK,
+            call_state=CallState.STREAMS_RUNNING,
+            active_call_id="call-1",
+            active_call_peer="sip:ada@example.com",
+            lifecycle=VoIPLifecycleSnapshot(
+                state="registered",
+                reason="registered",
+                backend_available=True,
+            ),
+            call_session=VoIPCallSessionSnapshot(
+                active=True,
+                session_id="call-1",
+                direction="outgoing",
+                peer_sip_address="sip:ada@example.com",
+                answered=True,
+            ),
+        )
+    )
+    drain_all(app)
+    assert app.states.get_value("focus.owner") == "call"
+    assert history_store.list_recent(1) == []
+
+    terminal_snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        call_state=CallState.RELEASED,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+        call_session=VoIPCallSessionSnapshot(
+            active=False,
+            session_id="call-1",
+            direction="outgoing",
+            peer_sip_address="sip:ada@example.com",
+            answered=True,
+            terminal_state=CallState.RELEASED.value,
+            local_end_action="hangup",
+            duration_seconds=12,
+            history_outcome="completed",
+        ),
+    )
+    manager.emit_runtime_snapshot(terminal_snapshot)
+    manager.emit_runtime_snapshot(terminal_snapshot)
+    drain_all(app)
+
+    recent = history_store.list_recent(2)
+    assert len(recent) == 1
+    assert recent[0].sip_address == "sip:ada@example.com"
+    assert recent[0].outcome == "completed"
+    assert recent[0].duration_seconds == 12
+    assert app.states.get_value("focus.owner") is None
+    assert app.states.get_value("call.history_unread_count") == 0
+
+
+def test_rust_owned_terminal_session_snapshot_allows_reused_session_ids_across_calls(
+    tmp_path: Path,
+) -> None:
+    app = build_test_app()
+    setup_focus(app)
+    history_store = CallHistoryStore(tmp_path / "call_history.json")
+    manager = FakeVoipManager(runtime_snapshot_owned=True)
+    setup(app, manager=manager, call_history_store=history_store, ringer=FakeRinger())
+    drain_all(app)
+
+    active_snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        call_state=CallState.INCOMING,
+        active_call_peer="sip:bob@example.com",
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+        call_session=VoIPCallSessionSnapshot(
+            active=True,
+            session_id="sip:bob@example.com",
+            direction="incoming",
+            peer_sip_address="sip:bob@example.com",
+        ),
+    )
+    terminal_snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        call_state=CallState.RELEASED,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+        call_session=VoIPCallSessionSnapshot(
+            active=False,
+            session_id="sip:bob@example.com",
+            direction="incoming",
+            peer_sip_address="sip:bob@example.com",
+            terminal_state=CallState.RELEASED.value,
+            history_outcome="missed",
+        ),
+    )
+
+    manager.emit_runtime_snapshot(active_snapshot)
+    drain_all(app)
+    manager.emit_runtime_snapshot(terminal_snapshot)
+    drain_all(app)
+
+    manager.emit_runtime_snapshot(active_snapshot)
+    drain_all(app)
+    manager.emit_runtime_snapshot(terminal_snapshot)
+    drain_all(app)
+
+    recent = history_store.list_recent(3)
+    assert len(recent) == 2
+    assert [entry.sip_address for entry in recent] == [
+        "sip:bob@example.com",
+        "sip:bob@example.com",
+    ]
+    assert [entry.outcome for entry in recent] == ["missed", "missed"]
+
+
+def test_rust_owned_terminal_only_snapshots_allow_reused_session_ids_after_new_incoming_call(
+    tmp_path: Path,
+) -> None:
+    app = build_test_app()
+    setup_focus(app)
+    history_store = CallHistoryStore(tmp_path / "call_history.json")
+    manager = FakeVoipManager(runtime_snapshot_owned=True)
+    setup(app, manager=manager, call_history_store=history_store, ringer=FakeRinger())
+    drain_all(app)
+
+    terminal_snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        call_state=CallState.RELEASED,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+        call_session=VoIPCallSessionSnapshot(
+            active=False,
+            session_id="sip:bob@example.com",
+            direction="incoming",
+            peer_sip_address="sip:bob@example.com",
+            terminal_state=CallState.RELEASED.value,
+            history_outcome="missed",
+        ),
+    )
+
+    manager.emit_incoming_call("sip:bob@example.com", "Bob")
+    drain_all(app)
+    manager.emit_runtime_snapshot(terminal_snapshot)
+    drain_all(app)
+    manager.emit_runtime_snapshot(terminal_snapshot)
+    drain_all(app)
+
+    manager.emit_incoming_call("sip:bob@example.com", "Bob")
+    drain_all(app)
+    manager.emit_runtime_snapshot(terminal_snapshot)
+    drain_all(app)
+
+    recent = history_store.list_recent(3)
+    assert len(recent) == 2
+    assert [entry.sip_address for entry in recent] == [
+        "sip:bob@example.com",
+        "sip:bob@example.com",
+    ]
+    assert [entry.outcome for entry in recent] == ["missed", "missed"]
 
 
 def test_incoming_calls_ring_and_history_can_be_marked_seen(tmp_path: Path) -> None:

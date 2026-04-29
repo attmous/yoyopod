@@ -1,7 +1,10 @@
 use crate::calls::CallSession;
 use crate::config::VoipConfig;
 use crate::lifecycle::LifecycleState;
-use crate::messages::{is_terminal_delivery_state, MessageSessionState, OutboundMessageIds};
+use crate::message_store::MessageStore;
+use crate::messages::{
+    is_terminal_delivery_state, normalize_message_record, MessageSessionState, OutboundMessageIds,
+};
 use crate::runtime_snapshot::RuntimeSnapshot;
 use crate::voice_notes::VoiceNoteSession;
 use serde_json::json;
@@ -76,6 +79,7 @@ pub struct VoipHost {
     lifecycle: LifecycleState,
     call: CallSession,
     voice_note: VoiceNoteSession,
+    message_store: MessageStore,
     last_message: Option<MessageSessionState>,
     outbound_message_ids: OutboundMessageIds,
 }
@@ -89,6 +93,7 @@ impl Default for VoipHost {
             lifecycle: LifecycleState::default(),
             call: CallSession::default(),
             voice_note: VoiceNoteSession::default(),
+            message_store: MessageStore::default(),
             last_message: None,
             outbound_message_ids: OutboundMessageIds::default(),
         }
@@ -97,6 +102,7 @@ impl Default for VoipHost {
 
 impl VoipHost {
     pub fn configure(&mut self, config: VoipConfig) {
+        self.message_store = MessageStore::open(&config.message_store_dir, 200);
         self.config = Some(config);
         self.registered = false;
         self.registration_state = "none".to_string();
@@ -145,6 +151,7 @@ impl VoipHost {
             voice_note: &self.voice_note,
             last_message: self.last_message.as_ref(),
             pending_outbound_messages: self.outbound_message_ids.len(),
+            message_store: &self.message_store,
         }
         .payload()
     }
@@ -205,13 +212,13 @@ impl VoipHost {
 
     pub fn reject<B: CallBackend>(&mut self, backend: &mut B) -> Result<(), String> {
         backend.reject_call()?;
-        self.call.clear_with_state("released");
+        self.call.clear_with_state_and_action("released", "reject");
         Ok(())
     }
 
     pub fn hangup<B: CallBackend>(&mut self, backend: &mut B) -> Result<(), String> {
         backend.hangup()?;
-        self.call.clear_with_state("released");
+        self.call.clear_with_state_and_action("released", "hangup");
         Ok(())
     }
 
@@ -239,6 +246,23 @@ impl VoipHost {
         let backend_id = backend.send_text_message(sip_address, text)?;
         self.outbound_message_ids
             .remember(&backend_id, client_id, "voip text message")?;
+        let sender_sip_address = self.local_identity();
+        if let Err(error) = self.message_store.upsert(MessageRecord {
+            message_id: client_id.to_string(),
+            peer_sip_address: sip_address.to_string(),
+            sender_sip_address,
+            recipient_sip_address: sip_address.to_string(),
+            kind: "text".to_string(),
+            direction: "outgoing".to_string(),
+            delivery_state: "sending".to_string(),
+            text: text.to_string(),
+            local_file_path: String::new(),
+            mime_type: String::new(),
+            duration_ms: 0,
+            unread: false,
+        }) {
+            eprintln!("failed to persist accepted outgoing VoIP text message: {error}");
+        }
         Ok(client_id.to_string())
     }
 
@@ -285,7 +309,28 @@ impl VoipHost {
             .remember(&backend_id, client_id, "voip voice note")?;
         self.voice_note
             .start_sending(file_path, duration_ms, mime_type, client_id);
+        let sender_sip_address = self.local_identity();
+        if let Err(error) = self.message_store.upsert(MessageRecord {
+            message_id: client_id.to_string(),
+            peer_sip_address: sip_address.to_string(),
+            sender_sip_address,
+            recipient_sip_address: sip_address.to_string(),
+            kind: "voice_note".to_string(),
+            direction: "outgoing".to_string(),
+            delivery_state: "sending".to_string(),
+            text: String::new(),
+            local_file_path: file_path.to_string(),
+            mime_type: mime_type.to_string(),
+            duration_ms,
+            unread: false,
+        }) {
+            eprintln!("failed to persist accepted outgoing VoIP voice note: {error}");
+        }
         Ok(client_id.to_string())
+    }
+
+    pub fn mark_voice_notes_seen(&mut self, sip_address: &str) -> Result<(), String> {
+        self.message_store.mark_contact_seen(sip_address)
     }
 
     pub fn poll_backend_events<B: CallBackend>(
@@ -328,10 +373,13 @@ impl VoipHost {
                 self.registration_state = "failed".to_string();
                 self.lifecycle.mark_recovery_pending();
                 self.lifecycle.record("failed", reason, false);
-                self.call.clear();
+                self.call.clear_with_state("error");
                 self.outbound_message_ids.clear();
             }
             BackendEvent::MessageReceived { message } => {
+                if let Err(error) = self.message_store.upsert(message.clone()) {
+                    eprintln!("failed to persist received VoIP message: {error}");
+                }
                 self.last_message = Some(MessageSessionState::received(message));
             }
             BackendEvent::MessageDeliveryChanged {
@@ -346,6 +394,12 @@ impl VoipHost {
                     local_file_path,
                     error,
                 ));
+                if let Err(store_error) =
+                    self.message_store
+                        .update_delivery(message_id, delivery_state, local_file_path)
+                {
+                    eprintln!("failed to persist VoIP delivery update: {store_error}");
+                }
                 self.voice_note
                     .apply_delivery(message_id, delivery_state, local_file_path);
             }
@@ -358,11 +412,20 @@ impl VoipHost {
                     message_id,
                     local_file_path,
                 ));
+                if let Err(error) =
+                    self.message_store
+                        .update_download(message_id, local_file_path, mime_type)
+                {
+                    eprintln!("failed to persist VoIP download update: {error}");
+                }
                 self.voice_note
                     .apply_download(message_id, local_file_path, mime_type);
             }
             BackendEvent::MessageFailed { message_id, reason } => {
                 self.last_message = Some(MessageSessionState::failed(message_id, reason));
+                if let Err(error) = self.message_store.update_delivery(message_id, "failed", "") {
+                    eprintln!("failed to persist VoIP failure update: {error}");
+                }
                 self.voice_note.fail(message_id);
             }
         }
@@ -372,6 +435,7 @@ impl VoipHost {
         match event {
             BackendEvent::MessageReceived { mut message } => {
                 message.message_id = self.translate_message_id(&message.message_id, false);
+                let message = normalize_message_record(message);
                 BackendEvent::MessageReceived { message }
             }
             BackendEvent::MessageDeliveryChanged {
@@ -407,5 +471,12 @@ impl VoipHost {
 
     fn translate_message_id(&mut self, backend_id: &str, terminal: bool) -> String {
         self.outbound_message_ids.translate(backend_id, terminal)
+    }
+
+    fn local_identity(&self) -> String {
+        self.config
+            .as_ref()
+            .map(|config| config.sip_identity.clone())
+            .unwrap_or_default()
     }
 }

@@ -114,3 +114,53 @@ fn worker_stop_uses_shutdown_path() {
         yoyopod_voip_host::worker::LoopAction::Shutdown
     ));
 }
+
+#[test]
+fn mark_voice_notes_seen_command_updates_snapshot_summary() {
+    let mut host = VoipHost::default();
+    host.configure(config());
+    let mut backend = FakeBackend {
+        events: vec![BackendEvent::MessageReceived {
+            message: MessageRecord {
+                message_id: "note-1".to_string(),
+                peer_sip_address: "sip:mom@example.com".to_string(),
+                sender_sip_address: "sip:mom@example.com".to_string(),
+                recipient_sip_address: "sip:alice@example.com".to_string(),
+                kind: "voice_note".to_string(),
+                direction: "incoming".to_string(),
+                delivery_state: "delivered".to_string(),
+                text: String::new(),
+                local_file_path: "/tmp/note.wav".to_string(),
+                mime_type: "audio/wav".to_string(),
+                duration_ms: 1000,
+                unread: true,
+            },
+        }],
+        ..FakeBackend::default()
+    };
+    host.poll_backend_events(&mut backend)
+        .expect("incoming message");
+    let mut backend = None;
+
+    let action = handle_command(
+        WorkerEnvelope {
+            schema_version: SUPPORTED_SCHEMA_VERSION,
+            kind: EnvelopeKind::Command,
+            message_type: "voip.mark_voice_notes_seen".to_string(),
+            request_id: Some("mark-seen-1".to_string()),
+            timestamp_ms: 0,
+            deadline_ms: 0,
+            payload: json!({"uri": "sip:mom@example.com"}),
+        },
+        &mut host,
+        &mut backend,
+        None,
+    )
+    .expect("mark seen should be handled");
+
+    assert!(matches!(
+        action,
+        yoyopod_voip_host::worker::LoopAction::Continue
+    ));
+    assert_eq!(host.session_snapshot_payload()["unread_voice_notes"], 0);
+}

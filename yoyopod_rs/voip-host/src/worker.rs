@@ -334,6 +334,32 @@ pub fn handle_command(
                 write_session_snapshot(host)?;
             }
         }
+        "voip.mark_voice_notes_seen" => {
+            let uri = envelope
+                .payload
+                .get("uri")
+                .or_else(|| envelope.payload.get("sip_address"))
+                .and_then(|value| value.as_str())
+                .unwrap_or("")
+                .trim();
+            if uri.is_empty() {
+                write_envelope(&WorkerEnvelope::error(
+                    "voip.error",
+                    envelope.request_id,
+                    "invalid_command",
+                    "voip.mark_voice_notes_seen requires uri",
+                ))?;
+            } else {
+                host.mark_voice_notes_seen(uri)
+                    .map_err(|error| anyhow!(error))?;
+                write_envelope(&WorkerEnvelope::result(
+                    "voip.mark_voice_notes_seen",
+                    envelope.request_id,
+                    json!({"marked_seen": true}),
+                ))?;
+                write_session_snapshot(host)?;
+            }
+        }
         "voip.shutdown" | "worker.stop" => {
             if let Some(mut backend_ref) = backend.take() {
                 host.unregister(&mut backend_ref);

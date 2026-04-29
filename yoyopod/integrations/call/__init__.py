@@ -61,6 +61,7 @@ if TYPE_CHECKING:
         RegistrationState,
         RegistrationStateChanged,
         VoIPConfig,
+        VoIPCallSessionSnapshot,
         VoIPEvent,
         VoIPLifecycleSnapshot,
         VoIPMessageSnapshot,
@@ -124,6 +125,10 @@ _PUBLIC_EXPORTS = {
     "MessageDirection": ("yoyopod.integrations.call.models", "MessageDirection"),
     "MessageDeliveryState": ("yoyopod.integrations.call.models", "MessageDeliveryState"),
     "VoIPConfig": ("yoyopod.integrations.call.models", "VoIPConfig"),
+    "VoIPCallSessionSnapshot": (
+        "yoyopod.integrations.call.models",
+        "VoIPCallSessionSnapshot",
+    ),
     "VoIPLifecycleSnapshot": (
         "yoyopod.integrations.call.models",
         "VoIPLifecycleSnapshot",
@@ -196,6 +201,7 @@ class CallIntegration:
     last_voice_note_unread_count: int = 0
     last_voice_note_unread_by_address: dict[str, int] = field(default_factory=dict)
     last_voice_note_summary: dict[str, dict[str, object]] = field(default_factory=dict)
+    finalized_rust_call_sessions: set[str] = field(default_factory=set)
 
 
 def setup(
@@ -597,6 +603,7 @@ __all__ = [
     "MessageDirection",
     "MessageDeliveryState",
     "VoIPConfig",
+    "VoIPCallSessionSnapshot",
     "VoIPLifecycleSnapshot",
     "VoIPMessageSnapshot",
     "VoIPMessageRecord",

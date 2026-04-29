@@ -1,6 +1,8 @@
 use serde_json::json;
 use std::collections::HashMap;
 
+const RCS_FT_HTTP_MIME: &str = "application/vnd.gsma.rcs-ft-http+xml";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageRecord {
     pub message_id: String,
@@ -131,4 +133,53 @@ impl OutboundMessageIds {
 
 pub fn is_terminal_delivery_state(value: &str) -> bool {
     matches!(value, "delivered" | "failed")
+}
+
+pub fn normalize_message_record(mut message: MessageRecord) -> MessageRecord {
+    if message.mime_type != RCS_FT_HTTP_MIME || message.text.is_empty() {
+        return message;
+    }
+
+    let voice_note_envelope = message.kind == "voice_note"
+        || (message.kind == "text" && is_voice_recording_envelope(&message.text));
+    if !voice_note_envelope {
+        return message;
+    }
+
+    message.kind = "voice_note".to_string();
+    message.mime_type =
+        extract_voice_note_payload_mime(&message.text).unwrap_or_else(|| "audio/wav".to_string());
+    if message.duration_ms <= 0 {
+        message.duration_ms = extract_voice_note_duration_ms(&message.text);
+    }
+    message.text.clear();
+    message
+}
+
+fn is_voice_recording_envelope(xml_text: &str) -> bool {
+    xml_text.contains("voice-recording=yes")
+}
+
+fn extract_voice_note_payload_mime(xml_text: &str) -> Option<String> {
+    let content_type = extract_tag_text(xml_text, "<content-type>", "</content-type>")?;
+    let mime_type = content_type.split(';').next().unwrap_or("").trim();
+    if mime_type.is_empty() {
+        None
+    } else {
+        Some(mime_type.to_string())
+    }
+}
+
+fn extract_voice_note_duration_ms(xml_text: &str) -> i32 {
+    extract_tag_text(xml_text, "<am:playing-length>", "</am:playing-length>")
+        .and_then(|duration| duration.parse::<i32>().ok())
+        .unwrap_or_default()
+        .max(0)
+}
+
+fn extract_tag_text<'a>(xml_text: &'a str, opening: &str, closing: &str) -> Option<&'a str> {
+    let start = xml_text.find(opening)? + opening.len();
+    let rest = &xml_text[start..];
+    let end = rest.find(closing)?;
+    Some(&rest[..end])
 }

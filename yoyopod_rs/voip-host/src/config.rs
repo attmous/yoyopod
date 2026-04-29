@@ -29,6 +29,8 @@ pub struct VoipConfig {
     #[serde(default = "default_iterate_interval_ms")]
     pub iterate_interval_ms: u64,
     #[serde(default)]
+    pub message_store_dir: String,
+    #[serde(default)]
     pub voice_note_store_dir: String,
     #[serde(default)]
     pub auto_download_incoming_voice_recordings: bool,

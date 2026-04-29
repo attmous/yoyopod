@@ -228,6 +228,21 @@ class VoIPMessageSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class VoIPCallSessionSnapshot:
+    """Rust-owned call-session facts used for app side effects and history."""
+
+    active: bool = False
+    session_id: str = ""
+    direction: str = ""
+    peer_sip_address: str = ""
+    answered: bool = False
+    terminal_state: str = ""
+    local_end_action: str = ""
+    duration_seconds: int = 0
+    history_outcome: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class VoIPRuntimeSnapshot:
     """Canonical live VoIP state reported by the Rust worker."""
 
@@ -239,7 +254,11 @@ class VoIPRuntimeSnapshot:
     active_call_peer: str = ""
     muted: bool = False
     pending_outbound_messages: int = 0
+    unread_voice_notes: int = 0
+    unread_voice_notes_by_contact: dict[str, int] = field(default_factory=dict)
+    latest_voice_note_by_contact: dict[str, dict[str, object]] = field(default_factory=dict)
     lifecycle: VoIPLifecycleSnapshot = field(default_factory=VoIPLifecycleSnapshot)
+    call_session: VoIPCallSessionSnapshot = field(default_factory=VoIPCallSessionSnapshot)
     voice_note: VoIPVoiceNoteSnapshot = field(default_factory=VoIPVoiceNoteSnapshot)
     last_message: VoIPMessageSnapshot | None = None
 

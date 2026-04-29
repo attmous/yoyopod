@@ -1,4 +1,6 @@
 use serde_json::json;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 use yoyopod_voip_host::config::VoipConfig;
 use yoyopod_voip_host::host::{BackendEvent, CallBackend};
 
@@ -8,6 +10,25 @@ pub fn config() -> VoipConfig {
         "sip_identity": "sip:alice@example.com"
     }))
     .expect("config")
+}
+
+#[allow(dead_code)]
+pub fn config_with_message_store(store_dir: &Path) -> VoipConfig {
+    VoipConfig::from_payload(&json!({
+        "sip_server": "sip.example.com",
+        "sip_identity": "sip:alice@example.com",
+        "message_store_dir": store_dir.to_string_lossy()
+    }))
+    .expect("config")
+}
+
+#[allow(dead_code)]
+pub fn temp_store_dir(test_name: &str) -> PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    std::env::temp_dir().join(format!("yoyopod-{test_name}-{unique}"))
 }
 
 #[derive(Default)]

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from yoyopod.core.events import BackendStoppedEvent
 from yoyopod.integrations.call.events import (
@@ -28,7 +28,13 @@ from yoyopod.integrations.call.commands import (
     UnmuteCommand,
 )
 from yoyopod.integrations.call.events import CallHistoryUpdatedEvent, VoiceNoteSummaryChangedEvent
-from yoyopod.integrations.call.models import CallState, RegistrationState
+from yoyopod.integrations.call.history import CallDirection, CallHistoryEntry, CallOutcome
+from yoyopod.integrations.call.models import (
+    CallState,
+    RegistrationState,
+    VoIPCallSessionSnapshot,
+    VoIPRuntimeSnapshot,
+)
 from yoyopod.core.focus import ReleaseFocusCommand, RequestFocusCommand
 
 _OUTGOING_STATES = {
@@ -78,7 +84,9 @@ def seed_call_state(app: Any, integration: Any, *, available: bool) -> None:
 def handle_incoming_call_event(app: Any, integration: Any, event: IncomingCallEvent) -> None:
     """Mirror incoming-call metadata into the state store and focus/ringer helpers."""
 
-    integration.session_tracker.begin_incoming_call(event.caller_address, event.caller_name)
+    _clear_finalized_rust_call_sessions(integration)
+    if not _manager_owns_runtime_snapshot(integration.manager):
+        integration.session_tracker.begin_incoming_call(event.caller_address, event.caller_name)
     _request_focus(app)
     _start_ringer(app, integration)
     app.states.set(
@@ -102,6 +110,13 @@ def handle_call_state_changed_event(
 
     manager = integration.manager
     state = event.state
+
+    if _manager_owns_runtime_snapshot(manager):
+        if state not in _TERMINAL_STATES:
+            _clear_finalized_rust_call_sessions(integration)
+        _apply_call_state(app, manager, state)
+        app.states.set("call.muted", bool(getattr(manager, "is_muted", False)), {})
+        return
 
     if state in _OUTGOING_STATES:
         _request_focus(app)
@@ -181,8 +196,96 @@ def handle_runtime_snapshot_changed_event(
 ) -> None:
     """Mirror Rust-owned runtime facts that may change without a call-state transition."""
 
+    _apply_rust_call_session_side_effects(app, integration, event.snapshot)
     _apply_call_state(app, integration.manager, event.snapshot.call_state)
     app.states.set("call.muted", bool(event.snapshot.muted), {})
+
+
+def _apply_rust_call_session_side_effects(
+    app: Any,
+    integration: Any,
+    snapshot: VoIPRuntimeSnapshot,
+) -> None:
+    session = snapshot.call_session
+    state = snapshot.call_state
+    _prune_finalized_rust_call_sessions(integration, session)
+
+    if session.active:
+        if state in _OUTGOING_STATES:
+            _request_focus(app)
+            _stop_ringer(integration)
+        elif state == CallState.INCOMING:
+            _request_focus(app)
+            _start_ringer(app, integration)
+        elif state in _ACTIVE_STATES:
+            _request_focus(app)
+            _stop_ringer(integration)
+        return
+
+    if _rust_call_session_is_terminal(session):
+        _stop_ringer(integration)
+        _persist_rust_call_session_history(app, integration, session)
+        _release_focus_if_owned(app)
+
+
+def _rust_call_session_is_terminal(session: VoIPCallSessionSnapshot) -> bool:
+    return bool(session.session_id and session.history_outcome and session.terminal_state)
+
+
+def _prune_finalized_rust_call_sessions(
+    integration: Any,
+    session: VoIPCallSessionSnapshot,
+) -> None:
+    finalized_sessions = getattr(integration, "finalized_rust_call_sessions", None)
+    if not isinstance(finalized_sessions, set):
+        return
+    if session.active or not _rust_call_session_is_terminal(session):
+        finalized_sessions.clear()
+
+
+def _clear_finalized_rust_call_sessions(integration: Any) -> None:
+    finalized_sessions = getattr(integration, "finalized_rust_call_sessions", None)
+    if isinstance(finalized_sessions, set):
+        finalized_sessions.clear()
+
+
+def _persist_rust_call_session_history(
+    app: Any,
+    integration: Any,
+    session: VoIPCallSessionSnapshot,
+) -> None:
+    finalized_sessions = getattr(integration, "finalized_rust_call_sessions", None)
+    if not isinstance(finalized_sessions, set):
+        return
+    if session.session_id in finalized_sessions:
+        return
+    direction = cast(
+        CallDirection,
+        session.direction if session.direction in {"incoming", "outgoing"} else "outgoing",
+    )
+    outcome = _history_outcome(session.history_outcome)
+    if outcome is None:
+        publish_call_history_updated(app, integration)
+        return
+    finalized_sessions.add(session.session_id)
+
+    history_store = integration.history_store
+    if history_store is None:
+        publish_call_history_updated(app, integration)
+        return
+
+    sip_address = session.peer_sip_address.strip()
+    display_name = _session_display_name(integration.manager, sip_address)
+    history_store.add_entry(
+        CallHistoryEntry.create(
+            direction=direction,
+            display_name=display_name,
+            sip_address=sip_address,
+            outcome=outcome,
+            duration_seconds=max(0, int(session.duration_seconds)),
+        )
+    )
+    publish_call_history_updated(app, integration)
 
 
 def handle_call_history_updated_event(
@@ -226,6 +329,7 @@ def dial(app: Any, integration: Any, command: DialCommand) -> bool:
     if not success:
         return False
     if _manager_owns_runtime_snapshot(integration.manager):
+        _clear_finalized_rust_call_sessions(integration)
         return True
     _request_focus(app)
     integration.session_tracker.ensure_outgoing_call(
@@ -466,6 +570,38 @@ def _call_duration_seconds(manager: Any) -> int:
     if not callable(get_call_duration):
         return 0
     return max(0, int(get_call_duration() or 0))
+
+
+def _history_outcome(value: str) -> CallOutcome | None:
+    outcome = str(value or "").strip()
+    if outcome in {"completed", "missed", "rejected", "cancelled", "failed"}:
+        return cast(CallOutcome, outcome)
+    return None
+
+
+def _session_display_name(manager: Any, sip_address: str) -> str:
+    lookup_contact_name = getattr(manager, "_lookup_contact_name", None)
+    if callable(lookup_contact_name):
+        name = str(lookup_contact_name(sip_address) or "").strip()
+        if name:
+            return name
+    caller = _caller_info(manager)
+    if str(caller.get("address") or "").strip() == sip_address:
+        display_name = str(caller.get("display_name") or caller.get("name") or "").strip()
+        if display_name:
+            return display_name
+    return _extract_username(sip_address)
+
+
+def _extract_username(sip_address: str) -> str:
+    if not sip_address:
+        return "Unknown"
+    if "@" not in sip_address:
+        return sip_address
+    username_part = sip_address.split("@", 1)[0]
+    if ":" in username_part:
+        return username_part.split(":")[-1]
+    return username_part
 
 
 def _manager_owns_runtime_snapshot(manager: Any) -> bool:

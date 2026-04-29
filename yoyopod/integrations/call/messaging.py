@@ -200,6 +200,13 @@ class MessagingService:
     def notify_message_summary_change(self) -> None:
         unread = self.unread_voice_note_count()
         summary = self.latest_voice_note_summary()
+        self.notify_external_message_summary_change(unread, summary)
+
+    def notify_external_message_summary_change(
+        self,
+        unread: int,
+        summary: dict[str, dict[str, object]],
+    ) -> None:
         for callback in self.message_summary_callbacks:
             try:
                 callback(unread, summary)

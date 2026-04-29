@@ -29,6 +29,7 @@ from yoyopod.integrations.call.models import (
     MessageReceived,
     RegistrationState,
     RegistrationStateChanged,
+    VoIPCallSessionSnapshot,
     VoIPConfig,
     VoIPEvent,
     VoIPLifecycleSnapshot,
@@ -248,6 +249,9 @@ class RustHostBackend:
             return None
         self._pending_message_ids[request_id] = message_id
         return message_id
+
+    def mark_voice_notes_seen(self, sip_address: str) -> bool:
+        return self._send("voip.mark_voice_notes_seen", {"uri": sip_address})
 
     def handle_worker_message(self, event: Any) -> None:
         if getattr(event, "domain", self.domain) != self.domain:
@@ -588,6 +592,7 @@ def _message_record(payload: dict[str, Any]) -> VoIPMessageRecord | None:
 
 def _runtime_snapshot(payload: dict[str, Any]) -> VoIPRuntimeSnapshot:
     lifecycle_payload = _dict_payload(payload.get("lifecycle"))
+    call_session_payload = _dict_payload(payload.get("call_session"))
     voice_note_payload = _dict_payload(payload.get("voice_note"))
     return VoIPRuntimeSnapshot(
         configured=_bool_payload(payload.get("configured", False)),
@@ -598,10 +603,28 @@ def _runtime_snapshot(payload: dict[str, Any]) -> VoIPRuntimeSnapshot:
         active_call_peer=str(payload.get("active_call_peer", "") or ""),
         muted=_bool_payload(payload.get("muted", False)),
         pending_outbound_messages=_duration_ms(payload.get("pending_outbound_messages")),
+        unread_voice_notes=_duration_ms(payload.get("unread_voice_notes")),
+        unread_voice_notes_by_contact=_int_map_payload(
+            payload.get("unread_voice_notes_by_contact")
+        ),
+        latest_voice_note_by_contact=_summary_map_payload(
+            payload.get("latest_voice_note_by_contact")
+        ),
         lifecycle=VoIPLifecycleSnapshot(
             state=str(lifecycle_payload.get("state", "unconfigured") or "unconfigured"),
             reason=str(lifecycle_payload.get("reason", "") or ""),
             backend_available=_bool_payload(lifecycle_payload.get("backend_available", False)),
+        ),
+        call_session=VoIPCallSessionSnapshot(
+            active=_bool_payload(call_session_payload.get("active", False)),
+            session_id=str(call_session_payload.get("session_id", "") or ""),
+            direction=str(call_session_payload.get("direction", "") or ""),
+            peer_sip_address=str(call_session_payload.get("peer_sip_address", "") or ""),
+            answered=_bool_payload(call_session_payload.get("answered", False)),
+            terminal_state=str(call_session_payload.get("terminal_state", "") or ""),
+            local_end_action=str(call_session_payload.get("local_end_action", "") or ""),
+            duration_seconds=_duration_ms(call_session_payload.get("duration_seconds")),
+            history_outcome=str(call_session_payload.get("history_outcome", "") or ""),
         ),
         voice_note=VoIPVoiceNoteSnapshot(
             state=str(voice_note_payload.get("state", "idle") or "idle"),
@@ -640,6 +663,37 @@ def _dict_payload(value: object) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {}
+
+
+def _int_map_payload(value: object) -> dict[str, int]:
+    payload = _dict_payload(value)
+    result: dict[str, int] = {}
+    for key, raw_value in payload.items():
+        normalized_key = str(key).strip()
+        if not normalized_key:
+            continue
+        result[normalized_key] = _duration_ms(raw_value)
+    return result
+
+
+def _summary_map_payload(value: object) -> dict[str, dict[str, object]]:
+    payload = _dict_payload(value)
+    result: dict[str, dict[str, object]] = {}
+    for key, raw_summary in payload.items():
+        normalized_key = str(key).strip()
+        if not normalized_key:
+            continue
+        summary = _dict_payload(raw_summary)
+        result[normalized_key] = {
+            "message_id": str(summary.get("message_id", "") or ""),
+            "direction": str(summary.get("direction", "") or ""),
+            "delivery_state": str(summary.get("delivery_state", "") or ""),
+            "local_file_path": str(summary.get("local_file_path", "") or ""),
+            "duration_ms": _duration_ms(summary.get("duration_ms")),
+            "unread": _bool_payload(summary.get("unread", False)),
+            "display_name": str(summary.get("display_name", "") or ""),
+        }
+    return result
 
 
 def _message_kind(value: str) -> MessageKind | None:

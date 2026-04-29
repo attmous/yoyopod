@@ -15,6 +15,7 @@ import pytest
 from cffi import FFI
 
 from yoyopod.backends.voip import LiblinphoneBackend, LiblinphoneBinding, MockVoIPBackend
+from yoyopod.backends.voip.rust_host import _runtime_snapshot
 from yoyopod.integrations.call.models import (
     BackendRecovered,
     BackendStopped,
@@ -161,9 +162,14 @@ class SnapshotOwnedMockVoIPBackend(MockVoIPBackend):
     def __init__(self) -> None:
         super().__init__()
         self.runtime_snapshot: VoIPRuntimeSnapshot | None = None
+        self.mark_seen_addresses: list[str] = []
 
     def get_runtime_snapshot(self) -> VoIPRuntimeSnapshot | None:
         return self.runtime_snapshot
+
+    def mark_voice_notes_seen(self, sip_address: str) -> bool:
+        self.mark_seen_addresses.append(sip_address)
+        return True
 
 
 def build_config(storage_root: Path | None = None) -> VoIPConfig:
@@ -609,6 +615,173 @@ def test_voip_manager_publishes_runtime_snapshot_callbacks_without_call_state_ch
     assert snapshots == [muted_snapshot]
     assert call_states == []
     assert manager.is_muted is True
+
+
+def test_rust_runtime_snapshot_parses_message_summary_fields() -> None:
+    """Rust snapshot summaries should survive Python parsing without Python store reads."""
+
+    snapshot = _runtime_snapshot(
+        {
+            "configured": True,
+            "registered": True,
+            "registration_state": "ok",
+            "unread_voice_notes": 2,
+            "unread_voice_notes_by_contact": {"sip:mom@example.com": 2},
+            "latest_voice_note_by_contact": {
+                "sip:mom@example.com": {
+                    "message_id": "note-2",
+                    "direction": "incoming",
+                    "delivery_state": "delivered",
+                    "local_file_path": "/tmp/note-2.wav",
+                    "duration_ms": 2400,
+                    "unread": True,
+                    "display_name": "Mom",
+                }
+            },
+        }
+    )
+
+    assert snapshot.unread_voice_notes == 2
+    assert snapshot.unread_voice_notes_by_contact == {"sip:mom@example.com": 2}
+    assert snapshot.latest_voice_note_by_contact == {
+        "sip:mom@example.com": {
+            "message_id": "note-2",
+            "direction": "incoming",
+            "delivery_state": "delivered",
+            "local_file_path": "/tmp/note-2.wav",
+            "duration_ms": 2400,
+            "unread": True,
+            "display_name": "Mom",
+        }
+    }
+
+
+def test_voip_manager_uses_rust_owned_voice_note_summary_snapshot() -> None:
+    """Rust-host mode should expose voice-note summaries from snapshots, not Python storage."""
+
+    backend = SnapshotOwnedMockVoIPBackend()
+    manager = VoIPManager(build_config(), backend=backend)
+    summary_events: list[tuple[int, dict[str, dict[str, object]]]] = []
+    manager.on_message_summary_change(
+        lambda unread, summary: summary_events.append((unread, dict(summary)))
+    )
+
+    assert manager.start()
+    snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+        unread_voice_notes=1,
+        unread_voice_notes_by_contact={"sip:mom@example.com": 1},
+        latest_voice_note_by_contact={
+            "sip:mom@example.com": {
+                "message_id": "note-1",
+                "direction": "incoming",
+                "delivery_state": "delivered",
+                "local_file_path": "/tmp/note-1.wav",
+                "duration_ms": 1800,
+                "unread": True,
+                "display_name": "Mom",
+            }
+        },
+    )
+
+    backend.runtime_snapshot = snapshot
+    backend.emit(VoIPRuntimeSnapshotChanged(snapshot=snapshot))
+    manager.mark_voice_notes_seen("sip:mom@example.com")
+
+    assert manager.unread_voice_note_count() == 1
+    assert manager.unread_voice_note_counts_by_contact() == {"sip:mom@example.com": 1}
+    assert manager.latest_voice_note_summary()["sip:mom@example.com"]["message_id"] == "note-1"
+    assert summary_events == [(1, snapshot.latest_voice_note_by_contact)]
+    assert backend.mark_seen_addresses == ["sip:mom@example.com"]
+
+
+def test_voip_manager_does_not_persist_rust_owned_message_events_to_python_store(
+    tmp_path: Path,
+) -> None:
+    """Rust-host message events should not repopulate the legacy Python message store."""
+
+    backend = SnapshotOwnedMockVoIPBackend()
+    manager = VoIPManager(build_config(tmp_path), backend=backend)
+
+    assert manager.start()
+    backend.emit(
+        MessageReceived(
+            message=VoIPMessageRecord(
+                id="incoming-note-1",
+                peer_sip_address="sip:mom@example.com",
+                sender_sip_address="sip:mom@example.com",
+                recipient_sip_address="sip:alice@example.com",
+                kind=MessageKind.VOICE_NOTE,
+                direction=MessageDirection.INCOMING,
+                delivery_state=MessageDeliveryState.DELIVERED,
+                created_at="2026-04-29T00:00:00+00:00",
+                updated_at="2026-04-29T00:00:00+00:00",
+                local_file_path="/tmp/note.wav",
+                mime_type="audio/wav",
+                duration_ms=1000,
+                unread=True,
+            )
+        )
+    )
+
+    assert manager._message_store.get("incoming-note-1") is None
+
+
+def test_voip_manager_derives_availability_from_rust_lifecycle_snapshots() -> None:
+    """Rust lifecycle snapshots should drive recovery availability without side events."""
+
+    backend = SnapshotOwnedMockVoIPBackend()
+    manager = VoIPManager(build_config(), backend=backend)
+    availability_changes: list[tuple[bool, str, RegistrationState]] = []
+    manager.on_availability_change(
+        lambda available, reason, registration_state: availability_changes.append(
+            (available, reason, registration_state)
+        )
+    )
+
+    assert manager.start()
+    availability_changes.clear()
+
+    failed_snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=False,
+        registration_state=RegistrationState.FAILED,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="failed",
+            reason="process_exited",
+            backend_available=False,
+        ),
+    )
+    backend.emit(VoIPRuntimeSnapshotChanged(snapshot=failed_snapshot))
+
+    assert manager.running is False
+    assert manager.registered is False
+    assert availability_changes == [
+        (False, "process_exited", RegistrationState.FAILED),
+    ]
+
+    recovered_snapshot = VoIPRuntimeSnapshot(
+        configured=True,
+        registered=True,
+        registration_state=RegistrationState.OK,
+        lifecycle=VoIPLifecycleSnapshot(
+            state="registered",
+            reason="registered",
+            backend_available=True,
+        ),
+    )
+    backend.emit(VoIPRuntimeSnapshotChanged(snapshot=recovered_snapshot))
+
+    assert manager.running is True
+    assert manager.registered is True
+    assert availability_changes[-1] == (True, "registered", RegistrationState.OK)
 
 
 def test_voip_manager_starts_timer_on_streams_running_without_connected() -> None:

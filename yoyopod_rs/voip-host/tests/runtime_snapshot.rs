@@ -1,5 +1,6 @@
 use yoyopod_voip_host::calls::CallSession;
 use yoyopod_voip_host::lifecycle::LifecycleState;
+use yoyopod_voip_host::message_store::MessageStore;
 use yoyopod_voip_host::messages::MessageSessionState;
 use yoyopod_voip_host::runtime_snapshot::RuntimeSnapshot;
 use yoyopod_voip_host::voice_notes::VoiceNoteSession;
@@ -18,6 +19,7 @@ fn runtime_snapshot_composes_canonical_voip_payload() {
 
     let last_message =
         MessageSessionState::delivery_changed("client-vn-1", "delivered", "/tmp/note.wav", "");
+    let message_store = MessageStore::memory(200);
 
     let payload = RuntimeSnapshot {
         configured: true,
@@ -28,6 +30,7 @@ fn runtime_snapshot_composes_canonical_voip_payload() {
         voice_note: &voice_note,
         last_message: Some(&last_message),
         pending_outbound_messages: 1,
+        message_store: &message_store,
     }
     .payload();
 
@@ -42,4 +45,9 @@ fn runtime_snapshot_composes_canonical_voip_payload() {
     assert_eq!(payload["voice_note"]["message_id"], "client-vn-1");
     assert_eq!(payload["last_message"]["message_id"], "client-vn-1");
     assert_eq!(payload["pending_outbound_messages"], 1);
+    assert_eq!(payload["unread_voice_notes"], 0);
+    assert!(payload["latest_voice_note_by_contact"]
+        .as_object()
+        .expect("summary object")
+        .is_empty());
 }

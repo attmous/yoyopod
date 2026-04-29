@@ -26,6 +26,7 @@ VOIP_HOST_TESTS = [
     "events",
     "host",
     "lifecycle",
+    "message_store",
     "messages",
     "protocol",
     "runtime_snapshot",
