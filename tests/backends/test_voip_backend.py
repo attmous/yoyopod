@@ -645,6 +645,29 @@ def test_voip_manager_ignores_direct_delivery_events_when_rust_owns_voice_notes(
     assert manager._message_store.get("mock-note-1") is None
 
 
+def test_voip_manager_marks_rust_owned_voice_note_failed_from_command_error(
+    tmp_path: Path,
+) -> None:
+    """Rust command failures should unblock the active compatibility draft."""
+
+    backend = SnapshotOwnedMockVoIPBackend()
+    manager = VoIPManager(build_config(tmp_path), backend=backend)
+
+    assert manager.start()
+    assert manager.start_voice_note_recording("sip:mom@example.com", recipient_name="Mom")
+    assert manager.stop_voice_note_recording() is not None
+    assert manager.send_active_voice_note() is True
+
+    backend.emit(MessageFailed(message_id="mock-note-1", reason="Upload failed"))
+
+    active = manager.get_active_voice_note()
+    assert active is not None
+    assert active.send_state == "failed"
+    assert active.status_text == "Upload failed"
+    assert active.send_started_at == 0.0
+    assert manager._message_store.get("mock-note-1") is None
+
+
 def test_voip_manager_skips_python_send_timeout_when_rust_owns_voice_notes(
     tmp_path: Path,
 ) -> None:

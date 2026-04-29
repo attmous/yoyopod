@@ -656,6 +656,7 @@ class VoIPManager:
             return
         if isinstance(event, MessageFailed):
             if self._backend_owns_runtime_snapshot():
+                self._handle_rust_voice_note_failed(event)
                 return
             self._voice_note_service.handle_message_failed(event)
             self._messaging_service.handle_message_failed(event)
@@ -801,6 +802,17 @@ class VoIPManager:
             draft.send_state = "failed"
             draft.status_text = _snapshot_failure_text(snapshot)
             draft.send_started_at = 0.0
+
+    def _handle_rust_voice_note_failed(self, event: MessageFailed) -> None:
+        draft = self._rust_active_voice_note
+        if draft is None:
+            return
+        if event.message_id and draft.message_id != event.message_id:
+            return
+
+        draft.send_state = "failed"
+        draft.status_text = event.reason or "Couldn't send"
+        draft.send_started_at = 0.0
 
     def _notify_rust_message_summary_change(self, snapshot: VoIPRuntimeSnapshot) -> None:
         summary = {
