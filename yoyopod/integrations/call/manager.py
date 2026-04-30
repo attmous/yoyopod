@@ -30,7 +30,8 @@ from yoyopod.integrations.call.models import (
     VoIPRuntimeSnapshot,
     VoIPRuntimeSnapshotChanged,
 )
-from yoyopod.integrations.call.voice_notes import VoiceNoteDraft
+from yoyopod.integrations.call.history import CallHistoryEntry
+from yoyopod.integrations.call.voice_note_draft import VoiceNoteDraft
 
 if TYPE_CHECKING:
     from yoyopod.integrations.contacts.directory import PeopleManager
@@ -349,13 +350,24 @@ class VoIPManager:
         if self._runtime_snapshot is None:
             return ()
         preview: list[str] = []
+        for entry in self.call_history_recent_entries():
+            preview.append(entry.title)
+        return tuple(preview)
+
+    def call_history_recent_entries(self) -> tuple[CallHistoryEntry, ...]:
+        """Return Rust-owned recent call history as app-facing list rows."""
+
+        if self._runtime_snapshot is None:
+            return ()
+
+        entries: list[CallHistoryEntry] = []
         for raw_entry in self._runtime_snapshot.recent_call_history:
             if not isinstance(raw_entry, dict):
                 continue
-            peer_sip_address = str(raw_entry.get("peer_sip_address", "") or "").strip()
-            if peer_sip_address:
-                preview.append(self._extract_username(peer_sip_address))
-        return tuple(preview)
+            entry = _call_history_entry_from_snapshot(self, raw_entry)
+            if entry is not None:
+                entries.append(entry)
+        return tuple(entries)
 
     def mark_call_history_seen(self, sip_address: str = "") -> bool:
         mark_seen = getattr(self.backend, "mark_call_history_seen", None)
@@ -1017,6 +1029,53 @@ def _voice_note_playback_command(file_path: str) -> list[str]:
             file_path,
         ]
     return ["aplay", "-q", file_path]
+
+
+def _call_history_entry_from_snapshot(
+    manager: VoIPManager,
+    raw_entry: dict[str, object],
+) -> CallHistoryEntry | None:
+    sip_address = str(raw_entry.get("peer_sip_address", "") or "").strip()
+    if not sip_address:
+        return None
+
+    direction = str(raw_entry.get("direction", "") or "").strip()
+    if direction not in {"incoming", "outgoing"}:
+        direction = "incoming"
+
+    outcome = str(raw_entry.get("outcome", "") or "").strip()
+    if outcome not in {"missed", "completed", "cancelled", "rejected", "failed"}:
+        outcome = "failed"
+
+    session_id = str(raw_entry.get("session_id", "") or "").strip()
+    return CallHistoryEntry.from_dict(
+        {
+            "id": session_id or sip_address,
+            "direction": direction,
+            "display_name": manager._lookup_contact_name(sip_address),
+            "sip_address": sip_address,
+            "outcome": outcome,
+            "duration_seconds": _duration_seconds_from_value(
+                raw_entry.get("duration_seconds")
+            ),
+            "seen": _bool_from_value(raw_entry.get("seen", False)),
+        }
+    )
+
+
+def _duration_seconds_from_value(value: object) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _bool_from_value(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 __all__ = ["VoIPIterateSnapshot", "VoIPManager"]

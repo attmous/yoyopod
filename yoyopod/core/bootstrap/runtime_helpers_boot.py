@@ -51,7 +51,6 @@ class RuntimeHelpersBoot:
             context=self.app.context,
             music_backend=self.app.music_backend,
             voip_manager_provider=lambda: self.app.voip_manager,
-            call_history_store=self.app.call_history_store,
             initial_voip_registered=self.app._voip_registered,
         )
         self.app.music_runtime = MusicRuntime(

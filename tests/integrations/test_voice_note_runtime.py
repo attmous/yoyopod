@@ -20,6 +20,8 @@ def test_voice_note_activity_syncs_talk_summary_without_boot_service() -> None:
             recent_preview=lambda: ["Mama", "Baba"],
         ),
         voip_manager=SimpleNamespace(
+            call_history_unread_count=lambda: 2,
+            call_history_recent_preview=lambda: ("Mama", "Baba"),
             unread_voice_note_count=lambda: 3,
             latest_voice_note_summary=lambda: {
                 "sip:mama@example.com": {"status": "received"}

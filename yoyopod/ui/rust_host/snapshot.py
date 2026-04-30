@@ -108,7 +108,7 @@ class RustUiRuntimeSnapshot:
             playlists=_playlist_items(context),
             recent_tracks=_recent_track_items(app),
             contacts=_contact_items(getattr(app, "people_directory", None)),
-            call_history=_call_history_items(getattr(app, "call_history_store", None)),
+            call_history=_call_history_items(getattr(app, "voip_manager", None)),
             call_state=_call_state_from_app(app),
             call_peer_name=call_peer_name,
             call_peer_address=call_peer_address,
@@ -300,8 +300,8 @@ def _resolve_music_service(app: Any) -> Any:
     return getattr(app, "local_music_service", None)
 
 
-def _call_history_items(call_history_store: Any) -> list[RustUiListItem]:
-    list_recent = getattr(call_history_store, "list_recent", None)
+def _call_history_items(voip_manager: Any) -> list[RustUiListItem]:
+    list_recent = getattr(voip_manager, "call_history_recent_entries", None)
     if not callable(list_recent):
         return []
 

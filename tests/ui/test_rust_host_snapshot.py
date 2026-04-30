@@ -49,26 +49,27 @@ def test_runtime_snapshot_serializes_current_app_context() -> None:
 
 
 def test_runtime_snapshot_includes_recent_tracks_and_call_history() -> None:
+    voip_manager = SimpleNamespace(
+        call_history_recent_entries=lambda: [
+            SimpleNamespace(
+                sip_address="sip:mama@example.com",
+                title="Mama",
+                subtitle="Missed call",
+                outcome="missed",
+            )
+        ]
+    )
     app = SimpleNamespace(
         context=None,
         app_state_runtime=None,
         people_directory=None,
+        voip_manager=voip_manager,
         get_music_library=lambda: SimpleNamespace(
             list_recent_tracks=lambda: [
                 SimpleNamespace(
                     uri="file:///music/little-song.mp3",
                     title="Little Song",
                     subtitle="YoYo",
-                )
-            ]
-        ),
-        call_history_store=SimpleNamespace(
-            list_recent=lambda: [
-                SimpleNamespace(
-                    sip_address="sip:mama@example.com",
-                    title="Mama",
-                    subtitle="Missed call",
-                    outcome="missed",
                 )
             ]
         ),

@@ -18,7 +18,6 @@ class ConfigBoot:
         logger: Any,
         config_manager_cls: Any,
         people_manager_cls: Any,
-        call_history_store_cls: Any,
         recent_track_history_store_cls: Any,
         audio_device_catalog_cls: Any,
     ) -> None:
@@ -26,7 +25,6 @@ class ConfigBoot:
         self.logger = logger
         self.config_manager_cls = config_manager_cls
         self.people_manager_cls = people_manager_cls
-        self.call_history_store_cls = call_history_store_cls
         self.recent_track_history_store_cls = recent_track_history_store_cls
         self.audio_device_catalog_cls = audio_device_catalog_cls
 
@@ -41,11 +39,7 @@ class ConfigBoot:
             self.app.people_directory = self.people_manager_cls.from_config_manager(
                 self.app.config_manager
             )
-            self.app.call_history_store = self.call_history_store_cls(
-                self.app.config_manager.resolve_runtime_path(
-                    self.app.config_manager.get_call_history_file()
-                )
-            )
+            self.app.call_history_store = None
             self.app.recent_track_store = self.recent_track_history_store_cls(
                 self.app.config_manager.resolve_runtime_path(
                     self.app.config_manager.get_recent_tracks_file()

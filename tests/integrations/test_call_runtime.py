@@ -13,6 +13,11 @@ from yoyopod.integrations.call import (
 )
 from yoyopod.integrations.call.runtime import CallRuntime
 from yoyopod.integrations.call.models import CallState, RegistrationState
+from yoyopod.integrations.call.models import (
+    VoIPCallSessionSnapshot,
+    VoIPLifecycleSnapshot,
+    VoIPRuntimeSnapshot,
+)
 from yoyopod.integrations.music import MusicFSM
 
 
@@ -78,6 +83,9 @@ class _VoipManagerStub:
         self._pending_terminal_action = None
         return action
 
+    def owns_runtime_snapshot(self) -> bool:
+        return True
+
 
 def _build_runtime() -> AppStateRuntime:
     """Create the minimal derived runtime required by CallRuntime."""
@@ -140,8 +148,8 @@ def test_availability_change_uses_reported_registration_state() -> None:
     assert context.voip.registration_state == RegistrationState.NONE.value
 
 
-def test_terminal_call_states_record_rejected_and_failed_history(tmp_path: Path) -> None:
-    """Terminal backend states should classify rejected and failed calls explicitly."""
+def test_raw_terminal_call_states_do_not_write_python_history(tmp_path: Path) -> None:
+    """Rust-owned call runtime should ignore raw call-state history classification."""
 
     context = AppContext()
     voip_manager = _VoipManagerStub()
@@ -171,6 +179,91 @@ def test_terminal_call_states_record_rejected_and_failed_history(tmp_path: Path)
     runtime_owner.handle_call_state_change(CallState.OUTGOING)
     runtime_owner.handle_call_state_change(CallState.ERROR)
 
-    recent = runtime_owner.call_history_store.list_recent(2)  # type: ignore[union-attr]
-    assert recent[0].outcome == "failed"
-    assert recent[1].outcome == "rejected"
+    assert runtime_owner.call_history_store.list_recent(2) == []  # type: ignore[union-attr]
+    assert runtime.call_fsm.state.value == "idle"
+
+
+def test_rust_snapshot_drives_call_runtime_without_python_history(tmp_path: Path) -> None:
+    """CallRuntime should consume Rust snapshots instead of finalizing Python history."""
+
+    context = AppContext()
+    voip_manager = _VoipManagerStub()
+    runtime = _build_runtime()
+    screen_manager = _ScreenManagerStub()
+    history_store = CallHistoryStore(tmp_path / "call_history.json")
+    runtime_owner = CallRuntime(
+        runtime=runtime,
+        screen_manager=screen_manager,
+        auto_resume_after_call=True,
+        config_manager=_ConfigManagerStub(sip_username="kid@example.com"),
+        context=context,
+        music_backend=None,
+        voip_manager_provider=lambda: voip_manager,
+        call_history_store=history_store,
+    )
+
+    runtime_owner.handle_call_state_change(CallState.INCOMING)
+
+    assert runtime.call_fsm.state.value == "idle"
+    assert history_store.list_recent() == []
+
+    runtime_owner.handle_runtime_snapshot_change(
+        VoIPRuntimeSnapshot(
+            configured=True,
+            registered=True,
+            registration_state=RegistrationState.OK,
+            call_state=CallState.INCOMING,
+            active_call_peer="sip:mama@example.com",
+            lifecycle=VoIPLifecycleSnapshot(
+                state="registered",
+                reason="registered",
+                backend_available=True,
+            ),
+            call_session=VoIPCallSessionSnapshot(
+                active=True,
+                session_id="call-1",
+                direction="incoming",
+                peer_sip_address="sip:mama@example.com",
+            ),
+        )
+    )
+
+    assert runtime.call_fsm.state.value == "incoming"
+
+    runtime_owner.handle_runtime_snapshot_change(
+        VoIPRuntimeSnapshot(
+            configured=True,
+            registered=True,
+            registration_state=RegistrationState.OK,
+            call_state=CallState.RELEASED,
+            unseen_call_history=1,
+            recent_call_history=(
+                {
+                    "session_id": "call-1",
+                    "peer_sip_address": "sip:mama@example.com",
+                    "direction": "incoming",
+                    "outcome": "missed",
+                    "duration_seconds": 0,
+                    "seen": False,
+                },
+            ),
+            lifecycle=VoIPLifecycleSnapshot(
+                state="registered",
+                reason="registered",
+                backend_available=True,
+            ),
+            call_session=VoIPCallSessionSnapshot(
+                active=False,
+                session_id="call-1",
+                direction="incoming",
+                peer_sip_address="sip:mama@example.com",
+                terminal_state=CallState.RELEASED.value,
+                history_outcome="missed",
+            ),
+        )
+    )
+
+    assert runtime.call_fsm.state.value == "idle"
+    assert context.talk.missed_calls == 1
+    assert context.talk.recent_calls == ["mama"]
+    assert history_store.list_recent() == []

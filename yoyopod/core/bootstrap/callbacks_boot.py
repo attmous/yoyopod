@@ -40,6 +40,13 @@ class CallbacksBoot:
         self.app.voip_manager.on_availability_change(
             call_runtime.handle_availability_change
         )
+        on_runtime_snapshot_change = getattr(
+            self.app.voip_manager,
+            "on_runtime_snapshot_change",
+            None,
+        )
+        if callable(on_runtime_snapshot_change):
+            on_runtime_snapshot_change(call_runtime.handle_runtime_snapshot_change)
         self.app.voip_manager.on_message_summary_change(
             self.app.voice_note_events.handle_voice_note_summary_changed
         )

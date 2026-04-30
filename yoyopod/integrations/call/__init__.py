@@ -35,8 +35,6 @@ if TYPE_CHECKING:
     from yoyopod.integrations.call.runtime import CallRuntime
     from yoyopod.integrations.call.history import CallHistoryEntry, CallHistoryStore
     from yoyopod.integrations.call.lifecycle import ActiveCallSession, CallSessionTracker
-    from yoyopod.integrations.call.messaging import MessagingService
-    from yoyopod.integrations.call.message_store import VoIPMessageStore
     from yoyopod.integrations.call.manager import VoIPManager
     from yoyopod.integrations.call.ringer import CallRinger
     from yoyopod.integrations.call.session import (
@@ -70,7 +68,8 @@ if TYPE_CHECKING:
         VoIPRuntimeSnapshotChanged,
         VoIPVoiceNoteSnapshot,
     )
-    from yoyopod.integrations.call.voice_notes import VoiceNoteDraft, VoiceNoteService
+    from yoyopod.integrations.call.voice_note_draft import VoiceNoteDraft
+    from yoyopod.integrations.call.voice_note_events import VoiceNoteEventHandler
 
 
 _PUBLIC_EXPORTS = {
@@ -167,8 +166,6 @@ _PUBLIC_EXPORTS = {
     ),
     "MessageFailed": ("yoyopod.integrations.call.models", "MessageFailed"),
     "VoIPEvent": ("yoyopod.integrations.call.models", "VoIPEvent"),
-    "MessagingService": ("yoyopod.integrations.call.messaging", "MessagingService"),
-    "VoIPMessageStore": ("yoyopod.integrations.call.message_store", "VoIPMessageStore"),
     "VoIPIterateMetrics": ("yoyopod.backends.voip.protocol", "VoIPIterateMetrics"),
     "VoIPManager": ("yoyopod.integrations.call.manager", "VoIPManager"),
     "VoIPAvailabilityChangedEvent": (
@@ -179,9 +176,11 @@ _PUBLIC_EXPORTS = {
         "yoyopod.integrations.call.events",
         "VoIPRuntimeSnapshotChangedEvent",
     ),
-    "VoiceNoteDraft": ("yoyopod.integrations.call.voice_notes", "VoiceNoteDraft"),
-    "VoiceNoteEventHandler": ("yoyopod.integrations.call.voice_notes", "VoiceNoteEventHandler"),
-    "VoiceNoteService": ("yoyopod.integrations.call.voice_notes", "VoiceNoteService"),
+    "VoiceNoteDraft": ("yoyopod.integrations.call.voice_note_draft", "VoiceNoteDraft"),
+    "VoiceNoteEventHandler": (
+        "yoyopod.integrations.call.voice_note_events",
+        "VoiceNoteEventHandler",
+    ),
     "VoiceNoteSummaryChangedEvent": (
         "yoyopod.integrations.call.events",
         "VoiceNoteSummaryChangedEvent",
@@ -257,10 +256,9 @@ def setup(
     from yoyopod.integrations.call.ringer import CallRinger
 
     actual_config = None
-    if config is not None or manager is None or call_history_store is None:
+    if config is not None or manager is None:
         actual_config = _resolve_voip_config(app, explicit=config)
     actual_people_directory = people_directory or _lookup_people_directory(app)
-    actual_history_store = call_history_store or CallHistoryStore(actual_config.call_history_file)
     actual_manager = manager or VoIPManager(
         actual_config,
         people_directory=actual_people_directory,
@@ -268,6 +266,13 @@ def setup(
         event_scheduler=app.scheduler.run_on_main,
         background_iterate_enabled=background_iterate_enabled,
     )
+    if call_history_store is not None:
+        actual_history_store = call_history_store
+    elif _object_owns_runtime_snapshot(actual_manager):
+        actual_history_store = None
+    else:
+        actual_config = actual_config or _resolve_voip_config(app, explicit=config)
+        actual_history_store = CallHistoryStore(actual_config.call_history_file)
     actual_ringer = ringer or CallRinger()
     integration = CallIntegration(
         manager=actual_manager,
@@ -516,6 +521,13 @@ def _lookup_people_directory(app: Any) -> object | None:
     return getattr(app, "people_directory", None)
 
 
+def _object_owns_runtime_snapshot(manager: object) -> bool:
+    owns_runtime_snapshot = getattr(manager, "owns_runtime_snapshot", None)
+    if not callable(owns_runtime_snapshot):
+        return False
+    return bool(owns_runtime_snapshot())
+
+
 def _restart_manager(manager: object) -> bool:
     _stop_manager(manager)
     start = getattr(manager, "start", None)
@@ -620,15 +632,12 @@ __all__ = [
     "MessageDownloadCompleted",
     "MessageFailed",
     "VoIPEvent",
-    "MessagingService",
-    "VoIPMessageStore",
     "VoIPIterateMetrics",
     "VoIPManager",
     "VoIPAvailabilityChangedEvent",
     "VoIPRuntimeSnapshotChangedEvent",
     "VoiceNoteDraft",
     "VoiceNoteEventHandler",
-    "VoiceNoteService",
     "VoiceNoteSummaryChangedEvent",
     "UnmuteCommand",
     "setup",

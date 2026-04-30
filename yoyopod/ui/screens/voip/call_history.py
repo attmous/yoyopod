@@ -62,13 +62,16 @@ class CallHistoryScreen(Screen):
         """Refresh call history and clear the unseen-missed badge count."""
         super().enter()
         self._load_entries()
-        if self.call_history_store is not None:
-            services = getattr(self.app, "services", None)
-            if services is not None and hasattr(services, "call"):
-                services.call("call", "mark_history_seen", MarkHistorySeenCommand())
-            else:
-                self.call_history_store.mark_all_seen()
-            self._sync_context_summary()
+        services = getattr(self.app, "services", None)
+        if services is not None and hasattr(services, "call"):
+            services.call("call", "mark_history_seen", MarkHistorySeenCommand())
+        elif self.voip_manager is not None:
+            mark_seen = getattr(self.voip_manager, "mark_call_history_seen", None)
+            if callable(mark_seen):
+                mark_seen("")
+        elif self.call_history_store is not None:
+            self.call_history_store.mark_all_seen()
+        self._sync_context_summary()
         self._ensure_lvgl_view()
 
     def exit(self) -> None:
@@ -97,10 +100,13 @@ class CallHistoryScreen(Screen):
 
     def _load_entries(self) -> None:
         """Load the recent calls from persistent storage."""
-        if self.call_history_store is None:
-            self.entries = []
-        else:
+        list_recent = getattr(self.voip_manager, "call_history_recent_entries", None)
+        if callable(list_recent):
+            self.entries = list(list_recent())
+        elif self.call_history_store is not None:
             self.entries = self.call_history_store.list_recent()
+        else:
+            self.entries = []
         if self.entries:
             self.selected_index = min(self.selected_index, len(self.entries) - 1)
         else:
@@ -109,13 +115,23 @@ class CallHistoryScreen(Screen):
 
     def _sync_context_summary(self) -> None:
         """Refresh the shared Talk summary after opening recents."""
-        if self.context is None or self.call_history_store is None:
+        if self.context is None:
             return
 
-        self.context.update_call_summary(
-            missed_calls=self.call_history_store.missed_count(),
-            recent_calls=self.call_history_store.recent_preview(),
-        )
+        unread_count = getattr(self.voip_manager, "call_history_unread_count", None)
+        recent_preview = getattr(self.voip_manager, "call_history_recent_preview", None)
+        if callable(unread_count) and callable(recent_preview):
+            self.context.update_call_summary(
+                missed_calls=max(0, int(unread_count() or 0)),
+                recent_calls=list(recent_preview()),
+            )
+            return
+
+        if self.call_history_store is not None:
+            self.context.update_call_summary(
+                missed_calls=self.call_history_store.missed_count(),
+                recent_calls=self.call_history_store.recent_preview(),
+            )
 
     def _is_ready_to_call(self) -> bool:
         """Return whether VoIP is ready to redial from recents."""

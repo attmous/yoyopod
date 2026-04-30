@@ -28,7 +28,6 @@ from yoyopod.core.states import States
 from yoyopod.core.app_state import AppStateRuntime
 from yoyopod.integrations.call import (
     CallFSM,
-    CallHistoryStore,
     CallInterruptionPolicy,
     VoIPManager,
 )
@@ -144,7 +143,7 @@ class YoyoPodApp:
         self.audio_volume_controller: Optional[AudioVolumeController] = None
         self.power_manager: Optional[PowerManager] = None
         self.network_manager: Optional[NetworkManager] = None
-        self.call_history_store: Optional[CallHistoryStore] = None
+        self.call_history_store: object | None = None
         self.recent_track_store: Optional[RecentTrackHistoryStore] = None
         self.audio_device_catalog: Optional[AudioDeviceCatalog] = None
         self.voice_runtime: Optional[VoiceRuntimeCoordinator] = None
