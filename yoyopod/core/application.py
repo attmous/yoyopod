@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from loguru import logger
 
 from yoyopod.core.audio_volume import AudioVolumeController
-from yoyopod.backends.music import MpvBackend
+from yoyopod.backends.music import MusicBackend
 from yoyopod.config import ConfigManager, MediaConfig, YoyoPodConfig
 from yoyopod.core.app_context import AppContext
 from yoyopod.core.background import BackgroundExecutor
@@ -137,7 +137,7 @@ class YoyoPodApp:
 
         # Manager components
         self.voip_manager: Optional[VoIPManager] = None
-        self.music_backend: Optional[MpvBackend] = None
+        self.music_backend: Optional[MusicBackend] = None
         self.local_music_service: Optional[LocalMusicService] = None
         self.output_volume: Optional[OutputVolumeController] = None
         self.audio_volume_controller: Optional[AudioVolumeController] = None

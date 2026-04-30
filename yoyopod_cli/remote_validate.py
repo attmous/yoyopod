@@ -23,6 +23,7 @@ app = build_remote_app("validate_app", "Validate commit + health on the Pi.")
 
 _RUST_UI_HOST_WORKER = "yoyopod_rs/ui-host/build/yoyopod-ui-host"
 _RUST_UI_POC_WORKER = _RUST_UI_HOST_WORKER
+_RUST_MEDIA_HOST_WORKER = "yoyopod_rs/media-host/build/yoyopod-media-host"
 _RUST_VOIP_HOST_WORKER = "yoyopod_rs/voip-host/build/yoyopod-voip-host"
 _RUST_LIBLINPHONE_SHIM = "yoyopod_rs/liblinphone-shim/build/libyoyopod_liblinphone_shim.so"
 
@@ -147,6 +148,13 @@ def _build_validate(
     else:
         steps.append(f"git reset --hard {origin_br}")
     steps.append("git clean -fd")
+    media_worker = shell_quote(_RUST_MEDIA_HOST_WORKER)
+    media_message = shell_quote(
+        "Missing executable CI-built Rust media artifact at "
+        f"{_RUST_MEDIA_HOST_WORKER}. Download the GitHub Actions artifact "
+        "for this exact commit before Pi validation; do not build Rust binaries on the Pi."
+    )
+    steps.append(f"test -x {media_worker} || (echo {media_message} >&2 && exit 1)")
     validate_deploy_cmd = checkout_module_command(venv_relpath, "pi", "validate", "deploy")
     smoke_cmd = checkout_module_command(venv_relpath, "pi", "validate", "smoke")
     if with_power:

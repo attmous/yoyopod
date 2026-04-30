@@ -205,6 +205,10 @@ class MusicConfig:
     mpv_socket: str = ""
     mpv_binary: str = "mpv"
     alsa_device: str = "default"
+    default_volume: int = 100
+    recent_tracks_file: str = "data/media/recent_tracks.json"
+    remote_cache_dir: str = "data/media/remote_cache"
+    remote_cache_max_bytes: int = 536870912
 
     def __post_init__(self) -> None:
         if not self.mpv_socket:
@@ -229,6 +233,24 @@ class MusicConfig:
             ),
             mpv_binary=music_settings.mpv_binary if music_settings is not None else "mpv",
             alsa_device=audio_settings.alsa_device if audio_settings is not None else "default",
+            default_volume=(
+                int(music_settings.default_volume) if music_settings is not None else 100
+            ),
+            recent_tracks_file=(
+                str(music_settings.recent_tracks_file)
+                if music_settings is not None
+                else "data/media/recent_tracks.json"
+            ),
+            remote_cache_dir=(
+                str(music_settings.remote_cache_dir)
+                if music_settings is not None
+                else "data/media/remote_cache"
+            ),
+            remote_cache_max_bytes=(
+                int(music_settings.remote_cache_max_bytes)
+                if music_settings is not None
+                else 536870912
+            ),
         )
 
     @classmethod

@@ -40,6 +40,8 @@ def test_build_validate_minimal() -> None:
     assert "git checkout --force -B main origin/main" in shell or (
         "git checkout --force -B 'main' 'origin/main'" in shell
     )
+    assert "test -x yoyopod_rs/media-host/build/yoyopod-media-host" in shell
+    assert "CI-built Rust media artifact" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate deploy" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate smoke" in shell
     assert "--with-power" not in shell
@@ -65,6 +67,7 @@ def test_build_validate_all_flags() -> None:
         with_navigation=True,
     )
     assert ".venv/bin/python -m yoyopod_cli.main pi validate smoke --with-power --with-rtc" in shell
+    assert "test -x yoyopod_rs/media-host/build/yoyopod-media-host" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate cloud-voice" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate music" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate voip" in shell
@@ -156,6 +159,7 @@ def test_build_validate_only_music() -> None:
         with_lvgl_soak=False,
         with_navigation=False,
     )
+    assert "test -x yoyopod_rs/media-host/build/yoyopod-media-host" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate music" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate voip" not in shell
 

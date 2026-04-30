@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
+from yoyopod.backends.music.rust_host import default_worker_path as _default_rust_media_host_worker
+
 if TYPE_CHECKING:
     from yoyopod.core.application import YoyoPodApp
 
@@ -18,6 +20,12 @@ def _rust_voip_host_worker_path() -> str:
     ).strip()
 
 
+def _rust_media_host_worker_path() -> str:
+    """Return the Rust media host worker binary path."""
+
+    return _default_rust_media_host_worker()
+
+
 class ManagersBoot:
     """Initialize manager-level runtime integrations."""
 
@@ -29,7 +37,7 @@ class ManagersBoot:
         voip_config_cls: Any,
         voip_manager_cls: Any,
         music_config_cls: Any,
-        mpv_backend_cls: Any,
+        music_backend_cls: Any,
         local_music_service_cls: Any,
         output_volume_controller_cls: Any,
         power_manager_cls: Any,
@@ -41,7 +49,7 @@ class ManagersBoot:
         self.voip_config_cls = voip_config_cls
         self.voip_manager_cls = voip_manager_cls
         self.music_config_cls = music_config_cls
-        self.mpv_backend_cls = mpv_backend_cls
+        self.music_backend_cls = music_backend_cls
         self.local_music_service_cls = local_music_service_cls
         self.output_volume_controller_cls = output_volume_controller_cls
         self.power_manager_cls = power_manager_cls
@@ -97,13 +105,23 @@ class ManagersBoot:
                 registration_state=self.app.voip_manager.registration_state,
             )
 
-            self.logger.info("  - MpvBackend")
+            self.logger.info("  - Rust media host backend")
             music_config = self.music_config_cls.from_config_manager(config_manager)
-            self.app.music_backend = self.mpv_backend_cls(music_config)
+            worker_path = _rust_media_host_worker_path()
+            self.app.music_backend = self.music_backend_cls(
+                music_config,
+                worker_supervisor=self.app.worker_supervisor,
+                worker_path=worker_path,
+                scheduler=self.app.scheduler,
+            )
             self.app.local_music_service = self.local_music_service_cls(
                 self.app.music_backend,
                 music_dir=music_config.music_dir,
-                recent_store=self.app.recent_track_store,
+                recent_store=(
+                    None
+                    if getattr(self.app.music_backend, "owns_library_state", False)
+                    else self.app.recent_track_store
+                ),
             )
             if self.app.output_volume is None:
                 self.app.output_volume = self.output_volume_controller_cls(self.app.music_backend)

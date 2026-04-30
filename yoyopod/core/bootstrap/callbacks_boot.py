@@ -115,6 +115,20 @@ class CallbacksBoot:
                 )
             )
         )
+        handle_worker_message = getattr(self.app.music_backend, "handle_worker_message", None)
+        handle_worker_state_change = getattr(
+            self.app.music_backend, "handle_worker_state_change", None
+        )
+        bus = getattr(self.app, "bus", None)
+        if callable(handle_worker_message) and bus is not None:
+            from yoyopod.core.events import (
+                WorkerDomainStateChangedEvent,
+                WorkerMessageReceivedEvent,
+            )
+
+            bus.subscribe(WorkerMessageReceivedEvent, handle_worker_message)
+            if callable(handle_worker_state_change):
+                bus.subscribe(WorkerDomainStateChangedEvent, handle_worker_state_change)
         self._warm_music_backend()
         self.logger.info("  Music callbacks registered")
 

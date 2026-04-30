@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from yoyopod.backends.music import MpvBackend, MusicConfig
+from yoyopod.backends.music import MusicConfig
+from yoyopod.backends.music.rust_host import RustHostBackend
 from yoyopod.config import ConfigManager
 from yoyopod.core.audio_volume import OutputVolumeController
 from yoyopod.core.events import WorkerMessageReceivedEvent
@@ -15,7 +16,7 @@ from yoyopod.core.hardware import AudioDeviceCatalog
 from yoyopod.integrations.call import VoIPConfig, VoIPManager
 from yoyopod.integrations.cloud.manager import CloudManager
 from yoyopod.integrations.contacts.directory import PeopleManager
-from yoyopod.integrations.music import LocalMusicService, RecentTrackHistoryStore
+from yoyopod.integrations.music import LocalMusicService
 from yoyopod.integrations.network import NetworkManager
 from yoyopod.integrations.power import PowerManager
 from yoyopod.ui.display import Display
@@ -48,7 +49,6 @@ class RuntimeBootService:
             logger=logger,
             config_manager_cls=ConfigManager,
             people_manager_cls=PeopleManager,
-            recent_track_history_store_cls=RecentTrackHistoryStore,
             audio_device_catalog_cls=AudioDeviceCatalog,
         )
         self._components_boot = ComponentsBoot(
@@ -67,7 +67,7 @@ class RuntimeBootService:
             voip_config_cls=VoIPConfig,
             voip_manager_cls=VoIPManager,
             music_config_cls=MusicConfig,
-            mpv_backend_cls=MpvBackend,
+            music_backend_cls=RustHostBackend,
             local_music_service_cls=LocalMusicService,
             output_volume_controller_cls=OutputVolumeController,
             power_manager_cls=PowerManager,

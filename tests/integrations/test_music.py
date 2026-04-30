@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-
 from yoyopod.backends.music import Track
 from tests.fixtures.app import build_test_app, drain_all
 from yoyopod.core import AudioFocusLostEvent
@@ -163,6 +162,109 @@ def test_music_setup_seeds_state_and_helpers(tmp_path: Path) -> None:
     assert app.states.get_value("music.volume_percent") == 42
     assert callable(app.get_music_position)
     assert app.get_music_position() == 1337
+
+
+def test_music_setup_defaults_to_rust_media_host_backend(monkeypatch) -> None:
+    app = build_test_app()
+    app.config = SimpleNamespace(
+        audio=SimpleNamespace(default_volume=61),
+        media=SimpleNamespace(
+            music=SimpleNamespace(recent_tracks_file="data/media/recent_tracks.json"),
+        ),
+    )
+    captured: dict[str, object] = {}
+
+    class _FakeRustBackend:
+        def __init__(
+            self,
+            config,
+            *,
+            worker_supervisor,
+            worker_path,
+            scheduler,
+        ) -> None:
+            captured["config"] = config
+            captured["worker_supervisor"] = worker_supervisor
+            captured["worker_path"] = worker_path
+            captured["scheduler"] = scheduler
+            self._connected = False
+            self._volume = 42
+            self.track_change_callback = None
+            self.playback_state_callback = None
+            self.connection_change_callback = None
+
+        def start(self) -> bool:
+            self._connected = True
+            return True
+
+        def stop(self) -> None:
+            self._connected = False
+
+        @property
+        def is_connected(self) -> bool:
+            return self._connected
+
+        def load_tracks(self, _uris: list[str]) -> bool:
+            return True
+
+        def load_playlist_file(self, _path: str) -> bool:
+            return True
+
+        def play(self) -> bool:
+            return True
+
+        def pause(self) -> bool:
+            return True
+
+        def stop_playback(self) -> bool:
+            return True
+
+        def next_track(self) -> bool:
+            return True
+
+        def previous_track(self) -> bool:
+            return True
+
+        def set_volume(self, volume: int) -> bool:
+            self._volume = volume
+            return True
+
+        def get_volume(self) -> int:
+            return self._volume
+
+        def set_audio_device(self, _device: str) -> bool:
+            return True
+
+        def get_current_track(self):
+            return None
+
+        def get_playback_state(self) -> str:
+            return "stopped"
+
+        def get_time_position(self) -> int:
+            return 0
+
+        def on_track_change(self, callback) -> None:
+            self.track_change_callback = callback
+
+        def on_playback_state_change(self, callback) -> None:
+            self.playback_state_callback = callback
+
+        def on_connection_change(self, callback) -> None:
+            self.connection_change_callback = callback
+
+    monkeypatch.setattr("yoyopod.backends.music.rust_host.RustHostBackend", _FakeRustBackend)
+    monkeypatch.setattr(
+        "yoyopod.backends.music.rust_host.default_worker_path",
+        lambda: "/bin/yoyopod-media-host",
+    )
+
+    integration = setup(app)
+
+    assert integration.backend is app.music_backend
+    assert captured["worker_supervisor"] is app.worker_supervisor
+    assert captured["worker_path"] == "/bin/yoyopod-media-host"
+    assert captured["scheduler"] is app.scheduler
 
 
 def test_music_services_drive_focus_and_state() -> None:

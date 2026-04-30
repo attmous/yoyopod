@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from yoyopod.backends.music import MockMusicBackend, Playlist, Track
+from yoyopod.backends.music import MockMusicBackend, Track
 from yoyopod.core import AppContext
 from yoyopod.integrations.call import VoiceNoteDraft
 from yoyopod.integrations.music import LocalMusicService, RecentTrackHistoryStore
@@ -53,10 +53,6 @@ class FakeMusicBackend(MockMusicBackend):
         self.next_track_calls = 0
         self.play_calls = 0
         self.pause_calls = 0
-        self.playlists = [
-            Playlist("m3u:alpha", "Alpha"),
-            Playlist("m3u:beta", "Beta"),
-        ]
         self.loaded_playlists: list[str] = []
 
     def next_track(self) -> bool:
@@ -71,17 +67,9 @@ class FakeMusicBackend(MockMusicBackend):
         self.pause_calls += 1
         return super().pause()
 
-    def get_playlists(self, fetch_track_counts: bool = False) -> list[Playlist]:
-        return list(self.playlists)
-
-    def load_playlist(self, playlist_uri: str) -> bool:
-        self.loaded_playlists.append(playlist_uri)
-        return True
-
-    def load_track_uris(self, track_uris: list[str]) -> bool:
-        if track_uris:
-            self._playback_state = "playing"
-        return True
+    def load_playlist_file(self, path: str) -> bool:
+        self.loaded_playlists.append(path)
+        return super().load_playlist_file(path)
 
 
 class FakeContact:
@@ -608,10 +596,19 @@ def test_now_playing_actions_fall_back_when_app_music_services_are_unregistered(
 def test_playlist_advance_wraps_and_select_loads_playlist(
     display: Display,
     one_button_context: AppContext,
+    tmp_path,
 ) -> None:
     """Playlists should wrap on ADVANCE and load the current selection on SELECT."""
     backend = FakeMusicBackend()
-    screen = PlaylistScreen(display, one_button_context, music_service=LocalMusicService(backend))
+    music_dir = tmp_path / "Music"
+    music_dir.mkdir()
+    playlist_path = music_dir / "alpha.m3u"
+    playlist_path.write_text("#EXTM3U\nsong.mp3\n", encoding="utf-8")
+    screen = PlaylistScreen(
+        display,
+        one_button_context,
+        music_service=LocalMusicService(backend, music_dir=music_dir),
+    )
     screen.render = lambda: None
 
     screen.enter()
@@ -620,18 +617,22 @@ def test_playlist_advance_wraps_and_select_loads_playlist(
     screen.on_select()
 
     assert screen.selected_index == 0
-    assert backend.loaded_playlists == ["m3u:alpha"]
+    assert backend.loaded_playlists == [str(playlist_path)]
     assert screen.consume_navigation_request() == NavigationRequest.route("playlist_loaded")
 
 
 def test_playlist_screen_can_use_app_music_services(
     display: Display,
     one_button_context: AppContext,
+    tmp_path,
 ) -> None:
     """Playlists should resolve library data and load commands through the app seam."""
 
     backend = FakeMusicBackend()
-    music_service = LocalMusicService(backend)
+    music_dir = tmp_path / "Music"
+    music_dir.mkdir()
+    (music_dir / "alpha.m3u").write_text("#EXTM3U\nsong.mp3\n", encoding="utf-8")
+    music_service = LocalMusicService(backend, music_dir=music_dir)
     service_calls: list[tuple[str, str, object]] = []
     app = SimpleNamespace(
         context=one_button_context,
@@ -655,11 +656,16 @@ def test_playlist_screen_can_use_app_music_services(
 def test_playlist_screen_falls_back_when_app_music_service_is_unregistered(
     display: Display,
     one_button_context: AppContext,
+    tmp_path,
 ) -> None:
     """Playlists should fall back to the local library when the app service is absent."""
 
     backend = FakeMusicBackend()
-    music_service = LocalMusicService(backend)
+    music_dir = tmp_path / "Music"
+    music_dir.mkdir()
+    playlist_path = music_dir / "alpha.m3u"
+    playlist_path.write_text("#EXTM3U\nsong.mp3\n", encoding="utf-8")
+    music_service = LocalMusicService(backend, music_dir=music_dir)
 
     def raise_missing_service(domain: str, service: str, data=None) -> bool:
         raise KeyError(f"Unknown service: {domain}.{service}")
@@ -675,7 +681,7 @@ def test_playlist_screen_falls_back_when_app_music_service_is_unregistered(
     screen.enter()
     screen.on_select()
 
-    assert backend.loaded_playlists == ["m3u:alpha"]
+    assert backend.loaded_playlists == [str(playlist_path)]
     assert screen.consume_navigation_request() == NavigationRequest.route("playlist_loaded")
 
 
@@ -686,13 +692,18 @@ def test_recent_tracks_select_routes_to_now_playing(
 ) -> None:
     """Recent track playback should route into Now Playing once the track is queued."""
     backend = FakeMusicBackend()
+    music_dir = tmp_path / "Music"
+    music_dir.mkdir()
+    track_path = music_dir / "alpha-song.mp3"
+    track_path.write_bytes(b"audio")
     service = LocalMusicService(
         backend,
+        music_dir=music_dir,
         recent_store=RecentTrackHistoryStore(tmp_path / "recent_tracks.json"),
     )
     service.record_recent_track(
         Track(
-            uri="local:track:1",
+            uri=str(track_path),
             name="Alpha Song",
             artists=["Artist"],
             album="Album",
@@ -715,13 +726,18 @@ def test_recent_tracks_fall_back_when_app_music_service_is_unregistered(
     """Recent playback should fall back to the local library when the app service is absent."""
 
     backend = FakeMusicBackend()
+    music_dir = tmp_path / "Music"
+    music_dir.mkdir()
+    track_path = music_dir / "alpha-song.mp3"
+    track_path.write_bytes(b"audio")
     service = LocalMusicService(
         backend,
+        music_dir=music_dir,
         recent_store=RecentTrackHistoryStore(tmp_path / "recent_tracks.json"),
     )
     service.record_recent_track(
         Track(
-            uri="local:track:1",
+            uri=str(track_path),
             name="Alpha Song",
             artists=["Artist"],
             album="Album",

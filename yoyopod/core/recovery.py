@@ -324,11 +324,11 @@ class RuntimeRecoveryService:
 
         start = getattr(self.app.music_backend, "start", None)
         if start is not None:
-            return bool(start())
+            return self._run_music_lifecycle_on_main(start)
 
         connect = getattr(self.app.music_backend, "connect", None)
         if connect is not None:
-            return bool(connect())
+            return self._run_music_lifecycle_on_main(connect)
 
         return False
 
@@ -453,3 +453,29 @@ class RuntimeRecoveryService:
             state.delay_seconds * 2.0,
             self.app._RECOVERY_MAX_DELAY_SECONDS,
         )
+
+    def _run_music_lifecycle_on_main(self, operation: Callable[[], bool]) -> bool:
+        if threading.get_ident() == getattr(self.app, "main_thread_id", threading.get_ident()):
+            return bool(operation())
+
+        result: dict[str, bool] = {"value": False}
+        completed = threading.Event()
+        queue_callback = getattr(self.app.runtime_loop, "queue_main_thread_callback", None)
+
+        def _run() -> None:
+            try:
+                result["value"] = bool(operation())
+            finally:
+                completed.set()
+
+        if callable(queue_callback):
+            queue_callback(_run)
+            return completed.wait(timeout=5.0) and result["value"]
+
+        scheduler = getattr(self.app, "scheduler", None)
+        run_on_main = getattr(scheduler, "run_on_main", None)
+        if callable(run_on_main):
+            run_on_main(_run)
+            return completed.wait(timeout=5.0) and result["value"]
+
+        return bool(operation())

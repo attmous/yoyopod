@@ -137,7 +137,7 @@ jobs:
           git clone --depth 1 --branch v9.5.0 https://github.com/lvgl/lvgl.git .cache/lvgl/lvgl-9.5.0
 
       - name: Run Bazel Rust host tests
-        run: bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/voip-host/... //yoyopod_rs/liblinphone-shim/...
+        run: bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/media-host/... //yoyopod_rs/voip-host/... //yoyopod_rs/liblinphone-shim/...
 
       - name: Run Rust UI host tests
         working-directory: yoyopod_rs
@@ -156,6 +156,21 @@ jobs:
         with:
           name: yoyopod-ui-host-${{ env.RUST_ARTIFACT_SHA }}
           path: yoyopod_rs/ui-host/build/yoyopod-ui-host
+          if-no-files-found: error
+
+      - name: Build Rust media host
+        working-directory: yoyopod_rs
+        run: |
+          set -euo pipefail
+          cargo build --release -p yoyopod-media-host --locked
+          mkdir -p media-host/build
+          cp target/release/yoyopod-media-host media-host/build/yoyopod-media-host
+
+      - name: Upload Rust media ARM64 host
+        uses: actions/upload-artifact@v4
+        with:
+          name: yoyopod-media-host-${{ env.RUST_ARTIFACT_SHA }}
+          path: yoyopod_rs/media-host/build/yoyopod-media-host
           if-no-files-found: error
 
       - name: Build Rust VoIP host
@@ -184,13 +199,15 @@ jobs:
       - name: Upload Rust Liblinphone shim ARM64 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: yoyopod-liblinphone-shim-${{ github.sha }}
+          name: yoyopod-liblinphone-shim-${{ env.RUST_ARTIFACT_SHA }}
           path: yoyopod_rs/liblinphone-shim/build/libyoyopod_liblinphone_shim.so
           if-no-files-found: error
 
   slot-arm64:
     runs-on: ubuntu-latest
     needs: [changes, quality, test, voice-go, ui-rust]
+    env:
+      RUST_ARTIFACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
@@ -217,6 +234,30 @@ jobs:
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Download Rust UI host artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: yoyopod-ui-host-${{ env.RUST_ARTIFACT_SHA }}
+          path: yoyopod_rs/ui-host/build
+
+      - name: Download Rust media host artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: yoyopod-media-host-${{ env.RUST_ARTIFACT_SHA }}
+          path: yoyopod_rs/media-host/build
+
+      - name: Download Rust VoIP host artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: yoyopod-voip-host-${{ env.RUST_ARTIFACT_SHA }}
+          path: yoyopod_rs/voip-host/build
+
+      - name: Download Rust Liblinphone shim artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: yoyopod-liblinphone-shim-${{ env.RUST_ARTIFACT_SHA }}
+          path: yoyopod_rs/liblinphone-shim/build
 
       - name: Build ARM64 slot artifact
         run: |

@@ -32,17 +32,23 @@ def test_rust_ui_ci_builds_arm64_binary_artifact() -> None:
     assert "working-directory: yoyopod_rs" in workflow
     assert "bazelbuild/setup-bazelisk" in workflow
     assert "git clone --depth 1 --branch v9.5.0 https://github.com/lvgl/lvgl.git .cache/lvgl/lvgl-9.5.0" in workflow
-    assert "bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/voip-host/..." in workflow
+    assert "bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/media-host/... //yoyopod_rs/voip-host/..." in workflow
     assert "cargo test --workspace --locked --features whisplay-hardware,native-lvgl" in workflow
     assert (
         "cargo build --release -p yoyopod-ui-host --features whisplay-hardware,native-lvgl --locked"
         in workflow
     )
+    assert "cargo build --release -p yoyopod-media-host --locked" in workflow
     assert "uses: actions/upload-artifact@v4" in workflow
     assert "name: yoyopod-ui-host-${{ env.RUST_ARTIFACT_SHA }}" in workflow
+    assert "name: yoyopod-media-host-${{ env.RUST_ARTIFACT_SHA }}" in workflow
     assert "name: yoyopod-voip-host-${{ env.RUST_ARTIFACT_SHA }}" in workflow
+    assert "name: yoyopod-liblinphone-shim-${{ env.RUST_ARTIFACT_SHA }}" in workflow
     assert "yoyopod_rs/ui-host/build/yoyopod-ui-host" in workflow
+    assert "yoyopod_rs/media-host/build/yoyopod-media-host" in workflow
     assert "yoyopod_rs/voip-host/build/yoyopod-voip-host" in workflow
+    assert "actions/download-artifact@v4" in workflow
+    assert "path: yoyopod_rs/media-host/build" in workflow
 
 
 def test_rust_bazel_feature_folder_layout_is_checked_in() -> None:

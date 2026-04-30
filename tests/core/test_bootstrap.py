@@ -1098,6 +1098,31 @@ def test_setup_music_callbacks_schedule_playback_handlers_on_main_thread() -> No
     assert music_backend.warm_start_calls == 1
 
 
+def test_setup_music_callbacks_subscribes_worker_message_handler() -> None:
+    """Worker-backed music backends should receive supervised worker messages."""
+
+    music_backend = _FakeMusicBackend()
+    subscribed: list[tuple[object, object]] = []
+    handler = lambda *_args: None
+    state_handler = lambda *_args: None
+    music_backend.handle_worker_message = handler  # type: ignore[attr-defined]
+    music_backend.handle_worker_state_change = state_handler  # type: ignore[attr-defined]
+    app = SimpleNamespace(
+        music_backend=music_backend,
+        music_runtime=_FakeMusicRuntime(),
+        audio_volume_controller=None,
+        scheduler=SimpleNamespace(run_on_main=lambda fn: fn()),
+        bus=SimpleNamespace(
+            subscribe=lambda event_type, callback: subscribed.append((event_type, callback))
+        ),
+    )
+
+    RuntimeBootService(app).setup_music_callbacks()
+
+    assert (WorkerMessageReceivedEvent, handler) in subscribed
+    assert (WorkerDomainStateChangedEvent, state_handler) in subscribed
+
+
 def test_voip_rust_host_worker_path_env_override(monkeypatch) -> None:
     """Only the Rust worker path remains configurable at boot composition."""
 
@@ -1106,6 +1131,16 @@ def test_voip_rust_host_worker_path_env_override(monkeypatch) -> None:
     monkeypatch.setenv("YOYOPOD_RUST_VOIP_HOST_WORKER", "/tmp/yoyopod-voip-host")
 
     assert _rust_voip_host_worker_path() == "/tmp/yoyopod-voip-host"
+
+
+def test_rust_media_host_worker_path_env_override(monkeypatch) -> None:
+    """The Rust media host worker path remains configurable at boot composition."""
+
+    from yoyopod.core.bootstrap.managers_boot import _rust_media_host_worker_path
+
+    monkeypatch.setenv("YOYOPOD_RUST_MEDIA_HOST_WORKER", "/tmp/yoyopod-media-host")
+
+    assert _rust_media_host_worker_path() == "/tmp/yoyopod-media-host"
 
 
 def test_rust_host_backend_is_default_and_receives_worker_supervisor(monkeypatch) -> None:
@@ -1140,7 +1175,17 @@ def test_rust_host_backend_is_default_and_receives_worker_supervisor(monkeypatch
             return cls()
 
     class _FakeMusicBackend:
-        def __init__(self, _config) -> None:
+        def __init__(
+            self,
+            _config,
+            *,
+            worker_supervisor,
+            worker_path,
+            scheduler,
+        ) -> None:
+            assert worker_supervisor is not None
+            assert worker_path
+            assert scheduler is not None
             self.is_connected = False
 
     class _FakeLocalMusicService:
@@ -1205,7 +1250,7 @@ def test_rust_host_backend_is_default_and_receives_worker_supervisor(monkeypatch
         voip_config_cls=_FakeVoipConfig,
         voip_manager_cls=_FakeVoipManager,
         music_config_cls=_FakeMusicConfig,
-        mpv_backend_cls=_FakeMusicBackend,
+        music_backend_cls=_FakeMusicBackend,
         local_music_service_cls=_FakeLocalMusicService,
         output_volume_controller_cls=_FakeOutputVolumeController,
         power_manager_cls=_FakePowerManager,
@@ -1218,6 +1263,137 @@ def test_rust_host_backend_is_default_and_receives_worker_supervisor(monkeypatch
     assert app.voip_manager.backend.worker_path == "/bin/yoyopod-voip-host"
     assert app.voip_manager.background_iterate_enabled is False
     assert captured_interval == [0.02]
+
+
+def test_rust_media_host_backend_is_default_and_receives_worker_supervisor(
+    monkeypatch,
+) -> None:
+    """ManagersBoot should inject WorkerSupervisor into the Rust media host backend."""
+
+    captured_backend: dict[str, object] = {}
+
+    class _FakeVoipConfig:
+        iterate_interval_ms = 20
+
+        @classmethod
+        def from_config_manager(cls, _config_manager):
+            return cls()
+
+    class _FakeVoipManager:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.running = False
+            self.registration_state = "none"
+
+        def start(self) -> bool:
+            return False
+
+    class _FakeMusicConfig:
+        music_dir = "data/test_music"
+        mpv_socket = "/tmp/mpv.sock"
+        mpv_binary = "mpv"
+        alsa_device = "default"
+        default_volume = 88
+        recent_tracks_file = "data/media/recent_tracks.json"
+        remote_cache_dir = "data/media/remote_cache"
+        remote_cache_max_bytes = 64 * 1024 * 1024
+
+        @classmethod
+        def from_config_manager(cls, _config_manager):
+            return cls()
+
+    class _FakeRustMediaBackend:
+        owns_library_state = True
+
+        def __init__(
+            self,
+            config,
+            *,
+            worker_supervisor,
+            worker_path,
+            scheduler,
+        ) -> None:
+            captured_backend["config"] = config
+            captured_backend["worker_supervisor"] = worker_supervisor
+            captured_backend["worker_path"] = worker_path
+            captured_backend["scheduler"] = scheduler
+            self.is_connected = False
+
+    class _FakeLocalMusicService:
+        def __init__(self, backend, *, music_dir, recent_store=None) -> None:
+            captured_backend["service_backend"] = backend
+            captured_backend["music_dir"] = music_dir
+            captured_backend["recent_store"] = recent_store
+
+    class _FakeOutputVolumeController:
+        def __init__(self, music_backend) -> None:
+            captured_backend["output_backend"] = music_backend
+
+    class _FakePowerManager:
+        def __init__(self) -> None:
+            self.config = SimpleNamespace(enabled=False, poll_interval_seconds=30.0)
+
+        @classmethod
+        def from_config_manager(cls, _config_manager):
+            return cls()
+
+    class _FakeNetworkManager:
+        def __init__(self) -> None:
+            self.config = SimpleNamespace(enabled=False)
+
+        @classmethod
+        def from_config_manager(cls, *_args, **_kwargs):
+            return cls()
+
+    class _FakeCloudManager:
+        def __init__(self, *, app, config_manager) -> None:
+            self.app = app
+            self.config_manager = config_manager
+
+        def prepare_boot(self) -> None:
+            return None
+
+    monkeypatch.setenv("YOYOPOD_RUST_MEDIA_HOST_WORKER", "/bin/yoyopod-media-host")
+
+    app = SimpleNamespace(
+        config_manager=_FakeConfigManager(),
+        people_directory=None,
+        worker_supervisor=object(),
+        recent_track_store=None,
+        context=AppContext(),
+        runtime_loop=SimpleNamespace(
+            set_configured_voip_iterate_interval_seconds=lambda _value: None
+        ),
+        scheduler=SimpleNamespace(run_on_main=lambda fn: fn()),
+        output_volume=None,
+        audio_volume_controller=None,
+        simulate=False,
+        network_events=SimpleNamespace(sync_network_context_from_manager=lambda: None),
+    )
+    service = ManagersBoot(
+        app,
+        logger=SimpleNamespace(
+            info=lambda *_args, **_kwargs: None,
+            warning=lambda *_args, **_kwargs: None,
+            error=lambda *_args, **_kwargs: None,
+            exception=lambda *_args, **_kwargs: None,
+        ),
+        voip_config_cls=_FakeVoipConfig,
+        voip_manager_cls=_FakeVoipManager,
+        music_config_cls=_FakeMusicConfig,
+        music_backend_cls=_FakeRustMediaBackend,
+        local_music_service_cls=_FakeLocalMusicService,
+        output_volume_controller_cls=_FakeOutputVolumeController,
+        power_manager_cls=_FakePowerManager,
+        network_manager_cls=_FakeNetworkManager,
+        cloud_manager_cls=_FakeCloudManager,
+    )
+
+    assert service.init_managers() is True
+    assert captured_backend["worker_supervisor"] is app.worker_supervisor
+    assert captured_backend["worker_path"] == "/bin/yoyopod-media-host"
+    assert captured_backend["scheduler"] is app.scheduler
+    assert captured_backend["service_backend"] is app.music_backend
+    assert captured_backend["output_backend"] is app.music_backend
 
 
 def test_setup_event_subscriptions_keeps_legacy_runtime_helper_flow() -> None:
@@ -1305,7 +1481,17 @@ def test_managers_boot_starts_network_and_syncs_context_without_event_wiring() -
             return cls()
 
     class _FakeMusicBackend:
-        def __init__(self, _config) -> None:
+        def __init__(
+            self,
+            _config,
+            *,
+            worker_supervisor,
+            worker_path,
+            scheduler,
+        ) -> None:
+            assert worker_supervisor is not None
+            assert worker_path
+            assert scheduler is not None
             self.is_connected = False
             self.start_calls = 0
 
@@ -1391,7 +1577,7 @@ def test_managers_boot_starts_network_and_syncs_context_without_event_wiring() -
         voip_config_cls=_FakeVoipConfig,
         voip_manager_cls=_FakeVoipManager,
         music_config_cls=_FakeMusicConfig,
-        mpv_backend_cls=_FakeMusicBackend,
+        music_backend_cls=_FakeMusicBackend,
         local_music_service_cls=_FakeLocalMusicService,
         output_volume_controller_cls=_FakeOutputVolumeController,
         power_manager_cls=_FakePowerManager,

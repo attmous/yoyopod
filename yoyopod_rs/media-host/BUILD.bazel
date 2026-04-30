@@ -1,0 +1,40 @@
+load(
+    "//:defs.bzl",
+    "yoyopod_rust_host_binary",
+    "yoyopod_rust_host_integration_tests",
+    "yoyopod_rust_host_library",
+)
+
+yoyopod_rust_host_library(
+    name = "media_host_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "yoyopod_media_host",
+)
+
+yoyopod_rust_host_binary(
+    name = "yoyopod-media-host",
+    srcs = ["src/main.rs"],
+    deps = [":media_host_lib"],
+)
+
+MEDIA_HOST_TESTS = [
+    "config",
+    "host",
+    "library",
+    "mpv_ipc",
+    "mpv_process",
+    "protocol",
+    "recents",
+    "remote_cache",
+    "remote_media",
+    "worker",
+]
+
+yoyopod_rust_host_integration_tests(
+    name = "tests",
+    tests = MEDIA_HOST_TESTS,
+    deps = [":media_host_lib"],
+)

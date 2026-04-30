@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import time
 from collections import deque
 from datetime import datetime, timezone
@@ -15,7 +14,6 @@ from loguru import logger
 
 from yoyopod.backends.cloud import CloudClientError, CloudDeviceClient, DeviceMqttClient
 from yoyopod.integrations.cloud.models import CloudAccessToken, CloudStatusSnapshot
-from yoyopod.integrations.cloud.playback_cache import RemotePlaybackCache
 
 if TYPE_CHECKING:
     from yoyopod.core.application import YoyoPodApp
@@ -69,18 +67,6 @@ class CloudManager:
         self._remote_playback_activation_generation = 0
         self._recent_remote_command_ids: deque[str] = deque(maxlen=32)
         self._last_remote_playback_state: str | None = None
-        get_media_settings = getattr(self.config_manager, "get_media_settings", None)
-        if callable(get_media_settings):
-            media_settings = get_media_settings().music
-            remote_cache_dir = media_settings.remote_cache_dir
-            remote_cache_max_bytes = media_settings.remote_cache_max_bytes
-        else:
-            remote_cache_dir = "data/media/remote_cache"
-            remote_cache_max_bytes = 64 * 1024 * 1024
-        self._remote_playback_cache = RemotePlaybackCache(
-            self.config_manager.resolve_runtime_path(remote_cache_dir),
-            remote_cache_max_bytes,
-        )
 
     def prepare_boot(self) -> None:
         """Load secrets/cache and start MQTT before the runtime loop begins."""
@@ -1348,7 +1334,7 @@ class CloudManager:
         activation_generation: int,
     ) -> None:
         try:
-            cached_asset = self._remote_playback_cache.prepare(
+            cached_asset = self._prepare_remote_playback_asset_for_media_backend(
                 track_id=track_id,
                 media_url=media_url,
                 checksum_sha256=checksum_sha256,
@@ -1492,14 +1478,14 @@ class CloudManager:
         payload: dict[str, Any],
     ) -> None:
         try:
-            cached_asset = self._remote_playback_cache.prepare(
+            cached_asset = self._prepare_remote_playback_asset_for_media_backend(
                 track_id=track_id,
                 media_url=media_url,
                 checksum_sha256=checksum_sha256,
             )
-            target_path = self._persist_device_media_asset(
+            target_path = self._import_remote_media_asset_for_media_backend(
                 track_id=track_id,
-                cached_path=Path(cached_asset.path),
+                cached_path=str(cached_asset.path),
                 payload=payload,
             )
         except Exception as exc:
@@ -1521,12 +1507,49 @@ class CloudManager:
             )
         )
 
+    def _prepare_remote_playback_asset_for_media_backend(
+        self,
+        *,
+        track_id: str,
+        media_url: str,
+        checksum_sha256: str | None,
+    ) -> Any:
+        music_backend = getattr(self.app, "music_backend", None)
+        prepare_remote_playback_asset = getattr(music_backend, "prepare_remote_playback_asset", None)
+        if not callable(prepare_remote_playback_asset):
+            raise RuntimeError("Rust media host remote playback is unavailable")
+        return prepare_remote_playback_asset(
+            track_id=track_id,
+            media_url=media_url,
+            checksum_sha256=checksum_sha256,
+            extension=self._remote_media_extension(media_url),
+        )
+
+    def _import_remote_media_asset_for_media_backend(
+        self,
+        *,
+        track_id: str,
+        cached_path: str,
+        payload: dict[str, Any],
+    ) -> str:
+        music_backend = getattr(self.app, "music_backend", None)
+        import_remote_media_asset = getattr(music_backend, "import_remote_media_asset", None)
+        if not callable(import_remote_media_asset):
+            raise RuntimeError("Rust media host media import is unavailable")
+        return import_remote_media_asset(
+            track_id=track_id,
+            cached_path=cached_path,
+            title=str(payload.get("title") or "").strip() or None,
+            filename=str(payload.get("filename") or payload.get("originalFilename") or "").strip()
+            or None,
+        )
+
     def _complete_store_media_command(
         self,
         *,
         command_id: str,
         track_id: str,
-        target_path: Path | None = None,
+        target_path: Path | str | None = None,
         error: Exception | None = None,
     ) -> None:
         if error is not None or target_path is None:
@@ -1549,84 +1572,10 @@ class CloudManager:
             },
         )
 
-    def _persist_device_media_asset(
-        self,
-        *,
-        track_id: str,
-        cached_path: Path,
-        payload: dict[str, Any],
-    ) -> Path:
-        music_dir = self._device_music_dir()
-        uploads_dir = music_dir / "dashboard_uploads"
-        uploads_dir.mkdir(parents=True, exist_ok=True)
-
-        preferred_name = str(
-            payload.get("filename") or payload.get("originalFilename") or payload.get("title") or ""
-        ).strip()
-        source_suffix = cached_path.suffix or ".mp3"
-        display_stem = self._safe_media_stem(preferred_name, default_stem=track_id)
-        unique_stem = self._safe_media_stem(track_id, default_stem="track")
-        if display_stem == unique_stem:
-            safe_name = f"{display_stem}{self._safe_media_suffix(source_suffix)}"
-        else:
-            safe_name = f"{display_stem}-{unique_stem}{self._safe_media_suffix(source_suffix)}"
-        target_path = uploads_dir / safe_name
-
-        shutil.copy2(cached_path, target_path)
-        self._append_dashboard_uploads_playlist(target_path)
-        return target_path
-
-    def _append_dashboard_uploads_playlist(self, target_path: Path) -> None:
-        playlist_path = self._device_music_dir() / "Dashboard Uploads.m3u"
-        playlist_path.parent.mkdir(parents=True, exist_ok=True)
-        existing_entries: set[str] = set()
-        if playlist_path.exists():
-            try:
-                existing_entries = {
-                    line.strip()
-                    for line in playlist_path.read_text(encoding="utf-8").splitlines()
-                    if line.strip()
-                }
-            except Exception:
-                existing_entries = set()
-
-        entry = str(target_path)
-        if entry in existing_entries:
-            return
-
-        with playlist_path.open("a", encoding="utf-8") as handle:
-            if playlist_path.stat().st_size > 0:
-                handle.write("\n")
-            handle.write(entry)
-
-    def _device_music_dir(self) -> Path:
-        get_media_settings = getattr(self.config_manager, "get_media_settings", None)
-        if callable(get_media_settings):
-            music_dir = get_media_settings().music.music_dir
-        else:
-            music_dir = "/home/pi/Music"
-        return Path(self.config_manager.resolve_runtime_path(music_dir)).expanduser()
-
     @staticmethod
-    def _safe_media_filename(value: str, *, default_stem: str, suffix: str) -> str:
-        return f"{CloudManager._safe_media_stem(value, default_stem=default_stem)}{CloudManager._safe_media_suffix(suffix)}"
-
-    @staticmethod
-    def _safe_media_stem(value: str, *, default_stem: str) -> str:
-        stem = Path(value).stem if value else default_stem
-        normalized = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in stem)
-        normalized = normalized.strip(".-_")
-        if not normalized:
-            fallback = "".join(
-                char if char.isalnum() or char in {"-", "_"} else "-" for char in default_stem
-            ).strip(".-_")
-            normalized = fallback or "track"
-        return normalized
-
-    @staticmethod
-    def _safe_media_suffix(suffix: str) -> str:
-        safe_suffix = suffix if suffix.startswith(".") else f".{suffix}"
-        return safe_suffix[:16]
+    def _remote_media_extension(media_url: str) -> str:
+        suffix = Path(urlparse(media_url).path).suffix
+        return suffix or ".mp3"
 
     def _is_backend_configured(self) -> bool:
         return bool(self.config_manager.get_cloud_settings().backend.api_base_url.strip())

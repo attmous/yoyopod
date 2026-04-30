@@ -1717,6 +1717,39 @@ def test_music_recovery_worker_queues_direct_main_thread_completion() -> None:
     assert app._music_recovery.next_attempt_at == 0.0
 
 
+def test_music_recovery_worker_starts_backend_on_main_thread() -> None:
+    """Music recovery should marshal backend startup back onto the coordinator thread."""
+
+    class _ThreadAwareMusicBackend(FakeRecoveringMusicBackend):
+        def __init__(self) -> None:
+            super().__init__([True])
+            self.start_thread_ids: list[int] = []
+
+        def start(self) -> bool:
+            self.start_thread_ids.append(threading.get_ident())
+            return super().start()
+
+    app = YoyoPodApp(simulate=True)
+    app.music_backend = _ThreadAwareMusicBackend()
+    app._music_recovery.in_flight = True
+
+    worker = threading.Thread(target=lambda: app.recovery_service.run_music_recovery_attempt(0.0))
+    worker.start()
+
+    _wait_for(lambda: app.scheduler.pending_count() > 0)
+
+    assert app.music_backend.start_thread_ids == []
+    assert app.runtime_loop.process_pending_main_thread_actions() == 1
+    _wait_for(lambda: app.scheduler.pending_count() > 0)
+    assert app.runtime_loop.process_pending_main_thread_actions() == 1
+
+    worker.join(timeout=1.0)
+
+    assert app.music_backend.start_thread_ids == [app.main_thread_id]
+    assert app._music_recovery.in_flight is False
+    assert app._music_recovery.next_attempt_at == 0.0
+
+
 def test_network_recovery_worker_queues_direct_main_thread_completion() -> None:
     """Network recovery workers should queue direct coordinator callbacks instead of typed events."""
 
