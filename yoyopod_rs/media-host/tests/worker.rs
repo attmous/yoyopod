@@ -218,3 +218,61 @@ fn list_playlists_command_reads_local_library_from_configured_music_dir() {
         1
     );
 }
+
+#[test]
+fn import_remote_asset_command_persists_dashboard_upload() {
+    let music_dir = temp_dir("import-remote");
+    fs::create_dir_all(&music_dir).expect("music dir");
+    let cached_path = music_dir.join("cache-track.mp3");
+    fs::write(&cached_path, b"audio").expect("cached asset");
+    let recent_tracks_file = music_dir.join("recent_tracks.json");
+    let remote_cache_dir = music_dir.join("remote_cache");
+
+    let mut host = MediaHost::default();
+    handle_command(
+        WorkerEnvelope {
+            schema_version: SUPPORTED_SCHEMA_VERSION,
+            kind: EnvelopeKind::Command,
+            message_type: "media.configure".to_string(),
+            request_id: Some("configure-1".to_string()),
+            timestamp_ms: 0,
+            deadline_ms: 0,
+            payload: json!({
+                "music_dir": music_dir.display().to_string(),
+                "mpv_socket": "/tmp/yoyopod-mpv.sock",
+                "mpv_binary": "mpv",
+                "alsa_device": "default",
+                "default_volume": 100,
+                "recent_tracks_file": recent_tracks_file.display().to_string(),
+                "remote_cache_dir": remote_cache_dir.display().to_string(),
+                "remote_cache_max_bytes": 1048576
+            }),
+        },
+        &mut host,
+    )
+    .expect("configure");
+
+    let outcome = handle_command(
+        WorkerEnvelope {
+            schema_version: SUPPORTED_SCHEMA_VERSION,
+            kind: EnvelopeKind::Command,
+            message_type: "media.import_remote_asset".to_string(),
+            request_id: Some("import-1".to_string()),
+            timestamp_ms: 0,
+            deadline_ms: 0,
+            payload: json!({
+                "track_id": "track-42",
+                "cached_path": cached_path.display().to_string(),
+                "title": "Track Forty Two"
+            }),
+        },
+        &mut host,
+    )
+    .expect("import remote asset");
+
+    let imported_path = outcome.envelopes[0].payload["path"]
+        .as_str()
+        .expect("path payload");
+    assert!(imported_path.ends_with("Track-Forty-Two-track-42.mp3"));
+    assert!(music_dir.join("Dashboard Uploads.m3u").exists());
+}

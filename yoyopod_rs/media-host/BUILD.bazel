@@ -28,6 +28,8 @@ MEDIA_HOST_TESTS = [
     "mpv_process",
     "protocol",
     "recents",
+    "remote_cache",
+    "remote_media",
     "worker",
 ]
 

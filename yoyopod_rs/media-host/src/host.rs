@@ -10,6 +10,8 @@ use crate::models::duration_ms;
 use crate::mpv_ipc::MpvIpcClient;
 use crate::mpv_process::MpvProcess;
 use crate::recents::{RecentTrackEntry, RecentTrackStore};
+use crate::remote_cache::{CachedPlaybackAsset, RemotePlaybackCache};
+use crate::remote_media::{MediaImportRequest, RemoteMediaLibrary};
 
 pub use crate::models::{PlaybackState, Track};
 
@@ -60,6 +62,8 @@ pub struct MediaHost {
     runtime: Option<Box<dyn MediaRuntime>>,
     library: Option<LocalMusicLibrary>,
     recent_store: RecentTrackStore,
+    remote_cache: Option<RemotePlaybackCache>,
+    remote_media_library: Option<RemoteMediaLibrary>,
     connected: bool,
     backend_state: String,
     current_track: Option<Track>,
@@ -82,6 +86,8 @@ impl MediaHost {
             runtime: None,
             library: None,
             recent_store: RecentTrackStore::default(),
+            remote_cache: None,
+            remote_media_library: None,
             connected: false,
             backend_state: "not_started".to_string(),
             current_track: None,
@@ -97,6 +103,11 @@ impl MediaHost {
     pub fn configure(&mut self, config: MediaConfig) {
         self.library = Some(LocalMusicLibrary::new(&config.music_dir));
         self.recent_store = RecentTrackStore::open(&config.recent_tracks_file, 50);
+        self.remote_cache = Some(RemotePlaybackCache::new(
+            &config.remote_cache_dir,
+            config.remote_cache_max_bytes,
+        ));
+        self.remote_media_library = Some(RemoteMediaLibrary::new(&config.music_dir));
         self.config = Some(config);
         self.backend_state = "configured".to_string();
     }
@@ -260,6 +271,32 @@ impl MediaHost {
             .as_ref()
             .map(LocalMusicLibrary::menu_items)
             .unwrap_or_default()
+    }
+
+    pub fn prepare_remote_playback_asset(
+        &self,
+        track_id: &str,
+        media_url: &str,
+        checksum_sha256: Option<&str>,
+        extension: &str,
+    ) -> Result<CachedPlaybackAsset> {
+        self.remote_cache
+            .as_ref()
+            .ok_or_else(|| anyhow!("media host is not configured"))?
+            .prepare(track_id, media_url, checksum_sha256, extension)
+            .map_err(|error| anyhow!(error))
+    }
+
+    pub fn import_remote_media_asset(
+        &self,
+        request: &MediaImportRequest,
+        cached_path: &std::path::Path,
+    ) -> Result<std::path::PathBuf> {
+        self.remote_media_library
+            .as_ref()
+            .ok_or_else(|| anyhow!("media host is not configured"))?
+            .persist_asset(request, cached_path)
+            .map_err(|error| anyhow!(error))
     }
 
     pub fn health_payload(&self) -> Value {

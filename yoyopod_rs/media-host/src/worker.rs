@@ -9,6 +9,7 @@ use crate::config::MediaConfig;
 use crate::events::MediaRuntimeEvent;
 use crate::host::MediaHost;
 use crate::protocol::{EnvelopeKind, WorkerEnvelope};
+use crate::remote_media::MediaImportRequest;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoopAction {
@@ -56,7 +57,7 @@ where
         output,
         &WorkerEnvelope::event(
             "media.ready",
-            json!({"capabilities":["configure", "health", "playback", "library"]}),
+            json!({"capabilities":["configure", "health", "playback", "library", "remote_media"]}),
         ),
     )?;
 
@@ -359,6 +360,70 @@ pub fn handle_command(envelope: WorkerEnvelope, host: &mut MediaHost) -> Result<
                 "media.play_recent_track",
                 request_id,
                 json!({"accepted": true}),
+            )]))
+        }
+        "media.prepare_remote_asset" => {
+            let track_id = envelope
+                .payload
+                .get("track_id")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| anyhow!("media.prepare_remote_asset requires track_id"))?;
+            let media_url = envelope
+                .payload
+                .get("media_url")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| anyhow!("media.prepare_remote_asset requires media_url"))?;
+            let checksum_sha256 = envelope
+                .payload
+                .get("checksum_sha256")
+                .and_then(|value| value.as_str());
+            let extension = envelope
+                .payload
+                .get("extension")
+                .and_then(|value| value.as_str())
+                .unwrap_or(".mp3");
+            let asset = host.prepare_remote_playback_asset(
+                track_id,
+                media_url,
+                checksum_sha256,
+                extension,
+            )?;
+            Ok(CommandOutcome::continue_with(vec![WorkerEnvelope::result(
+                "media.prepare_remote_asset",
+                request_id,
+                json!({"path": asset.path, "cache_hit": asset.cache_hit}),
+            )]))
+        }
+        "media.import_remote_asset" => {
+            let track_id = envelope
+                .payload
+                .get("track_id")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| anyhow!("media.import_remote_asset requires track_id"))?;
+            let cached_path = envelope
+                .payload
+                .get("cached_path")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| anyhow!("media.import_remote_asset requires cached_path"))?;
+            let request = MediaImportRequest {
+                track_id: track_id.to_string(),
+                title: envelope
+                    .payload
+                    .get("title")
+                    .and_then(|value| value.as_str())
+                    .map(ToString::to_string),
+                filename: envelope
+                    .payload
+                    .get("filename")
+                    .and_then(|value| value.as_str())
+                    .map(ToString::to_string),
+            };
+            let target_path =
+                host.import_remote_media_asset(&request, std::path::Path::new(cached_path))?;
+            Ok(CommandOutcome::continue_with(vec![WorkerEnvelope::result(
+                "media.import_remote_asset",
+                request_id,
+                json!({"path": target_path.display().to_string()}),
             )]))
         }
         "media.set_volume" => {

@@ -7,4 +7,6 @@ pub mod mpv_ipc;
 pub mod mpv_process;
 pub mod protocol;
 pub mod recents;
+pub mod remote_cache;
+pub mod remote_media;
 pub mod worker;
