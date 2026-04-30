@@ -77,6 +77,42 @@ impl WorkerEnvelope {
         }
     }
 
+    pub fn result(
+        message_type: impl Into<String>,
+        request_id: Option<String>,
+        payload: Value,
+    ) -> Self {
+        Self {
+            schema_version: SUPPORTED_SCHEMA_VERSION,
+            kind: EnvelopeKind::Result,
+            message_type: message_type.into(),
+            request_id,
+            timestamp_ms: 0,
+            deadline_ms: 0,
+            payload,
+        }
+    }
+
+    pub fn error(
+        message_type: impl Into<String>,
+        request_id: Option<String>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            schema_version: SUPPORTED_SCHEMA_VERSION,
+            kind: EnvelopeKind::Error,
+            message_type: message_type.into(),
+            request_id,
+            timestamp_ms: 0,
+            deadline_ms: 0,
+            payload: json!({
+                "code": code.into(),
+                "message": message.into(),
+            }),
+        }
+    }
+
     pub fn validate(&self) -> Result<(), ProtocolError> {
         if self.schema_version != SUPPORTED_SCHEMA_VERSION {
             return Err(ProtocolError::UnsupportedSchema {
@@ -111,4 +147,18 @@ pub fn snapshot_event(snapshot: &NetworkRuntimeSnapshot) -> WorkerEnvelope {
 
 pub fn stopped_event(reason: &str) -> WorkerEnvelope {
     WorkerEnvelope::event("network.stopped", json!({ "reason": reason }))
+}
+
+pub fn snapshot_result(
+    message_type: impl Into<String>,
+    request_id: Option<String>,
+    snapshot: &NetworkRuntimeSnapshot,
+) -> WorkerEnvelope {
+    WorkerEnvelope::result(
+        message_type,
+        request_id,
+        json!({
+            "snapshot": snapshot,
+        }),
+    )
 }
