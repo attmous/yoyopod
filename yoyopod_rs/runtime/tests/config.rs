@@ -11,6 +11,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "YOYOPOD_DISPLAY",
     "YOYOPOD_WHISPLAY_RENDERER",
     "YOYOPOD_PID_FILE",
+    "YOYOPOD_LOG_FILE",
     "YOYOPOD_SIP_SERVER",
     "YOYOPOD_SIP_USERNAME",
     "YOYOPOD_SIP_IDENTITY",
@@ -178,6 +179,8 @@ secrets:
     assert_eq!(config.voip.sip_server, "sip.example.test");
     assert_eq!(config.voip.sip_password, "secret");
     assert_eq!(config.voip.iterate_interval_ms, 25);
+    assert_eq!(config.pid_file, "/tmp/yoyopod-test.pid");
+    assert_eq!(config.log_file, "logs/yoyopod.log");
     assert_eq!(
         config.worker_paths.ui,
         "yoyopod_rs/ui-host/build/yoyopod-ui-host"
@@ -197,6 +200,29 @@ fn missing_files_fall_back_to_dev_defaults() {
     assert_eq!(config.media.mpv_binary, "mpv");
     assert_eq!(config.voip.transport, "tcp");
     assert_eq!(config.ui.hardware, "auto");
+    assert_eq!(config.pid_file, "/tmp/yoyopod.pid");
+    assert_eq!(config.log_file, "logs/yoyopod.log");
+}
+
+#[test]
+fn log_file_loads_from_yaml_and_env() {
+    let _lock = lock_env();
+    let _env = clean_config_env();
+    let dir = temp_config_dir("log-file");
+    write(
+        &dir.join("app/core.yaml"),
+        r#"
+logging:
+  file: "logs/from-yaml.log"
+"#,
+    );
+
+    let yaml_config = RuntimeConfig::load(&dir).expect("load yaml config");
+    assert_eq!(yaml_config.log_file, "logs/from-yaml.log");
+
+    std::env::set_var("YOYOPOD_LOG_FILE", "/tmp/from-env.log");
+    let env_config = RuntimeConfig::load(&dir).expect("load env config");
+    assert_eq!(env_config.log_file, "/tmp/from-env.log");
 }
 
 #[test]

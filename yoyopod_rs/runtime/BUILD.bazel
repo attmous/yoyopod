@@ -21,6 +21,7 @@ yoyopod_rust_host_binary(
 )
 
 RUNTIME_TESTS = [
+    "cli",
     "config",
     "event",
     "protocol",

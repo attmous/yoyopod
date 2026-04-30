@@ -1,15 +1,10 @@
-use anyhow::Result;
 use clap::Parser;
+use yoyopod_runtime::cli::{run, Args};
 
-#[derive(Debug, Parser)]
-#[command(name = "yoyopod-runtime")]
-#[command(about = "YoYoPod Rust top-level runtime host")]
-struct Args {
-    #[arg(long, default_value = "config")]
-    config_dir: String,
-}
-
-fn main() -> Result<()> {
-    let _args = Args::parse();
+fn main() -> anyhow::Result<()> {
+    let output = run(Args::parse())?;
+    if !output.is_empty() {
+        println!("{output}");
+    }
     Ok(())
 }

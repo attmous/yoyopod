@@ -21,6 +21,7 @@ pub struct RuntimeConfig {
     pub voip: VoipRuntimeConfig,
     pub worker_paths: WorkerPaths,
     pub pid_file: String,
+    pub log_file: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -310,6 +311,12 @@ impl RuntimeConfig {
                 &["logging", "pid_file"],
                 "/tmp/yoyopod.pid",
                 "YOYOPOD_PID_FILE",
+            ),
+            log_file: string_at_env(
+                &app,
+                &["logging", "file"],
+                "logs/yoyopod.log",
+                "YOYOPOD_LOG_FILE",
             ),
         })
     }

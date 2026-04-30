@@ -58,6 +58,25 @@ fn worker_supervisor_drains_valid_stdout_envelope() {
 }
 
 #[test]
+fn wait_for_ready_preserves_non_ready_messages_for_later_drain() {
+    let mut supervisor = WorkerSupervisor::default();
+    assert!(supervisor.start(stdout_lines_worker_spec(
+        WorkerDomain::Ui,
+        &[
+            r#"{"schema_version":1,"kind":"event","type":"ui.input","payload":{"key":"select"}}"#,
+            r#"{"schema_version":1,"kind":"event","type":"ui.ready","payload":{}}"#,
+        ],
+    )));
+
+    assert!(supervisor.wait_for_ready(WorkerDomain::Ui, "ui.ready", Duration::from_secs(5)));
+    let messages = supervisor.drain_messages(WorkerDomain::Ui, 8);
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].message_type, "ui.input");
+    supervisor.stop_all(Duration::from_millis(100));
+}
+
+#[test]
 fn malformed_stdout_is_drainable_as_protocol_error() {
     let mut messages = Vec::<WorkerEnvelope>::new();
     let mut errors = Vec::<WorkerProtocolError>::new();
@@ -195,24 +214,35 @@ fn wait_for_protocol_error(
 }
 
 fn stdout_worker_spec(domain: WorkerDomain, line: &str) -> WorkerSpec {
+    stdout_lines_worker_spec(domain, &[line])
+}
+
+fn stdout_lines_worker_spec(domain: WorkerDomain, lines: &[&str]) -> WorkerSpec {
     if cfg!(windows) {
+        let commands = lines
+            .iter()
+            .map(|line| format!("Write-Output '{}'", line.replace('\'', "''")))
+            .collect::<Vec<_>>()
+            .join("; ");
         WorkerSpec::new(
             domain,
             "powershell",
             [
                 "-NoProfile".to_string(),
                 "-Command".to_string(),
-                format!("Write-Output '{}'; Start-Sleep -Seconds 5", line),
+                format!("{commands}; Start-Sleep -Seconds 5"),
             ],
         )
     } else {
+        let script = lines
+            .iter()
+            .map(|line| format!("printf '%s\\n' '{}'", line.replace('\'', "'\\''")))
+            .collect::<Vec<_>>()
+            .join("; ");
         WorkerSpec::new(
             domain,
             "sh",
-            [
-                "-c".to_string(),
-                format!("printf '%s\\n' '{}'; sleep 5", line.replace('\'', "'\\''")),
-            ],
+            ["-c".to_string(), format!("{script}; sleep 5")],
         )
     }
 }

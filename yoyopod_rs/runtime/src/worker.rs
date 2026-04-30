@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -43,6 +43,7 @@ struct WorkerProcess {
     child: Child,
     stdin: ChildStdin,
     messages: Receiver<WorkerEnvelope>,
+    pending_messages: VecDeque<WorkerEnvelope>,
     protocol_errors: Receiver<WorkerProtocolError>,
 }
 
@@ -83,6 +84,7 @@ impl WorkerSupervisor {
                 child,
                 stdin,
                 messages,
+                pending_messages: VecDeque::new(),
                 protocol_errors,
             },
         );
@@ -116,7 +118,7 @@ impl WorkerSupervisor {
         let Some(worker) = self.workers.get_mut(&domain) else {
             return Vec::new();
         };
-        drain_receiver(&worker.messages, limit)
+        drain_worker_messages(worker, limit)
     }
 
     pub fn drain_protocol_errors(
@@ -156,6 +158,42 @@ impl WorkerSupervisor {
             let _ = worker.child.wait();
         }
         self.workers.clear();
+    }
+
+    pub fn wait_for_ready(
+        &mut self,
+        domain: WorkerDomain,
+        ready_type: &str,
+        timeout: Duration,
+    ) -> bool {
+        let Some(worker) = self.workers.get_mut(&domain) else {
+            return false;
+        };
+
+        let deadline = Instant::now() + timeout;
+        let mut preserved = VecDeque::new();
+
+        while let Some(message) = worker.pending_messages.pop_front() {
+            if message.message_type == ready_type {
+                prepend_pending(worker, preserved);
+                return true;
+            }
+            preserved.push_back(message);
+        }
+
+        while Instant::now() < deadline {
+            while let Ok(message) = worker.messages.try_recv() {
+                if message.message_type == ready_type {
+                    prepend_pending(worker, preserved);
+                    return true;
+                }
+                preserved.push_back(message);
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+
+        prepend_pending(worker, preserved);
+        false
     }
 }
 
@@ -264,6 +302,26 @@ fn drain_receiver<T>(receiver: &Receiver<T>, limit: usize) -> Vec<T> {
         drained.push(item);
     }
     drained
+}
+
+fn drain_worker_messages(worker: &mut WorkerProcess, limit: usize) -> Vec<WorkerEnvelope> {
+    let mut drained = Vec::new();
+    for _ in 0..limit {
+        if let Some(message) = worker.pending_messages.pop_front() {
+            drained.push(message);
+            continue;
+        }
+        let Ok(message) = worker.messages.try_recv() else {
+            break;
+        };
+        drained.push(message);
+    }
+    drained
+}
+
+fn prepend_pending(worker: &mut WorkerProcess, mut preserved: VecDeque<WorkerEnvelope>) {
+    preserved.append(&mut worker.pending_messages);
+    worker.pending_messages = preserved;
 }
 
 fn all_worker_domains() -> [WorkerDomain; 6] {
