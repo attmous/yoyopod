@@ -6,6 +6,8 @@ from pathlib import Path
 CI_YML = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
 REPO_ROOT = CI_YML.parents[2]
 RUST_UI_LOCK = REPO_ROOT / "yoyopod_rs" / "Cargo.lock"
+SLOT_BUILDER_DOCKERFILE = REPO_ROOT / "deploy" / "docker" / "slot-builder.Dockerfile"
+DOCKERIGNORE = REPO_ROOT / ".dockerignore"
 
 
 def test_slot_arm64_change_detector_matches_python_release_builder() -> None:
@@ -108,3 +110,27 @@ def test_rust_ui_worker_lockfile_is_committable_for_locked_ci_builds() -> None:
     )
 
     assert result.returncode != 0, result.stdout
+
+
+def test_slot_builder_copies_artifact_checkout_before_native_preflight() -> None:
+    dockerfile = SLOT_BUILDER_DOCKERFILE.read_text(encoding="utf-8")
+
+    full_checkout = dockerfile.find("COPY . /src")
+    ensure_native = dockerfile.find("ensure-native")
+
+    assert full_checkout != -1
+    assert ensure_native != -1
+    assert full_checkout < ensure_native
+
+
+def test_dockerignore_preserves_rust_artifact_build_dirs_for_slot_builder() -> None:
+    dockerignore = DOCKERIGNORE.read_text(encoding="utf-8")
+
+    for artifact_dir in (
+        "yoyopod_rs/ui-host/build",
+        "yoyopod_rs/media-host/build",
+        "yoyopod_rs/voip-host/build",
+        "yoyopod_rs/runtime/build",
+        "yoyopod_rs/liblinphone-shim/build",
+    ):
+        assert f"!{artifact_dir}/" in dockerignore

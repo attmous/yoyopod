@@ -379,6 +379,14 @@ impl RuntimeState {
                 "error": "",
                 "message": "",
             },
+            "workers": {
+                WorkerDomain::Ui.as_str(): worker_payload(&self.ui),
+                WorkerDomain::Media.as_str(): worker_payload(&self.media_worker),
+                WorkerDomain::Voip.as_str(): worker_payload(&self.voip_worker),
+                WorkerDomain::Network.as_str(): worker_payload(&self.network_worker),
+                WorkerDomain::Power.as_str(): worker_payload(&self.power_worker),
+                WorkerDomain::Voice.as_str(): worker_payload(&self.voice_worker),
+            },
         })
     }
 

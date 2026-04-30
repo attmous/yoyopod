@@ -47,6 +47,7 @@ struct WorkerProcess {
     messages: Receiver<WorkerEnvelope>,
     pending_messages: VecDeque<WorkerEnvelope>,
     protocol_errors: Receiver<WorkerProtocolError>,
+    exit_reported: bool,
 }
 
 impl WorkerSupervisor {
@@ -88,6 +89,7 @@ impl WorkerSupervisor {
                 messages,
                 pending_messages: VecDeque::new(),
                 protocol_errors,
+                exit_reported: false,
             },
         );
         true
@@ -100,6 +102,9 @@ impl WorkerSupervisor {
         let Some(worker) = self.workers.get_mut(&domain) else {
             return false;
         };
+        if worker_has_exited(worker) {
+            return false;
+        }
         let Ok(encoded) = envelope.encode() else {
             return false;
         };
@@ -318,7 +323,37 @@ fn drain_worker_messages(worker: &mut WorkerProcess, limit: usize) -> Vec<Worker
         };
         drained.push(message);
     }
+    if drained.len() < limit {
+        if let Some(message) = worker_exit_message(worker) {
+            drained.push(message);
+        }
+    }
     drained
+}
+
+fn worker_has_exited(worker: &mut WorkerProcess) -> bool {
+    !matches!(worker.child.try_wait(), Ok(None))
+}
+
+fn worker_exit_message(worker: &mut WorkerProcess) -> Option<WorkerEnvelope> {
+    if worker.exit_reported {
+        return None;
+    }
+
+    let status = match worker.child.try_wait() {
+        Ok(Some(status)) => status,
+        Ok(None) | Err(_) => return None,
+    };
+    worker.exit_reported = true;
+    Some(WorkerEnvelope {
+        schema_version: SUPPORTED_SCHEMA_VERSION,
+        kind: EnvelopeKind::Event,
+        message_type: "worker.exited".to_string(),
+        request_id: None,
+        timestamp_ms: 0,
+        deadline_ms: 0,
+        payload: json!({"reason": format!("exited with {status}")}),
+    })
 }
 
 fn prepend_pending(worker: &mut WorkerProcess, mut preserved: VecDeque<WorkerEnvelope>) {

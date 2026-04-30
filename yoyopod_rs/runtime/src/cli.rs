@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
 
@@ -63,11 +64,7 @@ fn run_runtime(config: RuntimeConfig, hardware: &str) -> Result<()> {
 }
 
 fn run_runtime_inner(config: &RuntimeConfig, hardware: &str) -> Result<()> {
-    let shutdown = Arc::new(AtomicBool::new(false));
-    let shutdown_handler = Arc::clone(&shutdown);
-    ctrlc::set_handler(move || {
-        shutdown_handler.store(true, Ordering::SeqCst);
-    })?;
+    let shutdown = install_ctrlc_handler()?;
 
     let mut workers = WorkerSupervisor::default();
     let state = match start_workers(&mut workers, config, hardware) {
@@ -118,6 +115,12 @@ fn start_workers(
         state.mark_worker(WorkerDomain::Media, WorkerState::Starting, "starting");
         if workers.wait_for_ready(WorkerDomain::Media, "media.ready", Duration::from_secs(3)) {
             state.mark_worker(WorkerDomain::Media, WorkerState::Running, "ready");
+        } else {
+            state.mark_worker(
+                WorkerDomain::Media,
+                WorkerState::Degraded,
+                "timed out waiting for media.ready",
+            );
         }
     } else {
         state.mark_worker(
@@ -135,12 +138,36 @@ fn start_workers(
         state.mark_worker(WorkerDomain::Voip, WorkerState::Starting, "starting");
         if workers.wait_for_ready(WorkerDomain::Voip, "voip.ready", Duration::from_secs(3)) {
             state.mark_worker(WorkerDomain::Voip, WorkerState::Running, "ready");
+        } else {
+            state.mark_worker(
+                WorkerDomain::Voip,
+                WorkerState::Degraded,
+                "timed out waiting for voip.ready",
+            );
         }
     } else {
         state.mark_worker(WorkerDomain::Voip, WorkerState::Degraded, "failed to start");
     }
 
     Ok(state)
+}
+
+fn install_ctrlc_handler() -> Result<Arc<AtomicBool>> {
+    static SHUTDOWN_FLAG: OnceLock<Arc<AtomicBool>> = OnceLock::new();
+
+    if let Some(existing) = SHUTDOWN_FLAG.get() {
+        existing.store(false, Ordering::SeqCst);
+        return Ok(Arc::clone(existing));
+    }
+
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let handler_flag = Arc::clone(SHUTDOWN_FLAG.get_or_init(|| shutdown));
+    ctrlc::set_handler(move || {
+        handler_flag.store(true, Ordering::SeqCst);
+    })?;
+    Ok(Arc::clone(
+        SHUTDOWN_FLAG.get().expect("shutdown flag initialized"),
+    ))
 }
 
 fn send_startup_commands(workers: &mut WorkerSupervisor, config: &RuntimeConfig) {

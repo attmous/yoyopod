@@ -11,6 +11,16 @@ __pycache__/
 *.egg-info/
 .cache/
 build/
+!yoyopod_rs/ui-host/build/
+!yoyopod_rs/ui-host/build/**
+!yoyopod_rs/media-host/build/
+!yoyopod_rs/media-host/build/**
+!yoyopod_rs/voip-host/build/
+!yoyopod_rs/voip-host/build/**
+!yoyopod_rs/runtime/build/
+!yoyopod_rs/runtime/build/**
+!yoyopod_rs/liblinphone-shim/build/
+!yoyopod_rs/liblinphone-shim/build/**
 dist/
 docs/
 htmlcov/

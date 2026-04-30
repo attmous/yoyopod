@@ -143,6 +143,24 @@ fn worker_supervisor_drains_invalid_utf8_stdout_as_protocol_error() {
 }
 
 #[test]
+fn worker_supervisor_reports_silent_child_exit_once() {
+    let mut supervisor = WorkerSupervisor::default();
+    assert!(supervisor.start(silent_exit_worker_spec(WorkerDomain::Media)));
+
+    let messages = wait_for_message(&mut supervisor, WorkerDomain::Media);
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].kind, EnvelopeKind::Event);
+    assert_eq!(messages[0].message_type, "worker.exited");
+    assert!(messages[0].payload["reason"]
+        .as_str()
+        .is_some_and(|reason| reason.contains("exited")));
+    assert!(supervisor.drain_messages(WorkerDomain::Media, 8).is_empty());
+    assert!(!supervisor.send_command(WorkerDomain::Media, "media.play", json!({})));
+    supervisor.stop_all(Duration::from_millis(100));
+}
+
+#[test]
 fn stop_all_sends_generic_worker_stop_to_managed_worker() {
     let output_path = temp_file_path("worker-stop");
     let mut supervisor = WorkerSupervisor::default();
@@ -292,6 +310,22 @@ fn invalid_utf8_stdout_worker_spec(domain: WorkerDomain) -> WorkerSpec {
             "sh",
             ["-c".to_string(), "printf '\\377\\n'; sleep 5".to_string()],
         )
+    }
+}
+
+fn silent_exit_worker_spec(domain: WorkerDomain) -> WorkerSpec {
+    if cfg!(windows) {
+        WorkerSpec::new(
+            domain,
+            "powershell",
+            [
+                "-NoProfile".to_string(),
+                "-Command".to_string(),
+                "exit 0".to_string(),
+            ],
+        )
+    } else {
+        WorkerSpec::new(domain, "sh", ["-c".to_string(), "exit 0".to_string()])
     }
 }
 

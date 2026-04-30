@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use clap::CommandFactory;
@@ -7,6 +8,8 @@ use yoyopod_runtime::cli::{run, Args};
 use yoyopod_runtime::logging::{
     append_marker_to_log, remove_pid_file, startup_marker, write_pid_file,
 };
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn runtime_help_mentions_config_dir_and_dry_run() {
@@ -98,6 +101,7 @@ logging:
 
 #[test]
 fn boot_sends_initial_runtime_snapshot_before_idle_loop() {
+    let _guard = env_lock();
     let dir = temp_dir("initial-snapshot");
     let config_dir = dir.join("config");
     let ui_stdin = dir.join("ui-stdin.ndjson");
@@ -139,6 +143,45 @@ logging:
 }
 
 #[test]
+fn boot_marks_optional_media_ready_timeout_degraded_in_initial_snapshot() {
+    let _guard = env_lock();
+    let dir = temp_dir("media-timeout");
+    let config_dir = dir.join("config");
+    let ui_stdin = dir.join("ui-stdin.ndjson");
+    let ui_worker = write_ui_worker_script(&dir, &ui_stdin);
+    let media_worker = write_silent_worker_script(&dir, "media-worker");
+    write(
+        &config_dir.join("app/core.yaml"),
+        &format!(
+            r#"
+logging:
+  pid_file: "{}"
+  file: "{}"
+"#,
+            yaml_path(&dir.join("run/yoyopod.pid")),
+            yaml_path(&dir.join("logs/yoyopod.log"))
+        ),
+    );
+    std::env::set_var("YOYOPOD_RUST_UI_HOST_WORKER", &ui_worker);
+    std::env::set_var("YOYOPOD_RUST_MEDIA_HOST_WORKER", &media_worker);
+
+    let result = run(Args {
+        config_dir,
+        dry_run: false,
+        hardware: "whisplay".to_string(),
+    });
+    std::env::remove_var("YOYOPOD_RUST_UI_HOST_WORKER");
+    std::env::remove_var("YOYOPOD_RUST_MEDIA_HOST_WORKER");
+    result.expect("runtime exits after UI shutdown intent");
+
+    let captured = wait_for_file(&ui_stdin);
+
+    assert!(captured.contains(r#""media":{"last_reason":"timed out waiting for media.ready""#));
+    assert!(captured.contains("timed out waiting for media.ready"));
+    assert!(!captured.contains(r#""state":"starting""#));
+}
+
+#[test]
 fn cli_test_is_registered_in_bazel_runtime_tests() {
     let build_file = include_str!("../BUILD.bazel");
 
@@ -151,6 +194,10 @@ fn temp_dir(test_name: &str) -> PathBuf {
         .expect("time")
         .as_nanos();
     std::env::temp_dir().join(format!("yoyopod-runtime-cli-{test_name}-{unique}"))
+}
+
+fn env_lock() -> MutexGuard<'static, ()> {
+    ENV_LOCK.lock().expect("env lock")
 }
 
 fn write(path: &Path, contents: &str) {
@@ -185,6 +232,25 @@ Set-Content -LiteralPath '{}' -Value $lines
         ),
     );
     let command_path = dir.join("ui-worker.cmd");
+    write(
+        &command_path,
+        &format!(
+            "@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File \"{}\"\r\n",
+            script_path.to_string_lossy()
+        ),
+    );
+    command_path
+}
+
+fn write_silent_worker_script(dir: &Path, name: &str) -> PathBuf {
+    let script_path = dir.join(format!("{name}.ps1"));
+    write(
+        &script_path,
+        r#"
+Start-Sleep -Seconds 10
+"#,
+    );
+    let command_path = dir.join(format!("{name}.cmd"));
     write(
         &command_path,
         &format!(
