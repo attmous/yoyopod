@@ -265,7 +265,6 @@ def setup(
         actual_config,
         people_directory=actual_people_directory,
         backend=backend,
-        message_store=message_store,
         event_scheduler=app.scheduler.run_on_main,
         background_iterate_enabled=background_iterate_enabled,
     )

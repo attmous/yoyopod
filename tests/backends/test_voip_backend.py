@@ -67,6 +67,10 @@ class BackgroundIterateMockVoIPBackend(MockVoIPBackend):
         self.metrics_error = metrics_error
         self.iterate_calls = 0
         self.iterate_started = threading.Event()
+        self.runtime_snapshot: VoIPRuntimeSnapshot | None = None
+
+    def get_runtime_snapshot(self) -> VoIPRuntimeSnapshot | None:
+        return self.runtime_snapshot
 
     def iterate(self) -> int:
         self.iterate_started.set()
@@ -139,6 +143,24 @@ def test_voip_manager_requires_explicit_backend_in_rust_only_runtime() -> None:
         VoIPManager(build_config())
 
 
+def test_voip_manager_requires_rust_runtime_snapshot_backend() -> None:
+    """Production VoIPManager should not accept a Python-owned runtime backend."""
+
+    with pytest.raises(ValueError, match="Rust runtime snapshot"):
+        VoIPManager(build_config(), backend=MockVoIPBackend())
+
+
+def test_voip_manager_does_not_construct_python_runtime_owners() -> None:
+    """The app-facing facade should not own Python message or voice-note stores."""
+
+    manager = VoIPManager(build_config(), backend=SnapshotOwnedMockVoIPBackend())
+
+    assert manager.owns_runtime_snapshot() is True
+    assert not hasattr(manager, "_message_store")
+    assert not hasattr(manager, "_messaging_service")
+    assert not hasattr(manager, "_voice_note_service")
+
+
 def wait_for_condition(predicate: Callable[[], bool], *, timeout_seconds: float = 1.0) -> bool:
     """Poll a test condition until it becomes true or the timeout expires."""
 
@@ -153,7 +175,7 @@ def wait_for_condition(predicate: Callable[[], bool], *, timeout_seconds: float 
 def test_voip_manager_skips_backend_start_when_identity_missing() -> None:
     """VoIPManager should fail fast before touching the backend when SIP identity is absent."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     config = build_config()
     config.sip_identity = ""
     manager = VoIPManager(config, backend=backend)
@@ -166,7 +188,7 @@ def test_voip_manager_skips_backend_start_when_identity_missing() -> None:
 def test_voip_manager_applies_backend_events_and_resolves_contact_names() -> None:
     """VoIPManager should stay app-facing while backend events remain typed and low-level."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     people_directory = FakePeopleDirectory({"sip:parent@example.com": "Parent"})
     manager = VoIPManager(build_config(), people_directory=people_directory, backend=backend)
 
@@ -194,7 +216,7 @@ def test_voip_manager_applies_backend_events_and_resolves_contact_names() -> Non
 def test_voip_manager_mirrors_rust_runtime_snapshot_without_duplicate_callbacks() -> None:
     """Rust-owned runtime snapshots should become the app-facing live VoIP state."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     people_directory = FakePeopleDirectory({"sip:bob@example.com": "Bob"})
     manager = VoIPManager(build_config(), people_directory=people_directory, backend=backend)
     registration_states: list[RegistrationState] = []
@@ -235,7 +257,7 @@ def test_voip_manager_mirrors_rust_runtime_snapshot_without_duplicate_callbacks(
 def test_voip_manager_delegates_outgoing_commands_to_backend() -> None:
     """Outgoing commands should not invent local call phases before backend events arrive."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     manager = VoIPManager(build_config(), backend=backend)
     call_states: list[CallState] = []
 
@@ -246,7 +268,7 @@ def test_voip_manager_delegates_outgoing_commands_to_backend() -> None:
     assert backend.commands == ["call sip:bob@example.com"]
     assert call_states == []
     assert manager.call_state == CallState.IDLE
-    assert manager.get_caller_info()["display_name"] == "Bob"
+    assert manager.get_caller_info()["display_name"] == "Unknown"
 
 
 def test_voip_manager_waits_for_rust_snapshot_before_call_identity() -> None:
@@ -561,7 +583,7 @@ def test_voip_manager_does_not_persist_rust_owned_message_events_to_python_store
         )
     )
 
-    assert manager._message_store.get("incoming-note-1") is None
+    assert not hasattr(manager, "_message_store")
 
 
 def test_voip_manager_derives_rust_owned_active_voice_note_from_snapshot() -> None:
@@ -617,7 +639,7 @@ def test_voip_manager_sends_rust_owned_voice_note_without_python_message_store(
         f"voice-note sip:mom@example.com {Path(draft.file_path).name} 1500 audio/wav",
     ]
     assert manager.get_active_voice_note().send_state == "sending"
-    assert manager._message_store.get("mock-note-1") is None
+    assert not hasattr(manager, "_message_store")
 
 
 def test_voip_manager_ignores_direct_delivery_events_when_rust_owns_voice_notes(
@@ -642,7 +664,7 @@ def test_voip_manager_ignores_direct_delivery_events_when_rust_owns_voice_notes(
     )
 
     assert manager.get_active_voice_note().send_state == "sending"
-    assert manager._message_store.get("mock-note-1") is None
+    assert not hasattr(manager, "_message_store")
 
 
 def test_voip_manager_marks_rust_owned_voice_note_failed_from_command_error(
@@ -665,7 +687,7 @@ def test_voip_manager_marks_rust_owned_voice_note_failed_from_command_error(
     assert active.send_state == "failed"
     assert active.status_text == "Upload failed"
     assert active.send_started_at == 0.0
-    assert manager._message_store.get("mock-note-1") is None
+    assert not hasattr(manager, "_message_store")
 
 
 def test_voip_manager_skips_python_send_timeout_when_rust_owns_voice_notes(
@@ -687,7 +709,7 @@ def test_voip_manager_skips_python_send_timeout_when_rust_owns_voice_notes(
 
     assert manager.iterate() == 0
     assert manager.get_active_voice_note().send_state == "sending"
-    assert manager._message_store.get("mock-note-1") is None
+    assert not hasattr(manager, "_message_store")
 
 
 def test_voip_manager_derives_availability_from_rust_lifecycle_snapshots() -> None:
@@ -743,7 +765,7 @@ def test_voip_manager_derives_availability_from_rust_lifecycle_snapshots() -> No
 def test_voip_manager_starts_timer_on_streams_running_without_connected() -> None:
     """Streams-running callbacks should start live duration tracking on their own."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     manager = VoIPManager(build_config(), backend=backend)
     started: list[bool] = []
     manager._start_call_timer = lambda: started.append(True)  # type: ignore[method-assign]
@@ -760,7 +782,7 @@ def test_voip_manager_derives_live_call_duration_without_worker_thread(
 ) -> None:
     """Call duration should come from the current clock and stored start time."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     manager = VoIPManager(build_config(), backend=backend)
     now = 1_000.9
     monkeypatch.setattr(time, "time", lambda: now)
@@ -775,7 +797,7 @@ def test_voip_manager_derives_live_call_duration_without_worker_thread(
 def test_voip_manager_tracks_voice_note_send_and_delivery() -> None:
     """Voice-note record/send flow should update the active draft and summary state."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     manager = VoIPManager(build_config(), backend=backend)
 
     assert manager.start()
@@ -789,10 +811,16 @@ def test_voip_manager_tracks_voice_note_send_and_delivery() -> None:
     assert manager.get_active_voice_note().send_state == "sending"
 
     backend.emit(
-        MessageDeliveryChanged(
-            message_id="mock-note-1",
-            delivery_state=MessageDeliveryState.SENT,
-            local_file_path="data/voice.wav",
+        VoIPRuntimeSnapshotChanged(
+            snapshot=VoIPRuntimeSnapshot(
+                voice_note=VoIPVoiceNoteSnapshot(
+                    state="sent",
+                    file_path=draft.file_path,
+                    duration_ms=draft.duration_ms,
+                    mime_type=draft.mime_type,
+                    message_id=draft.message_id,
+                )
+            )
         )
     )
 
@@ -802,7 +830,7 @@ def test_voip_manager_tracks_voice_note_send_and_delivery() -> None:
 def test_voip_manager_routes_rust_runtime_snapshot_to_voice_note_and_message_mirrors() -> None:
     """VoIPManager should fan Rust snapshots into its compatibility services."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     manager = VoIPManager(build_config(), backend=backend)
 
     assert manager.start()
@@ -829,6 +857,16 @@ def test_voip_manager_routes_rust_runtime_snapshot_to_voice_note_and_message_mir
                     delivery_state=MessageDeliveryState.DELIVERED,
                     local_file_path=draft.file_path,
                 ),
+                latest_voice_note_by_contact={
+                    "sip:mom@example.com": {
+                        "message_id": draft.message_id,
+                        "direction": MessageDirection.OUTGOING.value,
+                        "delivery_state": MessageDeliveryState.DELIVERED.value,
+                        "local_file_path": draft.file_path,
+                        "duration_ms": draft.duration_ms,
+                        "display_name": "Mom",
+                    }
+                },
             )
         )
     )
@@ -841,10 +879,10 @@ def test_voip_manager_routes_rust_runtime_snapshot_to_voice_note_and_message_mir
     assert stored.delivery_state == MessageDeliveryState.DELIVERED
 
 
-def test_voip_manager_fails_voice_note_send_without_transfer_server() -> None:
-    """Voice-note sending should fail immediately when file transfer is not configured."""
+def test_voip_manager_delegates_voice_note_send_without_transfer_server() -> None:
+    """Rust owns transfer-server validation instead of a Python preflight."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     config = build_config()
     config.file_transfer_server_url = ""
     manager = VoIPManager(config, backend=backend)
@@ -853,9 +891,8 @@ def test_voip_manager_fails_voice_note_send_without_transfer_server() -> None:
     assert manager.start_voice_note_recording("sip:mom@example.com", recipient_name="Mom")
     assert manager.stop_voice_note_recording() is not None
 
-    assert manager.send_active_voice_note() is False
-    assert manager.get_active_voice_note().send_state == "failed"
-    assert manager.get_active_voice_note().status_text == "Voice notes unavailable"
+    assert manager.send_active_voice_note() is True
+    assert manager.get_active_voice_note().send_state == "sending"
 
 
 def test_voip_manager_allows_voice_note_send_for_hosted_linphone_account_without_explicit_url() -> (
@@ -863,7 +900,7 @@ def test_voip_manager_allows_voice_note_send_for_hosted_linphone_account_without
 ):
     """Hosted Linphone accounts should use inferred upload settings instead of failing immediately."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     config = build_config()
     config.sip_server = "sip.linphone.org"
     config.file_transfer_server_url = ""
@@ -876,10 +913,10 @@ def test_voip_manager_allows_voice_note_send_for_hosted_linphone_account_without
     assert manager.get_active_voice_note().send_state == "sending"
 
 
-def test_voip_manager_times_out_stuck_voice_note_send() -> None:
-    """Voice-note sends should not remain in sending forever without delivery callbacks."""
+def test_voip_manager_does_not_timeout_rust_owned_voice_note_send() -> None:
+    """Rust runtime recovery owns stuck voice-note sends."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     config = build_config()
     config.file_transfer_server_url = "https://transfer.example.com"
     manager = VoIPManager(config, backend=backend)
@@ -892,15 +929,14 @@ def test_voip_manager_times_out_stuck_voice_note_send() -> None:
     manager.get_active_voice_note().send_started_at = time.monotonic() - 30.0
     drained_events = manager.iterate()
 
-    assert manager.get_active_voice_note().send_state == "failed"
-    assert manager.get_active_voice_note().status_text == "Send timed out"
+    assert manager.get_active_voice_note().send_state == "sending"
     assert drained_events == 0
 
 
 def test_voip_manager_rejects_voice_note_recording_during_active_call() -> None:
     """Voice-note recording should be blocked while a call is active."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     manager = VoIPManager(build_config(), backend=backend)
     manager.call_state = CallState.CONNECTED
 
@@ -911,20 +947,18 @@ def test_voip_manager_rejects_voice_note_recording_during_active_call() -> None:
 def test_voip_manager_stops_voice_note_playback_when_call_enters_active_state() -> None:
     """Incoming or active call phases should stop any local voice-note playback."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     manager = VoIPManager(build_config(), backend=backend)
-    stopped: list[str] = []
-    manager._voice_note_service.stop_voice_note_playback = lambda: stopped.append("stop")
 
     manager._update_call_state(CallState.INCOMING)
 
-    assert stopped == ["stop"]
+    assert backend.stopped_playback == 1
 
 
 def test_voip_manager_queues_backend_events_back_to_main_thread(tmp_path: Path) -> None:
     """App-mode VoIP events should be marshaled back through the main-thread scheduler."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     config = build_config()
     config.message_store_dir = str(tmp_path / "messages")
     config.voice_note_store_dir = str(tmp_path / "voice_notes")
@@ -1046,7 +1080,7 @@ def test_voip_manager_background_iterate_worker_surfaces_unexpected_failure(
 def test_voip_manager_surfaces_voice_note_failure_reason() -> None:
     """Voice-note send failures should preserve the backend reason for the UI."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     manager = VoIPManager(build_config(), backend=backend)
 
     assert manager.start()
@@ -1060,14 +1094,14 @@ def test_voip_manager_surfaces_voice_note_failure_reason() -> None:
     assert manager.get_active_voice_note().status_text == "Upload failed"
 
 
-def test_voip_manager_receives_incoming_voice_note_and_updates_summary(tmp_path: Path) -> None:
-    """Incoming voice notes should be persisted and exposed through Talk summaries."""
+def test_voip_manager_receives_voice_note_summary_from_runtime_snapshot(tmp_path: Path) -> None:
+    """Incoming voice notes should be exposed through Rust-owned snapshot summaries."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     config = build_config()
     config.message_store_dir = str(tmp_path / "messages")
     manager = VoIPManager(config, backend=backend)
-    summary_events: list[tuple[int, dict[str, dict[str, str]]]] = []
+    summary_events: list[tuple[int, dict[str, dict[str, object]]]] = []
     manager.on_message_summary_change(
         lambda unread, summary: summary_events.append((unread, summary))
     )
@@ -1075,20 +1109,21 @@ def test_voip_manager_receives_incoming_voice_note_and_updates_summary(tmp_path:
     assert manager.start()
 
     backend.emit(
-        MessageReceived(
-            message=VoIPMessageRecord(
-                id="incoming-1",
-                peer_sip_address="sip:mom@example.com",
-                sender_sip_address="sip:mom@example.com",
-                recipient_sip_address="sip:alice@example.com",
-                kind=MessageKind.VOICE_NOTE,
-                direction=MessageDirection.INCOMING,
-                delivery_state=MessageDeliveryState.DELIVERED,
-                created_at="2026-04-06T00:00:00+00:00",
-                updated_at="2026-04-06T00:00:00+00:00",
-                local_file_path="data/voice_notes/incoming.wav",
-                duration_ms=2000,
-                unread=True,
+        VoIPRuntimeSnapshotChanged(
+            snapshot=VoIPRuntimeSnapshot(
+                unread_voice_notes=1,
+                unread_voice_notes_by_contact={"sip:mom@example.com": 1},
+                latest_voice_note_by_contact={
+                    "sip:mom@example.com": {
+                        "message_id": "incoming-1",
+                        "direction": MessageDirection.INCOMING.value,
+                        "delivery_state": MessageDeliveryState.DELIVERED.value,
+                        "local_file_path": "data/voice_notes/incoming.wav",
+                        "duration_ms": 2000,
+                        "unread": True,
+                        "display_name": "Mom",
+                    }
+                },
             )
         )
     )
@@ -1121,12 +1156,12 @@ def test_voip_manager_uses_ffplay_for_containerized_voice_notes() -> None:
     ]
 
 
-def test_voip_manager_coerces_rcs_voice_note_envelope_into_voice_note_record(
+def test_voip_manager_ignores_raw_incoming_message_events_without_snapshot(
     tmp_path: Path,
 ) -> None:
-    """Incoming GSMA file-transfer envelopes for voice recordings should not be stored as plain text."""
+    """Rust snapshots, not Python message parsing, own incoming message state."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     config = build_config()
     config.message_store_dir = str(tmp_path / "messages")
     manager = VoIPManager(config, backend=backend)
@@ -1162,31 +1197,26 @@ def test_voip_manager_coerces_rcs_voice_note_envelope_into_voice_note_record(
         )
     )
 
-    latest = manager.latest_voice_note_for_contact("sip:mom@example.com")
-    assert latest is not None
-    assert latest.kind == MessageKind.VOICE_NOTE
-    assert latest.mime_type == "audio/wav"
-    assert latest.duration_ms == 4046
-    assert latest.text == ""
-    assert latest.local_file_path == "/tmp/incoming-envelope.mka"
+    assert manager.latest_voice_note_for_contact("sip:mom@example.com") is None
+    assert manager.latest_voice_note_summary() == {}
 
 
-def test_voip_manager_builds_message_store_under_directory(tmp_path: Path) -> None:
-    """The configured message store path should be treated as a directory, not a file."""
+def test_voip_manager_leaves_message_store_directory_to_rust(tmp_path: Path) -> None:
+    """The Python facade should not create a legacy message-store directory."""
 
     config = build_config()
     config.message_store_dir = str(tmp_path / "messages")
 
-    manager = VoIPManager(config, backend=MockVoIPBackend())
+    manager = VoIPManager(config, backend=SnapshotOwnedMockVoIPBackend())
 
-    assert manager._message_store.store_dir == tmp_path / "messages"
-    assert manager._message_store.index_file == tmp_path / "messages" / "messages.json"
+    assert not hasattr(manager, "_message_store")
+    assert not (tmp_path / "messages").exists()
 
 
 def test_voip_manager_handles_backend_stop_event() -> None:
     """Unexpected backend stop should clear availability and registration state."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     manager = VoIPManager(build_config(), backend=backend)
 
     assert manager.start()
@@ -1201,7 +1231,7 @@ def test_voip_manager_handles_backend_stop_event() -> None:
 def test_voip_manager_marks_available_after_backend_recovery() -> None:
     """A recovered worker should restore availability after an unexpected stop."""
 
-    backend = MockVoIPBackend()
+    backend = SnapshotOwnedMockVoIPBackend()
     manager = VoIPManager(build_config(), backend=backend)
     availability_changes: list[tuple[bool, str, RegistrationState]] = []
     manager.on_availability_change(

@@ -12,21 +12,16 @@ from typing import TYPE_CHECKING, Callable, cast
 from loguru import logger
 
 from yoyopod.backends.voip.protocol import VoIPBackend
-from yoyopod.integrations.call.messaging import MessagingService
-from yoyopod.integrations.call.message_store import VoIPMessageStore
 from yoyopod.integrations.call.models import (
     BackendRecovered,
     BackendStopped,
     CallState,
     CallStateChanged,
     IncomingCallDetected,
-    MessageDeliveryChanged,
     MessageDeliveryState,
     MessageDirection,
-    MessageDownloadCompleted,
     MessageFailed,
     MessageKind,
-    MessageReceived,
     RegistrationState,
     RegistrationStateChanged,
     VoIPConfig,
@@ -35,10 +30,12 @@ from yoyopod.integrations.call.models import (
     VoIPRuntimeSnapshot,
     VoIPRuntimeSnapshotChanged,
 )
-from yoyopod.integrations.call.voice_notes import VoiceNoteDraft, VoiceNoteService
+from yoyopod.integrations.call.voice_notes import VoiceNoteDraft
 
 if TYPE_CHECKING:
     from yoyopod.integrations.contacts.directory import PeopleManager
+
+VOICE_NOTE_CONTAINER_GAIN_DB = 12.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +62,6 @@ class VoIPManager:
         config: VoIPConfig,
         people_directory: "PeopleManager | None" = None,
         backend: VoIPBackend | None = None,
-        message_store: VoIPMessageStore | None = None,
         event_scheduler: Callable[[Callable[[], None]], None] | None = None,
         background_iterate_enabled: bool = False,
     ) -> None:
@@ -73,6 +69,8 @@ class VoIPManager:
         self.people_directory = people_directory
         if backend is None:
             raise ValueError("VoIPManager requires an explicit VoIP backend")
+        if not callable(getattr(backend, "get_runtime_snapshot", None)):
+            raise ValueError("VoIPManager requires a Rust runtime snapshot backend")
         self.backend = backend
         self.running = False
         self.registered = False
@@ -94,26 +92,18 @@ class VoIPManager:
         ) = None
         self._pending_terminal_action: str | None = None
         self._rust_active_voice_note: VoiceNoteDraft | None = None
-        self._message_store = message_store or self._build_message_store()
-        self._messaging_service = MessagingService(
-            config=self.config,
-            backend=self.backend,
-            message_store=self._message_store,
-            lookup_contact_name=self._lookup_contact_name,
-        )
-        self._voice_note_service = VoiceNoteService(
-            config=self.config,
-            backend=self.backend,
-            message_store=self._message_store,
-            lookup_contact_name=self._lookup_contact_name,
-            notify_message_summary_change=self._notify_message_summary_change,
-        )
 
         self.registration_callbacks: list[Callable[[RegistrationState], None]] = []
         self.call_state_callbacks: list[Callable[[CallState], None]] = []
         self.incoming_call_callbacks: list[Callable[[str, str], None]] = []
         self.availability_callbacks: list[Callable[[bool, str, RegistrationState], None]] = []
         self.runtime_snapshot_callbacks: list[Callable[[VoIPRuntimeSnapshot], None]] = []
+        self.message_received_callbacks: list[Callable[[VoIPMessageRecord], None]] = []
+        self.message_delivery_callbacks: list[Callable[[VoIPMessageRecord], None]] = []
+        self.message_failure_callbacks: list[Callable[[str, str], None]] = []
+        self.message_summary_callbacks: list[
+            Callable[[int, dict[str, dict[str, object]]], None]
+        ] = []
         self._last_lifecycle_availability: tuple[bool, str, RegistrationState] | None = None
         self._event_scheduler = event_scheduler
         self._background_iterate_enabled = bool(background_iterate_enabled and event_scheduler)
@@ -136,11 +126,6 @@ class VoIPManager:
         self.backend.on_event(self._dispatch_backend_event)
         logger.info("VoIPManager initialized (server: {})", config.sip_server)
 
-    def _build_message_store(self) -> VoIPMessageStore:
-        store_dir = Path(self.config.message_store_dir)
-        store_dir.mkdir(parents=True, exist_ok=True)
-        return VoIPMessageStore(store_dir)
-
     def start(self) -> bool:
         if self.running:
             return True
@@ -149,7 +134,7 @@ class VoIPManager:
             logger.warning("VoIP start skipped: SIP identity/server not configured")
             self._update_registration_state(RegistrationState.FAILED)
             self._notify_availability_change(False, "start_unconfigured")
-            self._notify_message_summary_change()
+            self._notify_message_summary_change(0, {})
             return False
 
         self.running = self.backend.start()
@@ -158,8 +143,6 @@ class VoIPManager:
         self._notify_availability_change(
             self.running, "started" if self.running else "start_failed"
         )
-        if not self._backend_owns_runtime_snapshot():
-            self._notify_message_summary_change()
         return self.running
 
     def stop(self, notify_events: bool = True) -> None:
@@ -181,8 +164,6 @@ class VoIPManager:
         drained_events = 0
         if self.running:
             drained_events = self.backend.iterate()
-        if not self._backend_owns_runtime_snapshot():
-            self._check_active_voice_note_timeout()
         return drained_events
 
     @property
@@ -238,14 +219,12 @@ class VoIPManager:
     def owns_runtime_snapshot(self) -> bool:
         """Return whether the backend is the source of truth for live runtime facts."""
 
-        return self._backend_owns_runtime_snapshot()
+        return True
 
     def poll_housekeeping(self) -> None:
         """Run lightweight coordinator-thread-only maintenance alongside background iterate."""
 
-        if self._backend_owns_runtime_snapshot():
-            return
-        self._check_active_voice_note_timeout()
+        return
 
     def make_call(self, sip_address: str, contact_name: str | None = None) -> bool:
         if not self.registered:
@@ -257,9 +236,6 @@ class VoIPManager:
         if not self.backend.make_call(sip_address):
             return False
 
-        if not self._backend_owns_runtime_snapshot():
-            self.caller_address = sip_address
-            self.caller_name = resolved_name
         self._pending_terminal_action = None
         return True
 
@@ -287,20 +263,12 @@ class VoIPManager:
     def mute(self) -> bool:
         if self.is_muted:
             return False
-        if self.backend.mute():
-            if not self._backend_owns_runtime_snapshot():
-                self.is_muted = True
-            return True
-        return False
+        return bool(self.backend.mute())
 
     def unmute(self) -> bool:
         if not self.is_muted:
             return False
-        if self.backend.unmute():
-            if not self._backend_owns_runtime_snapshot():
-                self.is_muted = False
-            return True
-        return False
+        return bool(self.backend.unmute())
 
     def toggle_mute(self) -> bool:
         if self.is_muted:
@@ -310,10 +278,8 @@ class VoIPManager:
         return True
 
     def send_text_message(self, sip_address: str, text: str, display_name: str = "") -> bool:
-        if self._backend_owns_runtime_snapshot():
-            message_id = self.backend.send_text_message(sip_address, text)
-            return bool(message_id)
-        return self._messaging_service.send_text_message(sip_address, text, display_name)
+        message_id = self.backend.send_text_message(sip_address, text)
+        return bool(message_id)
 
     def start_voice_note_recording(self, recipient_address: str, recipient_name: str = "") -> bool:
         if self.call_state not in (
@@ -327,80 +293,60 @@ class VoIPManager:
                 self.call_state.value,
             )
             return False
-        if self._backend_owns_runtime_snapshot():
-            return self._start_rust_voice_note_recording(recipient_address, recipient_name)
-        return self._voice_note_service.start_voice_note_recording(
-            recipient_address, recipient_name
-        )
+        return self._start_rust_voice_note_recording(recipient_address, recipient_name)
 
     def stop_voice_note_recording(self) -> VoiceNoteDraft | None:
-        if self._backend_owns_runtime_snapshot():
-            return self._stop_rust_voice_note_recording()
-        return self._voice_note_service.stop_voice_note_recording()
+        return self._stop_rust_voice_note_recording()
 
     def cancel_voice_note_recording(self) -> bool:
-        if self._backend_owns_runtime_snapshot():
-            success = self.backend.cancel_voice_note_recording()
-            self._rust_active_voice_note = None
-            return success
-        return self._voice_note_service.cancel_voice_note_recording()
+        success = self.backend.cancel_voice_note_recording()
+        self._rust_active_voice_note = None
+        return success
 
     def send_active_voice_note(self) -> bool:
-        if self._backend_owns_runtime_snapshot():
-            return self._send_rust_active_voice_note()
-        return self._voice_note_service.send_active_voice_note()
+        return self._send_rust_active_voice_note()
 
     def get_active_voice_note(self) -> VoiceNoteDraft | None:
-        if self._backend_owns_runtime_snapshot():
-            if self._rust_active_voice_note is None:
-                self._refresh_rust_voice_note_snapshot()
-            return self._rust_active_voice_note
-        return self._voice_note_service.get_active_voice_note()
+        if self._rust_active_voice_note is None:
+            self._refresh_rust_voice_note_snapshot()
+        return self._rust_active_voice_note
 
     def discard_active_voice_note(self) -> None:
-        if self._backend_owns_runtime_snapshot():
-            self._rust_active_voice_note = None
-            return
-        self._voice_note_service.discard_active_voice_note()
+        self._rust_active_voice_note = None
 
     def latest_voice_note_for_contact(self, sip_address: str) -> VoIPMessageRecord | None:
-        if self._backend_owns_runtime_snapshot():
-            return self._runtime_voice_note_record_for_contact(sip_address)
-        return self._voice_note_service.latest_voice_note_for_contact(sip_address)
+        return self._runtime_voice_note_record_for_contact(sip_address)
 
     def unread_voice_note_count(self) -> int:
-        if self._backend_owns_runtime_snapshot() and self._runtime_snapshot is not None:
+        if self._runtime_snapshot is not None:
             return max(0, int(self._runtime_snapshot.unread_voice_notes))
-        return self._voice_note_service.unread_voice_note_count()
+        return 0
 
     def unread_voice_note_counts_by_contact(self) -> dict[str, int]:
-        if self._backend_owns_runtime_snapshot() and self._runtime_snapshot is not None:
+        if self._runtime_snapshot is not None:
             return dict(self._runtime_snapshot.unread_voice_notes_by_contact)
-        return self._voice_note_service.unread_voice_note_counts_by_contact()
+        return {}
 
     def latest_voice_note_summary(self) -> dict[str, dict[str, object]]:
-        if self._backend_owns_runtime_snapshot() and self._runtime_snapshot is not None:
+        if self._runtime_snapshot is not None:
             return {
                 str(address): dict(summary)
                 for address, summary in self._runtime_snapshot.latest_voice_note_by_contact.items()
             }
-        return self._voice_note_service.latest_voice_note_summary()
+        return {}
 
     def mark_voice_notes_seen(self, sip_address: str) -> None:
-        if self._backend_owns_runtime_snapshot():
-            mark_seen = getattr(self.backend, "mark_voice_notes_seen", None)
-            if callable(mark_seen):
-                mark_seen(sip_address)
-            return
-        self._voice_note_service.mark_voice_notes_seen(sip_address)
+        mark_seen = getattr(self.backend, "mark_voice_notes_seen", None)
+        if callable(mark_seen):
+            mark_seen(sip_address)
 
     def call_history_unread_count(self) -> int:
-        if self._backend_owns_runtime_snapshot() and self._runtime_snapshot is not None:
+        if self._runtime_snapshot is not None:
             return max(0, int(self._runtime_snapshot.unseen_call_history))
         return 0
 
     def call_history_recent_preview(self) -> tuple[str, ...]:
-        if not self._backend_owns_runtime_snapshot() or self._runtime_snapshot is None:
+        if self._runtime_snapshot is None:
             return ()
         preview: list[str] = []
         for raw_entry in self._runtime_snapshot.recent_call_history:
@@ -412,28 +358,22 @@ class VoIPManager:
         return tuple(preview)
 
     def mark_call_history_seen(self, sip_address: str = "") -> bool:
-        if not self._backend_owns_runtime_snapshot():
-            return False
         mark_seen = getattr(self.backend, "mark_call_history_seen", None)
         if not callable(mark_seen):
             return False
         return bool(mark_seen(sip_address))
 
     def play_latest_voice_note(self, sip_address: str) -> bool:
-        if self._backend_owns_runtime_snapshot():
-            record = self._runtime_voice_note_record_for_contact(sip_address)
-            if record is None or not record.local_file_path:
-                return False
-            return self.play_voice_note(record.local_file_path)
-        return self._voice_note_service.play_latest_voice_note(sip_address)
+        record = self._runtime_voice_note_record_for_contact(sip_address)
+        if record is None or not record.local_file_path:
+            return False
+        return self.play_voice_note(record.local_file_path)
 
     def play_voice_note(self, file_path: str) -> bool:
-        if self._backend_owns_runtime_snapshot():
-            play = getattr(self.backend, "play_voice_note", None)
-            if callable(play):
-                return bool(play(file_path))
-            return False
-        return self._voice_note_service.play_voice_note(file_path)
+        play = getattr(self.backend, "play_voice_note", None)
+        if callable(play):
+            return bool(play(file_path))
+        return False
 
     def on_registration_change(self, callback: Callable[[RegistrationState], None]) -> None:
         self.registration_callbacks.append(callback)
@@ -457,19 +397,19 @@ class VoIPManager:
         self.runtime_snapshot_callbacks.append(callback)
 
     def on_message_received(self, callback: Callable[[VoIPMessageRecord], None]) -> None:
-        self._messaging_service.on_message_received(callback)
+        self.message_received_callbacks.append(callback)
 
     def on_message_delivery_change(self, callback: Callable[[VoIPMessageRecord], None]) -> None:
-        self._messaging_service.on_message_delivery_change(callback)
+        self.message_delivery_callbacks.append(callback)
 
     def on_message_failure(self, callback: Callable[[str, str], None]) -> None:
-        self._messaging_service.on_message_failure(callback)
+        self.message_failure_callbacks.append(callback)
 
     def on_message_summary_change(
         self,
         callback: Callable[[int, dict[str, dict[str, object]]], None],
     ) -> None:
-        self._messaging_service.on_message_summary_change(callback)
+        self.message_summary_callbacks.append(callback)
 
     def get_status(self) -> dict:
         return {
@@ -638,28 +578,9 @@ class VoIPManager:
         if isinstance(event, VoIPRuntimeSnapshotChanged):
             self._apply_runtime_snapshot(event.snapshot)
             return
-        if isinstance(event, MessageReceived):
-            if self._backend_owns_runtime_snapshot():
-                return
-            self._messaging_service.handle_message_received(event.message)
-            return
-        if isinstance(event, MessageDeliveryChanged):
-            if self._backend_owns_runtime_snapshot():
-                return
-            self._voice_note_service.handle_message_delivery_changed(event)
-            self._messaging_service.handle_message_delivery_changed(event)
-            return
-        if isinstance(event, MessageDownloadCompleted):
-            if self._backend_owns_runtime_snapshot():
-                return
-            self._messaging_service.handle_message_download_completed(event)
-            return
         if isinstance(event, MessageFailed):
-            if self._backend_owns_runtime_snapshot():
-                self._handle_rust_voice_note_failed(event)
-                return
-            self._voice_note_service.handle_message_failed(event)
-            self._messaging_service.handle_message_failed(event)
+            self._handle_rust_voice_note_failed(event)
+            return
 
     def _apply_runtime_snapshot(self, snapshot: VoIPRuntimeSnapshot) -> None:
         self._runtime_snapshot = snapshot
@@ -674,12 +595,8 @@ class VoIPManager:
         self.is_muted = snapshot.muted
         self._update_call_state(snapshot.call_state)
         self._notify_lifecycle_availability_from_snapshot(snapshot)
-        if self._backend_owns_runtime_snapshot():
-            self._apply_rust_voice_note_snapshot(snapshot)
-            self._notify_rust_message_summary_change(snapshot)
-        else:
-            self._voice_note_service.apply_runtime_snapshot(snapshot)
-            self._messaging_service.apply_runtime_snapshot(snapshot)
+        self._apply_rust_voice_note_snapshot(snapshot)
+        self._notify_rust_message_summary_change(snapshot)
         self._notify_runtime_snapshot_change(snapshot)
 
     def _start_rust_voice_note_recording(
@@ -691,7 +608,7 @@ class VoIPManager:
             logger.error("Cannot start voice-note recording without a recipient address")
             return False
 
-        file_path = VoiceNoteService.build_recording_file_path(self.config)
+        file_path = _build_recording_file_path(self.config)
         if not self.backend.start_voice_note_recording(file_path):
             return False
 
@@ -813,6 +730,7 @@ class VoIPManager:
         draft.send_state = "failed"
         draft.status_text = event.reason or "Couldn't send"
         draft.send_started_at = 0.0
+        self._notify_message_failure(event.message_id, draft.status_text)
 
     def _notify_rust_message_summary_change(self, snapshot: VoIPRuntimeSnapshot) -> None:
         summary = {
@@ -827,10 +745,7 @@ class VoIPManager:
         if self._last_rust_message_summary_key == key:
             return
         self._last_rust_message_summary_key = key
-        self._messaging_service.notify_external_message_summary_change(
-            max(0, int(snapshot.unread_voice_notes)),
-            summary,
-        )
+        self._notify_message_summary_change(max(0, int(snapshot.unread_voice_notes)), summary)
 
     def _runtime_voice_note_record_for_contact(
         self,
@@ -893,11 +808,23 @@ class VoIPManager:
             self.caller_address = None
             self.caller_name = None
 
-    def _backend_owns_runtime_snapshot(self) -> bool:
-        return callable(getattr(self.backend, "get_runtime_snapshot", None))
+    def _notify_message_summary_change(
+        self,
+        unread_voice_notes: int,
+        latest_voice_note_by_contact: dict[str, dict[str, object]],
+    ) -> None:
+        for callback in self.message_summary_callbacks:
+            try:
+                callback(unread_voice_notes, latest_voice_note_by_contact)
+            except Exception as exc:
+                logger.error("Error in message summary callback: {}", exc)
 
-    def _notify_message_summary_change(self) -> None:
-        self._messaging_service.notify_message_summary_change()
+    def _notify_message_failure(self, message_id: str, reason: str) -> None:
+        for callback in self.message_failure_callbacks:
+            try:
+                callback(message_id, reason)
+            except Exception as exc:
+                logger.error("Error in message failure callback: {}", exc)
 
     def _handle_incoming_call_event(self, caller_address: str) -> None:
         self.caller_address = caller_address
@@ -1031,19 +958,13 @@ class VoIPManager:
                 logger.error("Error in runtime snapshot callback: {}", exc)
 
     def _stop_voice_note_playback(self) -> None:
-        if self._backend_owns_runtime_snapshot():
-            stop = getattr(self.backend, "stop_voice_note_playback", None)
-            if callable(stop):
-                stop()
-            return
-        self._voice_note_service.stop_voice_note_playback()
+        stop = getattr(self.backend, "stop_voice_note_playback", None)
+        if callable(stop):
+            stop()
 
     @staticmethod
     def _build_voice_note_playback_command(file_path: str) -> list[str]:
-        return VoiceNoteService.build_voice_note_playback_command(file_path)
-
-    def _check_active_voice_note_timeout(self) -> None:
-        self._voice_note_service.check_active_voice_note_timeout()
+        return _voice_note_playback_command(file_path)
 
 
 def _message_summary_key(
@@ -1073,6 +994,29 @@ def _message_summary_key(
         ),
         latest_key,
     )
+
+
+def _build_recording_file_path(config: VoIPConfig) -> str:
+    voice_note_dir = Path(config.voice_note_store_dir)
+    voice_note_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return str(voice_note_dir / f"voice-note-{timestamp}.wav")
+
+
+def _voice_note_playback_command(file_path: str) -> list[str]:
+    suffix = Path(file_path).suffix.lower()
+    if suffix in {".mka", ".mkv", ".ogg", ".opus", ".mp3", ".m4a"}:
+        return [
+            "ffplay",
+            "-nodisp",
+            "-autoexit",
+            "-loglevel",
+            "error",
+            "-af",
+            f"volume={VOICE_NOTE_CONTAINER_GAIN_DB}dB",
+            file_path,
+        ]
+    return ["aplay", "-q", file_path]
 
 
 __all__ = ["VoIPIterateSnapshot", "VoIPManager"]
