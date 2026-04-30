@@ -453,6 +453,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "yoyopod-media-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "yoyopod-ui-host"
 version = "0.1.0"
 dependencies = [

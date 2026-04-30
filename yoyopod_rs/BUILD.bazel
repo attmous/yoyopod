@@ -1,6 +1,11 @@
 package(default_visibility = ["//visibility:public"])
 
 alias(
+    name = "media-host",
+    actual = "//yoyopod_rs/media-host:yoyopod-media-host",
+)
+
+alias(
     name = "ui-host",
     actual = "//yoyopod_rs/ui-host:yoyopod-ui-host",
 )
