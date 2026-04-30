@@ -59,6 +59,9 @@ def test_dev_unit_references_checkout_and_venv() -> None:
     assert "/opt/yoyopod-dev/checkout" in exec_start
     assert "YOYOPOD_DEV_VENV" in exec_start
     assert "/opt/yoyopod-dev/venv" in exec_start
+    assert "LD_LIBRARY_PATH" in exec_start_pre
+    assert "LD_LIBRARY_PATH" in exec_start
+    assert "yoyopod/ui/lvgl_binding/native/build" in exec_start
     assert "-m yoyopod_cli.main build ensure-native" in exec_start_pre
 
 

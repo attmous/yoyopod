@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 import subprocess
@@ -17,6 +18,7 @@ class RustUiHostError(RuntimeError):
 class RustUiHostSupervisor:
     argv: list[str]
     cwd: Path | None = None
+    env: Mapping[str, str] | None = None
     ready_timeout_seconds: float = 5.0
     process: subprocess.Popen[str] | None = None
 
@@ -32,6 +34,7 @@ class RustUiHostSupervisor:
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            env=dict(self.env) if self.env is not None else None,
         )
         return self.read_event()
 

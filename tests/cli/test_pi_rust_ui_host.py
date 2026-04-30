@@ -13,9 +13,15 @@ import yoyopod_cli.pi.rust_ui_host as rust_ui_host
 class _FakeSupervisor:
     instances: list["_FakeSupervisor"] = []
 
-    def __init__(self, argv: list[str], cwd: Path | None = None) -> None:
+    def __init__(
+        self,
+        argv: list[str],
+        cwd: Path | None = None,
+        env: dict[str, str] | None = None,
+    ) -> None:
         self.argv = argv
         self.cwd = cwd
+        self.env = env or {}
         self.sent: list[UiEnvelope] = []
         self._events: list[UiEnvelope] = []
         self.instances.append(self)
@@ -78,6 +84,9 @@ def test_rust_ui_host_runs_supervisor(monkeypatch, tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "ready" in result.output.lower()
     assert "frames=1" in result.output
+    assert "yoyopod/ui/lvgl_binding/native/build" in _FakeSupervisor.instances[-1].env[
+        "LD_LIBRARY_PATH"
+    ]
 
 
 def test_rust_ui_host_sends_runtime_snapshot_for_hub_screen(

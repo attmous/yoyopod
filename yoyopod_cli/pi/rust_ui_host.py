@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Annotated, Literal, cast
 
@@ -39,7 +40,7 @@ def rust_ui_host(
 
     selected_screen = _screen_name(screen)
     argv = [str(worker), "--hardware", hardware]
-    supervisor = RustUiHostSupervisor(argv=argv)
+    supervisor = RustUiHostSupervisor(argv=argv, env=_native_lvgl_env())
     ready = supervisor.start()
     typer.echo(f"Rust UI host ready: {ready.payload}")
 
@@ -84,3 +85,15 @@ def _screen_name(value: str) -> ScreenName:
     if value in {"test-scene", "hub"}:
         return cast(ScreenName, value)
     raise typer.BadParameter("screen must be test-scene or hub")
+
+
+def _native_lvgl_env() -> dict[str, str]:
+    env = os.environ.copy()
+    native_build = Path("yoyopod") / "ui" / "lvgl_binding" / "native" / "build"
+    native_lib = native_build / "lib"
+    entries = [native_build.as_posix(), native_lib.as_posix()]
+    existing = env.get("LD_LIBRARY_PATH", "")
+    if existing:
+        entries.append(existing)
+    env["LD_LIBRARY_PATH"] = ":".join(entries)
+    return env
