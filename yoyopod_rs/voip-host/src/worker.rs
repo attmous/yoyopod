@@ -1,6 +1,9 @@
 use anyhow::{anyhow, Result};
 use serde_json::json;
 use std::io::{BufRead, Write};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::thread;
+use std::time::Duration;
 
 use crate::config::VoipConfig;
 use crate::host::{self, VoipHost, VoipRuntimeBackend};
@@ -14,12 +17,13 @@ pub fn run_worker<R, W, E, B>(
     backend: &mut B,
 ) -> Result<()>
 where
-    R: BufRead,
+    R: BufRead + Send + 'static,
     W: Write + ?Sized,
     E: Write + ?Sized,
     B: VoipRuntimeBackend,
 {
     let mut backend_state = AttachedBackend::new(backend);
+    let input = spawn_input_reader(input);
     write_envelope_to(
         output,
         &WorkerEnvelope::event(
@@ -28,8 +32,18 @@ where
         ),
     )?;
 
-    for line in input.lines() {
-        let line = line?;
+    loop {
+        let poll_interval = Duration::from_millis(host.iterate_interval_ms().max(1));
+        let line = match input.recv_timeout(poll_interval) {
+            Ok(InputLine::Line(line)) => line,
+            Ok(InputLine::ReadError(error)) => return Err(anyhow!(error)),
+            Ok(InputLine::Eof) => break,
+            Err(RecvTimeoutError::Timeout) => {
+                poll_worker_backend(host, &mut backend_state, output)?;
+                continue;
+            }
+            Err(RecvTimeoutError::Disconnected) => break,
+        };
         if line.trim().is_empty() {
             poll_worker_backend(host, &mut backend_state, output)?;
             continue;
@@ -65,6 +79,33 @@ where
         poll_worker_backend(host, &mut backend_state, output)?;
     }
     Ok(())
+}
+
+enum InputLine {
+    Line(String),
+    ReadError(String),
+    Eof,
+}
+
+fn spawn_input_reader<R>(input: R) -> Receiver<InputLine>
+where
+    R: BufRead + Send + 'static,
+{
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        for line in input.lines() {
+            let message = match line {
+                Ok(line) => InputLine::Line(line),
+                Err(error) => InputLine::ReadError(error.to_string()),
+            };
+            let terminal = matches!(message, InputLine::ReadError(_));
+            if sender.send(message).is_err() || terminal {
+                return;
+            }
+        }
+        let _ = sender.send(InputLine::Eof);
+    });
+    receiver
 }
 
 pub enum LoopAction {

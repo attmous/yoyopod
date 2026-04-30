@@ -11,18 +11,12 @@ fn main() -> Result<()> {
     struct Args {}
 
     let _args = Args::parse();
-    let stdin = std::io::stdin();
+    let stdin = std::io::BufReader::new(std::io::stdin());
     let mut stdout = std::io::stdout();
     let mut stderr = std::io::stderr();
     let mut host = VoipHost::default();
     let mut backend = LiblinphoneBackend::new();
-    worker::run_worker(
-        stdin.lock(),
-        &mut stdout,
-        &mut stderr,
-        &mut host,
-        &mut backend,
-    )
+    worker::run_worker(stdin, &mut stdout, &mut stderr, &mut host, &mut backend)
 }
 
 #[cfg(not(feature = "native-liblinphone"))]

@@ -1,9 +1,12 @@
 mod support;
 
 use serde_json::json;
-use std::io::Cursor;
+use std::io::{BufReader, Cursor, Read};
+use std::thread;
+use std::time::Duration;
 use support::{config, FakeBackend};
-use yoyopod_voip_host::host::{BackendEvent, MessageRecord, VoipHost};
+use yoyopod_voip_host::config::VoipConfig;
+use yoyopod_voip_host::host::{BackendEvent, MessageRecord, VoipHost, VoipRuntimeBackend};
 use yoyopod_voip_host::protocol::{EnvelopeKind, WorkerEnvelope, SUPPORTED_SCHEMA_VERSION};
 use yoyopod_voip_host::worker::{backend_event_envelope, backend_event_envelopes, run_worker};
 
@@ -72,6 +75,50 @@ fn run_worker_uses_injected_io_and_backend() {
         .iter()
         .any(|envelope| envelope.message_type == "worker.stop"
             && envelope.kind == EnvelopeKind::Result));
+}
+
+#[test]
+fn run_worker_polls_backend_while_stdin_is_idle() {
+    let commands = [
+        command(
+            "voip.configure",
+            "configure-1",
+            json!({
+                "sip_server": "sip.example.com",
+                "sip_identity": "sip:alice@example.com",
+                "iterate_interval_ms": 10
+            }),
+        ),
+        command("voip.register", "register-1", json!({})),
+    ];
+    let mut input = Vec::new();
+    for envelope in commands {
+        input.extend(envelope.encode().expect("encode command"));
+    }
+
+    let reader = BufReader::new(DelayedEofReader::new(input, Duration::from_millis(80)));
+    let mut output = Vec::new();
+    let mut errors = Vec::new();
+    let mut host = VoipHost::default();
+    let mut backend = IdleThenRegistrationBackend::default();
+
+    run_worker(reader, &mut output, &mut errors, &mut host, &mut backend)
+        .expect("worker should run");
+
+    let envelopes: Vec<WorkerEnvelope> = String::from_utf8(output)
+        .expect("utf8 output")
+        .lines()
+        .map(|line| WorkerEnvelope::decode(line.as_bytes()).expect("decode output"))
+        .collect();
+
+    assert!(errors.is_empty());
+    assert!(
+        backend.iterations >= 2,
+        "worker must keep polling after register even when stdin is quiet"
+    );
+    assert!(envelopes.iter().any(|envelope| {
+        envelope.message_type == "voip.registration_changed" && envelope.payload["state"] == "ok"
+    }));
 }
 
 #[test]
@@ -268,5 +315,105 @@ fn command(message_type: &str, request_id: &str, payload: serde_json::Value) -> 
         timestamp_ms: 0,
         deadline_ms: 0,
         payload,
+    }
+}
+
+struct DelayedEofReader {
+    cursor: Cursor<Vec<u8>>,
+    eof_delay: Duration,
+    delayed: bool,
+}
+
+impl DelayedEofReader {
+    fn new(input: Vec<u8>, eof_delay: Duration) -> Self {
+        Self {
+            cursor: Cursor::new(input),
+            eof_delay,
+            delayed: false,
+        }
+    }
+}
+
+impl Read for DelayedEofReader {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let bytes_read = self.cursor.read(buffer)?;
+        if bytes_read > 0 {
+            return Ok(bytes_read);
+        }
+        if !self.delayed {
+            self.delayed = true;
+            thread::sleep(self.eof_delay);
+        }
+        Ok(0)
+    }
+}
+
+#[derive(Default)]
+struct IdleThenRegistrationBackend {
+    iterations: usize,
+}
+
+impl VoipRuntimeBackend for IdleThenRegistrationBackend {
+    fn start(&mut self, _config: &VoipConfig) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn stop(&mut self) {}
+
+    fn iterate(&mut self) -> Result<Vec<BackendEvent>, String> {
+        self.iterations += 1;
+        if self.iterations == 2 {
+            return Ok(vec![BackendEvent::RegistrationChanged {
+                state: "ok".to_string(),
+                reason: String::new(),
+            }]);
+        }
+        Ok(vec![])
+    }
+
+    fn make_call(&mut self, _sip_address: &str) -> Result<String, String> {
+        Ok("call-outgoing".to_string())
+    }
+
+    fn answer_call(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn reject_call(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn hangup(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn set_muted(&mut self, _muted: bool) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn send_text_message(&mut self, _sip_address: &str, _text: &str) -> Result<String, String> {
+        Ok("backend-msg-1".to_string())
+    }
+
+    fn start_voice_recording(&mut self, _file_path: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn stop_voice_recording(&mut self) -> Result<i32, String> {
+        Ok(1250)
+    }
+
+    fn cancel_voice_recording(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn send_voice_note(
+        &mut self,
+        _sip_address: &str,
+        _file_path: &str,
+        _duration_ms: i32,
+        _mime_type: &str,
+    ) -> Result<String, String> {
+        Ok("backend-vn-1".to_string())
     }
 }
