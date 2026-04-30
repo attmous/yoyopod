@@ -5,15 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from yoyopod.core import ScreenChangedEvent, UserActivityEvent, WorkerMessageReceivedEvent
-from yoyopod.integrations.location.events import (
-    NetworkGpsFixEvent,
-    NetworkGpsNoFixEvent,
-)
-from yoyopod.integrations.network.events import (
-    NetworkPppDownEvent,
-    NetworkPppUpEvent,
-    NetworkSignalUpdateEvent,
-)
 from yoyopod.integrations.power.events import (
     GracefulShutdownCancelled,
     GracefulShutdownRequested,
@@ -53,23 +44,6 @@ class RuntimeEventSubscriptions:
         bus.subscribe(
             GracefulShutdownCancelled,
             self.app.shutdown_service.handle_graceful_shutdown_cancelled_event,
-        )
-        bus.subscribe(NetworkPppUpEvent, self.app.network_events.handle_network_ppp_up)
-        bus.subscribe(
-            NetworkSignalUpdateEvent,
-            self.app.network_events.handle_network_signal_update,
-        )
-        bus.subscribe(
-            NetworkGpsFixEvent,
-            self.app.network_events.handle_network_gps_fix,
-        )
-        bus.subscribe(
-            NetworkGpsNoFixEvent,
-            self.app.network_events.handle_network_gps_no_fix,
-        )
-        bus.subscribe(
-            NetworkPppDownEvent,
-            self.app.network_events.handle_network_ppp_down,
         )
         rust_ui_host = getattr(self.app, "rust_ui_host", None)
         handle_worker_message = getattr(rust_ui_host, "handle_worker_message", None)

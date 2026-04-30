@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from yoyopod.core import AppContext
-from yoyopod.integrations.network.models import (
-    GpsCoordinate,
-    ModemPhase,
-    ModemState,
-    SignalInfo,
+from yoyopod.integrations.network.snapshot import (
+    RustNetworkGpsSnapshot,
+    RustNetworkPppSnapshot,
+    RustNetworkSignalSnapshot,
+    RustNetworkSnapshot,
 )
 from yoyopod.ui.input import InteractionProfile
 from yoyopod.ui.screens.system.power import (
@@ -41,41 +43,75 @@ class FakeDisplay:
         return (len(text) * 6, size)
 
 
-class FakeNetworkManager:
-    """Minimal network manager double."""
+def _runtime_snapshot(
+    *,
+    enabled: bool = True,
+    gps_enabled: bool = True,
+    state: str = "online",
+    connected: bool = True,
+    gps: RustNetworkGpsSnapshot | None = None,
+) -> RustNetworkSnapshot:
+    return RustNetworkSnapshot(
+        enabled=enabled,
+        gps_enabled=gps_enabled,
+        config_dir="config",
+        state=state,
+        sim_ready=enabled,
+        registered=enabled,
+        carrier="Telekom.de" if enabled else "",
+        network_type="4G" if enabled else "",
+        signal=RustNetworkSignalSnapshot(csq=20 if enabled else None, bars=3 if enabled else 0),
+        ppp=RustNetworkPppSnapshot(
+            up=connected,
+            interface="ppp0" if enabled else "",
+            pid=1234 if connected else None,
+            default_route_owned=connected,
+            last_failure="",
+        ),
+        gps=(
+            gps
+            if gps is not None
+            else RustNetworkGpsSnapshot(has_fix=False, last_query_result="idle")
+        ),
+        recovering=False,
+        retryable=True,
+        reconnect_attempts=0,
+        next_retry_at_ms=None,
+        error_code="",
+        error_message="",
+        updated_at_ms=1,
+    )
+
+
+class FakeNetworkRuntime:
+    """Minimal Rust-backed network runtime double."""
 
     def __init__(
         self,
+        snapshot: RustNetworkSnapshot,
         *,
-        enabled: bool = True,
-        gps_enabled: bool = True,
-        phase: ModemPhase = ModemPhase.ONLINE,
+        refreshed_snapshot: RustNetworkSnapshot | None = None,
     ) -> None:
-        self.config = type("Config", (), {"enabled": enabled, "gps_enabled": gps_enabled})()
-        self._state = ModemState(
-            phase=phase,
-            signal=SignalInfo(csq=20),
-            carrier="Telekom.de",
-            network_type="4G",
-            sim_ready=True,
-        )
+        self._snapshot = snapshot
+        self._refreshed_snapshot = refreshed_snapshot
         self.query_gps_calls = 0
 
-    @property
-    def modem_state(self) -> ModemState:
-        return self._state
+    def snapshot(self) -> RustNetworkSnapshot:
+        return self._snapshot
 
-    def query_gps(self):
+    def query_gps(self) -> bool:
         self.query_gps_calls += 1
-        return self._state.gps
+        if self._refreshed_snapshot is not None:
+            self._snapshot = self._refreshed_snapshot
+        return True
 
 
 def test_network_page_online():
     """Network page should show Online status with carrier info."""
-    nm = FakeNetworkManager(phase=ModemPhase.ONLINE)
+    runtime = FakeNetworkRuntime(_runtime_snapshot(state="online", connected=True))
     screen = PowerScreen(
         FakeDisplay(),
-        state_provider=build_power_screen_state_provider(network_manager=nm),
+        state_provider=build_power_screen_state_provider(network_runtime=runtime),
     )
     screen.enter()
     rows = screen._build_network_rows()
@@ -87,18 +123,18 @@ def test_network_page_online():
 
 def test_network_page_disabled():
     """Network page should show Disabled when network is off."""
-    nm = FakeNetworkManager(enabled=False)
+    runtime = FakeNetworkRuntime(_runtime_snapshot(enabled=False, connected=False, gps_enabled=False))
     screen = PowerScreen(
         FakeDisplay(),
-        state_provider=build_power_screen_state_provider(network_manager=nm),
+        state_provider=build_power_screen_state_provider(network_runtime=runtime),
     )
     screen.enter()
     rows = screen._build_network_rows()
     assert rows == [("Status", "Disabled")]
 
 
-def test_network_page_no_manager():
-    """Network page should show Disabled when no network manager."""
+def test_network_page_no_runtime():
+    """Network page should show Disabled when no network runtime exists."""
     screen = PowerScreen(FakeDisplay())
     screen.enter()
     rows = screen._build_network_rows()
@@ -107,25 +143,36 @@ def test_network_page_no_manager():
 
 def test_gps_page_with_fix():
     """GPS page should show coordinates when fix is available."""
-    nm = FakeNetworkManager()
-    nm._state.gps = GpsCoordinate(lat=48.8738, lng=2.3522, altitude=349.6, speed=0.0)
+    runtime = FakeNetworkRuntime(
+        _runtime_snapshot(
+            gps=RustNetworkGpsSnapshot(
+                has_fix=True,
+                lat=48.8738,
+                lng=2.3522,
+                altitude=349.6,
+                speed=0.0,
+                timestamp="2026-04-30T10:00:00Z",
+                last_query_result="fix",
+            )
+        )
+    )
     screen = PowerScreen(
         FakeDisplay(),
-        state_provider=build_power_screen_state_provider(network_manager=nm),
+        state_provider=build_power_screen_state_provider(network_runtime=runtime),
     )
     screen.enter()
     rows = screen._build_gps_rows()
     assert ("Fix", "Yes") in rows
-    assert any("48.8738" in v for _, v in rows)
-    assert any("2.3522" in v for _, v in rows)
+    assert any("48.8738" in value for _, value in rows)
+    assert any("2.3522" in value for _, value in rows)
 
 
 def test_gps_page_no_fix():
     """GPS page should show a searching state when GPS has no fix yet."""
-    nm = FakeNetworkManager()
+    runtime = FakeNetworkRuntime(_runtime_snapshot(state="registered", connected=False))
     screen = PowerScreen(
         FakeDisplay(),
-        state_provider=build_power_screen_state_provider(network_manager=nm),
+        state_provider=build_power_screen_state_provider(network_runtime=runtime),
     )
     screen.enter()
     rows = screen._build_gps_rows()
@@ -136,20 +183,33 @@ def test_gps_page_no_fix():
 def test_gps_page_render_does_not_query_coordinates():
     """GPS render helpers should consume cached state instead of querying coordinates."""
 
-    nm = FakeNetworkManager()
-    nm._state.gps = GpsCoordinate(lat=48.8738, lng=2.3522, altitude=349.6, speed=0.0)
+    runtime = FakeNetworkRuntime(
+        _runtime_snapshot(
+            connected=False,
+            state="registered",
+            gps=RustNetworkGpsSnapshot(
+                has_fix=True,
+                lat=48.8738,
+                lng=2.3522,
+                altitude=349.6,
+                speed=0.0,
+                timestamp="2026-04-30T10:00:00Z",
+                last_query_result="fix",
+            ),
+        )
+    )
     screen = PowerScreen(
         FakeDisplay(),
         AppContext(interaction_profile=InteractionProfile.ONE_BUTTON),
-        state_provider=build_power_screen_state_provider(network_manager=nm),
-        actions=build_power_screen_actions(network_manager=nm),
+        state_provider=build_power_screen_state_provider(network_runtime=runtime),
+        actions=build_power_screen_actions(network_runtime=runtime),
     )
     screen.enter()
     screen.page_index = 2
 
     payload = screen.lvgl_payload()
 
-    assert nm.query_gps_calls == 0
+    assert runtime.query_gps_calls == 0
     assert payload.title_text == "GPS"
     assert payload.items == (
         "Fix: Yes",
@@ -163,13 +223,25 @@ def test_gps_page_render_does_not_query_coordinates():
 def test_active_gps_page_refreshes_coordinates_via_explicit_state_hook():
     """The GPS Setup page should only query coordinates through an explicit refresh hook."""
 
-    nm = FakeNetworkManager()
-    nm._state.gps = GpsCoordinate(lat=48.8738, lng=2.3522, altitude=349.6, speed=0.0)
+    initial_snapshot = _runtime_snapshot(state="registered", connected=False)
+    refreshed_snapshot = replace(
+        initial_snapshot,
+        gps=RustNetworkGpsSnapshot(
+            has_fix=True,
+            lat=48.8738,
+            lng=2.3522,
+            altitude=349.6,
+            speed=0.0,
+            timestamp="2026-04-30T10:00:00Z",
+            last_query_result="fix",
+        ),
+    )
+    runtime = FakeNetworkRuntime(initial_snapshot, refreshed_snapshot=refreshed_snapshot)
     screen = PowerScreen(
         FakeDisplay(),
         AppContext(interaction_profile=InteractionProfile.ONE_BUTTON),
-        state_provider=build_power_screen_state_provider(network_manager=nm),
-        actions=build_power_screen_actions(network_manager=nm),
+        state_provider=build_power_screen_state_provider(network_runtime=runtime),
+        actions=build_power_screen_actions(network_runtime=runtime),
     )
     screen.enter()
     screen.page_index = 2
@@ -177,25 +249,25 @@ def test_active_gps_page_refreshes_coordinates_via_explicit_state_hook():
     screen.refresh_prepared_state(allow_gps_refresh=True)
     payload = screen.lvgl_payload()
 
-    assert nm.query_gps_calls == 1
+    assert runtime.query_gps_calls == 1
     assert payload.title_text == "GPS"
     assert "Lat: 48.873800" in payload.items
 
 
 def test_build_pages_includes_network_when_enabled():
     """build_pages should include Network and GPS pages when network is enabled."""
-    nm = FakeNetworkManager()
+    runtime = FakeNetworkRuntime(_runtime_snapshot())
     screen = PowerScreen(
         FakeDisplay(),
-        state_provider=build_power_screen_state_provider(network_manager=nm),
+        state_provider=build_power_screen_state_provider(network_runtime=runtime),
     )
     screen.enter()
     pages = screen.build_pages()
-    titles = [p.title for p in pages]
+    titles = [page.title for page in pages]
     assert "Network" in titles
     assert "GPS" in titles
-    assert titles.index("Network") == 1  # after Power
-    assert titles.index("GPS") == 2  # after Network
+    assert titles.index("Network") == 1
+    assert titles.index("GPS") == 2
 
 
 def test_build_pages_excludes_network_when_disabled():
@@ -203,6 +275,6 @@ def test_build_pages_excludes_network_when_disabled():
     screen = PowerScreen(FakeDisplay())
     screen.enter()
     pages = screen.build_pages()
-    titles = [p.title for p in pages]
+    titles = [page.title for page in pages]
     assert "Network" not in titles
     assert "GPS" not in titles

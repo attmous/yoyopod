@@ -26,6 +26,8 @@ if TYPE_CHECKING:
         SignalInfo,
     )
     from yoyopod.integrations.network.poller import NetworkPoller
+    from yoyopod.integrations.network.rust_host import RustNetworkFacade
+    from yoyopod.integrations.network.snapshot import RustNetworkSnapshot
 
 
 _PUBLIC_EXPORTS = {
@@ -42,6 +44,8 @@ _PUBLIC_EXPORTS = {
         "yoyopod.integrations.network.events",
         "NetworkSignalUpdateEvent",
     ),
+    "RustNetworkFacade": ("yoyopod.integrations.network.rust_host", "RustNetworkFacade"),
+    "RustNetworkSnapshot": ("yoyopod.integrations.network.snapshot", "RustNetworkSnapshot"),
     "SignalInfo": ("yoyopod.integrations.network.models", "SignalInfo"),
 }
 
@@ -265,6 +269,8 @@ __all__ = [
     "NetworkRegisteredEvent",
     "NetworkSignalUpdateEvent",
     "RefreshSignalCommand",
+    "RustNetworkFacade",
+    "RustNetworkSnapshot",
     "SetApnCommand",
     "SignalInfo",
     "setup",

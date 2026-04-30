@@ -36,7 +36,7 @@ from yoyopod.integrations.cloud.manager import CloudManager
 from yoyopod.integrations.contacts.directory import PeopleManager
 from yoyopod.integrations.music import LocalMusicService, MusicFSM, RecentTrackHistoryStore
 from yoyopod.integrations.music.runtime import MusicRuntime
-from yoyopod.integrations.network import NetworkManager
+from yoyopod.integrations.network import RustNetworkFacade
 from yoyopod.integrations.power import (
     PendingShutdown,
     PowerAlert,
@@ -50,7 +50,6 @@ from yoyopod.core.status import RuntimeMetricsStore
 from yoyopod.core.recovery import RecoveryState, RuntimeRecoveryService
 from yoyopod.core.workers import WorkerSupervisor
 from yoyopod.integrations.call import VoiceNoteEventHandler
-from yoyopod.integrations.network import NetworkEventHandler
 from yoyopod.integrations.display import ScreenPowerService
 from yoyopod.integrations.voice.runtime import VoiceRuntimeCoordinator
 from yoyopod.integrations.voice.worker_client import VoiceWorkerClient
@@ -142,7 +141,7 @@ class YoyoPodApp:
         self.output_volume: Optional[OutputVolumeController] = None
         self.audio_volume_controller: Optional[AudioVolumeController] = None
         self.power_manager: Optional[PowerManager] = None
-        self.network_manager: Optional[NetworkManager] = None
+        self.network_runtime: Optional[RustNetworkFacade] = None
         self.call_history_store: object | None = None
         self.recent_track_store: Optional[RecentTrackHistoryStore] = None
         self.audio_device_catalog: Optional[AudioDeviceCatalog] = None
@@ -228,7 +227,6 @@ class YoyoPodApp:
         self.power_runtime = PowerRuntimeService(self)
         self.shutdown_service = ShutdownLifecycleService(self)
         self.voice_note_events = VoiceNoteEventHandler(self)
-        self.network_events = NetworkEventHandler(self)
         self.runtime_loop = RuntimeLoopService(self)
         self.boot_service = RuntimeBootService(self)
         self.status_service = RuntimeStatusService(self)
@@ -464,7 +462,7 @@ class YoyoPodApp:
                 self.music_backend,
                 self.local_music_service,
                 self.power_manager,
-                self.network_manager,
+                self.network_runtime,
                 self.cloud_manager,
             )
         )

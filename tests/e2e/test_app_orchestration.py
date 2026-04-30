@@ -1582,10 +1582,10 @@ def test_recovery_service_no_longer_owns_power_runtime_helpers() -> None:
 
 
 def test_recovery_service_schedules_network_reconnect_off_main_thread() -> None:
-    """Network recovery should schedule modem retries instead of blocking the loop thread."""
+    """Python should no longer schedule network recovery once Rust owns the domain."""
 
     app = YoyoPodApp(simulate=False)
-    app.network_manager = FakeRecoveringNetworkManager([False, True])
+    app.network_runtime = SimpleNamespace(snapshot=lambda: None)
     scheduled_attempts: list[float] = []
 
     app.recovery_service.start_network_recovery_worker = (
@@ -1594,15 +1594,15 @@ def test_recovery_service_schedules_network_reconnect_off_main_thread() -> None:
 
     app.recovery_service.attempt_network_recovery(0.0)
 
-    assert scheduled_attempts == [0.0]
-    assert app._network_recovery.in_flight is True
+    assert scheduled_attempts == []
+    assert app._network_recovery.in_flight is False
 
 
 def test_recovery_service_skips_network_recovery_in_simulation_mode() -> None:
     """Simulation mode should not launch modem recovery attempts."""
 
     app = YoyoPodApp(simulate=True)
-    app.network_manager = FakeRecoveringNetworkManager([True])
+    app.network_runtime = SimpleNamespace(snapshot=lambda: None)
     scheduled_attempts: list[float] = []
 
     app.recovery_service.start_network_recovery_worker = (
@@ -1616,18 +1616,20 @@ def test_recovery_service_skips_network_recovery_in_simulation_mode() -> None:
 
 
 def test_recovery_service_skips_online_probe_while_network_recovery_is_in_flight() -> None:
-    """Coordinator ticks should not block on network state checks during background recovery."""
+    """Coordinator ticks should not launch extra Python recovery work while Rust owns the worker."""
 
     app = YoyoPodApp(simulate=False)
-    app.network_manager = FakeRecoveringNetworkManager(
-        [True],
-        fail_on_online_check=True,
-    )
+    app.network_runtime = SimpleNamespace(snapshot=lambda: None)
     app._network_recovery.in_flight = True
+    scheduled_attempts: list[float] = []
+    app.recovery_service.start_network_recovery_worker = (
+        lambda recovery_now: scheduled_attempts.append(recovery_now)
+    )
 
     app.recovery_service.attempt_network_recovery(0.0)
 
-    assert app.network_manager.is_online_checks == 0
+    assert scheduled_attempts == []
+    assert app._network_recovery.in_flight is True
 
 
 def test_music_recovery_backoff_doubles_after_success() -> None:
@@ -1668,11 +1670,17 @@ def test_music_recovery_backoff_doubles_after_success() -> None:
 
 
 def test_network_recovery_backoff_updates_context_after_completion() -> None:
-    """Network recovery completion should refresh UI status and backoff state."""
+    """Network completion hooks should only clear the in-flight flag after the Rust cutover."""
 
     app = YoyoPodApp(simulate=True)
     app.context = AppContext()
-    app.network_manager = FakeRecoveringNetworkManager([False, True])
+    app.context.update_network_status(
+        network_enabled=True,
+        signal_bars=2,
+        connection_type="4g",
+        connected=True,
+        gps_has_fix=True,
+    )
 
     app._network_recovery.in_flight = True
     app.recovery_service.handle_recovery_attempt_completed(
@@ -1681,25 +1689,14 @@ def test_network_recovery_backoff_updates_context_after_completion() -> None:
         recovery_now=0.0,
     )
 
-    assert app._network_recovery.next_attempt_at == 1.0
-    assert app._network_recovery.delay_seconds == 2.0
-    assert app.context.network.enabled is True
-    assert app.context.network.signal_strength == 3
-    assert app.context.network.connection_type == "4g"
-    assert app.context.network.connected is False
-
-    app.network_manager._online = True
-    app.network_manager._state.phase = ModemPhase.ONLINE
-    app._network_recovery.in_flight = True
-    app.recovery_service.handle_recovery_attempt_completed(
-        manager="network",
-        recovered=True,
-        recovery_now=1.0,
-    )
-
     assert app._network_recovery.next_attempt_at == 0.0
     assert app._network_recovery.delay_seconds == 1.0
+    assert app.context.network.enabled is True
+    assert app.context.network.signal_strength == 2
+    assert app.context.network.connection_type == "4g"
     assert app.context.network.connected is True
+    assert app.context.network.gps_has_fix is True
+    assert app._network_recovery.in_flight is False
 
 
 def test_music_recovery_worker_queues_direct_main_thread_completion() -> None:
@@ -1751,19 +1748,18 @@ def test_music_recovery_worker_starts_backend_on_main_thread() -> None:
 
 
 def test_network_recovery_worker_queues_direct_main_thread_completion() -> None:
-    """Network recovery workers should queue direct coordinator callbacks instead of typed events."""
+    """Python network recovery workers should be a no-op after the Rust cutover."""
 
     app = YoyoPodApp(simulate=False)
     app.context = AppContext()
-    app.network_manager = FakeRecoveringNetworkManager([True])
     app._network_recovery.in_flight = True
 
     app.recovery_service.run_network_recovery_attempt(0.0)
 
     assert app.bus.pending_count() == 0
-    assert app.runtime_loop.process_pending_main_thread_actions() == 1
-    assert app._network_recovery.in_flight is False
-    assert app.context.network.connected is True
+    assert app.runtime_loop.process_pending_main_thread_actions() == 0
+    assert app._network_recovery.in_flight is True
+    assert app.context.network.connected is False
 
 
 def test_app_stop_uses_silent_voip_teardown() -> None:

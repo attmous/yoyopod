@@ -936,42 +936,64 @@ def test_power_screen_one_button_voice_page_wraps_immediately() -> None:
 def test_power_screen_reports_full_network_page_count_through_lvgl() -> None:
     """Network-enabled Setup pages should preserve the full page count in LVGL payloads."""
 
-    from yoyopod.integrations.network.models import ModemPhase, ModemState, SignalInfo
+    from yoyopod.integrations.network.snapshot import (
+        RustNetworkGpsSnapshot,
+        RustNetworkPppSnapshot,
+        RustNetworkSignalSnapshot,
+        RustNetworkSnapshot,
+    )
     from yoyopod.ui.screens.system.power import (
         build_power_screen_actions,
         build_power_screen_state_provider,
     )
 
-    class _FakeNetworkManager:
+    class _FakeNetworkRuntime:
         def __init__(self) -> None:
-            self.config = type("Config", (), {"enabled": True, "gps_enabled": True})()
-            self._state = ModemState(
-                phase=ModemPhase.REGISTERED,
-                signal=SignalInfo(csq=20),
+            self._snapshot = RustNetworkSnapshot(
+                enabled=True,
+                gps_enabled=True,
+                config_dir="config",
+                state="registered",
+                sim_ready=True,
+                registered=True,
                 carrier="Telekom.de",
                 network_type="4G",
-                sim_ready=True,
+                signal=RustNetworkSignalSnapshot(csq=20, bars=3),
+                ppp=RustNetworkPppSnapshot(
+                    up=False,
+                    interface="ppp0",
+                    pid=None,
+                    default_route_owned=False,
+                    last_failure="",
+                ),
+                gps=RustNetworkGpsSnapshot(has_fix=False, last_query_result="idle"),
+                recovering=False,
+                retryable=True,
+                reconnect_attempts=0,
+                next_retry_at_ms=None,
+                error_code="",
+                error_message="",
+                updated_at_ms=1,
             )
             self.query_gps_calls = 0
 
-        @property
-        def modem_state(self) -> ModemState:
-            return self._state
+        def snapshot(self) -> RustNetworkSnapshot:
+            return self._snapshot
 
         def query_gps(self):
             self.query_gps_calls += 1
-            return None
+            return True
 
     binding = FakeLvglBinding()
-    network_manager = _FakeNetworkManager()
+    network_runtime = _FakeNetworkRuntime()
     screen = PowerScreen(
         FakeLvglDisplay(binding),
         make_one_button_context(),
         state_provider=build_power_screen_state_provider(
-            network_manager=network_manager,
+            network_runtime=network_runtime,
             status_provider=lambda: {},
         ),
-        actions=build_power_screen_actions(network_manager=network_manager),
+        actions=build_power_screen_actions(network_runtime=network_runtime),
     )
 
     screen.enter()

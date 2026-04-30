@@ -1143,6 +1143,16 @@ def test_rust_media_host_worker_path_env_override(monkeypatch) -> None:
     assert _rust_media_host_worker_path() == "/tmp/yoyopod-media-host"
 
 
+def test_network_rust_host_worker_path_env_override(monkeypatch) -> None:
+    """The Rust network host worker path should remain configurable at boot."""
+
+    from yoyopod.core.bootstrap.managers_boot import _rust_network_host_worker_path
+
+    monkeypatch.setenv("YOYOPOD_RUST_NETWORK_HOST_WORKER", "/tmp/yoyopod-network-host")
+
+    assert _rust_network_host_worker_path() == "/tmp/yoyopod-network-host"
+
+
 def test_rust_host_backend_is_default_and_receives_worker_supervisor(monkeypatch) -> None:
     """ManagersBoot should always inject WorkerSupervisor into the Rust VoIP Host backend."""
 
@@ -1204,13 +1214,14 @@ def test_rust_host_backend_is_default_and_receives_worker_supervisor(monkeypatch
         def from_config_manager(cls, _config_manager):
             return cls()
 
-    class _FakeNetworkManager:
-        def __init__(self) -> None:
-            self.config = SimpleNamespace(enabled=False)
+    class _FakeNetworkRuntime:
+        def __init__(self, _app, *, worker_domain: str = "network") -> None:
+            self.worker_domain = worker_domain
+            self.start_worker_calls: list[str] = []
 
-        @classmethod
-        def from_config_manager(cls, *_args, **_kwargs):
-            return cls()
+        def start_worker(self, worker_path: str) -> bool:
+            self.start_worker_calls.append(worker_path)
+            return True
 
     class _FakeCloudManager:
         def __init__(self, *, app, config_manager) -> None:
@@ -1237,7 +1248,7 @@ def test_rust_host_backend_is_default_and_receives_worker_supervisor(monkeypatch
         output_volume=None,
         audio_volume_controller=None,
         simulate=False,
-        network_events=SimpleNamespace(sync_network_context_from_manager=lambda: None),
+        config_dir="config/test-device",
     )
     service = ManagersBoot(
         app,
@@ -1254,7 +1265,7 @@ def test_rust_host_backend_is_default_and_receives_worker_supervisor(monkeypatch
         local_music_service_cls=_FakeLocalMusicService,
         output_volume_controller_cls=_FakeOutputVolumeController,
         power_manager_cls=_FakePowerManager,
-        network_manager_cls=_FakeNetworkManager,
+        network_runtime_cls=_FakeNetworkRuntime,
         cloud_manager_cls=_FakeCloudManager,
     )
 
@@ -1262,6 +1273,7 @@ def test_rust_host_backend_is_default_and_receives_worker_supervisor(monkeypatch
     assert app.voip_manager.backend.worker_supervisor is app.worker_supervisor
     assert app.voip_manager.backend.worker_path == "/bin/yoyopod-voip-host"
     assert app.voip_manager.background_iterate_enabled is False
+    assert app.network_runtime.worker_domain == "network"
     assert captured_interval == [0.02]
 
 
@@ -1336,13 +1348,14 @@ def test_rust_media_host_backend_is_default_and_receives_worker_supervisor(
         def from_config_manager(cls, _config_manager):
             return cls()
 
-    class _FakeNetworkManager:
-        def __init__(self) -> None:
-            self.config = SimpleNamespace(enabled=False)
+    class _FakeNetworkRuntime:
+        def __init__(self, _app, *, worker_domain: str = "network") -> None:
+            self.worker_domain = worker_domain
+            self.start_worker_calls: list[str] = []
 
-        @classmethod
-        def from_config_manager(cls, *_args, **_kwargs):
-            return cls()
+        def start_worker(self, worker_path: str) -> bool:
+            self.start_worker_calls.append(worker_path)
+            return True
 
     class _FakeCloudManager:
         def __init__(self, *, app, config_manager) -> None:
@@ -1367,7 +1380,7 @@ def test_rust_media_host_backend_is_default_and_receives_worker_supervisor(
         output_volume=None,
         audio_volume_controller=None,
         simulate=False,
-        network_events=SimpleNamespace(sync_network_context_from_manager=lambda: None),
+        config_dir="config/test-device",
     )
     service = ManagersBoot(
         app,
@@ -1384,7 +1397,7 @@ def test_rust_media_host_backend_is_default_and_receives_worker_supervisor(
         local_music_service_cls=_FakeLocalMusicService,
         output_volume_controller_cls=_FakeOutputVolumeController,
         power_manager_cls=_FakePowerManager,
-        network_manager_cls=_FakeNetworkManager,
+        network_runtime_cls=_FakeNetworkRuntime,
         cloud_manager_cls=_FakeCloudManager,
     )
 
@@ -1453,10 +1466,8 @@ def test_setup_rust_ui_host_sends_initial_backlight(monkeypatch) -> None:
     ]
 
 
-def test_managers_boot_starts_network_and_syncs_context_without_event_wiring() -> None:
-    """Network startup should use the dedicated runtime handler instead of deleted wiring glue."""
-
-    sync_calls: list[str] = []
+def test_managers_boot_starts_rust_network_host_without_event_wiring(monkeypatch) -> None:
+    """Network startup should boot the Rust runtime facade directly."""
 
     class _FakeVoipConfig:
         iterate_interval_ms = 20
@@ -1515,23 +1526,14 @@ def test_managers_boot_starts_network_and_syncs_context_without_event_wiring() -
         def from_config_manager(cls, _config_manager):
             return cls()
 
-    class _FakeNetworkManager:
-        def __init__(self) -> None:
-            self.config = SimpleNamespace(enabled=True)
-            self.started = False
-            self.started_in_background = False
+    class _FakeNetworkRuntime:
+        def __init__(self, _app, *, worker_domain: str = "network") -> None:
+            self.worker_domain = worker_domain
+            self.start_worker_calls: list[str] = []
 
-        @classmethod
-        def from_config_manager(cls, _config_manager, event_publisher=None):
-            assert event_publisher is not None
-            return cls()
-
-        def start(self) -> None:
-            self.started = True
-
-        def start_background(self, *, on_failure=None):
-            self.started_in_background = True
-            return SimpleNamespace()
+        def start_worker(self, worker_path: str) -> bool:
+            self.start_worker_calls.append(worker_path)
+            return True
 
     class _FakeCloudManager:
         def __init__(self, *, app, config_manager) -> None:
@@ -1561,10 +1563,9 @@ def test_managers_boot_starts_network_and_syncs_context_without_event_wiring() -
         output_volume=None,
         audio_volume_controller=None,
         simulate=False,
-        network_events=SimpleNamespace(
-            sync_network_context_from_manager=lambda: sync_calls.append("synced")
-        ),
+        config_dir="config/test-device",
     )
+    monkeypatch.setenv("YOYOPOD_RUST_NETWORK_HOST_WORKER", "/bin/yoyopod-network-host")
 
     service = ManagersBoot(
         app,
@@ -1581,14 +1582,13 @@ def test_managers_boot_starts_network_and_syncs_context_without_event_wiring() -
         local_music_service_cls=_FakeLocalMusicService,
         output_volume_controller_cls=_FakeOutputVolumeController,
         power_manager_cls=_FakePowerManager,
-        network_manager_cls=_FakeNetworkManager,
+        network_runtime_cls=_FakeNetworkRuntime,
         cloud_manager_cls=_FakeCloudManager,
     )
 
     assert service.init_managers() is True
     assert app.music_backend.start_calls == 0
-    assert app.network_manager.started is False
-    assert app.network_manager.started_in_background is True
-    assert sync_calls == ["synced"]
+    assert app.network_runtime.worker_domain == "network"
+    assert app.network_runtime.start_worker_calls == ["/bin/yoyopod-network-host"]
 
 

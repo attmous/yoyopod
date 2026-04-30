@@ -26,6 +26,15 @@ def _rust_media_host_worker_path() -> str:
     return _default_rust_media_host_worker()
 
 
+def _rust_network_host_worker_path() -> str:
+    """Return the Rust network host worker binary path."""
+
+    return os.environ.get(
+        "YOYOPOD_RUST_NETWORK_HOST_WORKER",
+        "yoyopod_rs/network-host/build/yoyopod-network-host",
+    ).strip()
+
+
 class ManagersBoot:
     """Initialize manager-level runtime integrations."""
 
@@ -41,7 +50,7 @@ class ManagersBoot:
         local_music_service_cls: Any,
         output_volume_controller_cls: Any,
         power_manager_cls: Any,
-        network_manager_cls: Any,
+        network_runtime_cls: Any,
         cloud_manager_cls: Any,
     ) -> None:
         self.app = app
@@ -53,7 +62,7 @@ class ManagersBoot:
         self.local_music_service_cls = local_music_service_cls
         self.output_volume_controller_cls = output_volume_controller_cls
         self.power_manager_cls = power_manager_cls
-        self.network_manager_cls = network_manager_cls
+        self.network_runtime_cls = network_runtime_cls
         self.cloud_manager_cls = cloud_manager_cls
 
     def init_managers(self) -> bool:
@@ -145,46 +154,36 @@ class ManagersBoot:
             else:
                 self.logger.info("    Power backend disabled in config")
 
-            self.logger.info("  - NetworkManager")
-            self.app.network_manager = self.network_manager_cls.from_config_manager(
-                config_manager,
-                event_publisher=lambda event: self.app.scheduler.run_on_main(
-                    lambda event_to_publish=event: self.app.bus.publish(event_to_publish)
-                ),
+            self.logger.info("  - RustNetworkFacade")
+            self.app.network_runtime = self.network_runtime_cls(
+                self.app,
+                worker_domain="network",
             )
-            if self.app.network_manager.config.enabled and not self.app.simulate:
-                try:
-                    self.app.network_events.sync_network_context_from_manager()
-                    start_background = getattr(self.app.network_manager, "start_background", None)
-                    if callable(start_background):
-                        start_background(
-                            on_failure=lambda exc: self.logger.error(
-                                "Network manager background start failed: {}",
-                                exc,
-                            )
-                        )
-                        self.logger.info("    Network bring-up started in background")
-                    else:
-                        self.app.network_manager.start()
-                        self.app.network_events.sync_network_context_from_manager()
-                except Exception as exc:
-                    self.logger.error("Network manager start failed: {}", exc)
-                    if self.app.context is not None:
-                        self.app.context.update_network_status(
-                            network_enabled=self.app.network_manager.config.enabled,
-                            connection_type="none",
-                            connected=False,
-                            gps_has_fix=False,
-                        )
-            else:
-                self.logger.info("    Network module disabled in config")
+            if self.app.simulate:
+                self.logger.info("    Network runtime disabled in simulation")
                 if self.app.context is not None:
                     self.app.context.update_network_status(
-                        network_enabled=self.app.network_manager.config.enabled,
+                        network_enabled=False,
+                        signal_bars=0,
                         connection_type="none",
                         connected=False,
                         gps_has_fix=False,
                     )
+            else:
+                worker_path = _rust_network_host_worker_path()
+                started = self.app.network_runtime.start_worker(worker_path)
+                if started:
+                    self.logger.info("    Rust network host started")
+                else:
+                    self.logger.warning("    Rust network host failed to start")
+                    if self.app.context is not None:
+                        self.app.context.update_network_status(
+                            network_enabled=False,
+                            signal_bars=0,
+                            connection_type="none",
+                            connected=False,
+                            gps_has_fix=False,
+                        )
 
             self.logger.info("  - CloudManager")
             self.app.cloud_manager = self.cloud_manager_cls(

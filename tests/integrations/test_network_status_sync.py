@@ -1,22 +1,66 @@
-"""Tests for network status propagation into shared UI state."""
+"""Tests for Rust-backed network status projection into shared UI state."""
 
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from yoyopod.app import YoyoPodApp
 from yoyopod.core import AppContext
-from yoyopod.integrations.location.events import NetworkGpsFixEvent, NetworkGpsNoFixEvent
-from yoyopod.integrations.network.events import (
-    NetworkPppDownEvent,
-    NetworkPppUpEvent,
-    NetworkSignalUpdateEvent,
-)
-from yoyopod.integrations.network.models import (
-    GpsCoordinate,
-    ModemPhase,
-    ModemState,
-    SignalInfo,
+from yoyopod.core.events import WorkerDomainStateChangedEvent, WorkerMessageReceivedEvent
+from yoyopod.integrations.network.rust_host import RustNetworkFacade
+from yoyopod.integrations.network.snapshot import (
+    RustNetworkGpsSnapshot,
+    RustNetworkPppSnapshot,
+    RustNetworkSignalSnapshot,
+    RustNetworkSnapshot,
 )
 from yoyopod.ui.screens.lvgl_status import network_status_kwargs
+
+
+def _snapshot(
+    *,
+    enabled: bool = True,
+    gps_enabled: bool = True,
+    state: str = "registered",
+    connected: bool = False,
+    gps_has_fix: bool = False,
+    signal_bars: int = 3,
+) -> RustNetworkSnapshot:
+    gps = RustNetworkGpsSnapshot(
+        has_fix=gps_has_fix,
+        lat=48.7083 if gps_has_fix else None,
+        lng=9.6610 if gps_has_fix else None,
+        altitude=328.2 if gps_has_fix else None,
+        speed=0.0 if gps_has_fix else None,
+        timestamp="2026-04-30T10:00:00Z" if gps_has_fix else None,
+        last_query_result="fix" if gps_has_fix else "no_fix",
+    )
+    return RustNetworkSnapshot(
+        enabled=enabled,
+        gps_enabled=gps_enabled,
+        config_dir="config",
+        state=state,
+        sim_ready=enabled,
+        registered=state in {"registered", "ppp_starting", "online", "recovering", "degraded"},
+        carrier="Telekom.de" if enabled else "",
+        network_type="4G" if enabled else "",
+        signal=RustNetworkSignalSnapshot(csq=20 if enabled else None, bars=signal_bars),
+        ppp=RustNetworkPppSnapshot(
+            up=connected,
+            interface="ppp0" if enabled else "",
+            pid=1234 if connected else None,
+            default_route_owned=connected,
+            last_failure="",
+        ),
+        gps=gps,
+        recovering=state == "recovering",
+        retryable=True,
+        reconnect_attempts=0,
+        next_retry_at_ms=None,
+        error_code="",
+        error_message="",
+        updated_at_ms=1,
+    )
 
 
 def test_network_status_kwargs_normalize_context_state() -> None:
@@ -81,93 +125,67 @@ def test_network_status_kwargs_keep_cellular_indicators_visible_when_disconnecte
     }
 
 
-def test_network_event_handlers_keep_context_status_in_sync() -> None:
-    """Runtime network handlers should keep shared UI state current."""
+def test_rust_network_facade_projects_snapshot_into_context() -> None:
+    """Rust worker snapshots should become the app-facing network source of truth."""
 
     app = YoyoPodApp(simulate=True)
     app.context = AppContext()
+    app.cloud_manager = None
+    facade = RustNetworkFacade(app)
 
-    app.network_events.handle_network_ppp_up(
-        NetworkPppUpEvent(connection_type="4g")
+    facade.handle_worker_message(
+        WorkerMessageReceivedEvent(
+            domain="network",
+            kind="event",
+            type="network.snapshot",
+            request_id=None,
+            payload=asdict(_snapshot(connected=True, gps_has_fix=True, state="online")),
+        )
     )
+
     assert app.context.network.enabled is True
-    assert app.context.network.connected is True
+    assert app.context.network.signal_strength == 3
     assert app.context.network.connection_type == "4g"
-    assert app.context.network.enabled is True
     assert app.context.network.connected is True
-
-    app.network_events.handle_network_signal_update(
-        NetworkSignalUpdateEvent(bars=2, csq=12)
-    )
-    assert app.context.network.signal_strength == 2
-    assert app.context.network.signal_strength == 2
-
-    app.network_events.handle_network_gps_fix(NetworkGpsFixEvent(lat=0.0, lng=0.0))
-    assert app.context.network.gps_has_fix is True
     assert app.context.network.gps_has_fix is True
 
-    app.network_events.handle_network_gps_no_fix(
-        NetworkGpsNoFixEvent(reason="no_fix")
-    )
-    assert app.context.network.gps_has_fix is False
-    assert app.context.network.gps_has_fix is False
 
-    app.network_events.handle_network_ppp_down(
-        NetworkPppDownEvent(reason="link lost")
-    )
-    assert app.context.network.enabled is True
-    assert app.context.network.connected is False
-    assert app.context.network.connection_type == "4g"
-    assert app.context.network.gps_has_fix is False
-
-
-def test_network_event_handlers_prefer_live_manager_state_over_latched_flags() -> None:
-    """Manager-backed handlers should derive degraded 4G and GPS state from the modem snapshot."""
-
-    class _FakeNetworkManager:
-        def __init__(self) -> None:
-            self.config = type("Config", (), {"enabled": True})()
-            self._state = ModemState(
-                phase=ModemPhase.REGISTERED,
-                signal=SignalInfo(csq=20),
-                carrier="Telekom.de",
-                network_type="4G",
-                sim_ready=True,
-                gps=GpsCoordinate(lat=48.7083, lng=9.6610, altitude=328.2, speed=0.0),
-            )
-
-        @property
-        def modem_state(self) -> ModemState:
-            return self._state
-
-        @property
-        def is_online(self) -> bool:
-            return self._state.phase == ModemPhase.ONLINE
+def test_rust_network_facade_keeps_cellular_visibility_when_worker_degrades() -> None:
+    """Worker degradation should drop PPP while preserving the cellular status block."""
 
     app = YoyoPodApp(simulate=True)
     app.context = AppContext()
-    app.network_manager = _FakeNetworkManager()
+    cloud_events: list[bool] = []
+    app.cloud_manager = type(
+        "CloudManager",
+        (),
+        {"note_network_change": lambda self, *, connected: cloud_events.append(connected)},
+    )()
+    facade = RustNetworkFacade(app)
 
-    app.network_events.handle_network_gps_fix(
-        NetworkGpsFixEvent(lat=48.7083, lng=9.6610)
+    facade.handle_worker_message(
+        WorkerMessageReceivedEvent(
+            domain="network",
+            kind="event",
+            type="network.snapshot",
+            request_id=None,
+            payload=asdict(_snapshot(connected=True, gps_has_fix=True, state="online")),
+        )
     )
+
+    facade.handle_worker_state_change(
+        WorkerDomainStateChangedEvent(
+            domain="network",
+            state="degraded",
+            reason="process_exited",
+        )
+    )
+
     assert app.context.network.enabled is True
     assert app.context.network.signal_strength == 3
     assert app.context.network.connection_type == "4g"
     assert app.context.network.connected is False
-    assert app.context.network.gps_has_fix is True
-    assert app.context.network.enabled is True
-    assert app.context.network.signal_strength == 3
-
-    app.network_manager.modem_state.gps = None
-    app.network_events.handle_network_gps_no_fix(
-        NetworkGpsNoFixEvent(reason="no_fix")
-    )
     assert app.context.network.gps_has_fix is False
-    assert app.context.network.gps_has_fix is False
-
-    app.network_events.handle_network_ppp_down(
-        NetworkPppDownEvent(reason="link lost")
-    )
-    assert app.context.network.connection_type == "4g"
-    assert app.context.network.connected is False
+    assert facade.snapshot() is not None
+    assert facade.snapshot().state == "online"
+    assert cloud_events == [False]

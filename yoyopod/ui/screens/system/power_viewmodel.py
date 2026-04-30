@@ -48,71 +48,84 @@ _VOICE_PAGE_SIGNATURE_FIELDS = (
 )
 
 
-def _build_network_rows_from_manager(network_manager: object | None) -> list[tuple[str, str]]:
-    """Build the cellular network status rows from a backend-facing manager."""
-
-    if network_manager is None or not getattr(network_manager, "config", None) or not network_manager.config.enabled:
-        return [("Status", "Disabled")]
-
-    from yoyopod.integrations.network.models import ModemPhase
-
-    state = network_manager.modem_state
-    if state.phase == ModemPhase.ONLINE:
-        status_text = "Online"
-    elif state.phase in (
-        ModemPhase.REGISTERED,
-        ModemPhase.PPP_STARTING,
-        ModemPhase.PPP_STOPPING,
-    ):
-        status_text = "Registered"
-    elif state.phase in (ModemPhase.PROBING, ModemPhase.READY, ModemPhase.REGISTERING):
-        status_text = "Connecting"
-    else:
-        status_text = "Offline"
-
+def _disabled_gps_rows() -> list[tuple[str, str]]:
     return [
-        ("Status", status_text),
-        ("Carrier", state.carrier or "Unknown"),
-        ("Type", state.network_type or "Unknown"),
-        ("Signal", f"{state.signal.bars}/4" if state.signal else "Unknown"),
-        ("PPP", "Up" if state.phase == ModemPhase.ONLINE else "Down"),
+        ("Fix", "Disabled"),
+        ("Lat", "--"),
+        ("Lng", "--"),
+        ("Alt", "--"),
+        ("Speed", "--"),
     ]
 
 
-def _build_gps_rows_from_manager(network_manager: object | None) -> list[tuple[str, str]]:
-    """Build the GPS status rows from a backend-facing manager."""
+def _runtime_snapshot(network_runtime: object | None) -> object | None:
+    if network_runtime is None:
+        return None
+    snapshot = getattr(network_runtime, "snapshot", None)
+    if not callable(snapshot):
+        return None
+    return snapshot()
 
-    if network_manager is None or not getattr(network_manager, "config", None) or not network_manager.config.enabled:
-        return [
-            ("Fix", "Disabled"),
-            ("Lat", "--"),
-            ("Lng", "--"),
-            ("Alt", "--"),
-            ("Speed", "--"),
-        ]
-    if not network_manager.config.gps_enabled:
-        return [
-            ("Fix", "Disabled"),
-            ("Lat", "--"),
-            ("Lng", "--"),
-            ("Alt", "--"),
-            ("Speed", "--"),
-        ]
 
-    from yoyopod.integrations.network.models import ModemPhase
+def _build_network_rows_from_runtime(network_runtime: object | None) -> list[tuple[str, str]]:
+    """Build cellular rows from the Rust-owned network snapshot."""
 
-    state = network_manager.modem_state
-    if state.gps is None:
+    snapshot = _runtime_snapshot(network_runtime)
+    if snapshot is None or not getattr(snapshot, "enabled", False):
+        return [("Status", "Disabled")]
+
+    state = str(getattr(snapshot, "state", "") or "").strip()
+    connected = bool(getattr(snapshot, "connected", False))
+    if connected:
+        status_text = "Online"
+    elif state in {"registered", "ppp_starting", "ppp_stopping"}:
+        status_text = "Registered"
+    elif state in {"probing", "ready", "registering", "recovering"}:
+        status_text = "Connecting"
+    elif state == "degraded":
+        status_text = "Degraded"
+    else:
+        status_text = "Offline"
+
+    signal = getattr(snapshot, "signal", None)
+    signal_bars = max(0, min(4, int(getattr(signal, "bars", 0) or 0)))
+    signal_text = "Unknown"
+    if signal is not None and (getattr(signal, "csq", None) is not None or signal_bars > 0):
+        signal_text = f"{signal_bars}/4"
+
+    return [
+        ("Status", status_text),
+        ("Carrier", str(getattr(snapshot, "carrier", "") or "Unknown")),
+        ("Type", str(getattr(snapshot, "network_type", "") or "Unknown")),
+        ("Signal", signal_text),
+        ("PPP", "Up" if connected else "Down"),
+    ]
+
+
+def _build_gps_rows_from_runtime(network_runtime: object | None) -> list[tuple[str, str]]:
+    """Build GPS rows from the Rust-owned network snapshot."""
+
+    snapshot = _runtime_snapshot(network_runtime)
+    if snapshot is None or not getattr(snapshot, "enabled", False):
+        return _disabled_gps_rows()
+    if not getattr(snapshot, "gps_enabled", False):
+        return _disabled_gps_rows()
+
+    gps = getattr(snapshot, "gps", None)
+    if gps is None or not getattr(gps, "has_fix", False):
+        state = str(getattr(snapshot, "state", "") or "").strip()
         fix_status = "Searching"
-        if state.phase in (ModemPhase.OFF, ModemPhase.PROBING, ModemPhase.READY):
+        if state in {"off", "probing", "ready"}:
             fix_status = "Starting"
-        elif state.phase not in (
-            ModemPhase.REGISTERING,
-            ModemPhase.REGISTERED,
-            ModemPhase.PPP_STARTING,
-            ModemPhase.PPP_STOPPING,
-            ModemPhase.ONLINE,
-        ):
+        elif state not in {
+            "registering",
+            "registered",
+            "ppp_starting",
+            "online",
+            "ppp_stopping",
+            "recovering",
+            "degraded",
+        }:
             fix_status = "Unavailable"
         return [
             ("Fix", fix_status),
@@ -122,20 +135,19 @@ def _build_gps_rows_from_manager(network_manager: object | None) -> list[tuple[s
             ("Speed", "--"),
         ]
 
-    coord = state.gps
     return [
         ("Fix", "Yes"),
-        ("Lat", f"{coord.lat:.6f}"),
-        ("Lng", f"{coord.lng:.6f}"),
-        ("Alt", f"{coord.altitude:.1f}m"),
-        ("Speed", f"{coord.speed:.1f}km/h"),
+        ("Lat", f"{float(getattr(gps, 'lat', 0.0)):.6f}"),
+        ("Lng", f"{float(getattr(gps, 'lng', 0.0)):.6f}"),
+        ("Alt", f"{float(getattr(gps, 'altitude', 0.0)):.1f}m"),
+        ("Speed", f"{float(getattr(gps, 'speed', 0.0)):.1f}km/h"),
     ]
 
 
 def build_power_screen_state_provider(
     *,
     power_manager: "PowerManager | None" = None,
-    network_manager: object | None = None,
+    network_runtime: object | None = None,
     status_provider: Callable[[], dict[str, object]] | None = None,
     playback_device_options_provider: Callable[[], list[str]] | None = None,
     capture_device_options_provider: Callable[[], list[str]] | None = None,
@@ -143,20 +155,21 @@ def build_power_screen_state_provider(
     """Build a prepared-state provider for the Setup screen."""
 
     def provider() -> PowerScreenState:
-        snapshot = power_manager.get_snapshot() if power_manager is not None else None
+        power_snapshot = power_manager.get_snapshot() if power_manager is not None else None
         try:
             status = dict(status_provider() if status_provider is not None else {})
         except Exception:
             status = {}
 
+        network_snapshot = _runtime_snapshot(network_runtime)
         return PowerScreenState(
-            snapshot=snapshot,
+            snapshot=power_snapshot,
             status=status,
             network_enabled=bool(
-                network_manager is not None and getattr(network_manager.config, "enabled", False)
+                network_snapshot is not None and getattr(network_snapshot, "enabled", False)
             ),
-            network_rows=tuple(_build_network_rows_from_manager(network_manager)),
-            gps_rows=tuple(_build_gps_rows_from_manager(network_manager)),
+            network_rows=tuple(_build_network_rows_from_runtime(network_runtime)),
+            gps_rows=tuple(_build_gps_rows_from_runtime(network_runtime)),
             playback_devices=tuple(
                 playback_device_options_provider() if playback_device_options_provider is not None else []
             ),
@@ -170,7 +183,7 @@ def build_power_screen_state_provider(
 
 def build_power_screen_actions(
     *,
-    network_manager: object | None = None,
+    network_runtime: object | None = None,
     refresh_voice_device_options_action: Callable[[], None] | None = None,
     persist_speaker_device_action: Callable[[str | None], bool] | None = None,
     persist_capture_device_action: Callable[[str | None], bool] | None = None,
@@ -182,15 +195,16 @@ def build_power_screen_actions(
     """Build the focused actions for the Setup screen."""
 
     def refresh_gps() -> bool:
-        if network_manager is None or not getattr(network_manager.config, "enabled", False):
+        snapshot = _runtime_snapshot(network_runtime)
+        if snapshot is None or not getattr(snapshot, "enabled", False):
             return False
-        if not getattr(network_manager.config, "gps_enabled", False):
+        if not getattr(snapshot, "gps_enabled", False):
             return False
 
-        query_gps = getattr(network_manager, "query_gps", None)
+        query_gps = getattr(network_runtime, "query_gps", None)
         if not callable(query_gps):
             return False
-        return query_gps() is not None
+        return bool(query_gps())
 
     return PowerScreenActions(
         refresh_voice_devices=refresh_voice_device_options_action,

@@ -5,12 +5,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from yoyopod.core import ScreenChangedEvent, UserActivityEvent, WorkerMessageReceivedEvent
-from yoyopod.integrations.location.events import NetworkGpsFixEvent, NetworkGpsNoFixEvent
-from yoyopod.integrations.network.events import (
-    NetworkPppDownEvent,
-    NetworkPppUpEvent,
-    NetworkSignalUpdateEvent,
-)
 from yoyopod.core.event_subscriptions import RuntimeEventSubscriptions
 from yoyopod.integrations.power.events import (
     GracefulShutdownCancelled,
@@ -36,13 +30,7 @@ def test_runtime_event_subscriptions_register_all_runtime_handlers() -> None:
             handle_graceful_shutdown_requested_event="shutdown_requested",
             handle_graceful_shutdown_cancelled_event="shutdown_cancelled",
         ),
-        network_events=SimpleNamespace(
-            handle_network_ppp_up="ppp_up",
-            handle_network_signal_update="signal_update",
-            handle_network_gps_fix="gps_fix",
-            handle_network_gps_no_fix="gps_no_fix",
-            handle_network_ppp_down="ppp_down",
-        ),
+        rust_ui_host=None,
     )
 
     RuntimeEventSubscriptions(app).register()
@@ -53,11 +41,6 @@ def test_runtime_event_subscriptions_register_all_runtime_handlers() -> None:
         (LowBatteryWarningRaised, "low_battery"),
         (GracefulShutdownRequested, "shutdown_requested"),
         (GracefulShutdownCancelled, "shutdown_cancelled"),
-        (NetworkPppUpEvent, "ppp_up"),
-        (NetworkSignalUpdateEvent, "signal_update"),
-        (NetworkGpsFixEvent, "gps_fix"),
-        (NetworkGpsNoFixEvent, "gps_no_fix"),
-        (NetworkPppDownEvent, "ppp_down"),
     ]
 
 
@@ -80,13 +63,6 @@ def test_runtime_event_subscriptions_register_rust_ui_host_when_present() -> Non
         shutdown_service=SimpleNamespace(
             handle_graceful_shutdown_requested_event="shutdown_requested",
             handle_graceful_shutdown_cancelled_event="shutdown_cancelled",
-        ),
-        network_events=SimpleNamespace(
-            handle_network_ppp_up="ppp_up",
-            handle_network_signal_update="signal_update",
-            handle_network_gps_fix="gps_fix",
-            handle_network_gps_no_fix="gps_no_fix",
-            handle_network_ppp_down="ppp_down",
         ),
         rust_ui_host=rust_ui_host,
     )
