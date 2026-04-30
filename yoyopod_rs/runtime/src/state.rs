@@ -1,6 +1,6 @@
 use serde_json::{json, Value};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WorkerDomain {
     Ui,
     Media,

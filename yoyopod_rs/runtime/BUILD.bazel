@@ -26,6 +26,7 @@ RUNTIME_TESTS = [
     "protocol",
     "smoke",
     "state",
+    "worker",
 ]
 
 yoyopod_rust_host_integration_tests(
