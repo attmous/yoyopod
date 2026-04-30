@@ -2,7 +2,9 @@ use std::io::{self, BufRead, Read, Write};
 
 use anyhow::Result;
 
-use crate::protocol::{ready_event, stopped_event, EnvelopeKind, WorkerEnvelope};
+use crate::config::NetworkHostConfig;
+use crate::protocol::{ready_event, snapshot_event, stopped_event, EnvelopeKind, WorkerEnvelope};
+use crate::snapshot::NetworkRuntimeSnapshot;
 
 pub fn run(config_dir: &str) -> Result<()> {
     let stdin = io::stdin();
@@ -15,7 +17,11 @@ where
     R: Read,
     W: Write,
 {
+    let config = NetworkHostConfig::load(config_dir)?;
+    let snapshot = NetworkRuntimeSnapshot::from_config(config_dir, &config);
+
     write_envelope(output, &ready_event(config_dir))?;
+    write_envelope(output, &snapshot_event(&snapshot))?;
 
     let reader = io::BufReader::new(input);
     for line in reader.lines() {
