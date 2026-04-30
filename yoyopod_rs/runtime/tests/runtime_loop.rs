@@ -114,6 +114,84 @@ fn worker_protocol_error_increments_health_and_records_reason() {
 }
 
 #[test]
+fn protocol_error_remains_visible_after_same_iteration_ready_event() {
+    let mut runtime_loop = RuntimeLoop::new(RuntimeState::default());
+    let mut io = FakeLoopIo {
+        messages: [(
+            WorkerDomain::Voice,
+            event_envelope("voice.ready", json!({})),
+        )]
+        .into_iter()
+        .collect(),
+        protocol_errors: [(
+            WorkerDomain::Voice,
+            WorkerProtocolError {
+                raw_line: "not-json".to_string(),
+                message: "expected value at line 1 column 1".to_string(),
+            },
+        )]
+        .into_iter()
+        .collect(),
+        sent: Vec::new(),
+    };
+
+    let processed = runtime_loop.run_once(&mut io);
+
+    assert_eq!(processed, 1);
+    assert_eq!(runtime_loop.state().voice_worker.protocol_errors, 1);
+    assert_eq!(
+        runtime_loop.state().status_payload()["workers"]["voice"]["state"],
+        "degraded"
+    );
+    assert!(runtime_loop
+        .state()
+        .voice_worker
+        .last_reason
+        .contains("expected value"));
+}
+
+#[test]
+fn protocol_error_only_iteration_sends_tick_without_runtime_snapshot() {
+    let mut runtime_loop = RuntimeLoop::new(RuntimeState::default());
+    let mut io = FakeLoopIo::with_protocol_errors([(
+        WorkerDomain::Voice,
+        WorkerProtocolError {
+            raw_line: "not-json".to_string(),
+            message: "expected value at line 1 column 1".to_string(),
+        },
+    )]);
+
+    let processed = runtime_loop.run_once(&mut io);
+
+    assert_eq!(processed, 0);
+    assert!(sent_optional(&io, WorkerDomain::Ui, "ui.tick").is_some());
+    assert!(sent_optional(&io, WorkerDomain::Ui, "ui.runtime_snapshot").is_none());
+}
+
+#[test]
+fn incoming_voip_snapshot_pauses_media_before_applying_call_state() {
+    let mut state = RuntimeState::default();
+    state.apply_media_snapshot(&json!({"playback_state": "playing"}));
+    let mut runtime_loop = RuntimeLoop::new(state);
+    let mut io = FakeLoopIo::with_messages([(
+        WorkerDomain::Voip,
+        event_envelope("voip.snapshot", json!({"call_state": "incoming"})),
+    )]);
+
+    let processed = runtime_loop.run_once(&mut io);
+
+    assert_eq!(processed, 1);
+    let pause = sent_to(&io, WorkerDomain::Media, "media.pause");
+    let snapshot = sent_to(&io, WorkerDomain::Ui, "ui.runtime_snapshot");
+    let pause_index = sent_index(&io, WorkerDomain::Media, "media.pause");
+    let snapshot_index = sent_index(&io, WorkerDomain::Ui, "ui.runtime_snapshot");
+    assert_eq!(pause.kind, EnvelopeKind::Command);
+    assert_eq!(pause.payload, json!({}));
+    assert_eq!(snapshot.payload["call"]["state"], "incoming");
+    assert!(pause_index < snapshot_index);
+}
+
+#[test]
 fn runtime_loop_is_registered_in_bazel_runtime_tests() {
     let build_file = include_str!("../BUILD.bazel");
 
@@ -161,12 +239,29 @@ impl LoopIo for FakeLoopIo {
 }
 
 fn sent_to<'a>(io: &'a FakeLoopIo, domain: WorkerDomain, message_type: &str) -> &'a WorkerEnvelope {
+    sent_optional(io, domain, message_type)
+        .unwrap_or_else(|| panic!("missing sent envelope {message_type} to {domain:?}"))
+}
+
+fn sent_optional<'a>(
+    io: &'a FakeLoopIo,
+    domain: WorkerDomain,
+    message_type: &str,
+) -> Option<&'a WorkerEnvelope> {
     io.sent
         .iter()
         .find(|(sent_domain, envelope)| {
             *sent_domain == domain && envelope.message_type == message_type
         })
         .map(|(_, envelope)| envelope)
+}
+
+fn sent_index(io: &FakeLoopIo, domain: WorkerDomain, message_type: &str) -> usize {
+    io.sent
+        .iter()
+        .position(|(sent_domain, envelope)| {
+            *sent_domain == domain && envelope.message_type == message_type
+        })
         .unwrap_or_else(|| panic!("missing sent envelope {message_type} to {domain:?}"))
 }
 

@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use std::time::Instant;
 
 use serde_json::json;
 
 use crate::event::{commands_for_event, runtime_event_from_worker, RuntimeCommand};
 use crate::protocol::WorkerEnvelope;
-use crate::state::{RuntimeState, WorkerDomain};
+use crate::state::{RuntimeState, WorkerDomain, WorkerState};
 use crate::worker::{WorkerProtocolError, WorkerSupervisor};
 
 const WORKER_DOMAINS: [WorkerDomain; 6] = [
@@ -48,11 +49,13 @@ impl RuntimeLoop {
     pub fn run_once(&mut self, io: &mut impl LoopIo) -> usize {
         let started = Instant::now();
         let mut processed = 0;
+        let mut protocol_faults = HashMap::<WorkerDomain, String>::new();
 
         for (domain, error) in io.drain_worker_protocol_errors() {
+            let reason = protocol_error_reason(&error);
             self.state
-                .record_worker_protocol_error(domain, protocol_error_reason(&error));
-            self.send_runtime_snapshot(io);
+                .record_worker_protocol_error(domain, reason.clone());
+            protocol_faults.insert(domain, reason);
         }
 
         for (domain, envelope) in io.drain_worker_messages() {
@@ -71,6 +74,11 @@ impl RuntimeLoop {
             }
 
             processed += 1;
+        }
+
+        for (domain, reason) in protocol_faults {
+            self.state
+                .mark_worker(domain, WorkerState::Degraded, reason);
         }
 
         self.state.loop_iterations += 1;
