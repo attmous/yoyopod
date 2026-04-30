@@ -116,6 +116,7 @@ impl ListItem {
             .unwrap_or_default();
         let subtitle = string_field(value, "artist")
             .or_else(|| string_field(value, "subtitle"))
+            .or_else(|| playlist_track_count_subtitle(value, icon_key))
             .unwrap_or_default();
 
         Some(Self {
@@ -168,7 +169,9 @@ pub struct CallRuntimeState {
     pub state: CallState,
     pub peer_name: String,
     pub peer_address: String,
+    pub duration_text: String,
     pub muted: bool,
+    pub history: Vec<ListItem>,
 }
 
 impl Default for CallRuntimeState {
@@ -179,7 +182,9 @@ impl Default for CallRuntimeState {
             state: CallState::Idle,
             peer_name: String::new(),
             peer_address: String::new(),
+            duration_text: String::new(),
             muted: false,
+            history: Vec::new(),
         }
     }
 }
@@ -234,7 +239,9 @@ impl RuntimeState {
         if let Some(playback_state) = string_field(snapshot, "playback_state") {
             self.media.playback_state = playback_state;
         }
-        if let Some(progress_permille) = i32_field(snapshot, "progress_permille") {
+        let explicit_progress_permille = i32_field(snapshot, "progress_permille")
+            .filter(|progress_permille| (0..=1000).contains(progress_permille));
+        if let Some(progress_permille) = explicit_progress_permille {
             self.media.progress_permille = progress_permille;
         }
         if let Some(track) = snapshot.get("current_track") {
@@ -242,6 +249,11 @@ impl RuntimeState {
                 .or_else(|| string_field(track, "title"))
                 .unwrap_or_else(|| "Nothing Playing".to_string());
             self.media.artist = first_artist(track).unwrap_or_default();
+            if let Some(progress_permille) = derived_progress_permille(snapshot, track) {
+                self.media.progress_permille = progress_permille;
+            } else if explicit_progress_permille.is_none() {
+                self.media.progress_permille = 0;
+            }
         }
         if let Some(playlists) = snapshot.get("playlists").and_then(Value::as_array) {
             self.media.playlists = playlists
@@ -271,10 +283,21 @@ impl RuntimeState {
                 .unwrap_or(CallState::Idle);
         }
         if let Some(active_call_peer) = string_field(snapshot, "active_call_peer") {
-            self.call.peer_address = active_call_peer;
+            self.call.peer_address = active_call_peer.clone();
+            self.call.peer_name = active_call_peer;
         }
+        self.call.duration_text = call_duration_text(snapshot, self.call.state).unwrap_or_default();
         if let Some(muted) = snapshot.get("muted").and_then(Value::as_bool) {
             self.call.muted = muted;
+        }
+        if let Some(history) = snapshot
+            .get("recent_call_history")
+            .and_then(Value::as_array)
+        {
+            self.call.history = history
+                .iter()
+                .filter_map(recent_call_history_item)
+                .collect();
         }
     }
 
@@ -297,10 +320,10 @@ impl RuntimeState {
                 "state": self.call.state.as_str(),
                 "peer_name": self.call.peer_name,
                 "peer_address": self.call.peer_address,
-                "duration_text": "",
+                "duration_text": self.call.duration_text,
                 "muted": self.call.muted,
                 "contacts": [],
-                "history": [],
+                "history": list_payload(&self.call.history),
             },
             "voice": {
                 "phase": "idle",
@@ -371,6 +394,14 @@ fn i32_field(value: &Value, key: &str) -> Option<i32> {
     i32::try_from(raw).ok()
 }
 
+fn i64_field(value: &Value, key: &str) -> Option<i64> {
+    value.get(key)?.as_i64()
+}
+
+fn u64_field(value: &Value, key: &str) -> Option<u64> {
+    value.get(key)?.as_u64()
+}
+
 fn first_artist(track: &Value) -> Option<String> {
     track
         .get("artists")
@@ -379,6 +410,75 @@ fn first_artist(track: &Value) -> Option<String> {
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| string_field(track, "artist"))
+}
+
+fn playlist_track_count_subtitle(value: &Value, icon_key: &str) -> Option<String> {
+    if icon_key != "playlist" {
+        return None;
+    }
+
+    let track_count = value.get("track_count")?.as_u64()?;
+    let suffix = if track_count == 1 { "track" } else { "tracks" };
+    Some(format!("{track_count} {suffix}"))
+}
+
+fn derived_progress_permille(snapshot: &Value, track: &Value) -> Option<i32> {
+    let position_ms = i64_field(snapshot, "time_position_ms")?;
+    let length_ms = i64_field(track, "length_ms")?;
+    if length_ms <= 0 {
+        return None;
+    }
+
+    let permille = ((position_ms as i128) * 1000 / (length_ms as i128)).clamp(0, 1000);
+    i32::try_from(permille).ok()
+}
+
+fn call_duration_text(snapshot: &Value, call_state: CallState) -> Option<String> {
+    if call_state != CallState::Active {
+        return None;
+    }
+
+    snapshot
+        .get("call_session")
+        .and_then(|session| u64_field(session, "duration_seconds"))
+        .map(format_duration_text)
+}
+
+fn recent_call_history_item(value: &Value) -> Option<ListItem> {
+    let peer_sip_address = string_field(value, "peer_sip_address")?;
+    if peer_sip_address.is_empty() {
+        return None;
+    }
+
+    let direction = string_field(value, "direction").unwrap_or_default();
+    let outcome = string_field(value, "outcome").unwrap_or_default();
+    let duration = u64_field(value, "duration_seconds")
+        .map(format_duration_text)
+        .unwrap_or_else(|| format_duration_text(0));
+    let subtitle = [direction, outcome, duration]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    Some(ListItem {
+        id: peer_sip_address.clone(),
+        title: peer_sip_address,
+        subtitle,
+        icon_key: "call".to_string(),
+    })
+}
+
+fn format_duration_text(total_seconds: u64) -> String {
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes:02}:{seconds:02}")
+    }
 }
 
 fn list_payload(items: &[ListItem]) -> Vec<Value> {
