@@ -23,7 +23,7 @@ enum SceneBackendMode {
 #[cfg(any(test, feature = "native-lvgl"))]
 fn scene_backend_mode_from_value(value: Option<&str>) -> Result<SceneBackendMode> {
     let value = value.map(str::trim).filter(|value| !value.is_empty());
-    match value.unwrap_or("shim").to_ascii_lowercase().as_str() {
+    match value.unwrap_or("rust").to_ascii_lowercase().as_str() {
         "shim" | "c" | "lvgl_shim" => Ok(SceneBackendMode::Shim),
         "rust" | "native" | "rust_native" => Ok(SceneBackendMode::Rust),
         other => bail!("unsupported {SCENE_BACKEND_ENV}={other:?}; expected shim or rust"),
@@ -246,10 +246,10 @@ mod tests {
     use crate::screens::{ChromeModel, HubCardModel, HubViewModel, ScreenModel, StatusBarModel};
 
     #[test]
-    fn scene_backend_mode_parser_defaults_to_shim_and_accepts_rust_aliases() -> Result<()> {
+    fn scene_backend_mode_parser_defaults_to_rust_and_accepts_shim_fallback() -> Result<()> {
         assert_eq!(
             super::scene_backend_mode_from_value(None)?,
-            super::SceneBackendMode::Shim
+            super::SceneBackendMode::Rust
         );
         assert_eq!(
             super::scene_backend_mode_from_value(Some("shim"))?,
