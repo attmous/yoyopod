@@ -1041,6 +1041,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "yoyopod-network-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "time",
+]
+
+[[package]]
 name = "yoyopod-ui-host"
 version = "0.1.0"
 dependencies = [

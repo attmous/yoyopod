@@ -4,4 +4,5 @@ members = [
     "media-host",
     "ui-host",
     "voip-host",
+    "network-host",
 ]
