@@ -142,7 +142,7 @@ jobs:
           sudo apt-get install -y pkg-config liblinphone-dev libudev-dev
 
       - name: Run Bazel Rust host tests
-        run: bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/media-host/... //yoyopod_rs/voip-host/... //yoyopod_rs/network-host/... //yoyopod_rs/runtime/...
+        run: bazel test --action_env=PATH //yoyopod_rs/ui-host/... //yoyopod_rs/media-host/... //yoyopod_rs/voip-host/... //yoyopod_rs/network-host/... //yoyopod_rs/runtime/...
 
       - name: Run Rust workspace tests
         working-directory: yoyopod_rs

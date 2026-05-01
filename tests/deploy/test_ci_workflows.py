@@ -39,7 +39,7 @@ def test_rust_ci_builds_arm64_device_bundle_artifact() -> None:
     assert "Install native Rust host dependencies" in workflow
     assert "pkg-config liblinphone-dev libudev-dev" in workflow
     assert (
-        "bazel test //yoyopod_rs/ui-host/... //yoyopod_rs/media-host/... "
+        "bazel test --action_env=PATH //yoyopod_rs/ui-host/... //yoyopod_rs/media-host/... "
         "//yoyopod_rs/voip-host/... //yoyopod_rs/network-host/... //yoyopod_rs/runtime/..."
     ) in workflow
     assert "cargo test --workspace --locked --features whisplay-hardware,native-lvgl" in workflow
