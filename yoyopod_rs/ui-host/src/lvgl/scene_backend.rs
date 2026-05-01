@@ -4,9 +4,13 @@ use std::path::Path;
 use anyhow::{bail, Result};
 
 use crate::runtime::UiScreen;
-use crate::screens::{ChromeModel, ListScreenModel, ScreenModel, StatusBarModel};
+use crate::screens::{AskViewModel, ChromeModel, ListScreenModel, ScreenModel, StatusBarModel};
 
-use super::{LvglFacade, LvglRenderer, NativeSceneKey};
+use super::{
+    AskController, CallController, HubController, ListenController, LvglFacade, NativeSceneKey,
+    NowPlayingController, PlaylistController, PowerController, ScreenController,
+    TalkActionsController, TalkController,
+};
 
 pub trait SceneBridge {
     fn build_scene(&mut self, scene: NativeSceneKey) -> Result<()>;
@@ -79,7 +83,8 @@ where
 }
 
 pub struct RustSceneBridge<F> {
-    renderer: LvglRenderer<F>,
+    facade: F,
+    controller: Option<Box<dyn ScreenController>>,
     active_scene: Option<NativeSceneKey>,
     last_status: Option<StatusBarModel>,
 }
@@ -90,7 +95,8 @@ where
 {
     pub fn new(facade: F) -> Self {
         Self {
-            renderer: LvglRenderer::new(facade),
+            facade,
+            controller: None,
             active_scene: None,
             last_status: None,
         }
@@ -105,11 +111,11 @@ where
     }
 
     pub fn facade(&self) -> &F {
-        self.renderer.facade()
+        &self.facade
     }
 
     pub fn facade_mut(&mut self) -> &mut F {
-        self.renderer.facade_mut()
+        &mut self.facade
     }
 }
 
@@ -122,8 +128,11 @@ where
             return Ok(());
         }
         if self.active_scene.is_some() {
-            let _ = self.renderer.clear();
+            if let Some(controller) = self.controller.as_mut() {
+                let _ = controller.teardown(&mut self.facade);
+            }
         }
+        self.controller = Some(controller_for_native_scene(scene));
         self.active_scene = Some(scene);
         Ok(())
     }
@@ -149,20 +158,47 @@ where
             );
         }
         let model = rust_owned_scene_model(model, active_scene);
-        self.renderer.render(&model)
+        let controller = self
+            .controller
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("Rust LVGL scene bridge has no active controller"))?;
+        controller.sync(&mut self.facade, &model)
     }
 
     fn destroy_scene(&mut self, scene: NativeSceneKey) {
         if self.active_scene == Some(scene) {
-            let _ = self.renderer.clear();
+            if let Some(controller) = self.controller.as_mut() {
+                let _ = controller.teardown(&mut self.facade);
+            }
+            self.controller = None;
             self.active_scene = None;
         }
     }
 
     fn clear_screen(&mut self) -> Result<()> {
-        self.renderer.clear()?;
+        if let Some(controller) = self.controller.as_mut() {
+            controller.teardown(&mut self.facade)?;
+        }
+        self.controller = None;
         self.active_scene = None;
         Ok(())
+    }
+}
+
+fn controller_for_native_scene(scene: NativeSceneKey) -> Box<dyn ScreenController> {
+    match scene {
+        NativeSceneKey::Hub => Box::new(HubController::default()),
+        NativeSceneKey::Listen => Box::new(ListenController::default()),
+        NativeSceneKey::Playlist => Box::new(PlaylistController::default()),
+        NativeSceneKey::NowPlaying => Box::new(NowPlayingController::default()),
+        NativeSceneKey::Talk => Box::new(TalkController::default()),
+        NativeSceneKey::TalkActions => Box::new(TalkActionsController::default()),
+        NativeSceneKey::IncomingCall | NativeSceneKey::OutgoingCall | NativeSceneKey::InCall => {
+            Box::new(CallController::default())
+        }
+        NativeSceneKey::Ask => Box::new(AskController::default()),
+        NativeSceneKey::Power => Box::new(PowerController::default()),
+        NativeSceneKey::Overlay => Box::new(AskController::default()),
     }
 }
 
@@ -215,6 +251,15 @@ fn rust_owned_scene_model(model: &ScreenModel, scene: NativeSceneKey) -> ScreenM
         }
         (NativeSceneKey::Playlist, ScreenModel::CallHistory(list)) => {
             ScreenModel::CallHistory(capped_list_model(list, NativeListSelection::Clamp))
+        }
+        (NativeSceneKey::Overlay, ScreenModel::Loading(overlay))
+        | (NativeSceneKey::Overlay, ScreenModel::Error(overlay)) => {
+            ScreenModel::Ask(AskViewModel {
+                chrome: overlay.chrome.clone(),
+                title: overlay.title.clone(),
+                subtitle: overlay.subtitle.clone(),
+                icon_key: "ask".to_string(),
+            })
         }
         _ => model.clone(),
     }

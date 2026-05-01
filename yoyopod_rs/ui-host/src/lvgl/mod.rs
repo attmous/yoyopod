@@ -18,8 +18,9 @@ use crate::runtime::UiScreen;
 use crate::screens::ScreenModel;
 
 pub use controllers::{
-    AskController, CallController, HubController, ListController, NowPlayingController,
-    OverlayController, PowerController, ScreenController,
+    AskController, CallController, HubController, ListController, ListenController,
+    NowPlayingController, OverlayController, PlaylistController, PowerController, ScreenController,
+    TalkActionsController, TalkController,
 };
 #[cfg(feature = "native-lvgl")]
 pub use native_backend::NativeLvglFacade;

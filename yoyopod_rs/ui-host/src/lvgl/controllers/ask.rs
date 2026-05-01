@@ -8,6 +8,7 @@ use crate::screens::{AskViewModel, ScreenModel};
 pub struct AskController {
     root: Option<WidgetId>,
     status: StatusBarWidgets,
+    icon_glow: Option<WidgetId>,
     icon_halo: Option<WidgetId>,
     title: Option<WidgetId>,
     subtitle: Option<WidgetId>,
@@ -25,6 +26,9 @@ impl AskController {
             .root
             .ok_or_else(|| anyhow!("ask controller missing root widget"))?;
 
+        if self.icon_glow.is_none() {
+            self.icon_glow = Some(facade.create_container(root, "ask_icon_glow")?);
+        }
         if self.icon_halo.is_none() {
             self.icon_halo = Some(facade.create_container(root, "ask_icon_halo")?);
         }
@@ -64,6 +68,9 @@ impl ScreenController for AskController {
         if let Some(icon_halo) = self.icon_halo {
             facade.set_accent(icon_halo, accent)?;
         }
+        if let Some(icon_glow) = self.icon_glow {
+            facade.set_accent(icon_glow, accent)?;
+        }
         if let Some(title) = self.title {
             facade.set_text(title, &ask.title)?;
         }
@@ -81,6 +88,7 @@ impl ScreenController for AskController {
     fn teardown(&mut self, facade: &mut dyn LvglFacade) -> Result<()> {
         let root = self.root.take();
         self.status.clear();
+        self.icon_glow = None;
         self.icon_halo = None;
         self.title = None;
         self.subtitle = None;

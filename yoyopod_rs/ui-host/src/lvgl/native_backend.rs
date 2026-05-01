@@ -358,6 +358,12 @@ impl NativeLvglFacade {
                 width: 220,
                 height: 16,
             },
+            "listen_footer" | "now_playing_footer" | "power_footer" => Layout {
+                x: 13,
+                y: 256,
+                width: 214,
+                height: 16,
+            },
             "hub_icon_glow" => Layout {
                 x: 62,
                 y: 48,
@@ -400,6 +406,146 @@ impl NativeLvglFacade {
                 width: 200,
                 height: 18,
             },
+            "listen_title" => Layout {
+                x: 16,
+                y: 38,
+                width: 208,
+                height: 28,
+            },
+            "listen_subtitle" => Layout {
+                x: 16,
+                y: 68,
+                width: 208,
+                height: 16,
+            },
+            "listen_panel" => Layout {
+                x: 16,
+                y: 92,
+                width: 208,
+                height: 188,
+            },
+            "listen_row" => {
+                let index = self.list_row_count;
+                self.list_row_count += 1;
+                Layout {
+                    x: 0,
+                    y: index as i32 * 52,
+                    width: 208,
+                    height: 44,
+                }
+            }
+            "listen_row_icon" => Layout {
+                x: 16,
+                y: 12,
+                width: 28,
+                height: 18,
+            },
+            "listen_row_title" => Layout {
+                x: 48,
+                y: 8,
+                width: 120,
+                height: 18,
+            },
+            "listen_row_subtitle" => Layout {
+                x: 48,
+                y: 26,
+                width: 120,
+                height: 14,
+            },
+            "listen_empty_panel" => Layout {
+                x: 18,
+                y: 94,
+                width: 204,
+                height: 156,
+            },
+            "listen_empty_icon" => Layout {
+                x: 72,
+                y: 18,
+                width: 60,
+                height: 24,
+            },
+            "listen_empty_title" => Layout {
+                x: 18,
+                y: 84,
+                width: 168,
+                height: 22,
+            },
+            "listen_empty_subtitle" => Layout {
+                x: 18,
+                y: 112,
+                width: 168,
+                height: 36,
+            },
+            "playlist_title" => Layout {
+                x: 18,
+                y: 38,
+                width: 150,
+                height: 22,
+            },
+            "playlist_underline" => Layout {
+                x: 18,
+                y: 60,
+                width: 30,
+                height: 3,
+            },
+            "playlist_panel" => Layout {
+                x: 12,
+                y: 86,
+                width: 216,
+                height: 166,
+            },
+            "playlist_row" => {
+                let index = self.list_row_count;
+                self.list_row_count += 1;
+                Layout {
+                    x: 16,
+                    y: 8 + (index as i32 * 48),
+                    width: 184,
+                    height: 44,
+                }
+            }
+            "playlist_row_icon" => Layout {
+                x: 14,
+                y: 12,
+                width: 26,
+                height: 18,
+            },
+            "playlist_row_title" => Layout {
+                x: 44,
+                y: 7,
+                width: 92,
+                height: 18,
+            },
+            "playlist_row_subtitle" => Layout {
+                x: 44,
+                y: 24,
+                width: 92,
+                height: 14,
+            },
+            "playlist_empty_panel" => Layout {
+                x: 18,
+                y: 96,
+                width: 204,
+                height: 156,
+            },
+            "playlist_empty_icon" => Layout {
+                x: 72,
+                y: 18,
+                width: 60,
+                height: 24,
+            },
+            "playlist_empty_title" => Layout {
+                x: 18,
+                y: 84,
+                width: 168,
+                height: 22,
+            },
+            "playlist_empty_subtitle" => Layout {
+                x: 18,
+                y: 112,
+                width: 168,
+                height: 36,
+            },
             "list_row" => {
                 let index = self.list_row_count;
                 self.list_row_count += 1;
@@ -428,47 +574,131 @@ impl NativeLvglFacade {
                 width: 144,
                 height: 12,
             },
+            "now_playing_panel" => Layout {
+                x: 0,
+                y: 38,
+                width: 240,
+                height: 214,
+            },
+            "now_playing_icon_halo" => Layout {
+                x: 74,
+                y: 12,
+                width: 92,
+                height: 66,
+            },
+            "now_playing_icon_label" => Layout {
+                x: 16,
+                y: 21,
+                width: 60,
+                height: 24,
+            },
+            "now_playing_state_chip" => Layout {
+                x: 70,
+                y: 170,
+                width: 100,
+                height: 24,
+            },
+            "now_playing_state_label" => Layout {
+                x: 10,
+                y: 6,
+                width: 80,
+                height: 12,
+            },
             "now_playing_title" => Layout {
-                x: 20,
-                y: 134,
-                width: 200,
-                height: 22,
+                x: 16,
+                y: 96,
+                width: 208,
+                height: 44,
             },
             "now_playing_artist" => Layout {
-                x: 20,
-                y: 160,
-                width: 200,
-                height: 18,
+                x: 16,
+                y: 146,
+                width: 208,
+                height: 16,
             },
-            "now_playing_state" => Layout {
-                x: 20,
-                y: 190,
-                width: 200,
-                height: 18,
+            "now_playing_progress_track" => Layout {
+                x: 36,
+                y: 202,
+                width: 168,
+                height: 8,
             },
-            "now_playing_progress" => Layout {
-                x: 20,
-                y: 216,
-                width: 200,
-                height: 18,
+            "now_playing_progress_fill" => Layout {
+                x: 0,
+                y: 0,
+                width: 1,
+                height: 8,
             },
-            "now_playing_art" => Layout {
-                x: 76,
+            "talk_card_glow" => Layout {
+                x: 58,
                 y: 42,
-                width: 88,
-                height: 78,
+                width: 124,
+                height: 124,
             },
-            "now_playing_art_icon" => Layout {
-                x: 20,
-                y: 26,
-                width: 48,
+            "talk_card_panel" => Layout {
+                x: 64,
+                y: 48,
+                width: 112,
+                height: 112,
+            },
+            "talk_card_label" => Layout {
+                x: 26,
+                y: 44,
+                width: 60,
                 height: 24,
+            },
+            "talk_title" => Layout {
+                x: 30,
+                y: 176,
+                width: 180,
+                height: 28,
+            },
+            "talk_actions_header_box" => Layout {
+                x: 96,
+                y: 50,
+                width: 48,
+                height: 48,
+            },
+            "talk_actions_header_label" => Layout {
+                x: 9,
+                y: 15,
+                width: 30,
+                height: 18,
+            },
+            "talk_actions_header_name" => Layout {
+                x: 50,
+                y: 104,
+                width: 140,
+                height: 16,
+            },
+            "talk_actions_primary_button" => Layout {
+                x: 76,
+                y: 126,
+                width: 88,
+                height: 88,
+            },
+            "talk_actions_button_label" => Layout {
+                x: 24,
+                y: 32,
+                width: 40,
+                height: 24,
+            },
+            "talk_actions_status_label" => Layout {
+                x: 30,
+                y: 220,
+                width: 180,
+                height: 16,
             },
             "ask_icon_halo" => Layout {
                 x: 72,
                 y: 56,
                 width: 96,
                 height: 96,
+            },
+            "ask_icon_glow" => Layout {
+                x: 60,
+                y: 44,
+                width: 120,
+                height: 120,
             },
             "ask_icon" => Layout {
                 x: 18,
@@ -489,14 +719,20 @@ impl NativeLvglFacade {
                 height: 28,
             },
             "call_panel" => Layout {
-                x: 72,
-                y: 54,
-                width: 96,
-                height: 96,
+                x: 64,
+                y: 48,
+                width: 112,
+                height: 112,
+            },
+            "call_icon_halo" => Layout {
+                x: 58,
+                y: 42,
+                width: 124,
+                height: 124,
             },
             "call_state_icon" => Layout {
-                x: 18,
-                y: 36,
+                x: 26,
+                y: 44,
                 width: 60,
                 height: 24,
             },
@@ -518,11 +754,29 @@ impl NativeLvglFacade {
                 width: 144,
                 height: 18,
             },
+            "call_state_chip" => Layout {
+                x: 54,
+                y: 208,
+                width: 132,
+                height: 24,
+            },
+            "call_state_label" => Layout {
+                x: 10,
+                y: 6,
+                width: 112,
+                height: 12,
+            },
             "call_mute_badge" => Layout {
                 x: 72,
                 y: 232,
                 width: 96,
-                height: 18,
+                height: 24,
+            },
+            "call_mute_label" => Layout {
+                x: 12,
+                y: 6,
+                width: 72,
+                height: 12,
             },
             "power_icon_halo" => Layout {
                 x: 92,
@@ -553,28 +807,16 @@ impl NativeLvglFacade {
                 self.power_row_count += 1;
                 Layout {
                     x: 16,
-                    y: 146 + (index as i32 * 24),
+                    y: 126 + (index as i32 * 22),
                     width: 208,
-                    height: 20,
+                    height: 18,
                 }
             }
-            "power_row_icon" => Layout {
-                x: 8,
-                y: 6,
-                width: 40,
-                height: 14,
-            },
             "power_row_title" => Layout {
-                x: 48,
-                y: 3,
-                width: 144,
+                x: 12,
+                y: 2,
+                width: 184,
                 height: 14,
-            },
-            "power_row_subtitle" => Layout {
-                x: 48,
-                y: 15,
-                width: 144,
-                height: 12,
             },
             "overlay_title" => Layout {
                 x: 20,
@@ -668,27 +910,37 @@ impl LvglFacade for NativeLvglFacade {
 
     fn set_selected(&mut self, _widget: WidgetId, _selected: bool) -> Result<()> {
         let node = self.widget_node_mut(_widget)?;
-        if matches!(node.role, "list_row" | "power_row") {
-            let mut layout = node.layout;
-            if _selected {
-                layout.x -= 6;
-                layout.width += 12;
-            }
-            Self::apply_style_raw(
-                node.obj,
-                theme::style_for_selected_role(node.role, _selected),
-            );
-            Self::apply_layout_raw(node.obj, layout);
-        }
+        Self::apply_style_raw(
+            node.obj,
+            theme::style_for_selected_role(node.role, _selected),
+        );
+        Self::apply_layout_raw(node.obj, node.layout);
         Ok(())
     }
 
     fn set_icon(&mut self, widget: WidgetId, icon_key: &str) -> Result<()> {
-        self.set_text(widget, icon_label(icon_key))
+        self.set_text(widget, &icon_label(icon_key))
     }
 
     fn set_progress(&mut self, widget: WidgetId, value: i32) -> Result<()> {
         let value = value.clamp(0, 1000);
+        let node = self.widget_node_mut(widget)?;
+        if node.role == "now_playing_progress_fill" {
+            let fill_width = (168 * value) / 1000;
+            if fill_width <= 0 {
+                Self::hide_widget_raw(node.obj);
+            } else {
+                Self::apply_layout_raw(
+                    node.obj,
+                    Layout {
+                        width: fill_width,
+                        ..node.layout
+                    },
+                );
+            }
+            return Ok(());
+        }
+
         let filled = ((value as usize) * 10) / 1000;
         let empty = 10usize.saturating_sub(filled);
         let bar = format!(
@@ -743,30 +995,87 @@ impl NativeLvglFacade {
         let accent = sys::lv_color_hex(rgb & 0xFFFFFF);
         unsafe {
             match role {
-                "hub_icon_glow" => {
-                    sys::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
+                "hub_icon_glow" | "talk_card_glow" | "call_icon_halo" => {
+                    sys::lv_obj_set_style_bg_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 68)),
+                        SELECTOR,
+                    );
                     sys::lv_obj_set_style_bg_opa(obj.as_ptr(), 96, SELECTOR);
                 }
-                "hub_card_panel" | "call_panel" | "now_playing_art" => {
+                "hub_card_panel" | "talk_card_panel" | "call_panel" => {
                     sys::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
                     sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
                 }
-                "ask_icon_halo" | "power_icon_halo" => {
+                "now_playing_icon_halo" => {
+                    sys::lv_obj_set_style_bg_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 80)),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+                    sys::lv_obj_set_style_border_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 60)),
+                        SELECTOR,
+                    );
+                }
+                "ask_icon_glow" | "ask_icon_halo" | "talk_actions_header_box" => {
+                    sys::lv_obj_set_style_bg_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 82)),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), 76, SELECTOR);
+                }
+                "call_state_chip" | "now_playing_state_chip" => {
+                    sys::lv_obj_set_style_bg_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 85)),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+                }
+                "talk_actions_primary_button" => {
+                    sys::lv_obj_set_style_border_color(obj.as_ptr(), accent, SELECTOR);
+                    sys::lv_obj_set_style_bg_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(theme::SURFACE_RAISED_RGB),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+                }
+                "playlist_underline" => {
                     sys::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
-                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), 64, SELECTOR);
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+                }
+                "now_playing_progress_fill" => {
+                    sys::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
                 }
                 "hub_icon"
                 | "ask_icon"
                 | "call_state_icon"
                 | "list_row_icon"
+                | "listen_row_icon"
+                | "playlist_row_icon"
                 | "power_row_icon"
-                | "now_playing_art_icon"
+                | "now_playing_icon_label"
                 | "power_icon"
-                | "now_playing_progress" => {
+                | "now_playing_state_label"
+                | "talk_card_label"
+                | "talk_actions_header_label"
+                | "talk_actions_button_label"
+                | "talk_actions_status_label"
+                | "call_state_label" => {
                     sys::lv_obj_set_style_text_color(obj.as_ptr(), accent, SELECTOR);
                 }
-                "list_row" | "power_row" => {
-                    sys::lv_obj_set_style_border_color(obj.as_ptr(), accent, SELECTOR);
+                "listen_footer" | "now_playing_footer" | "power_footer" => {
+                    sys::lv_obj_set_style_text_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 65)),
+                        SELECTOR,
+                    );
                 }
                 _ => {}
             }
@@ -811,20 +1120,49 @@ fn validate_explicit_source_dir(explicit_source: Option<&Path>) -> Result<()> {
     Ok(())
 }
 
-fn icon_label(icon_key: &str) -> &'static str {
-    match icon_key {
-        "ask" => "ASK",
-        "battery" => "PWR",
+fn mix_u24(primary_rgb: u32, secondary_rgb: u32, secondary_ratio_percent: u8) -> u32 {
+    let secondary_ratio = u32::from(secondary_ratio_percent.min(100));
+    let primary_ratio = 100 - secondary_ratio;
+    let red = ((((primary_rgb >> 16) & 0xFF) * primary_ratio
+        + ((secondary_rgb >> 16) & 0xFF) * secondary_ratio)
+        / 100)
+        & 0xFF;
+    let green = ((((primary_rgb >> 8) & 0xFF) * primary_ratio
+        + ((secondary_rgb >> 8) & 0xFF) * secondary_ratio)
+        / 100)
+        & 0xFF;
+    let blue = (((primary_rgb & 0xFF) * primary_ratio + (secondary_rgb & 0xFF) * secondary_ratio)
+        / 100)
+        & 0xFF;
+    (red << 16) | (green << 8) | blue
+}
+
+fn icon_label(icon_key: &str) -> String {
+    if let Some(monogram) = icon_key.strip_prefix("mono:") {
+        if !monogram.is_empty() {
+            return monogram.to_string();
+        }
+    }
+
+    let label = match icon_key {
+        "ask" => "AI",
+        "battery" | "setup" | "power" => "PWR",
         "call_active" => "CALL",
         "call_incoming" => "RING",
         "call_outgoing" => "DIAL",
-        "microphone" => "MIC",
+        "call" | "talk" => "CALL",
+        "check" => "OK",
+        "clock" | "retry" => "REF",
+        "close" | "mic_off" => "X",
+        "listen" | "music_note" | "play" | "track" => "MUS",
+        "microphone" | "mic" | "voice_note" => "REC",
+        "people" | "contact" | "contacts" => "LIST",
         "playlist" => "LIST",
-        "recent" => "HIST",
-        "talk" => "TALK",
-        "track" => "PLAY",
+        "recent" | "history" => "HIST",
+        "signal" | "network" => "WIFI",
         _ => "UI",
-    }
+    };
+    label.to_string()
 }
 
 unsafe extern "C" fn lvgl_flush_callback(

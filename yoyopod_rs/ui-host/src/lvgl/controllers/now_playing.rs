@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 
-use super::shared::{FooterBar, StatusBarWidgets};
+use super::shared::{FooterLabel, StatusBarWidgets};
 use crate::lvgl::{LvglFacade, ScreenController, WidgetId};
 use crate::screens::{NowPlayingViewModel, ScreenModel};
 
@@ -8,13 +8,16 @@ use crate::screens::{NowPlayingViewModel, ScreenModel};
 pub struct NowPlayingController {
     root: Option<WidgetId>,
     status: StatusBarWidgets,
-    art_panel: Option<WidgetId>,
-    art_icon: Option<WidgetId>,
+    panel: Option<WidgetId>,
+    icon_halo: Option<WidgetId>,
+    icon_label: Option<WidgetId>,
+    state_chip: Option<WidgetId>,
+    state_label: Option<WidgetId>,
     title: Option<WidgetId>,
     artist: Option<WidgetId>,
-    state: Option<WidgetId>,
-    progress: Option<WidgetId>,
-    footer: FooterBar,
+    progress_track: Option<WidgetId>,
+    progress_fill: Option<WidgetId>,
+    footer: FooterLabel,
 }
 
 impl NowPlayingController {
@@ -27,26 +30,46 @@ impl NowPlayingController {
             .root
             .ok_or_else(|| anyhow!("now-playing controller missing root widget"))?;
 
-        if self.art_panel.is_none() {
-            self.art_panel = Some(facade.create_container(root, "now_playing_art")?);
+        if self.panel.is_none() {
+            self.panel = Some(facade.create_container(root, "now_playing_panel")?);
         }
-        let art_panel = self
-            .art_panel
-            .ok_or_else(|| anyhow!("now-playing controller missing art panel"))?;
-        if self.art_icon.is_none() {
-            self.art_icon = Some(facade.create_label(art_panel, "now_playing_art_icon")?);
+        let panel = self
+            .panel
+            .ok_or_else(|| anyhow!("now-playing controller missing panel"))?;
+        if self.icon_halo.is_none() {
+            self.icon_halo = Some(facade.create_container(panel, "now_playing_icon_halo")?);
+        }
+        let icon_halo = self
+            .icon_halo
+            .ok_or_else(|| anyhow!("now-playing controller missing icon halo"))?;
+        if self.icon_label.is_none() {
+            self.icon_label = Some(facade.create_label(icon_halo, "now_playing_icon_label")?);
+        }
+        if self.state_chip.is_none() {
+            self.state_chip = Some(facade.create_container(panel, "now_playing_state_chip")?);
+        }
+        let state_chip = self
+            .state_chip
+            .ok_or_else(|| anyhow!("now-playing controller missing state chip"))?;
+        if self.state_label.is_none() {
+            self.state_label = Some(facade.create_label(state_chip, "now_playing_state_label")?);
         }
         if self.title.is_none() {
-            self.title = Some(facade.create_label(root, "now_playing_title")?);
+            self.title = Some(facade.create_label(panel, "now_playing_title")?);
         }
         if self.artist.is_none() {
-            self.artist = Some(facade.create_label(root, "now_playing_artist")?);
+            self.artist = Some(facade.create_label(panel, "now_playing_artist")?);
         }
-        if self.state.is_none() {
-            self.state = Some(facade.create_label(root, "now_playing_state")?);
+        if self.progress_track.is_none() {
+            self.progress_track =
+                Some(facade.create_container(panel, "now_playing_progress_track")?);
         }
-        if self.progress.is_none() {
-            self.progress = Some(facade.create_label(root, "now_playing_progress")?);
+        let progress_track = self
+            .progress_track
+            .ok_or_else(|| anyhow!("now-playing controller missing progress track"))?;
+        if self.progress_fill.is_none() {
+            self.progress_fill =
+                Some(facade.create_container(progress_track, "now_playing_progress_fill")?);
         }
 
         Ok(())
@@ -63,19 +86,27 @@ impl ScreenController for NowPlayingController {
 
         if let Some(root) = self.root {
             self.status.sync(facade, root, &now_playing.chrome.status)?;
-            self.footer.sync(
+            self.footer.sync_with_accent(
                 facade,
                 root,
                 "now_playing_footer",
                 &now_playing.chrome.footer,
+                accent,
             )?;
         }
-        if let Some(art_panel) = self.art_panel {
-            facade.set_accent(art_panel, accent)?;
+        if let Some(icon_halo) = self.icon_halo {
+            facade.set_accent(icon_halo, accent)?;
         }
-        if let Some(art_icon) = self.art_icon {
-            facade.set_icon(art_icon, "track")?;
-            facade.set_accent(art_icon, accent)?;
+        if let Some(icon_label) = self.icon_label {
+            facade.set_icon(icon_label, "music_note")?;
+            facade.set_accent(icon_label, accent)?;
+        }
+        if let Some(state_chip) = self.state_chip {
+            facade.set_accent(state_chip, accent)?;
+        }
+        if let Some(state_label) = self.state_label {
+            facade.set_text(state_label, &now_playing.state_text)?;
+            facade.set_accent(state_label, accent)?;
         }
 
         if let Some(title) = self.title {
@@ -84,11 +115,9 @@ impl ScreenController for NowPlayingController {
         if let Some(artist) = self.artist {
             facade.set_text(artist, &now_playing.artist)?;
         }
-        if let Some(state) = self.state {
-            facade.set_text(state, &now_playing.state_text)?;
-        }
-        if let Some(progress) = self.progress {
-            facade.set_progress(progress, progress_value)?;
+        if let Some(progress_fill) = self.progress_fill {
+            facade.set_progress(progress_fill, progress_value)?;
+            facade.set_accent(progress_fill, accent)?;
         }
 
         Ok(())
@@ -97,12 +126,15 @@ impl ScreenController for NowPlayingController {
     fn teardown(&mut self, facade: &mut dyn LvglFacade) -> Result<()> {
         let root = self.root.take();
         self.status.clear();
-        self.art_panel = None;
-        self.art_icon = None;
+        self.panel = None;
+        self.icon_halo = None;
+        self.icon_label = None;
+        self.state_chip = None;
+        self.state_label = None;
         self.title = None;
         self.artist = None;
-        self.state = None;
-        self.progress = None;
+        self.progress_track = None;
+        self.progress_fill = None;
         self.footer.clear();
         if let Some(root) = root {
             facade.destroy(root)?;

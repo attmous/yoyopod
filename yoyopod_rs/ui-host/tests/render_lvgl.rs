@@ -189,8 +189,8 @@ fn theme_styles_keep_native_lvgl_away_from_default_white_widgets() {
     assert_eq!(row.border_color, Some(theme::BORDER_RGB));
 
     let selected_row = theme::style_for_selected_role("list_row", true);
-    assert_eq!(selected_row.bg_color, Some(theme::ACCENT_CYAN_RGB));
-    assert_eq!(selected_row.border_color, Some(theme::ACCENT_CYAN_RGB));
+    assert_eq!(selected_row.bg_color, Some(theme::SELECTED_ROW_RGB));
+    assert_eq!(selected_row.border_color, Some(theme::SELECTED_ROW_RGB));
 }
 
 #[test]
@@ -436,8 +436,11 @@ fn now_playing_scene_updates_progress_state_and_title_without_rebuild() -> Resul
     let events = renderer.facade().events();
     let second_pass = &events[first_len..];
     let title_id = created_label_id(events, "now_playing_title");
-    let state_id = created_label_id(events, "now_playing_state");
-    let progress_id = created_label_id(events, "now_playing_progress");
+    let state_id = created_label_id(events, "now_playing_state_label");
+    let progress_id = created_container_ids(events, "now_playing_progress_fill")
+        .into_iter()
+        .next()
+        .expect("now-playing progress fill should exist");
 
     assert_eq!(renderer.active_scene(), Some(SceneKey::NowPlaying));
     assert_eq!(renderer.active_screen(), Some(UiScreen::NowPlaying));
@@ -667,7 +670,7 @@ fn rust_scene_bridge_preserves_native_list_scene_lifecycle_boundary() -> Result<
     assert!(playlist_pass.iter().any(|event| matches!(
         event,
         FacadeEvent::CreateContainer {
-            role: "list_row",
+            role: "playlist_row",
             ..
         }
     )));
@@ -690,7 +693,7 @@ fn rust_scene_bridge_reuses_playlist_family_without_rebuilding_widgets() -> Resu
     let row_ids: Vec<_> = events
         .iter()
         .filter_map(|event| match event {
-            FacadeEvent::CreateContainer { id, role, .. } if *role == "list_row" => Some(*id),
+            FacadeEvent::CreateContainer { id, role, .. } if *role == "playlist_row" => Some(*id),
             _ => None,
         })
         .collect();
@@ -704,7 +707,7 @@ fn rust_scene_bridge_reuses_playlist_family_without_rebuilding_widgets() -> Resu
             | FacadeEvent::CreateLabel { .. }
             | FacadeEvent::Destroy { .. }
     )));
-    assert_eq!(row_ids.len(), 2);
+    assert_eq!(row_ids.len(), 4);
     assert!(recent_pass.contains(&FacadeEvent::SetVisible {
         id: row_ids[0],
         visible: true,
@@ -728,7 +731,7 @@ fn rust_scene_bridge_caps_playlist_family_to_native_visible_rows() -> Result<()>
     let row_ids: Vec<_> = events
         .iter()
         .filter_map(|event| match event {
-            FacadeEvent::CreateContainer { id, role, .. } if *role == "list_row" => Some(*id),
+            FacadeEvent::CreateContainer { id, role, .. } if *role == "playlist_row" => Some(*id),
             _ => None,
         })
         .collect();
@@ -757,7 +760,7 @@ fn rust_scene_bridge_wraps_listen_selection_after_native_row_cap() -> Result<()>
     let row_ids: Vec<_> = events
         .iter()
         .filter_map(|event| match event {
-            FacadeEvent::CreateContainer { id, role, .. } if *role == "list_row" => Some(*id),
+            FacadeEvent::CreateContainer { id, role, .. } if *role == "listen_row" => Some(*id),
             _ => None,
         })
         .collect();
@@ -806,11 +809,13 @@ fn call_scene_updates_icon_footer_and_mute_visibility_without_rebuild() -> Resul
     let events = renderer.facade().events();
     let second_pass = &events[first_len..];
     let title_id = created_label_id(events, "call_title");
-    let subtitle_id = created_label_id(events, "call_subtitle");
-    let detail_id = created_label_id(events, "call_detail");
+    let state_id = created_label_id(events, "call_state_label");
     let footer_id = created_label_id(events, "call_footer");
     let icon_id = created_label_id(events, "call_state_icon");
-    let mute_badge_id = created_label_id(events, "call_mute_badge");
+    let mute_badge_id = created_container_ids(events, "call_mute_badge")
+        .into_iter()
+        .next()
+        .expect("call mute badge should exist");
 
     assert_eq!(renderer.active_scene(), Some(SceneKey::Call));
     assert_eq!(renderer.active_screen(), Some(UiScreen::InCall));
@@ -821,17 +826,13 @@ fn call_scene_updates_icon_footer_and_mute_visibility_without_rebuild() -> Resul
             | FacadeEvent::CreateLabel { .. }
     )));
     assert!(has_text(second_pass, title_id, "Alice"));
-    assert!(has_text(second_pass, subtitle_id, "00:42"));
-    assert!(has_text(second_pass, detail_id, "+1 555-0100"));
+    assert!(has_text(second_pass, state_id, "IN CALL | 00:42"));
     assert!(has_text(
         second_pass,
         footer_id,
         "Tap = Mute | Hold = Hang Up"
     ));
-    assert!(second_pass.contains(&FacadeEvent::SetIcon {
-        id: icon_id,
-        icon_key: "call_active".to_string(),
-    }));
+    assert!(has_text(second_pass, icon_id, "AL"));
     assert!(second_pass.contains(&FacadeEvent::SetVisible {
         id: mute_badge_id,
         visible: true,
@@ -862,7 +863,13 @@ fn power_scene_reuses_rows_and_hides_stale_entries_without_rebuild() -> Result<(
     let events = renderer.facade().events();
     let second_pass = &events[first_len..];
     let row_ids = created_container_ids(events, "power_row");
-    let subtitle_id = created_label_id(events, "power_subtitle");
+    let row_title_ids: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            FacadeEvent::CreateLabel { id, role, .. } if *role == "power_row_title" => Some(*id),
+            _ => None,
+        })
+        .collect();
 
     assert_eq!(renderer.active_scene(), Some(SceneKey::Power));
     assert_eq!(renderer.active_screen(), Some(UiScreen::Power));
@@ -872,8 +879,9 @@ fn power_scene_reuses_rows_and_hides_stale_entries_without_rebuild() -> Result<(
             | FacadeEvent::CreateContainer { .. }
             | FacadeEvent::CreateLabel { .. }
     )));
-    assert_eq!(row_ids.len(), 2);
-    assert!(has_text(second_pass, subtitle_id, "Battery 64%"));
+    assert_eq!(row_ids.len(), 5);
+    assert_eq!(row_title_ids.len(), 5);
+    assert!(has_text(second_pass, row_title_ids[0], "Battery 64%"));
     assert!(second_pass.contains(&FacadeEvent::SetVisible {
         id: row_ids[0],
         visible: true,

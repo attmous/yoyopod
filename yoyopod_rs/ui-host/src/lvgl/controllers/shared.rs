@@ -106,6 +106,49 @@ impl FooterBar {
     }
 }
 
+#[derive(Default)]
+pub(crate) struct FooterLabel {
+    label: Option<WidgetId>,
+}
+
+impl FooterLabel {
+    pub(crate) fn sync(
+        &mut self,
+        facade: &mut dyn LvglFacade,
+        root: WidgetId,
+        label_role: &'static str,
+        text: &str,
+    ) -> Result<()> {
+        if self.label.is_none() {
+            self.label = Some(facade.create_label(root, label_role)?);
+        }
+        if let Some(label) = self.label {
+            facade.set_text(label, text)?;
+            facade.set_visible(label, !text.trim().is_empty())?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn sync_with_accent(
+        &mut self,
+        facade: &mut dyn LvglFacade,
+        root: WidgetId,
+        label_role: &'static str,
+        text: &str,
+        accent: u32,
+    ) -> Result<()> {
+        self.sync(facade, root, label_role, text)?;
+        if let Some(label) = self.label {
+            facade.set_accent(label, accent)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
+
 fn network_text(status: &StatusBarModel) -> &'static str {
     if !status.network_enabled {
         "OFF"
