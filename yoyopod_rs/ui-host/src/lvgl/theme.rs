@@ -9,8 +9,8 @@ pub const BORDER_RGB: u32 = 0x505561;
 pub const SELECTED_ROW_RGB: u32 = 0xFAFAFA;
 pub const ACCENT_GREEN_RGB: u32 = 0x3DDD53;
 pub const ACCENT_CYAN_RGB: u32 = 0x00D4FF;
-pub const ACCENT_PURPLE_RGB: u32 = 0x9F7AEA;
-pub const ACCENT_ORANGE_RGB: u32 = 0xF6AD55;
+pub const ACCENT_YELLOW_RGB: u32 = 0xFFD000;
+pub const ACCENT_NEUTRAL_RGB: u32 = 0x9CA3AF;
 pub const WARNING_RGB: u32 = 0xFFD549;
 pub const ERROR_RGB: u32 = 0xFF675D;
 
@@ -82,12 +82,17 @@ pub fn style_for_role(role: &str) -> WidgetStyle {
         "root" => WidgetStyle::root(),
         "status_bar" => WidgetStyle::plain(),
         "footer_bar" => WidgetStyle::panel(FOOTER_RGB, None, 0),
-        "hub_icon_glow" | "talk_card_glow" | "call_icon_halo" => {
-            WidgetStyle::panel(SURFACE_RAISED_RGB, None, 22)
-        }
+        "hub_icon_glow" => WidgetStyle::panel(SURFACE_RAISED_RGB, None, 24),
+        "talk_card_glow" | "call_icon_halo" => WidgetStyle::panel(SURFACE_RAISED_RGB, None, 22),
         "hub_card_panel" | "talk_card_panel" | "call_panel" => {
             WidgetStyle::panel(SURFACE_RAISED_RGB, None, 16)
         }
+        "hub_dot" => WidgetStyle {
+            bg_color: Some(INK_RGB),
+            bg_opa: 51,
+            radius: 2,
+            ..WidgetStyle::plain()
+        },
         "ask_icon_glow" | "ask_icon_halo" => WidgetStyle::panel(SURFACE_RAISED_RGB, None, 60),
         "power_icon_halo" => WidgetStyle::panel(0x494D59, None, 28),
         "now_playing_panel" | "listen_panel" | "playlist_panel" => WidgetStyle::plain(),
@@ -183,6 +188,12 @@ pub fn style_for_selected_role(role: &str, selected: bool) -> WidgetStyle {
         "listen_row" | "playlist_row" | "list_row" => {
             WidgetStyle::panel(SELECTED_ROW_RGB, Some(SELECTED_ROW_RGB), 16)
         }
+        "hub_dot" => WidgetStyle {
+            bg_color: Some(INK_RGB),
+            bg_opa: OPA_COVER,
+            radius: 2,
+            ..WidgetStyle::plain()
+        },
         "listen_row_title" | "playlist_row_title" | "list_row_title" => {
             WidgetStyle::label(BACKGROUND_RGB)
         }

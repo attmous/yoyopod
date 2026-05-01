@@ -58,7 +58,7 @@ impl ScreenController for AskController {
         let accent = if matches!(model, ScreenModel::VoiceNote(_)) {
             0x00D4FF
         } else {
-            0x9F7AEA
+            0xFFD000
         };
         if let Some(root) = self.root {
             self.status.sync(facade, root, &ask.chrome.status)?;

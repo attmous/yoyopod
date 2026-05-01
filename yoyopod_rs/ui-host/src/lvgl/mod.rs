@@ -1,6 +1,8 @@
 mod chrome;
 pub mod controllers;
 #[cfg(feature = "native-lvgl")]
+mod hub_icon_assets;
+#[cfg(feature = "native-lvgl")]
 mod native_backend;
 pub mod primitives;
 pub mod scene_backend;

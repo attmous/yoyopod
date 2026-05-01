@@ -64,7 +64,7 @@ impl ScreenController for PowerController {
 
         self.ensure_base_widgets(facade)?;
         self.ensure_row_widgets(facade, 5)?;
-        let accent = 0xF6AD55;
+        let accent = 0x9CA3AF;
 
         if let Some(root) = self.root {
             self.status.sync(facade, root, &power.chrome.status)?;

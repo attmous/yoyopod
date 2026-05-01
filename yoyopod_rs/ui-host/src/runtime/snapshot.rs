@@ -282,20 +282,20 @@ fn default_hub_cards() -> Vec<HubCardSnapshot> {
         HubCardSnapshot {
             key: "talk".to_string(),
             title: "Talk".to_string(),
-            subtitle: "Ready".to_string(),
+            subtitle: String::new(),
             accent: 0x00D4FF,
         },
         HubCardSnapshot {
             key: "ask".to_string(),
             title: "Ask".to_string(),
-            subtitle: "Voice".to_string(),
-            accent: 0x9F7AEA,
+            subtitle: String::new(),
+            accent: 0xFFD000,
         },
         HubCardSnapshot {
             key: "setup".to_string(),
             title: "Setup".to_string(),
-            subtitle: "Status".to_string(),
-            accent: 0xF6AD55,
+            subtitle: String::new(),
+            accent: 0x9CA3AF,
         },
     ]
 }

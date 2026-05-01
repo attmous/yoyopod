@@ -7,6 +7,7 @@ use std::time::Instant;
 use anyhow::{anyhow, bail, Context, Result};
 
 use crate::framebuffer::Framebuffer;
+use crate::lvgl::hub_icon_assets;
 use crate::lvgl::sys;
 use crate::lvgl::theme::{self, WidgetStyle};
 use crate::lvgl::{LvglFacade, WidgetId};
@@ -29,6 +30,7 @@ enum WidgetKind {
     Root,
     Container,
     Label,
+    Image,
 }
 
 #[derive(Debug)]
@@ -56,6 +58,7 @@ pub struct NativeLvglFacade {
     next_widget_id: u64,
     widgets: HashMap<WidgetId, WidgetNode>,
     active_root: Option<WidgetId>,
+    hub_dot_count: usize,
     list_row_count: usize,
     power_row_count: usize,
 }
@@ -77,6 +80,7 @@ impl NativeLvglFacade {
             next_widget_id: 0,
             widgets: HashMap::new(),
             active_root: None,
+            hub_dot_count: 0,
             list_row_count: 0,
             power_row_count: 0,
         })
@@ -243,6 +247,7 @@ impl NativeLvglFacade {
         self.blank_screen = None;
         self.widgets.clear();
         self.active_root = None;
+        self.hub_dot_count = 0;
         self.list_row_count = 0;
         self.power_row_count = 0;
         self.flush_target.framebuffer = ptr::null_mut();
@@ -252,6 +257,120 @@ impl NativeLvglFacade {
         unsafe {
             sys::lv_obj_set_pos(obj.as_ptr(), layout.x, layout.y);
             sys::lv_obj_set_size(obj.as_ptr(), layout.width.max(1), layout.height.max(1));
+        }
+    }
+
+    fn apply_role_tuning_raw(obj: NonNull<sys::lv_obj_t>, role: &'static str) {
+        const SELECTOR: sys::LvStyleSelector = 0;
+
+        unsafe {
+            match role {
+                "hub_card_panel" => {
+                    sys::lv_obj_set_style_pad_all(obj.as_ptr(), 0, SELECTOR);
+                    sys::lv_obj_set_style_shadow_width(obj.as_ptr(), 24, SELECTOR);
+                    sys::lv_obj_set_style_shadow_opa(obj.as_ptr(), 76, SELECTOR);
+                    sys::lv_obj_set_scrollbar_mode(obj.as_ptr(), sys::LV_SCROLLBAR_MODE_OFF);
+                }
+                "hub_icon_glow" | "footer_bar" | "talk_card_panel" | "talk_card_glow"
+                | "ask_icon_glow" | "ask_icon_halo" | "power_icon_halo" | "power_row" => {
+                    sys::lv_obj_set_scrollbar_mode(obj.as_ptr(), sys::LV_SCROLLBAR_MODE_OFF);
+                }
+                "hub_icon" | "ask_icon" => {
+                    sys::lv_obj_set_style_image_recolor_opa(
+                        obj.as_ptr(),
+                        theme::OPA_COVER,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_image_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+                }
+                "hub_title" | "power_title" => {
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_24,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                }
+                "hub_subtitle" => {
+                    sys::lv_label_set_long_mode(obj.as_ptr(), sys::LV_LABEL_LONG_MODE_CLIP);
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_12,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                }
+                "hub_footer"
+                | "ask_footer"
+                | "call_footer"
+                | "power_footer"
+                | "overlay_footer"
+                | "now_playing_footer"
+                | "listen_footer"
+                | "playlist_footer"
+                | "talk_footer"
+                | "talk_actions_footer" => {
+                    sys::lv_label_set_long_mode(obj.as_ptr(), sys::LV_LABEL_LONG_MODE_CLIP);
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_12,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                }
+                "status_network" | "status_signal" | "status_battery" => {
+                    sys::lv_label_set_long_mode(obj.as_ptr(), sys::LV_LABEL_LONG_MODE_CLIP);
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_12,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                }
+                "power_icon" => {
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_24,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_align(obj.as_ptr(), sys::LV_ALIGN_CENTER, 0, 0);
+                }
+                "power_row_title" => {
+                    sys::lv_label_set_long_mode(obj.as_ptr(), sys::LV_LABEL_LONG_MODE_CLIP);
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_12,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_LEFT,
+                        SELECTOR,
+                    );
+                }
+                _ => {}
+            }
         }
     }
 
@@ -329,9 +448,9 @@ impl NativeLvglFacade {
                 height: 30,
             },
             "status_network" => Layout {
-                x: 10,
+                x: 16,
                 y: 8,
-                width: 42,
+                width: 36,
                 height: 14,
             },
             "status_signal" => Layout {
@@ -341,9 +460,9 @@ impl NativeLvglFacade {
                 height: 14,
             },
             "status_battery" => Layout {
-                x: 184,
+                x: 188,
                 y: 8,
-                width: 48,
+                width: 36,
                 height: 14,
             },
             "footer_bar" => Layout {
@@ -377,10 +496,10 @@ impl NativeLvglFacade {
                 height: 96,
             },
             "hub_icon" => Layout {
-                x: 18,
-                y: 36,
-                width: 60,
-                height: 24,
+                x: 20,
+                y: 20,
+                width: 56,
+                height: 56,
             },
             "hub_title" => Layout {
                 x: 60,
@@ -394,6 +513,16 @@ impl NativeLvglFacade {
                 width: 120,
                 height: 18,
             },
+            "hub_dot" => {
+                let index = self.hub_dot_count;
+                self.hub_dot_count += 1;
+                Layout {
+                    x: 103 + (index as i32 * 10),
+                    y: 218,
+                    width: 4,
+                    height: 4,
+                }
+            }
             "list_title" => Layout {
                 x: 20,
                 y: 42,
@@ -701,10 +830,10 @@ impl NativeLvglFacade {
                 height: 120,
             },
             "ask_icon" => Layout {
-                x: 18,
-                y: 36,
-                width: 60,
-                height: 24,
+                x: 20,
+                y: 20,
+                width: 56,
+                height: 56,
             },
             "ask_title" => Layout {
                 x: 20,
@@ -859,6 +988,7 @@ impl LvglFacade for NativeLvglFacade {
         unsafe {
             sys::lv_screen_load(obj.as_ptr());
         }
+        self.hub_dot_count = 0;
         self.list_row_count = 0;
         self.power_row_count = 0;
         let id = self.register_widget(obj, WidgetKind::Root, "root", None, layout);
@@ -875,23 +1005,42 @@ impl LvglFacade for NativeLvglFacade {
         Self::reset_style_raw(obj);
         Self::apply_style_raw(obj, theme::style_for_role(role));
         Self::apply_layout_raw(obj, layout);
+        Self::apply_role_tuning_raw(obj, role);
         Ok(self.register_widget(obj, WidgetKind::Container, role, Some(parent), layout))
     }
 
     fn create_label(&mut self, parent: WidgetId, role: &'static str) -> Result<WidgetId> {
         let parent_obj = self.widget_obj(parent)?;
-        let obj = unsafe { sys::lv_label_create(parent_obj.as_ptr()) };
+        let is_image = matches!(role, "hub_icon" | "ask_icon");
+        let obj = unsafe {
+            if is_image {
+                sys::lv_image_create(parent_obj.as_ptr())
+            } else {
+                sys::lv_label_create(parent_obj.as_ptr())
+            }
+        };
         let obj =
             NonNull::new(obj).ok_or_else(|| anyhow!("LVGL label creation failed for {role}"))?;
         let layout = self.next_role_layout(Some(parent), role)?;
         Self::reset_style_raw(obj);
         Self::apply_style_raw(obj, theme::style_for_role(role));
         Self::apply_layout_raw(obj, layout);
-        let empty = CString::new("").expect("empty CString");
-        unsafe {
-            sys::lv_label_set_text(obj.as_ptr(), empty.as_ptr());
+        Self::apply_role_tuning_raw(obj, role);
+        let kind = if is_image {
+            WidgetKind::Image
+        } else {
+            let empty = CString::new("").expect("empty CString");
+            unsafe {
+                sys::lv_label_set_text(obj.as_ptr(), empty.as_ptr());
+            }
+            WidgetKind::Label
+        };
+        if is_image {
+            unsafe {
+                sys::lv_obj_center(obj.as_ptr());
+            }
         }
-        Ok(self.register_widget(obj, WidgetKind::Label, role, Some(parent), layout))
+        Ok(self.register_widget(obj, kind, role, Some(parent), layout))
     }
 
     fn set_text(&mut self, widget: WidgetId, text: &str) -> Result<()> {
@@ -919,6 +1068,18 @@ impl LvglFacade for NativeLvglFacade {
     }
 
     fn set_icon(&mut self, widget: WidgetId, icon_key: &str) -> Result<()> {
+        let node = self.widget_node_mut(widget)?;
+        if node._kind == WidgetKind::Image {
+            let descriptor = hub_icon_assets::descriptor_for_key(icon_key);
+            unsafe {
+                sys::lv_image_set_src(
+                    node.obj.as_ptr(),
+                    descriptor as *const _ as *const std::ffi::c_void,
+                );
+                sys::lv_obj_center(node.obj.as_ptr());
+            }
+            return Ok(());
+        }
         self.set_text(widget, &icon_label(icon_key))
     }
 
@@ -995,7 +1156,15 @@ impl NativeLvglFacade {
         let accent = unsafe { sys::lv_color_hex(rgb & 0xFFFFFF) };
         unsafe {
             match role {
-                "hub_icon_glow" | "talk_card_glow" | "call_icon_halo" => {
+                "hub_icon_glow" => {
+                    sys::lv_obj_set_style_bg_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 72)),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), 102, SELECTOR);
+                }
+                "talk_card_glow" | "call_icon_halo" => {
                     sys::lv_obj_set_style_bg_color(
                         obj.as_ptr(),
                         sys::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 68)),
@@ -1006,6 +1175,7 @@ impl NativeLvglFacade {
                 "hub_card_panel" | "talk_card_panel" | "call_panel" => {
                     sys::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
                     sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+                    sys::lv_obj_set_style_shadow_color(obj.as_ptr(), accent, SELECTOR);
                 }
                 "now_playing_icon_halo" => {
                     sys::lv_obj_set_style_bg_color(
@@ -1053,9 +1223,27 @@ impl NativeLvglFacade {
                     sys::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
                     sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
                 }
-                "hub_icon"
-                | "ask_icon"
-                | "call_state_icon"
+                "hub_icon" => {
+                    sys::lv_obj_set_style_image_recolor(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(theme::INK_RGB),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_image_recolor_opa(
+                        obj.as_ptr(),
+                        theme::OPA_COVER,
+                        SELECTOR,
+                    );
+                }
+                "ask_icon" => {
+                    sys::lv_obj_set_style_image_recolor(obj.as_ptr(), accent, SELECTOR);
+                    sys::lv_obj_set_style_image_recolor_opa(
+                        obj.as_ptr(),
+                        theme::OPA_COVER,
+                        SELECTOR,
+                    );
+                }
+                "call_state_icon"
                 | "list_row_icon"
                 | "listen_row_icon"
                 | "playlist_row_icon"

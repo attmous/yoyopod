@@ -12,6 +12,11 @@ pub struct lv_obj_t {
 }
 
 #[repr(C)]
+pub struct lv_font_t {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
 pub struct lv_area_t {
     pub x1: i32,
     pub y1: i32,
@@ -32,8 +37,19 @@ pub type LvStyleSelector = u32;
 pub type YoyopodLvglFlushCb = unsafe extern "C" fn(i32, i32, i32, i32, *const u8, u32, *mut c_void);
 
 pub const LV_DISPLAY_RENDER_MODE_PARTIAL: i32 = 0;
+pub const LV_ALIGN_CENTER: i32 = 9;
+pub const LV_ALIGN_BOTTOM_MID: i32 = 5;
+pub const LV_LABEL_LONG_MODE_CLIP: i32 = 4;
+pub const LV_SCROLLBAR_MODE_OFF: i32 = 0;
+pub const LV_TEXT_ALIGN_LEFT: i32 = 1;
+pub const LV_TEXT_ALIGN_CENTER: i32 = 2;
 
 unsafe extern "C" {
+    pub static lv_font_montserrat_12: lv_font_t;
+    pub static lv_font_montserrat_14: lv_font_t;
+    pub static lv_font_montserrat_18: lv_font_t;
+    pub static lv_font_montserrat_24: lv_font_t;
+
     pub fn lv_init();
     pub fn lv_deinit();
     pub fn lv_tick_inc(tick_period: u32);
@@ -89,9 +105,40 @@ unsafe extern "C" {
         selector: LvStyleSelector,
     );
     pub fn lv_obj_set_style_shadow_width(obj: *mut lv_obj_t, value: i32, selector: LvStyleSelector);
+    pub fn lv_obj_set_style_shadow_color(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: LvStyleSelector,
+    );
+    pub fn lv_obj_set_style_shadow_opa(obj: *mut lv_obj_t, value: u8, selector: LvStyleSelector);
+    pub fn lv_obj_set_style_image_recolor(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: LvStyleSelector,
+    );
+    pub fn lv_obj_set_style_image_recolor_opa(
+        obj: *mut lv_obj_t,
+        value: u8,
+        selector: LvStyleSelector,
+    );
+    pub fn lv_obj_set_style_image_opa(obj: *mut lv_obj_t, value: u8, selector: LvStyleSelector);
+    pub fn lv_obj_set_style_text_font(
+        obj: *mut lv_obj_t,
+        value: *const lv_font_t,
+        selector: LvStyleSelector,
+    );
+    pub fn lv_obj_set_style_text_align(obj: *mut lv_obj_t, value: i32, selector: LvStyleSelector);
+    pub fn lv_obj_set_style_pad_all(obj: *mut lv_obj_t, value: i32, selector: LvStyleSelector);
+    pub fn lv_obj_set_scrollbar_mode(obj: *mut lv_obj_t, mode: i32);
+    pub fn lv_obj_align(obj: *mut lv_obj_t, align: i32, x_ofs: i32, y_ofs: i32);
+    pub fn lv_obj_center(obj: *mut lv_obj_t);
 
     pub fn lv_label_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_label_set_text(obj: *mut lv_obj_t, text: *const c_char);
+    pub fn lv_label_set_long_mode(obj: *mut lv_obj_t, long_mode: i32);
+
+    pub fn lv_image_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
+    pub fn lv_image_set_src(obj: *mut lv_obj_t, src: *const c_void);
 
     pub fn lv_screen_load(screen: *mut lv_obj_t);
 

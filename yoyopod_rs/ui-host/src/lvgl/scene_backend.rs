@@ -356,8 +356,8 @@ mod shim {
     const DRAW_BUFFER_ROWS: usize = 40;
     const LISTEN_ACCENT: u32 = 0x00FF88;
     const TALK_ACCENT: u32 = 0x00D4FF;
-    const ASK_ACCENT: u32 = 0x9F7AEA;
-    const SETUP_ACCENT: u32 = 0xF6AD55;
+    const ASK_ACCENT: u32 = 0xFFD000;
+    const SETUP_ACCENT: u32 = 0x9CA3AF;
 
     #[derive(Default)]
     struct FlushTarget {

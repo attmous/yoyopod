@@ -14,6 +14,7 @@ pub struct HubController {
     icon: Option<WidgetId>,
     title: Option<WidgetId>,
     subtitle: Option<WidgetId>,
+    dots: Vec<WidgetId>,
     footer: FooterBar,
 }
 
@@ -43,6 +44,9 @@ impl HubController {
         }
         if self.subtitle.is_none() {
             self.subtitle = Some(facade.create_label(root, "hub_subtitle")?);
+        }
+        while self.dots.len() < 4 {
+            self.dots.push(facade.create_container(root, "hub_dot")?);
         }
         Ok(())
     }
@@ -89,6 +93,14 @@ impl ScreenController for HubController {
                     .unwrap_or("Music and calls"),
             )?;
         }
+        let total_cards = model.cards.len().clamp(1, 4);
+        let selected_index = model.selected_index % total_cards;
+        for index in 0..4 {
+            if let Some(dot) = self.dots.get(index).copied() {
+                facade.set_selected(dot, index == selected_index)?;
+                facade.set_visible(dot, index < total_cards)?;
+            }
+        }
 
         Ok(())
     }
@@ -101,6 +113,7 @@ impl ScreenController for HubController {
         self.icon = None;
         self.title = None;
         self.subtitle = None;
+        self.dots.clear();
         self.footer.clear();
         if let Some(root) = root {
             facade.destroy(root)?;

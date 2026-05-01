@@ -212,7 +212,7 @@ fn ui_snapshot_uses_available_state_for_power_rows() {
 }
 
 #[test]
-fn ui_snapshot_hub_card_subtitles_reflect_runtime_state() {
+fn ui_snapshot_hub_cards_keep_lvgl_python_subtitles_hidden() {
     let mut state = RuntimeState::default();
 
     state.apply_media_snapshot(&json!({
@@ -232,10 +232,14 @@ fn ui_snapshot_hub_card_subtitles_reflect_runtime_state() {
     let payload = state.ui_snapshot_payload();
     let cards = payload["hub"]["cards"].as_array().expect("hub cards");
 
-    assert_eq!(cards[0]["subtitle"], "Playing Little Song");
-    assert_eq!(cards[1]["subtitle"], "Incoming");
-    assert_eq!(cards[2]["subtitle"], "Idle");
-    assert_eq!(cards[3]["subtitle"], "100%");
+    assert_eq!(cards[0]["subtitle"], "");
+    assert_eq!(cards[1]["subtitle"], "");
+    assert_eq!(cards[2]["subtitle"], "");
+    assert_eq!(cards[3]["subtitle"], "");
+    assert_eq!(cards[0]["accent"], 0x00FF88);
+    assert_eq!(cards[1]["accent"], 0x00D4FF);
+    assert_eq!(cards[2]["accent"], 0xFFD000);
+    assert_eq!(cards[3]["accent"], 0x9CA3AF);
 }
 
 #[test]

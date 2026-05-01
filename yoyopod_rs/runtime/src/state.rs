@@ -403,46 +403,28 @@ impl RuntimeState {
             json!({
                 "key": "listen",
                 "title": "Listen",
-                "subtitle": self.listen_subtitle(),
+                "subtitle": "",
                 "accent": 0x00FF88,
             }),
             json!({
                 "key": "talk",
                 "title": "Talk",
-                "subtitle": self.talk_subtitle(),
+                "subtitle": "",
                 "accent": 0x00D4FF,
             }),
             json!({
                 "key": "ask",
                 "title": "Ask",
-                "subtitle": "Idle",
-                "accent": 0x9F7AEA,
+                "subtitle": "",
+                "accent": 0xFFD000,
             }),
             json!({
                 "key": "setup",
                 "title": "Setup",
-                "subtitle": "100%",
-                "accent": 0xF6AD55,
+                "subtitle": "",
+                "accent": 0x9CA3AF,
             }),
         ]
-    }
-
-    fn listen_subtitle(&self) -> String {
-        if self.media.playback_state == "playing" {
-            format!("Playing {}", self.media.title)
-        } else {
-            "Music".to_string()
-        }
-    }
-
-    fn talk_subtitle(&self) -> String {
-        if self.call.state != CallState::Idle {
-            title_case_state(self.call.state.as_str())
-        } else if self.call.contacts.is_empty() {
-            "No contacts".to_string()
-        } else {
-            "Ready".to_string()
-        }
     }
 
     fn power_rows(&self) -> Vec<String> {
@@ -601,23 +583,4 @@ fn worker_payload(worker: &WorkerHealth) -> Value {
         "protocol_errors": worker.protocol_errors,
         "last_reason": worker.last_reason,
     })
-}
-
-fn title_case_state(state: &str) -> String {
-    state
-        .split('_')
-        .filter(|part| !part.is_empty())
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                Some(first) => {
-                    let mut result = first.to_uppercase().collect::<String>();
-                    result.push_str(chars.as_str());
-                    result
-                }
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
 }
