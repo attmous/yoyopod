@@ -192,12 +192,12 @@ class ShutdownLifecycleService:
         if self.app.call_runtime is not None:
             self.app.call_runtime.cleanup()
 
-        if self.app.network_manager is not None:
+        if self.app.network_runtime is not None:
             try:
-                logger.info("  - Stopping network manager")
-                self.app.network_manager.stop()
+                logger.info("  - Stopping network runtime")
+                self.app.network_runtime.stop()
             except Exception as exc:
-                logger.error("Network manager cleanup failed: {}", exc)
+                logger.error("Network runtime cleanup failed: {}", exc)
 
         if self.app.voip_manager:
             logger.info("  - Stopping VoIP manager")

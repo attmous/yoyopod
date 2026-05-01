@@ -132,6 +132,33 @@ class CallbacksBoot:
         self._warm_music_backend()
         self.logger.info("  Music callbacks registered")
 
+    def setup_network_callbacks(self) -> None:
+        """Register Rust network worker callbacks."""
+
+        network_runtime = getattr(self.app, "network_runtime", None)
+        if network_runtime is None:
+            self.logger.warning("  Network runtime not available, skipping callbacks")
+            return
+
+        bus = getattr(self.app, "bus", None)
+        subscribe = getattr(bus, "subscribe", None)
+        if not callable(subscribe):
+            self.logger.warning("  Bus not available, skipping network callbacks")
+            return
+
+        from yoyopod.core.events import (
+            WorkerDomainStateChangedEvent,
+            WorkerMessageReceivedEvent,
+        )
+
+        handle_worker_message = getattr(network_runtime, "handle_worker_message", None)
+        handle_worker_state_change = getattr(network_runtime, "handle_worker_state_change", None)
+        if callable(handle_worker_message):
+            subscribe(WorkerMessageReceivedEvent, handle_worker_message)
+        if callable(handle_worker_state_change):
+            subscribe(WorkerDomainStateChangedEvent, handle_worker_state_change)
+        self.logger.info("  Network callbacks registered")
+
     def _warm_music_backend(self) -> None:
         """Kick off non-blocking music backend warmup after callbacks are registered."""
 

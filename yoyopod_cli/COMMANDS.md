@@ -44,8 +44,8 @@ For live help, use `yoyopod <cmd> --help`.
 
 | Command | What it does |
 |---|---|
-| `yoyopod pi network probe` | Check if the SIM7600 modem responds to AT commands. |
-| `yoyopod pi network status` | Show modem status: signal, carrier, registration, PPP state. |
+| `yoyopod pi network probe` | Check if the Rust network host can bring up the modem domain. |
+| `yoyopod pi network status` | Show current cellular status from the Rust network host. |
 | `yoyopod pi power battery` | Inspect PiSugar power telemetry through YoYoPod's power module. |
 | `yoyopod pi power rtc disable-alarm` | Disable the PiSugar RTC wake alarm. |
 | `yoyopod pi power rtc set-alarm` | Set the PiSugar RTC wake alarm. |

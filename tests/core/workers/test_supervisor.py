@@ -1259,30 +1259,68 @@ def test_supervisor_restart_spawn_failure_stays_contained(tmp_path: Path) -> Non
     assert events[-1].reason == "restart_failed"
 
 
-def test_supervisor_initial_spawn_failure_stays_contained(tmp_path: Path) -> None:
+def test_supervisor_initial_spawn_failure_retries_once_the_cwd_exists(tmp_path: Path) -> None:
     missing_dir = tmp_path / "missing-cwd"
+    worker = _write_worker(
+        tmp_path,
+        """
+import sys
+for line in sys.stdin:
+    pass
+""".strip(),
+    )
     bus = Bus()
     scheduler = MainThreadScheduler()
     events: list[WorkerDomainStateChangedEvent] = []
     bus.subscribe(WorkerDomainStateChangedEvent, events.append)
-    supervisor = WorkerSupervisor(scheduler=scheduler, bus=bus)
+    supervisor = WorkerSupervisor(
+        scheduler=scheduler,
+        bus=bus,
+        restart_backoff_seconds=0.01,
+        max_restarts=1,
+    )
     supervisor.register(
         "voice",
         WorkerProcessConfig(
             name="voice",
-            argv=[sys.executable, "-u", "-c", "print('unused')"],
+            argv=[sys.executable, "-u", str(worker)],
             cwd=str(missing_dir),
         ),
     )
 
     assert supervisor.start("voice") is False
     bus.drain()
-    snapshot = supervisor.snapshot()["voice"]
+    first_snapshot = supervisor.snapshot()["voice"]
+    retry_at = cast(float, first_snapshot["next_restart_at"])
 
-    assert snapshot["state"] == "degraded"
-    assert snapshot["last_reason"] == "start_failed"
+    assert first_snapshot["state"] == "degraded"
+    assert first_snapshot["last_reason"] == "start_failed"
+    assert retry_at > 0.0
     assert events[-1].state == "degraded"
     assert events[-1].reason == "start_failed"
+
+    missing_dir.mkdir()
+    try:
+        _poll_until(
+            lambda: (
+                supervisor.poll() >= 0
+                and bus.drain() >= 0
+                and supervisor.snapshot()["voice"]["state"] == "running"
+            ),
+            timeout_seconds=1.0,
+        )
+        restarted_snapshot = supervisor.snapshot()["voice"]
+    finally:
+        supervisor.stop_all(grace_seconds=0.1)
+
+    assert restarted_snapshot["state"] == "running"
+    assert restarted_snapshot["restart_count"] == 1
+    assert restarted_snapshot["next_restart_at"] == 0.0
+    assert events[-1] == WorkerDomainStateChangedEvent(
+        domain="voice",
+        state="running",
+        reason="started",
+    )
 
 
 def test_app_owns_worker_supervisor() -> None:

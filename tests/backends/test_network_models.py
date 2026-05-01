@@ -1,53 +1,9 @@
-"""Unit tests for network data models and config."""
+"""Unit tests for shared network-facing config and context state."""
 
 from __future__ import annotations
 
 from yoyopod.core import AppContext
 from yoyopod.config.models import NetworkConfig, build_config_model
-from yoyopod.integrations.network.events import NetworkPppUpEvent
-from yoyopod.integrations.network.models import (
-    GpsCoordinate,
-    ModemPhase,
-    ModemState,
-    SignalInfo,
-)
-
-
-def test_modem_state_defaults():
-    """ModemState should have sensible defaults for an uninitialized modem."""
-    state = ModemState()
-    assert state.phase == ModemPhase.OFF
-    assert state.signal is None
-    assert state.carrier == ""
-    assert state.network_type == ""
-    assert state.gps is None
-
-
-def test_signal_info_bars_mapping():
-    """SignalInfo.bars should map raw CSQ 0-31 to 0-4 bars."""
-    assert SignalInfo(csq=0).bars == 0
-    assert SignalInfo(csq=5).bars == 1
-    assert SignalInfo(csq=12).bars == 2
-    assert SignalInfo(csq=20).bars == 3
-    assert SignalInfo(csq=28).bars == 4
-    assert SignalInfo(csq=99).bars == 0  # 99 = not detectable
-
-
-def test_gps_coordinate_fields():
-    """GpsCoordinate should store lat/lng/altitude/speed."""
-    coord = GpsCoordinate(lat=48.8566, lng=2.3522, altitude=35.0, speed=0.0)
-    assert coord.lat == 48.8566
-    assert coord.lng == 2.3522
-
-
-def test_network_events_are_frozen():
-    """Network events should be immutable frozen dataclasses."""
-    evt = NetworkPppUpEvent()
-    try:
-        evt.connection_type = "wifi"  # type: ignore
-        assert False, "Expected FrozenInstanceError"
-    except AttributeError:
-        pass
 
 
 def test_app_context_update_network_status():

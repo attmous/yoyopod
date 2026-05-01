@@ -227,7 +227,7 @@ def test_power_screen_can_resolve_state_and_actions_from_app() -> None:
         context.set_volume(50)
         app = SimpleNamespace(
             power_manager=StubPowerManager(_snapshot()),
-            network_manager=None,
+            network_runtime=None,
             get_status=lambda: {},
             audio_device_catalog=SimpleNamespace(
                 playback_devices=lambda: ["Speaker A"],

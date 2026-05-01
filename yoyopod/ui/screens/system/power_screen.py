@@ -72,7 +72,7 @@ class PowerScreen(Screen):
     ) -> None:
         super().__init__(display, context, "PowerStatus", app=app)
         power_manager = getattr(app, "power_manager", None)
-        network_manager = getattr(app, "network_manager", None)
+        network_runtime = getattr(app, "network_runtime", None)
         audio_device_catalog = getattr(app, "audio_device_catalog", None)
         config_manager = getattr(app, "config_manager", None)
         audio_volume_controller = getattr(app, "audio_volume_controller", None)
@@ -84,7 +84,7 @@ class PowerScreen(Screen):
             if state_provider is not None
             else build_power_screen_state_provider(
                 power_manager=power_manager,
-                network_manager=network_manager,
+                network_runtime=network_runtime,
                 status_provider=(
                     status_provider_from_app if callable(status_provider_from_app) else None
                 ),
@@ -111,7 +111,7 @@ class PowerScreen(Screen):
                 volume_up_action = getattr(audio_volume_controller, "volume_up", None)
                 volume_down_action = getattr(audio_volume_controller, "volume_down", None)
             self._actions = build_power_screen_actions(
-                network_manager=network_manager,
+                network_runtime=network_runtime,
                 refresh_voice_device_options_action=getattr(
                     audio_device_catalog,
                     "refresh_async",
@@ -424,9 +424,6 @@ class PowerScreen(Screen):
         except Exception as exc:
             logger.warning("GPS refresh failed on Setup screen: {}", exc)
             return False
-
-        if self.context is not None:
-            self.context.update_network_status(gps_has_fix=bool(coord))
         return bool(coord)
 
     def _get_state(self) -> PowerScreenState:

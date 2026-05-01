@@ -9,7 +9,6 @@ import yaml
 from yoyopod.config import ConfigManager
 from yoyopod.backends.music import MusicConfig
 from yoyopod.integrations.contacts.directory import PeopleDirectory
-from yoyopod.integrations.network import NetworkManager
 from yoyopod.integrations.power import PowerManager
 
 
@@ -220,13 +219,11 @@ def test_network_config_composes_domain_owned_cellular_settings(tmp_path: Path) 
     )
 
     manager = ConfigManager(config_dir=str(config_dir))
-    network_manager = NetworkManager.from_config_manager(manager)
-
     assert manager.network_config_loaded is True
     assert not hasattr(manager.get_app_settings(), "network")
     assert manager.get_network_settings().serial_port == "/dev/ttyAMA0"
     assert manager.get_runtime_settings().network.apn == "internet"
-    assert network_manager.config.ppp_timeout == 45
+    assert manager.get_network_settings().ppp_timeout == 45
 
 
 def test_network_board_overlay_uses_domain_relative_path(

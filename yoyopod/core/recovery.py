@@ -254,22 +254,7 @@ class RuntimeRecoveryService:
             return
 
         self.app._network_recovery.in_flight = False
-        if self.app._stopping:
-            return
-
-        if self.app.network_manager is not None:
-            self.app.network_events.sync_network_context_from_manager()
-            if self.app.cloud_manager is not None:
-                self.app.cloud_manager.note_network_change(
-                    connected=self.app.network_manager.is_online
-                )
-
-        self.finalize_recovery_attempt(
-            "Network",
-            self.app._network_recovery,
-            recovered,
-            recovery_now,
-        )
+        return
 
     def attempt_manager_recovery(self, now: float | None = None) -> None:
         """Try to recover VoIP and music when they become unavailable."""
@@ -360,28 +345,9 @@ class RuntimeRecoveryService:
         self.start_music_recovery_worker(recovery_now)
 
     def attempt_network_recovery(self, recovery_now: float) -> None:
-        """Reinitialize the modem when cellular registration or PPP is down."""
+        """Network recovery is Rust-owned; Python no longer schedules retries."""
 
-        if (
-            self.app.simulate
-            or self.app.network_manager is None
-            or not self.app.network_manager.config.enabled
-        ):
-            return
-
-        if self.app._network_recovery.in_flight:
-            return
-
-        if self.app.network_manager.is_online:
-            self.app._network_recovery.reset()
-            return
-
-        if recovery_now < self.app._network_recovery.next_attempt_at:
-            return
-
-        logger.info("Attempting network recovery")
-        self.app._network_recovery.in_flight = True
-        self.start_network_recovery_worker(recovery_now)
+        return
 
     def start_music_recovery_worker(self, recovery_now: float) -> None:
         """Launch the non-blocking music recovery attempt worker."""
@@ -394,15 +360,9 @@ class RuntimeRecoveryService:
         worker.start()
 
     def start_network_recovery_worker(self, recovery_now: float) -> None:
-        """Launch the non-blocking network recovery attempt worker."""
+        """Network recovery is Rust-owned; Python no longer launches retries."""
 
-        worker = threading.Thread(
-            target=self.run_network_recovery_attempt,
-            args=(recovery_now,),
-            daemon=True,
-            name="network-recovery",
-        )
-        worker.start()
+        return
 
     def run_music_recovery_attempt(self, recovery_now: float) -> None:
         """Run a single music recovery attempt off the coordinator thread."""
@@ -419,19 +379,9 @@ class RuntimeRecoveryService:
         )
 
     def run_network_recovery_attempt(self, recovery_now: float) -> None:
-        """Run one modem reinitialization attempt off the coordinator thread."""
+        """Network recovery is Rust-owned; Python no longer performs it."""
 
-        recovered = False
-        if not self.app._stopping and self.app.network_manager is not None:
-            recovered = self.app.network_manager.recover()
-
-        self.app.runtime_loop.queue_main_thread_callback(
-            lambda: self.handle_recovery_attempt_completed(
-                manager="network",
-                recovered=recovered,
-                recovery_now=recovery_now,
-            )
-        )
+        return
 
     def finalize_recovery_attempt(
         self,

@@ -17,7 +17,7 @@ from yoyopod.integrations.call import VoIPConfig, VoIPManager
 from yoyopod.integrations.cloud.manager import CloudManager
 from yoyopod.integrations.contacts.directory import PeopleManager
 from yoyopod.integrations.music import LocalMusicService
-from yoyopod.integrations.network import NetworkManager
+from yoyopod.integrations.network import RustNetworkFacade
 from yoyopod.integrations.power import PowerManager
 from yoyopod.ui.display import Display
 from yoyopod.ui.display.contracts import (
@@ -71,7 +71,7 @@ class RuntimeBootService:
             local_music_service_cls=LocalMusicService,
             output_volume_controller_cls=OutputVolumeController,
             power_manager_cls=PowerManager,
-            network_manager_cls=NetworkManager,
+            network_runtime_cls=RustNetworkFacade,
             cloud_manager_cls=CloudManager,
         )
         self._screens_boot = ScreensBoot(app, logger=logger)
@@ -104,6 +104,7 @@ class RuntimeBootService:
             self.ensure_runtime_helpers()
             self.setup_voip_callbacks()
             self.setup_music_callbacks()
+            self.setup_network_callbacks()
             if self.rust_ui_host_enabled() and not self.setup_rust_ui_host():
                 return False
             self.app.shutdown_service.register_power_shutdown_hooks()
@@ -161,6 +162,11 @@ class RuntimeBootService:
     def setup_music_callbacks(self) -> None:
         """Register music event callbacks."""
         self._callbacks_boot.setup_music_callbacks()
+
+    def setup_network_callbacks(self) -> None:
+        """Register Rust network host callbacks."""
+
+        self._callbacks_boot.setup_network_callbacks()
 
     def setup_event_subscriptions(self) -> None:
         """Backward-compatible alias for runtime-helper setup."""

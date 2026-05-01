@@ -936,42 +936,115 @@ def test_power_screen_one_button_voice_page_wraps_immediately() -> None:
 def test_power_screen_reports_full_network_page_count_through_lvgl() -> None:
     """Network-enabled Setup pages should preserve the full page count in LVGL payloads."""
 
-    from yoyopod.integrations.network.models import ModemPhase, ModemState, SignalInfo
     from yoyopod.ui.screens.system.power import (
         build_power_screen_actions,
         build_power_screen_state_provider,
     )
 
-    class _FakeNetworkManager:
+    class _FakeNetworkRuntime:
         def __init__(self) -> None:
-            self.config = type("Config", (), {"enabled": True, "gps_enabled": True})()
-            self._state = ModemState(
-                phase=ModemPhase.REGISTERED,
-                signal=SignalInfo(csq=20),
-                carrier="Telekom.de",
-                network_type="4G",
-                sim_ready=True,
-            )
+            self._snapshot = {
+                "enabled": True,
+                "gps_enabled": True,
+                "config_dir": "config",
+                "state": "registered",
+                "sim_ready": True,
+                "registered": True,
+                "carrier": "Telekom.de",
+                "network_type": "4G",
+                "signal": {"csq": 20, "bars": 3},
+                "ppp": {
+                    "up": False,
+                    "interface": "ppp0",
+                    "pid": None,
+                    "default_route_owned": False,
+                    "last_failure": "",
+                },
+                "gps": {
+                    "has_fix": False,
+                    "lat": None,
+                    "lng": None,
+                    "altitude": None,
+                    "speed": None,
+                    "timestamp": None,
+                    "last_query_result": "idle",
+                },
+                "connected": False,
+                "gps_has_fix": False,
+                "connection_type": "4g",
+                "network_status": "registered",
+                "gps_status": "searching",
+                "recovering": False,
+                "retryable": True,
+                "reconnect_attempts": 0,
+                "next_retry_at_ms": None,
+                "error_code": "",
+                "error_message": "",
+                "updated_at_ms": 1,
+                "app_state": {
+                    "network_enabled": True,
+                    "signal_bars": 3,
+                    "connection_type": "4g",
+                    "connected": False,
+                    "gps_has_fix": False,
+                },
+                "views": {
+                    "setup": {
+                        "network_enabled": True,
+                        "gps_refresh_allowed": True,
+                        "network_rows": [
+                            ["Status", "Registered"],
+                            ["Carrier", "Telekom.de"],
+                            ["Type", "4G"],
+                            ["Signal", "3/4"],
+                            ["PPP", "Down"],
+                        ],
+                        "gps_rows": [
+                            ["Fix", "Searching"],
+                            ["Lat", "--"],
+                            ["Lng", "--"],
+                            ["Alt", "--"],
+                            ["Speed", "--"],
+                        ],
+                    },
+                    "cli": {
+                        "probe_ok": True,
+                        "probe_error": "",
+                        "status_lines": [
+                            "phase=registered",
+                            "sim_ready=True",
+                            "carrier=Telekom.de",
+                            "network_type=4G",
+                            "signal_csq=20",
+                            "signal_bars=3",
+                            "ppp_up=False",
+                            "error=none",
+                        ],
+                    },
+                },
+            }
             self.query_gps_calls = 0
 
-        @property
-        def modem_state(self) -> ModemState:
-            return self._state
+        def snapshot(self) -> dict[str, object]:
+            return self._snapshot
+
+        def is_available(self) -> bool:
+            return True
 
         def query_gps(self):
             self.query_gps_calls += 1
-            return None
+            return True
 
     binding = FakeLvglBinding()
-    network_manager = _FakeNetworkManager()
+    network_runtime = _FakeNetworkRuntime()
     screen = PowerScreen(
         FakeLvglDisplay(binding),
         make_one_button_context(),
         state_provider=build_power_screen_state_provider(
-            network_manager=network_manager,
+            network_runtime=network_runtime,
             status_provider=lambda: {},
         ),
-        actions=build_power_screen_actions(network_manager=network_manager),
+        actions=build_power_screen_actions(network_runtime=network_runtime),
     )
 
     screen.enter()

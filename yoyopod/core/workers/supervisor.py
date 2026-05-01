@@ -104,7 +104,10 @@ class WorkerSupervisor:
         try:
             runtime.start()
         except Exception:
-            slot.next_restart_at = 0.0
+            if failure_reason == "start_failed" and self._max_restarts > 0:
+                slot.next_restart_at = time.monotonic() + self._restart_backoff_seconds
+            else:
+                slot.next_restart_at = 0.0
             slot.request_types.clear()
             slot.request_attempts.clear()
             slot.stale_request_ids.clear()
@@ -178,9 +181,7 @@ class WorkerSupervisor:
 
         for domain, slot in worker_items:
             runtime = slot.runtime
-            if runtime is None:
-                continue
-            if not runtime.running and slot.state == "running":
+            if runtime is not None and not runtime.running and slot.state == "running":
                 self._handle_exit(domain, slot, now=now)
             if (
                 slot.state == "degraded"
