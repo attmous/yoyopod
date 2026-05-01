@@ -1,14 +1,16 @@
 use anyhow::{anyhow, bail, Result};
 
+use super::shared::{FooterBar, StatusBarWidgets};
 use crate::lvgl::{LvglFacade, ScreenController, WidgetId};
 use crate::screens::{OverlayViewModel, ScreenModel};
 
 #[derive(Default)]
 pub struct OverlayController {
     root: Option<WidgetId>,
+    status: StatusBarWidgets,
     title: Option<WidgetId>,
     subtitle: Option<WidgetId>,
-    footer: Option<WidgetId>,
+    footer: FooterBar,
 }
 
 impl OverlayController {
@@ -27,9 +29,6 @@ impl OverlayController {
         if self.subtitle.is_none() {
             self.subtitle = Some(facade.create_label(root, "overlay_subtitle")?);
         }
-        if self.footer.is_none() {
-            self.footer = Some(facade.create_label(root, "overlay_footer")?);
-        }
 
         Ok(())
     }
@@ -40,6 +39,11 @@ impl ScreenController for OverlayController {
         let overlay = overlay_model(model)?;
 
         self.ensure_widgets(facade)?;
+        if let Some(root) = self.root {
+            self.status.sync(facade, root, &overlay.chrome.status)?;
+            self.footer
+                .sync(facade, root, "overlay_footer", &overlay.chrome.footer)?;
+        }
 
         if let Some(title) = self.title {
             facade.set_text(title, &overlay.title)?;
@@ -47,19 +51,16 @@ impl ScreenController for OverlayController {
         if let Some(subtitle) = self.subtitle {
             facade.set_text(subtitle, &overlay.subtitle)?;
         }
-        if let Some(footer) = self.footer {
-            facade.set_text(footer, &overlay.chrome.footer)?;
-            facade.set_visible(footer, !overlay.chrome.footer.trim().is_empty())?;
-        }
 
         Ok(())
     }
 
     fn teardown(&mut self, facade: &mut dyn LvglFacade) -> Result<()> {
         let root = self.root.take();
+        self.status.clear();
         self.title = None;
         self.subtitle = None;
-        self.footer = None;
+        self.footer.clear();
         if let Some(root) = root {
             facade.destroy(root)?;
         }

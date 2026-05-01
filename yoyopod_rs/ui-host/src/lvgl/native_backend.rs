@@ -322,28 +322,81 @@ impl NativeLvglFacade {
             .unwrap_or("root");
 
         let layout = match role {
+            "status_bar" => Layout {
+                x: 0,
+                y: 0,
+                width: 240,
+                height: 30,
+            },
+            "status_network" => Layout {
+                x: 10,
+                y: 8,
+                width: 42,
+                height: 14,
+            },
+            "status_signal" => Layout {
+                x: 98,
+                y: 8,
+                width: 44,
+                height: 14,
+            },
+            "status_battery" => Layout {
+                x: 184,
+                y: 8,
+                width: 48,
+                height: 14,
+            },
+            "footer_bar" => Layout {
+                x: 0,
+                y: 248,
+                width: 240,
+                height: 32,
+            },
+            _ if parent_role == "footer_bar" => Layout {
+                x: 10,
+                y: 8,
+                width: 220,
+                height: 16,
+            },
+            "hub_icon_glow" => Layout {
+                x: 62,
+                y: 48,
+                width: 116,
+                height: 116,
+            },
+            "hub_card_panel" => Layout {
+                x: 72,
+                y: 58,
+                width: 96,
+                height: 96,
+            },
+            "hub_icon" => Layout {
+                x: 18,
+                y: 36,
+                width: 60,
+                height: 24,
+            },
             "hub_title" => Layout {
-                x: 30,
-                y: 122,
-                width: 180,
+                x: 60,
+                y: 176,
+                width: 120,
                 height: 28,
             },
+            "hub_subtitle" => Layout {
+                x: 60,
+                y: 204,
+                width: 120,
+                height: 18,
+            },
             "list_title" => Layout {
-                x: 16,
-                y: 36,
-                width: 208,
+                x: 20,
+                y: 42,
+                width: 200,
                 height: 24,
             },
             "list_subtitle" => Layout {
-                x: 16,
-                y: 60,
-                width: 208,
-                height: 18,
-            },
-            "list_footer" | "ask_footer" | "call_footer" | "power_footer" | "overlay_footer"
-            | "now_playing_footer" => Layout {
                 x: 20,
-                y: 252,
+                y: 66,
                 width: 200,
                 height: 18,
             },
@@ -352,7 +405,7 @@ impl NativeLvglFacade {
                 self.list_row_count += 1;
                 Layout {
                     x: 16,
-                    y: 92 + (index as i32 * 40),
+                    y: 94 + (index as i32 * 36),
                     width: 208,
                     height: 32,
                 }
@@ -377,85 +430,121 @@ impl NativeLvglFacade {
             },
             "now_playing_title" => Layout {
                 x: 20,
-                y: 84,
+                y: 134,
                 width: 200,
                 height: 22,
             },
             "now_playing_artist" => Layout {
                 x: 20,
-                y: 114,
+                y: 160,
                 width: 200,
                 height: 18,
             },
             "now_playing_state" => Layout {
                 x: 20,
-                y: 146,
+                y: 190,
                 width: 200,
                 height: 18,
             },
             "now_playing_progress" => Layout {
                 x: 20,
-                y: 178,
+                y: 216,
                 width: 200,
                 height: 18,
             },
+            "now_playing_art" => Layout {
+                x: 76,
+                y: 42,
+                width: 88,
+                height: 78,
+            },
+            "now_playing_art_icon" => Layout {
+                x: 20,
+                y: 26,
+                width: 48,
+                height: 24,
+            },
+            "ask_icon_halo" => Layout {
+                x: 72,
+                y: 56,
+                width: 96,
+                height: 96,
+            },
             "ask_icon" => Layout {
-                x: 90,
-                y: 54,
+                x: 18,
+                y: 36,
                 width: 60,
-                height: 18,
+                height: 24,
             },
             "ask_title" => Layout {
                 x: 20,
-                y: 112,
+                y: 176,
                 width: 200,
                 height: 24,
             },
             "ask_subtitle" => Layout {
-                x: 20,
-                y: 144,
-                width: 200,
-                height: 20,
+                x: 24,
+                y: 212,
+                width: 192,
+                height: 28,
+            },
+            "call_panel" => Layout {
+                x: 72,
+                y: 54,
+                width: 96,
+                height: 96,
             },
             "call_state_icon" => Layout {
-                x: 92,
-                y: 52,
+                x: 18,
+                y: 36,
                 width: 60,
-                height: 18,
+                height: 24,
             },
             "call_title" => Layout {
-                x: 20,
-                y: 88,
+                x: 30,
+                y: 176,
                 width: 200,
                 height: 24,
             },
             "call_subtitle" => Layout {
-                x: 20,
-                y: 120,
-                width: 200,
+                x: 30,
+                y: 204,
+                width: 180,
                 height: 18,
             },
             "call_detail" => Layout {
-                x: 20,
-                y: 148,
-                width: 200,
+                x: 48,
+                y: 226,
+                width: 144,
                 height: 18,
             },
             "call_mute_badge" => Layout {
-                x: 162,
-                y: 52,
-                width: 58,
+                x: 72,
+                y: 232,
+                width: 96,
+                height: 18,
+            },
+            "power_icon_halo" => Layout {
+                x: 92,
+                y: 42,
+                width: 56,
+                height: 56,
+            },
+            "power_icon" => Layout {
+                x: 8,
+                y: 18,
+                width: 40,
                 height: 18,
             },
             "power_title" => Layout {
-                x: 20,
-                y: 36,
-                width: 200,
+                x: 60,
+                y: 98,
+                width: 120,
                 height: 24,
             },
             "power_subtitle" => Layout {
                 x: 20,
-                y: 64,
+                y: 122,
                 width: 200,
                 height: 18,
             },
@@ -464,9 +553,9 @@ impl NativeLvglFacade {
                 self.power_row_count += 1;
                 Layout {
                     x: 16,
-                    y: 96 + (index as i32 * 34),
+                    y: 146 + (index as i32 * 24),
                     width: 208,
-                    height: 26,
+                    height: 20,
                 }
             }
             "power_row_icon" => Layout {
@@ -489,13 +578,13 @@ impl NativeLvglFacade {
             },
             "overlay_title" => Layout {
                 x: 20,
-                y: 98,
+                y: 104,
                 width: 200,
                 height: 24,
             },
             "overlay_subtitle" => Layout {
                 x: 20,
-                y: 128,
+                y: 136,
                 width: 200,
                 height: 20,
             },
@@ -621,6 +710,12 @@ impl LvglFacade for NativeLvglFacade {
         Ok(())
     }
 
+    fn set_accent(&mut self, widget: WidgetId, rgb: u32) -> Result<()> {
+        let node = self.widget_node_mut(widget)?;
+        Self::apply_accent_raw(node.obj, node.role, rgb);
+        Ok(())
+    }
+
     fn destroy(&mut self, widget: WidgetId) -> Result<()> {
         let obj = self.widget_obj(widget)?;
         if self.active_root == Some(widget) {
@@ -639,6 +734,43 @@ impl LvglFacade for NativeLvglFacade {
             self.power_row_count = 0;
         }
         Ok(())
+    }
+}
+
+impl NativeLvglFacade {
+    fn apply_accent_raw(obj: NonNull<sys::lv_obj_t>, role: &'static str, rgb: u32) {
+        const SELECTOR: sys::LvStyleSelector = 0;
+        let accent = sys::lv_color_hex(rgb & 0xFFFFFF);
+        unsafe {
+            match role {
+                "hub_icon_glow" => {
+                    sys::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), 96, SELECTOR);
+                }
+                "hub_card_panel" | "call_panel" | "now_playing_art" => {
+                    sys::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+                }
+                "ask_icon_halo" | "power_icon_halo" => {
+                    sys::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), 64, SELECTOR);
+                }
+                "hub_icon"
+                | "ask_icon"
+                | "call_state_icon"
+                | "list_row_icon"
+                | "power_row_icon"
+                | "now_playing_art_icon"
+                | "power_icon"
+                | "now_playing_progress" => {
+                    sys::lv_obj_set_style_text_color(obj.as_ptr(), accent, SELECTOR);
+                }
+                "list_row" | "power_row" => {
+                    sys::lv_obj_set_style_border_color(obj.as_ptr(), accent, SELECTOR);
+                }
+                _ => {}
+            }
+        }
     }
 }
 

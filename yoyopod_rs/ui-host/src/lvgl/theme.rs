@@ -8,6 +8,8 @@ pub const MUTED_DIM_RGB: u32 = 0x7A7D84;
 pub const BORDER_RGB: u32 = 0x505561;
 pub const ACCENT_GREEN_RGB: u32 = 0x3DDD53;
 pub const ACCENT_CYAN_RGB: u32 = 0x00D4FF;
+pub const ACCENT_PURPLE_RGB: u32 = 0x9F7AEA;
+pub const ACCENT_ORANGE_RGB: u32 = 0xF6AD55;
 pub const WARNING_RGB: u32 = 0xFFD549;
 pub const ERROR_RGB: u32 = 0xFF675D;
 
@@ -77,17 +79,26 @@ impl WidgetStyle {
 pub fn style_for_role(role: &str) -> WidgetStyle {
     match role {
         "root" => WidgetStyle::root(),
+        "status_bar" => WidgetStyle::plain(),
+        "footer_bar" => WidgetStyle::panel(FOOTER_RGB, None, 0),
+        "hub_icon_glow" | "hub_card_panel" | "ask_icon_halo" | "call_panel" | "now_playing_art"
+        | "power_icon_halo" => WidgetStyle::panel(SURFACE_RAISED_RGB, None, 16),
         "list_row" | "power_row" => WidgetStyle::panel(SURFACE_RAISED_RGB, Some(BORDER_RGB), 10),
         "hub_title" | "list_title" | "ask_title" | "call_title" | "power_title"
         | "overlay_title" | "now_playing_title" => WidgetStyle::label(INK_RGB),
-        "list_subtitle" | "ask_subtitle" | "call_subtitle" | "call_detail" | "power_subtitle"
-        | "overlay_subtitle" | "now_playing_artist" | "now_playing_state" | "list_row_subtitle"
-        | "power_row_subtitle" => WidgetStyle::label(MUTED_RGB),
-        "list_footer" | "ask_footer" | "call_footer" | "power_footer" | "overlay_footer"
-        | "now_playing_footer" => WidgetStyle::label(MUTED_DIM_RGB),
-        "list_row_icon" | "power_row_icon" | "ask_icon" | "call_state_icon" => {
-            WidgetStyle::label(ACCENT_CYAN_RGB)
-        }
+        "hub_subtitle" | "list_subtitle" | "ask_subtitle" | "call_subtitle" | "call_detail"
+        | "power_subtitle" | "overlay_subtitle" | "now_playing_artist" | "now_playing_state"
+        | "list_row_subtitle" | "power_row_subtitle" => WidgetStyle::label(MUTED_RGB),
+        "status_network" | "status_signal" | "status_battery" | "list_footer" | "ask_footer"
+        | "call_footer" | "power_footer" | "overlay_footer" | "now_playing_footer"
+        | "hub_footer" => WidgetStyle::label(MUTED_DIM_RGB),
+        "hub_icon"
+        | "list_row_icon"
+        | "power_row_icon"
+        | "ask_icon"
+        | "call_state_icon"
+        | "now_playing_art_icon"
+        | "power_icon" => WidgetStyle::label(ACCENT_CYAN_RGB),
         "list_row_title" | "power_row_title" => WidgetStyle::label(INK_RGB),
         "now_playing_progress" => WidgetStyle::label(ACCENT_GREEN_RGB),
         "call_mute_badge" => WidgetStyle::panel(ERROR_RGB, None, 9),

@@ -142,6 +142,38 @@ impl LvglFacade for FakeFacade {
     }
 }
 
+fn created_label_id(events: &[FacadeEvent], role_name: &'static str) -> WidgetId {
+    events
+        .iter()
+        .find_map(|event| match event {
+            FacadeEvent::CreateLabel { id, role, .. } if *role == role_name => Some(*id),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("{role_name} label should exist"))
+}
+
+fn created_container_ids(events: &[FacadeEvent], role_name: &'static str) -> Vec<WidgetId> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            FacadeEvent::CreateContainer { id, role, .. } if *role == role_name => Some(*id),
+            _ => None,
+        })
+        .collect()
+}
+
+fn has_text(events: &[FacadeEvent], id: WidgetId, text: &str) -> bool {
+    events.iter().any(|event| {
+        matches!(
+            event,
+            FacadeEvent::SetText {
+                id: event_id,
+                text: event_text,
+            } if *event_id == id && event_text == text
+        )
+    })
+}
+
 #[test]
 fn theme_styles_keep_native_lvgl_away_from_default_white_widgets() {
     let root = theme::style_for_role("root");
@@ -167,33 +199,46 @@ fn persistent_hub_controller_builds_widgets_once_and_updates_text_in_place() -> 
     let mut renderer = LvglRenderer::new(facade);
 
     renderer.render(&hub_screen_model(&["Listen", "Talk"], 0))?;
+    let first_len = renderer.facade().events().len();
     renderer.render(&hub_screen_model(&["Listen", "Talk"], 1))?;
     renderer.clear()?;
 
-    assert_eq!(
-        renderer.facade().events(),
-        &[
-            FacadeEvent::CreateRoot {
-                id: WidgetId::new(0),
-            },
-            FacadeEvent::CreateLabel {
-                id: WidgetId::new(1),
-                parent: WidgetId::new(0),
-                role: "hub_title",
-            },
-            FacadeEvent::SetText {
-                id: WidgetId::new(1),
-                text: "Listen".to_string(),
-            },
-            FacadeEvent::SetText {
-                id: WidgetId::new(1),
-                text: "Talk".to_string(),
-            },
-            FacadeEvent::Destroy {
-                id: WidgetId::new(0),
-            },
-        ]
-    );
+    let events = renderer.facade().events();
+    let second_pass = &events[first_len..];
+    let title_id = created_label_id(events, "hub_title");
+
+    assert!(events.iter().any(|event| matches!(
+        event,
+        FacadeEvent::CreateContainer {
+            role: "hub_card_panel",
+            ..
+        }
+    )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        FacadeEvent::CreateContainer {
+            role: "status_bar",
+            ..
+        }
+    )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        FacadeEvent::CreateContainer {
+            role: "footer_bar",
+            ..
+        }
+    )));
+    assert!(has_text(events, title_id, "Listen"));
+    assert!(has_text(second_pass, title_id, "Talk"));
+    assert!(!second_pass.iter().any(|event| matches!(
+        event,
+        FacadeEvent::CreateRoot { .. }
+            | FacadeEvent::CreateContainer { .. }
+            | FacadeEvent::CreateLabel { .. }
+    )));
+    assert!(events.contains(&FacadeEvent::Destroy {
+        id: WidgetId::new(0),
+    }));
 
     Ok(())
 }
@@ -346,32 +391,26 @@ fn ask_scene_updates_title_subtitle_footer_in_place() -> Result<()> {
 
     let events = renderer.facade().events();
     let second_pass = &events[first_len..];
-    let icon_id = events
-        .iter()
-        .find_map(|event| match event {
-            FacadeEvent::CreateLabel { id, role, .. } if *role == "ask_icon" => Some(*id),
-            _ => None,
-        })
-        .expect("ask icon widget should exist");
+    let title_id = created_label_id(events, "ask_title");
+    let subtitle_id = created_label_id(events, "ask_subtitle");
+    let footer_id = created_label_id(events, "ask_footer");
+    let icon_id = created_label_id(events, "ask_icon");
 
     assert_eq!(renderer.active_scene(), Some(SceneKey::Ask));
     assert_eq!(renderer.active_screen(), Some(UiScreen::VoiceNote));
     assert!(!second_pass.iter().any(|event| matches!(
         event,
-        FacadeEvent::CreateRoot { .. } | FacadeEvent::CreateLabel { .. }
+        FacadeEvent::CreateRoot { .. }
+            | FacadeEvent::CreateContainer { .. }
+            | FacadeEvent::CreateLabel { .. }
     )));
-    assert!(second_pass.contains(&FacadeEvent::SetText {
-        id: WidgetId::new(1),
-        text: "Voice Note".to_string(),
-    }));
-    assert!(second_pass.contains(&FacadeEvent::SetText {
-        id: WidgetId::new(2),
-        text: "Ready to record".to_string(),
-    }));
-    assert!(second_pass.contains(&FacadeEvent::SetText {
-        id: WidgetId::new(3),
-        text: "2x Tap = Record | Hold = Back".to_string(),
-    }));
+    assert!(has_text(second_pass, title_id, "Voice Note"));
+    assert!(has_text(second_pass, subtitle_id, "Ready to record"));
+    assert!(has_text(
+        second_pass,
+        footer_id,
+        "2x Tap = Record | Hold = Back"
+    ));
     assert!(second_pass.contains(&FacadeEvent::SetIcon {
         id: icon_id,
         icon_key: "microphone".to_string(),
@@ -396,32 +435,20 @@ fn now_playing_scene_updates_progress_state_and_title_without_rebuild() -> Resul
 
     let events = renderer.facade().events();
     let second_pass = &events[first_len..];
-    let progress_id = events
-        .iter()
-        .find_map(|event| match event {
-            FacadeEvent::CreateLabel {
-                id,
-                role: "now_playing_progress",
-                ..
-            } => Some(*id),
-            _ => None,
-        })
-        .expect("now playing progress widget should exist");
+    let title_id = created_label_id(events, "now_playing_title");
+    let state_id = created_label_id(events, "now_playing_state");
+    let progress_id = created_label_id(events, "now_playing_progress");
 
     assert_eq!(renderer.active_scene(), Some(SceneKey::NowPlaying));
     assert_eq!(renderer.active_screen(), Some(UiScreen::NowPlaying));
     assert!(!second_pass.iter().any(|event| matches!(
         event,
-        FacadeEvent::CreateRoot { .. } | FacadeEvent::CreateLabel { .. }
+        FacadeEvent::CreateRoot { .. }
+            | FacadeEvent::CreateContainer { .. }
+            | FacadeEvent::CreateLabel { .. }
     )));
-    assert!(second_pass.contains(&FacadeEvent::SetText {
-        id: WidgetId::new(1),
-        text: "Track B".to_string(),
-    }));
-    assert!(second_pass.contains(&FacadeEvent::SetText {
-        id: WidgetId::new(3),
-        text: "Paused".to_string(),
-    }));
+    assert!(has_text(second_pass, title_id, "Track B"));
+    assert!(has_text(second_pass, state_id, "Paused"));
     assert!(second_pass.contains(&FacadeEvent::SetProgress {
         id: progress_id,
         value: 640,
@@ -504,38 +531,32 @@ fn destroy_failure_clears_stale_widget_ids_before_retry_render() -> Result<()> {
 
     renderer.render(&hub_screen_model(&["Talk"], 0))?;
 
-    assert_eq!(
-        renderer.facade().events(),
-        &[
-            FacadeEvent::CreateRoot {
-                id: WidgetId::new(0),
-            },
+    let events = renderer.facade().events();
+    let root_ids: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            FacadeEvent::CreateRoot { id } => Some(*id),
+            _ => None,
+        })
+        .collect();
+    let title_ids: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
             FacadeEvent::CreateLabel {
-                id: WidgetId::new(1),
-                parent: WidgetId::new(0),
+                id,
                 role: "hub_title",
-            },
-            FacadeEvent::SetText {
-                id: WidgetId::new(1),
-                text: "Listen".to_string(),
-            },
-            FacadeEvent::Destroy {
-                id: WidgetId::new(0),
-            },
-            FacadeEvent::CreateRoot {
-                id: WidgetId::new(2),
-            },
-            FacadeEvent::CreateLabel {
-                id: WidgetId::new(3),
-                parent: WidgetId::new(2),
-                role: "hub_title",
-            },
-            FacadeEvent::SetText {
-                id: WidgetId::new(3),
-                text: "Talk".to_string(),
-            },
-        ]
-    );
+                ..
+            } => Some(*id),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(root_ids.len(), 2);
+    assert!(events.contains(&FacadeEvent::Destroy {
+        id: WidgetId::new(0),
+    }));
+    assert!(has_text(events, title_ids[0], "Listen"));
+    assert!(has_text(events, title_ids[1], "Talk"));
 
     Ok(())
 }
@@ -765,17 +786,9 @@ fn empty_hub_model_preserves_listen_title_fallback() -> Result<()> {
         selected_index: 0,
     }))?;
 
-    assert_eq!(
-        renderer
-            .facade()
-            .events()
-            .iter()
-            .find_map(|event| match event {
-                FacadeEvent::SetText { text, .. } => Some(text.as_str()),
-                _ => None,
-            }),
-        Some("Listen")
-    );
+    let events = renderer.facade().events();
+    let title_id = created_label_id(events, "hub_title");
+    assert!(has_text(events, title_id, "Listen"));
 
     Ok(())
 }
@@ -792,43 +805,29 @@ fn call_scene_updates_icon_footer_and_mute_visibility_without_rebuild() -> Resul
 
     let events = renderer.facade().events();
     let second_pass = &events[first_len..];
-    let icon_id = events
-        .iter()
-        .find_map(|event| match event {
-            FacadeEvent::CreateLabel { id, role, .. } if *role == "call_state_icon" => Some(*id),
-            _ => None,
-        })
-        .expect("call icon widget should exist");
-    let mute_badge_id = events
-        .iter()
-        .find_map(|event| match event {
-            FacadeEvent::CreateLabel { id, role, .. } if *role == "call_mute_badge" => Some(*id),
-            _ => None,
-        })
-        .expect("call mute badge widget should exist");
+    let title_id = created_label_id(events, "call_title");
+    let subtitle_id = created_label_id(events, "call_subtitle");
+    let detail_id = created_label_id(events, "call_detail");
+    let footer_id = created_label_id(events, "call_footer");
+    let icon_id = created_label_id(events, "call_state_icon");
+    let mute_badge_id = created_label_id(events, "call_mute_badge");
 
     assert_eq!(renderer.active_scene(), Some(SceneKey::Call));
     assert_eq!(renderer.active_screen(), Some(UiScreen::InCall));
     assert!(!second_pass.iter().any(|event| matches!(
         event,
-        FacadeEvent::CreateRoot { .. } | FacadeEvent::CreateLabel { .. }
+        FacadeEvent::CreateRoot { .. }
+            | FacadeEvent::CreateContainer { .. }
+            | FacadeEvent::CreateLabel { .. }
     )));
-    assert!(second_pass.contains(&FacadeEvent::SetText {
-        id: WidgetId::new(1),
-        text: "Alice".to_string(),
-    }));
-    assert!(second_pass.contains(&FacadeEvent::SetText {
-        id: WidgetId::new(2),
-        text: "00:42".to_string(),
-    }));
-    assert!(second_pass.contains(&FacadeEvent::SetText {
-        id: WidgetId::new(3),
-        text: "+1 555-0100".to_string(),
-    }));
-    assert!(second_pass.contains(&FacadeEvent::SetText {
-        id: WidgetId::new(4),
-        text: "Tap = Mute | Hold = Hang Up".to_string(),
-    }));
+    assert!(has_text(second_pass, title_id, "Alice"));
+    assert!(has_text(second_pass, subtitle_id, "00:42"));
+    assert!(has_text(second_pass, detail_id, "+1 555-0100"));
+    assert!(has_text(
+        second_pass,
+        footer_id,
+        "Tap = Mute | Hold = Hang Up"
+    ));
     assert!(second_pass.contains(&FacadeEvent::SetIcon {
         id: icon_id,
         icon_key: "call_active".to_string(),
@@ -862,13 +861,8 @@ fn power_scene_reuses_rows_and_hides_stale_entries_without_rebuild() -> Result<(
 
     let events = renderer.facade().events();
     let second_pass = &events[first_len..];
-    let row_ids: Vec<_> = events
-        .iter()
-        .filter_map(|event| match event {
-            FacadeEvent::CreateContainer { id, role, .. } if *role == "power_row" => Some(*id),
-            _ => None,
-        })
-        .collect();
+    let row_ids = created_container_ids(events, "power_row");
+    let subtitle_id = created_label_id(events, "power_subtitle");
 
     assert_eq!(renderer.active_scene(), Some(SceneKey::Power));
     assert_eq!(renderer.active_screen(), Some(UiScreen::Power));
@@ -879,10 +873,7 @@ fn power_scene_reuses_rows_and_hides_stale_entries_without_rebuild() -> Result<(
             | FacadeEvent::CreateLabel { .. }
     )));
     assert_eq!(row_ids.len(), 2);
-    assert!(second_pass.contains(&FacadeEvent::SetText {
-        id: WidgetId::new(2),
-        text: "Battery 64%".to_string(),
-    }));
+    assert!(has_text(second_pass, subtitle_id, "Battery 64%"));
     assert!(second_pass.contains(&FacadeEvent::SetVisible {
         id: row_ids[0],
         visible: true,

@@ -1,15 +1,18 @@
 use anyhow::{anyhow, bail, Result};
 
+use super::shared::{FooterBar, StatusBarWidgets};
 use crate::lvgl::{LvglFacade, ScreenController, WidgetId};
 use crate::screens::{CallViewModel, ScreenModel};
 
 #[derive(Default)]
 pub struct CallController {
     root: Option<WidgetId>,
+    status: StatusBarWidgets,
+    panel: Option<WidgetId>,
     title: Option<WidgetId>,
     subtitle: Option<WidgetId>,
     detail: Option<WidgetId>,
-    footer: Option<WidgetId>,
+    footer: FooterBar,
     state_icon: Option<WidgetId>,
     mute_badge: Option<WidgetId>,
 }
@@ -24,6 +27,15 @@ impl CallController {
             .root
             .ok_or_else(|| anyhow!("call controller missing root widget"))?;
 
+        if self.panel.is_none() {
+            self.panel = Some(facade.create_container(root, "call_panel")?);
+        }
+        let panel = self
+            .panel
+            .ok_or_else(|| anyhow!("call controller missing panel widget"))?;
+        if self.state_icon.is_none() {
+            self.state_icon = Some(facade.create_label(panel, "call_state_icon")?);
+        }
         if self.title.is_none() {
             self.title = Some(facade.create_label(root, "call_title")?);
         }
@@ -32,12 +44,6 @@ impl CallController {
         }
         if self.detail.is_none() {
             self.detail = Some(facade.create_label(root, "call_detail")?);
-        }
-        if self.footer.is_none() {
-            self.footer = Some(facade.create_label(root, "call_footer")?);
-        }
-        if self.state_icon.is_none() {
-            self.state_icon = Some(facade.create_label(root, "call_state_icon")?);
         }
         if self.mute_badge.is_none() {
             self.mute_badge = Some(facade.create_label(root, "call_mute_badge")?);
@@ -52,6 +58,16 @@ impl ScreenController for CallController {
         let call = call_model(model)?;
 
         self.ensure_widgets(facade)?;
+        let accent = 0x00D4FF;
+
+        if let Some(root) = self.root {
+            self.status.sync(facade, root, &call.chrome.status)?;
+            self.footer
+                .sync(facade, root, "call_footer", &call.chrome.footer)?;
+        }
+        if let Some(panel) = self.panel {
+            facade.set_accent(panel, accent)?;
+        }
 
         if let Some(title) = self.title {
             facade.set_text(title, &call.title)?;
@@ -62,11 +78,9 @@ impl ScreenController for CallController {
         if let Some(detail) = self.detail {
             facade.set_text(detail, &call.detail)?;
         }
-        if let Some(footer) = self.footer {
-            facade.set_text(footer, &call.chrome.footer)?;
-        }
         if let Some(state_icon) = self.state_icon {
             facade.set_icon(state_icon, call_icon_key(model))?;
+            facade.set_accent(state_icon, accent)?;
         }
         if let Some(mute_badge) = self.mute_badge {
             facade.set_text(mute_badge, "Muted")?;
@@ -78,10 +92,12 @@ impl ScreenController for CallController {
 
     fn teardown(&mut self, facade: &mut dyn LvglFacade) -> Result<()> {
         let root = self.root.take();
+        self.status.clear();
+        self.panel = None;
         self.title = None;
         self.subtitle = None;
         self.detail = None;
-        self.footer = None;
+        self.footer.clear();
         self.state_icon = None;
         self.mute_badge = None;
         if let Some(root) = root {

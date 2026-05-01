@@ -5,6 +5,7 @@ mod list;
 mod now_playing;
 mod overlay;
 mod power;
+mod shared;
 
 use anyhow::Result;
 

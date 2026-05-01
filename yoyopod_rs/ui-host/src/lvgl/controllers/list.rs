@@ -1,14 +1,16 @@
 use anyhow::{anyhow, bail, Result};
 
+use super::shared::{FooterBar, StatusBarWidgets};
 use crate::lvgl::{LvglFacade, ScreenController, WidgetId};
 use crate::screens::{ListScreenModel, ScreenModel};
 
 #[derive(Default)]
 pub struct ListController {
     root: Option<WidgetId>,
+    status: StatusBarWidgets,
     title: Option<WidgetId>,
     subtitle: Option<WidgetId>,
-    footer: Option<WidgetId>,
+    footer: FooterBar,
     row_containers: Vec<WidgetId>,
     row_icons: Vec<WidgetId>,
     row_titles: Vec<WidgetId>,
@@ -30,9 +32,6 @@ impl ListController {
         }
         if self.subtitle.is_none() {
             self.subtitle = Some(facade.create_label(root, "list_subtitle")?);
-        }
-        if self.footer.is_none() {
-            self.footer = Some(facade.create_label(root, "list_footer")?);
         }
 
         Ok(())
@@ -71,15 +70,20 @@ impl ScreenController for ListController {
         if let Some(subtitle) = self.subtitle {
             facade.set_text(subtitle, &list.subtitle)?;
         }
-        if let Some(footer) = self.footer {
-            facade.set_text(footer, &list.chrome.footer)?;
+        if let Some(root) = self.root {
+            self.status.sync(facade, root, &list.chrome.status)?;
+            self.footer
+                .sync(facade, root, "list_footer", &list.chrome.footer)?;
         }
 
+        let accent = accent_for_list(list);
         for index in 0..self.row_titles.len() {
             if let Some(row) = list.rows.get(index) {
                 facade.set_visible(self.row_containers[index], true)?;
                 facade.set_selected(self.row_containers[index], row.selected)?;
+                facade.set_accent(self.row_containers[index], accent)?;
                 facade.set_icon(self.row_icons[index], &row.icon_key)?;
+                facade.set_accent(self.row_icons[index], accent)?;
                 facade.set_text(self.row_titles[index], &row.title)?;
                 facade.set_text(self.row_subtitles[index], &row.subtitle)?;
             } else {
@@ -93,9 +97,10 @@ impl ScreenController for ListController {
 
     fn teardown(&mut self, facade: &mut dyn LvglFacade) -> Result<()> {
         let root = self.root.take();
+        self.status.clear();
         self.title = None;
         self.subtitle = None;
-        self.footer = None;
+        self.footer.clear();
         self.row_containers.clear();
         self.row_icons.clear();
         self.row_titles.clear();
@@ -119,5 +124,12 @@ fn list_model(model: &ScreenModel) -> Result<&ListScreenModel> {
             "list controller received non-list screen model: {}",
             model.screen().as_str()
         ),
+    }
+}
+
+fn accent_for_list(model: &ListScreenModel) -> u32 {
+    match model.title.to_ascii_lowercase().as_str() {
+        "talk" | "contacts" | "history" | "recents" => 0x00D4FF,
+        _ => 0x00FF88,
     }
 }

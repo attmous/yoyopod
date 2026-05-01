@@ -315,8 +315,12 @@ mod tests {
             Ok(id)
         }
 
-        fn create_container(&mut self, _parent: WidgetId, _role: &'static str) -> Result<WidgetId> {
-            unreachable!("hub scene should not create containers")
+        fn create_container(&mut self, _parent: WidgetId, role: &'static str) -> Result<WidgetId> {
+            let id = WidgetId::new(self.next_id);
+            self.next_id += 1;
+            self.events
+                .push(format!("create_container:{role}:{}", id.raw()));
+            Ok(id)
         }
 
         fn create_label(&mut self, _parent: WidgetId, role: &'static str) -> Result<WidgetId> {
@@ -349,6 +353,10 @@ mod tests {
             Ok(())
         }
 
+        fn set_accent(&mut self, _widget: WidgetId, _rgb: u32) -> Result<()> {
+            Ok(())
+        }
+
         fn destroy(&mut self, widget: WidgetId) -> Result<()> {
             self.events.push(format!("destroy:{}", widget.raw()));
             Ok(())
@@ -369,12 +377,42 @@ mod tests {
             renderer.backend_for_test().events,
             vec![
                 "create_root:0",
-                "create_label:hub_title:1",
-                "set_text:1:Listen",
+                "create_container:hub_icon_glow:1",
+                "create_container:hub_card_panel:2",
+                "create_label:hub_icon:3",
+                "create_label:hub_title:4",
+                "create_label:hub_subtitle:5",
+                "create_container:status_bar:6",
+                "create_label:status_network:7",
+                "create_label:status_signal:8",
+                "create_label:status_battery:9",
+                "set_text:7:NET",
+                "set_text:8:||||",
+                "set_text:9:80%",
+                "create_container:footer_bar:10",
+                "create_label:hub_footer:11",
+                "set_text:11:Footer",
+                "set_text:4:Listen",
+                "set_text:5:Subtitle",
                 "destroy:0",
-                "create_root:2",
-                "create_label:hub_title:3",
-                "set_text:3:Talk",
+                "create_root:12",
+                "create_container:hub_icon_glow:13",
+                "create_container:hub_card_panel:14",
+                "create_label:hub_icon:15",
+                "create_label:hub_title:16",
+                "create_label:hub_subtitle:17",
+                "create_container:status_bar:18",
+                "create_label:status_network:19",
+                "create_label:status_signal:20",
+                "create_label:status_battery:21",
+                "set_text:19:NET",
+                "set_text:20:||||",
+                "set_text:21:80%",
+                "create_container:footer_bar:22",
+                "create_label:hub_footer:23",
+                "set_text:23:Footer",
+                "set_text:16:Talk",
+                "set_text:17:Subtitle",
             ]
         );
 

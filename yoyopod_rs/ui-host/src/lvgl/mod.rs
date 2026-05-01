@@ -142,6 +142,11 @@ pub trait LvglFacade {
 
     fn set_visible(&mut self, widget: WidgetId, visible: bool) -> Result<()>;
 
+    fn set_accent(&mut self, widget: WidgetId, rgb: u32) -> Result<()> {
+        let _ = (widget, rgb);
+        Ok(())
+    }
+
     fn destroy(&mut self, widget: WidgetId) -> Result<()>;
 }
 
@@ -179,6 +184,10 @@ where
 
     fn set_visible(&mut self, widget: WidgetId, visible: bool) -> Result<()> {
         (**self).set_visible(widget, visible)
+    }
+
+    fn set_accent(&mut self, widget: WidgetId, rgb: u32) -> Result<()> {
+        (**self).set_accent(widget, rgb)
     }
 
     fn destroy(&mut self, widget: WidgetId) -> Result<()> {

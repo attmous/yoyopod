@@ -1,16 +1,20 @@
 use anyhow::{anyhow, bail, Result};
 
+use super::shared::{FooterBar, StatusBarWidgets};
 use crate::lvgl::{LvglFacade, ScreenController, WidgetId};
 use crate::screens::{NowPlayingViewModel, ScreenModel};
 
 #[derive(Default)]
 pub struct NowPlayingController {
     root: Option<WidgetId>,
+    status: StatusBarWidgets,
+    art_panel: Option<WidgetId>,
+    art_icon: Option<WidgetId>,
     title: Option<WidgetId>,
     artist: Option<WidgetId>,
     state: Option<WidgetId>,
     progress: Option<WidgetId>,
-    footer: Option<WidgetId>,
+    footer: FooterBar,
 }
 
 impl NowPlayingController {
@@ -23,6 +27,15 @@ impl NowPlayingController {
             .root
             .ok_or_else(|| anyhow!("now-playing controller missing root widget"))?;
 
+        if self.art_panel.is_none() {
+            self.art_panel = Some(facade.create_container(root, "now_playing_art")?);
+        }
+        let art_panel = self
+            .art_panel
+            .ok_or_else(|| anyhow!("now-playing controller missing art panel"))?;
+        if self.art_icon.is_none() {
+            self.art_icon = Some(facade.create_label(art_panel, "now_playing_art_icon")?);
+        }
         if self.title.is_none() {
             self.title = Some(facade.create_label(root, "now_playing_title")?);
         }
@@ -35,9 +48,6 @@ impl NowPlayingController {
         if self.progress.is_none() {
             self.progress = Some(facade.create_label(root, "now_playing_progress")?);
         }
-        if self.footer.is_none() {
-            self.footer = Some(facade.create_label(root, "now_playing_footer")?);
-        }
 
         Ok(())
     }
@@ -49,6 +59,24 @@ impl ScreenController for NowPlayingController {
         let progress_value = now_playing.progress_permille.clamp(0, 1000);
 
         self.ensure_widgets(facade)?;
+        let accent = 0x00FF88;
+
+        if let Some(root) = self.root {
+            self.status.sync(facade, root, &now_playing.chrome.status)?;
+            self.footer.sync(
+                facade,
+                root,
+                "now_playing_footer",
+                &now_playing.chrome.footer,
+            )?;
+        }
+        if let Some(art_panel) = self.art_panel {
+            facade.set_accent(art_panel, accent)?;
+        }
+        if let Some(art_icon) = self.art_icon {
+            facade.set_icon(art_icon, "track")?;
+            facade.set_accent(art_icon, accent)?;
+        }
 
         if let Some(title) = self.title {
             facade.set_text(title, &now_playing.title)?;
@@ -62,20 +90,20 @@ impl ScreenController for NowPlayingController {
         if let Some(progress) = self.progress {
             facade.set_progress(progress, progress_value)?;
         }
-        if let Some(footer) = self.footer {
-            facade.set_text(footer, &now_playing.chrome.footer)?;
-        }
 
         Ok(())
     }
 
     fn teardown(&mut self, facade: &mut dyn LvglFacade) -> Result<()> {
         let root = self.root.take();
+        self.status.clear();
+        self.art_panel = None;
+        self.art_icon = None;
         self.title = None;
         self.artist = None;
         self.state = None;
         self.progress = None;
-        self.footer = None;
+        self.footer.clear();
         if let Some(root) = root {
             facade.destroy(root)?;
         }
