@@ -478,10 +478,16 @@ mod shim {
                 unsafe {
                     sys::yoyopod_lvgl_set_status_bar_state(
                         bool_i32(status.network_enabled),
-                        bool_i32(status.network_connected),
-                        bool_i32(status.network_connected),
+                        bool_i32(
+                            status.network_connected
+                                && status.connection_type.eq_ignore_ascii_case("4g"),
+                        ),
+                        bool_i32(
+                            status.network_connected
+                                && status.connection_type.eq_ignore_ascii_case("wifi"),
+                        ),
                         status.signal_strength,
-                        0,
+                        bool_i32(status.gps_has_fix),
                     )
                 },
                 "syncing YoYoPod LVGL status bar",
@@ -1113,9 +1119,12 @@ mod tests {
             status: StatusBarModel {
                 network_connected: true,
                 network_enabled: true,
+                connection_type: "4g".to_string(),
                 signal_strength: 4,
+                gps_has_fix: true,
                 battery_percent: 100,
                 charging: false,
+                power_available: true,
                 voip_state: 1,
             },
             footer: "Footer".to_string(),

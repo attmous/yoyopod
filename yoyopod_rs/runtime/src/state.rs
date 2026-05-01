@@ -198,10 +198,32 @@ impl Default for CallRuntimeState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NetworkRuntimeState {
+    pub enabled: bool,
+    pub connected: bool,
+    pub connection_type: String,
+    pub signal_strength: i32,
+    pub gps_has_fix: bool,
+}
+
+impl Default for NetworkRuntimeState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            connected: false,
+            connection_type: "none".to_string(),
+            signal_strength: 0,
+            gps_has_fix: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeState {
     pub current_screen: String,
     pub media: MediaState,
     pub call: CallRuntimeState,
+    pub network: NetworkRuntimeState,
     pub ui: WorkerHealth,
     pub media_worker: WorkerHealth,
     pub voip_worker: WorkerHealth,
@@ -218,6 +240,7 @@ impl Default for RuntimeState {
             current_screen: "hub".to_string(),
             media: MediaState::default(),
             call: CallRuntimeState::default(),
+            network: NetworkRuntimeState::default(),
             ui: WorkerHealth::default(),
             media_worker: WorkerHealth::default(),
             voip_worker: WorkerHealth::default(),
@@ -339,6 +362,46 @@ impl RuntimeState {
         }
     }
 
+    pub fn apply_network_snapshot(&mut self, snapshot: &Value) {
+        let snapshot = snapshot.get("snapshot").unwrap_or(snapshot);
+        let app_state = snapshot.get("app_state").unwrap_or(snapshot);
+        if let Some(enabled) = app_state
+            .get("network_enabled")
+            .or_else(|| app_state.get("enabled"))
+            .and_then(Value::as_bool)
+        {
+            self.network.enabled = enabled;
+        }
+        if let Some(connected) = app_state.get("connected").and_then(Value::as_bool) {
+            self.network.connected = connected;
+        } else if let Some(connected) = snapshot.get("connected").and_then(Value::as_bool) {
+            self.network.connected = connected;
+        }
+        if let Some(connection_type) = string_field(app_state, "connection_type")
+            .or_else(|| string_field(snapshot, "connection_type"))
+        {
+            self.network.connection_type = connection_type;
+        }
+        if let Some(signal_strength) = i32_field(app_state, "signal_bars")
+            .or_else(|| i32_field(app_state, "signal_strength"))
+            .or_else(|| {
+                snapshot
+                    .get("signal")
+                    .and_then(|signal| i32_field(signal, "bars"))
+            })
+            .or_else(|| i32_field(snapshot, "signal_strength"))
+        {
+            self.network.signal_strength = signal_strength.clamp(0, 4);
+        }
+        if let Some(gps_has_fix) = app_state
+            .get("gps_has_fix")
+            .or_else(|| snapshot.get("gps_has_fix"))
+            .and_then(Value::as_bool)
+        {
+            self.network.gps_has_fix = gps_has_fix;
+        }
+    }
+
     pub fn ui_snapshot_payload(&self) -> Value {
         json!({
             "app_state": self.current_screen,
@@ -377,10 +440,11 @@ impl RuntimeState {
                 "rows": self.power_rows(),
             },
             "network": {
-                "enabled": false,
-                "connected": false,
-                "signal_strength": 0,
-                "gps_has_fix": false,
+                "enabled": self.network.enabled,
+                "connected": self.network.connected,
+                "connection_type": self.network.connection_type,
+                "signal_strength": self.network.signal_strength,
+                "gps_has_fix": self.network.gps_has_fix,
             },
             "overlay": {
                 "loading": false,
@@ -431,13 +495,23 @@ impl RuntimeState {
         vec![
             "Battery 100%".to_string(),
             "On battery".to_string(),
-            "Network offline".to_string(),
+            self.network_status_row(),
             if self.call.registered {
                 "VoIP ready".to_string()
             } else {
                 "VoIP offline".to_string()
             },
         ]
+    }
+
+    fn network_status_row(&self) -> String {
+        if self.network.connected {
+            "Network connected".to_string()
+        } else if self.network.enabled {
+            "Network searching".to_string()
+        } else {
+            "Network offline".to_string()
+        }
     }
 
     pub fn status_payload(&self) -> Value {

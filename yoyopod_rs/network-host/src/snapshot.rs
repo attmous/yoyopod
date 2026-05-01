@@ -210,9 +210,9 @@ impl NetworkRuntimeSnapshot {
             return "online";
         }
         match self.state {
-            NetworkLifecycleState::Registered | NetworkLifecycleState::PppStarting | NetworkLifecycleState::PppStopping => {
-                "registered"
-            }
+            NetworkLifecycleState::Registered
+            | NetworkLifecycleState::PppStarting
+            | NetworkLifecycleState::PppStopping => "registered",
             NetworkLifecycleState::Probing
             | NetworkLifecycleState::Ready
             | NetworkLifecycleState::Registering

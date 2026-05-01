@@ -274,9 +274,41 @@ impl NativeLvglFacade {
                     sys::lv_obj_set_style_shadow_opa(obj.as_ptr(), 76, SELECTOR);
                     sys::lv_obj_set_scrollbar_mode(obj.as_ptr(), sys::LV_SCROLLBAR_MODE_OFF);
                 }
-                "hub_icon_glow" | "footer_bar" | "talk_card_panel" | "talk_card_glow"
-                | "ask_icon_glow" | "ask_icon_halo" | "power_icon_halo" | "power_row" => {
+                "hub_icon_glow"
+                | "footer_bar"
+                | "talk_card_panel"
+                | "talk_card_glow"
+                | "ask_icon_glow"
+                | "ask_icon_halo"
+                | "power_icon_halo"
+                | "power_row"
+                | "status_bar"
+                | "status_battery_outline"
+                | "listen_panel"
+                | "playlist_panel"
+                | "listen_empty_panel"
+                | "playlist_empty_panel" => {
                     sys::lv_obj_set_scrollbar_mode(obj.as_ptr(), sys::LV_SCROLLBAR_MODE_OFF);
+                }
+                "listen_row" | "playlist_row" | "list_row" => {
+                    sys::lv_obj_set_style_pad_left(obj.as_ptr(), 0, SELECTOR);
+                    sys::lv_obj_set_style_pad_right(obj.as_ptr(), 0, SELECTOR);
+                    sys::lv_obj_set_style_pad_top(obj.as_ptr(), 0, SELECTOR);
+                    sys::lv_obj_set_style_pad_bottom(obj.as_ptr(), 0, SELECTOR);
+                    sys::lv_obj_set_scrollbar_mode(obj.as_ptr(), sys::LV_SCROLLBAR_MODE_OFF);
+                }
+                "status_gps_ring" => {
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_TRANSP, SELECTOR);
+                    sys::lv_obj_set_style_radius(obj.as_ptr(), sys::LV_RADIUS_CIRCLE, SELECTOR);
+                }
+                "status_gps_center" => {
+                    sys::lv_obj_set_style_radius(obj.as_ptr(), sys::LV_RADIUS_CIRCLE, SELECTOR);
+                }
+                "status_gps_tail" => {
+                    sys::lv_obj_set_style_radius(obj.as_ptr(), 1, SELECTOR);
+                }
+                "status_voip_dot_left" | "status_voip_dot_after_gps" | "talk_dot" | "power_dot" => {
+                    sys::lv_obj_set_style_radius(obj.as_ptr(), sys::LV_RADIUS_CIRCLE, SELECTOR);
                 }
                 "hub_icon" | "ask_icon" => {
                     sys::lv_obj_set_style_image_recolor_opa(
@@ -311,6 +343,106 @@ impl NativeLvglFacade {
                         SELECTOR,
                     );
                 }
+                "listen_title" => {
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_24,
+                        SELECTOR,
+                    );
+                }
+                "listen_subtitle" => {
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_12,
+                        SELECTOR,
+                    );
+                }
+                "listen_row_icon" | "playlist_row_icon" => {
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_18,
+                        SELECTOR,
+                    );
+                }
+                "listen_row_title" | "playlist_row_title" => {
+                    sys::lv_label_set_long_mode(obj.as_ptr(), sys::LV_LABEL_LONG_MODE_CLIP);
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_16,
+                        SELECTOR,
+                    );
+                }
+                "listen_row_subtitle" | "playlist_row_subtitle" => {
+                    sys::lv_label_set_long_mode(obj.as_ptr(), sys::LV_LABEL_LONG_MODE_CLIP);
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_12,
+                        SELECTOR,
+                    );
+                }
+                "listen_empty_icon" | "playlist_empty_icon" => {
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_24,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                }
+                "listen_empty_title" | "playlist_empty_title" => {
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_18,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                }
+                "listen_empty_subtitle" | "playlist_empty_subtitle" => {
+                    sys::lv_label_set_long_mode(obj.as_ptr(), sys::LV_LABEL_LONG_MODE_WRAP);
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_12,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                }
+                "ask_title" => {
+                    sys::lv_label_set_long_mode(obj.as_ptr(), sys::LV_LABEL_LONG_MODE_WRAP);
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_24,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                }
+                "ask_subtitle" => {
+                    sys::lv_label_set_long_mode(obj.as_ptr(), sys::LV_LABEL_LONG_MODE_WRAP);
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_14,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                }
                 "hub_footer"
                 | "ask_footer"
                 | "call_footer"
@@ -333,7 +465,12 @@ impl NativeLvglFacade {
                         SELECTOR,
                     );
                 }
-                "status_network" | "status_signal" | "status_battery" => {
+                "status_network"
+                | "status_signal"
+                | "status_battery"
+                | "status_wifi"
+                | "status_time"
+                | "status_battery_label" => {
                     sys::lv_label_set_long_mode(obj.as_ptr(), sys::LV_LABEL_LONG_MODE_CLIP);
                     sys::lv_obj_set_style_text_font(
                         obj.as_ptr(),
@@ -450,6 +587,96 @@ impl NativeLvglFacade {
                 width: 240,
                 height: 30,
             },
+            "status_signal_bar_0" => Layout {
+                x: 16,
+                y: 17,
+                width: 3,
+                height: 4,
+            },
+            "status_signal_bar_1" => Layout {
+                x: 20,
+                y: 14,
+                width: 3,
+                height: 7,
+            },
+            "status_signal_bar_2" => Layout {
+                x: 24,
+                y: 11,
+                width: 3,
+                height: 10,
+            },
+            "status_signal_bar_3" => Layout {
+                x: 28,
+                y: 8,
+                width: 3,
+                height: 13,
+            },
+            "status_wifi" => Layout {
+                x: 37,
+                y: 8,
+                width: 12,
+                height: 14,
+            },
+            "status_gps_ring" => Layout {
+                x: 37,
+                y: 9,
+                width: 8,
+                height: 8,
+            },
+            "status_gps_center" => Layout {
+                x: 40,
+                y: 12,
+                width: 2,
+                height: 2,
+            },
+            "status_gps_tail" => Layout {
+                x: 40,
+                y: 16,
+                width: 2,
+                height: 5,
+            },
+            "status_voip_dot_left" => Layout {
+                x: 16,
+                y: 15,
+                width: 6,
+                height: 6,
+            },
+            "status_voip_dot_after_gps" => Layout {
+                x: 51,
+                y: 15,
+                width: 6,
+                height: 6,
+            },
+            "status_time" => Layout {
+                x: 88,
+                y: 8,
+                width: 64,
+                height: 14,
+            },
+            "status_battery_outline" => Layout {
+                x: 172,
+                y: 11,
+                width: 14,
+                height: 8,
+            },
+            "status_battery_fill" => Layout {
+                x: 1,
+                y: 1,
+                width: 12,
+                height: 6,
+            },
+            "status_battery_tip" => Layout {
+                x: 186,
+                y: 14,
+                width: 2,
+                height: 4,
+            },
+            "status_battery_label" => Layout {
+                x: 196,
+                y: 8,
+                width: 36,
+                height: 14,
+            },
             "status_network" => Layout {
                 x: 16,
                 y: 8,
@@ -524,6 +751,16 @@ impl NativeLvglFacade {
                     y: 218,
                     width: 4,
                     height: 4,
+                }
+            }
+            "talk_dot" => {
+                let index = self.hub_dot_count;
+                self.hub_dot_count += 1;
+                Layout {
+                    x: 99 + (index as i32 * 14),
+                    y: 224,
+                    width: 6,
+                    height: 6,
                 }
             }
             "list_title" => Layout {
@@ -950,6 +1187,16 @@ impl NativeLvglFacade {
                 width: 184,
                 height: 14,
             },
+            "power_dot" => {
+                let index = self.hub_dot_count;
+                self.hub_dot_count += 1;
+                Layout {
+                    x: 118 + (index as i32 * 10),
+                    y: 238,
+                    width: 4,
+                    height: 4,
+                }
+            }
             "overlay_title" => Layout {
                 x: 20,
                 y: 104,
@@ -1104,6 +1351,21 @@ impl LvglFacade for NativeLvglFacade {
             }
             return Ok(());
         }
+        if node.role == "status_battery_fill" {
+            let fill_width = (12 * value) / 100;
+            if fill_width <= 0 {
+                Self::hide_widget_raw(node.obj);
+            } else {
+                Self::apply_layout_raw(
+                    node.obj,
+                    Layout {
+                        width: fill_width,
+                        ..node.layout
+                    },
+                );
+            }
+            return Ok(());
+        }
 
         let filled = ((value as usize) * 10) / 1000;
         let empty = 10usize.saturating_sub(filled);
@@ -1123,6 +1385,43 @@ impl LvglFacade for NativeLvglFacade {
         } else {
             Self::hide_widget_raw(node.obj);
         }
+        Ok(())
+    }
+
+    fn set_y(&mut self, widget: WidgetId, y: i32) -> Result<()> {
+        let node = self.widget_node_mut(widget)?;
+        node.layout.y = y;
+        Self::apply_layout_raw(node.obj, node.layout);
+        Ok(())
+    }
+
+    fn set_geometry(
+        &mut self,
+        widget: WidgetId,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<()> {
+        let node = self.widget_node_mut(widget)?;
+        node.layout = Layout {
+            x,
+            y,
+            width,
+            height,
+        };
+        Self::apply_layout_raw(node.obj, node.layout);
+        Ok(())
+    }
+
+    fn set_variant(
+        &mut self,
+        widget: WidgetId,
+        variant: &'static str,
+        accent_rgb: u32,
+    ) -> Result<()> {
+        let node = self.widget_node_mut(widget)?;
+        Self::apply_variant_raw(node.obj, node.role, variant, accent_rgb);
         Ok(())
     }
 
@@ -1154,6 +1453,166 @@ impl LvglFacade for NativeLvglFacade {
 }
 
 impl NativeLvglFacade {
+    fn apply_variant_raw(
+        obj: NonNull<sys::lv_obj_t>,
+        role: &'static str,
+        variant: &'static str,
+        accent_rgb: u32,
+    ) {
+        const SELECTOR: sys::LvStyleSelector = 0;
+        unsafe {
+            match (role, variant) {
+                ("ask_icon_glow", "ask_listening") => {
+                    sys::lv_obj_set_style_bg_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(mix_u24(accent_rgb, theme::BACKGROUND_RGB, 76)),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), 128, SELECTOR);
+                    sys::lv_obj_set_style_shadow_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(accent_rgb),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_shadow_width(obj.as_ptr(), 42, SELECTOR);
+                    sys::lv_obj_set_style_shadow_opa(obj.as_ptr(), 102, SELECTOR);
+                }
+                ("ask_icon_glow", "ask_thinking") => {
+                    sys::lv_obj_set_style_bg_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(mix_u24(accent_rgb, theme::BACKGROUND_RGB, 82)),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), 51, SELECTOR);
+                    sys::lv_obj_set_style_shadow_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(accent_rgb),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_shadow_width(obj.as_ptr(), 22, SELECTOR);
+                    sys::lv_obj_set_style_shadow_opa(obj.as_ptr(), 51, SELECTOR);
+                }
+                ("ask_icon_glow", "ask_idle") => {
+                    sys::lv_obj_set_style_bg_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(mix_u24(accent_rgb, theme::BACKGROUND_RGB, 82)),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), 76, SELECTOR);
+                    sys::lv_obj_set_style_shadow_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(accent_rgb),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_shadow_width(obj.as_ptr(), 28, SELECTOR);
+                    sys::lv_obj_set_style_shadow_opa(obj.as_ptr(), 76, SELECTOR);
+                }
+                ("ask_icon_halo", "ask_listening") => {
+                    sys::lv_obj_set_style_bg_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(mix_u24(accent_rgb, theme::BACKGROUND_RGB, 68)),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+                }
+                ("ask_icon_halo", "ask_idle" | "ask_thinking") => {
+                    sys::lv_obj_set_style_bg_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(mix_u24(accent_rgb, theme::BACKGROUND_RGB, 74)),
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+                }
+                ("ask_title", "ask_reply") => {
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_18,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_LEFT,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(theme::INK_RGB),
+                        SELECTOR,
+                    );
+                }
+                ("ask_title", "ask_idle" | "ask_listening" | "ask_thinking") => {
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_24,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(theme::INK_RGB),
+                        SELECTOR,
+                    );
+                }
+                ("ask_subtitle", "ask_reply") => {
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_16,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_LEFT,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(theme::MUTED_RGB),
+                        SELECTOR,
+                    );
+                }
+                ("ask_subtitle", "ask_thinking") => {
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_14,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(theme::MUTED_RGB),
+                        SELECTOR,
+                    );
+                }
+                ("ask_subtitle", "ask_idle" | "ask_listening") => {
+                    sys::lv_obj_set_style_text_font(
+                        obj.as_ptr(),
+                        &sys::lv_font_montserrat_14,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_align(
+                        obj.as_ptr(),
+                        sys::LV_TEXT_ALIGN_CENTER,
+                        SELECTOR,
+                    );
+                    sys::lv_obj_set_style_text_color(
+                        obj.as_ptr(),
+                        sys::lv_color_hex(accent_rgb),
+                        SELECTOR,
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn apply_accent_raw(obj: NonNull<sys::lv_obj_t>, role: &'static str, rgb: u32) {
         const SELECTOR: sys::LvStyleSelector = 0;
         let accent = unsafe { sys::lv_color_hex(rgb & 0xFFFFFF) };
@@ -1258,8 +1717,29 @@ impl NativeLvglFacade {
                 | "talk_actions_header_label"
                 | "talk_actions_button_label"
                 | "talk_actions_status_label"
-                | "call_state_label" => {
+                | "call_state_label"
+                | "status_wifi"
+                | "status_time"
+                | "status_battery_label" => {
                     sys::lv_obj_set_style_text_color(obj.as_ptr(), accent, SELECTOR);
+                }
+                "status_signal_bar_0"
+                | "status_signal_bar_1"
+                | "status_signal_bar_2"
+                | "status_signal_bar_3"
+                | "talk_dot"
+                | "power_dot"
+                | "status_gps_center"
+                | "status_gps_tail"
+                | "status_voip_dot_left"
+                | "status_voip_dot_after_gps"
+                | "status_battery_fill"
+                | "status_battery_tip" => {
+                    sys::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
+                    sys::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+                }
+                "status_gps_ring" | "status_battery_outline" => {
+                    sys::lv_obj_set_style_border_color(obj.as_ptr(), accent, SELECTOR);
                 }
                 "listen_footer" | "now_playing_footer" | "power_footer" => {
                     sys::lv_obj_set_style_text_color(
@@ -1336,22 +1816,19 @@ fn icon_label(icon_key: &str) -> String {
     }
 
     let label = match icon_key {
+        "playlist" | "people" | "person" | "contact" | "contacts" => "\u{f00b}",
         "ask" => "AI",
-        "battery" | "setup" | "power" => "PWR",
-        "call_active" => "CALL",
-        "call_incoming" => "RING",
-        "call_outgoing" => "DIAL",
-        "call" | "talk" => "CALL",
-        "check" => "OK",
-        "clock" | "retry" => "REF",
-        "close" | "mic_off" => "X",
-        "listen" | "music_note" | "play" | "track" => "MUS",
-        "microphone" | "mic" | "voice_note" => "REC",
-        "people" | "contact" | "contacts" => "LIST",
-        "playlist" => "LIST",
-        "recent" | "history" => "HIST",
-        "signal" | "network" => "WIFI",
-        _ => "UI",
+        "battery" | "setup" | "power" => "\u{f011}",
+        "call_active" | "call_incoming" | "call_outgoing" | "call" | "talk" => "\u{f095}",
+        "check" => "\u{f00c}",
+        "clock" | "retry" | "recent" | "history" => "\u{f021}",
+        "close" => "\u{f00d}",
+        "listen" | "music_note" | "play" | "track" => "\u{f001}",
+        "microphone" | "mic" | "voice_note" => "\u{f304}",
+        "signal" | "network" => "\u{f1eb}",
+        "care" | "settings" => "\u{f013}",
+        "mic_off" => "X",
+        _ => "\u{f00b}",
     };
     label.to_string()
 }

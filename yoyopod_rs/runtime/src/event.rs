@@ -10,6 +10,7 @@ pub enum RuntimeEvent {
     },
     MediaSnapshot(Value),
     VoipSnapshot(Value),
+    NetworkSnapshot(Value),
     UiInput(Value),
     UiIntent {
         domain: String,
@@ -48,6 +49,7 @@ impl RuntimeEvent {
             }
             Self::MediaSnapshot(snapshot) => state.apply_media_snapshot(snapshot),
             Self::VoipSnapshot(snapshot) => state.apply_voip_snapshot(snapshot),
+            Self::NetworkSnapshot(snapshot) => state.apply_network_snapshot(snapshot),
             Self::UiScreenChanged { screen } => {
                 state.current_screen = screen.clone();
             }
@@ -79,6 +81,12 @@ pub fn runtime_event_from_worker(
             message: worker_error_message(&message_type, &payload),
         }),
         EnvelopeKind::Event => Some(runtime_event_from_message(domain, &message_type, payload)),
+        EnvelopeKind::Result
+            if domain == WorkerDomain::Network
+                && matches!(message_type.as_str(), "network.snapshot" | "network.health") =>
+        {
+            Some(RuntimeEvent::NetworkSnapshot(payload))
+        }
         EnvelopeKind::Command | EnvelopeKind::Result | EnvelopeKind::Heartbeat => {
             Some(RuntimeEvent::Ignored)
         }
@@ -97,6 +105,7 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         RuntimeEvent::Shutdown => vec![RuntimeCommand::Shutdown],
         RuntimeEvent::WorkerReady { .. }
         | RuntimeEvent::MediaSnapshot(_)
+        | RuntimeEvent::NetworkSnapshot(_)
         | RuntimeEvent::UiScreenChanged { .. }
         | RuntimeEvent::WorkerError { .. }
         | RuntimeEvent::WorkerExited { .. }
@@ -120,13 +129,7 @@ fn runtime_event_from_message(
         WorkerDomain::Ui => ui_event_from_message(message_type, payload),
         WorkerDomain::Media => media_event_from_message(message_type, payload),
         WorkerDomain::Voip => voip_event_from_message(message_type, payload),
-        WorkerDomain::Network => health_only_event_from_message(
-            domain,
-            message_type,
-            &payload,
-            "network.ready",
-            "network.error",
-        ),
+        WorkerDomain::Network => network_event_from_message(message_type, payload),
         WorkerDomain::Power => health_only_event_from_message(
             domain,
             message_type,
@@ -184,6 +187,20 @@ fn voip_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent {
         "voip.snapshot" => RuntimeEvent::VoipSnapshot(payload),
         "voip.error" => RuntimeEvent::WorkerError {
             domain: WorkerDomain::Voip,
+            message: worker_error_message(message_type, &payload),
+        },
+        _ => RuntimeEvent::Ignored,
+    }
+}
+
+fn network_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent {
+    match message_type {
+        "network.ready" => RuntimeEvent::WorkerReady {
+            domain: WorkerDomain::Network,
+        },
+        "network.snapshot" | "network.health" => RuntimeEvent::NetworkSnapshot(payload),
+        "network.error" => RuntimeEvent::WorkerError {
+            domain: WorkerDomain::Network,
             message: worker_error_message(message_type, &payload),
         },
         _ => RuntimeEvent::Ignored,

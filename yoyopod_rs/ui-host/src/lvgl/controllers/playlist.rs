@@ -83,7 +83,7 @@ impl ScreenController for PlaylistController {
 
         self.ensure_widgets(facade, 4)?;
         if let Some(root) = self.root {
-            self.status.sync(facade, root, &list.chrome.status)?;
+            self.status.sync(facade, root, &list.chrome.status, false)?;
             self.footer
                 .sync(facade, root, "playlist_footer", &list.chrome.footer)?;
         }

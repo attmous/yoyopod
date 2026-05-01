@@ -2,8 +2,8 @@ use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 use yoyopod_network_host::at::{
-    parse_carrier, parse_registration, parse_signal_quality, AtCommandSet, CarrierInfo,
-    SimStatus, SignalInfo,
+    parse_carrier, parse_registration, parse_signal_quality, AtCommandSet, CarrierInfo, SignalInfo,
+    SimStatus,
 };
 use yoyopod_network_host::gps::{parse_cgpsinfo, GpsFix, GpsReader};
 use yoyopod_network_host::transport::{LineTransport, TransportError};

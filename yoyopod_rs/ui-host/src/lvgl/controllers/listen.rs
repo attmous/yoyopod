@@ -87,7 +87,7 @@ impl ScreenController for ListenController {
 
         self.ensure_widgets(facade, 4)?;
         if let Some(root) = self.root {
-            self.status.sync(facade, root, &list.chrome.status)?;
+            self.status.sync(facade, root, &list.chrome.status, false)?;
             self.footer.sync_with_accent(
                 facade,
                 root,
@@ -171,7 +171,10 @@ pub(super) fn sync_rows(
             facade.set_selected(row_subtitles[index], row.selected)?;
             facade.set_text(row_titles[index], &row.title)?;
             facade.set_text(row_subtitles[index], &row.subtitle)?;
-            facade.set_visible(row_subtitles[index], !row.subtitle.trim().is_empty())?;
+            let has_subtitle = !row.subtitle.trim().is_empty();
+            facade.set_visible(row_subtitles[index], has_subtitle)?;
+            facade.set_y(row_titles[index], if has_subtitle { 7 } else { 13 })?;
+            facade.set_y(row_subtitles[index], 24)?;
         } else {
             facade.set_selected(row_containers[index], false)?;
             facade.set_visible(row_containers[index], false)?;

@@ -24,6 +24,67 @@ fn media_snapshot_event_updates_state() {
 }
 
 #[test]
+fn network_snapshot_event_updates_status_snapshot() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Network,
+        event_envelope(
+            "network.snapshot",
+            json!({
+                "app_state": {
+                    "network_enabled": true,
+                    "signal_bars": 3,
+                    "connection_type": "4g",
+                    "connected": true,
+                    "gps_has_fix": true
+                }
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+
+    event.apply(&mut state);
+
+    let network = &state.ui_snapshot_payload()["network"];
+    assert_eq!(network["enabled"], true);
+    assert_eq!(network["connected"], true);
+    assert_eq!(network["connection_type"], "4g");
+    assert_eq!(network["signal_strength"], 3);
+    assert_eq!(network["gps_has_fix"], true);
+}
+
+#[test]
+fn network_snapshot_result_updates_status_snapshot() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Network,
+        envelope(
+            EnvelopeKind::Result,
+            "network.health",
+            json!({
+                "snapshot": {
+                    "enabled": true,
+                    "connected": false,
+                    "connection_type": "4g",
+                    "signal": {"bars": 2},
+                    "gps_has_fix": false
+                }
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+
+    event.apply(&mut state);
+
+    let network = &state.ui_snapshot_payload()["network"];
+    assert_eq!(network["enabled"], true);
+    assert_eq!(network["connected"], false);
+    assert_eq!(network["connection_type"], "4g");
+    assert_eq!(network["signal_strength"], 2);
+    assert_eq!(network["gps_has_fix"], false);
+}
+
+#[test]
 fn worker_ready_event_marks_worker_running() {
     let event = runtime_event_from_worker(
         WorkerDomain::Media,

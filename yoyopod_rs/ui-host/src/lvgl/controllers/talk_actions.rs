@@ -66,7 +66,8 @@ impl ScreenController for TalkActionsController {
 
         self.ensure_widgets(facade)?;
         if let Some(root) = self.root {
-            self.status.sync(facade, root, &voice_note.chrome.status)?;
+            self.status
+                .sync(facade, root, &voice_note.chrome.status, true)?;
             self.footer.sync(
                 facade,
                 root,

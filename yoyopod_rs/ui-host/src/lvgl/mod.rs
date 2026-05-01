@@ -145,6 +145,33 @@ pub trait LvglFacade {
 
     fn set_visible(&mut self, widget: WidgetId, visible: bool) -> Result<()>;
 
+    fn set_y(&mut self, widget: WidgetId, y: i32) -> Result<()> {
+        let _ = (widget, y);
+        Ok(())
+    }
+
+    fn set_geometry(
+        &mut self,
+        widget: WidgetId,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<()> {
+        let _ = (widget, x, y, width, height);
+        Ok(())
+    }
+
+    fn set_variant(
+        &mut self,
+        widget: WidgetId,
+        variant: &'static str,
+        accent_rgb: u32,
+    ) -> Result<()> {
+        let _ = (widget, variant, accent_rgb);
+        Ok(())
+    }
+
     fn set_accent(&mut self, widget: WidgetId, rgb: u32) -> Result<()> {
         let _ = (widget, rgb);
         Ok(())
@@ -187,6 +214,30 @@ where
 
     fn set_visible(&mut self, widget: WidgetId, visible: bool) -> Result<()> {
         (**self).set_visible(widget, visible)
+    }
+
+    fn set_y(&mut self, widget: WidgetId, y: i32) -> Result<()> {
+        (**self).set_y(widget, y)
+    }
+
+    fn set_geometry(
+        &mut self,
+        widget: WidgetId,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<()> {
+        (**self).set_geometry(widget, x, y, width, height)
+    }
+
+    fn set_variant(
+        &mut self,
+        widget: WidgetId,
+        variant: &'static str,
+        accent_rgb: u32,
+    ) -> Result<()> {
+        (**self).set_variant(widget, variant, accent_rgb)
     }
 
     fn set_accent(&mut self, widget: WidgetId, rgb: u32) -> Result<()> {

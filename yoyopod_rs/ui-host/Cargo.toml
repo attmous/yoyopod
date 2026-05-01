@@ -17,6 +17,7 @@ libloading = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
+time = { version = "0.3", features = ["formatting", "local-offset"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rppal = { version = "0.22.1", optional = true }

@@ -75,7 +75,7 @@ impl ScreenController for CallController {
         let accent = 0x00D4FF;
 
         if let Some(root) = self.root {
-            self.status.sync(facade, root, &call.chrome.status)?;
+            self.status.sync(facade, root, &call.chrome.status, true)?;
             self.footer
                 .sync(facade, root, "call_footer", &call.chrome.footer)?;
         }

@@ -81,6 +81,28 @@ pub fn style_for_role(role: &str) -> WidgetStyle {
     match role {
         "root" => WidgetStyle::root(),
         "status_bar" => WidgetStyle::plain(),
+        "status_signal_bar_0"
+        | "status_signal_bar_1"
+        | "status_signal_bar_2"
+        | "status_signal_bar_3"
+        | "status_gps_center"
+        | "status_gps_tail"
+        | "status_voip_dot_left"
+        | "status_voip_dot_after_gps"
+        | "status_battery_fill"
+        | "status_battery_tip" => WidgetStyle::panel(MUTED_RGB, None, 1),
+        "status_gps_ring" => WidgetStyle {
+            border_color: Some(MUTED_RGB),
+            border_width: 1,
+            radius: 4,
+            ..WidgetStyle::plain()
+        },
+        "status_battery_outline" => WidgetStyle {
+            border_color: Some(MUTED_RGB),
+            border_width: 1,
+            radius: 2,
+            ..WidgetStyle::plain()
+        },
         "footer_bar" => WidgetStyle::panel(FOOTER_RGB, None, 0),
         "hub_icon_glow" => WidgetStyle::panel(SURFACE_RAISED_RGB, None, 24),
         "talk_card_glow" | "call_icon_halo" => WidgetStyle::panel(SURFACE_RAISED_RGB, None, 22),
@@ -90,6 +112,18 @@ pub fn style_for_role(role: &str) -> WidgetStyle {
         "hub_dot" => WidgetStyle {
             bg_color: Some(INK_RGB),
             bg_opa: 51,
+            radius: 2,
+            ..WidgetStyle::plain()
+        },
+        "talk_dot" => WidgetStyle {
+            bg_color: Some(ACCENT_CYAN_RGB),
+            bg_opa: 102,
+            radius: 4,
+            ..WidgetStyle::plain()
+        },
+        "power_dot" => WidgetStyle {
+            bg_color: Some(MUTED_RGB),
+            bg_opa: OPA_COVER,
             radius: 2,
             ..WidgetStyle::plain()
         },
@@ -139,7 +173,10 @@ pub fn style_for_role(role: &str) -> WidgetStyle {
         | "talk_actions_header_name"
         | "listen_empty_subtitle"
         | "playlist_empty_subtitle" => WidgetStyle::label(MUTED_RGB),
-        "status_network"
+        "status_wifi"
+        | "status_time"
+        | "status_battery_label"
+        | "status_network"
         | "status_signal"
         | "status_battery"
         | "list_footer"
@@ -188,7 +225,7 @@ pub fn style_for_selected_role(role: &str, selected: bool) -> WidgetStyle {
         "listen_row" | "playlist_row" | "list_row" => {
             WidgetStyle::panel(SELECTED_ROW_RGB, Some(SELECTED_ROW_RGB), 16)
         }
-        "hub_dot" => WidgetStyle {
+        "hub_dot" | "talk_dot" | "power_dot" => WidgetStyle {
             bg_color: Some(INK_RGB),
             bg_opa: OPA_COVER,
             radius: 2,

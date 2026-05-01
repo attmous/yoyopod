@@ -71,9 +71,12 @@ fn listen_screen_model() -> ScreenModel {
             status: StatusBarModel {
                 network_connected: true,
                 network_enabled: true,
+                connection_type: "4g".to_string(),
                 signal_strength: 4,
+                gps_has_fix: true,
                 battery_percent: 100,
                 charging: false,
+                power_available: true,
                 voip_state: 1,
             },
             footer: "Tap = Next | Hold = Back".to_string(),

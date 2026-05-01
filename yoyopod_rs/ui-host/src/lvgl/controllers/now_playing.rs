@@ -85,7 +85,8 @@ impl ScreenController for NowPlayingController {
         let accent = 0x00FF88;
 
         if let Some(root) = self.root {
-            self.status.sync(facade, root, &now_playing.chrome.status)?;
+            self.status
+                .sync(facade, root, &now_playing.chrome.status, false)?;
             self.footer.sync_with_accent(
                 facade,
                 root,

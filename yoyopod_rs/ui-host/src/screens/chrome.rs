@@ -7,9 +7,12 @@ pub(crate) fn chrome(snapshot: &RuntimeSnapshot, footer: &str) -> ChromeModel {
         status: StatusBarModel {
             network_connected: snapshot.network.connected,
             network_enabled: snapshot.network.enabled,
+            connection_type: snapshot.network.connection_type.clone(),
             signal_strength: snapshot.network.signal_strength,
+            gps_has_fix: snapshot.network.gps_has_fix,
             battery_percent: snapshot.power.battery_percent,
             charging: snapshot.power.charging,
+            power_available: snapshot.power.power_available,
             voip_state: voip_state(snapshot),
         },
         footer: footer.to_string(),

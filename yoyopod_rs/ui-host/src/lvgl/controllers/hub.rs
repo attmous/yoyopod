@@ -67,7 +67,7 @@ impl ScreenController for HubController {
         let icon_key = selected.map(|card| card.key.as_str()).unwrap_or("listen");
 
         if let Some(root) = self.root {
-            self.status.sync(facade, root, &model.chrome.status)?;
+            self.status.sync(facade, root, &model.chrome.status, true)?;
             self.footer
                 .sync(facade, root, "hub_footer", &model.chrome.footer)?;
         }

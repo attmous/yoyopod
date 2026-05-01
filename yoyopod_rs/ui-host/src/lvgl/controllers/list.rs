@@ -71,7 +71,7 @@ impl ScreenController for ListController {
             facade.set_text(subtitle, &list.subtitle)?;
         }
         if let Some(root) = self.root {
-            self.status.sync(facade, root, &list.chrome.status)?;
+            self.status.sync(facade, root, &list.chrome.status, false)?;
             self.footer
                 .sync(facade, root, "list_footer", &list.chrome.footer)?;
         }

@@ -40,7 +40,8 @@ impl ScreenController for OverlayController {
 
         self.ensure_widgets(facade)?;
         if let Some(root) = self.root {
-            self.status.sync(facade, root, &overlay.chrome.status)?;
+            self.status
+                .sync(facade, root, &overlay.chrome.status, true)?;
             self.footer
                 .sync(facade, root, "overlay_footer", &overlay.chrome.footer)?;
         }

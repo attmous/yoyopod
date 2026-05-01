@@ -60,22 +60,38 @@ impl ScreenController for AskController {
         } else {
             0xFFD000
         };
+        let state_variant = ask_state_variant(&ask.title);
+        let is_reply = state_variant == "ask_reply";
         if let Some(root) = self.root {
-            self.status.sync(facade, root, &ask.chrome.status)?;
+            self.status.sync(facade, root, &ask.chrome.status, true)?;
             self.footer
                 .sync(facade, root, "ask_footer", &ask.chrome.footer)?;
         }
         if let Some(icon_halo) = self.icon_halo {
-            facade.set_accent(icon_halo, accent)?;
+            facade.set_visible(icon_halo, !is_reply)?;
+            facade.set_variant(icon_halo, state_variant, accent)?;
         }
         if let Some(icon_glow) = self.icon_glow {
-            facade.set_accent(icon_glow, accent)?;
+            facade.set_visible(icon_glow, !is_reply)?;
+            facade.set_variant(icon_glow, state_variant, accent)?;
         }
         if let Some(title) = self.title {
             facade.set_text(title, &ask.title)?;
+            if is_reply {
+                facade.set_geometry(title, 24, 48, 192, 24)?;
+            } else {
+                facade.set_geometry(title, 20, 176, 200, 24)?;
+            }
+            facade.set_variant(title, state_variant, accent)?;
         }
         if let Some(subtitle) = self.subtitle {
             facade.set_text(subtitle, &ask.subtitle)?;
+            if is_reply {
+                facade.set_geometry(subtitle, 24, 84, 192, 24)?;
+            } else {
+                facade.set_geometry(subtitle, 24, 212, 192, 28)?;
+            }
+            facade.set_variant(subtitle, state_variant, accent)?;
         }
         if let Some(icon) = self.icon {
             facade.set_icon(icon, &ask.icon_key)?;
@@ -98,6 +114,15 @@ impl ScreenController for AskController {
             facade.destroy(root)?;
         }
         Ok(())
+    }
+}
+
+fn ask_state_variant(title: &str) -> &'static str {
+    match title {
+        "Listening" => "ask_listening",
+        "Thinking" => "ask_thinking",
+        "Ask" => "ask_idle",
+        _ => "ask_reply",
     }
 }
 

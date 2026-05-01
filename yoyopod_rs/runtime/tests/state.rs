@@ -194,6 +194,29 @@ fn voip_snapshot_projects_contacts_into_ui_payload() {
 }
 
 #[test]
+fn network_snapshot_updates_status_bar_payload_and_power_row() {
+    let mut state = RuntimeState::default();
+
+    state.apply_network_snapshot(&json!({
+        "app_state": {
+            "network_enabled": true,
+            "signal_bars": 4,
+            "connection_type": "4g",
+            "connected": true,
+            "gps_has_fix": true
+        }
+    }));
+
+    let ui = state.ui_snapshot_payload();
+    assert_eq!(ui["network"]["enabled"], true);
+    assert_eq!(ui["network"]["connected"], true);
+    assert_eq!(ui["network"]["connection_type"], "4g");
+    assert_eq!(ui["network"]["signal_strength"], 4);
+    assert_eq!(ui["network"]["gps_has_fix"], true);
+    assert_eq!(ui["power"]["rows"][2], "Network connected");
+}
+
+#[test]
 fn ui_snapshot_uses_available_state_for_power_rows() {
     let mut state = RuntimeState::default();
 
@@ -316,6 +339,7 @@ fn ui_snapshot_payload_decodes_into_ui_host_compatible_shape() {
     assert_eq!(snapshot.voice.phase, "idle");
     assert!(snapshot.power.power_available);
     assert!(!snapshot.network.connected);
+    assert_eq!(snapshot.network.connection_type, "none");
     assert!(!snapshot.overlay.loading);
 }
 
@@ -369,6 +393,7 @@ struct UiPowerSnapshot {
 #[derive(Debug, Deserialize)]
 struct UiNetworkSnapshot {
     connected: bool,
+    connection_type: String,
 }
 
 #[derive(Debug, Deserialize)]

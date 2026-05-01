@@ -13,6 +13,7 @@ pub struct TalkController {
     card_label: Option<WidgetId>,
     title: Option<WidgetId>,
     footer: FooterBar,
+    dots: Vec<WidgetId>,
 }
 
 impl TalkController {
@@ -39,6 +40,9 @@ impl TalkController {
         if self.title.is_none() {
             self.title = Some(facade.create_label(root, "talk_title")?);
         }
+        while self.dots.len() < 4 {
+            self.dots.push(facade.create_container(root, "talk_dot")?);
+        }
         Ok(())
     }
 }
@@ -60,7 +64,7 @@ impl ScreenController for TalkController {
 
         self.ensure_widgets(facade)?;
         if let Some(root) = self.root {
-            self.status.sync(facade, root, &list.chrome.status)?;
+            self.status.sync(facade, root, &list.chrome.status, true)?;
             self.footer
                 .sync(facade, root, "talk_footer", &list.chrome.footer)?;
         }
@@ -77,6 +81,28 @@ impl ScreenController for TalkController {
         if let Some(title_label) = self.title {
             facade.set_text(title_label, title)?;
         }
+        let total_cards = list.rows.len().clamp(1, 4);
+        let selected_index = selected_index(list).min(total_cards - 1);
+        let first_x = 120 - ((total_cards as i32 * 14) / 2);
+        for (index, dot) in self.dots.iter().copied().enumerate() {
+            if index >= total_cards {
+                facade.set_visible(dot, false)?;
+                continue;
+            }
+            let selected = index == selected_index;
+            let size = if selected { 8 } else { 6 };
+            facade.set_visible(dot, true)?;
+            facade.set_geometry(dot, first_x + (index as i32 * 14), 224, size, size)?;
+            facade.set_selected(dot, selected)?;
+            facade.set_accent(
+                dot,
+                if selected {
+                    accent
+                } else {
+                    mix_u24(accent, 0x2A2D35, 68)
+                },
+            )?;
+        }
         Ok(())
     }
 
@@ -88,6 +114,7 @@ impl ScreenController for TalkController {
         self.card_label = None;
         self.title = None;
         self.footer.clear();
+        self.dots.clear();
         if let Some(root) = root {
             facade.destroy(root)?;
         }
@@ -101,4 +128,25 @@ fn selected_row(model: &ListScreenModel) -> Option<&crate::screens::ListRowModel
         .iter()
         .find(|row| row.selected)
         .or_else(|| model.rows.first())
+}
+
+fn selected_index(model: &ListScreenModel) -> usize {
+    model.rows.iter().position(|row| row.selected).unwrap_or(0)
+}
+
+fn mix_u24(primary_rgb: u32, secondary_rgb: u32, secondary_ratio_percent: u8) -> u32 {
+    let secondary_ratio = u32::from(secondary_ratio_percent.min(100));
+    let primary_ratio = 100 - secondary_ratio;
+    let red = ((((primary_rgb >> 16) & 0xFF) * primary_ratio
+        + ((secondary_rgb >> 16) & 0xFF) * secondary_ratio)
+        / 100)
+        & 0xFF;
+    let green = ((((primary_rgb >> 8) & 0xFF) * primary_ratio
+        + ((secondary_rgb >> 8) & 0xFF) * secondary_ratio)
+        / 100)
+        & 0xFF;
+    let blue = (((primary_rgb & 0xFF) * primary_ratio + (secondary_rgb & 0xFF) * secondary_ratio)
+        / 100)
+        & 0xFF;
+    (red << 16) | (green << 8) | blue
 }

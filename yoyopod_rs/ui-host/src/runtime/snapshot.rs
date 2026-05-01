@@ -186,6 +186,8 @@ pub struct NetworkRuntimeSnapshot {
     pub enabled: bool,
     #[serde(default)]
     pub connected: bool,
+    #[serde(default = "default_connection_type")]
+    pub connection_type: String,
     #[serde(default)]
     pub signal_strength: i32,
     #[serde(default)]
@@ -197,6 +199,7 @@ impl Default for NetworkRuntimeSnapshot {
         Self {
             enabled: false,
             connected: false,
+            connection_type: default_connection_type(),
             signal_strength: 0,
             gps_has_fix: false,
         }
@@ -265,6 +268,10 @@ fn default_music_title() -> String {
 
 fn default_battery_percent() -> i32 {
     100
+}
+
+fn default_connection_type() -> String {
+    "none".to_string()
 }
 
 fn default_hub_accent() -> u32 {

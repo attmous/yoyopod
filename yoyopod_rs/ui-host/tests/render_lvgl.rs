@@ -472,12 +472,17 @@ fn now_playing_progress_is_clamped_before_reaching_the_facade() -> Result<()> {
         "Track B", "Artist B", "Playing", 1200,
     ))?;
 
+    let progress_id =
+        created_container_ids(renderer.facade().events(), "now_playing_progress_fill")
+            .into_iter()
+            .next()
+            .expect("now-playing progress fill should exist");
     let progress_values: Vec<_> = renderer
         .facade()
         .events()
         .iter()
         .filter_map(|event| match event {
-            FacadeEvent::SetProgress { value, .. } => Some(*value),
+            FacadeEvent::SetProgress { id, value } if *id == progress_id => Some(*value),
             _ => None,
         })
         .collect();
@@ -1166,9 +1171,12 @@ fn chrome_model() -> ChromeModel {
         status: StatusBarModel {
             network_connected: true,
             network_enabled: true,
+            connection_type: "4g".to_string(),
             signal_strength: 4,
+            gps_has_fix: true,
             battery_percent: 88,
             charging: false,
+            power_available: true,
             voip_state: 1,
         },
         footer: "Footer".to_string(),

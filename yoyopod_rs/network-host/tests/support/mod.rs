@@ -88,7 +88,10 @@ impl FakeModemController {
         &self,
         results: impl IntoIterator<Item = Result<ModemRegistration, ModemError>>,
     ) {
-        self.inner.lock().expect("fake modem lock").live_fact_results = results.into_iter().collect();
+        self.inner
+            .lock()
+            .expect("fake modem lock")
+            .live_fact_results = results.into_iter().collect();
     }
 
     pub fn set_ppp_health_results(&self, results: impl IntoIterator<Item = PppHealth>) {

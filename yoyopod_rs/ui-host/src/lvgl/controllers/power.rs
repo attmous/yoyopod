@@ -14,6 +14,7 @@ pub struct PowerController {
     footer: FooterLabel,
     row_containers: Vec<WidgetId>,
     row_titles: Vec<WidgetId>,
+    dots: Vec<WidgetId>,
 }
 
 impl PowerController {
@@ -53,6 +54,9 @@ impl PowerController {
             self.row_titles
                 .push(facade.create_label(row, "power_row_title")?);
         }
+        while self.dots.len() < 8 {
+            self.dots.push(facade.create_container(root, "power_dot")?);
+        }
 
         Ok(())
     }
@@ -67,7 +71,8 @@ impl ScreenController for PowerController {
         let accent = 0x9CA3AF;
 
         if let Some(root) = self.root {
-            self.status.sync(facade, root, &power.chrome.status)?;
+            self.status
+                .sync(facade, root, &power.chrome.status, false)?;
             self.footer.sync_with_accent(
                 facade,
                 root,
@@ -81,6 +86,7 @@ impl ScreenController for PowerController {
         }
         if let Some(icon) = self.icon {
             facade.set_icon(icon, "battery")?;
+            facade.set_accent(icon, 0xFFFFFF)?;
         }
 
         if let Some(title) = self.title {
@@ -96,6 +102,31 @@ impl ScreenController for PowerController {
             }
         }
 
+        let total_pages = power.rows.len().clamp(1, 8);
+        let selected_index = power
+            .rows
+            .iter()
+            .position(|row| row.selected)
+            .unwrap_or(0)
+            .min(total_pages - 1);
+        let first_x = 118 - (((total_pages as i32 - 1) * 10) / 2);
+        for (index, dot) in self.dots.iter().copied().enumerate() {
+            if index >= total_pages {
+                facade.set_visible(dot, false)?;
+                continue;
+            }
+            facade.set_visible(dot, true)?;
+            facade.set_geometry(dot, first_x + (index as i32 * 10), 238, 4, 4)?;
+            facade.set_accent(
+                dot,
+                if index == selected_index {
+                    accent
+                } else {
+                    0xB4B7BE
+                },
+            )?;
+        }
+
         Ok(())
     }
 
@@ -108,6 +139,7 @@ impl ScreenController for PowerController {
         self.footer.clear();
         self.row_containers.clear();
         self.row_titles.clear();
+        self.dots.clear();
         if let Some(root) = root {
             facade.destroy(root)?;
         }

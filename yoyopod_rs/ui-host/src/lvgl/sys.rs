@@ -39,14 +39,18 @@ pub type YoyopodLvglFlushCb = unsafe extern "C" fn(i32, i32, i32, i32, *const u8
 pub const LV_DISPLAY_RENDER_MODE_PARTIAL: i32 = 0;
 pub const LV_ALIGN_CENTER: i32 = 9;
 pub const LV_ALIGN_BOTTOM_MID: i32 = 5;
+pub const LV_LABEL_LONG_MODE_WRAP: i32 = 0;
+pub const LV_LABEL_LONG_MODE_DOTS: i32 = 1;
 pub const LV_LABEL_LONG_MODE_CLIP: i32 = 4;
 pub const LV_SCROLLBAR_MODE_OFF: i32 = 0;
 pub const LV_TEXT_ALIGN_LEFT: i32 = 1;
 pub const LV_TEXT_ALIGN_CENTER: i32 = 2;
+pub const LV_RADIUS_CIRCLE: i32 = 0x7FFF;
 
 unsafe extern "C" {
     pub static lv_font_montserrat_12: lv_font_t;
     pub static lv_font_montserrat_14: lv_font_t;
+    pub static lv_font_montserrat_16: lv_font_t;
     pub static lv_font_montserrat_18: lv_font_t;
     pub static lv_font_montserrat_24: lv_font_t;
 

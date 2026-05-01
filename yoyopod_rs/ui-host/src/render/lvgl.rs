@@ -373,8 +373,23 @@ mod tests {
         renderer.backend_mut_for_test().mark_display_reset();
         renderer.render_screen_model(&mut framebuffer, &hub_screen_model("Talk"))?;
 
+        let normalized_events: Vec<String> = renderer
+            .backend_for_test()
+            .events
+            .iter()
+            .map(|event| {
+                if event.starts_with("set_text:21:") {
+                    "set_text:21:<time>".to_string()
+                } else if event.starts_with("set_text:49:") {
+                    "set_text:49:<time>".to_string()
+                } else {
+                    event.clone()
+                }
+            })
+            .collect();
+
         assert_eq!(
-            renderer.backend_for_test().events,
+            normalized_events,
             vec![
                 "create_root:0",
                 "create_container:hub_icon_glow:1",
@@ -387,40 +402,64 @@ mod tests {
                 "create_container:hub_dot:8",
                 "create_container:hub_dot:9",
                 "create_container:status_bar:10",
-                "create_label:status_network:11",
-                "create_label:status_signal:12",
-                "create_label:status_battery:13",
-                "set_text:11:NET",
-                "set_text:12:||||",
-                "set_text:13:80%",
-                "create_container:footer_bar:14",
-                "create_label:hub_footer:15",
-                "set_text:15:Footer",
+                "create_container:status_signal_bar_0:11",
+                "create_container:status_signal_bar_1:12",
+                "create_container:status_signal_bar_2:13",
+                "create_container:status_signal_bar_3:14",
+                "create_label:status_wifi:15",
+                "create_container:status_gps_ring:16",
+                "create_container:status_gps_center:17",
+                "create_container:status_gps_tail:18",
+                "create_container:status_voip_dot_left:19",
+                "create_container:status_voip_dot_after_gps:20",
+                "create_label:status_time:21",
+                "create_container:status_battery_outline:22",
+                "create_container:status_battery_fill:23",
+                "create_container:status_battery_tip:24",
+                "create_label:status_battery_label:25",
+                "set_text:15:\u{f1eb}",
+                "set_text:21:<time>",
+                "set_text:25:80%",
+                "create_container:footer_bar:26",
+                "create_label:hub_footer:27",
+                "set_text:27:Footer",
                 "set_text:4:Listen",
                 "set_text:5:Subtitle",
                 "destroy:0",
-                "create_root:16",
-                "create_container:hub_icon_glow:17",
-                "create_container:hub_card_panel:18",
-                "create_label:hub_icon:19",
-                "create_label:hub_title:20",
-                "create_label:hub_subtitle:21",
-                "create_container:hub_dot:22",
-                "create_container:hub_dot:23",
-                "create_container:hub_dot:24",
-                "create_container:hub_dot:25",
-                "create_container:status_bar:26",
-                "create_label:status_network:27",
-                "create_label:status_signal:28",
-                "create_label:status_battery:29",
-                "set_text:27:NET",
-                "set_text:28:||||",
-                "set_text:29:80%",
-                "create_container:footer_bar:30",
-                "create_label:hub_footer:31",
-                "set_text:31:Footer",
-                "set_text:20:Talk",
-                "set_text:21:Subtitle",
+                "create_root:28",
+                "create_container:hub_icon_glow:29",
+                "create_container:hub_card_panel:30",
+                "create_label:hub_icon:31",
+                "create_label:hub_title:32",
+                "create_label:hub_subtitle:33",
+                "create_container:hub_dot:34",
+                "create_container:hub_dot:35",
+                "create_container:hub_dot:36",
+                "create_container:hub_dot:37",
+                "create_container:status_bar:38",
+                "create_container:status_signal_bar_0:39",
+                "create_container:status_signal_bar_1:40",
+                "create_container:status_signal_bar_2:41",
+                "create_container:status_signal_bar_3:42",
+                "create_label:status_wifi:43",
+                "create_container:status_gps_ring:44",
+                "create_container:status_gps_center:45",
+                "create_container:status_gps_tail:46",
+                "create_container:status_voip_dot_left:47",
+                "create_container:status_voip_dot_after_gps:48",
+                "create_label:status_time:49",
+                "create_container:status_battery_outline:50",
+                "create_container:status_battery_fill:51",
+                "create_container:status_battery_tip:52",
+                "create_label:status_battery_label:53",
+                "set_text:43:\u{f1eb}",
+                "set_text:49:<time>",
+                "set_text:53:80%",
+                "create_container:footer_bar:54",
+                "create_label:hub_footer:55",
+                "set_text:55:Footer",
+                "set_text:32:Talk",
+                "set_text:33:Subtitle",
             ]
         );
 
@@ -449,9 +488,12 @@ mod tests {
                 status: StatusBarModel {
                     network_connected: true,
                     network_enabled: true,
+                    connection_type: "4g".to_string(),
                     signal_strength: 4,
+                    gps_has_fix: true,
                     battery_percent: 80,
                     charging: false,
+                    power_available: true,
                     voip_state: 1,
                 },
                 footer: "Footer".to_string(),
