@@ -39,8 +39,9 @@ def test_rust_ci_builds_arm64_device_bundle_artifact() -> None:
     assert "Install native Rust host dependencies" in workflow
     assert "pkg-config liblinphone-dev libudev-dev" in workflow
     assert (
-        "bazel test --action_env=PATH //yoyopod_rs/ui-host/... //yoyopod_rs/media-host/... "
-        "//yoyopod_rs/voip-host/... //yoyopod_rs/network-host/... //yoyopod_rs/runtime/..."
+        "bazel test --action_env=PATH //yoyopod_rs/ui-host/... //yoyopod_rs/cloud-host/... "
+        "//yoyopod_rs/media-host/... //yoyopod_rs/voip-host/... //yoyopod_rs/network-host/... "
+        "//yoyopod_rs/runtime/..."
     ) in workflow
     assert "cargo test --workspace --locked --features whisplay-hardware,native-lvgl" in workflow
     assert (
@@ -49,6 +50,7 @@ def test_rust_ci_builds_arm64_device_bundle_artifact() -> None:
     )
     assert "-p yoyopod-runtime" in workflow
     assert "-p yoyopod-ui-host" in workflow
+    assert "-p yoyopod-cloud-host" in workflow
     assert "-p yoyopod-media-host" in workflow
     assert "-p yoyopod-voip-host" in workflow
     assert "-p yoyopod-network-host" in workflow
@@ -60,6 +62,7 @@ def test_rust_ci_builds_arm64_device_bundle_artifact() -> None:
     assert "name: yoyopod-rust-device-arm64-${{ env.RUST_ARTIFACT_SHA }}" in workflow
     assert "yoyopod-rust-device-arm64-${{ env.RUST_ARTIFACT_SHA }}.tar.gz" in workflow
     assert "yoyopod_rs/ui-host/build/yoyopod-ui-host" in workflow
+    assert "yoyopod_rs/cloud-host/build/yoyopod-cloud-host" in workflow
     assert "yoyopod_rs/media-host/build/yoyopod-media-host" in workflow
     assert "yoyopod_rs/voip-host/build/yoyopod-voip-host" in workflow
     assert "yoyopod_rs/network-host/build/yoyopod-network-host" in workflow
@@ -99,6 +102,7 @@ def test_rust_bazel_feature_folder_layout_is_checked_in() -> None:
     assert (REPO_ROOT / "yoyopod_rs" / "BUILD.bazel").exists()
     assert (REPO_ROOT / "yoyopod_rs" / "ui-host" / "BUILD.bazel").exists()
     assert (REPO_ROOT / "yoyopod_rs" / "ui-host" / "tests" / "README.md").exists()
+    assert (REPO_ROOT / "yoyopod_rs" / "cloud-host" / "BUILD.bazel").exists()
     assert (REPO_ROOT / "yoyopod_rs" / "voip-host" / "BUILD.bazel").exists()
     assert (REPO_ROOT / "yoyopod_rs" / "voip-host" / "tests" / "README.md").exists()
     assert (REPO_ROOT / "yoyopod_rs" / "network-host" / "BUILD.bazel").exists()
@@ -175,6 +179,7 @@ def test_dockerignore_preserves_rust_artifact_build_dirs_for_slot_builder() -> N
 
     for artifact_dir in (
         "yoyopod_rs/ui-host/build",
+        "yoyopod_rs/cloud-host/build",
         "yoyopod_rs/media-host/build",
         "yoyopod_rs/voip-host/build",
         "yoyopod_rs/network-host/build",

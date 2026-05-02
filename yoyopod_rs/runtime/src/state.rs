@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WorkerDomain {
     Ui,
+    Cloud,
     Media,
     Voip,
     Network,
@@ -18,6 +19,7 @@ impl WorkerDomain {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Ui => "ui",
+            Self::Cloud => "cloud",
             Self::Media => "media",
             Self::Voip => "voip",
             Self::Network => "network",
@@ -308,6 +310,27 @@ impl Default for NetworkRuntimeState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloudRuntimeState {
+    pub device_id: String,
+    pub provisioning_state: String,
+    pub cloud_state: String,
+    pub mqtt_connected: bool,
+    pub last_error_summary: String,
+}
+
+impl Default for CloudRuntimeState {
+    fn default() -> Self {
+        Self {
+            device_id: String::new(),
+            provisioning_state: "unprovisioned".to_string(),
+            cloud_state: "offline".to_string(),
+            mqtt_connected: false,
+            last_error_summary: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetupRow {
     pub label: String,
     pub value: String,
@@ -333,7 +356,9 @@ pub struct RuntimeState {
     pub call: CallRuntimeState,
     pub voice: VoiceRuntimeState,
     pub network: NetworkRuntimeState,
+    pub cloud: CloudRuntimeState,
     pub ui: WorkerHealth,
+    pub cloud_worker: WorkerHealth,
     pub media_worker: WorkerHealth,
     pub voip_worker: WorkerHealth,
     pub network_worker: WorkerHealth,
@@ -351,7 +376,9 @@ impl Default for RuntimeState {
             call: CallRuntimeState::default(),
             voice: VoiceRuntimeState::default(),
             network: NetworkRuntimeState::default(),
+            cloud: CloudRuntimeState::default(),
             ui: WorkerHealth::default(),
+            cloud_worker: WorkerHealth::default(),
             media_worker: WorkerHealth::default(),
             voip_worker: WorkerHealth::default(),
             network_worker: WorkerHealth::default(),
@@ -400,6 +427,7 @@ impl RuntimeState {
     fn worker_health_mut(&mut self, domain: WorkerDomain) -> &mut WorkerHealth {
         match domain {
             WorkerDomain::Ui => &mut self.ui,
+            WorkerDomain::Cloud => &mut self.cloud_worker,
             WorkerDomain::Media => &mut self.media_worker,
             WorkerDomain::Voip => &mut self.voip_worker,
             WorkerDomain::Network => &mut self.network_worker,
@@ -654,6 +682,25 @@ impl RuntimeState {
         }
     }
 
+    pub fn apply_cloud_snapshot(&mut self, snapshot: &Value) {
+        let snapshot = snapshot.get("snapshot").unwrap_or(snapshot);
+        if let Some(device_id) = string_field(snapshot, "device_id") {
+            self.cloud.device_id = device_id;
+        }
+        if let Some(provisioning_state) = string_field(snapshot, "provisioning_state") {
+            self.cloud.provisioning_state = provisioning_state;
+        }
+        if let Some(cloud_state) = string_field(snapshot, "cloud_state") {
+            self.cloud.cloud_state = cloud_state;
+        }
+        if let Some(mqtt_connected) = snapshot.get("mqtt_connected").and_then(Value::as_bool) {
+            self.cloud.mqtt_connected = mqtt_connected;
+        }
+        if let Some(last_error_summary) = string_field(snapshot, "last_error_summary") {
+            self.cloud.last_error_summary = last_error_summary;
+        }
+    }
+
     pub fn ui_snapshot_payload(&self) -> Value {
         json!({
             "app_state": self.current_screen,
@@ -701,6 +748,13 @@ impl RuntimeState {
                 "signal_strength": self.network.signal_strength,
                 "gps_has_fix": self.network.gps_has_fix,
             },
+            "cloud": {
+                "device_id": self.cloud.device_id,
+                "provisioning_state": self.cloud.provisioning_state,
+                "cloud_state": self.cloud.cloud_state,
+                "mqtt_connected": self.cloud.mqtt_connected,
+                "last_error_summary": self.cloud.last_error_summary,
+            },
             "overlay": {
                 "loading": false,
                 "error": "",
@@ -708,6 +762,7 @@ impl RuntimeState {
             },
             "workers": {
                 WorkerDomain::Ui.as_str(): worker_payload(&self.ui),
+                WorkerDomain::Cloud.as_str(): worker_payload(&self.cloud_worker),
                 WorkerDomain::Media.as_str(): worker_payload(&self.media_worker),
                 WorkerDomain::Voip.as_str(): worker_payload(&self.voip_worker),
                 WorkerDomain::Network.as_str(): worker_payload(&self.network_worker),
@@ -909,8 +964,15 @@ impl RuntimeState {
                 "peer_address": self.call.peer_address,
                 "muted": self.call.muted,
             },
+            "cloud": {
+                "provisioning_state": self.cloud.provisioning_state,
+                "cloud_state": self.cloud.cloud_state,
+                "mqtt_connected": self.cloud.mqtt_connected,
+                "last_error_summary": self.cloud.last_error_summary,
+            },
             "workers": {
                 WorkerDomain::Ui.as_str(): worker_payload(&self.ui),
+                WorkerDomain::Cloud.as_str(): worker_payload(&self.cloud_worker),
                 WorkerDomain::Media.as_str(): worker_payload(&self.media_worker),
                 WorkerDomain::Voip.as_str(): worker_payload(&self.voip_worker),
                 WorkerDomain::Network.as_str(): worker_payload(&self.network_worker),

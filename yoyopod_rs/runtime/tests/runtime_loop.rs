@@ -133,6 +133,7 @@ fn protocol_error_remains_visible_after_same_iteration_ready_event() {
         .into_iter()
         .collect(),
         sent: Vec::new(),
+        ..FakeLoopIo::default()
     };
 
     let processed = runtime_loop.run_once(&mut io);
@@ -191,10 +192,85 @@ fn incoming_voip_snapshot_pauses_media_before_applying_call_state() {
     assert!(pause_index < snapshot_index);
 }
 
+#[test]
+fn cloud_remote_media_command_acks_after_media_dispatch_succeeds() {
+    let mut runtime_loop = RuntimeLoop::new(RuntimeState::default());
+    let mut io = FakeLoopIo::with_messages([(
+        WorkerDomain::Cloud,
+        event_envelope(
+            "cloud.command",
+            json!({
+                "command": {
+                    "command": "pause",
+                    "commandId": "cmd-1"
+                }
+            }),
+        ),
+    )]);
+
+    let processed = runtime_loop.run_once(&mut io);
+
+    assert_eq!(processed, 1);
+    let pause = sent_to(&io, WorkerDomain::Media, "media.pause");
+    assert_eq!(pause.payload, json!({}));
+    let ack = sent_to(&io, WorkerDomain::Cloud, "cloud.ack");
+    assert_eq!(
+        ack.payload,
+        json!({
+            "command_id": "cmd-1",
+            "ok": true,
+            "payload": {"command": "pause"}
+        })
+    );
+}
+
+#[test]
+fn cloud_remote_media_command_nacks_when_media_dispatch_fails() {
+    let mut runtime_loop = RuntimeLoop::new(RuntimeState::default());
+    let mut io = FakeLoopIo::with_messages([(
+        WorkerDomain::Cloud,
+        event_envelope(
+            "cloud.command",
+            json!({
+                "command": {
+                    "command": "stop",
+                    "commandId": "cmd-2"
+                }
+            }),
+        ),
+    )]);
+    io.fail_sends
+        .push_back((WorkerDomain::Media, "media.stop_playback".to_string()));
+
+    let processed = runtime_loop.run_once(&mut io);
+
+    assert_eq!(processed, 1);
+    assert!(sent_optional(&io, WorkerDomain::Media, "media.stop_playback").is_none());
+    assert_eq!(
+        io.failed_sends,
+        vec![(WorkerDomain::Media, "media.stop_playback".to_string())]
+    );
+    let ack = sent_to(&io, WorkerDomain::Cloud, "cloud.ack");
+    assert_eq!(
+        ack.payload,
+        json!({
+            "command_id": "cmd-2",
+            "ok": false,
+            "reason": "media_dispatch_failed",
+            "payload": {
+                "command": "stop",
+                "media_command": "media.stop_playback"
+            }
+        })
+    );
+}
+
 #[derive(Default)]
 struct FakeLoopIo {
     messages: VecDeque<(WorkerDomain, WorkerEnvelope)>,
     protocol_errors: VecDeque<(WorkerDomain, WorkerProtocolError)>,
+    fail_sends: VecDeque<(WorkerDomain, String)>,
+    failed_sends: Vec<(WorkerDomain, String)>,
     sent: Vec<(WorkerDomain, WorkerEnvelope)>,
 }
 
@@ -226,6 +302,17 @@ impl LoopIo for FakeLoopIo {
     }
 
     fn send_worker_envelope(&mut self, domain: WorkerDomain, envelope: WorkerEnvelope) -> bool {
+        if self
+            .fail_sends
+            .front()
+            .is_some_and(|(failed_domain, message_type)| {
+                *failed_domain == domain && message_type == &envelope.message_type
+            })
+        {
+            let failed = self.fail_sends.pop_front().expect("checked failed send");
+            self.failed_sends.push(failed);
+            return false;
+        }
         self.sent.push((domain, envelope));
         true
     }

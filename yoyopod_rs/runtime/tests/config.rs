@@ -43,6 +43,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "YOYOPOD_ALSA_DEVICE",
     "YOYOPOD_RUST_UI_HOST_WORKER",
     "YOYOPOD_RUST_UI_WORKER",
+    "YOYOPOD_RUST_CLOUD_HOST_WORKER",
     "YOYOPOD_RUST_MEDIA_HOST_WORKER",
     "YOYOPOD_RUST_VOIP_HOST_WORKER",
     "YOYOPOD_RUST_NETWORK_HOST_WORKER",
@@ -190,6 +191,10 @@ secrets:
     assert_eq!(
         config.worker_paths.ui,
         "yoyopod_rs/ui-host/build/yoyopod-ui-host"
+    );
+    assert_eq!(
+        config.worker_paths.cloud,
+        "yoyopod_rs/cloud-host/build/yoyopod-cloud-host"
     );
     assert_eq!(
         config.worker_paths.network,
@@ -616,4 +621,18 @@ fn network_worker_path_can_be_overridden_by_env() {
     let config = RuntimeConfig::load(&dir).expect("load runtime config");
 
     assert_eq!(config.worker_paths.network, "/host/yoyopod-network-host");
+}
+
+#[test]
+fn cloud_worker_path_can_be_overridden_by_env() {
+    let _lock = lock_env();
+    let _env = clean_config_env();
+    let dir = temp_config_dir("cloud-worker-env");
+    fs::create_dir_all(&dir).expect("config dir");
+
+    std::env::set_var("YOYOPOD_RUST_CLOUD_HOST_WORKER", "/host/yoyopod-cloud-host");
+
+    let config = RuntimeConfig::load(&dir).expect("load runtime config");
+
+    assert_eq!(config.worker_paths.cloud, "/host/yoyopod-cloud-host");
 }

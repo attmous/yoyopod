@@ -295,6 +295,28 @@ fn network_snapshot_updates_status_bar_payload_and_power_row() {
 }
 
 #[test]
+fn cloud_snapshot_updates_runtime_status_payload() {
+    let mut state = RuntimeState::default();
+
+    state.apply_cloud_snapshot(&json!({
+        "device_id": "device-123",
+        "provisioning_state": "provisioned",
+        "cloud_state": "ready",
+        "mqtt_connected": true,
+        "last_error_summary": ""
+    }));
+
+    let ui = state.ui_snapshot_payload();
+    assert_eq!(ui["cloud"]["provisioning_state"], "provisioned");
+    assert_eq!(ui["cloud"]["cloud_state"], "ready");
+    assert_eq!(ui["cloud"]["mqtt_connected"], true);
+
+    let status = state.status_payload();
+    assert_eq!(status["cloud"]["cloud_state"], "ready");
+    assert_eq!(status["cloud"]["mqtt_connected"], true);
+}
+
+#[test]
 fn network_setup_projection_feeds_setup_pages() {
     let mut state = RuntimeState::default();
 

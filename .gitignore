@@ -87,6 +87,7 @@ data/communication/
 data/cloud/
 data/media/
 data/people/
+yoyopod_rs/cloud-host/data/
 
 # OS files
 .DS_Store

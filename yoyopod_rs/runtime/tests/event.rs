@@ -121,6 +121,7 @@ fn worker_error_marks_worker_degraded() {
 #[test]
 fn health_only_worker_domains_decode_ready_and_error_events() {
     for (domain, ready_type, error_type) in [
+        (WorkerDomain::Cloud, "cloud.ready", "cloud.error"),
         (WorkerDomain::Network, "network.ready", "network.error"),
         (WorkerDomain::Power, "power.ready", "power.error"),
         (WorkerDomain::Voice, "voice.ready", "voice.error"),
@@ -758,14 +759,16 @@ fn incoming_call_routes_media_pause_when_music_is_playing() {
 
     let commands = commands_for_event(&state, &event);
 
-    assert_eq!(
-        commands,
-        vec![worker_command(
-            WorkerDomain::Media,
-            "media.pause",
-            json!({})
-        )]
-    );
+    assert!(commands.contains(&worker_command(
+        WorkerDomain::Media,
+        "media.pause",
+        json!({})
+    )));
+    assert!(commands.iter().any(|command| matches!(
+        command,
+        RuntimeCommand::WorkerCommand { domain: WorkerDomain::Cloud, envelope }
+            if envelope.message_type == "cloud.publish_telemetry"
+    )));
 }
 
 #[test]
@@ -785,14 +788,11 @@ fn active_raw_voip_snapshot_routes_media_pause_when_music_is_playing() {
 
     let commands = commands_for_event(&state, &event);
 
-    assert_eq!(
-        commands,
-        vec![worker_command(
-            WorkerDomain::Media,
-            "media.pause",
-            json!({})
-        )]
-    );
+    assert!(commands.contains(&worker_command(
+        WorkerDomain::Media,
+        "media.pause",
+        json!({})
+    )));
 }
 
 #[test]
@@ -812,14 +812,11 @@ fn outgoing_raw_voip_snapshot_routes_media_pause_when_music_is_playing() {
 
     let commands = commands_for_event(&state, &event);
 
-    assert_eq!(
-        commands,
-        vec![worker_command(
-            WorkerDomain::Media,
-            "media.pause",
-            json!({})
-        )]
-    );
+    assert!(commands.contains(&worker_command(
+        WorkerDomain::Media,
+        "media.pause",
+        json!({})
+    )));
 }
 
 #[test]
@@ -837,7 +834,17 @@ fn idle_voip_snapshot_does_not_pause_music() {
     let mut state = RuntimeState::default();
     state.apply_media_snapshot(&json!({"playback_state": "playing"}));
 
-    assert_eq!(commands_for_event(&state, &event), Vec::new());
+    let commands = commands_for_event(&state, &event);
+    assert!(!commands.contains(&worker_command(
+        WorkerDomain::Media,
+        "media.pause",
+        json!({})
+    )));
+    assert!(commands.iter().any(|command| matches!(
+        command,
+        RuntimeCommand::WorkerCommand { domain: WorkerDomain::Cloud, envelope }
+            if envelope.message_type == "cloud.publish_telemetry"
+    )));
 }
 
 #[test]
@@ -857,6 +864,94 @@ fn voip_snapshot_event_apply_uses_runtime_state_normalization() {
     event.apply(&mut state);
 
     assert_eq!(state.call.state, CallState::Active);
+}
+
+#[test]
+fn cloud_command_routes_remote_pause_to_media_and_ack() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Cloud,
+        event_envelope(
+            "cloud.command",
+            json!({
+                "command": {
+                    "command": "pause",
+                    "commandId": "cmd-1"
+                }
+            }),
+        ),
+    )
+    .expect("event");
+
+    let commands = commands_for_event(&RuntimeState::default(), &event);
+
+    let [RuntimeCommand::WorkerCommandWithAck {
+        domain,
+        envelope,
+        success_ack,
+        failure_ack,
+    }] = commands.as_slice()
+    else {
+        panic!("expected conditional media command with cloud ack");
+    };
+    assert_eq!(*domain, WorkerDomain::Media);
+    assert_eq!(envelope.message_type, "media.pause");
+    assert_eq!(envelope.payload, json!({}));
+    assert_eq!(success_ack.message_type, "cloud.ack");
+    assert_eq!(
+        success_ack.payload,
+        json!({
+            "command_id": "cmd-1",
+            "ok": true,
+            "payload": {"command": "pause"}
+        })
+    );
+    assert_eq!(failure_ack.message_type, "cloud.ack");
+    assert_eq!(
+        failure_ack.payload,
+        json!({
+            "command_id": "cmd-1",
+            "ok": false,
+            "reason": "media_dispatch_failed",
+            "payload": {
+                "command": "pause",
+                "media_command": "media.pause"
+            }
+        })
+    );
+}
+
+#[test]
+fn network_snapshot_routes_cloud_connectivity_and_telemetry() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Network,
+        event_envelope(
+            "network.snapshot",
+            json!({
+                "app_state": {
+                    "connected": true,
+                    "connection_type": "4g",
+                    "signal_bars": 3,
+                    "gps_has_fix": true
+                }
+            }),
+        ),
+    )
+    .expect("event");
+
+    let commands = commands_for_event(&RuntimeState::default(), &event);
+
+    assert!(commands.iter().any(|command| matches!(
+        command,
+        RuntimeCommand::WorkerCommand { domain: WorkerDomain::Cloud, envelope }
+            if envelope.message_type == "cloud.publish_connectivity"
+                && envelope.payload["connection_type"] == "4g"
+    )));
+    assert!(commands.iter().any(|command| matches!(
+        command,
+        RuntimeCommand::WorkerCommand { domain: WorkerDomain::Cloud, envelope }
+            if envelope.message_type == "cloud.publish_telemetry"
+                && envelope.payload["topic_suffix"] == "network.signal_bars"
+    )));
 }
 
 fn event_envelope(message_type: &str, payload: Value) -> WorkerEnvelope {

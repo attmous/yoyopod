@@ -254,6 +254,54 @@ logging:
     assert!(captured_ui.contains(r#"Fix: Yes"#));
 }
 
+#[test]
+fn boot_starts_cloud_worker_and_sends_startup_telemetry_commands() {
+    let _guard = env_lock();
+    let dir = temp_dir("cloud-worker");
+    let config_dir = dir.join("config");
+    let ui_stdin = dir.join("ui-stdin.ndjson");
+    let cloud_args = dir.join("cloud-args.txt");
+    let cloud_stdin = dir.join("cloud-stdin.ndjson");
+    let ui_worker = write_ui_worker_script(&dir, &ui_stdin);
+    let cloud_worker = write_cloud_worker_script(&dir, &cloud_args, &cloud_stdin);
+    write(
+        &config_dir.join("app/core.yaml"),
+        &format!(
+            r#"
+logging:
+  pid_file: "{}"
+  file: "{}"
+"#,
+            yaml_path(&dir.join("run/yoyopod.pid")),
+            yaml_path(&dir.join("logs/yoyopod.log"))
+        ),
+    );
+    std::env::set_var("YOYOPOD_RUST_UI_HOST_WORKER", &ui_worker);
+    std::env::set_var("YOYOPOD_RUST_CLOUD_HOST_WORKER", &cloud_worker);
+
+    let result = run(Args {
+        config_dir: config_dir.clone(),
+        dry_run: false,
+        hardware: "whisplay".to_string(),
+    });
+    std::env::remove_var("YOYOPOD_RUST_UI_HOST_WORKER");
+    std::env::remove_var("YOYOPOD_RUST_CLOUD_HOST_WORKER");
+    result.expect("runtime exits after UI shutdown intent");
+
+    let captured_ui = wait_for_file(&ui_stdin);
+    let captured_cloud_args = wait_for_file(&cloud_args);
+    let captured_cloud_stdin = wait_for_file(&cloud_stdin);
+    let normalized_cloud_args = captured_cloud_args.replace('\\', "/");
+
+    assert!(captured_cloud_args.contains("--config-dir"));
+    assert!(normalized_cloud_args.contains(&yaml_path(&config_dir)));
+    assert!(captured_cloud_stdin.contains(r#""type":"cloud.health""#));
+    assert!(captured_cloud_stdin.contains(r#""type":"cloud.publish_heartbeat""#));
+    assert!(captured_cloud_stdin.contains(r#""type":"cloud.publish_battery""#));
+    assert!(captured_ui.contains(r#""cloud""#));
+    assert!(captured_ui.contains(r#""state":"running""#));
+}
+
 fn temp_dir(test_name: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -415,6 +463,70 @@ Set-Content -LiteralPath '{}' -Value $lines
         ),
     );
     let command_path = dir.join("network-worker.cmd");
+    write(
+        &command_path,
+        &format!(
+            "@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File \"{}\" %*\r\n",
+            script_path.to_string_lossy()
+        ),
+    );
+    command_path
+}
+
+fn write_cloud_worker_script(dir: &Path, args_path: &Path, stdin_path: &Path) -> PathBuf {
+    let ready = r#"{"schema_version":1,"kind":"event","type":"cloud.ready","payload":{"capabilities":["mqtt","telemetry"]}}"#;
+    let snapshot = r#"{"schema_version":1,"kind":"event","type":"cloud.snapshot","payload":{"device_id":"device-123","provisioning_state":"provisioned","cloud_state":"ready","mqtt_connected":true,"mqtt_broker_host":"mqtt.example.test","mqtt_broker_port":1883,"mqtt_transport":"tcp","config_source":"none","config_version":0,"backend_reachable":null,"last_successful_sync":null,"last_error_summary":"","unapplied_keys":[],"last_command_type":"","updated_at_ms":1}}"#;
+
+    if !cfg!(windows) {
+        let script_path = dir.join("cloud-worker.sh");
+        write(
+            &script_path,
+            &format!(
+                r#"#!/bin/sh
+printf '%s\n' "$@" > {}
+printf '%s\n' '{}'
+printf '%s\n' '{}'
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> {}
+  case "$line" in
+    *'"type":"worker.stop"'*) break ;;
+  esac
+done
+"#,
+                shell_single_quote(args_path),
+                ready,
+                snapshot,
+                shell_single_quote(stdin_path)
+            ),
+        );
+        make_executable(&script_path);
+        return script_path;
+    }
+
+    let script_path = dir.join("cloud-worker.ps1");
+    write(
+        &script_path,
+        &format!(
+            r#"
+Set-Content -LiteralPath '{}' -Value ($args -join "`n")
+Write-Output '{}'
+Write-Output '{}'
+$lines = @()
+while (($line = [Console]::In.ReadLine()) -ne $null) {{
+  $lines += $line
+  if ($line -match '"type":"worker.stop"') {{
+    break
+  }}
+}}
+Set-Content -LiteralPath '{}' -Value $lines
+"#,
+            args_path.to_string_lossy().replace('\'', "''"),
+            ready.replace('\'', "''"),
+            snapshot.replace('\'', "''"),
+            stdin_path.to_string_lossy().replace('\'', "''")
+        ),
+    );
+    let command_path = dir.join("cloud-worker.cmd");
     write(
         &command_path,
         &format!(

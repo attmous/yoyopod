@@ -13,6 +13,7 @@ SLOT_VOICE_WORKER_ARTIFACT = Path("workers") / "voice" / "go" / "build" / "yoyop
 APP_NATIVE_RUNTIME_ARTIFACTS: tuple[Path, ...] = (
     Path("yoyopod") / "ui" / "lvgl_binding" / "native" / "build" / "libyoyopod_lvgl_shim.so",
     Path("yoyopod") / "ui" / "lvgl_binding" / "native" / "build" / "lvgl" / "lib" / "liblvgl.so.9",
+    Path("yoyopod_rs") / "cloud-host" / "build" / "yoyopod-cloud-host",
     Path("yoyopod_rs") / "media-host" / "build" / "yoyopod-media-host",
     Path("yoyopod_rs") / "voip-host" / "build" / "yoyopod-voip-host",
     Path("yoyopod_rs") / "network-host" / "build" / "yoyopod-network-host",

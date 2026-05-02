@@ -8,8 +8,9 @@ use crate::protocol::WorkerEnvelope;
 use crate::state::{RuntimeState, WorkerDomain, WorkerState};
 use crate::worker::{WorkerProtocolError, WorkerSupervisor};
 
-const WORKER_DOMAINS: [WorkerDomain; 6] = [
+const WORKER_DOMAINS: [WorkerDomain; 7] = [
     WorkerDomain::Ui,
+    WorkerDomain::Cloud,
     WorkerDomain::Media,
     WorkerDomain::Voip,
     WorkerDomain::Network,
@@ -92,6 +93,19 @@ impl RuntimeLoop {
         match command {
             RuntimeCommand::WorkerCommand { domain, envelope } => {
                 let _ = io.send_worker_envelope(domain, envelope);
+            }
+            RuntimeCommand::WorkerCommandWithAck {
+                domain,
+                envelope,
+                success_ack,
+                failure_ack,
+            } => {
+                let ack = if io.send_worker_envelope(domain, envelope) {
+                    success_ack
+                } else {
+                    failure_ack
+                };
+                let _ = io.send_worker_envelope(WorkerDomain::Cloud, ack);
             }
             RuntimeCommand::Shutdown => {
                 self.shutdown_requested = true;
