@@ -23,6 +23,7 @@ app = build_remote_app("validate_app", "Validate commit + health on the Pi.")
 
 _RUST_UI_HOST_WORKER = "yoyopod_rs/ui-host/build/yoyopod-ui-host"
 _RUST_UI_POC_WORKER = _RUST_UI_HOST_WORKER
+_RUST_CLOUD_HOST_WORKER = "yoyopod_rs/cloud-host/build/yoyopod-cloud-host"
 _RUST_MEDIA_HOST_WORKER = "yoyopod_rs/media-host/build/yoyopod-media-host"
 _RUST_VOIP_HOST_WORKER = "yoyopod_rs/voip-host/build/yoyopod-voip-host"
 
@@ -148,6 +149,14 @@ def _build_validate(
         steps.append(f"git reset --hard {origin_br}")
     steps.append("git clean -fd")
     media_worker = shell_quote(_RUST_MEDIA_HOST_WORKER)
+    cloud_worker = shell_quote(_RUST_CLOUD_HOST_WORKER)
+    cloud_message = shell_quote(
+        "Missing executable CI-built Rust cloud binary at "
+        f"{_RUST_CLOUD_HOST_WORKER}. Download and extract the GitHub Actions "
+        "artifact yoyopod-rust-device-arm64-<sha> "
+        "for this exact commit before Pi validation; do not build Rust binaries on the Pi."
+    )
+    steps.append(f"test -x {cloud_worker} || (echo {cloud_message} >&2 && exit 1)")
     media_message = shell_quote(
         "Missing executable CI-built Rust media binary at "
         f"{_RUST_MEDIA_HOST_WORKER}. Download and extract the GitHub Actions "

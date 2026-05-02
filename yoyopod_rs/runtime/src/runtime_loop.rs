@@ -8,8 +8,9 @@ use crate::protocol::WorkerEnvelope;
 use crate::state::{RuntimeState, WorkerDomain, WorkerState};
 use crate::worker::{WorkerProtocolError, WorkerSupervisor};
 
-const WORKER_DOMAINS: [WorkerDomain; 6] = [
+const WORKER_DOMAINS: [WorkerDomain; 7] = [
     WorkerDomain::Ui,
+    WorkerDomain::Cloud,
     WorkerDomain::Media,
     WorkerDomain::Voip,
     WorkerDomain::Network,

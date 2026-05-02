@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "cloud-host",
     "media-host",
     "ui-host",
     "voip-host",

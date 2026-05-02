@@ -10,6 +10,8 @@ pub enum RuntimeEvent {
     WorkerReady {
         domain: WorkerDomain,
     },
+    CloudSnapshot(Value),
+    CloudCommand(Value),
     MediaSnapshot(Value),
     VoipSnapshot(Value),
     NetworkSnapshot(Value),
@@ -49,6 +51,8 @@ impl RuntimeEvent {
             Self::WorkerReady { domain } => {
                 state.mark_worker(*domain, WorkerState::Running, "ready");
             }
+            Self::CloudSnapshot(snapshot) => state.apply_cloud_snapshot(snapshot),
+            Self::CloudCommand(_) => {}
             Self::MediaSnapshot(snapshot) => state.apply_media_snapshot(snapshot),
             Self::VoipSnapshot(snapshot) => state.apply_voip_snapshot(snapshot),
             Self::NetworkSnapshot(snapshot) => state.apply_network_snapshot(snapshot),
@@ -108,11 +112,13 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
             payload,
         } => commands_for_ui_intent(state, domain, action, payload),
         RuntimeEvent::UiInput(payload) => commands_for_ui_input(state, payload),
+        RuntimeEvent::CloudCommand(command) => commands_for_cloud_command(command),
+        RuntimeEvent::MediaSnapshot(snapshot) => commands_for_media_snapshot(snapshot),
         RuntimeEvent::VoipSnapshot(snapshot) => commands_for_voip_snapshot(state, snapshot),
+        RuntimeEvent::NetworkSnapshot(snapshot) => commands_for_network_snapshot(snapshot),
         RuntimeEvent::Shutdown => vec![RuntimeCommand::Shutdown],
         RuntimeEvent::WorkerReady { .. }
-        | RuntimeEvent::MediaSnapshot(_)
-        | RuntimeEvent::NetworkSnapshot(_)
+        | RuntimeEvent::CloudSnapshot(_)
         | RuntimeEvent::UiScreenChanged { .. }
         | RuntimeEvent::WorkerError { .. }
         | RuntimeEvent::WorkerExited { .. }
@@ -134,6 +140,7 @@ fn runtime_event_from_message(
 
     match domain {
         WorkerDomain::Ui => ui_event_from_message(message_type, payload),
+        WorkerDomain::Cloud => cloud_event_from_message(message_type, payload),
         WorkerDomain::Media => media_event_from_message(message_type, payload),
         WorkerDomain::Voip => voip_event_from_message(message_type, payload),
         WorkerDomain::Network => network_event_from_message(message_type, payload),
@@ -151,6 +158,25 @@ fn runtime_event_from_message(
             "voice.ready",
             "voice.error",
         ),
+    }
+}
+
+fn cloud_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent {
+    match message_type {
+        "cloud.ready" => RuntimeEvent::WorkerReady {
+            domain: WorkerDomain::Cloud,
+        },
+        "cloud.snapshot" | "cloud.health" => RuntimeEvent::CloudSnapshot(payload),
+        "cloud.command" => payload
+            .get("command")
+            .cloned()
+            .map(RuntimeEvent::CloudCommand)
+            .unwrap_or(RuntimeEvent::Ignored),
+        "cloud.error" => RuntimeEvent::WorkerError {
+            domain: WorkerDomain::Cloud,
+            message: worker_error_message(message_type, &payload),
+        },
+        _ => RuntimeEvent::Ignored,
     }
 }
 
@@ -496,9 +522,111 @@ fn commands_for_ui_input(state: &RuntimeState, payload: &Value) -> Vec<RuntimeCo
     Vec::new()
 }
 
+fn commands_for_cloud_command(command: &Value) -> Vec<RuntimeCommand> {
+    let command_type = string_field(command, "command")
+        .or_else(|| string_field(command, "type"))
+        .unwrap_or_default();
+    let command_id =
+        string_field(command, "commandId").or_else(|| string_field(command, "command_id"));
+
+    match normalized(&command_type).as_str() {
+        "pause" => remote_media_control("media.pause", command_id, "pause"),
+        "resume" => remote_media_control("media.resume", command_id, "resume"),
+        "stop" => remote_media_control("media.stop_playback", command_id, "stop"),
+        "fetch_config" => Vec::new(),
+        "play_track" | "store_media" => command_id
+            .map(|command_id| {
+                vec![worker_command(
+                    WorkerDomain::Cloud,
+                    "cloud.ack",
+                    json!({
+                        "command_id": command_id,
+                        "ok": false,
+                        "reason": "unsupported_command",
+                        "payload": {
+                            "command": command_type.clone(),
+                            "rust_runtime": true
+                        }
+                    }),
+                )]
+            })
+            .unwrap_or_default(),
+        _ if !command_type.trim().is_empty() => command_id
+            .map(|command_id| {
+                vec![worker_command(
+                    WorkerDomain::Cloud,
+                    "cloud.ack",
+                    json!({
+                        "command_id": command_id,
+                        "ok": false,
+                        "reason": "unsupported_command",
+                        "payload": {"command": command_type.clone()}
+                    }),
+                )]
+            })
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+fn remote_media_control(
+    media_message_type: &str,
+    command_id: Option<String>,
+    command_type: &str,
+) -> Vec<RuntimeCommand> {
+    let mut commands = vec![worker_command(
+        WorkerDomain::Media,
+        media_message_type,
+        empty_payload(),
+    )];
+    if let Some(command_id) = command_id {
+        commands.push(worker_command(
+            WorkerDomain::Cloud,
+            "cloud.ack",
+            json!({
+                "command_id": command_id,
+                "ok": true,
+                "payload": {"command": command_type}
+            }),
+        ));
+    }
+    commands
+}
+
+fn commands_for_media_snapshot(snapshot: &Value) -> Vec<RuntimeCommand> {
+    let playback_state =
+        string_field(snapshot, "playback_state").unwrap_or_else(|| "stopped".to_string());
+    let mut attrs = json!({
+        "playback_state": playback_state.clone(),
+    });
+    if let Some(track) = snapshot.get("current_track") {
+        attrs["track"] = track.clone();
+    }
+    vec![cloud_telemetry_command(
+        "music.state",
+        json!({
+            "entity": "music.state",
+            "value": playback_state,
+            "attrs": attrs,
+            "ts": current_epoch_seconds(),
+        }),
+    )]
+}
+
 fn commands_for_voip_snapshot(state: &RuntimeState, snapshot: &Value) -> Vec<RuntimeCommand> {
+    let mut commands = Vec::new();
+    let call_state = string_field(snapshot, "call_state").unwrap_or_else(|| "idle".to_string());
+    commands.push(cloud_telemetry_command(
+        "call.state",
+        json!({
+            "entity": "call.state",
+            "value": call_state,
+            "attrs": snapshot,
+            "ts": current_epoch_seconds(),
+        }),
+    ));
     if !is_music_playing(state) {
-        return Vec::new();
+        return commands;
     }
 
     let mut snapshot_state = RuntimeState::default();
@@ -507,14 +635,88 @@ fn commands_for_voip_snapshot(state: &RuntimeState, snapshot: &Value) -> Vec<Run
         snapshot_state.call.state,
         CallState::Incoming | CallState::Outgoing | CallState::Active
     ) {
-        return vec![worker_command(
+        commands.push(worker_command(
             WorkerDomain::Media,
             "media.pause",
             empty_payload(),
-        )];
+        ));
     }
 
-    Vec::new()
+    commands
+}
+
+fn commands_for_network_snapshot(snapshot: &Value) -> Vec<RuntimeCommand> {
+    let snapshot = snapshot.get("snapshot").unwrap_or(snapshot);
+    let app_state = snapshot.get("app_state").unwrap_or(snapshot);
+    let connected = app_state
+        .get("connected")
+        .or_else(|| snapshot.get("connected"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let connection_type = string_field(app_state, "connection_type")
+        .or_else(|| string_field(snapshot, "connection_type"))
+        .unwrap_or_else(|| "none".to_string());
+    let signal_bars = app_state
+        .get("signal_bars")
+        .or_else(|| app_state.get("signal_strength"))
+        .and_then(Value::as_i64)
+        .or_else(|| {
+            snapshot
+                .get("signal")
+                .and_then(|signal| signal.get("bars"))
+                .and_then(Value::as_i64)
+        })
+        .unwrap_or(0)
+        .clamp(0, 4);
+    let gps_has_fix = app_state
+        .get("gps_has_fix")
+        .or_else(|| snapshot.get("gps_has_fix"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let mut commands = vec![
+        cloud_telemetry_command(
+            "network.ppp_up",
+            json!({
+                "entity": "network.ppp_up",
+                "value": connected,
+                "attrs": {
+                    "connection_type": connection_type.clone(),
+                },
+                "ts": current_epoch_seconds(),
+            }),
+        ),
+        cloud_telemetry_command(
+            "network.signal_bars",
+            json!({
+                "entity": "network.signal_bars",
+                "value": signal_bars,
+                "attrs": {
+                    "connection_type": connection_type.clone(),
+                },
+                "ts": current_epoch_seconds(),
+            }),
+        ),
+        cloud_telemetry_command(
+            "location.fix",
+            json!({
+                "entity": "location.fix",
+                "value": gps_has_fix,
+                "attrs": snapshot.get("gps").cloned().unwrap_or_else(empty_payload),
+                "ts": current_epoch_seconds(),
+            }),
+        ),
+    ];
+    if connected && connection_type != "none" {
+        commands.push(worker_command(
+            WorkerDomain::Cloud,
+            "cloud.publish_connectivity",
+            json!({
+                "connection_type": connection_type,
+            }),
+        ));
+    }
+    commands
 }
 
 fn worker_command(
@@ -526,6 +728,18 @@ fn worker_command(
         domain,
         envelope: WorkerEnvelope::command(message_type, None, payload),
     }
+}
+
+fn cloud_telemetry_command(topic_suffix: &str, payload: Value) -> RuntimeCommand {
+    worker_command(
+        WorkerDomain::Cloud,
+        "cloud.publish_telemetry",
+        json!({
+            "topic_suffix": topic_suffix,
+            "payload": payload,
+            "qos": 0,
+        }),
+    )
 }
 
 fn is_music_playing(state: &RuntimeState) -> bool {
@@ -569,6 +783,13 @@ fn new_voice_note_client_id() -> String {
         .map(|duration| duration.as_millis())
         .unwrap_or_default();
     format!("runtime-vn-{}-{millis}", std::process::id())
+}
+
+fn current_epoch_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
 }
 
 fn normalized(value: &str) -> String {

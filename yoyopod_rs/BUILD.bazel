@@ -6,6 +6,11 @@ alias(
 )
 
 alias(
+    name = "cloud-host",
+    actual = "//yoyopod_rs/cloud-host:yoyopod-cloud-host",
+)
+
+alias(
     name = "ui-host",
     actual = "//yoyopod_rs/ui-host:yoyopod-ui-host",
 )

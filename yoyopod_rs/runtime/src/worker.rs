@@ -368,9 +368,10 @@ fn preserve_ready_backlog(backlog: &mut VecDeque<WorkerEnvelope>, message: Worke
     backlog.push_back(message);
 }
 
-fn all_worker_domains() -> [WorkerDomain; 6] {
+fn all_worker_domains() -> [WorkerDomain; 7] {
     [
         WorkerDomain::Ui,
+        WorkerDomain::Cloud,
         WorkerDomain::Media,
         WorkerDomain::Voip,
         WorkerDomain::Network,

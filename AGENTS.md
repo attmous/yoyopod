@@ -47,6 +47,7 @@ Current Runtime Status
   - `yoyopod_rs/media-host/` for local music/mpv ownership
   - `yoyopod_rs/voip-host/` for Liblinphone/SIP ownership
   - `yoyopod_rs/network-host/` for SIM7600/PPP/GPS ownership
+  - `yoyopod_rs/cloud-host/` for cloud MQTT telemetry/command transport
 - The Rust UI host now contains native Rust LVGL scene controllers for the main
   screen set. The C LVGL shim and LVGL native library still exist as display
   infrastructure during the transition.
@@ -76,6 +77,7 @@ Pi Lanes And Bootstrap
 
 Source Of Truth
 - `yoyopod_rs/runtime/`
+- `yoyopod_rs/cloud-host/`
 - `yoyopod_rs/ui-host/`
 - `yoyopod_rs/media-host/`
 - `yoyopod_rs/voip-host/`

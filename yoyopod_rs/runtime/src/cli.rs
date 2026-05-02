@@ -110,6 +110,32 @@ fn start_workers(
     }
     state.mark_worker(WorkerDomain::Ui, WorkerState::Running, "ready");
 
+    state.mark_worker(WorkerDomain::Cloud, WorkerState::Starting, "starting");
+    if workers.start(WorkerSpec::new(
+        WorkerDomain::Cloud,
+        config.worker_paths.cloud.clone(),
+        [
+            "--config-dir".to_string(),
+            config_dir.to_string_lossy().to_string(),
+        ],
+    )) {
+        if workers.wait_for_ready(WorkerDomain::Cloud, "cloud.ready", Duration::from_secs(3)) {
+            state.mark_worker(WorkerDomain::Cloud, WorkerState::Running, "ready");
+        } else {
+            state.mark_worker(
+                WorkerDomain::Cloud,
+                WorkerState::Degraded,
+                "timed out waiting for cloud.ready",
+            );
+        }
+    } else {
+        state.mark_worker(
+            WorkerDomain::Cloud,
+            WorkerState::Degraded,
+            "failed to start",
+        );
+    }
+
     if workers.start(WorkerSpec::new(
         WorkerDomain::Media,
         config.worker_paths.media.clone(),
@@ -208,6 +234,17 @@ fn send_startup_commands(workers: &mut WorkerSupervisor, config: &RuntimeConfig)
         WorkerDomain::Ui,
         "ui.set_backlight",
         json!({"brightness": config.ui.brightness}),
+    );
+    workers.send_command(WorkerDomain::Cloud, "cloud.health", json!({}));
+    workers.send_command(
+        WorkerDomain::Cloud,
+        "cloud.publish_heartbeat",
+        json!({"firmware_version": env!("CARGO_PKG_VERSION")}),
+    );
+    workers.send_command(
+        WorkerDomain::Cloud,
+        "cloud.publish_battery",
+        json!({"level": 100, "charging": false}),
     );
     workers.send_command(WorkerDomain::Network, "network.health", json!({}));
     workers.send_command(WorkerDomain::Network, "network.query_gps", json!({}));

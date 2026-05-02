@@ -44,6 +44,7 @@ HOST_REMOTE_TOOLS: tuple[str, ...] = ("ssh", "rsync")
 HOST_DEV_MODULES: tuple[str, ...] = ("pytest", "black", "ruff", "mypy", "typer")
 NATIVE_ARTIFACTS: tuple[Path, ...] = (
     REPO_ROOT / "yoyopod" / "ui" / "lvgl_binding" / "native" / "build" / "libyoyopod_lvgl_shim.so",
+    REPO_ROOT / "yoyopod_rs" / "cloud-host" / "build" / "yoyopod-cloud-host",
     REPO_ROOT / "yoyopod_rs" / "media-host" / "build" / "yoyopod-media-host",
     REPO_ROOT / "yoyopod_rs" / "voip-host" / "build" / "yoyopod-voip-host",
 )
