@@ -14,6 +14,7 @@ use crate::protocol::{
     control_result, ready_event, snapshot_event, snapshot_result, stopped_event, stopped_result,
     EnvelopeKind, WorkerEnvelope,
 };
+use yoyopod_worker::{emit, standard_error};
 
 pub fn run(config_dir: &str) -> Result<()> {
     let stdin = io::stdin();
@@ -122,11 +123,12 @@ where
                     Err(error) => {
                         emit(
                             output,
-                            &WorkerEnvelope::error(
-                                "power.error",
+                            &standard_error(
+                                "power",
                                 None,
                                 "protocol_error",
                                 error.to_string(),
+                                false,
                             ),
                         )?;
                         continue;
@@ -135,11 +137,12 @@ where
                 if envelope.kind != EnvelopeKind::Command {
                     emit(
                         output,
-                        &WorkerEnvelope::error(
-                            "power.error",
+                        &standard_error(
+                            "power",
                             envelope.request_id,
                             "invalid_kind",
                             "power worker accepts commands only",
+                            false,
                         ),
                     )?;
                     continue;
@@ -232,7 +235,7 @@ impl WatchdogRuntime {
             }
             Err(message) => emit(
                 output,
-                &WorkerEnvelope::error("power.error", request_id, "watchdog_failed", message),
+                &standard_error("power", request_id, "watchdog_failed", message, false),
             )?,
         }
         Ok(())
@@ -255,7 +258,7 @@ impl WatchdogRuntime {
                 self.next_feed_at = Some(now + self.feed_interval().min(Duration::from_secs(5)));
                 emit(
                     output,
-                    &WorkerEnvelope::error("power.error", None, "watchdog_failed", message),
+                    &standard_error("power", None, "watchdog_failed", message, false),
                 )?;
             }
         }
@@ -286,7 +289,7 @@ impl WatchdogRuntime {
             }
             Err(message) => emit(
                 output,
-                &WorkerEnvelope::error("power.error", request_id, "watchdog_failed", message),
+                &standard_error("power", request_id, "watchdog_failed", message, false),
             )?,
         }
         Ok(())
@@ -365,11 +368,12 @@ fn handle_command<B: PowerBackend>(
         ),
         "power.set_rtc_alarm" => match set_alarm_command(&envelope.payload) {
             Ok(command) => control_command(host, envelope.message_type, request_id, command),
-            Err(message) => LoopControl::Continue(vec![WorkerEnvelope::error(
-                "power.error",
+            Err(message) => LoopControl::Continue(vec![standard_error(
+                "power",
                 request_id,
                 "invalid_payload",
                 message,
+                false,
             )]),
         },
         "power.disable_rtc_alarm" => control_command(
@@ -417,11 +421,12 @@ fn handle_command<B: PowerBackend>(
         "power.shutdown" | "worker.stop" => {
             LoopControl::Shutdown(vec![stopped_result(request_id, "shutdown")])
         }
-        _ => LoopControl::Continue(vec![WorkerEnvelope::error(
-            "power.error",
+        _ => LoopControl::Continue(vec![standard_error(
+            "power",
             request_id,
             "unsupported_command",
             format!("unsupported command {}", envelope.message_type),
+            false,
         )]),
     }
 }
@@ -433,11 +438,12 @@ fn watchdog_command_result(result: Result<()>, output: Vec<u8>) -> LoopControl {
         .collect::<Vec<_>>();
     match result {
         Ok(()) => LoopControl::Continue(envelopes),
-        Err(error) => LoopControl::Continue(vec![WorkerEnvelope::error(
-            "power.error",
+        Err(error) => LoopControl::Continue(vec![standard_error(
+            "power",
             None,
             "watchdog_failed",
             error.to_string(),
+            false,
         )]),
     }
 }
@@ -469,11 +475,12 @@ fn control_command<B: PowerBackend>(
             control_result(message_type, request_id, &snapshot),
             snapshot_event(&snapshot),
         ]),
-        Err(message) => LoopControl::Continue(vec![WorkerEnvelope::error(
-            "power.error",
+        Err(message) => LoopControl::Continue(vec![standard_error(
+            "power",
             request_id,
             "control_failed",
             message,
+            false,
         )]),
     }
 }
@@ -495,10 +502,4 @@ fn set_alarm_command(payload: &Value) -> Result<PowerControlCommand, String> {
         .map_err(|_| "power.set_rtc_alarm repeat_mask must fit in i32".to_string())?;
 
     Ok(PowerControlCommand::SetRtcAlarm { when, repeat_mask })
-}
-
-fn emit(output: &mut dyn Write, envelope: &WorkerEnvelope) -> Result<()> {
-    output.write_all(&envelope.encode()?)?;
-    output.flush()?;
-    Ok(())
 }

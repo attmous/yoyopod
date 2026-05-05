@@ -10,4 +10,5 @@ members = [
     "voip-host",
     "network-host",
     "runtime",
+    "worker",
 ]

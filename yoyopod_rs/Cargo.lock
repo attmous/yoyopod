@@ -2153,6 +2153,7 @@ dependencies = [
  "serde_yaml",
  "thiserror",
  "yoyopod-protocol",
+ "yoyopod-worker",
 ]
 
 [[package]]
@@ -2220,6 +2221,15 @@ dependencies = [
  "serde_json",
  "thiserror",
  "time",
+ "yoyopod-protocol",
+]
+
+[[package]]
+name = "yoyopod-worker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
  "yoyopod-protocol",
 ]
 

@@ -3,10 +3,11 @@ use serde_json::json;
 use crate::snapshot::PowerStatusSnapshot;
 
 pub use yoyopod_protocol::{EnvelopeKind, ProtocolError, WorkerEnvelope, SUPPORTED_SCHEMA_VERSION};
+use yoyopod_worker::{ready_event as worker_ready_event, stopped_event as worker_stopped_event};
 
 pub fn ready_event() -> WorkerEnvelope {
-    WorkerEnvelope::event(
-        "power.ready",
+    worker_ready_event(
+        "power",
         json!({
             "capabilities": [
                 "telemetry",
@@ -54,7 +55,7 @@ pub fn control_result(
 }
 
 pub fn stopped_event(reason: &str) -> WorkerEnvelope {
-    WorkerEnvelope::event("power.stopped", json!({ "reason": reason }))
+    worker_stopped_event("power", json!({ "reason": reason }))
 }
 
 pub fn stopped_result(request_id: Option<String>, reason: &str) -> WorkerEnvelope {
