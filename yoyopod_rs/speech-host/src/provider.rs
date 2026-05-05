@@ -36,9 +36,9 @@ pub struct SpeechRequestContext {
 }
 
 impl SpeechRequestContext {
-    pub fn new(deadline_ms: i64) -> Self {
+    pub fn new(deadline_ms: u64) -> Self {
         let deadline = if deadline_ms > 0 {
-            Some(Instant::now() + std::time::Duration::from_millis(deadline_ms as u64))
+            Some(Instant::now() + std::time::Duration::from_millis(deadline_ms))
         } else {
             None
         };

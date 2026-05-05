@@ -16,6 +16,7 @@ pub enum EnvelopeKind {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorkerEnvelope {
+    #[serde(default = "default_schema_version")]
     pub schema_version: u16,
     pub kind: EnvelopeKind,
     #[serde(rename = "type")]
@@ -42,7 +43,10 @@ pub enum ProtocolError {
 
 impl WorkerEnvelope {
     pub fn decode(line: &[u8]) -> Result<Self, ProtocolError> {
-        let envelope: WorkerEnvelope = serde_json::from_slice(line)?;
+        let mut envelope: WorkerEnvelope = serde_json::from_slice(line)?;
+        if envelope.payload.is_null() {
+            envelope.payload = empty_payload();
+        }
         envelope.validate()?;
         Ok(envelope)
     }
@@ -149,6 +153,10 @@ impl WorkerEnvelope {
         }
         Ok(())
     }
+}
+
+fn default_schema_version() -> u16 {
+    SUPPORTED_SCHEMA_VERSION
 }
 
 fn empty_payload() -> Value {

@@ -94,16 +94,25 @@ fn rejects_unsupported_schema_version() {
 }
 
 #[test]
-fn rejects_missing_schema_version() {
-    let err = WorkerEnvelope::decode(br#"{"kind":"command","type":"power.health","payload":{}}"#)
-        .expect_err("missing schema_version must fail");
-    let message = err.to_string();
+fn accepts_missing_schema_version_as_current_version() {
+    let envelope =
+        WorkerEnvelope::decode(br#"{"kind":"command","type":"power.health","payload":{}}"#)
+            .expect("decode with default schema version");
 
-    assert!(matches!(err, ProtocolError::InvalidJson(_)));
-    assert!(
-        message.contains("schema_version") || message.contains("missing field"),
-        "unexpected error message: {message}"
-    );
+    assert_eq!(envelope.schema_version, SUPPORTED_SCHEMA_VERSION);
+    assert_eq!(envelope.kind, EnvelopeKind::Command);
+    assert_eq!(envelope.message_type, "power.health");
+    assert_eq!(envelope.payload, json!({}));
+}
+
+#[test]
+fn normalizes_null_payload_to_empty_object() {
+    let envelope = WorkerEnvelope::decode(
+        br#"{"schema_version":1,"kind":"command","type":"voice.health","payload":null}"#,
+    )
+    .expect("decode null payload");
+
+    assert_eq!(envelope.payload, json!({}));
 }
 
 #[test]

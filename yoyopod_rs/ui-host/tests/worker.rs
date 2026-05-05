@@ -14,9 +14,9 @@ fn native_lvgl_test_guard() -> MutexGuard<'static, ()> {
 
 #[test]
 fn worker_emits_ready_and_health_for_mock_hardware() {
-    let input = br#"{"kind":"command","type":"ui.show_test_scene","payload":{"counter":3}}
-{"kind":"command","type":"ui.health","payload":{}}
-{"kind":"command","type":"ui.shutdown","payload":{}}
+    let input = br#"{"schema_version":1,"kind":"command","type":"ui.show_test_scene","payload":{"counter":3}}
+{"schema_version":1,"kind":"command","type":"ui.health","payload":{}}
+{"schema_version":1,"kind":"command","type":"ui.shutdown","payload":{}}
 "#;
     let mut output = Vec::new();
     let mut errors = Vec::new();
@@ -34,9 +34,9 @@ fn worker_emits_ready_and_health_for_mock_hardware() {
 
 #[test]
 fn worker_renders_runtime_snapshot_and_reports_active_screen_from_screen_model() {
-    let input = br#"{"kind":"command","type":"ui.runtime_snapshot","payload":{"renderer":"framebuffer","call":{"state":"incoming","peer_name":"Mama","peer_address":"+1 555-0100"}}}
-{"kind":"command","type":"ui.health","payload":{}}
-{"kind":"command","type":"ui.shutdown","payload":{}}
+    let input = br#"{"schema_version":1,"kind":"command","type":"ui.runtime_snapshot","payload":{"renderer":"framebuffer","call":{"state":"incoming","peer_name":"Mama","peer_address":"+1 555-0100"}}}
+{"schema_version":1,"kind":"command","type":"ui.health","payload":{}}
+{"schema_version":1,"kind":"command","type":"ui.shutdown","payload":{}}
 "#;
     let mut output = Vec::new();
     let mut errors = Vec::new();
@@ -58,10 +58,10 @@ fn worker_renders_runtime_snapshot_and_reports_active_screen_from_screen_model()
 #[test]
 fn worker_applies_semantic_input_inside_rust_state_machine() {
     let input =
-        br#"{"kind":"command","type":"ui.runtime_snapshot","payload":{"renderer":"framebuffer"}}
-{"kind":"command","type":"ui.input_action","payload":{"renderer":"framebuffer","action":"select"}}
-{"kind":"command","type":"ui.health","payload":{}}
-{"kind":"command","type":"ui.shutdown","payload":{}}
+        br#"{"schema_version":1,"kind":"command","type":"ui.runtime_snapshot","payload":{"renderer":"framebuffer"}}
+{"schema_version":1,"kind":"command","type":"ui.input_action","payload":{"renderer":"framebuffer","action":"select"}}
+{"schema_version":1,"kind":"command","type":"ui.health","payload":{}}
+{"schema_version":1,"kind":"command","type":"ui.shutdown","payload":{}}
 "#;
     let mut output = Vec::new();
     let mut errors = Vec::new();
@@ -78,9 +78,9 @@ fn worker_applies_semantic_input_inside_rust_state_machine() {
 
 #[test]
 fn worker_emits_runtime_intent_for_call_action() {
-    let input = br#"{"kind":"command","type":"ui.runtime_snapshot","payload":{"renderer":"framebuffer","call":{"state":"incoming","peer_name":"Mama"}}}
-{"kind":"command","type":"ui.input_action","payload":{"renderer":"framebuffer","action":"select"}}
-{"kind":"command","type":"ui.shutdown","payload":{}}
+    let input = br#"{"schema_version":1,"kind":"command","type":"ui.runtime_snapshot","payload":{"renderer":"framebuffer","call":{"state":"incoming","peer_name":"Mama"}}}
+{"schema_version":1,"kind":"command","type":"ui.input_action","payload":{"renderer":"framebuffer","action":"select"}}
+{"schema_version":1,"kind":"command","type":"ui.shutdown","payload":{}}
 "#;
     let mut output = Vec::new();
     let mut errors = Vec::new();
@@ -99,9 +99,9 @@ fn worker_emits_runtime_intent_for_call_action() {
 #[cfg(not(feature = "native-lvgl"))]
 #[test]
 fn worker_explicit_lvgl_mode_emits_error_and_falls_back_without_exiting() {
-    let input = br#"{"kind":"command","type":"ui.runtime_snapshot","payload":{"renderer":"lvgl","music":{"title":"Little Song","artist":"YoYo"}}}
-{"kind":"command","type":"ui.health","payload":{}}
-{"kind":"command","type":"ui.shutdown","payload":{}}
+    let input = br#"{"schema_version":1,"kind":"command","type":"ui.runtime_snapshot","payload":{"renderer":"lvgl","music":{"title":"Little Song","artist":"YoYo"}}}
+{"schema_version":1,"kind":"command","type":"ui.health","payload":{}}
+{"schema_version":1,"kind":"command","type":"ui.shutdown","payload":{}}
 "#;
     let mut output = Vec::new();
     let mut errors = Vec::new();
@@ -121,9 +121,9 @@ fn worker_explicit_lvgl_mode_emits_error_and_falls_back_without_exiting() {
 #[cfg(not(feature = "native-lvgl"))]
 #[test]
 fn worker_auto_mode_silently_falls_back_to_framebuffer() {
-    let input = br#"{"kind":"command","type":"ui.runtime_snapshot","payload":{"music":{"title":"Little Song","artist":"YoYo"}}}
-{"kind":"command","type":"ui.health","payload":{}}
-{"kind":"command","type":"ui.shutdown","payload":{}}
+    let input = br#"{"schema_version":1,"kind":"command","type":"ui.runtime_snapshot","payload":{"music":{"title":"Little Song","artist":"YoYo"}}}
+{"schema_version":1,"kind":"command","type":"ui.health","payload":{}}
+{"schema_version":1,"kind":"command","type":"ui.shutdown","payload":{}}
 "#;
     let mut output = Vec::new();
     let mut errors = Vec::new();
@@ -143,9 +143,9 @@ fn worker_auto_mode_silently_falls_back_to_framebuffer() {
 #[test]
 fn worker_explicit_lvgl_mode_uses_native_renderer_when_available() {
     let _guard = native_lvgl_test_guard();
-    let input = br#"{"kind":"command","type":"ui.runtime_snapshot","payload":{"renderer":"lvgl","music":{"title":"Little Song","artist":"YoYo"}}}
-{"kind":"command","type":"ui.health","payload":{}}
-{"kind":"command","type":"ui.shutdown","payload":{}}
+    let input = br#"{"schema_version":1,"kind":"command","type":"ui.runtime_snapshot","payload":{"renderer":"lvgl","music":{"title":"Little Song","artist":"YoYo"}}}
+{"schema_version":1,"kind":"command","type":"ui.health","payload":{}}
+{"schema_version":1,"kind":"command","type":"ui.shutdown","payload":{}}
 "#;
     let mut output = Vec::new();
     let mut errors = Vec::new();
@@ -165,9 +165,9 @@ fn worker_explicit_lvgl_mode_uses_native_renderer_when_available() {
 #[test]
 fn worker_auto_mode_prefers_native_renderer_when_available() {
     let _guard = native_lvgl_test_guard();
-    let input = br#"{"kind":"command","type":"ui.runtime_snapshot","payload":{"music":{"title":"Little Song","artist":"YoYo"}}}
-{"kind":"command","type":"ui.health","payload":{}}
-{"kind":"command","type":"ui.shutdown","payload":{}}
+    let input = br#"{"schema_version":1,"kind":"command","type":"ui.runtime_snapshot","payload":{"music":{"title":"Little Song","artist":"YoYo"}}}
+{"schema_version":1,"kind":"command","type":"ui.health","payload":{}}
+{"schema_version":1,"kind":"command","type":"ui.shutdown","payload":{}}
 "#;
     let mut output = Vec::new();
     let mut errors = Vec::new();

@@ -1,5 +1,5 @@
 use serde_json::json;
-use yoyopod_ui_host::protocol::{Envelope, EnvelopeKind, SUPPORTED_SCHEMA_VERSION};
+use yoyopod_ui_host::protocol::{error_envelope, Envelope, EnvelopeKind, SUPPORTED_SCHEMA_VERSION};
 
 #[test]
 fn decode_accepts_spec_style_command_without_schema_version() {
@@ -15,9 +15,10 @@ fn decode_accepts_spec_style_command_without_schema_version() {
 
 #[test]
 fn encode_ready_event_terminates_with_newline() {
-    let encoded = Envelope::event("ui.ready", json!({"width": 240, "height": 280}))
-        .encode()
-        .expect("encode");
+    let encoded =
+        yoyopod_ui_host::protocol::event_envelope("ui.ready", json!({"width": 240, "height": 280}))
+            .encode()
+            .expect("encode");
 
     assert!(encoded.ends_with(b"\n"));
     assert!(std::str::from_utf8(&encoded)
@@ -26,9 +27,20 @@ fn encode_ready_event_terminates_with_newline() {
 }
 
 #[test]
-fn rejects_unknown_kind() {
-    let err = Envelope::decode(br#"{"kind":"bogus","type":"ui.ready","payload":{}}"#)
-        .expect_err("must reject invalid kind");
+fn ui_error_preserves_event_shape() {
+    let envelope = error_envelope("lvgl_unavailable", "LVGL renderer unavailable");
 
-    assert!(err.to_string().contains("invalid JSON UI envelope"));
+    assert_eq!(envelope.kind, EnvelopeKind::Event);
+    assert_eq!(envelope.message_type, "ui.error");
+    assert_eq!(envelope.payload["code"], "lvgl_unavailable");
+    assert_eq!(envelope.payload["message"], "LVGL renderer unavailable");
+}
+
+#[test]
+fn rejects_unknown_kind() {
+    let err =
+        Envelope::decode(br#"{"schema_version":1,"kind":"bogus","type":"ui.ready","payload":{}}"#)
+            .expect_err("must reject invalid kind");
+
+    assert!(err.to_string().contains("unknown variant"));
 }

@@ -7,7 +7,7 @@ use anyhow::{bail, Result};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
-use crate::protocol::{EnvelopeKind, WorkerEnvelope};
+use crate::protocol::{voice_error, EnvelopeKind, WorkerEnvelope};
 use crate::provider::{is_invalid_payload, new_openai_provider_from_env};
 use crate::provider::{
     AskRequest, MockProvider, SpeakRequest, SpeechProvider, SpeechRequestContext, TranscribeRequest,
@@ -82,7 +82,7 @@ where
             Err(error) => {
                 emit(
                     output,
-                    &WorkerEnvelope::error(None, "protocol_error", error.to_string(), false),
+                    &voice_error(None, "protocol_error", error.to_string(), false),
                 )?;
                 continue;
             }
@@ -90,7 +90,7 @@ where
         if envelope.kind != EnvelopeKind::Command {
             emit(
                 output,
-                &WorkerEnvelope::error(
+                &voice_error(
                     envelope.request_id,
                     "invalid_kind",
                     "speech worker accepts commands only",
@@ -157,7 +157,7 @@ struct WorkCompletion {
 
 struct WorkStart {
     request_id: Option<String>,
-    deadline_ms: i64,
+    deadline_ms: u64,
     result_type: &'static str,
 }
 
@@ -186,12 +186,7 @@ where
                 Err(error) => {
                     emit(
                         output,
-                        &WorkerEnvelope::error(
-                            request_id,
-                            "invalid_payload",
-                            error.to_string(),
-                            false,
-                        ),
+                        &voice_error(request_id, "invalid_payload", error.to_string(), false),
                     )?;
                     return Ok(false);
                 }
@@ -215,12 +210,7 @@ where
                 Err(error) => {
                     emit(
                         output,
-                        &WorkerEnvelope::error(
-                            request_id,
-                            "invalid_payload",
-                            error.to_string(),
-                            false,
-                        ),
+                        &voice_error(request_id, "invalid_payload", error.to_string(), false),
                     )?;
                     return Ok(false);
                 }
@@ -244,12 +234,7 @@ where
                 Err(error) => {
                     emit(
                         output,
-                        &WorkerEnvelope::error(
-                            request_id,
-                            "invalid_payload",
-                            error.to_string(),
-                            false,
-                        ),
+                        &voice_error(request_id, "invalid_payload", error.to_string(), false),
                     )?;
                     return Ok(false);
                 }
@@ -284,7 +269,7 @@ where
         }
         _ => emit(
             output,
-            &WorkerEnvelope::error(
+            &voice_error(
                 request_id,
                 "unknown_command",
                 "unknown speech worker command",
@@ -312,7 +297,7 @@ where
     if active.is_some() {
         emit(
             output,
-            &WorkerEnvelope::error(
+            &voice_error(
                 spec.request_id,
                 "busy",
                 "speech worker is already processing a request",
@@ -372,9 +357,9 @@ where
 
 fn provider_error_envelope(request_id: Option<String>, error: anyhow::Error) -> WorkerEnvelope {
     if is_invalid_payload(&error) {
-        return WorkerEnvelope::error(request_id, "invalid_payload", error.to_string(), false);
+        return voice_error(request_id, "invalid_payload", error.to_string(), false);
     }
-    WorkerEnvelope::error(request_id, "provider_error", error.to_string(), true)
+    voice_error(request_id, "provider_error", error.to_string(), true)
 }
 
 fn handle_cancel<W>(
@@ -394,7 +379,7 @@ where
     let Some(target_id) = target_id else {
         emit(
             output,
-            &WorkerEnvelope::error(
+            &voice_error(
                 request_id,
                 "invalid_payload",
                 "voice.cancel requires request_id",

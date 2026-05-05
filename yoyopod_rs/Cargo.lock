@@ -2106,6 +2106,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "thiserror",
+ "yoyopod-protocol",
 ]
 
 [[package]]
@@ -2122,6 +2123,7 @@ dependencies = [
  "thiserror",
  "time",
  "ureq",
+ "yoyopod-protocol",
 ]
 
 [[package]]
@@ -2137,6 +2139,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "time",
+ "yoyopod-protocol",
 ]
 
 [[package]]
@@ -2185,6 +2188,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "ureq",
+ "yoyopod-protocol",
 ]
 
 [[package]]
@@ -2201,6 +2205,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "time",
+ "yoyopod-protocol",
 ]
 
 [[package]]
@@ -2215,6 +2220,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "time",
+ "yoyopod-protocol",
 ]
 
 [[package]]

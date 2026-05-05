@@ -1,18 +1,20 @@
 use serde_json::json;
-use yoyopod_runtime::protocol::{ProtocolError, WorkerEnvelope};
+use yoyopod_runtime::protocol::{
+    EnvelopeKind, ProtocolError, WorkerEnvelope, SUPPORTED_SCHEMA_VERSION,
+};
 
 #[test]
-fn decode_rejects_worker_command_without_explicit_schema_version() {
-    let err = WorkerEnvelope::decode(
+fn decode_accepts_worker_command_without_explicit_schema_version() {
+    let envelope = WorkerEnvelope::decode(
         br#"{"kind":"command","type":"media.health","request_id":"health-1","payload":{}}"#,
     )
-    .expect_err("missing schema_version must fail");
+    .expect("decode with default schema version");
 
-    let message = err.to_string();
-    assert!(
-        message.contains("schema_version") || message.contains("missing field"),
-        "unexpected error: {message}"
-    );
+    assert_eq!(envelope.schema_version, SUPPORTED_SCHEMA_VERSION);
+    assert_eq!(envelope.kind, EnvelopeKind::Command);
+    assert_eq!(envelope.message_type, "media.health");
+    assert_eq!(envelope.request_id.as_deref(), Some("health-1"));
+    assert_eq!(envelope.payload, json!({}));
 }
 
 #[test]

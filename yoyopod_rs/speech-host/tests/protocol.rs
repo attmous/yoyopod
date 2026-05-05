@@ -28,7 +28,7 @@ fn decode_rejects_invalid_kind() {
     )
     .expect_err("invalid kind should fail");
 
-    assert!(error.to_string().contains("invalid worker envelope kind"));
+    assert!(error.to_string().contains("unknown variant"));
 }
 
 #[test]

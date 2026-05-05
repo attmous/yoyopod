@@ -6,7 +6,7 @@ use serde_json::json;
 use crate::framebuffer::Framebuffer;
 use crate::hardware::{ButtonDevice, DisplayDevice};
 use crate::input::{ButtonTiming, InputAction, OneButtonMachine};
-use crate::protocol::{Envelope, EnvelopeKind};
+use crate::protocol::{error_envelope, event_envelope, Envelope, EnvelopeKind};
 use crate::render::{render_test_scene, FramebufferRenderer, LvglRenderer, RendererMode};
 use crate::runtime::{RuntimeSnapshot, UiIntent, UiRuntime, UiScreen};
 use crate::screens::ScreenModel;
@@ -36,7 +36,7 @@ where
 
     emit(
         output,
-        Envelope::event(
+        event_envelope(
             "ui.ready",
             json!({
                 "display": {"width": display.width(), "height": display.height()},
@@ -56,7 +56,7 @@ where
                 if envelope.kind != EnvelopeKind::Command {
                     emit(
                         output,
-                        Envelope::error("invalid_kind", "worker accepts commands only"),
+                        error_envelope("invalid_kind", "worker accepts commands only"),
                     )?;
                     continue;
                 }
@@ -130,7 +130,7 @@ where
                             input_events += 1;
                             emit(
                                 output,
-                                Envelope::event(
+                                event_envelope(
                                     "ui.input",
                                     json!({
                                         "action": event.action.as_str(),
@@ -169,7 +169,7 @@ where
                             input_events += 1;
                             emit(
                                 output,
-                                Envelope::event(
+                                event_envelope(
                                     "ui.input",
                                     json!({
                                         "action": event.action.as_str(),
@@ -185,7 +185,7 @@ where
                         let active_screen = ui_runtime.active_screen_model().screen();
                         emit(
                             output,
-                            Envelope::event(
+                            event_envelope(
                                 "ui.health",
                                 json!({
                                     "frames": frames,
@@ -199,13 +199,13 @@ where
                     "ui.shutdown" | "worker.stop" => break,
                     other => {
                         writeln!(errors, "unknown UI worker command: {other}")?;
-                        emit(output, Envelope::error("unknown_command", other))?;
+                        emit(output, error_envelope("unknown_command", other))?;
                     }
                 }
             }
             Err(err) => {
                 writeln!(errors, "protocol decode error: {err}")?;
-                emit(output, Envelope::error("decode_error", err.to_string()))?;
+                emit(output, error_envelope("decode_error", err.to_string()))?;
             }
         }
     }
@@ -223,7 +223,7 @@ fn emit_intents<W: Write>(output: &mut W, intents: Vec<UiIntent>) -> Result<()> 
     for intent in intents {
         emit(
             output,
-            Envelope::event(
+            event_envelope(
                 "ui.intent",
                 json!({
                     "domain": intent.domain,
@@ -448,7 +448,7 @@ fn emit_screen_changed_if_needed<W: Write>(
     {
         emit(
             output,
-            Envelope::event(
+            event_envelope(
                 "ui.screen_changed",
                 json!({
                     "screen": screen_model.screen().as_str(),
@@ -472,7 +472,7 @@ fn emit_explicit_lvgl_unavailable<W: Write>(
     )?;
     emit(
         output,
-        Envelope::error("lvgl_unavailable", "LVGL renderer unavailable"),
+        error_envelope("lvgl_unavailable", "LVGL renderer unavailable"),
     )
 }
 
