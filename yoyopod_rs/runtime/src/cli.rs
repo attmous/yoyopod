@@ -95,7 +95,11 @@ fn start_workers(
 ) -> Result<RuntimeState> {
     let mut state = RuntimeState::default();
     state.seed_contacts(config.people.to_contact_items());
+    state.configure_media_volume(config.media.default_volume);
     state.configure_voice_note_store_dir(config.voip.voice_note_store_dir.clone());
+    state.configure_voice_commands(config.voice.to_command_settings());
+    state.configure_voice_capture(config.voice.to_capture_settings());
+    state.configure_voice_speech(config.voice.to_speech_settings());
     state.configure_power_safety(config.power.to_safety_config());
     state.mark_worker(WorkerDomain::Ui, WorkerState::Starting, "starting");
 
@@ -235,6 +239,33 @@ fn start_workers(
         );
     }
 
+    if config.voice.worker_enabled {
+        state.mark_worker(WorkerDomain::Voice, WorkerState::Starting, "starting");
+        if workers.start(WorkerSpec::new(
+            WorkerDomain::Voice,
+            config.worker_paths.voice.clone(),
+            Vec::<String>::new(),
+        )) {
+            if workers.wait_for_ready(WorkerDomain::Voice, "voice.ready", Duration::from_secs(3)) {
+                state.mark_worker(WorkerDomain::Voice, WorkerState::Running, "ready");
+            } else {
+                state.mark_worker(
+                    WorkerDomain::Voice,
+                    WorkerState::Degraded,
+                    "timed out waiting for voice.ready",
+                );
+            }
+        } else {
+            state.mark_worker(
+                WorkerDomain::Voice,
+                WorkerState::Degraded,
+                "failed to start",
+            );
+        }
+    } else {
+        state.mark_worker(WorkerDomain::Voice, WorkerState::Disabled, "disabled");
+    }
+
     Ok(state)
 }
 
@@ -271,6 +302,7 @@ fn send_startup_commands(workers: &mut WorkerSupervisor, config: &RuntimeConfig)
     workers.send_command(WorkerDomain::Network, "network.health", json!({}));
     workers.send_command(WorkerDomain::Network, "network.query_gps", json!({}));
     workers.send_command(WorkerDomain::Power, "power.health", json!({}));
+    workers.send_command(WorkerDomain::Voice, "voice.health", json!({}));
     workers.send_command(
         WorkerDomain::Media,
         "media.configure",

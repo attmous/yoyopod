@@ -4,6 +4,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
+use crate::voice::{
+    match_voice_confirmation_response, normalize_voice_activation, route_voice_transcript,
+    VoiceCaptureSettings, VoiceCommandIntent, VoiceCommandSettings, VoiceConfirmationResponse,
+    VoiceRouteKind, VoiceSpeechSettings,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WorkerDomain {
     Ui,
@@ -112,6 +118,7 @@ pub struct ListItem {
     pub title: String,
     pub subtitle: String,
     pub icon_key: String,
+    pub aliases: Vec<String>,
 }
 
 impl ListItem {
@@ -137,6 +144,7 @@ impl ListItem {
             title,
             subtitle,
             icon_key,
+            aliases: string_array_field(value, "aliases"),
         })
     }
 
@@ -146,6 +154,7 @@ impl ListItem {
             "title": self.title,
             "subtitle": self.subtitle,
             "icon_key": self.icon_key,
+            "aliases": self.aliases,
         })
     }
 }
@@ -157,6 +166,7 @@ pub struct MediaState {
     pub title: String,
     pub artist: String,
     pub progress_permille: i32,
+    pub volume: i32,
     pub playlists: Vec<ListItem>,
     pub recent_tracks: Vec<ListItem>,
 }
@@ -169,6 +179,7 @@ impl Default for MediaState {
             title: "Nothing Playing".to_string(),
             artist: String::new(),
             progress_permille: 0,
+            volume: 50,
             playlists: Vec::new(),
             recent_tracks: Vec::new(),
         }
@@ -219,6 +230,24 @@ pub struct VoiceNoteSummary {
     pub display_name: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct VoiceCommandOutcome {
+    headline: String,
+    body: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoiceAskTurn {
+    pub question: String,
+    pub answer: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoiceCallConfirmation {
+    pub spoken_name: String,
+    pub display_name: String,
+}
+
 impl VoiceNoteSummary {
     fn to_payload(&self) -> Value {
         json!({
@@ -236,6 +265,8 @@ impl VoiceNoteSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VoiceRuntimeState {
     pub phase: String,
+    pub headline: String,
+    pub body: String,
     pub status_text: String,
     pub file_path: String,
     pub duration_ms: i32,
@@ -244,12 +275,23 @@ pub struct VoiceRuntimeState {
     pub playback_active: bool,
     pub playback_file_path: String,
     pub voice_note_store_dir: String,
+    pub last_transcript: String,
+    pub command_settings: VoiceCommandSettings,
+    pub capture_settings: VoiceCaptureSettings,
+    pub speech_settings: VoiceSpeechSettings,
+    pub ask_capture_active: bool,
+    pub ask_transcribe_requested: bool,
+    pub pending_ask_question: String,
+    pub ask_history: Vec<VoiceAskTurn>,
+    pub pending_call_confirmation: Option<VoiceCallConfirmation>,
 }
 
 impl Default for VoiceRuntimeState {
     fn default() -> Self {
         Self {
             phase: "idle".to_string(),
+            headline: "Ask".to_string(),
+            body: "Ask me anything...".to_string(),
             status_text: String::new(),
             file_path: String::new(),
             duration_ms: 0,
@@ -258,6 +300,15 @@ impl Default for VoiceRuntimeState {
             playback_active: false,
             playback_file_path: String::new(),
             voice_note_store_dir: "data/communication/voice_notes".to_string(),
+            last_transcript: String::new(),
+            command_settings: VoiceCommandSettings::default(),
+            capture_settings: VoiceCaptureSettings::default(),
+            speech_settings: VoiceSpeechSettings::default(),
+            ask_capture_active: false,
+            ask_transcribe_requested: false,
+            pending_ask_question: String::new(),
+            ask_history: Vec::new(),
+            pending_call_confirmation: None,
         }
     }
 }
@@ -275,12 +326,101 @@ impl VoiceRuntimeState {
             .to_string()
     }
 
+    pub fn ask_recording_file_path(&self) -> String {
+        let filename = format!(
+            "yoyopod-ask-{}-{}.wav",
+            std::process::id(),
+            current_millis()
+        );
+        Path::new(&self.voice_note_store_dir)
+            .join(filename)
+            .to_string_lossy()
+            .to_string()
+    }
+
+    pub fn transcribe_payload(&self, audio_path: &str) -> Value {
+        json!({
+            "audio_path": audio_path,
+            "format": "wav",
+            "sample_rate_hz": self.capture_settings.sample_rate_hz,
+            "channels": 1,
+            "language": self.capture_settings.stt_language,
+            "model": self.capture_settings.stt_model,
+            "prompt": self.capture_settings.stt_prompt,
+            "max_audio_seconds": self.capture_settings.max_audio_ms as f64 / 1000.0,
+            "delete_input_on_success": true,
+        })
+    }
+
+    pub fn speak_payload(&self, text: &str) -> Value {
+        json!({
+            "text": text.trim(),
+            "voice": self.speech_settings.tts_voice,
+            "model": self.speech_settings.tts_model,
+            "instructions": self.speech_settings.tts_instructions,
+            "format": "wav",
+            "sample_rate_hz": self.speech_settings.sample_rate_hz,
+        })
+    }
+
+    pub fn ask_history_payload(&self) -> Value {
+        let history = self
+            .ask_history
+            .iter()
+            .flat_map(|turn| {
+                [
+                    json!({"role": "user", "text": turn.question}),
+                    json!({"role": "assistant", "text": turn.answer}),
+                ]
+            })
+            .collect::<Vec<_>>();
+        json!(history)
+    }
+
+    fn remember_ask_turn(&mut self, question: &str, answer: &str) {
+        let limit = self.command_settings.ask_max_response_chars.max(1);
+        let question = trim_ask_history_text(question, limit);
+        let answer = trim_ask_history_text(answer, limit);
+        if question.is_empty() || answer.is_empty() {
+            return;
+        }
+
+        self.ask_history.push(VoiceAskTurn { question, answer });
+        let max_turns = self.command_settings.ask_max_history_turns.max(1);
+        if self.ask_history.len() > max_turns {
+            let keep_from = self.ask_history.len() - max_turns;
+            self.ask_history.drain(..keep_from);
+        }
+    }
+
     fn reset_draft(&mut self) {
         let store_dir = self.voice_note_store_dir.clone();
+        let command_settings = self.command_settings.clone();
+        let capture_settings = self.capture_settings.clone();
+        let speech_settings = self.speech_settings.clone();
+        let pending_ask_question = self.pending_ask_question.clone();
+        let ask_history = self.ask_history.clone();
         *self = Self {
             voice_note_store_dir: store_dir,
+            command_settings,
+            capture_settings,
+            speech_settings,
+            pending_ask_question,
+            ask_history,
             ..Self::default()
         };
+    }
+
+    fn set_interaction(
+        &mut self,
+        phase: impl Into<String>,
+        headline: impl Into<String>,
+        body: impl Into<String>,
+    ) {
+        self.phase = phase.into();
+        self.headline = headline.into();
+        self.body = body.into();
+        self.status_text.clear();
     }
 }
 
@@ -524,6 +664,43 @@ impl RuntimeState {
         }
     }
 
+    pub fn configure_voice_commands(&mut self, command_settings: VoiceCommandSettings) {
+        self.voice.command_settings = command_settings;
+    }
+
+    pub fn configure_voice_capture(&mut self, capture_settings: VoiceCaptureSettings) {
+        self.voice.capture_settings = capture_settings;
+    }
+
+    pub fn configure_voice_speech(&mut self, speech_settings: VoiceSpeechSettings) {
+        self.voice.speech_settings = speech_settings;
+    }
+
+    pub fn configure_media_volume(&mut self, volume: i32) {
+        self.media.volume = volume.clamp(0, 100);
+    }
+
+    pub fn contact_for_voice_label(&self, label: &str) -> Option<&ListItem> {
+        find_contact(self, label)
+    }
+
+    pub fn pending_voice_call_confirmation_response(
+        &self,
+        transcript: &str,
+    ) -> Option<VoiceConfirmationResponse> {
+        self.voice.pending_call_confirmation.as_ref()?;
+        match_voice_confirmation_response(transcript)
+    }
+
+    pub fn pending_voice_call_confirmation_contact(&self) -> Option<&ListItem> {
+        let pending = self.voice.pending_call_confirmation.as_ref()?;
+        find_contact(self, &pending.spoken_name)
+    }
+
+    pub fn infer_voice_call_confirmation(&self, transcript: &str) -> Option<VoiceCallConfirmation> {
+        infer_voice_call_confirmation(self, transcript)
+    }
+
     pub fn configure_power_safety(&mut self, config: PowerSafetyConfig) {
         self.power.safety.config = config;
     }
@@ -724,6 +901,11 @@ impl RuntimeState {
         if let Some(playback_state) = string_field(snapshot, "playback_state") {
             self.media.playback_state = playback_state;
         }
+        if let Some(volume) =
+            i32_field(snapshot, "volume").or_else(|| i32_field(snapshot, "default_volume"))
+        {
+            self.media.volume = volume.clamp(0, 100);
+        }
         let explicit_progress_permille = i32_field(snapshot, "progress_permille")
             .filter(|progress_permille| (0..=1000).contains(progress_permille));
         if let Some(progress_permille) = explicit_progress_permille {
@@ -813,7 +995,11 @@ impl RuntimeState {
                 .collect();
         }
         if let Some(voice_note) = snapshot.get("voice_note") {
-            self.apply_voice_note_snapshot(voice_note);
+            if self.voice.ask_capture_active {
+                self.apply_ask_capture_snapshot(voice_note);
+            } else {
+                self.apply_voice_note_snapshot(voice_note);
+            }
         }
         if let Some(playback) = snapshot.get("voice_note_playback") {
             self.apply_voice_note_playback_snapshot(playback);
@@ -828,6 +1014,27 @@ impl RuntimeState {
 
     fn apply_voice_intent(&mut self, action: &str, payload: &Value) {
         match normalized(action).as_str() {
+            "ask_start" | "begin_ask" => {
+                self.voice.ask_capture_active = true;
+                self.voice.ask_transcribe_requested = false;
+                self.voice.set_interaction(
+                    "listening",
+                    "Listening",
+                    "Say YoYo, then ask or command...",
+                );
+            }
+            "ask_stop" | "finish_ask" => {
+                self.voice.ask_capture_active = true;
+                self.voice
+                    .set_interaction("thinking", "Thinking", "Just a moment...");
+            }
+            "ask_cancel" => {
+                self.voice.ask_capture_active = false;
+                self.voice.ask_transcribe_requested = false;
+                self.voice.pending_ask_question.clear();
+                self.voice
+                    .set_interaction("idle", "Ask", "Ask me anything...");
+            }
             "capture_start" | "start_recording" => {
                 self.voice.phase = "recording".to_string();
                 self.voice.status_text = "Recording...".to_string();
@@ -857,6 +1064,197 @@ impl RuntimeState {
                 self.voice.playback_file_path.clear();
             }
             "discard" | "again" | "reset" => self.voice.reset_draft(),
+            _ => {}
+        }
+    }
+
+    pub fn apply_voice_transcript(&mut self, payload: &Value) {
+        self.voice.ask_capture_active = false;
+        self.voice.ask_transcribe_requested = false;
+        let transcript = string_field(payload, "text")
+            .or_else(|| string_field(payload, "transcript"))
+            .unwrap_or_default();
+        self.voice.last_transcript = transcript.trim().to_string();
+        if self.voice.last_transcript.is_empty() {
+            self.voice.pending_ask_question.clear();
+            self.voice.pending_call_confirmation = None;
+            self.voice
+                .set_interaction("reply", "No Speech", "I did not catch a command.");
+            return;
+        }
+
+        if self.apply_pending_voice_call_confirmation_response() {
+            return;
+        }
+
+        let decision =
+            route_voice_transcript(&self.voice.last_transcript, &self.voice.command_settings);
+        match decision.kind {
+            VoiceRouteKind::Command => {
+                self.voice.pending_ask_question.clear();
+                let command = decision.command.as_ref();
+                self.apply_voice_command_outcome(command.and_then(|command| {
+                    voice_command_outcome(self, command.intent, &command.contact_name)
+                }));
+            }
+            VoiceRouteKind::AskFallback => {
+                if let Some(confirmation) =
+                    infer_voice_call_confirmation(self, &self.voice.last_transcript)
+                {
+                    self.voice.pending_ask_question.clear();
+                    self.voice.pending_call_confirmation = Some(confirmation.clone());
+                    self.voice.set_interaction(
+                        "reply",
+                        "Confirm Call",
+                        format!(
+                            "Did you want to call {}? Say yes or no.",
+                            confirmation.display_name
+                        ),
+                    );
+                    return;
+                }
+                self.voice.pending_ask_question = decision.normalized_text;
+                self.voice
+                    .set_interaction("thinking", "Thinking", "Finding an answer...");
+            }
+            VoiceRouteKind::AskExit => {
+                self.voice.pending_ask_question.clear();
+                self.voice.set_interaction("reply", "Ask", "Going back.");
+            }
+            VoiceRouteKind::Action => {
+                self.voice.pending_ask_question.clear();
+                self.voice.set_interaction("reply", "Command", "");
+                if let Some(screen) = screen_for_voice_route(&decision.route_name) {
+                    self.current_screen = screen.to_string();
+                }
+            }
+            VoiceRouteKind::LocalHelp => {
+                if let Some(confirmation) =
+                    infer_voice_call_confirmation(self, &self.voice.last_transcript)
+                {
+                    self.voice.pending_ask_question.clear();
+                    self.voice.pending_call_confirmation = Some(confirmation.clone());
+                    self.voice.set_interaction(
+                        "reply",
+                        "Confirm Call",
+                        format!(
+                            "Did you want to call {}? Say yes or no.",
+                            confirmation.display_name
+                        ),
+                    );
+                    return;
+                }
+                self.voice.pending_ask_question.clear();
+                self.voice.set_interaction(
+                    "reply",
+                    "Try Again",
+                    "Try saying call mom, play music, or volume up.",
+                );
+            }
+        }
+    }
+
+    pub fn apply_voice_ask_result(&mut self, payload: &Value) {
+        self.voice.ask_capture_active = false;
+        self.voice.ask_transcribe_requested = false;
+        let answer_from_payload = string_field(payload, "answer");
+        let answer = answer_from_payload.clone().unwrap_or_else(|| {
+            "I cannot reach Ask right now. I can still help with music, calls, and volume."
+                .to_string()
+        });
+        if let Some(answer_from_payload) = answer_from_payload {
+            let question = std::mem::take(&mut self.voice.pending_ask_question);
+            self.voice
+                .remember_ask_turn(&question, &answer_from_payload);
+        } else {
+            self.voice.pending_ask_question.clear();
+        }
+        self.voice.set_interaction("reply", "Answer", answer);
+    }
+
+    fn apply_voice_command_outcome(&mut self, outcome: Option<VoiceCommandOutcome>) {
+        let outcome = outcome.unwrap_or(VoiceCommandOutcome {
+            headline: "Not Ready".to_string(),
+            body: "That command is recognized but not wired yet.".to_string(),
+        });
+        self.voice
+            .set_interaction("reply", outcome.headline, outcome.body);
+    }
+
+    fn apply_pending_voice_call_confirmation_response(&mut self) -> bool {
+        let Some(response) =
+            self.pending_voice_call_confirmation_response(&self.voice.last_transcript)
+        else {
+            if self.voice.pending_call_confirmation.is_some() {
+                self.voice.pending_call_confirmation = None;
+            }
+            return false;
+        };
+        let Some(pending) = self.voice.pending_call_confirmation.take() else {
+            return false;
+        };
+        self.voice.pending_ask_question.clear();
+        match response {
+            VoiceConfirmationResponse::Yes => {
+                let outcome = find_contact(self, &pending.spoken_name)
+                    .map(|contact| VoiceCommandOutcome {
+                        headline: "Calling".to_string(),
+                        body: format!("Calling {}.", contact.title),
+                    })
+                    .unwrap_or_else(|| VoiceCommandOutcome {
+                        headline: "No Match".to_string(),
+                        body: format!("I could not find {}.", pending.spoken_name),
+                    });
+                self.voice
+                    .set_interaction("reply", outcome.headline, outcome.body);
+            }
+            VoiceConfirmationResponse::No => {
+                self.voice.set_interaction(
+                    "reply",
+                    "Cancelled",
+                    format!("Okay, I will not call {}.", pending.display_name),
+                );
+            }
+        }
+        true
+    }
+
+    fn apply_ask_capture_snapshot(&mut self, voice_note: &Value) {
+        let raw_state = string_field(voice_note, "state").unwrap_or_else(|| "idle".to_string());
+        if let Some(file_path) = string_field(voice_note, "file_path") {
+            self.voice.file_path = file_path;
+        }
+        if let Some(duration_ms) = i32_field(voice_note, "duration_ms") {
+            self.voice.duration_ms = duration_ms.max(0);
+        }
+        match normalized(&raw_state).as_str() {
+            "recording" => {
+                if self.voice.phase != "thinking" {
+                    self.voice.set_interaction(
+                        "listening",
+                        "Listening",
+                        "Say YoYo, then ask or command...",
+                    );
+                }
+            }
+            "recorded" | "review" => {
+                self.voice.ask_transcribe_requested = true;
+                self.voice
+                    .set_interaction("thinking", "Thinking", "Just a moment...");
+            }
+            "failed" | "error" => {
+                self.voice.ask_capture_active = false;
+                self.voice.ask_transcribe_requested = false;
+                self.voice.set_interaction(
+                    "reply",
+                    "Mic Unavailable",
+                    "Voice capture is not ready on this device.",
+                );
+            }
+            "cancelled" | "canceled" | "idle" => {
+                self.voice.ask_capture_active = false;
+                self.voice.ask_transcribe_requested = false;
+            }
             _ => {}
         }
     }
@@ -1087,6 +1485,7 @@ impl RuntimeState {
                 "title": self.media.title,
                 "artist": self.media.artist,
                 "progress_permille": self.media.progress_permille,
+                "volume": self.media.volume,
                 "playlists": list_payload(&self.media.playlists),
                 "recent_tracks": list_payload(&self.media.recent_tracks),
             },
@@ -1103,9 +1502,9 @@ impl RuntimeState {
             },
             "voice": {
                 "phase": self.voice.phase,
-                "headline": "Ask",
+                "headline": self.voice.headline,
                 "body": voice_body_text(&self.voice),
-                "capture_in_flight": self.voice.phase == "recording",
+                "capture_in_flight": self.voice.ask_capture_active || self.voice.phase == "recording",
                 "ptt_active": self.voice.phase == "recording",
             },
             "power": {
@@ -1388,6 +1787,7 @@ impl RuntimeState {
                 "title": self.media.title,
                 "artist": self.media.artist,
                 "progress_permille": self.media.progress_permille,
+                "volume": self.media.volume,
             },
             "voip": {
                 "registered": self.call.registered,
@@ -1438,6 +1838,22 @@ impl RuntimeState {
 
 fn string_field(value: &Value, key: &str) -> Option<String> {
     value.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+fn string_array_field(value: &Value, key: &str) -> Vec<String> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn i32_field(value: &Value, key: &str) -> Option<i32> {
@@ -1538,6 +1954,7 @@ fn recent_call_history_item(value: &Value, contacts: &[ListItem]) -> Option<List
         title,
         subtitle,
         icon_key: icon_key.to_string(),
+        aliases: Vec::new(),
     })
 }
 
@@ -1665,13 +2082,204 @@ fn voice_status_text(phase: &str) -> String {
 }
 
 fn voice_body_text(voice: &VoiceRuntimeState) -> String {
-    if voice.phase == "idle" {
-        "Ask me anything...".to_string()
+    if matches!(
+        voice.phase.as_str(),
+        "idle" | "listening" | "thinking" | "reply"
+    ) {
+        voice.body.clone()
     } else if voice.status_text.trim().is_empty() {
         voice_status_text(&voice.phase)
     } else {
         voice.status_text.clone()
     }
+}
+
+fn trim_ask_history_text(text: &str, limit: usize) -> String {
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(limit.max(1))
+        .collect()
+}
+
+fn screen_for_voice_route(route_name: &str) -> Option<&'static str> {
+    match normalized(route_name).as_str() {
+        "open_talk" => Some("talk"),
+        "open_listen" => Some("listen"),
+        "open_setup" => Some("power"),
+        "go_home" => Some("hub"),
+        _ => None,
+    }
+}
+
+const VOICE_CALL_HINT_TOKENS: &[&str] = &["call", "dial", "phone", "ring"];
+const VOICE_NEGATION_TOKENS: &[&str] = &[
+    "no", "not", "never", "dont", "don't", "cant", "can't", "cannot", "wont", "won't",
+];
+
+fn infer_voice_call_confirmation(
+    state: &RuntimeState,
+    transcript: &str,
+) -> Option<VoiceCallConfirmation> {
+    let activation = normalize_voice_activation(
+        transcript,
+        &state.voice.command_settings.activation_prefixes,
+    );
+    let tokens = voice_command_tokens(&activation.normalized_text);
+    if tokens.is_empty()
+        || !tokens
+            .iter()
+            .any(|token| VOICE_CALL_HINT_TOKENS.contains(&token.as_str()))
+        || tokens
+            .iter()
+            .any(|token| VOICE_NEGATION_TOKENS.contains(&token.as_str()))
+    {
+        return None;
+    }
+
+    for contact in &state.call.contacts {
+        let mut labels = contact_labels(contact);
+        labels.sort_by_key(|label| std::cmp::Reverse(label.len()));
+        for label in labels {
+            let label_tokens = voice_command_tokens(&label);
+            if !label_tokens.is_empty()
+                && label_tokens
+                    .iter()
+                    .all(|label_token| tokens.contains(label_token))
+            {
+                return Some(VoiceCallConfirmation {
+                    spoken_name: label,
+                    display_name: contact.title.clone(),
+                });
+            }
+        }
+    }
+    None
+}
+
+fn voice_command_tokens(text: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    for character in text.chars() {
+        if character.is_ascii_alphanumeric() || character == '\'' {
+            current.push(character.to_ascii_lowercase());
+        } else if !current.is_empty() {
+            tokens.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
+fn voice_command_outcome(
+    state: &RuntimeState,
+    intent: VoiceCommandIntent,
+    contact_name: &str,
+) -> Option<VoiceCommandOutcome> {
+    match intent {
+        VoiceCommandIntent::PlayMusic => Some(VoiceCommandOutcome {
+            headline: "Playing".to_string(),
+            body: "Starting local music.".to_string(),
+        }),
+        VoiceCommandIntent::CallContact => match find_contact(state, contact_name) {
+            Some(contact) => Some(VoiceCommandOutcome {
+                headline: "Calling".to_string(),
+                body: format!("Calling {}.", contact.title),
+            }),
+            None => Some(VoiceCommandOutcome {
+                headline: "No Match".to_string(),
+                body: format!("I could not find {contact_name}."),
+            }),
+        },
+        VoiceCommandIntent::VolumeUp => Some(volume_outcome(state.media.volume + 10)),
+        VoiceCommandIntent::VolumeDown => Some(volume_outcome(state.media.volume - 10)),
+        VoiceCommandIntent::ReadScreen => Some(VoiceCommandOutcome {
+            headline: "Screen Read".to_string(),
+            body: "You are on Ask. Say a direct command now.".to_string(),
+        }),
+        VoiceCommandIntent::MuteMic => Some(VoiceCommandOutcome {
+            headline: "Mic Muted".to_string(),
+            body: "Voice commands mic is muted.".to_string(),
+        }),
+        VoiceCommandIntent::UnmuteMic => Some(VoiceCommandOutcome {
+            headline: "Mic Live".to_string(),
+            body: "Voice commands mic is live.".to_string(),
+        }),
+        VoiceCommandIntent::Unknown => None,
+    }
+}
+
+fn volume_outcome(volume: i32) -> VoiceCommandOutcome {
+    let volume = volume.clamp(0, 100);
+    let level = ((volume as f64) / 10.0).round() as i32;
+    VoiceCommandOutcome {
+        headline: "Volume".to_string(),
+        body: format!("Volume is {level} out of 10."),
+    }
+}
+
+fn find_contact<'a>(state: &'a RuntimeState, spoken_name: &str) -> Option<&'a ListItem> {
+    let spoken_name = normalize_contact_label(spoken_name);
+    if spoken_name.is_empty() {
+        return None;
+    }
+
+    state.call.contacts.iter().find(|contact| {
+        contact_labels(contact)
+            .iter()
+            .any(|label| label == &spoken_name)
+    })
+}
+
+fn contact_labels(contact: &ListItem) -> Vec<String> {
+    let mut labels = vec![
+        normalize_contact_label(&contact.title),
+        normalize_contact_label(&contact.subtitle),
+        normalize_contact_label(&contact.id),
+    ];
+    labels.extend(
+        contact
+            .aliases
+            .iter()
+            .map(|alias| normalize_contact_label(alias)),
+    );
+    labels.retain(|label| !label.is_empty());
+
+    if labels
+        .iter()
+        .any(|label| ["mom", "mama", "mum", "mommy", "mother"].contains(&label.as_str()))
+    {
+        labels.extend(
+            ["mom", "mama", "mum", "mommy", "mother"]
+                .iter()
+                .map(|label| (*label).to_string()),
+        );
+    }
+    if labels
+        .iter()
+        .any(|label| ["dad", "dada", "daddy", "papa", "father"].contains(&label.as_str()))
+    {
+        labels.extend(
+            ["dad", "dada", "daddy", "papa", "father"]
+                .iter()
+                .map(|label| (*label).to_string()),
+        );
+    }
+
+    labels.sort();
+    labels.dedup();
+    labels
+}
+
+fn normalize_contact_label(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
 }
 
 fn current_millis() -> u128 {

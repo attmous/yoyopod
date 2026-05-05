@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{json, Value};
 use thiserror::Error;
 
+use crate::voice::{
+    load_voice_command_dictionary, VoiceCaptureSettings, VoiceCommandSettings, VoiceSpeechSettings,
+};
+
 const LINPHONE_HOSTED_SIP_SERVER: &str = "sip.linphone.org";
 const LINPHONE_HOSTED_CONFERENCE_FACTORY_URI: &str = "sip:conference-factory@sip.linphone.org";
 const LINPHONE_HOSTED_FILE_TRANSFER_SERVER_URL: &str = "https://files.linphone.org/lft.php";
@@ -16,12 +20,14 @@ const RUST_UI_HOST_DEFAULT_WORKER: &str = "yoyopod_rs/ui-host/build/yoyopod-ui-h
 const RUST_CLOUD_HOST_DEFAULT_WORKER: &str = "yoyopod_rs/cloud-host/build/yoyopod-cloud-host";
 const RUST_NETWORK_HOST_DEFAULT_WORKER: &str = "yoyopod_rs/network-host/build/yoyopod-network-host";
 const RUST_POWER_HOST_DEFAULT_WORKER: &str = "yoyopod_rs/power-host/build/yoyopod-power-host";
+const VOICE_WORKER_DEFAULT: &str = "workers/voice/go/build/yoyopod-voice-worker";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeConfig {
     pub ui: UiConfig,
     pub media: MediaRuntimeConfig,
     pub power: PowerRuntimeConfig,
+    pub voice: VoiceRuntimeConfig,
     pub voip: VoipRuntimeConfig,
     pub people: PeopleRuntimeConfig,
     pub worker_paths: WorkerPaths,
@@ -62,6 +68,29 @@ pub struct PowerRuntimeConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VoiceRuntimeConfig {
+    pub worker_enabled: bool,
+    pub commands_enabled: bool,
+    pub ai_requests_enabled: bool,
+    pub activation_prefixes: Vec<String>,
+    pub command_dictionary_path: String,
+    pub ask_fallback_enabled: bool,
+    pub sample_rate_hz: u64,
+    pub request_timeout_ms: u64,
+    pub max_audio_ms: u64,
+    pub stt_model: String,
+    pub stt_language: String,
+    pub stt_prompt: String,
+    pub tts_model: String,
+    pub tts_voice: String,
+    pub tts_instructions: String,
+    pub ask_model: String,
+    pub ask_instructions: String,
+    pub ask_max_history_turns: usize,
+    pub ask_max_response_chars: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PeopleRuntimeConfig {
     pub contacts: Vec<ContactRuntimeConfig>,
 }
@@ -72,6 +101,7 @@ pub struct ContactRuntimeConfig {
     pub display_name: String,
     pub sip_address: String,
     pub favorite: bool,
+    pub aliases: Vec<String>,
 }
 
 #[derive(Clone, PartialEq, Deserialize)]
@@ -107,6 +137,7 @@ pub struct WorkerPaths {
     pub voip: String,
     pub network: String,
     pub power: String,
+    pub voice: String,
 }
 
 #[derive(Debug, Error)]
@@ -137,6 +168,7 @@ impl RuntimeConfig {
         let secrets = read_yaml(config_dir.join("communication/calling.secrets.yaml"))?;
         let people = read_yaml(config_dir.join("people/directory.yaml"))?;
         let power = read_yaml(config_dir.join("power/backend.yaml"))?;
+        let voice = read_yaml(config_dir.join("voice/assistant.yaml"))?;
 
         let default_volume = int_at_env(
             &music,
@@ -259,6 +291,84 @@ impl RuntimeConfig {
                         "data/last_shutdown_state.json",
                         "YOYOPOD_POWER_SHUTDOWN_STATE_FILE",
                     ),
+                ),
+            },
+            voice: VoiceRuntimeConfig {
+                worker_enabled: bool_at_env(
+                    &voice,
+                    &["worker", "enabled"],
+                    true,
+                    "YOYOPOD_VOICE_WORKER_ENABLED",
+                ),
+                commands_enabled: bool_at(&voice, &["assistant", "commands_enabled"], true),
+                ai_requests_enabled: bool_at(&voice, &["assistant", "ai_requests_enabled"], true),
+                activation_prefixes: string_array_at(
+                    &voice,
+                    &["assistant", "activation_prefixes"],
+                    &["yoyo", "hey yoyo"],
+                ),
+                command_dictionary_path: resolve_runtime_path(
+                    &runtime_root,
+                    string_at_env(
+                        &voice,
+                        &["assistant", "command_dictionary_path"],
+                        "data/voice/commands.yaml",
+                        "YOYOPOD_VOICE_COMMAND_DICTIONARY",
+                    ),
+                ),
+                ask_fallback_enabled: bool_at(
+                    &voice,
+                    &["assistant", "command_routing", "ask_fallback_enabled"],
+                    true,
+                ),
+                sample_rate_hz: uint_at(&voice, &["assistant", "sample_rate_hz"], 16_000),
+                request_timeout_ms: seconds_at_ms(
+                    &voice,
+                    &["worker", "request_timeout_seconds"],
+                    12.0,
+                ),
+                max_audio_ms: seconds_at_ms(&voice, &["worker", "max_audio_seconds"], 30.0),
+                stt_model: string_at(
+                    &voice,
+                    &["worker", "stt_model"],
+                    VoiceCaptureSettings::default().stt_model.as_str(),
+                ),
+                stt_language: string_at(
+                    &voice,
+                    &["worker", "stt_language"],
+                    VoiceCaptureSettings::default().stt_language.as_str(),
+                ),
+                stt_prompt: string_at(
+                    &voice,
+                    &["worker", "stt_prompt"],
+                    VoiceCaptureSettings::default().stt_prompt.as_str(),
+                ),
+                tts_model: string_at(
+                    &voice,
+                    &["worker", "tts_model"],
+                    VoiceSpeechSettings::default().tts_model.as_str(),
+                ),
+                tts_voice: string_at(
+                    &voice,
+                    &["worker", "tts_voice"],
+                    VoiceSpeechSettings::default().tts_voice.as_str(),
+                ),
+                tts_instructions: string_at(
+                    &voice,
+                    &["worker", "tts_instructions"],
+                    VoiceSpeechSettings::default().tts_instructions.as_str(),
+                ),
+                ask_model: string_at(&voice, &["worker", "ask_model"], "gpt-4.1-mini"),
+                ask_instructions: string_at(
+                    &voice,
+                    &["worker", "ask_instructions"],
+                    VoiceCommandSettings::default().ask_instructions.as_str(),
+                ),
+                ask_max_history_turns: usize_at(&voice, &["worker", "ask_max_history_turns"], 4),
+                ask_max_response_chars: usize_at(
+                    &voice,
+                    &["worker", "ask_max_response_chars"],
+                    480,
                 ),
             },
             voip: VoipRuntimeConfig {
@@ -404,6 +514,7 @@ impl RuntimeConfig {
                     "YOYOPOD_RUST_POWER_HOST_WORKER",
                     RUST_POWER_HOST_DEFAULT_WORKER,
                 ),
+                voice: voice_worker_path(&voice),
             },
             pid_file: resolve_runtime_path(
                 &runtime_root,
@@ -457,6 +568,46 @@ impl PowerRuntimeConfig {
     }
 }
 
+impl VoiceRuntimeConfig {
+    pub fn to_command_settings(&self) -> VoiceCommandSettings {
+        let dictionary = load_voice_command_dictionary(&self.command_dictionary_path);
+        VoiceCommandSettings {
+            commands_enabled: self.commands_enabled,
+            ai_requests_enabled: self.ai_requests_enabled,
+            activation_prefixes: self.activation_prefixes.clone(),
+            ask_fallback_enabled: self.ask_fallback_enabled,
+            disabled_intents: dictionary.disabled_intents,
+            command_aliases: dictionary.command_aliases,
+            route_actions: dictionary.route_actions,
+            ask_model: self.ask_model.clone(),
+            ask_instructions: self.ask_instructions.clone(),
+            ask_max_history_turns: self.ask_max_history_turns,
+            ask_max_response_chars: self.ask_max_response_chars,
+        }
+    }
+
+    pub fn to_capture_settings(&self) -> VoiceCaptureSettings {
+        VoiceCaptureSettings {
+            sample_rate_hz: self.sample_rate_hz,
+            request_timeout_ms: self.request_timeout_ms,
+            max_audio_ms: self.max_audio_ms,
+            stt_model: self.stt_model.clone(),
+            stt_language: self.stt_language.clone(),
+            stt_prompt: self.stt_prompt.clone(),
+        }
+    }
+
+    pub fn to_speech_settings(&self) -> VoiceSpeechSettings {
+        VoiceSpeechSettings {
+            sample_rate_hz: self.sample_rate_hz,
+            request_timeout_ms: self.request_timeout_ms,
+            tts_model: self.tts_model.clone(),
+            tts_voice: self.tts_voice.clone(),
+            tts_instructions: self.tts_instructions.clone(),
+        }
+    }
+}
+
 impl PeopleRuntimeConfig {
     pub fn to_contact_items(&self) -> Vec<crate::state::ListItem> {
         self.contacts
@@ -466,6 +617,7 @@ impl PeopleRuntimeConfig {
                 title: contact.display_name.clone(),
                 subtitle: String::new(),
                 icon_key: format!("mono:{}", talk_monogram(&contact.display_name)),
+                aliases: contact.aliases.clone(),
             })
             .collect()
     }
@@ -686,6 +838,7 @@ fn contact_config_from_value(value: &Value) -> Option<ContactRuntimeConfig> {
             .get("favorite")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        aliases: string_array_field(value, "aliases"),
     })
 }
 
@@ -720,6 +873,22 @@ fn uint_at_env(value: &Value, path: &[&str], default: u64, env: &str) -> u64 {
     env_string(env)
         .and_then(|text| text.parse::<u64>().ok())
         .unwrap_or_else(|| uint_at(value, path, default))
+}
+
+fn string_array_field(value: &Value, key: &str) -> Vec<String> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn f64_at_env(value: &Value, path: &[&str], default: f64, env: &str) -> f64 {
@@ -763,6 +932,12 @@ fn uint_at(value: &Value, path: &[&str], default: u64) -> u64 {
         .unwrap_or(default)
 }
 
+fn usize_at(value: &Value, path: &[&str], default: usize) -> usize {
+    uint_at(value, path, default as u64)
+        .try_into()
+        .unwrap_or(default)
+}
+
 fn f64_at(value: &Value, path: &[&str], default: f64) -> f64 {
     at_path(value, path)
         .and_then(|value| {
@@ -771,6 +946,30 @@ fn f64_at(value: &Value, path: &[&str], default: f64) -> f64 {
                 .or_else(|| value.as_str()?.trim().parse::<f64>().ok())
         })
         .unwrap_or(default)
+}
+
+fn seconds_at_ms(value: &Value, path: &[&str], default_seconds: f64) -> u64 {
+    let seconds = f64_at(value, path, default_seconds);
+    if !seconds.is_finite() || seconds <= 0.0 {
+        return (default_seconds * 1000.0).round() as u64;
+    }
+    (seconds * 1000.0).round() as u64
+}
+
+fn string_array_at(value: &Value, path: &[&str], default: &[&str]) -> Vec<String> {
+    at_path(value, path)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .filter(|items| !items.is_empty())
+        .unwrap_or_else(|| default.iter().map(|value| (*value).to_string()).collect())
 }
 
 fn bool_at(value: &Value, path: &[&str], default: bool) -> bool {
@@ -799,6 +998,16 @@ fn ui_worker_path() -> String {
         Some(value) if value != RUST_UI_HOST_DEFAULT_WORKER => value,
         _ => env_or_default("YOYOPOD_RUST_UI_WORKER", RUST_UI_HOST_DEFAULT_WORKER),
     }
+}
+
+fn voice_worker_path(voice: &Value) -> String {
+    if let Some(value) = env_string("YOYOPOD_RUST_VOICE_WORKER") {
+        return value;
+    }
+    string_array_at(voice, &["worker", "argv"], &[VOICE_WORKER_DEFAULT])
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| VOICE_WORKER_DEFAULT.to_string())
 }
 
 fn env_or_default(name: &str, default: &str) -> String {

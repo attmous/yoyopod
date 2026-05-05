@@ -6,6 +6,7 @@ pub mod protocol;
 pub mod runtime_loop;
 pub mod state;
 pub mod status;
+pub mod voice;
 pub mod worker;
 
 pub fn runtime_name() -> &'static str {

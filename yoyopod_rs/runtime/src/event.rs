@@ -4,6 +4,9 @@ use serde_json::{json, Value};
 
 use crate::protocol::{EnvelopeKind, WorkerEnvelope};
 use crate::state::{CallState, PowerSafetyAction, RuntimeState, WorkerDomain, WorkerState};
+use crate::voice::{
+    route_voice_transcript, VoiceCommandIntent, VoiceConfirmationResponse, VoiceRouteKind,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeEvent {
@@ -16,6 +19,9 @@ pub enum RuntimeEvent {
     VoipSnapshot(Value),
     NetworkSnapshot(Value),
     PowerSnapshot(Value),
+    VoiceTranscript(Value),
+    VoiceAskResult(Value),
+    VoiceSpeakResult(Value),
     UiInput(Value),
     UiIntent {
         domain: String,
@@ -65,6 +71,9 @@ impl RuntimeEvent {
             Self::VoipSnapshot(snapshot) => state.apply_voip_snapshot(snapshot),
             Self::NetworkSnapshot(snapshot) => state.apply_network_snapshot(snapshot),
             Self::PowerSnapshot(snapshot) => state.apply_power_snapshot(snapshot),
+            Self::VoiceTranscript(snapshot) => state.apply_voice_transcript(snapshot),
+            Self::VoiceAskResult(snapshot) => state.apply_voice_ask_result(snapshot),
+            Self::VoiceSpeakResult(_) => {}
             Self::UiScreenChanged { screen } => {
                 state.current_screen = screen.clone();
             }
@@ -113,6 +122,9 @@ pub fn runtime_event_from_worker(
         {
             Some(RuntimeEvent::PowerSnapshot(payload))
         }
+        EnvelopeKind::Result if domain == WorkerDomain::Voice => {
+            Some(voice_event_from_message(&message_type, payload))
+        }
         EnvelopeKind::Command | EnvelopeKind::Result | EnvelopeKind::Heartbeat => {
             Some(RuntimeEvent::Ignored)
         }
@@ -132,6 +144,9 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         RuntimeEvent::VoipSnapshot(snapshot) => commands_for_voip_snapshot(state, snapshot),
         RuntimeEvent::NetworkSnapshot(snapshot) => commands_for_network_snapshot(snapshot),
         RuntimeEvent::PowerSnapshot(snapshot) => commands_for_power_snapshot(state, snapshot),
+        RuntimeEvent::VoiceTranscript(snapshot) => commands_for_voice_transcript(state, snapshot),
+        RuntimeEvent::VoiceAskResult(snapshot) => commands_for_voice_ask_result(state, snapshot),
+        RuntimeEvent::VoiceSpeakResult(snapshot) => commands_for_voice_speak_result(snapshot),
         RuntimeEvent::Shutdown => vec![RuntimeCommand::Shutdown],
         RuntimeEvent::WorkerReady { .. }
         | RuntimeEvent::CloudSnapshot(_)
@@ -161,13 +176,7 @@ fn runtime_event_from_message(
         WorkerDomain::Voip => voip_event_from_message(message_type, payload),
         WorkerDomain::Network => network_event_from_message(message_type, payload),
         WorkerDomain::Power => power_event_from_message(message_type, payload),
-        WorkerDomain::Voice => health_only_event_from_message(
-            domain,
-            message_type,
-            &payload,
-            "voice.ready",
-            "voice.error",
-        ),
+        WorkerDomain::Voice => voice_event_from_message(message_type, payload),
     }
 }
 
@@ -264,24 +273,36 @@ fn power_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent 
     }
 }
 
-fn health_only_event_from_message(
-    domain: WorkerDomain,
-    message_type: &str,
-    payload: &Value,
-    ready_type: &str,
-    error_type: &str,
-) -> RuntimeEvent {
-    if message_type == ready_type {
-        return RuntimeEvent::WorkerReady { domain };
+fn voice_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent {
+    match message_type {
+        "voice.ready" => RuntimeEvent::WorkerReady {
+            domain: WorkerDomain::Voice,
+        },
+        "voice.health.result" | "voice.health" => {
+            if payload
+                .get("healthy")
+                .and_then(Value::as_bool)
+                .unwrap_or(true)
+            {
+                RuntimeEvent::WorkerReady {
+                    domain: WorkerDomain::Voice,
+                }
+            } else {
+                RuntimeEvent::WorkerError {
+                    domain: WorkerDomain::Voice,
+                    message: worker_error_message(message_type, &payload),
+                }
+            }
+        }
+        "voice.transcribe.result" | "voice.transcript" => RuntimeEvent::VoiceTranscript(payload),
+        "voice.ask.result" => RuntimeEvent::VoiceAskResult(payload),
+        "voice.speak.result" => RuntimeEvent::VoiceSpeakResult(payload),
+        "voice.error" => RuntimeEvent::WorkerError {
+            domain: WorkerDomain::Voice,
+            message: worker_error_message(message_type, &payload),
+        },
+        _ => RuntimeEvent::Ignored,
     }
-    if message_type == error_type {
-        return RuntimeEvent::WorkerError {
-            domain,
-            message: worker_error_message(message_type, payload),
-        };
-    }
-
-    RuntimeEvent::Ignored
 }
 
 fn runtime_intent_from_payload(payload: Value) -> RuntimeEvent {
@@ -428,6 +449,24 @@ fn commands_for_voice_intent(
     payload: &Value,
 ) -> Vec<RuntimeCommand> {
     match action {
+        "ask_start" | "begin_ask" => {
+            let file_path = state.voice.ask_recording_file_path();
+            vec![worker_command(
+                WorkerDomain::Voip,
+                "voip.start_voice_note_recording",
+                json!({ "file_path": file_path }),
+            )]
+        }
+        "ask_stop" | "finish_ask" => vec![worker_command(
+            WorkerDomain::Voip,
+            "voip.stop_voice_note_recording",
+            empty_payload(),
+        )],
+        "ask_cancel" => vec![worker_command(
+            WorkerDomain::Voip,
+            "voip.cancel_voice_note_recording",
+            empty_payload(),
+        )],
         "capture_start" | "start_recording" => {
             let file_path = state.voice.recording_file_path();
             vec![worker_command(
@@ -529,6 +568,141 @@ fn commands_for_voice_intent(
         "discard" | "again" | "reset" => Vec::new(),
         _ => Vec::new(),
     }
+}
+
+fn commands_for_voice_transcript(state: &RuntimeState, payload: &Value) -> Vec<RuntimeCommand> {
+    let transcript = string_field(payload, "text")
+        .or_else(|| string_field(payload, "transcript"))
+        .unwrap_or_default();
+    if transcript.trim().is_empty() {
+        return Vec::new();
+    }
+
+    if let Some(response) = state.pending_voice_call_confirmation_response(&transcript) {
+        return match response {
+            VoiceConfirmationResponse::Yes => state
+                .pending_voice_call_confirmation_contact()
+                .map(|contact| {
+                    vec![worker_command(
+                        WorkerDomain::Voip,
+                        "voip.dial",
+                        json!({ "uri": contact.id }),
+                    )]
+                })
+                .unwrap_or_default(),
+            VoiceConfirmationResponse::No => Vec::new(),
+        };
+    }
+
+    let decision = route_voice_transcript(&transcript, &state.voice.command_settings);
+    if decision.kind != VoiceRouteKind::Command
+        && state.infer_voice_call_confirmation(&transcript).is_some()
+    {
+        return Vec::new();
+    }
+    match decision.kind {
+        VoiceRouteKind::Command => decision
+            .command
+            .as_ref()
+            .map(|command| commands_for_voice_command(state, command.intent, &command.contact_name))
+            .unwrap_or_default(),
+        VoiceRouteKind::AskFallback => vec![worker_command(
+            WorkerDomain::Voice,
+            "voice.ask",
+            json!({
+                "question": decision.normalized_text,
+                "history": state.voice.ask_history_payload(),
+                "model": state.voice.command_settings.ask_model,
+                "instructions": state.voice.command_settings.ask_instructions,
+                "max_output_chars": state.voice.command_settings.ask_max_response_chars,
+            }),
+        )],
+        VoiceRouteKind::AskExit => vec![worker_command(
+            WorkerDomain::Ui,
+            "ui.input_action",
+            json!({"action": "back"}),
+        )],
+        VoiceRouteKind::Action => commands_for_voice_route_action(&decision.route_name),
+        VoiceRouteKind::LocalHelp => Vec::new(),
+    }
+}
+
+fn commands_for_voice_route_action(route_name: &str) -> Vec<RuntimeCommand> {
+    match route_name {
+        "back" => vec![worker_command(
+            WorkerDomain::Ui,
+            "ui.input_action",
+            json!({"action": "back"}),
+        )],
+        _ => Vec::new(),
+    }
+}
+
+fn commands_for_voice_ask_result(state: &RuntimeState, payload: &Value) -> Vec<RuntimeCommand> {
+    let Some(answer) = string_field(payload, "answer") else {
+        return Vec::new();
+    };
+    let mut envelope =
+        WorkerEnvelope::command("voice.speak", None, state.voice.speak_payload(&answer));
+    envelope.deadline_ms = state.voice.speech_settings.request_timeout_ms;
+    vec![RuntimeCommand::WorkerCommand {
+        domain: WorkerDomain::Voice,
+        envelope,
+    }]
+}
+
+fn commands_for_voice_speak_result(payload: &Value) -> Vec<RuntimeCommand> {
+    string_field(payload, "audio_path")
+        .map(|file_path| {
+            vec![worker_command(
+                WorkerDomain::Voip,
+                "voip.play_voice_note",
+                json!({ "file_path": file_path }),
+            )]
+        })
+        .unwrap_or_default()
+}
+
+fn commands_for_voice_command(
+    state: &RuntimeState,
+    intent: VoiceCommandIntent,
+    contact_name: &str,
+) -> Vec<RuntimeCommand> {
+    match intent {
+        VoiceCommandIntent::PlayMusic => vec![worker_command(
+            WorkerDomain::Media,
+            "media.shuffle_all",
+            empty_payload(),
+        )],
+        VoiceCommandIntent::CallContact => state
+            .contact_for_voice_label(contact_name)
+            .map(|contact| {
+                vec![worker_command(
+                    WorkerDomain::Voip,
+                    "voip.dial",
+                    json!({ "uri": contact.id }),
+                )]
+            })
+            .unwrap_or_default(),
+        VoiceCommandIntent::VolumeUp => vec![worker_command(
+            WorkerDomain::Media,
+            "media.set_volume",
+            json!({"volume": adjusted_volume(state, 10)}),
+        )],
+        VoiceCommandIntent::VolumeDown => vec![worker_command(
+            WorkerDomain::Media,
+            "media.set_volume",
+            json!({"volume": adjusted_volume(state, -10)}),
+        )],
+        VoiceCommandIntent::ReadScreen
+        | VoiceCommandIntent::MuteMic
+        | VoiceCommandIntent::UnmuteMic
+        | VoiceCommandIntent::Unknown => Vec::new(),
+    }
+}
+
+fn adjusted_volume(state: &RuntimeState, delta: i32) -> i32 {
+    (state.media.volume + delta).clamp(0, 100)
 }
 
 fn commands_for_power_intent(action: &str, payload: &Value) -> Vec<RuntimeCommand> {
@@ -714,6 +888,9 @@ fn commands_for_voip_snapshot(state: &RuntimeState, snapshot: &Value) -> Vec<Run
         }),
     ));
     if !is_music_playing(state) {
+        if let Some(command) = ask_capture_transcribe_command(state, snapshot) {
+            commands.push(command);
+        }
         return commands;
     }
 
@@ -729,8 +906,36 @@ fn commands_for_voip_snapshot(state: &RuntimeState, snapshot: &Value) -> Vec<Run
             empty_payload(),
         ));
     }
+    if let Some(command) = ask_capture_transcribe_command(state, snapshot) {
+        commands.push(command);
+    }
 
     commands
+}
+
+fn ask_capture_transcribe_command(
+    state: &RuntimeState,
+    snapshot: &Value,
+) -> Option<RuntimeCommand> {
+    if !state.voice.ask_capture_active || state.voice.ask_transcribe_requested {
+        return None;
+    }
+    let voice_note = snapshot.get("voice_note")?;
+    let raw_state = string_field(voice_note, "state").unwrap_or_default();
+    if !matches!(normalized(&raw_state).as_str(), "recorded" | "review") {
+        return None;
+    }
+    let file_path = string_field(voice_note, "file_path")?;
+    let mut envelope = WorkerEnvelope::command(
+        "voice.transcribe",
+        None,
+        state.voice.transcribe_payload(&file_path),
+    );
+    envelope.deadline_ms = state.voice.capture_settings.request_timeout_ms;
+    Some(RuntimeCommand::WorkerCommand {
+        domain: WorkerDomain::Voice,
+        envelope,
+    })
 }
 
 fn commands_for_network_snapshot(snapshot: &Value) -> Vec<RuntimeCommand> {

@@ -303,6 +303,56 @@ logging:
 }
 
 #[test]
+fn boot_starts_voice_worker_and_sends_health_probe() {
+    let _guard = env_lock();
+    let dir = temp_dir("voice-worker");
+    let config_dir = dir.join("config");
+    let ui_stdin = dir.join("ui-stdin.ndjson");
+    let voice_args = dir.join("voice-args.txt");
+    let voice_stdin = dir.join("voice-stdin.ndjson");
+    let ui_worker = write_ui_worker_script(&dir, &ui_stdin);
+    let voice_worker = write_voice_worker_script(&dir, &voice_args, &voice_stdin);
+    write(
+        &config_dir.join("app/core.yaml"),
+        &format!(
+            r#"
+logging:
+  pid_file: "{}"
+  file: "{}"
+"#,
+            yaml_path(&dir.join("run/yoyopod.pid")),
+            yaml_path(&dir.join("logs/yoyopod.log"))
+        ),
+    );
+    write(
+        &config_dir.join("voice/assistant.yaml"),
+        r#"
+worker:
+  enabled: true
+"#,
+    );
+    std::env::set_var("YOYOPOD_RUST_UI_HOST_WORKER", &ui_worker);
+    std::env::set_var("YOYOPOD_RUST_VOICE_WORKER", &voice_worker);
+
+    let result = run(Args {
+        config_dir: config_dir.clone(),
+        dry_run: false,
+        hardware: "whisplay".to_string(),
+    });
+    std::env::remove_var("YOYOPOD_RUST_UI_HOST_WORKER");
+    std::env::remove_var("YOYOPOD_RUST_VOICE_WORKER");
+    result.expect("runtime exits after UI shutdown intent");
+
+    let captured_ui = wait_for_file(&ui_stdin);
+    let captured_voice_stdin = wait_for_file(&voice_stdin);
+
+    assert!(voice_args.exists());
+    assert!(captured_voice_stdin.contains(r#""type":"voice.health""#));
+    assert!(captured_ui.contains(r#""voice""#));
+    assert!(captured_ui.contains(r#""state":"running""#));
+}
+
+#[test]
 fn boot_starts_power_worker_and_projects_initial_power_snapshot() {
     let _guard = env_lock();
     let dir = temp_dir("power-worker");
@@ -639,6 +689,79 @@ Set-Content -LiteralPath '{}' -Value $lines
         ),
     );
     let command_path = dir.join("power-worker.cmd");
+    write(
+        &command_path,
+        &format!(
+            "@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File \"{}\" %*\r\n",
+            script_path.to_string_lossy()
+        ),
+    );
+    command_path
+}
+
+fn write_voice_worker_script(dir: &Path, args_path: &Path, stdin_path: &Path) -> PathBuf {
+    let ready = r#"{"schema_version":1,"kind":"event","type":"voice.ready","payload":{"capabilities":["health","ask","transcribe"]}}"#;
+    let health = r#"{"schema_version":1,"kind":"result","type":"voice.health.result","payload":{"healthy":true,"provider":"mock"}}"#;
+
+    if !cfg!(windows) {
+        let script_path = dir.join("voice-worker.sh");
+        write(
+            &script_path,
+            &format!(
+                r#"#!/bin/sh
+: > {}
+printf '%s\n' "$@" >> {}
+printf '%s\n' '{}'
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> {}
+  case "$line" in
+    *'"type":"voice.health"'*) printf '%s\n' '{}' ;;
+    *'"type":"worker.stop"'*) break ;;
+  esac
+done
+"#,
+                shell_single_quote(args_path),
+                shell_single_quote(args_path),
+                ready,
+                shell_single_quote(stdin_path),
+                health
+            ),
+        );
+        make_executable(&script_path);
+        return script_path;
+    }
+
+    let script_path = dir.join("voice-worker.ps1");
+    write(
+        &script_path,
+        &format!(
+            r#"
+Set-Content -LiteralPath '{}' -Value ($args -join "`n")
+if (-not (Test-Path -LiteralPath '{}')) {{
+  New-Item -ItemType File -LiteralPath '{}' -Force | Out-Null
+}}
+Write-Output '{}'
+$lines = @()
+while (($line = [Console]::In.ReadLine()) -ne $null) {{
+  $lines += $line
+  if ($line -match '"type":"voice.health"') {{
+    Write-Output '{}'
+  }}
+  if ($line -match '"type":"worker.stop"') {{
+    break
+  }}
+}}
+Set-Content -LiteralPath '{}' -Value $lines
+"#,
+            args_path.to_string_lossy().replace('\'', "''"),
+            args_path.to_string_lossy().replace('\'', "''"),
+            args_path.to_string_lossy().replace('\'', "''"),
+            ready.replace('\'', "''"),
+            health.replace('\'', "''"),
+            stdin_path.to_string_lossy().replace('\'', "''")
+        ),
+    );
+    let command_path = dir.join("voice-worker.cmd");
     write(
         &command_path,
         &format!(

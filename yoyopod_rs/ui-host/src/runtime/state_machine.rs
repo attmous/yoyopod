@@ -370,7 +370,7 @@ impl UiRuntime {
                 }
             }
             UiScreen::NowPlaying => self.intents.push(UiIntent::new("music", "play_pause")),
-            UiScreen::Ask => self.intents.push(UiIntent::new("voice", "capture_toggle")),
+            UiScreen::Ask => self.intents.push(UiIntent::new("voice", "ask_start")),
             UiScreen::VoiceNote => self.select_voice_note(),
             UiScreen::Contacts => {
                 if let Some(item) = self.snapshot.call.contacts.get(self.focus_index).cloned() {
@@ -488,7 +488,7 @@ impl UiRuntime {
             return;
         }
         if self.active_screen == UiScreen::Ask {
-            self.intents.push(UiIntent::new("voice", "capture_start"));
+            self.intents.push(UiIntent::new("voice", "ask_start"));
         }
     }
 
@@ -498,7 +498,7 @@ impl UiRuntime {
             return;
         }
         if self.active_screen == UiScreen::Ask {
-            self.intents.push(UiIntent::new("voice", "capture_stop"));
+            self.intents.push(UiIntent::new("voice", "ask_stop"));
         }
     }
 

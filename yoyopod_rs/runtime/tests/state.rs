@@ -199,6 +199,7 @@ fn seeded_people_contacts_are_available_before_voip_snapshots() {
         title: "Mama".to_string(),
         subtitle: String::new(),
         icon_key: "mono:MA".to_string(),
+        aliases: Vec::new(),
     }]);
 
     let ui = state.ui_snapshot_payload();

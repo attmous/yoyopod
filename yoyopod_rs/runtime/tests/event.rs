@@ -4,6 +4,7 @@ use yoyopod_runtime::event::{
 };
 use yoyopod_runtime::protocol::{EnvelopeKind, WorkerEnvelope};
 use yoyopod_runtime::state::{CallState, RuntimeState, WorkerDomain, WorkerState};
+use yoyopod_runtime::voice::{VoiceCommandSettings, VoiceRouteAction};
 
 #[test]
 fn media_snapshot_event_updates_state() {
@@ -781,6 +782,65 @@ fn ui_voice_capture_start_routes_to_voip_recording() {
 }
 
 #[test]
+fn ui_voice_ask_start_routes_to_voip_recording_with_ask_path() {
+    let event =
+        runtime_event_from_worker(WorkerDomain::Ui, ui_intent("voice", "ask_start", json!({})))
+            .expect("event");
+    let mut state = RuntimeState::default();
+    state.configure_voice_note_store_dir("/tmp/yoyopod-notes");
+
+    let commands = commands_for_event(&state, &event);
+    let [RuntimeCommand::WorkerCommand { domain, envelope }] = commands.as_slice() else {
+        panic!("expected one worker command");
+    };
+
+    assert_eq!(*domain, WorkerDomain::Voip);
+    assert_eq!(envelope.message_type, "voip.start_voice_note_recording");
+    let file_path = envelope.payload["file_path"].as_str().expect("file path");
+    assert!(file_path.contains("yoyopod-notes"));
+    assert!(file_path.contains("ask"));
+    assert!(file_path.ends_with(".wav"));
+}
+
+#[test]
+fn ui_voice_ask_stop_routes_to_voip_recording_stop() {
+    let event =
+        runtime_event_from_worker(WorkerDomain::Ui, ui_intent("voice", "ask_stop", json!({})))
+            .expect("event");
+
+    let commands = commands_for_event(&RuntimeState::default(), &event);
+
+    assert_eq!(
+        commands,
+        vec![worker_command(
+            WorkerDomain::Voip,
+            "voip.stop_voice_note_recording",
+            json!({})
+        )]
+    );
+}
+
+#[test]
+fn ui_voice_ask_cancel_routes_to_voip_recording_cancel() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Ui,
+        ui_intent("voice", "ask_cancel", json!({})),
+    )
+    .expect("event");
+
+    let commands = commands_for_event(&RuntimeState::default(), &event);
+
+    assert_eq!(
+        commands,
+        vec![worker_command(
+            WorkerDomain::Voip,
+            "voip.cancel_voice_note_recording",
+            json!({})
+        )]
+    );
+}
+
+#[test]
 fn ui_voice_send_routes_recorded_note_to_voip() {
     let event = runtime_event_from_worker(
         WorkerDomain::Ui,
@@ -865,6 +925,775 @@ fn ui_voice_discard_resets_local_voice_note_state() {
 
     assert_eq!(state.ui_snapshot_payload()["voice"]["phase"], "idle");
     assert_eq!(state.voice.file_path, "");
+}
+
+#[test]
+fn voice_transcript_routes_play_music_before_ask_fallback() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo play music",
+                "confidence": 0.91,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+
+    let commands = commands_for_event(&state, &event);
+    event.apply(&mut state);
+
+    assert_eq!(
+        commands,
+        vec![worker_command(
+            WorkerDomain::Media,
+            "media.shuffle_all",
+            json!({})
+        )]
+    );
+    assert_eq!(state.ui_snapshot_payload()["voice"]["headline"], "Playing");
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["body"],
+        "Starting local music."
+    );
+}
+
+#[test]
+fn voice_transcript_routes_family_call_to_matching_contact() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo call mom",
+                "confidence": 0.88,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+    state.seed_contacts(vec![yoyopod_runtime::state::ListItem {
+        id: "sip:mama@example.test".to_string(),
+        title: "Mama".to_string(),
+        subtitle: String::new(),
+        icon_key: "mono:MA".to_string(),
+        aliases: vec!["mom".to_string(), "mommy".to_string()],
+    }]);
+
+    let commands = commands_for_event(&state, &event);
+    event.apply(&mut state);
+
+    assert_eq!(
+        commands,
+        vec![worker_command(
+            WorkerDomain::Voip,
+            "voip.dial",
+            json!({"uri": "sip:mama@example.test"})
+        )]
+    );
+    assert_eq!(state.ui_snapshot_payload()["voice"]["headline"], "Calling");
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["body"],
+        "Calling Mama."
+    );
+}
+
+#[test]
+fn voice_transcript_prompts_for_likely_reordered_call_before_ask() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo mama please call",
+                "confidence": 0.88,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+    state.seed_contacts(vec![yoyopod_runtime::state::ListItem {
+        id: "sip:mama@example.test".to_string(),
+        title: "Mama".to_string(),
+        subtitle: String::new(),
+        icon_key: "mono:MA".to_string(),
+        aliases: vec!["mom".to_string(), "mommy".to_string()],
+    }]);
+
+    let commands = commands_for_event(&state, &event);
+    event.apply(&mut state);
+
+    assert!(commands.is_empty());
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["headline"],
+        "Confirm Call"
+    );
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["body"],
+        "Did you want to call Mama? Say yes or no."
+    );
+}
+
+#[test]
+fn voice_transcript_yes_confirms_pending_call() {
+    let prompt = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo mama please call",
+                "confidence": 0.88,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let confirm = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "yes",
+                "confidence": 0.9,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+    state.seed_contacts(vec![yoyopod_runtime::state::ListItem {
+        id: "sip:mama@example.test".to_string(),
+        title: "Mama".to_string(),
+        subtitle: String::new(),
+        icon_key: "mono:MA".to_string(),
+        aliases: vec!["mom".to_string(), "mommy".to_string()],
+    }]);
+    prompt.apply(&mut state);
+
+    let commands = commands_for_event(&state, &confirm);
+    confirm.apply(&mut state);
+
+    assert_eq!(
+        commands,
+        vec![worker_command(
+            WorkerDomain::Voip,
+            "voip.dial",
+            json!({"uri": "sip:mama@example.test"})
+        )]
+    );
+    assert_eq!(state.ui_snapshot_payload()["voice"]["headline"], "Calling");
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["body"],
+        "Calling Mama."
+    );
+}
+
+#[test]
+fn voice_transcript_no_cancels_pending_call() {
+    let prompt = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo mama call",
+                "confidence": 0.88,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let cancel = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "no",
+                "confidence": 0.9,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+    state.seed_contacts(vec![yoyopod_runtime::state::ListItem {
+        id: "sip:mama@example.test".to_string(),
+        title: "Mama".to_string(),
+        subtitle: String::new(),
+        icon_key: "mono:MA".to_string(),
+        aliases: vec!["mom".to_string(), "mommy".to_string()],
+    }]);
+    prompt.apply(&mut state);
+
+    let commands = commands_for_event(&state, &cancel);
+    cancel.apply(&mut state);
+
+    assert!(commands.is_empty());
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["headline"],
+        "Cancelled"
+    );
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["body"],
+        "Okay, I will not call Mama."
+    );
+}
+
+#[test]
+fn voice_transcript_routes_volume_to_media_set_volume() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo volume up",
+                "confidence": 0.9,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+    state.apply_media_snapshot(&json!({"volume": 40}));
+
+    let commands = commands_for_event(&state, &event);
+    event.apply(&mut state);
+
+    assert_eq!(
+        commands,
+        vec![worker_command(
+            WorkerDomain::Media,
+            "media.set_volume",
+            json!({"volume": 50})
+        )]
+    );
+    assert_eq!(state.ui_snapshot_payload()["voice"]["headline"], "Volume");
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["body"],
+        "Volume is 5 out of 10."
+    );
+}
+
+#[test]
+fn voice_transcript_routes_non_command_to_ask_worker_when_fallback_enabled() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo why is the sky blue",
+                "confidence": 0.95,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+
+    let commands = commands_for_event(&state, &event);
+    event.apply(&mut state);
+
+    let [RuntimeCommand::WorkerCommand { domain, envelope }] = commands.as_slice() else {
+        panic!("expected one ask worker command");
+    };
+    assert_eq!(*domain, WorkerDomain::Voice);
+    assert_eq!(envelope.message_type, "voice.ask");
+    assert_eq!(envelope.payload["question"], "why is the sky blue");
+    assert_eq!(envelope.payload["history"], json!([]));
+    assert_eq!(envelope.payload["model"], "gpt-4.1-mini");
+    assert_eq!(envelope.payload["max_output_chars"], 480);
+    assert!(envelope.payload["instructions"]
+        .as_str()
+        .is_some_and(|value| value.contains("friendly Ask helper")));
+    assert_eq!(state.ui_snapshot_payload()["voice"]["headline"], "Thinking");
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["body"],
+        "Finding an answer..."
+    );
+}
+
+#[test]
+fn voice_transcript_ask_exit_routes_ui_back_without_ask_worker() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo stop asking",
+                "confidence": 0.95,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+    state.voice.pending_ask_question = "why is the sky blue".to_string();
+    state
+        .voice
+        .ask_history
+        .push(yoyopod_runtime::state::VoiceAskTurn {
+            question: "earlier question".to_string(),
+            answer: "earlier answer".to_string(),
+        });
+    state.voice.command_settings.ask_fallback_enabled = false;
+
+    let commands = commands_for_event(&state, &event);
+    event.apply(&mut state);
+
+    assert_eq!(
+        commands,
+        vec![worker_command(
+            WorkerDomain::Ui,
+            "ui.input_action",
+            json!({"action": "back"})
+        )]
+    );
+    assert_eq!(state.ui_snapshot_payload()["voice"]["headline"], "Ask");
+    assert_eq!(state.ui_snapshot_payload()["voice"]["body"], "Going back.");
+    assert!(state.voice.pending_ask_question.is_empty());
+    assert_eq!(state.voice.ask_history.len(), 1);
+}
+
+#[test]
+fn voice_transcript_dictionary_action_routes_screen_without_ask_worker() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo open talk",
+                "confidence": 0.95,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+    let mut settings = VoiceCommandSettings::default();
+    settings.route_actions.push(VoiceRouteAction {
+        route_name: "open_talk".to_string(),
+        aliases: vec!["open talk".to_string()],
+    });
+    state.configure_voice_commands(settings);
+
+    let commands = commands_for_event(&state, &event);
+    event.apply(&mut state);
+
+    assert!(commands.is_empty());
+    assert_eq!(state.current_screen, "talk");
+    assert_eq!(state.ui_snapshot_payload()["voice"]["headline"], "Command");
+    assert_eq!(state.ui_snapshot_payload()["voice"]["body"], "");
+}
+
+#[test]
+fn ask_fallback_includes_previous_turn_history_after_answer() {
+    let mut state = RuntimeState::default();
+    let first_question = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo why is sky blue",
+                "confidence": 0.95,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let first_answer = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.ask.result",
+            json!({
+                "answer": "Because sunlight scatters.",
+                "model": "gpt-4.1-mini"
+            }),
+        ),
+    )
+    .expect("event");
+    let second_question = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo what about sunsets",
+                "confidence": 0.95,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+
+    first_question.apply(&mut state);
+    first_answer.apply(&mut state);
+    let commands = commands_for_event(&state, &second_question);
+
+    let [RuntimeCommand::WorkerCommand { domain, envelope }] = commands.as_slice() else {
+        panic!("expected one ask worker command");
+    };
+    assert_eq!(*domain, WorkerDomain::Voice);
+    assert_eq!(envelope.message_type, "voice.ask");
+    assert_eq!(envelope.payload["question"], "what about sunsets");
+    assert_eq!(
+        envelope.payload["history"],
+        json!([
+            {"role": "user", "text": "why is sky blue"},
+            {"role": "assistant", "text": "Because sunlight scatters."}
+        ])
+    );
+}
+
+#[test]
+fn ask_history_is_bounded_and_trimmed_for_worker_payload() {
+    let mut state = RuntimeState::default();
+    state.voice.command_settings.ask_max_history_turns = 1;
+    state.voice.command_settings.ask_max_response_chars = 6;
+
+    for (question, answer) in [
+        (
+            "hey yoyo first question has extra words",
+            "first answer has extra words",
+        ),
+        (
+            "hey yoyo second question has extra words",
+            "second answer has extra words",
+        ),
+    ] {
+        let transcript_event = runtime_event_from_worker(
+            WorkerDomain::Voice,
+            envelope(
+                EnvelopeKind::Result,
+                "voice.transcribe.result",
+                json!({
+                    "text": question,
+                    "confidence": 0.95,
+                    "is_final": true
+                }),
+            ),
+        )
+        .expect("event");
+        let answer_event = runtime_event_from_worker(
+            WorkerDomain::Voice,
+            envelope(
+                EnvelopeKind::Result,
+                "voice.ask.result",
+                json!({
+                    "answer": answer,
+                    "model": "gpt-4.1-mini"
+                }),
+            ),
+        )
+        .expect("event");
+
+        transcript_event.apply(&mut state);
+        answer_event.apply(&mut state);
+    }
+
+    let next_question = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo third question",
+                "confidence": 0.95,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+
+    let commands = commands_for_event(&state, &next_question);
+
+    let [RuntimeCommand::WorkerCommand { domain, envelope }] = commands.as_slice() else {
+        panic!("expected one ask worker command");
+    };
+    assert_eq!(*domain, WorkerDomain::Voice);
+    assert_eq!(envelope.message_type, "voice.ask");
+    assert_eq!(
+        envelope.payload["history"],
+        json!([
+            {"role": "user", "text": "second"},
+            {"role": "assistant", "text": "second"}
+        ])
+    );
+}
+
+#[test]
+fn stopped_ask_recording_routes_recorded_wav_to_voice_transcribe() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voip,
+        event_envelope(
+            "voip.snapshot",
+            json!({
+                "voice_note": {
+                    "state": "recorded",
+                    "file_path": "/tmp/yoyopod-ask.wav",
+                    "duration_ms": 1800,
+                    "mime_type": "audio/wav"
+                }
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+    state.apply_ui_intent("voice", "ask_start", &json!({}));
+    state.apply_ui_intent("voice", "ask_stop", &json!({}));
+
+    let commands = commands_for_event(&state, &event);
+
+    let Some(RuntimeCommand::WorkerCommand { domain, envelope }) =
+        commands.iter().find(|command| {
+            matches!(
+                command,
+                RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voice, envelope }
+                    if envelope.message_type == "voice.transcribe"
+            )
+        })
+    else {
+        panic!("expected voice transcribe worker command, got {commands:#?}");
+    };
+    assert_eq!(*domain, WorkerDomain::Voice);
+    assert_eq!(envelope.message_type, "voice.transcribe");
+    assert_eq!(envelope.payload["audio_path"], "/tmp/yoyopod-ask.wav");
+    assert_eq!(envelope.payload["format"], "wav");
+    assert_eq!(envelope.payload["sample_rate_hz"], 16000);
+    assert_eq!(envelope.payload["channels"], 1);
+    assert_eq!(envelope.payload["language"], "en");
+    assert_eq!(envelope.payload["max_audio_seconds"], 30.0);
+    assert_eq!(envelope.payload["delete_input_on_success"], true);
+    assert!(envelope.payload["model"]
+        .as_str()
+        .is_some_and(|value| value.contains("transcribe")));
+    assert!(envelope.payload["prompt"]
+        .as_str()
+        .is_some_and(|value| value.contains("YoYoPod voice command")));
+}
+
+#[test]
+fn voice_note_recording_snapshot_does_not_transcribe_without_active_ask() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voip,
+        event_envelope(
+            "voip.snapshot",
+            json!({
+                "voice_note": {
+                    "state": "recorded",
+                    "file_path": "/tmp/yoyopod-note.wav"
+                }
+            }),
+        ),
+    )
+    .expect("event");
+
+    let commands = commands_for_event(&RuntimeState::default(), &event);
+
+    assert!(!commands.iter().any(|command| matches!(
+        command,
+        RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voice, envelope }
+            if envelope.message_type == "voice.transcribe"
+    )));
+}
+
+#[test]
+fn ask_recording_snapshot_keeps_ask_thinking_state_until_transcript() {
+    let mut state = RuntimeState::default();
+    state.apply_ui_intent("voice", "ask_start", &json!({}));
+    state.apply_ui_intent("voice", "ask_stop", &json!({}));
+
+    state.apply_voip_snapshot(&json!({
+        "voice_note": {
+            "state": "recorded",
+            "file_path": "/tmp/yoyopod-ask.wav",
+            "duration_ms": 1800
+        }
+    }));
+
+    assert_eq!(state.ui_snapshot_payload()["voice"]["phase"], "thinking");
+    assert_eq!(state.ui_snapshot_payload()["voice"]["headline"], "Thinking");
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["body"],
+        "Just a moment..."
+    );
+}
+
+#[test]
+fn recorded_ask_snapshot_transcribes_only_once() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voip,
+        event_envelope(
+            "voip.snapshot",
+            json!({
+                "voice_note": {
+                    "state": "recorded",
+                    "file_path": "/tmp/yoyopod-ask.wav",
+                    "duration_ms": 1800
+                }
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+    state.apply_ui_intent("voice", "ask_start", &json!({}));
+    state.apply_ui_intent("voice", "ask_stop", &json!({}));
+
+    assert!(commands_for_event(&state, &event)
+        .iter()
+        .any(|command| matches!(
+            command,
+            RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voice, envelope }
+                if envelope.message_type == "voice.transcribe"
+        )));
+
+    event.apply(&mut state);
+
+    assert!(!commands_for_event(&state, &event)
+        .iter()
+        .any(|command| matches!(
+            command,
+            RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voice, envelope }
+                if envelope.message_type == "voice.transcribe"
+        )));
+}
+
+#[test]
+fn voice_transcript_returns_local_help_when_ask_fallback_disabled() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.transcribe.result",
+            json!({
+                "text": "hey yoyo tell me a story",
+                "confidence": 0.95,
+                "is_final": true
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+    state.voice.command_settings.ask_fallback_enabled = false;
+
+    let commands = commands_for_event(&state, &event);
+    event.apply(&mut state);
+
+    assert!(commands.is_empty());
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["headline"],
+        "Try Again"
+    );
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["body"],
+        "Try saying call mom, play music, or volume up."
+    );
+}
+
+#[test]
+fn voice_ask_result_updates_ask_reply_state() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.ask.result",
+            json!({
+                "answer": "Because sunlight scatters in the air.",
+                "model": "gpt-4.1-mini"
+            }),
+        ),
+    )
+    .expect("event");
+    let mut state = RuntimeState::default();
+
+    event.apply(&mut state);
+
+    assert_eq!(state.ui_snapshot_payload()["voice"]["phase"], "reply");
+    assert_eq!(state.ui_snapshot_payload()["voice"]["headline"], "Answer");
+    assert_eq!(
+        state.ui_snapshot_payload()["voice"]["body"],
+        "Because sunlight scatters in the air."
+    );
+}
+
+#[test]
+fn voice_ask_result_routes_answer_to_voice_speak_worker() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.ask.result",
+            json!({
+                "answer": "Because sunlight scatters in the air.",
+                "model": "gpt-4.1-mini"
+            }),
+        ),
+    )
+    .expect("event");
+
+    let commands = commands_for_event(&RuntimeState::default(), &event);
+
+    let [RuntimeCommand::WorkerCommand { domain, envelope }] = commands.as_slice() else {
+        panic!("expected one voice speak command");
+    };
+    assert_eq!(*domain, WorkerDomain::Voice);
+    assert_eq!(envelope.message_type, "voice.speak");
+    assert_eq!(envelope.deadline_ms, 12_000);
+    assert_eq!(
+        envelope.payload["text"],
+        "Because sunlight scatters in the air."
+    );
+    assert_eq!(envelope.payload["voice"], "coral");
+    assert_eq!(envelope.payload["model"], "gpt-4o-mini-tts");
+    assert_eq!(envelope.payload["format"], "wav");
+    assert_eq!(envelope.payload["sample_rate_hz"], 16000);
+    assert!(envelope.payload["instructions"]
+        .as_str()
+        .is_some_and(|value| value.contains("child")));
+}
+
+#[test]
+fn voice_speak_result_routes_audio_to_voip_playback() {
+    let event = runtime_event_from_worker(
+        WorkerDomain::Voice,
+        envelope(
+            EnvelopeKind::Result,
+            "voice.speak.result",
+            json!({
+                "audio_path": "/tmp/yoyopod-answer.wav",
+                "format": "wav",
+                "sample_rate_hz": 16000
+            }),
+        ),
+    )
+    .expect("event");
+
+    let commands = commands_for_event(&RuntimeState::default(), &event);
+
+    assert_eq!(
+        commands,
+        vec![worker_command(
+            WorkerDomain::Voip,
+            "voip.play_voice_note",
+            json!({"file_path": "/tmp/yoyopod-answer.wav"})
+        )]
+    );
 }
 
 #[test]

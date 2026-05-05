@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::json;
 use yoyopod_runtime::config::RuntimeConfig;
+use yoyopod_runtime::voice::{route_voice_transcript, VoiceCommandIntent, VoiceRouteKind};
 
 const CONFIG_ENV_KEYS: &[&str] = &[
     "YOYOPOD_DISPLAY",
@@ -48,6 +49,9 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "YOYOPOD_RUST_POWER_HOST_WORKER",
     "YOYOPOD_RUST_VOIP_HOST_WORKER",
     "YOYOPOD_RUST_NETWORK_HOST_WORKER",
+    "YOYOPOD_RUST_VOICE_WORKER",
+    "YOYOPOD_VOICE_WORKER_ENABLED",
+    "YOYOPOD_VOICE_COMMAND_DICTIONARY",
     "YOYOPOD_POWER_ENABLED",
     "YOYOPOD_LOW_BATTERY_WARNING_PERCENT",
     "YOYOPOD_LOW_BATTERY_WARNING_COOLDOWN_SECONDS",
@@ -442,6 +446,9 @@ contacts:
     sip_address: "sip:hagar@example.test"
     favorite: true
     notes: "Mama"
+    aliases:
+      - "mom"
+      - "mommy"
   - name: "Ignored"
     sip_address: ""
   - name: "Baba"
@@ -455,6 +462,10 @@ contacts:
     assert_eq!(seed_config.people.contacts.len(), 2);
     assert_eq!(seed_config.people.contacts[0].name, "Hagar");
     assert_eq!(seed_config.people.contacts[0].display_name, "Mama");
+    assert_eq!(
+        seed_config.people.contacts[0].aliases,
+        vec!["mom".to_string(), "mommy".to_string()]
+    );
     assert_eq!(seed_config.people.to_contact_items()[0].icon_key, "mono:MA");
 
     write(
@@ -474,6 +485,128 @@ contacts:
         mutable_config.people.contacts[0].sip_address,
         "sip:local@example.test"
     );
+}
+
+#[test]
+fn voice_assistant_config_loads_command_routing_and_worker_defaults() {
+    let _lock = lock_env();
+    let _env = clean_config_env();
+    let dir = temp_config_dir("voice-assistant");
+    write(
+        &dir.join("voice/assistant.yaml"),
+        r#"
+assistant:
+  commands_enabled: true
+  ai_requests_enabled: false
+  activation_prefixes:
+    - "yoyo"
+    - "hey yoyo"
+  command_routing:
+    ask_fallback_enabled: false
+  worker:
+    ignored: true
+worker:
+  enabled: true
+  provider: "mock"
+  argv:
+    - "workers/voice/go/build/yoyopod-voice-worker"
+  request_timeout_seconds: 12.0
+  max_audio_seconds: 30.0
+  stt_model: "gpt-4o-mini-transcribe"
+  stt_language: "en"
+  stt_prompt: "Transcribe this YoYoPod voice command."
+  tts_model: "gpt-4o-mini-tts"
+  tts_voice: "coral"
+  tts_instructions: "Speak warmly for a child."
+  ask_model: "gpt-4.1-mini"
+  ask_max_history_turns: 3
+  ask_max_response_chars: 321
+  ask_instructions: "Kid-safe answers."
+"#,
+    );
+
+    let config = RuntimeConfig::load(&dir).expect("load runtime config");
+
+    assert!(config.voice.worker_enabled);
+    assert!(config.voice.commands_enabled);
+    assert!(!config.voice.ai_requests_enabled);
+    assert!(!config.voice.ask_fallback_enabled);
+    assert_eq!(
+        config.voice.activation_prefixes,
+        vec!["yoyo".to_string(), "hey yoyo".to_string()]
+    );
+    assert_eq!(config.voice.ask_model, "gpt-4.1-mini");
+    assert_eq!(config.voice.request_timeout_ms, 12_000);
+    assert_eq!(config.voice.max_audio_ms, 30_000);
+    assert_eq!(config.voice.sample_rate_hz, 16_000);
+    assert_eq!(config.voice.stt_model, "gpt-4o-mini-transcribe");
+    assert_eq!(config.voice.stt_language, "en");
+    assert_eq!(
+        config.voice.stt_prompt,
+        "Transcribe this YoYoPod voice command."
+    );
+    assert_eq!(config.voice.tts_model, "gpt-4o-mini-tts");
+    assert_eq!(config.voice.tts_voice, "coral");
+    assert_eq!(config.voice.tts_instructions, "Speak warmly for a child.");
+    assert_eq!(config.voice.ask_max_history_turns, 3);
+    assert_eq!(config.voice.ask_max_response_chars, 321);
+    assert_eq!(config.voice.ask_instructions, "Kid-safe answers.");
+    assert_eq!(
+        config.worker_paths.voice,
+        "workers/voice/go/build/yoyopod-voice-worker"
+    );
+}
+
+#[test]
+fn voice_command_dictionary_extends_rust_command_router() {
+    let _lock = lock_env();
+    let _env = clean_config_env();
+    let root = temp_config_dir("voice-command-dictionary");
+    let config_dir = root.join("config");
+    write(
+        &config_dir.join("voice/assistant.yaml"),
+        r#"
+assistant:
+  commands_enabled: true
+  ai_requests_enabled: true
+  activation_prefixes:
+    - "yoyo"
+    - "hey yoyo"
+  command_dictionary_path: "data/voice/commands.yaml"
+  command_routing:
+    ask_fallback_enabled: true
+worker:
+  enabled: true
+"#,
+    );
+    write(
+        &root.join("data/voice/commands.yaml"),
+        r#"
+version: 1
+intents:
+  volume_up:
+    aliases:
+      - "boost sound"
+actions:
+  open_talk:
+    aliases:
+      - "open talk"
+    route: "open_talk"
+"#,
+    );
+
+    let config = RuntimeConfig::load(&config_dir).expect("load runtime config");
+    let settings = config.voice.to_command_settings();
+
+    let command = route_voice_transcript("hey yoyo boost sound", &settings);
+    assert_eq!(command.kind, VoiceRouteKind::Command);
+    assert_eq!(
+        command.command.expect("command").intent,
+        VoiceCommandIntent::VolumeUp
+    );
+
+    let action = route_voice_transcript("hey yoyo open talk", &settings);
+    assert_eq!(action.reason, "action_match");
 }
 
 #[test]

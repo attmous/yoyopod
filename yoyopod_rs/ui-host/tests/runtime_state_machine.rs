@@ -538,6 +538,40 @@ fn voice_note_ready_uses_hold_passthrough_for_recording() {
 }
 
 #[test]
+fn ask_select_emits_ask_start_intent_not_voice_note_capture() {
+    let mut runtime = UiRuntime::default();
+    let mut snapshot = RuntimeSnapshot::default();
+    snapshot.app_state = "ask".to_string();
+    runtime.apply_snapshot(snapshot);
+
+    runtime.handle_input(InputAction::Select);
+
+    assert_eq!(
+        runtime.take_intents(),
+        vec![UiIntent::new("voice", "ask_start")]
+    );
+}
+
+#[test]
+fn ask_ptt_press_release_uses_ask_intents() {
+    let mut runtime = UiRuntime::default();
+    let mut snapshot = RuntimeSnapshot::default();
+    snapshot.app_state = "ask".to_string();
+    runtime.apply_snapshot(snapshot);
+
+    runtime.handle_input(InputAction::PttPress);
+    runtime.handle_input(InputAction::PttRelease);
+
+    assert_eq!(
+        runtime.take_intents(),
+        vec![
+            UiIntent::new("voice", "ask_start"),
+            UiIntent::new("voice", "ask_stop")
+        ]
+    );
+}
+
+#[test]
 fn required_screens_have_view_models() {
     let snapshot = RuntimeSnapshot::default();
     let screens = [
