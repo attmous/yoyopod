@@ -1450,7 +1450,7 @@ def test_setup_rust_ui_host_sends_initial_backlight(monkeypatch) -> None:
     app = SimpleNamespace(
         app_settings=SimpleNamespace(
             display=SimpleNamespace(
-                rust_ui_worker_path="yoyopod_rs/ui-host/build/yoyopod-ui-host"
+                rust_ui_worker_path="yoyopod_rs/ui/build/yoyopod-ui-host"
             )
         ),
         bus=SimpleNamespace(subscribe=lambda *_args: None),
@@ -1460,7 +1460,7 @@ def test_setup_rust_ui_host_sends_initial_backlight(monkeypatch) -> None:
     assert RuntimeBootService(app).setup_rust_ui_host()
 
     assert calls == [
-        ("start", ("yoyopod_rs/ui-host/build/yoyopod-ui-host", "whisplay")),
+        ("start", ("yoyopod_rs/ui/build/yoyopod-ui-host", "whisplay")),
         ("backlight", 0.8),
         ("snapshot", None),
     ]

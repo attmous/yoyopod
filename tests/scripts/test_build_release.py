@@ -115,7 +115,7 @@ def test_build_rewrites_default_voice_worker_argv_for_slot_root(tmp_path: Path) 
             {
                 "worker": {
                     "argv": [
-                        "yoyopod_rs/speech-host/build/yoyopod-speech-host",
+                        "yoyopod_rs/speech/build/yoyopod-speech-host",
                         "--log-level",
                         "info",
                     ]
@@ -143,7 +143,7 @@ def test_build_rewrites_default_voice_worker_argv_for_slot_root(tmp_path: Path) 
         "info",
     ]
     source = yaml.safe_load(voice_config.read_text(encoding="utf-8"))
-    assert source["worker"]["argv"][0] == "yoyopod_rs/speech-host/build/yoyopod-speech-host"
+    assert source["worker"]["argv"][0] == "yoyopod_rs/speech/build/yoyopod-speech-host"
 
 
 def test_build_writes_runtime_requirements_from_pyproject(tmp_path: Path) -> None:

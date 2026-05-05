@@ -169,13 +169,13 @@ def test_facade_registers_worker_with_config_dir() -> None:
     )
     facade = RustNetworkFacade(app, worker_domain="network")
 
-    assert facade.start_worker("yoyopod_rs/network-host/build/yoyopod-network-host")
+    assert facade.start_worker("yoyopod_rs/network/build/yoyopod-network-host")
 
     assert supervisor.started == ["network"]
     domain, config = supervisor.registered[0]
     assert domain == "network"
     assert getattr(config, "argv") == [
-        "yoyopod_rs/network-host/build/yoyopod-network-host",
+        "yoyopod_rs/network/build/yoyopod-network-host",
         "--config-dir",
         "config/test-device",
     ]

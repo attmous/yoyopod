@@ -10,7 +10,7 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import typer
 
@@ -20,6 +20,7 @@ from yoyopod_cli.release_manifest import ReleaseManifest, load_manifest, validat
 from yoyopod_cli.remote_shared import RemoteConnection, pi_conn
 from yoyopod_cli.remote_transport import run_remote, run_remote_capture, validate_config
 from yoyopod_cli.slot_contract import (
+    APP_NATIVE_RUNTIME_ARTIFACTS,
     detect_self_contained_python_version,
     missing_self_contained_paths,
 )
@@ -269,18 +270,7 @@ def _hydrate_slot_on_pi(conn: object, version: str) -> int:
     venv_dir = f"{slot_dir}/venv"
     requirements_path = f"{slot_dir}/runtime-requirements.txt"
     tmp_root = f"{_slots().state_dir()}/tmp"
-    current_lvgl_build = f"{current_path}/app/yoyopod/ui/lvgl_binding/native/build"
-    current_media_host_build = f"{current_path}/app/yoyopod_rs/media-host/build"
-    current_voip_host_build = f"{current_path}/app/yoyopod_rs/voip-host/build"
-    slot_lvgl_build = f"{slot_dir}/app/yoyopod/ui/lvgl_binding/native/build"
-    slot_media_host_build = f"{slot_dir}/app/yoyopod_rs/media-host/build"
-    slot_voip_host_build = f"{slot_dir}/app/yoyopod_rs/voip-host/build"
-    current_lvgl_shim = f"{current_lvgl_build}/libyoyopod_lvgl_shim.so"
-    current_media_host = f"{current_media_host_build}/yoyopod-media-host"
-    current_voip_host = f"{current_voip_host_build}/yoyopod-voip-host"
-    slot_lvgl_shim = f"{slot_lvgl_build}/libyoyopod_lvgl_shim.so"
-    slot_media_host = f"{slot_media_host_build}/yoyopod-media-host"
-    slot_voip_host = f"{slot_voip_host_build}/yoyopod-voip-host"
+    artifact_copy_steps = _slot_artifact_hydration_steps(current_path, slot_dir)
     cmd = (
         "set -e; "
         f"test -f {shlex.quote(requirements_path)}; "
@@ -296,25 +286,29 @@ def _hydrate_slot_on_pi(conn: object, version: str) -> int:
         f"rm -rf {shlex.quote(venv_dir)}; "
         f'mv "$tmp_venv" {shlex.quote(venv_dir)}; '
         "trap - EXIT; "
-        f"if [ -f {shlex.quote(current_lvgl_shim)} ]; then "
-        f"  rm -rf {shlex.quote(slot_lvgl_build)} && mkdir -p {shlex.quote(slot_lvgl_build)} && "
-        f"  cp -aL {shlex.quote(current_lvgl_shim)} {shlex.quote(slot_lvgl_shim)}; "
-        f"fi; "
-        f"if [ -f {shlex.quote(current_media_host)} ]; then "
-        f"  rm -rf {shlex.quote(slot_media_host_build)} && "
-        f"  mkdir -p {shlex.quote(slot_media_host_build)} && "
-        f"  cp -aL {shlex.quote(current_media_host)} {shlex.quote(slot_media_host)} && "
-        f"  chmod 755 {shlex.quote(slot_media_host)}; "
-        f"fi; "
-        f"if [ -f {shlex.quote(current_voip_host)} ]; then "
-        f"  rm -rf {shlex.quote(slot_voip_host_build)} && "
-        f"  mkdir -p {shlex.quote(slot_voip_host_build)} && "
-        f"  cp -aL {shlex.quote(current_voip_host)} {shlex.quote(slot_voip_host)} && "
-        f"  chmod 755 {shlex.quote(slot_voip_host)}; "
-        f"fi; "
+        f"{artifact_copy_steps}"
         f"{_slot_subapp_command(slot_dir, 'yoyopod_cli.build', 'lvgl')}"
     )
     return _run_slot_remote(conn, cmd)
+
+
+def _slot_artifact_hydration_steps(current_path: str, slot_dir: str) -> str:
+    """Return shell steps that copy reusable native artifacts from the current slot."""
+
+    steps: list[str] = []
+    for relative in APP_NATIVE_RUNTIME_ARTIFACTS:
+        relative_posix = relative.as_posix()
+        current_artifact = f"{current_path}/app/{relative_posix}"
+        slot_artifact = f"{slot_dir}/app/{relative_posix}"
+        slot_parent = str(PurePosixPath(slot_artifact).parent)
+        steps.append(
+            f"if [ -f {shlex.quote(current_artifact)} ]; then "
+            f"  mkdir -p {shlex.quote(slot_parent)} && "
+            f"  cp -aL {shlex.quote(current_artifact)} {shlex.quote(slot_artifact)} && "
+            f"  chmod 755 {shlex.quote(slot_artifact)}; "
+            f"fi; "
+        )
+    return "".join(steps)
 
 
 def _flip_symlinks_on_pi(conn: object, version: str) -> int:

@@ -40,7 +40,7 @@ That means the app does not yet have one global audio hardware contract. Device 
 ### Calls
 
 - `config/device/hardware.yaml` carries shared communication audio device IDs
-- `yoyopod_rs/voip-host` owns the Liblinphone call runtime; capture tuning still needs to be centralized behind this facade
+- `yoyopod_rs/voip` owns the Liblinphone call runtime; capture tuning still needs to be centralized behind this facade
 
 ### Voice Commands
 

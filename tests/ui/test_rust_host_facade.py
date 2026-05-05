@@ -72,14 +72,14 @@ def test_facade_starts_ui_host_worker() -> None:
     app = SimpleNamespace(worker_supervisor=supervisor)
     facade = RustUiFacade(app, worker_domain="ui")
 
-    assert facade.start_worker("yoyopod_rs/ui-host/build/yoyopod-ui-host", hardware="whisplay")
+    assert facade.start_worker("yoyopod_rs/ui/build/yoyopod-ui-host", hardware="whisplay")
 
     assert supervisor.started == ["ui"]
     assert supervisor.drain_calls == ["ui"]
     domain, config = supervisor.registered[0]
     assert domain == "ui"
     assert getattr(config, "argv") == [
-        "yoyopod_rs/ui-host/build/yoyopod-ui-host",
+        "yoyopod_rs/ui/build/yoyopod-ui-host",
         "--hardware",
         "whisplay",
     ]
@@ -91,7 +91,7 @@ def test_facade_rejects_worker_start_without_ready_event() -> None:
     facade = RustUiFacade(app, worker_domain="ui")
 
     assert not facade.start_worker(
-        "yoyopod_rs/ui-host/build/yoyopod-ui-host",
+        "yoyopod_rs/ui/build/yoyopod-ui-host",
         ready_timeout_seconds=0.0,
         ready_poll_interval_seconds=0.0,
     )
@@ -114,7 +114,7 @@ def test_facade_rejects_worker_startup_error_before_ready() -> None:
     facade = RustUiFacade(app, worker_domain="ui")
 
     assert not facade.start_worker(
-        "yoyopod_rs/ui-host/build/yoyopod-ui-host",
+        "yoyopod_rs/ui/build/yoyopod-ui-host",
         ready_timeout_seconds=0.0,
         ready_poll_interval_seconds=0.0,
     )

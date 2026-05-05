@@ -92,7 +92,7 @@ data/communication/
 data/cloud/
 data/media/
 data/people/
-yoyopod_rs/cloud-host/data/
+yoyopod_rs/cloud/data/
 
 # OS files
 .DS_Store

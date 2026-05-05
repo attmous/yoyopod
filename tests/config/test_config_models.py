@@ -56,7 +56,7 @@ def test_app_shell_defaults_do_not_require_a_file(tmp_path, monkeypatch) -> None
     assert settings.display.rust_ui_sidecar_enabled is False
     assert (
         settings.display.rust_ui_worker
-        == "yoyopod_rs/ui-host/build/yoyopod-ui-host"
+        == "yoyopod_rs/ui/build/yoyopod-ui-host"
     )
     assert settings.logging.file == "logs/yoyopod.log"
     assert settings.logging.error_file == "logs/yoyopod_errors.log"
@@ -230,7 +230,7 @@ def test_voice_config_includes_cloud_worker_defaults(tmp_path, monkeypatch) -> N
     assert settings.worker.enabled is True
     assert settings.worker.domain == "voice"
     assert settings.worker.provider == "mock"
-    assert settings.worker.argv == ["yoyopod_rs/speech-host/build/yoyopod-speech-host"]
+    assert settings.worker.argv == ["yoyopod_rs/speech/build/yoyopod-speech-host"]
     assert settings.worker.request_timeout_seconds == 12.0
     assert settings.worker.max_audio_seconds == 30.0
     assert settings.worker.stt_model == "gpt-4o-mini-transcribe"
@@ -338,7 +338,7 @@ def test_authored_voice_config_includes_cloud_worker_defaults(monkeypatch) -> No
     assert settings.worker.enabled is True
     assert settings.worker.domain == "voice"
     assert settings.worker.provider == "mock"
-    assert settings.worker.argv == ["yoyopod_rs/speech-host/build/yoyopod-speech-host"]
+    assert settings.worker.argv == ["yoyopod_rs/speech/build/yoyopod-speech-host"]
     assert settings.worker.request_timeout_seconds == 12.0
     assert settings.worker.max_audio_seconds == 30.0
     assert settings.worker.stt_model == "gpt-4o-mini-transcribe"

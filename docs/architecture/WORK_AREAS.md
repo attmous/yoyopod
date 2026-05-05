@@ -7,15 +7,15 @@ where a change belongs.
 
 - `yoyopod_rs/runtime/` owns process supervision, config loading, event routing,
   state composition, and UI snapshot delivery.
-- `yoyopod_rs/ui-host/` owns Whisplay/LVGL rendering and button-facing UI
+- `yoyopod_rs/ui/` owns Whisplay/LVGL rendering and button-facing UI
   behavior.
-- `yoyopod_rs/media-host/` owns local music playback and mpv process control.
-- `yoyopod_rs/voip-host/` owns SIP, calls, and voice-message behavior through
+- `yoyopod_rs/media/` owns local music playback and mpv process control.
+- `yoyopod_rs/voip/` owns SIP, calls, and voice-message behavior through
   Liblinphone.
-- `yoyopod_rs/network-host/` owns cellular modem, PPP, and GPS behavior.
-- `yoyopod_rs/cloud-host/` owns MQTT/cloud telemetry and command transport.
-- `yoyopod_rs/power-host/` owns power/battery integration.
-- `yoyopod_rs/speech-host/` owns cloud speech, TTS, and Ask worker protocol.
+- `yoyopod_rs/network/` owns cellular modem, PPP, and GPS behavior.
+- `yoyopod_rs/cloud/` owns MQTT/cloud telemetry and command transport.
+- `yoyopod_rs/power/` owns power/battery integration.
+- `yoyopod_rs/speech/` owns cloud speech, TTS, and Ask worker protocol.
 
 ## Python Still-Owned Areas
 

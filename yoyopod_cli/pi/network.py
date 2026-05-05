@@ -24,7 +24,7 @@ _STDOUT_EOF = object()
 def _rust_network_host_worker_path() -> Path:
     raw_path = os.environ.get(
         "YOYOPOD_RUST_NETWORK_HOST_WORKER",
-        "yoyopod_rs/network-host/build/yoyopod-network-host",
+        "yoyopod_rs/network/build/yoyopod-network-host",
     ).strip()
     worker_path = Path(raw_path)
     if not worker_path.is_absolute():

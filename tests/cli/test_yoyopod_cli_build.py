@@ -160,7 +160,7 @@ def test_build_voice_worker_invokes_rust_speech_host_build(
     tmp_path: Path,
 ) -> None:
     workspace_dir = tmp_path / "src"
-    crate_dir = workspace_dir / "speech-host"
+    crate_dir = workspace_dir / "speech"
     crate_dir.mkdir(parents=True)
     calls: list[tuple[list[str], Path | None, dict[str, str] | None]] = []
     copies: list[tuple[Path, Path]] = []
@@ -186,7 +186,7 @@ def test_build_voice_worker_invokes_rust_speech_host_build(
                 "build",
                 "--release",
                 "-p",
-                "yoyopod-speech-host",
+                "yoyopod-speech",
                 "--locked",
             ],
             workspace_dir,
@@ -205,9 +205,9 @@ def test_rust_ui_host_paths_point_at_yoyopod_rs_workspace() -> None:
     suffix = ".exe" if build_cli.os.name == "nt" else ""
 
     assert build_cli._rust_ui_host_workspace_dir() == build_cli._REPO_ROOT / "yoyopod_rs"
-    assert build_cli._rust_ui_host_crate_dir() == build_cli._REPO_ROOT / "yoyopod_rs" / "ui-host"
+    assert build_cli._rust_ui_host_crate_dir() == build_cli._REPO_ROOT / "yoyopod_rs" / "ui"
     assert build_cli._rust_ui_host_binary_path() == (
-        build_cli._REPO_ROOT / "yoyopod_rs" / "ui-host" / "build" / f"yoyopod-ui-host{suffix}"
+        build_cli._REPO_ROOT / "yoyopod_rs" / "ui" / "build" / f"yoyopod-ui-host{suffix}"
     )
 
 
@@ -216,7 +216,7 @@ def test_build_rust_ui_poc_invokes_cargo(
     tmp_path: Path,
 ) -> None:
     workspace_dir = tmp_path / "src"
-    crate_dir = workspace_dir / "ui-host"
+    crate_dir = workspace_dir / "ui"
     crate_dir.mkdir(parents=True)
     calls: list[tuple[list[str], Path | None, dict[str, str] | None]] = []
     copies: list[tuple[Path, Path]] = []
@@ -240,7 +240,7 @@ def test_build_rust_ui_poc_invokes_cargo(
         "build",
         "--release",
         "-p",
-        "yoyopod-ui-host",
+        "yoyopod-ui",
         "--locked",
         "--features",
         "whisplay-hardware",
@@ -254,7 +254,7 @@ def test_build_rust_ui_host_invokes_cargo_workspace(
     tmp_path: Path,
 ) -> None:
     workspace_dir = tmp_path / "src"
-    crate_dir = workspace_dir / "ui-host"
+    crate_dir = workspace_dir / "ui"
     crate_dir.mkdir(parents=True)
     calls: list[tuple[list[str], Path | None, dict[str, str] | None]] = []
     copies: list[tuple[Path, Path]] = []
@@ -280,7 +280,7 @@ def test_build_rust_ui_host_invokes_cargo_workspace(
                 "build",
                 "--release",
                 "-p",
-                "yoyopod-ui-host",
+                "yoyopod-ui",
                 "--locked",
                 "--features",
                 "whisplay-hardware",

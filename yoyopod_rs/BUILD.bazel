@@ -2,32 +2,32 @@ package(default_visibility = ["//visibility:public"])
 
 alias(
     name = "media-host",
-    actual = "//yoyopod_rs/media-host:yoyopod-media-host",
+    actual = "//yoyopod_rs/media:yoyopod-media-host",
 )
 
 alias(
     name = "cloud-host",
-    actual = "//yoyopod_rs/cloud-host:yoyopod-cloud-host",
+    actual = "//yoyopod_rs/cloud:yoyopod-cloud-host",
 )
 
 alias(
     name = "power-host",
-    actual = "//yoyopod_rs/power-host:yoyopod-power-host",
+    actual = "//yoyopod_rs/power:yoyopod-power-host",
 )
 
 alias(
     name = "speech-host",
-    actual = "//yoyopod_rs/speech-host:yoyopod-speech-host",
+    actual = "//yoyopod_rs/speech:yoyopod-speech-host",
 )
 
 alias(
     name = "ui-host",
-    actual = "//yoyopod_rs/ui-host:yoyopod-ui-host",
+    actual = "//yoyopod_rs/ui:yoyopod-ui-host",
 )
 
 alias(
     name = "voip-host",
-    actual = "//yoyopod_rs/voip-host:yoyopod-voip-host",
+    actual = "//yoyopod_rs/voip:yoyopod-voip-host",
 )
 
 alias(

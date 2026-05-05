@@ -2,10 +2,10 @@ package(default_visibility = ["//visibility:public"])
 
 alias(
     name = "yoyopod-ui-host",
-    actual = "//yoyopod_rs/ui-host:yoyopod-ui-host",
+    actual = "//yoyopod_rs/ui:yoyopod-ui-host",
 )
 
 alias(
     name = "yoyopod-voip-host",
-    actual = "//yoyopod_rs/voip-host:yoyopod-voip-host",
+    actual = "//yoyopod_rs/voip:yoyopod-voip-host",
 )

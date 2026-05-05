@@ -17,7 +17,7 @@ from yoyopod_cli.common import REPO_ROOT, resolve_config_dir
 def rust_voip_worker_path() -> str:
     return os.environ.get(
         "YOYOPOD_RUST_VOIP_HOST_WORKER",
-        "yoyopod_rs/voip-host/build/yoyopod-voip-host",
+        "yoyopod_rs/voip/build/yoyopod-voip-host",
     ).strip()
 
 

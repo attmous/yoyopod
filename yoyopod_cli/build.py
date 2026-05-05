@@ -146,7 +146,7 @@ def _rust_speech_host_workspace_dir() -> Path:
 
 
 def _rust_speech_host_crate_dir() -> Path:
-    return _rust_speech_host_workspace_dir() / "speech-host"
+    return _rust_speech_host_workspace_dir() / "speech"
 
 
 def _rust_speech_host_binary_path() -> Path:
@@ -159,7 +159,7 @@ def _rust_ui_host_workspace_dir() -> Path:
 
 
 def _rust_ui_host_crate_dir() -> Path:
-    return _rust_ui_host_workspace_dir() / "ui-host"
+    return _rust_ui_host_workspace_dir() / "ui"
 
 
 def _rust_ui_host_binary_path() -> Path:
@@ -201,7 +201,7 @@ def build_speech_host() -> Path:
             "build",
             "--release",
             "-p",
-            "yoyopod-speech-host",
+            "yoyopod-speech",
             "--locked",
         ],
         cwd=workspace_dir,
@@ -231,7 +231,7 @@ def build_rust_ui_host(*, hardware_feature: bool = True) -> Path:
         "build",
         "--release",
         "-p",
-        "yoyopod-ui-host",
+        "yoyopod-ui",
         "--locked",
     ]
     if hardware_feature:

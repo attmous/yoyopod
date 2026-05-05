@@ -400,7 +400,7 @@ If you use it, say clearly that the board is running a dirty-tree override inste
 1. Run focused local Rust checks as needed:
    ```bash
    cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-runtime --locked
-   cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui-host --locked
+   cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui --locked
    ```
 2. Commit the intended change.
 3. Push the branch.

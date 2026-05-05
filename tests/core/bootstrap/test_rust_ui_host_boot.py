@@ -25,7 +25,7 @@ class _Settings:
         whisplay_renderer="lvgl",
         lvgl_buffer_lines=40,
         rust_ui_enabled=True,
-        rust_ui_worker_path="yoyopod_rs/ui-host/build/yoyopod-ui-host",
+        rust_ui_worker_path="yoyopod_rs/ui/build/yoyopod-ui-host",
     )
     input = SimpleNamespace()
 

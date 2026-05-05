@@ -23,7 +23,10 @@ def test_slot_contract_includes_rust_runtime_artifact() -> None:
     assert Path("yoyopod_rs") / "runtime" / "build" / "yoyopod-runtime" in (
         APP_NATIVE_RUNTIME_ARTIFACTS
     )
-    assert Path("yoyopod_rs") / "network-host" / "build" / "yoyopod-network-host" in (
+    assert Path("yoyopod_rs") / "network" / "build" / "yoyopod-network-host" in (
+        APP_NATIVE_RUNTIME_ARTIFACTS
+    )
+    assert Path("yoyopod_rs") / "power" / "build" / "yoyopod-power-host" in (
         APP_NATIVE_RUNTIME_ARTIFACTS
     )
 

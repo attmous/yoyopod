@@ -105,7 +105,7 @@ class VoiceWorkerConfig:
     domain: str = config_value(default="voice", env="YOYOPOD_VOICE_WORKER_DOMAIN")
     provider: str = config_value(default="mock", env="YOYOPOD_VOICE_WORKER_PROVIDER")
     argv: list[str] = config_value(
-        default_factory=lambda: ["yoyopod_rs/speech-host/build/yoyopod-speech-host"],
+        default_factory=lambda: ["yoyopod_rs/speech/build/yoyopod-speech-host"],
         env="YOYOPOD_VOICE_WORKER_ARGV",
     )
     request_timeout_seconds: float = config_value(

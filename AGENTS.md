@@ -43,11 +43,11 @@ Current Runtime Status
 - `yoyopod-runtime` loads config, owns PID/log lifecycle, supervises worker
   processes, routes worker events, composes app state, and sends UI snapshots.
 - Rust worker domains live under:
-  - `yoyopod_rs/ui-host/` for Whisplay UI and LVGL rendering
-  - `yoyopod_rs/media-host/` for local music/mpv ownership
-  - `yoyopod_rs/voip-host/` for Liblinphone/SIP ownership
-  - `yoyopod_rs/network-host/` for SIM7600/PPP/GPS ownership
-  - `yoyopod_rs/cloud-host/` for cloud MQTT telemetry/command transport
+  - `yoyopod_rs/ui/` for Whisplay UI and LVGL rendering
+  - `yoyopod_rs/media/` for local music/mpv ownership
+  - `yoyopod_rs/voip/` for Liblinphone/SIP ownership
+  - `yoyopod_rs/network/` for SIM7600/PPP/GPS ownership
+  - `yoyopod_rs/cloud/` for cloud MQTT telemetry/command transport
 - The Rust UI host now contains native Rust LVGL scene controllers for the main
   screen set. The C LVGL shim and LVGL native library still exist as display
   infrastructure during the transition.
@@ -77,11 +77,11 @@ Pi Lanes And Bootstrap
 
 Source Of Truth
 - `yoyopod_rs/runtime/`
-- `yoyopod_rs/cloud-host/`
-- `yoyopod_rs/ui-host/`
-- `yoyopod_rs/media-host/`
-- `yoyopod_rs/voip-host/`
-- `yoyopod_rs/network-host/`
+- `yoyopod_rs/cloud/`
+- `yoyopod_rs/ui/`
+- `yoyopod_rs/media/`
+- `yoyopod_rs/voip/`
+- `yoyopod_rs/network/`
 - `deploy/systemd/yoyopod-dev.service`
 - `deploy/systemd/yoyopod-prod.service`
 - `yoyopod_cli/main.py`
@@ -96,7 +96,7 @@ Source Of Truth
 High-Value Commands
 - Rust workspace tests: `cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked`
 - Rust runtime tests: `cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-runtime --locked`
-- Rust UI tests: `cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui-host --locked`
+- Rust UI tests: `cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui --locked`
 - Rust runtime dry run: `cargo run --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-runtime -- --config-dir config --dry-run`
 - Build local artifact on development machine: `uv run yoyopod build rust-runtime`
 - Pi lane status: `yoyopod remote mode status`

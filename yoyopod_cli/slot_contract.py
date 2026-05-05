@@ -9,17 +9,18 @@ SLOT_VENV_PYTHON = Path("venv") / "bin" / "python"
 SLOT_PYTHON_BIN = Path("python") / "bin" / "python3.12"
 SLOT_PYTHON_STDLIB_MARKER = Path("python") / "lib" / "python3.12" / "os.py"
 SLOT_VOICE_WORKER_ARTIFACT = (
-    Path("app") / "yoyopod_rs" / "speech-host" / "build" / "yoyopod-speech-host"
+    Path("app") / "yoyopod_rs" / "speech" / "build" / "yoyopod-speech-host"
 )
 
 APP_NATIVE_RUNTIME_ARTIFACTS: tuple[Path, ...] = (
     Path("yoyopod") / "ui" / "lvgl_binding" / "native" / "build" / "libyoyopod_lvgl_shim.so",
     Path("yoyopod") / "ui" / "lvgl_binding" / "native" / "build" / "lvgl" / "lib" / "liblvgl.so.9",
-    Path("yoyopod_rs") / "cloud-host" / "build" / "yoyopod-cloud-host",
-    Path("yoyopod_rs") / "media-host" / "build" / "yoyopod-media-host",
-    Path("yoyopod_rs") / "voip-host" / "build" / "yoyopod-voip-host",
-    Path("yoyopod_rs") / "network-host" / "build" / "yoyopod-network-host",
-    Path("yoyopod_rs") / "speech-host" / "build" / "yoyopod-speech-host",
+    Path("yoyopod_rs") / "cloud" / "build" / "yoyopod-cloud-host",
+    Path("yoyopod_rs") / "media" / "build" / "yoyopod-media-host",
+    Path("yoyopod_rs") / "voip" / "build" / "yoyopod-voip-host",
+    Path("yoyopod_rs") / "network" / "build" / "yoyopod-network-host",
+    Path("yoyopod_rs") / "power" / "build" / "yoyopod-power-host",
+    Path("yoyopod_rs") / "speech" / "build" / "yoyopod-speech-host",
     Path("yoyopod_rs") / "runtime" / "build" / "yoyopod-runtime",
 )
 

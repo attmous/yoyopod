@@ -10,10 +10,10 @@ Use focused Rust checks for the crate you changed:
 
 ```bash
 cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-runtime --locked
-cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui-host --locked
-cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-media-host --locked
-cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip-host --locked
-cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-network-host --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-media --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip --locked
+cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-network --locked
 ```
 
 For broad Rust workspace changes:

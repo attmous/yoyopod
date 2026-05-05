@@ -896,8 +896,11 @@ def test_hydrate_slot_uses_build_subapp_entrypoint(run_remote_mock: MagicMock) -
     assert "/opt/yoyopod-prod/releases/2026.04.22-abc/app" in cmd
     assert "PYTHONPATH=" not in cmd
     assert "libyoyopod_lvgl_shim.so" in cmd
-    assert "yoyopod-media-host" in cmd
-    assert "yoyopod-voip-host" in cmd
+    for relative in APP_NATIVE_RUNTIME_ARTIFACTS:
+        assert f"/opt/yoyopod-prod/current/app/{relative.as_posix()}" in cmd
+        assert f"/opt/yoyopod-prod/releases/2026.04.22-abc/app/{relative.as_posix()}" in cmd
+    assert "yoyopod-power-host" in cmd
+    assert "yoyopod-runtime" in cmd
     assert "libyoyopod_liblinphone_shim.so" not in cmd
     assert "pip install -r /opt/yoyopod-prod/releases/2026.04.22-abc/runtime-requirements.txt" in cmd
     assert 'python3 -m venv "$tmp_venv"' in cmd

@@ -156,7 +156,7 @@ yoyopod.py / yoyopod.main
            -> mpv JSON IPC over Unix socket / named pipe
       -> VoIPManager
          -> RustHostBackend
-            -> yoyopod_rs/voip-host worker
+            -> yoyopod_rs/voip worker
                -> internal Rust Liblinphone runtime
                   -> Liblinphone
       -> PowerManager

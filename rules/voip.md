@@ -6,7 +6,7 @@ Applies to: `yoyopod/integrations/call/**`, `yoyopod/integrations/contacts/**`, 
 
 The production VoIP path is Rust-owned Liblinphone:
 
-- Rust VoIP host under `yoyopod_rs/voip-host/`
+- Rust VoIP host under `yoyopod_rs/voip/`
 - Rust Liblinphone shim under `yoyopod_rs/liblinphone-shim/`
 - Python `RustHostBackend` only supervises the worker process and forwards commands
 - `VoIPManager` only exposes command helpers and Rust runtime snapshots to the app

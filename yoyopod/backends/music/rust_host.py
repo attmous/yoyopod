@@ -758,7 +758,7 @@ def default_worker_path() -> str:
 
     return os.environ.get(
         "YOYOPOD_RUST_MEDIA_HOST_WORKER",
-        "yoyopod_rs/media-host/build/yoyopod-media-host",
+        "yoyopod_rs/media/build/yoyopod-media-host",
     ).strip()
 
 

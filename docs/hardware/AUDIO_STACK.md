@@ -31,7 +31,7 @@ For calls and voice notes, the audio runtime is separate and Rust-owned:
 YoyoPodApp
   -> VoIPManager
      -> RustHostBackend
-        -> yoyopod_rs/voip-host
+        -> yoyopod_rs/voip
            -> internal Rust Liblinphone runtime
               -> Liblinphone
               -> ALSA: wm8960-soundcard

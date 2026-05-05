@@ -21,11 +21,11 @@ from yoyopod_cli.remote_transport import (
 
 app = build_remote_app("validate_app", "Validate commit + health on the Pi.")
 
-_RUST_UI_HOST_WORKER = "yoyopod_rs/ui-host/build/yoyopod-ui-host"
+_RUST_UI_HOST_WORKER = "yoyopod_rs/ui/build/yoyopod-ui-host"
 _RUST_UI_POC_WORKER = _RUST_UI_HOST_WORKER
-_RUST_CLOUD_HOST_WORKER = "yoyopod_rs/cloud-host/build/yoyopod-cloud-host"
-_RUST_MEDIA_HOST_WORKER = "yoyopod_rs/media-host/build/yoyopod-media-host"
-_RUST_VOIP_HOST_WORKER = "yoyopod_rs/voip-host/build/yoyopod-voip-host"
+_RUST_CLOUD_HOST_WORKER = "yoyopod_rs/cloud/build/yoyopod-cloud-host"
+_RUST_MEDIA_HOST_WORKER = "yoyopod_rs/media/build/yoyopod-media-host"
+_RUST_VOIP_HOST_WORKER = "yoyopod_rs/voip/build/yoyopod-voip-host"
 
 
 def _build_preflight_steps() -> list[tuple[str, list[str]]]:
