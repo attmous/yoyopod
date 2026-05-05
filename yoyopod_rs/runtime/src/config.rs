@@ -20,7 +20,7 @@ const RUST_UI_HOST_DEFAULT_WORKER: &str = "yoyopod_rs/ui-host/build/yoyopod-ui-h
 const RUST_CLOUD_HOST_DEFAULT_WORKER: &str = "yoyopod_rs/cloud-host/build/yoyopod-cloud-host";
 const RUST_NETWORK_HOST_DEFAULT_WORKER: &str = "yoyopod_rs/network-host/build/yoyopod-network-host";
 const RUST_POWER_HOST_DEFAULT_WORKER: &str = "yoyopod_rs/power-host/build/yoyopod-power-host";
-const VOICE_WORKER_DEFAULT: &str = "workers/voice/go/build/yoyopod-voice-worker";
+const VOICE_WORKER_DEFAULT: &str = "yoyopod_rs/speech-host/build/yoyopod-speech-host";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeConfig {

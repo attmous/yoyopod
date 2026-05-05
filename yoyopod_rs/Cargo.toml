@@ -4,6 +4,7 @@ members = [
     "cloud-host",
     "media-host",
     "power-host",
+    "speech-host",
     "ui-host",
     "voip-host",
     "network-host",

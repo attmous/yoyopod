@@ -9,6 +9,7 @@ import tarfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 from yoyopod_cli.slot_contract import (
     APP_NATIVE_RUNTIME_ARTIFACTS,
@@ -94,6 +95,55 @@ def test_build_writes_manifest(tmp_path: Path) -> None:
     tar_digest = hashlib.sha256(tarball.read_bytes()).hexdigest()
     sidecar = out / "2026.04.22-test.tar.gz.sha256"
     assert sidecar.read_text(encoding="utf-8") == (f"{tar_digest}  2026.04.22-test.tar.gz\n")
+
+
+def test_build_rewrites_default_voice_worker_argv_for_slot_root(tmp_path: Path) -> None:
+    fake_repo = tmp_path / "repo"
+    (fake_repo / "yoyopod").mkdir(parents=True)
+    (fake_repo / "yoyopod" / "__init__.py").write_text("")
+    (fake_repo / "yoyopod_cli").mkdir()
+    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
+    (fake_repo / "deploy" / "scripts").mkdir(parents=True)
+    launch = fake_repo / "deploy" / "scripts" / "launch.sh"
+    launch.write_text("#!/bin/sh\ncd \"$SLOT_DIR\"\n")
+    launch.chmod(0o755)
+    voice_config = fake_repo / "config" / "voice" / "assistant.yaml"
+    voice_config.parent.mkdir(parents=True)
+    voice_config.write_text(
+        yaml.safe_dump(
+            {
+                "worker": {
+                    "argv": [
+                        "yoyopod_rs/speech-host/build/yoyopod-speech-host",
+                        "--log-level",
+                        "info",
+                    ]
+                }
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    slot = build_release.build(
+        repo_root=fake_repo,
+        output_root=tmp_path / "out",
+        version="2026.04.22-voice-path",
+        channel="dev",
+        skip_venv=True,
+    )
+
+    bundled = yaml.safe_load(
+        (slot / "config" / "voice" / "assistant.yaml").read_text(encoding="utf-8")
+    )
+    assert bundled["worker"]["argv"] == [
+        SLOT_VOICE_WORKER_ARTIFACT.as_posix(),
+        "--log-level",
+        "info",
+    ]
+    source = yaml.safe_load(voice_config.read_text(encoding="utf-8"))
+    assert source["worker"]["argv"][0] == "yoyopod_rs/speech-host/build/yoyopod-speech-host"
 
 
 def test_build_writes_runtime_requirements_from_pyproject(tmp_path: Path) -> None:

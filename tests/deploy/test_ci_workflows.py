@@ -30,7 +30,7 @@ def test_rust_ci_builds_arm64_device_bundle_artifact() -> None:
 
     assert "rust-device-arm64:" in workflow
     assert "runs-on: ubuntu-24.04-arm" in workflow
-    assert "needs: [changes, quality, test, voice-go, rust-device-arm64]" in workflow
+    assert "needs: [changes, quality, test, rust-device-arm64]" in workflow
     assert "RUST_ARTIFACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}" in workflow
     assert "YOYOPOD_LVGL_SOURCE_DIR: ${{ github.workspace }}/.cache/lvgl/lvgl-9.5.0" in workflow
     assert "working-directory: yoyopod_rs" in workflow
@@ -41,7 +41,7 @@ def test_rust_ci_builds_arm64_device_bundle_artifact() -> None:
     assert (
         "bazel test --action_env=PATH //yoyopod_rs/ui-host/... //yoyopod_rs/cloud-host/... "
         "//yoyopod_rs/media-host/... //yoyopod_rs/voip-host/... //yoyopod_rs/network-host/... "
-        "//yoyopod_rs/runtime/..."
+        "//yoyopod_rs/speech-host/... //yoyopod_rs/runtime/..."
     ) in workflow
     assert "cargo test --workspace --locked --features whisplay-hardware,native-lvgl" in workflow
     assert (
@@ -54,6 +54,7 @@ def test_rust_ci_builds_arm64_device_bundle_artifact() -> None:
     assert "-p yoyopod-media-host" in workflow
     assert "-p yoyopod-voip-host" in workflow
     assert "-p yoyopod-network-host" in workflow
+    assert "-p yoyopod-speech-host" in workflow
     assert (
         "--features yoyopod-ui-host/whisplay-hardware,yoyopod-ui-host/native-lvgl,yoyopod-voip-host/native-liblinphone"
         in workflow
@@ -66,6 +67,7 @@ def test_rust_ci_builds_arm64_device_bundle_artifact() -> None:
     assert "yoyopod_rs/media-host/build/yoyopod-media-host" in workflow
     assert "yoyopod_rs/voip-host/build/yoyopod-voip-host" in workflow
     assert "yoyopod_rs/network-host/build/yoyopod-network-host" in workflow
+    assert "yoyopod_rs/speech-host/build/yoyopod-speech-host" in workflow
     assert "yoyopod_rs/runtime/build/yoyopod-runtime" in workflow
     assert "yoyopod-liblinphone-shim" not in workflow
     assert "liblinphone-shim/build" not in workflow
@@ -183,6 +185,7 @@ def test_dockerignore_preserves_rust_artifact_build_dirs_for_slot_builder() -> N
         "yoyopod_rs/media-host/build",
         "yoyopod_rs/voip-host/build",
         "yoyopod_rs/network-host/build",
+        "yoyopod_rs/speech-host/build",
         "yoyopod_rs/runtime/build",
     ):
         assert f"!{artifact_dir}/" in dockerignore

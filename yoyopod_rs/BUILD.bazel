@@ -16,6 +16,11 @@ alias(
 )
 
 alias(
+    name = "speech-host",
+    actual = "//yoyopod_rs/speech-host:yoyopod-speech-host",
+)
+
+alias(
     name = "ui-host",
     actual = "//yoyopod_rs/ui-host:yoyopod-ui-host",
 )

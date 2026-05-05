@@ -343,10 +343,10 @@ def _resolve_cloud_voice_worker_argv(
         except Exception:
             argv = []
         if not argv:
-            argv = ["workers/voice/go/build/yoyopod-voice-worker"]
+            argv = ["yoyopod_rs/speech-host/build/yoyopod-speech-host"]
     argv = [str(arg) for arg in argv if str(arg).strip()]
     if not argv:
-        argv = ["workers/voice/go/build/yoyopod-voice-worker"]
+        argv = ["yoyopod_rs/speech-host/build/yoyopod-speech-host"]
     path = Path(argv[0])
     if not path.is_absolute():
         if path.parent == Path("."):

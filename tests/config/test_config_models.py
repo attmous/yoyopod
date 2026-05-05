@@ -230,7 +230,7 @@ def test_voice_config_includes_cloud_worker_defaults(tmp_path, monkeypatch) -> N
     assert settings.worker.enabled is True
     assert settings.worker.domain == "voice"
     assert settings.worker.provider == "mock"
-    assert settings.worker.argv == ["workers/voice/go/build/yoyopod-voice-worker"]
+    assert settings.worker.argv == ["yoyopod_rs/speech-host/build/yoyopod-speech-host"]
     assert settings.worker.request_timeout_seconds == 12.0
     assert settings.worker.max_audio_seconds == 30.0
     assert settings.worker.stt_model == "gpt-4o-mini-transcribe"
@@ -338,7 +338,7 @@ def test_authored_voice_config_includes_cloud_worker_defaults(monkeypatch) -> No
     assert settings.worker.enabled is True
     assert settings.worker.domain == "voice"
     assert settings.worker.provider == "mock"
-    assert settings.worker.argv == ["workers/voice/go/build/yoyopod-voice-worker"]
+    assert settings.worker.argv == ["yoyopod_rs/speech-host/build/yoyopod-speech-host"]
     assert settings.worker.request_timeout_seconds == 12.0
     assert settings.worker.max_audio_seconds == 30.0
     assert settings.worker.stt_model == "gpt-4o-mini-transcribe"

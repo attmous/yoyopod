@@ -1,9 +1,3 @@
-FROM golang:1.22-bookworm AS voice-worker
-
-WORKDIR /src/workers/voice/go
-COPY workers/voice/go /src/workers/voice/go
-RUN go build -o /out/yoyopod-voice-worker ./cmd/yoyopod-voice-worker
-
 FROM python:3.12-bookworm AS build
 
 ARG CHANNEL=dev
@@ -25,7 +19,6 @@ RUN apt-get update && \
 
 WORKDIR /src
 COPY . /src
-COPY --from=voice-worker /out/yoyopod-voice-worker /src/workers/voice/go/build/yoyopod-voice-worker
 
 # Keep the builder environment intentionally minimal. The release builder itself
 # resolves the runtime venv inside the output slot.

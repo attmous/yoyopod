@@ -47,7 +47,7 @@ jobs:
           git diff --name-only "${BASE_SHA}" "${GITHUB_SHA}" > changed-files.txt
           cat changed-files.txt
 
-          if grep -Eq '^(\.github/workflows/(ci|release)\.yml|\.python-version|pyproject\.toml|yoyopod\.py|config/|deploy/docker/slot-builder\.Dockerfile|deploy/scripts/(install_release|launch)\.sh|scripts/(build_release\.py|build_slot_artifact_ci\.sh)|workers/voice/go/|src/|yoyopod/|yoyopod_cli/|yoyopod_rs/)' changed-files.txt; then
+          if grep -Eq '^(\.github/workflows/(ci|release)\.yml|\.python-version|pyproject\.toml|yoyopod\.py|config/|deploy/docker/slot-builder\.Dockerfile|deploy/scripts/(install_release|launch)\.sh|scripts/(build_release\.py|build_slot_artifact_ci\.sh)|src/|yoyopod/|yoyopod_cli/|yoyopod_rs/)' changed-files.txt; then
             echo "slot_arm64=true" >> "${GITHUB_OUTPUT}"
           else
             echo "slot_arm64=false" >> "${GITHUB_OUTPUT}"
@@ -99,23 +99,6 @@ jobs:
       - name: Run tests
         run: uv run pytest -q
 
-  voice-go:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: workers/voice/go/go.mod
-          cache-dependency-path: workers/voice/go/go.mod
-
-      - name: Run Go voice worker tests
-        working-directory: workers/voice/go
-        run: go test ./...
-
   rust-device-arm64:
     runs-on: ubuntu-24.04-arm
     env:
@@ -142,7 +125,7 @@ jobs:
           sudo apt-get install -y pkg-config liblinphone-dev libudev-dev
 
       - name: Run Bazel Rust host tests
-        run: bazel test --action_env=PATH //yoyopod_rs/ui-host/... //yoyopod_rs/cloud-host/... //yoyopod_rs/media-host/... //yoyopod_rs/voip-host/... //yoyopod_rs/network-host/... //yoyopod_rs/runtime/...
+        run: bazel test --action_env=PATH //yoyopod_rs/ui-host/... //yoyopod_rs/cloud-host/... //yoyopod_rs/media-host/... //yoyopod_rs/voip-host/... //yoyopod_rs/network-host/... //yoyopod_rs/speech-host/... //yoyopod_rs/runtime/...
 
       - name: Run Rust workspace tests
         working-directory: yoyopod_rs
@@ -159,6 +142,7 @@ jobs:
             -p yoyopod-media-host \
             -p yoyopod-voip-host \
             -p yoyopod-network-host \
+            -p yoyopod-speech-host \
             --features yoyopod-ui-host/whisplay-hardware,yoyopod-ui-host/native-lvgl,yoyopod-voip-host/native-liblinphone
 
           bundle_name="yoyopod-rust-device-arm64-${RUST_ARTIFACT_SHA}"
@@ -170,13 +154,15 @@ jobs:
             "${bundle_root}/yoyopod_rs/cloud-host/build" \
             "${bundle_root}/yoyopod_rs/media-host/build" \
             "${bundle_root}/yoyopod_rs/voip-host/build" \
-            "${bundle_root}/yoyopod_rs/network-host/build"
+            "${bundle_root}/yoyopod_rs/network-host/build" \
+            "${bundle_root}/yoyopod_rs/speech-host/build"
           cp target/release/yoyopod-runtime "${bundle_root}/yoyopod_rs/runtime/build/yoyopod-runtime"
           cp target/release/yoyopod-ui-host "${bundle_root}/yoyopod_rs/ui-host/build/yoyopod-ui-host"
           cp target/release/yoyopod-cloud-host "${bundle_root}/yoyopod_rs/cloud-host/build/yoyopod-cloud-host"
           cp target/release/yoyopod-media-host "${bundle_root}/yoyopod_rs/media-host/build/yoyopod-media-host"
           cp target/release/yoyopod-voip-host "${bundle_root}/yoyopod_rs/voip-host/build/yoyopod-voip-host"
           cp target/release/yoyopod-network-host "${bundle_root}/yoyopod_rs/network-host/build/yoyopod-network-host"
+          cp target/release/yoyopod-speech-host "${bundle_root}/yoyopod_rs/speech-host/build/yoyopod-speech-host"
           tar -C "${bundle_root}" -czf "target/${bundle_name}.tar.gz" yoyopod_rs
 
       - name: Upload Rust device ARM64 bundle
@@ -188,7 +174,7 @@ jobs:
 
   slot-arm64:
     runs-on: ubuntu-latest
-    needs: [changes, quality, test, voice-go, rust-device-arm64]
+    needs: [changes, quality, test, rust-device-arm64]
     env:
       RUST_ARTIFACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     if: >-

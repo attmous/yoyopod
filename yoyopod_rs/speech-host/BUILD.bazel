@@ -1,0 +1,32 @@
+load(
+    "//:defs.bzl",
+    "yoyopod_rust_host_binary",
+    "yoyopod_rust_host_integration_tests",
+    "yoyopod_rust_host_library",
+)
+
+yoyopod_rust_host_library(
+    name = "speech_host_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "yoyopod_speech_host",
+)
+
+yoyopod_rust_host_binary(
+    name = "yoyopod-speech-host",
+    srcs = ["src/main.rs"],
+    deps = [":speech_host_lib"],
+)
+
+SPEECH_HOST_TESTS = [
+    "protocol",
+    "worker",
+]
+
+yoyopod_rust_host_integration_tests(
+    name = "tests",
+    tests = SPEECH_HOST_TESTS,
+    deps = [":speech_host_lib"],
+)

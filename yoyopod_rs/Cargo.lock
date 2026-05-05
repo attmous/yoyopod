@@ -2166,6 +2166,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "yoyopod-speech-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "ureq",
+]
+
+[[package]]
 name = "yoyopod-ui-host"
 version = "0.1.0"
 dependencies = [

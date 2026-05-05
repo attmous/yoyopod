@@ -21,6 +21,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -60,6 +61,11 @@ except ImportError:
 
 
 PACKAGE_DIRS: tuple[str, ...] = ("yoyopod", "yoyopod_cli")
+_CHECKOUT_VOICE_WORKER_ARTIFACT = SLOT_VOICE_WORKER_ARTIFACT.relative_to("app").as_posix()
+_SLOT_VOICE_WORKER_ARTIFACT = SLOT_VOICE_WORKER_ARTIFACT.as_posix()
+_CHECKOUT_VOICE_WORKER_RE = re.compile(
+    rf"(?<![A-Za-z0-9_./-]){re.escape(_CHECKOUT_VOICE_WORKER_ARTIFACT)}(?![A-Za-z0-9_./-])"
+)
 
 
 def compute_version(*, fallback_date: str, git_sha: str | None) -> str:
@@ -304,7 +310,10 @@ def _copy_native_runtime_artifacts(repo_root: Path, dest_app: Path, *, required:
 
 
 def _copy_voice_worker_runtime_artifact(repo_root: Path, slot_dir: Path, *, required: bool) -> None:
-    """Copy the Go voice worker binary to the path used by default worker argv."""
+    """Copy the default voice worker binary when it is not already a native app artifact."""
+
+    if (slot_dir / SLOT_VOICE_WORKER_ARTIFACT).is_file():
+        return
 
     src = repo_root / SLOT_VOICE_WORKER_ARTIFACT
     dest = slot_dir / SLOT_VOICE_WORKER_ARTIFACT
@@ -345,6 +354,22 @@ def _copy_config(repo_root: Path, dest_config: Path) -> None:
         dest_config,
         ignore=shutil.ignore_patterns("*.local.yaml", "*.local.*"),
     )
+    _rewrite_slot_voice_worker_argv(dest_config)
+
+
+def _rewrite_slot_voice_worker_argv(dest_config: Path) -> None:
+    """Point the copied default voice worker argv at the slot-root artifact path."""
+
+    assistant_config = dest_config / "voice" / "assistant.yaml"
+    if not assistant_config.is_file():
+        return
+
+    # Keep this script stdlib-only: CI invokes it with `python -S` before the
+    # project and PyYAML are installed.
+    text = assistant_config.read_text(encoding="utf-8")
+    updated = _CHECKOUT_VOICE_WORKER_RE.sub(_SLOT_VOICE_WORKER_ARTIFACT, text)
+    if updated != text:
+        assistant_config.write_text(updated, encoding="utf-8", newline="\n")
 
 
 def _sha256(path: Path) -> str:

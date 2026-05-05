@@ -21,6 +21,8 @@ build/
 !yoyopod_rs/voip-host/build/**
 !yoyopod_rs/network-host/build/
 !yoyopod_rs/network-host/build/**
+!yoyopod_rs/speech-host/build/
+!yoyopod_rs/speech-host/build/**
 !yoyopod_rs/runtime/build/
 !yoyopod_rs/runtime/build/**
 dist/

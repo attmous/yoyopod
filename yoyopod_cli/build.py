@@ -69,20 +69,6 @@ def _native_build_jobs() -> str:
     return "2"
 
 
-def _voice_worker_build_env() -> dict[str, str]:
-    """Return a Go build environment sized for the current device."""
-
-    jobs = _native_build_jobs()
-    env = dict(os.environ)
-    env.setdefault("GOMAXPROCS", jobs)
-
-    goflags = env.get("GOFLAGS", "").split()
-    if not any(flag == "-p" or flag.startswith("-p=") for flag in goflags):
-        goflags.append(f"-p={jobs}")
-    env["GOFLAGS"] = " ".join(goflags)
-    return env
-
-
 def _resolve_native_dir(label: str, *candidates: Path) -> Path:
     """Return the first native source directory that still exists in this checkout."""
 
@@ -155,13 +141,17 @@ def _build_lvgl(native_dir: Path, source_dir: Path, build_dir: Path) -> None:
     _run(["cmake", "--build", str(build_dir), "--parallel", _native_build_jobs()])
 
 
-def _voice_worker_dir() -> Path:
-    return _REPO_ROOT / "workers" / "voice" / "go"
+def _rust_speech_host_workspace_dir() -> Path:
+    return _REPO_ROOT / "yoyopod_rs"
 
 
-def _voice_worker_binary_path() -> Path:
+def _rust_speech_host_crate_dir() -> Path:
+    return _rust_speech_host_workspace_dir() / "speech-host"
+
+
+def _rust_speech_host_binary_path() -> Path:
     suffix = ".exe" if os.name == "nt" else ""
-    return _voice_worker_dir() / "build" / f"yoyopod-voice-worker{suffix}"
+    return _rust_speech_host_crate_dir() / "build" / f"yoyopod-speech-host{suffix}"
 
 
 def _rust_ui_host_workspace_dir() -> Path:
@@ -198,27 +188,35 @@ def _rust_ui_poc_binary_path() -> Path:
     return _rust_ui_host_binary_path()
 
 
-def _voice_worker_sources() -> tuple[Path, ...]:
-    worker_dir = _voice_worker_dir()
-    return (
-        worker_dir / "go.mod",
-        worker_dir / "cmd",
-        worker_dir / "internal",
+def build_speech_host() -> Path:
+    """Build the Rust speech host and return the copied binary path."""
+
+    workspace_dir = _rust_speech_host_workspace_dir()
+    output = _rust_speech_host_binary_path()
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    _run(
+        [
+            "cargo",
+            "build",
+            "--release",
+            "-p",
+            "yoyopod-speech-host",
+            "--locked",
+        ],
+        cwd=workspace_dir,
     )
+
+    suffix = ".exe" if os.name == "nt" else ""
+    built_binary = workspace_dir / "target" / "release" / f"yoyopod-speech-host{suffix}"
+    shutil.copy2(built_binary, output)
+    return output
 
 
 def build_voice_worker() -> Path:
-    """Build the Go cloud voice worker and return the binary path."""
+    """Build the default Rust speech host voice worker."""
 
-    worker_dir = _voice_worker_dir()
-    output = _voice_worker_binary_path()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    _run(
-        ["go", "build", "-o", str(output), "./cmd/yoyopod-voice-worker"],
-        cwd=worker_dir,
-        env=_voice_worker_build_env(),
-    )
-    return output
+    return build_speech_host()
 
 
 def build_rust_ui_host(*, hardware_feature: bool = True) -> Path:
@@ -362,15 +360,6 @@ def _ensure_native_shims(*, skip_lvgl_fetch: bool = False) -> tuple[str, ...]:
             raise SystemExit(f"Unknown native artifact: {artifact.label}")
         rebuilt.append(artifact.label)
 
-    voice_worker_output = _voice_worker_binary_path()
-    if (
-        _is_stale(voice_worker_output, _voice_worker_sources())
-        and (_voice_worker_dir() / "go.mod").is_file()
-        and shutil.which("go") is not None
-    ):
-        build_voice_worker()
-        rebuilt.append("Go voice worker")
-
     return tuple(rebuilt)
 
 
@@ -381,10 +370,10 @@ def _ensure_native_shims(*, skip_lvgl_fetch: bool = False) -> tuple[str, ...]:
 
 @app.command("voice-worker")
 def build_voice_worker_command() -> None:
-    """Build the Go cloud voice worker for the current platform."""
+    """Build the Rust speech host voice worker for the current platform."""
 
     output = build_voice_worker()
-    typer.echo(f"Built Go voice worker: {output}")
+    typer.echo(f"Built Rust speech host: {output}")
 
 
 @app.command("rust-ui-poc")

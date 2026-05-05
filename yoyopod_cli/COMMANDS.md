@@ -76,7 +76,7 @@ For live help, use `yoyopod <cmd> --help`.
 | `yoyopod build rust-ui-host` | Build the Rust UI host binary. |
 | `yoyopod build rust-ui-poc` | Compatibility alias for `yoyopod build rust-ui-host`. |
 | `yoyopod build simulation` | Build the LVGL native shim required by ``python yoyopod.py --simulate``. |
-| `yoyopod build voice-worker` | Build the Go cloud voice worker for the current platform. |
+| `yoyopod build voice-worker` | Build the Rust speech host voice worker for the current platform. |
 
 ## `yoyopod voice`
 

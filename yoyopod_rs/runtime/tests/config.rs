@@ -509,7 +509,7 @@ worker:
   enabled: true
   provider: "mock"
   argv:
-    - "workers/voice/go/build/yoyopod-voice-worker"
+    - "yoyopod_rs/speech-host/build/yoyopod-speech-host"
   request_timeout_seconds: 12.0
   max_audio_seconds: 30.0
   stt_model: "gpt-4o-mini-transcribe"
@@ -553,7 +553,7 @@ worker:
     assert_eq!(config.voice.ask_instructions, "Kid-safe answers.");
     assert_eq!(
         config.worker_paths.voice,
-        "workers/voice/go/build/yoyopod-voice-worker"
+        "yoyopod_rs/speech-host/build/yoyopod-speech-host"
     );
 }
 
