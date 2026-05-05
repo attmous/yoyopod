@@ -2152,6 +2152,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "yoyopod-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "yoyopod-runtime"
 version = "0.1.0"
 dependencies = [
