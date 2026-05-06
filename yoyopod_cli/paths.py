@@ -31,14 +31,14 @@ class PiPaths:
 
     project_dir: str = "/opt/yoyopod-dev/checkout"
     venv: str = "/opt/yoyopod-dev/venv"
-    start_cmd: str = "python yoyopod.py"
+    start_cmd: str = "device/runtime/build/yoyopod-runtime --config-dir config"
     log_file: str = "logs/yoyopod.log"
     error_log_file: str = "logs/yoyopod_errors.log"
     pid_file: str = "/tmp/yoyopod.pid"
     screenshot_path: str = "/tmp/yoyopod_screenshot.png"
     test_music_target_dir: str = DEFAULT_TEST_MUSIC_TARGET_DIR
-    startup_marker: str = "YoYoPod starting"
-    kill_processes: tuple[str, ...] = ("python",)
+    startup_marker: str = "YoYoPod Rust runtime starting"
+    kill_processes: tuple[str, ...] = ("yoyopod-runtime",)
     rsync_exclude: tuple[str, ...] = (
         ".git/",
         ".cache/",
@@ -90,7 +90,7 @@ class ConfigFiles:
 class ProcessNames:
     """Process names used in kill/grep operations."""
 
-    app: str = "python yoyopod.py"
+    app: str = "device/runtime/build/yoyopod-runtime --config-dir config"
     mpv: str = "mpv"
 
 

@@ -484,7 +484,7 @@ def build_simulation(
         ),
     ] = False,
 ) -> None:
-    """Build the LVGL native shim required by ``python yoyopod.py --simulate``."""
+    """Build the LVGL native shim used to simulate the device UI host."""
 
     native_dir = _resolve_lvgl_native_dir()
     source_dir = _default_lvgl_source_dir()

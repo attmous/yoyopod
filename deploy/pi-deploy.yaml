@@ -16,9 +16,9 @@ user: ""
 project_dir: /opt/yoyopod-dev/checkout
 branch: main
 venv: /opt/yoyopod-dev/venv
-start_cmd: python yoyopod.py
+start_cmd: device/runtime/build/yoyopod-runtime --config-dir config
 kill_processes:
-  - python
+  - yoyopod-runtime
 log_file: logs/yoyopod.log
 error_log_file: logs/yoyopod_errors.log
 pid_file: /tmp/yoyopod.pid

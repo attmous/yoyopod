@@ -211,8 +211,7 @@ has a Python fallback for compatibility, so make the active owner explicit when
 testing the Rust path:
 
 ```ini
-Environment=YOYOPOD_DEV_RUNTIME=rust
-```
+Environment=```
 
 With that override, `yoyopod-dev.service` executes:
 

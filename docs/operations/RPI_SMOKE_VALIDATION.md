@@ -105,7 +105,7 @@ Useful flags:
 ### Full application startup on the Pi
 
 ```bash
-YOYOPOD_DEV_RUNTIME=rust /opt/yoyopod-dev/checkout/device/runtime/build/yoyopod-runtime \
+/opt/yoyopod-dev/checkout/device/runtime/build/yoyopod-runtime \
   --config-dir /opt/yoyopod-dev/checkout/config \
   --hardware whisplay
 ```

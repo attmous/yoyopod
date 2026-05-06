@@ -206,7 +206,7 @@ config changes are needed.
 
 ```bash
 cd ~/yoyopod-core
-YOYOPOD_DISPLAY=pimoroni YOYOPOD_CONFIG_BOARD=radxa-cubie-a7z .venv/bin/python yoyopod.py
+YOYOPOD_DISPLAY=pimoroni YOYOPOD_CONFIG_BOARD=radxa-cubie-a7z .venv/bin/device/runtime/build/yoyopod-runtime --config-dir config
 ```
 
 ### Set as the default systemd service display

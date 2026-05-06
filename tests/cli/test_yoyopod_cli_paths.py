@@ -24,9 +24,11 @@ def test_host_paths_resolve() -> None:
 def test_pi_defaults_populated() -> None:
     assert PI_DEFAULTS.project_dir == "/opt/yoyopod-dev/checkout"
     assert PI_DEFAULTS.venv == "/opt/yoyopod-dev/venv"
+    assert PI_DEFAULTS.start_cmd == "device/runtime/build/yoyopod-runtime --config-dir config"
     assert PI_DEFAULTS.log_file == "logs/yoyopod.log"
     assert PI_DEFAULTS.pid_file == "/tmp/yoyopod.pid"
-    assert "python" in PI_DEFAULTS.kill_processes
+    assert "yoyopod-runtime" in PI_DEFAULTS.kill_processes
+    assert "python" not in PI_DEFAULTS.kill_processes
     assert "linphonec" not in PI_DEFAULTS.kill_processes
 
 
@@ -48,7 +50,7 @@ def test_configs_paths_exist() -> None:
 
 
 def test_procs_known() -> None:
-    assert PROCS.app == "python yoyopod.py"
+    assert PROCS.app == "device/runtime/build/yoyopod-runtime --config-dir config"
     assert PROCS.mpv == "mpv"
     assert not hasattr(PROCS, "linphonec")
 

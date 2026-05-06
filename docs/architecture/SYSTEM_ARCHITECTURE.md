@@ -22,7 +22,7 @@ YoYoPod runs as a single Python application that coordinates:
 
 The repo exposes two equivalent application launch surfaces:
 
-- `python yoyopod.py`
+- `device/runtime/build/yoyopod-runtime --config-dir config`
 - the installed `yoyopod` console entrypoint from `pyproject.toml`
 
 Both end up in `yoyopod/main.py`. That entrypoint configures logging,

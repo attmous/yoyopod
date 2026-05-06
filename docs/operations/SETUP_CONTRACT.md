@@ -210,7 +210,7 @@ uv run yoyopod setup verify-pi --with-pisugar
 yoyopod pi validate deploy
 yoyopod pi validate smoke
 yoyopod pi validate smoke --with-power --with-rtc
-YOYOPOD_DEV_RUNTIME=rust /opt/yoyopod-dev/checkout/device/runtime/build/yoyopod-runtime --config-dir /opt/yoyopod-dev/checkout/config --hardware whisplay
+/opt/yoyopod-dev/checkout/device/runtime/build/yoyopod-runtime --config-dir /opt/yoyopod-dev/checkout/config --hardware whisplay
 ```
 
 This does not yet provision external credentials or encode every

@@ -46,7 +46,7 @@ Legacy Python simulation run:
 
 ```bash
 yoyopod build simulation
-python yoyopod.py --simulate
+device/runtime/build/yoyopod-runtime --config-dir config
 ```
 
 Core Rust validation loop:

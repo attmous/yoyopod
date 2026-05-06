@@ -51,15 +51,11 @@ This repository contains the software that runs the current YoYoPod prototype:
 - `device/{ui,media,voip,network,cloud,power,speech}/` - Rust domain sidecar hosts for UI, media, VoIP, network, cloud, power, and speech/Ask.
 - `apps/` - future web and mobile applications.
 - `packages/` - future shared contracts, SDKs, and app packages.
-- `yoyopod/core/` - app lifecycle, scheduler, event bus, runtime loop, diagnostics, and shared state.
-- `yoyopod/integrations/` - higher-level product capabilities like calling, music, power, network, location, and cloud sync.
-- `yoyopod/backends/` - concrete hardware and service adapters such as Liblinphone, mpv, modem, and power backends.
-- `yoyopod/ui/` - the device UI, LVGL binding, screens, and input/display glue.
 - `yoyopod_cli/` - developer and device operations tooling for setup, deploy, validation, and diagnostics.
 
 New runtime work should start in `device/`. Python remains important for
-CLI/deploy tooling, compatibility paths, and tests. If you want the architecture
-view instead of the product view, start with
+CLI/deploy tooling and tests. The old Python app runtime is retired from
+supported launch paths. If you want the architecture view instead of the product view, start with
 [docs/architecture/WORK_AREAS.md](docs/architecture/WORK_AREAS.md) and
 [docs/architecture/SYSTEM_ARCHITECTURE.md](docs/architecture/SYSTEM_ARCHITECTURE.md).
 
@@ -77,10 +73,8 @@ This repo is Raspberry Pi hardware-first. To work on the real device path, plan 
 uv sync --extra dev
 uv run yoyopod setup host
 uv run yoyopod setup verify-host --with-remote-tools
-uv run python yoyopod.py --simulate
+uv run yoyopod build rust-runtime
 ```
-
-Use `python yoyopod.py` without `--simulate` only when you intentionally want to launch against directly attached local hardware.
 
 ### Fresh Raspberry Pi Install
 

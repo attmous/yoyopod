@@ -25,7 +25,7 @@ from yoyopod_cli import __version__
 
 app = typer.Typer(
     name="yoyopod",
-    help="YoYoPod app launcher and CLI.",
+    help="YoYoPod operations CLI.",
     no_args_is_help=False,
     add_completion=False,
 )
@@ -48,12 +48,10 @@ def _root(
         help="Show version and exit.",
     ),
 ) -> None:
-    """Launch the YoYoPod app when invoked with no subcommand."""
+    """Run YoYoPod operations commands."""
     if ctx.invoked_subcommand is None:
-        from yoyopod.main import main as launch_app
-
-        rc = launch_app()
-        raise typer.Exit(rc if isinstance(rc, int) else 0)
+        typer.echo(ctx.get_help())
+        raise typer.Exit(0)
 
 
 def run() -> None:

@@ -23,7 +23,7 @@ What that means in practice:
 The live process tree for YoYoPod was:
 
 ```text
-uv run python yoyopod.py
+uv run device/runtime/build/yoyopod-runtime --config-dir config
   -> python3 yoyopod.py
      -> mpv --idle --no-video --input-ipc-server=/tmp/yoyopod-mpv.sock --audio-device=alsa/default
 ```

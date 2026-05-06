@@ -47,7 +47,7 @@ def test_prod_rollback_unit_has_its_own_start_limit() -> None:
     assert cfg["Unit"]["StartLimitBurst"] == "2"
 
 
-def test_dev_unit_references_checkout_and_venv() -> None:
+def test_dev_unit_references_checkout_and_venv_for_native_refresh() -> None:
     cfg = _parse("yoyopod-dev.service")
     unit_text = (UNITS_DIR / "yoyopod-dev.service").read_text(encoding="utf-8")
     exec_start = cfg["Service"]["ExecStart"]
@@ -63,19 +63,19 @@ def test_dev_unit_references_checkout_and_venv() -> None:
     assert ".config/linphone" in exec_start_pre
     assert "YOYOPOD_DEV_CHECKOUT" in exec_start
     assert "/opt/yoyopod-dev/checkout" in exec_start
-    assert "YOYOPOD_DEV_VENV" in exec_start
-    assert "/opt/yoyopod-dev/venv" in exec_start
+    assert "YOYOPOD_DEV_VENV" in exec_start_pre
+    assert "/opt/yoyopod-dev/venv" in exec_start_pre
     assert "LD_LIBRARY_PATH" in exec_start_pre
     assert "LD_LIBRARY_PATH" in exec_start
     assert "yoyopod/ui/lvgl_binding/native/build" in exec_start
     assert "-m yoyopod_cli.main build ensure-native" in exec_start_pre
 
 
-def test_dev_unit_defaults_to_python_with_rust_runtime_opt_in() -> None:
+def test_dev_unit_runs_rust_runtime_directly() -> None:
     cfg = _parse("yoyopod-dev.service")
     exec_start = cfg["Service"]["ExecStart"]
 
-    assert "$${YOYOPOD_DEV_RUNTIME:-python}" in exec_start
+    assert "YOYOPOD_DEV_" + "RUNTIME" not in exec_start
     assert "device/runtime/build/yoyopod-runtime" in exec_start
-    assert "--config-dir $$CHECKOUT/config --hardware whisplay" in exec_start
-    assert '"$$VENV/bin/python" yoyopod.py' in exec_start
+    assert '--config-dir "$$CHECKOUT/config" --hardware whisplay' in exec_start
+    assert "yoyopod.py" not in exec_start

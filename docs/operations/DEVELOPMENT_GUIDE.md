@@ -142,14 +142,14 @@ cargo run --manifest-path device/Cargo.toml -p yoyopod-runtime -- --config-dir c
 Legacy Python fallback:
 
 ```bash
-python yoyopod.py
+device/runtime/build/yoyopod-runtime --config-dir config
 ```
 
 Legacy Python simulation:
 
 ```bash
 yoyopod build simulation
-python yoyopod.py --simulate
+device/runtime/build/yoyopod-runtime --config-dir config
 ```
 
 Installed console entrypoint:
