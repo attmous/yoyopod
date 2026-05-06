@@ -15,7 +15,7 @@ from yoyopod_cli.pi.validate._common import (
 )
 
 if TYPE_CHECKING:
-    from yoyopod.config import MediaConfig
+    from yoyopod_cli.config import MediaConfig
     from yoyopod_cli.music_fixtures import ProvisionedTestMusicLibrary
 
 

@@ -13,7 +13,7 @@ from loguru import logger
 
 from yoyopod.core.audio_volume import AudioVolumeController
 from yoyopod.backends.music import MusicBackend
-from yoyopod.config import ConfigManager, MediaConfig, YoyoPodConfig
+from yoyopod_cli.config import ConfigManager, MediaConfig, YoyoPodConfig
 from yoyopod.core.app_context import AppContext
 from yoyopod.core.background import BackgroundExecutor
 from yoyopod.core.bus import Bus

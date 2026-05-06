@@ -9,7 +9,7 @@ from yoyopod.integrations.voice import VoiceSettings
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
 
 
 @dataclass(slots=True, frozen=True)

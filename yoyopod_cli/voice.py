@@ -57,13 +57,13 @@ def _counts_text(counts: dict[str, int]) -> str:
 
 
 def _configured_dictionary_path() -> Path:
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
 
     return Path(ConfigManager().get_voice_settings().assistant.command_dictionary_path)
 
 
 def _configured_trace_path() -> Path:
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
 
     return Path(ConfigManager().get_voice_settings().trace.path)
 

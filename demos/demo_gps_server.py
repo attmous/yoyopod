@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from yoyopod.config import ConfigManager
+from yoyopod_cli.config import ConfigManager
 from yoyopod.network import NetworkManager
 from yoyopod.network.backend import Sim7600Backend
 

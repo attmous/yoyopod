@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 import types
 
-from yoyopod.config.models import AppInputConfig
+from yoyopod_cli.config.models import AppInputConfig
 from yoyopod.ui.input.hal import InputAction
 from yoyopod.ui.input import InteractionProfile, get_input_manager
 from yoyopod.ui.input.adapters.ptt_button import PTTInputAdapter

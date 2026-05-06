@@ -1,4 +1,4 @@
-﻿"""yoyopod_cli/pi_power.py — PiSugar power and RTC commands."""
+"""yoyopod_cli/pi_power.py — PiSugar power and RTC commands."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def battery(
     """Inspect PiSugar power telemetry through YoYoPod's power module."""
     from loguru import logger
 
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
     from yoyopod.integrations.power import PowerManager
 
     configure_logging(verbose)
@@ -86,7 +86,7 @@ def _build_power_manager(config_dir: str) -> Any:
     """Build and return a PowerManager, exiting on error."""
     from loguru import logger
 
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
     from yoyopod.integrations.power import PowerManager
 
     config_path = resolve_config_dir(config_dir)

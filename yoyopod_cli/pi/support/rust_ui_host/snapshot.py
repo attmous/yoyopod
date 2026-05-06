@@ -378,7 +378,14 @@ def _call_or_default(obj: Any, method_name: str, default: str) -> str:
 
 def _clamp_int(value: object, lower: int, upper: int) -> int:
     try:
-        integer = int(value)  # type: ignore[arg-type]
+        if isinstance(value, int):
+            integer = value
+        elif isinstance(value, float):
+            integer = int(value)
+        elif isinstance(value, str):
+            integer = int(value)
+        else:
+            integer = int(str(value))
     except (TypeError, ValueError):
         integer = lower
     return max(lower, min(upper, integer))

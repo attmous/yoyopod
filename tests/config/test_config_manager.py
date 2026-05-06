@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from yoyopod.config.manager import ConfigManager
+from yoyopod_cli.config.manager import ConfigManager
 from yoyopod.ui.display.adapters.whisplay_paths import find_whisplay_driver
 
 

@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 
 from loguru import logger
 
-from yoyopod.config.models import AppInputConfig
+from yoyopod_cli.config.models import AppInputConfig
 from yoyopod.ui.input.hal import InputAction, InteractionProfile
 from yoyopod.ui.input.manager import InputManager
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from yoyopod.config import ConfigManager
+from yoyopod_cli.config import ConfigManager
 from yoyopod.backends.music import MusicConfig
 from yoyopod.integrations.contacts.directory import PeopleDirectory
 from yoyopod.integrations.power import PowerManager

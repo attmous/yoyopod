@@ -7,7 +7,7 @@ import yoyopod.integrations.cloud.manager as cloud_manager_module
 from yoyopod.backends.cloud import CloudClientError
 from yoyopod.integrations.cloud.manager import CloudManager
 from yoyopod.integrations.cloud.models import CloudAccessToken
-from yoyopod.config.manager import ConfigManager
+from yoyopod_cli.config.manager import ConfigManager
 
 
 def _write_yaml(path: Path, text: str) -> None:

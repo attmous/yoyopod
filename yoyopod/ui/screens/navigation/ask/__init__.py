@@ -32,7 +32,7 @@ from yoyopod.integrations.voice import VoiceManager, VoiceSettings
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
     from yoyopod.core import VoiceInteractionState
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
     from yoyopod.integrations.call import VoIPManager
     from yoyopod.integrations.contacts.directory import PeopleManager
     from yoyopod.ui.screens.view import ScreenView

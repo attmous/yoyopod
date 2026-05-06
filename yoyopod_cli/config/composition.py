@@ -9,7 +9,7 @@ from typing import Any
 
 import yaml
 
-from yoyopod.config.models import YoyoPodConfig, build_config_model
+from yoyopod_cli.config.models import YoyoPodConfig, build_config_model
 
 __all__ = [
     "APP_CORE_CONFIG",

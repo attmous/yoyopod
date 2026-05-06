@@ -14,7 +14,7 @@ from yoyopod.integrations.voice.settings import VoiceCommandOutcome
 
 if TYPE_CHECKING:
     from yoyopod.core import AppContext
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
     from yoyopod.integrations.call import VoIPManager
     from yoyopod.integrations.contacts.directory import PeopleManager
     from yoyopod.integrations.contacts.models import Contact

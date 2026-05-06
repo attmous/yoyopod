@@ -9,7 +9,7 @@ from loguru import logger
 
 from yoyopod.backends.music import MusicConfig
 from yoyopod.backends.music.rust_host import RustHostBackend
-from yoyopod.config import ConfigManager
+from yoyopod_cli.config import ConfigManager
 from yoyopod.core.audio_volume import OutputVolumeController
 from yoyopod.core.events import WorkerMessageReceivedEvent
 from yoyopod.core.hardware import AudioDeviceCatalog

@@ -23,7 +23,7 @@ from yoyopod_cli.pi.validate.service_env import load_service_env_file, resolve_s
 
 def _voip_check(config_dir: Path, registration_timeout: float) -> _CheckResult:
     """Validate Rust VoIP startup and SIP registration."""
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
     from yoyopod.integrations.call import VoIPConfig
     from yoyopod_cli.pi.rust_voip_runtime import build_rust_voip_manager
 

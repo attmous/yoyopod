@@ -2,12 +2,12 @@
 
 from pathlib import Path
 
-from yoyopod.config.composition import (
+from yoyopod_cli.config.composition import (
     deep_merge_mappings,
     resolve_config_board,
     resolve_config_layers,
 )
-from yoyopod.integrations.contacts.models import (
+from yoyopod_cli.config.contacts import (
     Contact,
     contacts_from_mapping,
     contacts_to_mapping,

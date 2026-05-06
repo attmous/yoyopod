@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from yoyopod.config.models.core import config_value
+from yoyopod_cli.config.models.core import config_value
 
 
 @dataclass(slots=True)

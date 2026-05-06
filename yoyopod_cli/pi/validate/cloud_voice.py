@@ -825,7 +825,7 @@ def cloud_voice(
     """Validate cloud STT/TTS and local voice command routing on the target."""
     from loguru import logger
 
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
     from yoyopod.integrations.voice.settings import VoiceSettingsResolver
 
     configure_logging(verbose)

@@ -7,7 +7,7 @@ import time
 
 from loguru import logger
 
-from yoyopod.config.models.power import PimoroniGpioConfig
+from yoyopod_cli.config.models.power import PimoroniGpioConfig
 from yoyopod.ui.display.adapters.st7789_spi import ST7789SpiDriver
 from yoyopod.ui.display.hal import DisplayHAL
 from yoyopod.ui.display.rgb565 import Rgb565FrameBuffer, rgb565_bytes_to_png

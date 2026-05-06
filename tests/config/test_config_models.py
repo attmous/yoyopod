@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from yoyopod.config import (
+from yoyopod_cli.config import (
     ConfigManager,
     MediaConfig,
     PowerConfig,
@@ -578,7 +578,7 @@ def test_config_manager_exposes_conference_factory_uri(tmp_path, monkeypatch) ->
 
 def test_gpio_pin_config_from_yaml_dict():
     """GpioPin and PimoroniGpioConfig should load from nested YAML dicts."""
-    from yoyopod.config.models import (
+    from yoyopod_cli.config.models import (
         AppDisplayConfig,
         GpioPin,
         PimoroniGpioConfig,
@@ -609,7 +609,7 @@ def test_gpio_pin_config_from_yaml_dict():
 
 def test_gpio_input_config_from_yaml_dict():
     """PimoroniGpioInputConfig should load from nested YAML dicts."""
-    from yoyopod.config.models import (
+    from yoyopod_cli.config.models import (
         AppInputConfig,
         GpioPin,
         PimoroniGpioInputConfig,
@@ -632,7 +632,7 @@ def test_gpio_input_config_from_yaml_dict():
 
 def test_display_config_defaults_pimoroni_gpio_to_none():
     """When no pimoroni_gpio section exists, it should default to None."""
-    from yoyopod.config.models import AppDisplayConfig, build_config_model
+    from yoyopod_cli.config.models import AppDisplayConfig, build_config_model
 
     config = build_config_model(AppDisplayConfig, {})
     assert config.pimoroni_gpio is None
@@ -640,7 +640,7 @@ def test_display_config_defaults_pimoroni_gpio_to_none():
 
 def test_display_config_exposes_rust_ui_sidecar_env(monkeypatch):
     """Rust UI sidecar settings should be opt-in and env-overridable."""
-    from yoyopod.config.models import AppDisplayConfig, build_config_model
+    from yoyopod_cli.config.models import AppDisplayConfig, build_config_model
 
     monkeypatch.setenv("YOYOPOD_RUST_UI_SIDECAR_ENABLED", "true")
     monkeypatch.setenv("YOYOPOD_RUST_UI_WORKER", "/opt/yoyopod/ui-worker")
@@ -653,7 +653,7 @@ def test_display_config_exposes_rust_ui_sidecar_env(monkeypatch):
 
 def test_display_config_exposes_rust_ui_host_env(monkeypatch):
     """Rust UI host settings should be opt-in and env-overridable."""
-    from yoyopod.config.models import AppDisplayConfig, build_config_model
+    from yoyopod_cli.config.models import AppDisplayConfig, build_config_model
 
     monkeypatch.setenv("YOYOPOD_RUST_UI_HOST_ENABLED", "true")
     monkeypatch.setenv("YOYOPOD_RUST_UI_HOST_WORKER", "/opt/yoyopod/yoyopod-ui-host")
@@ -668,7 +668,7 @@ def test_display_config_exposes_rust_ui_host_env(monkeypatch):
 
 def test_display_config_keeps_rust_ui_sidecar_env_compatibility(monkeypatch):
     """Existing sidecar env vars should still enable the renamed Rust UI host."""
-    from yoyopod.config.models import AppDisplayConfig, build_config_model
+    from yoyopod_cli.config.models import AppDisplayConfig, build_config_model
 
     monkeypatch.setenv("YOYOPOD_RUST_UI_SIDECAR_ENABLED", "true")
     monkeypatch.setenv("YOYOPOD_RUST_UI_WORKER", "/opt/yoyopod/legacy-ui-worker")
@@ -684,7 +684,7 @@ def test_display_config_keeps_rust_ui_sidecar_env_compatibility(monkeypatch):
 def test_top_level_config_exports_config_value() -> None:
     """Top-level config package should mirror the field helper export."""
 
-    from yoyopod.config import config_value
-    from yoyopod.config.models import config_value as models_config_value
+    from yoyopod_cli.config import config_value
+    from yoyopod_cli.config.models import config_value as models_config_value
 
     assert config_value is models_config_value

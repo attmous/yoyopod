@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from yoyopod.config.models.core import config_value
+from yoyopod_cli.config.models.core import config_value
 
 
 @dataclass(slots=True)
@@ -128,9 +128,7 @@ class CommunicationCallingConfig:
 class CommunicationConfig:
     """Composed communication config built from calling/messaging/device/secret layers."""
 
-    calling: CommunicationCallingConfig = config_value(
-        default_factory=CommunicationCallingConfig
-    )
+    calling: CommunicationCallingConfig = config_value(default_factory=CommunicationCallingConfig)
     messaging: CommunicationMessagingConfig = config_value(
         default_factory=CommunicationMessagingConfig
     )

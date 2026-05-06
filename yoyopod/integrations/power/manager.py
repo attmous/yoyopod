@@ -16,11 +16,11 @@ from yoyopod.backends.power import (
     PowerBackend,
     WatchdogCommandError,
 )
-from yoyopod.config.models import PowerConfig
+from yoyopod_cli.config.models import PowerConfig
 from yoyopod.integrations.power.models import PowerSnapshot, RTCState
 
 if TYPE_CHECKING:
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
 
 
 ShutdownHook = Callable[[], None]

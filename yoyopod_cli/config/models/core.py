@@ -4,17 +4,23 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from dataclasses import MISSING, asdict, field, fields, is_dataclass
 from pathlib import Path
 from types import UnionType
-from typing import Any, TypeVar, Union, get_args, get_origin, get_type_hints
+from typing import Any, TypeVar, Union, cast, get_args, get_origin, get_type_hints
 
 import yaml
 
 T = TypeVar("T")
 
 
-def config_value(*, default: Any = MISSING, default_factory: Any = MISSING, env: str | None = None):
+def config_value(
+    *,
+    default: Any = MISSING,
+    default_factory: Any = MISSING,
+    env: str | None = None,
+) -> Any:
     """Create a dataclass field with optional environment override metadata."""
 
     metadata: dict[str, Any] = {}
@@ -47,7 +53,7 @@ def build_config_model(model_cls: type[T], data: dict[str, Any] | None = None) -
     kwargs: dict[str, Any] = {}
     type_hints = get_type_hints(model_cls)
 
-    for model_field in fields(model_cls):
+    for model_field in fields(cast(Any, model_cls)):
         field_type = type_hints.get(model_field.name, model_field.type)
         env_name = model_field.metadata.get("env")
         env_value = os.getenv(env_name) if env_name else None
@@ -71,7 +77,8 @@ def build_config_model(model_cls: type[T], data: dict[str, Any] | None = None) -
         elif model_field.default is not MISSING:
             kwargs[model_field.name] = model_field.default
         elif model_field.default_factory is not MISSING:
-            kwargs[model_field.name] = model_field.default_factory()
+            default_factory = cast(Callable[[], Any], model_field.default_factory)
+            kwargs[model_field.name] = default_factory()
         else:
             raise TypeError(f"Missing required config field: {model_field.name}")
 

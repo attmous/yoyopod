@@ -9,7 +9,7 @@ from typing import Callable, Protocol
 
 from loguru import logger
 
-from yoyopod.config.models import PowerConfig
+from yoyopod_cli.config.models import PowerConfig
 from yoyopod.integrations.power.models import (
     BatteryState,
     PowerDeviceInfo,

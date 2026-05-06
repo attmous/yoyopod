@@ -176,7 +176,7 @@ def _input_check(display: Any, app_config: dict[str, Any]) -> _CheckResult:
 
 def _power_check(config_dir: Path) -> _CheckResult:
     """Validate PiSugar reachability and report a live battery snapshot."""
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
     from yoyopod.integrations.power import PowerManager
 
     config_manager = ConfigManager(config_dir=str(config_dir))
@@ -211,7 +211,7 @@ def _power_check(config_dir: Path) -> _CheckResult:
 
 def _rtc_check(config_dir: Path) -> _CheckResult:
     """Validate PiSugar RTC reachability and report the current RTC state."""
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
     from yoyopod.integrations.power import PowerManager
 
     config_manager = ConfigManager(config_dir=str(config_dir))

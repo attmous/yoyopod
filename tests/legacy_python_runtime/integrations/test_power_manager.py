@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from yoyopod.config import ConfigManager
-from yoyopod.config.models import PowerConfig
+from yoyopod_cli.config import ConfigManager
+from yoyopod_cli.config.models import PowerConfig
 from yoyopod.integrations.power import BatteryState, PowerManager, PowerSnapshot, RTCState
 
 

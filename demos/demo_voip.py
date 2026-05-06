@@ -15,7 +15,7 @@ import time
 from loguru import logger
 
 from yoyopod.app_context import AppContext
-from yoyopod.config import ConfigManager
+from yoyopod_cli.config import ConfigManager
 from yoyopod.voip import RegistrationState, VoIPConfig, VoIPManager
 from yoyopod.ui.display import Display
 from yoyopod.ui.input import InputAction, get_input_manager

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from yoyopod.config import ConfigManager, MediaConfig as RuntimeMediaConfig
+    from yoyopod_cli.config import ConfigManager, MediaConfig as RuntimeMediaConfig
 
 
 def _normalized_metadata(metadata: dict[str, Any]) -> dict[str, Any]:

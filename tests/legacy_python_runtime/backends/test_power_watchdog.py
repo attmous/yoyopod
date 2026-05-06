@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from yoyopod.backends.power import PiSugarWatchdog, WatchdogCommandError
-from yoyopod.config import PowerConfig
+from yoyopod_cli.config import PowerConfig
 
 
 def test_enable_sets_timeout_and_starts_with_fresh_feed() -> None:

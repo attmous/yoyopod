@@ -19,7 +19,7 @@ from yoyopod.ui.screens.manager import ScreenManager
 
 if TYPE_CHECKING:
     from yoyopod.backends.music import MusicBackend
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
     from yoyopod.core import AppContext
 
 _OUTGOING_STATES = {

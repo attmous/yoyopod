@@ -6,7 +6,7 @@ import subprocess
 from math import ceil
 from typing import Callable, Protocol
 
-from yoyopod.config.models import PowerConfig
+from yoyopod_cli.config.models import PowerConfig
 
 
 class WatchdogRunnerResult(Protocol):

@@ -17,7 +17,7 @@ from yoyopod.integrations.cloud.models import CloudAccessToken, CloudStatusSnaps
 
 if TYPE_CHECKING:
     from yoyopod.core.application import YoyoPodApp
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
 
 
 class CloudManager:
@@ -616,7 +616,7 @@ class CloudManager:
         fetch) must not starve control-plane work on the shared `io` pool.
         Control-plane callers set ``_request_in_flight=True`` before queuing,
         so a queued (not yet running) auth/refresh/config task suppresses
-        subsequent cloud ticks until a worker frees up — that pathway is
+        subsequent cloud ticks until a worker frees up â€” that pathway is
         broken if media downloads occupy all `io` workers.
         """
 
@@ -994,12 +994,12 @@ class CloudManager:
             self._mqtt.stop()
             self._mqtt = None
         if not backend.mqtt_broker_host.strip():
-            logger.info("MQTT broker host not configured — telemetry events disabled")
+            logger.info("MQTT broker host not configured â€” telemetry events disabled")
             return
 
         device_id = self.config_manager.get_cloud_device_id().strip()
         if not device_id:
-            logger.info("Device not provisioned — MQTT telemetry deferred")
+            logger.info("Device not provisioned â€” MQTT telemetry deferred")
             return
 
         self._mqtt = DeviceMqttClient(

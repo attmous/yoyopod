@@ -7,7 +7,7 @@ from typing import Any
 
 from loguru import logger
 
-from yoyopod.config.composition import (
+from yoyopod_cli.config.composition import (
     DEVICE_HARDWARE_CONFIG,
     APP_CORE_CONFIG,
     atomic_write_yaml,
@@ -19,7 +19,7 @@ from yoyopod.config.composition import (
     resolve_config_board,
     resolve_config_layers,
 )
-from yoyopod.config.models import (
+from yoyopod_cli.config.models import (
     CloudConfig,
     CommunicationConfig,
     MediaConfig,

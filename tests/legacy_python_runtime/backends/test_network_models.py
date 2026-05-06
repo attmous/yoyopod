@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from yoyopod.core import AppContext
-from yoyopod.config.models import NetworkConfig, build_config_model
+from yoyopod_cli.config.models import NetworkConfig, build_config_model
 
 
 def test_app_context_update_network_status():

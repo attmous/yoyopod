@@ -6,7 +6,7 @@ import os
 
 from loguru import logger
 
-from yoyopod.config.models import PimoroniGpioConfig
+from yoyopod_cli.config.models import PimoroniGpioConfig
 from yoyopod.ui.display.hal import DisplayHAL
 from yoyopod.ui.display.adapters.whisplay_paths import find_whisplay_driver
 
@@ -17,7 +17,7 @@ def _get_pimoroni_gpio_config() -> PimoroniGpioConfig | None:
     """Return Pimoroni GPIO config from the active board config when available."""
 
     try:
-        from yoyopod.config.manager import ConfigManager
+        from yoyopod_cli.config.manager import ConfigManager
 
         mgr = ConfigManager()
         return mgr.app_settings.display.pimoroni_gpio

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from yoyopod.config.manager import ConfigManager
+from yoyopod_cli.config.manager import ConfigManager
 
 
 def test_voice_config_loads_activation_and_dictionary_defaults(tmp_path: Path) -> None:

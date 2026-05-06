@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Optional, TextIO
 from loguru import logger
 
 if TYPE_CHECKING:
-    from yoyopod.config.models import AppLoggingConfig
+    from yoyopod_cli.config.models import AppLoggingConfig
 
 
 DEFAULT_SUBSYSTEM = "app"
@@ -49,7 +49,7 @@ _SUBSYSTEM_OVERRIDES = {
     "yoyopod.ui": "ui",
     "yoyopod.integrations.power": "power",
     "yoyopod.backends.power": "power",
-    "yoyopod.config": "config",
+    "yoyopod_cli.config": "config",
 }
 
 

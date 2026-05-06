@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from yoyopod.config.models import PowerConfig
+from yoyopod_cli.config.models import PowerConfig
 from yoyopod.integrations.power.events import (
     GracefulShutdownCancelled,
     GracefulShutdownRequested,
