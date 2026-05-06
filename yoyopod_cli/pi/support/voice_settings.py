@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from yoyopod_cli.pi.support.voice_models import VoiceSettings
 
 if TYPE_CHECKING:
-    from yoyopod.core import AppContext
     from yoyopod_cli.config import ConfigManager
 
 _DEFAULT_VOICE_SETTINGS = VoiceSettings()
@@ -31,7 +30,7 @@ class VoiceSettingsResolver:
     def __init__(
         self,
         *,
-        context: "AppContext | None",
+        context: Any | None,
         config_manager: "ConfigManager | None" = None,
         settings_provider: Callable[[], VoiceSettings] | None = None,
     ) -> None:

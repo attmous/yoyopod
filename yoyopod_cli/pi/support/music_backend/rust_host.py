@@ -11,7 +11,7 @@ from typing import Any, Callable
 from loguru import logger
 
 from yoyopod_cli.pi.support.music_backend.models import MusicConfig, Playlist, Track
-from yoyopod.core.workers import WorkerProcessConfig
+from yoyopod_cli.pi.support.workers import WorkerProcessConfig
 
 _STARTUP_COMMANDS = frozenset({"media.configure", "media.start"})
 

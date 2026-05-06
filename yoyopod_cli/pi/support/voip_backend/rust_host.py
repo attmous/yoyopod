@@ -13,7 +13,6 @@ from typing import Any
 from loguru import logger
 
 from yoyopod_cli.pi.support.voip_backend.protocol import VoIPIterateMetrics
-from yoyopod.core.workers import WorkerProcessConfig
 from yoyopod_cli.pi.support.call_models import (
     BackendRecovered,
     BackendStopped,
@@ -39,6 +38,7 @@ from yoyopod_cli.pi.support.call_models import (
     VoIPRuntimeSnapshotChanged,
     VoIPVoiceNoteSnapshot,
 )
+from yoyopod_cli.pi.support.workers import WorkerProcessConfig
 
 _STARTUP_COMMANDS = frozenset({"voip.configure", "voip.register"})
 _CALL_CONTROL_COMMANDS = frozenset(

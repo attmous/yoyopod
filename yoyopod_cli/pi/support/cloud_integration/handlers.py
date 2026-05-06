@@ -6,11 +6,11 @@ import json
 from dataclasses import asdict, is_dataclass
 from typing import Any, Callable
 
-from yoyopod.core.events import StateChangedEvent
 from yoyopod_cli.pi.support.cloud_integration.commands import (
     PublishTelemetryCommand,
     SyncNowCommand,
 )
+from yoyopod_cli.pi.support.events import StateChangedEvent
 
 _TELEMETRY_ENTITIES = {
     "call.state",

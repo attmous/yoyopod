@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from loguru import logger
 
-from yoyopod.core.app_state import AppRuntimeState, AppStateRuntime
+from yoyopod_cli.pi.support.app_state import AppRuntimeState, AppStateRuntime
 from yoyopod_cli.pi.support.music_backend import Track
 from yoyopod_cli.pi.support.music_integration import LocalMusicService
 

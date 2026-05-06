@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 from yoyopod_cli.pi.support.power_integration.policies import PowerSafetyPolicy
 
 if TYPE_CHECKING:
-    from yoyopod.core.application import YoyoPodApp
     from yoyopod_cli.pi.support.power_integration.models import PowerSnapshot
 
 
@@ -20,7 +19,7 @@ class PowerRuntimeService:
     _SLOW_POWER_REFRESH_WARNING_SECONDS = 0.25
     _SLOW_WATCHDOG_FEED_WARNING_SECONDS = 0.25
 
-    def __init__(self, app: "YoyoPodApp") -> None:
+    def __init__(self, app: Any) -> None:
         self.app = app
         self._power_io_lock = threading.Lock()
         self._watchdog_io_lock = threading.Lock()
@@ -79,7 +78,7 @@ class PowerRuntimeService:
                 "Power refresh worker slow: duration_ms={:.1f}",
                 duration_seconds * 1000.0,
             )
-        return snapshot
+        return cast("PowerSnapshot", snapshot)
 
     def _complete_refresh(self, *, snapshot: "PowerSnapshot") -> None:
         """Publish one completed power refresh back onto the coordinator thread."""

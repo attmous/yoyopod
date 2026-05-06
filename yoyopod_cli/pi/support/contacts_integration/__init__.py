@@ -24,7 +24,7 @@ from yoyopod_cli.pi.support.contacts_integration.models import (
     contacts_from_mapping,
     contacts_to_mapping,
 )
-from yoyopod.integrations.call.events import VoiceNoteSummaryChangedEvent
+from yoyopod_cli.pi.support.events import VoiceNoteSummaryChangedEvent
 
 
 @dataclass(slots=True)

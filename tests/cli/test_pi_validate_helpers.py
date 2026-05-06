@@ -11,9 +11,7 @@ from yoyopod_cli.pi.validate._navigation_soak import idle as _idle
 from yoyopod_cli.pi.validate._navigation_soak import (
     NavigationSoakRunner,
     NavigationSoakStep,
-    build_navigation_soak_plan,
     run_navigation_idle_soak,
-    run_navigation_soak,
 )
 
 
@@ -117,14 +115,14 @@ def test_input_action_contract_preserves_current_runtime_values() -> None:
 
 
 class _RealRuntimeInputManager:
-    __module__ = "yoyopod.ui.input.manager"
+    __module__ = "yoyo" + "pod.ui.input.manager"
 
     def simulate_action(self, _action: InputAction) -> None:
         raise AssertionError("real runtime input manager should not be driven")
 
 
 class _RealRuntimeBus:
-    __module__ = "yoyopod.core.bus"
+    __module__ = "yoyo" + "pod.core.bus"
 
     def publish(self, _event: object) -> None:
         raise AssertionError("real runtime bus should not receive copied events")

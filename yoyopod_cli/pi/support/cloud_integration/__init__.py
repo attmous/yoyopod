@@ -7,11 +7,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from yoyopod.core.events import StateChangedEvent
 from yoyopod_cli.pi.support.cloud_integration.commands import (
     PublishTelemetryCommand,
     SyncNowCommand,
 )
+from yoyopod_cli.pi.support.events import StateChangedEvent
 from yoyopod_cli.pi.support.cloud_integration.handlers import (
     apply_mqtt_status_to_state,
     build_state_forwarder,

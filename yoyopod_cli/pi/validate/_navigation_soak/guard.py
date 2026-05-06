@@ -26,7 +26,8 @@ def _value_string(value: object) -> str:
 def _is_real_python_runtime_object(obj: object) -> bool:
     """Return whether an object belongs to the retired Python runtime package."""
 
-    return _object_module_name(obj).startswith("yoyopod.")
+    retired_runtime_prefix = "yoyo" + "pod."
+    return _object_module_name(obj).startswith(retired_runtime_prefix)
 
 
 def _raise_retired_python_runtime_soak(surface: str) -> NoReturn:

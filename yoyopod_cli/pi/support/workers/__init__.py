@@ -1,0 +1,33 @@
+"""Worker process support used by CLI-owned Rust host helpers."""
+
+from __future__ import annotations
+
+from yoyopod_cli.contracts.worker_protocol import (
+    SUPPORTED_SCHEMA_VERSION,
+    VALID_KINDS,
+    WorkerEnvelope,
+    WorkerProtocolError,
+    encode_envelope,
+    make_envelope,
+    parse_envelope_line,
+)
+from yoyopod_cli.pi.support.workers.process import (
+    WorkerProcessConfig,
+    WorkerProcessRuntime,
+    WorkerProcessSnapshot,
+)
+from yoyopod_cli.pi.support.workers.supervisor import WorkerSupervisor
+
+__all__ = [
+    "SUPPORTED_SCHEMA_VERSION",
+    "VALID_KINDS",
+    "WorkerEnvelope",
+    "WorkerProcessConfig",
+    "WorkerProcessRuntime",
+    "WorkerProcessSnapshot",
+    "WorkerProtocolError",
+    "WorkerSupervisor",
+    "encode_envelope",
+    "make_envelope",
+    "parse_envelope_line",
+]

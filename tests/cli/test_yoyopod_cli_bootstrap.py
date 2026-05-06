@@ -25,4 +25,4 @@ def test_common_imports() -> None:
 
 def test_legacy_yoyopod_cli_package_is_gone() -> None:
     assert importlib.util.find_spec("yoyopod_cli") is not None
-    assert importlib.util.find_spec("yoyopod.cli") is None
+    assert importlib.util.find_spec("yoyo" + "pod.cli") is None

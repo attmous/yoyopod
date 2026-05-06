@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from yoyopod.core import AudioFocusLostEvent
+from yoyopod_cli.pi.support.events import AudioFocusLostEvent
+from yoyopod_cli.pi.support.focus import ReleaseFocusCommand, RequestFocusCommand
 from yoyopod_cli.pi.support.music_integration.events import (
     MusicAvailabilityChangedEvent,
     PlaybackStateChangedEvent,
     TrackChangedEvent,
 )
-from yoyopod.core.focus import ReleaseFocusCommand, RequestFocusCommand
 from yoyopod_cli.pi.support.music_integration.commands import (
     LoadPlaylistCommand,
     NextTrackCommand,

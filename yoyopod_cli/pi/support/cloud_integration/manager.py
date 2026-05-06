@@ -20,7 +20,6 @@ from yoyopod_cli.pi.support.cloud_backend import (
 from yoyopod_cli.pi.support.cloud_integration.models import CloudAccessToken, CloudStatusSnapshot
 
 if TYPE_CHECKING:
-    from yoyopod.core.application import YoyoPodApp
     from yoyopod_cli.config import ConfigManager
 
 
@@ -35,7 +34,7 @@ class CloudManager:
     def __init__(
         self,
         *,
-        app: "YoyoPodApp",
+        app: Any,
         config_manager: "ConfigManager",
         client: CloudDeviceClient | None = None,
     ) -> None:
@@ -597,7 +596,7 @@ class CloudManager:
         )
         self._persist_status()
         self._sync_context_state()
-        from yoyopod import __version__
+        from yoyopod_cli import __version__
 
         self.publish_heartbeat(firmware_version=__version__)
         self._maybe_bootstrap_local_contacts(payload=payload, completed_at=completed_at)
