@@ -15,11 +15,14 @@ If you are new here, read these first:
 When docs disagree, trust sources in this order:
 
 1. Current Rust runtime and host code in `device/`
-2. Current deploy/runtime tooling in `deploy/`, `yoyopod_cli/`, and `yoyopod/`
+2. Current deploy/runtime tooling in `deploy/` and `yoyopod_cli/`
 3. Current runtime, operations, hardware, feature, and design docs under the folders below
 4. Rules and agent guidance in `rules/`, `AGENTS.md`, and `skills/`
 5. Generated plans, checklists, and design specs
 6. Archived docs under [`archive/`](archive/)
+
+The retired Python app runtime lives under `legacy/python-runtime/` for
+temporary reference only. It is not a supported runtime owner.
 
 Plan docs are useful context, but they are not automatically the current implementation contract.
 

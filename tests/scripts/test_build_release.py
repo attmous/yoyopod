@@ -28,6 +28,13 @@ import build_release  # noqa: E402
 sys.path.remove(_SCRIPTS_DIR)
 
 
+def _write_minimal_app_sources(repo: Path) -> None:
+    (repo / "device").mkdir(parents=True)
+    (repo / "device" / "Cargo.toml").write_text("[workspace]\n", encoding="utf-8")
+    (repo / "yoyopod_cli").mkdir()
+    (repo / "yoyopod_cli" / "__init__.py").write_text("", encoding="utf-8")
+
+
 def test_compute_version_from_git_or_fallback(tmp_path: Path) -> None:
     version = build_release.compute_version(fallback_date="2026-04-22", git_sha=None)
     assert version == "2026.04.22-dev"
@@ -45,11 +52,7 @@ def test_build_writes_manifest(tmp_path: Path) -> None:
     while skipping `uv pip install` (which would be slow and require network).
     """
     fake_repo = tmp_path / "repo"
-    (fake_repo / "yoyopod").mkdir(parents=True)
-    (fake_repo / "yoyopod" / "__init__.py").write_text("")
-    (fake_repo / "yoyopod" / "main.py").write_text("def main():\n    pass\n")
-    (fake_repo / "yoyopod_cli").mkdir()
-    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    _write_minimal_app_sources(fake_repo)
     (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
     (fake_repo / "deploy" / "scripts").mkdir(parents=True)
     launch = fake_repo / "deploy" / "scripts" / "launch.sh"
@@ -69,7 +72,7 @@ def test_build_writes_manifest(tmp_path: Path) -> None:
 
     assert result_dir == out / "2026.04.22-test"
     assert (result_dir / "manifest.json").exists()
-    assert (result_dir / "app" / "yoyopod" / "main.py").exists()
+    assert (result_dir / "app" / "device" / "Cargo.toml").exists()
     assert (result_dir / "bin" / "launch").exists()
     assert os.access(result_dir / "bin" / "launch", os.X_OK)
     assert (result_dir / "config" / "app" / "core.yaml").exists()
@@ -99,14 +102,11 @@ def test_build_writes_manifest(tmp_path: Path) -> None:
 
 def test_build_rewrites_default_voice_worker_argv_for_slot_root(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
-    (fake_repo / "yoyopod").mkdir(parents=True)
-    (fake_repo / "yoyopod" / "__init__.py").write_text("")
-    (fake_repo / "yoyopod_cli").mkdir()
-    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    _write_minimal_app_sources(fake_repo)
     (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
     (fake_repo / "deploy" / "scripts").mkdir(parents=True)
     launch = fake_repo / "deploy" / "scripts" / "launch.sh"
-    launch.write_text("#!/bin/sh\ncd \"$SLOT_DIR\"\n")
+    launch.write_text('#!/bin/sh\ncd "$SLOT_DIR"\n')
     launch.chmod(0o755)
     voice_config = fake_repo / "config" / "voice" / "assistant.yaml"
     voice_config.parent.mkdir(parents=True)
@@ -148,10 +148,7 @@ def test_build_rewrites_default_voice_worker_argv_for_slot_root(tmp_path: Path) 
 
 def test_build_writes_runtime_requirements_from_pyproject(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
-    (fake_repo / "yoyopod").mkdir(parents=True)
-    (fake_repo / "yoyopod" / "__init__.py").write_text("")
-    (fake_repo / "yoyopod_cli").mkdir()
-    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    _write_minimal_app_sources(fake_repo)
     (fake_repo / "pyproject.toml").write_text(
         "[project]\n"
         "name='x'\n"
@@ -179,10 +176,7 @@ def test_build_writes_runtime_requirements_from_pyproject(tmp_path: Path) -> Non
 
 def test_build_refuses_existing_output_dir(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
-    (fake_repo / "yoyopod").mkdir(parents=True)
-    (fake_repo / "yoyopod" / "__init__.py").write_text("")
-    (fake_repo / "yoyopod_cli").mkdir()
-    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    _write_minimal_app_sources(fake_repo)
     (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
     (fake_repo / "deploy" / "scripts").mkdir(parents=True)
     launch = fake_repo / "deploy" / "scripts" / "launch.sh"
@@ -262,10 +256,7 @@ def test_build_release_script_runs_without_installed_checkout(tmp_path: Path) ->
 
 def test_build_normalizes_launcher_to_lf(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
-    (fake_repo / "yoyopod").mkdir(parents=True)
-    (fake_repo / "yoyopod" / "__init__.py").write_text("")
-    (fake_repo / "yoyopod_cli").mkdir()
-    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    _write_minimal_app_sources(fake_repo)
     (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
     (fake_repo / "config" / "app").mkdir(parents=True)
     (fake_repo / "config" / "app" / "core.yaml").write_text("test: true\n")
@@ -290,10 +281,7 @@ def test_build_normalizes_launcher_to_lf(tmp_path: Path) -> None:
 
 def test_build_can_skip_venv_when_requested(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
-    (fake_repo / "yoyopod").mkdir(parents=True)
-    (fake_repo / "yoyopod" / "__init__.py").write_text("")
-    (fake_repo / "yoyopod_cli").mkdir()
-    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    _write_minimal_app_sources(fake_repo)
     (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
     (fake_repo / "config" / "app").mkdir(parents=True)
     (fake_repo / "config" / "app" / "core.yaml").write_text("test: true\n")
@@ -425,10 +413,7 @@ def test_resolve_venv_copies_python_interpreter(
 
 def test_build_rejects_invalid_channel(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
-    (fake_repo / "yoyopod").mkdir(parents=True)
-    (fake_repo / "yoyopod" / "__init__.py").write_text("")
-    (fake_repo / "yoyopod_cli").mkdir()
-    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    _write_minimal_app_sources(fake_repo)
     (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
     (fake_repo / "deploy" / "scripts").mkdir(parents=True)
     launch = fake_repo / "deploy" / "scripts" / "launch.sh"
@@ -460,10 +445,7 @@ def test_build_rejects_path_like_version_before_creating_output(tmp_path: Path) 
 
 def test_build_copies_native_runtime_artifacts_when_present(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
-    (fake_repo / "yoyopod").mkdir(parents=True)
-    (fake_repo / "yoyopod" / "__init__.py").write_text("")
-    (fake_repo / "yoyopod_cli").mkdir()
-    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    _write_minimal_app_sources(fake_repo)
     (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
     (fake_repo / "deploy" / "scripts").mkdir(parents=True)
     launch = fake_repo / "deploy" / "scripts" / "launch.sh"
@@ -493,10 +475,7 @@ def test_build_copies_native_runtime_artifacts_when_present(tmp_path: Path) -> N
 
 def test_build_copies_voice_worker_runtime_artifact_when_present(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
-    (fake_repo / "yoyopod").mkdir(parents=True)
-    (fake_repo / "yoyopod" / "__init__.py").write_text("")
-    (fake_repo / "yoyopod_cli").mkdir()
-    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    _write_minimal_app_sources(fake_repo)
     (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
     (fake_repo / "deploy" / "scripts").mkdir(parents=True)
     launch = fake_repo / "deploy" / "scripts" / "launch.sh"
@@ -519,10 +498,7 @@ def test_build_copies_voice_worker_runtime_artifact_when_present(tmp_path: Path)
 
 def test_build_with_venv_rejects_missing_native_runtime_artifacts(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
-    (fake_repo / "yoyopod").mkdir(parents=True)
-    (fake_repo / "yoyopod" / "__init__.py").write_text("")
-    (fake_repo / "yoyopod_cli").mkdir()
-    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    _write_minimal_app_sources(fake_repo)
     (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
     (fake_repo / "deploy" / "scripts").mkdir(parents=True)
     launch = fake_repo / "deploy" / "scripts" / "launch.sh"
@@ -543,10 +519,7 @@ def test_build_with_venv_rejects_missing_native_runtime_artifacts(tmp_path: Path
 
 def test_build_with_venv_validates_self_contained_runtime_contract(tmp_path: Path) -> None:
     fake_repo = tmp_path / "repo"
-    (fake_repo / "yoyopod").mkdir(parents=True)
-    (fake_repo / "yoyopod" / "__init__.py").write_text("")
-    (fake_repo / "yoyopod_cli").mkdir()
-    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    _write_minimal_app_sources(fake_repo)
     (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
     (fake_repo / "deploy" / "scripts").mkdir(parents=True)
     launch = fake_repo / "deploy" / "scripts" / "launch.sh"
@@ -597,10 +570,7 @@ def test_build_self_contained_contract_uses_requested_python_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_repo = tmp_path / "repo"
-    (fake_repo / "yoyopod").mkdir(parents=True)
-    (fake_repo / "yoyopod" / "__init__.py").write_text("")
-    (fake_repo / "yoyopod_cli").mkdir()
-    (fake_repo / "yoyopod_cli" / "__init__.py").write_text("")
+    _write_minimal_app_sources(fake_repo)
     (fake_repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0.0.1'\n")
     (fake_repo / "deploy" / "scripts").mkdir(parents=True)
     launch = fake_repo / "deploy" / "scripts" / "launch.sh"

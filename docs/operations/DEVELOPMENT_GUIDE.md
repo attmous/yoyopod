@@ -12,7 +12,8 @@ If you are new here, read these first:
 ## Source of truth
 
 For current behavior, trust:
-- current code in `yoyopod/`
+- current Rust runtime and host code in `device/`
+- current operations tooling in `yoyopod_cli/`
 - this guide for setup and workflow
 - [`SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) for runtime topology
 - [`../AGENTS.md`](../../AGENTS.md) and `rules/` for repo guidance
@@ -139,16 +140,9 @@ Rust runtime dry run:
 cargo run --manifest-path device/Cargo.toml -p yoyopod-runtime -- --config-dir config --dry-run
 ```
 
-Legacy Python fallback:
+Rust runtime:
 
 ```bash
-device/runtime/build/yoyopod-runtime --config-dir config
-```
-
-Legacy Python simulation:
-
-```bash
-yoyopod build simulation
 device/runtime/build/yoyopod-runtime --config-dir config
 ```
 
@@ -157,6 +151,9 @@ Installed console entrypoint:
 ```bash
 yoyopod
 ```
+
+The installed `yoyopod` command is the operations CLI. It does not launch the
+app runtime.
 
 Useful demos:
 
@@ -184,7 +181,7 @@ uv run pytest -q tests/cli tests/deploy
 Optional extra syntax/import smoke for broad Python tree changes:
 
 ```bash
-python -m compileall yoyopod tests demos scripts
+python -m compileall yoyopod_cli tests demos scripts
 ```
 
 Full quality audit of the current repo debt:
@@ -278,45 +275,27 @@ yoyopod remote logs --follow --filter ERROR
 ## Package Layout
 
 ```text
-yoyopod/
-  app.py
-  main.py
-  core/
-    application.py
-    bootstrap/
-    loop.py
-    bus.py
-    scheduler.py
-    diagnostics/
-  config/
-    manager.py
-    models.py
-  integrations/
-    call/
-    cloud/
-    contacts/
-    display/
-    location/
-    music/
-    network/
-    power/
-    voice/
-  backends/
-    music/
-    network/
-    power/
-    voice/
-    voip/
+device/
+  runtime/
+  protocol/
+  worker/
+  harness/
+  cloud/
+  media/
+  network/
+  power/
+  speech/
   ui/
-    display/
-    input/
-    lvgl_binding/
-    screens/
+  voip/
 yoyopod_cli/
   main.py
+  pi/
+  config/
+  contracts/
 scripts/
   quality.py
-sitecustomize.py
+legacy/
+  python-runtime/
 ```
 
 ## Current Active Docs

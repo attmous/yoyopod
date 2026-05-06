@@ -2,7 +2,7 @@
 
 Produces:
   <output_root>/<version>/
-    ├── app/              # yoyopod + yoyopod_cli source trees
+    ├── app/              # device + yoyopod_cli source trees
     ├── config/           # repo's top-level config/ tree (default app config)
     ├── venv/             # runtime venv (only when --with-venv)
     ├── bin/launch        # copy of deploy/scripts/launch.sh
@@ -60,7 +60,7 @@ except ImportError:
     )
 
 
-PACKAGE_DIRS: tuple[str, ...] = ("yoyopod", "yoyopod_cli")
+PACKAGE_DIRS: tuple[str, ...] = ("device", "yoyopod_cli")
 _CHECKOUT_VOICE_WORKER_ARTIFACT = SLOT_VOICE_WORKER_ARTIFACT.relative_to("app").as_posix()
 _SLOT_VOICE_WORKER_ARTIFACT = SLOT_VOICE_WORKER_ARTIFACT.as_posix()
 _CHECKOUT_VOICE_WORKER_RE = re.compile(
@@ -91,6 +91,8 @@ def _copy_sources(repo_root: Path, dest_app: Path) -> None:
                 ".pytest_cache",
                 ".mypy_cache",
                 ".ruff_cache",
+                "target",
+                "build",
                 "*.egg-info",
                 "*.dist-info",
                 ".DS_Store",
