@@ -54,8 +54,8 @@ Current Runtime Status
 - Python is no longer the architectural target for the app runtime. It remains
   for CLI/deploy tooling, compatibility paths, tests, and any domain that has
   not been fully removed yet.
-- Dev service can run either owner. Rust is selected with
-  `YOYOPOD_DEV_RUNTIME=rust`; the legacy fallback is `python yoyopod.py`.
+- Dev service runs the Rust owner directly through `yoyopod-runtime`.
+  Legacy Python runtime entrypoints are quarantined under `legacy/` only.
 
 Pi Lanes And Bootstrap
 - Dev lane: mutable hardware-testing checkout at `/opt/yoyopod-dev/checkout`,
@@ -66,8 +66,8 @@ Pi Lanes And Bootstrap
   services should not own hardware together.
 - Hard cut: supported runtime owners are only `yoyopod-dev.service` and
   `yoyopod-prod.service`; `yoyopod@*.service`, `yoyopod-slot.service`,
-  unmanaged `python yoyopod.py`, and `remote service ...` are contamination
-  paths.
+  unmanaged legacy runtime processes, and `remote service ...` are
+  contamination paths.
 - Dev deploy loop: `yoyopod remote mode activate dev`, then
   `yoyopod remote sync --branch <branch>`. Add `--clean-native` after
   native/CMake/lib changes or branch switches.

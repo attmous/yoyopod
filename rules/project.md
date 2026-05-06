@@ -11,10 +11,10 @@ Three display/input surfaces are supported today: PiSugar Whisplay hardware, Pim
 uv run yoyopod setup host
 uv run yoyopod setup verify-host
 
-# Run the app
-python yoyopod.py
+# Build and run the Rust runtime
+uv run yoyopod build rust-runtime
+device/runtime/build/yoyopod-runtime --config-dir config
 yoyopod build simulation
-python yoyopod.py --simulate
 
 # Local CI mirror
 uv run python scripts/quality.py ci
