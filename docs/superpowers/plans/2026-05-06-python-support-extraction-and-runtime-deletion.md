@@ -41,6 +41,37 @@ Each phase should be a separate commit.
 
 ---
 
+## Execution Status
+
+**Updated:** 2026-05-06
+**Branch:** `codex/python-support-extraction-spec`
+
+Completed locally through Phase 7 validation.
+
+Key completion commits:
+
+- `3475bda9` - quarantined the retired root Python runtime package under
+  `legacy/python-runtime/yoyopod/` and removed it from wheel/sdist packaging
+- `9af28f7b` - updated release slot packaging to copy active `device/` sources
+  plus `yoyopod_cli/`, and refreshed active docs away from Python runtime
+  ownership
+
+Final validation evidence:
+
+- `uv run pytest -q tests\cli tests\deploy tests\config tests\device tests\scripts`
+- `uv run python scripts\quality.py gate`
+- `cargo test --manifest-path device\Cargo.toml --workspace --locked`
+- `cargo clippy --manifest-path device\Cargo.toml --workspace --all-targets --locked -- -D warnings`
+- `cargo fmt --manifest-path device\Cargo.toml --all --check`
+- `uv run yoyopod build rust-runtime`
+- `uv run yoyopod build voice-worker`
+- wheel inspection confirmed `yoyopod_cli/` only, with no root Python runtime
+  package and no `legacy/python-runtime/`
+
+Push and PR creation are the only remaining handoff actions.
+
+---
+
 ## Target File Structure
 
 Create or populate these active support packages:
