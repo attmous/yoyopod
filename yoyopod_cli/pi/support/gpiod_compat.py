@@ -17,11 +17,12 @@ from typing import Any
 from loguru import logger
 
 try:
-    import gpiod as _gpiod
+    import gpiod as _gpiod_module
 
+    _gpiod: Any = _gpiod_module
     HAS_GPIOD = True
 except ImportError:
-    _gpiod = None  # type: ignore[assignment]
+    _gpiod = None
     HAS_GPIOD = False
 
 
