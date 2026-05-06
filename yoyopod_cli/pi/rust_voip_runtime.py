@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from yoyopod.core.bus import Bus
-from yoyopod.core.events import WorkerDomainStateChangedEvent, WorkerMessageReceivedEvent
+from yoyopod.core import WorkerDomainStateChangedEvent, WorkerMessageReceivedEvent
 from yoyopod.core.scheduler import MainThreadScheduler
 from yoyopod.core.workers import WorkerSupervisor
-from yoyopod.integrations.call import VoIPConfig, VoIPManager
+from yoyopod.integrations.call import VoIPManager
 from yoyopod_cli.common import REPO_ROOT, resolve_config_dir
+from yoyopod_cli.pi.support.call_models import VoIPConfig
 
 
 def rust_voip_worker_path() -> str:
@@ -58,7 +59,7 @@ class RustVoIPDiagnosticManager:
 
     @property
     def config(self) -> VoIPConfig:
-        return self._manager.config
+        return cast(VoIPConfig, self._manager.config)
 
     @property
     def running(self) -> bool:
@@ -92,8 +93,10 @@ def build_rust_voip_manager(config_dir: str) -> RustVoIPDiagnosticManager:
     scheduler = MainThreadScheduler()
     bus = Bus()
     worker_supervisor = WorkerSupervisor(scheduler=scheduler, bus=bus)
+    backend_config = cast(Any, voip_config)
+    # VoIPManager and RustHostBackend remain integration-owned until backend package extraction.
     backend = RustHostBackend(
-        voip_config,
+        backend_config,
         worker_supervisor=worker_supervisor,
         worker_path=rust_voip_worker_path(),
         cwd=str(REPO_ROOT),
@@ -101,7 +104,7 @@ def build_rust_voip_manager(config_dir: str) -> RustVoIPDiagnosticManager:
     bus.subscribe(WorkerMessageReceivedEvent, backend.handle_worker_message)
     bus.subscribe(WorkerDomainStateChangedEvent, backend.handle_worker_state_change)
     manager = VoIPManager(
-        voip_config,
+        backend_config,
         backend=backend,
         event_scheduler=scheduler.run_on_main,
         background_iterate_enabled=False,

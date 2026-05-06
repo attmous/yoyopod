@@ -15,10 +15,11 @@ from yoyopod_cli.music_fixtures import (
     DEFAULT_TEST_MUSIC_TARGET_DIR,
     provision_test_music_library,
 )
-from yoyopod.core.events import UserActivityEvent
-from yoyopod.ui.input import InputAction, InteractionProfile
+from yoyopod_cli.pi.support.events import UserActivityEvent
+from yoyopod_cli.pi.support.input import InputAction, InteractionProfile
 
 from .handle import _NavigationSoakAppFactory, _NavigationSoakAppHandle, _default_app_factory
+from .guard import _reject_real_python_runtime_object, _value_string
 
 
 class NavigationSoakFailure(RuntimeError):
@@ -198,8 +199,9 @@ class NavigationSoakRunner:
                     return False, "display, screen manager, or input manager not initialized"
                 if app.display.backend_kind != "lvgl":
                     return False, f"backend is {app.display.backend_kind}, expected lvgl"
-                if app.input_manager.interaction_profile != InteractionProfile.ONE_BUTTON:
-                    profile_name = app.input_manager.interaction_profile.value
+                _reject_real_python_runtime_object(app.input_manager, "runtime input manager")
+                profile_name = _value_string(app.input_manager.interaction_profile)
+                if profile_name != InteractionProfile.ONE_BUTTON.value:
                     return False, f"profile is {profile_name}, expected one_button"
 
                 app.power_runtime.start_watchdog(now=time.monotonic())
@@ -295,6 +297,7 @@ class NavigationSoakRunner:
             label,
             self._current_screen_name(),
         )
+        _reject_real_python_runtime_object(self.app.input_manager, "runtime input manager")
         self.app.input_manager.simulate_action(action)  # type: ignore[union-attr]
         self.stats.actions += 1
         self.pump.run_for(self.hold_seconds if settle_seconds is None else settle_seconds)
@@ -617,6 +620,7 @@ class NavigationSoakRunner:
         if self.app.context is None or self.app.context.screen.awake:
             raise NavigationSoakFailure("screen did not enter sleep during navigation soak")
 
+        _reject_real_python_runtime_object(self.app.bus, "runtime bus")
         self.app.scheduler.run_on_main(
             lambda: self.app.bus.publish(UserActivityEvent(action_name="navigation_soak"))
         )

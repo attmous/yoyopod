@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import sys
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 
+import pytest
+
+from yoyopod_cli.pi.support.input import InputAction
 from yoyopod_cli.pi.validate._navigation_soak import pump as helpers
 from yoyopod_cli.pi.validate._navigation_soak import handle as _handle
 from yoyopod_cli.pi.validate._navigation_soak import idle as _idle
@@ -13,7 +15,6 @@ from yoyopod_cli.pi.validate._navigation_soak import (
     run_navigation_idle_soak,
     run_navigation_soak,
 )
-from yoyopod.ui.input import InputAction
 
 
 def test_wait_for_route_accepts_transition_completed_in_final_pump(
@@ -39,9 +40,12 @@ def test_wait_for_route_accepts_transition_completed_in_final_pump(
     helpers._wait_for_route(object(), "ask", timeout_seconds=1.0)
 
 
-def test_default_app_factory_wraps_imported_app_with_stable_soak_surface(
-    monkeypatch,
-) -> None:
+def test_default_app_factory_rejects_retired_python_runtime() -> None:
+    with pytest.raises(_handle.NavigationSoakError, match="retired Python app runtime"):
+        _handle._default_app_factory(config_dir="test-config", simulate=True)
+
+
+def test_explicit_app_factory_wraps_fake_with_stable_soak_surface(monkeypatch) -> None:
     class _FakeApp:
         def __init__(self, *, config_dir: str, simulate: bool) -> None:
             self.config_dir = config_dir
@@ -52,10 +56,12 @@ def test_default_app_factory_wraps_imported_app_with_stable_soak_surface(
             self.local_music_service = None
             self.music_backend = None
             self.runtime_loop = SimpleNamespace(configured_voip_iterate_interval_seconds=0.25)
+            self.worker_supervisor = None
             self.recovery_service = None
             self.power_runtime = None
             self.screen_power_service = None
-            self.event_bus = None
+            self.scheduler = None
+            self.bus = None
             self.context = None
             self._screen_timeout_seconds = 12.5
             self._shutdown_completed = True
@@ -67,12 +73,11 @@ def test_default_app_factory_wraps_imported_app_with_stable_soak_surface(
         def stop(self) -> None:
             return None
 
-    fake_app_module = ModuleType("yoyopod.app")
-    fake_app_module.YoyoPodApp = _FakeApp
-    monkeypatch.setitem(sys.modules, "yoyopod.app", fake_app_module)
     monkeypatch.setattr(_handle.time, "monotonic", lambda: 100.0)
 
-    handle = _handle._default_app_factory(config_dir="test-config", simulate=True)
+    handle = _handle._YoyoPodAppNavigationSoakHandle(
+        _FakeApp(config_dir="test-config", simulate=True)
+    )
     wrapped_app = getattr(handle, "_app")
 
     assert handle.config_dir == "test-config"
@@ -85,6 +90,91 @@ def test_default_app_factory_wraps_imported_app_with_stable_soak_surface(
 
     assert wrapped_app._last_user_activity_at == 93.0
 
+
+def test_input_action_contract_preserves_current_runtime_values() -> None:
+    assert {action.value for action in InputAction} == {
+        "advance",
+        "select",
+        "back",
+        "up",
+        "down",
+        "left",
+        "right",
+        "menu",
+        "home",
+        "play_pause",
+        "next_track",
+        "prev_track",
+        "volume_up",
+        "volume_down",
+        "call_answer",
+        "call_reject",
+        "call_hangup",
+        "ptt_press",
+        "ptt_release",
+        "voice_command",
+    }
+
+
+class _RealRuntimeInputManager:
+    __module__ = "yoyopod.ui.input.manager"
+
+    def simulate_action(self, _action: InputAction) -> None:
+        raise AssertionError("real runtime input manager should not be driven")
+
+
+class _RealRuntimeBus:
+    __module__ = "yoyopod.core.bus"
+
+    def publish(self, _event: object) -> None:
+        raise AssertionError("real runtime bus should not receive copied events")
+
+
+def test_dispatch_action_rejects_real_runtime_input_manager() -> None:
+    app = SimpleNamespace(
+        screen_manager=SimpleNamespace(current_screen=SimpleNamespace(route_name="hub")),
+        input_manager=_RealRuntimeInputManager(),
+    )
+
+    with pytest.raises(helpers.NavigationSoakError, match="Python runtime navigation soak"):
+        helpers._dispatch_action(app, InputAction.SELECT)
+
+
+def test_sleep_wake_rejects_real_runtime_bus_before_publish(monkeypatch) -> None:
+    app = SimpleNamespace(
+        screen_timeout_seconds=1.0,
+        context=SimpleNamespace(screen=SimpleNamespace(awake=False)),
+        scheduler=SimpleNamespace(run_on_main=lambda callback: callback()),
+        bus=_RealRuntimeBus(),
+        simulate_inactivity=lambda *, idle_for_seconds: None,
+    )
+    monkeypatch.setattr(helpers, "_pump_app", lambda _app, _duration_seconds: None)
+
+    with pytest.raises(helpers.NavigationSoakError, match="Python runtime navigation soak"):
+        helpers._exercise_sleep_wake(app)
+
+
+def test_runner_rejects_real_runtime_input_manager_before_dispatch() -> None:
+    runner = NavigationSoakRunner(
+        config_dir="config",
+        cycles=1,
+        hold_seconds=0.1,
+        idle_seconds=0.0,
+        tail_idle_seconds=0.0,
+        with_playback=False,
+        provision_test_music=False,
+        test_music_dir="music",
+        skip_sleep=True,
+    )
+    runner._app = SimpleNamespace(
+        input_manager=_RealRuntimeInputManager(),
+        screen_manager=SimpleNamespace(
+            get_current_screen=lambda: SimpleNamespace(route_name="hub"),
+        ),
+    )
+
+    with pytest.raises(helpers.NavigationSoakError, match="Python runtime navigation soak"):
+        runner._simulate_action(InputAction.SELECT, label="select")
 
 
 def test_pump_app_polls_worker_supervisor(monkeypatch) -> None:
@@ -157,9 +247,6 @@ def test_navigation_idle_soak_resets_hub_selection_between_cycles(
         def stop(self) -> None:
             return None
 
-    fake_app_module = ModuleType("yoyopod.app")
-    fake_app_module.YoyoPodApp = _FakeApp
-    monkeypatch.setitem(sys.modules, "yoyopod.app", fake_app_module)
     monkeypatch.setattr(_idle, "_pump_app", lambda app, duration_seconds: None)
     monkeypatch.setattr(
         _idle,
@@ -204,6 +291,10 @@ def test_navigation_idle_soak_resets_hub_selection_between_cycles(
         hold_seconds=0.1,
         idle_seconds=0.0,
         skip_sleep=True,
+        app_factory=lambda *, config_dir, simulate: _FakeApp(
+            config_dir=config_dir,
+            simulate=simulate,
+        ),
     )
 
     assert report.final_route == "hub"
@@ -244,9 +335,6 @@ def test_navigation_idle_soak_resets_reopened_listen_selection(
         def stop(self) -> None:
             return None
 
-    fake_app_module = ModuleType("yoyopod.app")
-    fake_app_module.YoyoPodApp = _FakeApp
-    monkeypatch.setitem(sys.modules, "yoyopod.app", fake_app_module)
     monkeypatch.setattr(_idle, "_pump_app", lambda app, duration_seconds: None)
     monkeypatch.setattr(
         _idle,
@@ -305,6 +393,10 @@ def test_navigation_idle_soak_resets_reopened_listen_selection(
         hold_seconds=0.1,
         idle_seconds=0.0,
         skip_sleep=True,
+        app_factory=lambda *, config_dir, simulate: _FakeApp(
+            config_dir=config_dir,
+            simulate=simulate,
+        ),
     )
 
     assert report.final_route == "listen"
@@ -344,9 +436,6 @@ def test_navigation_idle_soak_preserves_hub_progress_within_cycle(
         def stop(self) -> None:
             return None
 
-    fake_app_module = ModuleType("yoyopod.app")
-    fake_app_module.YoyoPodApp = _FakeApp
-    monkeypatch.setitem(sys.modules, "yoyopod.app", fake_app_module)
     monkeypatch.setattr(_idle, "_pump_app", lambda app, duration_seconds: None)
     monkeypatch.setattr(
         _idle,
@@ -411,6 +500,10 @@ def test_navigation_idle_soak_preserves_hub_progress_within_cycle(
         hold_seconds=0.1,
         idle_seconds=0.0,
         skip_sleep=True,
+        app_factory=lambda *, config_dir, simulate: _FakeApp(
+            config_dir=config_dir,
+            simulate=simulate,
+        ),
     )
 
     assert report.final_route == "ask"

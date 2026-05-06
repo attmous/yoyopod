@@ -6,6 +6,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from .plan import NavigationSoakError
+
 
 class _NavigationSoakAppHandle(Protocol):
     """Minimal runtime surface used by soak helpers."""
@@ -207,6 +209,7 @@ class _NavigationSoakAppFactory(Protocol):
 def _default_app_factory(*, config_dir: str, simulate: bool) -> _NavigationSoakAppHandle:
     """Default app factory used when callers do not provide one."""
 
-    from yoyopod.app import YoyoPodApp
-
-    return _YoyoPodAppNavigationSoakHandle(YoyoPodApp(config_dir=config_dir, simulate=simulate))
+    raise NavigationSoakError(
+        "navigation soak cannot construct the retired Python app runtime; "
+        "provide an explicit app factory"
+    )

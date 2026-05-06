@@ -135,43 +135,16 @@ def _display_check(
 
 
 def _input_check(display: Any, app_config: dict[str, Any]) -> _CheckResult:
-    """Validate that the matching input adapter can be constructed."""
-    from yoyopod.ui.input import get_input_manager
+    """Report that Python runtime input validation has been retired."""
 
-    input_manager = None
-
-    try:
-        input_manager = get_input_manager(
-            display.get_adapter(),
-            config=app_config,
-            simulate=False,
-        )
-        if input_manager is None:
-            return _CheckResult(
-                name="input",
-                status="fail",
-                details="no input adapter was created for the detected display hardware",
-            )
-
-        capabilities = sorted(action.value for action in input_manager.get_capabilities())
-        interaction_profile = input_manager.interaction_profile.value
-        input_manager.start()
-        time.sleep(0.1)
-        input_manager.stop()
-
-        return _CheckResult(
-            name="input",
-            status="pass",
-            details=(f"profile={interaction_profile}, " f"capabilities={', '.join(capabilities)}"),
-        )
-    except Exception as exc:
-        return _CheckResult(name="input", status="fail", details=str(exc))
-    finally:
-        if input_manager is not None:
-            try:
-                input_manager.stop()
-            except Exception:
-                pass
+    return _CheckResult(
+        name="input",
+        status="warn",
+        details=(
+            "Python runtime input validation is retired; use hardware-backed Rust validation "
+            "for input checks"
+        ),
+    )
 
 
 def _power_check(config_dir: Path) -> _CheckResult:

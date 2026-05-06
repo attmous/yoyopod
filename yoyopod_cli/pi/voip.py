@@ -8,6 +8,7 @@ from typing import Any, Callable, Protocol, cast
 import typer
 
 from yoyopod_cli.common import configure_logging
+from yoyopod_cli.pi.support.call_models import CallState
 
 app = typer.Typer(
     name="voip",
@@ -59,6 +60,12 @@ def _build_voip_manager(config_dir: str) -> _VoIPManagerLike:
     except RuntimeError as exc:
         logger.error(str(exc))
         raise typer.Exit(code=1)
+
+
+def _enum_value(value: object) -> str:
+    """Return a stable value string for enum-like runtime snapshots."""
+
+    return str(getattr(value, "value", value or ""))
 
 
 @app.command()
@@ -138,9 +145,7 @@ def debug(
     seen_call_ids: set[str] = set()
 
     def on_runtime_snapshot(snapshot: Any) -> None:
-        from yoyopod.integrations.call.models import CallState
-
-        if getattr(snapshot, "call_state", None) is not CallState.INCOMING:
+        if _enum_value(getattr(snapshot, "call_state", None)) != CallState.INCOMING.value:
             return
         call_id = str(getattr(snapshot, "active_call_id", "") or "")
         if call_id and call_id in seen_call_ids:

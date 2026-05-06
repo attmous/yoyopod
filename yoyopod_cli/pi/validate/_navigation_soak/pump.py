@@ -13,9 +13,11 @@ from yoyopod_cli.music_fixtures import (
     ProvisionedTestMusicLibrary,
     provision_test_music_library,
 )
-from yoyopod.ui.input import InputAction
+from yoyopod_cli.pi.support.events import UserActivityEvent
+from yoyopod_cli.pi.support.input import InputAction
 
 from .handle import _NavigationSoakAppHandle
+from .guard import _reject_real_python_runtime_object
 from .plan import NavigationSoakError
 
 
@@ -71,10 +73,12 @@ def _dispatch_action(app: _NavigationSoakAppHandle, action: InputAction) -> None
         raise NavigationSoakError("screen manager is not initialized")
 
     if app.input_manager is not None:
+        _reject_real_python_runtime_object(app.input_manager, "runtime input manager")
         app.input_manager.simulate_action(action)
         return
 
     previous_screen = app.screen_manager.current_screen
+    _reject_real_python_runtime_object(previous_screen, "runtime screen")
     previous_screen.handle_action(action)
     navigation_request = previous_screen.consume_navigation_request()
     if navigation_request is not None:
@@ -147,14 +151,13 @@ def _wait_for_track(
 def _exercise_sleep_wake(app: _NavigationSoakAppHandle) -> str:
     """Force one idle sleep/wake cycle against the current app instance."""
 
-    from yoyopod.core.events import UserActivityEvent
-
     timeout_seconds = max(1.0, app.screen_timeout_seconds)
     app.simulate_inactivity(idle_for_seconds=timeout_seconds + 1.0)
     _pump_app(app, 0.35)
     if app.context is None or app.context.screen.awake:
         raise NavigationSoakError("screen did not enter sleep during soak")
 
+    _reject_real_python_runtime_object(app.bus, "runtime bus")
     app.scheduler.run_on_main(
         lambda: app.bus.publish(UserActivityEvent(action_name="navigation_soak"))
     )

@@ -15,9 +15,35 @@ from typer.testing import CliRunner
 from yoyopod_cli.pi.validate import voip as voip_cli
 from yoyopod_cli.pi.validate import app as pi_validate_app
 import yoyopod_cli.pi.voip as voip_check_cli
-from yoyopod.integrations.call.models import CallState, RegistrationState
+from yoyopod_cli.pi.support.call_models import CallState, RegistrationState
 
 runner = CliRunner()
+
+
+def test_call_contract_preserves_current_runtime_enum_values() -> None:
+    assert [state.value for state in RegistrationState] == [
+        "none",
+        "progress",
+        "ok",
+        "cleared",
+        "failed",
+    ]
+    assert {state.value for state in CallState} == {
+        "idle",
+        "incoming",
+        "outgoing_init",
+        "outgoing_progress",
+        "outgoing_ringing",
+        "outgoing_early_media",
+        "connected",
+        "streams_running",
+        "paused",
+        "paused_by_remote",
+        "updated_by_remote",
+        "released",
+        "error",
+        "end",
+    }
 
 
 class FakeClock:
@@ -925,3 +951,34 @@ def test_debug_uses_custom_config_dir(
 
     assert result.exit_code == 0
     assert called_with == ["/tmp/custom-config"]
+
+
+def test_debug_detects_incoming_snapshot_by_value_after_contract_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The debug helper should accept enum-like snapshot values from the runtime edge."""
+
+    clock = FakeClock()
+    manager = FakeVoIPManager(clock)
+    monkeypatch.setattr(voip_check_cli.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(voip_check_cli.time, "time", clock.time)
+    monkeypatch.setattr(voip_check_cli.time, "sleep", clock.sleep)
+    monkeypatch.setattr(voip_check_cli, "_build_voip_manager", lambda _config_dir: manager)
+
+    def interrupting_iterate() -> int:
+        snapshot = SimpleNamespace(
+            call_state=SimpleNamespace(value="incoming"),
+            active_call_id="call-1",
+            active_call_peer="sip:bob@example.com",
+            call_session=SimpleNamespace(peer_sip_address="sip:bob@example.com"),
+        )
+        for callback in manager._runtime_snapshot_callbacks:
+            callback(snapshot)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(manager, "iterate", interrupting_iterate)
+
+    result = runner.invoke(voip_check_cli.app, ["debug"])
+
+    assert result.exit_code == 0
+    assert "Total incoming calls detected: 1" in result.output

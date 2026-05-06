@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from yoyopod.ui.input import InputAction
+from yoyopod_cli.pi.support.input import InputAction
 
 
 class NavigationSoakError(RuntimeError):
