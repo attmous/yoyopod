@@ -8,9 +8,11 @@ from typing import Annotated, Literal, cast
 
 import typer
 
-from yoyopod.ui.rust_host.protocol import UiEnvelope
-from yoyopod.ui.rust_host.snapshot import RustUiRuntimeSnapshot
-from yoyopod.ui.rust_host.supervisor import RustUiHostSupervisor
+from yoyopod_cli.pi.support.rust_ui_host import (
+    RustUiHostSupervisor,
+    RustUiRuntimeSnapshot,
+    UiEnvelope,
+)
 
 
 def _default_worker_path() -> Path:

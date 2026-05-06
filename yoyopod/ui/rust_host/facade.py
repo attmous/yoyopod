@@ -11,7 +11,7 @@ from loguru import logger
 from yoyopod.core.events import ScreenChangedEvent, WorkerMessageReceivedEvent
 from yoyopod.core.workers import WorkerProcessConfig
 from yoyopod.ui.input.hal import InputAction
-from yoyopod.ui.rust_host.snapshot import RustUiRuntimeSnapshot
+from yoyopod_cli.pi.support.rust_ui_host import RustUiRuntimeSnapshot
 
 _READY_EVENT_TYPE = "ui.ready"
 _STARTUP_ERROR_TYPE = "ui.error"

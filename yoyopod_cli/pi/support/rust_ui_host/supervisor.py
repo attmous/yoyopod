@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 
-from yoyopod.ui.rust_host.protocol import UiEnvelope, UiProtocolError
+from yoyopod_cli.pi.support.rust_ui_host.protocol import UiEnvelope, UiProtocolError
 
 
 class RustUiHostError(RuntimeError):

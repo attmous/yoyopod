@@ -18,7 +18,7 @@ from uuid import uuid4
 import typer
 from typing import Annotated
 
-from yoyopod.core.workers.protocol import (
+from yoyopod_cli.contracts.worker_protocol import (
     WorkerEnvelope,
     encode_envelope,
     make_envelope,

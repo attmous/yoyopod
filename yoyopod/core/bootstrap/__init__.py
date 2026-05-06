@@ -137,7 +137,7 @@ class RuntimeBootService:
         self._screens_boot.setup_screenless_voice_runtime()
 
     def setup_rust_ui_host(self) -> bool:
-        from yoyopod.ui.rust_host import RustUiFacade
+        from ...ui.rust_host import RustUiFacade
 
         assert self.app.app_settings is not None
         worker_path = self.app.app_settings.display.rust_ui_worker_path

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from yoyopod.core.workers.protocol import (
+from yoyopod_cli.contracts.worker_protocol import (
     SUPPORTED_SCHEMA_VERSION,
     VALID_KINDS,
     WorkerEnvelope,

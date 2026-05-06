@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from yoyopod.ui.rust_host.hub import RustHubSnapshot
-from yoyopod.ui.rust_host.protocol import UiEnvelope, UiProtocolError
+from yoyopod_cli.pi.support.rust_ui_host.protocol import UiEnvelope, UiProtocolError
 
 
 def test_parse_ready_event_defaults_schema_version() -> None:

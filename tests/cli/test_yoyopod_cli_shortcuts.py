@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import importlib
 from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
 from yoyopod_cli.main import app
+
+
+def test_shortcut_runtime_support_modules_import() -> None:
+    assert importlib.import_module("yoyopod_cli.pi.rust_voip_runtime") is not None
 
 
 def test_all_shortcuts_listed_in_help() -> None:

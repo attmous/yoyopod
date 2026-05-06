@@ -16,8 +16,8 @@ from yoyopod.core.events import (
 from yoyopod.core.application import YoyoPodApp
 from yoyopod.core.scheduler import MainThreadScheduler
 from yoyopod.core.workers.process import WorkerProcessConfig
-from yoyopod.core.workers.protocol import WorkerEnvelope, make_envelope
 from yoyopod.core.workers.supervisor import WorkerSupervisor
+from yoyopod_cli.contracts.worker_protocol import WorkerEnvelope, make_envelope
 
 
 def _write_worker(tmp_path: Path, body: str) -> Path:

@@ -11,7 +11,7 @@ from typing import IO
 
 from loguru import logger
 
-from yoyopod.core.workers.protocol import (
+from yoyopod_cli.contracts.worker_protocol import (
     WorkerEnvelope,
     WorkerProtocolError,
     encode_envelope,

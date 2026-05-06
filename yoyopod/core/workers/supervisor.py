@@ -13,7 +13,7 @@ from yoyopod.core.events import (
 )
 from yoyopod.core.scheduler import MainThreadScheduler
 from yoyopod.core.workers.process import WorkerProcessConfig, WorkerProcessRuntime
-from yoyopod.core.workers.protocol import WorkerEnvelope
+from yoyopod_cli.contracts.worker_protocol import WorkerEnvelope
 
 
 @dataclass(slots=True)

@@ -1,3 +1,3 @@
-from yoyopod.ui.rust_host.protocol import UiEnvelope, UiProtocolError
+from yoyopod_cli.pi.support.rust_ui_host import UiEnvelope, UiProtocolError
 
 __all__ = ["UiEnvelope", "UiProtocolError"]

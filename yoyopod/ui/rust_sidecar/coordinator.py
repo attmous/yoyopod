@@ -1,4 +1,4 @@
-from yoyopod.ui.rust_host.facade import RustUiFacade
+from ..rust_host.facade import RustUiFacade
 
 RustUiSidecarCoordinator = RustUiFacade
 

@@ -7,7 +7,7 @@ from yoyopod.core.workers.process import (
     WorkerProcessRuntime,
     WorkerProcessSnapshot,
 )
-from yoyopod.core.workers.protocol import (
+from yoyopod_cli.contracts.worker_protocol import (
     SUPPORTED_SCHEMA_VERSION,
     VALID_KINDS,
     WorkerEnvelope,

@@ -1,5 +1,5 @@
-from yoyopod.ui.rust_host import supervisor as _host_supervisor
-from yoyopod.ui.rust_host.supervisor import RustUiHostError, RustUiHostSupervisor
+from yoyopod_cli.pi.support.rust_ui_host import supervisor as _host_supervisor
+from yoyopod_cli.pi.support.rust_ui_host.supervisor import RustUiHostError, RustUiHostSupervisor
 
 subprocess = _host_supervisor.subprocess
 RustUiSidecarError = RustUiHostError

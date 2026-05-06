@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from yoyopod.backends.music import PlaybackQueue, Track
 from yoyopod.core import AppContext
 from yoyopod.ui.input import InteractionProfile
-from yoyopod.ui.rust_host.snapshot import RustUiRuntimeSnapshot
+from yoyopod_cli.pi.support.rust_ui_host.snapshot import RustUiRuntimeSnapshot
 
 
 def test_runtime_snapshot_serializes_current_app_context() -> None:
