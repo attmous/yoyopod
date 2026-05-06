@@ -1,7 +1,7 @@
 """Public UI package entrypoint."""
 
-from .display.hal import DisplayHAL
-from .display.manager import Display
+from yoyopod_cli.pi.support.display.hal import DisplayHAL
+from yoyopod_cli.pi.support.display.manager import Display
 from .input import InputManager
 
 __all__ = ["Display", "DisplayHAL", "InputManager"]
