@@ -64,14 +64,12 @@ build-backend = "hatchling.build"
 path = "yoyopod_cli/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["yoyopod", "yoyopod_cli"]
+packages = ["yoyopod_cli"]
 
 [tool.hatch.build.targets.sdist]
 include = [
     "/README.md",
     "/pyproject.toml",
-    "/yoyopod",
-    "/yoyopod.py",
     "/yoyopod_cli",
 ]
 exclude = [
@@ -227,4 +225,4 @@ gate_type_paths = [
 ]
 audit_format_paths = ["."]
 audit_lint_paths = ["."]
-audit_type_paths = ["yoyopod"]
+audit_type_paths = ["yoyopod_cli"]

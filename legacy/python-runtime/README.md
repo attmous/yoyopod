@@ -1,7 +1,11 @@
 # Legacy Python Runtime
 
-This directory contains retired Python app-runtime entrypoints. They are not a
-supported runtime owner for the device.
+This directory contains the retired Python app runtime. It is not a supported
+runtime owner for the device and is excluded from packaging and default tests.
 
-Supported runtime code lives under `device/`. Supported operations tooling lives
-under `yoyopod_cli/`.
+Supported runtime code lives under `device/`. Supported operations tooling
+lives under `yoyopod_cli/`.
+
+Do not import this directory from active code. Delete this directory after the
+Rust runtime has completed one hardware validation cycle without needing Python
+runtime parity inspection.

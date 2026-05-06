@@ -52,9 +52,9 @@ def test_no_old_binary_references_outside_historical_docs() -> None:
 
 
 def test_no_old_binary_references_in_runtime_code() -> None:
-    """Runtime code must never reference the old binary name. Stricter scope: yoyopod/ and yoyopod_cli/."""
+    """Runtime and operations code must never reference the old binary name."""
     result = subprocess.run(
-        ["git", "grep", "-l", _OLD_BINARY, "--", "yoyopod/", "yoyopod_cli/"],
+        ["git", "grep", "-l", _OLD_BINARY, "--", "device/", "yoyopod_cli/"],
         cwd=REPO_ROOT,
         check=False,
         capture_output=True,

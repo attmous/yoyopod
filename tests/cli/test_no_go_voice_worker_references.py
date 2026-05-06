@@ -18,7 +18,6 @@ ACTIVE_PATHS = (
     "scripts/",
     "tests/",
     "workers/",
-    "yoyopod/",
     "yoyopod_cli/",
     "device/",
 )

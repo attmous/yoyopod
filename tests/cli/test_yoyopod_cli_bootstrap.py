@@ -25,4 +25,8 @@ def test_common_imports() -> None:
 
 def test_legacy_yoyopod_cli_package_is_gone() -> None:
     assert importlib.util.find_spec("yoyopod_cli") is not None
-    assert importlib.util.find_spec("yoyo" + "pod.cli") is None
+    try:
+        legacy_spec = importlib.util.find_spec("yoyo" + "pod.cli")
+    except ModuleNotFoundError:
+        legacy_spec = None
+    assert legacy_spec is None
