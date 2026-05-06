@@ -6,8 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from yoyopod_cli.pi.support.events import AudioFocusLostEvent
-from yoyopod_cli.pi.support.focus import ReleaseFocusCommand, RequestFocusCommand
+from yoyopod_cli.pi.support.events import AudioFocusLostEvent as CliAudioFocusLostEvent
+from yoyopod_cli.pi.support.focus import (
+    ReleaseFocusCommand as CliReleaseFocusCommand,
+    RequestFocusCommand as CliRequestFocusCommand,
+)
 from yoyopod_cli.pi.support.music_integration.events import (
     MusicAvailabilityChangedEvent,
     PlaybackStateChangedEvent,
@@ -163,7 +166,7 @@ def setup(
     actual_backend.on_playback_state_change(on_playback_state_change)
     actual_backend.on_connection_change(on_connection_change)
     app.bus.subscribe(
-        AudioFocusLostEvent,
+        _audio_focus_lost_event_type(app),
         lambda event: _handle_focus_lost(app, integration, event),
     )
 
@@ -290,11 +293,12 @@ def _build_recent_store(app: Any) -> RecentTrackHistoryStore | None:
 
 
 def _request_focus(app: Any) -> bool:
+    request_focus_command = _request_focus_command_type(app)
     return bool(
         app.services.call(
             "focus",
             "request",
-            RequestFocusCommand(owner="music"),
+            request_focus_command(owner="music"),
         )
     )
 
@@ -302,7 +306,8 @@ def _request_focus(app: Any) -> bool:
 def _release_focus_if_owned(app: Any) -> None:
     if app.states.get_value("focus.owner") != "music":
         return
-    app.services.call("focus", "release", ReleaseFocusCommand(owner="music"))
+    release_focus_command = _release_focus_command_type(app)
+    app.services.call("focus", "release", release_focus_command(owner="music"))
 
 
 def _play_track(app: Any, integration: MusicIntegration, data: PlayCommand) -> bool:
@@ -407,13 +412,42 @@ def _handle_connection_change(app: Any, *, connected: bool, reason: str) -> None
 def _handle_focus_lost(
     app: Any,
     integration: MusicIntegration,
-    event: AudioFocusLostEvent,
+    event: Any,
 ) -> None:
     if event.owner != "music":
         return
     if app.states.get_value("music.state") != "playing":
         return
     integration.backend.pause()
+
+
+def _request_focus_command_type(app: Any) -> type[Any]:
+    handler = _service_handler(app, "focus", "request")
+    return _handler_global_type(handler, "RequestFocusCommand", CliRequestFocusCommand)
+
+
+def _release_focus_command_type(app: Any) -> type[Any]:
+    handler = _service_handler(app, "focus", "release")
+    return _handler_global_type(handler, "ReleaseFocusCommand", CliReleaseFocusCommand)
+
+
+def _audio_focus_lost_event_type(app: Any) -> type[Any]:
+    handler = _service_handler(app, "focus", "request")
+    return _handler_global_type(handler, "AudioFocusLostEvent", CliAudioFocusLostEvent)
+
+
+def _service_handler(app: Any, domain: str, service: str) -> Any:
+    services = getattr(app, "services", None)
+    handlers = getattr(services, "_handlers", {})
+    if not isinstance(handlers, dict):
+        return None
+    return handlers.get((domain, service))
+
+
+def _handler_global_type(handler: Any, name: str, fallback: type[Any]) -> type[Any]:
+    globals_map = getattr(handler, "__globals__", None)
+    candidate = globals_map.get(name) if isinstance(globals_map, dict) else None
+    return candidate if isinstance(candidate, type) else fallback
 
 
 def _safe_time_position_ms(backend: Any) -> int:

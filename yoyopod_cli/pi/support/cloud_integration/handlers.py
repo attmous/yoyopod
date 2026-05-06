@@ -10,7 +10,6 @@ from yoyopod_cli.pi.support.cloud_integration.commands import (
     PublishTelemetryCommand,
     SyncNowCommand,
 )
-from yoyopod_cli.pi.support.events import StateChangedEvent
 
 _TELEMETRY_ENTITIES = {
     "call.state",
@@ -76,10 +75,10 @@ def build_state_forwarder(
     mqtt_client: Any,
     *,
     is_active: Callable[[], bool],
-) -> Callable[[StateChangedEvent], None]:
+) -> Callable[[Any], None]:
     """Return a state-change subscriber that forwards selected entities to MQTT."""
 
-    def on_state_changed(event: StateChangedEvent) -> None:
+    def on_state_changed(event: Any) -> None:
         if not is_active():
             return
         if event.entity not in _TELEMETRY_ENTITIES:

@@ -11,7 +11,7 @@ from yoyopod_cli.pi.support.cloud_integration.commands import (
     PublishTelemetryCommand,
     SyncNowCommand,
 )
-from yoyopod_cli.pi.support.events import StateChangedEvent
+from yoyopod_cli.pi.support.events import StateChangedEvent as CliStateChangedEvent
 from yoyopod_cli.pi.support.cloud_integration.handlers import (
     apply_mqtt_status_to_state,
     build_state_forwarder,
@@ -94,7 +94,7 @@ def setup(
         )
     )
     app.bus.subscribe(
-        StateChangedEvent,
+        _state_changed_event_type(app),
         build_state_forwarder(
             app,
             integration.mqtt_client,
@@ -170,6 +170,15 @@ def _build_mqtt_client(config: object | None) -> DeviceMqttClient:
         use_tls=bool(getattr(backend, "mqtt_use_tls", False)),
         transport=str(getattr(backend, "mqtt_transport", "tcp") or "tcp"),
     )
+
+
+def _state_changed_event_type(app: Any) -> type[Any]:
+    states = getattr(app, "states", None)
+    set_method = getattr(states, "set", None)
+    function = getattr(set_method, "__func__", set_method)
+    globals_map = getattr(function, "__globals__", None)
+    candidate = globals_map.get("StateChangedEvent") if isinstance(globals_map, dict) else None
+    return candidate if isinstance(candidate, type) else CliStateChangedEvent
 
 
 class _DisabledMqttClient:
