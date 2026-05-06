@@ -31,9 +31,7 @@ def test_docgen_contains_dev_commands() -> None:
 
     assert "## `yoyopod dev`" in md
     assert "`yoyopod dev docs`" in md
-    assert "`yoyopod dev profile cprofile`" in md
-    assert "`yoyopod dev profile pyinstrument`" in md
-    assert "`yoyopod dev profile pyperf`" in md
+    assert "`yoyopod dev profile" not in md
 
 
 def test_docgen_contains_release_commands() -> None:

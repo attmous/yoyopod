@@ -5,7 +5,7 @@
 
 ## Problem Statement
 
-`python yoyopod.py --simulate` is the software-only preview of the current
+`device/runtime/build/yoyopod-runtime --config-dir config` is the software-only preview of the current
 Whisplay product UI. That preview is only useful if it renders the same layout
 contract as hardware instead of drifting behind a second renderer.
 
@@ -101,7 +101,7 @@ Small anti-aliasing or color differences can be tolerated. Geometry drift should
 
 ## Acceptance Criteria
 
-- `python yoyopod.py --simulate` shows the same layout geometry as the current
+- `device/runtime/build/yoyopod-runtime --config-dir config` shows the same layout geometry as the current
   Whisplay UI for the required parity screens when the native LVGL shim has been built
 - simulation no longer relies on a second drifting copy of Whisplay-first
   layout behavior

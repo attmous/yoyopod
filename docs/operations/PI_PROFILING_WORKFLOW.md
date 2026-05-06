@@ -272,7 +272,7 @@ Python 3.12+:
 ```bash
 mkdir -p logs/profiles
 PYTHONPERFSUPPORT=1 perf record -F 99 -g -o logs/profiles/perf-simulate-bootstrap.data \
-  python scripts/profile.py run simulate-bootstrap
+  legacy/python-runtime/profile.py run simulate-bootstrap
 perf report -g -i logs/profiles/perf-simulate-bootstrap.data
 ```
 

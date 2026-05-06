@@ -146,4 +146,4 @@ echo "Reboot to activate:"
 echo "  sudo reboot"
 echo
 echo "After reboot, launch YoYoPod with:"
-echo "  YOYOPOD_DISPLAY=pimoroni YOYOPOD_CONFIG_BOARD=radxa-cubie-a7z python yoyopod.py"
+echo "  YOYOPOD_DISPLAY=pimoroni YOYOPOD_CONFIG_BOARD=radxa-cubie-a7z device/runtime/build/yoyopod-runtime --config-dir config --hardware pimoroni"

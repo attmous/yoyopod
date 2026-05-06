@@ -8,7 +8,7 @@ Current contract:
 
 - Docs: `docs/RUST_UI_HOST.md`
 - CI artifact: `yoyopod-rust-device-arm64-<sha>`
-- Pi checkout binary: `yoyopod_rs/ui/build/yoyopod-ui-host`
+- Pi checkout binary: `device/ui/build/yoyopod-ui-host`
 - Build command: `yoyopod build rust-ui-host`
 - Pi smoke command: `yoyopod pi rust-ui-host`
 

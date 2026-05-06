@@ -103,8 +103,20 @@ def _runtime_paths_check(deploy_config: Any) -> _CheckResult:
 
 def _entrypoint_check(deploy_config: Any) -> _CheckResult:
     """Validate repo entrypoints and the configured virtualenv activation path."""
+    start_parts = shlex.split(deploy_config.start_cmd)
+    if not start_parts:
+        return _CheckResult(
+            name="entrypoints",
+            status="fail",
+            details="start_cmd is empty in deploy/pi-deploy.yaml",
+        )
+
+    executable = Path(start_parts[0])
+    if not executable.is_absolute():
+        executable = REPO_ROOT / executable
+
     required_paths = {
-        "app": REPO_ROOT / "yoyopod.py",
+        "runtime": executable,
         "dev_systemd": REPO_ROOT / "deploy" / "systemd" / "yoyopod-dev.service",
         "prod_systemd": REPO_ROOT / "deploy" / "systemd" / "yoyopod-prod.service",
     }
@@ -131,21 +143,15 @@ def _entrypoint_check(deploy_config: Any) -> _CheckResult:
             details=f"missing required paths: {', '.join(missing)}",
         )
 
-    start_parts = shlex.split(deploy_config.start_cmd)
-    if not start_parts:
-        return _CheckResult(
-            name="entrypoints",
-            status="fail",
-            details="start_cmd is empty in deploy/pi-deploy.yaml",
-        )
-
-    executable = start_parts[0]
-    resolved_executable = shutil.which(executable)
+    resolved_executable = executable if executable.exists() else None
+    if resolved_executable is None and not executable.is_absolute():
+        which_result = shutil.which(str(executable))
+        resolved_executable = Path(which_result) if which_result is not None else None
     if resolved_executable is None:
         return _CheckResult(
             name="entrypoints",
             status="fail",
-            details=f"configured start executable is not on PATH: {executable}",
+            details=f"configured start executable is missing: {start_parts[0]}",
         )
 
     return _CheckResult(

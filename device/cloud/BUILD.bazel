@@ -1,0 +1,36 @@
+load(
+    "//:defs.bzl",
+    "yoyopod_rust_host_binary",
+    "yoyopod_rust_host_integration_tests",
+    "yoyopod_rust_host_library",
+)
+
+yoyopod_rust_host_library(
+    name = "cloud_host_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "yoyopod_cloud",
+    deps = ["//device/protocol:protocol_lib"],
+)
+
+yoyopod_rust_host_binary(
+    name = "yoyopod-cloud-host",
+    srcs = ["src/main.rs"],
+    deps = [":cloud_host_lib"],
+)
+
+CLOUD_HOST_TESTS = [
+    "config",
+    "worker",
+]
+
+yoyopod_rust_host_integration_tests(
+    name = "tests",
+    tests = CLOUD_HOST_TESTS,
+    deps = [
+        ":cloud_host_lib",
+        "//device/harness:harness_lib",
+    ],
+)

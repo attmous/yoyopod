@@ -10,7 +10,7 @@ YoYoPod now uses an app-managed `mpv` process for music playback and Liblinphone
 For music playback, the runtime path is:
 
 ```text
-yoyopod.py
+legacy/python-runtime/yoyopod.py
   -> yoyopod.main
      -> YoyoPodApp
         -> LocalMusicService
@@ -31,7 +31,7 @@ For calls and voice notes, the audio runtime is separate and Rust-owned:
 YoyoPodApp
   -> VoIPManager
      -> RustHostBackend
-        -> yoyopod_rs/voip
+        -> device/voip
            -> internal Rust Liblinphone runtime
               -> Liblinphone
               -> ALSA: wm8960-soundcard

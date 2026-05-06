@@ -40,7 +40,7 @@ def test_build_validate_minimal() -> None:
     assert "git checkout --force -B main origin/main" in shell or (
         "git checkout --force -B 'main' 'origin/main'" in shell
     )
-    assert "test -x yoyopod_rs/media/build/yoyopod-media-host" in shell
+    assert "test -x device/media/build/yoyopod-media-host" in shell
     assert "CI-built Rust media binary" in shell
     assert "yoyopod-rust-device-arm64-<sha>" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate deploy" in shell
@@ -68,7 +68,7 @@ def test_build_validate_all_flags() -> None:
         with_navigation=True,
     )
     assert ".venv/bin/python -m yoyopod_cli.main pi validate smoke --with-power --with-rtc" in shell
-    assert "test -x yoyopod_rs/media/build/yoyopod-media-host" in shell
+    assert "test -x device/media/build/yoyopod-media-host" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate cloud-voice" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate music" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate voip" in shell
@@ -117,12 +117,12 @@ def test_build_validate_with_rust_ui_poc() -> None:
     )
 
     assert "build rust-ui-poc" not in shell
-    assert "test -x yoyopod_rs/ui/build/yoyopod-ui-host" in shell
+    assert "test -x device/ui/build/yoyopod-ui-host" in shell
     assert "CI-built Rust UI binary" in shell
     assert "yoyopod-rust-device-arm64-<sha>" in shell
     assert (
         "venv/bin/python -m yoyopod_cli.main pi rust-ui-host "
-        "--worker yoyopod_rs/ui/build/yoyopod-ui-host"
+        "--worker device/ui/build/yoyopod-ui-host"
     ) in shell
 
 
@@ -142,10 +142,10 @@ def test_build_validate_with_rust_ui_host() -> None:
     )
 
     assert "build rust-ui-host" not in shell
-    assert "test -x yoyopod_rs/ui/build/yoyopod-ui-host" in shell
+    assert "test -x device/ui/build/yoyopod-ui-host" in shell
     assert (
         "venv/bin/python -m yoyopod_cli.main pi rust-ui-host "
-        "--worker yoyopod_rs/ui/build/yoyopod-ui-host"
+        "--worker device/ui/build/yoyopod-ui-host"
     ) in shell
 
 
@@ -162,7 +162,7 @@ def test_build_validate_only_music() -> None:
         with_lvgl_soak=False,
         with_navigation=False,
     )
-    assert "test -x yoyopod_rs/media/build/yoyopod-media-host" in shell
+    assert "test -x device/media/build/yoyopod-media-host" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate music" in shell
     assert ".venv/bin/python -m yoyopod_cli.main pi validate voip" not in shell
 

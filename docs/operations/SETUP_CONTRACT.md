@@ -195,8 +195,8 @@ The tracked deploy contract must stay generic:
 ```bash
 uv run yoyopod setup host
 uv run yoyopod setup verify-host
-cargo run --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-runtime -- --config-dir config --dry-run
-cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+cargo run --manifest-path device/Cargo.toml -p yoyopod-runtime -- --config-dir config --dry-run
+cargo test --manifest-path device/Cargo.toml --workspace --locked
 ```
 
 This is the minimum executable contract for contributors. Feature assets and
@@ -210,7 +210,7 @@ uv run yoyopod setup verify-pi --with-pisugar
 yoyopod pi validate deploy
 yoyopod pi validate smoke
 yoyopod pi validate smoke --with-power --with-rtc
-YOYOPOD_DEV_RUNTIME=rust /opt/yoyopod-dev/checkout/yoyopod_rs/runtime/build/yoyopod-runtime --config-dir /opt/yoyopod-dev/checkout/config --hardware whisplay
+/opt/yoyopod-dev/checkout/device/runtime/build/yoyopod-runtime --config-dir /opt/yoyopod-dev/checkout/config --hardware whisplay
 ```
 
 This does not yet provision external credentials or encode every

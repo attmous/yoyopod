@@ -21,7 +21,7 @@ from yoyopod_cli.remote_ops import (
 from yoyopod_cli.paths import PiPaths
 
 
-STALE_APP_PATTERN = r"pkill -f '[p]ython(3)? .*yoyopod(\.py|\.main)' || true"
+STALE_APP_PATTERN = r"pkill -f '[y]oyopod-runtime' || true"
 
 
 def test_build_status_includes_repo_sha_and_log_tail() -> None:
@@ -36,18 +36,18 @@ def test_build_status_includes_repo_sha_and_log_tail() -> None:
 def test_build_restart_uses_safe_stale_app_cleanup() -> None:
     pi = PiPaths(
         venv="venv",
-        start_cmd="python yoyopod.py --simulate",
-        kill_processes=("python", "stale-helper"),
+        start_cmd="device/runtime/build/yoyopod-runtime --config-dir config",
+        kill_processes=("yoyopod-runtime", "stale-helper"),
     )
     shell = _build_restart(pi)
-    assert "python" in shell
+    assert STALE_APP_PATTERN in shell
     assert "stale-helper" not in shell
     assert STALE_APP_PATTERN in shell
     assert "systemctl cat" in shell
     assert "sudo systemctl start" in shell
     assert "nohup" not in shell
     assert "source venv" not in shell
-    assert "python yoyopod.py --simulate" not in shell
+    assert "python " + "yoyopod.py" not in shell
     assert "venv/bin/python -m yoyopod_cli.main build ensure-native" in shell
     assert pi.pid_file in shell
     assert pi.log_file in shell

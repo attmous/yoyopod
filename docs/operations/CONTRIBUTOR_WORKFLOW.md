@@ -46,13 +46,13 @@ Legacy Python simulation run:
 
 ```bash
 yoyopod build simulation
-python yoyopod.py --simulate
+device/runtime/build/yoyopod-runtime --config-dir config
 ```
 
 Core Rust validation loop:
 
 ```bash
-cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+cargo test --manifest-path device/Cargo.toml --workspace --locked
 ```
 
 Legacy Python quality debt audit:
@@ -71,8 +71,8 @@ runtime iteration.
 
 Read:
 
-1. `yoyopod_rs/runtime/`
-2. the relevant Rust worker crate under `yoyopod_rs/`
+1. `device/runtime/`
+2. the relevant Rust worker crate under `device/`
 3. [`SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md)
 4. subsystem docs for the area you are touching
 5. `rules/architecture.md`
@@ -128,7 +128,7 @@ When updating docs:
 At minimum for Rust runtime work, run the relevant Rust crate tests:
 
 ```bash
-cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+cargo test --manifest-path device/Cargo.toml --workspace --locked
 ```
 
 Then add any focused commands relevant to your area, for example:

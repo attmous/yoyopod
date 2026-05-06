@@ -98,7 +98,7 @@ The published ARM64 slot artifact is intended to be installed directly under
 2. Run the relevant Rust checks:
 
    ```bash
-   cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+   cargo test --manifest-path device/Cargo.toml --workspace --locked
    ```
 
    Add targeted Python CLI/deploy tests only if that surface changed.

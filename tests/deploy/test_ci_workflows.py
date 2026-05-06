@@ -5,7 +5,7 @@ from pathlib import Path
 
 CI_YML = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
 REPO_ROOT = CI_YML.parents[2]
-RUST_UI_LOCK = REPO_ROOT / "yoyopod_rs" / "Cargo.lock"
+RUST_UI_LOCK = REPO_ROOT / "device" / "Cargo.lock"
 MODULE_BAZEL_LOCK = REPO_ROOT / "MODULE.bazel.lock"
 SLOT_BUILDER_DOCKERFILE = REPO_ROOT / "deploy" / "docker" / "slot-builder.Dockerfile"
 DOCKERIGNORE = REPO_ROOT / ".dockerignore"
@@ -34,15 +34,15 @@ def test_rust_ci_builds_arm64_device_bundle_artifact() -> None:
     assert "needs: [changes, quality, test, rust-device-arm64]" in workflow
     assert "RUST_ARTIFACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}" in workflow
     assert "YOYOPOD_LVGL_SOURCE_DIR: ${{ github.workspace }}/.cache/lvgl/lvgl-9.5.0" in workflow
-    assert "working-directory: yoyopod_rs" in workflow
+    assert "working-directory: device" in workflow
     assert "bazelbuild/setup-bazelisk" in workflow
     assert "git clone --depth 1 --branch v9.5.0 https://github.com/lvgl/lvgl.git .cache/lvgl/lvgl-9.5.0" in workflow
     assert "Install native Rust host dependencies" in workflow
     assert "pkg-config liblinphone-dev libudev-dev" in workflow
     assert (
-        "bazel test --action_env=PATH //yoyopod_rs/ui/... //yoyopod_rs/cloud/... "
-        "//yoyopod_rs/media/... //yoyopod_rs/voip/... //yoyopod_rs/network/... "
-        "//yoyopod_rs/power/... //yoyopod_rs/speech/... //yoyopod_rs/runtime/..."
+        "bazel test --action_env=PATH //device/ui/... //device/cloud/... "
+        "//device/media/... //device/voip/... //device/network/... "
+        "//device/power/... //device/speech/... //device/runtime/..."
     ) in workflow
     assert "cargo test --workspace --locked --features whisplay-hardware,native-lvgl" in workflow
     assert (
@@ -64,14 +64,14 @@ def test_rust_ci_builds_arm64_device_bundle_artifact() -> None:
     assert "uses: actions/upload-artifact@v4" in workflow
     assert "name: yoyopod-rust-device-arm64-${{ env.RUST_ARTIFACT_SHA }}" in workflow
     assert "yoyopod-rust-device-arm64-${{ env.RUST_ARTIFACT_SHA }}.tar.gz" in workflow
-    assert "yoyopod_rs/ui/build/yoyopod-ui-host" in workflow
-    assert "yoyopod_rs/cloud/build/yoyopod-cloud-host" in workflow
-    assert "yoyopod_rs/media/build/yoyopod-media-host" in workflow
-    assert "yoyopod_rs/voip/build/yoyopod-voip-host" in workflow
-    assert "yoyopod_rs/network/build/yoyopod-network-host" in workflow
-    assert "yoyopod_rs/power/build/yoyopod-power-host" in workflow
-    assert "yoyopod_rs/speech/build/yoyopod-speech-host" in workflow
-    assert "yoyopod_rs/runtime/build/yoyopod-runtime" in workflow
+    assert "device/ui/build/yoyopod-ui-host" in workflow
+    assert "device/cloud/build/yoyopod-cloud-host" in workflow
+    assert "device/media/build/yoyopod-media-host" in workflow
+    assert "device/voip/build/yoyopod-voip-host" in workflow
+    assert "device/network/build/yoyopod-network-host" in workflow
+    assert "device/power/build/yoyopod-power-host" in workflow
+    assert "device/speech/build/yoyopod-speech-host" in workflow
+    assert "device/runtime/build/yoyopod-runtime" in workflow
     assert "yoyopod-liblinphone-shim" not in workflow
     assert "liblinphone-shim/build" not in workflow
     assert "actions/download-artifact@v4" in workflow
@@ -82,15 +82,15 @@ def test_rust_ci_builds_arm64_device_bundle_artifact() -> None:
 def test_slot_arm64_change_detector_includes_rust_workspace() -> None:
     workflow = CI_YML.read_text(encoding="utf-8")
 
-    assert "|yoyopod_rs/" in workflow
+    assert "|device/" in workflow
 
 
 def test_voip_host_runtime_loads_liblinphone_without_ci_runner_soname() -> None:
-    build_rs = (REPO_ROOT / "yoyopod_rs" / "voip" / "build.rs").read_text(
+    build_rs = (REPO_ROOT / "device" / "voip" / "build.rs").read_text(
         encoding="utf-8"
     )
     ffi_rs = (
-        REPO_ROOT / "yoyopod_rs" / "voip" / "src" / "liblinphone" / "ffi.rs"
+        REPO_ROOT / "device" / "voip" / "src" / "liblinphone" / "ffi.rs"
     ).read_text(encoding="utf-8")
 
     assert "cargo_metadata(false)" in build_rs
@@ -104,35 +104,35 @@ def test_rust_bazel_feature_folder_layout_is_checked_in() -> None:
     assert (REPO_ROOT / "MODULE.bazel").exists()
     assert (REPO_ROOT / "BUILD.bazel").exists()
     assert (REPO_ROOT / "defs.bzl").exists()
-    assert (REPO_ROOT / "yoyopod_rs" / "BUILD.bazel").exists()
-    assert (REPO_ROOT / "yoyopod_rs" / "ui" / "BUILD.bazel").exists()
-    assert (REPO_ROOT / "yoyopod_rs" / "ui" / "tests" / "README.md").exists()
-    assert (REPO_ROOT / "yoyopod_rs" / "cloud" / "BUILD.bazel").exists()
-    assert (REPO_ROOT / "yoyopod_rs" / "voip" / "BUILD.bazel").exists()
-    assert (REPO_ROOT / "yoyopod_rs" / "voip" / "tests" / "README.md").exists()
-    assert (REPO_ROOT / "yoyopod_rs" / "network" / "BUILD.bazel").exists()
-    assert (REPO_ROOT / "yoyopod_rs" / "network" / "tests" / "README.md").exists()
-    assert (REPO_ROOT / "yoyopod_rs" / "runtime" / "BUILD.bazel").exists()
-    assert not (REPO_ROOT / "yoyopod_rs" / "crates").exists()
+    assert (REPO_ROOT / "device" / "BUILD.bazel").exists()
+    assert (REPO_ROOT / "device" / "ui" / "BUILD.bazel").exists()
+    assert (REPO_ROOT / "device" / "ui" / "tests" / "README.md").exists()
+    assert (REPO_ROOT / "device" / "cloud" / "BUILD.bazel").exists()
+    assert (REPO_ROOT / "device" / "voip" / "BUILD.bazel").exists()
+    assert (REPO_ROOT / "device" / "voip" / "tests" / "README.md").exists()
+    assert (REPO_ROOT / "device" / "network" / "BUILD.bazel").exists()
+    assert (REPO_ROOT / "device" / "network" / "tests" / "README.md").exists()
+    assert (REPO_ROOT / "device" / "runtime" / "BUILD.bazel").exists()
+    assert not (REPO_ROOT / "device" / "crates").exists()
 
 
 def test_bazel_module_lock_uses_renamed_rust_workspace_packages() -> None:
     lockfile = MODULE_BAZEL_LOCK.read_text(encoding="utf-8")
 
-    assert "yoyopod_rs/ui-host" not in lockfile
-    assert "yoyopod_rs/voip-host" not in lockfile
-    assert "yoyopod_rs/media-host" not in lockfile
+    assert "device/ui-host" not in lockfile
+    assert "device/voip-host" not in lockfile
+    assert "device/media-host" not in lockfile
     assert "yoyopod-ui-host-0.1.0" not in lockfile
     assert "yoyopod-voip-host-0.1.0" not in lockfile
-    assert "yoyopod_rs/ui" in lockfile
-    assert "yoyopod_rs/voip" in lockfile
-    assert "yoyopod_rs/media" in lockfile
+    assert "device/ui" in lockfile
+    assert "device/voip" in lockfile
+    assert "device/media" in lockfile
     assert "yoyopod-ui-0.1.0" in lockfile
     assert "yoyopod-voip-0.1.0" in lockfile
 
 
 def test_runtime_bazel_integration_tests_register_all_runtime_tests() -> None:
-    build_file = (REPO_ROOT / "yoyopod_rs" / "runtime" / "BUILD.bazel").read_text(
+    build_file = (REPO_ROOT / "device" / "runtime" / "BUILD.bazel").read_text(
         encoding="utf-8"
     )
 
@@ -151,7 +151,7 @@ def test_runtime_bazel_integration_tests_register_all_runtime_tests() -> None:
 
 def test_network_host_bazel_integration_tests_register_all_network_tests() -> None:
     build_file = (
-        REPO_ROOT / "yoyopod_rs" / "network" / "BUILD.bazel"
+        REPO_ROOT / "device" / "network" / "BUILD.bazel"
     ).read_text(encoding="utf-8")
 
     for test_name in (
@@ -198,13 +198,13 @@ def test_dockerignore_preserves_rust_artifact_build_dirs_for_slot_builder() -> N
     dockerignore = DOCKERIGNORE.read_text(encoding="utf-8")
 
     for artifact_dir in (
-        "yoyopod_rs/ui/build",
-        "yoyopod_rs/cloud/build",
-        "yoyopod_rs/media/build",
-        "yoyopod_rs/voip/build",
-        "yoyopod_rs/network/build",
-        "yoyopod_rs/power/build",
-        "yoyopod_rs/speech/build",
-        "yoyopod_rs/runtime/build",
+        "device/ui/build",
+        "device/cloud/build",
+        "device/media/build",
+        "device/voip/build",
+        "device/network/build",
+        "device/power/build",
+        "device/speech/build",
+        "device/runtime/build",
     ):
         assert f"!{artifact_dir}/" in dockerignore

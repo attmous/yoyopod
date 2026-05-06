@@ -10,7 +10,7 @@ Purpose
   current code still routes through them.
 
 Guidance order
-1. Current Rust code in `yoyopod_rs/`
+1. Current Rust code in `device/`
 2. Current deploy/runtime code in `deploy/`, `yoyopod_cli/`, and `yoyopod/`
 3. `README.md`, `docs/README.md`, and current operation docs
 4. `rules/` for constraints and style
@@ -39,23 +39,23 @@ Canonical deploy/debug skills
 
 Current Runtime Status
 - Rust is the target runtime owner. The top-level Rust entrypoint is
-  `yoyopod_rs/runtime/src/main.rs`, binary `yoyopod-runtime`.
+  `device/runtime/src/main.rs`, binary `yoyopod-runtime`.
 - `yoyopod-runtime` loads config, owns PID/log lifecycle, supervises worker
   processes, routes worker events, composes app state, and sends UI snapshots.
 - Rust worker domains live under:
-  - `yoyopod_rs/ui/` for Whisplay UI and LVGL rendering
-  - `yoyopod_rs/media/` for local music/mpv ownership
-  - `yoyopod_rs/voip/` for Liblinphone/SIP ownership
-  - `yoyopod_rs/network/` for SIM7600/PPP/GPS ownership
-  - `yoyopod_rs/cloud/` for cloud MQTT telemetry/command transport
+  - `device/ui/` for Whisplay UI and LVGL rendering
+  - `device/media/` for local music/mpv ownership
+  - `device/voip/` for Liblinphone/SIP ownership
+  - `device/network/` for SIM7600/PPP/GPS ownership
+  - `device/cloud/` for cloud MQTT telemetry/command transport
 - The Rust UI host now contains native Rust LVGL scene controllers for the main
   screen set. The C LVGL shim and LVGL native library still exist as display
   infrastructure during the transition.
 - Python is no longer the architectural target for the app runtime. It remains
   for CLI/deploy tooling, compatibility paths, tests, and any domain that has
   not been fully removed yet.
-- Dev service can run either owner. Rust is selected with
-  `YOYOPOD_DEV_RUNTIME=rust`; the legacy fallback is `python yoyopod.py`.
+- Dev service runs the Rust owner directly through `yoyopod-runtime`.
+  Legacy Python runtime entrypoints are quarantined under `legacy/` only.
 
 Pi Lanes And Bootstrap
 - Dev lane: mutable hardware-testing checkout at `/opt/yoyopod-dev/checkout`,
@@ -66,8 +66,8 @@ Pi Lanes And Bootstrap
   services should not own hardware together.
 - Hard cut: supported runtime owners are only `yoyopod-dev.service` and
   `yoyopod-prod.service`; `yoyopod@*.service`, `yoyopod-slot.service`,
-  unmanaged `python yoyopod.py`, and `remote service ...` are contamination
-  paths.
+  unmanaged legacy runtime processes, and `remote service ...` are
+  contamination paths.
 - Dev deploy loop: `yoyopod remote mode activate dev`, then
   `yoyopod remote sync --branch <branch>`. Add `--clean-native` after
   native/CMake/lib changes or branch switches.
@@ -76,12 +76,12 @@ Pi Lanes And Bootstrap
   Pi Zero 2W unless the user explicitly overrides this rule.
 
 Source Of Truth
-- `yoyopod_rs/runtime/`
-- `yoyopod_rs/cloud/`
-- `yoyopod_rs/ui/`
-- `yoyopod_rs/media/`
-- `yoyopod_rs/voip/`
-- `yoyopod_rs/network/`
+- `device/runtime/`
+- `device/cloud/`
+- `device/ui/`
+- `device/media/`
+- `device/voip/`
+- `device/network/`
 - `deploy/systemd/yoyopod-dev.service`
 - `deploy/systemd/yoyopod-prod.service`
 - `yoyopod_cli/main.py`
@@ -94,10 +94,10 @@ Source Of Truth
 - `docs/superpowers/specs/2026-04-30-rust-runtime-host-design.md`
 
 High-Value Commands
-- Rust workspace tests: `cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked`
-- Rust runtime tests: `cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-runtime --locked`
-- Rust UI tests: `cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui --locked`
-- Rust runtime dry run: `cargo run --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-runtime -- --config-dir config --dry-run`
+- Rust workspace tests: `cargo test --manifest-path device/Cargo.toml --workspace --locked`
+- Rust runtime tests: `cargo test --manifest-path device/Cargo.toml -p yoyopod-runtime --locked`
+- Rust UI tests: `cargo test --manifest-path device/Cargo.toml -p yoyopod-ui --locked`
+- Rust runtime dry run: `cargo run --manifest-path device/Cargo.toml -p yoyopod-runtime -- --config-dir config --dry-run`
 - Build local artifact on development machine: `uv run yoyopod build rust-runtime`
 - Pi lane status: `yoyopod remote mode status`
 - Pi validation: `yoyopod remote validate --branch <branch> --sha <commit>`

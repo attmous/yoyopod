@@ -20,7 +20,7 @@ yoyopod.py / yoyopod/main.py  (entry points)
     |  `- MpvIpcClient (backends/music/ipc.py) -- mpv JSON IPC
     |- VoIPManager (integrations/call/manager.py) -- thin Python command/snapshot facade
     |  `- RustHostBackend (backends/voip/rust_host.py)
-    |     `- yoyopod_rs/voip -> yoyopod_rs/liblinphone-shim -> Liblinphone
+    |     `- device/voip -> device/liblinphone-shim -> Liblinphone
     |- Display HAL (ui/display/) -- LVGL-backed Whisplay, Pimoroni, and simulation adapters
     |- Input HAL (ui/input/) -- four-button Pimoroni, one-button Whisplay, and simulation input
     `- ScreenManager (ui/screens/manager.py) -- stack-based navigation

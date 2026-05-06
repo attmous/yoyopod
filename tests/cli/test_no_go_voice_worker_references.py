@@ -20,7 +20,7 @@ ACTIVE_PATHS = (
     "workers/",
     "yoyopod/",
     "yoyopod_cli/",
-    "yoyopod_rs/",
+    "device/",
 )
 PATTERNS = (
     "workers/voice/go",

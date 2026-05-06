@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from yoyopod.core.setup_contract import RUNTIME_REQUIRED_CONFIG_FILES
+from yoyopod_cli.contracts.setup import RUNTIME_REQUIRED_CONFIG_FILES
 from yoyopod_cli.health import app as health_app
 from yoyopod_cli.slot_contract import (
     APP_NATIVE_RUNTIME_ARTIFACTS,

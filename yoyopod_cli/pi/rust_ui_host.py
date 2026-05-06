@@ -15,7 +15,7 @@ from yoyopod.ui.rust_host.supervisor import RustUiHostSupervisor
 
 def _default_worker_path() -> Path:
     suffix = ".exe" if __import__("os").name == "nt" else ""
-    return Path("yoyopod_rs") / "ui" / "build" / f"yoyopod-ui-host{suffix}"
+    return Path("device") / "ui" / "build" / f"yoyopod-ui-host{suffix}"
 
 
 def rust_ui_host(

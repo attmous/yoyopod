@@ -1,0 +1,36 @@
+package(default_visibility = ["//visibility:public"])
+
+alias(
+    name = "media-host",
+    actual = "//device/media:yoyopod-media-host",
+)
+
+alias(
+    name = "cloud-host",
+    actual = "//device/cloud:yoyopod-cloud-host",
+)
+
+alias(
+    name = "power-host",
+    actual = "//device/power:yoyopod-power-host",
+)
+
+alias(
+    name = "speech-host",
+    actual = "//device/speech:yoyopod-speech-host",
+)
+
+alias(
+    name = "ui-host",
+    actual = "//device/ui:yoyopod-ui-host",
+)
+
+alias(
+    name = "voip-host",
+    actual = "//device/voip:yoyopod-voip-host",
+)
+
+alias(
+    name = "runtime",
+    actual = "//device/runtime:yoyopod-runtime",
+)

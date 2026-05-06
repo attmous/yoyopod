@@ -9,17 +9,17 @@ worker, or LVGL scene work.
 Use focused Rust checks for the crate you changed:
 
 ```bash
-cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-runtime --locked
-cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui --locked
-cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-media --locked
-cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-voip --locked
-cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-network --locked
+cargo test --manifest-path device/Cargo.toml -p yoyopod-runtime --locked
+cargo test --manifest-path device/Cargo.toml -p yoyopod-ui --locked
+cargo test --manifest-path device/Cargo.toml -p yoyopod-media --locked
+cargo test --manifest-path device/Cargo.toml -p yoyopod-voip --locked
+cargo test --manifest-path device/Cargo.toml -p yoyopod-network --locked
 ```
 
 For broad Rust workspace changes:
 
 ```bash
-cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+cargo test --manifest-path device/Cargo.toml --workspace --locked
 ```
 
 If native LVGL or Whisplay hardware features are involved, use the CI-built ARM

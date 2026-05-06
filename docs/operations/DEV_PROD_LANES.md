@@ -57,7 +57,7 @@ Per-board overrides still belong in `deploy/pi-deploy.local.yaml`.
 The dev and prod runtime units conflict with each other. Lane activation also
 disables and removes unsupported old `yoyopod-slot.service` and
 `yoyopod@<user>.service` unit files, removes `/etc/default/yoyopod`, and stops
-unmanaged `yoyopod-runtime` or `python ... yoyopod.py` processes before
+unmanaged `yoyopod-runtime` or `python ... legacy/python-runtime/yoyopod.py` processes before
 starting the requested lane.
 
 Before changing lanes, run `yoyopod remote mode status`. It reports:
@@ -65,7 +65,7 @@ Before changing lanes, run `yoyopod remote mode status`. It reports:
 - `active_lane`: `dev`, `prod`, `legacy`, `manual-process`, `conflict`, or `none`.
 - `legacy_units`: unsupported old `yoyopod@*.service` or `yoyopod-slot.service`
   units that can still own hardware.
-- `manual_processes`: ad hoc `yoyopod-runtime`, `python ... yoyopod.py`, or `yoyopod.main` processes.
+- `manual_processes`: ad hoc `yoyopod-runtime`, `python ... legacy/python-runtime/yoyopod.py`, or `yoyopod.main` processes.
 - `prod_ota_conflict`: whether prod OTA is active while dev owns the board.
 - `conflict_reasons`: the active conflict sources.
 

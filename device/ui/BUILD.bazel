@@ -1,0 +1,45 @@
+load(
+    "//:defs.bzl",
+    "yoyopod_rust_host_binary",
+    "yoyopod_rust_host_integration_tests",
+    "yoyopod_rust_host_library",
+)
+
+yoyopod_rust_host_library(
+    name = "ui_host_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "yoyopod_ui",
+    deps = ["//device/protocol:protocol_lib"],
+)
+
+yoyopod_rust_host_binary(
+    name = "yoyopod-ui-host",
+    srcs = ["src/main.rs"],
+    deps = [":ui_host_lib"],
+)
+
+UI_HOST_TESTS = [
+    "framebuffer",
+    "hardware_whisplay",
+    "hub",
+    "input",
+    "lvgl_runtime",
+    "protocol",
+    "render_framebuffer",
+    "render_lvgl",
+    "runtime_state_machine",
+    "whisplay_panel",
+    "worker",
+]
+
+yoyopod_rust_host_integration_tests(
+    name = "tests",
+    tests = UI_HOST_TESTS,
+    deps = [
+        ":ui_host_lib",
+        "//device/harness:harness_lib",
+    ],
+)

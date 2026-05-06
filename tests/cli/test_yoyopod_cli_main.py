@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import sys
 import subprocess
-import types
 
 from typer.testing import CliRunner
 
-from yoyopod._version import __version__
+from yoyopod_cli._version import __version__
 from yoyopod_cli.main import app
 
 
@@ -40,31 +39,11 @@ def test_module_invocation_dispatches_cli_subcommands() -> None:
     assert "ensure-native" in result.stdout
 
 
-def test_bare_invocation_propagates_launch_app_exit_code(monkeypatch) -> None:
-    """`yoyopod` (no subcommand) must exit with the app's return code."""
-    fake_module = types.ModuleType("yoyopod.main")
-
-    def fake_main() -> int:
-        return 42
-
-    fake_module.main = fake_main  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "yoyopod.main", fake_module)
-
+def test_no_subcommand_prints_help() -> None:
     runner = CliRunner()
     result = runner.invoke(app, [])
-    assert result.exit_code == 42, f"expected 42, got {result.exit_code}; output={result.output}"
 
-
-def test_bare_invocation_with_none_return_exits_zero(monkeypatch) -> None:
-    """When launch_app() returns None, exit 0 cleanly."""
-    fake_module = types.ModuleType("yoyopod.main")
-
-    def fake_main() -> None:
-        return None
-
-    fake_module.main = fake_main  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "yoyopod.main", fake_module)
-
-    runner = CliRunner()
-    result = runner.invoke(app, [])
     assert result.exit_code == 0
+    assert "YoYoPod operations CLI" in result.output
+    assert "build" in result.output
+    assert "remote" in result.output

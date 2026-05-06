@@ -9,7 +9,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import yoyopod_cli.release as release_cli
-from yoyopod._version import __version__
+from yoyopod_cli._version import __version__
 from yoyopod_cli.release import app
 
 

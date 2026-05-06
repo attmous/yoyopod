@@ -27,7 +27,7 @@ worker:
   domain: "voice"
   provider: "mock"
   argv:
-    - "yoyopod_rs/speech/build/yoyopod-speech-host"
+    - "device/speech/build/yoyopod-speech-host"
   request_timeout_seconds: 12.0
   max_audio_seconds: 30.0
   stt_model: "gpt-4o-mini-transcribe"

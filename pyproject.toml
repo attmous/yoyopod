@@ -61,7 +61,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "yoyopod/_version.py"
+path = "yoyopod_cli/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["yoyopod", "yoyopod_cli"]
@@ -98,21 +98,19 @@ disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = ["tests/legacy_python_runtime"]
 
 [tool.yoyopod_quality]
 gate_format_paths = [
     "scripts/quality.py",
-    "yoyopod/main.py",
     "yoyopod_cli",
 ]
 gate_lint_paths = [
     "scripts/quality.py",
-    "yoyopod/main.py",
     "yoyopod_cli",
 ]
 gate_type_paths = [
     "scripts/quality.py",
-    "yoyopod/main.py",
     "yoyopod_cli",
 ]
 audit_format_paths = ["."]

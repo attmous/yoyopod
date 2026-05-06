@@ -13,7 +13,7 @@ The default board-validation path from the dev machine is now committed-code val
 Run these anywhere:
 
 ```bash
-cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+cargo test --manifest-path device/Cargo.toml --workspace --locked
 ```
 
 Use targeted Python CLI/deploy checks only when that surface changed.
@@ -105,7 +105,7 @@ Useful flags:
 ### Full application startup on the Pi
 
 ```bash
-YOYOPOD_DEV_RUNTIME=rust /opt/yoyopod-dev/checkout/yoyopod_rs/runtime/build/yoyopod-runtime \
+/opt/yoyopod-dev/checkout/device/runtime/build/yoyopod-runtime \
   --config-dir /opt/yoyopod-dev/checkout/config \
   --hardware whisplay
 ```

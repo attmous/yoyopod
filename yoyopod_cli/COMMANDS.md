@@ -75,7 +75,7 @@ For live help, use `yoyopod <cmd> --help`.
 | `yoyopod build rust-runtime` | Build the Rust runtime binary. |
 | `yoyopod build rust-ui-host` | Build the Rust UI host binary. |
 | `yoyopod build rust-ui-poc` | Compatibility alias for `yoyopod build rust-ui-host`. |
-| `yoyopod build simulation` | Build the LVGL native shim required by ``python yoyopod.py --simulate``. |
+| `yoyopod build simulation` | Build the LVGL native shim used to simulate the device UI host. |
 | `yoyopod build voice-worker` | Build the Rust speech host voice worker for the current platform. |
 
 ## `yoyopod voice`
@@ -109,9 +109,4 @@ For live help, use `yoyopod <cmd> --help`.
 | Command | What it does |
 |---|---|
 | `yoyopod dev docs` | Regenerate yoyopod_cli/COMMANDS.md from the live Typer tree. |
-| `yoyopod dev profile cprofile` | Profile one bounded target with cProfile. |
-| `yoyopod dev profile pyinstrument` | Profile one bounded target with pyinstrument. |
-| `yoyopod dev profile pyperf` | Benchmark one bounded target with pyperf command. |
-| `yoyopod dev profile targets` | List the bounded profiling targets. |
-| `yoyopod dev profile tools` | Show which profiling tools are available in this environment. |
 

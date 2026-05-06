@@ -175,10 +175,10 @@ def test_validate_alias_with_rust_ui_poc_flag(monkeypatch) -> None:
     assert result.exit_code == 0, result.output
     assert len(calls) == 1
     assert "build rust-ui-poc" not in calls[0]
-    assert "test -x yoyopod_rs/ui/build/yoyopod-ui-host" in calls[0]
+    assert "test -x device/ui/build/yoyopod-ui-host" in calls[0]
     assert (
         "/opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main pi rust-ui-host "
-        "--worker yoyopod_rs/ui/build/yoyopod-ui-host"
+        "--worker device/ui/build/yoyopod-ui-host"
     ) in calls[0]
 
 
@@ -207,8 +207,8 @@ def test_validate_alias_with_rust_ui_host_flag(monkeypatch) -> None:
     assert result.exit_code == 0, result.output
     assert len(calls) == 1
     assert "build rust-ui-host" not in calls[0]
-    assert "test -x yoyopod_rs/ui/build/yoyopod-ui-host" in calls[0]
+    assert "test -x device/ui/build/yoyopod-ui-host" in calls[0]
     assert (
         "/opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main pi rust-ui-host "
-        "--worker yoyopod_rs/ui/build/yoyopod-ui-host"
+        "--worker device/ui/build/yoyopod-ui-host"
     ) in calls[0]

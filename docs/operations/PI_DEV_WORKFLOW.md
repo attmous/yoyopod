@@ -211,13 +211,12 @@ has a Python fallback for compatibility, so make the active owner explicit when
 testing the Rust path:
 
 ```ini
-Environment=YOYOPOD_DEV_RUNTIME=rust
-```
+Environment=```
 
 With that override, `yoyopod-dev.service` executes:
 
 ```bash
-/opt/yoyopod-dev/checkout/yoyopod_rs/runtime/build/yoyopod-runtime \
+/opt/yoyopod-dev/checkout/device/runtime/build/yoyopod-runtime \
   --config-dir /opt/yoyopod-dev/checkout/config \
   --hardware whisplay
 ```
@@ -399,8 +398,8 @@ If you use it, say clearly that the board is running a dirty-tree override inste
 
 1. Run focused local Rust checks as needed:
    ```bash
-   cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-runtime --locked
-   cargo test --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-ui --locked
+   cargo test --manifest-path device/Cargo.toml -p yoyopod-runtime --locked
+   cargo test --manifest-path device/Cargo.toml -p yoyopod-ui --locked
    ```
 2. Commit the intended change.
 3. Push the branch.

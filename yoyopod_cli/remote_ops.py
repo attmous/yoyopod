@@ -29,7 +29,7 @@ def _build_status(pi: PiPaths) -> str:
     pid = shell_quote(pi.pid_file)
     return (
         f"echo '=== git ===' && git rev-parse HEAD && "
-        f"echo '=== processes ===' && (ps aux | grep -E 'python|mpv' | grep -v grep || true) && "
+        f"echo '=== processes ===' && (ps aux | grep -E 'yoyopod-runtime|mpv' | grep -v grep || true) && "
         f"echo '=== pid ===' && (cat {pid} 2>/dev/null || echo 'no pid file') && "
         f"echo '=== log tail ===' && (tail -n 20 {log} 2>/dev/null || echo 'no log file')"
     )
@@ -76,7 +76,7 @@ def _build_native_shim_refresh(pi: PiPaths) -> str:
 
 def _build_stale_app_cleanup() -> str:
     """Kill only unmanaged/stale YoYoPod app processes, without matching this shell."""
-    return r"pkill -f '[p]ython(3)? .*yoyopod(\.py|\.main)' || true"
+    return r"pkill -f '[y]oyopod-runtime' || true"
 
 
 def _build_restart(pi: PiPaths, lanes: LanePaths | None = None) -> str:

@@ -46,15 +46,15 @@ It contains:
 yoyopod-rust-device-arm64-<sha>.tar.gz
 ```
 
-That tarball extracts an install-ready `yoyopod_rs/.../build/...` tree:
+That tarball extracts an install-ready `device/.../build/...` tree:
 
 | Path inside extracted tree | Purpose |
 | --- | --- |
-| `yoyopod_rs/runtime/build/yoyopod-runtime` | Top-level Rust runtime entrypoint when `YOYOPOD_DEV_RUNTIME=rust`. |
-| `yoyopod_rs/ui/build/yoyopod-ui-host` | Whisplay UI worker and LVGL renderer. |
-| `yoyopod_rs/media/build/yoyopod-media-host` | Rust media/mpv worker. |
-| `yoyopod_rs/voip/build/yoyopod-voip-host` | Rust Liblinphone/SIP worker. |
-| `yoyopod_rs/network/build/yoyopod-network-host` | Rust SIM7600/PPP/GPS worker. |
+| `device/runtime/build/yoyopod-runtime` | Top-level Rust runtime entrypoint when `YOYOPOD_DEV_RUNTIME=rust`. |
+| `device/ui/build/yoyopod-ui-host` | Whisplay UI worker and LVGL renderer. |
+| `device/media/build/yoyopod-media-host` | Rust media/mpv worker. |
+| `device/voip/build/yoyopod-voip-host` | Rust Liblinphone/SIP worker. |
+| `device/network/build/yoyopod-network-host` | Rust SIM7600/PPP/GPS worker. |
 
 ## Steps
 
@@ -88,11 +88,11 @@ That tarball extracts an install-ready `yoyopod_rs/.../build/...` tree:
    mkdir -p .artifacts/rust-device/<sha>
    gh run download <run-id> --name yoyopod-rust-device-arm64-<sha> --dir .artifacts/rust-device/<sha>
    tar -xzf .artifacts/rust-device/<sha>/yoyopod-rust-device-arm64-<sha>.tar.gz -C .artifacts/rust-device/<sha>
-   chmod +x .artifacts/rust-device/<sha>/yoyopod_rs/runtime/build/yoyopod-runtime
-   chmod +x .artifacts/rust-device/<sha>/yoyopod_rs/ui/build/yoyopod-ui-host
-   chmod +x .artifacts/rust-device/<sha>/yoyopod_rs/media/build/yoyopod-media-host
-   chmod +x .artifacts/rust-device/<sha>/yoyopod_rs/voip/build/yoyopod-voip-host
-   chmod +x .artifacts/rust-device/<sha>/yoyopod_rs/network/build/yoyopod-network-host
+   chmod +x .artifacts/rust-device/<sha>/device/runtime/build/yoyopod-runtime
+   chmod +x .artifacts/rust-device/<sha>/device/ui/build/yoyopod-ui-host
+   chmod +x .artifacts/rust-device/<sha>/device/media/build/yoyopod-media-host
+   chmod +x .artifacts/rust-device/<sha>/device/voip/build/yoyopod-voip-host
+   chmod +x .artifacts/rust-device/<sha>/device/network/build/yoyopod-network-host
    ```
 
 6. **Make sure the Pi dev checkout is on the same commit.**
@@ -108,7 +108,7 @@ That tarball extracts an install-ready `yoyopod_rs/.../build/...` tree:
 
    ```bash
    scp .artifacts/rust-device/<sha>/yoyopod-rust-device-arm64-<sha>.tar.gz <user>@<host>:/tmp/yoyopod-rust-device-arm64-<sha>.tar.gz
-   ssh <user>@<host> 'cd /opt/yoyopod-dev/checkout && tar -xzf /tmp/yoyopod-rust-device-arm64-<sha>.tar.gz && chmod +x yoyopod_rs/runtime/build/yoyopod-runtime yoyopod_rs/ui/build/yoyopod-ui-host yoyopod_rs/media/build/yoyopod-media-host yoyopod_rs/voip/build/yoyopod-voip-host yoyopod_rs/network/build/yoyopod-network-host'
+   ssh <user>@<host> 'cd /opt/yoyopod-dev/checkout && tar -xzf /tmp/yoyopod-rust-device-arm64-<sha>.tar.gz && chmod +x device/runtime/build/yoyopod-runtime device/ui/build/yoyopod-ui-host device/media/build/yoyopod-media-host device/voip/build/yoyopod-voip-host device/network/build/yoyopod-network-host'
    ```
 
 8. **Select the Rust dev-lane owner and restart.** The dev service still has a
@@ -128,7 +128,7 @@ That tarball extracts an install-ready `yoyopod_rs/.../build/...` tree:
    For a direct UI worker check, run from the Pi checkout:
 
    ```bash
-   ssh <user>@<host> 'cd /opt/yoyopod-dev/checkout && YOYOPOD_WHISPLAY_DC_GPIO=27 YOYOPOD_WHISPLAY_RESET_GPIO=4 YOYOPOD_WHISPLAY_BUTTON_GPIO=17 YOYOPOD_WHISPLAY_BUTTON_ACTIVE_LOW=0 LD_LIBRARY_PATH=/opt/yoyopod-dev/checkout/yoyopod/ui/lvgl_binding/native/build/lvgl/lib:/opt/yoyopod-dev/checkout/yoyopod/ui/lvgl_binding/native/build:$LD_LIBRARY_PATH /opt/yoyopod-dev/checkout/yoyopod_rs/ui/build/yoyopod-ui-host --hardware whisplay'
+   ssh <user>@<host> 'cd /opt/yoyopod-dev/checkout && YOYOPOD_WHISPLAY_DC_GPIO=27 YOYOPOD_WHISPLAY_RESET_GPIO=4 YOYOPOD_WHISPLAY_BUTTON_GPIO=17 YOYOPOD_WHISPLAY_BUTTON_ACTIVE_LOW=0 LD_LIBRARY_PATH=/opt/yoyopod-dev/checkout/yoyopod/ui/lvgl_binding/native/build/lvgl/lib:/opt/yoyopod-dev/checkout/yoyopod/ui/lvgl_binding/native/build:$LD_LIBRARY_PATH /opt/yoyopod-dev/checkout/device/ui/build/yoyopod-ui-host --hardware whisplay'
    ```
 
 10. **Report exact provenance.** Include the branch, commit SHA, CI run ID,

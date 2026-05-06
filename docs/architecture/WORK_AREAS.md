@@ -5,17 +5,17 @@ where a change belongs.
 
 ## Primary Runtime
 
-- `yoyopod_rs/runtime/` owns process supervision, config loading, event routing,
+- `device/runtime/` owns process supervision, config loading, event routing,
   state composition, and UI snapshot delivery.
-- `yoyopod_rs/ui/` owns Whisplay/LVGL rendering and button-facing UI
+- `device/ui/` owns Whisplay/LVGL rendering and button-facing UI
   behavior.
-- `yoyopod_rs/media/` owns local music playback and mpv process control.
-- `yoyopod_rs/voip/` owns SIP, calls, and voice-message behavior through
+- `device/media/` owns local music playback and mpv process control.
+- `device/voip/` owns SIP, calls, and voice-message behavior through
   Liblinphone.
-- `yoyopod_rs/network/` owns cellular modem, PPP, and GPS behavior.
-- `yoyopod_rs/cloud/` owns MQTT/cloud telemetry and command transport.
-- `yoyopod_rs/power/` owns power/battery integration.
-- `yoyopod_rs/speech/` owns cloud speech, TTS, and Ask worker protocol.
+- `device/network/` owns cellular modem, PPP, and GPS behavior.
+- `device/cloud/` owns MQTT/cloud telemetry and command transport.
+- `device/power/` owns power/battery integration.
+- `device/speech/` owns cloud speech, TTS, and Ask worker protocol.
 
 ## Monorepo App And Package Areas
 
@@ -37,8 +37,8 @@ where a change belongs.
 
 Do not work from generated output directories. These are disposable:
 
-- `yoyopod_rs/target/`
-- `yoyopod_rs/*/build/`
+- `device/target/`
+- `device/*/build/`
 - `.venv/`
 - `.pytest_cache/`
 - `__pycache__/`

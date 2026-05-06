@@ -13,7 +13,7 @@ For the Figma-to-Whisplay implementation workflow, screen extraction order, and 
 - Non-simulated Whisplay runs are a production LVGL path.
 - `display.whisplay_renderer: lvgl` is the only supported production setting for Whisplay hardware.
 - If the Whisplay driver, hardware init, or LVGL shim/backend is unavailable, startup must fail loudly instead of silently degrading to another renderer.
-- `python yoyopod.py --simulate` reuses the Whisplay LVGL render contract and browser preview transport; it is not a separate PIL renderer.
+- The Rust runtime software preview reuses the Whisplay LVGL render contract and browser preview transport; it is not a separate PIL renderer.
 - Simulation also requires the native LVGL shim. If the shim is missing, the correct fix is to build it, not to fall back to PIL.
 
 ## Rendering Pipeline
@@ -54,7 +54,7 @@ Minimal config enabling only what YoYoPod uses:
 ## Building
 
 ```bash
-yoyopod build simulation   # most direct way to prepare `python yoyopod.py --simulate`
+yoyopod build simulation   # prepares the LVGL shim used by the Rust runtime preview
 yoyopod build lvgl         # clones LVGL 9.5.0, compiles shim
 yoyopod build ensure-native
 ```

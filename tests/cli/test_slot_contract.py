@@ -20,13 +20,13 @@ from yoyopod_cli.slot_contract import (
 
 
 def test_slot_contract_includes_rust_runtime_artifact() -> None:
-    assert Path("yoyopod_rs") / "runtime" / "build" / "yoyopod-runtime" in (
+    assert Path("device") / "runtime" / "build" / "yoyopod-runtime" in (
         APP_NATIVE_RUNTIME_ARTIFACTS
     )
-    assert Path("yoyopod_rs") / "network" / "build" / "yoyopod-network-host" in (
+    assert Path("device") / "network" / "build" / "yoyopod-network-host" in (
         APP_NATIVE_RUNTIME_ARTIFACTS
     )
-    assert Path("yoyopod_rs") / "power" / "build" / "yoyopod-power-host" in (
+    assert Path("device") / "power" / "build" / "yoyopod-power-host" in (
         APP_NATIVE_RUNTIME_ARTIFACTS
     )
 

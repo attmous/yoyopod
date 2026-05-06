@@ -23,8 +23,8 @@ What that means in practice:
 The live process tree for YoYoPod was:
 
 ```text
-uv run python yoyopod.py
-  -> python3 yoyopod.py
+uv run device/runtime/build/yoyopod-runtime --config-dir config
+  -> device/runtime/build/yoyopod-runtime --config-dir config
      -> mpv --idle --no-video --input-ipc-server=/tmp/yoyopod-mpv.sock --audio-device=alsa/default
 ```
 
@@ -67,7 +67,7 @@ No separate Mopidy process or music daemon is part of the stack anymore.
 
 ### Native VoIP bridge
 
-- `yoyopod_rs/voip/build/yoyopod-voip-host` - Rust VoIP Host worker with the Liblinphone runtime built in, installed from GitHub Actions artifact.
+- `device/voip/build/yoyopod-voip-host` - Rust VoIP Host worker with the Liblinphone runtime built in, installed from GitHub Actions artifact.
 
 ## Python-Level Dependencies Used By The App
 

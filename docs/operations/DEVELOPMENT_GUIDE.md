@@ -136,20 +136,20 @@ Current approved-contacts behavior:
 Rust runtime dry run:
 
 ```bash
-cargo run --manifest-path yoyopod_rs/Cargo.toml -p yoyopod-runtime -- --config-dir config --dry-run
+cargo run --manifest-path device/Cargo.toml -p yoyopod-runtime -- --config-dir config --dry-run
 ```
 
 Legacy Python fallback:
 
 ```bash
-python yoyopod.py
+device/runtime/build/yoyopod-runtime --config-dir config
 ```
 
 Legacy Python simulation:
 
 ```bash
 yoyopod build simulation
-python yoyopod.py --simulate
+device/runtime/build/yoyopod-runtime --config-dir config
 ```
 
 Installed console entrypoint:
@@ -171,7 +171,7 @@ python demos/demo_runtime_state.py --simulate
 Local validation:
 
 ```bash
-cargo test --manifest-path yoyopod_rs/Cargo.toml --workspace --locked
+cargo test --manifest-path device/Cargo.toml --workspace --locked
 ```
 
 Run targeted Python checks only when Python CLI/deploy/compatibility files

@@ -1,0 +1,25 @@
+load(
+    "//:defs.bzl",
+    "yoyopod_rust_host_integration_tests",
+    "yoyopod_rust_host_library",
+)
+
+yoyopod_rust_host_library(
+    name = "worker_lib",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "yoyopod_worker",
+    deps = ["//device/protocol:protocol_lib"],
+)
+
+WORKER_TESTS = [
+    "io",
+]
+
+yoyopod_rust_host_integration_tests(
+    name = "tests",
+    tests = WORKER_TESTS,
+    deps = [
+        ":worker_lib",
+        "//device/protocol:protocol_lib",
+    ],
+)

@@ -14,7 +14,7 @@ If you are new here, read these first:
 
 When docs disagree, trust sources in this order:
 
-1. Current Rust runtime and host code in `yoyopod_rs/`
+1. Current Rust runtime and host code in `device/`
 2. Current deploy/runtime tooling in `deploy/`, `yoyopod_cli/`, and `yoyopod/`
 3. Current runtime, operations, hardware, feature, and design docs under the folders below
 4. Rules and agent guidance in `rules/`, `AGENTS.md`, and `skills/`
@@ -56,7 +56,7 @@ Plan docs are useful context, but they are not automatically the current impleme
 3. [`architecture/RUNTIME_EVENT_FLOW.md`](architecture/RUNTIME_EVENT_FLOW.md)
 4. The subsystem doc under [`architecture/`](architecture/README.md), [`features/`](features/README.md), or [`hardware/`](hardware/README.md)
 5. [`../AGENTS.md`](../AGENTS.md)
-6. Relevant files under `yoyopod_rs/`
+6. Relevant files under `device/`
 
 ### Working On Raspberry Pi Deployment
 

@@ -47,7 +47,7 @@ jobs:
           git diff --name-only "${BASE_SHA}" "${GITHUB_SHA}" > changed-files.txt
           cat changed-files.txt
 
-          if grep -Eq '^(\.github/workflows/(ci|release)\.yml|\.python-version|pyproject\.toml|yoyopod\.py|config/|deploy/docker/slot-builder\.Dockerfile|deploy/scripts/(install_release|launch)\.sh|scripts/(build_release\.py|build_slot_artifact_ci\.sh)|src/|yoyopod/|yoyopod_cli/|yoyopod_rs/)' changed-files.txt; then
+          if grep -Eq '^(\.github/workflows/(ci|release)\.yml|\.python-version|pyproject\.toml|yoyopod\.py|config/|deploy/docker/slot-builder\.Dockerfile|deploy/scripts/(install_release|launch)\.sh|scripts/(build_release\.py|build_slot_artifact_ci\.sh)|src/|yoyopod/|yoyopod_cli/|device/)' changed-files.txt; then
             echo "slot_arm64=true" >> "${GITHUB_OUTPUT}"
           else
             echo "slot_arm64=false" >> "${GITHUB_OUTPUT}"
@@ -125,14 +125,14 @@ jobs:
           sudo apt-get install -y pkg-config liblinphone-dev libudev-dev
 
       - name: Run Bazel Rust host tests
-        run: bazel test --action_env=PATH //yoyopod_rs/ui/... //yoyopod_rs/cloud/... //yoyopod_rs/media/... //yoyopod_rs/voip/... //yoyopod_rs/network/... //yoyopod_rs/power/... //yoyopod_rs/speech/... //yoyopod_rs/runtime/...
+        run: bazel test --action_env=PATH //device/ui/... //device/cloud/... //device/media/... //device/voip/... //device/network/... //device/power/... //device/speech/... //device/runtime/...
 
       - name: Run Rust workspace tests
-        working-directory: yoyopod_rs
+        working-directory: device
         run: cargo test --workspace --locked --features whisplay-hardware,native-lvgl
 
       - name: Build Rust device ARM64 bundle
-        working-directory: yoyopod_rs
+        working-directory: device
         run: |
           set -euo pipefail
           cargo build --release --locked \
@@ -150,29 +150,29 @@ jobs:
           bundle_root="target/${bundle_name}"
           rm -rf "${bundle_root}" "target/${bundle_name}.tar.gz"
           mkdir -p \
-            "${bundle_root}/yoyopod_rs/runtime/build" \
-            "${bundle_root}/yoyopod_rs/ui/build" \
-            "${bundle_root}/yoyopod_rs/cloud/build" \
-            "${bundle_root}/yoyopod_rs/media/build" \
-            "${bundle_root}/yoyopod_rs/voip/build" \
-            "${bundle_root}/yoyopod_rs/network/build" \
-            "${bundle_root}/yoyopod_rs/power/build" \
-            "${bundle_root}/yoyopod_rs/speech/build"
-          cp target/release/yoyopod-runtime "${bundle_root}/yoyopod_rs/runtime/build/yoyopod-runtime"
-          cp target/release/yoyopod-ui-host "${bundle_root}/yoyopod_rs/ui/build/yoyopod-ui-host"
-          cp target/release/yoyopod-cloud-host "${bundle_root}/yoyopod_rs/cloud/build/yoyopod-cloud-host"
-          cp target/release/yoyopod-media-host "${bundle_root}/yoyopod_rs/media/build/yoyopod-media-host"
-          cp target/release/yoyopod-voip-host "${bundle_root}/yoyopod_rs/voip/build/yoyopod-voip-host"
-          cp target/release/yoyopod-network-host "${bundle_root}/yoyopod_rs/network/build/yoyopod-network-host"
-          cp target/release/yoyopod-power-host "${bundle_root}/yoyopod_rs/power/build/yoyopod-power-host"
-          cp target/release/yoyopod-speech-host "${bundle_root}/yoyopod_rs/speech/build/yoyopod-speech-host"
-          tar -C "${bundle_root}" -czf "target/${bundle_name}.tar.gz" yoyopod_rs
+            "${bundle_root}/device/runtime/build" \
+            "${bundle_root}/device/ui/build" \
+            "${bundle_root}/device/cloud/build" \
+            "${bundle_root}/device/media/build" \
+            "${bundle_root}/device/voip/build" \
+            "${bundle_root}/device/network/build" \
+            "${bundle_root}/device/power/build" \
+            "${bundle_root}/device/speech/build"
+          cp target/release/yoyopod-runtime "${bundle_root}/device/runtime/build/yoyopod-runtime"
+          cp target/release/yoyopod-ui-host "${bundle_root}/device/ui/build/yoyopod-ui-host"
+          cp target/release/yoyopod-cloud-host "${bundle_root}/device/cloud/build/yoyopod-cloud-host"
+          cp target/release/yoyopod-media-host "${bundle_root}/device/media/build/yoyopod-media-host"
+          cp target/release/yoyopod-voip-host "${bundle_root}/device/voip/build/yoyopod-voip-host"
+          cp target/release/yoyopod-network-host "${bundle_root}/device/network/build/yoyopod-network-host"
+          cp target/release/yoyopod-power-host "${bundle_root}/device/power/build/yoyopod-power-host"
+          cp target/release/yoyopod-speech-host "${bundle_root}/device/speech/build/yoyopod-speech-host"
+          tar -C "${bundle_root}" -czf "target/${bundle_name}.tar.gz" device
 
       - name: Upload Rust device ARM64 bundle
         uses: actions/upload-artifact@v4
         with:
           name: yoyopod-rust-device-arm64-${{ env.RUST_ARTIFACT_SHA }}
-          path: yoyopod_rs/target/yoyopod-rust-device-arm64-${{ env.RUST_ARTIFACT_SHA }}.tar.gz
+          path: device/target/yoyopod-rust-device-arm64-${{ env.RUST_ARTIFACT_SHA }}.tar.gz
           if-no-files-found: error
 
   slot-arm64:

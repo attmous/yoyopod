@@ -9,7 +9,7 @@ import pytest
 pytest.importorskip("typer")
 
 import yoyopod_cli.setup as setup_cli_module
-from yoyopod.core import RUNTIME_REQUIRED_CONFIG_FILES
+from yoyopod_cli.contracts.setup import RUNTIME_REQUIRED_CONFIG_FILES
 from yoyopod_cli.paths import PiPaths
 from yoyopod_cli.setup import (
     SetupCheck,

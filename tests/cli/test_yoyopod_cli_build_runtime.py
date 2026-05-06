@@ -18,14 +18,14 @@ def test_build_help_includes_rust_runtime() -> None:
     assert "rust-runtime" in result.output
 
 
-def test_rust_runtime_paths_point_at_yoyopod_rs_workspace() -> None:
+def test_rust_runtime_paths_point_at_device_workspace() -> None:
     suffix = ".exe" if build_cli.os.name == "nt" else ""
 
-    assert build_cli._rust_runtime_workspace_dir() == build_cli._REPO_ROOT / "yoyopod_rs"
-    assert build_cli._rust_runtime_crate_dir() == build_cli._REPO_ROOT / "yoyopod_rs" / "runtime"
+    assert build_cli._rust_runtime_workspace_dir() == build_cli._REPO_ROOT / "device"
+    assert build_cli._rust_runtime_crate_dir() == build_cli._REPO_ROOT / "device" / "runtime"
     assert build_cli._rust_runtime_binary_path() == (
         build_cli._REPO_ROOT
-        / "yoyopod_rs"
+        / "device"
         / "runtime"
         / "build"
         / f"yoyopod-runtime{suffix}"

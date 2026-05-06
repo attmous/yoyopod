@@ -201,13 +201,13 @@ def test_build_voice_worker_invokes_rust_speech_host_build(
     ]
 
 
-def test_rust_ui_host_paths_point_at_yoyopod_rs_workspace() -> None:
+def test_rust_ui_host_paths_point_at_device_workspace() -> None:
     suffix = ".exe" if build_cli.os.name == "nt" else ""
 
-    assert build_cli._rust_ui_host_workspace_dir() == build_cli._REPO_ROOT / "yoyopod_rs"
-    assert build_cli._rust_ui_host_crate_dir() == build_cli._REPO_ROOT / "yoyopod_rs" / "ui"
+    assert build_cli._rust_ui_host_workspace_dir() == build_cli._REPO_ROOT / "device"
+    assert build_cli._rust_ui_host_crate_dir() == build_cli._REPO_ROOT / "device" / "ui"
     assert build_cli._rust_ui_host_binary_path() == (
-        build_cli._REPO_ROOT / "yoyopod_rs" / "ui" / "build" / f"yoyopod-ui-host{suffix}"
+        build_cli._REPO_ROOT / "device" / "ui" / "build" / f"yoyopod-ui-host{suffix}"
     )
 
 

@@ -2,7 +2,7 @@
 # deploy/scripts/launch.sh
 #
 # Slot launcher - run from systemd via /opt/yoyopod-prod/current/bin/launch.
-# Resolves the slot dir from $0, sets env vars the app needs, exec's python.
+# Resolves the slot dir from $0, sets env vars the app needs, exec's the Rust runtime.
 #
 # This script MUST work when invoked through the `current` symlink. We
 # dereference that symlink once to get the real slot directory so our
@@ -27,12 +27,11 @@ export LD_LIBRARY_PATH="${PYTHON_RUNTIME_LIB}:${LVGL_NATIVE_LIB}:${LVGL_NATIVE_B
 # Create the state dir if missing (first boot after bootstrap).
 mkdir -p "${YOYOPOD_STATE_DIR}"
 
-PYTHON="${SLOT_DIR}/venv/bin/python"
-if [ ! -x "${PYTHON}" ]; then
-    echo "slot runtime missing: ${PYTHON}" >&2
+RUNTIME="${SLOT_DIR}/app/device/runtime/build/yoyopod-runtime"
+if [ ! -x "${RUNTIME}" ]; then
+    echo "slot runtime missing: ${RUNTIME}" >&2
     exit 1
 fi
 
 cd "${SLOT_DIR}"
-# yoyopod.main exposes main() but is not itself executable as a module.
-exec "${PYTHON}" -c "from yoyopod.main import main; raise SystemExit(main())" "$@"
+exec "${RUNTIME}" --config-dir "${SLOT_DIR}/config" "$@"

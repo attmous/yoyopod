@@ -142,7 +142,7 @@ def _build_lvgl(native_dir: Path, source_dir: Path, build_dir: Path) -> None:
 
 
 def _rust_speech_host_workspace_dir() -> Path:
-    return _REPO_ROOT / "yoyopod_rs"
+    return _REPO_ROOT / "device"
 
 
 def _rust_speech_host_crate_dir() -> Path:
@@ -155,7 +155,7 @@ def _rust_speech_host_binary_path() -> Path:
 
 
 def _rust_ui_host_workspace_dir() -> Path:
-    return _REPO_ROOT / "yoyopod_rs"
+    return _REPO_ROOT / "device"
 
 
 def _rust_ui_host_crate_dir() -> Path:
@@ -168,7 +168,7 @@ def _rust_ui_host_binary_path() -> Path:
 
 
 def _rust_runtime_workspace_dir() -> Path:
-    return _REPO_ROOT / "yoyopod_rs"
+    return _REPO_ROOT / "device"
 
 
 def _rust_runtime_crate_dir() -> Path:
@@ -484,7 +484,7 @@ def build_simulation(
         ),
     ] = False,
 ) -> None:
-    """Build the LVGL native shim required by ``python yoyopod.py --simulate``."""
+    """Build the LVGL native shim used to simulate the device UI host."""
 
     native_dir = _resolve_lvgl_native_dir()
     source_dir = _default_lvgl_source_dir()

@@ -15,7 +15,7 @@ import typer
 
 from yoyopod_cli.common import REPO_ROOT, checkout_python_path
 from yoyopod_cli.paths import load_pi_paths
-from yoyopod.core import SETUP_TRACKED_CONFIG_FILES
+from yoyopod_cli.contracts.setup import SETUP_TRACKED_CONFIG_FILES
 
 app = typer.Typer(
     name="setup",
@@ -44,9 +44,9 @@ HOST_REMOTE_TOOLS: tuple[str, ...] = ("ssh", "rsync")
 HOST_DEV_MODULES: tuple[str, ...] = ("pytest", "black", "ruff", "mypy", "typer")
 NATIVE_ARTIFACTS: tuple[Path, ...] = (
     REPO_ROOT / "yoyopod" / "ui" / "lvgl_binding" / "native" / "build" / "libyoyopod_lvgl_shim.so",
-    REPO_ROOT / "yoyopod_rs" / "cloud" / "build" / "yoyopod-cloud-host",
-    REPO_ROOT / "yoyopod_rs" / "media" / "build" / "yoyopod-media-host",
-    REPO_ROOT / "yoyopod_rs" / "voip" / "build" / "yoyopod-voip-host",
+    REPO_ROOT / "device" / "cloud" / "build" / "yoyopod-cloud-host",
+    REPO_ROOT / "device" / "media" / "build" / "yoyopod-media-host",
+    REPO_ROOT / "device" / "voip" / "build" / "yoyopod-voip-host",
 )
 PI_VENV_DIR = ".venv"
 

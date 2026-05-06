@@ -32,7 +32,7 @@ For Raspberry Pi Zero 2W hardware validation, the deploy path is always:
 1. Commit and push the branch.
 2. Wait for the GitHub Actions `rust-device-arm64` job to pass for the exact commit.
 3. Download and extract `yoyopod-rust-device-arm64-<sha>`.
-4. Confirm it installed `yoyopod_rs/ui/build/yoyopod-ui-host` on the Pi checkout.
+4. Confirm it installed `device/ui/build/yoyopod-ui-host` on the Pi checkout.
 
 Do not run `cargo build` or `yoyopod build rust-ui-host` on the Pi Zero 2W
 unless the user explicitly overrides this rule. Local builds are for developer
@@ -65,12 +65,12 @@ The Whisplay defaults match the vendor board mapping:
 First extract the CI device bundle into the dev checkout and make the UI host executable:
 
 ```bash
-mkdir -p yoyopod_rs/ui/build
-chmod +x yoyopod_rs/ui/build/yoyopod-ui-host
+mkdir -p device/ui/build
+chmod +x device/ui/build/yoyopod-ui-host
 ```
 
 ```bash
-yoyopod pi rust-ui-host --worker yoyopod_rs/ui/build/yoyopod-ui-host --frames 10
+yoyopod pi rust-ui-host --worker device/ui/build/yoyopod-ui-host --frames 10
 ```
 
 Expected result:
