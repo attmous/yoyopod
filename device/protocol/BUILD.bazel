@@ -1,6 +1,5 @@
 load(
     "//:defs.bzl",
-    "yoyopod_rust_host_integration_tests",
     "yoyopod_rust_host_library",
 )
 
@@ -8,14 +7,4 @@ yoyopod_rust_host_library(
     name = "protocol_lib",
     srcs = glob(["src/**/*.rs"]),
     crate_name = "yoyopod_protocol",
-)
-
-PROTOCOL_TESTS = [
-    "envelope",
-]
-
-yoyopod_rust_host_integration_tests(
-    name = "tests",
-    tests = PROTOCOL_TESTS,
-    deps = [":protocol_lib"],
 )

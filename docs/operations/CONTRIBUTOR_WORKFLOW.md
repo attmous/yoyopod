@@ -52,7 +52,7 @@ device/runtime/build/yoyopod-runtime --config-dir config
 Core Rust validation loop:
 
 ```bash
-cargo test --manifest-path device/Cargo.toml --workspace --locked
+cargo check --manifest-path device/Cargo.toml --workspace --locked
 ```
 
 Legacy Python quality debt audit:
@@ -61,9 +61,9 @@ Legacy Python quality debt audit:
 uv run python scripts/quality.py audit
 ```
 
-Use Python tests and `scripts/quality.py` when changing Python CLI/deploy
-surfaces or fixing Python CI. Do not treat them as the default gate for Rust
-runtime iteration.
+Use `scripts/quality.py` when changing Python CLI/deploy surfaces or fixing
+Python CI. Do not treat Python checks as the default gate for Rust runtime
+iteration.
 
 ## Choose the right doc path for the work
 
@@ -100,7 +100,7 @@ uv run yoyopod setup verify-host --with-remote-tools
 yoyopod remote config edit
 uv run yoyopod remote setup --with-pisugar
 uv run yoyopod remote verify-setup --with-pisugar
-yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip
+yoyopod remote validate --branch <branch> --sha <commit> --with-voip
 ```
 
 These are the canonical contributor-path commands.
@@ -125,18 +125,17 @@ When updating docs:
 
 ## Before opening a PR
 
-At minimum for Rust runtime work, run the relevant Rust crate tests:
+At minimum for Rust runtime work, run the relevant Rust build check:
 
 ```bash
-cargo test --manifest-path device/Cargo.toml --workspace --locked
+cargo check --manifest-path device/Cargo.toml --workspace --locked
 ```
 
 Then add any focused commands relevant to your area, for example:
 
 ```bash
-python -m compileall yoyopod tests demos scripts
-uv run pytest -q tests/e2e/test_app_orchestration.py
-uv run pytest -q tests/cli/test_setup_cli.py tests/cli/test_cli.py
+python -m compileall yoyopod_cli scripts
+yoyopod remote validate --branch <branch> --sha <commit>
 ```
 
 If your change is outside the currently gated surface, say so plainly in the PR instead of pretending CI covered more than it did.

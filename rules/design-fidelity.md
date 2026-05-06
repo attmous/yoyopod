@@ -69,7 +69,7 @@ For Whisplay UI work, the standard loop is:
    ```bash
    uv run python scripts/quality.py ci
    ```
-   For iterative UI work, run the most relevant focused tests if the full suite is unnecessary.
+   For iterative UI work, run the most relevant Rust build check and target validation command for the changed surface.
 2. Commit and push the branch you want to validate:
    ```bash
    git branch --show-current

@@ -10,19 +10,14 @@ YoYoPod now uses an app-managed `mpv` process for music playback and Liblinphone
 For music playback, the runtime path is:
 
 ```text
-legacy/python-runtime/yoyopod.py
-  -> yoyopod.main
-     -> YoyoPodApp
-        -> LocalMusicService
-        -> MpvBackend
-           -> MpvProcess
-              -> mpv --idle --no-video --input-ipc-server=/tmp/yoyopod-mpv.sock --audio-device=alsa/default
-           -> MpvIpcClient
-              -> JSON IPC over /tmp/yoyopod-mpv.sock
-        -> ALSA default PCM
-        -> card 0: wm8960-soundcard
-        -> bcm2835 I2S -> WM8960 codec
-        -> speaker / headphone output
+yoyopod-runtime
+  -> media-host
+     -> mpv --idle --no-video --input-ipc-server=/tmp/yoyopod-mpv.sock --audio-device=alsa/default
+     -> JSON IPC over /tmp/yoyopod-mpv.sock
+     -> ALSA default PCM
+     -> card 0: wm8960-soundcard
+     -> bcm2835 I2S -> WM8960 codec
+     -> speaker / headphone output
 ```
 
 For calls and voice notes, the audio runtime is separate and Rust-owned:

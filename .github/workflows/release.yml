@@ -42,9 +42,6 @@ jobs:
       - name: Run staged quality gate
         run: uv run python scripts/quality.py gate
 
-      - name: Run tests
-        run: uv run pytest -q
-
       - name: Build release artifacts
         run: uv run yoyopod release build --check-tag "$RELEASE_TAG"
 

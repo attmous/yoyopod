@@ -6,10 +6,11 @@ from typing import Annotated
 
 import typer
 
-from yoyopod_cli.common import configure_logging
-from yoyopod_cli.defaults import DEFAULT_TEST_MUSIC_TARGET_DIR
-from yoyopod_cli.pi.validate._navigation_soak import (
-    run_navigation_soak,
+from yoyopod_cli.common import configure_logging, resolve_config_dir
+from yoyopod_cli.pi.validate._common import _print_summary
+from yoyopod_cli.pi.validate.rust_runtime import (
+    rust_runtime_dry_run_check as _rust_runtime_dry_run_check,
+    rust_ui_navigation_check as _rust_ui_navigation_check,
 )
 
 
@@ -41,52 +42,31 @@ def navigation(
             help="Final idle dwell on the hub after all navigation cycles complete.",
         ),
     ] = 10.0,
-    with_playback: Annotated[
-        bool,
-        typer.Option(
-            "--with-playback/--no-with-playback",
-            help="Drive playlist and shuffle playback paths during the soak.",
-        ),
-    ] = True,
-    provision_test_music: Annotated[
-        bool,
-        typer.Option(
-            "--provision-test-music/--no-provision-test-music",
-            help="Seed deterministic validation music before playback-driven navigation.",
-        ),
-    ] = True,
-    test_music_dir: Annotated[
-        str,
-        typer.Option(
-            "--test-music-dir",
-            help="Dedicated target directory for validation-only test music assets.",
-        ),
-    ] = "",
-    skip_sleep: Annotated[
-        bool, typer.Option("--skip-sleep", help="Skip the final sleep/wake exercise.")
-    ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", help="Enable DEBUG logging.")] = False,
 ) -> None:
-    """Run the one-button target navigation and idle stability soak on LVGL hardware."""
+    """Run Rust UI one-button navigation through the runtime worker protocol."""
     from loguru import logger
 
     configure_logging(verbose)
-    resolved_music_dir = test_music_dir or DEFAULT_TEST_MUSIC_TARGET_DIR
+    config_path = resolve_config_dir(config_dir)
 
-    ok, details = run_navigation_soak(
-        config_dir=config_dir,
-        cycles=cycles,
-        hold_seconds=hold_seconds,
-        idle_seconds=idle_seconds,
-        tail_idle_seconds=tail_idle_seconds,
-        with_playback=with_playback,
-        provision_test_music=provision_test_music,
-        test_music_dir=resolved_music_dir,
-        skip_sleep=skip_sleep,
-    )
-    if ok:
-        logger.info("Navigation soak passed: {}", details)
+    results = [
+        _rust_runtime_dry_run_check(config_path),
+        _rust_ui_navigation_check(
+            config_path,
+            cycles=cycles,
+            hold_seconds=hold_seconds,
+            idle_seconds=idle_seconds,
+            tail_idle_seconds=tail_idle_seconds,
+        ),
+    ]
+    _print_summary("navigation", results)
+    if not any(result.status == "fail" for result in results):
+        logger.info("Rust navigation validation passed")
         return
 
-    logger.error("Navigation soak failed: {}", details)
+    logger.error(
+        "Rust navigation validation failed: {}",
+        "; ".join(result.details for result in results if result.status == "fail"),
+    )
     raise typer.Exit(code=1)

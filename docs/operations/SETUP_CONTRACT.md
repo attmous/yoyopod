@@ -196,7 +196,7 @@ The tracked deploy contract must stay generic:
 uv run yoyopod setup host
 uv run yoyopod setup verify-host
 cargo run --manifest-path device/Cargo.toml -p yoyopod-runtime -- --config-dir config --dry-run
-cargo test --manifest-path device/Cargo.toml --workspace --locked
+cargo check --manifest-path device/Cargo.toml --workspace --locked
 ```
 
 This is the minimum executable contract for contributors. Feature assets and
@@ -209,7 +209,7 @@ uv run yoyopod setup pi --with-pisugar
 uv run yoyopod setup verify-pi --with-pisugar
 yoyopod pi validate deploy
 yoyopod pi validate smoke
-yoyopod pi validate smoke --with-power --with-rtc
+yoyopod pi validate smoke
 /opt/yoyopod-dev/checkout/device/runtime/build/yoyopod-runtime --config-dir /opt/yoyopod-dev/checkout/config --hardware whisplay
 ```
 
@@ -225,7 +225,7 @@ yoyopod remote config edit
 uv run yoyopod remote setup --with-pisugar
 uv run yoyopod remote verify-setup --with-pisugar
 yoyopod remote status
-yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip
+yoyopod remote validate --branch <branch> --sha <commit> --with-voip
 ```
 
 These remote helpers mirror the same baseline contract. They still rely on

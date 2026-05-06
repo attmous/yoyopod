@@ -85,8 +85,8 @@ def _resolve_lvgl_native_dir() -> Path:
 
     return _resolve_native_dir(
         "LVGL",
-        _REPO_ROOT / "yoyopod" / "ui" / "lvgl_binding" / "native",
-        _REPO_ROOT / "src" / "yoyopod" / "ui" / "lvgl_binding" / "native",
+        _REPO_ROOT / "yoyopod_cli" / "pi" / "support" / "lvgl_binding" / "native",
+        _REPO_ROOT / "src" / "yoyopod_cli" / "pi" / "support" / "lvgl_binding" / "native",
     )
 
 

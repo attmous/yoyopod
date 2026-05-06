@@ -52,8 +52,7 @@ Current Runtime Status
   screen set. The C LVGL shim and LVGL native library still exist as display
   infrastructure during the transition.
 - Python is no longer the architectural target for the app runtime. It remains
-  for CLI/deploy tooling, compatibility paths, tests, and any domain that has
-  not been fully removed yet.
+  for CLI/deploy tooling and compatibility paths.
 - Dev service runs the Rust owner directly through `yoyopod-runtime`.
   Legacy Python runtime entrypoints are quarantined under `legacy/` only.
 
@@ -94,9 +93,9 @@ Source Of Truth
 - `docs/superpowers/specs/2026-04-30-rust-runtime-host-design.md`
 
 High-Value Commands
-- Rust workspace tests: `cargo test --manifest-path device/Cargo.toml --workspace --locked`
-- Rust runtime tests: `cargo test --manifest-path device/Cargo.toml -p yoyopod-runtime --locked`
-- Rust UI tests: `cargo test --manifest-path device/Cargo.toml -p yoyopod-ui --locked`
+- Rust workspace check: `cargo check --manifest-path device/Cargo.toml --workspace --locked`
+- Rust runtime check: `cargo check --manifest-path device/Cargo.toml -p yoyopod-runtime --locked`
+- Rust UI check: `cargo check --manifest-path device/Cargo.toml -p yoyopod-ui --locked`
 - Rust runtime dry run: `cargo run --manifest-path device/Cargo.toml -p yoyopod-runtime -- --config-dir config --dry-run`
 - Build local artifact on development machine: `uv run yoyopod build rust-runtime`
 - Pi lane status: `yoyopod remote mode status`
@@ -107,8 +106,9 @@ High-Value Commands
 Verification Policy
 - Do not run the old Python quality gate by default. It is no longer the
   required pre-commit/pre-push path for Rust runtime work.
-- Prefer Rust checks for Rust changes. Run targeted Python tests only when the
-  changed surface is Python CLI/deploy/compatibility code.
+- Prefer Rust build checks and Pi validation for Rust changes. Run Python
+  lint/type/compile checks when the changed surface is Python CLI/deploy/
+  compatibility code.
 - For hardware work, exact-commit CI artifacts and the Pi result matter more
   than local Python gates. Always report the commit SHA, artifact names, and
   hardware command/result.

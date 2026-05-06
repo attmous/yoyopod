@@ -99,7 +99,7 @@ def live(
     skip_systemd: bool = typer.Option(
         False,
         "--skip-systemd",
-        help="Skip systemd activity check (for tests / non-deploy callers).",
+        help="Skip systemd activity check for non-deploy callers.",
     ),
 ) -> None:
     """Report the running version. Exit 0 = release detected AND service active."""

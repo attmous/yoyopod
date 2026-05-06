@@ -148,21 +148,10 @@ listed legacy/manual owner before trusting audio, display, or VoIP behavior.
 Useful variations:
 
 ```bash
-yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip
-yoyopod remote validate --branch <branch> --sha <commit> --with-power --with-rtc
+yoyopod remote validate --branch <branch> --sha <commit> --with-voip
 yoyopod remote validate --branch <branch> --sha <commit> --with-navigation
-yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-navigation
 yoyopod remote validate --branch <branch> --sha <commit> --with-lvgl-soak
 ```
-
-When `--with-music` is enabled, the Pi-side smoke flow seeds the deterministic validation library into the configured `test_music_target_dir` before it exercises the music backend.
-
-The seeded validation library is explicit and stable:
-
-- `yoyopod-validation-set.m3u`
-- `tracks/alpha-beacon.wav`
-- `tracks/bravo-lantern.wav`
-- `tracks/charlie-sundial.wav`
 
 `yoyopod remote validate` does all of this:
 
@@ -230,8 +219,7 @@ explicitly overrides that rule.
 
 ```bash
 yoyopod remote validate --branch <branch> --sha <commit>
-yoyopod remote validate --branch <branch> --sha <commit> --with-power --with-rtc
-yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-rtc
+yoyopod remote validate --branch <branch> --sha <commit> --with-voip
 yoyopod remote validate --branch <branch> --sha <commit> --with-navigation
 yoyopod remote validate --branch <branch> --sha <commit> --with-lvgl-soak
 ```
@@ -239,7 +227,6 @@ yoyopod remote validate --branch <branch> --sha <commit> --with-lvgl-soak
 This composes the target-side suite:
 
 - `yoyopod pi validate smoke`
-- `yoyopod pi validate music`
 - `yoyopod pi validate voip`
 - `yoyopod pi validate navigation`
 - `yoyopod pi validate stability`
@@ -362,13 +349,13 @@ yoyopod remote power
 `yoyopod remote preflight` is still useful, but it is a preparation step, not the full hardware-validation finish line.
 
 ```bash
-yoyopod remote preflight --branch <branch> --with-music --with-voip --with-navigation --with-lvgl-soak
+yoyopod remote preflight --branch <branch>
 ```
 
 What it does:
 
 1. runs local `compileall`
-2. runs local Python tests when the preflight command requests that legacy path
+2. runs local Python quality checks when requested by the workflow
 3. syncs the chosen branch to the Raspberry Pi
 4. runs the Raspberry Pi smoke pass
 
@@ -398,8 +385,8 @@ If you use it, say clearly that the board is running a dirty-tree override inste
 
 1. Run focused local Rust checks as needed:
    ```bash
-   cargo test --manifest-path device/Cargo.toml -p yoyopod-runtime --locked
-   cargo test --manifest-path device/Cargo.toml -p yoyopod-ui --locked
+   cargo check --manifest-path device/Cargo.toml -p yoyopod-runtime --locked
+   cargo check --manifest-path device/Cargo.toml -p yoyopod-ui --locked
    ```
 2. Commit the intended change.
 3. Push the branch.
@@ -416,7 +403,7 @@ If you use it, say clearly that the board is running a dirty-tree override inste
 When you are chasing idle freezes or routed-screen hangs, add the deterministic soak:
 
 ```bash
-yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-navigation
+yoyopod remote validate --branch <branch> --sha <commit> --with-navigation
 ```
 
 ## Release / Pre-Merge Checklist
@@ -424,8 +411,8 @@ yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-nav
 - local Rust checks relevant to the changed crates pass
 - branch is pushed and reviewed
 - exact-SHA Rust artifacts are installed when testing the Rust runtime owner
-- `yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-lvgl-soak` passes
-- if you touched idle navigation, `yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-navigation` passes
+- `yoyopod remote validate --branch <branch> --sha <commit> --with-voip --with-lvgl-soak` passes
+- if you touched idle navigation, `yoyopod remote validate --branch <branch> --sha <commit> --with-navigation` passes
 - the selected runtime owner starts cleanly and stays running for manual hardware testing
 - manual sanity still passes for display, input, music, SIP registration, and call flow
 

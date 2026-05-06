@@ -23,6 +23,7 @@ app = build_remote_app("validate_app", "Validate commit + health on the Pi.")
 
 _RUST_UI_HOST_WORKER = "device/ui/build/yoyopod-ui-host"
 _RUST_UI_POC_WORKER = _RUST_UI_HOST_WORKER
+_RUST_RUNTIME_WORKER = "device/runtime/build/yoyopod-runtime"
 _RUST_CLOUD_HOST_WORKER = "device/cloud/build/yoyopod-cloud-host"
 _RUST_MEDIA_HOST_WORKER = "device/media/build/yoyopod-media-host"
 _RUST_VOIP_HOST_WORKER = "device/voip/build/yoyopod-voip-host"
@@ -114,10 +115,7 @@ def _build_validate(
     branch: str,
     venv_relpath: str = ".venv",
     sha: str = "",
-    with_music: bool,
     with_voip: bool,
-    with_power: bool = False,
-    with_rtc: bool = False,
     with_cloud_voice: bool = False,
     with_lvgl_soak: bool,
     with_navigation: bool,
@@ -164,17 +162,27 @@ def _build_validate(
         "for this exact commit before Pi validation; do not build Rust binaries on the Pi."
     )
     steps.append(f"test -x {media_worker} || (echo {media_message} >&2 && exit 1)")
+    runtime_worker = shell_quote(_RUST_RUNTIME_WORKER)
+    runtime_message = shell_quote(
+        "Missing executable CI-built Rust runtime binary at "
+        f"{_RUST_RUNTIME_WORKER}. Download and extract the GitHub Actions "
+        "artifact yoyopod-rust-device-arm64-<sha> "
+        "for this exact commit before Pi validation; do not build Rust binaries on the Pi."
+    )
+    ui_worker = shell_quote(_RUST_UI_HOST_WORKER)
+    ui_message = shell_quote(
+        "Missing executable CI-built Rust UI binary at "
+        f"{_RUST_UI_HOST_WORKER}. Download and extract the GitHub Actions "
+        "artifact yoyopod-rust-device-arm64-<sha> "
+        "for this exact commit before Pi validation; do not build Rust binaries on the Pi."
+    )
+    steps.append(f"test -x {runtime_worker} || (echo {runtime_message} >&2 && exit 1)")
+    steps.append(f"test -x {ui_worker} || (echo {ui_message} >&2 && exit 1)")
     validate_deploy_cmd = checkout_module_command(venv_relpath, "pi", "validate", "deploy")
     smoke_cmd = checkout_module_command(venv_relpath, "pi", "validate", "smoke")
-    if with_power:
-        smoke_cmd += " --with-power"
-    if with_rtc:
-        smoke_cmd += " --with-rtc"
     steps.extend([validate_deploy_cmd, smoke_cmd])
     if with_cloud_voice:
         steps.append(checkout_module_command(venv_relpath, "pi", "validate", "cloud-voice"))
-    if with_music:
-        steps.append(checkout_module_command(venv_relpath, "pi", "validate", "music"))
     if with_voip or with_voip_call_soak:
         voip_worker = shell_quote(_RUST_VOIP_HOST_WORKER)
         voip_message = shell_quote(
@@ -206,14 +214,6 @@ def _build_validate(
     if with_navigation:
         steps.append(checkout_module_command(venv_relpath, "pi", "validate", "navigation"))
     if with_rust_ui_host or with_rust_ui_poc:
-        worker = shell_quote(_RUST_UI_HOST_WORKER)
-        message = shell_quote(
-            "Missing executable CI-built Rust UI binary at "
-            f"{_RUST_UI_HOST_WORKER}. Download and extract the GitHub Actions "
-            "artifact yoyopod-rust-device-arm64-<sha> "
-            "for this exact commit before Rust UI host validation; do not build Rust on the Pi."
-        )
-        steps.append(f"test -x {worker} || (echo {message} >&2 && exit 1)")
         steps.append(
             checkout_module_command(
                 venv_relpath,
@@ -244,10 +244,7 @@ def validate(
         "--sha",
         help="Pin validation to a specific commit on the target branch (must be an ancestor of origin/<branch>).",
     ),
-    with_music: bool = typer.Option(False, "--with-music"),
     with_voip: bool = typer.Option(False, "--with-voip"),
-    with_power: bool = typer.Option(False, "--with-power"),
-    with_rtc: bool = typer.Option(False, "--with-rtc"),
     with_cloud_voice: bool = typer.Option(
         False,
         "--with-cloud-voice",
@@ -295,10 +292,7 @@ def validate(
         branch=conn.branch,
         venv_relpath=pi.venv,
         sha=sha,
-        with_music=with_music,
         with_voip=with_voip,
-        with_power=with_power,
-        with_rtc=with_rtc,
         with_cloud_voice=with_cloud_voice,
         with_lvgl_soak=with_lvgl_soak,
         with_navigation=with_navigation,

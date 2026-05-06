@@ -229,10 +229,7 @@ def _validate_shortcut(
         "--sha",
         help="Pin validation to a specific commit (must be an ancestor of origin/<branch>).",
     ),
-    with_music: bool = typer.Option(False, "--with-music"),
     with_voip: bool = typer.Option(False, "--with-voip"),
-    with_power: bool = typer.Option(False, "--with-power"),
-    with_rtc: bool = typer.Option(False, "--with-rtc"),
     with_cloud_voice: bool = typer.Option(
         False,
         "--with-cloud-voice",
@@ -271,10 +268,7 @@ def _validate_shortcut(
     _remote_validate.validate(
         ctx=_with_connection(host, user, project_dir, branch),
         sha=sha,
-        with_music=with_music,
         with_voip=with_voip,
-        with_power=with_power,
-        with_rtc=with_rtc,
         with_cloud_voice=with_cloud_voice,
         with_lvgl_soak=with_lvgl_soak,
         with_navigation=with_navigation,

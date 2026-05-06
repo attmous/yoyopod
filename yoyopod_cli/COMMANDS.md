@@ -56,11 +56,10 @@ For live help, use `yoyopod <cmd> --help`.
 | `yoyopod pi rust-ui-poc` | Run the Rust UI host against Whisplay hardware. |
 | `yoyopod pi validate cloud-voice` | Validate cloud STT/TTS and local voice command routing on the target. |
 | `yoyopod pi validate deploy` | Validate deploy-readiness for the current target checkout without launching the app. |
-| `yoyopod pi validate lvgl` | Run a deterministic LVGL navigation and idle soak pass against YoYoPod. |
-| `yoyopod pi validate music` | Validate the mpv music backend on the target without starting the full app. |
-| `yoyopod pi validate navigation` | Run the one-button target navigation and idle stability soak on LVGL hardware. |
-| `yoyopod pi validate smoke` | Validate core target hardware paths: environment, display, input, and optional PiSugar state. |
-| `yoyopod pi validate stability` | Run a repeated navigation and idle stability pass on the target checkout. |
+| `yoyopod pi validate lvgl` | Run Rust UI/LVGL navigation through the runtime worker protocol. |
+| `yoyopod pi validate navigation` | Run Rust UI one-button navigation through the runtime worker protocol. |
+| `yoyopod pi validate smoke` | Validate the Rust runtime stack on target hardware. |
+| `yoyopod pi validate stability` | Run a repeated Rust UI navigation and idle stability pass on the target checkout. |
 | `yoyopod pi validate voip` | VoIP validation: quick check (default) or soak drill (--soak registration|reconnect|call). |
 | `yoyopod pi voip check` | Run a verbose SIP registration check against the Rust VoIP runtime. |
 | `yoyopod pi voip debug` | Monitor for incoming SIP calls with verbose logging. |

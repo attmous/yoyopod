@@ -21,7 +21,7 @@ That means the app does not yet have one global audio hardware contract. Device 
 - centralize ALSA mixer commands behind one facade
 - keep music playback, calls, voice commands, and spoken prompts aligned to the same resolved hardware profile unless explicitly overridden
 - preserve config and environment override flexibility
-- make effective device selection inspectable in logs, tests, and Pi status workflows
+- make effective device selection inspectable in logs, CLI status, and Pi status workflows
 
 ## Non-Goals
 
@@ -185,13 +185,12 @@ The exact key names can change, but the contract is that device and mixer policy
 
 ## Verification Contract
 
-This architecture must be testable without real ALSA hardware.
+This architecture must be verifiable through build checks and target validation.
 
 Required coverage:
 
-- unit tests for route resolution and override precedence
-- unit tests for ALSA command generation
-- integration tests showing the app wires one resolved profile into music, calls, and voice services
+- build checks for route resolution and ALSA command generation code
+- Pi validation showing the app wires one resolved profile into music, calls, and voice services
 - Pi validation that the same effective routes are used after restart
 
 Logs and status commands should show the resolved audio profile so field debugging does not require guessing which layer won.
@@ -210,4 +209,4 @@ Logs and status commands should show the resolved audio profile so field debuggi
 2. introduce typed resolved-audio models and the new facade
 3. move mixer command generation out of feature modules
 4. wire `mpv`, Liblinphone, STT capture, and TTS playback through the shared facade
-5. add tests and Pi status reporting for the resolved profile
+5. add build checks and Pi status reporting for the resolved profile

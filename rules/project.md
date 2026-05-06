@@ -19,10 +19,6 @@ yoyopod build simulation
 # Local CI mirror
 uv run python scripts/quality.py ci
 
-# Tests
-uv run pytest -q
-uv run pytest -q tests/core/test_fsm_runtime.py
-
 # Repo-owned code quality gate
 uv run python scripts/quality.py gate
 
@@ -36,7 +32,6 @@ uv run yoyopod setup verify-pi
 # Focused target-side validation
 yoyopod pi validate deploy
 yoyopod pi validate smoke
-yoyopod pi validate music
 yoyopod pi validate voip
 yoyopod pi validate navigation
 yoyopod pi validate stability

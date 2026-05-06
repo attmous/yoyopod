@@ -78,8 +78,7 @@ Notes:
 
 ```bash
 pgrep -af mpv
-yoyopod pi validate music
-yoyopod remote validate --branch <branch> --sha <commit> --with-music
+yoyopod remote validate --branch <branch> --sha <commit>
 yoyopod remote logs --filter music --lines 100
 ```
 

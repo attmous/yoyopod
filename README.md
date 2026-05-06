@@ -54,7 +54,7 @@ This repository contains the software that runs the current YoYoPod prototype:
 - `yoyopod_cli/` - developer and device operations tooling for setup, deploy, validation, and diagnostics.
 
 New runtime work should start in `device/`. Python remains important for
-CLI/deploy tooling and tests. The old Python app runtime is retired from
+CLI/deploy tooling. The old Python app runtime is retired from
 supported launch paths. If you want the architecture view instead of the product view, start with
 [docs/architecture/WORK_AREAS.md](docs/architecture/WORK_AREAS.md) and
 [docs/architecture/SYSTEM_ARCHITECTURE.md](docs/architecture/SYSTEM_ARCHITECTURE.md).
@@ -96,7 +96,7 @@ For PR hardware testing, use the mutable dev lane from your dev machine:
 
 ```bash
 uv run yoyopod remote mode activate dev
-uv run yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip
+uv run yoyopod remote validate --branch <branch> --sha <commit> --with-voip
 ```
 
 For packaged prod slot validation, use the immutable prod lane:

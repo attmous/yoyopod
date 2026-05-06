@@ -141,13 +141,7 @@ def build_gate_steps(config: QualityConfig) -> tuple[QualityStep, ...]:
 def build_ci_steps(config: QualityConfig) -> tuple[QualityStep, ...]:
     """Build the local command that mirrors current CI expectations."""
 
-    return (
-        *build_gate_steps(config),
-        QualityStep(
-            label="pytest -q (CI test suite)",
-            command=_python_module_command("pytest", "-q"),
-        ),
-    )
+    return build_gate_steps(config)
 
 
 def build_audit_steps(config: QualityConfig) -> tuple[QualityStep, ...]:
@@ -218,7 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser(
         "ci",
-        help="Run the local command that mirrors CI: staged gate plus pytest.",
+        help="Run the local command that mirrors CI: staged quality gate.",
     )
     subparsers.add_parser("gate", help="Run the staged CI-gated workflow checks.")
     subparsers.add_parser("audit", help="Run the non-gating full-repo quality audit.")

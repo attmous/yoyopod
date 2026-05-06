@@ -1,4 +1,4 @@
-// Generated from yoyopod/ui/lvgl_binding/native/hub_icon_assets.h. Keep in sync with the Python/C LVGL owner.
+// Generated from yoyopod_cli/pi/support/lvgl_binding/native/hub_icon_assets.h. Keep in sync with the Python/C LVGL owner.
 use std::ffi::c_void;
 
 const LV_IMAGE_HEADER_MAGIC: u32 = 0x19;

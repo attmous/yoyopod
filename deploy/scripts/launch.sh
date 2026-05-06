@@ -20,8 +20,8 @@ export PYTHONPATH="${SLOT_DIR}/app"
 export PYTHONUNBUFFERED=1
 
 PYTHON_RUNTIME_LIB="${SLOT_DIR}/python/lib"
-LVGL_NATIVE_LIB="${SLOT_DIR}/app/yoyopod/ui/lvgl_binding/native/build/lvgl/lib"
-LVGL_NATIVE_BUILD="${SLOT_DIR}/app/yoyopod/ui/lvgl_binding/native/build"
+LVGL_NATIVE_LIB="${SLOT_DIR}/app/yoyopod_cli/pi/support/lvgl_binding/native/build/lvgl/lib"
+LVGL_NATIVE_BUILD="${SLOT_DIR}/app/yoyopod_cli/pi/support/lvgl_binding/native/build"
 export LD_LIBRARY_PATH="${PYTHON_RUNTIME_LIB}:${LVGL_NATIVE_LIB}:${LVGL_NATIVE_BUILD}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 # Create the state dir if missing (first boot after bootstrap).

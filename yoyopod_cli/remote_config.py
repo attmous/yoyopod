@@ -10,7 +10,6 @@ import subprocess
 import yaml
 import typer
 
-from yoyopod_cli.defaults import DEFAULT_TEST_MUSIC_TARGET_DIR
 from yoyopod_cli.paths import HOST, load_pi_paths
 from yoyopod_cli.remote_shared import _resolve_remote_connection
 
@@ -62,7 +61,6 @@ def show() -> None:
         "error_log_file": pi.error_log_file,
         "pid_file": pi.pid_file,
         "screenshot_path": pi.screenshot_path,
-        "test_music_target_dir": pi.test_music_target_dir,
         "startup_marker": pi.startup_marker,
         "kill_processes": list(pi.kill_processes),
         "rsync_exclude": list(pi.rsync_exclude),
@@ -79,8 +77,7 @@ def edit() -> None:
             "# Host-specific overrides for deploy/pi-deploy.yaml\n"
             "# host: rpi-zero\n"
             "# user: pi\n"
-            "# project_dir: /opt/yoyopod-dev/checkout\n"
-            f"# test_music_target_dir: {DEFAULT_TEST_MUSIC_TARGET_DIR}\n",
+            "# project_dir: /opt/yoyopod-dev/checkout\n",
             encoding="utf-8",
         )
     try:

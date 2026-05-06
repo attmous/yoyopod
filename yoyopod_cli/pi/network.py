@@ -12,8 +12,12 @@ from typing import Annotated, Any
 
 import typer
 
-from yoyopod.core.workers.protocol import encode_envelope, make_envelope, parse_envelope_line
 from yoyopod_cli.common import configure_logging, resolve_config_dir
+from yoyopod_cli.contracts.worker_protocol import (
+    encode_envelope,
+    make_envelope,
+    parse_envelope_line,
+)
 
 app = typer.Typer(name="network", help="Network host commands.", no_args_is_help=True)
 

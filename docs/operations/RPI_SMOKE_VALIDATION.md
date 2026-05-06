@@ -1,8 +1,8 @@
 # Raspberry Pi Smoke Validation
 
 This guide separates local Rust checks from the target-hardware checks that
-still require a Raspberry Pi, the mpv music backend, and a reachable SIP
-account.
+still require a Raspberry Pi, CI-built Rust device artifacts, and a reachable
+SIP account when VoIP validation is requested.
 
 The default board-validation path from the dev machine is now committed-code validation through `yoyopod remote validate`.
 
@@ -13,10 +13,10 @@ The default board-validation path from the dev machine is now committed-code val
 Run these anywhere:
 
 ```bash
-cargo test --manifest-path device/Cargo.toml --workspace --locked
+cargo check --manifest-path device/Cargo.toml --workspace --locked
 ```
 
-Use targeted Python CLI/deploy checks only when that surface changed.
+Use Python CLI/deploy quality checks only when that surface changed.
 
 ### 2. Default dev-machine-to-board validation
 
@@ -33,21 +33,10 @@ yoyopod remote validate --branch <branch> --sha <commit>
 Useful variations:
 
 ```bash
-yoyopod remote validate --branch <branch> --sha <commit> --with-power --with-rtc
-yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip
+yoyopod remote validate --branch <branch> --sha <commit> --with-voip
 yoyopod remote validate --branch <branch> --sha <commit> --with-navigation
-yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-navigation
-yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-lvgl-soak
+yoyopod remote validate --branch <branch> --sha <commit> --with-voip --with-lvgl-soak
 ```
-
-When `--with-music` is enabled, the Pi smoke flow provisions a deterministic validation library under the configured `test_music_target_dir` before the mpv checks run.
-
-The seeded validation library is explicit and stable:
-
-- `yoyopod-validation-set.m3u`
-- `tracks/alpha-beacon.wav`
-- `tracks/bravo-lantern.wav`
-- `tracks/charlie-sundial.wav`
 
 What it checks:
 
@@ -55,7 +44,7 @@ What it checks:
 - the branch and exact SHA are pushed
 - the stable Pi checkout is synced to committed code only
 - the target-side deploy validation passes
-- the requested target-side smoke, music, voip, and stability checks pass
+- the requested Rust runtime, UI, cloud voice, VoIP, and stability checks pass
 - the app restarts cleanly
 - the PID file and startup marker agree
 - recent logs look sane before handoff
@@ -73,8 +62,6 @@ Run these directly on the target Raspberry Pi when you want focused, repeated-sa
 ```bash
 yoyopod pi validate deploy
 yoyopod pi validate smoke
-yoyopod pi validate smoke --with-power --with-rtc
-yoyopod pi validate music
 yoyopod pi validate voip
 yoyopod pi validate navigation
 yoyopod pi validate stability
@@ -83,18 +70,14 @@ yoyopod pi validate stability
 What each command checks:
 
 - `deploy`: deploy contract files, tracked runtime config, runtime path parents, and app entrypoints without launching the app
-- `smoke`: target environment, display initialization on real hardware, matching input adapter construction and start/stop, plus optional PiSugar power and RTC checks
-- `music`: mpv music-backend startup using the composed `config/app|audio|device` topology
+- `smoke`: target environment plus Rust runtime dry-run and Rust UI worker health through the runtime protocol
 - `voip`: quick Liblinphone startup and SIP registration smoke using `config/communication/calling.yaml` plus local secrets/env
-- `navigation`: repeatable one-button routed navigation with explicit idle dwells, click-driven transitions, optional playlist/shuffle playback, and a final sleep/wake pass
-- `stability`: repeated LVGL transition plus sleep/wake recovery on the active app path
+- `navigation`: repeatable one-button routed navigation through the Rust UI worker protocol
+- `stability`: repeated Rust UI navigation and idle health checks
 
 Useful flags:
 
-- `yoyopod pi validate music --timeout 10`
-- `yoyopod pi validate music --test-music-dir ~/YoYoPod_Test_Music`
 - `yoyopod pi validate voip --timeout 15`
-- `yoyopod pi validate navigation --with-playback --test-music-dir ~/YoYoPod_Test_Music`
 - `yoyopod pi validate navigation --cycles 3 --idle-seconds 5 --tail-idle-seconds 20`
 - `yoyopod remote validate --branch <branch> --sha <commit> --with-navigation`
 - `yoyopod pi validate stability --cycles 3 --hold-seconds 0.3`
@@ -245,7 +228,7 @@ Use this when Whisplay rendering feels fast but you still want a hardware pass f
 
 ```bash
 yoyopod pi validate navigation
-yoyopod pi validate navigation --with-playback --test-music-dir ~/YoYoPod_Test_Music
+yoyopod pi validate navigation --cycles 3 --idle-seconds 5 --tail-idle-seconds 20
 yoyopod remote validate --branch <branch> --sha <commit> --with-navigation
 ```
 
@@ -276,12 +259,12 @@ Use this when you want a focused battery, charging, RTC, shutdown-threshold, and
 
 ## Suggested Order On Hardware
 
-1. Run focused Rust tests for the changed crates.
+1. Run focused Rust build checks for the changed crates.
 2. Commit the intended change.
 3. `git push`
 4. `git rev-parse HEAD`
 5. Install exact-SHA Rust artifacts when testing the Rust runtime owner.
-6. `yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip`
+6. `yoyopod remote validate --branch <branch> --sha <commit> --with-voip`
 7. manual follow-up on the still-running app
 
 ## Dirty-Tree Escape Hatch
@@ -298,7 +281,6 @@ Only use it when:
 - `deploy` fails: verify the checkout still has `deploy/pi-deploy.yaml`, `deploy/systemd/yoyopod-dev.service`, `deploy/systemd/yoyopod-prod.service`, the configured virtualenv, and writable runtime path parents
 - `display` fails: check attached HAT, driver and library install, and `display.hardware` config
 - `input` fails: check the matching display adapter initialized correctly first
-- `music` fails: verify `mpv` is installed, the configured socket path is writable, and the provision target under `test_music_target_dir` is writable when deterministic seeding is enabled
 - `voip` fails: verify the CI-built Rust VoIP host artifact, `config/communication/integrations/liblinphone_factory.conf`, SIP credentials, network reachability, and audio device configuration
 - `voip --soak registration` fails: compare `logs/voip-validation/*/summary.json` across runs and look for whether startup never reached `ok` or whether `ok` flapped during the hold window
 - `voip --soak reconnect` fails: check whether the run ever recorded a non-`ok` registration state, whether the outage lasted long enough to force a drop, and whether recovery returned before the timeout

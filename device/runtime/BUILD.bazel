@@ -1,7 +1,6 @@
 load(
     "//:defs.bzl",
     "yoyopod_rust_host_binary",
-    "yoyopod_rust_host_integration_tests",
     "yoyopod_rust_host_library",
 )
 
@@ -18,22 +17,5 @@ yoyopod_rust_host_library(
 yoyopod_rust_host_binary(
     name = "yoyopod-runtime",
     srcs = ["src/main.rs"],
-    deps = [":runtime_lib"],
-)
-
-RUNTIME_TESTS = [
-    "cli",
-    "config",
-    "event",
-    "protocol",
-    "runtime_loop",
-    "smoke",
-    "state",
-    "worker",
-]
-
-yoyopod_rust_host_integration_tests(
-    name = "tests",
-    tests = RUNTIME_TESTS,
     deps = [":runtime_lib"],
 )

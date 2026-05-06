@@ -98,10 +98,10 @@ The published ARM64 slot artifact is intended to be installed directly under
 2. Run the relevant Rust checks:
 
    ```bash
-   cargo test --manifest-path device/Cargo.toml --workspace --locked
+   cargo check --manifest-path device/Cargo.toml --workspace --locked
    ```
 
-   Add targeted Python CLI/deploy tests only if that surface changed.
+   Add targeted Python CLI/deploy quality checks only if that surface changed.
 
 3. Commit and merge the version bump.
 4. Tag the release from the merged commit:

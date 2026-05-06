@@ -13,7 +13,6 @@ from pathlib import Path
 import yaml
 
 from yoyopod_cli.common import REPO_ROOT
-from yoyopod_cli.defaults import DEFAULT_TEST_MUSIC_TARGET_DIR
 
 
 @dataclass(frozen=True)
@@ -36,7 +35,6 @@ class PiPaths:
     error_log_file: str = "logs/yoyopod_errors.log"
     pid_file: str = "/tmp/yoyopod.pid"
     screenshot_path: str = "/tmp/yoyopod_screenshot.png"
-    test_music_target_dir: str = DEFAULT_TEST_MUSIC_TARGET_DIR
     startup_marker: str = "YoYoPod Rust runtime starting"
     kill_processes: tuple[str, ...] = ("yoyopod-runtime",)
     rsync_exclude: tuple[str, ...] = (
@@ -246,9 +244,6 @@ def load_pi_paths(
         error_log_file=_str_field(merged.get("error_log_file"), PI_DEFAULTS.error_log_file),
         pid_file=_str_field(merged.get("pid_file"), PI_DEFAULTS.pid_file),
         screenshot_path=_str_field(merged.get("screenshot_path"), PI_DEFAULTS.screenshot_path),
-        test_music_target_dir=_str_field(
-            merged.get("test_music_target_dir"), PI_DEFAULTS.test_music_target_dir
-        ),
         startup_marker=_str_field(merged.get("startup_marker"), PI_DEFAULTS.startup_marker),
         kill_processes=_as_str_tuple(merged.get("kill_processes"), PI_DEFAULTS.kill_processes),
         rsync_exclude=_as_str_tuple(merged.get("rsync_exclude"), PI_DEFAULTS.rsync_exclude),

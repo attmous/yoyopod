@@ -12,7 +12,8 @@ If you are new here, read these first:
 ## Source of truth
 
 For current behavior, trust:
-- current code in `yoyopod/`
+- current Rust runtime and host code in `device/`
+- current operations tooling in `yoyopod_cli/`
 - this guide for setup and workflow
 - [`SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) for runtime topology
 - [`../AGENTS.md`](../../AGENTS.md) and `rules/` for repo guidance
@@ -139,16 +140,9 @@ Rust runtime dry run:
 cargo run --manifest-path device/Cargo.toml -p yoyopod-runtime -- --config-dir config --dry-run
 ```
 
-Legacy Python fallback:
+Rust runtime:
 
 ```bash
-device/runtime/build/yoyopod-runtime --config-dir config
-```
-
-Legacy Python simulation:
-
-```bash
-yoyopod build simulation
 device/runtime/build/yoyopod-runtime --config-dir config
 ```
 
@@ -158,33 +152,31 @@ Installed console entrypoint:
 yoyopod
 ```
 
-Useful demos:
+The installed `yoyopod` command is the operations CLI. It does not launch the
+app runtime.
 
-```bash
-python demos/demo_voip.py --simulate
-python demos/demo_playlists.py
-python demos/demo_runtime_state.py --simulate
-```
+Legacy Python runtime demos have been deleted. The Rust runtime is the only
+supported app runtime workflow.
 
 ## Validation
 
 Local validation:
 
 ```bash
-cargo test --manifest-path device/Cargo.toml --workspace --locked
+cargo check --manifest-path device/Cargo.toml --workspace --locked
 ```
 
-Run targeted Python checks only when Python CLI/deploy/compatibility files
+Run Python lint/type checks only when Python CLI/deploy/compatibility files
 change:
 
 ```bash
-uv run pytest -q tests/cli tests/deploy
+uv run python scripts/quality.py gate
 ```
 
 Optional extra syntax/import smoke for broad Python tree changes:
 
 ```bash
-python -m compileall yoyopod tests demos scripts
+python -m compileall yoyopod_cli scripts
 ```
 
 Full quality audit of the current repo debt:
@@ -213,8 +205,7 @@ Target-side validation suite:
 ```bash
 yoyopod pi validate deploy
 yoyopod pi validate smoke
-yoyopod pi validate smoke --with-power --with-rtc
-yoyopod pi validate music
+yoyopod pi validate smoke
 yoyopod pi validate voip
 yoyopod pi validate navigation
 yoyopod pi validate stability
@@ -233,9 +224,9 @@ yoyopod remote config show
 yoyopod remote status
 git branch --show-current
 git rev-parse HEAD
-yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-lvgl-soak
-yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-navigation
-yoyopod remote preflight --branch <branch> --with-music --with-voip --with-navigation --with-lvgl-soak
+yoyopod remote validate --branch <branch> --sha <commit> --with-voip --with-lvgl-soak
+yoyopod remote validate --branch <branch> --sha <commit> --with-navigation
+yoyopod remote preflight --branch <branch>
 yoyopod remote service status
 yoyopod remote logs --lines 200
 ```
@@ -278,45 +269,27 @@ yoyopod remote logs --follow --filter ERROR
 ## Package Layout
 
 ```text
-yoyopod/
-  app.py
-  main.py
-  core/
-    application.py
-    bootstrap/
-    loop.py
-    bus.py
-    scheduler.py
-    diagnostics/
-  config/
-    manager.py
-    models.py
-  integrations/
-    call/
-    cloud/
-    contacts/
-    display/
-    location/
-    music/
-    network/
-    power/
-    voice/
-  backends/
-    music/
-    network/
-    power/
-    voice/
-    voip/
+device/
+  runtime/
+  protocol/
+  worker/
+  harness/
+  cloud/
+  media/
+  network/
+  power/
+  speech/
   ui/
-    display/
-    input/
-    lvgl_binding/
-    screens/
+  voip/
 yoyopod_cli/
   main.py
+  pi/
+  config/
+  contracts/
 scripts/
   quality.py
-sitecustomize.py
+legacy/
+  python-runtime/
 ```
 
 ## Current Active Docs

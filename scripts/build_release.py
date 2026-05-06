@@ -2,7 +2,7 @@
 
 Produces:
   <output_root>/<version>/
-    ├── app/              # yoyopod + yoyopod_cli source trees
+    ├── app/              # device + yoyopod_cli source trees
     ├── config/           # repo's top-level config/ tree (default app config)
     ├── venv/             # runtime venv (only when --with-venv)
     ├── bin/launch        # copy of deploy/scripts/launch.sh
@@ -11,8 +11,8 @@ Produces:
 
 SELF-CONTAINED NOTE: venv bundling is ON by default. Build deployable Pi
 artifacts in a Linux/aarch64 environment, CI slot builder, or via
-`yoyopod remote release build-pi`. Use --skip-venv only for structure tests
-or legacy source-only compatibility flows.
+`yoyopod remote release build-pi`. Use --skip-venv only for source-only
+packaging checks or legacy source-only compatibility flows.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ except ImportError:
     )
 
 
-PACKAGE_DIRS: tuple[str, ...] = ("yoyopod", "yoyopod_cli")
+PACKAGE_DIRS: tuple[str, ...] = ("device", "yoyopod_cli")
 _CHECKOUT_VOICE_WORKER_ARTIFACT = SLOT_VOICE_WORKER_ARTIFACT.relative_to("app").as_posix()
 _SLOT_VOICE_WORKER_ARTIFACT = SLOT_VOICE_WORKER_ARTIFACT.as_posix()
 _CHECKOUT_VOICE_WORKER_RE = re.compile(
@@ -88,9 +88,10 @@ def _copy_sources(repo_root: Path, dest_app: Path) -> None:
                 "__pycache__",
                 "*.pyc",
                 "*.pyo",
-                ".pytest_cache",
                 ".mypy_cache",
                 ".ruff_cache",
+                "target",
+                "build",
                 "*.egg-info",
                 "*.dist-info",
                 ".DS_Store",
@@ -442,7 +443,7 @@ def build(
     """Produce a slot directory at <output_root>/<version>/.
 
     Returns the slot directory path. Venv resolution is enabled by default;
-    pass skip_venv=True only for structure tests or legacy source-only slots.
+    pass skip_venv=True only for source-only packaging checks or legacy source-only slots.
     """
     valid_channels = ("dev", "beta", "stable")
     if channel not in valid_channels:

@@ -79,7 +79,7 @@ Legacy `on_button_*()` compatibility methods have been removed from `Screen`.
 
 ## Known Gaps
 
-- some older demos and tests still import deleted pre-HAL input modules
+- some older historical docs still reference deleted pre-HAL input modules
 - `keyboard.py` still has small naming drift between `get_supported_actions()` and the manager's `get_capabilities()` convention
 
 ## Summary

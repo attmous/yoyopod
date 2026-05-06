@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 from yoyopod_cli.common import REPO_ROOT
 
 if TYPE_CHECKING:
-    from yoyopod.config import MediaConfig
+    from yoyopod_cli.config import MediaConfig
 
 # ---------------------------------------------------------------------------
 # Shared result type for the flattened validation suite
@@ -64,7 +64,7 @@ def _load_app_config(config_dir: Path) -> dict[str, Any]:
     """Load the composed app config if present."""
     from loguru import logger
 
-    from yoyopod.config import config_to_dict, load_composed_app_settings
+    from yoyopod_cli.config import config_to_dict, load_composed_app_settings
 
     if not any(
         path.exists()
@@ -79,6 +79,6 @@ def _load_app_config(config_dir: Path) -> dict[str, Any]:
 
 def _load_media_config(config_dir: Path) -> MediaConfig:
     """Load the typed composed media config if present."""
-    from yoyopod.config import ConfigManager
+    from yoyopod_cli.config import ConfigManager
 
     return ConfigManager(config_dir=str(config_dir)).get_media_settings()

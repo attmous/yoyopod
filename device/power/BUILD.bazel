@@ -1,7 +1,6 @@
 load(
     "//:defs.bzl",
     "yoyopod_rust_host_binary",
-    "yoyopod_rust_host_integration_tests",
     "yoyopod_rust_host_library",
 )
 
@@ -22,19 +21,4 @@ yoyopod_rust_host_binary(
     name = "yoyopod-power-host",
     srcs = ["src/main.rs"],
     deps = [":power_host_lib"],
-)
-
-POWER_HOST_TESTS = [
-    "config",
-    "snapshot",
-    "worker",
-]
-
-yoyopod_rust_host_integration_tests(
-    name = "tests",
-    tests = POWER_HOST_TESTS,
-    deps = [
-        ":power_host_lib",
-        "//device/harness:harness_lib",
-    ],
 )

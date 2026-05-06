@@ -28,10 +28,8 @@ where a change belongs.
 
 - `yoyopod_cli/` owns local and Pi operations tooling.
 - `deploy/` owns systemd, installer, slot, and release packaging scripts.
-- `yoyopod/` remains for compatibility paths, Python app surfaces that have not
-  been retired, and shared models still consumed by tooling.
-- `tests/` contains both Rust-runtime migration coverage and Python
-  CLI/compatibility coverage.
+- Python code is CLI/deploy/compatibility tooling only; it is not the device
+  runtime owner.
 
 ## Local Build Output
 
@@ -40,7 +38,6 @@ Do not work from generated output directories. These are disposable:
 - `device/target/`
 - `device/*/build/`
 - `.venv/`
-- `.pytest_cache/`
 - `__pycache__/`
 - `logs/`
 - local `data/`

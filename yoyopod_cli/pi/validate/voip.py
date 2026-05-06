@@ -13,6 +13,7 @@ from typing import Annotated, Any, Callable, Protocol, cast
 import typer
 
 from yoyopod_cli.common import REPO_ROOT, configure_logging, resolve_config_dir
+from yoyopod_cli.pi.support.call_models import CallState, RegistrationState, VoIPConfig
 from yoyopod_cli.pi.validate._common import _CheckResult, _print_summary
 from yoyopod_cli.pi.validate.service_env import load_service_env_file, resolve_service_env_file
 
@@ -23,8 +24,7 @@ from yoyopod_cli.pi.validate.service_env import load_service_env_file, resolve_s
 
 def _voip_check(config_dir: Path, registration_timeout: float) -> _CheckResult:
     """Validate Rust VoIP startup and SIP registration."""
-    from yoyopod.config import ConfigManager
-    from yoyopod.integrations.call import VoIPConfig
+    from yoyopod_cli.config import ConfigManager
     from yoyopod_cli.pi.rust_voip_runtime import build_rust_voip_manager
 
     config_manager = ConfigManager(config_dir=str(config_dir))
@@ -97,8 +97,6 @@ _ACTIVE_CALL_STATES: set[str] = set()  # populated lazily below
 def _lazy_connected_call_states() -> set[str]:
     global _CONNECTED_CALL_STATES
     if not _CONNECTED_CALL_STATES:
-        from yoyopod.integrations.call import CallState
-
         _CONNECTED_CALL_STATES = {CallState.CONNECTED.value, CallState.STREAMS_RUNNING.value}
     return _CONNECTED_CALL_STATES
 
@@ -106,8 +104,6 @@ def _lazy_connected_call_states() -> set[str]:
 def _lazy_active_call_states() -> set[str]:
     global _ACTIVE_CALL_STATES
     if not _ACTIVE_CALL_STATES:
-        from yoyopod.integrations.call import CallState
-
         _ACTIVE_CALL_STATES = {
             CallState.CONNECTED.value,
             CallState.STREAMS_RUNNING.value,
@@ -367,8 +363,6 @@ def _iterate_interval_seconds(manager: _VoIPManagerLike) -> float:
 
 
 def _status_is_registered(status: dict[str, object]) -> bool:
-    from yoyopod.integrations.call import RegistrationState
-
     return bool(status.get("registered")) and (
         str(status.get("registration_state")) == RegistrationState.OK.value
     )
@@ -427,8 +421,6 @@ def _hold_registration_ok(
     *,
     hold_seconds: float,
 ) -> tuple[bool, str]:
-    from yoyopod.integrations.call import RegistrationState
-
     deadline = time.monotonic() + hold_seconds
     interval = _iterate_interval_seconds(manager)
     while time.monotonic() <= deadline:
@@ -448,8 +440,6 @@ def _wait_for_call_connection(
     *,
     timeout: float,
 ) -> tuple[bool, str, float]:
-    from yoyopod.integrations.call import CallState
-
     started_at = time.monotonic()
     deadline = started_at + timeout
     interval = _iterate_interval_seconds(manager)
@@ -511,8 +501,6 @@ def _wait_for_call_end(
     *,
     timeout: float,
 ) -> tuple[bool, str, float]:
-    from yoyopod.integrations.call import CallState
-
     started_at = time.monotonic()
     deadline = started_at + timeout
     interval = _iterate_interval_seconds(manager)
@@ -685,8 +673,6 @@ def _run_voip_reconnect_drill(
 ) -> None:
     """Verify that SIP registration drops and then recovers after a short network wobble."""
     from loguru import logger
-
-    from yoyopod.integrations.call import RegistrationState
 
     manager = _build_voip_manager_for_drill(config_dir)
     recorder = _VoIPDrillRecorder(

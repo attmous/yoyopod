@@ -1,25 +1,25 @@
 # Verification Policy
 
-The project is now Rust-first for runtime work. The old Python quality gate is
-not the default local pre-commit or pre-push requirement for Rust runtime,
-worker, or LVGL scene work.
+The project is Rust-first for runtime work and no longer carries repo-local
+automated suites. Verification is split between build/lint/type checks and Raspberry Pi
+runtime validation.
 
-## Rust Runtime Checks
+## Rust Build Checks
 
 Use focused Rust checks for the crate you changed:
 
 ```bash
-cargo test --manifest-path device/Cargo.toml -p yoyopod-runtime --locked
-cargo test --manifest-path device/Cargo.toml -p yoyopod-ui --locked
-cargo test --manifest-path device/Cargo.toml -p yoyopod-media --locked
-cargo test --manifest-path device/Cargo.toml -p yoyopod-voip --locked
-cargo test --manifest-path device/Cargo.toml -p yoyopod-network --locked
+cargo check --manifest-path device/Cargo.toml -p yoyopod-runtime --locked
+cargo check --manifest-path device/Cargo.toml -p yoyopod-ui --locked
+cargo check --manifest-path device/Cargo.toml -p yoyopod-media --locked
+cargo check --manifest-path device/Cargo.toml -p yoyopod-voip --locked
+cargo check --manifest-path device/Cargo.toml -p yoyopod-network --locked
 ```
 
 For broad Rust workspace changes:
 
 ```bash
-cargo test --manifest-path device/Cargo.toml --workspace --locked
+cargo check --manifest-path device/Cargo.toml --workspace --locked
 ```
 
 If native LVGL or Whisplay hardware features are involved, use the CI-built ARM
@@ -43,18 +43,13 @@ When testing `yoyopod-runtime`, install the exact-SHA Rust artifacts first. See
 
 ## Python Checks
 
-Python remains for CLI, deployment, compatibility, and selected tests. Run
-targeted Python tests when those surfaces change:
+Python remains for CLI, deployment, and compatibility tooling. Use the repo
+quality gate for that surface:
 
 ```bash
-uv run pytest -q tests/cli
-uv run pytest -q tests/deploy
+uv run python scripts/quality.py gate
+python -m compileall yoyopod_cli scripts
 ```
-
-The legacy wrapper still exists for Python CI maintenance, but it is no longer
-documented as a default local gate. Use it only when you are working on Python
-tooling, fixing CI, or explicitly asked to mirror the current Python CI jobs.
-Do not treat it as the default gate for Rust runtime iteration.
 
 ## Reporting
 
@@ -63,6 +58,6 @@ Always report the checks that actually ran. For hardware validation, include:
 - branch
 - exact commit SHA
 - artifact names and CI run ID
-- active runtime owner (`yoyopod-runtime` or Python fallback)
+- active runtime owner (`yoyopod-runtime`)
 - Pi command result
 - whether the dev service was left running

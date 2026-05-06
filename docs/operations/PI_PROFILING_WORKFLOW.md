@@ -131,7 +131,6 @@ That gives you:
 - `pyinstrument` for quick sampled call-stack reports
 - `pyperf` for repeatable benchmark runs and branch-to-branch comparisons
 - `py-spy` for low-overhead sampling, especially on the Pi
-- `pytest-timeout` for hang detection during tests
 
 The Linux `perf` tool is still a system package, not a Python dependency.
 
@@ -151,7 +150,7 @@ Recommended flow:
 ```bash
 git branch --show-current
 git rev-parse HEAD
-yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-navigation
+yoyopod remote validate --branch <branch> --sha <commit> --with-voip --with-navigation
 yoyopod remote logs --follow --filter coord
 yoyopod remote logs --follow --filter comm
 ```
@@ -266,27 +265,16 @@ For a live process:
 perf stat -p "$(cat /tmp/yoyopod.pid)" -I 1000
 ```
 
-For a bounded fresh run where you want Python function names in the output on
-Python 3.12+:
+For a bounded Rust runtime run:
 
 ```bash
 mkdir -p logs/profiles
-PYTHONPERFSUPPORT=1 perf record -F 99 -g -o logs/profiles/perf-simulate-bootstrap.data \
-  legacy/python-runtime/profile.py run simulate-bootstrap
-perf report -g -i logs/profiles/perf-simulate-bootstrap.data
+perf record -F 99 -g -o logs/profiles/perf-runtime.data \
+  device/runtime/build/yoyopod-runtime --config-dir config
+perf report -g -i logs/profiles/perf-runtime.data
 ```
-
-If the interpreter was not started with `PYTHONPERFSUPPORT=1` or `python -X perf`,
-`perf` can still show native hot spots, but Python function names may be missing.
 
 ## 6. Use test timeouts for hangs, not performance regressions
-
-`pytest-timeout` is for "this test wedged" situations:
-
-```bash
-uv run pytest -q --timeout=60
-uv run pytest -q tests/e2e/test_app_orchestration.py --timeout=60
-```
 
 Use it to get thread dumps when the suite stalls. Do not use it as a benchmark
 tool.
@@ -296,9 +284,9 @@ tool.
 When you are checking whether an architecture change regressed the Pi, use this
 order:
 
-1. Run focused Rust tests for the runtime/worker crates you changed.
+1. Run focused Rust build checks for the runtime/worker crates you changed.
 2. Install exact-SHA Rust artifacts when profiling the Rust owner.
-3. Run `yoyopod remote validate --branch <branch> --sha <commit> --with-music --with-voip --with-navigation`.
+3. Run `yoyopod remote validate --branch <branch> --sha <commit> --with-voip --with-navigation`.
 4. Inspect `coord` and `comm` log warnings first.
 5. Compare `simulate-bootstrap` or `simulate-loop` with `yoyopod dev profile`.
 6. If the Pi still looks CPU-bound, attach `py-spy`.

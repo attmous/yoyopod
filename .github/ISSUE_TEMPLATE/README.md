@@ -6,7 +6,6 @@ Four YAML issue forms for the YoYoPod codebase review workflow:
 |---|---|
 | `review-architecture.yml` | Boundaries, coupling, state ownership, threading, layering, dependency direction. |
 | `review-code-quality.yml` | Error handling, logging, dead code, naming, idioms, perf hot-paths, security. |
-| `review-testing.yml` | Coverage gaps, brittle tests, mocks-vs-reality, CI gate gaps, missing integration. |
 | `review-docs.yml` | Stale, missing, inaccurate, or contradictory documentation. |
 
 ## Obsolescence-prevention contract

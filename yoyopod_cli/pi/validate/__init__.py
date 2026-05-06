@@ -8,7 +8,6 @@ from yoyopod_cli.pi.validate import (
     cloud_voice as _cloud_voice,
     deploy as _deploy,
     lvgl as _lvgl,
-    music as _music,
     navigation as _navigation,
     stability as _stability,
     system as _system,
@@ -18,7 +17,7 @@ from yoyopod_cli.pi.validate import (
 app = typer.Typer(
     name="validate",
     help=(
-        "Focused target-side validation suite for deploy, smoke, music, voip, "
+        "Focused target-side validation suite for deploy, smoke, voip, "
         "and navigation stability checks."
     ),
     no_args_is_help=True,
@@ -27,7 +26,6 @@ app = typer.Typer(
 app.command(name="deploy")(_deploy.deploy)
 app.command(name="cloud-voice")(_cloud_voice.cloud_voice)
 app.command(name="smoke")(_system.smoke)
-app.command(name="music")(_music.music)
 app.command(name="voip")(_voip.voip)
 app.command(name="stability")(_stability.stability)
 app.command(name="navigation")(_navigation.navigation)

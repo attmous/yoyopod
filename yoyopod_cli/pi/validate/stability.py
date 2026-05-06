@@ -6,11 +6,11 @@ from typing import Annotated
 
 import typer
 
-from yoyopod_cli.common import configure_logging
-from yoyopod_cli.defaults import DEFAULT_TEST_MUSIC_TARGET_DIR
-from yoyopod_cli.pi.validate._navigation_soak import (
-    NavigationSoakError,
-    run_navigation_idle_soak,
+from yoyopod_cli.common import configure_logging, resolve_config_dir
+from yoyopod_cli.pi.validate._common import _print_summary
+from yoyopod_cli.pi.validate.rust_runtime import (
+    rust_runtime_dry_run_check as _rust_runtime_dry_run_check,
+    rust_ui_navigation_check as _rust_ui_navigation_check,
 )
 
 
@@ -29,53 +29,32 @@ def stability(
         float,
         typer.Option("--idle-seconds", help="How long to idle after each full navigation cycle."),
     ] = 1.0,
-    with_music: Annotated[
-        bool,
-        typer.Option(
-            "--with-music",
-            help="Also exercise playlist loading and now-playing actions during the soak.",
-        ),
-    ] = False,
-    provision_test_music: Annotated[
-        bool,
-        typer.Option(
-            "--provision-test-music/--no-provision-test-music",
-            help="Seed deterministic validation music before playback soak steps.",
-        ),
-    ] = True,
-    test_music_dir: Annotated[
-        str,
-        typer.Option(
-            "--test-music-dir",
-            help="Dedicated target directory for validation-only test music assets.",
-        ),
-    ] = "",
-    skip_sleep: Annotated[
-        bool, typer.Option("--skip-sleep", help="Skip the sleep and wake exercise.")
-    ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", help="Enable DEBUG logging.")] = False,
 ) -> None:
-    """Run a repeated navigation and idle stability pass on the target checkout."""
+    """Run a repeated Rust UI navigation and idle stability pass on the target checkout."""
     configure_logging(verbose)
-    resolved_music_dir = test_music_dir or DEFAULT_TEST_MUSIC_TARGET_DIR
-    try:
-        report = run_navigation_idle_soak(
-            config_dir=config_dir,
-            simulate=False,
+    config_path = resolve_config_dir(config_dir)
+
+    results = [
+        _rust_runtime_dry_run_check(config_path),
+        _rust_ui_navigation_check(
+            config_path,
             cycles=cycles,
             hold_seconds=hold_seconds,
             idle_seconds=idle_seconds,
-            skip_sleep=skip_sleep,
-            with_music=with_music,
-            provision_test_music=provision_test_music,
-            test_music_dir=resolved_music_dir,
-        )
-    except NavigationSoakError as exc:
-        from loguru import logger
-
-        logger.error(f"Stability soak failed: {exc}")
-        raise typer.Exit(code=1)
+            tail_idle_seconds=hold_seconds,
+        ),
+    ]
+    _print_summary("stability", results)
 
     from loguru import logger
 
-    logger.info(f"Stability soak passed: {report.summary()}")
+    if not any(result.status == "fail" for result in results):
+        logger.info("Rust stability validation passed")
+        return
+
+    logger.error(
+        "Rust stability validation failed: {}",
+        "; ".join(result.details for result in results if result.status == "fail"),
+    )
+    raise typer.Exit(code=1)

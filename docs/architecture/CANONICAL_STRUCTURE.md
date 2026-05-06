@@ -168,29 +168,15 @@ Core package exports should follow the same rule:
   `yoyopod.integrations.location.events`
 - `yoyopod.core.__init__` should not re-export integration-owned event types
 
-## Canonical Test Layout
+## Validation Layout
 
-The test tree should mirror the same ownership split as `yoyopod/`.
+The repo no longer carries unit-test trees. Validation ownership should mirror
+the runtime ownership split:
 
-- `tests/core/`
-  - core primitives and cross-cutting runtime helpers
-- `tests/integrations/`
-  - domain-level tests for `integrations/`
-- `tests/backends/`
-  - adapter-level tests for `backends/`
-- `tests/config/`
-  - typed config loading, composition, and validation
-- `tests/cli/`
-  - `yoyopod_cli/` command and helper coverage
-- `tests/ui/`
-  - display, input, screen, and LVGL coverage for `ui/`
-- `tests/e2e/`
-  - cross-domain orchestration and soak-style behavior checks
-- `tests/fixtures/`
-  - shared fakes, builders, and reusable test helpers
-
-Only truly repo-global tests should remain flat under `tests/`. Package-owned
-tests should keep moving into these buckets as their ownership becomes clearer.
+- Rust build checks stay with `device/Cargo.toml`
+- target hardware validation stays behind `yoyopod pi validate ...`
+- remote committed-code validation stays behind `yoyopod remote validate ...`
+- Python CLI/deploy verification stays in `scripts/quality.py`
 
 ## Exemplar: Call + Contacts
 
@@ -285,4 +271,4 @@ When migrating another domain:
 4. define an app-facing seam in `yoyopod/integrations/<domain>/__init__.py`
 5. route mutable user data into `data/`, not tracked config
 6. mirror the same relative file structure in `config/boards/<board>/`
-7. add focused tests for composition, boundaries, and bootstrap behavior
+7. add focused build and Pi validation checks for composition, boundaries, and bootstrap behavior

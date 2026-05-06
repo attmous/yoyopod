@@ -128,7 +128,7 @@ That tarball extracts an install-ready `device/.../build/...` tree:
    For a direct UI worker check, run from the Pi checkout:
 
    ```bash
-   ssh <user>@<host> 'cd /opt/yoyopod-dev/checkout && YOYOPOD_WHISPLAY_DC_GPIO=27 YOYOPOD_WHISPLAY_RESET_GPIO=4 YOYOPOD_WHISPLAY_BUTTON_GPIO=17 YOYOPOD_WHISPLAY_BUTTON_ACTIVE_LOW=0 LD_LIBRARY_PATH=/opt/yoyopod-dev/checkout/yoyopod/ui/lvgl_binding/native/build/lvgl/lib:/opt/yoyopod-dev/checkout/yoyopod/ui/lvgl_binding/native/build:$LD_LIBRARY_PATH /opt/yoyopod-dev/checkout/device/ui/build/yoyopod-ui-host --hardware whisplay'
+   ssh <user>@<host> 'cd /opt/yoyopod-dev/checkout && YOYOPOD_WHISPLAY_DC_GPIO=27 YOYOPOD_WHISPLAY_RESET_GPIO=4 YOYOPOD_WHISPLAY_BUTTON_GPIO=17 YOYOPOD_WHISPLAY_BUTTON_ACTIVE_LOW=0 LD_LIBRARY_PATH=/opt/yoyopod-dev/checkout/yoyopod_cli/pi/support/lvgl_binding/native/build/lvgl/lib:/opt/yoyopod-dev/checkout/yoyopod_cli/pi/support/lvgl_binding/native/build:$LD_LIBRARY_PATH /opt/yoyopod-dev/checkout/device/ui/build/yoyopod-ui-host --hardware whisplay'
    ```
 
 10. **Report exact provenance.** Include the branch, commit SHA, CI run ID,

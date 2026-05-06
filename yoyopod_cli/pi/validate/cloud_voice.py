@@ -18,14 +18,15 @@ from uuid import uuid4
 import typer
 from typing import Annotated
 
-from yoyopod.core.workers.protocol import (
+from yoyopod_cli.contracts.worker_protocol import (
     WorkerEnvelope,
     encode_envelope,
     make_envelope,
     parse_envelope_line,
 )
-from yoyopod.integrations.voice import VoiceSettings, match_voice_command
-from yoyopod.integrations.voice.worker_contract import (
+from yoyopod_cli.pi.support.voice_commands import match_voice_command
+from yoyopod_cli.pi.support.voice_models import VoiceSettings
+from yoyopod_cli.pi.support.voice_worker_contract import (
     build_speak_payload,
     build_transcribe_payload,
     parse_health_result,
@@ -467,7 +468,7 @@ def _cloud_voice_acoustic_loopback_check(
 ) -> list[_CheckResult]:
     """Validate the physical speaker->microphone route with cloud STT."""
 
-    from yoyopod.backends.voice.output import AlsaOutputPlayer
+    from yoyopod_cli.pi.support.voice_output import AlsaOutputPlayer
 
     arecord = shutil.which("arecord")
     if arecord is None:
@@ -656,7 +657,7 @@ def _cloud_voice_cycle_check(
     phrase: str,
     playback: bool,
 ) -> list[_CheckResult]:
-    from yoyopod.backends.voice.output import AlsaOutputPlayer
+    from yoyopod_cli.pi.support.voice_output import AlsaOutputPlayer
 
     timeout_seconds = max(5.0, settings.cloud_worker_request_timeout_seconds)
     results: list[_CheckResult] = []
@@ -825,8 +826,8 @@ def cloud_voice(
     """Validate cloud STT/TTS and local voice command routing on the target."""
     from loguru import logger
 
-    from yoyopod.config import ConfigManager
-    from yoyopod.integrations.voice.settings import VoiceSettingsResolver
+    from yoyopod_cli.config import ConfigManager
+    from yoyopod_cli.pi.support.voice_settings import VoiceSettingsResolver
 
     configure_logging(verbose)
     config_path = resolve_config_dir(config_dir)
