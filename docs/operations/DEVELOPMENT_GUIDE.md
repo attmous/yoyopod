@@ -155,13 +155,9 @@ yoyopod
 The installed `yoyopod` command is the operations CLI. It does not launch the
 app runtime.
 
-Useful demos:
-
-```bash
-python demos/demo_voip.py --simulate
-python demos/demo_playlists.py
-python demos/demo_runtime_state.py --simulate
-```
+Legacy Python runtime demos were moved under `legacy/python-runtime/demos/`.
+They are retained only as historical reference and are not part of the active
+Rust runtime workflow.
 
 ## Validation
 
@@ -181,7 +177,7 @@ uv run pytest -q tests/cli tests/deploy
 Optional extra syntax/import smoke for broad Python tree changes:
 
 ```bash
-python -m compileall yoyopod_cli tests demos scripts
+python -m compileall yoyopod_cli tests scripts
 ```
 
 Full quality audit of the current repo debt:
