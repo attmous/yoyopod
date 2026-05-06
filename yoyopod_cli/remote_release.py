@@ -10,7 +10,7 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import typer
 
@@ -19,11 +19,7 @@ from yoyopod_cli.paths import LanePaths, SlotPaths, load_lane_paths, load_pi_pat
 from yoyopod_cli.release_manifest import ReleaseManifest, load_manifest, validate_release_version
 from yoyopod_cli.remote_shared import RemoteConnection, pi_conn
 from yoyopod_cli.remote_transport import run_remote, run_remote_capture, validate_config
-from yoyopod_cli.slot_contract import (
-    APP_NATIVE_RUNTIME_ARTIFACTS,
-    detect_self_contained_python_version,
-    missing_self_contained_paths,
-)
+from yoyopod_cli.slot_contract import missing_self_contained_paths
 
 app = typer.Typer(name="release", help="Slot-deploy push/rollback/status.", no_args_is_help=True)
 
@@ -40,7 +36,6 @@ class PreparedSlotArtifact:
     slot_dir: Path
     manifest: ReleaseManifest
     self_contained: bool
-    python_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -121,7 +116,7 @@ def _safe_extract_tarball(artifact: Path, destination: Path) -> None:
 
     destination_root = destination.resolve()
 
-    def extract_legacy_member(handle: tarfile.TarFile, member: tarfile.TarInfo) -> None:
+    def extract_tar_member_fallback(handle: tarfile.TarFile, member: tarfile.TarInfo) -> None:
         target = destination / member.name
         if member.isdir():
             target.mkdir(parents=True, exist_ok=True)
@@ -163,7 +158,7 @@ def _safe_extract_tarball(artifact: Path, destination: Path) -> None:
             handle.extractall(destination, filter="data")
         except TypeError:
             for member in members:
-                extract_legacy_member(handle, member)
+                extract_tar_member_fallback(handle, member)
 
 
 def _find_materialized_slot_dir(root: Path) -> Path:
@@ -201,13 +196,11 @@ def _prepared_slot_artifact(artifact: Path) -> Iterator[PreparedSlotArtifact]:
 
         manifest = load_manifest(manifest_path)
         resolved_slot = slot_dir.resolve()
-        python_version = detect_self_contained_python_version(resolved_slot)
         yield PreparedSlotArtifact(
             source=artifact,
             slot_dir=resolved_slot,
             manifest=manifest,
-            self_contained=python_version is not None,
-            python_version=python_version,
+            self_contained=not missing_self_contained_paths(resolved_slot),
         )
     finally:
         if tempdir is not None:
@@ -244,71 +237,16 @@ def _rsync_to_pi(conn: RemoteConnection, slot: Path, version: str) -> int:
     return _run_slot_remote(conn, f"chmod 755 {shlex.quote(launch_path)}")
 
 
-def _run_preflight_on_pi(
-    conn: object,
-    version: str,
-    *,
-    allow_hydrated_runtime: bool = False,
-) -> int:
+def _run_preflight_on_pi(conn: object, version: str) -> int:
     """Run the preflight health check for the uploaded slot on the Pi."""
     slot_dir = _slot_dir(version)
     args = ["preflight", "--slot", slot_dir]
-    if allow_hydrated_runtime:
-        args.append("--allow-hydrated-runtime")
     cmd = _slot_subapp_command(
         slot_dir,
         "yoyopod_cli.health",
         *args,
     )
     return _run_slot_remote(conn, cmd)
-
-
-def _hydrate_slot_on_pi(conn: object, version: str) -> int:
-    """Create a slot-local venv and native artifacts on the Pi before preflight."""
-    slot_dir = _slot_dir(version)
-    current_path = _slots().current_path()
-    venv_dir = f"{slot_dir}/venv"
-    requirements_path = f"{slot_dir}/runtime-requirements.txt"
-    tmp_root = f"{_slots().state_dir()}/tmp"
-    artifact_copy_steps = _slot_artifact_hydration_steps(current_path, slot_dir)
-    cmd = (
-        "set -e; "
-        f"test -f {shlex.quote(requirements_path)}; "
-        f"mkdir -p {shlex.quote(tmp_root)}; "
-        f"export TMPDIR={shlex.quote(tmp_root)}; "
-        'tmp_venv=$(mktemp -d "$TMPDIR/yoyopod-slot-venv.XXXXXX"); '
-        "trap 'rm -rf \"$tmp_venv\"' EXIT; "
-        'python3 -m venv "$tmp_venv"; '
-        '"$tmp_venv/bin/python" -m pip install --upgrade pip setuptools wheel; '
-        f"if [ -s {shlex.quote(requirements_path)} ]; then "
-        f'  "$tmp_venv/bin/python" -m pip install -r {shlex.quote(requirements_path)}; '
-        "fi; "
-        f"rm -rf {shlex.quote(venv_dir)}; "
-        f'mv "$tmp_venv" {shlex.quote(venv_dir)}; '
-        "trap - EXIT; "
-        f"{artifact_copy_steps}"
-        f"{_slot_subapp_command(slot_dir, 'yoyopod_cli.build', 'lvgl')}"
-    )
-    return _run_slot_remote(conn, cmd)
-
-
-def _slot_artifact_hydration_steps(current_path: str, slot_dir: str) -> str:
-    """Return shell steps that copy reusable native artifacts from the current slot."""
-
-    steps: list[str] = []
-    for relative in APP_NATIVE_RUNTIME_ARTIFACTS:
-        relative_posix = relative.as_posix()
-        current_artifact = f"{current_path}/app/{relative_posix}"
-        slot_artifact = f"{slot_dir}/app/{relative_posix}"
-        slot_parent = str(PurePosixPath(slot_artifact).parent)
-        steps.append(
-            f"if [ -f {shlex.quote(current_artifact)} ]; then "
-            f"  mkdir -p {shlex.quote(slot_parent)} && "
-            f"  cp -aL {shlex.quote(current_artifact)} {shlex.quote(slot_artifact)} && "
-            f"  chmod 755 {shlex.quote(slot_artifact)}; "
-            f"fi; "
-        )
-    return "".join(steps)
 
 
 def _flip_symlinks_on_pi(conn: object, version: str) -> int:
@@ -459,7 +397,7 @@ def _remote_build_pi_command(*, channel: str, version: str | None, python_versio
         "build_root=$(mktemp -d /tmp/yoyopod-release-build.XXXXXX); "
         f"{python_bin} -m yoyopod_cli.main build ensure-native; "
         f'slot=$({python_bin} scripts/build_release.py --output "$build_root" --channel '
-        f"{shlex.quote(channel)}{version_arg} --with-venv --python-version "
+        f"{shlex.quote(channel)}{version_arg} --python-version "
         f"{shlex.quote(python_version)} | tail -n 1); "
         'artifact="${slot}.tar.gz"; '
         'test -f "$artifact"; '
@@ -556,14 +494,6 @@ def push(
         "--force",
         help=("Overwrite an existing release slot of the same version " "(never the active one)."),
     ),
-    hydrate_on_target: bool = typer.Option(
-        False,
-        "--hydrate-on-target",
-        help=(
-            "Compatibility escape hatch for older source-only slots that do not bundle "
-            "their own runtime venv and native artifacts."
-        ),
-    ),
 ) -> None:
     """Push a pre-built slot dir or tarball to the Pi and atomically switch to it."""
     conn = _conn(ctx)
@@ -599,7 +529,7 @@ def push(
                     )
                     raise typer.Exit(code=2)
 
-            if not prepared.self_contained and not hydrate_on_target:
+            if not prepared.self_contained:
                 missing = ", ".join(
                     path.as_posix() for path in missing_self_contained_paths(prepared.slot_dir)
                 )
@@ -607,9 +537,8 @@ def push(
                     "ERROR: release artifact is not self-contained.\n"
                     "Missing required runtime files: "
                     f"{missing}\n"
-                    "Rebuild it with `--with-venv` in a Linux/aarch64 environment or via "
-                    "`yoyopod remote release build-pi`, or re-run with "
-                    "`--hydrate-on-target` to use the legacy compatibility path.",
+                    "Rebuild it in a Linux/aarch64 environment or via "
+                    "`yoyopod remote release build-pi`.",
                     err=True,
                 )
                 raise typer.Exit(code=2)
@@ -624,22 +553,10 @@ def push(
                 _cleanup_remote_slot(conn, manifest.version)
                 raise typer.Exit(code=rc)
 
-            if prepared.self_contained:
-                typer.echo("self-contained slot detected; skipping target hydration")
-            else:
-                typer.echo("hydrate runtime on target...")
-                rc = _hydrate_slot_on_pi(conn, manifest.version)
-                if rc != 0:
-                    typer.echo("slot hydration failed -- removing uploaded slot", err=True)
-                    _cleanup_remote_slot(conn, manifest.version)
-                    raise typer.Exit(code=rc)
+            typer.echo("self-contained slot detected")
 
             typer.echo("preflight...")
-            rc = _run_preflight_on_pi(
-                conn,
-                manifest.version,
-                allow_hydrated_runtime=not prepared.self_contained and hydrate_on_target,
-            )
+            rc = _run_preflight_on_pi(conn, manifest.version)
             if rc != 0:
                 typer.echo("preflight failed -- removing uploaded slot", err=True)
                 _cleanup_remote_slot(conn, manifest.version)

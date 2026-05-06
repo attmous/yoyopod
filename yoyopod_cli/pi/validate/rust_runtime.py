@@ -9,11 +9,12 @@ import subprocess
 import time
 from typing import Any
 
-from yoyopod_cli.pi.rust_ui_host import _native_lvgl_env
-from yoyopod_cli.pi.support.rust_ui_host import (
+from yoyopod_cli.contracts.worker_protocol import WorkerEnvelope
+from yoyopod_cli.pi.rust_ui_host import (
     RustUiHostSupervisor,
-    RustUiRuntimeSnapshot,
-    UiEnvelope,
+    _native_lvgl_env,
+    default_runtime_snapshot_payload,
+    ui_command,
 )
 from yoyopod_cli.pi.validate._common import _CheckResult
 
@@ -131,9 +132,9 @@ def rust_ui_smoke_check(
                 details=f"expected ui.ready, got {ready.type}",
             )
 
-        payload = RustUiRuntimeSnapshot().to_payload()
+        payload = default_runtime_snapshot_payload()
         supervisor.send(
-            UiEnvelope.command(
+            ui_command(
                 "ui.runtime_snapshot",
                 payload,
                 request_id="smoke-runtime-snapshot",
@@ -188,9 +189,9 @@ def rust_ui_navigation_check(
             )
 
         supervisor.send(
-            UiEnvelope.command(
+            ui_command(
                 "ui.runtime_snapshot",
-                RustUiRuntimeSnapshot().to_payload(),
+                default_runtime_snapshot_payload(),
                 request_id="navigation-runtime-snapshot",
             )
         )
@@ -231,9 +232,9 @@ def rust_ui_navigation_check(
 
 
 def _send_input(supervisor: RustUiHostSupervisor, action: str, request_id: str) -> None:
-    payload = RustUiRuntimeSnapshot().to_payload()
+    payload = default_runtime_snapshot_payload()
     payload["action"] = action
-    supervisor.send(UiEnvelope.command("ui.input_action", payload, request_id=request_id))
+    supervisor.send(ui_command("ui.input_action", payload, request_id=request_id))
 
 
 def _expect_screen(supervisor: RustUiHostSupervisor, screen: str) -> str:
@@ -244,12 +245,12 @@ def _expect_screen(supervisor: RustUiHostSupervisor, screen: str) -> str:
     return observed
 
 
-def _request_health(supervisor: RustUiHostSupervisor) -> UiEnvelope:
-    supervisor.send(UiEnvelope.command("ui.health", request_id="health"))
+def _request_health(supervisor: RustUiHostSupervisor) -> WorkerEnvelope:
+    supervisor.send(ui_command("ui.health", request_id="health"))
     return _read_until(supervisor, {"ui.health"})
 
 
-def _read_until(supervisor: RustUiHostSupervisor, event_types: set[str]) -> UiEnvelope:
+def _read_until(supervisor: RustUiHostSupervisor, event_types: set[str]) -> WorkerEnvelope:
     for _ in range(32):
         event = supervisor.read_event()
         if event.type == "ui.error":

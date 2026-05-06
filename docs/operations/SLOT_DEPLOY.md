@@ -169,7 +169,7 @@ explicitly if you want to return to the dev lane.
   just read `manifest.json`.
 - Reusing a version must not mutate the active release in place; bump the
   version for every prod artifact.
-- Source-only slots are legacy; the default prod path expects self-contained
+- Prod slots must be self-contained and include the runtime venv plus native
   runtime artifacts.
 - The Pi Zero is memory-constrained, so prod deploy probes avoid launching a
   second Python process after restart.

@@ -46,8 +46,8 @@ high
 medium
 
 ### Files affected
-yoyopod/core/loop.py
-yoyopod/core/application.py
+device/runtime/src/main.rs
+device/protocol/src/lib.rs
 
 ### Finding
 <what's wrong, observed at the pinned SHA>

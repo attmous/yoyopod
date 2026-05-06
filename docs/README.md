@@ -78,7 +78,7 @@ Plan docs are useful context, but they are not automatically the current impleme
 
 1. [`features/README.md`](features/README.md)
 2. [`features/LOCAL_FIRST_MUSIC_PLAN.md`](features/LOCAL_FIRST_MUSIC_PLAN.md)
-3. [`features/CLOUD_VOICE_WORKER.md`](features/CLOUD_VOICE_WORKER.md)
+3. [`features/CLOUD_VOICE_SPEECH_HOST.md`](features/CLOUD_VOICE_SPEECH_HOST.md)
 4. [`features/CLOUD_PROVISIONING_AND_BACKEND.md`](features/CLOUD_PROVISIONING_AND_BACKEND.md)
 5. [`hardware/AUDIO_STACK.md`](hardware/AUDIO_STACK.md)
 
@@ -99,7 +99,7 @@ These docs describe current implementation contracts:
 - [`hardware/POWER_MODULE.md`](hardware/POWER_MODULE.md)
 - [`hardware/AUDIO_STACK.md`](hardware/AUDIO_STACK.md)
 - [`features/CLOUD_PROVISIONING_AND_BACKEND.md`](features/CLOUD_PROVISIONING_AND_BACKEND.md)
-- [`features/CLOUD_VOICE_WORKER.md`](features/CLOUD_VOICE_WORKER.md)
+- [`features/CLOUD_VOICE_SPEECH_HOST.md`](features/CLOUD_VOICE_SPEECH_HOST.md)
 - [`features/REMOTE_PLAYBACK.md`](features/REMOTE_PLAYBACK.md)
 
 ## Historical Context

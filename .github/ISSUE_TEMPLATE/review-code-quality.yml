@@ -74,7 +74,7 @@ body:
       label: Files affected
       description: Code paths, one per line. Line numbers are optional — paths are primary because they survive refactors better than line numbers.
       placeholder: |
-        yoyopod/core/bus.py
+        device/runtime/src/worker.rs
     validations:
       required: true
 

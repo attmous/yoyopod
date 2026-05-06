@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 fn main() {
     println!("cargo:rerun-if-env-changed=YOYOPOD_LVGL_SOURCE_DIR");
     println!("cargo:rerun-if-env-changed=LVGL_SOURCE_DIR");
-    println!("cargo:rerun-if-changed=../../yoyopod_cli/pi/support/lvgl_binding/native");
+    println!("cargo:rerun-if-changed=native/lvgl");
 
     if env::var_os("CARGO_FEATURE_NATIVE_LVGL").is_none() {
         return;
@@ -14,7 +14,7 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let native_dir = normalize_cmake_path(
         manifest_dir
-            .join("../../yoyopod_cli/pi/support/lvgl_binding/native")
+            .join("native/lvgl")
             .canonicalize()
             .expect("canonicalize YoYoPod LVGL native directory"),
     );

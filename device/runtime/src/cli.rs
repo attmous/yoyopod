@@ -16,6 +16,9 @@ use crate::logging::{
 use crate::protocol::WorkerEnvelope;
 use crate::runtime_loop::RuntimeLoop;
 use crate::state::{RuntimeState, WorkerDomain, WorkerState};
+use crate::voice::{
+    route_voice_transcript as route_voice_transcript_with_settings, VoiceRouteKind,
+};
 use crate::worker::{WorkerSpec, WorkerSupervisor};
 
 #[derive(Debug, Clone, Parser)]
@@ -28,16 +31,52 @@ pub struct Args {
     pub dry_run: bool,
     #[arg(long, default_value = "whisplay")]
     pub hardware: String,
+    #[arg(long)]
+    pub route_voice_transcript: Option<String>,
 }
 
 pub fn run(args: Args) -> Result<String> {
     let config = RuntimeConfig::load(&args.config_dir)?;
+    if let Some(transcript) = args.route_voice_transcript.as_deref() {
+        return route_voice_transcript_output(&config, transcript);
+    }
     if args.dry_run {
         return Ok(serde_json::to_string_pretty(&config)?);
     }
 
     run_runtime(config, &args.hardware, &args.config_dir)?;
     Ok(String::new())
+}
+
+fn route_voice_transcript_output(config: &RuntimeConfig, transcript: &str) -> Result<String> {
+    let settings = config.voice.to_command_settings();
+    let decision = route_voice_transcript_with_settings(transcript, &settings);
+    let command = decision.command.as_ref().map(|command| {
+        json!({
+            "intent": command.intent.as_str(),
+            "contact_name": &command.contact_name,
+            "transcript": &command.transcript,
+        })
+    });
+    Ok(serde_json::to_string_pretty(&json!({
+        "kind": voice_route_kind_as_str(decision.kind),
+        "original_text": decision.original_text,
+        "normalized_text": decision.normalized_text,
+        "stripped_prefix": decision.stripped_prefix,
+        "command": command,
+        "route_name": decision.route_name,
+        "reason": decision.reason,
+    }))?)
+}
+
+fn voice_route_kind_as_str(kind: VoiceRouteKind) -> &'static str {
+    match kind {
+        VoiceRouteKind::Command => "command",
+        VoiceRouteKind::Action => "action",
+        VoiceRouteKind::AskFallback => "ask_fallback",
+        VoiceRouteKind::AskExit => "ask_exit",
+        VoiceRouteKind::LocalHelp => "local_help",
+    }
 }
 
 fn run_runtime(config: RuntimeConfig, hardware: &str, config_dir: &Path) -> Result<()> {

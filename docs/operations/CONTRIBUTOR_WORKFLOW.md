@@ -42,7 +42,7 @@ Use `--with-remote-tools --with-github` together when you plan to both validate 
 
 ## Fast local loop
 
-Legacy Python simulation run:
+Rust runtime run:
 
 ```bash
 yoyopod build simulation
@@ -55,15 +55,15 @@ Core Rust validation loop:
 cargo check --manifest-path device/Cargo.toml --workspace --locked
 ```
 
-Legacy Python quality debt audit:
+Python CLI/deploy quality audit:
 
 ```bash
 uv run --extra dev python scripts/quality.py audit
 ```
 
 Use `scripts/quality.py` when changing Python CLI/deploy surfaces or fixing
-Python CI. Do not treat Python checks as the default gate for Rust runtime
-iteration.
+Python tooling CI. Do not treat Python checks as the default gate for Rust
+runtime iteration.
 
 ## Choose the right doc path for the work
 
@@ -80,7 +80,7 @@ Read:
 Current reality:
 
 - `yoyopod-runtime` is the target top-level owner for runtime state and worker supervision
-- Python app/bootstrap code is compatibility/tooling surface unless current code still routes through it
+- Python code is CLI/deploy tooling unless current code proves otherwise
 - runtime/state/model cleanup should prefer Rust ownership over broad Python rewrites
 
 ### Raspberry Pi and setup work
@@ -134,7 +134,7 @@ cargo check --manifest-path device/Cargo.toml --workspace --locked
 Then add any focused commands relevant to your area, for example:
 
 ```bash
-python -m compileall yoyopod_cli scripts
+uv run --extra dev python scripts/quality.py gate
 yoyopod remote validate --branch <branch> --sha <commit>
 ```
 
@@ -164,11 +164,11 @@ Watch for these recurring mistakes:
 
 These are good places to be extra careful:
 
-- `yoyopod/core/bootstrap/`
-- `yoyopod/core/application.py`
-- `yoyopod/core/bus.py`
-- `yoyopod/core/scheduler.py`
-- `yoyopod/core/app_context.py`
+- `device/runtime/`
+- `device/protocol/`
+- `device/worker/`
+- `device/ui/`
+- `yoyopod_cli/pi/validate/`
 - duplicated domain/state models that drift across layers
 - setup/docs wording that can overstate what the new commands guarantee
 

@@ -4,15 +4,14 @@ Produces:
   <output_root>/<version>/
     ├── app/              # device + yoyopod_cli source trees
     ├── config/           # repo's top-level config/ tree (default app config)
-    ├── venv/             # runtime venv (only when --with-venv)
+    ├── venv/             # runtime venv
     ├── bin/launch        # copy of deploy/scripts/launch.sh
     ├── assets/           # currently empty; reserved for fonts/images
     └── manifest.json     # schema-v1 release manifest
 
 SELF-CONTAINED NOTE: venv bundling is ON by default. Build deployable Pi
 artifacts in a Linux/aarch64 environment, CI slot builder, or via
-`yoyopod remote release build-pi`. Use --skip-venv only for source-only
-packaging checks or legacy source-only compatibility flows.
+`yoyopod remote release build-pi`.
 """
 
 from __future__ import annotations
@@ -437,13 +436,11 @@ def build(
     output_root: Path,
     version: str,
     channel: str,
-    skip_venv: bool = False,
     python_version: str = "3.12",
 ) -> Path:
     """Produce a slot directory at <output_root>/<version>/.
 
-    Returns the slot directory path. Venv resolution is enabled by default;
-    pass skip_venv=True only for source-only packaging checks or legacy source-only slots.
+    Returns the slot directory path.
     """
     valid_channels = ("dev", "beta", "stable")
     if channel not in valid_channels:
@@ -460,14 +457,11 @@ def build(
     _copy_config(repo_root, slot_dir / "config")
     _write_runtime_requirements(repo_root, slot_dir / "runtime-requirements.txt")
     (slot_dir / "assets").mkdir(exist_ok=True)
-    _copy_native_runtime_artifacts(repo_root, slot_dir / "app", required=not skip_venv)
+    _copy_native_runtime_artifacts(repo_root, slot_dir / "app", required=True)
     _copy_voice_worker_runtime_artifact(repo_root, slot_dir, required=False)
 
-    if skip_venv:
-        (slot_dir / "venv").mkdir()
-    else:
-        _resolve_venv(slot_dir / "venv", slot_dir / "runtime-requirements.txt", python_version)
-        _validate_self_contained_slot(slot_dir, python_version)
+    _resolve_venv(slot_dir / "venv", slot_dir / "runtime-requirements.txt", python_version)
+    _validate_self_contained_slot(slot_dir, python_version)
 
     payload_sha256, payload_size = _slot_payload_digest(slot_dir)
     tarball = output_root / f"{version}.tar.gz"
@@ -510,16 +504,6 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True, help="Output root dir")
     parser.add_argument("--channel", choices=["dev", "beta", "stable"], default="dev")
     parser.add_argument("--version", type=str, default=None)
-    parser.add_argument(
-        "--with-venv",
-        action="store_true",
-        help="Deprecated compatibility flag; venv bundling is now the default.",
-    )
-    parser.add_argument(
-        "--skip-venv",
-        action="store_true",
-        help="Create an empty venv placeholder instead of a deployable runtime.",
-    )
     parser.add_argument("--python-version", default="3.12")
     args = parser.parse_args()
 
@@ -533,7 +517,6 @@ def main() -> None:
         output_root=args.output,
         version=version,
         channel=args.channel,
-        skip_venv=args.skip_venv,
         python_version=args.python_version,
     )
     print(str(slot))

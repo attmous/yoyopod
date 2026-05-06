@@ -28,8 +28,8 @@ where a change belongs.
 
 - `yoyopod_cli/` owns local and Pi operations tooling.
 - `deploy/` owns systemd, installer, slot, and release packaging scripts.
-- Python code is CLI/deploy/compatibility tooling only; it is not the device
-  runtime owner.
+- Python code is CLI, deploy, and Pi validation tooling only; it is not the
+  device runtime owner.
 
 ## Local Build Output
 

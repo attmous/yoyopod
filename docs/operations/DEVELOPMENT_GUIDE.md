@@ -166,17 +166,11 @@ Local validation:
 cargo check --manifest-path device/Cargo.toml --workspace --locked
 ```
 
-Run Python lint/type checks only when Python CLI/deploy/compatibility files
-change:
+Run Python lint/type checks only when Python CLI, deploy, or Pi validation
+tooling changes:
 
 ```bash
 uv run --extra dev python scripts/quality.py gate
-```
-
-Optional extra syntax/import smoke for broad Python tree changes:
-
-```bash
-python -m compileall yoyopod_cli scripts
 ```
 
 Full quality audit of the current repo debt:
@@ -187,24 +181,10 @@ uv run --extra dev python scripts/quality.py audit
 
 The staged gate contract and exact target set live in [`QUALITY_GATES.md`](QUALITY_GATES.md).
 
-Profiling and bounded branch-to-branch benchmarks:
-
-```bash
-uv run yoyopod dev profile tools
-uv run yoyopod dev profile targets
-uv run yoyopod dev profile cprofile --target simulate-bootstrap
-uv run yoyopod dev profile pyinstrument --target simulate-loop --iterations 300 --html
-uv run yoyopod dev profile pyperf --target scaffold-loop --fast
-```
-
-For the full Pi-focused profiling path, including `py-spy`, `perf`, and the
-repo's coordinator-loop diagnostics, see [`PI_PROFILING_WORKFLOW.md`](PI_PROFILING_WORKFLOW.md).
-
 Target-side validation suite:
 
 ```bash
 yoyopod pi validate deploy
-yoyopod pi validate smoke
 yoyopod pi validate smoke
 yoyopod pi validate voip
 yoyopod pi validate navigation
@@ -227,7 +207,7 @@ git rev-parse HEAD
 yoyopod remote validate --branch <branch> --sha <commit> --with-voip --with-lvgl-soak
 yoyopod remote validate --branch <branch> --sha <commit> --with-navigation
 yoyopod remote preflight --branch <branch>
-yoyopod remote service status
+yoyopod remote mode status
 yoyopod remote logs --lines 200
 ```
 
@@ -288,8 +268,6 @@ yoyopod_cli/
   contracts/
 scripts/
   quality.py
-legacy/
-  python-runtime/
 ```
 
 ## Current Active Docs

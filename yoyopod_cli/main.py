@@ -68,10 +68,6 @@ from yoyopod_cli import health as _health  # noqa: E402
 
 app.add_typer(_health.app, name="health")
 
-from yoyopod_cli import voice as _voice  # noqa: E402
-
-app.add_typer(_voice.app, name="voice")
-
 from yoyopod_cli import release as _release  # noqa: E402
 
 app.add_typer(_release.app, name="release")
@@ -257,11 +253,6 @@ def _validate_shortcut(
         "--with-rust-ui-host",
         help="Run the Rust UI host using a preinstalled CI artifact.",
     ),
-    with_rust_ui_poc: bool = typer.Option(
-        False,
-        "--with-rust-ui-poc",
-        help="Compatibility alias for --with-rust-ui-host.",
-    ),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     """Run staged Pi validation (alias for `remote validate`)."""
@@ -276,7 +267,6 @@ def _validate_shortcut(
         voip_soak_target=voip_soak_target,
         voip_soak_seconds=voip_soak_seconds,
         with_rust_ui_host=with_rust_ui_host,
-        with_rust_ui_poc=with_rust_ui_poc,
         verbose=verbose,
     )
 

@@ -12,6 +12,5 @@ Setup, validation, deployment, release, and Pi operations live here.
 - [`OTA_ROADMAP.md`](OTA_ROADMAP.md) - future OTA daemon extension points
 - [`PI_DEV_WORKFLOW.md`](PI_DEV_WORKFLOW.md) - day-to-day Raspberry Pi workflow
 - [`RPI_SMOKE_VALIDATION.md`](RPI_SMOKE_VALIDATION.md) - CI-safe and on-device validation checklist
-- [`PI_PROFILING_WORKFLOW.md`](PI_PROFILING_WORKFLOW.md) - bounded profiling and Pi investigation workflow
 
 For hardware-specific dependencies and board notes, use [`../hardware/README.md`](../hardware/README.md).

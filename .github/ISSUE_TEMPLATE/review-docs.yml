@@ -87,7 +87,7 @@ body:
       description: Doc paths (plus any related code paths), one per line.
       placeholder: |
         docs/architecture/SYSTEM_ARCHITECTURE.md
-        yoyopod/core/application.py
+        device/runtime/src/main.rs
     validations:
       required: true
 

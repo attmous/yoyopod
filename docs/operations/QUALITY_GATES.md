@@ -43,13 +43,15 @@ When testing `yoyopod-runtime`, install the exact-SHA Rust artifacts first. See
 
 ## Python Checks
 
-Python remains for CLI, deployment, and compatibility tooling. Use the repo
+Python remains for CLI, deployment, and Pi validation tooling. Use the repo
 quality gate for that surface:
 
 ```bash
 uv run --extra dev python scripts/quality.py gate
-python -m compileall yoyopod_cli scripts
 ```
+
+The quality gate is the supported Python CLI/deploy check. Add focused commands
+only when debugging a specific Python tooling failure.
 
 ## Reporting
 

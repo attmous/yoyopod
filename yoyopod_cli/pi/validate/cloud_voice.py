@@ -10,9 +10,11 @@ import subprocess
 import threading
 import time
 import wave
+import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from uuid import uuid4
 
 import typer
@@ -24,18 +26,42 @@ from yoyopod_cli.contracts.worker_protocol import (
     make_envelope,
     parse_envelope_line,
 )
-from yoyopod_cli.pi.support.voice_commands import match_voice_command
-from yoyopod_cli.pi.support.voice_models import VoiceSettings
-from yoyopod_cli.pi.support.voice_worker_contract import (
-    build_speak_payload,
-    build_transcribe_payload,
-    parse_health_result,
-    parse_speak_result,
-    parse_transcribe_result,
-)
 from yoyopod_cli.common import REPO_ROOT, configure_logging, resolve_config_dir
+from yoyopod_cli.config.models.voice import VoiceConfig
 from yoyopod_cli.pi.validate._common import _CheckResult, _print_summary
 from yoyopod_cli.pi.validate.service_env import load_service_env_file, resolve_service_env_file
+
+
+@dataclass(slots=True, frozen=True)
+class VoiceSettings:
+    """Flattened cloud voice validation settings."""
+
+    mode: str
+    stt_backend: str
+    tts_backend: str
+    speaker_device_id: str | None
+    capture_device_id: str | None
+    sample_rate_hz: int
+    cloud_worker_enabled: bool
+    cloud_worker_provider: str
+    cloud_worker_request_timeout_seconds: float
+    cloud_worker_max_audio_seconds: float
+    cloud_worker_stt_model: str
+    cloud_worker_stt_language: str
+    cloud_worker_tts_model: str
+    cloud_worker_tts_voice: str
+    cloud_worker_tts_instructions: str
+
+
+@dataclass(slots=True, frozen=True)
+class VoiceWorkerTranscribeResult:
+    text: str
+    confidence: float
+
+
+@dataclass(slots=True, frozen=True)
+class VoiceWorkerSpeakResult:
+    audio_path: Path
 
 
 def _load_cloud_voice_env_file(env_file: Path) -> list[str]:
@@ -59,6 +85,99 @@ def _cloud_voice_env_file_check(env_file: Path, loaded_keys: list[str]) -> _Chec
         status="warn",
         details=f"env_file={env_file} not found; using current process environment",
     )
+
+
+def _voice_settings_from_config(config: VoiceConfig) -> VoiceSettings:
+    """Build the small settings projection needed by cloud voice validation."""
+
+    return VoiceSettings(
+        mode=config.assistant.mode,
+        stt_backend=config.assistant.stt_backend,
+        tts_backend=config.assistant.tts_backend,
+        speaker_device_id=config.audio.speaker_device_id.strip() or None,
+        capture_device_id=config.audio.capture_device_id.strip() or None,
+        sample_rate_hz=config.assistant.sample_rate_hz,
+        cloud_worker_enabled=config.worker.enabled,
+        cloud_worker_provider=config.worker.provider,
+        cloud_worker_request_timeout_seconds=config.worker.request_timeout_seconds,
+        cloud_worker_max_audio_seconds=config.worker.max_audio_seconds,
+        cloud_worker_stt_model=config.worker.stt_model,
+        cloud_worker_stt_language=config.worker.stt_language,
+        cloud_worker_tts_model=config.worker.tts_model,
+        cloud_worker_tts_voice=config.worker.tts_voice,
+        cloud_worker_tts_instructions=config.worker.tts_instructions,
+    )
+
+
+def _build_transcribe_payload(
+    audio_path: Path,
+    *,
+    sample_rate_hz: int,
+    language: str,
+    max_audio_seconds: float,
+    model: str,
+) -> dict[str, Any]:
+    return {
+        "audio_path": audio_path.as_posix(),
+        "format": "wav",
+        "sample_rate_hz": sample_rate_hz,
+        "channels": 1,
+        "language": language,
+        "max_audio_seconds": max_audio_seconds,
+        "delete_input_on_success": False,
+        "model": model,
+    }
+
+
+def _build_speak_payload(
+    *,
+    text: str,
+    voice: str,
+    model: str,
+    instructions: str,
+    sample_rate_hz: int,
+) -> dict[str, Any]:
+    return {
+        "text": text,
+        "voice": voice,
+        "model": model,
+        "instructions": instructions,
+        "format": "wav",
+        "sample_rate_hz": sample_rate_hz,
+    }
+
+
+def _parse_transcribe_result(payload: Mapping[str, Any]) -> VoiceWorkerTranscribeResult:
+    text = _required_string(payload, "text").strip()
+    return VoiceWorkerTranscribeResult(
+        text=text,
+        confidence=float(payload.get("confidence", 0.0)),
+    )
+
+
+def _parse_speak_result(payload: Mapping[str, Any]) -> VoiceWorkerSpeakResult:
+    audio_path = _required_string(payload, "audio_path").strip()
+    if not audio_path:
+        raise ValueError("audio_path must be a non-empty string")
+    return VoiceWorkerSpeakResult(audio_path=Path(audio_path))
+
+
+def _parse_health_payload(payload: Mapping[str, Any]) -> tuple[bool, str, str]:
+    provider = _required_string(payload, "provider").strip()
+    if not provider:
+        raise ValueError("provider must be a non-empty string")
+    return (
+        bool(payload.get("healthy", False)),
+        provider,
+        str(payload.get("message", "")).strip(),
+    )
+
+
+def _required_string(payload: Mapping[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str):
+        raise ValueError(f"{key} must be a non-empty string")
+    return value
 
 
 def _cloud_voice_settings_check(settings: VoiceSettings, *, provider: str) -> _CheckResult:
@@ -92,21 +211,75 @@ def _cloud_voice_settings_check(settings: VoiceSettings, *, provider: str) -> _C
     return _CheckResult(name="cloud_voice_settings", status="pass", details=details)
 
 
-def _cloud_voice_command_match_check(transcript: str) -> _CheckResult:
-    """Validate that one cloud STT transcript maps to a supported local command."""
+def _cloud_voice_command_match_check(
+    transcript: str,
+    *,
+    config_dir: Path,
+    runtime_binary: str,
+) -> _CheckResult:
+    """Validate that Rust runtime routing maps one cloud STT transcript to a command."""
 
-    command = match_voice_command(transcript)
     preview = " ".join(transcript.strip().split())
-    if not command.is_command:
+    runtime_worker = _resolve_runtime_binary(runtime_binary)
+    if not runtime_worker.exists():
         return _CheckResult(
             name="cloud_voice_command_match",
             status="fail",
-            details=f"transcript={preview!r} intent=unknown",
+            details=f"missing Rust runtime binary at {runtime_worker}",
         )
+
+    try:
+        completed = subprocess.run(
+            [
+                str(runtime_worker),
+                "--config-dir",
+                str(config_dir),
+                "--route-voice-transcript",
+                transcript,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception as exc:
+        return _CheckResult(
+            name="cloud_voice_command_match",
+            status="fail",
+            details=f"transcript={preview!r} runtime_error={exc}",
+        )
+
+    if completed.returncode != 0:
+        details = (completed.stderr or completed.stdout or "").strip()
+        return _CheckResult(
+            name="cloud_voice_command_match",
+            status="fail",
+            details=f"transcript={preview!r} runtime_rc={completed.returncode} {details}",
+        )
+
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        return _CheckResult(
+            name="cloud_voice_command_match",
+            status="fail",
+            details=f"transcript={preview!r} invalid_runtime_json={exc}",
+        )
+
+    command = payload.get("command") if isinstance(payload, dict) else None
+    kind = str(payload.get("kind", "")) if isinstance(payload, dict) else ""
+    if kind != "command" or not isinstance(command, dict):
+        return _CheckResult(
+            name="cloud_voice_command_match",
+            status="fail",
+            details=f"transcript={preview!r} kind={kind or 'unknown'} intent=unknown",
+        )
+
+    intent = str(command.get("intent", "unknown"))
     return _CheckResult(
         name="cloud_voice_command_match",
         status="pass",
-        details=f"transcript={preview!r} intent={command.intent.value}",
+        details=f"transcript={preview!r} runtime={runtime_worker} intent={intent}",
     )
 
 
@@ -359,6 +532,31 @@ def _resolve_cloud_voice_worker_argv(
     return argv
 
 
+def _resolve_runtime_binary(runtime_binary: str) -> Path:
+    raw = runtime_binary.strip()
+    if not raw:
+        suffix = ".exe" if os.name == "nt" else ""
+        raw = str(Path("device") / "runtime" / "build" / f"yoyopod-runtime{suffix}")
+
+    path = Path(raw)
+    if path.is_absolute():
+        return path
+    if path.parent == Path("."):
+        resolved = shutil.which(raw)
+        if resolved is not None:
+            return Path(resolved)
+
+    for candidate in (
+        Path.cwd() / "app" / path,
+        Path.cwd() / path,
+        REPO_ROOT / "app" / path,
+        REPO_ROOT / path,
+    ):
+        if candidate.exists():
+            return candidate
+    return REPO_ROOT / path
+
+
 def _cloud_voice_worker_health_check(
     client: _VoiceWorkerProtocolClient,
     *,
@@ -367,7 +565,7 @@ def _cloud_voice_worker_health_check(
     """Validate that the worker/provider accepts health probes."""
 
     try:
-        health = parse_health_result(
+        healthy, provider, message = _parse_health_payload(
             client.request("voice.health", {}, timeout_seconds=timeout_seconds)
         )
     except Exception as exc:
@@ -376,10 +574,10 @@ def _cloud_voice_worker_health_check(
             status="fail",
             details=str(exc),
         )
-    status = "pass" if health.healthy else "fail"
-    details = f"provider={health.provider}, healthy={health.healthy}"
-    if health.message:
-        details += f", message={health.message}"
+    status = "pass" if healthy else "fail"
+    details = f"provider={provider}, healthy={healthy}"
+    if message:
+        details += f", message={message}"
     return _CheckResult(name="cloud_voice_worker_health", status=status, details=details)
 
 
@@ -449,6 +647,35 @@ def _wav_duration_seconds(audio_path: Path) -> float | None:
         return None
 
 
+def _play_wav(audio_path: Path, *, device_id: str | None, timeout_seconds: float) -> bool:
+    aplay = shutil.which("aplay")
+    if aplay is None:
+        return False
+    candidates = [device_id, "playback", "default", None]
+    seen: set[str | None] = set()
+    for device in candidates:
+        if device in seen:
+            continue
+        seen.add(device)
+        command = [aplay, "-q"]
+        if device:
+            command.extend(["-D", device])
+        command.append(str(audio_path))
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                check=False,
+            )
+        except Exception:
+            continue
+        if result.returncode == 0:
+            return True
+    return False
+
+
 def _cloud_voice_artifact_run_dir(artifacts_dir: str) -> Path:
     """Return a timestamped artifact directory for one cloud voice validation run."""
 
@@ -463,12 +690,12 @@ def _cloud_voice_acoustic_loopback_check(
     client: _VoiceWorkerProtocolClient,
     *,
     settings: VoiceSettings,
+    config_dir: Path,
+    runtime_binary: str,
     phrase: str,
     artifacts_dir: str,
 ) -> list[_CheckResult]:
     """Validate the physical speaker->microphone route with cloud STT."""
-
-    from yoyopod_cli.pi.support.voice_output import AlsaOutputPlayer
 
     arecord = shutil.which("arecord")
     if arecord is None:
@@ -489,10 +716,10 @@ def _cloud_voice_acoustic_loopback_check(
 
     try:
         started = time.monotonic()
-        speak_result = parse_speak_result(
+        speak_result = _parse_speak_result(
             client.request(
                 "voice.speak",
-                build_speak_payload(
+                _build_speak_payload(
                     text=phrase,
                     voice=settings.cloud_worker_tts_voice,
                     model=settings.cloud_worker_tts_model,
@@ -531,7 +758,7 @@ def _cloud_voice_acoustic_loopback_check(
             text=True,
         )
         time.sleep(0.25)
-        played = AlsaOutputPlayer().play_wav(
+        played = _play_wav(
             generated_audio,
             device_id=settings.speaker_device_id,
             timeout_seconds=max(4.0, duration + 2.0),
@@ -589,10 +816,10 @@ def _cloud_voice_acoustic_loopback_check(
         started = time.monotonic()
         transcript_payload = client.request(
             "voice.transcribe",
-            build_transcribe_payload(
+            _build_transcribe_payload(
                 audio_path=recorded_artifact,
                 sample_rate_hz=settings.sample_rate_hz,
-                language="en",
+                language=settings.cloud_worker_stt_language,
                 max_audio_seconds=settings.cloud_worker_max_audio_seconds,
                 model=settings.cloud_worker_stt_model,
             ),
@@ -614,7 +841,7 @@ def _cloud_voice_acoustic_loopback_check(
             )
             return results
 
-        transcript_result = parse_transcribe_result(transcript_payload)
+        transcript_result = _parse_transcribe_result(transcript_payload)
         results.append(
             _CheckResult(
                 name="cloud_voice_acoustic_stt",
@@ -627,7 +854,11 @@ def _cloud_voice_acoustic_loopback_check(
                 ),
             )
         )
-        match_result = _cloud_voice_command_match_check(transcript_result.text)
+        match_result = _cloud_voice_command_match_check(
+            transcript_result.text,
+            config_dir=config_dir,
+            runtime_binary=runtime_binary,
+        )
         results.append(
             _CheckResult(
                 name="cloud_voice_acoustic_command_match",
@@ -653,25 +884,25 @@ def _cloud_voice_cycle_check(
     client: _VoiceWorkerProtocolClient,
     *,
     settings: VoiceSettings,
+    config_dir: Path,
+    runtime_binary: str,
     cycle: int,
     phrase: str,
     playback: bool,
 ) -> list[_CheckResult]:
-    from yoyopod_cli.pi.support.voice_output import AlsaOutputPlayer
-
     timeout_seconds = max(5.0, settings.cloud_worker_request_timeout_seconds)
     results: list[_CheckResult] = []
     generated_audio: Path | None = None
     try:
         started = time.monotonic()
-        speak_payload = build_speak_payload(
+        speak_payload = _build_speak_payload(
             text=phrase,
             voice=settings.cloud_worker_tts_voice,
             model=settings.cloud_worker_tts_model,
             instructions=settings.cloud_worker_tts_instructions,
             sample_rate_hz=settings.sample_rate_hz,
         )
-        speak_result = parse_speak_result(
+        speak_result = _parse_speak_result(
             client.request("voice.speak", speak_payload, timeout_seconds=timeout_seconds)
         )
         generated_audio = speak_result.audio_path
@@ -691,13 +922,13 @@ def _cloud_voice_cycle_check(
         )
 
         started = time.monotonic()
-        transcript_result = parse_transcribe_result(
+        transcript_result = _parse_transcribe_result(
             client.request(
                 "voice.transcribe",
-                build_transcribe_payload(
+                _build_transcribe_payload(
                     audio_path=generated_audio,
                     sample_rate_hz=settings.sample_rate_hz,
-                    language="en",
+                    language=settings.cloud_worker_stt_language,
                     max_audio_seconds=settings.cloud_worker_max_audio_seconds,
                     model=settings.cloud_worker_stt_model,
                 ),
@@ -714,7 +945,11 @@ def _cloud_voice_cycle_check(
                 ),
             )
         )
-        match_result = _cloud_voice_command_match_check(transcript_result.text)
+        match_result = _cloud_voice_command_match_check(
+            transcript_result.text,
+            config_dir=config_dir,
+            runtime_binary=runtime_binary,
+        )
         results.append(
             _CheckResult(
                 name=f"{match_result.name}_cycle_{cycle}",
@@ -728,7 +963,7 @@ def _cloud_voice_cycle_check(
         if playback:
             started = time.monotonic()
             duration = duration or 0.0
-            played = AlsaOutputPlayer().play_wav(
+            played = _play_wav(
                 generated_audio,
                 device_id=settings.speaker_device_id,
                 timeout_seconds=max(4.0, min(20.0, duration + 2.0)),
@@ -773,6 +1008,13 @@ def cloud_voice(
         typer.Option(
             "--worker-binary",
             help="Override the configured voice worker binary path.",
+        ),
+    ] = "",
+    runtime_binary: Annotated[
+        str,
+        typer.Option(
+            "--runtime-binary",
+            help="Override the Rust runtime binary used for transcript routing checks.",
         ),
     ] = "",
     provider: Annotated[
@@ -823,11 +1065,10 @@ def cloud_voice(
     ] = "logs/validation/cloud-voice",
     verbose: Annotated[bool, typer.Option("--verbose", help="Enable DEBUG logging.")] = False,
 ) -> None:
-    """Validate cloud STT/TTS and local voice command routing on the target."""
+    """Validate cloud STT/TTS and Rust voice command routing on the target."""
     from loguru import logger
 
     from yoyopod_cli.config import ConfigManager
-    from yoyopod_cli.pi.support.voice_settings import VoiceSettingsResolver
 
     configure_logging(verbose)
     config_path = resolve_config_dir(config_dir)
@@ -839,10 +1080,7 @@ def cloud_voice(
     results: list[_CheckResult] = [_cloud_voice_env_file_check(env_path, loaded_env_keys)]
 
     config_manager = ConfigManager(config_dir=str(config_path))
-    settings = VoiceSettingsResolver(
-        context=None,
-        config_manager=config_manager,
-    ).defaults()
+    settings = _voice_settings_from_config(config_manager.get_voice_settings())
     selected_provider = (
         provider.strip()
         or settings.cloud_worker_provider
@@ -879,6 +1117,8 @@ def cloud_voice(
                         cycle_results = _cloud_voice_cycle_check(
                             client,
                             settings=settings,
+                            config_dir=config_path,
+                            runtime_binary=runtime_binary,
                             cycle=cycle,
                             phrase=phrase,
                             playback=playback,
@@ -891,6 +1131,8 @@ def cloud_voice(
                             _cloud_voice_acoustic_loopback_check(
                                 client,
                                 settings=settings,
+                                config_dir=config_path,
+                                runtime_binary=runtime_binary,
                                 phrase=phrase,
                                 artifacts_dir=artifacts_dir,
                             )

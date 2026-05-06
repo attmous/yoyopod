@@ -70,7 +70,6 @@ Python remains in the repo for:
 
 - `yoyopod_cli/` operations commands
 - deploy, release, slot, and Pi validation helpers
-- compatibility support modules that the CLI still uses
 
 The retired Python app runtime has been deleted. Active code must not import a
 `yoyopod.*` Python app-runtime package.

@@ -26,8 +26,8 @@ When implementing or refining Whisplay UI from Figma, preserve the product's exi
 - Screen controller behavior belongs in Rust UI scene modules.
 - Native Whisplay scene parity belongs in:
   - `device/ui/src/lvgl/`
-  - `yoyopod_cli/pi/support/lvgl_binding/native/lvgl_shim.c`
-  - `yoyopod_cli/pi/support/lvgl_binding/native/lvgl_shim.h`
+  - `device/ui/native/lvgl/lvgl_shim.c`
+  - `device/ui/native/lvgl/lvgl_shim.h`
 - Raw LVGL layout logic should remain confined to the LVGL binding layer. Do not spread direct LVGL object code across unrelated app modules.
 
 ## Recommended Order Of Work
@@ -98,7 +98,7 @@ Use all three appropriately:
 
 ## Native Rebuild Rule
 
-- If `yoyopod_cli/pi/support/lvgl_binding/native/lvgl_shim.c`, `lvgl_shim.h`, or LVGL config changes, the native shim must be rebuilt on the Pi before judging the hardware result.
+- If `device/ui/native/lvgl/lvgl_shim.c`, `lvgl_shim.h`, or LVGL config changes, the native shim must be rebuilt on the Pi before judging the hardware result.
 - `yoyopod remote validate` and `yoyopod remote restart` may rebuild stale native shims automatically. Do not assume a stale Pi build reflects local code.
 
 ## Whisplay-Specific Acceptance Criteria

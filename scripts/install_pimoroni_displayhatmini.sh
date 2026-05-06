@@ -123,7 +123,7 @@ echo "[2/3] Installing I2S0 unbind service (freeing PIN_36 for Button X)..."
 sudo tee "$SERVICE_PATH" > /dev/null << 'SVC'
 [Unit]
 Description=Unbind I2S0 to free PB4 (PIN_36) for Pimoroni Button X
-Before=yoyopod@radxa.service
+Before=yoyopod-dev.service yoyopod-prod.service
 
 [Service]
 Type=oneshot

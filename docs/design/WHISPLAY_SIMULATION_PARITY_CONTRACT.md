@@ -83,7 +83,7 @@ Small anti-aliasing or color differences can be tolerated. Geometry drift should
 
 - `device/ui/`
   - owns Rust UI state, scene selection, rendering, and worker protocol
-- `yoyopod_cli/pi/support/lvgl_binding/native/`
+- `device/ui/native/lvgl/`
   - owns the native C LVGL shim used by the Rust UI build
 
 ## Acceptance Criteria

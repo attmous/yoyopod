@@ -163,7 +163,7 @@ Button X is on PIN_36 (PB4), which is assigned to the I2S0 audio controller as `
 sudo tee /etc/systemd/system/disable-i2s0.service > /dev/null << 'EOF'
 [Unit]
 Description=Unbind I2S0 to free PB4 (PIN_36) for Pimoroni Button X
-Before=yoyopod@radxa.service
+Before=yoyopod-dev.service yoyopod-prod.service
 
 [Service]
 Type=oneshot
@@ -243,7 +243,7 @@ The following has been validated on-device:
 - **Button X requires I2S0 disabled.** Re-enabling I2S0 (for WM8960 audio) will block Button X.
 - **SPI `no_cs` not supported** by the Allwinner SPI driver. The driver uses hardware CS on PIN_24 (CS0) which does not reach the Pimoroni HAT's CE1 trace (PIN_26). Software CS via GPIO on PIN_26 is used as a fallback.
 - **Whisplay adapter import side effects.** The Whisplay vendor driver claims GPIO pins at import time. Display adapter imports are lazy to prevent this, but importing the Whisplay adapter module (e.g., for testing) while Pimoroni is active will cause GPIO conflicts.
-- **gpiod 1.x API.** The Cubie runs gpiod 1.6.2 (lowercase `gpiod.chip()`). Current Pi-facing compatibility helpers live under `yoyopod_cli/pi/support/`.
+- **gpiod 1.x API.** The Cubie runs gpiod 1.6.2 (lowercase `gpiod.chip()`). Current GPIO/input ownership belongs in the Rust UI host under `device/ui/`.
 
 ## Switching Back to Whisplay
 

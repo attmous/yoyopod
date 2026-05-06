@@ -80,8 +80,8 @@ body:
       label: Files affected
       description: Code paths, one per line. Line numbers are optional — paths are primary because they survive refactors better than line numbers.
       placeholder: |
-        yoyopod/core/loop.py
-        yoyopod/core/application.py
+        device/runtime/src/main.rs
+        device/protocol/src/lib.rs
     validations:
       required: true
 

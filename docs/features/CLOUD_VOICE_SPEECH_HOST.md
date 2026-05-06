@@ -1,7 +1,7 @@
-# Cloud Voice Worker
+# Cloud Voice Speech Host
 
-This document covers the dev/prod environment needed to run the Go cloud voice
-worker with OpenAI STT/TTS.
+This document covers the dev/prod environment needed to run the Rust
+`speech-host` with OpenAI STT/TTS.
 
 The API key is a device secret. Do not commit it to repo config files.
 
@@ -62,7 +62,7 @@ Check that the service started and that the worker health probe passed:
 
 ```bash
 systemctl is-active yoyopod-dev.service
-journalctl -u yoyopod-dev.service -n 120 --no-pager | grep -E "Cloud voice worker|voice worker"
+journalctl -u yoyopod-dev.service -n 120 --no-pager | grep -E "Cloud voice worker|speech-host|voice worker"
 ```
 
 Expected log line:
@@ -84,23 +84,23 @@ keeps local controls usable.
 6. Press Back or hold Back and confirm Ask exits and no stale answer plays.
 7. Use quick PTT for "call mama", "play music", and "make it louder" to confirm commands still use command mode.
 
-## Live Worker Smoke Test
+## Live Speech Host Smoke Test
 
-From the Pi checkout, source the lane environment and run the worker with the
+From the Pi checkout, source the lane environment and run the speech host with the
 OpenAI provider:
 
 ```bash
 cd /opt/yoyopod-dev/checkout
-/opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main build voice-worker
+/opt/yoyopod-dev/venv/bin/python -m yoyopod_cli.main build speech-host
 set -a
 . /etc/default/yoyopod-dev
 set +a
 YOYOPOD_VOICE_WORKER_PROVIDER=openai \
-  workers/voice/go/build/yoyopod-voice-worker
+  device/speech/build/yoyopod-speech-host
 ```
 
-The worker reads newline-delimited JSON command envelopes on stdin and writes
-JSON envelopes on stdout. For normal hardware validation, prefer the app-level
+The speech host reads newline-delimited JSON command envelopes on stdin and
+writes JSON envelopes on stdout. For normal hardware validation, prefer the app-level
 smoke route:
 
 ```bash

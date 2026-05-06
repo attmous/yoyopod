@@ -1,95 +1,80 @@
 # YoYoPod Global Audio Device Facade Contract
 
-**Last Updated:** 2026-04-10
-**Status:** Proposed
+**Last Updated:** 2026-05-06
+**Status:** Rust target contract
 
 ## Problem Statement
 
-YoYoPod currently reaches ALSA and device selection through multiple partially overlapping paths:
+YoYoPod has one physical audio stack, but several Rust hosts need audio routes:
 
-- music playback uses `media_audio.alsa_device` plus `OutputVolumeController`
-- the Rust VoIP host forwards playback, ringer, capture, and media device IDs to Liblinphone
-- capture-side mixer tuning is still VoIP-specific and must move behind the shared facade
-- voice-command capture resolves `arecord` devices independently
-- spoken prompts use `AlsaOutputPlayer`, which resolves `aplay` devices independently
+- `device/media/` launches `mpv` for local playback.
+- `device/voip/` owns Liblinphone playback, ringer, capture, and media IDs.
+- `device/speech/` owns command capture and prompt playback.
+- CLI validation still invokes target diagnostics for audio smoke checks.
 
-That means the app does not yet have one global audio hardware contract. Device resolution, mixer writes, and defaults are split across multiple feature boundaries, which makes the Pi harder to reason about and easier to misconfigure.
+The runtime needs one resolved hardware profile so music, calls, speech capture,
+and spoken prompts do not drift into separate ALSA policies.
 
 ## Goals
 
-- establish one app-owned source of truth for input and output audio routing
-- centralize ALSA mixer commands behind one facade
-- keep music playback, calls, voice commands, and spoken prompts aligned to the same resolved hardware profile unless explicitly overridden
-- preserve config and environment override flexibility
-- make effective device selection inspectable in logs, CLI status, and Pi status workflows
+- Establish one runtime-owned source of truth for input and output audio routes.
+- Centralize ALSA mixer command policy behind one Rust-facing facade.
+- Keep media, VoIP, speech, and prompt playback aligned to the same resolved
+  hardware profile unless config explicitly overrides a role.
+- Preserve config and environment override flexibility.
+- Make effective device selection visible in runtime logs, CLI status, and Pi
+  validation output.
 
 ## Non-Goals
 
-- replace `mpv`, Liblinphone, `arecord`, or `aplay`
-- redesign call interruption or playback policy
-- add a full user-facing audio routing UI in this phase
-- solve advanced hot-plug or multi-device profiles beyond the current Pi target
-
-## Current State
-
-### Music
-
-- `yoyopod/backends/music/process.py` launches `mpv` with one ALSA target
-- `yoyopod/core/audio_volume.py` owns app-facing output volume and writes selected ALSA output controls
-
-### Calls
-
-- `config/device/hardware.yaml` carries shared communication audio device IDs
-- `device/voip` owns the Liblinphone call runtime; capture tuning still needs to be centralized behind this facade
-
-### Voice Commands
-
-- `yoyopod/backends/voice/capture.py` resolves `arecord` capture candidates
-- `yoyopod/backends/voice/output.py` resolves `aplay` playback candidates
-- `yoyopod/backends/voice/tts.py` depends on that playback helper for spoken prompts
-
-The effect is that one physical audio stack is managed by several different policy owners.
+- Replace `mpv`, Liblinphone, `arecord`, or `aplay`.
+- Redesign call interruption or media playback policy.
+- Add a user-facing audio routing UI in this phase.
+- Solve advanced hot-plug or multi-device profile management beyond the current
+  Pi target.
 
 ## Contract
 
-### 1. The application owns one resolved audio hardware profile
+### 1. The runtime owns one resolved audio profile
 
-At startup, YoYoPod must resolve one effective audio hardware profile for the app run.
+At startup, `device/runtime/` resolves the effective audio profile for the app
+run and passes role-specific selectors to workers.
 
-That profile should include:
+The profile should include:
 
-- playback output device
-- ringer output device
-- capture input device
-- media device
-- voice-prompt output device
-- voice-command capture device
+- media playback output
+- call playback output
+- call ringer output
+- capture input
+- speech prompt output
 - output mixer controls
 - capture mixer controls and startup tuning
 
-Feature modules should consume that resolved profile. They should not each invent their own ALSA policy.
+Workers consume this resolved profile. They should not independently decide
+system-wide ALSA defaults.
 
-### 2. All ALSA policy moves behind one facade
+### 2. ALSA policy lives behind one facade
 
-Raw `amixer`, `aplay -L`, `arecord -L`, and ALSA-name normalization policy should live in one app-owned audio layer.
+Raw `amixer`, `aplay -L`, `arecord -L`, ALSA-name normalization, and startup
+mixer policy should live behind a shared Rust audio layer or runtime-owned
+helper.
 
-Backends may still execute their own domain-specific runtime commands, but they should not decide system-wide audio defaults independently.
+Workers may still execute domain-specific subprocesses, but system-wide audio
+defaults should come from the shared resolver.
 
 ### 3. Shared defaults come first, explicit overrides remain allowed
 
-The facade should resolve shared defaults first and then layer explicit overrides on top.
+The resolver applies shared defaults first and then layers role overrides:
 
-That means:
+- one default output route for media and prompts
+- one default capture route for speech and calls
+- optional explicit per-role overrides when the product needs them
 
-- one default output route for music and short spoken prompts
-- one default capture route for voice commands and calls
-- optional explicit per-role overrides when the product truly needs them
+Per-role divergence must be configuration, not accidental drift.
 
-Per-role divergence should be configuration, not accidental drift.
+### 4. The profile must support each backend shape
 
-### 4. The resolved profile must be consumable by every backend shape
-
-The facade must be able to produce backend-specific selectors for:
+The facade must produce backend-specific selectors for:
 
 - `mpv`
 - Liblinphone
@@ -97,72 +82,46 @@ The facade must be able to produce backend-specific selectors for:
 - `aplay`
 - future ALSA-backed helpers
 
-That includes mapping friendly config values like `ALSA: wm8960-soundcard` into the concrete form each subprocess expects.
+That includes mapping friendly config values such as `ALSA: wm8960-soundcard`
+into the concrete form each backend expects.
 
-### 5. Mixer state is application state
+### 5. Mixer state is app state
 
-Output volume, mic capture tuning, and mute-related mixer state must be treated as app-level state with one owner.
+Output volume, mic capture tuning, mute, and boost settings are app-level state
+with one owner. No worker should silently re-apply conflicting mixer gain after
+startup.
 
-No backend should silently re-apply conflicting mixer gain after startup.
+## Suggested Rust Shape
 
-## Proposed Architecture
+The preferred home is a shared Rust module or crate consumed by runtime and
+workers:
 
-### New Facade
+- `device/runtime/` owns startup resolution and log/status reporting.
+- `device/protocol/` carries any profile fields that cross worker boundaries.
+- `device/media/`, `device/voip/`, and `device/speech/` receive resolved role
+  selectors in their config/start envelopes.
 
-Add one app-facing facade, for example:
+Suggested models:
 
-- `AudioDeviceFacade`
-
-Suggested home:
-
-- `yoyopod/core/hardware.py`
-- or a focused `yoyopod/core/audio_hardware.py` split if the model grows
-
-Primary responsibilities:
-
-- inspect ALSA hardware and available routes
-- resolve config plus env overrides into one effective profile
-- normalize ALSA identifiers across `mpv`, Liblinphone, `aplay`, and `arecord`
-- apply startup mixer policy
-- expose read and write operations for output volume and capture tuning
-- provide helper methods for feature backends to consume resolved routes
-
-### Suggested Supporting Models
-
-- `ResolvedAudioDevices`
+- `ResolvedAudioProfile`
+- `AudioRoleRoutes`
 - `AudioMixerProfile`
 - `AudioRouteOverrides`
 - `AudioHardwareInventory`
 
-These should be typed models, not loose dicts.
-
-### Suggested App Integration
-
-`YoyoPodApp` should build the facade once and hand resolved audio information to the feature layers:
-
-- Rust media host
-  - receives resolved playback device
-- `OutputVolumeController`
-  - becomes an implementation detail under the facade or is owned by it
-- Rust VoIP host / internal Rust Liblinphone runtime
-  - receives resolved playback, ringer, capture, and media IDs
-  - no longer owns startup `amixer` policy
-- `SubprocessAudioCaptureBackend`
-  - receives resolved `arecord` capture device
-- `AlsaOutputPlayer`
-  - receives resolved `aplay` output device
-- `EspeakNgTextToSpeechBackend`
-  - speaks through the same resolved prompt output route
+These should be typed models, not loose maps.
 
 ## Configuration Contract
 
-Audio routing should become shared configuration first and backend-specific configuration second.
+Audio routing should be shared configuration first and backend-specific
+configuration second.
 
 Suggested direction:
 
-- keep backend-specific codec and SIP behavior in `config/communication/calling.yaml`
-- move shared device routing and mixer policy under the main app audio config
-- let env overrides feed the shared resolver, not separate feature paths
+- keep SIP behavior in `config/communication/calling.yaml`
+- keep media behavior in `config/audio/music.yaml`
+- keep shared physical device truth in `config/device/hardware.yaml`
+- route env overrides through the shared resolver
 
 Illustrative shape:
 
@@ -181,32 +140,36 @@ audio:
     mic_gain: 80
 ```
 
-The exact key names can change, but the contract is that device and mixer policy become globally owned by the app.
+The exact key names can change. The contract is that device and mixer policy
+are globally owned by the Rust runtime stack.
 
 ## Verification Contract
 
-This architecture must be verifiable through build checks and target validation.
-
 Required coverage:
 
-- build checks for route resolution and ALSA command generation code
-- Pi validation showing the app wires one resolved profile into music, calls, and voice services
-- Pi validation that the same effective routes are used after restart
-
-Logs and status commands should show the resolved audio profile so field debugging does not require guessing which layer won.
+- Rust checks for route resolution and ALSA command generation.
+- Pi validation showing the runtime wires one resolved profile into media,
+  calls, speech, and prompts.
+- Pi validation showing the same effective routes after restart.
+- Runtime logs and status commands showing the resolved profile.
 
 ## Acceptance Criteria
 
-- one app-owned facade resolves audio devices and mixer policy for the whole app run
-- no feature layer outside the shared audio subsystem issues ad hoc startup ALSA policy commands
-- music playback, calls, voice commands, and spoken prompts use the same intended WM8960 routes by default on the Pi
-- output volume and mic capture tuning remain stable across restarts
-- config and env overrides still work, but now flow through one resolver
+- One runtime-owned facade resolves audio devices and mixer policy for the app
+  run.
+- No worker issues ad hoc startup ALSA policy commands outside the shared audio
+  subsystem.
+- Media playback, calls, speech commands, and spoken prompts use the intended
+  WM8960 routes by default on the Pi.
+- Output volume and mic capture tuning remain stable across restarts.
+- Config and env overrides still work, but now flow through one resolver.
 
 ## Rollout Outline
 
-1. inventory every current ALSA and device-selection call site
-2. introduce typed resolved-audio models and the new facade
-3. move mixer command generation out of feature modules
-4. wire `mpv`, Liblinphone, STT capture, and TTS playback through the shared facade
-5. add build checks and Pi status reporting for the resolved profile
+1. Inventory ALSA and device-selection call sites in Rust workers and CLI
+   validation.
+2. Introduce typed resolved-audio models and the shared facade.
+3. Move mixer command generation out of feature workers.
+4. Wire `mpv`, Liblinphone, speech capture, and prompt playback through the
+   resolved profile.
+5. Add build checks and Pi status reporting for the resolved profile.

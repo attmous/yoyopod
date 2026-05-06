@@ -144,7 +144,7 @@ These are not universal for every contributor machine, but the repo should still
 
 #### Voice path
 
-- cloud voice worker binary built from `workers/voice/go/`
+- Rust speech host binary built from `device/speech/`
 - provider credentials supplied outside tracked config
 
 #### Cellular / GPS path
@@ -208,7 +208,6 @@ hardware-specific extras still need follow-through when the feature requires the
 uv run yoyopod setup pi --with-pisugar
 uv run yoyopod setup verify-pi --with-pisugar
 yoyopod pi validate deploy
-yoyopod pi validate smoke
 yoyopod pi validate smoke
 /opt/yoyopod-dev/checkout/device/runtime/build/yoyopod-runtime --config-dir /opt/yoyopod-dev/checkout/config --hardware whisplay
 ```

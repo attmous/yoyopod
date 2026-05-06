@@ -1,6 +1,6 @@
 # LVGL Display Pipeline
 
-Applies to: `device/ui/**` and `yoyopod_cli/pi/support/lvgl_binding/native/**`
+Applies to: `device/ui/**`
 
 ## Overview
 

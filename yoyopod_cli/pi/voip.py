@@ -8,7 +8,7 @@ from typing import Any, Callable, Protocol, cast
 import typer
 
 from yoyopod_cli.common import configure_logging
-from yoyopod_cli.pi.support.call_models import CallState
+from yoyopod_cli.pi.voip_worker import CallState
 
 app = typer.Typer(
     name="voip",
@@ -17,8 +17,8 @@ app = typer.Typer(
 )
 
 
-class _VoIPManagerLike(Protocol):
-    """Minimal manager surface needed by the diagnostic helpers."""
+class _VoIPClientLike(Protocol):
+    """Minimal Rust worker client surface needed by the diagnostic helpers."""
 
     config: Any
     running: bool
@@ -50,13 +50,13 @@ class _VoIPManagerLike(Protocol):
     def get_call_duration(self) -> int: ...
 
 
-def _build_voip_manager(config_dir: str) -> _VoIPManagerLike:
+def _build_voip_client(config_dir: str) -> _VoIPClientLike:
     from loguru import logger
 
-    from yoyopod_cli.pi.rust_voip_runtime import build_rust_voip_manager
+    from yoyopod_cli.pi.voip_worker import build_rust_voip_client
 
     try:
-        return cast(_VoIPManagerLike, build_rust_voip_manager(config_dir))
+        return cast(_VoIPClientLike, build_rust_voip_client(config_dir))
     except RuntimeError as exc:
         logger.error(str(exc))
         raise typer.Exit(code=1)
@@ -85,8 +85,8 @@ def check(
     logger.info("Rust VoIP Registration Test")
     logger.info("=" * 60)
 
-    voip_manager = _build_voip_manager(config_dir)
-    voip_config = voip_manager.config
+    voip_client = _build_voip_client(config_dir)
+    voip_config = voip_client.config
 
     logger.info(f"SIP Server: {voip_config.sip_server}")
     logger.info(f"SIP Username: {voip_config.sip_username}")
@@ -96,30 +96,30 @@ def check(
     logger.info(f"File transfer server: {voip_config.file_transfer_server_url or 'unset'}")
 
     registration_states: list[Any] = []
-    voip_manager.on_registration_change(lambda state: registration_states.append(state))
+    voip_client.on_registration_change(lambda state: registration_states.append(state))
 
     try:
-        if not voip_manager.start():
-            logger.error("Failed to start VoIP manager")
+        if not voip_client.start():
+            logger.error("Failed to start Rust VoIP worker")
             raise typer.Exit(code=1)
 
         deadline = time.time() + 10.0
         while time.time() < deadline:
-            voip_manager.iterate()
-            status = voip_manager.get_status()
+            voip_client.iterate()
+            status = voip_client.get_status()
             if status["registered"]:
                 logger.success("Registration successful")
                 logger.success(f"State history: {[state.value for state in registration_states]}")
                 return
             time.sleep(max(0.01, voip_config.iterate_interval_ms / 1000.0))
 
-        status = voip_manager.get_status()
+        status = voip_client.get_status()
         logger.error("Registration failed or timed out")
         logger.error(f"State: {status['registration_state']}")
         logger.error(f"History: {[state.value for state in registration_states]}")
         raise typer.Exit(code=1)
     finally:
-        voip_manager.stop()
+        voip_client.stop()
 
 
 @app.command()
@@ -139,8 +139,8 @@ def debug(
     logger.info("Incoming Call Debug Test")
     logger.info("=" * 60)
 
-    voip_manager = _build_voip_manager(config_dir)
-    voip_config = voip_manager.config
+    voip_client = _build_voip_client(config_dir)
+    voip_config = voip_client.config
     incoming_calls: list[tuple[str, str]] = []
     seen_call_ids: set[str] = set()
 
@@ -164,23 +164,23 @@ def debug(
         logger.success("=" * 60)
         incoming_calls.append((caller_address, caller_name))
 
-    voip_manager.on_runtime_snapshot_change(on_runtime_snapshot)
+    voip_client.on_runtime_snapshot_change(on_runtime_snapshot)
 
     try:
-        if not voip_manager.start():
-            logger.error("Failed to start VoIP manager")
+        if not voip_client.start():
+            logger.error("Failed to start Rust VoIP worker")
             raise typer.Exit(code=1)
 
         logger.info(f"Waiting for incoming calls on {voip_config.sip_identity}")
         logger.info("Press Ctrl+C to exit")
 
         while True:
-            voip_manager.iterate()
+            voip_client.iterate()
             time.sleep(max(0.01, voip_config.iterate_interval_ms / 1000.0))
     except KeyboardInterrupt:
         logger.info("Interrupted")
     finally:
-        voip_manager.stop()
+        voip_client.stop()
         logger.info(f"Total incoming calls detected: {len(incoming_calls)}")
         for address, name in incoming_calls:
             logger.info(f"  - {name} ({address})")

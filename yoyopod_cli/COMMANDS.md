@@ -46,15 +46,14 @@ For live help, use `yoyopod <cmd> --help`.
 |---|---|
 | `yoyopod pi network probe` | Check if the Rust network host can bring up the modem domain. |
 | `yoyopod pi network status` | Show current cellular status from the Rust network host. |
-| `yoyopod pi power battery` | Inspect PiSugar power telemetry through YoYoPod's power module. |
+| `yoyopod pi power battery` | Inspect PiSugar power telemetry directly from the PiSugar server. |
 | `yoyopod pi power rtc disable-alarm` | Disable the PiSugar RTC wake alarm. |
 | `yoyopod pi power rtc set-alarm` | Set the PiSugar RTC wake alarm. |
 | `yoyopod pi power rtc status` | Show current RTC and alarm state. |
 | `yoyopod pi power rtc sync-from` | Sync PiSugar RTC time to the Raspberry Pi system clock. |
 | `yoyopod pi power rtc sync-to` | Sync Raspberry Pi system time to the PiSugar RTC. |
 | `yoyopod pi rust-ui-host` | Run the Rust UI host against Whisplay hardware. |
-| `yoyopod pi rust-ui-poc` | Run the Rust UI host against Whisplay hardware. |
-| `yoyopod pi validate cloud-voice` | Validate cloud STT/TTS and local voice command routing on the target. |
+| `yoyopod pi validate cloud-voice` | Validate cloud STT/TTS and Rust voice command routing on the target. |
 | `yoyopod pi validate deploy` | Validate deploy-readiness for the current target checkout without launching the app. |
 | `yoyopod pi validate lvgl` | Run Rust UI/LVGL navigation through the runtime worker protocol. |
 | `yoyopod pi validate navigation` | Run Rust UI one-button navigation through the runtime worker protocol. |
@@ -73,17 +72,8 @@ For live help, use `yoyopod <cmd> --help`.
 | `yoyopod build lvgl` | Build the pinned LVGL shim for the current platform. |
 | `yoyopod build rust-runtime` | Build the Rust runtime binary. |
 | `yoyopod build rust-ui-host` | Build the Rust UI host binary. |
-| `yoyopod build rust-ui-poc` | Compatibility alias for `yoyopod build rust-ui-host`. |
 | `yoyopod build simulation` | Build the LVGL native shim used to simulate the device UI host. |
-| `yoyopod build voice-worker` | Build the Rust speech host voice worker for the current platform. |
-
-## `yoyopod voice`
-
-| Command | What it does |
-|---|---|
-| `yoyopod voice dictionary validate` | Validate a mutable voice command dictionary YAML file. |
-| `yoyopod voice trace analyze` | Summarize recent voice trace outcomes and failures. |
-| `yoyopod voice trace last` | Show the most recent local voice trace entries. |
+| `yoyopod build speech-host` | Build the Rust speech host for the current platform. |
 
 ## `yoyopod release`
 

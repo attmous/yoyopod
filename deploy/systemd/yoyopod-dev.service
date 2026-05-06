@@ -10,8 +10,8 @@ EnvironmentFile=-/etc/default/yoyopod-dev
 Environment=PYTHONUNBUFFERED=1
 Environment=HOME=/root
 WorkingDirectory=/
-ExecStartPre=/usr/bin/env bash -lc 'HOME="$${HOME:-/root}"; install -d -m 700 "$$HOME/.local/share/linphone" "$$HOME/.config/linphone"; CHECKOUT="$${YOYOPOD_DEV_CHECKOUT:-/opt/yoyopod-dev/checkout}"; VENV="$${YOYOPOD_DEV_VENV:-/opt/yoyopod-dev/venv}"; NATIVE_LVGL="$$CHECKOUT/yoyopod_cli/pi/support/lvgl_binding/native/build"; export LD_LIBRARY_PATH="$$NATIVE_LVGL:$$NATIVE_LVGL/lib$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}"; test -f "$$CHECKOUT/pyproject.toml"; test -x "$$VENV/bin/python"; cd "$$CHECKOUT"; exec "$$VENV/bin/python" -m yoyopod_cli.main build ensure-native'
-ExecStart=/usr/bin/env bash -lc 'CHECKOUT="$${YOYOPOD_DEV_CHECKOUT:-/opt/yoyopod-dev/checkout}"; NATIVE_LVGL="$$CHECKOUT/yoyopod_cli/pi/support/lvgl_binding/native/build"; export LD_LIBRARY_PATH="$$NATIVE_LVGL:$$NATIVE_LVGL/lib$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}"; cd "$$CHECKOUT"; exec "$$CHECKOUT/device/runtime/build/yoyopod-runtime" --config-dir "$$CHECKOUT/config" --hardware whisplay'
+ExecStartPre=/usr/bin/env bash -lc 'HOME="$${HOME:-/root}"; install -d -m 700 "$$HOME/.local/share/linphone" "$$HOME/.config/linphone"; CHECKOUT="$${YOYOPOD_DEV_CHECKOUT:-/opt/yoyopod-dev/checkout}"; VENV="$${YOYOPOD_DEV_VENV:-/opt/yoyopod-dev/venv}"; NATIVE_LVGL="$$CHECKOUT/device/ui/native/lvgl/build"; export LD_LIBRARY_PATH="$$NATIVE_LVGL:$$NATIVE_LVGL/lib:$$NATIVE_LVGL/lvgl/lib$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}"; test -f "$$CHECKOUT/pyproject.toml"; test -x "$$VENV/bin/python"; cd "$$CHECKOUT"; exec "$$VENV/bin/python" -m yoyopod_cli.main build ensure-native'
+ExecStart=/usr/bin/env bash -lc 'CHECKOUT="$${YOYOPOD_DEV_CHECKOUT:-/opt/yoyopod-dev/checkout}"; NATIVE_LVGL="$$CHECKOUT/device/ui/native/lvgl/build"; export LD_LIBRARY_PATH="$$NATIVE_LVGL:$$NATIVE_LVGL/lib:$$NATIVE_LVGL/lvgl/lib$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}"; cd "$$CHECKOUT"; exec "$$CHECKOUT/device/runtime/build/yoyopod-runtime" --config-dir "$$CHECKOUT/config" --hardware whisplay'
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM

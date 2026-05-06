@@ -32,9 +32,6 @@ dev = [
     "ruff>=0.3.0",
     "mypy>=1.8.0",
     "types-PyYAML",
-    "pyinstrument>=5.0.0",
-    "pyperf>=2.8.0",
-    "py-spy>=0.4.1",
 ]
 
 [project.scripts]
@@ -75,42 +72,6 @@ python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
-
-[[tool.mypy.overrides]]
-module = "yoyopod_cli.pi.support.contacts_integration"
-disable_error_code = ["no-any-return"]
-
-[[tool.mypy.overrides]]
-module = "yoyopod_cli.pi.support.contacts_integration.directory"
-disable_error_code = ["no-untyped-def"]
-
-[[tool.mypy.overrides]]
-module = "yoyopod_cli.pi.support.contacts_integration.handlers"
-disable_error_code = ["call-overload", "no-any-return"]
-
-[[tool.mypy.overrides]]
-module = "yoyopod_cli.pi.support.gpiod_compat"
-disable_error_code = ["import-not-found", "no-any-return", "no-redef"]
-
-[[tool.mypy.overrides]]
-module = "yoyopod_cli.pi.support.power_backend.pisugar"
-disable_error_code = ["attr-defined", "no-untyped-def"]
-
-[[tool.mypy.overrides]]
-module = "yoyopod_cli.pi.support.power_integration"
-disable_error_code = ["arg-type", "attr-defined"]
-
-[[tool.mypy.overrides]]
-module = "yoyopod_cli.pi.support.power_integration.poller"
-disable_error_code = ["attr-defined", "no-any-return"]
-
-[[tool.mypy.overrides]]
-module = "yoyopod_cli.pi.support.power_integration.service"
-disable_error_code = ["misc"]
-
-[[tool.mypy.overrides]]
-module = "yoyopod_cli.pi.support.voip_backend.rust_host"
-disable_error_code = ["arg-type"]
 
 [tool.yoyopod_quality]
 gate_format_paths = [

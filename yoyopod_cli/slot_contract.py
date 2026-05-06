@@ -11,22 +11,8 @@ SLOT_PYTHON_STDLIB_MARKER = Path("python") / "lib" / "python3.12" / "os.py"
 SLOT_VOICE_WORKER_ARTIFACT = Path("app") / "device" / "speech" / "build" / "yoyopod-speech-host"
 
 APP_NATIVE_RUNTIME_ARTIFACTS: tuple[Path, ...] = (
-    Path("yoyopod_cli")
-    / "pi"
-    / "support"
-    / "lvgl_binding"
-    / "native"
-    / "build"
-    / "libyoyopod_lvgl_shim.so",
-    Path("yoyopod_cli")
-    / "pi"
-    / "support"
-    / "lvgl_binding"
-    / "native"
-    / "build"
-    / "lvgl"
-    / "lib"
-    / "liblvgl.so.9",
+    Path("device") / "ui" / "native" / "lvgl" / "build" / "libyoyopod_lvgl_shim.so",
+    Path("device") / "ui" / "native" / "lvgl" / "build" / "lvgl" / "lib" / "liblvgl.so.9",
     Path("device") / "cloud" / "build" / "yoyopod-cloud-host",
     Path("device") / "media" / "build" / "yoyopod-media-host",
     Path("device") / "voip" / "build" / "yoyopod-voip-host",
@@ -38,17 +24,6 @@ APP_NATIVE_RUNTIME_ARTIFACTS: tuple[Path, ...] = (
 
 SLOT_NATIVE_RUNTIME_ARTIFACTS: tuple[Path, ...] = tuple(
     Path("app") / relative for relative in APP_NATIVE_RUNTIME_ARTIFACTS
-)
-HYDRATED_RUNTIME_REQUIRED_FILES: tuple[Path, ...] = (
-    SLOT_VENV_PYTHON,
-    *SLOT_NATIVE_RUNTIME_ARTIFACTS,
-)
-
-SELF_CONTAINED_REQUIRED_FILES: tuple[Path, ...] = (
-    SLOT_VENV_PYTHON,
-    SLOT_PYTHON_BIN,
-    SLOT_PYTHON_STDLIB_MARKER,
-    *SLOT_NATIVE_RUNTIME_ARTIFACTS,
 )
 
 
@@ -95,32 +70,6 @@ def missing_self_contained_paths(slot_dir: Path, python_version: str = "3.12") -
         if relative != SLOT_VENV_PYTHON
         if not (slot_dir / relative).is_file()
     )
-
-
-def missing_hydrated_runtime_paths(slot_dir: Path) -> tuple[Path, ...]:
-    """Return required files for a legacy Pi-hydrated source slot."""
-
-    return tuple(
-        relative
-        for relative in HYDRATED_RUNTIME_REQUIRED_FILES
-        if not (slot_dir / relative).is_file()
-    )
-
-
-def detect_self_contained_python_version(slot_dir: Path) -> str | None:
-    """Return the bundled Python version when a slot satisfies the contract."""
-
-    runtime_bin = slot_dir / "python" / "bin"
-    if not runtime_bin.is_dir():
-        return None
-
-    for python_bin in sorted(runtime_bin.glob("python3.*")):
-        if not python_bin.is_file():
-            continue
-        version = python_bin.name.removeprefix("python")
-        if version and not missing_self_contained_paths(slot_dir, version):
-            return version
-    return None
 
 
 def is_self_contained_slot(slot_dir: Path, python_version: str = "3.12") -> bool:

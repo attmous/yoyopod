@@ -1,8 +1,0 @@
-load("//:defs.bzl", "yoyopod_rust_host_library")
-
-yoyopod_rust_host_library(
-    name = "harness_lib",
-    srcs = glob(["src/**/*.rs"]),
-    crate_name = "yoyopod_harness",
-    deps = ["//device/protocol:protocol_lib"],
-)

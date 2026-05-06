@@ -38,23 +38,23 @@ yoyopod-runtime
      -> PiSugar server transport
      -> PiSugar watchdog helpers
      -> power snapshots/events
-     -> AppContext / AppStateRuntime
+     -> runtime state reducer
      -> current screen refresh
 ```
 
-The app schedules PiSugar polling and watchdog work through `integrations.power.PowerRuntimeService`,
-publishes typed power events, updates shared runtime state, refreshes visible power
-UI when needed, and then applies safety behavior from those events.
+The Rust runtime supervises `power-host`, consumes typed NDJSON power events,
+updates shared runtime state, refreshes visible power UI when needed, and applies
+power safety behavior from those events.
 
-`yoyopod/integrations/power/` is now the canonical public ownership seam for
-the power manager, typed models, power-domain events, and safety policy.
-The historical top-level `yoyopod/power/` facade has been removed.
+`device/power/` is the canonical runtime owner for PiSugar polling, RTC control,
+watchdog helpers, and power-host protocol handling. `device/runtime/` owns app
+composition and battery-driven safety decisions. `yoyopod_cli/pi/power.py` is a
+thin diagnostic/control CLI that talks directly to the PiSugar server; it is not
+an app runtime implementation.
 
 ## Backends And Transports
 
-`PowerManager` in `yoyopod/integrations/power/manager.py` is the app-facing facade.
-
-`PiSugarBackend` currently supports:
+The Rust `power-host` PiSugar backend currently supports:
 - automatic transport selection
 - Unix socket transport via `/tmp/pisugar-server.sock`
 - local TCP transport via `127.0.0.1:8423`
@@ -143,7 +143,8 @@ Current defaults on `main`:
 
 ## Safety Policy
 
-`PowerSafetyPolicy` is the rule layer for battery-driven behavior.
+The Rust runtime state reducer and runtime loop are the rule layer for
+battery-driven behavior.
 
 Current behavior:
 - if PiSugar is unavailable, no safety decision is made
@@ -220,10 +221,10 @@ yoyopod remote rtc status --host rpi-zero
 
 ## Watchdog Support
 
-The watchdog implementation is intentionally power-domain-owned but app-scheduled.
+The watchdog implementation is power-domain-owned and runtime-scheduled.
 
 Current model:
-- the main-thread loop in `yoyopod/core/loop.py` enables the PiSugar software watchdog through `integrations.power.PowerRuntimeService`
+- `device/runtime/` starts `power-host` and enables the PiSugar software watchdog
 - the app feeds it at a configured interval while healthy
 - ordinary app shutdown disables the watchdog
 - battery-driven emergency shutdown suppresses feeding without disabling it
@@ -301,7 +302,7 @@ yoyopod pi validate smoke
 ```
 
 Recommended hardware sequence:
-1. `uv run pytest -q`
+1. `cargo check --manifest-path device/Cargo.toml -p yoyopod-power --locked`
 2. `yoyopod pi validate smoke`
 3. `yoyopod pi power battery`
 4. `yoyopod pi power rtc status`

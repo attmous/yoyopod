@@ -122,7 +122,7 @@ For deeper deploy, lane, and troubleshooting flows, read [Dev/Prod Lanes](docs/o
 - [Design Docs](docs/design/README.md)
 - [Feature Docs](docs/features/README.md)
 
-Historical notes are kept under [docs/archive](docs/archive). Current code and current runtime docs are the source of truth when older plans drift.
+Historical planning archives were removed from the tracked repo. Current code and current runtime docs are the source of truth when older plans drift.
 
 ## License
 

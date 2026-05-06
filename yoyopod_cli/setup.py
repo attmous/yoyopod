@@ -43,14 +43,7 @@ HOST_REQUIRED_TOOLS: tuple[str, ...] = ("git", "uv")
 HOST_REMOTE_TOOLS: tuple[str, ...] = ("ssh", "rsync")
 HOST_DEV_MODULES: tuple[str, ...] = ("black", "ruff", "mypy", "typer")
 NATIVE_ARTIFACTS: tuple[Path, ...] = (
-    REPO_ROOT
-    / "yoyopod_cli"
-    / "pi"
-    / "support"
-    / "lvgl_binding"
-    / "native"
-    / "build"
-    / "libyoyopod_lvgl_shim.so",
+    REPO_ROOT / "device" / "ui" / "native" / "lvgl" / "build" / "libyoyopod_lvgl_shim.so",
     REPO_ROOT / "device" / "cloud" / "build" / "yoyopod-cloud-host",
     REPO_ROOT / "device" / "media" / "build" / "yoyopod-media-host",
     REPO_ROOT / "device" / "voip" / "build" / "yoyopod-voip-host",

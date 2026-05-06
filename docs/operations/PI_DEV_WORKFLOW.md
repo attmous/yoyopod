@@ -195,12 +195,12 @@ Use this when you want the stable checkout updated but do not want the full vali
 
 ### Rust Runtime Dev-Lane Entry Point
 
-The Rust runtime is the target long-running dev service. The systemd unit still
-has a Python fallback for compatibility, so make the active owner explicit when
-testing the Rust path:
+The Rust runtime is the long-running dev service. Confirm the active owner
+before hardware testing:
 
-```ini
-Environment=```
+```bash
+yoyopod remote mode status
+```
 
 With that override, `yoyopod-dev.service` executes:
 
@@ -291,8 +291,8 @@ For shadow-buffer comparison, use:
 yoyopod remote screenshot
 ```
 
-That uses `SIGUSR2`, which captures the same traceback + runtime evidence but prefers the legacy
-shadow-first screenshot path.
+That uses `SIGUSR2`, which captures the same traceback + runtime evidence and
+uses the alternate shadow-buffer screenshot path.
 
 ### Automatic responsiveness watchdog
 
@@ -354,10 +354,9 @@ yoyopod remote preflight --branch <branch>
 
 What it does:
 
-1. runs local `compileall`
-2. runs local Python quality checks when requested by the workflow
-3. syncs the chosen branch to the Raspberry Pi
-4. runs the Raspberry Pi smoke pass
+1. runs local CLI/deploy quality checks when requested by the workflow
+2. syncs the chosen branch to the Raspberry Pi
+3. runs the Raspberry Pi smoke pass
 
 Use it before `yoyopod remote validate` when you want a broader sanity pass. It
 is not the Rust artifact contract and does not replace exact-SHA CI artifacts

@@ -160,7 +160,7 @@ The Cubie board was validated with:
 - `mpv`
 - `liblinphone-dev`
 - `linphone-common`
-- cloud voice worker from the project environment
+- Rust speech host from the project environment
 - provider credentials supplied through deployment environment
 
 Verified state on the board:

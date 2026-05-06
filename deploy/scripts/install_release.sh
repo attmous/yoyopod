@@ -118,7 +118,7 @@ if not artifact.is_file():
     raise SystemExit(f"install-release: artifact not found: {artifact}")
 
 
-def extract_legacy_member(handle: tarfile.TarFile, member: tarfile.TarInfo) -> None:
+def extract_tar_member_fallback(handle: tarfile.TarFile, member: tarfile.TarInfo) -> None:
     target = stage_dir / member.name
     if member.isdir():
         target.mkdir(parents=True, exist_ok=True)
@@ -169,7 +169,7 @@ with tarfile.open(artifact, "r:*") as handle:
         handle.extractall(stage_dir, filter="data")
     except TypeError:
         for member in members:
-            extract_legacy_member(handle, member)
+            extract_tar_member_fallback(handle, member)
 
 manifests = [candidate.parent for candidate in stage_dir.rglob("manifest.json")]
 if len(manifests) != 1:

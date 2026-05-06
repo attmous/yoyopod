@@ -13,9 +13,14 @@ from typing import Annotated, Any, Callable, Protocol, cast
 import typer
 
 from yoyopod_cli.common import REPO_ROOT, configure_logging, resolve_config_dir
-from yoyopod_cli.pi.support.call_models import CallState, RegistrationState, VoIPConfig
 from yoyopod_cli.pi.validate._common import _CheckResult, _print_summary
 from yoyopod_cli.pi.validate.service_env import load_service_env_file, resolve_service_env_file
+from yoyopod_cli.pi.voip_worker import (
+    CallState,
+    RegistrationState,
+    VoIPConfig,
+    build_rust_voip_client,
+)
 
 # ---------------------------------------------------------------------------
 # VoIP check helper
@@ -24,11 +29,7 @@ from yoyopod_cli.pi.validate.service_env import load_service_env_file, resolve_s
 
 def _voip_check(config_dir: Path, registration_timeout: float) -> _CheckResult:
     """Validate Rust VoIP startup and SIP registration."""
-    from yoyopod_cli.config import ConfigManager
-    from yoyopod_cli.pi.rust_voip_runtime import build_rust_voip_manager
-
-    config_manager = ConfigManager(config_dir=str(config_dir))
-    voip_config = VoIPConfig.from_config_manager(config_manager)
+    voip_config = VoIPConfig.from_config_dir(config_dir)
 
     if not voip_config.sip_identity:
         return _CheckResult(
@@ -38,7 +39,7 @@ def _voip_check(config_dir: Path, registration_timeout: float) -> _CheckResult:
         )
 
     try:
-        manager = build_rust_voip_manager(str(config_dir))
+        manager = build_rust_voip_client(str(config_dir))
     except RuntimeError as exc:
         return _CheckResult(name="voip", status="fail", details=str(exc))
     try:
@@ -114,8 +115,8 @@ def _lazy_active_call_states() -> set[str]:
     return _ACTIVE_CALL_STATES
 
 
-class _VoIPManagerLike(Protocol):
-    """Minimal manager surface needed by the drill helpers."""
+class _VoIPClientLike(Protocol):
+    """Minimal Rust worker client surface needed by the drill helpers."""
 
     config: Any
     running: bool
@@ -207,9 +208,9 @@ class _VoIPDrillRecorder:
     def _iso_time(timestamp: float) -> str:
         return datetime.fromtimestamp(timestamp, timezone.utc).isoformat(timespec="seconds")
 
-    def attach(self, manager: _VoIPManagerLike) -> None:
-        manager.on_registration_change(self._on_registration_change)
-        manager.on_runtime_snapshot_change(self._on_runtime_snapshot_change)
+    def attach(self, client: _VoIPClientLike) -> None:
+        client.on_registration_change(self._on_registration_change)
+        client.on_runtime_snapshot_change(self._on_runtime_snapshot_change)
 
     def _emit(self, kind: str, **payload: object) -> None:
         event = {
@@ -244,11 +245,11 @@ class _VoIPDrillRecorder:
             stderr=stderr.strip(),
         )
 
-    def sample(self, manager: _VoIPManagerLike, *, force: bool = False) -> None:
+    def sample(self, client: _VoIPClientLike, *, force: bool = False) -> None:
         now = time.monotonic()
         if not force and now < self._next_sample_at:
             return
-        self._emit("sample", status=self._status_snapshot(manager))
+        self._emit("sample", status=self._status_snapshot(client))
         self._next_sample_at = now + self.sample_interval_seconds
 
     def finalize(
@@ -256,7 +257,7 @@ class _VoIPDrillRecorder:
         *,
         passed: bool,
         reason: str,
-        manager: _VoIPManagerLike,
+        manager: _VoIPClientLike,
         extras: dict[str, object] | None = None,
     ) -> _DrillResult:
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -303,18 +304,18 @@ class _VoIPDrillRecorder:
             extras=resolved_extras,
         )
 
-    def _status_snapshot(self, manager: _VoIPManagerLike) -> dict[str, object]:
-        status = dict(manager.get_status())
+    def _status_snapshot(self, client: _VoIPClientLike) -> dict[str, object]:
+        status = dict(client.get_status())
         snapshot: dict[str, object] = {
             "running": bool(status.get("running", False)),
             "registered": bool(status.get("registered", False)),
             "registration_state": str(status.get("registration_state", "")),
             "call_state": str(status.get("call_state", "")),
         }
-        get_call_duration = getattr(manager, "get_call_duration", None)
+        get_call_duration = getattr(client, "get_call_duration", None)
         if callable(get_call_duration):
             snapshot["call_duration_seconds"] = int(get_call_duration())
-        metrics = manager.get_iterate_metrics()
+        metrics = client.get_iterate_metrics()
         if metrics is not None:
             snapshot["iterate_metrics"] = {
                 "native_ms": round(
@@ -346,20 +347,18 @@ class _VoIPDrillRecorder:
         self._emit("call_state", state=value)
 
 
-def _build_voip_manager_for_drill(config_dir: str) -> _VoIPManagerLike:
+def _build_voip_client_for_drill(config_dir: str) -> _VoIPClientLike:
     from loguru import logger
 
-    from yoyopod_cli.pi.rust_voip_runtime import build_rust_voip_manager
-
     try:
-        return cast(_VoIPManagerLike, build_rust_voip_manager(config_dir))
+        return cast(_VoIPClientLike, build_rust_voip_client(config_dir))
     except RuntimeError as exc:
         logger.error(str(exc))
         raise typer.Exit(code=1)
 
 
-def _iterate_interval_seconds(manager: _VoIPManagerLike) -> float:
-    return max(0.01, float(getattr(manager.config, "iterate_interval_ms", 20)) / 1000.0)
+def _iterate_interval_seconds(client: _VoIPClientLike) -> float:
+    return max(0.01, float(getattr(client.config, "iterate_interval_ms", 20)) / 1000.0)
 
 
 def _status_is_registered(status: dict[str, object]) -> bool:
@@ -369,26 +368,26 @@ def _status_is_registered(status: dict[str, object]) -> bool:
 
 
 def _wait_for_registration_ok(
-    manager: _VoIPManagerLike,
+    client: _VoIPClientLike,
     recorder: _VoIPDrillRecorder,
     *,
     timeout: float,
 ) -> tuple[bool, float]:
     started_at = time.monotonic()
     deadline = started_at + timeout
-    interval = _iterate_interval_seconds(manager)
+    interval = _iterate_interval_seconds(client)
     while time.monotonic() <= deadline:
-        manager.iterate()
-        recorder.sample(manager)
-        if _status_is_registered(manager.get_status()):
+        client.iterate()
+        recorder.sample(client)
+        if _status_is_registered(client.get_status()):
             return True, max(0.0, time.monotonic() - started_at)
         time.sleep(interval)
-    recorder.sample(manager, force=True)
+    recorder.sample(client, force=True)
     return False, max(0.0, time.monotonic() - started_at)
 
 
 def _wait_for_registration_drop(
-    manager: _VoIPManagerLike,
+    manager: _VoIPClientLike,
     recorder: _VoIPDrillRecorder,
     *,
     timeout: float,
@@ -416,7 +415,7 @@ def _wait_for_registration_drop(
 
 
 def _hold_registration_ok(
-    manager: _VoIPManagerLike,
+    manager: _VoIPClientLike,
     recorder: _VoIPDrillRecorder,
     *,
     hold_seconds: float,
@@ -435,7 +434,7 @@ def _hold_registration_ok(
 
 
 def _wait_for_call_connection(
-    manager: _VoIPManagerLike,
+    manager: _VoIPClientLike,
     recorder: _VoIPDrillRecorder,
     *,
     timeout: float,
@@ -473,7 +472,7 @@ def _wait_for_call_connection(
 
 
 def _hold_call_connected(
-    manager: _VoIPManagerLike,
+    manager: _VoIPClientLike,
     recorder: _VoIPDrillRecorder,
     *,
     soak_seconds: float,
@@ -496,7 +495,7 @@ def _hold_call_connected(
 
 
 def _wait_for_call_end(
-    manager: _VoIPManagerLike,
+    manager: _VoIPClientLike,
     recorder: _VoIPDrillRecorder,
     *,
     timeout: float,
@@ -591,7 +590,7 @@ def _run_voip_registration_stability(
     """Hold SIP registration open long enough to catch immediate flapping on hardware."""
     from loguru import logger
 
-    manager = _build_voip_manager_for_drill(config_dir)
+    manager = _build_voip_client_for_drill(config_dir)
     recorder = _VoIPDrillRecorder(
         drill="registration-stability",
         config=manager.config,
@@ -674,7 +673,7 @@ def _run_voip_reconnect_drill(
     """Verify that SIP registration drops and then recovers after a short network wobble."""
     from loguru import logger
 
-    manager = _build_voip_manager_for_drill(config_dir)
+    manager = _build_voip_client_for_drill(config_dir)
     recorder = _VoIPDrillRecorder(
         drill="reconnect-drill",
         config=manager.config,
@@ -839,7 +838,7 @@ def _run_voip_call_soak(
     """Place one real call, wait for connection, and hold it long enough to catch drift."""
     from loguru import logger
 
-    manager = _build_voip_manager_for_drill(config_dir)
+    manager = _build_voip_client_for_drill(config_dir)
     recorder = _VoIPDrillRecorder(
         drill="call-soak",
         config=manager.config,

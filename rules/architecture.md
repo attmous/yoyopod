@@ -4,14 +4,17 @@ YoYoPod is Rust-first. Treat the Rust runtime workspace as the app owner and the
 Python package as CLI/deploy tooling unless current code proves otherwise.
 
 ```text
-yoyopod_rs/runtime        (yoyopod-runtime: orchestrator, config, state, routing)
-    |- yoyopod_rs/protocol (shared NDJSON worker envelope and schema contracts)
-    |- yoyopod_rs/ui       (Rust UI host, LVGL scene controllers, Whisplay path)
-    |- yoyopod_rs/media    (Rust media host and mpv ownership)
-    |- yoyopod_rs/voip     (Rust VoIP host and Liblinphone ownership)
-    |- yoyopod_rs/network  (Rust network host, SIM7600/PPP/GPS ownership)
-    |- yoyopod_rs/cloud    (Rust cloud host, MQTT telemetry and command transport)
-    `- yoyopod_rs/power    (Rust power host and PiSugar state ownership)
+device/runtime        (yoyopod-runtime: orchestrator, config, state, routing)
+    |- device/protocol (shared NDJSON worker envelope and schema contracts)
+    |- device/worker   (shared stdin/stdout worker helpers)
+    |- device/harness  (host protocol test harnesses)
+    |- device/ui       (Rust UI host, LVGL scene controllers, Whisplay path)
+    |- device/media    (Rust media host and mpv ownership)
+    |- device/voip     (Rust VoIP host and Liblinphone ownership)
+    |- device/network  (Rust network host, SIM7600/PPP/GPS ownership)
+    |- device/cloud    (Rust cloud host, MQTT telemetry and command transport)
+    |- device/power    (Rust power host and PiSugar state ownership)
+    `- device/speech   (Rust speech/Ask host ownership)
 ```
 
 ## Runtime Ownership
@@ -53,5 +56,5 @@ Avoid the reverse:
 
 - hosts importing runtime orchestration
 - CLI validation becoming a substitute Python runtime
-- domain behavior living in docs, compatibility helpers, or CLI-only checks
+- domain behavior living in docs, Python helpers, or CLI-only checks
 - historical Python plans being treated as current architecture

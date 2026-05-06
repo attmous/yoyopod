@@ -1,17 +1,30 @@
 # Logging
 
-Applies to: `yoyopod/core/logging.py`, `yoyopod/main.py`
+Applies to: `device/runtime/**`, `device/*/src/**`, `yoyopod_cli/**`, and
+`deploy/**`.
 
 ## Overview
 
-All logging via `loguru` (never stdlib `logging`). Centralized configuration in `yoyopod/core/logging.py`. Stdlib logging is intercepted and routed through loguru.
+Rust runtime and worker logs are the product runtime source of truth. Python
+logging rules apply only to CLI/deploy tooling.
+
+Rust code should use the workspace logging/tracing pattern already present in
+the touched crate. CLI Python should use normal structured command output and
+raise `typer.Exit` for command failures instead of recreating runtime logging.
 
 ## Subsystem Tags
 
-Use `get_subsystem_logger(subsystem)` for bound loggers. Available tags (6-char max):
-- `comm`, `music`, `coord`, `ui`, `power`, `config`, `app`, `core`
+Use stable subsystem names in log messages and worker events:
 
-Tags are auto-inferred from module names via `_SUBSYSTEM_OVERRIDES` mapping. Explicit binding overrides auto-inference.
+- `runtime`
+- `ui`
+- `media`
+- `voip`
+- `network`
+- `power`
+- `speech`
+- `cloud`
+- `config`
 
 ## Log Format
 
@@ -21,33 +34,31 @@ Tags are auto-inferred from module names via `_SUBSYSTEM_OVERRIDES` mapping. Exp
 
 ## File Sinks
 
-| Sink | Path | Level | Rotation | Retention |
-|---|---|---|---|---|
-| Main log | `logs/yoyopod.log` | configurable (default INFO) | 5 MB | 3 days |
-| Error log | `logs/yoyopod_errors.log` | ERROR+ | 2 MB | 7 days |
+Systemd owns process output in dev/prod lanes. Runtime logs should be readable
+through `journalctl` and the `yoyopod remote logs` helpers.
 
-Both use gzip compression, UTF-8 encoding, synchronous writes (`enqueue=False`).
+If a command writes a diagnostic file, it must be explicit in the command output
+and belong under the configured data/log path, not a hidden runtime side effect.
 
 ## PID File
 
-Written to `/tmp/yoyopod.pid` on startup, cleaned up via `atexit`. Used by `/yoyopod-restart`, `/yoyopod-deploy`, and `/yoyopod-status` for process management.
+PID/log lifecycle is owned by `yoyopod-runtime` and systemd services:
 
-## Startup/Shutdown Markers
+- `deploy/systemd/yoyopod-dev.service`
+- `deploy/systemd/yoyopod-prod.service`
 
-```
-===== YoYoPod starting (version=X, pid=Y) =====
-===== YoYoPod shutting down (pid=Y) =====
-```
-
-Used by deploy commands to verify the app started successfully.
+CLI commands should inspect those services or runtime status output instead of
+depending on retired runtime PID files.
 
 ## Exception Handling
 
-- `sys.excepthook` overridden to log unhandled main-thread exceptions
-- `threading.excepthook` overridden to log unhandled worker-thread exceptions
-- Both include full tracebacks with variable inspection (`diagnose=True`)
+- Rust runtime errors should carry enough context to identify the host, worker,
+  command, and device path involved.
+- Worker protocol failures should emit structured error envelopes where possible.
+- CLI Python should print concise operator-facing errors and return non-zero.
 
 ## Configuration
 
-Logging settings live in `config/app/core.yaml` under `logging:`. Every setting
-remains overridable via `YOYOPOD_*` environment variables.
+Logging settings live in current runtime config and service environment. Every
+setting that affects production behavior must remain visible through config,
+systemd environment, or runtime status output.

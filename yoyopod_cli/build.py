@@ -85,8 +85,7 @@ def _resolve_lvgl_native_dir() -> Path:
 
     return _resolve_native_dir(
         "LVGL",
-        _REPO_ROOT / "yoyopod_cli" / "pi" / "support" / "lvgl_binding" / "native",
-        _REPO_ROOT / "src" / "yoyopod_cli" / "pi" / "support" / "lvgl_binding" / "native",
+        _REPO_ROOT / "device" / "ui" / "native" / "lvgl",
     )
 
 
@@ -180,14 +179,6 @@ def _rust_runtime_binary_path() -> Path:
     return _rust_runtime_crate_dir() / "build" / f"yoyopod-runtime{suffix}"
 
 
-def _rust_ui_poc_dir() -> Path:
-    return _rust_ui_host_crate_dir()
-
-
-def _rust_ui_poc_binary_path() -> Path:
-    return _rust_ui_host_binary_path()
-
-
 def build_speech_host() -> Path:
     """Build the Rust speech host and return the copied binary path."""
 
@@ -211,12 +202,6 @@ def build_speech_host() -> Path:
     built_binary = workspace_dir / "target" / "release" / f"yoyopod-speech-host{suffix}"
     shutil.copy2(built_binary, output)
     return output
-
-
-def build_voice_worker() -> Path:
-    """Build the default Rust speech host voice worker."""
-
-    return build_speech_host()
 
 
 def build_rust_ui_host(*, hardware_feature: bool = True) -> Path:
@@ -267,12 +252,6 @@ def build_rust_runtime() -> Path:
     built_binary = workspace_dir / "target" / "release" / f"yoyopod-runtime{suffix}"
     shutil.copy2(built_binary, output)
     return output
-
-
-def build_rust_ui_poc(*, hardware_feature: bool = True) -> Path:
-    """Compatibility wrapper for the renamed Rust UI host build."""
-
-    return build_rust_ui_host(hardware_feature=hardware_feature)
 
 
 def _default_lvgl_source_dir() -> Path:
@@ -368,28 +347,12 @@ def _ensure_native_shims(*, skip_lvgl_fetch: bool = False) -> tuple[str, ...]:
 # ---------------------------------------------------------------------------
 
 
-@app.command("voice-worker")
-def build_voice_worker_command() -> None:
-    """Build the Rust speech host voice worker for the current platform."""
+@app.command("speech-host")
+def build_speech_host_command() -> None:
+    """Build the Rust speech host for the current platform."""
 
-    output = build_voice_worker()
+    output = build_speech_host()
     typer.echo(f"Built Rust speech host: {output}")
-
-
-@app.command("rust-ui-poc")
-def build_rust_ui_poc_command(
-    no_hardware_feature: Annotated[
-        bool,
-        typer.Option(
-            "--no-hardware-feature",
-            help="Build without the whisplay-hardware Cargo feature.",
-        ),
-    ] = False,
-) -> None:
-    """Compatibility alias for `yoyopod build rust-ui-host`."""
-
-    output = build_rust_ui_host(hardware_feature=not no_hardware_feature)
-    typer.echo(f"Built Rust UI host: {output}")
 
 
 @app.command("rust-ui-host")

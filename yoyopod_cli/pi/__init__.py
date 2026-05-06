@@ -8,7 +8,6 @@ from yoyopod_cli.pi import (
     network as _network,
     power as _power,
     rust_ui_host as _rust_ui_host,
-    rust_ui_poc as _rust_ui_poc,
     validate as _validate,
     voip as _voip,
 )
@@ -23,6 +22,5 @@ app.add_typer(_voip.app, name="voip")
 app.add_typer(_power.app, name="power")
 app.add_typer(_network.app, name="network")
 app.command(name="rust-ui-host")(_rust_ui_host.rust_ui_host)
-app.command(name="rust-ui-poc")(_rust_ui_poc.rust_ui_poc)
 
 __all__ = ["app"]

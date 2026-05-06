@@ -28,9 +28,9 @@ RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
 RUN python -c "import sys; sys.path.insert(0, '/src'); from yoyopod_cli.build import app; app()" ensure-native
 
 RUN if [ -n "$VERSION" ]; then \
-        python /src/scripts/build_release.py --output /out --channel "$CHANNEL" --version "$VERSION" --with-venv --python-version 3.12; \
+        python /src/scripts/build_release.py --output /out --channel "$CHANNEL" --version "$VERSION" --python-version 3.12; \
     else \
-        python /src/scripts/build_release.py --output /out --channel "$CHANNEL" --with-venv --python-version 3.12; \
+        python /src/scripts/build_release.py --output /out --channel "$CHANNEL" --python-version 3.12; \
     fi
 
 FROM scratch AS export

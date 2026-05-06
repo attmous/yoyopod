@@ -47,14 +47,13 @@ Current Rust components:
 - `device/runtime/src/config.rs`: default cloud host worker path
 - `device/runtime/src/worker.rs`: worker supervision and event routing
 
-CLI validation talks to the Rust speech/cloud worker protocols directly; the
-old Python cloud compatibility helpers were removed.
+CLI validation talks to the Rust speech/cloud worker protocols directly.
 
 ## Provisioning Inputs
 
 Tracked backend settings include:
 
-- API base URL and auth/config paths for compatibility helpers
+- API base URL and auth/config paths used by provisioning commands
 - MQTT broker host, port, TLS, transport, username, and password
 - status/cache paths where supported
 - battery report interval
