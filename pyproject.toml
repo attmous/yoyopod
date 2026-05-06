@@ -61,7 +61,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "yoyopod/_version.py"
+path = "yoyopod_cli/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["yoyopod", "yoyopod_cli"]

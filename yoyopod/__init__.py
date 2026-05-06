@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from yoyopod._version import __version__
+from yoyopod_cli._version import __version__
 
 __author__ = "YoYoPod Team"
 

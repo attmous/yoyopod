@@ -8,7 +8,7 @@ import types
 
 from typer.testing import CliRunner
 
-from yoyopod._version import __version__
+from yoyopod_cli._version import __version__
 from yoyopod_cli.main import app
 
 

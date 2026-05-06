@@ -9,7 +9,7 @@ Checks performed:
   * app/ exists
   * bin/launch exists and is executable
 
-live: reads YOYOPOD_RELEASE_MANIFEST (via yoyopod.core.release.current_release)
+live: reads YOYOPOD_RELEASE_MANIFEST (via yoyopod_cli.contracts.release.current_release)
 and prints the running version. Used as a readiness probe after the flip.
 """
 
@@ -21,8 +21,8 @@ from pathlib import Path
 
 import typer
 
-from yoyopod.core.release import current_release
-from yoyopod.core.setup_contract import RUNTIME_REQUIRED_CONFIG_FILES
+from yoyopod_cli.contracts.release import current_release
+from yoyopod_cli.contracts.setup import RUNTIME_REQUIRED_CONFIG_FILES
 from yoyopod_cli.release_manifest import load_manifest
 from yoyopod_cli.slot_contract import (
     SLOT_REQUIRED_DIRS,

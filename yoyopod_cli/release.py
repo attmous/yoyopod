@@ -21,7 +21,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-_VERSION_FILE = REPO_ROOT / "yoyopod" / "_version.py"
+_VERSION_FILE = REPO_ROOT / "yoyopod_cli" / "_version.py"
 _DIST_DIR = REPO_ROOT / "dist"
 _VERSION_PATTERN = re.compile(r'^__version__ = "(?P<version>\d+\.\d+\.\d+)"$', re.MULTILINE)
 

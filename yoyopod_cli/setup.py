@@ -15,7 +15,7 @@ import typer
 
 from yoyopod_cli.common import REPO_ROOT, checkout_python_path
 from yoyopod_cli.paths import load_pi_paths
-from yoyopod.core import SETUP_TRACKED_CONFIG_FILES
+from yoyopod_cli.contracts.setup import SETUP_TRACKED_CONFIG_FILES
 
 app = typer.Typer(
     name="setup",

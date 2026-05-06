@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from yoyopod.core.release import (
+from yoyopod_cli.contracts.release import (
     ReleaseInfo,
     current_release,
     state_dir,

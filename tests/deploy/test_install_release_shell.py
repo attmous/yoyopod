@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from yoyopod.core.setup_contract import RUNTIME_REQUIRED_CONFIG_FILES
+from yoyopod_cli.contracts.setup import RUNTIME_REQUIRED_CONFIG_FILES
 from yoyopod_cli.slot_contract import SLOT_NATIVE_RUNTIME_ARTIFACTS
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="bash script")
