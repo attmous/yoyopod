@@ -68,7 +68,7 @@ pub enum TargetCommand {
     Mode(ModeCommand),
     /// Push, fetch CI artifact, sync Pi, install binaries, restart and verify.
     Deploy(DeployArgs),
-    /// (Round 1 stub) Run staged Pi validation. Returns in Round 2.
+    /// Run staged on-Pi validation (deploy, smoke, stability + optional soaks).
     Validate(ValidateArgs),
 }
 
@@ -141,14 +141,23 @@ pub struct DeployArgs {
 
 #[derive(Debug, Args)]
 pub struct ValidateArgs {
+    /// Pin validation to a specific commit (must be reachable from origin/<branch>).
     #[arg(long, default_value = "")]
     pub sha: String,
+
+    /// (Not yet ported — Round 2 follow-up.) SIP registration check.
     #[arg(long)]
     pub with_voip: bool,
+
+    /// Add the UI/LVGL navigation soak stage.
     #[arg(long)]
     pub with_lvgl_soak: bool,
+
+    /// Add the full one-button navigation stage.
     #[arg(long)]
     pub with_navigation: bool,
+
+    /// (Returns with Round 4+ diagnostics.) Standalone rust-ui-host probe.
     #[arg(long)]
     pub with_rust_ui_host: bool,
 }
