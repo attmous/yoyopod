@@ -40,6 +40,11 @@ impl LvglRenderer {
     pub fn initialize_display(&mut self, framebuffer: &Framebuffer) -> Result<()> {
         self.facade.ensure_display_registered(framebuffer)
     }
+
+    /// Capture the active screen via LVGL's native snapshot (readback path).
+    pub fn readback_rgb565(&mut self) -> Result<crate::screenshot::Rgb565Image> {
+        self.facade.snapshot_active_screen()
+    }
 }
 
 #[cfg(feature = "native-lvgl")]
@@ -174,6 +179,10 @@ impl LvglRenderer {
     }
 
     pub fn initialize_display(&mut self, _framebuffer: &Framebuffer) -> Result<()> {
+        anyhow::bail!("native-lvgl feature is disabled for this build")
+    }
+
+    pub fn readback_rgb565(&mut self) -> Result<crate::screenshot::Rgb565Image> {
         anyhow::bail!("native-lvgl feature is disabled for this build")
     }
 }

@@ -117,6 +117,7 @@ pub enum UiCommand {
     PollInput,
     Health,
     Animate(AnimationRequest),
+    Screenshot { path: String, prefer_readback: bool },
     Shutdown,
     WorkerStop,
 }
@@ -151,6 +152,13 @@ impl UiCommand {
             "ui.poll_input" => Ok(Self::PollInput),
             "ui.health" => Ok(Self::Health),
             "ui.animate" => Ok(Self::Animate(decode_payload(envelope.payload)?)),
+            "ui.screenshot" => {
+                let payload: ScreenshotPayload = decode_payload(envelope.payload)?;
+                Ok(Self::Screenshot {
+                    path: payload.path,
+                    prefer_readback: payload.prefer_readback,
+                })
+            }
             "ui.shutdown" => Ok(Self::Shutdown),
             "worker.stop" => Ok(Self::WorkerStop),
             other => Err(ProtocolError::InvalidEnvelope(format!(
@@ -186,6 +194,14 @@ impl UiCommand {
                 "ui.animate",
                 None,
                 serde_json::to_value(request).expect("serializing UI animation request"),
+            ),
+            Self::Screenshot {
+                path,
+                prefer_readback,
+            } => WorkerEnvelope::command(
+                "ui.screenshot",
+                None,
+                json!({ "path": path, "prefer_readback": prefer_readback }),
             ),
             Self::Shutdown => WorkerEnvelope::command("ui.shutdown", None, json!({})),
             Self::WorkerStop => WorkerEnvelope::command("worker.stop", None, json!({})),
@@ -333,6 +349,35 @@ impl UiErrorCode {
     }
 }
 
+/// How a screenshot was (or was requested to be) captured on the device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScreenshotMethod {
+    LvglReadback,
+    ShadowBuffer,
+}
+
+impl ScreenshotMethod {
+    /// Human-readable label used in app log lines, e.g.
+    /// `Saved screenshot via LVGL readback -> /tmp/yoyopod_screenshot.png`.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::LvglReadback => "LVGL readback",
+            Self::ShadowBuffer => "shadow buffer",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiScreenshotCaptured {
+    pub path: String,
+    pub ok: bool,
+    #[serde(default)]
+    pub method: Option<ScreenshotMethod>,
+    #[serde(default)]
+    pub detail: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiEvent {
     Ready(UiReady),
@@ -340,6 +385,7 @@ pub enum UiEvent {
     Intent(UiIntent),
     ScreenChanged(UiScreenChanged),
     Health(UiHealth),
+    ScreenshotCaptured(UiScreenshotCaptured),
     Error(UiError),
     ShutdownComplete,
 }
@@ -368,6 +414,9 @@ impl UiEvent {
             )?)),
             "ui.screen_changed" => Ok(Self::ScreenChanged(decode_payload(envelope.payload)?)),
             "ui.health" => Ok(Self::Health(decode_payload(envelope.payload)?)),
+            "ui.screenshot_captured" => {
+                Ok(Self::ScreenshotCaptured(decode_payload(envelope.payload)?))
+            }
             "ui.error" => Ok(Self::Error(decode_payload(envelope.payload)?)),
             "ui.shutdown_complete" => Ok(Self::ShutdownComplete),
             other => Err(ProtocolError::InvalidEnvelope(format!(
@@ -383,6 +432,7 @@ impl UiEvent {
             Self::Intent(intent) => WorkerEnvelope::event("ui.intent", intent.to_event_payload()),
             Self::ScreenChanged(changed) => event("ui.screen_changed", changed),
             Self::Health(health) => event("ui.health", health),
+            Self::ScreenshotCaptured(captured) => event("ui.screenshot_captured", captured),
             Self::Error(error) => event("ui.error", error),
             Self::ShutdownComplete => WorkerEnvelope::event("ui.shutdown_complete", json!({})),
         }
@@ -755,6 +805,13 @@ struct SetBacklightPayload {
     brightness: f32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct ScreenshotPayload {
+    path: String,
+    #[serde(default)]
+    prefer_readback: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 struct InputActionPayload {
     action: InputAction,
@@ -882,6 +939,10 @@ mod tests {
                 to: 0,
                 duration_ms: 180,
             }),
+            UiCommand::Screenshot {
+                path: "/tmp/yoyopod_screenshot.png".to_string(),
+                prefer_readback: true,
+            },
             UiCommand::Shutdown,
             UiCommand::WorkerStop,
         ];
@@ -933,6 +994,18 @@ mod tests {
                 active_screen: UiScreen::Hub,
                 full_snapshots: 1,
                 patches_per_domain: BTreeMap::new(),
+            }),
+            UiEvent::ScreenshotCaptured(UiScreenshotCaptured {
+                path: "/tmp/yoyopod_screenshot.png".to_string(),
+                ok: true,
+                method: Some(ScreenshotMethod::LvglReadback),
+                detail: String::new(),
+            }),
+            UiEvent::ScreenshotCaptured(UiScreenshotCaptured {
+                path: "/tmp/yoyopod_screenshot.png".to_string(),
+                ok: false,
+                method: None,
+                detail: "LVGL display not initialized".to_string(),
             }),
             UiEvent::Error(UiError::new(UiErrorCode::InvalidCommand, "bad command")),
             UiEvent::ShutdownComplete,

@@ -29,6 +29,10 @@ impl Framebuffer {
         self.height
     }
 
+    pub fn pixels(&self) -> &[u16] {
+        &self.pixels
+    }
+
     pub fn clear(&mut self, color: u16) {
         self.pixels.fill(color);
     }

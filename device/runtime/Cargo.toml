@@ -18,3 +18,6 @@ serde_yaml = "0.9"
 thiserror = "2.0"
 time = { version = "0.3", features = ["formatting", "local-offset"] }
 yoyopod-protocol = { path = "../protocol" }
+
+[target.'cfg(unix)'.dependencies]
+signal-hook = "0.3"

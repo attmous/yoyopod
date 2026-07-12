@@ -608,6 +608,8 @@ pub struct RuntimeState {
     pub voice_worker: WorkerHealth,
     pub loop_iterations: u64,
     pub last_loop_duration_ms: u64,
+    /// App log the runtime appends operational markers to (config `logging.file`).
+    pub app_log_file: String,
 }
 
 impl Default for RuntimeState {
@@ -629,6 +631,7 @@ impl Default for RuntimeState {
             voice_worker: WorkerHealth::default(),
             loop_iterations: 0,
             last_loop_duration_ms: 0,
+            app_log_file: "logs/yoyopod.log".to_string(),
         }
     }
 }
@@ -681,6 +684,13 @@ impl RuntimeState {
 
     pub fn configure_media_volume(&mut self, volume: i32) {
         self.media.volume = volume.clamp(0, 100);
+    }
+
+    pub fn configure_app_log_file(&mut self, app_log_file: impl Into<String>) {
+        let app_log_file = app_log_file.into();
+        if !app_log_file.trim().is_empty() {
+            self.app_log_file = app_log_file;
+        }
     }
 
     pub fn contact_for_voice_label(&self, label: &str) -> Option<&ListItem> {

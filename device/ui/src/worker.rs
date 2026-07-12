@@ -3,7 +3,9 @@ use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use yoyopod_protocol::ui::{UiError, UiErrorCode, UiEvent, UiHealth, UiScreen, UiScreenChanged};
+use yoyopod_protocol::ui::{
+    UiError, UiErrorCode, UiEvent, UiHealth, UiScreen, UiScreenChanged, UiScreenshotCaptured,
+};
 
 use crate::application::UiRuntime;
 use crate::engine::Engine;
@@ -12,6 +14,7 @@ use crate::input::{ButtonTiming, OneButtonMachine};
 use crate::renderer::{Framebuffer, LvglRenderer, Renderer};
 use crate::router;
 use crate::scene::load_scene_defaults;
+use crate::screenshot::{self, Rgb565Image};
 use crate::transport::{codec, dispatcher, handshake, inbound, outbound};
 use crate::RenderMode;
 
@@ -51,6 +54,21 @@ impl RenderState {
 
     pub fn last_ui_renderer(&self) -> &str {
         &self.last_ui_renderer
+    }
+
+    pub fn capture_screenshot(
+        &mut self,
+        path: &str,
+        prefer_readback: bool,
+    ) -> UiScreenshotCaptured {
+        let renderer = &mut self.renderer;
+        let framebuffer = &self.framebuffer;
+        screenshot::capture(
+            || renderer.readback_rgb565(),
+            || Ok(Rgb565Image::from_framebuffer(framebuffer)),
+            path,
+            prefer_readback,
+        )
     }
 }
 
@@ -307,6 +325,15 @@ where
             context
                 .ui_runtime
                 .start_animation(request, outbound::monotonic_millis());
+        }
+        dispatcher::AppEvent::Screenshot {
+            path,
+            prefer_readback,
+        } => {
+            let captured = context
+                .render_state
+                .capture_screenshot(&path, prefer_readback);
+            outbound::emit_event(context.output, UiEvent::ScreenshotCaptured(captured))?;
         }
         dispatcher::AppEvent::Shutdown => {
             handshake::emit_shutdown_complete(context.output)?;

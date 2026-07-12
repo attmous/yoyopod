@@ -7,6 +7,7 @@ pub mod input;
 pub mod renderer;
 pub mod router;
 pub mod scene;
+pub mod screenshot;
 pub mod transport;
 pub mod worker;
 

@@ -32,9 +32,54 @@ pub struct lv_color_t {
     pub red: u8,
 }
 
+/// Leading fields of LVGL 9.x `lv_image_header_t`. Upstream declares three
+/// words of C bitfields; on the little-endian GCC/Clang targets we build for,
+/// bitfields pack LSB-first, which the accessors below rely on.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct lv_image_header_t {
+    /// magic:8 | cf:8 | flags:16
+    pub word0: u32,
+    /// w:16 | h:16
+    pub word1: u32,
+    /// stride:16 | reserved:16
+    pub word2: u32,
+}
+
+impl lv_image_header_t {
+    pub fn color_format(&self) -> u32 {
+        (self.word0 >> 8) & 0xFF
+    }
+
+    pub fn width(&self) -> usize {
+        (self.word1 & 0xFFFF) as usize
+    }
+
+    pub fn height(&self) -> usize {
+        ((self.word1 >> 16) & 0xFFFF) as usize
+    }
+
+    pub fn stride(&self) -> usize {
+        (self.word2 & 0xFFFF) as usize
+    }
+}
+
+/// Leading fields of LVGL 9.x `lv_draw_buf_t`. Later LVGL revisions may append
+/// fields; snapshots are only read through this prefix, never constructed or
+/// sized on the Rust side.
+#[repr(C)]
+pub struct lv_draw_buf_t {
+    pub header: lv_image_header_t,
+    pub data_size: u32,
+    pub data: *mut u8,
+    pub unaligned_data: *mut c_void,
+}
+
 pub type LvDisplayFlushCb = unsafe extern "C" fn(*mut lv_display_t, *const lv_area_t, *mut u8);
 pub type LvStyleSelector = u32;
 
+/// `lv_color_format_t` value for native RGB565 (LVGL 9.x).
+pub const LV_COLOR_FORMAT_RGB565: u32 = 0x12;
 pub const LV_DISPLAY_RENDER_MODE_PARTIAL: i32 = 0;
 pub const LV_LABEL_LONG_MODE_DOTS: i32 = 1;
 pub const LV_LABEL_LONG_MODE_CLIP: i32 = 4;
@@ -127,4 +172,7 @@ unsafe extern "C" {
     pub fn lv_image_set_src(obj: *mut lv_obj_t, src: *const c_void);
 
     pub fn lv_screen_load(screen: *mut lv_obj_t);
+
+    pub fn lv_snapshot_take(obj: *mut lv_obj_t, cf: u32) -> *mut lv_draw_buf_t;
+    pub fn lv_draw_buf_destroy(draw_buf: *mut lv_draw_buf_t);
 }
