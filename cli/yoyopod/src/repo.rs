@@ -10,13 +10,29 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 
+/// Strip Windows' verbatim path prefix (`\\?\`) that `canonicalize`
+/// produces. Tools we shell out to can't handle it: scp parses the
+/// colon in `\\?\C:\...` as a `host:path` separator and aborts with
+/// "hostname contains invalid characters".
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
+        return PathBuf::from(rest.to_string());
+    }
+    path
+}
+
 /// Find the repository root by walking up from `start` until `.git` is found.
 ///
 /// Returns an error if no enclosing repository is found.
 pub fn find_repo_root(start: &Path) -> Result<PathBuf> {
-    let mut current = start
+    let canonical = start
         .canonicalize()
         .with_context(|| format!("canonicalize {}", start.display()))?;
+    let mut current = strip_verbatim_prefix(canonical);
 
     loop {
         if current.join(".git").exists() {
@@ -51,7 +67,8 @@ mod tests {
         let tmp = tempdir().unwrap();
         fs::create_dir(tmp.path().join(".git")).unwrap();
         let found = find_repo_root(tmp.path()).unwrap();
-        assert_eq!(found, tmp.path().canonicalize().unwrap());
+        let expected = strip_verbatim_prefix(tmp.path().canonicalize().unwrap());
+        assert_eq!(found, expected);
     }
 
     #[test]
@@ -61,7 +78,32 @@ mod tests {
         let sub = tmp.path().join("a/b/c");
         fs::create_dir_all(&sub).unwrap();
         let found = find_repo_root(&sub).unwrap();
-        assert_eq!(found, tmp.path().canonicalize().unwrap());
+        let expected = strip_verbatim_prefix(tmp.path().canonicalize().unwrap());
+        assert_eq!(found, expected);
+    }
+
+    #[test]
+    fn repo_root_has_no_verbatim_prefix() {
+        let tmp = tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        let found = find_repo_root(tmp.path()).unwrap();
+        assert!(!found.to_string_lossy().starts_with(r"\\?\"));
+    }
+
+    #[test]
+    fn strip_verbatim_handles_drive_and_unc() {
+        assert_eq!(
+            strip_verbatim_prefix(PathBuf::from(r"\\?\C:\repo\file.tar.gz")),
+            PathBuf::from(r"C:\repo\file.tar.gz")
+        );
+        assert_eq!(
+            strip_verbatim_prefix(PathBuf::from(r"\\?\UNC\server\share\x")),
+            PathBuf::from(r"\\server\share\x")
+        );
+        assert_eq!(
+            strip_verbatim_prefix(PathBuf::from("/plain/unix/path")),
+            PathBuf::from("/plain/unix/path")
+        );
     }
 
     #[test]
