@@ -110,9 +110,11 @@ Verification Policy
 - For hardware work, exact-commit CI artifacts (`yoyopod-rust-device-arm64-<sha>`)
   and Pi results matter most. Always report the commit SHA, artifact names,
   and hardware command/result.
-- Automated on-Pi validation (`yoyopod target validate`) returns in Round 2
-  of the CLI rebuild. Until then, validate manually after `target deploy`
-  via systemd status + journalctl + hardware inspection.
+- Automated on-Pi validation: `yoyopod target validate` runs the staged
+  suite (deploy, smoke, stability + optional soaks) via the `yoyopod-on-pi`
+  binary shipped in the CI artifact. The voip / cloud-voice stages are a
+  Round 2 follow-up; validate those manually via journalctl + hardware
+  inspection.
 
 Hardware
 - The supported hardware is the Raspberry Pi Zero 2W + PiSugar Whisplay
@@ -121,4 +123,4 @@ Hardware
   supported.
 
 Guardrails
-- Prefer `yoyopod remote` over ad-hoc SSH sequences.
+- Prefer `yoyopod target` over ad-hoc SSH sequences.
