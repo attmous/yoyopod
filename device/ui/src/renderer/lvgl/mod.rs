@@ -2,6 +2,7 @@ pub(crate) mod ffi;
 pub(crate) mod flush;
 pub(crate) mod icons;
 pub(crate) mod lifecycle;
+pub(crate) mod snapshot;
 
 use std::ffi::CString;
 use std::ptr::{self, NonNull};

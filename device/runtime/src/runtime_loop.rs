@@ -29,6 +29,7 @@ pub trait LoopIo {
     fn send_worker_envelope(&mut self, domain: WorkerDomain, envelope: WorkerEnvelope) -> bool;
     fn write_power_shutdown_state(&mut self, path: &str, payload: &Value) -> Result<(), String>;
     fn request_system_shutdown(&mut self, command: &str) -> Result<(), String>;
+    fn append_app_log(&mut self, log_file: &str, line: &str) -> Result<(), String>;
 }
 
 #[derive(Debug, Clone)]
@@ -137,6 +138,9 @@ impl RuntimeLoop {
                 };
                 let _ = io.send_worker_envelope(WorkerDomain::Cloud, ack);
             }
+            RuntimeCommand::AppendAppLog { line } => {
+                let _ = io.append_app_log(&self.state.app_log_file, &line);
+            }
             RuntimeCommand::Shutdown => {
                 self.shutdown_requested = true;
             }
@@ -188,6 +192,10 @@ impl LoopIo for WorkerSupervisor {
 
     fn request_system_shutdown(&mut self, command: &str) -> Result<(), String> {
         run_shutdown_command(command)
+    }
+
+    fn append_app_log(&mut self, log_file: &str, line: &str) -> Result<(), String> {
+        crate::logging::log_marker(log_file, line).map_err(|error| error.to_string())
     }
 }
 
@@ -268,6 +276,7 @@ mod tests {
         messages: Vec<(WorkerDomain, WorkerEnvelope)>,
         protocol_errors: Vec<(WorkerDomain, WorkerProtocolError)>,
         sent: Vec<(WorkerDomain, WorkerEnvelope)>,
+        app_log: Vec<(String, String)>,
     }
 
     impl LoopIo for FakeLoopIo {
@@ -293,6 +302,11 @@ mod tests {
         }
 
         fn request_system_shutdown(&mut self, _command: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn append_app_log(&mut self, log_file: &str, line: &str) -> Result<(), String> {
+            self.app_log.push((log_file.to_string(), line.to_string()));
             Ok(())
         }
     }
@@ -332,6 +346,66 @@ mod tests {
         };
         assert!(music.playing);
         assert_eq!(music.title, "Patch Song");
+    }
+
+    #[test]
+    fn ui_screenshot_captured_event_appends_app_log_line() {
+        let mut io = FakeLoopIo {
+            messages: vec![(
+                WorkerDomain::Ui,
+                WorkerEnvelope::event(
+                    "ui.screenshot_captured",
+                    json!({
+                        "path": "/tmp/yoyopod_screenshot.png",
+                        "ok": true,
+                        "method": "lvgl_readback",
+                    }),
+                ),
+            )],
+            ..FakeLoopIo::default()
+        };
+        let mut state = RuntimeState::default();
+        state.configure_app_log_file("logs/custom.log");
+        let mut runtime = RuntimeLoop::new(state);
+
+        runtime.run_once(&mut io);
+
+        assert_eq!(
+            io.app_log,
+            vec![(
+                "logs/custom.log".to_string(),
+                "Saved screenshot via LVGL readback -> /tmp/yoyopod_screenshot.png".to_string(),
+            )]
+        );
+    }
+
+    #[test]
+    fn failed_screenshot_capture_appends_failure_line() {
+        let mut io = FakeLoopIo {
+            messages: vec![(
+                WorkerDomain::Ui,
+                WorkerEnvelope::event(
+                    "ui.screenshot_captured",
+                    json!({
+                        "path": "/tmp/yoyopod_screenshot.png",
+                        "ok": false,
+                        "detail": "LVGL display not initialized",
+                    }),
+                ),
+            )],
+            ..FakeLoopIo::default()
+        };
+        let mut runtime = RuntimeLoop::new(RuntimeState::default());
+
+        runtime.run_once(&mut io);
+
+        assert_eq!(
+            io.app_log,
+            vec![(
+                "logs/yoyopod.log".to_string(),
+                "Screenshot capture failed: LVGL display not initialized".to_string(),
+            )]
+        );
     }
 
     #[test]

@@ -18,6 +18,10 @@ use crate::runtime_loop::RuntimeLoop;
 use crate::state::{RuntimeState, WorkerDomain, WorkerState};
 use crate::worker::{WorkerSpec, WorkerSupervisor};
 
+/// Matches `screenshot_path` in deploy/pi-deploy.yaml; `yoyopod target
+/// screenshot` clears this file, signals the runtime, then waits for it.
+const SCREENSHOT_FILE: &str = "/tmp/yoyopod_screenshot.png";
+
 #[derive(Debug, Clone, Parser)]
 #[command(name = "yoyopod-runtime")]
 #[command(about = "YoYoPod Rust top-level runtime host")]
@@ -65,6 +69,7 @@ fn run_runtime(config: RuntimeConfig, hardware: &str, config_dir: &Path) -> Resu
 
 fn run_runtime_inner(config: &RuntimeConfig, hardware: &str, config_dir: &Path) -> Result<()> {
     let shutdown = install_ctrlc_handler()?;
+    let screenshot_signals = install_screenshot_signal_handlers()?;
 
     let mut workers = WorkerSupervisor::default();
     let state = match start_workers(&mut workers, config, hardware, config_dir) {
@@ -79,6 +84,7 @@ fn run_runtime_inner(config: &RuntimeConfig, hardware: &str, config_dir: &Path) 
 
     let mut runtime = RuntimeLoop::new(state);
     while !shutdown.load(Ordering::SeqCst) && !runtime.shutdown_requested() {
+        forward_screenshot_requests(&screenshot_signals, &mut workers, config);
         runtime.run_once(&mut workers);
         thread::sleep(Duration::from_millis(20));
     }
@@ -95,6 +101,7 @@ fn start_workers(
 ) -> Result<RuntimeState> {
     let mut state = RuntimeState::default();
     state.seed_contacts(config.people.to_contact_items());
+    state.configure_app_log_file(config.log_file.clone());
     state.configure_media_volume(config.media.default_volume);
     state.configure_voice_note_store_dir(config.voip.voice_note_store_dir.clone());
     state.configure_voice_commands(config.voice.to_command_settings());
@@ -276,6 +283,89 @@ fn start_workers(
 
 fn worker_program(config_dir: &Path, raw_program: &str) -> String {
     resolve_worker_program_for_config_dir(config_dir, raw_program)
+}
+
+#[derive(Clone, Default)]
+struct ScreenshotSignals {
+    readback: Arc<AtomicBool>,
+    shadow: Arc<AtomicBool>,
+}
+
+impl ScreenshotSignals {
+    fn take_readback(&self) -> bool {
+        self.readback.swap(false, Ordering::SeqCst)
+    }
+
+    fn take_shadow(&self) -> bool {
+        self.shadow.swap(false, Ordering::SeqCst)
+    }
+
+    fn reset(&self) {
+        self.readback.store(false, Ordering::SeqCst);
+        self.shadow.store(false, Ordering::SeqCst);
+    }
+}
+
+/// SIGUSR1 requests an LVGL-readback-first capture, SIGUSR2 a shadow-first
+/// capture. The handlers only set flags; the runtime loop polls them and
+/// forwards a `ui.screenshot` command to the UI worker.
+fn install_screenshot_signal_handlers() -> Result<ScreenshotSignals> {
+    static SIGNALS: OnceLock<ScreenshotSignals> = OnceLock::new();
+
+    if let Some(existing) = SIGNALS.get() {
+        existing.reset();
+        return Ok(existing.clone());
+    }
+
+    let signals = SIGNALS.get_or_init(ScreenshotSignals::default);
+    register_screenshot_signals(signals)?;
+    Ok(signals.clone())
+}
+
+#[cfg(unix)]
+fn register_screenshot_signals(signals: &ScreenshotSignals) -> Result<()> {
+    signal_hook::flag::register(signal_hook::consts::SIGUSR1, Arc::clone(&signals.readback))
+        .context("register SIGUSR1 screenshot handler")?;
+    signal_hook::flag::register(signal_hook::consts::SIGUSR2, Arc::clone(&signals.shadow))
+        .context("register SIGUSR2 screenshot handler")?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn register_screenshot_signals(_signals: &ScreenshotSignals) -> Result<()> {
+    Ok(())
+}
+
+fn forward_screenshot_requests(
+    signals: &ScreenshotSignals,
+    workers: &mut WorkerSupervisor,
+    config: &RuntimeConfig,
+) {
+    let mut requests = Vec::new();
+    if signals.take_readback() {
+        requests.push((true, "readback-first"));
+    }
+    if signals.take_shadow() {
+        requests.push((false, "shadow-first"));
+    }
+
+    for (prefer_readback, order) in requests {
+        let _ = log_marker(
+            &config.log_file,
+            format!("Screenshot capture requested ({order}) -> {SCREENSHOT_FILE}"),
+        );
+        let envelope = UiCommand::Screenshot {
+            path: SCREENSHOT_FILE.to_string(),
+            prefer_readback,
+        }
+        .into_envelope();
+        if !workers.send_envelope(WorkerDomain::Ui, envelope) {
+            let _ = log_marker(
+                &config.log_file,
+                "Screenshot capture request dropped: UI worker unavailable",
+            );
+        }
+    }
 }
 
 fn install_ctrlc_handler() -> Result<Arc<AtomicBool>> {

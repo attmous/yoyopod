@@ -10,6 +10,7 @@ pub(crate) enum AppEvent {
     PollInput,
     Health,
     Animate(AnimationRequest),
+    Screenshot { path: String, prefer_readback: bool },
     Shutdown,
 }
 
@@ -32,6 +33,13 @@ pub(crate) fn dispatch_command(command: yoyopod_protocol::ui::UiCommand) -> Disp
         yoyopod_protocol::ui::UiCommand::PollInput => AppEvent::PollInput,
         yoyopod_protocol::ui::UiCommand::Health => AppEvent::Health,
         yoyopod_protocol::ui::UiCommand::Animate(request) => AppEvent::Animate(request),
+        yoyopod_protocol::ui::UiCommand::Screenshot {
+            path,
+            prefer_readback,
+        } => AppEvent::Screenshot {
+            path,
+            prefer_readback,
+        },
         yoyopod_protocol::ui::UiCommand::Shutdown | yoyopod_protocol::ui::UiCommand::WorkerStop => {
             AppEvent::Shutdown
         }

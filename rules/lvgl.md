@@ -70,9 +70,14 @@ Do not rebuild LVGL on the Pi.
 - `yoyopod target screenshot` defaults to the shadow-first path via `SIGUSR2`.
 - `yoyopod target screenshot --readback` requests LVGL readback via `SIGUSR1`.
 - The CLI clears the previous remote PNG before capture and waits for a fresh file.
-- Both screenshot signals also append freeze diagnostics to `logs/yoyopod_errors.log`:
-  - an all-thread backtrace dump
-  - a structured runtime snapshot logged before the screenshot is queued
+- The runtime (`device/runtime/src/cli.rs`) registers both signals next to its
+  SIGINT handler and forwards a `ui.screenshot` command to the UI worker, which
+  captures via `lv_snapshot_take` (readback) or the RGB565 shadow framebuffer,
+  falls back to the other path on failure, and writes the PNG atomically
+  (temp file + rename) to `/tmp/yoyopod_screenshot.png`.
+- The runtime appends `Screenshot capture requested (…)` to the app log when a
+  signal arrives. The Python-era freeze diagnostics (all-thread backtrace dump
+  to `logs/yoyopod_errors.log`) were not ported to the Rust runtime.
 - To confirm which path actually succeeded, check the app log:
   - `Saved screenshot via LVGL readback` means native LVGL snapshotting succeeded.
   - `Saved screenshot via shadow buffer` means the RGB565 framebuffer path was used instead.

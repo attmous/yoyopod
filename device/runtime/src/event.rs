@@ -3,8 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 use yoyopod_protocol::ui::{
     CallIntent, ContactAction, InputAction, ListItemAction, MusicIntent, PowerIntent,
-    RuntimeIntent, UiCommand, UiEvent, UiInputEvent, UiIntent, UiScreen, VoiceFileAction,
-    VoiceIntent, VoiceRecipientAction,
+    RuntimeIntent, UiCommand, UiEvent, UiInputEvent, UiIntent, UiScreen, UiScreenshotCaptured,
+    VoiceFileAction, VoiceIntent, VoiceRecipientAction,
 };
 
 use crate::protocol::{EnvelopeKind, WorkerEnvelope};
@@ -32,6 +32,7 @@ pub enum RuntimeEvent {
     UiScreenChanged {
         screen: UiScreen,
     },
+    UiScreenshotCaptured(UiScreenshotCaptured),
     WorkerError {
         domain: WorkerDomain,
         message: String,
@@ -56,6 +57,9 @@ pub enum RuntimeCommand {
         envelope: WorkerEnvelope,
         success_ack: WorkerEnvelope,
         failure_ack: WorkerEnvelope,
+    },
+    AppendAppLog {
+        line: String,
     },
     Shutdown,
 }
@@ -85,7 +89,7 @@ impl RuntimeEvent {
                 state.mark_worker(*domain, WorkerState::Stopped, reason.clone());
             }
             Self::UiIntent(intent) => state.apply_ui_intent(intent),
-            Self::UiInput(_) | Self::Shutdown | Self::Ignored => {}
+            Self::UiInput(_) | Self::UiScreenshotCaptured(_) | Self::Shutdown | Self::Ignored => {}
         }
     }
 }
@@ -159,6 +163,7 @@ fn runtime_event_from_ui_envelope(envelope: WorkerEnvelope) -> RuntimeEvent {
         Ok(UiEvent::ScreenChanged(changed)) => RuntimeEvent::UiScreenChanged {
             screen: changed.screen,
         },
+        Ok(UiEvent::ScreenshotCaptured(captured)) => RuntimeEvent::UiScreenshotCaptured(captured),
         Ok(UiEvent::Health(_)) => RuntimeEvent::Ignored,
         Ok(UiEvent::Error(error)) => RuntimeEvent::WorkerError {
             domain: WorkerDomain::Ui,
@@ -187,6 +192,9 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         RuntimeEvent::VoiceTranscript(snapshot) => commands_for_voice_transcript(state, snapshot),
         RuntimeEvent::VoiceAskResult(snapshot) => commands_for_voice_ask_result(state, snapshot),
         RuntimeEvent::VoiceSpeakResult(snapshot) => commands_for_voice_speak_result(snapshot),
+        RuntimeEvent::UiScreenshotCaptured(captured) => vec![RuntimeCommand::AppendAppLog {
+            line: screenshot_log_line(captured),
+        }],
         RuntimeEvent::Shutdown => vec![RuntimeCommand::Shutdown],
         RuntimeEvent::WorkerReady { .. }
         | RuntimeEvent::CloudSnapshot(_)
@@ -194,6 +202,28 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         | RuntimeEvent::WorkerError { .. }
         | RuntimeEvent::WorkerExited { .. }
         | RuntimeEvent::Ignored => Vec::new(),
+    }
+}
+
+/// App log line for a UI screenshot capture result. The success wording is a
+/// contract: skills/yoyopod-screenshot and rules/lvgl.md grep the app log for
+/// `Saved screenshot via LVGL readback` / `Saved screenshot via shadow buffer`.
+fn screenshot_log_line(captured: &UiScreenshotCaptured) -> String {
+    if !captured.ok {
+        let detail = if captured.detail.is_empty() {
+            "unknown error"
+        } else {
+            captured.detail.as_str()
+        };
+        return format!("Screenshot capture failed: {detail}");
+    }
+    match captured.method {
+        Some(method) => format!(
+            "Saved screenshot via {} -> {}",
+            method.label(),
+            captured.path
+        ),
+        None => format!("Saved screenshot -> {}", captured.path),
     }
 }
 

@@ -125,7 +125,11 @@ fn build_ready_check(pi: &PiPaths, attempts: u32) -> String {
 }
 
 fn build_clear(pi: &PiPaths) -> String {
-    format!("rm -f {}", shell_quote(&pi.screenshot_path))
+    // The runtime runs as root under systemd, so the previous PNG in sticky
+    // /tmp may not be removable by the SSH user; fall back to sudo like
+    // build_signal does.
+    let path = shell_quote(&pi.screenshot_path);
+    format!("rm -f {path} 2>/dev/null || sudo rm -f {path}")
 }
 
 fn build_signal(pi: &PiPaths, readback: bool) -> String {
