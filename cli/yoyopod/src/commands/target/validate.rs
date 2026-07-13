@@ -110,7 +110,8 @@ fn build_service_isolation(lane: &LanePaths, pi: &PiPaths) -> String {
     let verify = ops::build_startup_verification(pi, 20);
     let stale_cleanup = ops::build_stale_runtime_cleanup();
     format!(
-        "if systemctl is-active --quiet {prod}; then \
+        "echo 'target validate: isolating dev hardware ownership'; \
+         if systemctl is-active --quiet {prod}; then \
          echo 'target validate: prod lane owns the hardware; activate dev first' >&2; exit 2; fi; \
          was_active=0; \
          if systemctl is-active --quiet {dev}; then was_active=1; fi; \
@@ -145,7 +146,10 @@ fn build_validate_script(
     // EXIT trap restores the service whether a stage passes or fails.
     let mut steps = vec![
         build_service_isolation(lane, pi),
-        build_pi_sync(branch, expected_sha, false),
+        format!(
+            "echo 'target validate: syncing exact source revision'; {}",
+            build_pi_sync(branch, expected_sha, false)
+        ),
         require_artifact_sha(expected_sha),
     ];
     for binary in REQUIRED_BINARIES {
@@ -164,7 +168,11 @@ fn build_validate_script(
     if args.with_navigation {
         steps.push(format!("{expected_env}{ON_PI_BINARY} validate navigation"));
     }
-    steps.join(" && ")
+    steps
+        .into_iter()
+        .map(|step| format!("{{ {step}; }}"))
+        .collect::<Vec<_>>()
+        .join(" && ")
 }
 
 #[cfg(test)]
@@ -270,5 +278,6 @@ mod tests {
         assert!(script.contains("device/runtime/build/ARTIFACT_SHA"));
         assert!(script.contains("YOYOPOD_EXPECTED_ARTIFACT_SHA=abc123"));
         assert!(!script.contains("|| (echo"));
+        assert!(script.contains("; } && {"));
     }
 }
