@@ -58,7 +58,13 @@ pub fn build_startup_verification(pi: &PiPaths, attempts: u32) -> String {
 }
 
 pub fn build_stale_runtime_cleanup() -> String {
-    r"pkill -f '[y]oyopod-runtime' || true".to_string()
+    // The dev service runs as root: an unprivileged pkill matches its
+    // strays but cannot signal them, which stranded a second runtime
+    // alongside the fresh service (observed 2026-07-13: two UI hosts
+    // interleaving frames on the panel). A dead runtime also leaves its
+    // worker hosts reparented to init — sweep the whole family, sudo
+    // first, unprivileged fallback where sudo is absent.
+    r"sudo pkill -f '[y]oyopod-(runtime|[a-z-]+-host)' 2>/dev/null || pkill -f '[y]oyopod-(runtime|[a-z-]+-host)' || true".to_string()
 }
 
 pub fn build_restart(pi: &PiPaths, lane: &LanePaths) -> String {
@@ -90,4 +96,25 @@ pub fn build_restart(pi: &PiPaths, lane: &LanePaths) -> String {
          sudo systemctl start {dev_service} || exit $?"
     );
     [managed_restart, build_startup_verification(pi, 20)].join(" && ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_cleanup_escalates_to_sudo_and_sweeps_workers() {
+        let cleanup = build_stale_runtime_cleanup();
+        assert!(cleanup.starts_with("sudo pkill"));
+        assert!(cleanup.contains("|| pkill"));
+        assert!(cleanup.contains("[a-z-]+-host"));
+        assert!(cleanup.ends_with("|| true"));
+    }
+
+    #[test]
+    fn restart_includes_the_stale_sweep() {
+        let restart = build_restart(&PiPaths::default(), &LanePaths::default());
+        assert!(restart.contains("sudo pkill -f '[y]oyopod-(runtime|[a-z-]+-host)'"));
+        assert!(restart.contains("sudo systemctl stop yoyopod-dev.service"));
+    }
 }
