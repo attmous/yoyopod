@@ -21,6 +21,9 @@ temporarily paused, read [`../ROADMAP.md`](../ROADMAP.md) first.
 - [`PI_DEV_WORKFLOW.md`](PI_DEV_WORKFLOW.md) - day-to-day
   dev-machine-to-Pi loop via `yoyopod target …`
 
+- [`PILLAR_VALIDATION.md`](PILLAR_VALIDATION.md) - ordered recovery and
+  subsystem-isolation checks for uncertain hardware state
+
 ## Paused / in transition
 
 These docs cover capabilities that are temporarily unavailable while
