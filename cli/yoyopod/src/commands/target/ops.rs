@@ -61,13 +61,28 @@ pub fn build_startup_verification(pi: &PiPaths, attempts: u32) -> String {
 }
 
 pub fn build_stale_runtime_cleanup() -> String {
-    // The dev service runs as root: an unprivileged pkill matches its
-    // strays but cannot signal them, which stranded a second runtime
-    // alongside the fresh service (observed 2026-07-13: two UI hosts
-    // interleaving frames on the panel). A dead runtime also leaves its
-    // worker hosts reparented to init — sweep the whole family, sudo
-    // first, unprivileged fallback where sudo is absent.
-    r"sudo pkill -f '[y]oyopod-(runtime|[a-z-]+-host)' 2>/dev/null || pkill -f '[y]oyopod-(runtime|[a-z-]+-host)' || true".to_string()
+    // Match actual executable basenames through /proc rather than command
+    // text. `pkill -f` can match and kill the validator shell itself because
+    // its generated command contains worker paths later in the same argv.
+    // Escalate first for root-owned service strays, with a developer-owned
+    // standalone-process fallback.
+    r#"yoyopod_process_pids() { \
+         for proc in /proc/[0-9]*; do \
+           exe="$(readlink "$proc/exe" 2>/dev/null || true)"; \
+           name="${exe##*/}"; name="${name% (deleted)}"; \
+           case "$name" in yoyopod-runtime|yoyopod-*-host) printf '%s ' "${proc##*/}";; esac; \
+         done; \
+       }; \
+       pids="$(yoyopod_process_pids)"; \
+       if [ -n "$pids" ]; then \
+         sudo kill -TERM $pids 2>/dev/null || kill -TERM $pids 2>/dev/null || true; \
+         sleep 1; \
+       fi; \
+       pids="$(yoyopod_process_pids)"; \
+       if [ -n "$pids" ]; then \
+         sudo kill -KILL $pids 2>/dev/null || kill -KILL $pids 2>/dev/null || true; \
+       fi"#
+        .to_string()
 }
 
 pub fn build_restart(pi: &PiPaths, lane: &LanePaths) -> String {
@@ -106,18 +121,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stale_cleanup_escalates_to_sudo_and_sweeps_workers() {
+    fn stale_cleanup_uses_executable_identity_and_sweeps_workers() {
         let cleanup = build_stale_runtime_cleanup();
-        assert!(cleanup.starts_with("sudo pkill"));
-        assert!(cleanup.contains("|| pkill"));
-        assert!(cleanup.contains("[a-z-]+-host"));
-        assert!(cleanup.ends_with("|| true"));
+        assert!(cleanup.contains("/proc/[0-9]*"));
+        assert!(cleanup.contains("readlink \"$proc/exe\""));
+        assert!(cleanup.contains("yoyopod-runtime|yoyopod-*-host"));
+        assert!(cleanup.contains("sudo kill -TERM"));
+        assert!(cleanup.contains("sudo kill -KILL"));
+        assert!(!cleanup.contains("pkill -f"));
     }
 
     #[test]
     fn restart_includes_the_stale_sweep() {
         let restart = build_restart(&PiPaths::default(), &LanePaths::default());
-        assert!(restart.contains("sudo pkill -f '[y]oyopod-(runtime|[a-z-]+-host)'"));
+        assert!(restart.contains("yoyopod_process_pids"));
         assert!(restart.contains("sudo systemctl stop yoyopod-dev.service"));
     }
 
