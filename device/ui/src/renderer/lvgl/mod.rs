@@ -424,13 +424,25 @@ impl LvglFacade for NativeLvglFacade {
         accent_rgb: u32,
     ) -> Result<()> {
         let node = self.widget_node_mut(widget)?;
-        styling::apply_variant_raw(node.obj, node.role, variant, accent_rgb);
+        node.variant = Some(variant);
+        // The engine sends variant and accent as independent prop changes
+        // (and the renderer passes accent_rgb=0 on variant-only updates),
+        // so prefer the accent already recorded on the node.
+        let accent = node.accent_rgb.unwrap_or(accent_rgb);
+        styling::apply_variant_raw(node.obj, node.role, variant, accent);
         Ok(())
     }
 
     fn set_accent(&mut self, widget: WidgetId, rgb: u32) -> Result<()> {
         let node = self.widget_node_mut(widget)?;
-        styling::apply_accent_raw(node.obj, node.role, rgb);
+        node.accent_rgb = Some(rgb);
+        if node.role == roles::SCENE_BACKDROP {
+            // Backdrop fill depends on the (variant, accent) pair.
+            let variant = node.variant.unwrap_or("solid");
+            styling::apply_variant_raw(node.obj, node.role, variant, rgb);
+        } else {
+            styling::apply_accent_raw(node.obj, node.role, rgb);
+        }
         Ok(())
     }
 
