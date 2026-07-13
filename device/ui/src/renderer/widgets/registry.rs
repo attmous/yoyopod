@@ -33,6 +33,10 @@ pub(crate) struct WidgetNode {
     pub x_offset: i32,
     pub y_offset: i32,
     pub scale_permille: i32,
+    /// Last applied variant/accent props. Backdrop styling depends on the
+    /// pair, but the engine delivers them as independent prop changes.
+    pub variant: Option<WidgetRole>,
+    pub accent_rgb: Option<u32>,
 }
 
 #[derive(Debug, Default)]
@@ -76,6 +80,8 @@ impl WidgetRegistry {
                 x_offset: 0,
                 y_offset: 0,
                 scale_permille: 1000,
+                variant: None,
+                accent_rgb: None,
             },
         );
         if let Some(parent) = parent {
