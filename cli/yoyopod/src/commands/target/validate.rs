@@ -91,7 +91,7 @@ fn require_executable(path: &str) -> String {
          (`yoyopod target deploy`) before Pi validation; do not build Rust \
          binaries on the Pi."
     ));
-    format!("test -x {quoted_path} || (echo {message} >&2 && exit 1)")
+    format!("test -x {quoted_path} || {{ echo {message} >&2; exit 1; }}")
 }
 
 fn require_artifact_sha(expected_sha: &str) -> String {
@@ -99,7 +99,7 @@ fn require_artifact_sha(expected_sha: &str) -> String {
     format!(
         "test -f {ARTIFACT_SHA_FILE} && \
          test \"$(tr -d '\\r\\n' < {ARTIFACT_SHA_FILE})\" = {expected_sha} || \
-         (echo 'Installed worker artifact does not match the requested commit; run `yoyopod target deploy` first.' >&2 && exit 2)"
+         {{ echo 'Installed worker artifact does not match the requested commit; run `yoyopod target deploy` first.' >&2; exit 2; }}"
     )
 }
 
@@ -269,5 +269,6 @@ mod tests {
         assert!(script.contains("sudo systemctl start yoyopod-dev.service"));
         assert!(script.contains("device/runtime/build/ARTIFACT_SHA"));
         assert!(script.contains("YOYOPOD_EXPECTED_ARTIFACT_SHA=abc123"));
+        assert!(!script.contains("|| (echo"));
     }
 }
