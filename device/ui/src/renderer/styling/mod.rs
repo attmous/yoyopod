@@ -24,9 +24,11 @@ pub(crate) use tuning::apply_role_tuning_raw;
 pub(crate) use variants::apply_variant_raw;
 
 /// Accent share (percent) mixed into the dark background for
-/// accent-driven backdrops. Kept subtle so status chrome and hero
-/// content stay legible on the 240x280 panel.
-const BACKDROP_ACCENT_PERCENT: u8 = 22;
+/// accent-driven backdrops. Kept to a whisper: on the physical panel
+/// saturation reads much stronger than in captures — 22% still read
+/// as "a green screen" on hardware, 8% reads as a dark UI with a
+/// hint of the active card's identity.
+const BACKDROP_ACCENT_PERCENT: u8 = 8;
 
 /// Resolve the background fill for a scene backdrop from its variant.
 ///
@@ -82,11 +84,11 @@ mod tests {
 
     #[test]
     fn accent_drift_tints_the_dark_base() {
-        // listen accent 0x00FF88 at 22% over 0x2A2D35:
-        // r = (0*22 + 42*78) / 100 = 32  (0x20)
-        // g = (255*22 + 45*78) / 100 = 91 (0x5B)
-        // b = (136*22 + 53*78) / 100 = 71 (0x47)
-        assert_eq!(backdrop_bg_rgb("accent_drift", 0x00FF88), 0x205B47);
+        // listen accent 0x00FF88 at 8% over 0x2A2D35:
+        // r = (0*8 + 42*92) / 100 = 38  (0x26)
+        // g = (255*8 + 45*92) / 100 = 61 (0x3D)
+        // b = (136*8 + 53*92) / 100 = 59 (0x3B)
+        assert_eq!(backdrop_bg_rgb("accent_drift", 0x00FF88), 0x263D3B);
     }
 
     #[test]
