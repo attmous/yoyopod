@@ -31,8 +31,11 @@ pub fn build_status(pi: &PiPaths) -> String {
     let pid = shell_quote(&pi.pid_file);
     format!(
         "echo '=== git ===' && git rev-parse HEAD && \
-         echo '=== processes ===' && (ps aux | grep -E 'yoyopod-runtime|mpv' | grep -v grep || true) && \
+         echo '=== artifact ===' && \
+         (cat device/runtime/build/ARTIFACT_SHA 2>/dev/null || echo 'no artifact SHA marker') && \
          echo '=== pid ===' && (cat {pid} 2>/dev/null || echo 'no pid file') && \
+         echo '=== workers ===' && \
+         (ps aux | grep -E 'yoyopod-(runtime|[a-z-]+-host)|[m]pv' | grep -v grep || true) && \
          echo '=== log tail ===' && (tail -n 20 {log} 2>/dev/null || echo 'no log file')"
     )
 }
@@ -116,5 +119,12 @@ mod tests {
         let restart = build_restart(&PiPaths::default(), &LanePaths::default());
         assert!(restart.contains("sudo pkill -f '[y]oyopod-(runtime|[a-z-]+-host)'"));
         assert!(restart.contains("sudo systemctl stop yoyopod-dev.service"));
+    }
+
+    #[test]
+    fn status_reports_artifact_and_every_worker_host() {
+        let status = build_status(&PiPaths::default());
+        assert!(status.contains("device/runtime/build/ARTIFACT_SHA"));
+        assert!(status.contains("[a-z-]+-host"));
     }
 }

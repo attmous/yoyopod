@@ -52,18 +52,20 @@ pub fn build_status(lane: &LanePaths) -> String {
     [
         "echo '=== active lane ===' ".to_string(),
         format!(
-            "echo dev: $(systemctl is-active {dev} 2>/dev/null || echo unknown) && \
-             echo prod: $(systemctl is-active {prod} 2>/dev/null || echo unknown)"
+            "dev_state=\"$(systemctl is-active {dev} 2>/dev/null || true)\"; \
+             prod_state=\"$(systemctl is-active {prod} 2>/dev/null || true)\"; \
+             echo \"dev: ${{dev_state:-unknown}}\"; \
+             echo \"prod: ${{prod_state:-unknown}}\""
         ),
         "echo '=== legacy/conflict services ===' ".to_string(),
         format!(
             "for unit in {legacy} ; do \
-             state=\"$(systemctl is-active \"$unit\" 2>/dev/null || echo unknown)\"; \
-             echo \"$unit: $state\"; \
+             state=\"$(systemctl is-active \"$unit\" 2>/dev/null || true)\"; \
+             echo \"$unit: ${{state:-unknown}}\"; \
              done"
         ),
         "echo '=== runtime processes ===' ".to_string(),
-        "ps aux | grep -E 'yoyopod-runtime|yoyopod-ui-host|yoyopod-voip-host' | grep -v grep || true".to_string(),
+        "ps aux | grep -E 'yoyopod-(runtime|[a-z-]+-host)' | grep -v grep || true".to_string(),
     ]
     .join(" && ")
 }
@@ -96,6 +98,8 @@ mod tests {
         let s = build_status(&lane);
         assert!(s.contains("yoyopod-dev.service"));
         assert!(s.contains("yoyopod-prod.service"));
+        assert!(!s.contains("|| echo unknown"));
+        assert!(s.contains("[a-z-]+-host"));
     }
 
     #[test]

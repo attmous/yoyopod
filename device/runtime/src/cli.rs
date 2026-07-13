@@ -68,7 +68,7 @@ fn run_runtime(config: RuntimeConfig, hardware: &str, config_dir: &Path) -> Resu
 }
 
 fn run_runtime_inner(config: &RuntimeConfig, hardware: &str, config_dir: &Path) -> Result<()> {
-    let shutdown = install_ctrlc_handler()?;
+    let shutdown = install_shutdown_signal_handlers()?;
     let screenshot_signals = install_screenshot_signal_handlers()?;
 
     let mut workers = WorkerSupervisor::default();
@@ -368,7 +368,7 @@ fn forward_screenshot_requests(
     }
 }
 
-fn install_ctrlc_handler() -> Result<Arc<AtomicBool>> {
+fn install_shutdown_signal_handlers() -> Result<Arc<AtomicBool>> {
     static SHUTDOWN_FLAG: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 
     if let Some(existing) = SHUTDOWN_FLAG.get() {
@@ -376,14 +376,27 @@ fn install_ctrlc_handler() -> Result<Arc<AtomicBool>> {
         return Ok(Arc::clone(existing));
     }
 
-    let shutdown = Arc::new(AtomicBool::new(false));
-    let handler_flag = Arc::clone(SHUTDOWN_FLAG.get_or_init(|| shutdown));
+    let shutdown = SHUTDOWN_FLAG.get_or_init(|| Arc::new(AtomicBool::new(false)));
+    register_shutdown_signals(shutdown)?;
+    Ok(Arc::clone(shutdown))
+}
+
+#[cfg(unix)]
+fn register_shutdown_signals(shutdown: &Arc<AtomicBool>) -> Result<()> {
+    signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(shutdown))
+        .context("register SIGINT shutdown handler")?;
+    signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(shutdown))
+        .context("register SIGTERM shutdown handler")?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn register_shutdown_signals(shutdown: &Arc<AtomicBool>) -> Result<()> {
+    let handler_flag = Arc::clone(shutdown);
     ctrlc::set_handler(move || {
         handler_flag.store(true, Ordering::SeqCst);
     })?;
-    Ok(Arc::clone(
-        SHUTDOWN_FLAG.get().expect("shutdown flag initialized"),
-    ))
+    Ok(())
 }
 
 fn send_startup_commands(workers: &mut WorkerSupervisor, config: &RuntimeConfig) {

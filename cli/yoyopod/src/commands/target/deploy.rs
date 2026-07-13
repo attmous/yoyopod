@@ -24,6 +24,19 @@ use super::TargetContext;
 
 const CI_POLL_INTERVAL_SECS: u64 = 20;
 const CI_POLL_TIMEOUT_MINS: u64 = 30;
+pub(super) const ARTIFACT_SHA_FILE: &str = "device/runtime/build/ARTIFACT_SHA";
+
+const DEVICE_BUILD_DIRS: [&str; 9] = [
+    "device/runtime/build",
+    "device/ui/build",
+    "device/cloud/build",
+    "device/media/build",
+    "device/voip/build",
+    "device/network/build",
+    "device/onpi/build",
+    "device/power/build",
+    "device/speech/build",
+];
 
 pub fn run(
     ctx: &TargetContext,
@@ -110,16 +123,7 @@ pub fn run(
     }
 
     // 5) Extract + chmod on Pi.
-    let extract_cmd = format!(
-        "tar -xzf {tarball} && \
-         chmod +x device/runtime/build/yoyopod-runtime device/ui/build/yoyopod-ui-host \
-         device/media/build/yoyopod-media-host device/voip/build/yoyopod-voip-host \
-         device/network/build/yoyopod-network-host device/cloud/build/yoyopod-cloud-host \
-         device/power/build/yoyopod-power-host device/speech/build/yoyopod-speech-host \
-         && {{ [ ! -f device/onpi/build/yoyopod-on-pi ] || chmod +x device/onpi/build/yoyopod-on-pi; }} \
-         && rm -f {tarball}",
-        tarball = shell_quote(&remote_tarball)
-    );
+    let extract_cmd = build_artifact_install(&remote_tarball, &resolved_sha);
     let rc = run_remote(&ctx.conn, &extract_cmd, false, RemoteWorkdir::Default)?;
     if rc != 0 {
         return Ok(rc);
@@ -150,12 +154,31 @@ pub(super) fn require_local_clean_tree() -> Result<()> {
     )
 }
 
-fn capture_head_sha() -> Result<String> {
+pub(super) fn capture_head_sha() -> Result<String> {
     let out = run_local_capture(["git", "rev-parse", "HEAD"])?;
     if !out.status.success() {
         return Err(anyhow!("git rev-parse HEAD failed: {}", out.stderr));
     }
     Ok(out.stdout.trim().to_string())
+}
+
+fn build_artifact_install(remote_tarball: &str, expected_sha: &str) -> String {
+    let tarball = shell_quote(remote_tarball);
+    let expected_sha = shell_quote(expected_sha);
+    let build_dirs = DEVICE_BUILD_DIRS.join(" ");
+    format!(
+        "rm -rf {build_dirs} && \
+         tar -xzf {tarball} && \
+         test -f {ARTIFACT_SHA_FILE} && \
+         test \"$(tr -d '\\r\\n' < {ARTIFACT_SHA_FILE})\" = {expected_sha} || \
+         {{ echo 'artifact SHA marker is missing or does not match the requested commit' >&2; exit 2; }}; \
+         chmod +x device/runtime/build/yoyopod-runtime device/ui/build/yoyopod-ui-host \
+         device/media/build/yoyopod-media-host device/voip/build/yoyopod-voip-host \
+         device/network/build/yoyopod-network-host device/cloud/build/yoyopod-cloud-host \
+         device/onpi/build/yoyopod-on-pi device/power/build/yoyopod-power-host \
+         device/speech/build/yoyopod-speech-host && \
+         rm -f {tarball}"
+    )
 }
 
 pub(super) fn require_branch_pushed(branch: &str) -> Result<()> {
@@ -379,5 +402,16 @@ mod tests {
     fn clean_native_appends_lvgl_rm() {
         let s = build_pi_sync("main", "", true);
         assert!(s.contains("rm -rf device/ui/native/lvgl/build"));
+    }
+
+    #[test]
+    fn artifact_install_removes_every_stale_build_and_checks_sha() {
+        let s = build_artifact_install("/tmp/device.tar.gz", "abc123");
+        for build_dir in DEVICE_BUILD_DIRS {
+            assert!(s.contains(build_dir));
+        }
+        assert!(s.contains("device/runtime/build/ARTIFACT_SHA"));
+        assert!(s.contains("= abc123"));
+        assert!(s.contains("device/onpi/build/yoyopod-on-pi"));
     }
 }

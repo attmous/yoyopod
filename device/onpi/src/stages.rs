@@ -19,6 +19,7 @@ pub fn smoke(config_dir: &Path, hardware: &str, display_hold_seconds: f64) -> i3
 
 pub fn deploy(config_dir: &Path) -> i32 {
     let results = vec![
+        checks::artifact_sha_check(),
         checks::config_files_check(config_dir),
         checks::worker_binaries_check(),
         checks::systemd_units_check(),
