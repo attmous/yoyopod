@@ -18,9 +18,28 @@ Single binary, `yoyopod`. Nine commands all under `yoyopod target ...`:
 | `target restart` | implemented |
 | `target logs [--lines N] [--follow] [--errors] [--filter PATTERN]` | implemented |
 | `target screenshot [--out PATH] [--readback]` | implemented |
-| `target validate` | **stub** (returns exit 2 with a "blocked on Round 2" message) |
+| `target validate [--sha S] [--with-lvgl-soak] [--with-navigation]` | implemented (Round 2; voip / cloud-voice stages still pending) |
 
 Everything else from the old Python CLI returns in later rounds.
+
+### What `target validate` does (Round 2)
+
+Enforces the same committed-code contract as `target deploy`, then over
+SSH: syncs the Pi checkout to the pushed revision, verifies the
+CI-built binaries are installed, and runs the staged validation suite
+via the on-Pi companion binary shipped inside the artifact bundle:
+
+```
+device/onpi/build/yoyopod-on-pi validate deploy
+device/onpi/build/yoyopod-on-pi validate smoke
+device/onpi/build/yoyopod-on-pi validate stability
+# --with-lvgl-soak   adds: validate lvgl
+# --with-navigation  adds: validate navigation
+```
+
+The `voip` and `cloud-voice` stages are not ported yet (Round 2
+follow-up); `--with-voip` is rejected with a clear message until then.
+The on-Pi binary source lives at `../device/onpi/`.
 
 ## Install
 
@@ -141,7 +160,7 @@ cli/
                 ├── logs.rs      # logs
                 ├── screenshot.rs
                 ├── deploy.rs    # the big one
-                └── validate.rs  # Round 2 stub
+                └── validate.rs  # SSH orchestration of yoyopod-on-pi
 ```
 
 No async runtime. All SSH and subprocess work is synchronous and
@@ -161,8 +180,9 @@ command shape, deploy pre-checks, and the major shell-builder outputs.
 
 ## Roadmap
 
-Round 2 (next): restore on-Pi validation in Rust so `target validate`
-stops being a stub.
+Round 2 (in progress): base validation stages are restored via the
+`yoyopod-on-pi` companion binary; the `voip` and `cloud-voice` stage
+ports are the remaining follow-up.
 
 Round 3: restore the prod release pipeline (slot builder, manifest,
 preflight) and re-enable the disabled CI jobs.

@@ -64,7 +64,10 @@ pub fn run(
         println!("artifact: {artifact_name}");
         println!("local-artifact-dir: {}", local_artifact_dir.display());
         println!("would: ensure CI run for sha is successful, download {tarball_name}");
-        println!("would: ssh sync + extract + restart + verify on {}", ctx.conn.ssh_target());
+        println!(
+            "would: ssh sync + extract + restart + verify on {}",
+            ctx.conn.ssh_target()
+        );
         return Ok(0);
     }
 
@@ -113,6 +116,7 @@ pub fn run(
          device/media/build/yoyopod-media-host device/voip/build/yoyopod-voip-host \
          device/network/build/yoyopod-network-host device/cloud/build/yoyopod-cloud-host \
          device/power/build/yoyopod-power-host device/speech/build/yoyopod-speech-host \
+         && {{ [ ! -f device/onpi/build/yoyopod-on-pi ] || chmod +x device/onpi/build/yoyopod-on-pi; }} \
          && rm -f {tarball}",
         tarball = shell_quote(&remote_tarball)
     );
@@ -135,7 +139,7 @@ pub fn run(
     Ok(0)
 }
 
-fn require_local_clean_tree() -> Result<()> {
+pub(super) fn require_local_clean_tree() -> Result<()> {
     require_git(
         &["git", "diff", "--quiet"],
         "Local worktree has uncommitted changes. Commit or stash them before `yoyopod target deploy`.",
@@ -154,7 +158,7 @@ fn capture_head_sha() -> Result<String> {
     Ok(out.stdout.trim().to_string())
 }
 
-fn require_branch_pushed(branch: &str) -> Result<()> {
+pub(super) fn require_branch_pushed(branch: &str) -> Result<()> {
     require_git(
         &["git", "fetch", "--quiet", "origin", branch],
         &format!("Failed to fetch `origin/{branch}` before deploy."),
@@ -168,16 +172,10 @@ fn require_branch_pushed(branch: &str) -> Result<()> {
     )
 }
 
-fn require_local_not_ahead(branch: &str) -> Result<()> {
+pub(super) fn require_local_not_ahead(branch: &str) -> Result<()> {
     // If a local branch with the same name exists, ensure it's not ahead of origin.
     let local_ref = format!("refs/heads/{branch}");
-    let check = run_local_capture([
-        "git",
-        "show-ref",
-        "--verify",
-        "--quiet",
-        local_ref.as_str(),
-    ])?;
+    let check = run_local_capture(["git", "show-ref", "--verify", "--quiet", local_ref.as_str()])?;
     if !check.status.success() {
         return Ok(());
     }
@@ -197,7 +195,7 @@ fn require_local_not_ahead(branch: &str) -> Result<()> {
     Ok(())
 }
 
-fn require_sha_reachable(branch: &str, sha: &str) -> Result<()> {
+pub(super) fn require_sha_reachable(branch: &str, sha: &str) -> Result<()> {
     let origin_branch = format!("origin/{branch}");
     require_git(
         &[
@@ -316,7 +314,7 @@ fn download_artifact(run_id: &str, artifact_name: &str, dest: &Path) -> Result<(
     Ok(())
 }
 
-fn build_pi_sync(branch: &str, sha: &str, clean_native: bool) -> String {
+pub(super) fn build_pi_sync(branch: &str, sha: &str, clean_native: bool) -> String {
     let br = shell_quote(branch);
     let origin_br = shell_quote(&format!("origin/{branch}"));
     let mut steps = vec![

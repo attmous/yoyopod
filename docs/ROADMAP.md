@@ -6,13 +6,13 @@ CLI rebuild — what's done, what's paused, when each gap closes.
 The most recent rebuild milestone is summarised at the top; rounds in
 detail follow.
 
-Status as of 2026-05-14:
+Status as of 2026-07-12:
 
 | Round | Scope | State |
 |---|---|---|
 | 0 | Demolition + scaffolding | ✅ merged |
 | 1 | Daily dev loop (`yoyopod target …` Rust MVP) | ✅ merged |
-| 2 | Restore hardware validation (`yoyopod target validate`) | ⏳ not started |
+| 2 | Restore hardware validation (`yoyopod target validate`) | 🔄 in progress |
 | 3 | Restore prod release pipeline | ⏳ not started |
 | 4+ | Diagnostics (`pi voip/power/network/rust-ui-host`) | ⏳ not started |
 
@@ -56,10 +56,12 @@ reality, not historical reality.
 - **Prod slot install preflight on the Pi.** `install_release.sh` still
   runs end-to-end but the structural preflight is a no-op. Slots
   shipped before the deletion still contain a bundled preflight module.
-- **All `yoyopod pi …` commands** (validate, voip, power, network,
-  rust-ui-host). Gone with the Python CLI. SSH manually or read code.
-- **`target validate`** (the Rust CLI's pre-push check). The Rust version
-  ships as a stub in Round 1 until Round 2 restores on-Pi validation.
+- **Diagnostics** (`pi voip`, `pi power`, `pi network`, `pi
+  rust-ui-host`). Gone with the Python CLI. SSH manually or read code.
+- **VoIP + cloud-voice validation stages.** `yoyopod-on-pi validate
+  {voip, cloud-voice}` are stubs (exit 2) until the Round 2 follow-up
+  ports them. The base stages (deploy, smoke, stability, navigation,
+  lvgl) are restored by the in-flight Round 2 work.
 - **The `yoyopod` console script.** Replaced by the Rust binary
   installed from `cli/`.
 
@@ -92,13 +94,35 @@ artifact, syncs the Pi checkout, scps and extracts the binaries,
 restarts the dev service, and verifies startup. Replaces the manual
 flow that `skills/yoyopod-rust-artifact/SKILL.md` used to document.
 
-### Round 2 — Restore hardware validation
+### Round 2 — Restore hardware validation 🔄 (started 2026-07-12)
 
-Port on-Pi validation stages (`smoke`, `deploy`, `stability`, `lvgl`,
-`navigation`, `voip`, `cloud-voice`) to Rust. Wire `target validate` to
-call them over SSH the way the Python version did, or fold them into
-a `yoyopod-on-pi` cross-compiled binary executed directly. Decision
-deferred to round start.
+**Architecture decision (made at round start, 2026-07-12):** the
+validation stages live in a new on-Pi companion binary, `yoyopod-on-pi`
+(`device/onpi/`), executed on the Pi by `yoyopod target validate` over
+SSH. The alternative (driving stages from the dev machine over
+per-command SSH) was rejected because:
+
+- The stages supervise worker binaries over their stdin/stdout envelope
+  protocol (spawn `yoyopod-ui-host`, send `ui.runtime_snapshot` /
+  `ui.input_action`, assert on `ui.health`). That needs a long-lived
+  process on the Pi, not SSH round-trips.
+- Living in the `device/` workspace, the validator consumes
+  `yoyopod-protocol` directly, so it cannot drift from what the
+  workers actually speak.
+- CI ships it inside the existing `yoyopod-rust-device-arm64-<sha>`
+  bundle, so `target deploy` installs it automatically and validation
+  always matches the deployed commit. Round 4+ diagnostics can join
+  the same binary later.
+
+In flight now: stages `deploy`, `smoke`, `stability`, `navigation`,
+`lvgl` ported to Rust (Python-era venv/entrypoint checks dropped for
+Rust reality), plus `target validate` orchestration with the same
+committed-code contract as `target deploy`.
+
+Round 2 follow-up (next): port the `voip` stage (SIP registration +
+call soak) and the `cloud-voice` stage (STT/TTS worker boundary
+checks) from the old `voip.py` / `cloud_voice.py`. Until then those
+stages exit 2 with a clear message.
 
 Restores: hardware validation as part of the daily loop.
 

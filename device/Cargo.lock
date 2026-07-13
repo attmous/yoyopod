@@ -2259,6 +2259,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "yoyopod-on-pi"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde_json",
+ "yoyopod-protocol",
+]
+
+[[package]]
 name = "yoyopod-power"
 version = "0.1.0"
 dependencies = [

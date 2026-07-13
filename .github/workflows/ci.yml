@@ -137,6 +137,7 @@ jobs:
             -p yoyopod-media \
             -p yoyopod-voip \
             -p yoyopod-network \
+            -p yoyopod-on-pi \
             -p yoyopod-power \
             -p yoyopod-speech \
             --features yoyopod-ui/whisplay-hardware,yoyopod-ui/native-lvgl,yoyopod-voip/native-liblinphone
@@ -151,6 +152,7 @@ jobs:
             "${bundle_root}/device/media/build" \
             "${bundle_root}/device/voip/build" \
             "${bundle_root}/device/network/build" \
+            "${bundle_root}/device/onpi/build" \
             "${bundle_root}/device/power/build" \
             "${bundle_root}/device/speech/build"
           cp target/release/yoyopod-runtime "${bundle_root}/device/runtime/build/yoyopod-runtime"
@@ -159,6 +161,7 @@ jobs:
           cp target/release/yoyopod-media-host "${bundle_root}/device/media/build/yoyopod-media-host"
           cp target/release/yoyopod-voip-host "${bundle_root}/device/voip/build/yoyopod-voip-host"
           cp target/release/yoyopod-network-host "${bundle_root}/device/network/build/yoyopod-network-host"
+          cp target/release/yoyopod-on-pi "${bundle_root}/device/onpi/build/yoyopod-on-pi"
           cp target/release/yoyopod-power-host "${bundle_root}/device/power/build/yoyopod-power-host"
           cp target/release/yoyopod-speech-host "${bundle_root}/device/speech/build/yoyopod-speech-host"
           tar -C "${bundle_root}" -czf "target/${bundle_name}.tar.gz" device
