@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>YoyoPod — Home Screen · Implementation Spec</title>
+<style>
+  :root {
+    /* ─── Panel ─── */
+    --panel-w: 240px;
+    --panel-h: 280px;
+    --panel-radius: 22px;
+
+    /* ─── Palette ─── */
+    --bg-cream:    #FCE6D2;
+    --bg-cream-2:  #F7DBC2;
+    --bg-stage-lime:   #E6FDE0;
+    --bg-stage-peri:   #E7E5F7;
+    --bg-stage-butter: #FFF0CC;
+    --bg-stage-coral:  #FDE2D8;
+
+    --ink:         #1B1B1F;
+    --ink-soft:    #3A3A40;
+    --ink-300:     #8a8076;
+
+    --c-lime:      #9DFC7C;
+    --c-peri:      #A9A6E5;
+    --c-butter:    #FFD06A;
+    --c-coral:     #F37767;
+    --c-tomato:    #E5443B;
+    --c-mustard:   #E8A93C;
+
+    /* ─── Stroke + shadow primitives ─── */
+    --border-w: 2px;
+    --shadow-row:    2px 2px 0 var(--ink);
+    --shadow-card:   3px 3px 0 var(--ink);
+
+    /* ─── Spacing ─── */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+
+    /* ─── Component sizes ─── */
+    --statusbar-h: 22px;
+    --deck-h:      52px;
+    --tab-h:       18px;
+    --row-h:       28px;
+    --row-radius:  6px;
+    --card-radius: 10px;
+
+    /* ─── Type ─── */
+    --t-row:    600 12px/1 "Inter", system-ui, sans-serif;
+    --t-meta:   700 10px/1 "Inter", system-ui, sans-serif;
+    --t-tab:    800 9px/1  "Inter", system-ui, sans-serif;
+    --t-status: 700 11px/1 "Inter", system-ui, sans-serif;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: #1a1518;
+    color: #efe4d6;
+    font-family: -apple-system, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { padding: 32px 24px 80px; }
+  h1 { font-weight: 700; font-size: 22px; margin: 0 0 4px; color: #fff; }
+  h2 { font-weight: 600; font-size: 14px; margin: 32px 0 12px; color: #d3b89a; letter-spacing: 0.04em; text-transform: uppercase; }
+  h3 { margin: 14px 0 8px; font-size: 13px; color: #ffd9b3; }
+  p  { font-size: 13px; line-height: 1.55; max-width: 760px; color: #c9b9a3; }
+  .muted { color: #8a7c6c; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 11px; color: #8a7c6c; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* ── device frame ─────────────────────────────────────── */
+  .device {
+    width: calc(var(--panel-w) + 24px);
+    padding: 12px;
+    border-radius: 22px;
+    background: linear-gradient(160deg, #ff7a3d, #d2401b);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.05) inset,
+      0 30px 50px -20px rgba(0,0,0,0.7),
+      0 0 60px -10px rgba(255,90,31,0.35);
+  }
+  .panel {
+    position: relative;
+    width: var(--panel-w);
+    height: var(--panel-h);
+    box-sizing: border-box;
+    background: var(--bg-cream);
+    overflow: hidden;
+    font-family: "Inter", "Roboto", system-ui, sans-serif;
+    color: var(--ink);
+    border-radius: var(--panel-radius);
+    box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 1px var(--ink);
+  }
+
+  /* ── status bar ───────────────────────────────────────── */
+  .statusbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: var(--statusbar-h);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 12px 0 8px;
+    font-size: 11px;
+    color: var(--ink);
+    background: var(--bg-cream);
+    z-index: 30;
+    font-weight: 700;
+  }
+  .statusbar .left  { display: flex; align-items: center; gap: 5px; justify-self: start; }
+  .statusbar .time  { font-variant-numeric: tabular-nums; justify-self: center; }
+  .statusbar .right { display: flex; align-items: center; gap: 5px; justify-self: end; }
+
+  .sb-bars { display: flex; align-items: flex-end; gap: 1px; height: 10px; }
+  .sb-bars > i { display: block; width: 2px; background: var(--ink); }
+  .sb-bars > i:nth-child(1) { height: 3px; }
+  .sb-bars > i:nth-child(2) { height: 5px; }
+  .sb-bars > i:nth-child(3) { height: 7px; }
+  .sb-bars > i:nth-child(4) { height: 9px; }
+  .sb-bars > i.off { background: transparent; border: 1px solid var(--ink); box-sizing: border-box; }
+
+  .sb-gps { width: 8px; height: 11px; position: relative; }
+  .sb-gps::before {
+    content: ""; position: absolute; left: 0; top: 0;
+    width: 8px; height: 8px;
+    background: var(--ink);
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    transform-origin: center;
+  }
+  .sb-gps::after {
+    content: ""; position: absolute; left: 3px; top: 2.5px;
+    width: 2px; height: 2px;
+    background: var(--bg-cream);
+    border-radius: 50%;
+  }
+  .sb-pct { font-variant-numeric: tabular-nums; font-size: 10px; }
+  .batt {
+    width: 20px; height: 10px;
+    border: 1.5px solid var(--ink);
+    border-radius: 1px;
+    position: relative; padding: 1px;
+  }
+  .batt::after {
+    content: ""; position: absolute; right: -3px; top: 2px;
+    width: 2px; height: 4px; background: var(--ink); border-radius: 0 1px 1px 0;
+  }
+  .batt > i { display: block; width: 70%; height: 100%; background: var(--ink); }
+
+  /* ── deck ─────────────────────────────────────────────── */
+  .deck {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: var(--deck-h);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    background: var(--bg-cream);
+    border-top: var(--border-w) solid var(--ink);
+    z-index: 20;
+  }
+  .deck .slot {
+    position: relative;
+    background: var(--bg-cream);
+    color: var(--ink-300);
+    display: grid; place-items: center;
+    border-right: var(--border-w) solid var(--ink);
+    transition: background-color 160ms ease, color 160ms ease;
+  }
+  .deck .slot:last-child { border-right: none; }
+  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; }
+  .deck .slot.listen .glyph { font-size: 24px; }
+  .deck .slot.focus { color: var(--ink); }
+  .deck .slot.focus.listen { background: var(--c-lime); }
+  .deck .slot.focus.talk   { background: var(--c-peri); }
+  .deck .slot.focus.ask    { background: var(--c-butter); }
+  .deck .slot.focus.setup  { background: var(--c-coral); }
+
+  /* ── HOME stage + companion blob ──────────────────────── */
+  .home-stage {
+    position: absolute;
+    top: var(--statusbar-h); left: 0; right: 0;
+    bottom: var(--deck-h);
+    background: var(--bg-cream);
+    overflow: hidden;
+    transition: background-color 160ms ease;
+  }
+
+  .blob {
+    width: 110px; height: 110px;
+    position: absolute;
+    left: 65px;  /* (240 - 110) / 2 = 65 → horizontally centered */
+    top: 48px;   /* visually centered between statusbar bottom and deck top */
+    animation: blob-breathe 4.2s ease-in-out infinite;
+    filter: drop-shadow(2px 3px 0 var(--ink));
+    z-index: 10;
+  }
+  @keyframes blob-breathe {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.04); }
+  }
+  .blob .body {
+    position: absolute; inset: 0;
+    background: var(--c-lime);
+    border: var(--border-w) solid var(--ink);
+    border-radius: 46% 54% 52% 48% / 50% 48% 52% 50%;
+    animation: blob-morph 7s ease-in-out infinite;
+  }
+  .blob .eye {
+    position: absolute; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--ink); top: 42%;
+    animation: blink 5.5s infinite;
+  }
+  .blob .eye.l { left: 28%; }
+  .blob .eye.r { right: 28%; }
+  .blob .eye::after {
+    content: ""; position: absolute; top: 2px; left: 3px;
+    width: 4px; height: 4px; background: #fff; border-radius: 50%;
+  }
+  .blob .mouth {
+    position: absolute; left: 50%; bottom: 26%;
+    transform: translateX(-50%);
+    width: 22px; height: 10px;
+    border: var(--border-w) solid var(--ink);
+    border-top: none;
+    border-radius: 0 0 18px 18px;
+    background: transparent;
+  }
+  @keyframes blob-morph   { 0%,100% { border-radius: 46% 54% 52% 48% / 50% 48% 52% 50%; } 50% { border-radius: 52% 48% 46% 54% / 48% 52% 50% 50%; } }
+  @keyframes blink        { 0%,92%,100% { transform: scaleY(1); } 94%,98% { transform: scaleY(0.1); } }
+
+  /* ── doc tables ───────────────────────────────────────── */
+  .specs {
+    max-width: 1080px;
+    background: #221b1d;
+    border: 1px solid #3b2e2e;
+    border-radius: 10px;
+    padding: 16px 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #d8c8b3;
+    margin-top: 12px;
+  }
+  .specs code { background: #000; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #ffcfae; }
+
+  table.spec {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin: 6px 0 12px;
+  }
+  table.spec th {
+    text-align: left;
+    color: #ffd9b3;
+    padding: 6px 8px;
+    background: #2b2122;
+    border-bottom: 1px solid #3b2e2e;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  table.spec td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #2a2222;
+    vertical-align: top;
+  }
+  table.spec td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.spec td.mono, table.spec th.mono { font-family: ui-monospace, "JetBrains Mono", Consolas, monospace; }
+  table.spec td .sw {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 1.5px solid #1B1B1F;
+    border-radius: 3px;
+    vertical-align: -3px;
+    margin-right: 6px;
+  }
+  table.spec tr:last-child td { border-bottom: none; }
+  table.spec .grp {
+    background: #2b2122;
+    color: #ffd9b3;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 11px;
+  }
+
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    max-width: 460px;
+    margin-top: 10px;
+  }
+  .legend .chip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px;
+    background: #221b1d;
+    border: 1px solid #3b2e2e;
+    border-radius: 6px;
+    font-size: 11px;
+  }
+  .legend .dot { width: 12px; height: 12px; border: 1.5px solid #1B1B1F; border-radius: 3px; flex: none; }
+</style>
+</head>
+<body>
+
+<h1>YoyoPod — Home Screen · Implementation Spec</h1>
+<p class="muted">Canonical mockup of the <b>Home</b> screen: the landing surface the device returns to on long-press from any category root. Five states are documented — idle (no slot focused) and one focused state per deck slot (Listen, Talk, Ask, Setup). The companion <b>Blob</b> lives only on Home; no other screen renders it. Panel canvas is 240 × 280 px.</p>
+
+<div class="legend">
+  <div class="chip"><div class="dot" style="background:var(--c-lime)"></div>Listen — lime</div>
+  <div class="chip"><div class="dot" style="background:var(--c-peri)"></div>Talk — periwinkle</div>
+  <div class="chip"><div class="dot" style="background:var(--c-butter)"></div>Ask — butter</div>
+  <div class="chip"><div class="dot" style="background:var(--c-coral)"></div>Setup — coral</div>
+</div>
+
+<!-- ============================================================ -->
+<h2>1 · Home — idle + four focus states</h2>
+<p>Single press cycles the focused deck slot L→R, looping. Stage background stays <code>bg_cream</code> in every state (unified surface rule). The Blob's body color is constant <code>c_lime</code> — it does <i>not</i> mirror the focused category. Double press on a focused slot opens that category's depth-1 root.</p>
+
+<div class="row">
+
+  <div class="stack">
+    <span class="label">idle (no focus)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="home-stage">
+        <div class="blob"><div class="body"></div><div class="eye l"></div><div class="eye r"></div><div class="mouth"></div></div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Default landing state. All deck slots are cream + ink_300 glyphs.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">focus = Listen</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="home-stage">
+        <div class="blob"><div class="body"></div><div class="eye l"></div><div class="eye r"></div><div class="mouth"></div></div>
+      </div>
+      <div class="deck">
+        <div class="slot listen focus"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Listen slot bg = c_lime, glyph ink. Blob unchanged.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">focus = Talk</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="home-stage">
+        <div class="blob"><div class="body"></div><div class="eye l"></div><div class="eye r"></div><div class="mouth"></div></div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Talk slot bg = c_peri, glyph ink.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">focus = Ask</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="home-stage">
+        <div class="blob"><div class="body"></div><div class="eye l"></div><div class="eye r"></div><div class="mouth"></div></div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask focus"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Ask slot bg = c_butter, glyph ink.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">focus = Setup</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="home-stage">
+        <div class="blob"><div class="body"></div><div class="eye l"></div><div class="eye r"></div><div class="mouth"></div></div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup focus"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Setup slot bg = c_coral, glyph ink.</span>
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2>2 · Screen composition</h2>
+<div class="specs">
+  <p style="margin-top:0">Home is the simplest composition of all screens — just three persistent regions plus the Blob. No Card, no List, no Tabs.</p>
+  <table class="spec">
+    <thead><tr><th>Layer (z)</th><th>Element</th><th>Bounds (x,y,w,h)</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td class="num">z=0</td>  <td>Panel</td>      <td class="mono">(0, 0, 240, 280)</td>    <td>Root <code>lv_obj</code>, bg <code>bg_cream</code>.</td></tr>
+      <tr><td class="num">z=30</td> <td>StatusBar</td>  <td class="mono">(0, 0, 240, 22)</td>     <td>Persistent across all screens.</td></tr>
+      <tr><td class="num">z=1</td>  <td>HomeStage</td>  <td class="mono">(0, 22, 240, 206)</td>   <td>Empty cream surface. Hosts only the Blob.</td></tr>
+      <tr><td class="num">z=10</td> <td>Blob</td>       <td class="mono">(65, 70, 110, 110)</td>  <td>Anchor: stage-centered. Y = 48 within stage = 70 in panel coords.</td></tr>
+      <tr><td class="num">z=20</td> <td>Deck</td>       <td class="mono">(0, 228, 240, 52)</td>   <td>Persistent across all screens.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Object budget: 1 panel + 1 statusbar (~8 children) + 1 stage + 1 blob (1 canvas) + 1 deck (4 slot children + glyph labels) = <b>~16 objects</b>. The cheapest screen on the device.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>3 · Companion Blob — anatomy &amp; geometry</h2>
+<div class="specs">
+  <p style="margin-top:0">The Blob is a small living character that appears only on Home. It's the device's idle "presence." Pre-render as RGB565 sprite frames for production — the SVG/CSS version here is for design reference.</p>
+
+  <table class="spec">
+    <thead><tr><th>Part</th><th>Size</th><th>Position</th><th>Color</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Bounding box</td>   <td class="num">110 × 110</td>   <td class="mono">stage-centered (x=65, y=48 within stage)</td>     <td>—</td>                                                                <td>Stage-relative. Y picked visually so the body sits slightly above center.</td></tr>
+      <tr><td>Body fill</td>      <td>fills box</td>               <td>—</td>                                                          <td class="mono"><span class="sw" style="background:#9DFC7C"></span>c_lime</td><td>Constant — does <b>not</b> change with focused category.</td></tr>
+      <tr><td>Body border</td>    <td class="num">2 ink</td>       <td>around body</td>                                                <td class="mono">ink</td>                                                <td>Asymmetric blob radius — see Animation section.</td></tr>
+      <tr><td>Body shadow</td>    <td class="num">2,3 ink</td>     <td>drop</td>                                                       <td class="mono">ink</td>                                                <td><code>filter: drop-shadow(2px 3px 0 ink)</code>. Blur 0, follows blob outline (not bbox).</td></tr>
+      <tr><td>Eye L</td>          <td class="num">14 × 14</td>     <td class="mono">left 28%, top 42%</td>                              <td class="mono">ink</td>                                                <td>Circle. Includes 4×4 white catchlight at top-left.</td></tr>
+      <tr><td>Eye R</td>          <td class="num">14 × 14</td>     <td class="mono">right 28%, top 42%</td>                             <td class="mono">ink</td>                                                <td>Mirror of Eye L.</td></tr>
+      <tr><td>Catchlight</td>     <td class="num">4 × 4</td>       <td class="mono">eye-relative (top 2, left 3)</td>                   <td class="mono">#FFFFFF</td>                                            <td>White dot inside each eye.</td></tr>
+      <tr><td>Mouth</td>          <td class="num">22 × 10</td>     <td class="mono">x-centered, bottom 26%</td>                         <td class="mono">ink stroke</td>                                          <td>Half-pill (open at top). Border 2 ink, no top border, radius 0/0/18/18.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>4 · Blob animation tracks</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Track</th><th>Property</th><th>Keyframes</th><th>Duration</th><th>Easing</th><th>Loop</th></tr></thead>
+    <tbody>
+      <tr><td>Breathe</td> <td><code>scale</code></td>           <td>1.00 → 1.04 → 1.00</td>                                                                                                                          <td class="num">4200 ms</td><td>ease-in-out</td><td>infinite</td></tr>
+      <tr><td>Morph</td>   <td><code>border-radius</code></td>   <td><code>46% 54% 52% 48% / 50% 48% 52% 50%</code> ↔ <code>52% 48% 46% 54% / 48% 52% 50% 50%</code></td>                                            <td class="num">7000 ms</td><td>ease-in-out</td><td>infinite</td></tr>
+      <tr><td>Blink</td>   <td><code>scaleY</code> (eyes only)</td><td>1.0 from 0–92%, 0.1 at 94–98%, 1.0 at 100%</td>                                                                                                 <td class="num">5500 ms</td><td>step (sharp)</td><td>infinite</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">All three tracks run independently (no shared phase). On hardware the recommended path is to bake the animation into a sprite atlas — see Section 7. Total animation render cost ≈ 1 canvas blit per frame at 30 FPS.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>5 · Deck — states &amp; transitions</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Slot</th><th>Glyph</th><th>Idle bg</th><th>Idle glyph</th><th>Focus bg</th><th>Focus glyph</th></tr></thead>
+    <tbody>
+      <tr><td>Listen</td><td class="num">🎧︎ (U+1F3A7, text-presentation U+FE0E)</td><td class="mono"><span class="sw" style="background:#FCE6D2"></span>bg_cream</td><td class="mono">ink_300</td><td class="mono"><span class="sw" style="background:#9DFC7C"></span>c_lime</td>  <td class="mono">ink</td></tr>
+      <tr><td>Talk</td>  <td class="num">💬︎ (U+1F4AC)</td>  <td class="mono"><span class="sw" style="background:#FCE6D2"></span>bg_cream</td><td class="mono">ink_300</td><td class="mono"><span class="sw" style="background:#A9A6E5"></span>c_peri</td>  <td class="mono">ink</td></tr>
+      <tr><td>Ask</td>   <td class="num">? (U+003F)</td>  <td class="mono"><span class="sw" style="background:#FCE6D2"></span>bg_cream</td><td class="mono">ink_300</td><td class="mono"><span class="sw" style="background:#FFD06A"></span>c_butter</td><td class="mono">ink</td></tr>
+      <tr><td>Setup</td> <td class="num">⚙ (U+2699)</td>  <td class="mono"><span class="sw" style="background:#FCE6D2"></span>bg_cream</td><td class="mono">ink_300</td><td class="mono"><span class="sw" style="background:#F37767"></span>c_coral</td> <td class="mono">ink</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Glyph type: 800 weight, 30 px Inter, line-height 1.0, centered. The crossfade between idle and focus is a single property pair transition — no relayout, no border change. Glyph weight is identical in both states; only color swaps. Slot bg transition is 160 ms ease.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>6 · Input contract (Home only)</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Event</th><th>From idle</th><th>From focused state N</th></tr></thead>
+    <tbody>
+      <tr><td>Single press</td>  <td><code>FocusFirst</code> → focus = Listen</td>           <td><code>FocusNext</code> → focus = (N+1) mod 4 (Listen → Talk → Ask → Setup → Listen)</td></tr>
+      <tr><td>Double press</td>  <td>no-op (no focused target)</td>                          <td><code>Open</code> → push category N's depth-1 root</td></tr>
+      <tr><td>Long press</td>    <td>no-op (already at Home)</td>                            <td>defocus (return to idle)</td></tr>
+      <tr><td>Idle timeout</td>  <td>—</td>                                                  <td>after 8 s of no input from a focused state, return to idle (defocus)</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Home is the only screen where the focusable container is the <b>Deck</b>. On every other screen it's the <b>List</b> (or NowPlaying controls).</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>7 · LVGL render mapping</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Component</th><th>LVGL primitive</th><th>Children</th><th>Style hookups</th></tr></thead>
+    <tbody>
+      <tr><td>Panel</td>     <td><code>lv_obj</code> (root)</td>             <td>StatusBar, HomeStage, Deck</td>                <td>bg=bg_cream.</td></tr>
+      <tr><td>StatusBar</td> <td><code>lv_obj</code> flex row</td>           <td>signal bars (4), gps pin, time, percent, battery</td><td>bg=bg_cream, ink children.</td></tr>
+      <tr><td>HomeStage</td> <td><code>lv_obj</code></td>                    <td>Blob only</td>                                  <td>bg=bg_cream. No border. No padding.</td></tr>
+      <tr><td>Blob</td>      <td><code>lv_canvas</code></td>                 <td>—</td>                                          <td>Pre-baked sprite atlas: <b>~32 frames</b> = 8 breathe-positions × 4 morph-phases, alpha for blink applied per-eye in shader-less overlay. Outline + drop shadow baked in.</td></tr>
+      <tr><td>Deck</td>      <td><code>lv_obj</code> flex row</td>           <td>4 × deck_slot</td>                              <td>border_side TOP=2 ink.</td></tr>
+      <tr><td>Deck slot</td> <td><code>lv_obj</code> + label</td>            <td>glyph label</td>                                <td>border_side RIGHT=2 ink (last off). bg + glyph color swap on focus event (style swap, no relayout).</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">If sprite-atlas memory is tight, the Blob can be drawn vector-style with three <code>lv_obj</code>s (body via radius animation, two eyes, one mouth arc) and a per-frame <code>lv_anim</code> driving radius + scale. Sprite path is preferred — fewer style recalculations, less CPU.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>8 · Surface, type &amp; spacing reference</h2>
+<div class="specs">
+  <h3>Surface tokens used by Home</h3>
+  <table class="spec">
+    <thead><tr><th>Token</th><th>Hex</th><th>RGB</th><th>RGB565</th><th>Where</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">bg_cream</td>   <td class="mono"><span class="sw" style="background:#FCE6D2"></span>#FCE6D2</td><td class="num">252,230,210</td><td class="num">0xFF31</td><td>Panel, StatusBar, HomeStage, inactive Deck slot.</td></tr>
+      <tr><td class="mono">ink</td>        <td class="mono"><span class="sw" style="background:#1B1B1F"></span>#1B1B1F</td><td class="num">27,27,31</td>    <td class="num">0x18C3</td><td>Borders (deck top, slot dividers, blob outline, eyes, mouth), focused deck-slot glyph, drop-shadow color.</td></tr>
+      <tr><td class="mono">ink_300</td>    <td class="mono"><span class="sw" style="background:#8a8076"></span>#8A8076</td><td class="num">138,128,118</td><td class="num">0x840E</td><td>Idle deck-slot glyph color.</td></tr>
+      <tr><td class="mono">c_lime</td>     <td class="mono"><span class="sw" style="background:#9DFC7C"></span>#9DFC7C</td><td class="num">157,252,124</td><td class="num">0x9FEF</td><td>Blob body (constant), Listen-focus slot bg.</td></tr>
+      <tr><td class="mono">c_peri</td>     <td class="mono"><span class="sw" style="background:#A9A6E5"></span>#A9A6E5</td><td class="num">169,166,229</td><td class="num">0xAD1C</td><td>Talk-focus slot bg.</td></tr>
+      <tr><td class="mono">c_butter</td>   <td class="mono"><span class="sw" style="background:#FFD06A"></span>#FFD06A</td><td class="num">255,208,106</td><td class="num">0xFE8D</td><td>Ask-focus slot bg.</td></tr>
+      <tr><td class="mono">c_coral</td>    <td class="mono"><span class="sw" style="background:#F37767"></span>#F37767</td><td class="num">243,119,103</td><td class="num">0xFBAC</td><td>Setup-focus slot bg.</td></tr>
+      <tr><td class="mono">#FFFFFF</td>    <td class="mono"><span class="sw" style="background:#FFFFFF"></span>#FFFFFF</td><td class="num">255,255,255</td><td class="num">0xFFFF</td><td>Eye catchlight (4×4 dot).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Type</h3>
+  <table class="spec">
+    <thead><tr><th>Role</th><th>Weight</th><th>Size</th><th>Color</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>StatusBar time</td>   <td class="num">700</td><td class="num">11 px</td><td class="mono">ink</td><td><code>tabular-nums</code>.</td></tr>
+      <tr><td>StatusBar percent</td><td class="num">700</td><td class="num">10 px</td><td class="mono">ink</td><td><code>tabular-nums</code>.</td></tr>
+      <tr><td>Deck slot glyph</td>  <td class="num">800</td><td class="num">30 px</td><td class="mono">ink_300 (idle) / ink (focus)</td><td>Centered both axes.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Spacing &amp; dimensions used by Home</h3>
+  <table class="spec">
+    <thead><tr><th>Element</th><th>Value</th><th>Source token</th></tr></thead>
+    <tbody>
+      <tr><td>StatusBar height</td>      <td class="num">22 px</td>     <td class="mono">statusbar_h</td></tr>
+      <tr><td>StatusBar padding (left)</td><td class="num">8 px</td>    <td class="mono">sp_2</td></tr>
+      <tr><td>StatusBar padding (right)</td><td class="num">12 px</td>  <td class="mono">sp_3</td></tr>
+      <tr><td>HomeStage height</td>      <td class="num">206 px</td>    <td>panel_h − statusbar_h − deck_h</td></tr>
+      <tr><td>Blob bbox</td>             <td class="num">110 × 110</td> <td>fixed (sprite size)</td></tr>
+      <tr><td>Blob y within stage</td>   <td class="num">48 px</td>     <td>visual centering (stage 206 − blob 110) / 2 = 48</td></tr>
+      <tr><td>Deck height</td>           <td class="num">52 px</td>     <td class="mono">deck_h</td></tr>
+      <tr><td>Deck slot width</td>       <td class="num">60 px</td>     <td>240 / 4</td></tr>
+      <tr><td>Border weight</td>         <td class="num">2 px</td>      <td class="mono">border_w</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>9 · Behavior rules (quick reference)</h2>
+<div class="specs">
+  <ul>
+    <li><b>Stage color is fixed</b> at <code>bg_cream</code> on Home regardless of focused slot. (Per-category stage tints are reserved for inside-category screens only.)</li>
+    <li><b>Blob color is fixed</b> at <code>c_lime</code> — it's the device's identity, not a category mirror.</li>
+    <li><b>Idle state</b> is the canonical landing: long-press from any depth-1 category root returns here and clears deck focus.</li>
+    <li><b>Deck focus wraps</b>: Listen → Talk → Ask → Setup → Listen. There is no backward step; long-press defocuses instead.</li>
+    <li><b>No tabs, no card, no list on Home.</b> If you need to render any of those, you're not on Home.</li>
+    <li><b>Status bar is independent</b> of focus state — never changes color, contents, or position.</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2>10 · Asset checklist for implementers</h2>
+<div class="specs">
+  <ul>
+    <li>Blob sprite atlas: PNG-8 or RGB565 sprite sheet, frame size 110 × 110, alpha for shadow. Recommend 32 frames (~135 KB at RGB565).</li>
+    <li>Deck glyphs: Use bundled Inter weight 800 at 30 px (♪ 💬︎ ? ⚙) or pre-rendered 60×52 sprites if Unicode rendering is unreliable on hardware.</li>
+    <li>StatusBar icons (signal bars, GPS pin, battery): procedural draw — no asset files needed.</li>
+    <li>Verify RGB565 LUT in <code>assets/theme.ron</code> matches Section 8 values exactly.</li>
+    <li>If the Blob is animated procedurally (not sprite), expose a single boolean <code>blob_enabled</code> to allow disabling animation on low-battery — saves ~3% CPU at 30 FPS.</li>
+  </ul>
+</div>
+
+<p style="margin-top:24px" class="muted">Spec rev. 2026-05-13 · Home screen only. Pairs with <code>mockup_listen.html</code> (in-category flow). Persistent chrome (StatusBar, Deck) shared with all other screens; geometry is byte-identical across the system.</p>
+
+</body>
+</html>

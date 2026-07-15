@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>YoyoPod — Listen Flow · Implementation Spec</title>
+<style>
+  :root {
+    /* ─── Panel ─── */
+    --panel-w: 240px;
+    --panel-h: 280px;
+    --panel-radius: 22px;
+
+    /* ─── Palette ─── */
+    --bg-cream:    #FCE6D2;
+    --bg-cream-2:  #F7DBC2;
+    --bg-stage-lime:   #E6FDE0;
+    --bg-stage-peri:   #E7E5F7;
+    --bg-stage-butter: #FFF0CC;
+    --bg-stage-coral:  #FDE2D8;
+
+    --ink:         #1B1B1F;
+    --ink-soft:    #3A3A40;
+    --ink-300:     #8a8076;
+
+    --c-lime:      #9DFC7C;
+    --c-peri:      #A9A6E5;
+    --c-butter:    #FFD06A;
+    --c-coral:     #F37767;
+    --c-tomato:    #E5443B;
+    --c-mustard:   #E8A93C;
+
+    /* ─── Stroke + shadow primitives ─── */
+    --border-w: 2px;
+    --shadow-row:    2px 2px 0 var(--ink);
+    --shadow-card:   3px 3px 0 var(--ink);
+
+    /* ─── Spacing scale ─── */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+
+    /* ─── Component sizes (LVGL-aligned) ─── */
+    --statusbar-h: 22px;
+    --deck-h:      52px;
+    --tab-h:       18px;
+    --row-h:       28px;
+    --row-radius:  6px;
+    --card-radius: 10px;
+
+    /* ─── Type ─── */
+    --t-row:    600 12px/1 "Inter", system-ui, sans-serif;
+    --t-meta:   700 10px/1 "Inter", system-ui, sans-serif;
+    --t-tab:    800 9px/1  "Inter", system-ui, sans-serif;
+    --t-status: 700 11px/1 "Inter", system-ui, sans-serif;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: #1a1518;
+    color: #efe4d6;
+    font-family: -apple-system, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { padding: 32px 24px 80px; }
+  h1 { font-weight: 700; font-size: 22px; margin: 0 0 4px; color: #fff; }
+  h2 { font-weight: 600; font-size: 14px; margin: 32px 0 12px; color: #d3b89a; letter-spacing: 0.04em; text-transform: uppercase; }
+  h3 { margin: 14px 0 8px; font-size: 13px; color: #ffd9b3; }
+  p  { font-size: 13px; line-height: 1.55; max-width: 760px; color: #c9b9a3; }
+  .muted { color: #8a7c6c; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 11px; color: #8a7c6c; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* ── device frame ─────────────────────────────────────── */
+  .device {
+    width: calc(var(--panel-w) + 24px);
+    padding: 12px;
+    border-radius: 22px;
+    background: linear-gradient(160deg, #ff7a3d, #d2401b);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.05) inset,
+      0 30px 50px -20px rgba(0,0,0,0.7),
+      0 0 60px -10px rgba(255,90,31,0.35);
+  }
+  .panel {
+    position: relative;
+    width: var(--panel-w);
+    height: var(--panel-h);
+    box-sizing: border-box;
+    background: var(--bg-cream);
+    overflow: hidden;
+    font-family: "Inter", "Roboto", system-ui, sans-serif;
+    color: var(--ink);
+    border-radius: var(--panel-radius);
+    box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 1px var(--ink);
+  }
+
+  /* ── status bar ───────────────────────────────────────── */
+  .statusbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: var(--statusbar-h);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 12px 0 8px;
+    font-size: 11px;
+    color: var(--ink);
+    background: var(--bg-cream);
+    z-index: 30;
+    font-weight: 700;
+  }
+  .statusbar .left  { display: flex; align-items: center; gap: 5px; justify-self: start; }
+  .statusbar .time  { font-variant-numeric: tabular-nums; justify-self: center; }
+  .statusbar .right { display: flex; align-items: center; gap: 5px; justify-self: end; }
+
+  .sb-bars { display: flex; align-items: flex-end; gap: 1px; height: 10px; }
+  .sb-bars > i { display: block; width: 2px; background: var(--ink); }
+  .sb-bars > i:nth-child(1) { height: 3px; }
+  .sb-bars > i:nth-child(2) { height: 5px; }
+  .sb-bars > i:nth-child(3) { height: 7px; }
+  .sb-bars > i:nth-child(4) { height: 9px; }
+  .sb-bars > i.off { background: transparent; border: 1px solid var(--ink); box-sizing: border-box; }
+
+  .sb-gps { width: 8px; height: 11px; position: relative; }
+  .sb-gps::before {
+    content: ""; position: absolute; left: 0; top: 0;
+    width: 8px; height: 8px;
+    background: var(--ink);
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    transform-origin: center;
+  }
+  .sb-gps::after {
+    content: ""; position: absolute; left: 3px; top: 2.5px;
+    width: 2px; height: 2px;
+    background: var(--bg-cream);
+    border-radius: 50%;
+  }
+
+  .sb-pct { font-variant-numeric: tabular-nums; font-size: 10px; }
+  .batt {
+    width: 20px; height: 10px;
+    border: 1.5px solid var(--ink);
+    border-radius: 1px;
+    position: relative; padding: 1px;
+  }
+  .batt::after {
+    content: ""; position: absolute; right: -3px; top: 2px;
+    width: 2px; height: 4px; background: var(--ink); border-radius: 0 1px 1px 0;
+  }
+  .batt > i { display: block; width: 70%; height: 100%; background: var(--ink); }
+
+  /* ── deck ─────────────────────────────────────────────── */
+  .deck {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: var(--deck-h);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    background: var(--bg-cream);
+    border-top: var(--border-w) solid var(--ink);
+    z-index: 20;
+  }
+  .deck .slot {
+    position: relative;
+    background: var(--bg-cream);
+    color: var(--ink-300);
+    display: grid; place-items: center;
+    border-right: var(--border-w) solid var(--ink);
+    transition: background-color 160ms ease, color 160ms ease;
+  }
+  .deck .slot:last-child { border-right: none; }
+  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; }
+  .deck .slot.listen .glyph { font-size: 24px; }
+  .deck .slot.focus { color: var(--ink); }
+  .deck .slot.focus.listen { background: var(--c-lime); }
+  .deck .slot.focus.talk   { background: var(--c-peri); }
+  .deck .slot.focus.ask    { background: var(--c-butter); }
+  .deck .slot.focus.setup  { background: var(--c-coral); }
+
+  /* ── Stage ────────────────────────────────────────────── */
+  .cd-stage {
+    position: absolute;
+    top: var(--statusbar-h); left: 0; right: 0;
+    bottom: var(--deck-h);
+    background: var(--bg-cream);
+    overflow: hidden;
+  }
+
+  /* ── TabStrip ─────────────────────────────────────────── */
+  .cd-tabs {
+    position: absolute; top: 0;
+    left: var(--sp-2); right: var(--sp-2);
+    display: flex; gap: var(--sp-1); align-items: flex-end;
+    height: var(--tab-h);
+    z-index: 5;
+  }
+  .cd-tab {
+    height: var(--tab-h);
+    padding: 0 var(--sp-2);
+    border: var(--border-w) solid var(--ink);
+    border-bottom: none;
+    border-radius: var(--row-radius) var(--row-radius) 0 0;
+    font: var(--t-tab);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink);
+    display: flex; align-items: center;
+    box-sizing: border-box;
+  }
+  .cd-tab.ancestor { background: var(--bg-cream-2); opacity: 0.85; height: 14px; }
+  .cd-tab.active   { background: var(--c-lime); }
+
+  /* ── Card ─────────────────────────────────────────────── */
+  .cd-card {
+    position: absolute;
+    left: var(--sp-2); right: var(--sp-2);
+    top: 16px;
+    bottom: var(--sp-2);
+    background: var(--bg-cream);
+    border: var(--border-w) solid var(--ink);
+    border-radius: 0 var(--card-radius) var(--card-radius) var(--card-radius);
+    box-shadow: var(--shadow-card);
+    z-index: 6;
+    padding: var(--sp-2);
+    box-sizing: border-box;
+  }
+  .cd-card.no-tabs { border-radius: var(--card-radius); }
+
+  /* ── List ─────────────────────────────────────────────── */
+  .cd-list {
+    position: absolute;
+    inset: var(--sp-2);
+    display: flex; flex-direction: column;
+    gap: var(--sp-2);
+    justify-content: center;
+  }
+  .cd-card .cd-list { position: static; inset: auto; height: 100%; }
+
+  /* ── Row ──────────────────────────────────────────────── */
+  .cd-row {
+    height: var(--row-h);
+    padding: 0 var(--sp-2);
+    display: flex; align-items: center; gap: var(--sp-2);
+    border: var(--border-w) solid var(--ink);
+    background: var(--bg-cream-2);
+    border-radius: var(--row-radius);
+    box-shadow: var(--shadow-row);
+    font: var(--t-row);
+    color: var(--ink);
+    box-sizing: border-box;
+  }
+  .cd-row .swatch {
+    width: 14px; height: 14px;
+    border: var(--border-w) solid var(--ink);
+    border-radius: 3px;
+    flex: none;
+  }
+  .cd-row .meta {
+    margin-left: auto;
+    font: var(--t-meta);
+    color: var(--ink-soft);
+  }
+  .cd-row.focus { background: var(--c-lime); }
+  .cd-row.focus .meta { color: var(--ink); }
+
+  /* ── NowPlaying ──────────────────────────────────────── */
+  .cd-card.now-playing {
+    padding: var(--sp-2);
+    display: flex; flex-direction: column;
+    gap: 6px;
+  }
+  .cd-track-hero {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px;
+    padding-top: var(--sp-1);
+  }
+  .cd-track-cover {
+    width: 60px; height: 60px;
+    border: var(--border-w) solid var(--ink);
+    border-radius: var(--row-radius);
+    background: var(--c-mustard);
+    box-shadow: var(--shadow-row);
+    display: grid; place-items: center;
+    font-size: 26px; font-weight: 900;
+  }
+  .cd-track-title { font: 800 12px/1 "Inter", system-ui, sans-serif; }
+  .cd-track-sub   { font: var(--t-meta); color: var(--ink-soft); }
+
+  .cd-progress-block { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .cd-progress {
+    height: 8px;
+    border: var(--border-w) solid var(--ink);
+    border-radius: 4px;
+    background: var(--bg-cream-2);
+    overflow: hidden;
+  }
+  .cd-progress > i { display: block; height: 100%; background: var(--c-lime); }
+  .cd-time {
+    display: flex; justify-content: space-between;
+    font: 700 9px/1 "Inter", system-ui, sans-serif;
+    color: var(--ink-soft);
+    padding: 0 2px;
+  }
+  .cd-controls {
+    display: flex; justify-content: space-around; align-items: center;
+    font-size: 16px; font-weight: 900;
+    margin-top: -4px;
+  }
+  .cd-controls .play {
+    background: var(--c-lime);
+    border: var(--border-w) solid var(--ink);
+    border-radius: 50%;
+    width: 26px; height: 26px;
+    display: grid; place-items: center;
+    box-shadow: var(--shadow-row);
+    font-size: 12px;
+  }
+
+  /* ── doc tables ──────────────────────────────────────── */
+  .specs {
+    max-width: 1080px;
+    background: #221b1d;
+    border: 1px solid #3b2e2e;
+    border-radius: 10px;
+    padding: 16px 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #d8c8b3;
+    margin-top: 12px;
+  }
+  .specs code { background: #000; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #ffcfae; }
+
+  table.spec {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin: 6px 0 12px;
+  }
+  table.spec th {
+    text-align: left;
+    color: #ffd9b3;
+    padding: 6px 8px;
+    background: #2b2122;
+    border-bottom: 1px solid #3b2e2e;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  table.spec td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #2a2222;
+    vertical-align: top;
+  }
+  table.spec td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.spec td.mono, table.spec th.mono { font-family: ui-monospace, "JetBrains Mono", Consolas, monospace; }
+  table.spec td .sw {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 1.5px solid #1B1B1F;
+    border-radius: 3px;
+    vertical-align: -3px;
+    margin-right: 6px;
+  }
+  table.spec tr:last-child td { border-bottom: none; }
+  table.spec .grp {
+    background: #2b2122;
+    color: #ffd9b3;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 11px;
+  }
+
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    max-width: 460px;
+    margin-top: 10px;
+  }
+  .legend .chip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px;
+    background: #221b1d;
+    border: 1px solid #3b2e2e;
+    border-radius: 6px;
+    font-size: 11px;
+  }
+  .legend .dot { width: 12px; height: 12px; border: 1.5px solid #1B1B1F; border-radius: 3px; flex: none; }
+
+  /* dimension overlay helpers */
+  .dim {
+    position: relative;
+  }
+  .dim .annot {
+    position: absolute;
+    font: 700 9px/1 "JetBrains Mono", ui-monospace, monospace;
+    color: #ffcfae;
+    background: #0a0708;
+    border: 1px solid #3b2e2e;
+    padding: 2px 4px;
+    border-radius: 3px;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<h1>YoyoPod — Listen Flow · Implementation Spec</h1>
+<p class="muted">Canonical mockup of the <b>Listen</b> category, depth 1 through 4, with full design-token tables (colors, dimensions, spacing, type, animation, and LVGL render mapping). Every pixel in the renders below is sourced from the tokens listed in the tables — no magic numbers. Panel canvas is 240 × 280 px.</p>
+
+<div class="legend">
+  <div class="chip"><div class="dot" style="background:var(--c-lime)"></div>Listen — lime</div>
+  <div class="chip"><div class="dot" style="background:var(--c-peri)"></div>Talk — periwinkle</div>
+  <div class="chip"><div class="dot" style="background:var(--c-butter)"></div>Ask — butter</div>
+  <div class="chip"><div class="dot" style="background:var(--c-coral)"></div>Setup — coral</div>
+</div>
+
+<!-- ============================================================ -->
+<h2>1 · Listen — depth 1 → 4 screen ladder</h2>
+<p>Listen root, then push through Playlists → Morning → NowPlaying. Stage tints lime across the whole flow because the focused deck slot is Listen.</p>
+
+<div class="row">
+
+  <!-- Depth 1 -->
+  <div class="stack">
+    <span class="label">Depth 1 · Listen root</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-card no-tabs">
+          <div class="cd-list">
+            <div class="cd-row focus"><div class="swatch" style="background:var(--c-mustard)"></div>Artists <span class="meta">›</span></div>
+            <div class="cd-row"><div class="swatch" style="background:var(--c-peri)"></div>Recents <span class="meta">›</span></div>
+            <div class="cd-row"><div class="swatch" style="background:var(--c-tomato)"></div>Radio <span class="meta">›</span></div>
+            <div class="cd-row"><div class="swatch" style="background:var(--c-butter)"></div>Playlists <span class="meta">›</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen focus"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">No tabs — Card uses <code>no-tabs</code> variant (all corners rounded).</span>
+  </div>
+
+  <!-- Depth 2 -->
+  <div class="stack">
+    <span class="label">Depth 2 · Playlists</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-tabs">
+          <div class="cd-tab active">Playlists</div>
+        </div>
+        <div class="cd-card">
+          <div class="cd-list">
+            <div class="cd-row focus"><div class="swatch" style="background:var(--c-mustard)"></div>Morning Songs <span class="meta">12</span></div>
+            <div class="cd-row"><div class="swatch" style="background:var(--c-peri)"></div>Sleep <span class="meta">8</span></div>
+            <div class="cd-row"><div class="swatch" style="background:var(--c-tomato)"></div>Car Trips <span class="meta">22</span></div>
+            <div class="cd-row"><div class="swatch" style="background:var(--c-butter)"></div>Lullabies <span class="meta">6</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen focus"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">First tab — lime active. Card top-left corner squared to join.</span>
+  </div>
+
+  <!-- Depth 3 -->
+  <div class="stack">
+    <span class="label">Depth 3 · Playlists › Morning</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-tabs">
+          <div class="cd-tab ancestor">Playlists</div>
+          <div class="cd-tab active">Morning</div>
+        </div>
+        <div class="cd-card">
+          <div class="cd-list">
+            <div class="cd-row focus"><div class="swatch" style="background:var(--c-butter)"></div>Twinkle Twinkle <span class="meta">2:14</span></div>
+            <div class="cd-row"><div class="swatch" style="background:var(--c-peri)"></div>Wheels on Bus <span class="meta">1:48</span></div>
+            <div class="cd-row"><div class="swatch" style="background:var(--c-tomato)"></div>Old MacDonald <span class="meta">2:32</span></div>
+            <div class="cd-row"><div class="swatch" style="background:var(--c-mustard)"></div>Itsy Spider <span class="meta">1:55</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen focus"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Playlists demotes to ancestor (cream-2, 14 px, opacity 0.85).</span>
+  </div>
+
+  <!-- Depth 4 -->
+  <div class="stack">
+    <span class="label">Depth 4 · NowPlaying</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-tabs">
+          <div class="cd-tab ancestor">Playlists</div>
+          <div class="cd-tab active">Morning</div>
+        </div>
+        <div class="cd-card now-playing">
+          <div class="cd-track-hero">
+            <div class="cd-track-cover">♪</div>
+            <div class="cd-track-title">Twinkle Twinkle</div>
+            <div class="cd-track-sub">Nursery · Track 1 of 12</div>
+          </div>
+          <div class="cd-progress-block">
+            <div class="cd-progress"><i style="width: 42%"></i></div>
+            <div class="cd-time"><span>0:56</span><span>2:14</span></div>
+          </div>
+          <div class="cd-controls">
+            <span>⏮</span>
+            <span class="play">▶</span>
+            <span>⏭</span>
+          </div>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen focus"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Leaf: no new tab — track title lives in the hero. Active tab stays on "Morning".</span>
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2>2 · Color tokens</h2>
+
+<div class="specs">
+  <h3>Palette — surface + ink</h3>
+  <table class="spec">
+    <thead><tr><th>Token</th><th>Hex</th><th>RGB</th><th>RGB565</th><th>Role / Usage</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">bg_cream</td>     <td class="mono"><span class="sw" style="background:#FCE6D2"></span>#FCE6D2</td><td class="num">252,230,210</td><td class="num">0xFF31</td><td>Panel background, Card body, StatusBar, inactive Deck slot.</td></tr>
+      <tr><td class="mono">bg_cream_2</td>   <td class="mono"><span class="sw" style="background:#F7DBC2"></span>#F7DBC2</td><td class="num">247,219,194</td><td class="num">0xFEF8</td><td>Row idle background, Ancestor tab background, Progress track.</td></tr>
+      <tr><td class="mono">ink</td>          <td class="mono"><span class="sw" style="background:#1B1B1F"></span>#1B1B1F</td><td class="num">27,27,31</td>    <td class="num">0x18C3</td><td>All borders, all shadows (blur=0, spread=0), primary text, deck divider.</td></tr>
+      <tr><td class="mono">ink_soft</td>     <td class="mono"><span class="sw" style="background:#3A3A40"></span>#3A3A40</td><td class="num">58,58,64</td>   <td class="num">0x39C8</td><td>Secondary text (meta column, sub-titles, time labels).</td></tr>
+      <tr><td class="mono">ink_300</td>      <td class="mono"><span class="sw" style="background:#8a8076"></span>#8A8076</td><td class="num">138,128,118</td><td class="num">0x840E</td><td>Inactive deck-slot glyph color (muted).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Accents — one per category</h3>
+  <table class="spec">
+    <thead><tr><th>Token</th><th>Hex</th><th>RGB</th><th>RGB565</th><th>Owner</th><th>Usage</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">c_lime</td>   <td class="mono"><span class="sw" style="background:#9DFC7C"></span>#9DFC7C</td><td class="num">157,252,124</td><td class="num">0x9FEF</td><td>Listen</td><td>Active tab, focused Row, Deck slot focus, Progress fill, NowPlaying play button.</td></tr>
+      <tr><td class="mono">c_peri</td>   <td class="mono"><span class="sw" style="background:#A9A6E5"></span>#A9A6E5</td><td class="num">169,166,229</td><td class="num">0xAD1C</td><td>Talk</td>  <td>Active tab/focused Row when Talk is the active category.</td></tr>
+      <tr><td class="mono">c_butter</td> <td class="mono"><span class="sw" style="background:#FFD06A"></span>#FFD06A</td><td class="num">255,208,106</td><td class="num">0xFE8D</td><td>Ask</td>   <td>Active tab/focused Row when Ask is the active category.</td></tr>
+      <tr><td class="mono">c_coral</td>  <td class="mono"><span class="sw" style="background:#F37767"></span>#F37767</td><td class="num">243,119,103</td><td class="num">0xFBAC</td><td>Setup</td> <td>Active tab/focused Row when Setup is the active category.</td></tr>
+      <tr><td class="mono">c_tomato</td> <td class="mono"><span class="sw" style="background:#E5443B"></span>#E5443B</td><td class="num">229,68,59</td>  <td class="num">0xE227</td><td>—</td>     <td>Data swatch only (Row icon color, e.g. "Radio").</td></tr>
+      <tr><td class="mono">c_mustard</td><td class="mono"><span class="sw" style="background:#E8A93C"></span>#E8A93C</td><td class="num">232,169,60</td> <td class="num">0xED47</td><td>—</td>     <td>Data swatch + NowPlaying cover background.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Stage tints — applied to Stage bg per active category</h3>
+  <table class="spec">
+    <thead><tr><th>Token</th><th>Hex</th><th>RGB</th><th>RGB565</th><th>Pair with</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">bg_stage_lime</td>   <td class="mono"><span class="sw" style="background:#E6FDE0"></span>#E6FDE0</td><td class="num">230,253,224</td><td class="num">0xE7FC</td><td>c_lime (Listen)</td></tr>
+      <tr><td class="mono">bg_stage_peri</td>   <td class="mono"><span class="sw" style="background:#E7E5F7"></span>#E7E5F7</td><td class="num">231,229,247</td><td class="num">0xE73E</td><td>c_peri (Talk)</td></tr>
+      <tr><td class="mono">bg_stage_butter</td> <td class="mono"><span class="sw" style="background:#FFF0CC"></span>#FFF0CC</td><td class="num">255,240,204</td><td class="num">0xFF99</td><td>c_butter (Ask)</td></tr>
+      <tr><td class="mono">bg_stage_coral</td>  <td class="mono"><span class="sw" style="background:#FDE2D8"></span>#FDE2D8</td><td class="num">253,226,216</td><td class="num">0xFF1B</td><td>c_coral (Setup)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>3 · Dimensions &amp; spacing</h2>
+<div class="specs">
+  <h3>Spacing scale</h3>
+  <table class="spec">
+    <thead><tr><th>Token</th><th>Pixels</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">sp_1</td><td class="num">4 px</td><td>Tab-to-tab gap, NowPlaying hero internal gap, time-label internal padding.</td></tr>
+      <tr><td class="mono">sp_2</td><td class="num">8 px</td><td>Card padding, List inset, Row inner horizontal padding, Row-to-Row gap, Tab horizontal padding, Stage horizontal margins.</td></tr>
+      <tr><td class="mono">sp_3</td><td class="num">12 px</td><td>StatusBar horizontal padding (right side), reserved for future denser layouts.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Component dimensions (canvas = 240 × 280)</h3>
+  <table class="spec">
+    <thead><tr><th>Component</th><th>Width</th><th>Height</th><th>Position</th><th>Padding</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="6">Persistent chrome</td></tr>
+      <tr><td>Panel</td>          <td class="num">240</td><td class="num">280</td><td class="mono">(0, 0)</td>     <td>—</td>             <td>Display canvas. Radius 22 (display mask only).</td></tr>
+      <tr><td>StatusBar</td>      <td class="num">240</td><td class="num">22</td> <td class="mono">top</td>       <td class="num">0 / 12 / 0 / 8</td><td>Grid: 1fr · auto · 1fr (left · center · right).</td></tr>
+      <tr><td>Stage</td>          <td class="num">240</td><td class="num">206</td><td class="mono">y=22, h=206</td><td>—</td>            <td>Background fills with bg_stage_* of active category.</td></tr>
+      <tr><td>Deck</td>           <td class="num">240</td><td class="num">52</td> <td class="mono">bottom</td>    <td>—</td>             <td>4 equal slots, each 60 × 52, divider = 2 px ink right border.</td></tr>
+      <tr><td>Deck slot</td>      <td class="num">60</td> <td class="num">52</td> <td>—</td>                      <td>—</td>             <td>Glyph 30 px, weight 800, ink color; focused → category bg.</td></tr>
+
+      <tr class="grp"><td colspan="6">Layered content</td></tr>
+      <tr><td>TabStrip</td>       <td class="num">224</td><td class="num">18</td> <td class="mono">stage top, inset sp_2 x</td><td>—</td><td>Gap between tabs = sp_1. Max 3 visible + chevron.</td></tr>
+      <tr><td>Tab (active)</td>   <td>auto</td>           <td class="num">18</td> <td>—</td>                      <td class="num">0 / sp_2</td><td>Border 2 ink, no bottom border, category fill.</td></tr>
+      <tr><td>Tab (ancestor)</td> <td>auto</td>           <td class="num">14</td> <td>—</td>                      <td class="num">0 / sp_2</td><td>bg_cream_2, opacity 0.85, sits 4 px below active baseline.</td></tr>
+      <tr><td>Card</td>           <td class="num">224</td><td class="num">~180</td><td class="mono">stage, inset sp_2</td><td class="num">sp_2</td><td>Top y = 16 (constant across no-tabs and tabbed variants). Shadow 3,3 ink.</td></tr>
+      <tr><td>Card top-left r</td><td colspan="2">0 with tabs / 10 without</td><td colspan="3">Other corners always 10.</td></tr>
+      <tr><td>List</td>           <td>fills parent</td>   <td>fills parent</td>   <td class="mono">inset sp_2</td><td>—</td>             <td>Column flex, gap sp_2, justify center when ≤ 4 rows.</td></tr>
+      <tr><td>Row</td>            <td>fills list</td>     <td class="num">28</td> <td>—</td>                      <td class="num">0 / sp_2</td><td>Border 2 ink, radius 6, shadow 2,2 ink. Gap sp_2.</td></tr>
+      <tr><td>Row swatch</td>     <td class="num">14</td> <td class="num">14</td> <td class="mono">leading</td>   <td>—</td>             <td>Border 2 ink, radius 3. Color = data payload.</td></tr>
+      <tr><td>Row meta</td>       <td>auto</td>           <td class="num">10 (text)</td><td class="mono">trailing, margin-left auto</td><td>—</td><td>Font t_meta, color ink_soft (idle) or ink (focus).</td></tr>
+
+      <tr class="grp"><td colspan="6">NowPlaying leaf</td></tr>
+      <tr><td>Cover art</td>      <td class="num">60</td><td class="num">60</td>  <td class="mono">centered in hero</td><td>—</td>      <td>Border 2 ink, radius 6, shadow 2,2 ink. Fallback bg c_mustard.</td></tr>
+      <tr><td>Title</td>          <td>auto</td>           <td class="num">12 (text)</td><td>—</td>                <td>—</td>             <td>800 12px Inter, color ink.</td></tr>
+      <tr><td>Subtitle</td>       <td>auto</td>           <td class="num">10 (text)</td><td>—</td>                <td>—</td>             <td>700 10px Inter, color ink_soft.</td></tr>
+      <tr><td>Progress bar</td>   <td>fills card</td>     <td class="num">8</td>  <td>—</td>                      <td>—</td>             <td>Border 2 ink, radius 4, track bg_cream_2, fill c_lime.</td></tr>
+      <tr><td>Time row</td>       <td>fills card</td>     <td class="num">9 (text)</td><td>—</td>                 <td class="num">0 / 2</td><td>700 9px Inter, ink_soft. Justified space-between.</td></tr>
+      <tr><td>Play button</td>    <td class="num">26</td><td class="num">26</td>  <td class="mono">center of controls</td><td>—</td>    <td>Border 2 ink, radius 50%, fill c_lime, shadow 2,2 ink.</td></tr>
+      <tr><td>Skip glyphs</td>    <td class="num">~20</td><td class="num">16 (text)</td><td>—</td>                <td>—</td>             <td>900 16px Inter, ink. No border.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Radii</h3>
+  <table class="spec">
+    <thead><tr><th>Token</th><th>Pixels</th><th>Applies to</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">row_radius</td>   <td class="num">6</td><td>Row, Tab top corners, Cover art.</td></tr>
+      <tr><td class="mono">card_radius</td>  <td class="num">10</td><td>Card (all corners when <code>no-tabs</code>; only TR/BR/BL when tabs present).</td></tr>
+      <tr><td class="mono">panel_radius</td> <td class="num">22</td><td>Display mask only — not drawn by app.</td></tr>
+      <tr><td>swatch</td>                    <td class="num">3</td><td>Row swatch + status battery.</td></tr>
+      <tr><td>progress</td>                  <td class="num">4</td><td>Progress track + fill.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Stroke &amp; shadow primitives</h3>
+  <table class="spec">
+    <thead><tr><th>Token</th><th>Value</th><th>Applied to</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">border_w</td>    <td class="num">2 px solid ink</td><td>All borders: Card, Row, Tab, Swatch, Cover, Play button, Progress, Deck dividers, Deck top.</td></tr>
+      <tr><td class="mono">shadow_row</td>  <td class="num">2,2 ink · blur 0 · spread 0</td><td>Row, Cover, Play button.</td></tr>
+      <tr><td class="mono">shadow_card</td> <td class="num">3,3 ink · blur 0 · spread 0</td><td>Card.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>4 · Typography</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Token</th><th>Weight</th><th>Size</th><th>Line height</th><th>Family</th><th>Color</th><th>Used by</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">t_row</td>        <td class="num">600</td><td class="num">12 px</td><td class="num">1.0</td><td>Inter</td><td class="mono">ink</td>      <td>Row label.</td></tr>
+      <tr><td class="mono">t_meta</td>       <td class="num">700</td><td class="num">10 px</td><td class="num">1.0</td><td>Inter</td><td class="mono">ink_soft</td><td>Row meta, NowPlaying subtitle.</td></tr>
+      <tr><td class="mono">t_tab</td>        <td class="num">800</td><td class="num">9 px</td> <td class="num">1.0</td><td>Inter</td><td class="mono">ink</td>      <td>Tab label (uppercase, letter-spacing 0.08em).</td></tr>
+      <tr><td class="mono">t_status</td>     <td class="num">700</td><td class="num">11 px</td><td class="num">1.0</td><td>Inter</td><td class="mono">ink</td>      <td>StatusBar time. <code>font-variant-numeric: tabular-nums</code>.</td></tr>
+      <tr><td>—</td>                          <td class="num">800</td><td class="num">12 px</td><td class="num">1.0</td><td>Inter</td><td class="mono">ink</td>      <td>NowPlaying title.</td></tr>
+      <tr><td>—</td>                          <td class="num">700</td><td class="num">9 px</td> <td class="num">1.0</td><td>Inter</td><td class="mono">ink_soft</td><td>NowPlaying time row.</td></tr>
+      <tr><td>—</td>                          <td class="num">800</td><td class="num">30 px</td><td class="num">1.0</td><td>Inter</td><td class="mono">ink / ink_300</td><td>Deck slot glyph (♪ 💬︎ ? ⚙).</td></tr>
+      <tr><td>—</td>                          <td class="num">900</td><td class="num">16 px</td><td class="num">1.0</td><td>Inter</td><td class="mono">ink</td>      <td>NowPlaying skip glyphs (⏮ ⏭) and ▶ inside play button (12 px).</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">All text is rendered with <code>-webkit-font-smoothing: antialiased</code>. Fallback chain: Inter → Roboto → system-ui → sans-serif.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>5 · Component → LVGL render map</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Component</th><th>LVGL primitive</th><th>Children</th><th>Style hookups</th></tr></thead>
+    <tbody>
+      <tr><td>Panel</td>          <td><code>lv_obj</code> (root)</td><td>StatusBar, Stage, Deck</td><td>bg=bg_cream, no border (display mask handles radius).</td></tr>
+      <tr><td>StatusBar</td>      <td><code>lv_obj</code> flex row</td><td>signal bars (4), gps icon, time label, percent label, battery</td><td>bg=bg_cream, ink children.</td></tr>
+      <tr><td>Deck</td>           <td><code>lv_obj</code> flex row</td><td>4 × deck_slot</td><td>border_side TOP=2 ink, slot border_side RIGHT=2 ink (last off).</td></tr>
+      <tr><td>Deck slot</td>      <td><code>lv_obj</code> + label</td><td>glyph label</td><td>bg switches on focus event (style swap, no relayout).</td></tr>
+      <tr><td>Stage</td>          <td><code>lv_obj</code></td><td>TabStrip (optional) + Card</td><td>bg from active category's bg_stage_*.</td></tr>
+      <tr><td>TabStrip</td>       <td><code>lv_obj</code> flex row</td><td>N tabs (max 3 + chevron)</td><td>read from NavStack.</td></tr>
+      <tr><td>Tab</td>            <td><code>lv_obj</code> + label</td><td>—</td><td>active: c_*, h=18; ancestor: bg_cream_2 + opa 217 (~0.85), h=14.</td></tr>
+      <tr><td>Card</td>           <td><code>lv_obj</code> + sibling shadow rect</td><td>List or NowPlayingHero</td><td>border 2 ink, radius 0/10/10/10 with tabs, else 10/10/10/10. Shadow (3,3) ink offset, blur 0.</td></tr>
+      <tr><td>List</td>           <td><code>lv_obj</code> flex column</td><td>N rows</td><td>gap sp_2; pad sp_2 inset.</td></tr>
+      <tr><td>Row</td>            <td><code>lv_obj</code> + sibling shadow rect</td><td>swatch, label, meta label</td><td>border 2 ink, radius 6, shadow (2,2) ink. Focus = bg → c_lime (style swap only).</td></tr>
+      <tr><td>Swatch</td>         <td><code>lv_obj</code></td><td>—</td><td>border 2 ink, radius 3, fill from data.</td></tr>
+      <tr><td>NowPlayingHero</td> <td><code>lv_obj</code> flex column</td><td>Cover, Title, Subtitle, ProgressBlock, Controls</td><td>Identical paddings to Card body (sp_2).</td></tr>
+      <tr><td>Cover</td>          <td><code>lv_img</code> + border <code>lv_obj</code></td><td>—</td><td>60×60, border 2 ink, radius 6, shadow (2,2). Fallback fill c_mustard.</td></tr>
+      <tr><td>Progress</td>       <td><code>lv_obj</code> track + <code>lv_obj</code> fill</td><td>—</td><td>track bg_cream_2 + border 2 ink + radius 4. Fill c_lime, width = pct.</td></tr>
+      <tr><td>Play button</td>    <td><code>lv_obj</code> + label</td><td>—</td><td>26×26, radius 50%, border 2 ink, bg c_lime, shadow (2,2).</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Object budget per screen (worst case): 1 panel + 1 statusbar (~8 children) + 1 stage + 4 tabs + 1 card + 1 list + 4 rows × 5 (row+shadow+swatch+label+meta) = ~36 objects. Well below LVGL limits at 240×280.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>6 · Layout geometry (where things sit, exactly)</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Element</th><th>x</th><th>y</th><th>w</th><th>h</th><th>Anchor</th></tr></thead>
+    <tbody>
+      <tr><td>StatusBar</td>     <td class="num">0</td>  <td class="num">0</td>  <td class="num">240</td><td class="num">22</td><td>panel-top</td></tr>
+      <tr><td>Stage</td>         <td class="num">0</td>  <td class="num">22</td> <td class="num">240</td><td class="num">206</td><td>panel-top + statusbar_h</td></tr>
+      <tr><td>TabStrip</td>      <td class="num">8</td>  <td class="num">22</td> <td class="num">224</td><td class="num">18</td><td>stage-top + sp_2 x-inset</td></tr>
+      <tr><td>Card (tabs)</td>   <td class="num">8</td>  <td class="num">38</td> <td class="num">224</td><td class="num">~182</td><td>stage-top + (tab_h − 2)</td></tr>
+      <tr><td>Card (no-tabs)</td><td class="num">8</td>  <td class="num">38</td> <td class="num">224</td><td class="num">~182</td><td>same geometry as tabbed — only top-left radius differs</td></tr>
+      <tr><td>List (in card)</td><td class="num">16</td> <td class="num">38/46</td><td class="num">208</td><td>fills</td><td>card-inset sp_2</td></tr>
+      <tr><td>Row N</td>         <td class="num">16</td> <td class="num">card_y + sp_2 + N×(28+sp_2)</td><td class="num">208</td><td class="num">28</td><td>list flex</td></tr>
+      <tr><td>Deck</td>          <td class="num">0</td>  <td class="num">228</td><td class="num">240</td><td class="num">52</td><td>panel-bottom</td></tr>
+      <tr><td>Deck slot N</td>   <td class="num">N×60</td><td class="num">228</td><td class="num">60</td><td class="num">52</td><td>deck flex</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Card y differs by 8 px between tabbed and untabbed roots: when a tab is present the card lifts up so its top-left corner abuts the tab's bottom-left corner (2 px border overlap → top = tab_h − 2 = 16, plus statusbar_h = 22 → absolute y = 38).</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>7 · Animation &amp; motion</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Trigger</th><th>What animates</th><th>Duration</th><th>Easing</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Deck slot focus change</td><td>Slot bg + glyph color</td><td class="num">160 ms</td><td>ease</td><td>Style swap only — no relayout. Stage bg crossfades on the same 160 ms.</td></tr>
+      <tr><td>Stage tint</td>           <td>Stage bg color</td>     <td class="num">160 ms</td><td>ease</td><td>bg_cream → bg_stage_*. Triggered by deck focus event.</td></tr>
+      <tr><td>Row focus change</td>     <td>Row bg</td>             <td class="num">0 ms</td>  <td>—</td>   <td>Instant style swap. No animation (cheap, predictable).</td></tr>
+      <tr><td>Push (deeper)</td>        <td>Card slides in from right; previous tab demotes (color → cream_2, h: 18 → 14, opa → 217); new active tab fades in.</td><td class="num">220 ms</td><td>ease-out</td><td>Tab height tween: 18 → 14 on demote.</td></tr>
+      <tr><td>Pop (back)</td>           <td>Rightmost tab fades out + dies; previous tab promotes (cream_2 → c_*, h: 14 → 18, opa → 255); card slides out to right.</td><td class="num">220 ms</td><td>ease-out</td><td>Long-press triggers.</td></tr>
+      <tr><td>NowPlaying play/pause</td><td>Play button glyph swap (▶ ↔ ⏸)</td><td class="num">0 ms</td>  <td>—</td>   <td>No button bg or border change.</td></tr>
+      <tr><td>Progress fill</td>        <td>Width %</td>            <td class="num">≤ 1000 ms</td><td>linear</td><td>Tick at audio frame cadence; LVGL can lerp between ticks.</td></tr>
+      <tr><td>(Home only) Blob breathe</td><td>scale 1.00 ↔ 1.04</td><td class="num">4200 ms</td><td>ease-in-out</td><td>Loop infinite. Not on Listen screens.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>8 · States &amp; variants (per component)</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Component</th><th>State</th><th>Background</th><th>Border</th><th>Text/glyph</th><th>Other</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="2">Deck slot</td><td>idle</td>          <td class="mono">bg_cream</td>     <td>—</td>                 <td class="mono">ink_300</td><td>—</td></tr>
+      <tr><td>focus (listen)</td>     <td class="mono">c_lime</td>      <td>—</td>                 <td class="mono">ink</td>    <td>—</td></tr>
+
+      <tr><td rowspan="2">Tab</td>     <td>active</td>           <td class="mono">c_lime</td>      <td>2 ink, no bottom</td>  <td class="mono">ink</td>    <td>h=18, radius 6/6/0/0.</td></tr>
+      <tr><td>ancestor</td>         <td class="mono">bg_cream_2</td>  <td>2 ink, no bottom</td>  <td class="mono">ink</td>    <td>h=14, opacity 0.85.</td></tr>
+
+      <tr><td rowspan="2">Card</td>    <td>with tabs</td>        <td class="mono">bg_cream</td>    <td>2 ink</td>             <td>—</td>                  <td>radius 0/10/10/10, shadow (3,3) ink.</td></tr>
+      <tr><td>no-tabs (root)</td>   <td class="mono">bg_cream</td>    <td>2 ink</td>             <td>—</td>                  <td>radius 10 all corners, shadow (3,3) ink.</td></tr>
+
+      <tr><td rowspan="2">Row</td>     <td>idle</td>             <td class="mono">bg_cream_2</td>  <td>2 ink</td>             <td class="mono">ink + ink_soft (meta)</td><td>radius 6, shadow (2,2) ink.</td></tr>
+      <tr><td>focus</td>            <td class="mono">c_lime</td>      <td>2 ink</td>             <td class="mono">ink + ink (meta)</td><td>radius 6, shadow (2,2) ink.</td></tr>
+
+      <tr><td>Progress fill</td>       <td>playing</td>          <td class="mono">c_lime</td>      <td>—</td>                 <td>—</td>                  <td>width = position / duration.</td></tr>
+      <tr><td>Play button</td>         <td>playing</td>          <td class="mono">c_lime</td>      <td>2 ink</td>             <td class="mono">ink (glyph ⏸)</td><td>radius 50%, shadow (2,2) ink.</td></tr>
+      <tr><td>Play button</td>         <td>paused</td>           <td class="mono">c_lime</td>      <td>2 ink</td>             <td class="mono">ink (glyph ▶)</td><td>identical chrome — only glyph swaps.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>9 · Per-screen composition</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Screen</th><th>Composition</th><th>NavStack</th><th>Focusable container</th></tr></thead>
+    <tbody>
+      <tr><td>Listen root (depth 1)</td><td>Panel + StatusBar + Stage(lime) + Card(<code>no-tabs</code>) + List(4 Rows) + Deck</td><td>empty</td><td>List</td></tr>
+      <tr><td>Playlists (depth 2)</td>  <td>Panel + StatusBar + Stage(lime) + TabStrip(1: "Playlists") + Card + List(4 Rows) + Deck</td><td>[{Playlists, lime}]</td><td>List</td></tr>
+      <tr><td>Morning (depth 3)</td>    <td>Panel + StatusBar + Stage(lime) + TabStrip(2: Playlists, Morning) + Card + List(4 Rows) + Deck</td><td>[{Playlists, lime},{Morning, lime}]</td><td>List</td></tr>
+      <tr><td>NowPlaying (depth 4)</td> <td>Panel + StatusBar + Stage(lime) + TabStrip(2: Playlists, Morning) + Card(<code>now-playing</code>) + Cover + Title + Sub + Progress + Time + Controls + Deck</td><td>same as depth 3 — leaves skip pushing own crumb</td><td>Controls (Play has focus default)</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Listen-row data flow: a Row payload is <code>{ swatch: c_*, label: String, meta: String, target: Route }</code>. The List primitive renders any payload set; same component for Listen root, Playlists, Morning, future Artists / Recents / Radio.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>10 · Input contract</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Event</th><th>Action</th><th>On Deck (Home)</th><th>On List</th><th>On NowPlaying</th></tr></thead>
+    <tbody>
+      <tr><td>Single press</td><td><code>FocusNext</code></td><td>advance deck focus L→R, looping</td><td>advance row focus top→bottom, looping</td><td>cycle ⏮ / ▶ / ⏭ focus</td></tr>
+      <tr><td>Double press</td><td><code>Open</code></td>     <td>push category root</td>            <td>push row.target</td>                       <td>activate focused control</td></tr>
+      <tr><td>Long press</td> <td><code>Back</code></td>      <td>—</td>                              <td>pop one crumb (depth 1 → Home)</td>         <td>pop one crumb</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>11 · NavStack contract</h2>
+<div class="specs">
+  <pre style="margin:0; padding: 10px; background: #0a0708; border: 1px solid #3b2e2e; border-radius: 6px; color: #ffcfae; font-size: 12px; overflow-x: auto;">struct Crumb {
+    name:   &amp;'static str,
+    accent: AccentColor,   // captured at push time
+}
+
+enum AccentColor { Lime, Peri, Butter, Coral }
+
+// Rendering rules:
+//  - TabStrip draws nav.crumbs.iter().take(3)
+//  - If nav.crumbs.len() &gt; 3, prepend a "…" chevron tab
+//  - The deck's active category is the IMPLICIT root — not stored in crumbs
+//  - Leaf screens (NowPlaying, IncomingCall, VoiceNote) DO NOT push their own crumb
+//      → active tab stays on the parent layer's name
+//  - On push: previous active tab demotes (height 18→14, color c_*→cream_2, opa 1.0→0.85)
+//  - On pop:  rightmost tab dies, previous tab promotes back to active
+</pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>12 · Asset checklist for implementers</h2>
+<div class="specs">
+  <ul>
+    <li>Font: Inter (weights 600, 700, 800, 900). License OFL — bundle in <code>assets/fonts/</code>.</li>
+    <li>Glyphs (vector or pre-rendered): ♪ (Listen), 💬︎ (Talk), ? (Ask), ⚙ (Setup), ⏮ ▶ ⏸ ⏭ (NowPlaying), ›.</li>
+    <li>Cover-art fallback: 60×60 PNG, c_mustard fill, ink border drawn at render — no asset needed.</li>
+    <li>StatusBar icons: signal bars (procedural), GPS pin (procedural), battery (procedural). No raster assets.</li>
+    <li>RGB565 LUT in <code>assets/theme.ron</code> must match Section 2 values exactly. RGB888 → RGB565 conversion: <code>((R&amp;0xF8)&lt;&lt;8)|((G&amp;0xFC)&lt;&lt;3)|(B&gt;&gt;3)</code>.</li>
+  </ul>
+</div>
+
+<p style="margin-top:24px" class="muted">Spec rev. 2026-05-13 · Listen flow only. Talk / Ask / Setup re-use these primitives — swap the accent token (c_*) and stage tint (bg_stage_*).</p>
+
+</body>
+</html>

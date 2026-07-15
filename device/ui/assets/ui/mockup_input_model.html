@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>YoyoPod — Input Model · Gesture Contract</title>
+<style>
+  :root {
+    --panel-w: 240px;
+    --panel-h: 280px;
+    --panel-radius: 22px;
+
+    --bg-cream:    #FCE6D2;
+    --bg-cream-2:  #F7DBC2;
+
+    --ink:         #1B1B1F;
+    --ink-soft:    #3A3A40;
+    --ink-300:     #8a8076;
+
+    --c-lime:      #9DFC7C;
+    --c-peri:      #A9A6E5;
+    --c-butter:    #FFD06A;
+    --c-coral:     #F37767;
+    --c-tomato:    #E5443B;
+
+    --border-w: 2px;
+    --shadow-row:    2px 2px 0 var(--ink);
+    --shadow-card:   3px 3px 0 var(--ink);
+
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+
+    --statusbar-h: 22px;
+    --deck-h:      52px;
+    --row-h:       28px;
+    --row-radius:  6px;
+    --card-radius: 10px;
+
+    --t-row:    600 12px/1 "Inter", system-ui, sans-serif;
+    --t-meta:   700 10px/1 "Inter", system-ui, sans-serif;
+    --t-status: 700 11px/1 "Inter", system-ui, sans-serif;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: #1a1518;
+    color: #efe4d6;
+    font-family: -apple-system, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { padding: 32px 24px 80px; }
+  h1 { font-weight: 700; font-size: 22px; margin: 0 0 4px; color: #fff; }
+  h2 { font-weight: 600; font-size: 14px; margin: 32px 0 12px; color: #d3b89a; letter-spacing: 0.04em; text-transform: uppercase; }
+  h3 { margin: 14px 0 8px; font-size: 13px; color: #ffd9b3; }
+  p  { font-size: 13px; line-height: 1.55; max-width: 760px; color: #c9b9a3; }
+  .muted { color: #8a7c6c; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 11px; color: #8a7c6c; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  table { border-collapse: collapse; margin: 8px 0 20px; font-size: 12px; }
+  th, td { border: 1px solid #3a2d24; padding: 6px 10px; text-align: left; vertical-align: top; color: #d8c8b3; }
+  th { background: #2a1e17; color: #ffd9b3; font-weight: 600; }
+  td code { background: #2a1e17; padding: 1px 5px; border-radius: 3px; font-size: 11px; color: #ffd9b3; }
+  pre { background: #2a1e17; padding: 12px; border-radius: 6px; font-size: 11px; color: #d8c8b3; overflow-x: auto; max-width: 760px; }
+
+  .device {
+    width: calc(var(--panel-w) + 24px);
+    padding: 12px;
+    border-radius: 22px;
+    background: linear-gradient(160deg, #ff7a3d, #d2401b);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.05) inset,
+      0 30px 50px -20px rgba(0,0,0,0.7),
+      0 0 60px -10px rgba(255,90,31,0.35);
+  }
+  .panel {
+    position: relative;
+    width: var(--panel-w);
+    height: var(--panel-h);
+    box-sizing: border-box;
+    background: var(--bg-cream);
+    overflow: hidden;
+    color: var(--ink);
+    border-radius: var(--panel-radius);
+    box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 1px var(--ink);
+  }
+
+  .statusbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: var(--statusbar-h);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 12px 0 8px;
+    font-size: 11px;
+    background: var(--bg-cream);
+    z-index: 30;
+    font-weight: 700;
+  }
+  .statusbar .left  { display: flex; align-items: center; gap: 5px; justify-self: start; }
+  .statusbar .time  { font-variant-numeric: tabular-nums; justify-self: center; }
+  .statusbar .right { display: flex; align-items: center; gap: 5px; justify-self: end; }
+
+  .deck {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: var(--deck-h);
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    background: var(--bg-cream);
+    border-top: var(--border-w) solid var(--ink);
+    z-index: 20;
+  }
+  .deck .slot {
+    background: var(--bg-cream); color: var(--ink-300);
+    display: grid; place-items: center;
+    border-right: var(--border-w) solid var(--ink);
+    position: relative;
+  }
+  .deck .slot:last-child { border-right: none; }
+  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; }
+  .deck .slot.listen .glyph { font-size: 24px; }
+  .deck .slot.focus { color: var(--ink); }
+  .deck .slot.focus.listen { background: var(--c-lime); }
+  .deck .slot.focus.talk   { background: var(--c-peri); }
+  .deck .slot.focus.ask    { background: var(--c-butter); }
+  .deck .slot.focus.setup  { background: var(--c-coral); }
+
+  /* Hidden deck — used to show "nav hidden" state */
+  .deck.hidden {
+    transform: translateY(100%);
+    transition: transform 200ms ease-out;
+  }
+
+  /* Home stage (idle blob) */
+  .home-stage {
+    position: absolute;
+    top: var(--statusbar-h); left: 0; right: 0;
+    bottom: var(--deck-h);
+    background: var(--bg-cream);
+    overflow: hidden;
+  }
+  .home-stage.no-deck { bottom: 0; }
+  .home-blob {
+    position: absolute;
+    width: 110px; height: 110px;
+    left: 65px; top: 48px;
+    filter: drop-shadow(2px 3px 0 var(--ink));
+    animation: blobBreathe 4.2s ease-in-out infinite;
+  }
+  @keyframes blobBreathe {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.04); }
+  }
+  .home-blob .body {
+    position: absolute; inset: 0;
+    background: var(--c-lime);
+    border: var(--border-w) solid var(--ink);
+    border-radius: 46% 54% 52% 48% / 50% 48% 52% 50%;
+  }
+  .home-blob .eye {
+    position: absolute; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--ink); top: 42%;
+  }
+  .home-blob .eye.l { left: 28%; }
+  .home-blob .eye.r { right: 28%; }
+  .home-blob .eye::after {
+    content: ""; position: absolute; top: 2px; left: 3px;
+    width: 4px; height: 4px; background: #fff; border-radius: 50%;
+  }
+  .home-blob .mouth {
+    position: absolute; left: 50%; bottom: 26%;
+    transform: translateX(-50%);
+    width: 22px; height: 10px;
+    border: var(--border-w) solid var(--ink);
+    border-top: none;
+    border-radius: 0 0 18px 18px;
+    background: transparent;
+  }
+
+  /* Long-press visual ring (700ms progress) */
+  .press-ring {
+    position: absolute;
+    left: 100px; top: 152px;
+    width: 40px; height: 40px;
+    border: 3px solid var(--c-peri);
+    border-radius: 50%;
+    opacity: 0.85;
+    animation: pressFill 700ms linear forwards;
+  }
+  @keyframes pressFill {
+    0%   { transform: scale(0.5); opacity: 0; }
+    100% { transform: scale(1);   opacity: 0.85; }
+  }
+
+  /* Hand/finger indicator */
+  .finger {
+    position: absolute;
+    width: 26px; height: 26px;
+    border: 2px solid var(--ink);
+    background: rgba(255,255,255,0.6);
+    border-radius: 50%;
+    z-index: 50;
+    pointer-events: none;
+  }
+  .finger.center { left: 107px; top: 158px; }
+
+  /* Gesture caption strip */
+  .gcap {
+    margin-top: 10px;
+    font: 700 11px/1.35 "Inter", sans-serif;
+    color: #ffd9b3;
+    letter-spacing: 0.02em;
+    text-align: center;
+    width: var(--panel-w);
+  }
+  .gcap .gsub {
+    display: block; font-weight: 500;
+    color: #c9b9a3;
+    margin-top: 3px;
+    font-size: 10px;
+    letter-spacing: 0;
+  }
+
+  /* Frame */
+  .frame {
+    display: flex; flex-direction: column; align-items: center;
+  }
+
+  /* Tiny diagrams */
+  .diagram {
+    display: inline-block;
+    border: 1px solid #3a2d24;
+    padding: 14px 18px;
+    border-radius: 8px;
+    background: #1f1611;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    color: #d8c8b3;
+    white-space: pre;
+  }
+
+  /* Section divider */
+  .sect { margin-top: 36px; }
+  .badge-num {
+    display: inline-block; background: var(--c-peri); color: var(--ink);
+    border-radius: 4px; padding: 2px 6px;
+    font-size: 11px; font-weight: 700; margin-right: 8px;
+  }
+</style>
+</head>
+<body>
+
+<h1>YoyoPod — Input Model</h1>
+<p class="muted">240 × 280 single-touch panel · gesture contract · single source of truth</p>
+
+<section class="sect">
+  <h2><span class="badge-num">1</span> Gesture contract</h2>
+  <p>The panel is a single-touch surface with no hardware buttons. Every navigation action is one of three gestures: <b>tap</b>, <b>double-tap</b>, or <b>long-press</b>. There is no swipe and no drag (drag is reserved for the walkie-talkie cancel motion inside <code>TalkContact</code>; see <code>mockup_talk.html</code>).</p>
+
+  <table>
+    <thead>
+      <tr><th>Surface</th><th>Gesture</th><th>Result</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Home <i>or</i> any inner screen (nav hidden)</td>
+        <td>long-press ≥ 400 ms</td>
+        <td>nav bar slides up · focus = <b>last-selected slot</b></td>
+      </tr>
+      <tr>
+        <td>Nav visible</td>
+        <td>single tap</td>
+        <td>advance focus to next slot, <b>wrapping</b> (Listen → Talk → Ask → Setup → Listen)</td>
+      </tr>
+      <tr>
+        <td>Nav visible</td>
+        <td>double-tap</td>
+        <td>enter focused slot's root menu · nav hides</td>
+      </tr>
+      <tr>
+        <td>Nav visible</td>
+        <td>long-press ≥ 400 ms</td>
+        <td>go to Home · nav hides · last-selected slot is preserved</td>
+      </tr>
+      <tr>
+        <td>Inner screen, row visible</td>
+        <td>tap on row</td>
+        <td>row action (push next screen, toggle state, etc. — defined per screen)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="muted">Two notes on consequences worth re-reading the table for:</p>
+  <ul style="color:#c9b9a3; font-size:13px; line-height:1.6;">
+    <li>Long-press is the <b>only</b> way to summon the nav bar, and once it's visible the <b>only</b> way to escape without entering a slot is another long-press (→ Home). This is intentional: it makes the gesture set learnable in one sentence ("hold to navigate, tap to cycle, double-tap to enter, hold again for home"). The cost is that revealing the nav by accident requires <i>some</i> deliberate action to clear.</li>
+    <li>Single tap on Home with nav hidden is a <b>no-op</b>. The screen does not wake from sleep via tap (sleep/wake is handled outside this contract). This keeps the home stage from being a tap-target for anything the child might be near.</li>
+  </ul>
+</section>
+
+<section class="sect">
+  <h2><span class="badge-num">2</span> Disambiguation timing</h2>
+
+  <table>
+    <thead><tr><th>Range</th><th>Classified as</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>0 – 180 ms</td><td><b>tap</b></td><td>Fires on touch <i>release</i>, not on touch-down. Required so we can disambiguate from long-press.</td></tr>
+      <tr><td>180 – 400 ms</td><td>dead zone</td><td>Released here = no action. Prevents accidental gestures from sloppy taps. The press-ring (see §4) does not appear in this range — only past 400 ms.</td></tr>
+      <tr><td>≥ 400 ms (still pressed)</td><td><b>long-press armed</b></td><td>Visual press-ring appears at the touch point. Releasing now (even at 401 ms) fires the long-press action.</td></tr>
+      <tr><td>Double-tap window</td><td>≤ 350 ms gap between two taps</td><td>Two taps within 350 ms of each other count as a double-tap. Any third tap is ignored until the second tap's processing completes.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="sect">
+  <h2><span class="badge-num">3</span> State machine</h2>
+  <p>Three top-level UI states. The nav bar is either <b>hidden</b> (in which case the deck region shows nothing — the stage extends to the bottom of the panel) or <b>visible</b> (deck visible, slot focus highlighted). Inside-a-slot is the normal application state.</p>
+
+  <div class="diagram">
+                  long-press
+   ┌──────────┐  ───────────────▶  ┌──────────────────┐
+   │   HOME   │                    │  NAV VISIBLE     │
+   │ (no nav) │  ◀───────────────  │  (over Home or   │
+   └──────────┘    long-press      │   inner screen)  │
+                  (= go Home)      └──────────────────┘
+        ▲                              │      │
+        │                              │      │ double-tap
+        │                              │ tap  ▼
+        │ long-press                   │   ┌─────────────────┐
+        │ (from inner)                 │   │ INSIDE A SLOT   │
+        │                              │   │ (Listen, Talk,  │
+        │                              │   │  Ask, Setup…)   │
+        │                              │   └─────────────────┘
+        │                              │            │
+        │                              ▼            │ long-press
+        │                          advance focus    │ (= go Home)
+        │                          (Listen → Talk   │
+        │                          → Ask → Setup    │
+        │                          → Listen …)      ▼
+        └────────────────────────────────────────  HOME
+  </div>
+</section>
+
+<section class="sect">
+  <h2><span class="badge-num">4</span> Visual feedback</h2>
+
+  <h3>4.1 — Long-press press-ring</h3>
+  <p>Beginning at the 400 ms threshold, a 40 × 40 periwinkle ring fades in at the touch point. It is a confirmation that the gesture has been recognized, not a progress indicator (there is no further threshold to cross). If the user releases at this moment, the long-press action fires. If they keep holding, nothing else happens — the gesture has already been committed.</p>
+
+  <h3>4.2 — Nav bar reveal</h3>
+  <p>The deck slides up from below over 200 ms with ease-out. The previously-focused slot is highlighted in its slot color (lime/peri/butter/coral). The stage above the deck does <b>not</b> dim — the deck is purely additive.</p>
+
+  <h3>4.3 — Slot advance (tap on nav)</h3>
+  <p>Focus moves to the next slot. The previously-focused slot returns to cream, the new slot picks up its color. No animation — instant swap. (Animating focus would feel sluggish at the cycling rate this gesture invites.)</p>
+
+  <h3>4.4 — Entering a slot (double-tap)</h3>
+  <p>Nav bar slides back down (200 ms), the slot's root screen pushes in from below over the same window. Total transition: 200 ms — they overlap, not stack.</p>
+
+  <h3>4.5 — Returning to Home (long-press while nav visible)</h3>
+  <p>Same as 4.4 but the destination is the home stage with no deck. The last-focused slot is <b>preserved</b> so that the next long-press reveals nav in the same state.</p>
+</section>
+
+<section class="sect">
+  <h2><span class="badge-num">5</span> Frames</h2>
+  <p class="muted">Each frame shows one moment in the gesture lifecycle. The white circle is the user's finger; the periwinkle ring is the long-press press-ring (§4.1).</p>
+
+  <div class="row">
+    <!-- Frame A: Home idle, nav hidden -->
+    <div class="frame">
+      <div class="device">
+        <div class="panel">
+          <div class="statusbar">
+            <div class="left"></div>
+            <div class="time">9:41</div>
+            <div class="right"></div>
+          </div>
+          <div class="home-stage no-deck">
+            <div class="home-blob">
+              <div class="body"></div>
+              <div class="eye l"></div>
+              <div class="eye r"></div>
+              <div class="mouth"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="gcap">A · Home, nav hidden
+        <span class="gsub">Idle. The stage extends to the bottom — no deck visible.</span></div>
+    </div>
+
+    <!-- Frame B: Long-press in progress -->
+    <div class="frame">
+      <div class="device">
+        <div class="panel">
+          <div class="statusbar">
+            <div class="left"></div>
+            <div class="time">9:41</div>
+            <div class="right"></div>
+          </div>
+          <div class="home-stage no-deck">
+            <div class="home-blob">
+              <div class="body"></div>
+              <div class="eye l"></div>
+              <div class="eye r"></div>
+              <div class="mouth"></div>
+            </div>
+            <div class="press-ring"></div>
+            <div class="finger center"></div>
+          </div>
+        </div>
+      </div>
+      <div class="gcap">B · Long-press recognized
+        <span class="gsub">At 400 ms, the periwinkle press-ring confirms. Release any time.</span></div>
+    </div>
+
+    <!-- Frame C: Nav visible, last-selected = Talk -->
+    <div class="frame">
+      <div class="device">
+        <div class="panel">
+          <div class="statusbar">
+            <div class="left"></div>
+            <div class="time">9:41</div>
+            <div class="right"></div>
+          </div>
+          <div class="home-stage">
+            <div class="home-blob">
+              <div class="body"></div>
+              <div class="eye l"></div>
+              <div class="eye r"></div>
+              <div class="mouth"></div>
+            </div>
+          </div>
+          <div class="deck">
+            <div class="slot listen"><span class="glyph">🎧︎</span></div>
+            <div class="slot talk focus"><span class="glyph">💬︎</span></div>
+            <div class="slot ask"><span class="glyph">✱</span></div>
+            <div class="slot setup"><span class="glyph">⚙</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="gcap">C · Nav visible, Talk focused
+        <span class="gsub">Last-selected slot lights up. Tap to advance. Double-tap to enter.</span></div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:24px;">
+    <!-- Frame D: Tap advances focus -->
+    <div class="frame">
+      <div class="device">
+        <div class="panel">
+          <div class="statusbar">
+            <div class="left"></div>
+            <div class="time">9:41</div>
+            <div class="right"></div>
+          </div>
+          <div class="home-stage">
+            <div class="home-blob">
+              <div class="body"></div>
+              <div class="eye l"></div>
+              <div class="eye r"></div>
+              <div class="mouth"></div>
+            </div>
+          </div>
+          <div class="deck">
+            <div class="slot listen"><span class="glyph">🎧︎</span></div>
+            <div class="slot talk"><span class="glyph">💬︎</span></div>
+            <div class="slot ask focus"><span class="glyph">✱</span></div>
+            <div class="slot setup"><span class="glyph">⚙</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="gcap">D · After one tap → Ask focused
+        <span class="gsub">Talk → Ask. Wrap-around: Setup → Listen after Setup.</span></div>
+    </div>
+
+    <!-- Frame E: Another tap -->
+    <div class="frame">
+      <div class="device">
+        <div class="panel">
+          <div class="statusbar">
+            <div class="left"></div>
+            <div class="time">9:41</div>
+            <div class="right"></div>
+          </div>
+          <div class="home-stage">
+            <div class="home-blob">
+              <div class="body"></div>
+              <div class="eye l"></div>
+              <div class="eye r"></div>
+              <div class="mouth"></div>
+            </div>
+          </div>
+          <div class="deck">
+            <div class="slot listen"><span class="glyph">🎧︎</span></div>
+            <div class="slot talk"><span class="glyph">💬︎</span></div>
+            <div class="slot ask"><span class="glyph">✱</span></div>
+            <div class="slot setup focus"><span class="glyph">⚙</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="gcap">E · After two taps → Setup focused
+        <span class="gsub">A third tap would wrap back to Listen.</span></div>
+    </div>
+
+    <!-- Frame F: Long-press to go home -->
+    <div class="frame">
+      <div class="device">
+        <div class="panel">
+          <div class="statusbar">
+            <div class="left"></div>
+            <div class="time">9:41</div>
+            <div class="right"></div>
+          </div>
+          <div class="home-stage">
+            <div class="home-blob">
+              <div class="body"></div>
+              <div class="eye l"></div>
+              <div class="eye r"></div>
+              <div class="mouth"></div>
+            </div>
+            <div class="press-ring"></div>
+            <div class="finger center"></div>
+          </div>
+          <div class="deck">
+            <div class="slot listen"><span class="glyph">🎧︎</span></div>
+            <div class="slot talk"><span class="glyph">💬︎</span></div>
+            <div class="slot ask"><span class="glyph">✱</span></div>
+            <div class="slot setup focus"><span class="glyph">⚙</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="gcap">F · Long-press while nav visible → go Home
+        <span class="gsub">On release, nav slides down and the stage returns to no-deck.</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="sect">
+  <h2><span class="badge-num">6</span> LVGL implementation notes</h2>
+
+  <table>
+    <thead><tr><th>Concept</th><th>LVGL mapping</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Top-level panel</td>
+        <td><code>lv_obj_t *panel</code> with two children: <code>stage</code> (full-height when nav hidden) and <code>deck</code> (hidden by default).</td>
+      </tr>
+      <tr>
+        <td>Gesture recognizer</td>
+        <td>Single <code>lv_indev_drv_t</code> reader. Custom event hook on panel root that classifies into <code>EV_TAP</code>, <code>EV_DOUBLE_TAP</code>, <code>EV_LONG_PRESS</code> using the timing in §2. LVGL's built-in <code>LV_EVENT_LONG_PRESSED</code> can drive the 400 ms threshold; tap vs double-tap is handled by a 350 ms post-release timer.</td>
+      </tr>
+      <tr>
+        <td>NavStack</td>
+        <td>Nav visibility is <b>not</b> a stack push — it's a transient overlay state on the current screen. Entering a slot via double-tap performs <code>NavigationPolicy::Stack</code> push of the slot's root. Long-press-while-nav-visible (→ Home) pops back to the root home screen.</td>
+      </tr>
+      <tr>
+        <td>Slot focus persistence</td>
+        <td>Stored as a single <code>uint8_t last_slot_idx</code> in the navigation context. Persists across deep navigation; reset only by entering a different slot.</td>
+      </tr>
+      <tr>
+        <td>Deck reveal animation</td>
+        <td><code>lv_anim_t</code> on <code>deck.y</code>, 200 ms <code>lv_anim_path_ease_out</code>. The home stage's <code>bottom</code> rebinds to <code>deck-h</code> on reveal so it shrinks beneath. (Could also overlay if shrinking the stage is too expensive; see open question.)</td>
+      </tr>
+      <tr>
+        <td>Press-ring</td>
+        <td>A reusable <code>lv_obj_t</code> kept hidden in the panel root. On the long-press threshold event, it is positioned to the touch coordinates and shown with a 200 ms fade-in scale-up animation.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="sect">
+  <h2><span class="badge-num">7</span> Worst-case input cost</h2>
+  <p>With nav hidden and Listen as last-selected, reaching Setup takes:</p>
+  <pre>long-press → nav shows, Listen focused
+tap        → Talk focused
+tap        → Ask focused
+tap        → Setup focused
+double-tap → enter Setup
+─────────
+4 distinct gestures (1 long-press + 3 taps + 1 double-tap)
+~ 1.6 s of finger time if executed without thinking</pre>
+  <p>This is acceptable for 4 slots. If we add a 5th slot later (e.g. for a content-specific shortcut), worst case becomes 5 gestures. Beyond that, cycling stops feeling cheap and we'd want to revisit (e.g. direct-tap on a visible slot).</p>
+</section>
+
+<section class="sect">
+  <h2><span class="badge-num">8</span> Things still worth deciding</h2>
+  <ul style="color:#c9b9a3; font-size:13px; line-height:1.6;">
+    <li><b>Press-ring colour on long-press inside a slot.</b> Right now it's always periwinkle (the nav-bar's signal colour). Should it instead inherit the focused slot's colour? Argument for: visual continuity. Against: now the same gesture has two different visual treatments, which means more state for the renderer.</li>
+    <li><b>Tap on the stage above the nav.</b> When nav is visible, where does a tap on the stage area (not on the deck) go? Right now it falls through to whatever's there. I'd argue it should also count as "advance focus" — otherwise the user has to aim for the 52 px deck strip at the bottom, which on a 240 × 280 panel means a lot of dead screen.</li>
+    <li><b>Inner-screen row tap vs nav-cycle tap.</b> When nav is visible <i>over</i> an inner screen (e.g. Talk contacts list), does a tap go to "advance focus" or to "select the row underneath"? Current rule says advance focus — the row is unreachable while nav is visible. Sounds right but worth confirming.</li>
+    <li><b>Haptic.</b> A 10 ms buzz on the 400 ms long-press threshold would teach the gesture faster than the press-ring alone. Not in scope here, but worth ear-marking.</li>
+  </ul>
+</section>
+
+</body>
+</html>

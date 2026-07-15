@@ -1,0 +1,929 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>YoyoPod — Talk Flow · v4</title>
+<style>
+  :root {
+    --panel-w: 240px;
+    --panel-h: 280px;
+    --panel-radius: 22px;
+
+    --bg-cream:    #FCE6D2;
+    --bg-cream-2:  #F7DBC2;
+
+    --ink:         #1B1B1F;
+    --ink-soft:    #3A3A40;
+    --ink-300:     #8a8076;
+
+    --c-lime:      #9DFC7C;
+    --c-peri:      #A9A6E5;
+    --c-peri-2:    #BFBCEC;  /* lifted peri for focused row on tinted card */
+    --c-peri-soft: #E7E5F7;  /* very pale peri — Talk inner card background */
+    --c-butter:    #FFD06A;
+    --c-coral:     #F37767;
+    --c-tomato:    #E5443B;
+    --c-mustard:   #E8A93C;
+    --c-mint:      #6FDFB1;
+
+    --border-w: 2px;
+    --shadow-row:    2px 2px 0 var(--ink);
+    --shadow-card:   3px 3px 0 var(--ink);
+
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+
+    --statusbar-h: 22px;
+    --deck-h:      52px;
+    --tab-h:       18px;
+    --row-h:       28px;
+    --row-radius:  6px;
+    --card-radius: 10px;
+
+    --slot-swatch: 14px;
+    --slot-hero:   60px;
+    --slot-ctrl:   26px;
+
+    --t-row:    600 12px/1 "Inter", system-ui, sans-serif;
+    --t-meta:   700 10px/1 "Inter", system-ui, sans-serif;
+    --t-tab:    800 9px/1  "Inter", system-ui, sans-serif;
+    --t-status: 700 11px/1 "Inter", system-ui, sans-serif;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: #1a1518;
+    color: #efe4d6;
+    font-family: -apple-system, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { padding: 32px 24px 80px; }
+  h1 { font-weight: 700; font-size: 22px; margin: 0 0 4px; color: #fff; }
+  h2 { font-weight: 600; font-size: 14px; margin: 32px 0 12px; color: #d3b89a; letter-spacing: 0.04em; text-transform: uppercase; }
+  h3 { margin: 14px 0 8px; font-size: 13px; color: #ffd9b3; }
+  p  { font-size: 13px; line-height: 1.55; max-width: 760px; color: #c9b9a3; }
+  .muted { color: #8a7c6c; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 11px; color: #8a7c6c; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  .device {
+    width: calc(var(--panel-w) + 24px);
+    padding: 12px;
+    border-radius: 22px;
+    background: linear-gradient(160deg, #ff7a3d, #d2401b);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.05) inset,
+      0 30px 50px -20px rgba(0,0,0,0.7),
+      0 0 60px -10px rgba(255,90,31,0.35);
+  }
+  .panel {
+    position: relative;
+    width: var(--panel-w);
+    height: var(--panel-h);
+    box-sizing: border-box;
+    background: var(--bg-cream);
+    overflow: hidden;
+    color: var(--ink);
+    border-radius: var(--panel-radius);
+    box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 1px var(--ink);
+  }
+
+  /* ── status bar ────────────────────────────────────────────── */
+  .statusbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: var(--statusbar-h);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 12px 0 8px;
+    font-size: 11px;
+    background: var(--bg-cream);
+    z-index: 30;
+    font-weight: 700;
+  }
+  .statusbar .left  { display: flex; align-items: center; gap: 5px; justify-self: start; }
+  .statusbar .time  { font-variant-numeric: tabular-nums; justify-self: center; }
+  .statusbar .right { display: flex; align-items: center; gap: 5px; justify-self: end; }
+  .sb-bars { display: flex; align-items: flex-end; gap: 1px; height: 10px; }
+  .sb-bars > i { display: block; width: 2px; background: var(--ink); }
+  .sb-bars > i:nth-child(1) { height: 3px; }
+  .sb-bars > i:nth-child(2) { height: 5px; }
+  .sb-bars > i:nth-child(3) { height: 7px; }
+  .sb-bars > i:nth-child(4) { height: 9px; }
+  .sb-bars > i.off { background: transparent; border: 1px solid var(--ink); box-sizing: border-box; }
+  .sb-gps { width: 8px; height: 11px; position: relative; }
+  .sb-gps::before {
+    content: ""; position: absolute; left: 0; top: 0;
+    width: 8px; height: 8px; background: var(--ink);
+    border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  }
+  .sb-gps::after {
+    content: ""; position: absolute; left: 3px; top: 2.5px;
+    width: 2px; height: 2px; background: var(--bg-cream); border-radius: 50%;
+  }
+  .sb-pct { font-variant-numeric: tabular-nums; font-size: 10px; }
+  .batt {
+    width: 20px; height: 10px;
+    border: 1.5px solid var(--ink);
+    border-radius: 1px; position: relative; padding: 1px;
+  }
+  .batt::after {
+    content: ""; position: absolute; right: -3px; top: 2px;
+    width: 2px; height: 4px; background: var(--ink); border-radius: 0 1px 1px 0;
+  }
+  .batt > i { display: block; width: 70%; height: 100%; background: var(--ink); }
+
+  /* ── deck (nav bar) ────────────────────────────────────────── */
+  .deck {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: var(--deck-h);
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    background: var(--bg-cream);
+    border-top: var(--border-w) solid var(--ink);
+    z-index: 20;
+  }
+  .deck .slot {
+    background: var(--bg-cream); color: var(--ink-300);
+    display: grid; place-items: center;
+    border-right: var(--border-w) solid var(--ink);
+    position: relative;
+  }
+  .deck .slot:last-child { border-right: none; }
+  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; }
+  .deck .slot.listen .glyph { font-size: 24px; }
+  .deck .slot.focus { color: var(--ink); }
+  .deck .slot.focus.listen { background: var(--c-lime); }
+  .deck .slot.focus.talk   { background: var(--c-peri); }
+  .deck .slot.focus.ask    { background: var(--c-butter); }
+  .deck .slot.focus.setup  { background: var(--c-coral); }
+
+  .deck .slot.talk .badge-dot {
+    position: absolute; top: 6px; right: 8px;
+    width: 6px; height: 6px;
+    background: var(--c-tomato);
+    border: 1.5px solid var(--ink);
+    border-radius: 50%;
+  }
+
+  /* ── stage (everything between status & deck) ──────────────── */
+  .cd-stage {
+    position: absolute;
+    top: var(--statusbar-h); left: 0; right: 0;
+    bottom: var(--deck-h);
+    background: var(--bg-cream);
+    overflow: hidden;
+  }
+
+  /* Tabs only at depth ≥ 2 — depth-1 screens drop them entirely */
+  .cd-tabs {
+    position: absolute; top: 0;
+    left: var(--sp-2); right: var(--sp-2);
+    display: flex; gap: var(--sp-1); align-items: flex-end;
+    height: var(--tab-h);
+    z-index: 5;
+  }
+  .cd-tab {
+    height: var(--tab-h); padding: 0 var(--sp-2);
+    border: var(--border-w) solid var(--ink);
+    border-bottom: none;
+    border-radius: var(--row-radius) var(--row-radius) 0 0;
+    font: var(--t-tab);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink);
+    display: flex; align-items: center;
+    box-sizing: border-box;
+  }
+  .cd-tab.ancestor { background: var(--bg-cream-2); opacity: 0.85; height: 14px; }
+  .cd-tab.active   { background: var(--c-peri); }
+
+  /* Card — generic, cream-tinted */
+  .cd-card {
+    position: absolute;
+    left: var(--sp-2); right: var(--sp-2);
+    top: 16px; bottom: var(--sp-2);
+    background: var(--bg-cream);
+    border: var(--border-w) solid var(--ink);
+    border-radius: 0 var(--card-radius) var(--card-radius) var(--card-radius);
+    box-shadow: var(--shadow-card);
+    z-index: 6;
+    padding: var(--sp-2);
+    box-sizing: border-box;
+  }
+  .cd-card.no-tabs { border-radius: var(--card-radius); top: var(--sp-2); }
+
+  /* v4 NEW: when the card is inside the Talk slot, it inherits the slot's tint.
+     Soft pale peri so 28 px rows still pop on top. */
+  .cd-card.tint-talk { background: var(--c-peri-soft); }
+
+  .cd-list {
+    position: absolute; inset: var(--sp-2);
+    display: flex; flex-direction: column;
+    gap: var(--sp-2);
+    justify-content: center;
+  }
+  .cd-card .cd-list { position: static; inset: auto; height: 100%; }
+
+  .cd-row {
+    height: var(--row-h);
+    padding: 0 var(--sp-2);
+    display: flex; align-items: center; gap: var(--sp-2);
+    border: var(--border-w) solid var(--ink);
+    background: var(--bg-cream-2);
+    border-radius: var(--row-radius);
+    box-shadow: var(--shadow-row);
+    font: var(--t-row);
+    color: var(--ink);
+    box-sizing: border-box;
+    position: relative;
+  }
+  /* v4: focus = solid peri fill, no companion swap */
+  .cd-row.focus { background: var(--c-peri); }
+
+  /* On a peri-tinted card, idle rows are cream so they stand out against the peri bg.
+     Focused row goes a step lifted peri (peri-2) so the focused state still reads. */
+  .cd-card.tint-talk .cd-row        { background: var(--bg-cream); }
+  .cd-card.tint-talk .cd-row.focus  { background: var(--c-peri-2); }
+
+  /* Lead slot — 14 × 14, holds swatch / avatar / icon */
+  .cd-row .lead {
+    width: var(--slot-swatch); height: var(--slot-swatch);
+    border: var(--border-w) solid var(--ink);
+    border-radius: 3px;
+    flex: none;
+    display: grid; place-items: center;
+    font: 700 8px/1 "Inter", sans-serif;
+    color: var(--ink);
+  }
+  .cd-row .lead.avatar { border-radius: 50%; }
+  .cd-row .lead.icon   { background: transparent; border: none; }
+  .cd-row .lead.icon .g { font: 900 11px/1 "Inter", sans-serif; }
+
+  .cd-row .meta {
+    margin-left: auto;
+    font: var(--t-meta);
+    color: var(--ink-soft);
+  }
+  .cd-row .badge {
+    font: 700 9px/1 "Inter", sans-serif;
+    padding: 2px 5px;
+    border-radius: 999px;
+    background: var(--c-coral);
+    color: var(--ink);
+    border: var(--border-w) solid var(--ink);
+    margin-left: auto;
+  }
+  .cd-row .dir { font: 700 10px/1 "Inter", sans-serif; color: var(--ink-soft); margin-left: auto; }
+  .cd-row .dir.missed { color: var(--c-tomato); }
+  .cd-row .time { font: var(--t-meta); color: var(--ink-soft); margin-left: var(--sp-1); }
+
+  /* Hero — 60 × 60 circle, locked across screens */
+  .cd-hero {
+    width: var(--slot-hero); height: var(--slot-hero);
+    border: var(--border-w) solid var(--ink);
+    border-radius: 50%;
+    background: var(--c-mustard);
+    box-shadow: var(--shadow-row);
+    display: grid; place-items: center;
+    font: 900 22px/1 "Inter", sans-serif;
+    color: var(--ink);
+  }
+
+  /* Action card — TalkContact compact hero (44 px) */
+  .cd-card.action {
+    display: flex; flex-direction: column;
+    align-items: center; padding: var(--sp-2);
+    gap: 4px;
+  }
+  .cd-card.action .cd-hero.compact { width: 44px; height: 44px; font-size: 18px; }
+  .cd-card.action .name { font: 800 12px/1 "Inter", sans-serif; }
+  .cd-card.action .sub  { font: var(--t-meta); color: var(--ink-soft); }
+  .cd-card.action .actions-list {
+    align-self: stretch;
+    display: flex; flex-direction: column;
+    gap: var(--sp-1);
+    margin-top: 4px;
+  }
+
+  /* Hold-to-record state on a row */
+  .cd-row.holding {
+    background: var(--c-tomato);
+    color: #fff;
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+  .cd-row.holding .meta { color: #fff; }
+  .cd-row.holding .lead.icon .g { color: #fff; }
+
+  /* Call card grid — unchanged from v3 */
+  .cd-card.call {
+    display: grid;
+    grid-template-rows: 14px 60px 14px 12px 14px 26px;
+    row-gap: 6px;
+    justify-items: center;
+    align-items: center;
+    padding: var(--sp-2);
+    box-sizing: border-box;
+  }
+  .cd-card.call .name { font: 800 12px/1 "Inter", sans-serif; }
+  .cd-card.call .sub  { font: var(--t-meta); color: var(--ink-soft); }
+  .cd-card.call .sub.duration {
+    font: 800 14px/1 "Inter", sans-serif;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .cd-card.call .controls {
+    display: flex; gap: 14px; align-self: center;
+  }
+
+  .cd-ctrl {
+    width: var(--slot-ctrl); height: var(--slot-ctrl);
+    border: var(--border-w) solid var(--ink);
+    border-radius: 50%;
+    box-shadow: var(--shadow-row);
+    display: grid; place-items: center;
+    font: 800 12px/1 "Inter", sans-serif;
+    background: var(--bg-cream-2);
+    color: var(--ink);
+  }
+  .cd-ctrl.primary { background: var(--c-peri); }
+  .cd-ctrl.answer  { background: var(--c-mint); }
+  .cd-ctrl.hangup  { background: var(--c-tomato); color:#fff; }
+  .cd-ctrl.send    { background: var(--c-mint); }
+  .cd-ctrl.discard { background: var(--c-coral); }
+  .cd-ctrl.play    { background: var(--c-lime); }
+  .cd-ctrl.mute.active { background: var(--c-coral); }
+
+  .chip {
+    font: 700 9px/1 "Inter", sans-serif;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 3px 6px;
+    border: var(--border-w) solid var(--ink);
+    border-radius: 999px;
+    background: var(--bg-cream-2);
+    color: var(--ink);
+  }
+  .chip.incoming  { background: var(--c-mint); }
+  .chip.dialing   { background: var(--c-butter); }
+  .chip.in-call   { background: var(--bg-cream-2); }
+  .chip.recording { background: var(--c-tomato); color: #fff; }
+
+  .progress {
+    width: 180px; height: 8px;
+    border: var(--border-w) solid var(--ink);
+    border-radius: 4px;
+    background: var(--bg-cream-2);
+    overflow: hidden;
+  }
+  .progress > i { display: block; height: 100%; background: var(--c-peri); }
+
+  /* Pulse ring (call) */
+  .pulse {
+    position: relative;
+    width: var(--slot-hero); height: var(--slot-hero);
+  }
+  .pulse > .cd-hero { position: relative; z-index: 2; }
+  .pulse::before, .pulse::after {
+    content:""; position: absolute; inset: 0;
+    border: 2px solid var(--c-peri);
+    border-radius: 50%;
+    opacity: 0; z-index: 1;
+    animation: callPulse 1600ms ease-out infinite;
+  }
+  .pulse::after { animation-delay: 800ms; }
+  @keyframes callPulse {
+    0%   { transform: scale(1.0); opacity: 0; }
+    20%  { opacity: 0.9; }
+    100% { transform: scale(1.45); opacity: 0; }
+  }
+
+  /* doc styles */
+  .specs {
+    max-width: 1080px;
+    background: #221b1d;
+    border: 1px solid #3b2e2e;
+    border-radius: 10px;
+    padding: 16px 20px;
+    font-size: 13px; line-height: 1.6;
+    color: #d8c8b3;
+    margin-top: 12px;
+  }
+  .specs code { background: #000; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #ffcfae; }
+  table.spec { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0 12px; }
+  table.spec th {
+    text-align: left; color: #ffd9b3;
+    padding: 6px 8px; background: #2b2122;
+    border-bottom: 1px solid #3b2e2e;
+    font-weight: 600; white-space: nowrap;
+  }
+  table.spec td { padding: 6px 8px; border-bottom: 1px solid #2a2222; vertical-align: top; }
+  table.spec td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.spec td.mono { font-family: ui-monospace, monospace; }
+  table.spec tr:last-child td { border-bottom: none; }
+  table.spec .grp {
+    background: #2b2122; color: #ffd9b3;
+    font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; font-size: 11px;
+  }
+
+  .legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; max-width: 460px; margin-top: 10px; }
+  .legend .chip-l { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: #221b1d; border: 1px solid #3b2e2e; border-radius: 6px; font-size: 11px; }
+  .legend .dot { width: 12px; height: 12px; border: 1.5px solid #1B1B1F; border-radius: 3px; flex: none; }
+</style>
+</head>
+<body>
+
+<h1>YoyoPod — Talk Flow · v4</h1>
+<p class="muted">Simplification pass. <b>(1)</b> Talk root is the contacts list directly — no intermediate "Contacts / Messages" branch. <b>(2)</b> Card background inside Talk inherits the slot's peri tint, so the user sees "where am I" without reading a label. <b>(3)</b> Messages archive removed entirely; replay lives per-contact. <b>(4)</b> Companion-on-focused-row reverted — focus = solid peri fill, like every other slot. <b>(5)</b> Blob is single-state (idle breathing only); the four-state proposal from v3 is dropped. Input model lives in its own doc: <code>mockup_input_model.html</code>.</p>
+
+<div class="legend">
+  <div class="chip-l"><div class="dot" style="background:var(--c-lime)"></div>Listen — lime</div>
+  <div class="chip-l"><div class="dot" style="background:var(--c-peri)"></div>Talk — periwinkle</div>
+  <div class="chip-l"><div class="dot" style="background:var(--c-butter)"></div>Ask — butter</div>
+  <div class="chip-l"><div class="dot" style="background:var(--c-coral)"></div>Setup — coral</div>
+</div>
+
+<!-- ============================================================ -->
+<h2>1 · What changed from v3</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>v3</th><th>v4</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Talk root = 2 rows (<b>Contacts</b>, <b>Messages</b>)</td>
+          <td>Talk root = contacts list directly (Mama, Papa, Grandma, Uncle, …)</td>
+          <td>One less screen to traverse. Contacts is the only thing kids actually do here; everything else (replay, history) lives inside the contact.</td></tr>
+      <tr><td>Messages archive existed as its own route</td>
+          <td>Dropped completely.</td>
+          <td>Auto-play on Home (which itself is now dropped, see below) was the daily case; the archive was already de-emphasized. With auto-play gone, replay lives per-contact, which is where users think about it ("hear what Mama sent") not "open the mail app".</td></tr>
+      <tr><td>4-state Home blob (idle / speaking / reply-armed / listening)</td>
+          <td>Single-state blob (idle breathing).</td>
+          <td>The 4-state blob was tied to auto-play + AI invocation + walkie-talkie reply, all of which were collapsed into one contextual gesture. With AI invocation dropped and auto-play removed (since there's no Home gesture to invoke reply anymore), the blob has no extra states to communicate.</td></tr>
+      <tr><td>Companion-on-focused-row (lead slot = live blob)</td>
+          <td>Reverted — focus = solid peri fill of the row.</td>
+          <td>Three reasons: (a) tiny 14 × 14 sprite was hard to read at panel scale, (b) consistency with how focus reads on Listen / Ask / Setup, (c) it conflicted with the new tinted card surface — peri-on-peri-on-peri became visually noisy.</td></tr>
+      <tr><td>Card background = cream everywhere</td>
+          <td>Card background inside Talk = pale peri (<code>#E7E5F7</code>).</td>
+          <td>Reinforces "you are inside Talk" without a label. Rows shift cream so they pop on top. Focus row goes a step lifted peri (<code>#BFBCEC</code>) — still inside the peri family, still readable.</td></tr>
+      <tr><td>Stuck row at Talk root</td>
+          <td>Stuck contacts visible inline with a coral badge on the avatar; coral dot on Talk deck slot.</td>
+          <td>The user thinks "the note to Mama didn't go through" not "there is a thing in the stuck queue." Surface the failure on the person, not in a queue. Tap the contact → retry inside TalkContact.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0"><b>Not changed</b>: TalkContact (3 rows — Call, Hold to record, Replay), the walkie-talkie hold gesture, the call overlays (Incoming, Outgoing, In-call, Muted).</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>2 · Talk root — contacts directly</h2>
+<p>Three states of the same screen — empty (no contacts yet), normal (most common), and with one contact having a stuck send. All three share the same primitive: the peri-tinted card with cream rows on top.</p>
+
+<div class="row">
+
+  <div class="stack">
+    <span class="label">Talk · idle (Mama focused)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-card no-tabs tint-talk">
+          <div class="cd-list">
+            <div class="cd-row focus">
+              <div class="lead avatar" style="background:var(--c-mustard)">M</div>
+              Mama <span class="badge">2</span>
+            </div>
+            <div class="cd-row">
+              <div class="lead avatar" style="background:var(--c-mint)">P</div>
+              Papa <span class="meta">●</span>
+            </div>
+            <div class="cd-row">
+              <div class="lead avatar" style="background:var(--c-coral)">G</div>
+              Grandma <span class="badge">1</span>
+            </div>
+            <div class="cd-row">
+              <div class="lead avatar" style="background:var(--c-butter)">U</div>
+              Uncle <span class="meta">●</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Pale peri card. Cream rows. Focused row = lifted peri (peri-2). Coral badge counts unheard notes per contact.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">Talk · 1 contact stuck</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-card no-tabs tint-talk">
+          <div class="cd-list">
+            <div class="cd-row focus">
+              <div class="lead avatar" style="background:var(--c-mustard);box-shadow:0 0 0 2px var(--c-tomato)">M</div>
+              Mama <span class="badge" style="background:var(--c-tomato);color:#fff">stuck</span>
+            </div>
+            <div class="cd-row">
+              <div class="lead avatar" style="background:var(--c-mint)">P</div>
+              Papa <span class="meta">●</span>
+            </div>
+            <div class="cd-row">
+              <div class="lead avatar" style="background:var(--c-coral)">G</div>
+              Grandma <span class="meta">●</span>
+            </div>
+            <div class="cd-row">
+              <div class="lead avatar" style="background:var(--c-butter)">U</div>
+              Uncle <span class="meta">●</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus" style="position:relative"><div class="glyph">💬︎</div><div class="badge-dot"></div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Failed send to Mama surfaces on her row: tomato ring around avatar + "stuck" badge. Coral dot on Talk slot too. Entering Mama → TalkContact shows the stuck note ready to retry.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">Talk · empty (first-run)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-card no-tabs tint-talk" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+          <div class="cd-hero" style="background:var(--c-peri);font-size:24px">+</div>
+          <div style="font:700 12px/1.3 Inter,sans-serif;color:var(--ink);text-align:center;max-width:160px">No contacts yet.<br>Ask a grown-up to add some in Setup.</div>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">No tabs at depth 1. Empty state points at Setup (the only place contacts can be added).</span>
+  </div>
+
+</div>
+
+<div class="specs">
+  <h3>Card geometry — Talk root</h3>
+  <table class="spec">
+    <thead><tr><th>Element</th><th>Value</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Card background</td><td class="mono">var(--c-peri-soft) = #E7E5F7</td><td>Inherits Talk slot color, lightened ~70%. Same family as the deck focus color so the eye reads "Talk".</td></tr>
+      <tr><td>Card position</td><td class="num">left/right: 8 px · top: 8 px · bottom: 8 px</td><td>Same as <code>.cd-card.no-tabs</code> — no tab strip at depth 1.</td></tr>
+      <tr><td>Card border / radius / shadow</td><td class="mono">2 px ink · 10 px radius · (3,3) ink</td><td>Same primitive as Listen / Ask / Setup root cards.</td></tr>
+      <tr><td>Row background (idle)</td><td class="mono">var(--bg-cream) = #FCE6D2</td><td>Cream-on-peri reads strongly. Idle rows stay cream regardless of focus.</td></tr>
+      <tr><td>Row background (focused)</td><td class="mono">var(--c-peri-2) = #BFBCEC</td><td>Lifted peri. Within the peri family so the focus state stays inside the slot's color story.</td></tr>
+      <tr><td>Row count</td><td class="num">up to 4 (height limit)</td><td>Card inner height 222 px. 4 rows × 28 px + 3 gaps × 8 px + padding = 124 px content centered. Scroll if &gt; 4 (rare; usually a kid has 3–6 contacts and the device is the closest social ring).</td></tr>
+      <tr><td>Lead slot</td><td class="num">14 × 14 circle (avatar)</td><td>Letter inside. Color = contact's assigned color from Setup. Stuck state adds a 2 px tomato outline.</td></tr>
+      <tr><td>Trailing slot</td><td class="mono">badge or meta dot</td><td>Coral badge with count = unheard notes. "stuck" badge (tomato) = failed send. Otherwise a faint cream dot to indicate "no news".</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>3 · TalkContact + walkie-talkie recording</h2>
+<p>Unchanged from v3. Hold the Record row to record. Release to send. Drag finger off the row to cancel. Tab strip returns at depth 2.</p>
+
+<div class="row">
+
+  <div class="stack">
+    <span class="label">TalkContact · idle</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-tabs">
+          <div class="cd-tab ancestor">Talk</div>
+          <div class="cd-tab active">Mama</div>
+        </div>
+        <div class="cd-card action tint-talk">
+          <div class="cd-hero compact">M</div>
+          <div class="name">Mama</div>
+          <div class="actions-list">
+            <div class="cd-row"><div class="lead icon"><span class="g">☎</span></div>Call</div>
+            <div class="cd-row focus">
+              <div class="lead icon"><span class="g">🎙︎</span></div>
+              Hold to record <span class="meta">↘ Mama</span>
+            </div>
+            <div class="cd-row"><div class="lead icon"><span class="g">▶</span></div>Replay <span class="badge">2</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Card still peri-tinted. 44 × 44 compact hero. Three rows: Call · Hold to record · Replay.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">TalkContact · holding (recording)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-tabs">
+          <div class="cd-tab ancestor">Talk</div>
+          <div class="cd-tab active">Mama</div>
+        </div>
+        <div class="cd-card action tint-talk">
+          <div class="cd-hero compact">M</div>
+          <div class="name">Mama</div>
+          <div class="actions-list">
+            <div class="cd-row" style="opacity:.4"><div class="lead icon"><span class="g">☎</span></div>Call</div>
+            <div class="cd-row holding">
+              <div class="lead icon"><span class="g">●</span></div>
+              Recording 0:04
+              <span class="meta">release to send</span>
+            </div>
+            <div class="cd-row" style="opacity:.4"><div class="lead icon"><span class="g">▶</span></div>Replay</div>
+          </div>
+        </div>
+      </div>
+      <div class="deck" style="opacity:.55">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Row flips to tomato. Other rows + deck dim. Drag off this row = cancel, no send.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">TalkContact · replay queue</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-tabs">
+          <div class="cd-tab ancestor">Mama</div>
+          <div class="cd-tab active">Replay</div>
+        </div>
+        <div class="cd-card action tint-talk">
+          <div class="cd-hero">M</div>
+          <div class="name">Mama · 1 of 2</div>
+          <div class="sub">just now</div>
+          <div class="progress" style="margin-top:6px"><i style="width:42%"></i></div>
+          <div style="width:180px;display:flex;justify-content:space-between;font:700 9px/1 Inter,sans-serif;color:var(--ink-soft);margin-top:2px">
+            <span>0:07</span><span>0:18</span>
+          </div>
+          <div class="controls" style="display:flex;gap:8px;margin-top:6px">
+            <div class="cd-ctrl primary">⏸</div>
+            <div class="cd-ctrl">⏭</div>
+            <div class="cd-ctrl discard">✕</div>
+          </div>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Per-contact replay queue. Same primitive as Listen's NowPlaying — locked hero, progress, controls.</span>
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2>4 · Call overlays (unchanged geometry)</h2>
+<p>Locked 6-band grid. Card background reverts to cream (these are full-screen overlays, not part of the Talk depth-1 surface). Answer left, Reject right. Mute state = coral ctrl only.</p>
+
+<div class="row">
+
+  <div class="stack">
+    <span class="label">IncomingCall</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-card no-tabs call" style="left:var(--sp-2);right:var(--sp-2);top:var(--sp-2);bottom:var(--sp-2)">
+          <div class="chip incoming">Incoming</div>
+          <div class="pulse"><div class="cd-hero">M</div></div>
+          <div class="name">Mama</div>
+          <div class="sub">calling you…</div>
+          <div></div>
+          <div class="controls">
+            <div class="cd-ctrl answer">☎</div>
+            <div class="cd-ctrl hangup">✕</div>
+          </div>
+        </div>
+      </div>
+      <div class="deck" style="opacity:.55">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="stack">
+    <span class="label">OutgoingCall</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-card no-tabs call" style="left:var(--sp-2);right:var(--sp-2);top:var(--sp-2);bottom:var(--sp-2)">
+          <div class="chip dialing">Dialing…</div>
+          <div class="pulse"><div class="cd-hero" style="background:var(--c-mint)">P</div></div>
+          <div class="name">Papa</div>
+          <div class="sub">ringing</div>
+          <div></div>
+          <div class="controls">
+            <div class="cd-ctrl hangup">✕</div>
+          </div>
+        </div>
+      </div>
+      <div class="deck" style="opacity:.55">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="stack">
+    <span class="label">InCall · idle</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-card no-tabs call" style="left:var(--sp-2);right:var(--sp-2);top:var(--sp-2);bottom:var(--sp-2)">
+          <div class="chip in-call">In call</div>
+          <div class="cd-hero">M</div>
+          <div class="name">Mama</div>
+          <div class="sub duration">02:14</div>
+          <div></div>
+          <div class="controls">
+            <div class="cd-ctrl mute">🎙︎</div>
+            <div class="cd-ctrl hangup">✕</div>
+          </div>
+        </div>
+      </div>
+      <div class="deck" style="opacity:.55">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="stack">
+    <span class="label">InCall · muted</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-card no-tabs call" style="left:var(--sp-2);right:var(--sp-2);top:var(--sp-2);bottom:var(--sp-2)">
+          <div class="chip in-call">In call</div>
+          <div class="cd-hero">M</div>
+          <div class="name">Mama</div>
+          <div class="sub duration">02:38</div>
+          <div></div>
+          <div class="controls">
+            <div class="cd-ctrl mute active">🎙︎</div>
+            <div class="cd-ctrl hangup">✕</div>
+          </div>
+        </div>
+      </div>
+      <div class="deck" style="opacity:.55">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2>5 · Route inventory — v4</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Depth</th><th>Route</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td>  <td class="mono">Talk</td>          <td>Contacts list directly. No depth-1 sub-routes.</td></tr>
+      <tr><td class="num">2</td>  <td class="mono">TalkContact</td>   <td>3 rows: Call · Hold to record · Replay. Recording = hold gesture, no separate route.</td></tr>
+      <tr><td class="num">3</td>  <td class="mono">Replay</td>        <td>Per-contact playback queue. Reached only from TalkContact.</td></tr>
+      <tr class="grp"><td colspan="3">Overlays (NavigationPolicy::Call)</td></tr>
+      <tr><td>—</td><td class="mono">IncomingCall</td><td>Answer left, Reject right.</td></tr>
+      <tr><td>—</td><td class="mono">OutgoingCall</td><td>Single Hangup.</td></tr>
+      <tr><td>—</td><td class="mono">InCall</td>      <td>Mute + Hangup.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0"><b>Deleted from v3</b>: <code>Contacts</code> (no longer a sub-route — it <i>is</i> Talk), <code>Messages</code> archive, <code>ContactHistory</code>.  <b>Also gone</b>: the depth-1 "Stuck" row (failure surfaces on the contact's avatar instead).</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>6 · Locked primitives — consistency check</h2>
+<div class="specs">
+  <p style="margin-top:0">Every reusable item lives at the same dimensions / position as in Listen / Ask / Setup. This pass changes <b>none</b> of the slot sizes, only the card surface color.</p>
+  <table class="spec">
+    <thead><tr><th>Primitive</th><th>Size</th><th>Used at</th></tr></thead>
+    <tbody>
+      <tr><td>Lead slot (avatar / swatch / icon)</td>      <td class="num">14 × 14</td><td>Every list row.</td></tr>
+      <tr><td>Compact hero (TalkContact)</td>              <td class="num">44 × 44</td><td>TalkContact only.</td></tr>
+      <tr><td>Hero (Replay, Call overlays)</td>            <td class="num">60 × 60</td><td>Replay, Incoming/Outgoing/InCall.</td></tr>
+      <tr><td>Control button (mute, hangup, etc.)</td>     <td class="num">26 × 26</td><td>InCall, IncomingCall, OutgoingCall, Replay.</td></tr>
+      <tr><td>Row height</td>                              <td class="num">28</td>     <td>All lists.</td></tr>
+      <tr><td>Tab height</td>                              <td class="num">18 (active) / 14 (ancestor)</td><td>Depth ≥ 2 only.</td></tr>
+      <tr><td>Deck slot</td>                               <td class="num">60 × 52</td><td>All screens.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>7 · Hold-to-record gesture (unchanged)</h2>
+<div class="specs">
+  <pre style="margin:0; padding: 10px; background: #0a0708; border: 1px solid #3b2e2e; border-radius: 6px; color: #ffcfae; font-size: 12px; overflow-x: auto;">                     finger down on Record row
+                          │
+                          ▼
+              ┌──────────────────────┐
+              │   row turns tomato   │
+              │   timer ticks        │
+              │   other rows dim     │
+              │   deck dims          │
+              └─────┬──────┬─────────┘
+        finger up   │      │   drag finger off row
+                    ▼      ▼
+        ┌──────────────┐   ┌──────────────┐
+        │ send         │   │ DISCARD      │
+        │ → 250 ms     │   │ no send      │
+        │   whoosh fx  │   │ no toast     │
+        │ → return to  │   └──────────────┘
+        │   TalkContact│
+        └──────────────┘
+
+  60 s hard cap → auto-release (sends).
+  &lt; 0.4 s hold → tap, no recording. Shows "hold to record" tooltip flash on the row.
+</pre>
+  <p style="margin:0">The 2 s undo card on Home — which used to live here as part of the auto-play story — is dropped along with auto-play. If the user mis-records, they can either drag off mid-hold (cancel) or, after sending, open the contact's Replay queue and discard the just-sent note from there. Acceptable: the worst case is "kid sends a 2-second nonsense note and Mama hears a giggle." Not worth a Home-screen UI element to prevent.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>8 · Open questions for the next pass</h2>
+<div class="specs">
+  <ul>
+    <li><b>Notifications on Home.</b> Punted to next iteration per your note. The question is: when a note arrives while the user is on Home, how do they find out without an auto-play mechanism? Options: small badge on the Talk deck slot (consistent with the stuck-dot pattern), a transient toast on Home, a peri pulse on the deck. To be designed.</li>
+    <li><b>Stuck send retry policy.</b> When does a failed send retry automatically? Suggest: on next successful network connect, silently retry once. If still fails, the contact's avatar gets the tomato ring + "stuck" badge. The user enters the contact to retry manually from there.</li>
+    <li><b>Replay scoping.</b> The Replay queue is per-contact. What happens to a contact's old notes — auto-delete after N days? Cap at N notes per contact? Probably cap (e.g., 20 notes per contact, drop oldest). Storage on the device is small.</li>
+    <li><b>Contact ordering.</b> Right now I show Mama / Papa / Grandma / Uncle in a fixed order. Should it be recency-based (last interaction at top) or pinned (Setup defines order)? My instinct: pinned. A 5-year-old doesn't want their contact list reshuffling.</li>
+    <li><b>Empty state copy.</b> "No contacts yet. Ask a grown-up to add some in Setup." Targeted at the kid but presumes they can read. For pre-readers: a face icon and an arrow pointing to the Setup deck slot. Pick one direction.</li>
+  </ul>
+</div>
+
+<p style="margin-top:24px" class="muted">Spec rev. 2026-05-16 · v4 (Talk root = contacts list, peri-tinted card, walkie-talkie unchanged, v3's 4-state-blob / companion-on-focus / Messages archive all dropped).</p>
+
+</body>
+</html>
