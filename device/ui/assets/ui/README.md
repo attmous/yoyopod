@@ -46,24 +46,27 @@ and it is independent of the input hardware.**
 | press | advance focus (wrap) |
 | double-press | open / activate the focused element |
 | long-press (≥ 400 ms) | go Home — pops the whole stack (on Home: defocus) |
-| PTT hold (side button) | contextual voice capture (Ask, walkie-talkie) |
+| PTT hold (capture screens) | contextual voice capture (Ask, walkie-talkie) |
 
 Bindings:
 
-- **Today (Whisplay prototype):** the main hardware button carries press /
-  double-press / long-press; the side push-to-talk button carries PTT hold.
-  This matches the shipped runtime (`router/routes.rs`: `AdvanceFocus`,
-  `PttPress`/`PttRelease` passthrough).
-- **Future (if final hardware has touch):** the whole panel becomes one big
-  button carrying the same grammar. **Positional input (tap-on-row,
-  drag-off-row) is dropped from the contract** — at 240 × 280 on a 1.69″ panel
-  a 28 px row is a ~3.5 mm target, hopeless for small fingers. The screen is
-  never a precision surface.
+- **Today (Whisplay prototype):** there is **exactly one physical button**
+  (`hardware/whisplay.rs` opens a single GPIO). It carries press /
+  double-press / long-press everywhere — and on capture screens (Ask, Talk's
+  Record action) the runtime's passthrough policy remaps a long hold to
+  `PttPress`/`PttRelease` (`OneButtonMachine::observe_ptt_passthrough`), so
+  **hold = talk there, not Home**. Release always sends; there is no mid-hold
+  cancel on one-button hardware.
+- **Future hardware:** a dedicated PTT side button (hold-to-talk everywhere)
+  and/or touch, where the whole panel becomes one big button carrying the
+  same grammar. **Positional input (tap-on-row, drag-off-row) is dropped from
+  the contract** — at 240 × 280 on a 1.69″ panel a 28 px row is a ~3.5 mm
+  target, hopeless for small fingers. The screen is never a precision surface.
 
 Why this is the kid-right call: the entire device is operable with one motor
 skill ("press the button"), the grammar is teachable in one sentence — *press
-to look around, press-press to go in, hold to go home, hold the side button to
-talk* — and nothing depends on reading or aiming.
+to look around, press-press to go in, hold to go home — and on a talking
+screen, hold to talk* — and nothing depends on reading or aiming.
 
 There is deliberately **no per-crumb Back gesture**: going one level up = hold
 (→ Home) + re-enter. One reliable escape hatch beats a second navigation
@@ -74,6 +77,9 @@ the runtime mapping below.)
 Timing (from the Input Model doc, applies to button and touch alike):
 release < 180 ms = press candidate · two presses ≤ 350 ms apart = double-press
 · held ≥ 400 ms = long-press (press-ring feedback at the 400 ms threshold).
+**Note:** the shipped config is 800 ms / 300 ms with no dead zone
+(`input/config.rs`, `config/device/hardware.yaml`) — aligning it to the
+contract is a tracked work item (`HANDOFF.md` #14).
 
 ## Home / ambient resolution
 
@@ -185,9 +191,10 @@ Consequences:
   dropped positional taps.
 - Resolved Home vs Input Model: deck persistent on Home; blob-only frame
   reclassified as Ambient state.
-- Talk v4 walkie-talkie: recording binds to the PTT side button on current
-  hardware (matches runtime); drag-off-cancel is touch-only, button cancel =
-  press main button while holding.
+- Talk v4 walkie-talkie: recording binds to PTT hold on current hardware
+  (*corrected in the review pass: PTT = the single button in per-screen
+  passthrough mode, not a separate side button; no mid-hold cancel*);
+  drag-off-cancel is touch-only.
 - Added Ask and Setup flow mockups (previously missing: 2 of the 4 deck
   categories had no spec).
 - Added pre-reader principles (voice prompt on focus, color/glyph-first).

@@ -436,7 +436,7 @@
 <body>
 
 <h1>YoyoPod — Listen Flow · v2 · Wheel + Arc Hero · Implementation Spec</h1>
-<p class="muted">Canonical mockup of the <b>Listen</b> category, redesigned around two primitives: the <b>wheel</b> (carousel menu — the focused tile is a flat, accent-filled card) and the <b>arc hero</b> (ring-progress NowPlaying). Chrome is <b>flat, color-first</b> (v2.1): no borders, no shadows anywhere — the one surviving stroke is the transient focus ring on transport targets. Tab strip, card, and rows are retired. <b>This file owns both primitives</b> — <code>mockup_talk.html</code> references them. Every pixel in the renders is sourced from the §3/§4 tables — no magic numbers. Panel canvas is 240 × 280 px: status bar y 0–22 · stage y 22–228 · deck y 228–280. One hardware button (press = roll · double-press = open · long-press ≥ 400 ms = Home) + PTT side button; a voice prompt speaks every focused label.</p>
+<p class="muted">Canonical mockup of the <b>Listen</b> category, redesigned around two primitives: the <b>wheel</b> (carousel menu — the focused tile is a flat, accent-filled card) and the <b>arc hero</b> (ring-progress NowPlaying). Chrome is <b>flat, color-first</b> (v2.1): no borders, no shadows anywhere — the one surviving stroke is the transient focus ring on transport targets. Tab strip, card, and rows are retired. <b>This file owns both primitives</b> — <code>mockup_talk.html</code> references them. Every pixel in the renders is sourced from the §3/§4 tables — no magic numbers. Panel canvas is 240 × 280 px: status bar y 0–22 · stage y 22–228 · deck y 228–280. One hardware button (press = roll · double-press = open · long-press ≥ 400 ms = Home; on capture screens the hold remaps to PTT — none in this flow); a voice prompt speaks every focused label.</p>
 
 <div class="legend">
   <div class="chip"><div class="dot" style="background:var(--c-lime)"></div>Listen — lime</div>
@@ -991,7 +991,7 @@
           <td>"Home".</td></tr>
     </tbody>
   </table>
-  <p style="margin:0">The PTT side button is Talk-domain and unchanged — full gesture contract in <code>mockup_input_model.html</code>. <b>Runtime divergence (carried from v1):</b> the shipped <code>OneButtonMachine</code> (<code>input/machine.rs</code>) emits <code>Back</code> on long-hold and <code>core</code> pops one screen — remap to pop-to-root when implementing.</p>
+  <p style="margin:0">PTT is Talk/Ask-domain — the same single button in per-screen passthrough mode, no Listen involvement — full gesture contract in <code>mockup_input_model.html</code>. <b>Runtime divergence (carried from v1):</b> the shipped <code>OneButtonMachine</code> (<code>input/machine.rs</code>) emits <code>Back</code> on long-hold and <code>core</code> pops one screen — remap to pop-to-root when implementing.</p>
 </div>
 
 <!-- ============================================================ -->

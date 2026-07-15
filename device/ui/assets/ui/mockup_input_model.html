@@ -257,19 +257,20 @@
 
 <p style="background:#2a2025; border:1px solid #4a3a30; border-radius:8px; padding:10px 14px; font-size:13px; color:#c9b9a3; max-width:760px;">
 <b style="color:#ffd9b3;">Rev 2 — consolidation.</b> Rev 1 assumed a touch panel with no hardware
-buttons. The Whisplay prototype has the opposite: one main button + one push-to-talk side button,
-and no touch (see <code>device/ui/src/hardware/whisplay.rs</code>). The gesture <i>grammar</i> below is
-unchanged — it is now defined independently of the input source. Decision log lives in
-<code>README.md</code> in this folder.</p>
+buttons. The Whisplay prototype has the opposite: <b>exactly one physical button</b> (the side button)
+and no touch — <code>device/ui/src/hardware/whisplay.rs</code> opens a single
+<code>YOYOPOD_WHISPLAY_BUTTON_GPIO</code> and returns one <code>WhisplayButton</code>; there is no separate
+PTT input. The gesture <i>grammar</i> below is unchanged — it is now defined independently of the
+input source. Decision log lives in <code>README.md</code> in this folder.</p>
 
 <section class="sect">
   <h2><span class="badge-num">1</span> Gesture contract</h2>
   <p>Every navigation action is one of three gestures: <b>press</b>, <b>double-press</b>, or <b>long-press</b>. The grammar binds to whatever input source the hardware provides:</p>
   <ul style="color:#c9b9a3; font-size:13px; line-height:1.6;">
-    <li><b>Today (Whisplay prototype):</b> the main hardware button carries all three gestures. The side push-to-talk button is out of band — it carries hold-to-talk (Ask, walkie-talkie) only.</li>
-    <li><b>Future (touch hardware):</b> the whole panel acts as one big button carrying the same three gestures. <b>Positional input is out of the contract</b> — at 240 × 280 on a 1.69″ panel a 28 px row is a ~3.5 mm target, far below what a young child can aim at. The screen is never a precision surface. (Only exception: drag-off-to-cancel during walkie-talkie recording, touch binding only; on button hardware, cancel = press the main button while holding PTT. See <code>mockup_talk.html</code>.)</li>
+    <li><b>Today (Whisplay prototype):</b> the single side button carries all three gestures. <b>"PTT hold" is the same button, remapped per screen</b>: on capture screens (Ask; the Record action in Talk) the runtime's passthrough policy turns a long hold into <code>PttPress</code>/<code>PttRelease</code> instead of long-press — exactly what <code>OneButtonMachine::observe_ptt_passthrough</code> (<code>input/machine.rs</code>) already implements. Consequence: <b>while on a capture screen, hold = talk, not Home</b>; leave via double-press navigation or the screen's own exit. There is no mid-hold cancel on one-button hardware — release always sends (acceptable: worst case is a two-second giggle note; discard afterwards from the Replay queue).</li>
+    <li><b>Future hardware:</b> a dedicated PTT side button (hold-to-talk everywhere, long-press = Home restored on capture screens) and/or a touch panel where the whole surface acts as one big button carrying the same three gestures. <b>Positional input is out of the contract</b> — at 240 × 280 on a 1.69″ panel a 28 px row is a ~3.5 mm target, far below what a young child can aim at. The screen is never a precision surface. (Only exception: drag-off-to-cancel during walkie-talkie recording, touch binding only. See <code>mockup_talk.html</code>.)</li>
   </ul>
-  <p>The result: the whole device is operable with one motor skill, learnable in one sentence — <i>press to look around, press-press to go in, hold to go home, hold the side button to talk.</i></p>
+  <p>The result: the whole device is operable with one motor skill, learnable in one sentence — <i>press to look around, press-press to go in, hold to go home — and on a talking screen, hold to talk.</i></p>
 
   <table>
     <thead>
@@ -328,6 +329,14 @@ unchanged — it is now defined independently of the input source. Decision log 
       <tr><td>Double-press window</td><td>≤ 350 ms gap between two presses</td><td>Two presses within 350 ms of each other count as a double-press. Any third press is ignored until the second press's processing completes. <b>Open:</b> this window needs testing with 4–6-year-olds; small hands may need it wider.</td></tr>
     </tbody>
   </table>
+  <p style="background:#2a2025; border:1px solid #4a3a30; border-radius:8px; padding:10px 14px; font-size:13px; color:#c9b9a3; max-width:760px;">
+  <b style="color:#ffd9b3;">Runtime divergence — these numbers are the contract, not the shipped config.</b>
+  Today's classifier uses <b>800 ms</b> long-hold and a <b>300 ms</b> double window
+  (<code>input/config.rs</code>: <code>DEFAULT_LONG_HOLD_MS = 800</code>, <code>DEFAULT_DOUBLE_TAP_MS = 300</code>;
+  mirrored in <code>config/device/hardware.yaml</code>), and it has <b>no dead zone</b> — any release below
+  <code>long_hold_ms</code> becomes a press candidate. Implementing this contract means: set 400/350 in the
+  config, and add the 180–400 ms dead-zone rejection to <code>OneButtonMachine</code>. Tracked in
+  <code>HANDOFF.md</code> → runtime work items.</p>
 </section>
 
 <section class="sect">
@@ -563,7 +572,7 @@ unchanged — it is now defined independently of the input source. Decision log 
       </tr>
       <tr>
         <td>Gesture recognizer</td>
-        <td>One classifier fed by the <code>ButtonDevice</code> GPIO reader (see <code>device/ui/src/hardware/whisplay.rs</code>), emitting <code>EV_PRESS</code>, <code>EV_DOUBLE_PRESS</code>, <code>EV_LONG_PRESS</code> using the timing in §2 (press on release, 400 ms long-press threshold, 350 ms double window). The same classifier consumes <code>lv_indev</code> touch events if final hardware ships a panel — whole surface = one button, coordinates discarded. PTT side button bypasses the classifier entirely (<code>PttPress</code>/<code>PttRelease</code> passthrough, as in <code>router/routes.rs</code>).</td>
+        <td>One classifier fed by the <code>ButtonDevice</code> GPIO reader (see <code>device/ui/src/hardware/whisplay.rs</code> — a single button), emitting <code>EV_PRESS</code>, <code>EV_DOUBLE_PRESS</code>, <code>EV_LONG_PRESS</code> using the timing in §2 (press on release, 400 ms long-press threshold, 350 ms double window). On capture screens the classifier switches to PTT-passthrough mode (long hold → <code>PttPress</code>/<code>PttRelease</code>, as <code>OneButtonMachine::observe_ptt_passthrough</code> + <code>router/routes.rs</code> passthrough policies already do). The same classifier consumes <code>lv_indev</code> touch events if final hardware ships a panel — whole surface = one button, coordinates discarded.</td>
       </tr>
       <tr>
         <td>NavStack</td>

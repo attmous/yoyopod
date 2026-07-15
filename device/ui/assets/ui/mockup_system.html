@@ -429,7 +429,7 @@
 <!-- ============================================================ -->
 <h2>7 · Runtime mapping</h2>
 <div class="specs">
-  <p style="margin-top:0">Nothing here needs new routes — the runtime already has both screens; only the design was missing. This spec closes <b>README open question #7</b> ("Loading / Error overlay design — routes exist in the runtime, no mockup").</p>
+  <p style="margin-top:0">The screens exist, but <b>the Error interaction paths in §3 are required route/controller work, not shipped behavior</b>. As shipped, both routes are <code>NO_SELECT</code> with no back policy — so the documented double-press-retry does nothing today. Worse, <code>runtime_preemption</code> re-pushes Error for as long as <code>snapshot.overlay.error</code> stays set, so a long-press Home just bounces straight back to the overlay. Implementing §3 requires: (a) a select target on Error emitting a retry intent, (b) a controller path that <b>clears <code>snapshot.overlay.error</code></b> on retry / auto-dismiss / long-press for the recoverable variant (the unrecoverable variant intentionally persists until the underlying condition clears), and (c) the 8 s Loading→Error and 4 s auto-retry timers. Tracked in <code>HANDOFF.md</code> → runtime work items. This spec closes <b>README open question #7</b> ("Loading / Error overlay design — routes exist in the runtime, no mockup").</p>
   <table class="spec">
     <thead><tr><th>Runtime fact</th><th>Where</th></tr></thead>
     <tbody>

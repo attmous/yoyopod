@@ -589,7 +589,7 @@
 
 <!-- ============================================================ -->
 <h2>3 · TalkContact wheel + hold-to-record</h2>
-<p>Depth 2 — context label <code>MAMA</code>. Variant-A action tiles: Call · Hold to record · Replay. The PTT binding is unchanged from v4: on current hardware "hold" is the <b>push-to-talk side button</b> — hold PTT while the Record tile is focused to record, release to send, press the main button while holding to cancel. This matches the shipped runtime (<code>router/routes.rs</code>: <code>PttPress</code>/<code>PttRelease</code> voice-capture passthrough). On a future touch panel the same contract binds to holding the Record tile, with drag-off-tile as the cancel motion.</p>
+<p>Depth 2 — context label <code>MAMA</code>. Variant-A action tiles: Call · Hold to record · Replay. On current hardware "hold" is <b>the one physical button in PTT-passthrough mode</b>: with the Record tile focused, a long hold is classified as <code>PttPress</code>/<code>PttRelease</code> (record while held, release = send). There is no mid-hold cancel on one-button hardware — release always sends; a mis-recording is discarded afterwards from the Replay queue. <b>Required route change:</b> the shipped runtime attaches the voice-capture passthrough to <code>UiScreen::VoiceNote</code> only (<code>router/routes.rs</code>: <code>VOICE_NOTE_PASSTHROUGH</code>; <code>TalkContact</code> has <code>NO_PASSTHROUGH</code>) — since v5 folds recording into TalkContact and retires VoiceNote, that passthrough must move to TalkContact, gated on the Record action being focused. Tracked in <code>HANDOFF.md</code>. On a future touch panel the same contract binds to holding the Record tile, with drag-off-tile as the cancel motion.</p>
 
 <div class="row">
 
@@ -647,7 +647,7 @@
         <div class="slot setup"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Full-bleed stage flips to tomato; context label recolors cream. Release = send (250 ms whoosh, back to TalkContact). Main-button press while holding = cancel, no send. Deck dims to 55%.</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Full-bleed stage flips to tomato; context label recolors cream. Release = send (250 ms whoosh, back to TalkContact) — no mid-hold cancel on one-button hardware; discard afterwards via Replay. Deck dims to 55%.</span>
   </div>
 
 </div>
@@ -668,7 +668,7 @@
   </table>
 
   <h3>Hold-to-record flow (carried from v4 §7 — contract unchanged)</h3>
-  <p style="margin:0 0 10px">"Hold" below = PTT side button held (current hardware) or finger held on the Record tile (future touch). "Cancel" = main-button press while holding (button) or drag off the tile (touch).</p>
+  <p style="margin:0 0 10px">"Hold" below = the single button held in PTT-passthrough mode with the Record tile focused (current hardware) or finger held on the Record tile (future touch). "Cancel" exists only on the touch binding (drag off the tile) — on one-button hardware release always sends, and cleanup happens in the Replay queue.</p>
   <pre style="margin:0; padding: 10px; background: #0a0708; border: 1px solid #3b2e2e; border-radius: 6px; color: #ffcfae; font-size: 12px; overflow-x: auto;">                 hold begins (Record tile focused)
                           │
                           ▼

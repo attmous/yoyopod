@@ -10,8 +10,13 @@ files hold the normative pixel/behavior specs.
 
 1. **Three gestures, one button.** press = advance/roll · double-press =
    open/activate · long-press ≥ 400 ms = go Home (pops the whole stack; no
-   per-crumb back). PTT side button = hold-to-talk, out of band. Timing and
-   state machine: `mockup_input_model.html` (single source of truth).
+   per-crumb back). The Whisplay prototype has **exactly one physical button**
+   (`hardware/whisplay.rs`) — "PTT hold" is that same button remapped per
+   screen via the passthrough policies (`OneButtonMachine::
+   observe_ptt_passthrough`): on capture screens hold = talk, not Home. A
+   dedicated PTT side button is a future-hardware option. Timing and state
+   machine: `mockup_input_model.html` (single source of truth) — note the
+   shipped timing config differs (item 14).
 2. **Flat chrome.** No UI borders, no drop shadows. Fills + radius only
    (focused tile 16, hero art 18, plates 10, deck pill 12). Ink (`#1B1B1F`) is
    for text, glyphs, and the one surviving stroke — the **focus ring** (2 px
@@ -58,6 +63,10 @@ Verified against the code; file references are the places to change.
 | 8 | New A8 icons: playlist, recents, shuffle, mic, plus (56×56); play/pause/prev/next/close (24×24). Fix silent fallback-to-SETUP for unknown keys | `renderer/lvgl/icons.rs` | M |
 | 9 | Voice-prompt-on-focus hook (TTS speaks focused label; interruptible; "Speak names" toggle) | app/intent layer | M |
 | 10 | Route changes: Talk root = contacts; add `Replay`; retire `Contacts`/`CallHistory`/`VoiceNote`; `Setup` tree replaces `Power` | `router/routes.rs`, `device/protocol` | M |
+| 11 | Move the voice-capture passthrough from `VoiceNote` to `TalkContact`, gated on the Record action being focused (today `TalkContact` = `NO_PASSTHROUGH`, so PTT on that screen is ignored) | `router/routes.rs` (`passthrough_policies`) | S |
+| 12 | Ask stop path: barge-in-stop in the voice/speech worker (an `ask_start` while speaking halts playback) **or** a dedicated stop intent — today `start_work` rejects while busy, so "double-press to stop" does nothing | speech worker, `router/routes.rs` | M |
+| 13 | Error overlay interactions: retry select target, a path that clears `snapshot.overlay.error` (else `runtime_preemption` re-pushes the overlay forever), 8 s Loading→Error + 4 s auto-retry timers | `router/routes.rs`, `application/navigator.rs` | M |
+| 14 | Button timing: contract is 400 ms long-hold / 350 ms double window / 180–400 ms dead zone — shipped config is 800 / 300 / no dead zone | `input/config.rs`, `input/machine.rs`, `config/device/hardware.yaml` | S |
 
 ## Suggested build order
 
@@ -79,7 +88,8 @@ Per-screen object budgets are in each spec (§budget); every screen fits the
 - Renders match the spec's device frames at 240×280 (RGB565 values from the
   token tables, not the CSS hexes).
 - press / double-press / long-press behave per the screen's input-contract
-  table; long-press always lands on Home.
+  table; long-press lands on Home everywhere except capture screens, where
+  hold = talk (PTT passthrough).
 - Focus is visible without reading: fill + size (+ ring on controls).
 - Focused label is spoken on every focus change (when Speak names is on).
 - No UI borders or shadows anywhere; characters keep outlines.
