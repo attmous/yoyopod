@@ -13,11 +13,11 @@ an implementer needs.
 | File | Covers | Theme | Status |
 |---|---|---|---|
 | `mockup_home.html` | Home: idle + 4 focus states, companion Blob, deck | light | ✅ consolidated |
-| `mockup_listen.html` | Listen depth 1–4 incl. NowPlaying | light | ✅ consolidated |
-| `mockup_listen_dark.html` | Same, dark token swap | dark | ✅ tracks light file |
-| `mockup_talk.html` | Talk v4: contacts, TalkContact, walkie-talkie, Replay, call overlays | light | ✅ consolidated |
-| `mockup_ask.html` | Ask: idle / listening / thinking / answering | light | ✅ new in consolidation |
-| `mockup_setup.html` | Setup root + Volume / Companion / Theme / About | light | ✅ new in consolidation |
+| `mockup_listen.html` | Listen **v2**: wheel navigation + arc-hero NowPlaying — owns the wheel & arc primitives | light | ✅ redesigned |
+| `mockup_listen_dark.html` | Dark token swap of the **retired v1** card/tab layout | dark | ⚠ superseded — regeneration pending |
+| `mockup_talk.html` | Talk **v5**: contact wheel, TalkContact wheel, recording, Replay, de-boxed call overlays | light | ✅ redesigned |
+| `mockup_ask.html` | Ask: idle / listening / thinking / answering | light | ✅ (still v1 card pattern — wheel migration pending) |
+| `mockup_setup.html` | Setup root + Volume / Companion / Theme / About | light | ✅ (still v1 card pattern — wheel migration pending) |
 | `mockup_input_model.html` | The three-gesture input contract (single source of truth) | — | ✅ consolidated |
 | `mockup_companions.html` | Swappable Home companions: Owl / Cat / Bunny / Robot | light | ✅ |
 | `mockup_companions_dark.html` | Same, dark token swap | dark | ✅ tracks light file |
@@ -98,7 +98,10 @@ divergences an implementer must reconcile:
 | Spec | Runtime today | Divergence |
 |---|---|---|
 | Home deck: Listen · Talk · Ask · Setup | `Hub` → Listen / Talk / Ask / **Power** | "Setup" replaces/extends `Power`. |
-| Listen root: Artists · Recents · Radio · Playlists | Listen → Playlists / RecentTracks / ShuffleAll | Artists + Radio have no runtime backing yet; runtime has ShuffleAll instead. |
+| Listen root: Playlists · Recents · Shuffle all | Listen → Playlists / RecentTracks / ShuffleAll | ✅ **resolved in v2** — the wheel root matches the shipped router (v1's Artists/Radio rows dropped). |
+| Wheel menus (Listen v2 / Talk v5) | `DeckKind::List` + `SelectionOffset` exist | restyle, not new architecture — but `lvgl_renderer.rs:157` maps `SelectionOffset` to `set_x_offset` (vertical wheel needs a Y remap), `Deck::visible_range` clamps instead of wrapping (>6-item wheels need wrap-aware windowing), and the native facade's scale/opacity/offset setters are currently no-ops. |
+| Arc-hero progress ring | progress emulated as child-obj fill width | `lv_arc` needs new FFI + `ElementKind::Arc`; specs include a bar-based fallback that ships with today's FFI. |
+| Hard offset shadows, focus outline color, Montserrat 14/24 | not in FFI / theme schema | add `shadow_offset_x/y`, `outline_color`, font externs — or use the documented composed fallbacks. FFI table: `mockup_listen.html` §7. |
 | Talk v4: contacts list **is** the Talk root | Talk → Contacts / CallHistory / VoiceNote | v4 deletes the intermediate branch; `CallHistory` route orphaned. |
 | Talk v4: hold-to-record inside TalkContact | dedicated `VoiceNote` screen with PTT passthrough | v4 folds recording into TalkContact; `VoiceNote` route to retire or repurpose. |
 | Replay queue (per contact) | `voice.play_latest` intent on TalkContact | Replay-as-screen is new. |
@@ -125,6 +128,23 @@ Carried from the per-file "open questions" sections, still undecided:
 7. **Loading / Error overlay design** — routes exist in the runtime, no mockup.
 8. **Kid timing tolerances** — 350 ms double-press window needs testing with
    4–6-year-olds; may need to widen.
+
+## Redesign changelog (2026-07-15, second pass — wheel + arc hero)
+
+- **Listen v2 / Talk v5**: card + tab-strip + row lists retired in favor of the
+  **wheel** — one large focused tile center-stage (the only boxed element),
+  neighbors peeking scaled/dimmed above and below; press rolls one step
+  (wraps), double-press opens. Breadcrumb tabs replaced by a single small
+  context label. NowPlaying/Replay became the **arc hero**: cover art / avatar
+  with the progress ring around it (`lv_arc`, bar fallback included).
+- Call overlays de-boxed: full-bleed tinted stage, big avatar, round
+  answer/hang-up chips — no cards, no pills.
+- Every component in both files now carries an explicit **LVGL mapping**
+  (canonical stock widget vs composed-from-today's-FFI) plus the minimal FFI
+  additions table (`mockup_listen.html` §7 is normative).
+- `mockup_listen_dark.html` is superseded (still shows v1) — banner added,
+  regeneration pending. Ask/Setup still use the v1 card pattern — wheel
+  migration pending user approval of the new look.
 
 ## Consolidation changelog (2026-07-15)
 

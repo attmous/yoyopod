@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>YoyoPod — Listen Flow · Implementation Spec</title>
+<title>YoyoPod — Listen Flow · v2 · Wheel + Arc Hero · Implementation Spec</title>
 <style>
   :root {
     /* ─── Panel ─── */
@@ -31,8 +31,8 @@
 
     /* ─── Stroke + shadow primitives ─── */
     --border-w: 2px;
-    --shadow-row:    2px 2px 0 var(--ink);
-    --shadow-card:   3px 3px 0 var(--ink);
+    --shadow-2: 2px 2px 0 var(--ink);   /* chips (play/pause) */
+    --shadow-3: 3px 3px 0 var(--ink);   /* focused wheel tile, hero art */
 
     /* ─── Spacing scale ─── */
     --sp-1: 4px;
@@ -42,23 +42,16 @@
     /* ─── Component sizes (LVGL-aligned) ─── */
     --statusbar-h: 22px;
     --deck-h:      52px;
-    --tab-h:       18px;
-    --row-h:       28px;
-    --row-radius:  6px;
-    --card-radius: 10px;
 
-    /* ─── Type ─── */
-    --t-row:    600 12px/1 "Inter", system-ui, sans-serif;
-    --t-meta:   700 10px/1 "Inter", system-ui, sans-serif;
-    --t-tab:    800 9px/1  "Inter", system-ui, sans-serif;
-    --t-status: 700 11px/1 "Inter", system-ui, sans-serif;
+    /* ─── Type (device UI = Montserrat only; page fallback stack noted in §5) ─── */
+    --font-ui: "Montserrat", "Segoe UI", system-ui, sans-serif;
   }
 
   html, body {
     margin: 0; padding: 0;
     background: #1a1518;
     color: #efe4d6;
-    font-family: -apple-system, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+    font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   body { padding: 32px 24px 80px; }
@@ -89,7 +82,7 @@
     box-sizing: border-box;
     background: var(--bg-cream);
     overflow: hidden;
-    font-family: "Inter", "Roboto", system-ui, sans-serif;
+    font-family: var(--font-ui);
     color: var(--ink);
     border-radius: var(--panel-radius);
     box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 1px var(--ink);
@@ -178,142 +171,203 @@
   .deck .slot.focus.ask    { background: var(--c-butter); }
   .deck .slot.focus.setup  { background: var(--c-coral); }
 
-  /* ── Stage ────────────────────────────────────────────── */
-  .cd-stage {
-    position: absolute;
-    top: var(--statusbar-h); left: 0; right: 0;
-    bottom: var(--deck-h);
-    background: var(--bg-cream);
-    overflow: hidden;
+  /* ── Stage ────────────────────────────────────────────────
+     Device geometry: stage = y 22–228 (h 206). Here the tint layer is
+     full-bleed and the opaque statusbar (z30) + deck (z20) overpaint the
+     top/bottom bands — identical pixels, and it lets every child use
+     panel-absolute coordinates straight from the §3/§4 tables. The
+     panel's overflow:hidden supplies the peek clipping. */
+  .stage {
+    position: absolute; inset: 0;
+    background: var(--bg-stage-lime);
   }
 
-  /* ── TabStrip ─────────────────────────────────────────── */
-  .cd-tabs {
-    position: absolute; top: 0;
-    left: var(--sp-2); right: var(--sp-2);
-    display: flex; gap: var(--sp-1); align-items: flex-end;
-    height: var(--tab-h);
+  /* ── Context label (§3: 10,26,130,14 · depth ≥2 only) ── */
+  .ctx {
+    position: absolute; left: 10px; top: 26px; width: 130px; height: 14px;
+    font: 700 12px/14px var(--font-ui);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft);
+    white-space: nowrap;
     z-index: 5;
   }
-  .cd-tab {
-    height: var(--tab-h);
-    padding: 0 var(--sp-2);
-    border: var(--border-w) solid var(--ink);
-    border-bottom: none;
-    border-radius: var(--row-radius) var(--row-radius) 0 0;
-    font: var(--t-tab);
-    letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--ink);
-    display: flex; align-items: center;
+
+  /* ── Wheel primitive (§3) ──────────────────────────────
+     Slot strip (32,−3,176,96), repeat_y 80 → tops −3/77/157,
+     item centers y 45/125/205. */
+  .wheel-item {
+    position: absolute; left: 32px; width: 176px; height: 96px;
     box-sizing: border-box;
+    transform-origin: 50% 50%;
   }
-  .cd-tab.ancestor { background: var(--bg-cream-2); opacity: 0.85; height: 14px; }
-  .cd-tab.active   { background: var(--c-lime); }
+  .s-top { top: -3px; }
+  .s-mid { top: 77px; }
+  .s-bot { top: 157px; }
+  /* mid-roll frame: slot tops − 40 (SelectionOffset at −40 of −80) */
+  .r-exit { top: -43px; }
+  .r-a    { top: 37px;  }
+  .r-b    { top: 117px; }
+  .r-in   { top: 197px; }
 
-  /* ── Card ─────────────────────────────────────────────── */
-  .cd-card {
-    position: absolute;
-    left: var(--sp-2); right: var(--sp-2);
-    top: 16px;
-    bottom: var(--sp-2);
-    background: var(--bg-cream);
-    border: var(--border-w) solid var(--ink);
-    border-radius: 0 var(--card-radius) var(--card-radius) var(--card-radius);
-    box-shadow: var(--shadow-card);
-    z-index: 6;
-    padding: var(--sp-2);
-    box-sizing: border-box;
+  .wheel-item.focused {
+    /* THE only box on screen: fill c_lime, 2px ink border (drawn as inset
+       ring so child coords stay outer-box relative), radius 12, hard 3,3. */
+    background: var(--c-lime);
+    border-radius: 12px;
+    box-shadow: inset 0 0 0 var(--border-w) var(--ink), var(--shadow-3);
+    z-index: 2;
   }
-  .cd-card.no-tabs { border-radius: var(--card-radius); }
+  .wheel-item.peek {
+    transform: scale(0.7);   /* LVGL transform_scale 700‰ */
+    opacity: 0.45;
+    /* no fill / border / shadow */
+  }
 
-  /* ── List ─────────────────────────────────────────────── */
-  .cd-list {
-    position: absolute;
-    inset: var(--sp-2);
-    display: flex; flex-direction: column;
-    gap: var(--sp-2);
-    justify-content: center;
-  }
-  .cd-card .cd-list { position: static; inset: auto; height: 100%; }
-
-  /* ── Row ──────────────────────────────────────────────── */
-  .cd-row {
-    height: var(--row-h);
-    padding: 0 var(--sp-2);
-    display: flex; align-items: center; gap: var(--sp-2);
-    border: var(--border-w) solid var(--ink);
-    background: var(--bg-cream-2);
-    border-radius: var(--row-radius);
-    box-shadow: var(--shadow-row);
-    font: var(--t-row);
-    color: var(--ink);
-    box-sizing: border-box;
-  }
-  .cd-row .swatch {
-    width: 14px; height: 14px;
-    border: var(--border-w) solid var(--ink);
-    border-radius: 3px;
-    flex: none;
-  }
-  .cd-row .meta {
-    margin-left: auto;
-    font: var(--t-meta);
-    color: var(--ink-soft);
-  }
-  .cd-row.focus { background: var(--c-lime); }
-  .cd-row.focus .meta { color: var(--ink); }
-
-  /* ── NowPlaying ──────────────────────────────────────── */
-  .cd-card.now-playing {
-    padding: var(--sp-2);
-    display: flex; flex-direction: column;
-    gap: 6px;
-  }
-  .cd-track-hero {
-    display: flex; flex-direction: column; align-items: center;
-    gap: 4px;
-    padding-top: var(--sp-1);
-  }
-  .cd-track-cover {
-    width: 60px; height: 60px;
-    border: var(--border-w) solid var(--ink);
-    border-radius: var(--row-radius);
-    background: var(--c-mustard);
-    box-shadow: var(--shadow-row);
+  /* Variant A — icon item: 56×56 icon at (60,8), label at (8,68,160,22) */
+  .wi-icon {
+    position: absolute; left: 60px; top: 8px; width: 56px; height: 56px;
     display: grid; place-items: center;
-    font-size: 26px; font-weight: 900;
+    font-size: 40px; font-weight: 800; line-height: 1;
+    color: var(--ink);
   }
-  .cd-track-title { font: 800 12px/1 "Inter", system-ui, sans-serif; }
-  .cd-track-sub   { font: var(--t-meta); color: var(--ink-soft); }
+  .wi-label {
+    position: absolute; left: 8px; top: 68px; width: 160px; height: 22px;
+    font: 700 18px/22px var(--font-ui);
+    color: var(--ink); text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
 
-  .cd-progress-block { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
-  .cd-progress {
-    height: 8px;
+  /* Variant B — media item: plate (64,6,48,48), label (8,58,160,22),
+     sub (8,81,160,14) */
+  .wi-plate {
+    position: absolute; left: 64px; top: 6px; width: 48px; height: 48px;
+    box-sizing: border-box;
+    border: var(--border-w) solid var(--ink);
+    border-radius: 8px;
+    display: grid; place-items: center;
+    font: 700 24px/1 var(--font-ui);
+    color: var(--ink);
+  }
+  .wi-label-b {
+    position: absolute; left: 8px; top: 58px; width: 160px; height: 22px;
+    font: 700 18px/22px var(--font-ui);
+    color: var(--ink); text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .wi-sub {
+    position: absolute; left: 8px; top: 81px; width: 160px; height: 14px;
+    font: 600 12px/14px var(--font-ui);
+    color: var(--ink-soft); text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* ── Arc hero primitive (§4) ──────────────────────────── */
+  .hero-arc { position: absolute; left: 50px; top: 36px; z-index: 1; }
+  .hero-art {
+    position: absolute; left: 77px; top: 63px; width: 86px; height: 86px;
+    border-radius: 10px;
+    background: var(--c-mustard);
+    box-shadow: inset 0 0 0 var(--border-w) var(--ink), var(--shadow-3);
+    display: grid; place-items: center;
+    font-size: 40px; font-weight: 800; color: var(--ink);
+    z-index: 2;
+  }
+  .paused .hero-art { opacity: 0.7; }
+
+  .hero-prev, .hero-next {
+    position: absolute; top: 94px; width: 24px; height: 24px;
+    display: grid; place-items: center;
+    font-size: 17px; font-weight: 800; line-height: 1;
+    color: var(--ink); opacity: 0.55;       /* bare glyphs — no chips/boxes */
+    z-index: 3;
+  }
+  .hero-prev { left: 24px; }
+  .hero-next { left: 192px; }
+
+  .hero-play {
+    position: absolute; left: 104px; top: 160px; width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--c-lime);
+    box-shadow: inset 0 0 0 var(--border-w) var(--ink), var(--shadow-2);
+    display: grid; place-items: center;
+    font-size: 11px; font-weight: 800; letter-spacing: 1px; text-indent: 1px;
+    color: var(--ink);
+    z-index: 3;
+  }
+  .hero-play.focused, .hero-prev.focused, .hero-next.focused {
+    transform: scale(1.1);                    /* LVGL 1100‰ */
+    outline: var(--border-w) solid var(--ink);/* fallback: border 2→3px */
+    outline-offset: 2px;                      /* outline pad 2 */
+    border-radius: 50%;
+    opacity: 1;
+  }
+
+  .hero-time-l, .hero-time-r {
+    position: absolute; top: 170px; width: 64px; height: 14px;
+    font: 600 12px/14px var(--font-ui);
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-time-l { left: 24px;  text-align: right; }
+  .hero-time-r { left: 152px; text-align: left;  }
+
+  .hero-title {
+    position: absolute; left: 10px; top: 198px; width: 220px; height: 22px;
+    font: 700 18px/22px var(--font-ui);
+    color: var(--ink); text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* ── Composed fallback variant (§4 — today's FFI, no lv_arc) ── */
+  .fb-art {
+    position: absolute; left: 84px; top: 40px; width: 72px; height: 72px;
+    border-radius: 10px;
+    background: var(--c-mustard);
+    box-shadow: inset 0 0 0 var(--border-w) var(--ink), var(--shadow-3);
+    display: grid; place-items: center;
+    font-size: 34px; font-weight: 800; color: var(--ink);
+  }
+  .fb-title {
+    position: absolute; left: 10px; top: 118px; width: 220px; height: 22px;
+    font: 700 18px/22px var(--font-ui);
+    color: var(--ink); text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fb-bar {
+    position: absolute; left: 30px; top: 148px; width: 180px; height: 8px;
+    box-sizing: border-box;
     border: var(--border-w) solid var(--ink);
     border-radius: 4px;
     background: var(--bg-cream-2);
     overflow: hidden;
   }
-  .cd-progress > i { display: block; height: 100%; background: var(--c-lime); }
-  .cd-time {
-    display: flex; justify-content: space-between;
-    font: 700 9px/1 "Inter", system-ui, sans-serif;
+  .fb-bar > i { display: block; height: 100%; background: var(--c-lime); }
+  .fb-time-l, .fb-time-r {
+    position: absolute; top: 160px; width: 64px; height: 14px;
+    font: 600 12px/14px var(--font-ui);
     color: var(--ink-soft);
-    padding: 0 2px;
+    font-variant-numeric: tabular-nums;
   }
-  .cd-controls {
-    display: flex; justify-content: space-around; align-items: center;
-    font-size: 16px; font-weight: 900;
-    margin-top: -4px;
-  }
-  .cd-controls .play {
-    background: var(--c-lime);
-    border: var(--border-w) solid var(--ink);
-    border-radius: 50%;
-    width: 26px; height: 26px;
+  .fb-time-l { left: 30px;  text-align: left;  }
+  .fb-time-r { left: 146px; text-align: right; }
+  .fb-prev, .fb-next {
+    position: absolute; top: 186px; width: 24px; height: 24px;
     display: grid; place-items: center;
-    box-shadow: var(--shadow-row);
-    font-size: 12px;
+    font-size: 17px; font-weight: 800; line-height: 1;
+    color: var(--ink); opacity: 0.55;
+  }
+  .fb-prev { left: 48px; }
+  .fb-next { left: 168px; }
+  .fb-play {
+    position: absolute; left: 104px; top: 182px; width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--c-lime);
+    box-shadow: inset 0 0 0 var(--border-w) var(--ink), var(--shadow-2);
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 800; color: var(--ink);
+  }
+  .fb-play.focused-border {   /* fallback focus: border 2 → 3px, no scale */
+    box-shadow: inset 0 0 0 3px var(--ink), var(--shadow-2);
   }
 
   /* ── doc tables ──────────────────────────────────────── */
@@ -386,28 +440,12 @@
     font-size: 11px;
   }
   .legend .dot { width: 12px; height: 12px; border: 1.5px solid #1B1B1F; border-radius: 3px; flex: none; }
-
-  /* dimension overlay helpers */
-  .dim {
-    position: relative;
-  }
-  .dim .annot {
-    position: absolute;
-    font: 700 9px/1 "JetBrains Mono", ui-monospace, monospace;
-    color: #ffcfae;
-    background: #0a0708;
-    border: 1px solid #3b2e2e;
-    padding: 2px 4px;
-    border-radius: 3px;
-    pointer-events: none;
-    white-space: nowrap;
-  }
 </style>
 </head>
 <body>
 
-<h1>YoyoPod — Listen Flow · Implementation Spec</h1>
-<p class="muted">Canonical mockup of the <b>Listen</b> category, depth 1 through 4, with full design-token tables (colors, dimensions, spacing, type, animation, and LVGL render mapping). Every pixel in the renders below is sourced from the tokens listed in the tables — no magic numbers. Panel canvas is 240 × 280 px.</p>
+<h1>YoyoPod — Listen Flow · v2 · Wheel + Arc Hero · Implementation Spec</h1>
+<p class="muted">Canonical mockup of the <b>Listen</b> category, redesigned around two primitives: the <b>wheel</b> (carousel menu — the focused tile is the only boxed element on screen) and the <b>arc hero</b> (ring-progress NowPlaying). Tab strip, card, and rows are retired. <b>This file owns both primitives</b> — <code>mockup_talk.html</code> references them. Every pixel in the renders is sourced from the §3/§4 tables — no magic numbers. Panel canvas is 240 × 280 px: status bar y 0–22 · stage y 22–228 · deck y 228–280. One hardware button (press = roll · double-press = open · long-press ≥ 400 ms = Home) + PTT side button; a voice prompt speaks every focused label.</p>
 
 <div class="legend">
   <div class="chip"><div class="dot" style="background:var(--c-lime)"></div>Listen — lime</div>
@@ -417,28 +455,33 @@
 </div>
 
 <!-- ============================================================ -->
-<h2>1 · Listen — depth 1 → 4 screen ladder</h2>
-<p>Listen root, then push through Playlists → Morning → NowPlaying. Stage tints lime across the whole flow because the focused deck slot is Listen.</p>
+<h2>1 · Screen ladder — wheel depth 1 → 3, roll, arc hero</h2>
+<p>Listen root → Playlists → Morning Songs tracks → NowPlaying, plus a mid-roll animation frame and the two NowPlaying variants (paused, composed fallback). Stage tints lime across the whole flow because the focused deck slot is Listen. Glyphs in these renders are page approximations — at runtime each maps to an A8 icon asset (§12).</p>
 
 <div class="row">
 
-  <!-- Depth 1 -->
+  <!-- Frame 1 · Listen root wheel -->
   <div class="stack">
-    <span class="label">Depth 1 · Listen root</span>
+    <span class="label">1 · Listen root · wheel, depth 1</span>
     <div class="device"><div class="panel">
       <div class="statusbar">
         <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
         <span class="time">6:16</span>
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
-      <div class="cd-stage">
-        <div class="cd-card no-tabs">
-          <div class="cd-list">
-            <div class="cd-row focus"><div class="swatch" style="background:var(--c-mustard)"></div>Artists <span class="meta">›</span></div>
-            <div class="cd-row"><div class="swatch" style="background:var(--c-peri)"></div>Recents <span class="meta">›</span></div>
-            <div class="cd-row"><div class="swatch" style="background:var(--c-tomato)"></div>Radio <span class="meta">›</span></div>
-            <div class="cd-row"><div class="swatch" style="background:var(--c-butter)"></div>Playlists <span class="meta">›</span></div>
-          </div>
+      <div class="stage">
+        <!-- depth 1 → no context label -->
+        <div class="wheel-item peek s-top">
+          <div class="wi-icon">⇄</div>
+          <div class="wi-label">Shuffle all</div>
+        </div>
+        <div class="wheel-item focused s-mid">
+          <div class="wi-icon">♬</div>
+          <div class="wi-label">Playlists</div>
+        </div>
+        <div class="wheel-item peek s-bot">
+          <div class="wi-icon">↻</div>
+          <div class="wi-label">Recents</div>
         </div>
       </div>
       <div class="deck">
@@ -448,29 +491,34 @@
         <div class="slot setup"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">No tabs — Card uses <code>no-tabs</code> variant (all corners rounded).</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Root now matches the shipped router (<code>router/routes.rs</code>): Playlists / Recents / Shuffle all — the v1 Artists/Radio divergence is resolved. Depth 1 → no context label. Peeks = wrap-adjacent items (above: previous-in-wrap).</span>
   </div>
 
-  <!-- Depth 2 -->
+  <!-- Frame 2 · Playlists wheel -->
   <div class="stack">
-    <span class="label">Depth 2 · Playlists</span>
+    <span class="label">2 · Playlists · wheel, depth 2</span>
     <div class="device"><div class="panel">
       <div class="statusbar">
         <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
         <span class="time">6:16</span>
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
-      <div class="cd-stage">
-        <div class="cd-tabs">
-          <div class="cd-tab active">Playlists</div>
+      <div class="stage">
+        <div class="ctx">Listen</div>
+        <div class="wheel-item peek s-top">
+          <div class="wi-plate" style="background:var(--c-tomato)">C</div>
+          <div class="wi-label-b">Car Trips</div>
+          <div class="wi-sub">22 songs</div>
         </div>
-        <div class="cd-card">
-          <div class="cd-list">
-            <div class="cd-row focus"><div class="swatch" style="background:var(--c-mustard)"></div>Morning Songs <span class="meta">12</span></div>
-            <div class="cd-row"><div class="swatch" style="background:var(--c-peri)"></div>Sleep <span class="meta">8</span></div>
-            <div class="cd-row"><div class="swatch" style="background:var(--c-tomato)"></div>Car Trips <span class="meta">22</span></div>
-            <div class="cd-row"><div class="swatch" style="background:var(--c-butter)"></div>Lullabies <span class="meta">6</span></div>
-          </div>
+        <div class="wheel-item focused s-mid">
+          <div class="wi-plate" style="background:var(--c-mustard)">M</div>
+          <div class="wi-label-b">Morning Songs</div>
+          <div class="wi-sub">12 songs</div>
+        </div>
+        <div class="wheel-item peek s-bot">
+          <div class="wi-plate" style="background:var(--c-peri)">S</div>
+          <div class="wi-label-b">Sleep</div>
+          <div class="wi-sub">8 songs</div>
         </div>
       </div>
       <div class="deck">
@@ -480,30 +528,34 @@
         <div class="slot setup"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">First tab — lime active. Card top-left corner squared to join.</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Variant-B media items: 48×48 payload-color plate with Mont-24 initial, Mont-18 label, Mont-12 sub (track count). Context label <code>LISTEN</code> replaces the retired tab strip.</span>
   </div>
 
-  <!-- Depth 3 -->
+  <!-- Frame 3 · Track wheel -->
   <div class="stack">
-    <span class="label">Depth 3 · Playlists › Morning</span>
+    <span class="label">3 · Tracks · wheel, depth 3</span>
     <div class="device"><div class="panel">
       <div class="statusbar">
         <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
         <span class="time">6:16</span>
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
-      <div class="cd-stage">
-        <div class="cd-tabs">
-          <div class="cd-tab ancestor">Playlists</div>
-          <div class="cd-tab active">Morning</div>
+      <div class="stage">
+        <div class="ctx">Morning Songs · 1/12</div>
+        <div class="wheel-item peek s-top">
+          <div class="wi-plate" style="background:var(--c-tomato)">O</div>
+          <div class="wi-label-b">Old MacDonald</div>
+          <div class="wi-sub">2:32</div>
         </div>
-        <div class="cd-card">
-          <div class="cd-list">
-            <div class="cd-row focus"><div class="swatch" style="background:var(--c-butter)"></div>Twinkle Twinkle <span class="meta">2:14</span></div>
-            <div class="cd-row"><div class="swatch" style="background:var(--c-peri)"></div>Wheels on Bus <span class="meta">1:48</span></div>
-            <div class="cd-row"><div class="swatch" style="background:var(--c-tomato)"></div>Old MacDonald <span class="meta">2:32</span></div>
-            <div class="cd-row"><div class="swatch" style="background:var(--c-mustard)"></div>Itsy Spider <span class="meta">1:55</span></div>
-          </div>
+        <div class="wheel-item focused s-mid">
+          <div class="wi-plate" style="background:var(--c-butter)">T</div>
+          <div class="wi-label-b">Twinkle Twinkle</div>
+          <div class="wi-sub">2:14</div>
+        </div>
+        <div class="wheel-item peek s-bot">
+          <div class="wi-plate" style="background:var(--c-peri)">W</div>
+          <div class="wi-label-b">Wheels on Bus</div>
+          <div class="wi-sub">1:48</div>
         </div>
       </div>
       <div class="deck">
@@ -513,38 +565,39 @@
         <div class="slot setup"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Playlists demotes to ancestor (cream-2, 14 px, opacity 0.85).</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Durations in the sub row. 12 items &gt; 6 → <code>recycle_window: 3</code> and the context label carries the counter: <code>MORNING SONGS · 1/12</code>.</span>
   </div>
 
-  <!-- Depth 4 -->
+  <!-- Frame 4 · mid-roll -->
   <div class="stack">
-    <span class="label">Depth 4 · NowPlaying</span>
+    <span class="label">4 · Mid-roll · SelectionOffset −40</span>
     <div class="device"><div class="panel">
       <div class="statusbar">
         <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
         <span class="time">6:16</span>
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
-      <div class="cd-stage">
-        <div class="cd-tabs">
-          <div class="cd-tab ancestor">Playlists</div>
-          <div class="cd-tab active">Morning</div>
+      <div class="stage">
+        <div class="ctx">Listen</div>
+        <div class="wheel-item peek r-exit">
+          <div class="wi-plate" style="background:var(--c-tomato)">C</div>
+          <div class="wi-label-b">Car Trips</div>
+          <div class="wi-sub">22 songs</div>
         </div>
-        <div class="cd-card now-playing">
-          <div class="cd-track-hero">
-            <div class="cd-track-cover">♪</div>
-            <div class="cd-track-title">Twinkle Twinkle</div>
-            <div class="cd-track-sub">Nursery · Track 1 of 12</div>
-          </div>
-          <div class="cd-progress-block">
-            <div class="cd-progress"><i style="width: 42%"></i></div>
-            <div class="cd-time"><span>0:56</span><span>2:14</span></div>
-          </div>
-          <div class="cd-controls">
-            <span>⏮</span>
-            <span class="play">▶</span>
-            <span>⏭</span>
-          </div>
+        <div class="wheel-item peek r-a">
+          <div class="wi-plate" style="background:var(--c-mustard)">M</div>
+          <div class="wi-label-b">Morning Songs</div>
+          <div class="wi-sub">12 songs</div>
+        </div>
+        <div class="wheel-item focused r-b">
+          <div class="wi-plate" style="background:var(--c-peri)">S</div>
+          <div class="wi-label-b">Sleep</div>
+          <div class="wi-sub">8 songs</div>
+        </div>
+        <div class="wheel-item peek r-in">
+          <div class="wi-plate" style="background:var(--c-tomato)">C</div>
+          <div class="wi-label-b">Car Trips</div>
+          <div class="wi-sub">22 songs</div>
         </div>
       </div>
       <div class="deck">
@@ -554,7 +607,114 @@
         <div class="slot setup"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Leaf: no new tab — track title lives in the hero. Active tab stays on "Morning".</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Frame 2, 90 ms into the 180 ms roll: every slot top is table-y − 40 (<code>SelectionOffset</code> at −40 of −80). Selection flipped at t=0 (TTS says "Sleep"), so the focused chrome already travels with the incoming tile. Car Trips exits under the status bar while its wrap-recycled copy enters under the deck.</span>
+  </div>
+
+</div>
+
+<div class="row" style="margin-top:28px">
+
+  <!-- Frame 5 · NowPlaying arc hero, playing -->
+  <div class="stack">
+    <span class="label">5 · NowPlaying · arc hero · playing</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage">
+        <div class="ctx">Morning Songs</div>
+        <!-- Arc ring: bbox (50,36,140,140), stroke 8 centered on r=66
+             (outer r 70). C = 2π·66 = 414.69; 42 % = 174.17.
+             rotate(−90°) puts the dash start at 12 o'clock, sweeping CW. -->
+        <svg class="hero-arc" width="140" height="140" viewBox="0 0 140 140">
+          <circle cx="70" cy="70" r="66" fill="none" style="stroke:var(--bg-cream-2)" stroke-width="8"/>
+          <circle cx="70" cy="70" r="66" fill="none" style="stroke:var(--c-lime)" stroke-width="8"
+                  stroke-linecap="round" stroke-dasharray="174.17 414.69"
+                  transform="rotate(-90 70 70)"/>
+        </svg>
+        <div class="hero-art">♪</div>
+        <div class="hero-prev">⏮︎</div>
+        <div class="hero-next">⏭︎</div>
+        <div class="hero-play focused">❚❚</div>
+        <div class="hero-time-l">0:56</div>
+        <div class="hero-time-r">2:14</div>
+        <div class="hero-title">Twinkle Twinkle</div>
+      </div>
+      <div class="deck">
+        <div class="slot listen focus"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Playing at 42 % — dasharray 174.17 of C = 414.69, sweep from 12 o'clock clockwise. Default focus = play chip (scale 1.1 + 2px ink outline). Prev/next are bare glyphs at 55 % opacity — no chips.</span>
+  </div>
+
+  <!-- Frame 6 · NowPlaying paused -->
+  <div class="stack">
+    <span class="label">6 · NowPlaying · arc hero · paused</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage paused">
+        <div class="ctx">Morning Songs</div>
+        <svg class="hero-arc" width="140" height="140" viewBox="0 0 140 140">
+          <circle cx="70" cy="70" r="66" fill="none" style="stroke:var(--bg-cream-2)" stroke-width="8"/>
+          <circle cx="70" cy="70" r="66" fill="none" style="stroke:var(--c-lime)" stroke-width="8"
+                  stroke-linecap="round" stroke-dasharray="174.17 414.69"
+                  transform="rotate(-90 70 70)"/>
+        </svg>
+        <div class="hero-art">♪</div>
+        <div class="hero-prev">⏮︎</div>
+        <div class="hero-next">⏭︎</div>
+        <div class="hero-play focused">▶</div>
+        <div class="hero-time-l">0:56</div>
+        <div class="hero-time-r">2:14</div>
+        <div class="hero-title">Twinkle Twinkle</div>
+      </div>
+      <div class="deck">
+        <div class="slot listen focus"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Paused: art dims to 70 % opacity and the chip glyph swaps to play — no other chrome changes. Voice on activate: "Paused" / "Play".</span>
+  </div>
+
+  <!-- Frame 7 · NowPlaying composed fallback -->
+  <div class="stack">
+    <span class="label">7 · NowPlaying · composed fallback</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage">
+        <div class="ctx">Morning Songs</div>
+        <div class="fb-art">♪</div>
+        <div class="fb-title">Twinkle Twinkle</div>
+        <div class="fb-bar"><i style="width:42%"></i></div>
+        <div class="fb-time-l">0:56</div>
+        <div class="fb-time-r">2:14</div>
+        <div class="fb-prev">⏮︎</div>
+        <div class="fb-play focused-border">❚❚</div>
+        <div class="fb-next">⏭︎</div>
+      </div>
+      <div class="deck">
+        <div class="slot listen focus"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Today's FFI only — no <code>lv_arc</code>, no transform, no outline: 72×72 art, 180×8 bar (existing Progress emulation) at 42 %, transport row. Focus shown via the documented fallback (border 2 → 3 px), no scale.</span>
   </div>
 
 </div>
@@ -567,11 +727,11 @@
   <table class="spec">
     <thead><tr><th>Token</th><th>Hex</th><th>RGB</th><th>RGB565</th><th>Role / Usage</th></tr></thead>
     <tbody>
-      <tr><td class="mono">bg_cream</td>     <td class="mono"><span class="sw" style="background:#FCE6D2"></span>#FCE6D2</td><td class="num">252,230,210</td><td class="num">0xFF31</td><td>Panel background, Card body, StatusBar, inactive Deck slot.</td></tr>
-      <tr><td class="mono">bg_cream_2</td>   <td class="mono"><span class="sw" style="background:#F7DBC2"></span>#F7DBC2</td><td class="num">247,219,194</td><td class="num">0xFEF8</td><td>Row idle background, Ancestor tab background, Progress track.</td></tr>
-      <tr><td class="mono">ink</td>          <td class="mono"><span class="sw" style="background:#1B1B1F"></span>#1B1B1F</td><td class="num">27,27,31</td>    <td class="num">0x18C3</td><td>All borders, all shadows (blur=0, spread=0), primary text, deck divider.</td></tr>
-      <tr><td class="mono">ink_soft</td>     <td class="mono"><span class="sw" style="background:#3A3A40"></span>#3A3A40</td><td class="num">58,58,64</td>   <td class="num">0x39C8</td><td>Secondary text (meta column, sub-titles, time labels).</td></tr>
-      <tr><td class="mono">ink_300</td>      <td class="mono"><span class="sw" style="background:#8a8076"></span>#8A8076</td><td class="num">138,128,118</td><td class="num">0x840E</td><td>Inactive deck-slot glyph color (muted).</td></tr>
+      <tr><td class="mono">bg_cream</td>     <td class="mono"><span class="sw" style="background:#FCE6D2"></span>#FCE6D2</td><td class="num">252,230,210</td><td class="num">0xFF3A</td><td>StatusBar, Deck (idle slots) — the persistent chrome bands.</td></tr>
+      <tr><td class="mono">bg_cream_2</td>   <td class="mono"><span class="sw" style="background:#F7DBC2"></span>#F7DBC2</td><td class="num">247,219,194</td><td class="num">0xF6D8</td><td>Arc ring track, fallback bar track.</td></tr>
+      <tr><td class="mono">ink</td>          <td class="mono"><span class="sw" style="background:#1B1B1F"></span>#1B1B1F</td><td class="num">27,27,31</td>    <td class="num">0x18C3</td><td>All borders, all hard shadows (blur 0, spread 0), primary text, deck divider. <b>Unchanged in v2.</b></td></tr>
+      <tr><td class="mono">ink_soft</td>     <td class="mono"><span class="sw" style="background:#3A3A40"></span>#3A3A40</td><td class="num">58,58,64</td>   <td class="num">0x39C8</td><td>Secondary text: context label, wheel sub, hero time labels.</td></tr>
+      <tr><td class="mono">ink_300</td>      <td class="mono"><span class="sw" style="background:#8a8076"></span>#8A8076</td><td class="num">138,128,118</td><td class="num">0x8C0E</td><td>Inactive deck-slot glyph color (muted).</td></tr>
     </tbody>
   </table>
 
@@ -579,272 +739,322 @@
   <table class="spec">
     <thead><tr><th>Token</th><th>Hex</th><th>RGB</th><th>RGB565</th><th>Owner</th><th>Usage</th></tr></thead>
     <tbody>
-      <tr><td class="mono">c_lime</td>   <td class="mono"><span class="sw" style="background:#9DFC7C"></span>#9DFC7C</td><td class="num">157,252,124</td><td class="num">0x9FEF</td><td>Listen</td><td>Active tab, focused Row, Deck slot focus, Progress fill, NowPlaying play button.</td></tr>
-      <tr><td class="mono">c_peri</td>   <td class="mono"><span class="sw" style="background:#A9A6E5"></span>#A9A6E5</td><td class="num">169,166,229</td><td class="num">0xAD1C</td><td>Talk</td>  <td>Active tab/focused Row when Talk is the active category.</td></tr>
-      <tr><td class="mono">c_butter</td> <td class="mono"><span class="sw" style="background:#FFD06A"></span>#FFD06A</td><td class="num">255,208,106</td><td class="num">0xFE8D</td><td>Ask</td>   <td>Active tab/focused Row when Ask is the active category.</td></tr>
-      <tr><td class="mono">c_coral</td>  <td class="mono"><span class="sw" style="background:#F37767"></span>#F37767</td><td class="num">243,119,103</td><td class="num">0xFBAC</td><td>Setup</td> <td>Active tab/focused Row when Setup is the active category.</td></tr>
-      <tr><td class="mono">c_tomato</td> <td class="mono"><span class="sw" style="background:#E5443B"></span>#E5443B</td><td class="num">229,68,59</td>  <td class="num">0xE227</td><td>—</td>     <td>Data swatch only (Row icon color, e.g. "Radio").</td></tr>
-      <tr><td class="mono">c_mustard</td><td class="mono"><span class="sw" style="background:#E8A93C"></span>#E8A93C</td><td class="num">232,169,60</td> <td class="num">0xED47</td><td>—</td>     <td>Data swatch + NowPlaying cover background.</td></tr>
+      <tr><td class="mono">c_lime</td>   <td class="mono"><span class="sw" style="background:#9DFC7C"></span>#9DFC7C</td><td class="num">157,252,124</td><td class="num">0x9FEF</td><td>Listen</td><td>Focused wheel tile fill, arc indicator, play chip fill, Deck slot focus.</td></tr>
+      <tr><td class="mono">c_peri</td>   <td class="mono"><span class="sw" style="background:#A9A6E5"></span>#A9A6E5</td><td class="num">169,166,229</td><td class="num">0xAD3C</td><td>Talk</td>  <td>Same roles when Talk is the active category; plate payload color.</td></tr>
+      <tr><td class="mono">c_butter</td> <td class="mono"><span class="sw" style="background:#FFD06A"></span>#FFD06A</td><td class="num">255,208,106</td><td class="num">0xFE8D</td><td>Ask</td>   <td>Same roles when Ask is the active category; plate payload color.</td></tr>
+      <tr><td class="mono">c_coral</td>  <td class="mono"><span class="sw" style="background:#F37767"></span>#F37767</td><td class="num">243,119,103</td><td class="num">0xF3AC</td><td>Setup</td> <td>Same roles when Setup is the active category.</td></tr>
+      <tr><td class="mono">c_tomato</td> <td class="mono"><span class="sw" style="background:#E5443B"></span>#E5443B</td><td class="num">229,68,59</td>  <td class="num">0xE227</td><td>—</td>     <td>Plate payload color only.</td></tr>
+      <tr><td class="mono">c_mustard</td><td class="mono"><span class="sw" style="background:#E8A93C"></span>#E8A93C</td><td class="num">232,169,60</td> <td class="num">0xED47</td><td>—</td>     <td>Plate payload color + hero art fallback fill.</td></tr>
     </tbody>
   </table>
 
-  <h3>Stage tints — applied to Stage bg per active category</h3>
+  <h3>Stage tints — full-bleed stage background per active category (normative in v2)</h3>
   <table class="spec">
     <thead><tr><th>Token</th><th>Hex</th><th>RGB</th><th>RGB565</th><th>Pair with</th></tr></thead>
     <tbody>
-      <tr><td class="mono">bg_stage_lime</td>   <td class="mono"><span class="sw" style="background:#E6FDE0"></span>#E6FDE0</td><td class="num">230,253,224</td><td class="num">0xE7FC</td><td>c_lime (Listen)</td></tr>
+      <tr><td class="mono">bg_stage_lime</td>   <td class="mono"><span class="sw" style="background:#E6FDE0"></span>#E6FDE0</td><td class="num">230,253,224</td><td class="num">0xE7FC</td><td>c_lime (Listen) — used by every render on this page</td></tr>
       <tr><td class="mono">bg_stage_peri</td>   <td class="mono"><span class="sw" style="background:#E7E5F7"></span>#E7E5F7</td><td class="num">231,229,247</td><td class="num">0xE73E</td><td>c_peri (Talk)</td></tr>
       <tr><td class="mono">bg_stage_butter</td> <td class="mono"><span class="sw" style="background:#FFF0CC"></span>#FFF0CC</td><td class="num">255,240,204</td><td class="num">0xFF99</td><td>c_butter (Ask)</td></tr>
       <tr><td class="mono">bg_stage_coral</td>  <td class="mono"><span class="sw" style="background:#FDE2D8"></span>#FDE2D8</td><td class="num">253,226,216</td><td class="num">0xFF1B</td><td>c_coral (Setup)</td></tr>
     </tbody>
   </table>
+  <p style="margin:0">RGB565 recomputed for v2 via <code>((R&amp;0xF8)&lt;&lt;8)|((G&amp;0xFC)&lt;&lt;3)|(B&gt;&gt;3)</code>. Five v1 LUT values were wrong and are corrected above: <code>bg_cream</code> (was 0xFF31), <code>bg_cream_2</code> (was 0xFEF8), <code>ink_300</code> (was 0x840E), <code>c_peri</code> (was 0xAD1C), <code>c_coral</code> (was 0xFBAC). Update <code>theme.ron</code>'s LUT to match (§12). <b>ink stays #1B1B1F.</b></p>
 </div>
 
 <!-- ============================================================ -->
-<h2>3 · Dimensions &amp; spacing</h2>
+<h2>3 · Wheel primitive spec</h2>
 <div class="specs">
-  <h3>Spacing scale</h3>
+  <p style="margin:0 0 6px">Replaces the v1 card + tab strip + rows. A restyle of the runtime's existing <code>DeckKind::List</code> + <code>SelectionOffset</code> machinery — no new architecture. <b>The focused (middle) tile is the only boxed element on screen.</b> Peeks are clipped by the panel's <code>overflow:hidden</code> under the opaque status bar / deck.</p>
+
+  <h3>Geometry (panel-absolute px; slot-rel = relative to the 176×96 slot)</h3>
   <table class="spec">
-    <thead><tr><th>Token</th><th>Pixels</th><th>Used for</th></tr></thead>
+    <thead><tr><th>Element</th><th>x</th><th>y</th><th>w</th><th>h</th><th>Style</th></tr></thead>
     <tbody>
-      <tr><td class="mono">sp_1</td><td class="num">4 px</td><td>Tab-to-tab gap, NowPlaying hero internal gap, time-label internal padding.</td></tr>
-      <tr><td class="mono">sp_2</td><td class="num">8 px</td><td>Card padding, List inset, Row inner horizontal padding, Row-to-Row gap, Tab horizontal padding, Stage horizontal margins.</td></tr>
-      <tr><td class="mono">sp_3</td><td class="num">12 px</td><td>StatusBar horizontal padding (right side), reserved for future denser layouts.</td></tr>
+      <tr><td>Stage tint</td>       <td class="num">0</td>  <td class="num">22</td> <td class="num">240</td><td class="num">206</td><td>full-bleed <code>bg_stage_lime</code> #E6FDE0.</td></tr>
+      <tr><td>Context label</td>    <td class="num">10</td> <td class="num">26</td> <td class="num">130</td><td class="num">14</td><td>Montserrat 12 · 700 · uppercase · ink_soft #3A3A40 · <b>no box</b> · depth ≥ 2 only. Carries the counter when &gt; 6 items.</td></tr>
+      <tr><td>Slot strip</td>       <td class="num">32</td> <td class="num">−3</td> <td class="num">176</td><td class="num">96</td><td><code>repeat_y: 80</code> → slot tops −3 / 77 / 157; item centers y 45 / 125 / 205. Roll step S = 80.</td></tr>
+      <tr><td>Focused tile</td>     <td class="num">32</td> <td class="num">77</td> <td class="num">176</td><td class="num">96</td><td>fill <code>c_lime</code> #9DFC7C · border 2px ink #1B1B1F · radius 12 · hard shadow 3px 3px 0 ink. <b>The only box on screen.</b></td></tr>
+      <tr><td>Peek tiles</td>       <td colspan="4">slots 1 &amp; 3</td><td>content <code>transform: scale(0.7)</code> (700‰) · opacity 0.45 · no fill / border / shadow · clipped under statusbar / deck.</td></tr>
+      <tr class="grp"><td colspan="6">Tile variant A — icon item (slot-rel)</td></tr>
+      <tr><td>Icon</td>             <td class="num">60</td> <td class="num">8</td>  <td class="num">56</td><td class="num">56</td><td>56×56 A8 icon, centered-top, ink.</td></tr>
+      <tr><td>Label</td>            <td class="num">8</td>  <td class="num">68</td> <td class="num">160</td><td class="num">22</td><td>Montserrat 18 · 700 · ink · centered · ellipsis.</td></tr>
+      <tr class="grp"><td colspan="6">Tile variant B — media item (slot-rel)</td></tr>
+      <tr><td>Plate</td>            <td class="num">64</td> <td class="num">6</td>  <td class="num">48</td><td class="num">48</td><td>radius 8 · border 2 ink · fill from payload (c_mustard / c_peri / c_tomato / c_butter) · big initial letter Mont-24.</td></tr>
+      <tr><td>Label</td>            <td class="num">8</td>  <td class="num">58</td> <td class="num">160</td><td class="num">22</td><td>Montserrat 18 · 700 · ink · centered · ellipsis.</td></tr>
+      <tr><td>Sub</td>              <td class="num">8</td>  <td class="num">81</td> <td class="num">160</td><td class="num">14</td><td>Montserrat 12 · ink_soft · centered — track count or duration.</td></tr>
     </tbody>
   </table>
 
-  <h3>Component dimensions (canvas = 240 × 280)</h3>
+  <h3>Behavior</h3>
   <table class="spec">
-    <thead><tr><th>Component</th><th>Width</th><th>Height</th><th>Position</th><th>Padding</th><th>Notes</th></tr></thead>
+    <thead><tr><th>Input</th><th>Result</th></tr></thead>
     <tbody>
-      <tr class="grp"><td colspan="6">Persistent chrome</td></tr>
-      <tr><td>Panel</td>          <td class="num">240</td><td class="num">280</td><td class="mono">(0, 0)</td>     <td>—</td>             <td>Display canvas. Radius 22 (display mask only).</td></tr>
-      <tr><td>StatusBar</td>      <td class="num">240</td><td class="num">22</td> <td class="mono">top</td>       <td class="num">0 / 12 / 0 / 8</td><td>Grid: 1fr · auto · 1fr (left · center · right).</td></tr>
-      <tr><td>Stage</td>          <td class="num">240</td><td class="num">206</td><td class="mono">y=22, h=206</td><td>—</td>            <td>Background fills with bg_stage_* of active category.</td></tr>
-      <tr><td>Deck</td>           <td class="num">240</td><td class="num">52</td> <td class="mono">bottom</td>    <td>—</td>             <td>4 equal slots, each 60 × 52, divider = 2 px ink right border.</td></tr>
-      <tr><td>Deck slot</td>      <td class="num">60</td> <td class="num">52</td> <td>—</td>                      <td>—</td>             <td>Glyph 30 px, weight 800, ink color; focused → category bg.</td></tr>
-
-      <tr class="grp"><td colspan="6">Layered content</td></tr>
-      <tr><td>TabStrip</td>       <td class="num">224</td><td class="num">18</td> <td class="mono">stage top, inset sp_2 x</td><td>—</td><td>Gap between tabs = sp_1. Max 3 visible + chevron.</td></tr>
-      <tr><td>Tab (active)</td>   <td>auto</td>           <td class="num">18</td> <td>—</td>                      <td class="num">0 / sp_2</td><td>Border 2 ink, no bottom border, category fill.</td></tr>
-      <tr><td>Tab (ancestor)</td> <td>auto</td>           <td class="num">14</td> <td>—</td>                      <td class="num">0 / sp_2</td><td>bg_cream_2, opacity 0.85, sits 4 px below active baseline.</td></tr>
-      <tr><td>Card</td>           <td class="num">224</td><td class="num">~180</td><td class="mono">stage, inset sp_2</td><td class="num">sp_2</td><td>Top y = 16 (constant across no-tabs and tabbed variants). Shadow 3,3 ink.</td></tr>
-      <tr><td>Card top-left r</td><td colspan="2">0 with tabs / 10 without</td><td colspan="3">Other corners always 10.</td></tr>
-      <tr><td>List</td>           <td>fills parent</td>   <td>fills parent</td>   <td class="mono">inset sp_2</td><td>—</td>             <td>Column flex, gap sp_2, justify center when ≤ 4 rows.</td></tr>
-      <tr><td>Row</td>            <td>fills list</td>     <td class="num">28</td> <td>—</td>                      <td class="num">0 / sp_2</td><td>Border 2 ink, radius 6, shadow 2,2 ink. Gap sp_2.</td></tr>
-      <tr><td>Row swatch</td>     <td class="num">14</td> <td class="num">14</td> <td class="mono">leading</td>   <td>—</td>             <td>Border 2 ink, radius 3. Color = data payload.</td></tr>
-      <tr><td>Row meta</td>       <td>auto</td>           <td class="num">10 (text)</td><td class="mono">trailing, margin-left auto</td><td>—</td><td>Font t_meta, color ink_soft (idle) or ink (focus).</td></tr>
-
-      <tr class="grp"><td colspan="6">NowPlaying leaf</td></tr>
-      <tr><td>Cover art</td>      <td class="num">60</td><td class="num">60</td>  <td class="mono">centered in hero</td><td>—</td>      <td>Border 2 ink, radius 6, shadow 2,2 ink. Fallback bg c_mustard.</td></tr>
-      <tr><td>Title</td>          <td>auto</td>           <td class="num">12 (text)</td><td>—</td>                <td>—</td>             <td>800 12px Inter, color ink.</td></tr>
-      <tr><td>Subtitle</td>       <td>auto</td>           <td class="num">10 (text)</td><td>—</td>                <td>—</td>             <td>700 10px Inter, color ink_soft.</td></tr>
-      <tr><td>Progress bar</td>   <td>fills card</td>     <td class="num">8</td>  <td>—</td>                      <td>—</td>             <td>Border 2 ink, radius 4, track bg_cream_2, fill c_lime.</td></tr>
-      <tr><td>Time row</td>       <td>fills card</td>     <td class="num">9 (text)</td><td>—</td>                 <td class="num">0 / 2</td><td>700 9px Inter, ink_soft. Justified space-between.</td></tr>
-      <tr><td>Play button</td>    <td class="num">26</td><td class="num">26</td>  <td class="mono">center of controls</td><td>—</td>    <td>Border 2 ink, radius 50%, fill c_lime, shadow 2,2 ink.</td></tr>
-      <tr><td>Skip glyphs</td>    <td class="num">~20</td><td class="num">16 (text)</td><td>—</td>                <td>—</td>             <td>900 16px Inter, ink. No border.</td></tr>
+      <tr><td>Press</td>        <td>Roll one step, down-to-up: <code>SelectionOffset</code> 0 → −80, 180 ms ease-out cubic, wraps at the ends. TTS speaks the new focused label at t = 0 (interruptible by the next press).</td></tr>
+      <tr><td>Double-press</td> <td>Open the focused item — 220 ms push transition.</td></tr>
+      <tr><td>Long-press ≥ 400 ms</td><td>Go Home (pop the whole stack). Playback state unaffected.</td></tr>
     </tbody>
   </table>
 
-  <h3>Radii</h3>
+  <h3>Edge cases</h3>
   <table class="spec">
-    <thead><tr><th>Token</th><th>Pixels</th><th>Applies to</th></tr></thead>
+    <thead><tr><th>Item count</th><th>Wheel behavior</th></tr></thead>
     <tbody>
-      <tr><td class="mono">row_radius</td>   <td class="num">6</td><td>Row, Tab top corners, Cover art.</td></tr>
-      <tr><td class="mono">card_radius</td>  <td class="num">10</td><td>Card (all corners when <code>no-tabs</code>; only TR/BR/BL when tabs present).</td></tr>
-      <tr><td class="mono">panel_radius</td> <td class="num">22</td><td>Display mask only — not drawn by app.</td></tr>
-      <tr><td>swatch</td>                    <td class="num">3</td><td>Row swatch + status battery.</td></tr>
-      <tr><td>progress</td>                  <td class="num">4</td><td>Progress track + fill.</td></tr>
-    </tbody>
-  </table>
-
-  <h3>Stroke &amp; shadow primitives</h3>
-  <table class="spec">
-    <thead><tr><th>Token</th><th>Value</th><th>Applied to</th></tr></thead>
-    <tbody>
-      <tr><td class="mono">border_w</td>    <td class="num">2 px solid ink</td><td>All borders: Card, Row, Tab, Swatch, Cover, Play button, Progress, Deck dividers, Deck top.</td></tr>
-      <tr><td class="mono">shadow_row</td>  <td class="num">2,2 ink · blur 0 · spread 0</td><td>Row, Cover, Play button.</td></tr>
-      <tr><td class="mono">shadow_card</td> <td class="num">3,3 ink · blur 0 · spread 0</td><td>Card.</td></tr>
+      <tr><td class="num">1</td>  <td>No roll — press plays a nudge (offset 0 → 12 → 0, 120 ms) and re-speaks the label.</td></tr>
+      <tr><td class="num">2</td>  <td>Single peek below only (the next-in-wrap item); an item is <b>never duplicated</b> above and below simultaneously.</td></tr>
+      <tr><td class="num">3–6</td><td>Standard 3-slot window with wrap; peek above = previous-in-wrap, peek below = next-in-wrap.</td></tr>
+      <tr><td class="num">&gt; 6</td><td><code>recycle_window: 3</code> — only 3 (4 mid-roll) item objects live; the context label appends a counter, e.g. <code>PLAYLISTS · 4/12</code>.</td></tr>
     </tbody>
   </table>
 </div>
 
 <!-- ============================================================ -->
-<h2>4 · Typography</h2>
+<h2>4 · Arc hero spec (NowPlaying)</h2>
 <div class="specs">
+  <h3>Geometry (panel-absolute px)</h3>
   <table class="spec">
-    <thead><tr><th>Token</th><th>Weight</th><th>Size</th><th>Line height</th><th>Family</th><th>Color</th><th>Used by</th></tr></thead>
+    <thead><tr><th>Element</th><th>x</th><th>y</th><th>w</th><th>h</th><th>Style</th></tr></thead>
     <tbody>
-      <tr><td class="mono">t_row</td>        <td class="num">600</td><td class="num">12 px</td><td class="num">1.0</td><td>Inter</td><td class="mono">ink</td>      <td>Row label.</td></tr>
-      <tr><td class="mono">t_meta</td>       <td class="num">700</td><td class="num">10 px</td><td class="num">1.0</td><td>Inter</td><td class="mono">ink_soft</td><td>Row meta, NowPlaying subtitle.</td></tr>
-      <tr><td class="mono">t_tab</td>        <td class="num">800</td><td class="num">9 px</td> <td class="num">1.0</td><td>Inter</td><td class="mono">ink</td>      <td>Tab label (uppercase, letter-spacing 0.08em).</td></tr>
-      <tr><td class="mono">t_status</td>     <td class="num">700</td><td class="num">11 px</td><td class="num">1.0</td><td>Inter</td><td class="mono">ink</td>      <td>StatusBar time. <code>font-variant-numeric: tabular-nums</code>.</td></tr>
-      <tr><td>—</td>                          <td class="num">800</td><td class="num">12 px</td><td class="num">1.0</td><td>Inter</td><td class="mono">ink</td>      <td>NowPlaying title.</td></tr>
-      <tr><td>—</td>                          <td class="num">700</td><td class="num">9 px</td> <td class="num">1.0</td><td>Inter</td><td class="mono">ink_soft</td><td>NowPlaying time row.</td></tr>
-      <tr><td>—</td>                          <td class="num">800</td><td class="num">30 px</td><td class="num">1.0</td><td>Inter</td><td class="mono">ink / ink_300</td><td>Deck slot glyph (♪ 💬︎ ? ⚙).</td></tr>
-      <tr><td>—</td>                          <td class="num">900</td><td class="num">16 px</td><td class="num">1.0</td><td>Inter</td><td class="mono">ink</td>      <td>NowPlaying skip glyphs (⏮ ⏭) and ▶ inside play button (12 px).</td></tr>
+      <tr><td>Context label</td> <td class="num">10</td> <td class="num">26</td> <td class="num">130</td><td class="num">14</td><td>Same role as §3 — <code>MORNING SONGS</code> here.</td></tr>
+      <tr><td>Arc ring bbox</td> <td class="num">50</td> <td class="num">36</td> <td class="num">140</td><td class="num">140</td><td>center (120,106) · outer radius 70 · stroke width 8 (centerline r = 66) · rounded caps · track <code>bg_cream_2</code> #F7DBC2 · indicator <code>c_lime</code> · sweep from 12 o'clock clockwise · value = progress (0–1000).</td></tr>
+      <tr><td>Art tile</td>      <td class="num">77</td> <td class="num">63</td> <td class="num">86</td><td class="num">86</td><td>radius 10 · border 2 ink · shadow (3,3) · fill <code>c_mustard</code> + centered ♪ note glyph (cover-art fallback). Diagonal 121.6 &lt; ring inner ⌀ 124 — clears the ring.</td></tr>
+      <tr><td>Prev glyph</td>    <td class="num">24</td> <td class="num">94</td> <td class="num">24</td><td class="num">24</td><td>bare ink glyph · 55 % opacity idle · <b>no chip/box</b>.</td></tr>
+      <tr><td>Next glyph</td>    <td class="num">192</td><td class="num">94</td> <td class="num">24</td><td class="num">24</td><td>bare ink glyph · 55 % opacity idle · <b>no chip/box</b>.</td></tr>
+      <tr><td>Play/pause chip</td><td class="num">104</td><td class="num">160</td><td class="num">32</td><td class="num">32</td><td>circle · fill <code>c_lime</code> · border 2 ink · shadow (2,2) · straddles the ring bottom (outer y = 176).</td></tr>
+      <tr><td>Elapsed</td>       <td class="num">24</td> <td class="num">170</td><td class="num">64</td><td class="num">14</td><td>Montserrat 12 · ink_soft · right-aligned.</td></tr>
+      <tr><td>Total</td>         <td class="num">152</td><td class="num">170</td><td class="num">64</td><td class="num">14</td><td>Montserrat 12 · ink_soft · left-aligned.</td></tr>
+      <tr><td>Title</td>         <td class="num">10</td> <td class="num">198</td><td class="num">220</td><td class="num">22</td><td>Montserrat 18 · ink · centered · ellipsis.</td></tr>
     </tbody>
   </table>
-  <p style="margin:0">All text is rendered with <code>-webkit-font-smoothing: antialiased</code>. Fallback chain: Inter → Roboto → system-ui → sans-serif.</p>
+  <p style="margin:0 0 6px">Mockup render: the ring is inline SVG inside the panel (self-contained) — <code>circle r=66</code>, C = 2π·66 = 414.69, so the 42 % shown uses <code>stroke-dasharray="174.17 414.69"</code> with <code>rotate(−90°)</code> to start at 12 o'clock.</p>
+
+  <h3>Focus model</h3>
+  <table class="spec">
+    <thead><tr><th>Order</th><th>Target</th><th>Focused chrome</th><th>Voice</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td>Prev glyph</td> <td rowspan="3">scale 1.1 (1100‰) + 2px ink outline, pad 2 (documented fallback: border 2 → 3 px, no scale). Wraps; <b>default focus = play</b>.</td><td>"Previous song"</td></tr>
+      <tr><td class="num">2</td><td>Play/pause chip</td><td>"Play" or "Pause" (matches what activation will do)</td></tr>
+      <tr><td class="num">3</td><td>Next glyph</td> <td>"Next song"</td></tr>
+    </tbody>
+  </table>
+
+  <h3>States</h3>
+  <table class="spec">
+    <thead><tr><th>State</th><th>Chip glyph</th><th>Art opacity</th><th>Everything else</th></tr></thead>
+    <tbody>
+      <tr><td>Playing</td><td>pause (❚❚ → A8 <code>pause_sm</code>)</td><td class="num">1.0</td><td>identical</td></tr>
+      <tr><td>Paused</td> <td>play (▶ → A8 <code>play_sm</code>)</td>  <td class="num">0.7</td><td>identical</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Composed fallback variant — today's FFI, no <code>lv_arc</code> (frame 7)</h3>
+  <table class="spec">
+    <thead><tr><th>Element</th><th>x</th><th>y</th><th>w</th><th>h</th><th>Style</th></tr></thead>
+    <tbody>
+      <tr><td>Art tile</td>   <td class="num">84</td> <td class="num">40</td> <td class="num">72</td><td class="num">72</td><td>same chrome as hero art (radius 10 · border 2 · shadow 3,3 · c_mustard + ♪).</td></tr>
+      <tr><td>Title</td>      <td class="num">10</td> <td class="num">118</td><td class="num">220</td><td class="num">22</td><td>Montserrat 18 · ink · centered · ellipsis.</td></tr>
+      <tr><td>Bar</td>        <td class="num">30</td> <td class="num">148</td><td class="num">180</td><td class="num">8</td><td>border 2 ink · radius 4 · track <code>bg_cream_2</code> · fill <code>c_lime</code> at 42 % width (existing Progress emulation: track obj + fill obj).</td></tr>
+      <tr><td>Elapsed</td>    <td class="num">30</td> <td class="num">160</td><td class="num">64</td><td class="num">14</td><td>Montserrat 12 · ink_soft · left-aligned (bar left edge).</td></tr>
+      <tr><td>Total</td>      <td class="num">146</td><td class="num">160</td><td class="num">64</td><td class="num">14</td><td>Montserrat 12 · ink_soft · right-aligned (ends at bar right edge, x = 210).</td></tr>
+      <tr><td>Prev glyph</td> <td class="num">48</td> <td class="num">186</td><td class="num">24</td><td class="num">24</td><td>as arc-hero prev.</td></tr>
+      <tr><td>Play chip</td>  <td class="num">104</td><td class="num">182</td><td class="num">32</td><td class="num">32</td><td>as arc-hero chip; focus = border 2 → 3 fallback.</td></tr>
+      <tr><td>Next glyph</td> <td class="num">168</td><td class="num">186</td><td class="num">24</td><td class="num">24</td><td>as arc-hero next.</td></tr>
+    </tbody>
+  </table>
 </div>
 
 <!-- ============================================================ -->
-<h2>5 · Component → LVGL render map</h2>
-<div class="specs">
-  <table class="spec">
-    <thead><tr><th>Component</th><th>LVGL primitive</th><th>Children</th><th>Style hookups</th></tr></thead>
-    <tbody>
-      <tr><td>Panel</td>          <td><code>lv_obj</code> (root)</td><td>StatusBar, Stage, Deck</td><td>bg=bg_cream, no border (display mask handles radius).</td></tr>
-      <tr><td>StatusBar</td>      <td><code>lv_obj</code> flex row</td><td>signal bars (4), gps icon, time label, percent label, battery</td><td>bg=bg_cream, ink children.</td></tr>
-      <tr><td>Deck</td>           <td><code>lv_obj</code> flex row</td><td>4 × deck_slot</td><td>border_side TOP=2 ink, slot border_side RIGHT=2 ink (last off).</td></tr>
-      <tr><td>Deck slot</td>      <td><code>lv_obj</code> + label</td><td>glyph label</td><td>bg switches on focus event (style swap, no relayout).</td></tr>
-      <tr><td>Stage</td>          <td><code>lv_obj</code></td><td>TabStrip (optional) + Card</td><td>bg from active category's bg_stage_*.</td></tr>
-      <tr><td>TabStrip</td>       <td><code>lv_obj</code> flex row</td><td>N tabs (max 3 + chevron)</td><td>read from NavStack.</td></tr>
-      <tr><td>Tab</td>            <td><code>lv_obj</code> + label</td><td>—</td><td>active: c_*, h=18; ancestor: bg_cream_2 + opa 217 (~0.85), h=14.</td></tr>
-      <tr><td>Card</td>           <td><code>lv_obj</code> + sibling shadow rect</td><td>List or NowPlayingHero</td><td>border 2 ink, radius 0/10/10/10 with tabs, else 10/10/10/10. Shadow (3,3) ink offset, blur 0.</td></tr>
-      <tr><td>List</td>           <td><code>lv_obj</code> flex column</td><td>N rows</td><td>gap sp_2; pad sp_2 inset.</td></tr>
-      <tr><td>Row</td>            <td><code>lv_obj</code> + sibling shadow rect</td><td>swatch, label, meta label</td><td>border 2 ink, radius 6, shadow (2,2) ink. Focus = bg → c_lime (style swap only).</td></tr>
-      <tr><td>Swatch</td>         <td><code>lv_obj</code></td><td>—</td><td>border 2 ink, radius 3, fill from data.</td></tr>
-      <tr><td>NowPlayingHero</td> <td><code>lv_obj</code> flex column</td><td>Cover, Title, Subtitle, ProgressBlock, Controls</td><td>Identical paddings to Card body (sp_2).</td></tr>
-      <tr><td>Cover</td>          <td><code>lv_img</code> + border <code>lv_obj</code></td><td>—</td><td>60×60, border 2 ink, radius 6, shadow (2,2). Fallback fill c_mustard.</td></tr>
-      <tr><td>Progress</td>       <td><code>lv_obj</code> track + <code>lv_obj</code> fill</td><td>—</td><td>track bg_cream_2 + border 2 ink + radius 4. Fill c_lime, width = pct.</td></tr>
-      <tr><td>Play button</td>    <td><code>lv_obj</code> + label</td><td>—</td><td>26×26, radius 50%, border 2 ink, bg c_lime, shadow (2,2).</td></tr>
-    </tbody>
-  </table>
-  <p style="margin:0">Object budget per screen (worst case): 1 panel + 1 statusbar (~8 children) + 1 stage + 4 tabs + 1 card + 1 list + 4 rows × 5 (row+shadow+swatch+label+meta) = ~36 objects. Well below LVGL limits at 240×280.</p>
-</div>
-
-<!-- ============================================================ -->
-<h2>6 · Layout geometry (where things sit, exactly)</h2>
+<h2>5 · Typography</h2>
 <div class="specs">
   <table class="spec">
-    <thead><tr><th>Element</th><th>x</th><th>y</th><th>w</th><th>h</th><th>Anchor</th></tr></thead>
+    <thead><tr><th>Face · size</th><th>Runtime status</th><th>Used by</th></tr></thead>
     <tbody>
-      <tr><td>StatusBar</td>     <td class="num">0</td>  <td class="num">0</td>  <td class="num">240</td><td class="num">22</td><td>panel-top</td></tr>
-      <tr><td>Stage</td>         <td class="num">0</td>  <td class="num">22</td> <td class="num">240</td><td class="num">206</td><td>panel-top + statusbar_h</td></tr>
-      <tr><td>TabStrip</td>      <td class="num">8</td>  <td class="num">22</td> <td class="num">224</td><td class="num">18</td><td>stage-top + sp_2 x-inset</td></tr>
-      <tr><td>Card (tabs)</td>   <td class="num">8</td>  <td class="num">38</td> <td class="num">224</td><td class="num">~182</td><td>stage-top + (tab_h − 2)</td></tr>
-      <tr><td>Card (no-tabs)</td><td class="num">8</td>  <td class="num">38</td> <td class="num">224</td><td class="num">~182</td><td>same geometry as tabbed — only top-left radius differs</td></tr>
-      <tr><td>List (in card)</td><td class="num">16</td> <td class="num">38/46</td><td class="num">208</td><td>fills</td><td>card-inset sp_2</td></tr>
-      <tr><td>Row N</td>         <td class="num">16</td> <td class="num">card_y + sp_2 + N×(28+sp_2)</td><td class="num">208</td><td class="num">28</td><td>list flex</td></tr>
-      <tr><td>Deck</td>          <td class="num">0</td>  <td class="num">228</td><td class="num">240</td><td class="num">52</td><td>panel-bottom</td></tr>
-      <tr><td>Deck slot N</td>   <td class="num">N×60</td><td class="num">228</td><td class="num">60</td><td class="num">52</td><td>deck flex</td></tr>
+      <tr><td>Montserrat 12</td><td>linked ✅</td><td>Context label (700, uppercase), wheel sub, hero elapsed/total.</td></tr>
+      <tr><td>Montserrat 14</td><td>enabled in <code>lv_conf.h</code>, <b>needs FFI extern link</b> (§7)</td><td>Reserved — Talk call overlays / dense metadata. Fallback if unlinked: 12.</td></tr>
+      <tr><td>Montserrat 18</td><td>linked ✅</td><td>Wheel labels (700), hero/fallback title (700).</td></tr>
+      <tr><td>Montserrat 24</td><td>enabled in <code>lv_conf.h</code>, <b>needs FFI extern link</b> (§7)</td><td>Variant-B plate initials (+ Talk recording timer). Fallback if unlinked: 18 (initials render smaller).</td></tr>
     </tbody>
   </table>
-  <p style="margin:0">Card y differs by 8 px between tabbed and untabbed roots: when a tab is present the card lifts up so its top-left corner abuts the tab's bottom-left corner (2 px border overlap → top = tab_h − 2 = 16, plus statusbar_h = 22 → absolute y = 38).</p>
+  <p style="margin:0"><b>Montserrat only</b> — the v1 UI family is fully retired from the device UI. This page's CSS renders the panels with the <code>"Montserrat", "Segoe UI", system-ui</code> stack, so panels are an approximation on machines without Montserrat installed. The status bar's 11 px text is mock-shell chrome kept verbatim from v1; the runtime status bar uses Montserrat 12. <b>The runtime has no emoji font:</b> every glyph in the renders (⇄ ♬ ↻ ♪ ⏮︎ ▶ ❚❚ ⏭︎ and the deck's 🎧︎ 💬︎ ? ⚙) maps to an A8 icon asset — see §12.</p>
 </div>
 
 <!-- ============================================================ -->
-<h2>7 · Animation &amp; motion</h2>
+<h2>6 · Component → LVGL map</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Component</th><th>Canonical stock widget</th><th>Composed with today's FFI</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td>Wheel</td>
+          <td><code>lv_roller</code> — <b>REJECTED</b>: text-only, cannot host icons / plates / sub-labels.</td>
+          <td><code>DeckKind::List</code> restyle: <code>lv_obj</code> slots + <code>lv_image</code> + <code>lv_label</code>, <code>ScaleOnFocus{700,1000}</code>, <code>selected_roles</code> chrome, <code>SelectionOffset</code> roll, <code>recycle_window: 3</code>.</td>
+          <td><b>Composed IS canonical.</b></td></tr>
+      <tr><td>Progress ring</td>
+          <td><code>lv_arc</code> — new FFI + <code>ElementKind::Arc</code> (§7).</td>
+          <td>Bar fallback = existing Progress emulation (track obj + fill obj), frame 7.</td>
+          <td><code>lv_arc</code> canonical; bar ships until the FFI lands.</td></tr>
+      <tr><td>Hard offset shadow</td>
+          <td><code>lv_obj_set_style_shadow_offset_x/_y</code> FFI (§7).</td>
+          <td>Sibling ink rect at +3,+3 behind the element — zero FFI, +1 obj per shadowed element.</td>
+          <td>Either; FFI preferred (fewer objects).</td></tr>
+      <tr><td>Peek scaling</td>
+          <td><code>lv_obj_set_style_transform_scale</code> (or <code>lv_image_set_scale</code>) FFI (§7).</td>
+          <td>Pre-baked 40×40 icon variants + opacity only (labels stay full-size).</td>
+          <td>FFI preferred; baked assets acceptable interim.</td></tr>
+      <tr><td>Focus outline</td>
+          <td><code>lv_obj_set_style_outline_color</code> (+ width, pad) FFI (§7).</td>
+          <td>Border 2 → 3 px on the focused transport target.</td>
+          <td>FFI preferred; border fallback documented per target.</td></tr>
+      <tr><td>Chips / buttons</td>
+          <td colspan="2"><code>lv_obj</code> with radius = h/2 + <code>lv_image</code> glyph — same on both paths.</td>
+          <td><code>lv_button</code> unnecessary.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>7 · Minimal FFI additions</h2>
+<div class="specs">
+  <p style="margin:0 0 6px"><b>The single source for the redesign's FFI wishlist</b> — <code>mockup_talk.html</code> references this table rather than restating it. All additions are thin wrappers in <code>device/ui/src/renderer/lvgl/ffi.rs</code>.</p>
+  <table class="spec">
+    <thead><tr><th>Addition</th><th>Needed for</th><th>Fallback if skipped</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">lv_arc_create · lv_arc_set_range · lv_arc_set_value · lv_arc_set_bg_angles · lv_arc_set_rotation + ElementKind::Arc</td>
+          <td>NowPlaying progress ring (§4) — and Talk's Replay hero.</td>
+          <td>Composed bar variant (frame 7) — existing Progress emulation.</td></tr>
+      <tr><td class="mono">lv_obj_set_style_arc_width · lv_obj_set_style_arc_color · lv_obj_set_style_arc_rounded (+ LV_PART_INDICATOR selector)</td>
+          <td>Ring track / indicator styling (width 8, rounded caps, per-category accent).</td>
+          <td>Comes with the row above; skipping both = bar fallback.</td></tr>
+      <tr><td class="mono">lv_obj_set_style_shadow_offset_x / _y (+ shadow_spread, shadow_opa)</td>
+          <td>Hard (3,3) / (2,2) neubrutalist shadows on focused tile, hero art, chips.</td>
+          <td>Sibling ink rect at +3,+3 — +1 object per shadowed element.</td></tr>
+      <tr><td class="mono">extern lv_font_montserrat_14 + lv_font_montserrat_24</td>
+          <td>Plate initials (24); Talk overlays / recording timer (24, 14). Both already enabled in <code>lv_conf.h</code>.</td>
+          <td>Sizes clamp to 12/18 — initials render smaller, timer loses prominence.</td></tr>
+      <tr><td class="mono">lv_obj_set_style_transform_scale (or lv_image_set_scale) + transform_pivot_x/y</td>
+          <td>Peek scaling 700‰ (§3) and focus scale 1100‰ (§4).</td>
+          <td>Pre-baked 40×40 icon variants + opacity; no focus scale (outline/border only).</td></tr>
+      <tr><td class="mono">lv_obj_set_style_outline_color (+ outline_width, outline_pad)</td>
+          <td>Focus ring on arc-hero transport targets (§4).</td>
+          <td>Border 2 → 3 px on the focused target.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>8 · New roles → layouts.ron / theme.ron</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Role</th><th class="mono">layouts.ron rect (x,y,w,h)</th><th>theme.ron values</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">wheel_context</td><td class="num">10, 26, 130, 14</td><td>text #3A3A40 · font 12.</td></tr>
+      <tr><td class="mono">wheel_item</td>   <td class="num">32, −3, 176, 96 · repeat_y: 80</td><td>default: transparent, no border. selected: fill accent · border ink w2 · radius 12 · shadow (3,3).</td></tr>
+      <tr><td class="mono">wheel_icon</td>   <td class="num">60, 8, 56, 56 (slot-rel)</td><td>A8 icon, ink recolor.</td></tr>
+      <tr><td class="mono">wheel_plate</td>  <td class="num">64, 6, 48, 48 (slot-rel)</td><td>border 2 ink · radius 8 · fill from payload.</td></tr>
+      <tr><td class="mono">wheel_label</td>  <td class="num">8, 68, 160, 22 (slot-rel)</td><td>ink · font 18 (variant A).</td></tr>
+      <tr><td class="mono">wheel_label_b</td><td class="num">8, 58, 160, 22 (slot-rel)</td><td>ink · font 18 (variant B).</td></tr>
+      <tr><td class="mono">wheel_sub</td>    <td class="num">8, 81, 160, 14 (slot-rel)</td><td>ink_soft · font 12.</td></tr>
+      <tr><td class="mono">hero_arc</td>     <td class="num">50, 36, 140, 140</td><td>track #F7DBC2 · indicator accent · arc width 8.</td></tr>
+      <tr><td class="mono">hero_art</td>     <td class="num">77, 63, 86, 86</td><td>border 2 ink · radius 10 · shadow (3,3) · fill #E8A93C.</td></tr>
+      <tr><td class="mono">hero_play</td>    <td class="num">104, 160, 32, 32</td><td>fill accent · border 2 · radius 16 · shadow (2,2).</td></tr>
+      <tr><td class="mono">hero_prev</td>    <td class="num">24, 94, 24, 24</td><td>A8 glyph, ink · opa 55 % idle.</td></tr>
+      <tr><td class="mono">hero_next</td>    <td class="num">192, 94, 24, 24</td><td>A8 glyph, ink · opa 55 % idle.</td></tr>
+      <tr><td class="mono">hero_time_l</td>  <td class="num">24, 170, 64, 14</td><td>ink_soft · font 12 · align right.</td></tr>
+      <tr><td class="mono">hero_time_r</td>  <td class="num">152, 170, 64, 14</td><td>ink_soft · font 12 · align left.</td></tr>
+      <tr><td class="mono">hero_title</td>   <td class="num">10, 198, 220, 22</td><td>ink · font 18 · align center.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0"><b>Schema flag:</b> <code>theme.ron</code> needs new fields <code>font_size</code> and <code>shadow_offset_x/y</code> (+ <code>arc_width</code> / <code>arc_rgb</code> if the <code>lv_arc</code> path lands) — today's schema cannot express per-role font sizes or offset shadows.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>9 · Animation &amp; motion</h2>
 <div class="specs">
   <table class="spec">
     <thead><tr><th>Trigger</th><th>What animates</th><th>Duration</th><th>Easing</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td>Deck slot focus change</td><td>Slot bg + glyph color</td><td class="num">160 ms</td><td>ease</td><td>Style swap only — no relayout. Stage bg crossfades on the same 160 ms.</td></tr>
-      <tr><td>Stage tint</td>           <td>Stage bg color</td>     <td class="num">160 ms</td><td>ease</td><td>bg_cream → bg_stage_*. Triggered by deck focus event.</td></tr>
-      <tr><td>Row focus change</td>     <td>Row bg</td>             <td class="num">0 ms</td>  <td>—</td>   <td>Instant style swap. No animation (cheap, predictable).</td></tr>
-      <tr><td>Push (deeper)</td>        <td>Card slides in from right; previous tab demotes (color → cream_2, h: 18 → 14, opa → 217); new active tab fades in.</td><td class="num">220 ms</td><td>ease-out</td><td>Tab height tween: 18 → 14 on demote.</td></tr>
-      <tr><td>Pop (back)</td>           <td>Rightmost tab fades out + dies; previous tab promotes (cream_2 → c_*, h: 14 → 18, opa → 255); card slides out to right.</td><td class="num">220 ms</td><td>ease-out</td><td>Long-press triggers.</td></tr>
-      <tr><td>NowPlaying play/pause</td><td>Play button glyph swap (▶ ↔ ⏸)</td><td class="num">0 ms</td>  <td>—</td>   <td>No button bg or border change.</td></tr>
-      <tr><td>Progress fill</td>        <td>Width %</td>            <td class="num">≤ 1000 ms</td><td>linear</td><td>Tick at audio frame cadence; LVGL can lerp between ticks.</td></tr>
-      <tr><td>(Home only) Blob breathe</td><td>scale 1.00 ↔ 1.04</td><td class="num">4200 ms</td><td>ease-in-out</td><td>Loop infinite. Not on Listen screens.</td></tr>
+      <tr><td>Wheel roll (press)</td><td><code>SelectionOffset</code> 0 → −80</td><td class="num">180 ms</td><td>ease-out cubic</td><td><b>Runtime flag:</b> <code>lvgl_renderer.rs:157</code> maps <code>SelectionOffset</code> to <code>set_x_offset</code> — the vertical wheel needs a Y remap.</td></tr>
+      <tr><td>Push / pop (open, Home)</td><td>Screen transition</td><td class="num">220 ms</td><td>ease-out</td><td>Kept from v1.</td></tr>
+      <tr><td>Arc progress</td><td>Ring value</td><td class="num">≤ 1000 ms</td><td>linear</td><td>Updates at audio-tick cadence; LVGL lerps between ticks.</td></tr>
+      <tr><td>Deck focus change</td><td>Slot bg + glyph color; stage tint crossfade</td><td class="num">160 ms</td><td>ease</td><td>Kept from v1 — style swap only.</td></tr>
+      <tr><td>Nudge (1-item wheel)</td><td>Offset 0 → 12 → 0</td><td class="num">120 ms</td><td>ease</td><td>Plus label re-speak.</td></tr>
     </tbody>
   </table>
-</div>
-
-<!-- ============================================================ -->
-<h2>8 · States &amp; variants (per component)</h2>
-<div class="specs">
-  <table class="spec">
-    <thead><tr><th>Component</th><th>State</th><th>Background</th><th>Border</th><th>Text/glyph</th><th>Other</th></tr></thead>
-    <tbody>
-      <tr><td rowspan="2">Deck slot</td><td>idle</td>          <td class="mono">bg_cream</td>     <td>—</td>                 <td class="mono">ink_300</td><td>—</td></tr>
-      <tr><td>focus (listen)</td>     <td class="mono">c_lime</td>      <td>—</td>                 <td class="mono">ink</td>    <td>—</td></tr>
-
-      <tr><td rowspan="2">Tab</td>     <td>active</td>           <td class="mono">c_lime</td>      <td>2 ink, no bottom</td>  <td class="mono">ink</td>    <td>h=18, radius 6/6/0/0.</td></tr>
-      <tr><td>ancestor</td>         <td class="mono">bg_cream_2</td>  <td>2 ink, no bottom</td>  <td class="mono">ink</td>    <td>h=14, opacity 0.85.</td></tr>
-
-      <tr><td rowspan="2">Card</td>    <td>with tabs</td>        <td class="mono">bg_cream</td>    <td>2 ink</td>             <td>—</td>                  <td>radius 0/10/10/10, shadow (3,3) ink.</td></tr>
-      <tr><td>no-tabs (root)</td>   <td class="mono">bg_cream</td>    <td>2 ink</td>             <td>—</td>                  <td>radius 10 all corners, shadow (3,3) ink.</td></tr>
-
-      <tr><td rowspan="2">Row</td>     <td>idle</td>             <td class="mono">bg_cream_2</td>  <td>2 ink</td>             <td class="mono">ink + ink_soft (meta)</td><td>radius 6, shadow (2,2) ink.</td></tr>
-      <tr><td>focus</td>            <td class="mono">c_lime</td>      <td>2 ink</td>             <td class="mono">ink + ink (meta)</td><td>radius 6, shadow (2,2) ink.</td></tr>
-
-      <tr><td>Progress fill</td>       <td>playing</td>          <td class="mono">c_lime</td>      <td>—</td>                 <td>—</td>                  <td>width = position / duration.</td></tr>
-      <tr><td>Play button</td>         <td>playing</td>          <td class="mono">c_lime</td>      <td>2 ink</td>             <td class="mono">ink (glyph ⏸)</td><td>radius 50%, shadow (2,2) ink.</td></tr>
-      <tr><td>Play button</td>         <td>paused</td>           <td class="mono">c_lime</td>      <td>2 ink</td>             <td class="mono">ink (glyph ▶)</td><td>identical chrome — only glyph swaps.</td></tr>
-    </tbody>
-  </table>
-</div>
-
-<!-- ============================================================ -->
-<h2>9 · Per-screen composition</h2>
-<div class="specs">
-  <table class="spec">
-    <thead><tr><th>Screen</th><th>Composition</th><th>NavStack</th><th>Focusable container</th></tr></thead>
-    <tbody>
-      <tr><td>Listen root (depth 1)</td><td>Panel + StatusBar + Stage(lime) + Card(<code>no-tabs</code>) + List(4 Rows) + Deck</td><td>empty</td><td>List</td></tr>
-      <tr><td>Playlists (depth 2)</td>  <td>Panel + StatusBar + Stage(lime) + TabStrip(1: "Playlists") + Card + List(4 Rows) + Deck</td><td>[{Playlists, lime}]</td><td>List</td></tr>
-      <tr><td>Morning (depth 3)</td>    <td>Panel + StatusBar + Stage(lime) + TabStrip(2: Playlists, Morning) + Card + List(4 Rows) + Deck</td><td>[{Playlists, lime},{Morning, lime}]</td><td>List</td></tr>
-      <tr><td>NowPlaying (depth 4)</td> <td>Panel + StatusBar + Stage(lime) + TabStrip(2: Playlists, Morning) + Card(<code>now-playing</code>) + Cover + Title + Sub + Progress + Time + Controls + Deck</td><td>same as depth 3 — leaves skip pushing own crumb</td><td>Controls (Play has focus default)</td></tr>
-    </tbody>
-  </table>
-  <p style="margin:0">Listen-row data flow: a Row payload is <code>{ swatch: c_*, label: String, meta: String, target: Route }</code>. The List primitive renders any payload set; same component for Listen root, Playlists, Morning, future Artists / Recents / Radio.</p>
 </div>
 
 <!-- ============================================================ -->
 <h2>10 · Input contract</h2>
 <div class="specs">
   <table class="spec">
-    <thead><tr><th>Event</th><th>Action</th><th>On Deck (Home)</th><th>On List</th><th>On NowPlaying</th></tr></thead>
+    <thead><tr><th>Event</th><th>On wheel</th><th>On arc hero</th><th>Voice prompt</th></tr></thead>
     <tbody>
-      <tr><td>Single press</td><td><code>FocusNext</code></td><td>advance deck focus L→R, looping</td><td>advance row focus top→bottom, looping</td><td>cycle ⏮ / ▶ / ⏭ focus</td></tr>
-      <tr><td>Double press</td><td><code>Open</code></td>     <td>push category root</td>            <td>push row.target</td>                       <td>activate focused control</td></tr>
-      <tr><td>Long press</td> <td><code>GoHome</code></td>    <td>defocus (already Home)</td>         <td>pop the whole stack → Home</td>            <td>pop the whole stack → Home (playback continues)</td></tr>
+      <tr><td>Single press</td>
+          <td>Roll one step down-to-up (wraps).</td>
+          <td>Cycle focus prev → play → next (wraps; default play).</td>
+          <td>New focused label at t = 0 — "Sleep" / "Next song".</td></tr>
+      <tr><td>Double press</td>
+          <td>Open the focused item (220 ms push).</td>
+          <td>Activate the focused control (toggle play/pause, skip).</td>
+          <td>Destination label — "Morning Songs"; on hero: "Playing" / "Paused".</td></tr>
+      <tr><td>Long press ≥ 400 ms</td>
+          <td>Go Home (pop the whole stack).</td>
+          <td>Go Home — playback continues.</td>
+          <td>"Home".</td></tr>
     </tbody>
   </table>
-  <p style="margin:8px 0 0"><b>Consolidation note:</b> long-press was "pop one crumb" in this spec's first revision; the canonical contract (<code>mockup_input_model.html</code>) makes it <b>go Home from anywhere</b> — one reliable escape hatch a 4-year-old can always reach, learnable as "hold to go home". There is no per-crumb Back gesture; going one level up = long-press Home + re-enter (voice prompts make re-navigation legible for pre-readers). <b>Runtime divergence:</b> the shipped <code>OneButtonMachine</code> (<code>input/machine.rs</code>) emits <code>Back</code> on long-hold and <code>core</code> pops one screen — remap to pop-to-root when implementing. <b>Voice prompt on focus:</b> every <code>FocusNext</code> speaks the focused label ("Morning Songs") — see <code>README.md</code> → Pre-reader principles.</p>
+  <p style="margin:0">The PTT side button is Talk-domain and unchanged — full gesture contract in <code>mockup_input_model.html</code>. <b>Runtime divergence (carried from v1):</b> the shipped <code>OneButtonMachine</code> (<code>input/machine.rs</code>) emits <code>Back</code> on long-hold and <code>core</code> pops one screen — remap to pop-to-root when implementing.</p>
 </div>
 
 <!-- ============================================================ -->
-<h2>11 · NavStack contract</h2>
+<h2>11 · Object budget</h2>
 <div class="specs">
-  <pre style="margin:0; padding: 10px; background: #0a0708; border: 1px solid #3b2e2e; border-radius: 6px; color: #ffcfae; font-size: 12px; overflow-x: auto;">struct Crumb {
-    name:   &amp;'static str,
-    accent: AccentColor,   // captured at push time
-}
-
-enum AccentColor { Lime, Peri, Butter, Coral }
-
-// Rendering rules:
-//  - TabStrip draws nav.crumbs.iter().take(3)
-//  - If nav.crumbs.len() &gt; 3, prepend a "…" chevron tab
-//  - The deck's active category is the IMPLICIT root — not stored in crumbs
-//  - Leaf screens (NowPlaying, IncomingCall, VoiceNote) DO NOT push their own crumb
-//      → active tab stays on the parent layer's name
-//  - On push: previous active tab demotes (height 18→14, color c_*→cream_2, opa 1.0→0.85)
-//  - On pop:  rightmost tab dies, previous tab promotes back to active
-//  - Pops happen only via GoHome (pop ALL crumbs at once) — there is no
-//    single-crumb Back gesture in the consolidated contract. The demote/promote
-//    animation above still runs when the stack unwinds, collapsed to one frame.
-</pre>
+  <table class="spec">
+    <thead><tr><th>Slice</th><th>Wheel screen (worst: variant B, mid-roll)</th><th>Arc hero</th></tr></thead>
+    <tbody>
+      <tr><td>Panel root</td>              <td class="num">1</td><td class="num">1</td></tr>
+      <tr><td>StatusBar (container + 4 bars + gps + time + pct + batt + batt fill)</td><td class="num">10</td><td class="num">10</td></tr>
+      <tr><td>Stage tint</td>              <td class="num">1</td><td class="num">1</td></tr>
+      <tr><td>Context label</td>           <td class="num">1</td><td class="num">1</td></tr>
+      <tr><td>Wheel strip container</td>   <td class="num">1</td><td class="num">—</td></tr>
+      <tr><td>Items: 4 × (item + plate + initial + label + sub) — recycle 3 + 1 in-flight</td><td class="num">20</td><td class="num">—</td></tr>
+      <tr><td>Focused-tile shadow sibling (fallback path)</td><td class="num">1</td><td class="num">—</td></tr>
+      <tr><td>Arc (<code>lv_arc</code> = 1 obj)</td><td class="num">—</td><td class="num">1</td></tr>
+      <tr><td>Art (shadow sibling + tile + glyph)</td><td class="num">—</td><td class="num">3</td></tr>
+      <tr><td>Transport (prev + next + chip shadow + chip + chip glyph)</td><td class="num">—</td><td class="num">5</td></tr>
+      <tr><td>Times + title</td>           <td class="num">—</td><td class="num">3</td></tr>
+      <tr><td>Deck (container + 4 slots + 4 glyphs)</td><td class="num">9</td><td class="num">9</td></tr>
+      <tr><td>Transition reserve (push ghost frame)</td><td class="num">3</td><td class="num">1</td></tr>
+      <tr class="grp"><td>Total (cap 60)</td><td class="num">47 → headroom 13</td><td class="num">35 → headroom 25</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Composed fallback NowPlaying swaps the arc (1 obj) for bar track + fill (2 objs) → ~36. Everything stays under the 60-object cap with ≥ 13 headroom.</p>
 </div>
 
 <!-- ============================================================ -->
 <h2>12 · Asset checklist for implementers</h2>
 <div class="specs">
   <ul>
-    <li>Font: Inter (weights 600, 700, 800, 900). License OFL — bundle in <code>assets/fonts/</code>.</li>
-    <li>Glyphs (vector or pre-rendered): ♪ (Listen), 💬︎ (Talk), ? (Ask), ⚙ (Setup), ⏮ ▶ ⏸ ⏭ (NowPlaying), ›.</li>
-    <li>Cover-art fallback: 60×60 PNG, c_mustard fill, ink border drawn at render — no asset needed.</li>
-    <li>StatusBar icons: signal bars (procedural), GPS pin (procedural), battery (procedural). No raster assets.</li>
-    <li>RGB565 LUT in <code>assets/theme.ron</code> must match Section 2 values exactly. RGB888 → RGB565 conversion: <code>((R&amp;0xF8)&lt;&lt;8)|((G&amp;0xFC)&lt;&lt;3)|(B&gt;&gt;3)</code>.</li>
+    <li>A8 icons, 56×56 (wheel variant A): <code>icon_playlists</code> (♬), <code>icon_recents</code> (↻), <code>icon_shuffle</code> (⇄).</li>
+    <li>A8 note glyph for the art-fallback plate (♪ — rendered ~40 px inside the 86×86 / 72×72 tile).</li>
+    <li>A8 transport icons, 24×24: <code>play_sm</code>, <code>pause_sm</code>, <code>prev_sm</code>, <code>next_sm</code>.</li>
+    <li><b>WARNING:</b> an unknown <code>icon_key</code> currently falls back <em>silently</em> to the SETUP bitmap (<code>icons.rs</code>) — register every new key and add a debug assert before shipping.</li>
+    <li>Montserrat 14 / 24: enabled in <code>lv_conf.h</code> — add the extern FFI links (§7).</li>
+    <li>RGB565 LUT in <code>theme.ron</code> must match §2 exactly — v2 recomputed the table and corrected five v1 values (bg_cream, bg_cream_2, ink_300, c_peri, c_coral).</li>
+    <li>Deck glyphs (🎧︎ 💬︎ ? ⚙) already ship as A8 assets — unchanged.</li>
   </ul>
 </div>
 
-<p style="margin-top:24px" class="muted">Consolidation pass 2026-07-15: long-press remapped from per-crumb Back to GoHome (§10, §11); voice-prompt-on-focus added. <b>Runtime content divergence:</b> the shipped Listen root (<code>router/routes.rs</code>) is Playlists / Recents / Shuffle-all — the Artists and Radio rows shown at depth 1 have no runtime backing yet, and Shuffle-all has no row here. Reconcile when wiring up (tracked in <code>README.md</code>).</p>
+<!-- ============================================================ -->
+<h2>13 · Changelog</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Date · rev</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td class="num">2026-07-15 · v2</td><td>Wheel navigation + arc-hero NowPlaying; tab strip, card and rows retired; root = Playlists/Recents/Shuffle-all (matches <code>router/routes.rs</code>); dark variant superseded pending regeneration. Wheel + arc primitives are owned by this file; <code>mockup_talk.html</code> references them.</td></tr>
+      <tr><td class="num">2026-05-13 · v1</td><td>Card + tab strip + rows spec; 2026-07-15 consolidation pass remapped long-press to GoHome and added voice-prompt-on-focus. Superseded by v2.</td></tr>
+    </tbody>
+  </table>
+</div>
 
-<p style="margin-top:24px" class="muted">Spec rev. 2026-05-13 · Listen flow only. Talk / Ask / Setup re-use these primitives — swap the accent token (c_*) and stage tint (bg_stage_*).</p>
+<p style="margin-top:24px" class="muted">Spec rev 2026-07-15 · v2 · pairs with <code>mockup_input_model.html</code> (gesture contract) and <code>README.md</code> (decision log).</p>
 
 </body>
 </html>
