@@ -2,8 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>YoyoPod — Ask Flow · Implementation Spec</title>
+<title>YoyoPod — Ask Flow · Implementation Spec · Flat</title>
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&display=swap');
+
   :root {
     --panel-w: 240px;
     --panel-h: 280px;
@@ -11,6 +13,7 @@
 
     --bg-cream:    #FCE6D2;
     --bg-cream-2:  #F7DBC2;
+    --bg-stage-butter: #FFF0CC;  /* Ask stage tint — full-bleed, replaces the v1 pale-butter inner card */
 
     --ink:         #1B1B1F;
     --ink-soft:    #3A3A40;
@@ -19,16 +22,10 @@
     --c-lime:      #9DFC7C;
     --c-peri:      #A9A6E5;
     --c-butter:    #FFD06A;
-    --c-butter-2:  #FFDE94;  /* lifted butter — reserved for focused row on tinted card (Ask v1 has none) */
-    --c-butter-soft: #FFF3D6; /* very pale butter — Ask inner card background */
     --c-coral:     #F37767;
     --c-tomato:    #E5443B;
     --c-mustard:   #E8A93C;
     --c-mint:      #6FDFB1;
-
-    --border-w: 2px;
-    --shadow-row:    2px 2px 0 var(--ink);
-    --shadow-card:   3px 3px 0 var(--ink);
 
     --sp-1: 4px;
     --sp-2: 8px;
@@ -36,26 +33,18 @@
 
     --statusbar-h: 22px;
     --deck-h:      52px;
-    --tab-h:       18px;
-    --row-h:       28px;
-    --row-radius:  6px;
-    --card-radius: 10px;
 
-    --slot-swatch: 14px;
     --slot-hero:   60px;
-    --slot-ctrl:   26px;
 
-    --t-row:    600 12px/1 "Inter", system-ui, sans-serif;
-    --t-meta:   700 10px/1 "Inter", system-ui, sans-serif;
-    --t-tab:    800 9px/1  "Inter", system-ui, sans-serif;
-    --t-status: 700 11px/1 "Inter", system-ui, sans-serif;
+    /* device UI = Montserrat only; runtime sizes {12,14,18,24} — see §5 type table */
+    --mont: "Montserrat", "Segoe UI", system-ui, sans-serif;
   }
 
   html, body {
     margin: 0; padding: 0;
     background: #1a1518;
     color: #efe4d6;
-    font-family: -apple-system, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+    font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   body { padding: 32px 24px 80px; }
@@ -68,15 +57,13 @@
   .stack { display: flex; flex-direction: column; gap: 6px; }
   .label { font-size: 11px; color: #8a7c6c; letter-spacing: 0.06em; text-transform: uppercase; }
 
+  /* neutral bezel — orange gradient + glow removed (flat pass) */
   .device {
     width: calc(var(--panel-w) + 24px);
     padding: 12px;
-    border-radius: 22px;
-    background: linear-gradient(160deg, #ff7a3d, #d2401b);
-    box-shadow:
-      0 0 0 1px rgba(255,255,255,0.05) inset,
-      0 30px 50px -20px rgba(0,0,0,0.7),
-      0 0 60px -10px rgba(255,90,31,0.35);
+    border-radius: 26px;
+    background: #221c1f;
+    box-shadow: none;
   }
   .panel {
     position: relative;
@@ -85,9 +72,10 @@
     box-sizing: border-box;
     background: var(--bg-cream);
     overflow: hidden;
+    font-family: var(--mont);
     color: var(--ink);
     border-radius: var(--panel-radius);
-    box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 1px var(--ink);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
   }
 
   /* ── status bar ────────────────────────────────────────────── */
@@ -135,93 +123,60 @@
   }
   .batt > i { display: block; width: 70%; height: 100%; background: var(--ink); }
 
-  /* ── deck (nav bar) ────────────────────────────────────────── */
+  /* ── deck (nav bar — flat: no top rule, no dividers) ───────── */
   .deck {
     position: absolute; bottom: 0; left: 0; right: 0;
     height: var(--deck-h);
     display: grid; grid-template-columns: repeat(4, 1fr);
     background: var(--bg-cream);
-    border-top: var(--border-w) solid var(--ink);
     z-index: 20;
   }
   .deck .slot {
-    background: var(--bg-cream); color: var(--ink-300);
+    color: var(--ink-300);   /* idle slots: bare glyphs on the cream band */
     display: grid; place-items: center;
-    border-right: var(--border-w) solid var(--ink);
     position: relative;
   }
-  .deck .slot:last-child { border-right: none; }
-  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; }
+  .deck .slot .glyph { position: relative; z-index: 1; font-size: 30px; font-weight: 800; line-height: 1; }
   .deck .slot.listen .glyph { font-size: 24px; }
   .deck .slot.focus { color: var(--ink); }
-  .deck .slot.focus.listen { background: var(--c-lime); }
-  .deck .slot.focus.talk   { background: var(--c-peri); }
-  .deck .slot.focus.ask    { background: var(--c-butter); }
-  .deck .slot.focus.setup  { background: var(--c-coral); }
+  /* focused slot = inset pill — the deck's only chrome */
+  .deck .slot.focus::before {
+    content: ""; position: absolute; inset: 6px 8px;
+    border-radius: 12px;
+  }
+  .deck .slot.focus.listen::before { background: var(--c-lime); }
+  .deck .slot.focus.talk::before   { background: var(--c-peri); }
+  .deck .slot.focus.ask::before    { background: var(--c-butter); }
+  .deck .slot.focus.setup::before  { background: var(--c-coral); }
 
-  /* ── stage (everything between status & deck) ──────────────── */
+  /* ── stage (everything between status & deck) ───────────────
+     Full-bleed butter tint — the v1 pale-butter inner card is retired
+     (flat pass, fewer boxes): the tint sits directly on the stage,
+     same move as Listen v2's lime and Talk v5's peri stages. */
   .cd-stage {
     position: absolute;
     top: var(--statusbar-h); left: 0; right: 0;
     bottom: var(--deck-h);
-    background: var(--bg-cream);
+    background: var(--bg-stage-butter);
     overflow: hidden;
   }
 
-  /* Card — generic, cream-tinted */
-  .cd-card {
-    position: absolute;
-    left: var(--sp-2); right: var(--sp-2);
-    top: 16px; bottom: var(--sp-2);
-    background: var(--bg-cream);
-    border: var(--border-w) solid var(--ink);
-    border-radius: 0 var(--card-radius) var(--card-radius) var(--card-radius);
-    box-shadow: var(--shadow-card);
-    z-index: 6;
-    padding: var(--sp-2);
-    box-sizing: border-box;
-  }
-  .cd-card.no-tabs { border-radius: var(--card-radius); top: var(--sp-2); }
-
-  /* When the card is inside the Ask slot, it inherits the slot's tint.
-     Soft pale butter — same trick as Talk v4's pale peri (#E7E5F7). */
-  .cd-card.tint-ask { background: var(--c-butter-soft); }
-  .cd-card.tint-ask .cd-row       { background: var(--bg-cream); }
-  .cd-card.tint-ask .cd-row.focus { background: var(--c-butter-2); }
-
-  .cd-row {
-    height: var(--row-h);
-    padding: 0 var(--sp-2);
-    display: flex; align-items: center; gap: var(--sp-2);
-    border: var(--border-w) solid var(--ink);
-    background: var(--bg-cream-2);
-    border-radius: var(--row-radius);
-    box-shadow: var(--shadow-row);
-    font: var(--t-row);
-    color: var(--ink);
-    box-sizing: border-box;
-    position: relative;
-  }
-  .cd-row.focus { background: var(--c-butter); }
-
   /* ── Ask hero tile — 60 × 60 rounded square ─────────────────
-     Same primitive as Listen's NowPlaying cover: 2 px ink border,
-     6 px radius, hard (2,2) ink offset shadow. */
+     Flat: no border, no shadow, radius 18 — same primitive as
+     Listen's hero art plate. */
   .ask-tile {
     width: var(--slot-hero); height: var(--slot-hero);
-    border: var(--border-w) solid var(--ink);
-    border-radius: var(--row-radius);
+    border-radius: 18px;
     background: var(--c-butter);
-    box-shadow: var(--shadow-row);
     display: grid; place-items: center;
-    font: 900 26px/1 "Inter", sans-serif;
+    font: 900 26px/1 var(--mont);
     color: var(--ink);
     position: relative;
     box-sizing: border-box;
   }
   .ask-tile.cream { background: var(--bg-cream); }
 
-  /* Ask stage layout — hero stack centered in the tinted card */
+  /* Ask stage layout — hero stack centered in the tinted stage */
   .ask-center {
     height: 100%;
     display: flex; flex-direction: column;
@@ -229,8 +184,8 @@
     gap: 6px;
     text-align: center;
   }
-  .ask-line { font: 800 12px/1.35 "Inter", sans-serif; color: var(--ink); max-width: 180px; }
-  .ask-hint { font: 700 10px/1.4 "Inter", sans-serif; color: var(--ink-soft); max-width: 180px; }
+  .ask-line { font: 800 12px/1.35 var(--mont); color: var(--ink); max-width: 180px; }
+  .ask-hint { font: 700 10px/1.4 var(--mont); color: var(--ink-soft); max-width: 180px; }
 
   /* ── LISTENING waveform — 7 butter bars on a cream tile ─────── */
   .ask-wave {
@@ -274,8 +229,8 @@
   .pulse-ask > .ask-tile { position: relative; z-index: 2; }
   .pulse-ask::before, .pulse-ask::after {
     content: ""; position: absolute; inset: 0;
-    border: 2px solid var(--c-butter);
-    border-radius: var(--card-radius);
+    border: 2px solid var(--c-butter);  /* transient animation ring, not chrome */
+    border-radius: 18px;
     opacity: 0; z-index: 1;
     animation: askPulse 1600ms ease-out infinite;
   }
@@ -287,10 +242,9 @@
   }
 
   /* Progress — same primitive as Listen NowPlaying: cream-2 track,
-     2 px ink border, 4 px radius. Fill = butter on Ask. */
+     4 px radius, no border (flat). Fill = butter on Ask. */
   .progress {
     width: 180px; height: 8px;
-    border: var(--border-w) solid var(--ink);
     border-radius: 4px;
     background: var(--bg-cream-2);
     overflow: hidden;
@@ -300,7 +254,7 @@
   /* Offline cloud "zzz" */
   .zzz {
     position: absolute; top: 5px; right: 6px;
-    font: 800 9px/1 "Inter", sans-serif;
+    font: 800 9px/1 var(--mont);
     color: var(--ink-soft);
     letter-spacing: 0.05em;
   }
@@ -341,8 +295,8 @@
 </head>
 <body>
 
-<h1>YoyoPod — Ask Flow · Implementation Spec</h1>
-<p class="muted">Ask is voice Q&amp;A with the AI: hold the side push-to-talk (PTT) button, ask a question, let go, hear the answer. It is a <b>single stateful surface</b> — no tabs, no list, no sub-routes, nothing to focus. The screen exists only to show <i>which phase of the conversation the device is in</i>: IDLE → LISTENING → THINKING → ANSWERING → IDLE. Card inherits the Ask slot's butter tint (pale butter <code>#FFF3D6</code>, the same trick as Talk v4's pale peri). Everything on this screen is also spoken aloud — text is for grown-ups, never a requirement. Input model lives in its own doc: <code>mockup_input_model.html</code>.</p>
+<h1>YoyoPod — Ask Flow · Implementation Spec · Flat</h1>
+<p class="muted">Ask is voice Q&amp;A with the AI: hold the side push-to-talk (PTT) button, ask a question, let go, hear the answer. It is a <b>single stateful surface</b> — no tabs, no list, no sub-routes, nothing to focus. The screen exists only to show <i>which phase of the conversation the device is in</i>: IDLE → LISTENING → THINKING → ANSWERING → IDLE. The stage tints full-bleed butter (<code>bg_stage_butter #FFF0CC</code>) — the v1 pale-butter inner card is retired with the flat pass, same full-bleed move as Listen v2's lime and Talk v5's peri. Everything on this screen is also spoken aloud — text is for grown-ups, never a requirement. Input model lives in its own doc: <code>mockup_input_model.html</code>.</p>
 
 <div class="legend">
   <div class="chip-l"><div class="dot" style="background:var(--c-lime)"></div>Listen — lime</div>
@@ -366,12 +320,10 @@
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
       <div class="cd-stage">
-        <div class="cd-card no-tabs tint-ask">
-          <div class="ask-center">
+        <div class="ask-center">
             <div class="ask-tile">?</div>
             <div class="ask-line">Hold the side button<br>and ask me anything</div>
             <div class="ask-hint">Try: why is the sky blue?</div>
-          </div>
         </div>
       </div>
       <div class="deck">
@@ -393,12 +345,10 @@
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
       <div class="cd-stage">
-        <div class="cd-card no-tabs tint-ask">
-          <div class="ask-center">
+        <div class="ask-center">
             <div class="ask-tile cream"><div class="ask-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
             <div class="ask-line">I'm listening…</div>
             <div class="ask-hint">let go when you're done</div>
-          </div>
         </div>
       </div>
       <div class="deck" style="opacity:.55">
@@ -408,7 +358,7 @@
         <div class="slot setup"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Hero swaps to a live waveform: 7 butter bars on the ink-bordered cream tile, driven by mic level. Deck + statusbar dim to 55% — mirror of Talk's hold-to-record dim.</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Hero swaps to a live waveform: 7 butter bars on the cream tile, driven by mic level. Deck + statusbar dim to 55% — mirror of Talk's hold-to-record dim.</span>
   </div>
 
   <div class="stack">
@@ -420,11 +370,9 @@
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
       <div class="cd-stage">
-        <div class="cd-card no-tabs tint-ask">
-          <div class="ask-center">
+        <div class="ask-center">
             <div class="ask-tile cream"><div class="ask-dots"><i></i><i></i><i></i></div></div>
             <div class="ask-line">Hmm, let me think…</div>
-          </div>
         </div>
       </div>
       <div class="deck">
@@ -446,12 +394,10 @@
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
       <div class="cd-stage">
-        <div class="cd-card no-tabs tint-ask">
-          <div class="ask-center">
+        <div class="ask-center">
             <div class="pulse-ask"><div class="ask-tile">🔊</div></div>
             <div class="progress"><i style="width:38%"></i></div>
             <div class="ask-hint">double-press to stop</div>
-          </div>
         </div>
       </div>
       <div class="deck">
@@ -461,7 +407,7 @@
         <div class="slot setup"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Butter speaker tile; concentric butter arcs optional. Progress = NowPlaying primitive (cream-2 track, butter fill, 2 px ink border). When the answer ends → back to IDLE with hint "Ask me another!".</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Butter speaker tile; concentric butter arcs optional. Progress = NowPlaying primitive (cream-2 track, butter fill, no border — flat). When the answer ends → back to IDLE with hint "Ask me another!".</span>
   </div>
 
 </div>
@@ -469,21 +415,21 @@
 <!-- ============================================================ -->
 <h2>2 · Geometry</h2>
 <div class="specs">
-  <p style="margin-top:0">Panel coordinate space, y grows downward. Statusbar 0–22, deck 228–280, stage 22–228 (206 px). Card = <code>.cd-card.no-tabs</code>: 8 px insets inside the stage → outer box x 8–232 (224 wide), y 30–220 (190 tall). Inner content area after 2 px border + 8 px padding: 204 × 170 at x 18, y 40.</p>
+  <p style="margin-top:0">Panel coordinate space, y grows downward. Statusbar 0–22, deck 228–280, stage 22–228 (206 px). The butter tint is <b>full-bleed on the stage</b> (flat pass — the v1 inner card is retired): the hero stack centers in the whole 240 × 206 stage. The v1 card's content center and the stage center coincide (x 120, y 125), so every element keeps its locked position.</p>
   <table class="spec">
     <thead><tr><th>Element</th><th>Value</th><th>Note</th></tr></thead>
     <tbody>
-      <tr><td>Card background</td><td class="mono">var(--c-butter-soft) = #FFF3D6</td><td>Ask slot color lightened ~70%, analogous to Talk's pale peri #E7E5F7. Reads "you are inside Ask" without a label.</td></tr>
-      <tr><td>Card border / radius / shadow</td><td class="mono">2 px ink · 10 px radius · (3,3) ink</td><td>Same primitive as Listen / Talk / Setup root cards. No tab strip at depth 1.</td></tr>
-      <tr><td>Hero tile</td><td class="num">60 × 60 at x 90, y 64</td><td>Rounded square: 2 px ink border, 6 px radius, (2,2) ink hard shadow — same primitive as Listen's NowPlaying cover. <b>Locked in all four states</b>; only contents swap. Butter fill in IDLE/ANSWERING, cream fill in LISTENING/THINKING.</td></tr>
-      <tr><td>Hero glyph</td><td class="mono">900 26 px, ink</td><td>IDLE = <code>?</code> · ANSWERING = 🔊. LISTENING/THINKING replace the glyph with waveform / dots.</td></tr>
-      <tr><td>Label line (line 1+2)</td><td class="mono">800 12 px / 1.35, ink</td><td>Centered under hero, 6 px gap, max width 180 px. IDLE: "Hold the side button / and ask me anything". LISTENING: "I'm listening…". THINKING: "Hmm, let me think…".</td></tr>
-      <tr><td>Hint line</td><td class="mono">var(--t-meta) 700 10 px, ink_soft</td><td>4 px below label. IDLE: rotating example ("Try: why is the sky blue?", cycles every 8 s while idle). LISTENING: "let go when you're done". ANSWERING: "double-press to stop". Post-answer IDLE: "Ask me another!".</td></tr>
+      <tr><td>Stage background</td><td class="mono">var(--bg-stage-butter) = #FFF0CC</td><td>Full-bleed Ask tint, same move as Listen's lime / Talk's peri stages. Reads "you are inside Ask" without a label. Replaces the v1 pale-butter inner card #FFF3D6 — fewer boxes.</td></tr>
+      <tr><td>Card border / radius / shadow</td><td class="mono">none (flat)</td><td>The card itself is gone; the tint sits directly on the stage. No tab strip at depth 1.</td></tr>
+      <tr><td>Hero tile</td><td class="num">60 × 60 at x 90, y 64</td><td>Rounded square: radius 18, border none, shadow none (flat) — same primitive as Listen's hero art plate. <b>Locked in all four states</b>; only contents swap. Butter fill in IDLE/ANSWERING, cream fill in LISTENING/THINKING.</td></tr>
+      <tr><td>Hero glyph</td><td class="mono">900 26 px, ink</td><td>IDLE = <code>?</code> · ANSWERING = 🔊. LISTENING/THINKING replace the glyph with waveform / dots. Runtime: A8 icon assets, not font glyphs (§5).</td></tr>
+      <tr><td>Label line (line 1+2)</td><td class="mono">Montserrat 800 12 px / 1.35, ink</td><td>Centered under hero, 6 px gap, max width 180 px. Runtime face: Montserrat 12 (linked). IDLE: "Hold the side button / and ask me anything". LISTENING: "I'm listening…". THINKING: "Hmm, let me think…".</td></tr>
+      <tr><td>Hint line</td><td class="mono">Montserrat 700 10 px, ink_soft</td><td>4 px below label. Runtime face: Montserrat 12 — 10 px is a mock approximation; 12 is the smallest runtime size (§5). IDLE: rotating example ("Try: why is the sky blue?", cycles every 8 s while idle). LISTENING: "let go when you're done". ANSWERING: "double-press to stop". Post-answer IDLE: "Ask me another!".</td></tr>
       <tr class="grp"><td colspan="3">State-specific pieces</td></tr>
       <tr><td>Waveform bars (LISTENING)</td><td class="num">7 bars · 4 px wide · 2 px gap</td><td>Total 40 px wide, centered in the cream tile. Bar heights 10–36 px, butter fill, 2 px radius, no border. Heights driven by mic RMS, updated at 20 Hz.</td></tr>
       <tr><td>Thinking dots (THINKING)</td><td class="num">3 × 10 px ink circles, 8 px gap</td><td>Centered in the cream tile. Bounce −8 px, 600 ms period, 150 ms stagger.</td></tr>
-      <tr><td>Progress bar (ANSWERING)</td><td class="num">outer 184 × 12 at x 28, y 132</td><td>Track 180 × 8 inside 2 px ink border, 4 px radius. Track cream-2, fill butter. Same primitive as NowPlaying progress. Fill = elapsed / estimated answer duration (from voice worker metadata; indeterminate → slow 4 s sweep).</td></tr>
-      <tr><td>Answering arcs (optional)</td><td class="mono">2 rings, 2 px butter, radius 10</td><td>Expand 1.0 → 1.45 scale over 1600 ms, 800 ms phase offset, fade out. Drop first if the frame budget is tight — the 🔊 glyph + progress carry the state alone.</td></tr>
+      <tr><td>Progress bar (ANSWERING)</td><td class="num">180 × 8 at x 30, y 134</td><td>Radius 4, border none (flat). Track cream-2, fill butter. Same primitive as NowPlaying progress. Fill = elapsed / estimated answer duration (from voice worker metadata; indeterminate → slow 4 s sweep).</td></tr>
+      <tr><td>Answering arcs (optional)</td><td class="mono">2 rings, 2 px butter, radius 18</td><td>Transient animation rings, not chrome — they track the tile's 18 px radius. Expand 1.0 → 1.45 scale over 1600 ms, 800 ms phase offset, fade out. Drop first if the frame budget is tight — the 🔊 glyph + progress carry the state alone.</td></tr>
       <tr class="grp"><td colspan="3">Dim overlay (LISTENING only)</td></tr>
       <tr><td>Deck opacity</td><td class="num">0.55</td><td>Mirror of Talk's hold-to-record dim. LVGL: <code>lv_obj_set_style_opa(deck, 140, 0)</code>.</td></tr>
       <tr><td>Statusbar opacity</td><td class="num">0.55</td><td>Same value, same moment. Card stays at full opacity — the mic is the only live thing on the device.</td></tr>
@@ -494,7 +440,7 @@
 
 <!-- ============================================================ -->
 <h2>3 · State machine + input contract</h2>
-<p>Ask has <b>nothing to focus</b> — no rows, no controls. Single press is a no-op by design (<code>FocusPolicy::None</code>). The whole surface is driven by the PTT button and voice-worker events; the main button only contributes double-press (stop) and long-press (Home).</p>
+<p>Ask has <b>nothing to focus</b> — no rows, no controls. Single press is a no-op by design (<code>FocusPolicy::None</code>). The whole surface is driven by the PTT button and voice-worker events; the main button only contributes double-press (stop) and long-press (Home). Flat note: the system's one surviving stroke — the transient focus ring — never appears in this flow, so ink here is <b>text + glyphs only</b>.</p>
 <div class="specs">
   <table class="spec">
     <thead><tr><th>Event</th><th>From IDLE</th><th>From LISTENING</th><th>From THINKING</th><th>From ANSWERING</th></tr></thead>
@@ -568,11 +514,9 @@
           <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
         </div>
         <div class="cd-stage">
-          <div class="cd-card no-tabs tint-ask">
-            <div class="ask-center">
-              <div class="ask-tile cream">☁<span class="zzz">zzz</span></div>
-              <div class="ask-line">I can't think right now —<br>try again soon</div>
-            </div>
+          <div class="ask-center">
+            <div class="ask-tile cream">☁<span class="zzz">zzz</span></div>
+            <div class="ask-line">I can't think right now —<br>try again soon</div>
           </div>
         </div>
         <div class="deck">
@@ -595,17 +539,27 @@
     <tbody>
       <tr><td>Panel</td>       <td><code>lv_obj</code> (root)</td>   <td>StatusBar, AskStage, Deck</td> <td>bg=bg_cream.</td></tr>
       <tr><td>StatusBar</td>   <td><code>lv_obj</code> flex row</td> <td>signal bars (4), gps pin, time, percent, battery</td><td>bg=bg_cream, ink children. Opa 140 while LISTENING.</td></tr>
-      <tr><td>AskStage</td>    <td><code>lv_obj</code></td>          <td>AskCard only</td>              <td>bg=bg_cream. No border, no padding.</td></tr>
-      <tr><td>AskCard</td>     <td><code>lv_obj</code></td>          <td>HeroTile, Label, Hint, Progress (ANSWERING only)</td><td>bg=butter_soft #FFF3D6, border 2 ink, radius 10, shadow (3,3) ink. Flex column, centered.</td></tr>
-      <tr><td>HeroTile</td>    <td><code>lv_obj</code> + <code>lv_label</code></td><td>glyph label · or Waveform · or Dots</td><td>60 × 60, border 2 ink, radius 6, shadow (2,2) ink. bg style-swap per state (butter ↔ cream) — style swap only, no relayout.</td></tr>
+      <tr><td>AskStage</td>    <td><code>lv_obj</code></td>          <td>HeroTile, Label, Hint, Progress (ANSWERING only)</td><td>bg=bg_stage_butter #FFF0CC full-bleed (the v1 AskCard is retired — flat). border_width 0, no padding. Flex column, centered.</td></tr>
+      <tr><td>HeroTile</td>    <td><code>lv_obj</code> + <code>lv_image</code></td><td>glyph icon · or Waveform · or Dots</td><td>60 × 60, radius 18, border_width 0, no shadow (flat). bg style-swap per state (butter ↔ cream) — style swap only, no relayout. Glyphs (? 🔊 ☁+zzz) = A8 icon assets, ink recolor.</td></tr>
       <tr><td>Waveform</td>    <td>7 × <code>lv_obj</code> bars</td> <td>—</td>                         <td>4 px wide, radius 2, bg=butter. <code>lv_anim</code> on height from mic RMS at 20 Hz. Alternative: one <code>lv_canvas</code> 40 × 36 redrawn per tick — prefer the 7 bars, cheaper invalidation rects.</td></tr>
       <tr><td>ThinkingDots</td><td>3 × <code>lv_obj</code> circles <i>or</i> 1 × <code>lv_img</code> sprite</td><td>—</td><td>10 px ink circles, <code>lv_anim</code> sine y ±8 px, 600 ms period, 150 ms stagger. <b>30 FPS budget:</b> if per-frame invalidation is too hot on the Zero 2W, swap to a 3-frame sprite atlas (dot-1-up / dot-2-up / dot-3-up), <code>lv_img</code> src rotated every 200 ms — reads as the same bounce at ~5 fps effective, near-zero CPU.</td></tr>
-      <tr><td>Progress</td>    <td><code>lv_bar</code></td>          <td>—</td>                         <td>180 × 8 + 2 px ink border, radius 4. Track cream_2, indicator butter. Value ticked at 2 Hz from playback position.</td></tr>
-      <tr><td>Labels</td>      <td>2 × <code>lv_label</code></td>    <td>—</td>                         <td>Line: 800 12 px ink. Hint: 700 10 px ink_soft. Text swap per state — no create/destroy.</td></tr>
-      <tr><td>Deck</td>        <td><code>lv_obj</code> flex row</td> <td>4 × deck_slot (glyph labels)</td><td>border_side TOP=2 ink. Ask slot bg=butter + ink glyph (focused on every Ask frame). Opa 140 while LISTENING.</td></tr>
+      <tr><td>Progress</td>    <td><code>lv_bar</code></td>          <td>—</td>                         <td>180 × 8, border_width 0, radius 4 (flat). Track cream_2, indicator butter. Value ticked at 2 Hz from playback position.</td></tr>
+      <tr><td>Labels</td>      <td>2 × <code>lv_label</code></td>    <td>—</td>                         <td>Line: Montserrat 12 · 800 · ink. Hint: Montserrat 12 · 700 · ink_soft. Text swap per state — no create/destroy.</td></tr>
+      <tr><td>Deck</td>        <td><code>lv_obj</code> flex row</td> <td>4 × deck_slot (glyph icons)</td><td>Flat band — no top rule, no dividers, border_width 0. Focused Ask slot = butter <b>inset pill</b> (inset 6 px vert / 8 px horiz, radius 12) behind the ink glyph; the slot obj <i>is</i> the pill rect, transparent when idle. Idle slots = bare ink_300 glyphs. Opa 140 while LISTENING.</td></tr>
     </tbody>
   </table>
-  <p style="margin:0">Object budget (worst case, LISTENING): 1 panel + 1 statusbar (~8 children) + 1 stage + 1 card + 1 hero tile + 7 wave bars + 2 labels + 1 deck (4 slots + 4 glyphs) = <b>~30 objects</b>. ANSWERING is ~26 (progress bar instead of bars). Below Listen's ~36 worst case; comfortably inside LVGL limits at 240 × 280. All four states are one screen with widget visibility flags — never create/destroy on state change.</p>
+  <h3>Typography — runtime faces</h3>
+  <table class="spec">
+    <thead><tr><th>Face · size</th><th>Runtime status</th><th>Used by</th></tr></thead>
+    <tbody>
+      <tr><td>Montserrat 12</td><td>linked ✅</td><td>Label line (800) + hint line (700; mock renders it at 10 px — 12 is the smallest runtime face).</td></tr>
+      <tr><td>Montserrat 14</td><td>enabled in <code>lv_conf.h</code>, <b>needs FFI extern link</b></td><td>Unused in Ask v1.1 — reserved.</td></tr>
+      <tr><td>Montserrat 18</td><td>linked ✅</td><td>Unused in Ask v1.1 — reserved.</td></tr>
+      <tr><td>Montserrat 24</td><td>enabled in <code>lv_conf.h</code>, <b>needs FFI extern link</b></td><td>Unused in Ask v1.1 — hero glyphs are A8 assets, not text.</td></tr>
+    </tbody>
+  </table>
+  <p><b>Montserrat only</b> — this page's CSS renders the panels with the <code>"Montserrat", "Segoe UI", system-ui</code> stack. <b>The runtime has no emoji font:</b> the hero glyphs (<code>?</code> 🔊 ☁ + zzz) and the deck's 🎧︎ 💬︎ ? ⚙ all map to A8 icon assets (deck set already ships; Ask adds <code>icon_ask_q</code>, <code>icon_speaker</code>, <code>icon_cloud_zzz</code>).</p>
+  <p style="margin:0">Object budget (worst case, LISTENING): 1 panel + 1 statusbar (~8 children) + 1 stage + 1 hero tile + 7 wave bars + 2 labels + 1 deck (4 slots + 4 glyphs) = <b>~29 objects</b>. ANSWERING is ~25 (progress bar instead of bars). The flat pass dropped the AskCard and every border/shadow style — nothing casts a shadow, so nothing needs a sibling shadow rect and no shadow FFI is required; the deck's focused pill costs no extra object (the slot obj is the pill rect). Below Listen's ~36 worst case; comfortably inside LVGL limits at 240 × 280. All four states are one screen with widget visibility flags — never create/destroy on state change.</p>
 </div>
 
 <!-- ============================================================ -->
@@ -618,7 +572,7 @@
   </ul>
 </div>
 
-<p style="margin-top:24px" class="muted">Spec rev. 2026-07-15 · Ask flow v1 · consolidation pass. Pairs with <code>mockup_input_model.html</code> (three-gesture contract) and <code>mockup_home.html</code>.</p>
+<p style="margin-top:24px" class="muted">Changelog: 2026-07-15 · flat pass — borders + hard shadows removed, neutral bezel, Montserrat tokens; matches Listen v2.1 / Talk v5.1. · 2026-07-15 · Ask flow v1 · consolidation pass.<br>Spec rev. 2026-07-15 · Ask flow v1.1 (flat) · pairs with <code>mockup_input_model.html</code> (three-gesture contract) and <code>mockup_home.html</code>.</p>
 
 </body>
 </html>

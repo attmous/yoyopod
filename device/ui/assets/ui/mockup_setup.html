@@ -2,57 +2,40 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>YoyoPod — Setup Flow · Implementation Spec</title>
+<title>YoyoPod — Setup Flow · Implementation Spec (v2 · wheel + flat)</title>
 <style>
   :root {
     --panel-w: 240px;
     --panel-h: 280px;
-    --panel-radius: 22px;
 
-    --bg-cream:    #FCE6D2;
-    --bg-cream-2:  #F7DBC2;
+    --bg-cream:       #FCE6D2;
+    --bg-cream-2:     #F7DBC2;
+    --bg-stage-coral: #FDE2D8;  /* Setup stage tint, full-bleed */
 
-    --ink:         #1B1B1F;
-    --ink-soft:    #3A3A40;
-    --ink-300:     #8a8076;
+    --ink:      #1B1B1F;
+    --ink-soft: #3A3A40;
+    --ink-300:  #8A8076;
 
-    --c-lime:      #9DFC7C;
-    --c-peri:      #A9A6E5;
-    --c-butter:    #FFD06A;
-    --c-coral:     #F37767;
-    --c-coral-2:   #F9BFB2;  /* lifted coral for focused row on tinted card */
-    --c-coral-soft:#FDE2D8;  /* very pale coral — Setup inner card background (= bg_stage_coral) */
-    --c-tomato:    #E5443B;
-    --c-mustard:   #E8A93C;
-    --c-mint:      #6FDFB1;
+    --c-lime:    #9DFC7C;
+    --c-peri:    #A9A6E5;
+    --c-butter:  #FFD06A;
+    --c-coral:   #F37767;
+    --c-tomato:  #E5443B;
+    --c-mustard: #E8A93C;
 
-    --c-owl:       #B5895D;
-    --c-cat:       #FFD06A;  /* = c_butter */
-    --c-bunny:     #9FB89A;
-    --c-robot:     #DDE3E8;
-    --dark-ink:    #1B1B1F;  /* dark-theme surface swatch */
-
-    --border-w: 2px;
-    --shadow-row:    2px 2px 0 var(--ink);
-    --shadow-card:   3px 3px 0 var(--ink);
-
-    --sp-1: 4px;
-    --sp-2: 8px;
-    --sp-3: 12px;
+    --c-owl:   #B5895D;
+    --c-cat:   #FFD06A;  /* = c_butter */
+    --c-bunny: #9FB89A;
+    --c-robot: #DDE3E8;
+    --dark-ink:#1B1B1F;  /* dark-theme surface swatch (content, not chrome) */
 
     --statusbar-h: 22px;
     --deck-h:      52px;
-    --tab-h:       18px;
-    --row-h:       28px;
-    --row-radius:  6px;
-    --card-radius: 10px;
 
-    --slot-swatch: 14px;
-
-    --t-row:    600 12px/1 "Inter", system-ui, sans-serif;
-    --t-meta:   700 10px/1 "Inter", system-ui, sans-serif;
-    --t-tab:    800 9px/1  "Inter", system-ui, sans-serif;
-    --t-status: 700 11px/1 "Inter", system-ui, sans-serif;
+    --t-name: 800 18px/1  "Montserrat", "Inter", system-ui, sans-serif;
+    --t-sub:  700 12px/1  "Montserrat", "Inter", system-ui, sans-serif;
+    --t-ctx:  700 12px/14px "Montserrat", "Inter", system-ui, sans-serif;
+    --t-val:  600 14px/16px "Montserrat", "Inter", system-ui, sans-serif;
   }
 
   html, body {
@@ -72,15 +55,13 @@
   .stack { display: flex; flex-direction: column; gap: 6px; }
   .label { font-size: 11px; color: #8a7c6c; letter-spacing: 0.06em; text-transform: uppercase; }
 
+  /* ── neutral bezel — system-wide, replaces the orange gradient ── */
   .device {
     width: calc(var(--panel-w) + 24px);
     padding: 12px;
-    border-radius: 22px;
-    background: linear-gradient(160deg, #ff7a3d, #d2401b);
-    box-shadow:
-      0 0 0 1px rgba(255,255,255,0.05) inset,
-      0 30px 50px -20px rgba(0,0,0,0.7),
-      0 0 60px -10px rgba(255,90,31,0.35);
+    border-radius: 26px;
+    background: #221c1f;
+    box-shadow: none;
   }
   .panel {
     position: relative;
@@ -90,11 +71,11 @@
     background: var(--bg-cream);
     overflow: hidden;
     color: var(--ink);
-    border-radius: var(--panel-radius);
-    box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 1px var(--ink);
+    border-radius: 14px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
   }
 
-  /* ── status bar ────────────────────────────────────────────── */
+  /* ── status bar (y 0–22, cream) — glyphs are ink, allowed ─────── */
   .statusbar {
     position: absolute; top: 0; left: 0; right: 0;
     height: var(--statusbar-h);
@@ -139,176 +120,142 @@
   }
   .batt > i { display: block; width: 70%; height: 100%; background: var(--ink); }
 
-  /* ── deck (nav bar) ────────────────────────────────────────── */
+  /* ── deck (y 228–280) — flat: no dividers, no top border ──────── */
   .deck {
     position: absolute; bottom: 0; left: 0; right: 0;
     height: var(--deck-h);
     display: grid; grid-template-columns: repeat(4, 1fr);
     background: var(--bg-cream);
-    border-top: var(--border-w) solid var(--ink);
     z-index: 20;
   }
   .deck .slot {
-    background: var(--bg-cream); color: var(--ink-300);
+    color: var(--ink-300);
     display: grid; place-items: center;
-    border-right: var(--border-w) solid var(--ink);
     position: relative;
   }
-  .deck .slot:last-child { border-right: none; }
-  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; }
+  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; position: relative; z-index: 1; }
   .deck .slot.listen .glyph { font-size: 24px; }
   .deck .slot.focus { color: var(--ink); }
-  .deck .slot.focus.listen { background: var(--c-lime); }
-  .deck .slot.focus.talk   { background: var(--c-peri); }
-  .deck .slot.focus.ask    { background: var(--c-butter); }
-  .deck .slot.focus.setup  { background: var(--c-coral); }
+  .deck .slot.focus::before {
+    content: ""; position: absolute;
+    left: 8px; right: 8px; top: 6px; bottom: 6px;
+    border-radius: 12px;
+  }
+  .deck .slot.focus.listen::before { background: var(--c-lime); }
+  .deck .slot.focus.talk::before   { background: var(--c-peri); }
+  .deck .slot.focus.ask::before    { background: var(--c-butter); }
+  .deck .slot.focus.setup::before  { background: var(--c-coral); }
 
-  /* ── stage (everything between status & deck) ──────────────── */
+  /* ── stage (y 22–228) — full-bleed coral tint, no card, no box ── */
   .cd-stage {
     position: absolute;
     top: var(--statusbar-h); left: 0; right: 0;
     bottom: var(--deck-h);
-    background: var(--bg-cream);
+    background: var(--bg-stage-coral);
     overflow: hidden;
   }
 
-  /* Tabs only at depth ≥ 2 — depth-1 screens drop them entirely */
-  .cd-tabs {
-    position: absolute; top: 0;
-    left: var(--sp-2); right: var(--sp-2);
-    display: flex; gap: var(--sp-1); align-items: flex-end;
-    height: var(--tab-h);
+  /* Context label — depth ≥ 2 only. Panel (10,26,130,14) = stage y 4 */
+  .ctx {
+    position: absolute; left: 10px; top: 4px; width: 130px; height: 14px;
+    font: var(--t-ctx);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft);
     z-index: 5;
   }
-  .cd-tab {
-    height: var(--tab-h); padding: 0 var(--sp-2);
-    border: var(--border-w) solid var(--ink);
-    border-bottom: none;
-    border-radius: var(--row-radius) var(--row-radius) 0 0;
-    font: var(--t-tab);
-    letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--ink);
-    display: flex; align-items: center;
-    box-sizing: border-box;
-  }
-  .cd-tab.ancestor { background: var(--bg-cream-2); opacity: 0.85; height: 14px; }
-  .cd-tab.active   { background: var(--c-coral); }
-
-  /* Card — generic, cream-tinted */
-  .cd-card {
-    position: absolute;
-    left: var(--sp-2); right: var(--sp-2);
-    top: 16px; bottom: var(--sp-2);
-    background: var(--bg-cream);
-    border: var(--border-w) solid var(--ink);
-    border-radius: 0 var(--card-radius) var(--card-radius) var(--card-radius);
-    box-shadow: var(--shadow-card);
-    z-index: 6;
-    padding: var(--sp-2);
-    box-sizing: border-box;
-  }
-  .cd-card.no-tabs { border-radius: var(--card-radius); top: var(--sp-2); }
-  .cd-card.clip { overflow: hidden; }
-
-  /* Setup mirror of Talk v4's tinted card: pale coral surface so the user
-     reads "where am I" without a label. Cream rows pop on top; focused
-     row lifts to coral-2 — stays inside the coral family. */
-  .cd-card.tint-setup { background: var(--c-coral-soft); }
-  .cd-card.tint-setup .cd-row        { background: var(--bg-cream); }
-  .cd-card.tint-setup .cd-row.focus  { background: var(--c-coral-2); }
-
-  .cd-list {
-    position: absolute; inset: var(--sp-2);
-    display: flex; flex-direction: column;
-    gap: var(--sp-2);
-    justify-content: center;
-  }
-  .cd-card .cd-list { position: static; inset: auto; height: 100%; }
-  .cd-list.jstart { justify-content: flex-start; }
-  .cd-list.jend   { justify-content: flex-end; }
-
-  .cd-row {
-    height: var(--row-h);
-    flex: none;
-    padding: 0 var(--sp-2);
-    display: flex; align-items: center; gap: var(--sp-2);
-    border: var(--border-w) solid var(--ink);
-    background: var(--bg-cream-2);
-    border-radius: var(--row-radius);
-    box-shadow: var(--shadow-row);
-    font: var(--t-row);
-    color: var(--ink);
-    box-sizing: border-box;
-    position: relative;
-  }
-  .cd-row.focus { background: var(--c-coral); }
-
-  /* Lead slot — 14 × 14, holds swatch / avatar / glyph */
-  .cd-row .lead {
-    width: var(--slot-swatch); height: var(--slot-swatch);
-    border: var(--border-w) solid var(--ink);
-    border-radius: 3px;
-    flex: none;
-    display: grid; place-items: center;
-    font: 700 8px/1 "Inter", sans-serif;
-    color: var(--ink);
-  }
-  .cd-row .lead.avatar { border-radius: 50%; }
-  .cd-row .lead .g { font: 400 8px/1 sans-serif; }
-
-  .cd-row .meta {
-    margin-left: auto;
-    font: var(--t-meta);
+  /* Root-only counter — panel (200,26,30,14) = stage y 4 */
+  .counter {
+    position: absolute; left: 200px; top: 4px; width: 30px; height: 14px;
+    font: var(--t-ctx);
     color: var(--ink-soft);
-  }
-  .cd-row .check {
-    margin-left: auto;
-    font: 800 11px/1 "Inter", sans-serif;
-    color: var(--ink);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    z-index: 5;
   }
 
-  /* ── Setup-specific primitives ─────────────────────────────── */
-
-  /* Scroll nub — 3 px coral pill on the card's right edge for lists > 4 rows */
-  .scroll-nub {
-    position: absolute; right: 2px;
-    width: 3px; height: 24px;
-    border-radius: 2px;
-    background: var(--c-coral);
-    z-index: 8;
+  /* ── the wheel — 3 slots, step 80, centers y 45/125/205 ───────── */
+  .wheel { position: absolute; inset: 0; }
+  .wheel .tile {
+    position: absolute; left: 32px;
+    width: 176px; height: 96px;
+    box-sizing: border-box;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 3px;
+    border-radius: 16px;
+    text-align: center;
   }
+  .wheel .tile.t1 { top: -3px; }
+  .wheel .tile.t2 { top: 77px; }
+  .wheel .tile.t3 { top: 157px; }
+  .wheel .tile.focus { background: var(--c-coral); }       /* the ONLY filled tile */
+  .wheel .tile.peek  { transform: scale(0.7); opacity: 0.45; }
+  .tile .plate {
+    width: 56px; height: 56px; flex: none;
+    border-radius: 10px;
+    display: grid; place-items: center;
+    font-size: 30px; line-height: 1;
+  }
+  .tile .plate.circle { border-radius: 28px; }
+  .tile .plate .txt { font: 800 22px/1 "Montserrat", "Inter", sans-serif; color: var(--ink); }
+  .tile .name { font: var(--t-name); color: var(--ink); }
+  .tile .sub  { font: var(--t-sub);  color: var(--ink-soft); }
 
-  /* Volume block meter — 10 blocks, 16 × 22, 2 px ink borders */
-  .vol-meter { display: flex; gap: var(--sp-1); }
+  /* ── Volume leaf — flat block meter, no borders anywhere ──────── */
+  .vol-glyph {
+    position: absolute; left: 0; right: 0; top: 46px;
+    text-align: center; font-size: 30px; line-height: 1;
+  }
+  .vol-meter {
+    position: absolute; left: 22px; top: 96px;
+    display: flex; gap: 4px;
+  }
   .vol-meter > i {
     display: block; flex: none;
     width: 16px; height: 22px;
-    box-sizing: border-box;
-    border: var(--border-w) solid var(--ink);
-    border-radius: 3px;
+    border-radius: 4px;
     background: var(--bg-cream-2);
   }
   .vol-meter > i.fill { background: var(--c-coral); }
-
-  /* Centered leaf content (Volume, About footer) */
-  .cd-card.leaf {
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 6px;
+  .vol-value {
+    position: absolute; left: 0; right: 0; top: 130px;
+    text-align: center;
+    font: var(--t-val); color: var(--ink);
+    font-variant-numeric: tabular-nums;
   }
-  .cd-card.leaf .big-glyph { font-size: 22px; line-height: 1; }
-  .cd-card.leaf .value { font: 800 12px/1 "Inter", sans-serif; color: var(--ink); font-variant-numeric: tabular-nums; }
-  .cd-card.leaf .hint  { font: 700 9px/1.3 "Inter", sans-serif; color: var(--ink-soft); text-align: center; }
 
-  /* Read-only footer strip inside a card (Contacts) */
-  .card-foot {
-    position: absolute; left: var(--sp-2); right: var(--sp-2); bottom: 5px;
-    font: 700 10px/1.25 "Inter", sans-serif;
+  /* ── Contacts footer hint — bare text, NO box ──────────────────── */
+  .stage-hint {
+    position: absolute; left: 20px; top: 186px; width: 200px; height: 14px;
+    font: var(--t-sub); line-height: 14px;
     color: var(--ink-soft);
     text-align: center;
+    z-index: 5;
   }
 
-  /* doc styles */
+  /* ── About — bare label/value lines, no rows, no boxes ─────────── */
+  .about-batt {
+    position: absolute; left: 50%; top: 28px; transform: translateX(-50%);
+    width: 30px; height: 15px;
+    border: 2px solid var(--ink);           /* glyph, not chrome */
+    border-radius: 3px; padding: 2px; box-sizing: border-box;
+  }
+  .about-batt::after {
+    content: ""; position: absolute; right: -5px; top: 3.5px;
+    width: 3px; height: 6px; background: var(--ink); border-radius: 0 1px 1px 0;
+  }
+  .about-batt > i { display: block; width: 70%; height: 100%; background: var(--ink); }
+  .about-line { position: absolute; left: 0; right: 0; height: 16px; }
+  .about-line .al {
+    position: absolute; left: 24px;
+    font: var(--t-ctx); letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .about-line .av {
+    position: absolute; left: 130px;
+    font: var(--t-val); color: var(--ink);
+  }
+
+  /* ── doc styles (page shell) ────────────────────────────────────── */
   .specs {
     max-width: 1080px;
     background: #221b1d;
@@ -345,8 +292,8 @@
 </head>
 <body>
 
-<h1>YoyoPod — Setup Flow · Implementation Spec</h1>
-<p class="muted">Setup is the grown-up corner of the device — the one surface where denser, text-forward UI is acceptable. It still obeys the three-gesture contract on the single hardware button (<b>press</b> = advance focus · <b>double-press</b> = open / activate · <b>long-press ≥ 400 ms</b> = Home; see <code>mockup_input_model.html</code>). No touch, no positional taps — every screen below is fully traversable by cycling focus. Card surfaces inside Setup inherit a pale coral tint (mirror of Talk v4's pale-peri card): the user reads "I'm in Setup" without a label. This spec replaces and extends the shipped runtime's <code>Power</code> screen (see §11).</p>
+<h1>YoyoPod — Setup Flow · Implementation Spec <span style="color:#8a7c6c">· v2 wheel + flat</span></h1>
+<p class="muted">Setup is the grown-up corner of the device, re-presented on the system-wide pattern: <b>wheel navigation + fully flat chrome + neutral bezel</b>. One hardware button, three gestures (<b>press</b> = roll the wheel one step · <b>double-press</b> = open / activate · <b>long-press ≥ 400 ms</b> = Home; see <code>mockup_input_model.html</code>), plus the side PTT which Setup never remaps. Every roll speaks the newly focused label (the Speak-names accessibility feature, §6). Setup's accent is <code>c_coral</code>; the whole stage is tinted full-bleed <code>bg_stage_coral</code> — the user reads "I'm in Setup" from the surface itself, no card, no label. The wheel's normative spec lives in <code>mockup_listen.html §3</code>; the values used here are restated in §8. This spec replaces and extends the shipped runtime's <code>Power</code> screen (§11).</p>
 
 <div class="legend">
   <div class="chip-l"><div class="dot" style="background:var(--c-lime)"></div>Listen — lime</div>
@@ -356,13 +303,31 @@
 </div>
 
 <!-- ============================================================ -->
-<h2>1 · Setup root — six rows, scrollable</h2>
-<p>Depth 1, no tab strip. Six rows on the pale-coral card; the 170 px viewport shows four full rows (plus a clipped peek of the next — the peek <i>is</i> the scroll affordance, the coral nub confirms position). Press cycles rows top-to-bottom and wraps (<code>FocusPolicy::Wrap</code>); the list auto-scrolls to keep the focused row in view. Every row shows its current value in the trailing slot so a grown-up can audit the whole device state without entering a single sub-screen.</p>
+<h2>0 · What changed v1 → v2</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Area</th><th>v1 (card + rows)</th><th>v2 (wheel + flat)</th></tr></thead>
+    <tbody>
+      <tr><td>Menu presentation</td><td>Scrollable card of 28 px rows, 2 px ink borders, offset shadows, scroll nub</td><td>3-slot wheel: 176 × 96 tiles, focused middle tile = the only filled element; peeks at scale 0.7 / opacity 0.45 carry position</td></tr>
+      <tr><td>Trailing values</td><td><code>t_meta</code> right-aligned inside the row</td><td>Mont-12 <code>ink_soft</code> sub line under the tile name ("7", "Bunny", "Dark", …)</td></tr>
+      <tr><td>Volume meter</td><td>16 × 22 blocks with 2 px ink borders, radius 3</td><td>Same blocks, flat fills only, radius 4 — filled <code>c_coral</code>, empty <code>bg_cream_2</code>, zero borders</td></tr>
+      <tr><td>Depth wayfinding</td><td>Tab strip (SETUP / VOLUME) + tinted inner card</td><td>Context label at (10,26,130,14), Mont-12 uppercase, depth ≥ 2 only; stage tint is full-bleed</td></tr>
+      <tr><td>Chrome</td><td>Ink borders + hard shadows on rows, cards, tabs; deck dividers + top border</td><td>None anywhere. Radius 16 tiles / 10 plates; ink is text, glyphs and focus-ring only; fill + size carry focus</td></tr>
+      <tr><td>Deck focus</td><td>Full-slot color fill + dividers</td><td>Inset coral pill (6 px vert / 8 px horiz, radius 12), no dividers</td></tr>
+      <tr><td>Bezel</td><td>Orange gradient + glow shadows</td><td>Neutral <code>#221c1f</code>, no shadow; panel keeps a 1 px 6% white keyline</td></tr>
+      <tr><td>Tokens</td><td>New <code>c_coral_soft</code> + <code>c_coral_2</code></td><td>Both dropped — the stage tint is the existing <code>bg_stage_coral</code>; the focused tile is plain <code>c_coral</code></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>1 · Setup root — wheel of six</h2>
+<p>Depth 1 under Home — no context label; a bare "n/6" counter sits top-right at (200,26) instead, because six items live behind a three-slot window. Press rolls the wheel one step (180 ms, wraps 6 → 1, new label spoken); double-press opens the focused entry — except Speak names, which toggles in place (§6). Each tile is variant A-with-value: a 56 × 56 flat glyph plate top-center (radius 10, <code>bg_cream_2</code> or the item's own color — <b>never <code>c_coral</code></b>, which is reserved for the focus fill), the name at Mont-18, and the current value as a Mont-12 <code>ink_soft</code> sub line — a grown-up can audit the whole device state just by rolling once around.</p>
 
 <div class="row">
 
   <div class="stack">
-    <span class="label">Setup · root (Volume focused)</span>
+    <span class="label">Setup · root — Volume focused (1/6)</span>
     <div class="device"><div class="panel">
       <div class="statusbar">
         <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
@@ -370,15 +335,22 @@
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
       <div class="cd-stage">
-        <div class="cd-card no-tabs tint-setup clip">
-          <div class="scroll-nub" style="top:8px"></div>
-          <div class="cd-list jstart">
-            <div class="cd-row focus"><div class="lead" style="background:var(--c-coral)"><span class="g">🔊</span></div> Volume <span class="meta">7</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-bunny)"><span class="g">🐰</span></div> Companion <span class="meta">Bunny</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-peri)"><span class="g">👪</span></div> Contacts <span class="meta">4</span></div>
-            <div class="cd-row"><div class="lead" style="background:linear-gradient(90deg,var(--bg-cream) 50%,var(--dark-ink) 50%)"><span class="g">🌗</span></div> Theme <span class="meta">Dark</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-mint)"><span class="g">🗣︎</span></div> Speak names <span class="meta">On</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--bg-cream-2)"><span class="g" style="font:800 9px/1 Inter,sans-serif">i</span></div> About <span class="meta">70%</span></div>
+        <div class="counter">1/6</div>
+        <div class="wheel">
+          <div class="tile t1 peek">
+            <div class="plate" style="background:var(--bg-cream-2)"><span class="txt">i</span></div>
+            <div class="name">About</div>
+            <div class="sub">70%</div>
+          </div>
+          <div class="tile t2 focus">
+            <div class="plate" style="background:var(--bg-cream-2)">🔊</div>
+            <div class="name">Volume</div>
+            <div class="sub">7</div>
+          </div>
+          <div class="tile t3 peek">
+            <div class="plate" style="background:var(--c-bunny)">🐰</div>
+            <div class="name">Companion</div>
+            <div class="sub">Bunny</div>
           </div>
         </div>
       </div>
@@ -389,11 +361,11 @@
         <div class="slot setup focus"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Rows 1–4 in view + clipped peek of row 5. Nub at top of its track. Lead slots double as previews: Companion's slot is the active companion's body color; Theme's is a half-half swatch.</span>
+    <span class="muted" style="font-size:11px;max-width:240px">About peeks above (wrap), Companion below. The coral tile is the only filled shape on the stage. Companion's plate previews the active companion's body color.</span>
   </div>
 
   <div class="stack">
-    <span class="label">Setup · root scrolled (About focused)</span>
+    <span class="label">Setup · root — rolled to Speak names (5/6)</span>
     <div class="device"><div class="panel">
       <div class="statusbar">
         <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
@@ -401,15 +373,22 @@
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
       <div class="cd-stage">
-        <div class="cd-card no-tabs tint-setup clip">
-          <div class="scroll-nub" style="bottom:8px"></div>
-          <div class="cd-list jend">
-            <div class="cd-row"><div class="lead" style="background:var(--c-coral)"><span class="g">🔊</span></div> Volume <span class="meta">7</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-bunny)"><span class="g">🐰</span></div> Companion <span class="meta">Bunny</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-peri)"><span class="g">👪</span></div> Contacts <span class="meta">4</span></div>
-            <div class="cd-row"><div class="lead" style="background:linear-gradient(90deg,var(--bg-cream) 50%,var(--dark-ink) 50%)"><span class="g">🌗</span></div> Theme <span class="meta">Dark</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-mint)"><span class="g">🗣︎</span></div> Speak names <span class="meta">On</span></div>
-            <div class="cd-row focus"><div class="lead" style="background:var(--bg-cream-2)"><span class="g" style="font:800 9px/1 Inter,sans-serif">i</span></div> About <span class="meta">70%</span></div>
+        <div class="counter">5/6</div>
+        <div class="wheel">
+          <div class="tile t1 peek">
+            <div class="plate" style="background:var(--bg-cream-2)">🌗</div>
+            <div class="name">Theme</div>
+            <div class="sub">Dark</div>
+          </div>
+          <div class="tile t2 focus">
+            <div class="plate" style="background:var(--bg-cream-2)">🗣︎</div>
+            <div class="name">Speak names</div>
+            <div class="sub">On</div>
+          </div>
+          <div class="tile t3 peek">
+            <div class="plate" style="background:var(--bg-cream-2)"><span class="txt">i</span></div>
+            <div class="name">About</div>
+            <div class="sub">70%</div>
           </div>
         </div>
       </div>
@@ -420,38 +399,30 @@
         <div class="slot setup focus"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Scrolled to the end: rows 3–6 full + peek of row 2 above. Nub at bottom. Next press wraps focus back to Volume and the list snaps to the top.</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Four presses later. Double-press here flips the sub value in place ("On" ⇄ "Off", §6) — no sub-screen, the wheel never leaves.</span>
   </div>
 
 </div>
 
 <div class="specs">
-  <h3>Root rows — lead / label / trailing value</h3>
+  <h3>Root wheel — six entries</h3>
   <table class="spec">
-    <thead><tr><th>#</th><th>Row</th><th>Lead slot (14 × 14, 2 px ink)</th><th>Trailing value (t_meta, ink_soft)</th><th>Double-press</th></tr></thead>
+    <thead><tr><th>#</th><th>Entry</th><th>Plate (56 × 56, radius 10, flat)</th><th>Sub (Mont-12, ink_soft)</th><th>Double-press</th></tr></thead>
     <tbody>
-      <tr><td class="num">1</td><td>🔊 Volume</td>      <td><span class="sw" style="background:#F37767"></span>c_coral square, 🔊 glyph</td><td class="mono">"7" (current level 1–10)</td><td>push <code>SetupVolume</code></td></tr>
-      <tr><td class="num">2</td><td>🐰 Companion</td>   <td><span class="sw" style="background:#9FB89A"></span>active companion's body color (here c_bunny)</td><td class="mono">"Bunny"</td><td>push <code>SetupCompanion</code></td></tr>
-      <tr><td class="num">3</td><td>👪 Contacts</td>    <td><span class="sw" style="background:#A9A6E5"></span>c_peri square (Talk's color — cross-reference)</td><td class="mono">"4" (contact count)</td><td>push <code>SetupContacts</code></td></tr>
-      <tr><td class="num">4</td><td>🌗 Theme</td>       <td>half cream / half <code>#1B1B1F</code> split swatch</td><td class="mono">"Dark"</td><td>push <code>SetupTheme</code></td></tr>
-      <tr><td class="num">5</td><td>🗣 Speak names</td> <td><span class="sw" style="background:#6FDFB1"></span>c_mint square</td><td class="mono">"On" / "Off"</td><td><b>toggles in place</b> — no sub-screen (§6)</td></tr>
-      <tr><td class="num">6</td><td>ℹ️ About</td>       <td><span class="sw" style="background:#F7DBC2"></span>bg_cream_2 square, "i" glyph</td><td class="mono">"70%" (battery)</td><td>push <code>SetupAbout</code></td></tr>
+      <tr><td class="num">1</td><td>🔊 Volume</td>      <td><span class="sw" style="background:#F7DBC2"></span>bg_cream_2 (never coral — coral = focus fill)</td><td class="mono">"7" (current level 1–10)</td><td>push <code>SetupVolume</code></td></tr>
+      <tr><td class="num">2</td><td>🐰 Companion</td>   <td><span class="sw" style="background:#9FB89A"></span>active companion's body color (here Bunny)</td><td class="mono">"Bunny"</td><td>push <code>SetupCompanion</code></td></tr>
+      <tr><td class="num">3</td><td>👪 Contacts</td>    <td><span class="sw" style="background:#A9A6E5"></span>c_peri (Talk's color — cross-reference)</td><td class="mono">"4" (contact count)</td><td>push <code>SetupContacts</code></td></tr>
+      <tr><td class="num">4</td><td>🌗 Theme</td>       <td><span class="sw" style="background:#F7DBC2"></span>bg_cream_2</td><td class="mono">"Dark"</td><td>push <code>SetupTheme</code></td></tr>
+      <tr><td class="num">5</td><td>🗣 Speak names</td> <td><span class="sw" style="background:#F7DBC2"></span>bg_cream_2</td><td class="mono">"On" / "Off"</td><td><b>toggles in place</b> — no sub-screen (§6)</td></tr>
+      <tr><td class="num">6</td><td>ℹ️ About</td>       <td><span class="sw" style="background:#F7DBC2"></span>bg_cream_2, Mont-800 "i" glyph</td><td class="mono">"70%" (battery)</td><td>push <code>SetupAbout</code></td></tr>
     </tbody>
   </table>
-  <h3>New color tokens (2)</h3>
-  <table class="spec">
-    <thead><tr><th>Token</th><th>Hex</th><th>RGB</th><th>RGB565</th><th>Role</th></tr></thead>
-    <tbody>
-      <tr><td class="mono">c_coral_soft</td><td class="mono"><span class="sw" style="background:#FDE2D8"></span>#FDE2D8</td><td class="num">253,226,216</td><td class="num">0xFF1B</td><td>Setup inner-card background. Reuses <code>bg_stage_coral</code> — exactly how Talk v4's <code>c_peri_soft</code> reuses <code>bg_stage_peri</code>. No new hex ships if the stage-tint token already exists.</td></tr>
-      <tr><td class="mono">c_coral_2</td>   <td class="mono"><span class="sw" style="background:#F9BFB2"></span>#F9BFB2</td><td class="num">249,191,178</td><td class="num">0xFDF6</td><td>Focused-row fill on the tinted card. Lifted coral, same family — mirror of Talk's <code>c_peri_2</code>.</td></tr>
-    </tbody>
-  </table>
-  <p style="margin:0"><b>Scroll indicator</b> (any Setup list &gt; 4 rows): a <b>3 × 24 px coral nub</b>, radius 2, on the card's right inner edge (right inset 2 px). Track = card inner height; nub y = scroll-fraction × (track − 24). LVGL's default scrollbar is disabled (<code>LV_SCROLLBAR_MODE_OFF</code>) and this nub is drawn instead. It appears only while the list overflows — Theme (3 rows) and About (4 rows) never show it.</p>
+  <p style="margin:0"><b>Counter, not context label.</b> The root is depth 1, so it carries no context label; sub-wheels (depth 2) show one at (10,26,130,14) — "VOLUME", "COMPANION", "CONTACTS", "THEME", "ABOUT". None of the Setup wheels exceeds 6 items, so the counter-suffix form ("SETUP · 2/8") is never needed here; the root keeps its bare "n/6" top-right because six entries behind a three-slot window want a position cue. No scroll nub anywhere — the peeks + counter replaced it.</p>
 </div>
 
 <!-- ============================================================ -->
-<h2>2 · Volume — block meter, live</h2>
-<p>Depth 2, tab strip <code>SETUP / VOLUME</code>. A horizontal meter of ten 16 × 22 px blocks. <b>Press = +1 block, wrapping 10 → 1.</b> The change applies immediately — each press plays a short "boop" <i>at the new volume</i>, so the feedback is the sound itself; the blocks are just confirmation for the grown-up. Double-press confirms and pops back to the root (root's trailing value updates). Long-press goes Home — the change is still saved, because there was never an uncommitted state.</p>
+<h2>2 · Volume — flat block meter, live</h2>
+<p>Depth 2, context label <b>VOLUME</b>. A horizontal meter of ten 16 × 22 px flat blocks — filled = <code>c_coral</code>, empty = <code>bg_cream_2</code>, radius 4, zero borders. <b>Press = +1, wrapping 10 → 1.</b> The change applies immediately and each press plays a short "boop" <i>at the new volume</i> — the sound is the primary feedback, the blocks are confirmation for the grown-up. Double-press confirms &amp; pops to the root (the Volume tile's sub updates). Long-press goes Home — the change is already applied, there was never uncommitted state. Nothing here needs a focus ring: the meter is the whole screen and press acts on it directly.</p>
 
 <div class="row">
 
@@ -464,18 +435,12 @@
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
       <div class="cd-stage">
-        <div class="cd-tabs">
-          <div class="cd-tab ancestor">Setup</div>
-          <div class="cd-tab active">Volume</div>
+        <div class="ctx">Volume</div>
+        <div class="vol-glyph">🔊</div>
+        <div class="vol-meter">
+          <i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i></i><i></i><i></i>
         </div>
-        <div class="cd-card tint-setup leaf">
-          <div class="big-glyph">🔊</div>
-          <div class="value">7 / 10</div>
-          <div class="vol-meter">
-            <i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i></i><i></i><i></i>
-          </div>
-          <div class="hint">press = +1 · double-press = done</div>
-        </div>
+        <div class="vol-value">7 / 10</div>
       </div>
       <div class="deck">
         <div class="slot listen"><div class="glyph">🎧︎</div></div>
@@ -484,11 +449,19 @@
         <div class="slot setup focus"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">7 filled coral blocks, 3 empty (bg_cream_2). Each press: fill one more block + "boop" at the new level.</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Seven coral fills, three cream_2 empties — flat swap only, no relayout. At 10 the next press wraps to 1; the wrap boop plays at level 1 (quiet), which is itself the confirmation. A single button can only go up, so wrap is the way down.</span>
   </div>
 
+</div>
+
+<!-- ============================================================ -->
+<h2>3 · Companion — wheel of five</h2>
+<p>Depth 2, context label <b>COMPANION</b>. Five entries, one per companion (variant drawings in <code>mockup_companions.html</code>). The plate is a flat 56 px circle in the companion's body color — the wheel is a palette of who's available. The active one carries a "✓ current" sub. <b>Double-press selects</b>: emit <code>settings.companion_set</code>, pop the whole stack to Home, and the new companion waves — the payoff is seeing it, not a dialog. Double-press on the already-active entry takes the same path — idempotent, never an error.</p>
+
+<div class="row">
+
   <div class="stack">
-    <span class="label">SetupVolume · level 10 (next press wraps)</span>
+    <span class="label">SetupCompanion · Bunny focused + current</span>
     <div class="device"><div class="panel">
       <div class="statusbar">
         <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
@@ -496,17 +469,21 @@
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
       <div class="cd-stage">
-        <div class="cd-tabs">
-          <div class="cd-tab ancestor">Setup</div>
-          <div class="cd-tab active">Volume</div>
-        </div>
-        <div class="cd-card tint-setup leaf">
-          <div class="big-glyph">🔊</div>
-          <div class="value">10 / 10</div>
-          <div class="vol-meter">
-            <i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i><i class="fill"></i>
+        <div class="ctx">Companion</div>
+        <div class="wheel">
+          <div class="tile t1 peek">
+            <div class="plate circle" style="background:var(--c-cat)"></div>
+            <div class="name">Cat</div>
           </div>
-          <div class="hint">press = wrap to 1 · double-press = done</div>
+          <div class="tile t2 focus">
+            <div class="plate circle" style="background:var(--c-bunny)"></div>
+            <div class="name">Bunny</div>
+            <div class="sub">✓ current</div>
+          </div>
+          <div class="tile t3 peek">
+            <div class="plate circle" style="background:var(--c-robot)"></div>
+            <div class="name">Robot</div>
+          </div>
         </div>
       </div>
       <div class="deck">
@@ -516,34 +493,33 @@
         <div class="slot setup focus"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">At 10, the next press wraps to 1 — a single button can only go up, so wrap is the way down. The wrap boop plays at level 1 (quiet), which is itself the confirmation.</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Body-color circles: Blob lime · Owl #B5895D · Cat #FFD06A (= c_butter) · Bunny #9FB89A · Robot #DDE3E8. Wrap order Blob → Owl → Cat → Bunny → Robot.</span>
   </div>
 
 </div>
 
 <div class="specs">
-  <h3>Block meter geometry</h3>
   <table class="spec">
-    <thead><tr><th>Element</th><th>Value</th><th>Note</th></tr></thead>
+    <thead><tr><th>#</th><th>Companion</th><th>Plate (circle, radius 28, flat)</th><th>Sub</th></tr></thead>
     <tbody>
-      <tr><td>Block</td>       <td class="num">16 × 22, border 2 ink, radius 3</td><td>Filled = c_coral, empty = bg_cream_2. Style swap only on change — no relayout.</td></tr>
-      <tr><td>Block count / gap</td><td class="num">10 · gap 4 (sp_1)</td><td>Total meter = 10 × 16 + 9 × 4 = <b>196 × 22 px</b>. Card inner width is 204 → 4 px slack each side, centered.</td></tr>
-      <tr><td>Speaker glyph</td><td class="num">22 px, centered above meter</td><td>Static. Doubles as the screen's "icon"; no companion on this screen.</td></tr>
-      <tr><td>Value label</td>  <td class="mono">800 12 px Inter, tabular-nums</td><td>"7 / 10". Updates with the meter.</td></tr>
-      <tr><td>Hint line</td>    <td class="mono">700 9 px Inter, ink_soft</td><td>Grown-up corner: tiny text is allowed here, and Speak names reads it aloud on entry if enabled.</td></tr>
-      <tr><td>Boop</td>         <td class="num">~120 ms sine blip at new volume</td><td>Fires on every press including the wrap. The audible level IS the primary feedback; kids can't read "7 / 10".</td></tr>
+      <tr><td class="num">1</td><td>Blob</td> <td><span class="sw" style="background:#9DFC7C"></span>c_lime</td><td>"✓ current" when active</td></tr>
+      <tr><td class="num">2</td><td>Owl</td>  <td><span class="sw" style="background:#B5895D"></span>#B5895D</td><td>—</td></tr>
+      <tr><td class="num">3</td><td>Cat</td>  <td><span class="sw" style="background:#FFD06A"></span>#FFD06A (= c_butter)</td><td>—</td></tr>
+      <tr><td class="num">4</td><td>Bunny</td><td><span class="sw" style="background:#9FB89A"></span>#9FB89A</td><td>"✓ current" (in the render)</td></tr>
+      <tr><td class="num">5</td><td>Robot</td><td><span class="sw" style="background:#DDE3E8"></span>#DDE3E8</td><td>—</td></tr>
     </tbody>
   </table>
+  <p style="margin:0"><b>Selection behavior.</b> Double-press → <code>settings.companion_set</code> → pop to Home → wave/greet animation, then the normal breathing/blink loop. No confirmation step: the change is trivially reversible and seeing the new friend wave is the confirmation.</p>
 </div>
 
 <!-- ============================================================ -->
-<h2>3 · Companion — pick who lives on Home</h2>
-<p>Depth 2, tab strip <code>SETUP / COMPANION</code>. Five rows — one per companion (see <code>mockup_companions.html</code> for the full variant drawings). Each lead slot is the companion's body color, so the list is a palette of who's available. Trailing ✓ marks the active one. <b>Double-press selects</b>: the device pops all the way to Home, where the newly chosen companion waves — the payoff for the change is seeing it, not a confirmation dialog. Five rows overflow the 162 px tabbed viewport → scroll nub visible.</p>
+<h2>4 · Contacts — read-only wheel</h2>
+<p>Depth 2, context label <b>CONTACTS</b>. A read-only wheel of the roster with the same avatar colors as <code>mockup_talk.html</code> — the sub line names the color, doubling as a color-legend for the grown-up. This screen exists so Talk's empty-state pointer lands somewhere honest. <b>Double-press is a no-op</b>: the focused tile plays a gentle two-frame shake (±2 px, 120 ms) and the device speaks the footer hint aloud — <i>"Grown-ups add contacts in the companion app"</i>. The visible hint is the short form (Mont-12 fits 200 px); the spoken form is the full sentence.</p>
 
 <div class="row">
 
   <div class="stack">
-    <span class="label">SetupCompanion · Bunny active + focused</span>
+    <span class="label">SetupContacts · Mama focused</span>
     <div class="device"><div class="panel">
       <div class="statusbar">
         <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
@@ -551,20 +527,23 @@
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
       <div class="cd-stage">
-        <div class="cd-tabs">
-          <div class="cd-tab ancestor">Setup</div>
-          <div class="cd-tab active">Companion</div>
-        </div>
-        <div class="cd-card tint-setup clip">
-          <div class="scroll-nub" style="top:8px"></div>
-          <div class="cd-list jstart">
-            <div class="cd-row"><div class="lead" style="background:var(--c-lime)"></div> Blob</div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-owl)"></div> Owl</div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-cat)"></div> Cat</div>
-            <div class="cd-row focus"><div class="lead" style="background:var(--c-bunny)"></div> Bunny <span class="check">✓</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-robot)"></div> Robot</div>
+        <div class="ctx">Contacts</div>
+        <div class="wheel">
+          <div class="tile t1 peek">
+            <div class="plate circle" style="background:var(--c-butter)"><span class="txt">U</span></div>
+            <div class="name">Uncle</div>
+          </div>
+          <div class="tile t2 focus">
+            <div class="plate circle" style="background:var(--c-mustard)"><span class="txt">M</span></div>
+            <div class="name">Mama</div>
+            <div class="sub">mustard</div>
+          </div>
+          <div class="tile t3 peek">
+            <div class="plate circle" style="background:var(--c-lime)"><span class="txt">P</span></div>
+            <div class="name">Papa</div>
           </div>
         </div>
+        <div class="stage-hint">Added in the companion app</div>
       </div>
       <div class="deck">
         <div class="slot listen"><div class="glyph">🎧︎</div></div>
@@ -573,23 +552,32 @@
         <div class="slot setup focus"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Body-color swatches: Blob lime · Owl #B5895D · Cat #FFD06A (= c_butter) · Bunny #9FB89A · Robot #DDE3E8. Row 5 peeks below the fold; nub confirms there's more.</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Mama mustard · Papa lime · Grandma coral · Uncle butter, initials in ink. Footer hint = bare Mont-12 text at (20,208,200,14), no box, sitting over the dimmed bottom peek.</span>
   </div>
 
 </div>
 
 <div class="specs">
-  <p style="margin:0"><b>Selection behavior.</b> Double-press on a row → emit <code>settings.companion_set</code> → pop the whole stack to Home → the new companion plays its wave/greet animation (same breathing/blink loop afterwards; variants per <code>mockup_companions.html</code>). Double-press on the already-active row = same path (pop to Home, wave) — idempotent, never an error. No confirmation step: the change is trivially reversible and seeing the new friend wave is the confirmation.</p>
+  <table class="spec">
+    <thead><tr><th>#</th><th>Contact</th><th>Avatar (circle, flat, ink initial)</th><th>Sub (color name or "—")</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td>Mama</td>   <td><span class="sw" style="background:#E8A93C"></span>c_mustard · M</td><td class="mono">"mustard"</td></tr>
+      <tr><td class="num">2</td><td>Papa</td>   <td><span class="sw" style="background:#9DFC7C"></span>c_lime · P</td><td class="mono">"lime"</td></tr>
+      <tr><td class="num">3</td><td>Grandma</td><td><span class="sw" style="background:#F37767"></span>c_coral · G</td><td class="mono">"coral"</td></tr>
+      <tr><td class="num">4</td><td>Uncle</td>  <td><span class="sw" style="background:#FFD06A"></span>c_butter · U</td><td class="mono">"butter"</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0"><b>Known collision, resolved.</b> Grandma's avatar is <code>c_coral</code> — invisible against the coral focus fill. When a coral avatar lands on the focused tile, the plate swaps to <code>bg_cream</code> and the initial renders coral (one style rule, no new token). <b>Why read-only on-device:</b> adding a contact means typing a name and pairing an account — impossible on one button and not something a 5-year-old should do. The roster is managed in the companion app; this screen only proves it exists and says where it's edited.</p>
 </div>
 
 <!-- ============================================================ -->
-<h2>4 · Contacts — read-only roster</h2>
-<p>Depth 2, tab strip <code>SETUP / CONTACTS</code>. A read-only list of the contacts with their assigned avatar colors — identical avatars to <code>mockup_talk.html</code>. This screen exists so Talk's empty-state pointer ("Ask a grown-up to add some in Setup") lands somewhere honest: the grown-up arrives here, sees the roster, and reads where editing actually happens. <b>Double-press on a contact is a no-op</b> — the row plays a gentle two-frame shake (below) instead of doing something surprising like starting a call from inside Setup.</p>
+<h2>5 · Theme — wheel of three</h2>
+<p>Depth 2, context label <b>THEME</b>. Light, Dark, and Auto (follows bedtime hours — dark during the configured wind-down window). The plates are literal surface swatches as flat 56 px circles: cream, near-black <code>#1B1B1F</code> (a content swatch of the dark surface — not chrome ink), and a half-half split. "✓ current" sub on the active choice. Double-press applies instantly — the whole panel restyles under your thumb, that's the confirmation — the ✓ moves and the wheel stays put so the grown-up can compare and switch back.</p>
 
 <div class="row">
 
   <div class="stack">
-    <span class="label">SetupContacts · idle (Mama focused)</span>
+    <span class="label">SetupTheme · Dark focused + current</span>
     <div class="device"><div class="panel">
       <div class="statusbar">
         <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
@@ -597,18 +585,22 @@
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
       <div class="cd-stage">
-        <div class="cd-tabs">
-          <div class="cd-tab ancestor">Setup</div>
-          <div class="cd-tab active">Contacts</div>
-        </div>
-        <div class="cd-card tint-setup">
-          <div class="cd-list jstart" style="height:calc(100% - 16px)">
-            <div class="cd-row focus"><div class="lead avatar" style="background:var(--c-mustard)">M</div> Mama</div>
-            <div class="cd-row"><div class="lead avatar" style="background:var(--c-mint)">P</div> Papa</div>
-            <div class="cd-row"><div class="lead avatar" style="background:var(--c-coral)">G</div> Grandma</div>
-            <div class="cd-row"><div class="lead avatar" style="background:var(--c-butter)">U</div> Uncle</div>
+        <div class="ctx">Theme</div>
+        <div class="wheel">
+          <div class="tile t1 peek">
+            <div class="plate circle" style="background:var(--bg-cream)"></div>
+            <div class="name">Light</div>
           </div>
-          <div class="card-foot">Grown-ups add contacts in the companion app</div>
+          <div class="tile t2 focus">
+            <div class="plate circle" style="background:var(--dark-ink)"></div>
+            <div class="name">Dark</div>
+            <div class="sub">✓ current</div>
+          </div>
+          <div class="tile t3 peek">
+            <div class="plate circle" style="background:linear-gradient(90deg,var(--bg-cream) 50%,var(--dark-ink) 50%)"></div>
+            <div class="name">Auto</div>
+            <div class="sub">bedtime</div>
+          </div>
         </div>
       </div>
       <div class="deck">
@@ -618,197 +610,22 @@
         <div class="slot setup focus"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Same avatars and colors as the Talk root (Mama mustard, Papa mint, Grandma coral, Uncle butter). Footer strip: 10 px ink_soft, the only sentence on the screen.</span>
-  </div>
-
-  <div class="stack">
-    <span class="label">SetupContacts · shake frame 1 (t = 0 ms)</span>
-    <div class="device"><div class="panel">
-      <div class="statusbar">
-        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
-        <span class="time">6:16</span>
-        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
-      </div>
-      <div class="cd-stage">
-        <div class="cd-tabs">
-          <div class="cd-tab ancestor">Setup</div>
-          <div class="cd-tab active">Contacts</div>
-        </div>
-        <div class="cd-card tint-setup">
-          <div class="cd-list jstart" style="height:calc(100% - 16px)">
-            <div class="cd-row focus" style="transform:translateX(-2px)"><div class="lead avatar" style="background:var(--c-mustard)">M</div> Mama</div>
-            <div class="cd-row"><div class="lead avatar" style="background:var(--c-mint)">P</div> Papa</div>
-            <div class="cd-row"><div class="lead avatar" style="background:var(--c-coral)">G</div> Grandma</div>
-            <div class="cd-row"><div class="lead avatar" style="background:var(--c-butter)">U</div> Uncle</div>
-          </div>
-          <div class="card-foot">Grown-ups add contacts in the companion app</div>
-        </div>
-      </div>
-      <div class="deck">
-        <div class="slot listen"><div class="glyph">🎧︎</div></div>
-        <div class="slot talk"><div class="glyph">💬︎</div></div>
-        <div class="slot ask"><div class="glyph">?</div></div>
-        <div class="slot setup focus"><div class="glyph">⚙</div></div>
-      </div>
-    </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Double-press → focused row nudges 2 px left…</span>
-  </div>
-
-  <div class="stack">
-    <span class="label">SetupContacts · shake frame 2 (t = 60 ms)</span>
-    <div class="device"><div class="panel">
-      <div class="statusbar">
-        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
-        <span class="time">6:16</span>
-        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
-      </div>
-      <div class="cd-stage">
-        <div class="cd-tabs">
-          <div class="cd-tab ancestor">Setup</div>
-          <div class="cd-tab active">Contacts</div>
-        </div>
-        <div class="cd-card tint-setup">
-          <div class="cd-list jstart" style="height:calc(100% - 16px)">
-            <div class="cd-row focus" style="transform:translateX(2px)"><div class="lead avatar" style="background:var(--c-mustard)">M</div> Mama</div>
-            <div class="cd-row"><div class="lead avatar" style="background:var(--c-mint)">P</div> Papa</div>
-            <div class="cd-row"><div class="lead avatar" style="background:var(--c-coral)">G</div> Grandma</div>
-            <div class="cd-row"><div class="lead avatar" style="background:var(--c-butter)">U</div> Uncle</div>
-          </div>
-          <div class="card-foot">Grown-ups add contacts in the companion app</div>
-        </div>
-      </div>
-      <div class="deck">
-        <div class="slot listen"><div class="glyph">🎧︎</div></div>
-        <div class="slot talk"><div class="glyph">💬︎</div></div>
-        <div class="slot ask"><div class="glyph">?</div></div>
-        <div class="slot setup focus"><div class="glyph">⚙</div></div>
-      </div>
-    </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">…then 2 px right, then settles (120 ms total). "This isn't a button" said without a single word.</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Swatch circles: cream / #1B1B1F / 50-50 split (two half-fills in LVGL — no gradient needed). Auto's sub hints at what drives it.</span>
   </div>
 
 </div>
 
 <div class="specs">
-  <p style="margin:0"><b>Why read-only on-device.</b> Adding a contact means typing a name and pairing an account — impossible on a one-button device and not something a 5-year-old should do anyway. The roster is managed in the companion app; this screen only proves to the grown-up (and to Talk's empty-state pointer) that the roster exists and where it's edited. The footer strip is the single densest sentence in the whole UI, and it lives here deliberately — Setup is the one surface where that's acceptable.</p>
-</div>
-
-<!-- ============================================================ -->
-<h2>5 · Theme — light / dark / auto</h2>
-<p>Depth 2, tab strip <code>SETUP / THEME</code>. Three rows: Light, Dark, and Auto (follows bedtime hours — dark during the configured wind-down window). Lead slots are literal surface swatches: cream, near-black <code>#1B1B1F</code>, and a half-half split. Trailing ✓ on the active choice. Double-press applies instantly (the whole panel restyles under your thumb — that's the confirmation) and the ✓ moves; the screen stays put so the grown-up can compare and switch back.</p>
-
-<div class="row">
-
-  <div class="stack">
-    <span class="label">SetupTheme · Dark active, Auto focused</span>
-    <div class="device"><div class="panel">
-      <div class="statusbar">
-        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
-        <span class="time">6:16</span>
-        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
-      </div>
-      <div class="cd-stage">
-        <div class="cd-tabs">
-          <div class="cd-tab ancestor">Setup</div>
-          <div class="cd-tab active">Theme</div>
-        </div>
-        <div class="cd-card tint-setup">
-          <div class="cd-list">
-            <div class="cd-row"><div class="lead" style="background:var(--bg-cream)"><span class="g">☀︎</span></div> Light</div>
-            <div class="cd-row"><div class="lead" style="background:var(--dark-ink)"><span class="g" style="color:#F2E8DA">☾</span></div> Dark <span class="check">✓</span></div>
-            <div class="cd-row focus"><div class="lead" style="background:linear-gradient(90deg,var(--bg-cream) 50%,var(--dark-ink) 50%)"><span class="g">◐</span></div> Auto <span class="meta">bedtime</span></div>
-          </div>
-        </div>
-      </div>
-      <div class="deck">
-        <div class="slot listen"><div class="glyph">🎧︎</div></div>
-        <div class="slot talk"><div class="glyph">💬︎</div></div>
-        <div class="slot ask"><div class="glyph">?</div></div>
-        <div class="slot setup focus"><div class="glyph">⚙</div></div>
-      </div>
-    </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Three rows, centered — no scroll nub. Auto's trailing meta reads "bedtime" as a hint at what drives it.</span>
-  </div>
-
-</div>
-
-<div class="specs">
-  <p style="margin:0"><b>Theme = token swap only.</b> Per the dark Listen spec (<code>mockup_listen_dark.html</code>): geometry, spacing, type, animation, NavStack, and input contract are byte-identical between themes — only surface and ink tokens swap (plus the dark-only <code>ink_on_accent</code> and pure-black <code>shadow_ink</code>). Applying a theme is a style-refresh pass, no relayout, target ≤ 150 ms. <b>Auto</b> switches at the bedtime window edges configured in the companion app; the transition animates the same token swap.</p>
+  <p style="margin:0"><b>Theme = token swap only.</b> Per the dark Listen spec: geometry, spacing, type, animation, NavStack and input contract are byte-identical between themes — only surface and ink tokens swap. Applying a theme is a style-refresh pass, no relayout, target ≤ 150 ms. <b>Auto</b> switches at the bedtime-window edges configured in the companion app; the transition animates the same token swap.</p>
 </div>
 
 <!-- ============================================================ -->
 <h2>6 · Speak names — in-place toggle, no sub-screen</h2>
-<p><b>Decision: this row toggles in place.</b> A whole sub-screen for one boolean is a navigation tax; the root row already shows the value. Double-press on the row flips the trailing value with a 150 ms tick animation, and the device says <i>"Speak names on"</i> / <i>"Speak names off"</i> aloud — which is also a live demo of exactly what the setting does. This is the pre-reader accessibility feature: when On, every focus change speaks the focused item's name (rows, deck slots, playlist titles, contact names).</p>
-
-<div class="row">
-
-  <div class="stack">
-    <span class="label">Setup · Speak names focused · On</span>
-    <div class="device"><div class="panel">
-      <div class="statusbar">
-        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
-        <span class="time">6:16</span>
-        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
-      </div>
-      <div class="cd-stage">
-        <div class="cd-card no-tabs tint-setup clip">
-          <div class="scroll-nub" style="bottom:36px"></div>
-          <div class="cd-list jend">
-            <div class="cd-row"><div class="lead" style="background:var(--c-coral)"><span class="g">🔊</span></div> Volume <span class="meta">7</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-bunny)"><span class="g">🐰</span></div> Companion <span class="meta">Bunny</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-peri)"><span class="g">👪</span></div> Contacts <span class="meta">4</span></div>
-            <div class="cd-row"><div class="lead" style="background:linear-gradient(90deg,var(--bg-cream) 50%,var(--dark-ink) 50%)"><span class="g">🌗</span></div> Theme <span class="meta">Dark</span></div>
-            <div class="cd-row focus"><div class="lead" style="background:var(--c-mint)"><span class="g">🗣︎</span></div> Speak names <span class="meta" style="color:var(--ink)">On</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--bg-cream-2)"><span class="g" style="font:800 9px/1 Inter,sans-serif">i</span></div> About <span class="meta">70%</span></div>
-          </div>
-        </div>
-      </div>
-      <div class="deck">
-        <div class="slot listen"><div class="glyph">🎧︎</div></div>
-        <div class="slot talk"><div class="glyph">💬︎</div></div>
-        <div class="slot ask"><div class="glyph">?</div></div>
-        <div class="slot setup focus"><div class="glyph">⚙</div></div>
-      </div>
-    </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Still the root screen — no push. Value emphasized (ink) while its row holds focus.</span>
-  </div>
-
-  <div class="stack">
-    <span class="label">Setup · after double-press · Off</span>
-    <div class="device"><div class="panel">
-      <div class="statusbar">
-        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
-        <span class="time">6:16</span>
-        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
-      </div>
-      <div class="cd-stage">
-        <div class="cd-card no-tabs tint-setup clip">
-          <div class="scroll-nub" style="bottom:36px"></div>
-          <div class="cd-list jend">
-            <div class="cd-row"><div class="lead" style="background:var(--c-coral)"><span class="g">🔊</span></div> Volume <span class="meta">7</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-bunny)"><span class="g">🐰</span></div> Companion <span class="meta">Bunny</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--c-peri)"><span class="g">👪</span></div> Contacts <span class="meta">4</span></div>
-            <div class="cd-row"><div class="lead" style="background:linear-gradient(90deg,var(--bg-cream) 50%,var(--dark-ink) 50%)"><span class="g">🌗</span></div> Theme <span class="meta">Dark</span></div>
-            <div class="cd-row focus"><div class="lead" style="background:var(--c-mint)"><span class="g">🗣︎</span></div> Speak names <span class="meta" style="color:var(--ink)">Off</span></div>
-            <div class="cd-row"><div class="lead" style="background:var(--bg-cream-2)"><span class="g" style="font:800 9px/1 Inter,sans-serif">i</span></div> About <span class="meta">70%</span></div>
-          </div>
-        </div>
-      </div>
-      <div class="deck">
-        <div class="slot listen"><div class="glyph">🎧︎</div></div>
-        <div class="slot talk"><div class="glyph">💬︎</div></div>
-        <div class="slot ask"><div class="glyph">?</div></div>
-        <div class="slot setup focus"><div class="glyph">⚙</div></div>
-      </div>
-    </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Value flips with a 150 ms tick (old value slides up + fades, new slides in). Device says "Speak names off" — the last thing it says until re-enabled.</span>
-  </div>
-
-</div>
+<p><b>Decision (carried from v1): this entry toggles in place.</b> A whole sub-screen for one boolean is a navigation tax; the root tile already shows the value. Double-press on the focused Speak-names tile flips the sub line with a 150 ms tick — the old value slides up 6 px and fades, the new one slides in from below — and the device says <i>"Speak names on"</i> / <i>"Speak names off"</i> aloud, which is also a live demo of exactly what the setting does. The wheel never leaves the root; no route exists for this entry (§11). This is the pre-reader accessibility feature: when On, every wheel roll and deck focus change speaks the focused item's name (tiles, deck slots, playlist titles, contact names). Render: see §1, right frame — the "5/6" state is the toggle's home. Turning it Off is the last thing the device says until it's re-enabled.</p>
 
 <!-- ============================================================ -->
-<h2>7 · About — the old Power screen, absorbed</h2>
-<p>Depth 2, tab strip <code>SETUP / ABOUT</code>. A static card of four read-only rows, 10–11 px ink on cream — this absorbs everything the shipped runtime's <code>Power</code> screen displayed (battery, charge state) and adds firmware, network, and device name. Press cycles rows (so Speak names can read each aloud); double-press is a no-op (same gentle shake as Contacts); long-press goes Home.</p>
+<h2>7 · About — flat static page (the old Power screen, absorbed)</h2>
+<p>Depth 2, context label <b>ABOUT</b>. No wheel, no rows, no boxes — a battery glyph up top and bare, aligned label/value text lines on the coral-tinted stage (labels x 24, values x 130, y from 60 step 24). This absorbs everything the shipped runtime's <code>Power</code> screen displayed (battery, charge state) and adds firmware, network and device name. Press cycles a spoken read-through of the lines (no visual focus — nothing here is actionable, so nothing earns a focus ring); double-press is a no-op with the same gentle shake as Contacts; long-press goes Home.</p>
 
 <div class="row">
 
@@ -821,18 +638,13 @@
         <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
       </div>
       <div class="cd-stage">
-        <div class="cd-tabs">
-          <div class="cd-tab ancestor">Setup</div>
-          <div class="cd-tab active">About</div>
-        </div>
-        <div class="cd-card tint-setup">
-          <div class="cd-list">
-            <div class="cd-row focus" style="font:600 11px/1 Inter,sans-serif"><div class="lead" style="background:var(--bg-cream);border-radius:2px;width:18px;height:10px;position:relative"><i style="display:block;width:70%;height:100%;background:var(--ink)"></i></div> Battery <span class="meta">70% · charging</span></div>
-            <div class="cd-row" style="font:600 11px/1 Inter,sans-serif"><div class="lead" style="background:var(--bg-cream-2)"><span class="g">⚙</span></div> Firmware <span class="meta">yoyopod 0.9.x</span></div>
-            <div class="cd-row" style="font:600 11px/1 Inter,sans-serif"><div class="lead" style="background:var(--bg-cream-2)"><span class="g">📶</span></div> Network <span class="meta">HomeNest Wi-Fi</span></div>
-            <div class="cd-row" style="font:600 11px/1 Inter,sans-serif"><div class="lead" style="background:var(--bg-cream-2)"><span class="g">🏷︎</span></div> Device <span class="meta">Yoyo-042</span></div>
-          </div>
-        </div>
+        <div class="ctx">About</div>
+        <div class="about-batt"><i></i></div>
+        <div class="about-line" style="top:60px"><span class="al">Battery</span><span class="av">70%</span></div>
+        <div class="about-line" style="top:84px"><span class="al">Charge</span><span class="av">charging</span></div>
+        <div class="about-line" style="top:108px"><span class="al">Firmware</span><span class="av">yoyopod 0.9.x</span></div>
+        <div class="about-line" style="top:132px"><span class="al">Network</span><span class="av">HomeNest Wi-Fi</span></div>
+        <div class="about-line" style="top:156px"><span class="al">Device</span><span class="av">Yoyo-042</span></div>
       </div>
       <div class="deck">
         <div class="slot listen"><div class="glyph">🎧︎</div></div>
@@ -841,80 +653,117 @@
         <div class="slot setup focus"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Battery lead reuses the statusbar battery glyph at 18 × 10. Network shows the Wi-Fi name, or "offline" when unconnected. Four rows — no scroll nub.</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Battery glyph 30 × 15 top-center (scaled statusbar glyph — ink as glyph, allowed). Five lines: label Mont-12 uppercase ink_soft, value Mont-14 ink. Network shows the Wi-Fi name, or "offline".</span>
   </div>
 
 </div>
 
 <div class="specs">
-  <p style="margin:0"><b>Data sources.</b> Battery % + charge state come from the <code>Power</code> runtime-snapshot domain (same feed the statusbar uses); network name from the <code>Network</code> domain; firmware + device name are static strings from the device config. This screen subscribes to both domains so values stay live while open — the old <code>dirty_region_for(Power, Power)</code> full-redraw rule migrates here (§11).</p>
+  <p style="margin:0"><b>Data sources.</b> Battery % + charge state come from the <code>Power</code> runtime-snapshot domain (same feed as the statusbar); network name from the <code>Network</code> domain; firmware + device name are static config strings. The screen subscribes to both domains so values stay live while open — the old <code>dirty_region_for(Power, Power)</code> full-redraw rule migrates here (§11).</p>
 </div>
 
 <!-- ============================================================ -->
-<h2>8 · Geometry — Setup additions</h2>
+<h2>8 · Geometry — Setup values</h2>
 <div class="specs">
-  <p style="margin-top:0">Everything not listed here is byte-identical to the Listen spec's dimension tables (statusbar 22, stage 206, deck 52, row 28, lead 14 × 14, tab 18/14, borders 2 ink, shadows 2,2 / 3,3). Only the Setup-specific pieces follow.</p>
+  <p style="margin-top:0">Frame: status bar y 0–22 (cream) · stage y 22–228 (full-bleed <code>bg_stage_coral</code>) · deck y 228–280 (cream, no dividers). Wheel values restate the normative spec in <code>mockup_listen.html §3</code>. All rects below are <b>stage-relative</b> px (panel y = stage y + 22) unless marked panel.</p>
   <table class="spec">
-    <thead><tr><th>Element</th><th>Width</th><th>Height</th><th>Position</th><th>Notes</th></tr></thead>
+    <thead><tr><th>Element</th><th>Value</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr class="grp"><td colspan="5">Cards</td></tr>
-      <tr><td>Card (Setup root, no tabs)</td><td class="num">224</td><td class="num">190</td><td class="mono">stage, inset sp_2</td><td>Viewport (inner) = 204 × 170 after border + padding. bg = c_coral_soft.</td></tr>
-      <tr><td>Card (depth 2, tabbed)</td>    <td class="num">224</td><td class="num">182</td><td class="mono">top 16, inset sp_2</td><td>Viewport = 204 × 162. Top-left radius 0 (tab joins), others 10.</td></tr>
-      <tr class="grp"><td colspan="5">Lists &amp; scroll</td></tr>
-      <tr><td>Root list content</td>  <td class="num">204</td><td class="num">208</td><td class="mono">6 × 28 + 5 × 8</td><td>Overflows 170 viewport by 38 px → 4 full rows + peek. justify flex-start; auto-scroll keeps focus visible.</td></tr>
-      <tr><td>Companion list content</td><td class="num">204</td><td class="num">172</td><td class="mono">5 × 28 + 4 × 8</td><td>Overflows 162 viewport by 10 px → nub shows, row 5 peeks 18 px.</td></tr>
-      <tr><td>Scroll nub</td>        <td class="num">3</td> <td class="num">24</td><td class="mono">right inset 2, radius 2</td><td>c_coral. y = scrollFraction × (viewportH − 24). Hidden when content fits (Theme, About, Contacts).</td></tr>
-      <tr class="grp"><td colspan="5">Volume leaf</td></tr>
-      <tr><td>Meter block</td>       <td class="num">16</td><td class="num">22</td><td class="mono">flex row, gap 4</td><td>Border 2 ink, radius 3. fill = c_coral / empty = bg_cream_2.</td></tr>
-      <tr><td>Meter total</td>       <td class="num">196</td><td class="num">22</td><td class="mono">centered in card</td><td>10 blocks + 9 gaps; 4 px slack each side of the 204 viewport.</td></tr>
-      <tr><td>Speaker glyph</td>     <td colspan="2" class="num">22 px text</td><td class="mono">above meter</td><td>Column layout: glyph · value · meter · hint, gap 6.</td></tr>
-      <tr class="grp"><td colspan="5">Row details</td></tr>
-      <tr><td>Trailing value</td>    <td>auto</td><td class="num">10 (text)</td><td class="mono">margin-left auto</td><td>t_meta, ink_soft (ink while its row is focused, Speak-names row only).</td></tr>
-      <tr><td>Check ✓</td>           <td>auto</td><td class="num">11 (text)</td><td class="mono">margin-left auto</td><td>800 11 px Inter, ink. Companion + Theme active row.</td></tr>
-      <tr><td>Theme swatches</td>    <td class="num">14</td><td class="num">14</td><td class="mono">lead slot</td><td>cream / #1B1B1F / 50-50 horizontal split (two fills, no gradient needed in LVGL).</td></tr>
-      <tr><td>Contacts footer strip</td><td class="num">204</td><td class="num">~13</td><td class="mono">bottom inset 5</td><td>700 10 px Inter, ink_soft, centered. List height shrinks by 16 px to make room.</td></tr>
-      <tr><td>About rows</td>        <td>fills</td><td class="num">28</td><td>—</td><td>Label 600 11 px ink · value t_meta ink_soft. Battery lead = 18 × 10 battery glyph.</td></tr>
-      <tr class="grp"><td colspan="5">Animation</td></tr>
-      <tr><td>No-op shake</td><td colspan="2" class="num">±2 px translate-x</td><td class="num">2 frames · 120 ms total</td><td>−2 px at t=0, +2 px at t=60, settle at 120. ease-out. Contacts + About double-press.</td></tr>
-      <tr><td>Toggle tick</td><td colspan="2" class="num">value swap</td><td class="num">150 ms</td><td>Old value slides up 6 px + fades; new slides in from below. Speak-names row.</td></tr>
-      <tr><td>Theme swap</td> <td colspan="2" class="num">full-panel token swap</td><td class="num">≤ 150 ms</td><td>Style refresh only, no relayout (per dark Listen spec).</td></tr>
+      <tr class="grp"><td colspan="3">Wheel (all Setup wheels)</td></tr>
+      <tr><td>Slot rect</td>        <td class="num">(32, −3 / 77 / 157, 176, 96)</td><td>3 slots, step 80; centers y 45 / 125 / 205. Top slot clips 3 px under the statusbar, bottom clips at the deck — that's the peek language.</td></tr>
+      <tr><td>Focused tile (middle)</td><td class="mono">fill c_coral, radius 16</td><td>NO border, NO shadow — the only filled tile on the stage. Name/sub in ink / ink_soft on coral.</td></tr>
+      <tr><td>Peek tiles</td>       <td class="mono">scale(0.7) · opacity 0.45</td><td>No chrome at all — bare content, dimmed and shrunk around slot center.</td></tr>
+      <tr><td>Roll</td>             <td class="num">180 ms, one step</td><td>Wraps; the newly focused label is spoken (Speak names On).</td></tr>
+      <tr><td>Plate</td>            <td class="num">56 × 56, top-center in tile</td><td>Radius 10 (root, square) / 28 (circle: Companion, Contacts, Theme). Flat fill; never c_coral. Glyph ≈ 30 px, initials Mont-800 22 ink.</td></tr>
+      <tr><td>Name / sub</td>       <td class="mono">Mont-18 800 ink · Mont-12 700 ink_soft</td><td>Column: plate · name · sub, gap 3 — 92 px used of the 96 px tile.</td></tr>
+      <tr><td>Context label</td>    <td class="num">panel (10, 26, 130, 14)</td><td>Mont-12 uppercase ink_soft, letter-spacing 0.08em. Depth ≥ 2 only. Suffix counter only past 6 items (never in Setup).</td></tr>
+      <tr><td>Root counter</td>     <td class="num">panel (200, 26, 30, 14)</td><td>Mont-12 ink_soft, right-aligned, "n/6". Root only.</td></tr>
+      <tr class="grp"><td colspan="3">Volume leaf</td></tr>
+      <tr><td>Meter block</td>      <td class="num">16 × 22, radius 4, gap 4</td><td>Filled c_coral / empty bg_cream_2. NO borders. Fill change = style swap, no relayout.</td></tr>
+      <tr><td>Meter rect</td>       <td class="num">(22, 96, 196, 22)</td><td>10 × 16 + 9 × 4 = 196, centered in the 240 stage width.</td></tr>
+      <tr><td>Speaker glyph</td>    <td class="num">30 px text, centered, y 46</td><td>Static — the screen's icon.</td></tr>
+      <tr><td>Value label</td>      <td class="mono">Mont-14 600 ink, centered, y 130</td><td>"7 / 10", tabular-nums.</td></tr>
+      <tr><td>Boop</td>             <td class="num">~120 ms sine blip at new volume</td><td>Fires on every press incl. the wrap. The audible level IS the feedback; kids can't read "7 / 10".</td></tr>
+      <tr class="grp"><td colspan="3">Contacts / About</td></tr>
+      <tr><td>Footer hint</td>      <td class="num">panel (20, 208, 200, 14)</td><td>Mont-12 700 ink_soft, centered, NO box. Visible short form; full sentence spoken on the no-op double-press.</td></tr>
+      <tr><td>About battery glyph</td><td class="num">(105, 28, 30, 15)</td><td>Scaled statusbar battery — 2 px ink outline + fill + nub (glyph, not chrome).</td></tr>
+      <tr><td>About labels</td>     <td class="num">(24, 60 + 24·i, 100, 14) · i = 0…4</td><td>Mont-12 uppercase ink_soft.</td></tr>
+      <tr><td>About values</td>     <td class="num">(130, 60 + 24·i, 90, 16)</td><td>Mont-14 600 ink.</td></tr>
+      <tr class="grp"><td colspan="3">Deck</td></tr>
+      <tr><td>Slots</td>            <td class="num">4 × (60 × 52)</td><td>No dividers, no top border. Glyph 30 px (Listen 24), ink_300 unfocused / ink focused.</td></tr>
+      <tr><td>Focus pill</td>       <td class="num">inset 6 vert / 8 horiz → 44 × 40, radius 12</td><td>Section color (c_coral on Setup). The pill is the only deck fill.</td></tr>
+      <tr class="grp"><td colspan="3">Animation</td></tr>
+      <tr><td>Wheel roll</td>       <td class="num">180 ms ease-out</td><td>Tiles translate one step; outgoing focus loses fill, incoming gains it mid-roll.</td></tr>
+      <tr><td>Toggle tick</td>      <td class="num">150 ms</td><td>Speak-names sub: old value slides up 6 px + fades, new slides in from below. Spoken confirmation in parallel.</td></tr>
+      <tr><td>No-op shake</td>      <td class="num">±2 px translate-x · 120 ms</td><td>−2 at t=0, +2 at t=60, settle at 120, ease-out. Contacts + About double-press.</td></tr>
+      <tr><td>Theme swap</td>       <td class="num">≤ 150 ms</td><td>Full-panel token swap, style refresh only, no relayout.</td></tr>
     </tbody>
   </table>
 </div>
 
 <!-- ============================================================ -->
-<h2>9 · Component → LVGL render map</h2>
+<h2>9 · Component → LVGL render map · roles · budget</h2>
 <div class="specs">
-  <p style="margin-top:0">Chrome (Panel, StatusBar, Deck, Stage, TabStrip, Card, List, Row, Swatch) maps exactly as in the Listen spec. New Setup components:</p>
+  <p style="margin-top:0">Everything is composed from <code>lv_obj</code> / <code>lv_label</code> / <code>lv_image</code> — no custom widgets. The wheel machinery is a restyle of the existing <code>DeckKind::List</code> plumbing (slot recycling, roll animation, wrap); the FFI additions table is normative in <code>mockup_listen.html §7</code>. <b>No shadow FFI is needed anywhere in Setup — the flat pass removed every shadow.</b></p>
   <table class="spec">
     <thead><tr><th>Component</th><th>LVGL primitive</th><th>Children</th><th>Style hookups</th></tr></thead>
     <tbody>
-      <tr><td>ScrollNub</td>   <td><code>lv_obj</code> (3 × 24)</td><td>—</td><td>bg c_coral, radius 2, absolute at card right-2. y set from <code>LV_EVENT_SCROLL</code>; default scrollbar <code>LV_SCROLLBAR_MODE_OFF</code>. Hidden when content ≤ viewport.</td></tr>
-      <tr><td>BlockMeter</td>  <td><code>lv_obj</code> flex row</td><td>10 × <code>lv_obj</code> blocks</td><td>Block: border 2 ink, radius 3, w16 h22, gap 4. Level change = bg style swap on blocks ≤ level — no relayout, no redraw outside meter bounds.</td></tr>
-      <tr><td>ValueLabel</td>  <td><code>lv_label</code></td><td>—</td><td>t_meta ink_soft, right-aligned via flex grow spacer. Root rows + About rows.</td></tr>
-      <tr><td>CheckMark</td>   <td><code>lv_label</code> "✓"</td><td>—</td><td>800 11 px ink. Moves between rows = hide + show, no animation needed.</td></tr>
-      <tr><td>SplitSwatch</td> <td><code>lv_obj</code> + child half</td><td>1 half-width fill</td><td>Parent bg cream, child 7 × 14 bg #1B1B1F anchored right. (No gradient support needed.)</td></tr>
-      <tr><td>FooterStrip</td> <td><code>lv_label</code></td><td>—</td><td>700 10 px ink_soft, long-mode wrap, width 204, bottom-aligned inside card.</td></tr>
-      <tr><td>ShakeAnim</td>   <td><code>lv_anim</code> on row x</td><td>—</td><td>path: 0 → −2 → +2 → 0 over 120 ms. Reusable; bound to any read-only row.</td></tr>
-      <tr><td>ToggleTick</td>  <td><code>lv_anim</code> on value label</td><td>—</td><td>y −6 + fade-out old / fade-in new, 150 ms.</td></tr>
+      <tr><td>WheelSlot</td>   <td><code>lv_obj</code> 176 × 96</td><td>plate + name + sub</td><td>Focused: bg c_coral, radius 16, border/shadow none. Peek: bg none, <code>transform_scale</code> 0.7, <code>opa</code> 45%.</td></tr>
+      <tr><td>TilePlate</td>   <td><code>lv_obj</code> 56 × 56</td><td>1 glyph (<code>lv_label</code> or <code>lv_image</code>)</td><td>Radius 10 or 28; flat fill per item. Split swatch (Theme·Auto) = parent cream + half-width #1B1B1F child — no gradient.</td></tr>
+      <tr><td>CtxLabel / Counter</td><td><code>lv_label</code></td><td>—</td><td>Mont-12 uppercase ink_soft. Counter text swaps on roll.</td></tr>
+      <tr><td>BlockMeter</td>  <td><code>lv_obj</code> flex row</td><td>10 × <code>lv_obj</code></td><td>16 × 22, radius 4, gap 4, borders none. Level change = bg swap on blocks ≤ level; no redraw outside meter bounds.</td></tr>
+      <tr><td>AboutLine</td>   <td>2 × <code>lv_label</code></td><td>—</td><td>Label x 24 / value x 130, absolute — no row containers.</td></tr>
+      <tr><td>FooterHint</td>  <td><code>lv_label</code></td><td>—</td><td>Mont-12 ink_soft, width 200, centered. No background.</td></tr>
+      <tr><td>ShakeAnim</td>   <td><code>lv_anim</code> on tile x</td><td>—</td><td>0 → −2 → +2 → 0 over 120 ms. Reusable on any read-only tile.</td></tr>
+      <tr><td>ToggleTick</td>  <td><code>lv_anim</code> on sub label</td><td>—</td><td>y −6 + fade-out old / fade-in new, 150 ms.</td></tr>
     </tbody>
   </table>
-  <p style="margin:0"><b>Object budget</b> (worst case = Setup root, mid-scroll): 1 panel + 1 statusbar (~8 children) + 1 stage + 1 card (+ shadow sibling) + 1 list + 6 rows × 5 (row + shadow + lead + label + value) + 1 nub ≈ <b>45 objects</b> — same ballpark as Listen's ~36 and well below LVGL comfort at 240 × 280. Volume leaf is lighter: chrome + 2 tabs + card + glyph + value + 10 blocks + hint ≈ 34.</p>
+  <h3>Roles — layouts.ron rects + theme.ron values</h3>
+  <table class="spec">
+    <thead><tr><th>Role</th><th>layouts.ron rect (stage-rel)</th><th>theme.ron (flat)</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">setup_ctx</td>        <td class="num">(10, 4, 130, 14)</td><td>Mont-12 700 upper, ink_soft</td></tr>
+      <tr><td class="mono">setup_counter</td>    <td class="num">(200, 4, 30, 14)</td><td>Mont-12 700, ink_soft, right-align</td></tr>
+      <tr><td class="mono">setup_wheel_slot</td> <td class="num">(32, −3 + 80·i, 176, 96) · i = 0…2</td><td>mid: bg c_coral r16 · peeks: bg none, scale 70%, opa 45%</td></tr>
+      <tr><td class="mono">setup_tile_plate</td> <td class="num">(60, 6, 56, 56) in tile</td><td>r10 root / r28 circles; fill per item, never c_coral</td></tr>
+      <tr><td class="mono">setup_tile_name</td>  <td class="num">(0, 65, 176, 18) in tile</td><td>Mont-18 800, ink, center</td></tr>
+      <tr><td class="mono">setup_tile_sub</td>   <td class="num">(0, 84, 176, 12) in tile</td><td>Mont-12 700, ink_soft, center</td></tr>
+      <tr><td class="mono">vol_glyph</td>        <td class="num">(105, 46, 30, 30)</td><td>ink glyph</td></tr>
+      <tr><td class="mono">vol_block</td>        <td class="num">(22 + 20·i, 96, 16, 22) · repeat_x ×10</td><td>fill c_coral / bg_cream_2, r4, border none</td></tr>
+      <tr><td class="mono">vol_value</td>        <td class="num">(0, 130, 240, 16)</td><td>Mont-14 600, ink, center</td></tr>
+      <tr><td class="mono">contacts_hint</td>    <td class="num">(20, 186, 200, 14)</td><td>Mont-12 700, ink_soft, center, no bg</td></tr>
+      <tr><td class="mono">about_batt</td>       <td class="num">(105, 28, 30, 15)</td><td>ink glyph (outline + fill + nub)</td></tr>
+      <tr><td class="mono">about_label</td>      <td class="num">(24, 60 + 24·i, 100, 14) · repeat_y ×5</td><td>Mont-12 700 upper, ink_soft</td></tr>
+      <tr><td class="mono">about_value</td>      <td class="num">(130, 60 + 24·i, 90, 16) · repeat_y ×5</td><td>Mont-14 600, ink</td></tr>
+      <tr><td class="mono">deck_focus_pill</td>  <td class="num">slot inset (8, 6)</td><td>bg c_coral, r12 — shared role, section color per hub slot</td></tr>
+    </tbody>
+  </table>
+  <h3>Object budget (cap 60)</h3>
+  <table class="spec">
+    <thead><tr><th>Screen</th><th>Itemized</th><th>Total</th></tr></thead>
+    <tbody>
+      <tr><td>Setup root (wheel)</td><td>panel 1 · statusbar 11 (cont + 4 bars + gps + time + pct + batt ×3) · stage tint 1 · wheel cont 1 · 3 tiles × 5 (tile + plate + glyph + name + sub) = 15 · counter 1 · deck 6 (cont + pill + 4 glyphs)</td><td class="num"><b>36</b> static · <b>41</b> mid-roll (4th tile in flight)</td></tr>
+      <tr><td>Sub-wheels (Companion / Contacts / Theme)</td><td>root minus counter, plus ctx label; Contacts adds the footer hint</td><td class="num"><b>36–37</b></td></tr>
+      <tr><td>SetupVolume</td><td>panel 1 · statusbar 11 · stage 1 · ctx 1 · glyph 1 · 10 blocks · value 1 · deck 6</td><td class="num"><b>32</b></td></tr>
+      <tr><td>SetupAbout</td><td>panel 1 · statusbar 11 · stage 1 · ctx 1 · batt glyph 3 · 5 labels + 5 values · deck 6</td><td class="num"><b>33</b></td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Worst case 41 — comfortable under the 60-object cap and lighter than v1's 45 (dropping per-row shadows and the scroll nub paid for the wheel's third label). The v1 shadow-sibling objects are gone entirely.</p>
 </div>
 
 <!-- ============================================================ -->
 <h2>10 · Input contract — per screen</h2>
 <div class="specs">
-  <p style="margin-top:0">One hardware button, three gestures (<code>mockup_input_model.html</code>). Long-press ≥ 400 ms is <b>always</b> Home, from every Setup screen, with no unsaved-state warnings — Setup never holds uncommitted state (Volume applies live; toggles apply on double-press).</p>
+  <p style="margin-top:0">One hardware button, three gestures. Long-press ≥ 400 ms is <b>always</b> Home, from every Setup screen, with no unsaved-state warnings — Setup never holds uncommitted state (Volume applies live; toggles apply on double-press). Focus rings appear only where fill + size can't carry focus — in Setup that is nowhere: the wheels and the meter carry focus by fill.</p>
   <table class="spec">
     <thead><tr><th>Screen</th><th>Press</th><th>Double-press</th><th>Long-press ≥ 400 ms</th></tr></thead>
     <tbody>
-      <tr><td class="mono">Setup (root)</td><td>Advance focus ↓, wraps 6 → 1 (<code>FocusPolicy::Wrap</code>); list auto-scrolls</td><td>Rows 1–4, 6: push sub-screen. Row 5 (Speak names): toggle in place + say it aloud</td><td>Home</td></tr>
-      <tr><td class="mono">SetupVolume</td><td>+1 block, wraps 10 → 1; applies immediately; boop at new level</td><td>Confirm &amp; pop to Setup root</td><td>Home (change already saved — volume was live the whole time)</td></tr>
-      <tr><td class="mono">SetupCompanion</td><td>Advance focus, wraps 5 → 1</td><td>Select → pop to Home → new companion waves</td><td>Home (no change)</td></tr>
-      <tr><td class="mono">SetupContacts</td><td>Advance focus, wraps 4 → 1</td><td><b>No-op</b> — gentle 2-frame shake on the focused row</td><td>Home</td></tr>
-      <tr><td class="mono">SetupTheme</td><td>Advance focus, wraps 3 → 1</td><td>Apply theme (≤ 150 ms token swap), ✓ moves, stay on screen</td><td>Home</td></tr>
-      <tr><td class="mono">SetupAbout</td><td>Advance focus, wraps 4 → 1 (Speak names reads the row aloud when On)</td><td>No-op — gentle shake</td><td>Home</td></tr>
+      <tr><td class="mono">Setup (root)</td><td>Roll one step, wraps 6 → 1 (<code>FocusPolicy::Wrap</code>); new label spoken; counter updates</td><td>Entries 1–4, 6: push sub-screen. Entry 5 (Speak names): toggle in place + say it aloud</td><td>Home</td></tr>
+      <tr><td class="mono">SetupVolume</td><td>+1 block, wraps 10 → 1; applies immediately; boop at the new level</td><td>Confirm &amp; pop to Setup root</td><td>Home (change already saved — volume was live the whole time)</td></tr>
+      <tr><td class="mono">SetupCompanion</td><td>Roll one step, wraps 5 → 1</td><td>Select → pop to Home → new companion waves</td><td>Home (no change)</td></tr>
+      <tr><td class="mono">SetupContacts</td><td>Roll one step, wraps 4 → 1</td><td><b>No-op</b> — gentle 2-frame shake + spoken hint: "Grown-ups add contacts in the companion app"</td><td>Home</td></tr>
+      <tr><td class="mono">SetupTheme</td><td>Roll one step, wraps 3 → 1</td><td>Apply theme (≤ 150 ms token swap), ✓ moves, stay on screen</td><td>Home</td></tr>
+      <tr><td class="mono">SetupAbout</td><td>Speak the next line aloud, wraps 5 → 1 — no visual focus, nothing is actionable</td><td>No-op — gentle shake on the battery glyph</td><td>Home</td></tr>
       <tr><td class="mono">Side PTT button</td><td colspan="3">Unchanged global behavior (push-to-talk / Ask capture). Setup does not remap or consume it.</td></tr>
     </tbody>
   </table>
@@ -929,11 +778,12 @@
     <tbody>
       <tr><td>4th Hub target</td><td class="mono">PushScreen(UiScreen::Power)</td><td class="mono">PushScreen(UiScreen::Setup)</td></tr>
       <tr><td>Routes</td><td class="mono">Power (leaf)</td><td class="mono">Setup + 5 children: SetupVolume · SetupCompanion · SetupContacts · SetupTheme · SetupAbout</td></tr>
-      <tr><td>Speak names</td><td>—</td><td>No route. Row 5 of <code>SETUP_SELECT</code> = <code>EmitIntent(settings.speak_names_toggle)</code>; the per-row <code>SelectionTarget</code> array already supports mixing PushScreen and EmitIntent (Hub does the same shape).</td></tr>
+      <tr><td>Speak names</td><td>—</td><td>No route. Entry 5 of <code>SETUP_SELECT</code> = <code>EmitIntent(settings.speak_names_toggle)</code>; the per-entry <code>SelectionTarget</code> array already supports mixing PushScreen and EmitIntent (Hub does the same shape).</td></tr>
       <tr><td>Setup root select</td><td>—</td><td class="mono">[Push(Volume), Push(Companion), Push(Contacts), Push(Theme), EmitIntent(speak_names_toggle), Push(About)]</td></tr>
-      <tr><td>Volume select</td><td>—</td><td>Press is repurposed: emit <code>settings.volume_step</code> (wrap 10 → 1) instead of AdvanceFocus; double-press = pop. Needs a small router extension (press-emits-intent leaf, precedent: <code>POWER_SELECT</code>'s AdvanceFocus is already a non-push select).</td></tr>
+      <tr><td>Wheel machinery</td><td class="mono">DeckKind::List (rows)</td><td>Same list plumbing restyled to the 3-slot wheel — focus index, wrap, and roll animation are shared; only the slot renderer changes. FFI additions normative in <code>mockup_listen.html §7</code>; no shadow FFI needed.</td></tr>
+      <tr><td>Volume select</td><td>—</td><td>Press is repurposed: emit <code>settings.volume_step</code> (wrap 10 → 1) instead of AdvanceFocus; double-press = pop. Small router extension (press-emits-intent leaf; precedent: <code>POWER_SELECT</code>'s AdvanceFocus is already a non-push select).</td></tr>
       <tr><td>New intents</td><td>—</td><td class="mono">settings.volume_step · settings.companion_set · settings.theme_set · settings.speak_names_toggle</td></tr>
-      <tr><td>Focus policies</td><td class="mono">Power = Wrap</td><td>All Setup screens = <code>Wrap</code> (single button can only go forward — Clamp would strand the focus at the last row).</td></tr>
+      <tr><td>Focus policies</td><td class="mono">Power = Wrap</td><td>All Setup screens = <code>Wrap</code> (a single button can only roll forward — Clamp would strand the focus at the last entry).</td></tr>
       <tr><td>Battery / charge display</td><td class="mono">Power screen body</td><td>Folds into <code>SetupAbout</code> (§7). <code>dirty_region_for(Power, Power) → None</code> (full redraw) migrates to <code>(SetupAbout, Power)</code>; SetupAbout also subscribes to the <code>Network</code> domain.</td></tr>
       <tr><td>Persistence / nav</td><td class="mono">Ephemeral · Stack</td><td>Unchanged: all Setup screens <code>Ephemeral</code>, <code>NavigationPolicy::Stack</code>. Call overlays still preempt Setup like any stack screen.</td></tr>
       <tr><td>UiScreen::Power</td><td>4th Hub target + route</td><td>Removed (or kept as deprecated alias for one protocol version if the companion app references it).</td></tr>
@@ -946,14 +796,26 @@
 <h2>12 · Open questions for the next pass</h2>
 <div class="specs">
   <ul>
-    <li><b>Parent gate.</b> Should entering Setup require a grown-up gesture — e.g. long-press 2 s on the Setup deck slot instead of the normal double-press? Argument against a gate: nothing in Setup is destructive or spendable — worst case a kid maxes the volume (cappable from the app), swaps the companion, or flips the theme, all trivially reversible and arguably a feature ("my device, my bunny"). Argument for: Speak names off silently removes the pre-reader's accessibility aid. Current lean: <b>no gate in v1</b>; revisit if telemetry shows accidental Speak-names flips.</li>
-    <li><b>Per-child profiles.</b> If two kids share a device, companion + volume + speak-names would want profiles. Deliberately out of scope for v1 — the router and settings intents are per-device. Flagging so the protocol's settings domain leaves room for a profile id later.</li>
-    <li><b>Bedtime hours editing.</b> Theme·Auto follows bedtime hours, but where are they edited — on-device or app-only? Current lean: <b>app-only</b> (time entry on one button is miserable); the Theme screen just names the dependency ("bedtime"). If app-less setups matter, a coarse on-device editor (hour blocks, same block-meter primitive as Volume) is the fallback design.</li>
-    <li><b>Max volume cap from the companion app.</b> When the app caps volume at, say, 7: do blocks 8–10 disappear (meter is 7 long) or render locked (cream with a lock tint, wrap happens at 7)? Lean: <b>render locked</b> — a shrinking meter looks broken; visible-but-locked tells the grown-up the cap exists and where to change it.</li>
+    <li><b>Parent gate.</b> Should entering Setup require a grown-up gesture — e.g. long-press 2 s on the Setup deck slot instead of the normal double-press? Against a gate: nothing in Setup is destructive or spendable — worst case a kid maxes the volume (cappable from the app), swaps the companion, or flips the theme, all trivially reversible and arguably a feature ("my device, my bunny"). For: Speak names off silently removes the pre-reader's accessibility aid. Current lean: <b>no gate in v1</b>; revisit if telemetry shows accidental Speak-names flips.</li>
+    <li><b>Per-child profiles.</b> If two kids share a device, companion + volume + speak-names would want profiles. Deliberately out of scope — the router and settings intents are per-device. Flagging so the protocol's settings domain leaves room for a profile id later.</li>
+    <li><b>Bedtime hours editing.</b> Theme·Auto follows bedtime hours, but where are they edited — on-device or app-only? Current lean: <b>app-only</b> (time entry on one button is miserable); the Theme wheel just names the dependency ("bedtime"). If app-less setups matter, a coarse on-device editor (hour blocks, same flat block-meter primitive as Volume) is the fallback design.</li>
+    <li><b>Max volume cap from the companion app.</b> When the app caps volume at, say, 7: do blocks 8–10 disappear (meter is 7 long) or render locked? Lean: <b>render locked</b> — flat version: capped blocks stay <code>bg_cream_2</code> at 45% opacity (the same "inert" dimming the wheel peeks use) and the wrap happens at 7. A shrinking meter looks broken; visible-but-dimmed tells the grown-up the cap exists and where to change it.</li>
   </ul>
 </div>
 
-<p style="margin-top:24px" class="muted">Spec rev. 2026-07-15 · Setup flow v1 · consolidation pass. Pairs with mockup_input_model.html (three-gesture contract) and mockup_home.html.</p>
+<!-- ============================================================ -->
+<h2>13 · Changelog</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Date</th><th>Rev</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td class="num">2026-07-15</td><td class="mono">v2</td><td>Wheel migration + flat pass + neutral bezel (was v1 card rows). Menus → 3-slot wheels; trailing values → sub lines; block meter deborder; tabs → context labels; scroll nub → peeks + counter; tokens c_coral_soft / c_coral_2 dropped.</td></tr>
+      <tr><td class="num">2026-07-15</td><td class="mono">v1</td><td>Card + rows consolidation pass — tabbed depth-2 screens, tinted inner card, scroll nub, Power absorbed into About.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<p style="margin-top:24px" class="muted">Spec rev. 2026-07-15 · Setup flow v2 · wheel + flat. Wheel normative spec: <code>mockup_listen.html §3</code> · FFI additions: <code>mockup_listen.html §7</code>. Pairs with <code>mockup_input_model.html</code> (three-gesture contract) and <code>mockup_home.html</code>.</p>
 
 </body>
 </html>

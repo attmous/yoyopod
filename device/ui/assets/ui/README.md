@@ -10,17 +10,25 @@ an implementer needs.
 
 ## File inventory
 
+**Implementers start at [`HANDOFF.md`](HANDOFF.md)** — build order, runtime
+work items, acceptance checklist. This README is the decision log.
+
 | File | Covers | Theme | Status |
 |---|---|---|---|
-| `mockup_home.html` | Home: idle + 4 focus states, companion Blob, deck | light | ✅ consolidated |
-| `mockup_listen.html` | Listen **v2**: wheel navigation + arc-hero NowPlaying — owns the wheel & arc primitives | light | ✅ redesigned |
-| `mockup_listen_dark.html` | Dark token swap of the **retired v1** card/tab layout | dark | ⚠ superseded — regeneration pending |
-| `mockup_talk.html` | Talk **v5**: contact wheel, TalkContact wheel, recording, Replay, de-boxed call overlays | light | ✅ redesigned |
-| `mockup_ask.html` | Ask: idle / listening / thinking / answering | light | ✅ (still v1 card pattern — wheel migration pending) |
-| `mockup_setup.html` | Setup root + Volume / Companion / Theme / About | light | ✅ (still v1 card pattern — wheel migration pending) |
-| `mockup_input_model.html` | The three-gesture input contract (single source of truth) | — | ✅ consolidated |
-| `mockup_companions.html` | Swappable Home companions: Owl / Cat / Bunny / Robot | light | ✅ |
+| `HANDOFF.md` | Implementation handoff: build order, runtime items, acceptance criteria | — | ✅ final |
+| `mockup_home.html` | Home: idle + 4 focus states, companion Blob, deck | light | ✅ flat |
+| `mockup_listen.html` | Listen **v2.1**: wheel navigation + arc-hero NowPlaying — owns the wheel & arc primitives + FFI table | light | ✅ flat |
+| `mockup_listen_dark.html` | **v2.1-dark** — strict token swap of the flat light spec | dark | ✅ flat, regenerated |
+| `mockup_talk.html` | Talk **v5.1**: contact wheel, TalkContact wheel, recording, Replay, de-boxed call overlays | light | ✅ flat |
+| `mockup_ask.html` | Ask: idle / listening / thinking / answering + offline | light | ✅ flat, full-bleed |
+| `mockup_setup.html` | Setup **v2**: wheel root + Volume / Companion / Contacts / Theme / About | light | ✅ flat, wheel |
+| `mockup_system.html` | Loading + Error overlays (closes open question #7) | light | ✅ flat, new |
+| `mockup_input_model.html` | The three-gesture input contract (single source of truth) | — | ✅ flat frames |
+| `mockup_companions.html` | Swappable Home companions: Owl / Cat / Bunny / Robot | light | ✅ flat UI, outlined characters |
 | `mockup_companions_dark.html` | Same, dark token swap | dark | ✅ tracks light file |
+
+All pages use the neutral `#221c1f` device bezel — the orange prototype frame
+is retired everywhere.
 
 Dark variants are strict token swaps — geometry, spacing, type and behavior are
 byte-identical to their light counterpart. **Always edit the light file first**,
@@ -101,14 +109,14 @@ divergences an implementer must reconcile:
 | Listen root: Playlists · Recents · Shuffle all | Listen → Playlists / RecentTracks / ShuffleAll | ✅ **resolved in v2** — the wheel root matches the shipped router (v1's Artists/Radio rows dropped). |
 | Wheel menus (Listen v2 / Talk v5) | `DeckKind::List` + `SelectionOffset` exist | restyle, not new architecture — but `lvgl_renderer.rs:157` maps `SelectionOffset` to `set_x_offset` (vertical wheel needs a Y remap), `Deck::visible_range` clamps instead of wrapping (>6-item wheels need wrap-aware windowing), and the native facade's scale/opacity/offset setters are currently no-ops. |
 | Arc-hero progress ring | progress emulated as child-obj fill width | `lv_arc` needs new FFI + `ElementKind::Arc`; specs include a bar-based fallback that ships with today's FFI. |
-| Hard offset shadows, focus outline color, Montserrat 14/24 | not in FFI / theme schema | add `shadow_offset_x/y`, `outline_color`, font externs — or use the documented composed fallbacks. FFI table: `mockup_listen.html` §7. |
+| Focus outline color, Montserrat 14/24 | not in FFI | add `outline_color` + font externs — or use the documented composed fallbacks. (`shadow_offset_x/y` was on this list until the flat pass removed the need.) FFI table: `mockup_listen.html` §7. |
 | Talk v4: contacts list **is** the Talk root | Talk → Contacts / CallHistory / VoiceNote | v4 deletes the intermediate branch; `CallHistory` route orphaned. |
 | Talk v4: hold-to-record inside TalkContact | dedicated `VoiceNote` screen with PTT passthrough | v4 folds recording into TalkContact; `VoiceNote` route to retire or repurpose. |
 | Replay queue (per contact) | `voice.play_latest` intent on TalkContact | Replay-as-screen is new. |
 | Call overlays Incoming / Outgoing / InCall | same, `NavigationPolicy::Call` | ✅ aligned. |
 | long-press = go Home (pop whole stack) | `OneButtonMachine` long-hold → `Back` → pop one screen | remap long-hold to pop-to-root (`input/machine.rs`, `application/input_router.rs`); per-crumb Back is gone from the contract. |
 | voice prompt on focus advance | — | new: speak the focused label via the speaker; toggle in Setup. |
-| — | `Loading` / `Error` overlays | not yet designed (open). |
+| Loading / Error overlays (`mockup_system.html`) | `Loading` / `Error` routes, `NavigationPolicy::Overlay` | ✅ designed in the finalization pass. |
 
 ## Open questions (consolidated)
 
@@ -125,9 +133,33 @@ Carried from the per-file "open questions" sections, still undecided:
    color.
 6. **Haptics** — 10 ms buzz at the 400 ms long-press threshold, if final
    hardware has a motor.
-7. **Loading / Error overlay design** — routes exist in the runtime, no mockup.
+7. ~~**Loading / Error overlay design**~~ — resolved: `mockup_system.html`.
 8. **Kid timing tolerances** — 350 ms double-press window needs testing with
    4–6-year-olds; may need to widen.
+
+## Flat pass (2026-07-15, third pass — user decision)
+
+The chrome went **flat**: no borders, no hard offset shadows, anywhere. Radius
+softened (focused tile 16, art 18, plates 10); deck dividers removed, focused
+deck slot = inset accent pill. Ink is reserved for text, glyphs, and the one
+surviving stroke: the **focus ring** (2px ink outline + scale 1.1) on
+actionable controls (transport targets, call buttons). Focus elsewhere is
+carried by fill + size + the spoken label.
+
+Consequences:
+- The `shadow_offset_x/y` FFI requirement and the sibling-shadow-rect fallback
+  are **deleted** — flat needs neither. Object budgets drop.
+- LVGL software rendering on the Pi Zero 2W saves the shadow fill-rate cost.
+- Escape hatch if the physical LCD washes out fill-on-fill contrast: darken
+  the stage tint one step, or add a 1px self-color (darker accent, not ink)
+  outline to the focused tile — token changes only.
+- **Completed system-wide in the finalization pass (same day)**: Home, Ask
+  (full-bleed, card retired), Setup (v2 — wheel migration), Companions
+  (characters keep ink outlines — illustrations, not chrome), Input Model
+  frames, and the regenerated `mockup_listen_dark.html` (v2.1-dark).
+  `mockup_system.html` created (Loading/Error — the last unspecced routes).
+  The orange prototype bezel was replaced by a neutral `#221c1f` frame on
+  every page. Implementation entry point: `HANDOFF.md`.
 
 ## Redesign changelog (2026-07-15, second pass — wheel + arc hero)
 

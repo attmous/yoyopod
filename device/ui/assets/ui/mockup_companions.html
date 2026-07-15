@@ -42,7 +42,7 @@
     margin: 0; padding: 0;
     background: #1a1518;
     color: #efe4d6;
-    font-family: -apple-system, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+    font-family: "Montserrat","Segoe UI",system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   body { padding: 32px 24px 80px; }
@@ -58,12 +58,9 @@
   .device {
     width: calc(var(--panel-w) + 24px);
     padding: 12px;
-    border-radius: 22px;
-    background: linear-gradient(160deg, #ff7a3d, #d2401b);
-    box-shadow:
-      0 0 0 1px rgba(255,255,255,0.05) inset,
-      0 30px 50px -20px rgba(0,0,0,0.7),
-      0 0 60px -10px rgba(255,90,31,0.35);
+    border-radius: 26px;
+    background: #221c1f;
+    box-shadow: none;
   }
   .panel {
     position: relative;
@@ -74,7 +71,7 @@
     overflow: hidden;
     color: var(--ink);
     border-radius: var(--panel-radius);
-    box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 1px var(--ink);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
   }
 
   .statusbar {
@@ -133,16 +130,13 @@
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     background: var(--bg-cream);
-    border-top: var(--border-w) solid var(--ink);
     z-index: 20;
   }
   .deck .slot {
     background: var(--bg-cream);
     color: var(--ink-300);
     display: grid; place-items: center;
-    border-right: var(--border-w) solid var(--ink);
   }
-  .deck .slot:last-child { border-right: none; }
   .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; }
   .deck .slot.listen .glyph { font-size: 24px; }
 
@@ -161,7 +155,6 @@
     left: 50px;     /* (240-140)/2 = 50 → centered */
     top: 45px;
     animation: breathe 4.2s ease-in-out infinite;
-    filter: drop-shadow(2px 3px 0 var(--ink));
   }
   @keyframes breathe {
     0%, 100% { transform: scale(1); }
@@ -218,7 +211,6 @@
   table.spec td .sw {
     display: inline-block;
     width: 14px; height: 14px;
-    border: 1.5px solid #1B1B1F;
     border-radius: 3px;
     vertical-align: -3px;
     margin-right: 6px;
@@ -229,7 +221,7 @@
 <body>
 
 <h1>YoyoPod — Companion Variants</h1>
-<p class="muted">Three swappable animal companions for the Home stage, drawn in the same flat neubrutalist style as the original Blob: thick 2px ink outlines, flat fills, 2,3 px ink drop-shadow, breathing scale animation, blinking eyes. Body fill is a single token per variant — easy to recolor or swap on themes/events. The Blob remains available as a fourth fallback.</p>
+<p class="muted">Three swappable animal companions for the Home stage, drawn in the same flat UI, outlined character style as the original Blob: thick 2px ink outlines, flat fills, breathing scale animation, blinking eyes. Body fill is a single token per variant — easy to recolor or swap on themes/events. The Blob remains available as a fourth fallback.</p>
 
 <!-- ============================================================ -->
 <h2>1 · Four variants on the Home screen</h2>
@@ -548,9 +540,8 @@
 <h2>3 · Shared style rules (apply to every variant)</h2>
 <div class="specs">
   <ul>
-    <li><b>Outline:</b> 3 px <code>ink #1B1B1F</code> stroke, <code>stroke-linejoin: round</code>, <code>stroke-linecap: round</code>. (In LVGL the outline can be baked into the sprite.)</li>
-    <li><b>Drop shadow:</b> <code>filter: drop-shadow(2px 3px 0 ink)</code> — blur 0, follows silhouette, identical to the Blob.</li>
-    <li><b>Breathing:</b> <code>scale 1.00 ↔ 1.04</code>, 4200 ms ease-in-out, infinite. Applied to the wrapper, not the SVG, so it inherits the drop-shadow's silhouette tracking.</li>
+    <li><b>Outline:</b> 3 px <code>ink #1B1B1F</code> stroke, <code>stroke-linejoin: round</code>, <code>stroke-linecap: round</code>. Characters keep their ink outlines (illustrations, not UI); no drop-shadow. (In LVGL the outline can be baked into the sprite.)</li>
+    <li><b>Breathing:</b> <code>scale 1.00 ↔ 1.04</code>, 4200 ms ease-in-out, infinite. Applied to the wrapper, not the SVG.</li>
     <li><b>Blink:</b> eye groups carry <code>.eye-iris</code>; shared <code>scaleY 1 ↔ 0.1</code> keyframes (5500 ms) fire on each. <code>transform-box: fill-box</code> keeps the scale anchored to each eye's center.</li>
     <li><b>Stage position:</b> wrapper is <code>position: absolute</code> inside <code>.home-stage</code>. Each variant chooses its own <code>top</code>/<code>left</code> within the 240 × 206 stage area to keep the visual center between status bar and deck.</li>
     <li><b>Layer order:</b> always above stage bg (<code>z-index: 10</code>), always below Deck and StatusBar.</li>
@@ -565,7 +556,7 @@
     <tbody>
       <tr><td><b>Sprite atlas</b> (recommended)</td>
           <td>~135 KB / variant @ RGB565 (32 frames × 110×110 + alpha) — load one variant at a time</td>
-          <td>Default. Cheapest CPU. Animation is just blits. Outline + shadow baked in.</td></tr>
+          <td>Default. Cheapest CPU. Animation is just blits. Outline baked in.</td></tr>
       <tr><td><b>SVG → static PNG + procedural breathe/blink</b></td>
           <td>~6 KB body sprite + per-frame transform</td>
           <td>If RAM is tight; lose the morph but keep breathe/blink via <code>lv_anim</code> on scale + eye alpha.</td></tr>
@@ -599,6 +590,7 @@
 </div>
 
 <p style="margin-top:24px" class="muted">Spec rev. 2026-05-13 · Companions add-on. Drops into the Home screen spec as a swappable variant set behind the existing Blob component.</p>
+<p class="muted" style="font-size:12px">2026-07-15 · flat pass — UI chrome flattened (characters keep ink outlines, drop-shadows removed), neutral bezel. Matches Listen v2.1 / Talk v5.1.</p>
 
 </body>
 </html>

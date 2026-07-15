@@ -22,9 +22,11 @@
     --c-coral:     #F37767;
     --c-tomato:    #E5443B;
 
+    /* flat pass 2026-07-15: shadows retired; --border-w survives only for the
+       Blob's character outline and the press-ring (interaction feedback) */
     --border-w: 2px;
-    --shadow-row:    2px 2px 0 var(--ink);
-    --shadow-card:   3px 3px 0 var(--ink);
+    --shadow-row:    none;
+    --shadow-card:   none;
 
     --sp-1: 4px;
     --sp-2: 8px;
@@ -36,9 +38,9 @@
     --row-radius:  6px;
     --card-radius: 10px;
 
-    --t-row:    600 12px/1 "Inter", system-ui, sans-serif;
-    --t-meta:   700 10px/1 "Inter", system-ui, sans-serif;
-    --t-status: 700 11px/1 "Inter", system-ui, sans-serif;
+    --t-row:    600 12px/1 "Montserrat", "Segoe UI", system-ui, sans-serif;
+    --t-meta:   700 10px/1 "Montserrat", "Segoe UI", system-ui, sans-serif;
+    --t-status: 700 11px/1 "Montserrat", "Segoe UI", system-ui, sans-serif;
   }
 
   html, body {
@@ -64,15 +66,13 @@
   td code { background: #2a1e17; padding: 1px 5px; border-radius: 3px; font-size: 11px; color: #ffd9b3; }
   pre { background: #2a1e17; padding: 12px; border-radius: 6px; font-size: 11px; color: #d8c8b3; overflow-x: auto; max-width: 760px; }
 
+  /* device frame — neutral bezel (flat pass; orange prototype frame removed) */
   .device {
     width: calc(var(--panel-w) + 24px);
     padding: 12px;
-    border-radius: 22px;
-    background: linear-gradient(160deg, #ff7a3d, #d2401b);
-    box-shadow:
-      0 0 0 1px rgba(255,255,255,0.05) inset,
-      0 30px 50px -20px rgba(0,0,0,0.7),
-      0 0 60px -10px rgba(255,90,31,0.35);
+    border-radius: 26px;
+    background: #221c1f;
+    box-shadow: none;
   }
   .panel {
     position: relative;
@@ -83,7 +83,7 @@
     overflow: hidden;
     color: var(--ink);
     border-radius: var(--panel-radius);
-    box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 1px var(--ink);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
   }
 
   .statusbar {
@@ -102,28 +102,29 @@
   .statusbar .time  { font-variant-numeric: tabular-nums; justify-self: center; }
   .statusbar .right { display: flex; align-items: center; gap: 5px; justify-self: end; }
 
+  /* deck — flat: no top rule, no dividers; focused slot = inset accent pill */
   .deck {
     position: absolute; bottom: 0; left: 0; right: 0;
     height: var(--deck-h);
     display: grid; grid-template-columns: repeat(4, 1fr);
     background: var(--bg-cream);
-    border-top: var(--border-w) solid var(--ink);
     z-index: 20;
   }
   .deck .slot {
     background: var(--bg-cream); color: var(--ink-300);
     display: grid; place-items: center;
-    border-right: var(--border-w) solid var(--ink);
     position: relative;
   }
-  .deck .slot:last-child { border-right: none; }
-  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; }
+  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; position: relative; }
   .deck .slot.listen .glyph { font-size: 24px; }
   .deck .slot.focus { color: var(--ink); }
-  .deck .slot.focus.listen { background: var(--c-lime); }
-  .deck .slot.focus.talk   { background: var(--c-peri); }
-  .deck .slot.focus.ask    { background: var(--c-butter); }
-  .deck .slot.focus.setup  { background: var(--c-coral); }
+  .deck .slot.focus::before {
+    content: ""; position: absolute; inset: 6px 8px; border-radius: 12px;
+  }
+  .deck .slot.focus.listen::before { background: var(--c-lime); }
+  .deck .slot.focus.talk::before   { background: var(--c-peri); }
+  .deck .slot.focus.ask::before    { background: var(--c-butter); }
+  .deck .slot.focus.setup::before  { background: var(--c-coral); }
 
   /* Hidden deck — used to show "nav hidden" state */
   .deck.hidden {
@@ -144,7 +145,8 @@
     position: absolute;
     width: 110px; height: 110px;
     left: 65px; top: 48px;
-    filter: drop-shadow(2px 3px 0 var(--ink));
+    /* flat pass: drop-shadow removed; the 2px ink body outline stays — the
+       Blob is an illustration, not UI chrome */
     animation: blobBreathe 4.2s ease-in-out infinite;
   }
   @keyframes blobBreathe {
@@ -207,7 +209,7 @@
   /* Gesture caption strip */
   .gcap {
     margin-top: 10px;
-    font: 700 11px/1.35 "Inter", sans-serif;
+    font: 700 11px/1.35 "Montserrat", "Segoe UI", sans-serif;
     color: #ffd9b3;
     letter-spacing: 0.02em;
     text-align: center;
@@ -607,7 +609,7 @@ double-press → enter Setup
   <p class="muted">Resolved in rev 2 (were open in rev 1): "tap on the stage above the nav" and "row tap vs nav-cycle tap" — both dissolved by dropping positional input from the contract entirely; the whole surface is one button.</p>
 </section>
 
-<p class="muted" style="margin-top:40px;">Spec rev 2 · 2026-07-15 · consolidation pass — grammar unchanged from rev 1, rebound from touch-only to hardware-agnostic (button today, whole-surface touch later); Home deck now persistent, blob-only state reclassified as Ambient. Decision log: <code>README.md</code>. Pairs with <code>mockup_home.html</code>.</p>
+<p class="muted" style="margin-top:40px;">Spec rev 2.1 · 2026-07-15 · flat pass — frames restyled to the flat system (deck pills, no dividers, Blob keeps its character outline but loses the drop shadow, neutral bezel). Rev 2 · consolidation pass — grammar unchanged from rev 1, rebound from touch-only to hardware-agnostic (button today, whole-surface touch later); Home deck now persistent, blob-only state reclassified as Ambient. Decision log: <code>README.md</code>. Pairs with <code>mockup_home.html</code>.</p>
 
 </body>
 </html>

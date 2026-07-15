@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>YoyoPod — System Overlays · Loading + Error · Implementation Spec</title>
+<style>
+  :root {
+    --panel-w: 240px;
+    --panel-h: 280px;
+    --panel-radius: 22px;
+
+    --bg-cream:    #FCE6D2;
+    --bg-cream-2:  #F7DBC2;
+
+    --ink:         #1B1B1F;
+    --ink-soft:    #3A3A40;
+    --ink-300:     #8A8076;
+
+    --c-lime:      #9DFC7C;
+    --c-peri:      #A9A6E5;
+    --c-butter:    #FFD06A;
+    --c-coral:     #F37767;
+    --c-tomato:    #E5443B;
+    --c-mustard:   #E8A93C;
+
+    --statusbar-h: 22px;
+    --deck-h:      52px;
+
+    --t-status: 700 11px/1 "Montserrat", "Segoe UI", system-ui, sans-serif;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: #1a1518;
+    color: #efe4d6;
+    font-family: -apple-system, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { padding: 32px 24px 80px; }
+  h1 { font-weight: 700; font-size: 22px; margin: 0 0 4px; color: #fff; }
+  h2 { font-weight: 600; font-size: 14px; margin: 32px 0 12px; color: #d3b89a; letter-spacing: 0.04em; text-transform: uppercase; }
+  h3 { margin: 14px 0 8px; font-size: 13px; color: #ffd9b3; }
+  p  { font-size: 13px; line-height: 1.55; max-width: 760px; color: #c9b9a3; }
+  .muted { color: #8a7c6c; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 11px; color: #8a7c6c; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* ── NEUTRAL BEZEL (system-wide, user-approved) ─────────────── */
+  .device {
+    width: calc(var(--panel-w) + 24px);
+    padding: 12px;
+    border-radius: 26px;
+    background: #221c1f;
+    box-shadow: none;
+  }
+  .panel {
+    position: relative;
+    width: var(--panel-w);
+    height: var(--panel-h);
+    box-sizing: border-box;
+    background: var(--bg-cream);
+    overflow: hidden;
+    color: var(--ink);
+    border-radius: var(--panel-radius);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
+  }
+
+  /* ── status bar — flat: ink glyphs on cream, nothing else ───── */
+  .statusbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: var(--statusbar-h);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 12px 0 8px;
+    font: var(--t-status);
+    background: var(--bg-cream);
+    z-index: 60;
+  }
+  .statusbar .left  { display: flex; align-items: center; gap: 5px; justify-self: start; }
+  .statusbar .time  { font-variant-numeric: tabular-nums; justify-self: center; }
+  .statusbar .right { display: flex; align-items: center; gap: 5px; justify-self: end; }
+  .sb-bars { display: flex; align-items: flex-end; gap: 1px; height: 10px; }
+  .sb-bars > i { display: block; width: 2px; background: var(--ink); }
+  .sb-bars > i:nth-child(1) { height: 3px; }
+  .sb-bars > i:nth-child(2) { height: 5px; }
+  .sb-bars > i:nth-child(3) { height: 7px; }
+  .sb-bars > i:nth-child(4) { height: 9px; }
+  .sb-bars > i.off { background: var(--ink-300); opacity: .4; }
+  .sb-gps { width: 8px; height: 11px; position: relative; }
+  .sb-gps::before {
+    content: ""; position: absolute; left: 0; top: 0;
+    width: 8px; height: 8px; background: var(--ink);
+    border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  }
+  .sb-gps::after {
+    content: ""; position: absolute; left: 3px; top: 2.5px;
+    width: 2px; height: 2px; background: var(--bg-cream); border-radius: 50%;
+  }
+  .sb-pct { font-variant-numeric: tabular-nums; font-size: 10px; }
+  .batt { width: 20px; height: 10px; border-radius: 2px; position: relative; background: var(--ink-300); padding: 0; }
+  .batt::after {
+    content: ""; position: absolute; right: -3px; top: 3px;
+    width: 2px; height: 4px; background: var(--ink-300); border-radius: 0 1px 1px 0;
+  }
+  .batt > i { display: block; width: 70%; height: 100%; background: var(--ink); border-radius: 2px 0 0 2px; }
+
+  /* ── deck — flat: no dividers, bare glyphs ──────────────────── */
+  .deck {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: var(--deck-h);
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    background: var(--bg-cream);
+    z-index: 50;
+  }
+  .deck .slot { display: grid; place-items: center; color: var(--ink-300); }
+  .deck .slot .glyph { font-size: 26px; font-weight: 800; line-height: 1; }
+  .deck .slot.focus { color: var(--ink); }
+  .deck.dim { opacity: .55; }
+
+  /* ── stage (y22–228) ────────────────────────────────────────── */
+  .stage {
+    position: absolute;
+    top: var(--statusbar-h); left: 0; right: 0;
+    bottom: var(--deck-h);
+    background: var(--bg-cream);
+    overflow: hidden;
+  }
+
+  /* Ghost of the underlying screen (wheel tiles, radius 16, flat) */
+  .ghost-tile { position: absolute; border-radius: 16px; background: var(--bg-cream-2); }
+  .ghost-tile.hero { background: var(--c-lime); }
+
+  /* ── overlay: scrim + centered children ─────────────────────── */
+  /* scrim = ink @ 40% opa, covers the stage only (0,22 → 240,228) */
+  .scrim {
+    position: absolute; top: var(--statusbar-h); left: 0; right: 0; bottom: var(--deck-h);
+    background: rgba(27,27,31,0.40);
+    z-index: 30;
+  }
+
+  /* spinner — 48×48 at (96,90) panel coords; 8 ink dots 6px r3,
+     orbit r18 around (120,114), opacity staggered 1.0→0.2 */
+  .sys-spinner { position: absolute; left: 96px; top: 90px; width: 48px; height: 48px; z-index: 40; }
+  .sys-spinner > i {
+    position: absolute; width: 6px; height: 6px; border-radius: 3px;
+    background: var(--ink);
+    animation: spinFade 800ms linear infinite;
+  }
+  .sys-spinner > i:nth-child(1) { left: 21px; top:  3px; animation-delay:    0ms; }
+  .sys-spinner > i:nth-child(2) { left: 34px; top:  8px; animation-delay: -700ms; }
+  .sys-spinner > i:nth-child(3) { left: 39px; top: 21px; animation-delay: -600ms; }
+  .sys-spinner > i:nth-child(4) { left: 34px; top: 34px; animation-delay: -500ms; }
+  .sys-spinner > i:nth-child(5) { left: 21px; top: 39px; animation-delay: -400ms; }
+  .sys-spinner > i:nth-child(6) { left:  8px; top: 34px; animation-delay: -300ms; }
+  .sys-spinner > i:nth-child(7) { left:  3px; top: 21px; animation-delay: -200ms; }
+  .sys-spinner > i:nth-child(8) { left:  8px; top:  8px; animation-delay: -100ms; }
+  @keyframes spinFade { 0% { opacity: 1; } 100% { opacity: 0.2; } }
+
+  /* loading label — Mont-14 ink_soft, (20,150,200,16) */
+  .sys-wait {
+    position: absolute; left: 20px; top: 150px; width: 200px; height: 16px;
+    font: 600 14px/16px "Montserrat", "Segoe UI", system-ui, sans-serif;
+    color: var(--ink-soft); text-align: center; z-index: 40;
+  }
+
+  /* error badge — 56×56 circle at (92,64), butter, big "!" ink */
+  .sys-badge {
+    position: absolute; left: 92px; top: 64px; width: 56px; height: 56px;
+    border-radius: 28px; background: var(--c-butter);
+    display: grid; place-items: center;
+    font: 800 24px/1 "Montserrat", "Segoe UI", system-ui, sans-serif;
+    color: var(--ink); z-index: 40;
+  }
+  .sys-badge.tomato { background: var(--c-tomato); }
+
+  /* error message — Mont-14 ink, 2 lines, (20,140,200,36) */
+  .sys-msg {
+    position: absolute; left: 20px; top: 140px; width: 200px; height: 36px;
+    font: 600 14px/18px "Montserrat", "Segoe UI", system-ui, sans-serif;
+    color: var(--ink); text-align: center; z-index: 40;
+  }
+
+  /* doc styles */
+  .specs {
+    max-width: 1080px;
+    background: #221b1d;
+    border: 1px solid #3b2e2e;
+    border-radius: 10px;
+    padding: 16px 20px;
+    font-size: 13px; line-height: 1.6;
+    color: #d8c8b3;
+    margin-top: 12px;
+  }
+  .specs code { background: #000; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #ffcfae; }
+  table.spec { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0 12px; }
+  table.spec th {
+    text-align: left; color: #ffd9b3;
+    padding: 6px 8px; background: #2b2122;
+    border-bottom: 1px solid #3b2e2e;
+    font-weight: 600; white-space: nowrap;
+  }
+  table.spec td { padding: 6px 8px; border-bottom: 1px solid #2a2222; vertical-align: top; }
+  table.spec td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.spec td.mono { font-family: ui-monospace, monospace; }
+  table.spec tr:last-child td { border-bottom: none; }
+  table.spec .grp {
+    background: #2b2122; color: #ffd9b3;
+    font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<h1>YoyoPod — System Overlays · Loading + Error · Implementation Spec</h1>
+<p class="muted">The last two runtime routes with no design: <code>UiScreen::Loading</code> and <code>UiScreen::Error</code>. Both are <b>overlays</b> (<code>NavigationPolicy::Overlay</code>, <code>Persistence::Singleton</code>) — they float over whatever screen was active, never replace it, and there is exactly one instance of each. Small and friendly: a kid aged 3–7 sees a gentle pause or a butter "oops", never a hang and never a stack trace. Voice speaks everything important — pre-readers complete both flows without decoding a word. Frames below sit over a plain cream stage for clarity; frame 2 shows real overlay semantics with a dimmed wheel behind. Flat system: no UI borders, no drop shadows — fills + radius only. Input model lives in <code>mockup_input_model.html</code>.</p>
+
+<!-- ============================================================ -->
+<h2>1 · Renders</h2>
+<div class="row">
+
+  <div class="stack">
+    <span class="label">Loading · over cream stage</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage"></div>
+      <div class="scrim"></div>
+      <div class="sys-spinner"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="sys-wait">One moment…</div>
+      <div class="deck dim">
+        <div class="slot listen focus"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Scrim (ink @ 40%) over the stage, deck dimmed to 55%, statusbar stays live. 8 ink dots cycle opacity 1.0→0.2 — the runtime's existing spinner fx. Label spoken once if the wait passes 2 s.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">Loading · over a dimmed wheel</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage">
+        <div class="ghost-tile" style="left:16px; top:14px;  width:120px; height:40px;"></div>
+        <div class="ghost-tile hero" style="left:16px; top:62px; width:150px; height:56px;"></div>
+        <div class="ghost-tile" style="left:16px; top:126px; width:120px; height:40px;"></div>
+      </div>
+      <div class="scrim"></div>
+      <div class="sys-spinner"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="sys-wait">One moment…</div>
+      <div class="deck dim">
+        <div class="slot listen focus"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Overlay semantics: the Listen wheel is still there under the scrim, untouched. Dismissal just removes the scrim and children — the underlying screen never re-renders. If the wait passes 8 s, Loading escalates to Error.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">Error · recoverable (butter)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage"></div>
+      <div class="scrim"></div>
+      <div class="sys-badge">!</div>
+      <div class="sys-msg">Oops, something went wrong.<br>Let's try again!</div>
+      <div class="deck dim">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask focus"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Friendly, never scary: butter circle, big ink "!", two short spoken lines. Auto-dismiss + retry after 4 s; double-press retries now; long-press goes Home. No codes, no stack text — ever.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">Error · unrecoverable (tomato)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i class="off"></i><i class="off"></i><i class="off"></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage"></div>
+      <div class="scrim"></div>
+      <div class="sys-badge tomato">!</div>
+      <div class="sys-msg">That's not working right now.<br>Ask a grown-up to help!</div>
+      <div class="deck dim">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask focus"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Same geometry, badge swaps butter → tomato. No auto-retry, no double-press — it stays until long-press (Home). The one state that deliberately asks for an adult.</span>
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2>2 · Geometry</h2>
+<div class="specs">
+  <p style="margin-top:0">Panel coordinate space, y grows downward. Statusbar 0–22, stage 22–228, deck 228–280. Everything below is flat: fills + radius only, no borders, no shadows. Ink = text/glyphs. Typography Montserrat {12, 14, 18, 24} — this spec uses 14 and 24 only.</p>
+  <table class="spec">
+    <thead><tr><th>Element</th><th>Value</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="3">Shared overlay chrome</td></tr>
+      <tr><td>Scrim</td><td class="num">(0, 22) → (240, 228)</td><td>ink <code>#1B1B1F</code> at 40% opacity (LVGL opa 102). Covers the stage only — the underlying screen stays alive beneath it.</td></tr>
+      <tr><td>Deck while overlaid</td><td class="num">opacity 0.55</td><td>Whole-deck dim (<code>lv_obj_set_style_opa(deck, 140, 0)</code>), same value as Ask's LISTENING dim. No dividers, bare glyphs — flat deck rules.</td></tr>
+      <tr><td>Statusbar while overlaid</td><td class="num">opacity 1.0</td><td>Stays live — time / battery / signal remain system truth even mid-error.</td></tr>
+      <tr class="grp"><td colspan="3">Loading</td></tr>
+      <tr><td>Spinner box</td><td class="num">48 × 48 at x 96, y 90</td><td>Horizontally centered (center x 120, center y 114 — a touch above stage center so the label sits comfortably below).</td></tr>
+      <tr><td>Spinner dots</td><td class="num">8 dots · 6 × 6 · radius 3 · ink</td><td>Dot centers on an 18 px orbit around (120, 114), one every 45°. Twelve-o'clock dot rect: (117, 93, 6, 6).</td></tr>
+      <tr><td>Spinner animation</td><td class="mono">opacity 1.0 → 0.2, rotating</td><td>Mockup: 800 ms CSS cycle, 100 ms stagger. Runtime: existing spinner fx steps the bright dot once per 80 ms tick (12.5 fps) → 640 ms per revolution. See §5 for the <code>lv_spinner</code> alternative.</td></tr>
+      <tr><td>Wait label</td><td class="num">(20, 150, 200, 16)</td><td>Mont-14, ink_soft <code>#3A3A40</code>, centered: "One moment…". Spoken once if the wait exceeds 2 s.</td></tr>
+      <tr class="grp"><td colspan="3">Error</td></tr>
+      <tr><td>Badge</td><td class="num">56 × 56 at x 92, y 64</td><td>Circle (radius 28), butter <code>#FFD06A</code> fill, flat — no border. Unrecoverable variant: tomato <code>#E5443B</code>, identical geometry.</td></tr>
+      <tr><td>Badge glyph</td><td class="mono">"!" · Mont-24 · ink</td><td>Centered in the badge. At runtime a 24 px A8 glyph asset (<code>sys_alert.a8</code>) or a Mont-24 label — Mont-24 needs a font extern (§5).</td></tr>
+      <tr><td>Message</td><td class="num">(20, 140, 200, 36)</td><td>Mont-14 / 18 px line height, ink, centered, 2 lines: "Oops, something went wrong. / Let's try again!". Unrecoverable: "That's not working right now. / Ask a grown-up to help!". Loading's wait label reuses this rect (single line, vertically centered).</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>3 · Behavior + input contract</h2>
+<p>Both overlays are <code>FocusPolicy::None</code> with <code>NO_SELECT</code> — there is nothing to focus and single press is consumed silently. The whole contract is double-press, long-press, and timers.</p>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Event</th><th>Loading</th><th>Error · recoverable</th><th>Error · unrecoverable</th></tr></thead>
+    <tbody>
+      <tr><td><b>Appears when</b></td>
+          <td>any operation blocks the UI &gt; 300 ms (debounce — quick ops never flash a spinner)</td>
+          <td>an operation fails recoverably, or Loading exceeds 8 s</td>
+          <td>the runtime marks the failure non-retryable (e.g. hardware, provisioning)</td></tr>
+      <tr><td><b>Single press</b></td>
+          <td colspan="3">no-op in every state — <code>FocusPolicy::None</code>, select target <code>NO_SELECT</code>. Consumed, no error tone, no flash.</td></tr>
+      <tr><td><b>Double-press</b></td>
+          <td>no-op (reserved)</td>
+          <td><b>retry now</b> — cancels the 4 s timer, dismisses, re-issues the failed intent</td>
+          <td>no-op</td></tr>
+      <tr><td><b>Long-press ≥ 400 ms</b></td>
+          <td>→ Home; pending operation cancelled</td>
+          <td>→ Home; retry abandoned</td>
+          <td>→ Home — the only exit</td></tr>
+      <tr><td><b>PTT press / release</b></td>
+          <td colspan="3">ignored while an overlay is active — the mic never goes hot behind a scrim.</td></tr>
+      <tr><td><b>Auto behavior</b></td>
+          <td>&gt; 2 s → speak wait line once · resolves → dismiss · &gt; 8 s → escalate to Error</td>
+          <td>after 4 s → auto-dismiss + retry once; a second failure re-enters Error and waits for input (no retry loop)</td>
+          <td>none — stays until long-press</td></tr>
+      <tr><td><b>On dismiss</b></td>
+          <td colspan="3">overlay children hide, scrim drops, deck opa restores ≤ 100 ms — the underlying screen was never torn down (<code>Persistence::Singleton</code>, one reusable instance per overlay).</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0"><b>Diagnostics rule:</b> the device never renders or speaks an error code, exception text, or stack fragment. On every Error entry the runtime writes one structured diagnostic line (code, source intent, retry count) to the device log for grown-ups and support — the screen shows only the friendly message above.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>4 · Voice lines</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Moment</th><th>Spoken line</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td>Loading passes 2 s</td><td>"One moment…"</td><td>Spoken once per Loading session, never repeated — a spinner that talks every second is worse than silence.</td></tr>
+      <tr><td>Error entry (recoverable)</td><td>"Oops, something went wrong. Let's try again!"</td><td>Spoken on entry, matches the on-screen text exactly.</td></tr>
+      <tr><td>4 s auto-retry fires</td><td>— (soft earcon only)</td><td>No line — the retry should feel automatic, not naggy.</td></tr>
+      <tr><td>Double-press retry</td><td>"Okay — trying again!"</td><td>Confirms the kid's action was heard.</td></tr>
+      <tr><td>Error entry (unrecoverable)</td><td>"That's not working right now. Ask a grown-up to help!"</td><td>Spoken on entry; repeated once if the overlay is still up after 60 s, then silent.</td></tr>
+      <tr><td>Long-press → Home</td><td>— (standard Home earcon)</td><td>Same exit sound as everywhere else — no special-casing.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>5 · LVGL render mapping</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Component</th><th>LVGL primitive</th><th>Style hookups</th></tr></thead>
+    <tbody>
+      <tr><td>Scrim</td><td><code>lv_obj</code>, stage-sized</td><td>bg=ink, bg_opa 102 (40%), radius 0, no border. Sits above the active screen's stage, below overlay children.</td></tr>
+      <tr><td>Spinner</td><td>8 × <code>lv_obj</code> dots</td><td>6 × 6, radius 3, bg=ink. Opacity cycled 255 → 51 by the existing spinner fx (already bound: <code>scenes.ron</code> gives the <code>loading</code> scene <code>fx: ["spinner"]</code> on stage <code>overlay_center</code>). One step per 80 ms tick = 12.5 fps, zero per-frame layout work.</td></tr>
+      <tr><td>Wait label / Message</td><td><code>lv_label</code></td><td>Mont-14. Loading: ink_soft, 1 line. Error: ink, 2 lines, centered. Text swap only — no create/destroy between variants.</td></tr>
+      <tr><td>Badge</td><td><code>lv_obj</code> + <code>lv_label</code></td><td>56 × 56, radius 28, bg=butter (tomato for unrecoverable — style swap, no relayout). Child label "!" Mont-24 ink, or a 24 px A8 glyph asset.</td></tr>
+    </tbody>
+  </table>
+  <h3>Spinner: two viable implementations</h3>
+  <table class="spec">
+    <thead><tr><th>Option</th><th>Cost</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td><b>A — 8 dots + existing spinner fx</b></td><td>8 objects, no new FFI, fx already wired to the loading scene</td><td><b>Ship this.</b> Matches the mockup exactly; invalidation is 8 tiny rects per tick.</td></tr>
+      <tr><td><b>B — canonical <code>lv_spinner</code></b></td><td>1 object, but needs new externs (<code>lv_spinner_create</code> + arc styling) and draws an arc, not dots</td><td>Fallback if the dot fx ever misbehaves; visually a different (arc) spinner.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0"><b>Object budget:</b> Loading = 1 scrim + 8 dots + 1 label = <b>10</b>; Error = 1 scrim + 1 badge + 1 glyph + 1 message = <b>4</b>. Both sit on top of the live underlying screen and stay well inside the ~15-object overlay budget. <b>Font externs:</b> Mont-12 and Mont-18 are already linked in the FFI; this spec needs <b>Mont-14</b> (labels/messages) and <b>Mont-24</b> (badge "!") — both require new externs. Glyphs ship as A8 icon assets at runtime, not emoji.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>6 · Roles — layouts.ron + theme.ron</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Role</th><th>layouts.ron rect</th><th>theme.ron (flat)</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">sys_scrim</td><td class="mono">(x: 0, y: 22, width: 240, height: 206)</td><td class="mono">fill_rgb: 1776415, opacity: 102, radius: 0</td><td>ink @ 40%. Stage-only — statusbar and deck are outside it.</td></tr>
+      <tr><td class="mono">sys_spinner_dot</td><td class="mono">(x: 117, y: 93, width: 6, height: 6)</td><td class="mono">fill_rgb: 1776415, opacity: 255, radius: 3</td><td>Rect is the 12-o'clock dot. Not a <code>repeat_y</code> — the spinner fx instantiates 8 copies at 45° steps on the 18 px orbit around (120, 114) and cycles opacity 255 → 51. Supersedes the legacy dark-theme <code>fx_spinner</code> values.</td></tr>
+      <tr><td class="mono">sys_msg</td><td class="mono">(x: 20, y: 140, width: 200, height: 36)</td><td class="mono">text_rgb: 1776415</td><td>Mont-14, centered. Error: 2 lines, ink. Loading: 1 line vertically centered, tinted ink_soft (3816000) by the loading scene style.</td></tr>
+      <tr><td class="mono">sys_badge</td><td class="mono">(x: 92, y: 64, width: 56, height: 56)</td><td class="mono">fill_rgb: 16765034, text_rgb: 1776415, opacity: 255, radius: 28</td><td>Butter circle + ink "!". Unrecoverable state swaps <code>fill_rgb</code> to 15025211 (tomato) — same rect, same radius.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>7 · Runtime mapping</h2>
+<div class="specs">
+  <p style="margin-top:0">Nothing here needs new routes — the runtime already has both screens; only the design was missing. This spec closes <b>README open question #7</b> ("Loading / Error overlay design — routes exist in the runtime, no mockup").</p>
+  <table class="spec">
+    <thead><tr><th>Runtime fact</th><th>Where</th></tr></thead>
+    <tbody>
+      <tr><td><code>UiScreen::Loading</code> and <code>UiScreen::Error</code> are registered routes</td><td class="mono">device/ui/src/router/routes.rs</td></tr>
+      <tr><td>Both are <code>NavigationPolicy::Overlay</code> — they float over the active screen, never replace it</td><td class="mono">routes.rs</td></tr>
+      <tr><td>Both are <code>Persistence::Singleton</code> — one reusable instance each; re-entry re-shows, never re-creates</td><td class="mono">routes.rs</td></tr>
+      <tr><td>Both are <code>FocusPolicy::None</code> with <code>NO_SELECT</code> — single press is a designed no-op</td><td class="mono">routes.rs</td></tr>
+      <tr><td>Loading scene already carries the spinner: <code>stage: "overlay_center", fx: ["spinner"]</code>; error scene is <code>overlay_center</code> with no fx</td><td class="mono">device/ui/assets/scenes.ron</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Implementation work is therefore: add the four <code>sys_*</code> roles (§6), re-theme the spinner fx dots to flat ink, add the Mont-14 / Mont-24 externs, and wire the §3 timers (300 ms debounce, 2 s speak, 8 s escalate, 4 s auto-retry) into the overlay controller.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>8 · Changelog</h2>
+<div class="specs">
+  <ul style="margin:0">
+    <li><b>2026-07-15 · v1</b> — created in the finalization pass; flat + neutral bezel from birth.</li>
+  </ul>
+</div>
+
+<p style="margin-top:24px" class="muted">Spec rev 2026-07-15 · v1 · pairs with <code>mockup_input_model.html</code> and <code>README.md</code>.</p>
+
+</body>
+</html>

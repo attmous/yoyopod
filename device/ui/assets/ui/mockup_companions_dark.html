@@ -38,9 +38,6 @@
     /* Text/border color when sitting ON a bright accent (focused deck slot) */
     --ink-on-accent: #1B1B1F;
 
-    /* Hard offset shadow: pure black on dark */
-    --shadow-ink: #000;
-
     --border-w: 2px;
     --sp-1: 4px;
     --sp-2: 8px;
@@ -52,7 +49,7 @@
     margin: 0; padding: 0;
     background: #0d0d10;
     color: #efe4d6;
-    font-family: -apple-system, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+    font-family: "Montserrat","Segoe UI",system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   body { padding: 32px 24px 80px; }
@@ -68,12 +65,9 @@
   .device {
     width: calc(var(--panel-w) + 24px);
     padding: 12px;
-    border-radius: 22px;
-    background: linear-gradient(160deg, #ff7a3d, #d2401b);
-    box-shadow:
-      0 0 0 1px rgba(255,255,255,0.05) inset,
-      0 30px 50px -20px rgba(0,0,0,0.7),
-      0 0 60px -10px rgba(255,90,31,0.35);
+    border-radius: 26px;
+    background: #221c1f;
+    box-shadow: none;
   }
   .panel {
     position: relative;
@@ -84,7 +78,7 @@
     overflow: hidden;
     color: var(--ink);
     border-radius: var(--panel-radius);
-    box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 1px var(--ink);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
   }
 
   .statusbar {
@@ -143,16 +137,13 @@
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     background: var(--bg-cream);
-    border-top: var(--border-w) solid var(--ink);
     z-index: 20;
   }
   .deck .slot {
     background: var(--bg-cream);
     color: var(--ink-300);
     display: grid; place-items: center;
-    border-right: var(--border-w) solid var(--ink);
   }
-  .deck .slot:last-child { border-right: none; }
   .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; }
   .deck .slot.listen .glyph { font-size: 24px; }
 
@@ -171,7 +162,6 @@
     left: 50px;     /* (240-140)/2 = 50 → centered */
     top: 45px;
     animation: breathe 4.2s ease-in-out infinite;
-    filter: drop-shadow(2px 3px 0 var(--shadow-ink));
   }
   @keyframes breathe {
     0%, 100% { transform: scale(1); }
@@ -228,7 +218,6 @@
   table.spec td .sw {
     display: inline-block;
     width: 14px; height: 14px;
-    border: 1.5px solid #1B1B1F;
     border-radius: 3px;
     vertical-align: -3px;
     margin-right: 6px;
@@ -241,8 +230,7 @@
 <h1>YoyoPod — Companion Variants · Dark Theme</h1>
 <p class="muted">Dark-theme variant of the companion spec. <b>Owl and Bunny fills stay unchanged</b> — they already read well on either surface. <b>Cat and Robot get re-tuned</b>: cat butter washes out on dark (→ deep amber), and robot light-grey reads like white plastic (→ slate blue). What flips:</p>
 <ul class="muted" style="max-width: 760px; font-size: 13px; line-height: 1.55; margin-top: 6px;">
-  <li><b>Outlines</b> (the 3 px stroke that wraps every body) flip from ink (near-black) to <code>ink</code> = warm off-white <code>#F2E8DA</code>, so the silhouettes show against the dark surface.</li>
-  <li><b>Drop shadow</b> uses pure black <code>shadow_ink #000</code> for extra bite against the dark stage.</li>
+  <li><b>Outlines</b> (the 3 px stroke that wraps every body) flip from ink (near-black) to <code>ink</code> = warm off-white <code>#F2E8DA</code>, so the silhouettes show against the dark surface. Characters keep their ink outlines (illustrations, not UI); no drop-shadow.</li>
   <li><b>Internal dark fills</b> (eye pupils, robot screen buttons, cat/bunny nose, bunny sunglasses) stay at <code>#1B1B1F</code> — they sit on top of light-colored character parts (eye-whites, periwinkle chest panel, body bodies), where dark is the only readable choice.</li>
 </ul>
 
@@ -254,7 +242,6 @@
     <tbody>
       <tr><td class="mono">bg_cream (panel/stage)</td>     <td class="mono"><span class="sw" style="background:#FCE6D2"></span>#FCE6D2</td><td class="mono"><span class="sw" style="background:#1B1B1F"></span>#1B1B1F</td><td>Surface inversion.</td></tr>
       <tr><td class="mono">ink (body outlines)</td>         <td class="mono"><span class="sw" style="background:#1B1B1F"></span>#1B1B1F</td><td class="mono"><span class="sw" style="background:#F2E8DA"></span>#F2E8DA</td><td>Outlines flip so silhouettes stay visible on the dark stage.</td></tr>
-      <tr><td class="mono">shadow_ink (drop shadow)</td>    <td class="mono"><span class="sw" style="background:#1B1B1F"></span>#1B1B1F (= ink)</td><td class="mono"><span class="sw" style="background:#000000"></span>#000000</td><td>Pure black gives the hard-offset shadow more bite on dark.</td></tr>
       <tr><td>Eye pupils, dark facial fills</td>            <td class="mono">#1B1B1F</td>     <td class="mono">#1B1B1F</td>     <td>Stay dark — they sit on top of light fills (eye-whites, periwinkle chest, character bodies).</td></tr>
       <tr><td class="mono">c_cat</td>          <td class="mono"><span class="sw" style="background:#FFD06A"></span>#FFD06A</td><td class="mono"><span class="sw" style="background:#E89B3A"></span>#E89B3A</td><td>Deeper amber — butter washes out on dark; amber holds the "warm cat" feel without going neon.</td></tr>
       <tr><td class="mono">c_robot</td>        <td class="mono"><span class="sw" style="background:#DDE3E8"></span>#DDE3E8</td><td class="mono"><span class="sw" style="background:#5A6B82"></span>#5A6B82</td><td>Slate blue — light grey reads as washed-out plastic on dark. Slate gives an industrial "metal" feel.</td></tr>
@@ -262,7 +249,7 @@
       <tr><td>c_owl, c_owl_beak, c_bunny, c_bunny_inner, c_robot_led</td><td colspan="2" style="text-align:center">unchanged</td><td>These read well on both surfaces.</td></tr>
     </tbody>
   </table>
-  <p style="margin:0">Net effect: outline + shadow color swap. Geometry, animation, and body colors are byte-identical with the light theme.</p>
+  <p style="margin:0">Net effect: outline color swap. Geometry, animation, and body colors are byte-identical with the light theme.</p>
 </div>
 
 <h2>1 · Four variants on the Home screen (dark)</h2>
@@ -581,9 +568,8 @@
 <h2>3 · Shared style rules (apply to every variant)</h2>
 <div class="specs">
   <ul>
-    <li><b>Outline:</b> 3 px <code>ink</code> stroke, <code>stroke-linejoin: round</code>, <code>stroke-linecap: round</code>. On dark theme <code>ink</code> resolves to <code>#F2E8DA</code> (warm off-white). (In LVGL the outline is baked into the sprite — generate a separate atlas per theme.)</li>
-    <li><b>Drop shadow:</b> <code>filter: drop-shadow(2px 3px 0 ink)</code> — blur 0, follows silhouette, identical to the Blob.</li>
-    <li><b>Breathing:</b> <code>scale 1.00 ↔ 1.04</code>, 4200 ms ease-in-out, infinite. Applied to the wrapper, not the SVG, so it inherits the drop-shadow's silhouette tracking.</li>
+    <li><b>Outline:</b> 3 px <code>ink</code> stroke, <code>stroke-linejoin: round</code>, <code>stroke-linecap: round</code>. On dark theme <code>ink</code> resolves to <code>#F2E8DA</code> (warm off-white). Characters keep their ink outlines (illustrations, not UI); no drop-shadow. (In LVGL the outline is baked into the sprite — generate a separate atlas per theme.)</li>
+    <li><b>Breathing:</b> <code>scale 1.00 ↔ 1.04</code>, 4200 ms ease-in-out, infinite. Applied to the wrapper, not the SVG.</li>
     <li><b>Blink:</b> eye groups carry <code>.eye-iris</code>; shared <code>scaleY 1 ↔ 0.1</code> keyframes (5500 ms) fire on each. <code>transform-box: fill-box</code> keeps the scale anchored to each eye's center.</li>
     <li><b>Stage position:</b> wrapper is <code>position: absolute</code> inside <code>.home-stage</code>. Each variant chooses its own <code>top</code>/<code>left</code> within the 240 × 206 stage area to keep the visual center between status bar and deck.</li>
     <li><b>Layer order:</b> always above stage bg (<code>z-index: 10</code>), always below Deck and StatusBar.</li>
@@ -598,7 +584,7 @@
     <tbody>
       <tr><td><b>Sprite atlas</b> (recommended)</td>
           <td>~135 KB / variant @ RGB565 (32 frames × 110×110 + alpha) — load one variant at a time</td>
-          <td>Default. Cheapest CPU. Animation is just blits. Outline + shadow baked in.</td></tr>
+          <td>Default. Cheapest CPU. Animation is just blits. Outline baked in.</td></tr>
       <tr><td><b>SVG → static PNG + procedural breathe/blink</b></td>
           <td>~6 KB body sprite + per-frame transform</td>
           <td>If RAM is tight; lose the morph but keep breathe/blink via <code>lv_anim</code> on scale + eye alpha.</td></tr>
@@ -632,6 +618,7 @@
 </div>
 
 <p style="margin-top:24px" class="muted">Spec rev. 2026-05-13 · Companions add-on. Drops into the Home screen spec as a swappable variant set behind the existing Blob component.</p>
+<p class="muted" style="font-size:12px">2026-07-15 · flat pass — UI chrome flattened (characters keep ink outlines, drop-shadows removed), neutral bezel. Matches Listen v2.1 / Talk v5.1.</p>
 
 </body>
 </html>

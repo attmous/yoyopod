@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>YoyoPod — Talk Flow · v5 · Contact Wheel + De-boxed Calls</title>
+<title>YoyoPod — Talk Flow · v5.1 · Contact Wheel + De-boxed Calls · Flat</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap');
 
@@ -27,8 +27,6 @@
     --c-mustard:   #E8A93C;
     --c-mint:      #6FDFB1;  /* NEW token — answer button */
 
-    --border-w: 2px;
-
     --statusbar-h: 22px;
     --deck-h:      52px;
 
@@ -52,15 +50,13 @@
   .stack { display: flex; flex-direction: column; gap: 6px; }
   .label { font-size: 11px; color: #8a7c6c; letter-spacing: 0.06em; text-transform: uppercase; }
 
+  /* device frame — neutral bezel (flat pass; orange prototype frame removed) */
   .device {
     width: calc(var(--panel-w) + 24px);
     padding: 12px;
-    border-radius: 22px;
-    background: linear-gradient(160deg, #ff7a3d, #d2401b);
-    box-shadow:
-      0 0 0 1px rgba(255,255,255,0.05) inset,
-      0 30px 50px -20px rgba(0,0,0,0.7),
-      0 0 60px -10px rgba(255,90,31,0.35);
+    border-radius: 26px;
+    background: #221c1f;
+    box-shadow: none;
   }
   .panel {
     position: relative;
@@ -71,7 +67,7 @@
     overflow: hidden;   /* clips the wheel peeks at the panel edge */
     color: var(--ink);
     border-radius: var(--panel-radius);
-    box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 1px var(--ink);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
   }
 
   /* ── status bar (verbatim from v4) ─────────────────────────── */
@@ -119,35 +115,37 @@
   }
   .batt > i { display: block; width: 70%; height: 100%; background: var(--ink); }
 
-  /* ── deck (nav bar — verbatim from v4) ─────────────────────── */
+  /* ── deck (nav bar — flat: no top rule, no dividers) ───────── */
   .deck {
     position: absolute; bottom: 0; left: 0; right: 0;
     height: var(--deck-h);
     display: grid; grid-template-columns: repeat(4, 1fr);
     background: var(--bg-cream);
-    border-top: var(--border-w) solid var(--ink);
     z-index: 20;
   }
   .deck .slot {
     background: var(--bg-cream); color: var(--ink-300);
     display: grid; place-items: center;
-    border-right: var(--border-w) solid var(--ink);
     position: relative;
   }
-  .deck .slot:last-child { border-right: none; }
-  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; }
+  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; position: relative; z-index: 1; }
   .deck .slot.listen .glyph { font-size: 24px; }
   .deck .slot.focus { color: var(--ink); }
-  .deck .slot.focus.listen { background: var(--c-lime); }
-  .deck .slot.focus.talk   { background: var(--c-peri); }
-  .deck .slot.focus.ask    { background: var(--c-butter); }
-  .deck .slot.focus.setup  { background: var(--c-coral); }
+  /* focused slot = inset pill — the deck's only chrome */
+  .deck .slot.focus::before {
+    content: ""; position: absolute;
+    top: 6px; bottom: 6px; left: 8px; right: 8px;
+    border-radius: 12px;
+  }
+  .deck .slot.focus.listen::before { background: var(--c-lime); }
+  .deck .slot.focus.talk::before   { background: var(--c-peri); }
+  .deck .slot.focus.ask::before    { background: var(--c-butter); }
+  .deck .slot.focus.setup::before  { background: var(--c-coral); }
 
   .deck .slot.talk .badge-dot {
     position: absolute; top: 6px; right: 8px;
     width: 6px; height: 6px;
     background: var(--c-tomato);
-    border: 1.5px solid var(--ink);
     border-radius: 50%;
   }
 
@@ -182,19 +180,16 @@
   .wtile.t2 { top: 157px; }
   .wtile.focus { z-index: 6; }
   .wtile.peek  { transform: scale(0.7); opacity: 0.45; }
-  /* the focused tile's chrome — the ONLY box on screen */
+  /* the focused tile's plate — the only plate on screen (flat: no border, no shadow) */
   .wtile .wbox {
     position: absolute; inset: 0;
     background: var(--c-peri);
-    border: var(--border-w) solid var(--ink);
-    border-radius: 12px;
-    box-shadow: 3px 3px 0 var(--ink);
+    border-radius: 16px;
     box-sizing: border-box;
   }
   /* variant C — contact tile */
   .w-avatar {
     position: absolute; left: 60px; top: 8px; width: 56px; height: 56px;
-    border: var(--border-w) solid var(--ink);
     border-radius: 28px;
     box-sizing: border-box;
     display: grid; place-items: center;
@@ -210,7 +205,6 @@
   }
   .w-badge {
     position: absolute; left: 148px; top: 6px; width: 22px; height: 22px;
-    border: var(--border-w) solid var(--ink);
     border-radius: 11px;
     box-sizing: border-box;
     background: var(--c-coral);
@@ -231,9 +225,7 @@
   .empty-plus {
     position: absolute; left: 92px; top: 74px; width: 56px; height: 56px;
     background: var(--c-peri);
-    border: var(--border-w) solid var(--ink);
     border-radius: 50%;
-    box-shadow: 3px 3px 0 var(--ink);
     box-sizing: border-box;
     display: grid; place-items: center;
     font: 800 28px/1 var(--mont);
@@ -259,7 +251,7 @@
   }
   .rec-meter {
     position: absolute; left: 64px; top: 118px; width: 112px; height: 42px;
-    border: var(--border-w) solid var(--bg-cream);
+    background: rgba(252, 230, 210, 0.35);  /* semi-transparent cream track — flat, replaces the border */
     border-radius: 8px;
     box-sizing: border-box;
     padding: 4px;
@@ -282,7 +274,6 @@
   .arc-svg { position: absolute; left: 50px; top: 36px; z-index: 4; }
   .hero-avatar {
     position: absolute; left: 77px; top: 63px; width: 86px; height: 86px;
-    border: var(--border-w) solid var(--ink);
     border-radius: 43px;
     box-sizing: border-box;
     background: var(--c-mustard);
@@ -293,11 +284,9 @@
   }
   .hero-chip {
     position: absolute; left: 104px; top: 160px; width: 32px; height: 32px;
-    border: var(--border-w) solid var(--ink);
     border-radius: 16px;
     box-sizing: border-box;
     background: var(--c-peri);
-    box-shadow: 2px 2px 0 var(--ink);
     display: grid; place-items: center;
     font: 800 13px/1 var(--mont);
     color: var(--ink);
@@ -342,10 +331,8 @@
   }
   .call-avatar {
     position: absolute; left: 76px; top: 48px; width: 88px; height: 88px;
-    border: var(--border-w) solid var(--ink);
     border-radius: 44px;
     box-sizing: border-box;
-    box-shadow: 3px 3px 0 var(--ink);
     background: var(--c-mustard);
     display: grid; place-items: center;
     font: 800 24px/1 var(--mont);
@@ -371,10 +358,8 @@
   }
   .call-btn {
     position: absolute; top: 178px; width: 44px; height: 44px;
-    border: var(--border-w) solid var(--ink);
     border-radius: 22px;
     box-sizing: border-box;
-    box-shadow: 2px 2px 0 var(--ink);
     display: grid; place-items: center;
     font: 800 18px/1 var(--mont);
     color: var(--ink);
@@ -387,6 +372,7 @@
   .call-btn.hangup { background: var(--c-tomato); }
   .call-btn.mute   { background: var(--bg-cream); }
   .call-btn.mute.active { background: var(--c-coral); }
+  /* focus ring — the one surviving stroke in the flat UI */
   .call-btn.focus { transform: scale(1.1); outline: 2px solid var(--ink); outline-offset: 2px; }
 
   /* pulse rings — existing call_pulse fx, 2 concentric peri rings */
@@ -444,8 +430,8 @@
 </head>
 <body>
 
-<h1>YoyoPod — Talk Flow · v5 · Contact Wheel + De-boxed Calls</h1>
-<p class="muted">De-boxing pass. <b>(1)</b> The peri card + 28&nbsp;px rows become a 3-slot <b>contact wheel</b> — the focused tile is the only box on screen. <b>(2)</b> The tab strip retires; depth ≥&nbsp;2 gets one 12&nbsp;px uppercase <b>context label</b>, no box. <b>(3)</b> The card tint becomes a <b>full-bleed stage tint</b> (<code>bg_stage_peri</code>). <b>(4)</b> Call overlays lose the cream card and pill buttons entirely. <b>(5)</b> Recording is a full-bleed tomato state. PTT contract, stuck semantics, per-contact replay, and the route inventory are all unchanged from v4.</p>
+<h1>YoyoPod — Talk Flow · v5.1 · Contact Wheel + De-boxed Calls · Flat</h1>
+<p class="muted">De-boxing pass, now fully <b>flat, color-first</b> (v5.1): no borders, no hard shadows anywhere — the 2&nbsp;px ink focus ring on call buttons and Replay transport is the one surviving stroke; focus elsewhere = fill + size + spoken label. <b>(1)</b> The peri card + 28&nbsp;px rows become a 3-slot <b>contact wheel</b> — the focused tile is the only plate on screen. <b>(2)</b> The tab strip retires; depth ≥&nbsp;2 gets one 12&nbsp;px uppercase <b>context label</b>, no box. <b>(3)</b> The card tint becomes a <b>full-bleed stage tint</b> (<code>bg_stage_peri</code>). <b>(4)</b> Call overlays lose the cream card and pill buttons entirely. <b>(5)</b> Recording is a full-bleed tomato state. PTT contract, stuck semantics, per-contact replay, and the route inventory are all unchanged from v4.</p>
 <p><b>Wheel and Arc-Hero primitive geometry, animation, and FFI tables are normative in <code>mockup_listen.html</code> §3/§4/§7; this file specifies only Talk's variants and deltas.</b></p>
 
 <div class="legend">
@@ -476,6 +462,9 @@
       <tr><td>Empty state: card + hero circle + two-line text</td>
           <td><b>De-boxed</b>: 56×56 peri "+" circle + spoken two-line hint on the bare stage</td>
           <td>Same content, no card. The voice channel carries pre-readers (§2c).</td></tr>
+      <tr><td><i>v5 → v5.1</i>: 2&nbsp;px ink borders + hard shadows on every plate</td>
+          <td><b>Flat chrome</b>: borders and shadows removed everywhere; deck top rule + dividers → inset focus pill; focused tile radius 12 → 16; the 2&nbsp;px ink focus ring (offset 2) = the one surviving stroke</td>
+          <td>User decision after a side-by-side comparison. Geometry, palette, and copy untouched. Matches Listen v2.1.</td></tr>
       <tr><td colspan="2"><b>Unchanged</b>: PTT hold-to-record contract (§3), stuck-send semantics — badge on the avatar + dot on the deck slot (§2b), per-contact replay queue (§4), route inventory (§7)</td>
           <td>All still true from v4; only their rendering changed.</td></tr>
     </tbody>
@@ -518,7 +507,7 @@
         <div class="slot setup"><div class="glyph">⚙</div></div>
       </div>
     </div></div>
-    <span class="muted" style="font-size:11px;max-width:240px">Focused tile = the only box on screen: peri fill, 2 ink border, r 12, hard shadow (3,3). Coral badge counts unheard notes. Peeks: no chrome, clipped by the bars.</span>
+    <span class="muted" style="font-size:11px;max-width:240px">Focused tile = the only plate on screen: flat peri fill, r 16 — no border, no shadow. Coral badge (borderless) counts unheard notes. Peeks: no chrome, clipped by the bars.</span>
   </div>
 
   <div class="stack">
@@ -583,14 +572,15 @@
     <thead><tr><th>Element</th><th>Value</th><th>Note</th></tr></thead>
     <tbody>
       <tr><td>Slot strip</td><td class="num">(32, −3, 176, 96) · repeat_y: 80</td><td>Item centers y 45 / 125 / 205; roll step S = 80. Geometry, animation (180 ms ease-out roll), 1/2/&gt;6-item behavior: normative in <code>mockup_listen.html</code> §3.</td></tr>
-      <tr><td>Focused tile (center)</td><td class="mono">fill c_peri · border 2 ink · radius 12 · shadow 3px 3px 0 ink</td><td>The only boxed element on screen.</td></tr>
+      <tr><td>Focused tile (center)</td><td class="mono">fill c_peri · radius 16 · border none (flat) · shadow none (flat)</td><td>The only plate on screen — flat fill, no stroke.</td></tr>
       <tr><td>Peek tiles (above/below)</td><td class="mono">scale(0.7) · opacity 0.45 · no fill/border/shadow</td><td>Clipped by statusbar / deck / panel <code>overflow:hidden</code>.</td></tr>
-      <tr><td>Avatar circle (variant C)</td><td class="num">(60, 8, 56, 56) · radius 28 · border 2 ink</td><td>Tile-relative. Fill = contact's assigned color from Setup; Mont-24 initial.</td></tr>
+      <tr><td>Focus ring</td><td class="mono">none on wheel tiles</td><td>Wheel focus = plate fill + center position + spoken name. The 2&nbsp;px ink ring is reserved for Replay transport (§4) and call buttons (§5).</td></tr>
+      <tr><td>Avatar circle (variant C)</td><td class="num">(60, 8, 56, 56) · radius 28 · border none (flat)</td><td>Tile-relative. Fill = contact's assigned color from Setup; Mont-24 initial.</td></tr>
       <tr><td>Name</td><td class="num">(8, 68, 160, 22)</td><td>Tile-relative. Mont-18, ink, centered.</td></tr>
-      <tr><td>Badge</td><td class="num">(148, 6, 22, 22) · radius 11 · border 2 ink</td><td>Tile-relative. Coral + Mont-12 count = unheard notes; tomato + cream "!" = stuck send. Absent when no news.</td></tr>
+      <tr><td>Badge</td><td class="num">(148, 6, 22, 22) · radius 11 · border none (flat)</td><td>Tile-relative. Coral + Mont-12 count = unheard notes; tomato + cream "!" = stuck send. Absent when no news.</td></tr>
       <tr><td>Stage tint</td><td class="mono">bg_stage_peri #E7E5F7 · full-bleed y 22–228</td><td>Replaces the v4 tinted card. All Talk depths share it.</td></tr>
       <tr><td>Context label</td><td class="num">(10, 26, 130, 14) · Mont-12 uppercase ink_soft</td><td>Depth ≥ 2 only — Talk root (depth 1) shows none.</td></tr>
-      <tr><td>Empty state — plus circle</td><td class="num">(92, 74, 56, 56) · border 2 ink · shadow (3,3) · fill c_peri</td><td>Ink "+" glyph. Double-press does nothing (adding is a grown-up job); voice repeats the hint.</td></tr>
+      <tr><td>Empty state — plus circle</td><td class="num">(92, 74, 56, 56) · radius 28 · fill c_peri · border/shadow none (flat)</td><td>Ink "+" glyph. Double-press does nothing (adding is a grown-up job); voice repeats the hint.</td></tr>
       <tr><td>Empty state — hint</td><td class="num">(20, 140, 200, 32) · Mont-14 ink · 2 lines centered</td><td>"No contacts yet. / Ask a grown-up!" — also spoken on entry.</td></tr>
     </tbody>
   </table>
@@ -670,9 +660,10 @@
       <tr><td>Stage</td><td class="mono">fill c_tomato #E5443B · full-bleed y 22–228</td><td>State change is the whole screen — unmissable in peripheral vision.</td></tr>
       <tr><td>Context label</td><td class="num">(10, 26, 130, 14)</td><td>Same slot as 3a, recolored <code>bg_cream</code>.</td></tr>
       <tr><td>Timer</td><td class="num">(20, 70, 200, 28) · Mont-24 bg_cream centered</td><td>"● 0:07" — dot + elapsed, tabular numerals.</td></tr>
-      <tr><td>Voice meter</td><td class="num">(64, 118, 112, 42) · border 2 bg_cream · radius 8</td><td>Inner level bar bg_cream, width = live input level (~60% shown).</td></tr>
+      <tr><td>Voice meter</td><td class="num">(64, 118, 112, 42) · radius 8 · track fill bg_cream @ 35% opa · border none (flat)</td><td>Semi-transparent cream track replaces the v5 border; inner level bar bg_cream, width = live input level (~60% shown).</td></tr>
       <tr><td>Hint</td><td class="num">(20, 180, 200, 14) · Mont-12 bg_cream centered</td><td>"let go to send".</td></tr>
-      <tr><td>Deck</td><td class="mono">55% opacity</td><td>Dim via container opacity — no extra objects.</td></tr>
+      <tr><td>Focus ring</td><td class="mono">none</td><td>The PTT-held state has no focusable target.</td></tr>
+      <tr><td>Deck</td><td class="mono">55% opacity</td><td>Dim via container opacity, applied to the flat deck — no extra objects.</td></tr>
     </tbody>
   </table>
 
@@ -748,7 +739,7 @@
   <table class="spec">
     <thead><tr><th>Aspect</th><th>Listen NowPlaying (normative)</th><th>Talk Replay (this file)</th></tr></thead>
     <tbody>
-      <tr><td>Hero</td><td class="mono">86×86 square art tile, radius 12, note-glyph fallback</td><td class="mono">86×86 avatar circle at (77, 63), radius 43, border 2 ink — contact color fill, Mont-24 initial fallback</td></tr>
+      <tr><td>Hero</td><td class="mono">86×86 square art tile, radius 12, note-glyph fallback</td><td class="mono">86×86 avatar circle at (77, 63), radius 43, no border (flat) — contact color fill, Mont-24 initial fallback</td></tr>
       <tr><td>Ring indicator</td><td class="mono">c_lime</td><td class="mono">c_peri</td></tr>
       <tr><td>Play/pause chip fill</td><td class="mono">c_lime</td><td class="mono">c_peri</td></tr>
       <tr><td>Left focus target</td><td class="mono">prev ⏮ · voice "Previous"</td><td class="mono">discard ✕ at (24, 94, 24, 24) · voice "Delete" — double-press removes the note and advances</td></tr>
@@ -874,15 +865,15 @@
     <tbody>
       <tr><td>Stage</td><td class="mono">bg_stage_peri #E7E5F7 · full-bleed y 22–228</td><td>No card, no inset.</td></tr>
       <tr><td>State label</td><td class="num">(20, 28, 200, 14)</td><td>Mont-12 uppercase ink_soft, centered — INCOMING / CALLING… / IN CALL.</td></tr>
-      <tr><td>Avatar (Incoming / Outgoing)</td><td class="num">(76, 48, 88, 88) · radius 44 · border 2 ink · shadow (3,3)</td><td>Contact color fill, Mont-24 initial.</td></tr>
+      <tr><td>Avatar (Incoming / Outgoing)</td><td class="num">(76, 48, 88, 88) · radius 44 · border/shadow none (flat)</td><td>Contact color fill, Mont-24 initial.</td></tr>
       <tr><td>Pulse rings</td><td class="mono">2 concentric c_peri rings · callPulse 1600 ms ease-out · 800 ms offset</td><td>Existing call_pulse fx; Incoming + Outgoing only.</td></tr>
-      <tr><td>Avatar (InCall / Muted)</td><td class="num">(84, 44, 72, 72) · radius 36 · border 2 ink · shadow (3,3)</td><td>Smaller to make room for name + duration.</td></tr>
+      <tr><td>Avatar (InCall / Muted)</td><td class="num">(84, 44, 72, 72) · radius 36 · border/shadow none (flat)</td><td>Smaller to make room for name + duration.</td></tr>
       <tr><td>Name (Incoming / Outgoing)</td><td class="num">(20, 144, 200, 26)</td><td>Mont-24 ink, centered.</td></tr>
       <tr><td>Name (InCall / Muted)</td><td class="num">(20, 122, 200, 22)</td><td>Mont-18 ink, centered.</td></tr>
       <tr><td>Duration (InCall / Muted)</td><td class="num">(20, 148, 200, 26)</td><td>Mont-24 tabular, centered.</td></tr>
-      <tr><td>Buttons</td><td class="num">44×44 at y 178 · radius 22 · border 2 ink · shadow (2,2)</td><td>Answer x 56 (c_mint) · hangup x 140 (c_tomato) · single hangup centered x 98 · mute x 56 (bg_cream; c_coral when active). Ink glyphs ☎ / ✕ / 🎙︎. Bottoms at y 222 ≤ 224.</td></tr>
-      <tr><td>Focus</td><td class="mono">scale 1.1 + 2 px ink outline (offset 2)</td><td>2 targets: press toggles, double-press activates. Outgoing has a single target.</td></tr>
-      <tr><td>Deck</td><td class="mono">55% opacity, Talk slot stays peri-focused</td><td>All four overlay states.</td></tr>
+      <tr><td>Buttons</td><td class="num">44×44 at y 178 · radius 22 · border/shadow none (flat)</td><td>Answer x 56 (c_mint) · hangup x 140 (c_tomato) · single hangup centered x 98 · mute x 56 (bg_cream; c_coral when active). Ink glyphs ☎ / ✕ / 🎙︎. Bottoms at y 222 ≤ 224.</td></tr>
+      <tr><td>Focus ring</td><td class="mono">scale 1.1 + 2 px ink outline (offset 2)</td><td>The one surviving stroke in the flat UI. 2 targets: press toggles, double-press activates. Outgoing has a single target.</td></tr>
+      <tr><td>Deck</td><td class="mono">55% opacity, Talk slot stays peri-focused (inset pill)</td><td>All four overlay states — dim applied to the flat deck.</td></tr>
     </tbody>
   </table>
 </div>
@@ -895,27 +886,29 @@
     <thead><tr><th>Role</th><th>layouts.ron rect</th><th>theme.ron values</th><th>Used at</th></tr></thead>
     <tbody>
       <tr class="grp"><td colspan="4">Wheel — contact variant (tile-relative)</td></tr>
-      <tr><td class="mono">wheel_avatar</td><td class="num">(60, 8, 56, 56)</td><td class="mono">radius 28 · border 2 ink · fill = per-contact color · Mont-24 initial</td><td>§2 contact tiles</td></tr>
-      <tr><td class="mono">wheel_badge</td><td class="num">(148, 6, 22, 22)</td><td class="mono">radius 11 · border 2 ink · fill c_coral | c_tomato (stuck)</td><td>§2 / §3 Replay tile</td></tr>
+      <tr><td class="mono">wheel_avatar</td><td class="num">(60, 8, 56, 56)</td><td class="mono">radius 28 · border_width 0 · fill = per-contact color · Mont-24 initial</td><td>§2 contact tiles</td></tr>
+      <tr><td class="mono">wheel_badge</td><td class="num">(148, 6, 22, 22)</td><td class="mono">radius 11 · border_width 0 · fill c_coral | c_tomato (stuck)</td><td>§2 / §3 Replay tile</td></tr>
       <tr><td class="mono">wheel_badge_label</td><td class="num">centered in badge</td><td class="mono">Mont-12 · ink (count) | bg_cream ("!")</td><td>§2 / §3</td></tr>
       <tr class="grp"><td colspan="4">Call overlays</td></tr>
       <tr><td class="mono">call_state</td><td class="num">(20, 28, 200, 14)</td><td class="mono">Mont-12 uppercase · ink_soft · centered</td><td>§5 all</td></tr>
-      <tr><td class="mono">call_avatar</td><td class="num">(76, 48, 88, 88)</td><td class="mono">radius 44 · border 2 ink · shadow (3,3) · Mont-24 initial</td><td>§5 Incoming / Outgoing</td></tr>
-      <tr><td class="mono">call_avatar_sm</td><td class="num">(84, 44, 72, 72)</td><td class="mono">radius 36 · border 2 ink · shadow (3,3)</td><td>§5 InCall / Muted</td></tr>
+      <tr><td class="mono">call_avatar</td><td class="num">(76, 48, 88, 88)</td><td class="mono">radius 44 · border_width 0 · shadow none · Mont-24 initial</td><td>§5 Incoming / Outgoing</td></tr>
+      <tr><td class="mono">call_avatar_sm</td><td class="num">(84, 44, 72, 72)</td><td class="mono">radius 36 · border_width 0 · shadow none</td><td>§5 InCall / Muted</td></tr>
       <tr><td class="mono">call_name</td><td class="num">(20, 144, 200, 26)</td><td class="mono">Mont-24 · ink · centered</td><td>§5 Incoming / Outgoing</td></tr>
       <tr><td class="mono">call_name_sm</td><td class="num">(20, 122, 200, 22)</td><td class="mono">Mont-18 · ink · centered</td><td>§5 InCall / Muted</td></tr>
       <tr><td class="mono">call_duration</td><td class="num">(20, 148, 200, 26)</td><td class="mono">Mont-24 tabular · ink · centered</td><td>§5 InCall / Muted</td></tr>
-      <tr><td class="mono">call_btn</td><td class="num">(56, 178, 44, 44) · repeat_x: 84</td><td class="mono">radius 22 · border 2 ink · shadow (2,2) · fill c_mint | c_tomato | bg_cream | c_coral by state</td><td>§5 all (single btn: x 98)</td></tr>
+      <tr><td class="mono">call_btn</td><td class="num">(56, 178, 44, 44) · repeat_x: 84</td><td class="mono">radius 22 · border_width 0 · shadow none · fill c_mint | c_tomato | bg_cream | c_coral by state</td><td>§5 all (single btn: x 98)</td></tr>
       <tr><td class="mono">call_btn_icon</td><td class="num">centered, 24×24</td><td class="mono">A8 ink glyph</td><td>§5 all</td></tr>
       <tr class="grp"><td colspan="4">Recording</td></tr>
       <tr><td class="mono">rec_timer</td><td class="num">(20, 70, 200, 28)</td><td class="mono">Mont-24 tabular · bg_cream · centered</td><td>§3b</td></tr>
       <tr><td class="mono">rec_hint</td><td class="num">(20, 180, 200, 14)</td><td class="mono">Mont-12 · bg_cream · centered</td><td>§3b</td></tr>
-      <tr><td class="mono">rec_meter</td><td class="num">(64, 118, 112, 42)</td><td class="mono">border 2 bg_cream · radius 8 · inner fill bar bg_cream, width = level</td><td>§3b</td></tr>
+      <tr><td class="mono">rec_meter</td><td class="num">(64, 118, 112, 42)</td><td class="mono">radius 8 · border_width 0 · track fill bg_cream @ 35% opa · inner level bar bg_cream, width = level</td><td>§3b</td></tr>
       <tr class="grp"><td colspan="4">Empty state</td></tr>
-      <tr><td class="mono">empty_plus</td><td class="num">(92, 74, 56, 56)</td><td class="mono">radius 28 · border 2 ink · shadow (3,3) · fill c_peri · plus glyph</td><td>§2c</td></tr>
+      <tr><td class="mono">empty_plus</td><td class="num">(92, 74, 56, 56)</td><td class="mono">radius 28 · border_width 0 · shadow none · fill c_peri · plus glyph</td><td>§2c</td></tr>
       <tr><td class="mono">empty_hint</td><td class="num">(20, 140, 200, 32)</td><td class="mono">Mont-14 · ink · centered · 2 lines</td><td>§2c</td></tr>
     </tbody>
   </table>
+
+  <p style="margin:0 0 12px"><b>Flat (v5.1):</b> every role above carries <code>border_width 0</code> and <code>shadow none</code>. The deck's focused slot renders as an <b>inset pill</b> — flow-color fill inset 6&nbsp;px vertical / 8&nbsp;px horizontal within the slot, radius 12; idle slots are bare glyphs on cream, no top rule, no dividers (the deck role itself is Listen-owned). The recording voice meter's cream frame becomes a semi-transparent cream <b>track fill</b> (bg_cream at ~35% opa) under the level bar.</p>
 
   <h3>theme.ron color tokens this flow needs (RGB565 recomputed)</h3>
   <table class="spec">
@@ -968,23 +961,23 @@
     <thead><tr><th>Screen</th><th>Breakdown</th><th>Total</th><th>Headroom</th></tr></thead>
     <tbody>
       <tr><td>Talk root — contact wheel</td>
-          <td>statusbar 6 · deck 10 (incl. stuck dot) · stage tint 1 · wheel strip 1 · counter label 1 · 4 tile instances (3 visible + 1 entering mid-roll) × 7 (plate, ink-shadow sibling, avatar, initial, name, badge, badge label) = 28</td>
-          <td class="num">≈47</td><td class="num">13</td></tr>
+          <td>statusbar 6 · deck 10 (incl. stuck dot) · stage tint 1 · wheel strip 1 · counter label 1 · 4 tile instances (3 visible + 1 entering mid-roll) × 6 (plate, avatar, initial, name, badge, badge label) = 24</td>
+          <td class="num">≈43</td><td class="num">17</td></tr>
       <tr><td>TalkContact — action wheel</td>
-          <td>statusbar 6 · deck 10 · stage tint 1 · wheel strip 1 · context label 1 · 4 tiles × 5 (plate, ink-shadow, icon, label, badge) = 20 · badge labels 2</td>
-          <td class="num">≈41</td><td class="num">19</td></tr>
+          <td>statusbar 6 · deck 10 · stage tint 1 · wheel strip 1 · context label 1 · 4 tiles × 4 (plate, icon, label, badge) = 16 · badge labels 2</td>
+          <td class="num">≈37</td><td class="num">23</td></tr>
       <tr><td>Recording</td>
-          <td>statusbar 6 · deck 10 (dim = container opa, 0 objs) · tomato stage 1 · context label 1 · timer dot + label 2 · meter frame + fill 2 · hint 1 · pulse spare 1</td>
+          <td>statusbar 6 · deck 10 (dim = container opa, 0 objs) · tomato stage 1 · context label 1 · timer dot + label 2 · meter track + fill 2 · hint 1 · pulse spare 1</td>
           <td class="num">≈24</td><td class="num">36</td></tr>
       <tr><td>Replay — arc hero</td>
           <td>statusbar 6 · deck 10 · stage tint 1 · context label 1 · lv_arc 1 · avatar + initial 2 · chip bg + glyph 2 · side glyphs 2 · title 1 · times 2 · focus outline 1 = 29 native; composed fallback (bar frame + fill + extra glyphs) adds ≈4–6</td>
           <td class="num">≈35 ceiling</td><td class="num">25</td></tr>
       <tr><td>Call overlays (worst: InCall)</td>
-          <td>statusbar 6 · deck 10 · stage tint 1 · state label 1 · avatar + initial + ink-shadow 3 · pulse rings 2 (Incoming/Outgoing) or name_sm + duration 2 (InCall) · name 1 · 2 buttons × (bg, glyph, ink-shadow) 6 · focus outline 1 · spare 1</td>
-          <td class="num">≈32</td><td class="num">28</td></tr>
+          <td>statusbar 6 · deck 10 · stage tint 1 · state label 1 · avatar + initial 2 · pulse rings 2 (Incoming/Outgoing) or name_sm + duration 2 (InCall) · name 1 · 2 buttons × (bg, glyph) 4 · focus outline 1 · spare 1</td>
+          <td class="num">≈29</td><td class="num">31</td></tr>
     </tbody>
   </table>
-  <p style="margin:0">Ink-shadow siblings assume the zero-FFI hard-shadow fallback (sibling rect at +3,+3); with the <code>shadow_offset_x/y</code> FFI each boxed element drops 1 object. Counting method and the shared statusbar/deck breakdown match the Listen spec.</p>
+  <p style="margin:0">Flat (v5.1): no ink-shadow siblings anywhere — hard shadows left with the flat pass and took their per-plate object cost (and the old shadow-offset FFI ask) with them. Counting method and the shared statusbar/deck breakdown match the Listen spec.</p>
 </div>
 
 <!-- ============================================================ -->
@@ -1020,13 +1013,14 @@
   <table class="spec">
     <thead><tr><th>Date</th><th>Rev</th><th>Summary</th></tr></thead>
     <tbody>
+      <tr><td class="num">2026-07-15</td><td class="num">v5.1</td><td>Flat pass (user decision): borders + hard shadows removed, deck dividers → inset pill, focus ring = the one surviving stroke; matches Listen v2.1.</td></tr>
       <tr><td class="num">2026-07-15</td><td class="num">v5</td><td>Contact wheel replaces peri card+rows; tab strip → context label; call overlays de-boxed; recording = full-bleed tomato state; wheel/arc primitives normative in <code>mockup_listen.html</code>.</td></tr>
       <tr><td class="num">2026-05-16</td><td class="num">v4</td><td>Talk root = contacts list directly, peri-tinted card, walkie-talkie unchanged; v3's 4-state blob / companion-on-focus / Messages archive all dropped.</td></tr>
     </tbody>
   </table>
 </div>
 
-<p style="margin-top:32px" class="muted">Spec rev 2026-07-15 · v5 · pairs with <code>mockup_listen.html</code> (primitives), <code>mockup_input_model.html</code> (gesture contract), <code>README.md</code> (decision log).</p>
+<p style="margin-top:32px" class="muted">Spec rev 2026-07-15 · v5.1 · pairs with <code>mockup_listen.html</code> (primitives), <code>mockup_input_model.html</code> (gesture contract), <code>README.md</code> (decision log).</p>
 
 </body>
 </html>
