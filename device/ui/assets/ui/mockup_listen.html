@@ -800,9 +800,10 @@
     <tbody>
       <tr><td>Single press</td><td><code>FocusNext</code></td><td>advance deck focus L→R, looping</td><td>advance row focus top→bottom, looping</td><td>cycle ⏮ / ▶ / ⏭ focus</td></tr>
       <tr><td>Double press</td><td><code>Open</code></td>     <td>push category root</td>            <td>push row.target</td>                       <td>activate focused control</td></tr>
-      <tr><td>Long press</td> <td><code>Back</code></td>      <td>—</td>                              <td>pop one crumb (depth 1 → Home)</td>         <td>pop one crumb</td></tr>
+      <tr><td>Long press</td> <td><code>GoHome</code></td>    <td>defocus (already Home)</td>         <td>pop the whole stack → Home</td>            <td>pop the whole stack → Home (playback continues)</td></tr>
     </tbody>
   </table>
+  <p style="margin:8px 0 0"><b>Consolidation note:</b> long-press was "pop one crumb" in this spec's first revision; the canonical contract (<code>mockup_input_model.html</code>) makes it <b>go Home from anywhere</b> — one reliable escape hatch a 4-year-old can always reach, learnable as "hold to go home". There is no per-crumb Back gesture; going one level up = long-press Home + re-enter (voice prompts make re-navigation legible for pre-readers). <b>Runtime divergence:</b> the shipped <code>OneButtonMachine</code> (<code>input/machine.rs</code>) emits <code>Back</code> on long-hold and <code>core</code> pops one screen — remap to pop-to-root when implementing. <b>Voice prompt on focus:</b> every <code>FocusNext</code> speaks the focused label ("Morning Songs") — see <code>README.md</code> → Pre-reader principles.</p>
 </div>
 
 <!-- ============================================================ -->
@@ -823,6 +824,9 @@ enum AccentColor { Lime, Peri, Butter, Coral }
 //      → active tab stays on the parent layer's name
 //  - On push: previous active tab demotes (height 18→14, color c_*→cream_2, opa 1.0→0.85)
 //  - On pop:  rightmost tab dies, previous tab promotes back to active
+//  - Pops happen only via GoHome (pop ALL crumbs at once) — there is no
+//    single-crumb Back gesture in the consolidated contract. The demote/promote
+//    animation above still runs when the stack unwinds, collapsed to one frame.
 </pre>
 </div>
 
@@ -837,6 +841,8 @@ enum AccentColor { Lime, Peri, Butter, Coral }
     <li>RGB565 LUT in <code>assets/theme.ron</code> must match Section 2 values exactly. RGB888 → RGB565 conversion: <code>((R&amp;0xF8)&lt;&lt;8)|((G&amp;0xFC)&lt;&lt;3)|(B&gt;&gt;3)</code>.</li>
   </ul>
 </div>
+
+<p style="margin-top:24px" class="muted">Consolidation pass 2026-07-15: long-press remapped from per-crumb Back to GoHome (§10, §11); voice-prompt-on-focus added. <b>Runtime content divergence:</b> the shipped Listen root (<code>router/routes.rs</code>) is Playlists / Recents / Shuffle-all — the Artists and Radio rows shown at depth 1 have no runtime backing yet, and Shuffle-all has no row here. Reconcile when wiring up (tracked in <code>README.md</code>).</p>
 
 <p style="margin-top:24px" class="muted">Spec rev. 2026-05-13 · Listen flow only. Talk / Ask / Setup re-use these primitives — swap the accent token (c_*) and stage tint (bg_stage_*).</p>
 

@@ -503,9 +503,12 @@
       <tr><td>Double press</td>  <td>no-op (no focused target)</td>                          <td><code>Open</code> → push category N's depth-1 root</td></tr>
       <tr><td>Long press</td>    <td>no-op (already at Home)</td>                            <td>defocus (return to idle)</td></tr>
       <tr><td>Idle timeout</td>  <td>—</td>                                                  <td>after 8 s of no input from a focused state, return to idle (defocus)</td></tr>
+      <tr><td>Ambient timeout</td><td>after ~30 s of no input on idle Home, enter <b>Ambient</b>: deck fades out, Blob keeps the full stage (presence state, see <code>mockup_input_model.html</code> §3)</td><td>— (focus decays to idle first)</td></tr>
+      <tr><td>Any input in Ambient</td><td colspan="2">wake to Home idle; deck fades/slides back in over 200 ms</td></tr>
     </tbody>
   </table>
-  <p style="margin:0">Home is the only screen where the focusable container is the <b>Deck</b>. On every other screen it's the <b>List</b> (or NowPlaying controls).</p>
+  <p style="margin:0 0 8px">Home is the only screen where the focusable container is the <b>Deck</b>. On every other screen it's the <b>List</b> (or NowPlaying controls).</p>
+  <p style="margin:0"><b>Voice prompt on focus (pre-reader bridge):</b> every focus advance speaks the newly-focused slot's name through the speaker ("Listen", "Talk", …). Applies to all focusable containers on all screens. Toggle: Setup → "Speak names". The full gesture grammar and its hardware bindings (main button today, whole-surface touch later) live in <code>mockup_input_model.html</code> — the single source of truth.</p>
 </div>
 
 <!-- ============================================================ -->

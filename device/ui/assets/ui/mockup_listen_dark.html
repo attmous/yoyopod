@@ -828,9 +828,10 @@
     <tbody>
       <tr><td>Single press</td><td><code>FocusNext</code></td><td>advance deck focus L→R, looping</td><td>advance row focus top→bottom, looping</td><td>cycle ⏮ / ▶ / ⏭ focus</td></tr>
       <tr><td>Double press</td><td><code>Open</code></td>     <td>push category root</td>            <td>push row.target</td>                       <td>activate focused control</td></tr>
-      <tr><td>Long press</td> <td><code>Back</code></td>      <td>—</td>                              <td>pop one crumb (depth 1 → Home)</td>         <td>pop one crumb</td></tr>
+      <tr><td>Long press</td> <td><code>GoHome</code></td>    <td>defocus (already Home)</td>         <td>pop the whole stack → Home</td>            <td>pop the whole stack → Home (playback continues)</td></tr>
     </tbody>
   </table>
+  <p style="margin:8px 0 0"><b>Consolidation note (mirrors light spec):</b> long-press = go Home from anywhere; no per-crumb Back gesture. Voice prompt on every focus advance. Canonical contract: <code>mockup_input_model.html</code>; decision log: <code>README.md</code>.</p>
 </div>
 
 <!-- ============================================================ -->

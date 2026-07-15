@@ -603,7 +603,7 @@
 
 <!-- ============================================================ -->
 <h2>3 · TalkContact + walkie-talkie recording</h2>
-<p>Unchanged from v3. Hold the Record row to record. Release to send. Drag finger off the row to cancel. Tab strip returns at depth 2.</p>
+<p>Unchanged from v3, with the binding clarified in the consolidation pass: <b>on current hardware, "hold" is the push-to-talk side button</b> — hold PTT while the Record row is focused to record, release to send, press the main button while holding to cancel. This matches the shipped runtime (<code>router/routes.rs</code>: <code>PttPress</code>/<code>PttRelease</code> voice-capture passthrough). On a future touch panel the same contract binds to holding the Record row, with drag-off-row as the cancel motion. Tab strip returns at depth 2.</p>
 
 <div class="row">
 
@@ -862,7 +862,8 @@
       <tr><td>—</td><td class="mono">InCall</td>      <td>Mute + Hangup.</td></tr>
     </tbody>
   </table>
-  <p style="margin:0"><b>Deleted from v3</b>: <code>Contacts</code> (no longer a sub-route — it <i>is</i> Talk), <code>Messages</code> archive, <code>ContactHistory</code>.  <b>Also gone</b>: the depth-1 "Stuck" row (failure surfaces on the contact's avatar instead).</p>
+  <p style="margin:0 0 8px"><b>Deleted from v3</b>: <code>Contacts</code> (no longer a sub-route — it <i>is</i> Talk), <code>Messages</code> archive, <code>ContactHistory</code>.  <b>Also gone</b>: the depth-1 "Stuck" row (failure surfaces on the contact's avatar instead).</p>
+  <p style="margin:0"><b>Runtime divergence note (consolidation):</b> the shipped router (<code>device/ui/src/router/routes.rs</code>) still has Talk → <code>Contacts</code> / <code>CallHistory</code> / <code>VoiceNote</code> as separate routes, with recording on the dedicated <code>VoiceNote</code> screen. Implementing v4 means: fold <code>Contacts</code> into the Talk root, retire <code>CallHistory</code> and <code>VoiceNote</code>, add the per-contact <code>Replay</code> route. Tracked in <code>README.md</code> → "Mockup ↔ runtime mapping".</p>
 </div>
 
 <!-- ============================================================ -->
@@ -886,7 +887,8 @@
 <!-- ============================================================ -->
 <h2>7 · Hold-to-record gesture (unchanged)</h2>
 <div class="specs">
-  <pre style="margin:0; padding: 10px; background: #0a0708; border: 1px solid #3b2e2e; border-radius: 6px; color: #ffcfae; font-size: 12px; overflow-x: auto;">                     finger down on Record row
+  <p style="margin:0 0 10px">"Hold" below = PTT side button held (current hardware) or finger held on the Record row (future touch). "Cancel" = main-button press while holding (button) or drag off the row (touch).</p>
+  <pre style="margin:0; padding: 10px; background: #0a0708; border: 1px solid #3b2e2e; border-radius: 6px; color: #ffcfae; font-size: 12px; overflow-x: auto;">                     hold begins (Record row focused)
                           │
                           ▼
               ┌──────────────────────┐
@@ -895,7 +897,7 @@
               │   other rows dim     │
               │   deck dims          │
               └─────┬──────┬─────────┘
-        finger up   │      │   drag finger off row
+       hold ends    │      │   cancel motion
                     ▼      ▼
         ┌──────────────┐   ┌──────────────┐
         │ send         │   │ DISCARD      │
@@ -919,9 +921,11 @@
     <li><b>Stuck send retry policy.</b> When does a failed send retry automatically? Suggest: on next successful network connect, silently retry once. If still fails, the contact's avatar gets the tomato ring + "stuck" badge. The user enters the contact to retry manually from there.</li>
     <li><b>Replay scoping.</b> The Replay queue is per-contact. What happens to a contact's old notes — auto-delete after N days? Cap at N notes per contact? Probably cap (e.g., 20 notes per contact, drop oldest). Storage on the device is small.</li>
     <li><b>Contact ordering.</b> Right now I show Mama / Papa / Grandma / Uncle in a fixed order. Should it be recency-based (last interaction at top) or pinned (Setup defines order)? My instinct: pinned. A 5-year-old doesn't want their contact list reshuffling.</li>
-    <li><b>Empty state copy.</b> "No contacts yet. Ask a grown-up to add some in Setup." Targeted at the kid but presumes they can read. For pre-readers: a face icon and an arrow pointing to the Setup deck slot. Pick one direction.</li>
+    <li><b>Empty state copy.</b> <i>Resolved in the consolidation pass:</i> the text stays (it serves parents and early readers), and the pre-reader channel is voice — entering an empty Talk speaks "No contacts yet — ask a grown-up to add some!" This follows the voice-prompt-on-focus principle (<code>README.md</code> → "Pre-reader principles"); no flow may require reading to complete.</li>
   </ul>
 </div>
+
+<p class="muted" style="margin-top:32px;">Consolidation pass 2026-07-15: hold-to-record rebound to the PTT side button on current hardware (§3, §7); runtime divergences flagged (§5). Gesture grammar: <code>mockup_input_model.html</code>. Decision log: <code>README.md</code>.</p>
 
 <p style="margin-top:24px" class="muted">Spec rev. 2026-05-16 · v4 (Talk root = contacts list, peri-tinted card, walkie-talkie unchanged, v3's 4-state-blob / companion-on-focus / Messages archive all dropped).</p>
 

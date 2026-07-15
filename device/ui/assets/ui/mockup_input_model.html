@@ -251,11 +251,23 @@
 <body>
 
 <h1>YoyoPod — Input Model</h1>
-<p class="muted">240 × 280 single-touch panel · gesture contract · single source of truth</p>
+<p class="muted">three-gesture contract · main button today, whole-surface touch tomorrow · single source of truth</p>
+
+<p style="background:#2a2025; border:1px solid #4a3a30; border-radius:8px; padding:10px 14px; font-size:13px; color:#c9b9a3; max-width:760px;">
+<b style="color:#ffd9b3;">Rev 2 — consolidation.</b> Rev 1 assumed a touch panel with no hardware
+buttons. The Whisplay prototype has the opposite: one main button + one push-to-talk side button,
+and no touch (see <code>device/ui/src/hardware/whisplay.rs</code>). The gesture <i>grammar</i> below is
+unchanged — it is now defined independently of the input source. Decision log lives in
+<code>README.md</code> in this folder.</p>
 
 <section class="sect">
   <h2><span class="badge-num">1</span> Gesture contract</h2>
-  <p>The panel is a single-touch surface with no hardware buttons. Every navigation action is one of three gestures: <b>tap</b>, <b>double-tap</b>, or <b>long-press</b>. There is no swipe and no drag (drag is reserved for the walkie-talkie cancel motion inside <code>TalkContact</code>; see <code>mockup_talk.html</code>).</p>
+  <p>Every navigation action is one of three gestures: <b>press</b>, <b>double-press</b>, or <b>long-press</b>. The grammar binds to whatever input source the hardware provides:</p>
+  <ul style="color:#c9b9a3; font-size:13px; line-height:1.6;">
+    <li><b>Today (Whisplay prototype):</b> the main hardware button carries all three gestures. The side push-to-talk button is out of band — it carries hold-to-talk (Ask, walkie-talkie) only.</li>
+    <li><b>Future (touch hardware):</b> the whole panel acts as one big button carrying the same three gestures. <b>Positional input is out of the contract</b> — at 240 × 280 on a 1.69″ panel a 28 px row is a ~3.5 mm target, far below what a young child can aim at. The screen is never a precision surface. (Only exception: drag-off-to-cancel during walkie-talkie recording, touch binding only; on button hardware, cancel = press the main button while holding PTT. See <code>mockup_talk.html</code>.)</li>
+  </ul>
+  <p>The result: the whole device is operable with one motor skill, learnable in one sentence — <i>press to look around, press-press to go in, hold to go home, hold the side button to talk.</i></p>
 
   <table>
     <thead>
@@ -263,37 +275,42 @@
     </thead>
     <tbody>
       <tr>
-        <td>Home <i>or</i> any inner screen (nav hidden)</td>
+        <td>Home (deck visible, always)</td>
+        <td>press</td>
+        <td>advance deck focus to next slot, <b>wrapping</b> (Listen → Talk → Ask → Setup → Listen)</td>
+      </tr>
+      <tr>
+        <td>Home, a slot focused</td>
+        <td>double-press</td>
+        <td>enter the focused slot's root screen</td>
+      </tr>
+      <tr>
+        <td>Inner screen</td>
+        <td>press</td>
+        <td>advance focus within the screen's focusable container (list rows, transport controls — defined per screen)</td>
+      </tr>
+      <tr>
+        <td>Inner screen</td>
+        <td>double-press</td>
+        <td>activate the focused element (push next screen, toggle state, play/pause…)</td>
+      </tr>
+      <tr>
+        <td>Anywhere</td>
         <td>long-press ≥ 400 ms</td>
-        <td>nav bar slides up · focus = <b>last-selected slot</b></td>
+        <td>go Home — pops the <b>whole</b> stack; there is no per-crumb back gesture (on Home: defocus, return to idle)</td>
       </tr>
       <tr>
-        <td>Nav visible</td>
-        <td>single tap</td>
-        <td>advance focus to next slot, <b>wrapping</b> (Listen → Talk → Ask → Setup → Listen)</td>
-      </tr>
-      <tr>
-        <td>Nav visible</td>
-        <td>double-tap</td>
-        <td>enter focused slot's root menu · nav hides</td>
-      </tr>
-      <tr>
-        <td>Nav visible</td>
-        <td>long-press ≥ 400 ms</td>
-        <td>go to Home · nav hides · last-selected slot is preserved</td>
-      </tr>
-      <tr>
-        <td>Inner screen, row visible</td>
-        <td>tap on row</td>
-        <td>row action (push next screen, toggle state, etc. — defined per screen)</td>
+        <td>Ambient (idle Home)</td>
+        <td>any input</td>
+        <td>wake back to Home, deck fades in (idle, no slot focused — Home's canonical landing; focus already decayed via Home's 8 s defocus rule)</td>
       </tr>
     </tbody>
   </table>
 
   <p class="muted">Two notes on consequences worth re-reading the table for:</p>
   <ul style="color:#c9b9a3; font-size:13px; line-height:1.6;">
-    <li>Long-press is the <b>only</b> way to summon the nav bar, and once it's visible the <b>only</b> way to escape without entering a slot is another long-press (→ Home). This is intentional: it makes the gesture set learnable in one sentence ("hold to navigate, tap to cycle, double-tap to enter, hold again for home"). The cost is that revealing the nav by accident requires <i>some</i> deliberate action to clear.</li>
-    <li>Single tap on Home with nav hidden is a <b>no-op</b>. The screen does not wake from sleep via tap (sleep/wake is handled outside this contract). This keeps the home stage from being a tap-target for anything the child might be near.</li>
+    <li><b>The deck is always visible</b> on Home and on every inner screen. Rev 1 hid it behind a long-press; that read clean but is not discoverable at age 4 — kids learn by seeing. The full-bleed "Blob only" composition survives as the <b>Ambient state</b> (§3): a presence state entered on idle timeout, not a navigation state.</li>
+    <li><b>Voice prompt on focus:</b> every focus advance speaks the newly-focused item's label through the speaker ("Talk", "Mama", "Morning Songs"). This is the pre-reader bridge — list navigation never requires reading. Toggle lives in Setup → "Speak names".</li>
   </ul>
 </section>
 
@@ -303,40 +320,38 @@
   <table>
     <thead><tr><th>Range</th><th>Classified as</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td>0 – 180 ms</td><td><b>tap</b></td><td>Fires on touch <i>release</i>, not on touch-down. Required so we can disambiguate from long-press.</td></tr>
-      <tr><td>180 – 400 ms</td><td>dead zone</td><td>Released here = no action. Prevents accidental gestures from sloppy taps. The press-ring (see §4) does not appear in this range — only past 400 ms.</td></tr>
-      <tr><td>≥ 400 ms (still pressed)</td><td><b>long-press armed</b></td><td>Visual press-ring appears at the touch point. Releasing now (even at 401 ms) fires the long-press action.</td></tr>
-      <tr><td>Double-tap window</td><td>≤ 350 ms gap between two taps</td><td>Two taps within 350 ms of each other count as a double-tap. Any third tap is ignored until the second tap's processing completes.</td></tr>
+      <tr><td>0 – 180 ms</td><td><b>press</b></td><td>Fires on <i>release</i>, not on press-down. Required so we can disambiguate from long-press. Applies identically to the hardware button and to a future touch surface.</td></tr>
+      <tr><td>180 – 400 ms</td><td>dead zone</td><td>Released here = no action. Prevents accidental gestures from sloppy presses. The press-ring (see §4) does not appear in this range — only past 400 ms.</td></tr>
+      <tr><td>≥ 400 ms (still pressed)</td><td><b>long-press armed</b></td><td>Visual press-ring appears (§4.1). Releasing now (even at 401 ms) fires the long-press action.</td></tr>
+      <tr><td>Double-press window</td><td>≤ 350 ms gap between two presses</td><td>Two presses within 350 ms of each other count as a double-press. Any third press is ignored until the second press's processing completes. <b>Open:</b> this window needs testing with 4–6-year-olds; small hands may need it wider.</td></tr>
     </tbody>
   </table>
 </section>
 
 <section class="sect">
   <h2><span class="badge-num">3</span> State machine</h2>
-  <p>Three top-level UI states. The nav bar is either <b>hidden</b> (in which case the deck region shows nothing — the stage extends to the bottom of the panel) or <b>visible</b> (deck visible, slot focus highlighted). Inside-a-slot is the normal application state.</p>
+  <p>Three top-level UI states. <b>Home</b> — Blob on stage, deck visible, press cycles deck focus. <b>Ambient</b> — Blob full-bleed, deck hidden: a presence state entered after the idle timeout on Home, exited by any input. <b>Inside-a-slot</b> — the normal application state; the deck stays visible and the screen's own container carries focus.</p>
 
   <div class="diagram">
-                  long-press
-   ┌──────────┐  ───────────────▶  ┌──────────────────┐
-   │   HOME   │                    │  NAV VISIBLE     │
-   │ (no nav) │  ◀───────────────  │  (over Home or   │
-   └──────────┘    long-press      │   inner screen)  │
-                  (= go Home)      └──────────────────┘
-        ▲                              │      │
-        │                              │      │ double-tap
-        │                              │ tap  ▼
-        │ long-press                   │   ┌─────────────────┐
-        │ (from inner)                 │   │ INSIDE A SLOT   │
-        │                              │   │ (Listen, Talk,  │
-        │                              │   │  Ask, Setup…)   │
-        │                              │   └─────────────────┘
-        │                              │            │
-        │                              ▼            │ long-press
-        │                          advance focus    │ (= go Home)
-        │                          (Listen → Talk   │
-        │                          → Ask → Setup    │
-        │                          → Listen …)      ▼
-        └────────────────────────────────────────  HOME
+                 idle ≥ 30 s on Home
+   ┌─────────────┐ ───────────────▶ ┌──────────────┐
+   │    HOME     │                  │   AMBIENT    │
+   │ blob + deck │ ◀─────────────── │  blob only,  │
+   └─────────────┘    any input     │ deck hidden  │
+      │       ▲      (focus kept)   └──────────────┘
+      │       │
+      │       │ long-press (from anywhere inside)
+      │       │
+      │  double-press on focused slot
+      ▼       │
+   ┌─────────────────┐
+   │ INSIDE A SLOT   │   press        = advance in-screen focus
+   │ (Listen, Talk,  │   double-press = activate focused element
+   │  Ask, Setup…)   │   long-press   = go Home
+   └─────────────────┘
+
+   press on Home = advance deck focus
+   (Listen → Talk → Ask → Setup → Listen …)
   </div>
 </section>
 
@@ -344,24 +359,24 @@
   <h2><span class="badge-num">4</span> Visual feedback</h2>
 
   <h3>4.1 — Long-press press-ring</h3>
-  <p>Beginning at the 400 ms threshold, a 40 × 40 periwinkle ring fades in at the touch point. It is a confirmation that the gesture has been recognized, not a progress indicator (there is no further threshold to cross). If the user releases at this moment, the long-press action fires. If they keep holding, nothing else happens — the gesture has already been committed.</p>
+  <p>Beginning at the 400 ms threshold, a 40 × 40 periwinkle ring fades in, centered in the stage (on button hardware there is no touch point; on future touch hardware it may follow the finger). It is a confirmation that the gesture has been recognized, not a progress indicator (there is no further threshold to cross). If the user releases at this moment, the long-press action fires. If they keep holding, nothing else happens — the gesture has already been committed.</p>
 
-  <h3>4.2 — Nav bar reveal</h3>
-  <p>The deck slides up from below over 200 ms with ease-out. The previously-focused slot is highlighted in its slot color (lime/peri/butter/coral). The stage above the deck does <b>not</b> dim — the deck is purely additive.</p>
+  <h3>4.2 — Ambient exit (wake to Home)</h3>
+  <p>The deck fades/slides up from below over 200 ms with ease-out. The previously-focused slot is highlighted in its slot color (lime/peri/butter/coral). The stage above the deck does <b>not</b> dim — the deck is purely additive.</p>
 
-  <h3>4.3 — Slot advance (tap on nav)</h3>
-  <p>Focus moves to the next slot. The previously-focused slot returns to cream, the new slot picks up its color. No animation — instant swap. (Animating focus would feel sluggish at the cycling rate this gesture invites.)</p>
+  <h3>4.3 — Slot advance (press on Home)</h3>
+  <p>Focus moves to the next slot. The previously-focused slot returns to cream, the new slot picks up its color. No animation — instant swap. (Animating focus would feel sluggish at the cycling rate this gesture invites.) The speaker says the slot's name ("Talk") if Speak names is on.</p>
 
-  <h3>4.4 — Entering a slot (double-tap)</h3>
-  <p>Nav bar slides back down (200 ms), the slot's root screen pushes in from below over the same window. Total transition: 200 ms — they overlap, not stack.</p>
+  <h3>4.4 — Entering a slot (double-press)</h3>
+  <p>The slot's root screen pushes in from below over 200 ms. The deck stays in place — only the stage content transitions.</p>
 
-  <h3>4.5 — Returning to Home (long-press while nav visible)</h3>
-  <p>Same as 4.4 but the destination is the home stage with no deck. The last-focused slot is <b>preserved</b> so that the next long-press reveals nav in the same state.</p>
+  <h3>4.5 — Returning to Home (long-press)</h3>
+  <p>The stack pops to Home over the same 200 ms window. The last-focused slot is <b>preserved</b>, so Home comes back exactly as it was left.</p>
 </section>
 
 <section class="sect">
   <h2><span class="badge-num">5</span> Frames</h2>
-  <p class="muted">Each frame shows one moment in the gesture lifecycle. The white circle is the user's finger; the periwinkle ring is the long-press press-ring (§4.1).</p>
+  <p class="muted">Each frame shows one moment in the gesture lifecycle. The white circle marks the press (the user's finger on the future touch binding; on today's hardware the same sequence is driven by the main button). The periwinkle ring is the long-press press-ring (§4.1).</p>
 
   <div class="row">
     <!-- Frame A: Home idle, nav hidden -->
@@ -383,8 +398,8 @@
           </div>
         </div>
       </div>
-      <div class="gcap">A · Home, nav hidden
-        <span class="gsub">Idle. The stage extends to the bottom — no deck visible.</span></div>
+      <div class="gcap">A · Ambient (idle ≥ 30 s on Home)
+        <span class="gsub">Presence state: Blob full-bleed, deck hidden. Not the Home default — see mockup_home.html.</span></div>
     </div>
 
     <!-- Frame B: Long-press in progress -->
@@ -408,8 +423,8 @@
           </div>
         </div>
       </div>
-      <div class="gcap">B · Long-press recognized
-        <span class="gsub">At 400 ms, the periwinkle press-ring confirms. Release any time.</span></div>
+      <div class="gcap">B · Input during Ambient → wake
+        <span class="gsub">Any press wakes back to Home (shown: long-press with press-ring at 400 ms).</span></div>
     </div>
 
     <!-- Frame C: Nav visible, last-selected = Talk -->
@@ -437,8 +452,8 @@
           </div>
         </div>
       </div>
-      <div class="gcap">C · Nav visible, Talk focused
-        <span class="gsub">Last-selected slot lights up. Tap to advance. Double-tap to enter.</span></div>
+      <div class="gcap">C · Home after wake + two presses → Talk focused
+        <span class="gsub">Press to advance (Listen → Talk). Double-press to enter.</span></div>
     </div>
   </div>
 
@@ -468,7 +483,7 @@
           </div>
         </div>
       </div>
-      <div class="gcap">D · After one tap → Ask focused
+      <div class="gcap">D · After one press → Ask focused
         <span class="gsub">Talk → Ask. Wrap-around: Setup → Listen after Setup.</span></div>
     </div>
 
@@ -497,8 +512,8 @@
           </div>
         </div>
       </div>
-      <div class="gcap">E · After two taps → Setup focused
-        <span class="gsub">A third tap would wrap back to Listen.</span></div>
+      <div class="gcap">E · After two presses → Setup focused
+        <span class="gsub">A third press would wrap back to Listen.</span></div>
     </div>
 
     <!-- Frame F: Long-press to go home -->
@@ -528,8 +543,8 @@
           </div>
         </div>
       </div>
-      <div class="gcap">F · Long-press while nav visible → go Home
-        <span class="gsub">On release, nav slides down and the stage returns to no-deck.</span></div>
+      <div class="gcap">F · Long-press (from anywhere inside) → go Home
+        <span class="gsub">Ring confirms at 400 ms; on release the stack pops to Home, focus preserved.</span></div>
     </div>
   </div>
 </section>
@@ -542,27 +557,27 @@
     <tbody>
       <tr>
         <td>Top-level panel</td>
-        <td><code>lv_obj_t *panel</code> with two children: <code>stage</code> (full-height when nav hidden) and <code>deck</code> (hidden by default).</td>
+        <td><code>lv_obj_t *panel</code> with two children: <code>stage</code> and <code>deck</code>. Deck is visible by default; it hides only in the Ambient state (full-height stage).</td>
       </tr>
       <tr>
         <td>Gesture recognizer</td>
-        <td>Single <code>lv_indev_drv_t</code> reader. Custom event hook on panel root that classifies into <code>EV_TAP</code>, <code>EV_DOUBLE_TAP</code>, <code>EV_LONG_PRESS</code> using the timing in §2. LVGL's built-in <code>LV_EVENT_LONG_PRESSED</code> can drive the 400 ms threshold; tap vs double-tap is handled by a 350 ms post-release timer.</td>
+        <td>One classifier fed by the <code>ButtonDevice</code> GPIO reader (see <code>device/ui/src/hardware/whisplay.rs</code>), emitting <code>EV_PRESS</code>, <code>EV_DOUBLE_PRESS</code>, <code>EV_LONG_PRESS</code> using the timing in §2 (press on release, 400 ms long-press threshold, 350 ms double window). The same classifier consumes <code>lv_indev</code> touch events if final hardware ships a panel — whole surface = one button, coordinates discarded. PTT side button bypasses the classifier entirely (<code>PttPress</code>/<code>PttRelease</code> passthrough, as in <code>router/routes.rs</code>).</td>
       </tr>
       <tr>
         <td>NavStack</td>
-        <td>Nav visibility is <b>not</b> a stack push — it's a transient overlay state on the current screen. Entering a slot via double-tap performs <code>NavigationPolicy::Stack</code> push of the slot's root. Long-press-while-nav-visible (→ Home) pops back to the root home screen.</td>
+        <td>Ambient is <b>not</b> a stack push — it's a presentation state on Home. Entering a slot via double-press performs <code>NavigationPolicy::Stack</code> push of the slot's root. Long-press pops the whole stack back to Home.</td>
       </tr>
       <tr>
         <td>Slot focus persistence</td>
-        <td>Stored as a single <code>uint8_t last_slot_idx</code> in the navigation context. Persists across deep navigation; reset only by entering a different slot.</td>
+        <td>Stored as a single <code>uint8_t last_slot_idx</code> in the navigation context. Persists across deep navigation; on Home it decays to idle (no focus) after 8 s without input (see <code>mockup_home.html</code>).</td>
       </tr>
       <tr>
-        <td>Deck reveal animation</td>
-        <td><code>lv_anim_t</code> on <code>deck.y</code>, 200 ms <code>lv_anim_path_ease_out</code>. The home stage's <code>bottom</code> rebinds to <code>deck-h</code> on reveal so it shrinks beneath. (Could also overlay if shrinking the stage is too expensive; see open question.)</td>
+        <td>Ambient enter/exit animation</td>
+        <td><code>lv_anim_t</code> on <code>deck.y</code>, 200 ms <code>lv_anim_path_ease_out</code>. The home stage's <code>bottom</code> rebinds to <code>deck-h</code> on exit so it shrinks beneath. (Could also overlay if shrinking the stage is too expensive; see open question.)</td>
       </tr>
       <tr>
         <td>Press-ring</td>
-        <td>A reusable <code>lv_obj_t</code> kept hidden in the panel root. On the long-press threshold event, it is positioned to the touch coordinates and shown with a 200 ms fade-in scale-up animation.</td>
+        <td>A reusable <code>lv_obj_t</code> kept hidden in the panel root. On the long-press threshold event, it is shown centered in the stage with a 200 ms fade-in scale-up animation (touch binding may position it at the finger instead).</td>
       </tr>
     </tbody>
   </table>
@@ -570,27 +585,29 @@
 
 <section class="sect">
   <h2><span class="badge-num">7</span> Worst-case input cost</h2>
-  <p>With nav hidden and Listen as last-selected, reaching Setup takes:</p>
-  <pre>long-press → nav shows, Listen focused
-tap        → Talk focused
-tap        → Ask focused
-tap        → Setup focused
-double-tap → enter Setup
+  <p>From Home with Listen focused, reaching Setup takes:</p>
+  <pre>press        → Talk focused
+press        → Ask focused
+press        → Setup focused
+double-press → enter Setup
 ─────────
-4 distinct gestures (1 long-press + 3 taps + 1 double-tap)
-~ 1.6 s of finger time if executed without thinking</pre>
-  <p>This is acceptable for 4 slots. If we add a 5th slot later (e.g. for a content-specific shortcut), worst case becomes 5 gestures. Beyond that, cycling stops feeling cheap and we'd want to revisit (e.g. direct-tap on a visible slot).</p>
+4 distinct gestures (3 presses + 1 double-press)
+~ 1.4 s of press time if executed without thinking</pre>
+  <p>From deep inside another category, add one long-press (→ Home) up front: 5 gestures. This is acceptable for 4 slots. If we add a 5th slot later (e.g. for a content-specific shortcut), worst case grows by one press per slot. Beyond that, cycling stops feeling cheap and we'd want to revisit.</p>
 </section>
 
 <section class="sect">
   <h2><span class="badge-num">8</span> Things still worth deciding</h2>
   <ul style="color:#c9b9a3; font-size:13px; line-height:1.6;">
-    <li><b>Press-ring colour on long-press inside a slot.</b> Right now it's always periwinkle (the nav-bar's signal colour). Should it instead inherit the focused slot's colour? Argument for: visual continuity. Against: now the same gesture has two different visual treatments, which means more state for the renderer.</li>
-    <li><b>Tap on the stage above the nav.</b> When nav is visible, where does a tap on the stage area (not on the deck) go? Right now it falls through to whatever's there. I'd argue it should also count as "advance focus" — otherwise the user has to aim for the 52 px deck strip at the bottom, which on a 240 × 280 panel means a lot of dead screen.</li>
-    <li><b>Inner-screen row tap vs nav-cycle tap.</b> When nav is visible <i>over</i> an inner screen (e.g. Talk contacts list), does a tap go to "advance focus" or to "select the row underneath"? Current rule says advance focus — the row is unreachable while nav is visible. Sounds right but worth confirming.</li>
+    <li><b>Press-ring colour on long-press inside a slot.</b> Right now it's always periwinkle (the deck's signal colour). Should it instead inherit the focused slot's colour? Argument for: visual continuity. Against: now the same gesture has two different visual treatments, which means more state for the renderer.</li>
+    <li><b>Ambient timeout.</b> 30 s is a placeholder. Long enough that it never interrupts active use, short enough that the shelf state is usually the Blob, not a stale menu.</li>
+    <li><b>Double-press window for small hands.</b> 350 ms is an adult default. Test with 4–6-year-olds; may need 450–500 ms (at the cost of slower single-press dispatch).</li>
     <li><b>Haptic.</b> A 10 ms buzz on the 400 ms long-press threshold would teach the gesture faster than the press-ring alone. Not in scope here, but worth ear-marking.</li>
   </ul>
+  <p class="muted">Resolved in rev 2 (were open in rev 1): "tap on the stage above the nav" and "row tap vs nav-cycle tap" — both dissolved by dropping positional input from the contract entirely; the whole surface is one button.</p>
 </section>
+
+<p class="muted" style="margin-top:40px;">Spec rev 2 · 2026-07-15 · consolidation pass — grammar unchanged from rev 1, rebound from touch-only to hardware-agnostic (button today, whole-surface touch later); Home deck now persistent, blob-only state reclassified as Ambient. Decision log: <code>README.md</code>. Pairs with <code>mockup_home.html</code>.</p>
 
 </body>
 </html>

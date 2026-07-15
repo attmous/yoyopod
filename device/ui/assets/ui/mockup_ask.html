@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>YoyoPod — Ask Flow · Implementation Spec</title>
+<style>
+  :root {
+    --panel-w: 240px;
+    --panel-h: 280px;
+    --panel-radius: 22px;
+
+    --bg-cream:    #FCE6D2;
+    --bg-cream-2:  #F7DBC2;
+
+    --ink:         #1B1B1F;
+    --ink-soft:    #3A3A40;
+    --ink-300:     #8a8076;
+
+    --c-lime:      #9DFC7C;
+    --c-peri:      #A9A6E5;
+    --c-butter:    #FFD06A;
+    --c-butter-2:  #FFDE94;  /* lifted butter — reserved for focused row on tinted card (Ask v1 has none) */
+    --c-butter-soft: #FFF3D6; /* very pale butter — Ask inner card background */
+    --c-coral:     #F37767;
+    --c-tomato:    #E5443B;
+    --c-mustard:   #E8A93C;
+    --c-mint:      #6FDFB1;
+
+    --border-w: 2px;
+    --shadow-row:    2px 2px 0 var(--ink);
+    --shadow-card:   3px 3px 0 var(--ink);
+
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+
+    --statusbar-h: 22px;
+    --deck-h:      52px;
+    --tab-h:       18px;
+    --row-h:       28px;
+    --row-radius:  6px;
+    --card-radius: 10px;
+
+    --slot-swatch: 14px;
+    --slot-hero:   60px;
+    --slot-ctrl:   26px;
+
+    --t-row:    600 12px/1 "Inter", system-ui, sans-serif;
+    --t-meta:   700 10px/1 "Inter", system-ui, sans-serif;
+    --t-tab:    800 9px/1  "Inter", system-ui, sans-serif;
+    --t-status: 700 11px/1 "Inter", system-ui, sans-serif;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: #1a1518;
+    color: #efe4d6;
+    font-family: -apple-system, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { padding: 32px 24px 80px; }
+  h1 { font-weight: 700; font-size: 22px; margin: 0 0 4px; color: #fff; }
+  h2 { font-weight: 600; font-size: 14px; margin: 32px 0 12px; color: #d3b89a; letter-spacing: 0.04em; text-transform: uppercase; }
+  h3 { margin: 14px 0 8px; font-size: 13px; color: #ffd9b3; }
+  p  { font-size: 13px; line-height: 1.55; max-width: 760px; color: #c9b9a3; }
+  .muted { color: #8a7c6c; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 11px; color: #8a7c6c; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  .device {
+    width: calc(var(--panel-w) + 24px);
+    padding: 12px;
+    border-radius: 22px;
+    background: linear-gradient(160deg, #ff7a3d, #d2401b);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.05) inset,
+      0 30px 50px -20px rgba(0,0,0,0.7),
+      0 0 60px -10px rgba(255,90,31,0.35);
+  }
+  .panel {
+    position: relative;
+    width: var(--panel-w);
+    height: var(--panel-h);
+    box-sizing: border-box;
+    background: var(--bg-cream);
+    overflow: hidden;
+    color: var(--ink);
+    border-radius: var(--panel-radius);
+    box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 1px var(--ink);
+  }
+
+  /* ── status bar ────────────────────────────────────────────── */
+  .statusbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: var(--statusbar-h);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 12px 0 8px;
+    font-size: 11px;
+    background: var(--bg-cream);
+    z-index: 30;
+    font-weight: 700;
+  }
+  .statusbar .left  { display: flex; align-items: center; gap: 5px; justify-self: start; }
+  .statusbar .time  { font-variant-numeric: tabular-nums; justify-self: center; }
+  .statusbar .right { display: flex; align-items: center; gap: 5px; justify-self: end; }
+  .sb-bars { display: flex; align-items: flex-end; gap: 1px; height: 10px; }
+  .sb-bars > i { display: block; width: 2px; background: var(--ink); }
+  .sb-bars > i:nth-child(1) { height: 3px; }
+  .sb-bars > i:nth-child(2) { height: 5px; }
+  .sb-bars > i:nth-child(3) { height: 7px; }
+  .sb-bars > i:nth-child(4) { height: 9px; }
+  .sb-bars > i.off { background: transparent; border: 1px solid var(--ink); box-sizing: border-box; }
+  .sb-gps { width: 8px; height: 11px; position: relative; }
+  .sb-gps::before {
+    content: ""; position: absolute; left: 0; top: 0;
+    width: 8px; height: 8px; background: var(--ink);
+    border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  }
+  .sb-gps::after {
+    content: ""; position: absolute; left: 3px; top: 2.5px;
+    width: 2px; height: 2px; background: var(--bg-cream); border-radius: 50%;
+  }
+  .sb-pct { font-variant-numeric: tabular-nums; font-size: 10px; }
+  .batt {
+    width: 20px; height: 10px;
+    border: 1.5px solid var(--ink);
+    border-radius: 1px; position: relative; padding: 1px;
+  }
+  .batt::after {
+    content: ""; position: absolute; right: -3px; top: 2px;
+    width: 2px; height: 4px; background: var(--ink); border-radius: 0 1px 1px 0;
+  }
+  .batt > i { display: block; width: 70%; height: 100%; background: var(--ink); }
+
+  /* ── deck (nav bar) ────────────────────────────────────────── */
+  .deck {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: var(--deck-h);
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    background: var(--bg-cream);
+    border-top: var(--border-w) solid var(--ink);
+    z-index: 20;
+  }
+  .deck .slot {
+    background: var(--bg-cream); color: var(--ink-300);
+    display: grid; place-items: center;
+    border-right: var(--border-w) solid var(--ink);
+    position: relative;
+  }
+  .deck .slot:last-child { border-right: none; }
+  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; }
+  .deck .slot.listen .glyph { font-size: 24px; }
+  .deck .slot.focus { color: var(--ink); }
+  .deck .slot.focus.listen { background: var(--c-lime); }
+  .deck .slot.focus.talk   { background: var(--c-peri); }
+  .deck .slot.focus.ask    { background: var(--c-butter); }
+  .deck .slot.focus.setup  { background: var(--c-coral); }
+
+  /* ── stage (everything between status & deck) ──────────────── */
+  .cd-stage {
+    position: absolute;
+    top: var(--statusbar-h); left: 0; right: 0;
+    bottom: var(--deck-h);
+    background: var(--bg-cream);
+    overflow: hidden;
+  }
+
+  /* Card — generic, cream-tinted */
+  .cd-card {
+    position: absolute;
+    left: var(--sp-2); right: var(--sp-2);
+    top: 16px; bottom: var(--sp-2);
+    background: var(--bg-cream);
+    border: var(--border-w) solid var(--ink);
+    border-radius: 0 var(--card-radius) var(--card-radius) var(--card-radius);
+    box-shadow: var(--shadow-card);
+    z-index: 6;
+    padding: var(--sp-2);
+    box-sizing: border-box;
+  }
+  .cd-card.no-tabs { border-radius: var(--card-radius); top: var(--sp-2); }
+
+  /* When the card is inside the Ask slot, it inherits the slot's tint.
+     Soft pale butter — same trick as Talk v4's pale peri (#E7E5F7). */
+  .cd-card.tint-ask { background: var(--c-butter-soft); }
+  .cd-card.tint-ask .cd-row       { background: var(--bg-cream); }
+  .cd-card.tint-ask .cd-row.focus { background: var(--c-butter-2); }
+
+  .cd-row {
+    height: var(--row-h);
+    padding: 0 var(--sp-2);
+    display: flex; align-items: center; gap: var(--sp-2);
+    border: var(--border-w) solid var(--ink);
+    background: var(--bg-cream-2);
+    border-radius: var(--row-radius);
+    box-shadow: var(--shadow-row);
+    font: var(--t-row);
+    color: var(--ink);
+    box-sizing: border-box;
+    position: relative;
+  }
+  .cd-row.focus { background: var(--c-butter); }
+
+  /* ── Ask hero tile — 60 × 60 rounded square ─────────────────
+     Same primitive as Listen's NowPlaying cover: 2 px ink border,
+     6 px radius, hard (2,2) ink offset shadow. */
+  .ask-tile {
+    width: var(--slot-hero); height: var(--slot-hero);
+    border: var(--border-w) solid var(--ink);
+    border-radius: var(--row-radius);
+    background: var(--c-butter);
+    box-shadow: var(--shadow-row);
+    display: grid; place-items: center;
+    font: 900 26px/1 "Inter", sans-serif;
+    color: var(--ink);
+    position: relative;
+    box-sizing: border-box;
+  }
+  .ask-tile.cream { background: var(--bg-cream); }
+
+  /* Ask stage layout — hero stack centered in the tinted card */
+  .ask-center {
+    height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 6px;
+    text-align: center;
+  }
+  .ask-line { font: 800 12px/1.35 "Inter", sans-serif; color: var(--ink); max-width: 180px; }
+  .ask-hint { font: 700 10px/1.4 "Inter", sans-serif; color: var(--ink-soft); max-width: 180px; }
+
+  /* ── LISTENING waveform — 7 butter bars on a cream tile ─────── */
+  .ask-wave {
+    display: flex; align-items: center; gap: 2px;
+    height: 40px;
+  }
+  .ask-wave > i {
+    display: block; width: 4px;
+    background: var(--c-butter);
+    border-radius: 2px;
+    animation: waveBounce 900ms ease-in-out infinite;
+  }
+  .ask-wave > i:nth-child(1) { height: 12px; animation-delay:   0ms; }
+  .ask-wave > i:nth-child(2) { height: 22px; animation-delay: 120ms; }
+  .ask-wave > i:nth-child(3) { height: 34px; animation-delay: 240ms; }
+  .ask-wave > i:nth-child(4) { height: 26px; animation-delay: 360ms; }
+  .ask-wave > i:nth-child(5) { height: 30px; animation-delay: 480ms; }
+  .ask-wave > i:nth-child(6) { height: 18px; animation-delay: 600ms; }
+  .ask-wave > i:nth-child(7) { height: 10px; animation-delay: 720ms; }
+  @keyframes waveBounce {
+    0%, 100% { transform: scaleY(0.45); }
+    50%      { transform: scaleY(1.0); }
+  }
+
+  /* ── THINKING dots — three 10 px ink dots, staggered bounce ── */
+  .ask-dots { display: flex; gap: 8px; align-items: flex-end; height: 22px; }
+  .ask-dots > i {
+    display: block; width: 10px; height: 10px;
+    background: var(--ink); border-radius: 50%;
+    animation: dotBounce 600ms ease-in-out infinite;
+  }
+  .ask-dots > i:nth-child(2) { animation-delay: 150ms; }
+  .ask-dots > i:nth-child(3) { animation-delay: 300ms; }
+  @keyframes dotBounce {
+    0%, 100% { transform: translateY(0); }
+    40%      { transform: translateY(-8px); }
+  }
+
+  /* ── ANSWERING pulse — optional concentric arcs, butter ─────── */
+  .pulse-ask { position: relative; width: var(--slot-hero); height: var(--slot-hero); }
+  .pulse-ask > .ask-tile { position: relative; z-index: 2; }
+  .pulse-ask::before, .pulse-ask::after {
+    content: ""; position: absolute; inset: 0;
+    border: 2px solid var(--c-butter);
+    border-radius: var(--card-radius);
+    opacity: 0; z-index: 1;
+    animation: askPulse 1600ms ease-out infinite;
+  }
+  .pulse-ask::after { animation-delay: 800ms; }
+  @keyframes askPulse {
+    0%   { transform: scale(1.0); opacity: 0; }
+    20%  { opacity: 0.9; }
+    100% { transform: scale(1.45); opacity: 0; }
+  }
+
+  /* Progress — same primitive as Listen NowPlaying: cream-2 track,
+     2 px ink border, 4 px radius. Fill = butter on Ask. */
+  .progress {
+    width: 180px; height: 8px;
+    border: var(--border-w) solid var(--ink);
+    border-radius: 4px;
+    background: var(--bg-cream-2);
+    overflow: hidden;
+  }
+  .progress > i { display: block; height: 100%; background: var(--c-butter); }
+
+  /* Offline cloud "zzz" */
+  .zzz {
+    position: absolute; top: 5px; right: 6px;
+    font: 800 9px/1 "Inter", sans-serif;
+    color: var(--ink-soft);
+    letter-spacing: 0.05em;
+  }
+
+  /* doc styles */
+  .specs {
+    max-width: 1080px;
+    background: #221b1d;
+    border: 1px solid #3b2e2e;
+    border-radius: 10px;
+    padding: 16px 20px;
+    font-size: 13px; line-height: 1.6;
+    color: #d8c8b3;
+    margin-top: 12px;
+  }
+  .specs code { background: #000; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #ffcfae; }
+  table.spec { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0 12px; }
+  table.spec th {
+    text-align: left; color: #ffd9b3;
+    padding: 6px 8px; background: #2b2122;
+    border-bottom: 1px solid #3b2e2e;
+    font-weight: 600; white-space: nowrap;
+  }
+  table.spec td { padding: 6px 8px; border-bottom: 1px solid #2a2222; vertical-align: top; }
+  table.spec td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.spec td.mono { font-family: ui-monospace, monospace; }
+  table.spec tr:last-child td { border-bottom: none; }
+  table.spec .grp {
+    background: #2b2122; color: #ffd9b3;
+    font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; font-size: 11px;
+  }
+
+  .legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; max-width: 460px; margin-top: 10px; }
+  .legend .chip-l { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: #221b1d; border: 1px solid #3b2e2e; border-radius: 6px; font-size: 11px; }
+  .legend .dot { width: 12px; height: 12px; border: 1.5px solid #1B1B1F; border-radius: 3px; flex: none; }
+</style>
+</head>
+<body>
+
+<h1>YoyoPod — Ask Flow · Implementation Spec</h1>
+<p class="muted">Ask is voice Q&amp;A with the AI: hold the side push-to-talk (PTT) button, ask a question, let go, hear the answer. It is a <b>single stateful surface</b> — no tabs, no list, no sub-routes, nothing to focus. The screen exists only to show <i>which phase of the conversation the device is in</i>: IDLE → LISTENING → THINKING → ANSWERING → IDLE. Card inherits the Ask slot's butter tint (pale butter <code>#FFF3D6</code>, the same trick as Talk v4's pale peri). Everything on this screen is also spoken aloud — text is for grown-ups, never a requirement. Input model lives in its own doc: <code>mockup_input_model.html</code>.</p>
+
+<div class="legend">
+  <div class="chip-l"><div class="dot" style="background:var(--c-lime)"></div>Listen — lime</div>
+  <div class="chip-l"><div class="dot" style="background:var(--c-peri)"></div>Talk — periwinkle</div>
+  <div class="chip-l"><div class="dot" style="background:var(--c-butter)"></div>Ask — butter</div>
+  <div class="chip-l"><div class="dot" style="background:var(--c-coral)"></div>Setup — coral</div>
+</div>
+
+<!-- ============================================================ -->
+<h2>1 · Ask — four states</h2>
+<p>All four states share one locked geometry: the 60 × 60 hero tile sits at the same position in every state, only its contents swap. Kids track the tile, not the words. On entry to Ask the device speaks <i>"Ask me anything!"</i> — a pre-reader never needs the text below the hero.</p>
+
+<div class="row">
+
+  <div class="stack">
+    <span class="label">Ask · idle</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-card no-tabs tint-ask">
+          <div class="ask-center">
+            <div class="ask-tile">?</div>
+            <div class="ask-line">Hold the side button<br>and ask me anything</div>
+            <div class="ask-hint">Try: why is the sky blue?</div>
+          </div>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask focus"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Depth-1 root, no tabs. Butter hero tile with the big <b>?</b>. Voice prompt speaks "Ask me anything!" on entry, so reading is never required. Hint line rotates through examples.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">Ask · listening (PTT held)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar" style="opacity:.55">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-card no-tabs tint-ask">
+          <div class="ask-center">
+            <div class="ask-tile cream"><div class="ask-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+            <div class="ask-line">I'm listening…</div>
+            <div class="ask-hint">let go when you're done</div>
+          </div>
+        </div>
+      </div>
+      <div class="deck" style="opacity:.55">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask focus"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Hero swaps to a live waveform: 7 butter bars on the ink-bordered cream tile, driven by mic level. Deck + statusbar dim to 55% — mirror of Talk's hold-to-record dim.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">Ask · thinking (PTT released)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-card no-tabs tint-ask">
+          <div class="ask-center">
+            <div class="ask-tile cream"><div class="ask-dots"><i></i><i></i><i></i></div></div>
+            <div class="ask-line">Hmm, let me think…</div>
+          </div>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask focus"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Three 10 px ink dots, staggered bounce. Worst-case cloud latency ~2–4 s — the animation is the only thing telling the kid "it heard you". Must stay smooth (see §5 for the 3-frame sprite fallback).</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">Ask · answering</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="cd-stage">
+        <div class="cd-card no-tabs tint-ask">
+          <div class="ask-center">
+            <div class="pulse-ask"><div class="ask-tile">🔊</div></div>
+            <div class="progress"><i style="width:38%"></i></div>
+            <div class="ask-hint">double-press to stop</div>
+          </div>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask focus"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Butter speaker tile; concentric butter arcs optional. Progress = NowPlaying primitive (cream-2 track, butter fill, 2 px ink border). When the answer ends → back to IDLE with hint "Ask me another!".</span>
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2>2 · Geometry</h2>
+<div class="specs">
+  <p style="margin-top:0">Panel coordinate space, y grows downward. Statusbar 0–22, deck 228–280, stage 22–228 (206 px). Card = <code>.cd-card.no-tabs</code>: 8 px insets inside the stage → outer box x 8–232 (224 wide), y 30–220 (190 tall). Inner content area after 2 px border + 8 px padding: 204 × 170 at x 18, y 40.</p>
+  <table class="spec">
+    <thead><tr><th>Element</th><th>Value</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Card background</td><td class="mono">var(--c-butter-soft) = #FFF3D6</td><td>Ask slot color lightened ~70%, analogous to Talk's pale peri #E7E5F7. Reads "you are inside Ask" without a label.</td></tr>
+      <tr><td>Card border / radius / shadow</td><td class="mono">2 px ink · 10 px radius · (3,3) ink</td><td>Same primitive as Listen / Talk / Setup root cards. No tab strip at depth 1.</td></tr>
+      <tr><td>Hero tile</td><td class="num">60 × 60 at x 90, y 64</td><td>Rounded square: 2 px ink border, 6 px radius, (2,2) ink hard shadow — same primitive as Listen's NowPlaying cover. <b>Locked in all four states</b>; only contents swap. Butter fill in IDLE/ANSWERING, cream fill in LISTENING/THINKING.</td></tr>
+      <tr><td>Hero glyph</td><td class="mono">900 26 px, ink</td><td>IDLE = <code>?</code> · ANSWERING = 🔊. LISTENING/THINKING replace the glyph with waveform / dots.</td></tr>
+      <tr><td>Label line (line 1+2)</td><td class="mono">800 12 px / 1.35, ink</td><td>Centered under hero, 6 px gap, max width 180 px. IDLE: "Hold the side button / and ask me anything". LISTENING: "I'm listening…". THINKING: "Hmm, let me think…".</td></tr>
+      <tr><td>Hint line</td><td class="mono">var(--t-meta) 700 10 px, ink_soft</td><td>4 px below label. IDLE: rotating example ("Try: why is the sky blue?", cycles every 8 s while idle). LISTENING: "let go when you're done". ANSWERING: "double-press to stop". Post-answer IDLE: "Ask me another!".</td></tr>
+      <tr class="grp"><td colspan="3">State-specific pieces</td></tr>
+      <tr><td>Waveform bars (LISTENING)</td><td class="num">7 bars · 4 px wide · 2 px gap</td><td>Total 40 px wide, centered in the cream tile. Bar heights 10–36 px, butter fill, 2 px radius, no border. Heights driven by mic RMS, updated at 20 Hz.</td></tr>
+      <tr><td>Thinking dots (THINKING)</td><td class="num">3 × 10 px ink circles, 8 px gap</td><td>Centered in the cream tile. Bounce −8 px, 600 ms period, 150 ms stagger.</td></tr>
+      <tr><td>Progress bar (ANSWERING)</td><td class="num">outer 184 × 12 at x 28, y 132</td><td>Track 180 × 8 inside 2 px ink border, 4 px radius. Track cream-2, fill butter. Same primitive as NowPlaying progress. Fill = elapsed / estimated answer duration (from voice worker metadata; indeterminate → slow 4 s sweep).</td></tr>
+      <tr><td>Answering arcs (optional)</td><td class="mono">2 rings, 2 px butter, radius 10</td><td>Expand 1.0 → 1.45 scale over 1600 ms, 800 ms phase offset, fade out. Drop first if the frame budget is tight — the 🔊 glyph + progress carry the state alone.</td></tr>
+      <tr class="grp"><td colspan="3">Dim overlay (LISTENING only)</td></tr>
+      <tr><td>Deck opacity</td><td class="num">0.55</td><td>Mirror of Talk's hold-to-record dim. LVGL: <code>lv_obj_set_style_opa(deck, 140, 0)</code>.</td></tr>
+      <tr><td>Statusbar opacity</td><td class="num">0.55</td><td>Same value, same moment. Card stays at full opacity — the mic is the only live thing on the device.</td></tr>
+      <tr><td>Restore</td><td class="num">≤ 100 ms after PTT release</td><td>Snap back, no fade animation needed.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>3 · State machine + input contract</h2>
+<p>Ask has <b>nothing to focus</b> — no rows, no controls. Single press is a no-op by design (<code>FocusPolicy::None</code>). The whole surface is driven by the PTT button and voice-worker events; the main button only contributes double-press (stop) and long-press (Home).</p>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Event</th><th>From IDLE</th><th>From LISTENING</th><th>From THINKING</th><th>From ANSWERING</th></tr></thead>
+    <tbody>
+      <tr><td><b>PTT press</b></td>
+          <td>emit <code>voice.ask_start</code> → LISTENING</td>
+          <td>— (already held)</td>
+          <td>barge-in: drop pending answer, emit <code>voice.ask_start</code> → LISTENING</td>
+          <td>barge-in: stop playback, emit <code>voice.ask_start</code> → LISTENING</td></tr>
+      <tr><td><b>PTT release</b></td>
+          <td>—</td>
+          <td>emit <code>voice.ask_stop</code> → THINKING</td>
+          <td>— (guard: ignore stray release)</td>
+          <td>—</td></tr>
+      <tr><td><b>Answer arrival</b> (voice worker)</td>
+          <td>stale — discard</td>
+          <td>stale — discard (new question in flight)</td>
+          <td>→ ANSWERING, speech starts</td>
+          <td>n/a</td></tr>
+      <tr><td><b>Answer end</b> (voice worker)</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>→ IDLE, hint swaps to "Ask me another!"</td></tr>
+      <tr><td><b>Single press</b></td>
+          <td colspan="4">no-op in every state — nothing to focus. <code>UiScreen::Ask</code> is <code>FocusPolicy::None</code>; the press is consumed and ignored (no error tone, no flash).</td></tr>
+      <tr><td><b>Double-press</b></td>
+          <td>no-op (reserved)</td>
+          <td>no-op (PTT is held; ignore)</td>
+          <td>cancel pending question → IDLE</td>
+          <td><b>stop answer → IDLE</b></td></tr>
+      <tr><td><b>Long-press ≥ 400 ms</b></td>
+          <td>→ Home</td>
+          <td>emit <code>voice.ask_stop</code> first (mic must not stay hot), then → Home</td>
+          <td>→ Home, pending answer dropped</td>
+          <td>stop playback, → Home</td></tr>
+    </tbody>
+  </table>
+  <h3>Runtime note — matches shipped router</h3>
+  <p style="margin:0">This table matches <code>device/ui/src/router/routes.rs</code> as shipped: <code>UiScreen::Ask</code> carries <code>ASK_PASSTHROUGH</code> (<code>PttPress → IntentTemplate::VoiceAskStart</code>, <code>PttRelease → IntentTemplate::VoiceAskStop</code>), its select target is <code>EmitIntent(VoiceAskStart)</code>, and its focus policy is <code>FocusPolicy::None</code>. Because select (double-press) emits <code>VoiceAskStart</code> rather than a dedicated stop intent, the "stop answer" behavior is realized in the <b>voice worker</b>: an <code>ask_start</code> received while speaking (and with no PTT held) is treated as barge-in-stop — playback halts, and if no speech follows within the short arm window the session resolves back to IDLE. The UI never needs a fourth intent.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>4 · Kid safety / tone + offline variant</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Concern</th><th>Rule</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Content filtering</td>
+          <td>All answers come from the cloud voice worker with kid-safe filtering applied server-side.</td>
+          <td>Filtering policy is specced in the cloud voice-worker docs, <b>not here</b> — the device trusts what it is handed and renders/speaks it verbatim.</td></tr>
+      <tr><td>Answer length</td>
+          <td>Max ~45 s of speech, with a gentle wrap-up.</td>
+          <td>The worker ends long answers with a soft close ("…and that's the short answer! Ask me again if you're curious."), never a hard cut. Progress bar is sized to the whole clip including the wrap-up.</td></tr>
+      <tr><td>Tone</td>
+          <td>Warm, short sentences, first person, spoken-first.</td>
+          <td>Every on-screen string in this flow is also spoken. A pre-reader can complete the entire loop — enter Ask, hold, ask, listen — without decoding a single word of text.</td></tr>
+      <tr><td>Cloud unreachable</td>
+          <td>ANSWERING is replaced by <b>ASK · OFFLINE</b> (frame below). Auto-return to IDLE after 4 s.</td>
+          <td>Friendly, not alarming: the cloud is "sleeping", not "broken". Device speaks the same line it shows. No retry button — the kid just holds PTT and tries again.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="row" style="margin-top:8px">
+    <div class="stack">
+      <span class="label">Ask · offline (replaces answering)</span>
+      <div class="device"><div class="panel">
+        <div class="statusbar">
+          <span class="left"><span class="sb-bars"><i class="off"></i><i class="off"></i><i class="off"></i><i class="off"></i></span><span class="sb-gps"></span></span>
+          <span class="time">6:16</span>
+          <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+        </div>
+        <div class="cd-stage">
+          <div class="cd-card no-tabs tint-ask">
+            <div class="ask-center">
+              <div class="ask-tile cream">☁<span class="zzz">zzz</span></div>
+              <div class="ask-line">I can't think right now —<br>try again soon</div>
+            </div>
+          </div>
+        </div>
+        <div class="deck">
+          <div class="slot listen"><div class="glyph">🎧︎</div></div>
+          <div class="slot talk"><div class="glyph">💬︎</div></div>
+          <div class="slot ask focus"><div class="glyph">?</div></div>
+          <div class="slot setup"><div class="glyph">⚙</div></div>
+        </div>
+      </div></div>
+      <span class="muted" style="font-size:11px;max-width:240px">Cloud glyph with "zzz" on the cream tile — the cloud is napping. Signal bars hollow in the statusbar. Auto-return to IDLE after 4 s; any PTT press during the 4 s cancels the timer and tries a fresh question.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>5 · LVGL render mapping</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Component</th><th>LVGL primitive</th><th>Children</th><th>Style hookups</th></tr></thead>
+    <tbody>
+      <tr><td>Panel</td>       <td><code>lv_obj</code> (root)</td>   <td>StatusBar, AskStage, Deck</td> <td>bg=bg_cream.</td></tr>
+      <tr><td>StatusBar</td>   <td><code>lv_obj</code> flex row</td> <td>signal bars (4), gps pin, time, percent, battery</td><td>bg=bg_cream, ink children. Opa 140 while LISTENING.</td></tr>
+      <tr><td>AskStage</td>    <td><code>lv_obj</code></td>          <td>AskCard only</td>              <td>bg=bg_cream. No border, no padding.</td></tr>
+      <tr><td>AskCard</td>     <td><code>lv_obj</code></td>          <td>HeroTile, Label, Hint, Progress (ANSWERING only)</td><td>bg=butter_soft #FFF3D6, border 2 ink, radius 10, shadow (3,3) ink. Flex column, centered.</td></tr>
+      <tr><td>HeroTile</td>    <td><code>lv_obj</code> + <code>lv_label</code></td><td>glyph label · or Waveform · or Dots</td><td>60 × 60, border 2 ink, radius 6, shadow (2,2) ink. bg style-swap per state (butter ↔ cream) — style swap only, no relayout.</td></tr>
+      <tr><td>Waveform</td>    <td>7 × <code>lv_obj</code> bars</td> <td>—</td>                         <td>4 px wide, radius 2, bg=butter. <code>lv_anim</code> on height from mic RMS at 20 Hz. Alternative: one <code>lv_canvas</code> 40 × 36 redrawn per tick — prefer the 7 bars, cheaper invalidation rects.</td></tr>
+      <tr><td>ThinkingDots</td><td>3 × <code>lv_obj</code> circles <i>or</i> 1 × <code>lv_img</code> sprite</td><td>—</td><td>10 px ink circles, <code>lv_anim</code> sine y ±8 px, 600 ms period, 150 ms stagger. <b>30 FPS budget:</b> if per-frame invalidation is too hot on the Zero 2W, swap to a 3-frame sprite atlas (dot-1-up / dot-2-up / dot-3-up), <code>lv_img</code> src rotated every 200 ms — reads as the same bounce at ~5 fps effective, near-zero CPU.</td></tr>
+      <tr><td>Progress</td>    <td><code>lv_bar</code></td>          <td>—</td>                         <td>180 × 8 + 2 px ink border, radius 4. Track cream_2, indicator butter. Value ticked at 2 Hz from playback position.</td></tr>
+      <tr><td>Labels</td>      <td>2 × <code>lv_label</code></td>    <td>—</td>                         <td>Line: 800 12 px ink. Hint: 700 10 px ink_soft. Text swap per state — no create/destroy.</td></tr>
+      <tr><td>Deck</td>        <td><code>lv_obj</code> flex row</td> <td>4 × deck_slot (glyph labels)</td><td>border_side TOP=2 ink. Ask slot bg=butter + ink glyph (focused on every Ask frame). Opa 140 while LISTENING.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Object budget (worst case, LISTENING): 1 panel + 1 statusbar (~8 children) + 1 stage + 1 card + 1 hero tile + 7 wave bars + 2 labels + 1 deck (4 slots + 4 glyphs) = <b>~30 objects</b>. ANSWERING is ~26 (progress bar instead of bars). Below Listen's ~36 worst case; comfortably inside LVGL limits at 240 × 280. All four states are one screen with widget visibility flags — never create/destroy on state change.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>6 · Open questions for the next pass</h2>
+<div class="specs">
+  <ul>
+    <li><b>"Hear it again".</b> When an answer ends we snap to IDLE. Should the post-answer IDLE offer a replay affordance (e.g., double-press within 5 s = repeat the last answer)? Cheap to add — the clip is still in memory — but it gives double-press two meanings on one screen. Alternatively the kid just asks again. Decide after first playtest.</li>
+    <li><b>Hint list source.</b> "Try: why is the sky blue?" — is the rotating example list static firmware strings, or server-fed (age-tuned, seasonal, localized)? Static ships v1; server-fed needs a fallback set anyway, so the static list is required work either way.</li>
+    <li><b>Whisper mode at night.</b> Should ANSWERING respect a quiet-hours volume cap (e.g., after the bedtime hour set in Setup, answers play at whisper volume with the wrap-up shortened)? Belongs to the global volume policy doc, but Ask is the flow most likely to be used under a blanket at 9 pm — flagging it here.</li>
+  </ul>
+</div>
+
+<p style="margin-top:24px" class="muted">Spec rev. 2026-07-15 · Ask flow v1 · consolidation pass. Pairs with <code>mockup_input_model.html</code> (three-gesture contract) and <code>mockup_home.html</code>.</p>
+
+</body>
+</html>
