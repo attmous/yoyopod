@@ -36,6 +36,36 @@ impl LvImageDsc {
             reserved_2: std::ptr::null(),
         }
     }
+
+    const fn a8_30(data: &'static [u8; 900]) -> Self {
+        Self {
+            header: LvImageHeader {
+                magic_cf_flags: LV_IMAGE_HEADER_MAGIC | (LV_COLOR_FORMAT_A8 << 8),
+                width_height: 30 | (30 << 16),
+                stride_reserved: 30,
+            },
+            data_size: 900,
+            data: data.as_ptr(),
+            reserved: std::ptr::null(),
+            reserved_2: std::ptr::null(),
+        }
+    }
+}
+
+const fn downsample_56_to_30(source: &[u8; 3136]) -> [u8; 900] {
+    let mut target = [0u8; 900];
+    let mut y = 0;
+    while y < 30 {
+        let source_y = y * 56 / 30;
+        let mut x = 0;
+        while x < 30 {
+            let source_x = x * 56 / 30;
+            target[y * 30 + x] = source[source_y * 56 + source_x];
+            x += 1;
+        }
+        y += 1;
+    }
+    target
 }
 
 static LISTEN_MAP: [u8; 3136] = [
@@ -842,8 +872,21 @@ static SETUP_MAP: [u8; 3136] = [
 
 static SETUP: LvImageDsc = LvImageDsc::a8_56(&SETUP_MAP);
 
+static DECK_LISTEN_MAP: [u8; 900] = downsample_56_to_30(&LISTEN_MAP);
+static DECK_TALK_MAP: [u8; 900] = downsample_56_to_30(&TALK_MAP);
+static DECK_ASK_MAP: [u8; 900] = downsample_56_to_30(&ASK_MAP);
+static DECK_SETUP_MAP: [u8; 900] = downsample_56_to_30(&SETUP_MAP);
+static DECK_LISTEN: LvImageDsc = LvImageDsc::a8_30(&DECK_LISTEN_MAP);
+static DECK_TALK: LvImageDsc = LvImageDsc::a8_30(&DECK_TALK_MAP);
+static DECK_ASK: LvImageDsc = LvImageDsc::a8_30(&DECK_ASK_MAP);
+static DECK_SETUP: LvImageDsc = LvImageDsc::a8_30(&DECK_SETUP_MAP);
+
 pub(crate) fn descriptor_for_key(icon_key: &str) -> &'static LvImageDsc {
     match icon_key {
+        "deck_listen" => &DECK_LISTEN,
+        "deck_talk" => &DECK_TALK,
+        "deck_ask" => &DECK_ASK,
+        "deck_setup" => &DECK_SETUP,
         "listen" | "music_note" | "play" | "track" => &LISTEN,
         "talk" | "call" | "call_active" | "call_incoming" | "call_outgoing" => &TALK,
         "ask" | "microphone" | "mic" | "voice_note" => &ASK,

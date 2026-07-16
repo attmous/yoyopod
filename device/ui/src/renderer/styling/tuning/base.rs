@@ -9,6 +9,12 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
     unsafe {
         match role {
             roles::FOOTER_BAR
+            | roles::DECK_BAR
+            | roles::DECK_SLOT
+            | roles::DECK_PILL
+            | roles::COMPANION
+            | roles::COMPANION_BODY
+            | roles::COMPANION_EYE
             | roles::CALL_PANEL
             | roles::STATUS_BAR
             | roles::STATUS_BATTERY_OUTLINE => {

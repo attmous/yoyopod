@@ -133,6 +133,16 @@ unsafe extern "C" {
         value: lv_color_t,
         selector: LvStyleSelector,
     );
+    pub fn lv_obj_set_style_image_recolor(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: LvStyleSelector,
+    );
+    pub fn lv_obj_set_style_image_recolor_opa(
+        obj: *mut lv_obj_t,
+        value: u8,
+        selector: LvStyleSelector,
+    );
     pub fn lv_obj_set_style_border_color(
         obj: *mut lv_obj_t,
         value: lv_color_t,

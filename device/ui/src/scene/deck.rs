@@ -45,6 +45,7 @@ pub struct DeckItem {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ItemRender {
+    Companion,
     Card(CardModel),
     Row(RowModel),
     Page(PageModel),
@@ -196,6 +197,7 @@ fn deck_item_element(
     visible_index: usize,
 ) -> Element {
     let element = match &item.render {
+        ItemRender::Companion => companion_element().key(item.key.clone()),
         ItemRender::Card(card) => card_widget(card).key(item.key.clone()),
         ItemRender::Row(row) => list_row_widget(row, selected, item.key.clone()),
         ItemRender::Page(page) => Element::new(ElementKind::Container, Some(roles::PAGE))
@@ -237,6 +239,29 @@ fn deck_item_element(
         }
         DeckItemAnim::None => element,
     }
+}
+
+fn companion_element() -> Element {
+    let eye = |key: &'static str| {
+        Element::new(ElementKind::Container, Some(roles::COMPANION_EYE))
+            .key(Key::Static(key))
+            .child(
+                Element::new(ElementKind::Container, Some(roles::COMPANION_CATCHLIGHT))
+                    .key(Key::String(format!("{key}:catchlight"))),
+            )
+    };
+
+    Element::new(ElementKind::Container, Some(roles::COMPANION))
+        .child(
+            Element::new(ElementKind::Container, Some(roles::COMPANION_BODY))
+                .key(Key::Static("companion_body")),
+        )
+        .child(eye("companion_eye_left"))
+        .child(eye("companion_eye_right"))
+        .child(
+            Element::new(ElementKind::Container, Some(roles::COMPANION_MOUTH))
+                .key(Key::Static("companion_mouth")),
+        )
 }
 
 const fn deck_role(kind: DeckKind) -> &'static str {

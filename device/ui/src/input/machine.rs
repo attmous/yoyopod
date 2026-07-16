@@ -29,9 +29,9 @@ impl InputEvent {
         }
     }
 
-    pub fn back(duration_ms: u64) -> Self {
+    pub fn home(duration_ms: u64) -> Self {
         Self {
-            action: InputAction::Back,
+            action: InputAction::Home,
             method: "long_hold",
             timestamp_ms: 0,
             duration_ms,
@@ -122,7 +122,7 @@ impl OneButtonMachine {
                 let duration = now_ms.saturating_sub(press_start_ms);
                 if duration >= self.timing.long_hold_ms {
                     self.hold_back_fired = true;
-                    events.push(InputEvent::back(duration));
+                    events.push(InputEvent::home(duration));
                 }
             }
         }
@@ -211,6 +211,12 @@ impl OneButtonMachine {
             return Vec::new();
         }
 
+        if duration >= self.timing.short_press_max_ms {
+            self.pending_single_tap_ms = None;
+            self.double_tap_candidate = false;
+            return Vec::new();
+        }
+
         if self.double_tap_candidate {
             self.pending_single_tap_ms = None;
             self.double_tap_candidate = false;
@@ -237,6 +243,12 @@ impl OneButtonMachine {
             return vec![InputEvent::ptt_release(duration)];
         }
 
+        if duration >= self.timing.short_press_max_ms {
+            self.pending_single_tap_ms = None;
+            self.double_tap_candidate = false;
+            return Vec::new();
+        }
+
         if self.double_tap_candidate {
             self.pending_single_tap_ms = None;
             self.double_tap_candidate = false;
@@ -246,5 +258,63 @@ impl OneButtonMachine {
         self.pending_single_tap_ms = Some(now_ms);
         self.double_tap_candidate = false;
         Vec::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn actions(events: Vec<InputEvent>) -> Vec<InputAction> {
+        events.into_iter().map(|event| event.action).collect()
+    }
+
+    fn tap(machine: &mut OneButtonMachine, pressed_at: u64, released_at: u64) -> Vec<InputEvent> {
+        let mut events = machine.observe(true, pressed_at);
+        events.extend(machine.observe(true, pressed_at + 50));
+        events.extend(machine.observe(false, released_at));
+        events.extend(machine.observe(false, released_at + 50));
+        events
+    }
+
+    #[test]
+    fn short_press_advances_after_double_window() {
+        let mut machine = OneButtonMachine::new(ButtonTiming::default());
+        tap(&mut machine, 0, 100);
+
+        assert_eq!(
+            actions(machine.observe(false, 451)),
+            vec![InputAction::Advance]
+        );
+    }
+
+    #[test]
+    fn double_press_selects() {
+        let mut machine = OneButtonMachine::new(ButtonTiming::default());
+        tap(&mut machine, 0, 100);
+        assert_eq!(
+            actions(tap(&mut machine, 220, 320)),
+            vec![InputAction::Select]
+        );
+    }
+
+    #[test]
+    fn medium_press_is_dead_zone() {
+        let mut machine = OneButtonMachine::new(ButtonTiming::default());
+        tap(&mut machine, 0, 250);
+
+        assert!(machine.observe(false, 700).is_empty());
+    }
+
+    #[test]
+    fn long_press_goes_home_once() {
+        let mut machine = OneButtonMachine::new(ButtonTiming::default());
+        machine.observe(true, 0);
+        machine.observe(true, 50);
+
+        assert_eq!(actions(machine.observe(true, 400)), vec![InputAction::Home]);
+        assert!(machine.observe(true, 700).is_empty());
+        machine.observe(false, 750);
+        assert!(machine.observe(false, 800).is_empty());
     }
 }

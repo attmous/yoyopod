@@ -23,11 +23,9 @@ pub fn status_bar(props: &StatusBarProps) -> Element {
     }
 
     status_bar
-        .child(label(roles::STATUS_WIFI).icon("network"))
         .child(gps_ring(props.network_online))
         .child(gps_center(props.network_online))
         .child(gps_tail(props.network_online))
-        .child(voip_indicator(props.network_online))
         .child(
             label(roles::STATUS_TIME)
                 .key(Key::Static("status_time"))
@@ -65,12 +63,6 @@ fn gps_center(active: bool) -> Element {
 fn gps_tail(active: bool) -> Element {
     container(roles::STATUS_GPS_TAIL)
         .key(Key::Static("gps_tail"))
-        .visible(active)
-}
-
-fn voip_indicator(active: bool) -> Element {
-    container(roles::STATUS_VOIP_DOT_AFTER_GPS)
-        .key(Key::Static("voip_dot"))
         .visible(active)
 }
 

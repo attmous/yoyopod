@@ -12,6 +12,7 @@ pub struct InputRouteState {
 pub enum AppCommand {
     AdvanceFocus,
     SelectFocused,
+    GoHome,
     GoBack,
     PttPress,
     PttRelease,
@@ -21,6 +22,7 @@ pub fn route(action: InputAction, _state: &InputRouteState) -> AppCommand {
     match action {
         InputAction::Advance => AppCommand::AdvanceFocus,
         InputAction::Select => AppCommand::SelectFocused,
+        InputAction::Home => AppCommand::GoHome,
         InputAction::Back => AppCommand::GoBack,
         InputAction::PttPress => AppCommand::PttPress,
         InputAction::PttRelease => AppCommand::PttRelease,

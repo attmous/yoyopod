@@ -225,6 +225,10 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::CURSOR_DOT,
         roles::CURSOR_DOTS,
         roles::CURSOR_ROW_GLOW,
+        roles::DECK_BAR,
+        roles::DECK_GLYPH,
+        roles::DECK_PILL,
+        roles::DECK_SLOT,
         roles::DECK_BUTTONS,
         roles::DECK_CARD_ROW,
         roles::DECK_GRID,
@@ -238,6 +242,11 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::FX_SPINNER,
         roles::FOOTER_BAR,
         roles::FOOTER_LABEL,
+        roles::COMPANION,
+        roles::COMPANION_BODY,
+        roles::COMPANION_CATCHLIGHT,
+        roles::COMPANION_EYE,
+        roles::COMPANION_MOUTH,
         roles::HUD,
         roles::LIST_ROW,
         roles::LIST_ROW_ICON,
@@ -291,4 +300,29 @@ fn required_selected_theme_roles() -> Vec<&'static str> {
         roles::LIST_ROW_SUBTITLE,
         roles::LIST_ROW_TITLE,
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shipped_layout_and_theme_cover_every_runtime_role() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let theme = parse_theme_asset().expect("theme.ron should be valid");
+
+        assert!(layouts
+            .roles
+            .iter()
+            .any(|role| role.role == roles::DECK_BAR));
+        assert!(layouts
+            .roles
+            .iter()
+            .any(|role| role.role == roles::COMPANION));
+        assert!(theme.roles.iter().any(|role| role.role == roles::DECK_PILL));
+        assert!(theme
+            .roles
+            .iter()
+            .any(|role| role.role == roles::COMPANION_BODY));
+    }
 }

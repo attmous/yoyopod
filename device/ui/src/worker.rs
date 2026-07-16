@@ -280,12 +280,13 @@ where
             *context.input_events += 1;
             let now_ms = outbound::monotonic_millis();
             outbound::emit_input_action(context.output, action, "command", now_ms, 0)?;
-            context.ui_runtime.handle_input(action);
+            context.ui_runtime.handle_input(action, now_ms);
             outbound::emit_intents(context.output, context.ui_runtime.take_intents())?;
         }
         dispatcher::AppEvent::Tick => {
             let now_ms = outbound::monotonic_millis();
             context.ui_runtime.advance_animations(now_ms);
+            context.ui_runtime.advance_home_state(now_ms);
             if context.render_state.engine.animation_frame_dirty(now_ms) {
                 context.ui_runtime.mark_animation_frame();
             }
@@ -379,7 +380,7 @@ where
             event.timestamp_ms,
             event.duration_ms,
         )?;
-        ui_runtime.handle_input(event.action);
+        ui_runtime.handle_input(event.action, now_ms);
     }
     Ok(())
 }

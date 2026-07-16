@@ -90,6 +90,7 @@ impl Default for UiScreen {
 pub enum InputAction {
     Advance,
     Select,
+    Home,
     Back,
     PttPress,
     PttRelease,
@@ -100,6 +101,7 @@ impl InputAction {
         match self {
             Self::Advance => "advance",
             Self::Select => "select",
+            Self::Home => "home",
             Self::Back => "back",
             Self::PttPress => "ptt_press",
             Self::PttRelease => "ptt_release",
@@ -271,7 +273,7 @@ pub struct DisplayInfo {
     pub height: usize,
 }
 
-pub const UI_SCHEMA_VERSION: u16 = 2;
+pub const UI_SCHEMA_VERSION: u16 = 3;
 
 fn default_ui_schema_version() -> u16 {
     UI_SCHEMA_VERSION
