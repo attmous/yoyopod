@@ -29,7 +29,6 @@ impl NativeLvglFacade {
             last_tick: Instant::now(),
             widgets: Default::default(),
             active_root: None,
-            role_occurrences: Default::default(),
             render_assets,
         })
     }

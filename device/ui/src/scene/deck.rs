@@ -250,7 +250,11 @@ fn deck_item_element(
         ItemRender::Companion => companion_element().key(item.key.clone()),
         ItemRender::Card(card) => card_widget(card).key(item.key.clone()),
         ItemRender::Row(row) => list_row_widget(row, selected, item.key.clone()),
-        ItemRender::Wheel(model) => wheel_item_widget(model, selected, item.key.clone()),
+        ItemRender::Wheel(model) => wheel_item_widget(
+            model,
+            selected,
+            Key::String(format!("wheel-slot:{visible_index}")),
+        ),
         ItemRender::Page(page) => Element::new(ElementKind::Container, Some(roles::PAGE))
             .key(item.key.clone())
             .child(Element::new(ElementKind::Label, Some(roles::PAGE_TITLE)).text(&page.title))
@@ -398,5 +402,19 @@ mod tests {
         let wheel_items = &element.children[1..];
         assert_eq!(wheel_items[1].props.scale_permille, Some(1000));
         assert_eq!(wheel_items[1].props.opacity, Some(255));
+    }
+
+    #[test]
+    fn wheel_keys_are_stable_physical_slots_across_focus_changes() {
+        let first = wheel(3, 0).element(0);
+        let next = wheel(3, 1).element(0);
+        let first_items = &first.children[1..];
+        let next_items = &next.children[1..];
+
+        assert_eq!(first_items[0].key, next_items[0].key);
+        assert_eq!(first_items[1].key, next_items[1].key);
+        assert_eq!(first_items[2].key, next_items[2].key);
+        assert_eq!(next_items[1].props.scale_permille, Some(1000));
+        assert_eq!(next_items[1].props.opacity, Some(255));
     }
 }

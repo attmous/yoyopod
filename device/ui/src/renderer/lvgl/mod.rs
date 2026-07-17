@@ -33,7 +33,6 @@ pub struct NativeLvglFacade {
     pub(crate) last_tick: Instant,
     pub(crate) widgets: WidgetRegistry,
     pub(crate) active_root: Option<WidgetId>,
-    pub(crate) role_occurrences: std::collections::HashMap<&'static str, usize>,
     pub(crate) render_assets: RenderAssets,
 }
 
@@ -88,7 +87,6 @@ impl NativeLvglFacade {
         self.blank_screen = None;
         self.widgets.clear();
         self.active_root = None;
-        self.role_occurrences.clear();
         self.flush_target.framebuffer = ptr::null_mut();
     }
 
@@ -149,13 +147,15 @@ impl NativeLvglFacade {
     }
 
     pub(super) fn next_role_layout(
-        &mut self,
-        _parent: Option<WidgetId>,
+        &self,
+        parent: Option<WidgetId>,
         role: WidgetRole,
     ) -> Result<Layout> {
-        let occurrence = *self.role_occurrences.entry(role).or_insert(0);
+        let occurrence = parent
+            .map(|parent| self.widgets.child_role_count(parent, role))
+            .transpose()?
+            .unwrap_or(0);
         if let Some(layout) = self.layout_for_role_asset(role, occurrence) {
-            self.role_occurrences.insert(role, occurrence + 1);
             return Ok(layout);
         }
 
@@ -185,7 +185,6 @@ impl LvglFacade for NativeLvglFacade {
         unsafe {
             ffi::lv_screen_load(obj.as_ptr());
         }
-        self.role_occurrences.clear();
         let id = self.register_widget(obj, WidgetKind::Root, roles::ROOT, None, layout);
         self.active_root = Some(id);
         Ok(id)
@@ -424,7 +423,6 @@ impl LvglFacade for NativeLvglFacade {
         self.widgets.remove_subtree(widget);
         if self.active_root == Some(widget) {
             self.active_root = None;
-            self.role_occurrences.clear();
         }
         Ok(())
     }

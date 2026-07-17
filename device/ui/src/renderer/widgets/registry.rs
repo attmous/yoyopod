@@ -127,6 +127,22 @@ impl WidgetRegistry {
         Ok(())
     }
 
+    pub fn child_role_count(&self, parent: WidgetId, role: WidgetRole) -> Result<usize> {
+        let parent = self
+            .widgets
+            .get(&parent)
+            .ok_or_else(|| anyhow!("unknown parent widget {}", parent.raw()))?;
+        Ok(parent
+            .children
+            .iter()
+            .filter(|child| {
+                self.widgets
+                    .get(child)
+                    .is_some_and(|node| node.role == role)
+            })
+            .count())
+    }
+
     pub fn clear(&mut self) {
         self.widgets.clear();
     }
