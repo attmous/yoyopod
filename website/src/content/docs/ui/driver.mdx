@@ -1,0 +1,79 @@
+---
+title: Talking to the Panel
+description: The userspace ST7789 driver — init sequence, window addressing, chunked SPI writes, and the DisplayDevice trait.
+---
+
+import Rgb565 from '../../../assets/diagrams/rgb565.svg';
+
+The panel driver is two files, both in `device/ui/src/hardware/`:
+
+- [`whisplay_panel.rs`](https://github.com/attmous/yoyocore/blob/main/device/ui/src/hardware/whisplay_panel.rs)
+  — the panel's constants and command sequences (what to send)
+- [`whisplay.rs`](https://github.com/attmous/yoyocore/blob/main/device/ui/src/hardware/whisplay.rs)
+  — the rppal-backed transport (how to send it): SPI setup, GPIO control,
+  chunking, backlight, and the button
+
+## Bring-up: the init sequence
+
+On startup the driver hard-resets the panel via the Reset GPIO, then walks a
+classic ST7789 initialization:
+
+| Stage | Commands | Effect |
+| --- | --- | --- |
+| Wake | `0x11` (SLPOUT) | leave sleep mode |
+| Orientation | `0x36 = 0xC0` (MADCTL) | vendor rotation — this is where rotation happens, in-panel |
+| Pixel format | `0x3A = 0x05` | 16-bit RGB565 |
+| Panel tuning | `0xB2`, `0xB7`, `0xBB`, `0xC2`–`0xC6`, `0xD0` | porch, gate, VCOM, and power settings |
+| Gamma | `0xE0` / `0xE1` | positive/negative gamma curves |
+| Polarity | `0x21` (INVON) | inversion on — required for correct colors on this glass |
+| Go | `0x29` (DISPON) | display on |
+
+Commands go out with the DC GPIO low; data bytes with DC high. If any part
+of bring-up fails, the UI host exits loudly rather than continuing without a
+display — a hard rule from `rules/lvgl.md`.
+
+## Pushing pixels: window, then stream
+
+Every flush is the same three-command dance:
+
+1. `0x2A` (CASET) — column range of the region being updated
+2. `0x2B` (RASET) — row range, **plus the 20-row offset** (the visible
+   240×280 window starts at controller row 20)
+3. `0x2C` (RAMWR) — followed by the region's pixels as a raw byte stream
+
+The byte stream is big-endian RGB565 — the byte-swap out of LVGL's
+little-endian output happens earlier, in the flush callback (see
+[The Render Loop](/ui/rendering/)):
+
+<Rgb565 class="diagram" />
+
+Writes are blocking `spi.write` calls in **4096-byte chunks** at 100 MHz.
+There is no DMA — a full-frame push is 240 × 280 × 2 ≈ 131 KB through the
+CPU. This is the pipeline's floor and the reason the layers above work hard
+to avoid full-frame pushes.
+
+## The `DisplayDevice` trait
+
+The renderer never talks to the panel directly. It goes through the
+`DisplayDevice` trait (`device/ui/src/hardware/mod.rs`), which offers three
+write paths:
+
+| Mode | When it's used |
+| --- | --- |
+| `FullFrame` | screen transitions, first paint |
+| `HudRegion` | status-bar-only updates (clock, battery) without touching the stage |
+| `Region(dirty)` | everything else — push only the dirty rectangle |
+
+## Developing without a Pi
+
+The second implementation of `DisplayDevice` is
+[`hardware/mock.rs`](https://github.com/attmous/yoyocore/blob/main/device/ui/src/hardware/mock.rs)
+— an in-memory display selected with `--hardware mock` (the real panel is
+`--hardware whisplay`). The mock path is what CI and host-machine
+development use; the whisplay path only compiles on Linux with the
+`whisplay-hardware` cargo feature, which is where the `rppal` dependency
+lives.
+
+Combined with the [screenshot signals](/ui/rendering/#screenshots), this
+means the full render pipeline is exercisable on any machine — the panel is
+the only unmockable part, and it's behind a one-method-swap trait.

@@ -1,0 +1,1026 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>YoyoPod — Talk Flow · v5.1 · Contact Wheel + De-boxed Calls · Flat</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap');
+
+  :root {
+    --panel-w: 240px;
+    --panel-h: 280px;
+    --panel-radius: 22px;
+
+    --bg-cream:      #FCE6D2;
+    --bg-cream-2:    #F7DBC2;
+    --bg-stage-peri: #E7E5F7;  /* Talk stage tint — full-bleed, replaces the v4 tinted card */
+
+    --ink:         #1B1B1F;
+    --ink-soft:    #3A3A40;
+    --ink-300:     #8a8076;
+
+    --c-lime:      #9DFC7C;
+    --c-peri:      #A9A6E5;
+    --c-butter:    #FFD06A;
+    --c-coral:     #F37767;
+    --c-tomato:    #E5443B;
+    --c-mustard:   #E8A93C;
+    --c-mint:      #6FDFB1;  /* NEW token — answer button */
+
+    --statusbar-h: 22px;
+    --deck-h:      52px;
+
+    --mont: "Montserrat", system-ui, sans-serif;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: #1a1518;
+    color: #efe4d6;
+    font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { padding: 32px 24px 80px; }
+  h1 { font-weight: 700; font-size: 22px; margin: 0 0 4px; color: #fff; }
+  h2 { font-weight: 600; font-size: 14px; margin: 32px 0 12px; color: #d3b89a; letter-spacing: 0.04em; text-transform: uppercase; }
+  h3 { margin: 14px 0 8px; font-size: 13px; color: #ffd9b3; }
+  p  { font-size: 13px; line-height: 1.55; max-width: 760px; color: #c9b9a3; }
+  .muted { color: #8a7c6c; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 11px; color: #8a7c6c; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* device frame — neutral bezel (flat pass; orange prototype frame removed) */
+  .device {
+    width: calc(var(--panel-w) + 24px);
+    padding: 12px;
+    border-radius: 26px;
+    background: #221c1f;
+    box-shadow: none;
+  }
+  .panel {
+    position: relative;
+    width: var(--panel-w);
+    height: var(--panel-h);
+    box-sizing: border-box;
+    background: var(--bg-cream);
+    overflow: hidden;   /* clips the wheel peeks at the panel edge */
+    color: var(--ink);
+    border-radius: var(--panel-radius);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
+  }
+
+  /* ── status bar (verbatim from v4) ─────────────────────────── */
+  .statusbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: var(--statusbar-h);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 12px 0 8px;
+    font-size: 11px;
+    background: var(--bg-cream);
+    z-index: 30;
+    font-weight: 700;
+  }
+  .statusbar .left  { display: flex; align-items: center; gap: 5px; justify-self: start; }
+  .statusbar .time  { font-variant-numeric: tabular-nums; justify-self: center; }
+  .statusbar .right { display: flex; align-items: center; gap: 5px; justify-self: end; }
+  .sb-bars { display: flex; align-items: flex-end; gap: 1px; height: 10px; }
+  .sb-bars > i { display: block; width: 2px; background: var(--ink); }
+  .sb-bars > i:nth-child(1) { height: 3px; }
+  .sb-bars > i:nth-child(2) { height: 5px; }
+  .sb-bars > i:nth-child(3) { height: 7px; }
+  .sb-bars > i:nth-child(4) { height: 9px; }
+  .sb-bars > i.off { background: transparent; border: 1px solid var(--ink); box-sizing: border-box; }
+  .sb-gps { width: 8px; height: 11px; position: relative; }
+  .sb-gps::before {
+    content: ""; position: absolute; left: 0; top: 0;
+    width: 8px; height: 8px; background: var(--ink);
+    border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  }
+  .sb-gps::after {
+    content: ""; position: absolute; left: 3px; top: 2.5px;
+    width: 2px; height: 2px; background: var(--bg-cream); border-radius: 50%;
+  }
+  .sb-pct { font-variant-numeric: tabular-nums; font-size: 10px; }
+  .batt {
+    width: 20px; height: 10px;
+    border: 1.5px solid var(--ink);
+    border-radius: 1px; position: relative; padding: 1px;
+  }
+  .batt::after {
+    content: ""; position: absolute; right: -3px; top: 2px;
+    width: 2px; height: 4px; background: var(--ink); border-radius: 0 1px 1px 0;
+  }
+  .batt > i { display: block; width: 70%; height: 100%; background: var(--ink); }
+
+  /* ── deck (nav bar — flat: no top rule, no dividers) ───────── */
+  .deck {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: var(--deck-h);
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    background: var(--bg-cream);
+    z-index: 20;
+  }
+  .deck .slot {
+    background: var(--bg-cream); color: var(--ink-300);
+    display: grid; place-items: center;
+    position: relative;
+  }
+  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; position: relative; z-index: 1; }
+  .deck .slot.listen .glyph { font-size: 24px; }
+  .deck .slot.focus { color: var(--ink); }
+  /* focused slot = inset pill — the deck's only chrome */
+  .deck .slot.focus::before {
+    content: ""; position: absolute;
+    top: 6px; bottom: 6px; left: 8px; right: 8px;
+    border-radius: 12px;
+  }
+  .deck .slot.focus.listen::before { background: var(--c-lime); }
+  .deck .slot.focus.talk::before   { background: var(--c-peri); }
+  .deck .slot.focus.ask::before    { background: var(--c-butter); }
+  .deck .slot.focus.setup::before  { background: var(--c-coral); }
+
+  .deck .slot.talk .badge-dot {
+    position: absolute; top: 6px; right: 8px;
+    width: 6px; height: 6px;
+    background: var(--c-tomato);
+    border-radius: 50%;
+  }
+
+  /* ── stage tint — full-bleed, y 22–228 ─────────────────────── */
+  .stage {
+    position: absolute;
+    top: var(--statusbar-h); left: 0; right: 0;
+    bottom: var(--deck-h);
+    background: var(--bg-stage-peri);
+    z-index: 1;
+  }
+  .stage.rec { background: var(--c-tomato); }
+
+  /* ── context label — (10,26,130,14), depth ≥ 2 only ────────── */
+  .ctx {
+    position: absolute; left: 10px; top: 26px; width: 130px; height: 14px;
+    font: 700 12px/14px var(--mont);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft);
+    z-index: 6;
+  }
+  .ctx.on-rec { color: var(--bg-cream); }
+
+  /* ── wheel (geometry normative in mockup_listen.html §3) ────
+     slot strip (32,−3,176,96), repeat_y 80 → centers y 45/125/205 */
+  .wtile {
+    position: absolute; left: 32px; width: 176px; height: 96px;
+    z-index: 5;
+  }
+  .wtile.t0 { top: -3px; }
+  .wtile.t1 { top: 77px; }
+  .wtile.t2 { top: 157px; }
+  .wtile.focus { z-index: 6; }
+  .wtile.peek  { transform: scale(0.7); opacity: 0.45; }
+  /* the focused tile's plate — the only plate on screen (flat: no border, no shadow) */
+  .wtile .wbox {
+    position: absolute; inset: 0;
+    background: var(--c-peri);
+    border-radius: 16px;
+    box-sizing: border-box;
+  }
+  /* variant C — contact tile */
+  .w-avatar {
+    position: absolute; left: 60px; top: 8px; width: 56px; height: 56px;
+    border-radius: 28px;
+    box-sizing: border-box;
+    display: grid; place-items: center;
+    font: 800 24px/1 var(--mont);
+    color: var(--ink);
+  }
+  .w-name {
+    position: absolute; left: 8px; top: 68px; width: 160px; height: 22px;
+    font: 700 18px/22px var(--mont);
+    color: var(--ink);
+    text-align: center;
+    overflow: hidden; white-space: nowrap;
+  }
+  .w-badge {
+    position: absolute; left: 148px; top: 6px; width: 22px; height: 22px;
+    border-radius: 11px;
+    box-sizing: border-box;
+    background: var(--c-coral);
+    display: grid; place-items: center;
+    font: 800 12px/1 var(--mont);
+    color: var(--ink);
+  }
+  .w-badge.stuck { background: var(--c-tomato); color: var(--bg-cream); }
+  /* variant A — action tile: same layout, avatar slot holds a bare 56×56 icon */
+  .w-icon {
+    position: absolute; left: 60px; top: 8px; width: 56px; height: 56px;
+    display: grid; place-items: center;
+    font-size: 34px; line-height: 1;
+    color: var(--ink);
+  }
+
+  /* ── empty state (de-boxed) ────────────────────────────────── */
+  .empty-plus {
+    position: absolute; left: 92px; top: 74px; width: 56px; height: 56px;
+    background: var(--c-peri);
+    border-radius: 50%;
+    box-sizing: border-box;
+    display: grid; place-items: center;
+    font: 800 28px/1 var(--mont);
+    color: var(--ink);
+    z-index: 5;
+  }
+  .empty-hint {
+    position: absolute; left: 20px; top: 140px; width: 200px; height: 32px;
+    font: 700 14px/16px var(--mont);
+    color: var(--ink);
+    text-align: center;
+    z-index: 5;
+  }
+
+  /* ── recording — full-bleed tomato state ───────────────────── */
+  .rec-timer {
+    position: absolute; left: 20px; top: 70px; width: 200px; height: 28px;
+    font: 800 24px/28px var(--mont);
+    font-variant-numeric: tabular-nums;
+    color: var(--bg-cream);
+    text-align: center;
+    z-index: 5;
+  }
+  .rec-meter {
+    position: absolute; left: 64px; top: 118px; width: 112px; height: 42px;
+    background: rgba(252, 230, 210, 0.35);  /* semi-transparent cream track — flat, replaces the border */
+    border-radius: 8px;
+    box-sizing: border-box;
+    padding: 4px;
+    z-index: 5;
+  }
+  .rec-meter > i {
+    display: block; height: 100%; width: 60%;
+    background: var(--bg-cream);
+    border-radius: 3px;
+  }
+  .rec-hint {
+    position: absolute; left: 20px; top: 180px; width: 200px; height: 14px;
+    font: 700 12px/14px var(--mont);
+    color: var(--bg-cream);
+    text-align: center;
+    z-index: 5;
+  }
+
+  /* ── replay arc hero (geometry normative in mockup_listen.html §4) ── */
+  .arc-svg { position: absolute; left: 50px; top: 36px; z-index: 4; }
+  .hero-avatar {
+    position: absolute; left: 77px; top: 63px; width: 86px; height: 86px;
+    border-radius: 43px;
+    box-sizing: border-box;
+    background: var(--c-mustard);
+    display: grid; place-items: center;
+    font: 800 24px/1 var(--mont);
+    color: var(--ink);
+    z-index: 5;
+  }
+  .hero-chip {
+    position: absolute; left: 104px; top: 160px; width: 32px; height: 32px;
+    border-radius: 16px;
+    box-sizing: border-box;
+    background: var(--c-peri);
+    display: grid; place-items: center;
+    font: 800 13px/1 var(--mont);
+    color: var(--ink);
+    z-index: 6;
+  }
+  .hero-chip.focus { transform: scale(1.1); outline: 2px solid var(--ink); outline-offset: 2px; }
+  .hero-side {
+    position: absolute; top: 94px; width: 24px; height: 24px;
+    display: grid; place-items: center;
+    font: 800 18px/1 var(--mont);
+    color: var(--ink);
+    opacity: 0.55;
+    z-index: 5;
+  }
+  .hero-side.l { left: 24px; }
+  .hero-side.r { left: 192px; }
+  .hero-title {
+    position: absolute; left: 10px; top: 198px; width: 220px; height: 22px;
+    font: 700 18px/22px var(--mont);
+    color: var(--ink);
+    text-align: center;
+    z-index: 5;
+  }
+  .hero-time {
+    position: absolute; top: 170px; width: 44px; height: 14px;
+    font: 700 12px/14px var(--mont);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-soft);
+    z-index: 5;
+  }
+  .hero-time.l { left: 52px; text-align: right; }
+  .hero-time.r { left: 144px; text-align: left; }
+
+  /* ── call overlays — de-boxed ──────────────────────────────── */
+  .call-state {
+    position: absolute; left: 20px; top: 28px; width: 200px; height: 14px;
+    font: 700 12px/14px var(--mont);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft);
+    text-align: center;
+    z-index: 5;
+  }
+  .call-avatar {
+    position: absolute; left: 76px; top: 48px; width: 88px; height: 88px;
+    border-radius: 44px;
+    box-sizing: border-box;
+    background: var(--c-mustard);
+    display: grid; place-items: center;
+    font: 800 24px/1 var(--mont);
+    color: var(--ink);
+    z-index: 5;
+  }
+  .call-avatar.sm { left: 84px; top: 44px; width: 72px; height: 72px; border-radius: 36px; }
+  .call-name {
+    position: absolute; left: 20px; top: 144px; width: 200px; height: 26px;
+    font: 800 24px/26px var(--mont);
+    color: var(--ink);
+    text-align: center;
+    z-index: 5;
+  }
+  .call-name.sm { top: 122px; height: 22px; font: 700 18px/22px var(--mont); }
+  .call-duration {
+    position: absolute; left: 20px; top: 148px; width: 200px; height: 26px;
+    font: 800 24px/26px var(--mont);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    text-align: center;
+    z-index: 5;
+  }
+  .call-btn {
+    position: absolute; top: 178px; width: 44px; height: 44px;
+    border-radius: 22px;
+    box-sizing: border-box;
+    display: grid; place-items: center;
+    font: 800 18px/1 var(--mont);
+    color: var(--ink);
+    z-index: 5;
+  }
+  .call-btn.x56  { left: 56px; }
+  .call-btn.x98  { left: 98px; }
+  .call-btn.x140 { left: 140px; }
+  .call-btn.answer { background: var(--c-mint); }
+  .call-btn.hangup { background: var(--c-tomato); }
+  .call-btn.mute   { background: var(--bg-cream); }
+  .call-btn.mute.active { background: var(--c-coral); }
+  /* focus ring — the one surviving stroke in the flat UI */
+  .call-btn.focus { transform: scale(1.1); outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  /* pulse rings — existing call_pulse fx, 2 concentric peri rings */
+  .call-pulse {
+    position: absolute; left: 76px; top: 48px; width: 88px; height: 88px;
+    z-index: 4;
+  }
+  .call-pulse::before, .call-pulse::after {
+    content: ""; position: absolute; inset: 0;
+    border: 2px solid var(--c-peri);
+    border-radius: 50%;
+    opacity: 0;
+    animation: callPulse 1600ms ease-out infinite;
+  }
+  .call-pulse::after { animation-delay: 800ms; }
+  @keyframes callPulse {
+    0%   { transform: scale(1.0); opacity: 0; }
+    20%  { opacity: 0.9; }
+    100% { transform: scale(1.45); opacity: 0; }
+  }
+
+  /* ── doc styles (verbatim from v4) ─────────────────────────── */
+  .specs {
+    max-width: 1080px;
+    background: #221b1d;
+    border: 1px solid #3b2e2e;
+    border-radius: 10px;
+    padding: 16px 20px;
+    font-size: 13px; line-height: 1.6;
+    color: #d8c8b3;
+    margin-top: 12px;
+  }
+  .specs code { background: #000; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #ffcfae; }
+  table.spec { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0 12px; }
+  table.spec th {
+    text-align: left; color: #ffd9b3;
+    padding: 6px 8px; background: #2b2122;
+    border-bottom: 1px solid #3b2e2e;
+    font-weight: 600; white-space: nowrap;
+  }
+  table.spec td { padding: 6px 8px; border-bottom: 1px solid #2a2222; vertical-align: top; }
+  table.spec td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.spec td.mono { font-family: ui-monospace, monospace; }
+  table.spec tr:last-child td { border-bottom: none; }
+  table.spec .grp {
+    background: #2b2122; color: #ffd9b3;
+    font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; font-size: 11px;
+  }
+
+  .legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; max-width: 460px; margin-top: 10px; }
+  .legend .chip-l { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: #221b1d; border: 1px solid #3b2e2e; border-radius: 6px; font-size: 11px; }
+  .legend .dot { width: 12px; height: 12px; border: 1.5px solid #1B1B1F; border-radius: 3px; flex: none; }
+</style>
+</head>
+<body>
+
+<h1>YoyoPod — Talk Flow · v5.1 · Contact Wheel + De-boxed Calls · Flat</h1>
+<p class="muted">De-boxing pass, now fully <b>flat, color-first</b> (v5.1): no borders, no hard shadows anywhere — the 2&nbsp;px ink focus ring on call buttons and Replay transport is the one surviving stroke; focus elsewhere = fill + size + spoken label. <b>(1)</b> The peri card + 28&nbsp;px rows become a 3-slot <b>contact wheel</b> — the focused tile is the only plate on screen. <b>(2)</b> The tab strip retires; depth ≥&nbsp;2 gets one 12&nbsp;px uppercase <b>context label</b>, no box. <b>(3)</b> The card tint becomes a <b>full-bleed stage tint</b> (<code>bg_stage_peri</code>). <b>(4)</b> Call overlays lose the cream card and pill buttons entirely. <b>(5)</b> Recording is a full-bleed tomato state. PTT contract, stuck semantics, per-contact replay, and the route inventory are all unchanged from v4.</p>
+<p><b>Wheel and Arc-Hero primitive geometry, animation, and FFI tables are normative in <code>mockup_listen.html</code> §3/§4/§7; this file specifies only Talk's variants and deltas.</b></p>
+
+<div class="legend">
+  <div class="chip-l"><div class="dot" style="background:var(--c-lime)"></div>Listen — lime</div>
+  <div class="chip-l"><div class="dot" style="background:var(--c-peri)"></div>Talk — periwinkle</div>
+  <div class="chip-l"><div class="dot" style="background:var(--c-butter)"></div>Ask — butter</div>
+  <div class="chip-l"><div class="dot" style="background:var(--c-coral)"></div>Setup — coral</div>
+</div>
+
+<!-- ============================================================ -->
+<h2>1 · What changed v4 → v5</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>v4</th><th>v5</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Peri-tinted card + cream 28&nbsp;px rows</td>
+          <td>Contact <b>wheel</b> — 3 slots, step 80, focused center tile is the only boxed element</td>
+          <td>Kills the card-in-card-in-row nesting. Big 56&nbsp;px avatars and Mont-18 names read at arm's length for a 3-year-old; the wheel motion makes "press = next" physical.</td></tr>
+      <tr><td>Tab strip breadcrumbs at depth ≥ 2</td>
+          <td>One 12&nbsp;px uppercase <b>context label</b> at (10,26), no box</td>
+          <td>Tabs were chrome pretending to be navigation. The label answers "where am I" in one word; the deck answers "how do I leave".</td></tr>
+      <tr><td>Card surface tinted pale peri</td>
+          <td><b>Full-bleed stage tint</b> <code>bg_stage_peri</code> (y&nbsp;22–228, no inset, no border)</td>
+          <td>Same "you are inside Talk" signal with zero box chrome.</td></tr>
+      <tr><td>Call overlays: cream card, state pill chip, 26&nbsp;px ctrl buttons</td>
+          <td><b>De-boxed</b>: bare peri stage, uppercase state label, 88&nbsp;px avatar + pulse, Mont-24 name, 44×44 round buttons (mint / tomato)</td>
+          <td>A call is the most stressful moment on the device — fewer shapes, bigger targets, one glance to the green button.</td></tr>
+      <tr><td>Empty state: card + hero circle + two-line text</td>
+          <td><b>De-boxed</b>: 56×56 peri "+" circle + spoken two-line hint on the bare stage</td>
+          <td>Same content, no card. The voice channel carries pre-readers (§2c).</td></tr>
+      <tr><td><i>v5 → v5.1</i>: 2&nbsp;px ink borders + hard shadows on every plate</td>
+          <td><b>Flat chrome</b>: borders and shadows removed everywhere; deck top rule + dividers → inset focus pill; focused tile radius 12 → 16; the 2&nbsp;px ink focus ring (offset 2) = the one surviving stroke</td>
+          <td>User decision after a side-by-side comparison. Geometry, palette, and copy untouched. Matches Listen v2.1.</td></tr>
+      <tr><td colspan="2"><b>Unchanged</b>: PTT hold-to-record contract (§3), stuck-send semantics — badge on the avatar + dot on the deck slot (§2b), per-contact replay queue (§4), route inventory (§7)</td>
+          <td>All still true from v4; only their rendering changed.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>2 · Talk root — the contact wheel (depth 1)</h2>
+<p>Talk root is the contact wheel directly — no sub-menu, no context label (depth 1). Variant-C tiles: avatar circle, name, status badge. Press = roll one step (voice speaks the newly focused name), double-press = open the contact, long-press = Home. Peeks above/below are scaled 0.7 at 45% opacity with no chrome, sliding under the status bar and deck — the panel's <code>overflow:hidden</code> and the opaque bars produce the wheel look.</p>
+
+<div class="row">
+
+  <div class="stack">
+    <span class="label">2a · Talk · contact wheel (Mama focused)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage"></div>
+      <div class="wtile t0 peek">
+        <div class="w-avatar" style="background:var(--c-coral)">G</div>
+        <div class="w-name">Grandma</div>
+      </div>
+      <div class="wtile t1 focus">
+        <div class="wbox"></div>
+        <div class="w-avatar" style="background:var(--c-mustard)">M</div>
+        <div class="w-name">Mama</div>
+        <div class="w-badge">2</div>
+      </div>
+      <div class="wtile t2 peek">
+        <div class="w-avatar" style="background:var(--c-lime)">P</div>
+        <div class="w-name">Papa</div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Focused tile = the only plate on screen: flat peri fill, r 16 — no border, no shadow. Coral badge (borderless) counts unheard notes. Peeks: no chrome, clipped by the bars.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">2b · Talk · stuck send (Mama)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage"></div>
+      <div class="wtile t0 peek">
+        <div class="w-avatar" style="background:var(--c-coral)">G</div>
+        <div class="w-name">Grandma</div>
+      </div>
+      <div class="wtile t1 focus">
+        <div class="wbox"></div>
+        <div class="w-avatar" style="background:var(--c-mustard)">M</div>
+        <div class="w-name">Mama</div>
+        <div class="w-badge stuck">!</div>
+      </div>
+      <div class="wtile t2 peek">
+        <div class="w-avatar" style="background:var(--c-lime)">P</div>
+        <div class="w-name">Papa</div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus" style="position:relative"><div class="glyph">💬︎</div><div class="badge-dot"></div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Failed send surfaces on the avatar badge — tomato fill, cream "!". Coral dot stays on the Talk deck slot. Entering Mama shows the stuck note ready to retry.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">2c · Talk · empty (first-run)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage"></div>
+      <div class="empty-plus">+</div>
+      <div class="empty-hint">No contacts yet.<br>Ask a grown-up!</div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">No wheel. The helper is also SPOKEN — "No contacts yet — ask a grown-up!" (pre-reader channel). Contacts are added in Setup → Contacts / the grown-up app.</span>
+  </div>
+
+</div>
+
+<div class="specs">
+  <h3>Wheel — Talk contact variant (all coordinates panel-relative unless noted)</h3>
+  <table class="spec">
+    <thead><tr><th>Element</th><th>Value</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Slot strip</td><td class="num">(32, −3, 176, 96) · repeat_y: 80</td><td>Item centers y 45 / 125 / 205; roll step S = 80. Geometry, animation (180 ms ease-out roll), 1/2/&gt;6-item behavior: normative in <code>mockup_listen.html</code> §3.</td></tr>
+      <tr><td>Focused tile (center)</td><td class="mono">fill c_peri · radius 16 · border none (flat) · shadow none (flat)</td><td>The only plate on screen — flat fill, no stroke.</td></tr>
+      <tr><td>Peek tiles (above/below)</td><td class="mono">scale(0.7) · opacity 0.45 · no fill/border/shadow</td><td>Clipped by statusbar / deck / panel <code>overflow:hidden</code>.</td></tr>
+      <tr><td>Focus ring</td><td class="mono">none on wheel tiles</td><td>Wheel focus = plate fill + center position + spoken name. The 2&nbsp;px ink ring is reserved for Replay transport (§4) and call buttons (§5).</td></tr>
+      <tr><td>Avatar circle (variant C)</td><td class="num">(60, 8, 56, 56) · radius 28 · border none (flat)</td><td>Tile-relative. Fill = contact's assigned color from Setup; Mont-24 initial.</td></tr>
+      <tr><td>Name</td><td class="num">(8, 68, 160, 22)</td><td>Tile-relative. Mont-18, ink, centered.</td></tr>
+      <tr><td>Badge</td><td class="num">(148, 6, 22, 22) · radius 11 · border none (flat)</td><td>Tile-relative. Coral + Mont-12 count = unheard notes; tomato + cream "!" = stuck send. Absent when no news.</td></tr>
+      <tr><td>Stage tint</td><td class="mono">bg_stage_peri #E7E5F7 · full-bleed y 22–228</td><td>Replaces the v4 tinted card. All Talk depths share it.</td></tr>
+      <tr><td>Context label</td><td class="num">(10, 26, 130, 14) · Mont-12 uppercase ink_soft</td><td>Depth ≥ 2 only — Talk root (depth 1) shows none.</td></tr>
+      <tr><td>Empty state — plus circle</td><td class="num">(92, 74, 56, 56) · radius 28 · fill c_peri · border/shadow none (flat)</td><td>Ink "+" glyph. Double-press does nothing (adding is a grown-up job); voice repeats the hint.</td></tr>
+      <tr><td>Empty state — hint</td><td class="num">(20, 140, 200, 32) · Mont-14 ink · 2 lines centered</td><td>"No contacts yet. / Ask a grown-up!" — also spoken on entry.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Voice: every roll speaks the newly focused contact's name at t = 0 of the roll animation. Badge states are appended — "Mama — two new notes", "Mama — message not sent yet".</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>3 · TalkContact wheel + hold-to-record</h2>
+<p>Depth 2 — context label <code>MAMA</code>. Variant-A action tiles: Call · Hold to record · Replay. On current hardware "hold" is <b>the one physical button in PTT-passthrough mode</b>: with the Record tile focused, a long hold is classified as <code>PttPress</code>/<code>PttRelease</code> (record while held, release = send). There is no mid-hold cancel on one-button hardware — release always sends; a mis-recording is discarded afterwards from the Replay queue. <b>Required route change:</b> the shipped runtime attaches the voice-capture passthrough to <code>UiScreen::VoiceNote</code> only (<code>router/routes.rs</code>: <code>VOICE_NOTE_PASSTHROUGH</code>; <code>TalkContact</code> has <code>NO_PASSTHROUGH</code>) — since v5 folds recording into TalkContact and retires VoiceNote, that passthrough must move to TalkContact, gated on the Record action being focused. Tracked in <code>HANDOFF.md</code>. On a future touch panel the same contract binds to holding the Record tile, with drag-off-tile as the cancel motion.</p>
+
+<div class="row">
+
+  <div class="stack">
+    <span class="label">3a · TalkContact · Record focused</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage"></div>
+      <div class="ctx">Mama</div>
+      <div class="wtile t0 peek">
+        <div class="w-icon">☎</div>
+        <div class="w-name">Call</div>
+      </div>
+      <div class="wtile t1 focus">
+        <div class="wbox"></div>
+        <div class="w-icon">🎙︎</div>
+        <div class="w-name">Hold to record</div>
+      </div>
+      <div class="wtile t2 peek">
+        <div class="w-icon">▶</div>
+        <div class="w-name">Replay</div>
+        <div class="w-badge">2</div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Variant-A tiles: bare 56×56 icon in the avatar slot, Mont-18 label. PTT works only while Record is focused (v4 contract kept); focus voice says "Hold the side button to record".</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">3b · Recording (PTT held)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage rec"></div>
+      <div class="ctx on-rec">Mama</div>
+      <div class="rec-timer">● 0:07</div>
+      <div class="rec-meter"><i></i></div>
+      <div class="rec-hint">let go to send</div>
+      <div class="deck" style="opacity:.55">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Full-bleed stage flips to tomato; context label recolors cream. Release = send (250 ms whoosh, back to TalkContact) — no mid-hold cancel on one-button hardware; discard afterwards via Replay. Deck dims to 55%.</span>
+  </div>
+
+</div>
+
+<div class="specs">
+  <h3>Recording state — geometry</h3>
+  <table class="spec">
+    <thead><tr><th>Element</th><th>Value</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Stage</td><td class="mono">fill c_tomato #E5443B · full-bleed y 22–228</td><td>State change is the whole screen — unmissable in peripheral vision.</td></tr>
+      <tr><td>Context label</td><td class="num">(10, 26, 130, 14)</td><td>Same slot as 3a, recolored <code>bg_cream</code>.</td></tr>
+      <tr><td>Timer</td><td class="num">(20, 70, 200, 28) · Mont-24 bg_cream centered</td><td>"● 0:07" — dot + elapsed, tabular numerals.</td></tr>
+      <tr><td>Voice meter</td><td class="num">(64, 118, 112, 42) · radius 8 · track fill bg_cream @ 35% opa · border none (flat)</td><td>Semi-transparent cream track replaces the v5 border; inner level bar bg_cream, width = live input level (~60% shown).</td></tr>
+      <tr><td>Hint</td><td class="num">(20, 180, 200, 14) · Mont-12 bg_cream centered</td><td>"let go to send".</td></tr>
+      <tr><td>Focus ring</td><td class="mono">none</td><td>The PTT-held state has no focusable target.</td></tr>
+      <tr><td>Deck</td><td class="mono">55% opacity</td><td>Dim via container opacity, applied to the flat deck — no extra objects.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Hold-to-record flow (carried from v4 §7 — contract unchanged)</h3>
+  <p style="margin:0 0 10px">"Hold" below = the single button held in PTT-passthrough mode with the Record tile focused (current hardware) or finger held on the Record tile (future touch). "Cancel" exists only on the touch binding (drag off the tile) — on one-button hardware release always sends, and cleanup happens in the Replay queue.</p>
+  <pre style="margin:0; padding: 10px; background: #0a0708; border: 1px solid #3b2e2e; border-radius: 6px; color: #ffcfae; font-size: 12px; overflow-x: auto;">                 hold begins (Record tile focused)
+                          │
+                          ▼
+              ┌──────────────────────────┐
+              │  stage flips tomato      │
+              │  ● timer ticks (Mont-24) │
+              │  voice meter animates    │
+              │  deck dims to 55%        │
+              └─────┬──────────┬─────────┘
+       hold ends    │          │   cancel motion
+                    ▼          ▼
+        ┌──────────────┐   ┌──────────────┐
+        │ SEND         │   │ DISCARD      │
+        │ → 250 ms     │   │ no send      │
+        │   whoosh fx  │   │ no toast     │
+        │ → return to  │   └──────────────┘
+        │   TalkContact│
+        └──────────────┘
+
+  60 s hard cap → auto-release (sends).
+  &lt; 0.4 s hold → tap, no recording. "Hold to record" tooltip flash on the Record tile.
+</pre>
+  <p style="margin:10px 0 0">The 2 s undo card on Home — which used to live here as part of the auto-play story — stays dropped along with auto-play. If the user mis-records, they can either cancel mid-hold (main-button press; drag-off on touch), or, after sending, open the contact's Replay queue and discard the just-sent note from there. Acceptable: the worst case is "kid sends a 2-second nonsense note and Mama hears a giggle." Not worth a Home-screen UI element to prevent.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>4 · Replay — arc hero (delta from Listen)</h2>
+<p>Depth 3 — context label <code>REPLAY</code>. Same Arc-Hero primitive as Listen's NowPlaying; only the deltas below are Talk-specific. Ring bbox (50,36,140,140), r 70, width 8, chip straddling the ring bottom, bare 24×24 side glyphs at 55% opacity idle — all inherited, normative in <code>mockup_listen.html</code> §4 (including the composed no-<code>lv_arc</code> fallback).</p>
+
+<div class="row">
+
+  <div class="stack">
+    <span class="label">4 · Replay · playing (note 1 of 2)</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage"></div>
+      <div class="ctx">Replay</div>
+      <svg class="arc-svg" width="140" height="140" viewBox="0 0 140 140" aria-hidden="true">
+        <circle cx="70" cy="70" r="66" fill="none" stroke="var(--bg-cream-2)" stroke-width="8"/>
+        <circle cx="70" cy="70" r="66" fill="none" stroke="var(--c-peri)" stroke-width="8"
+                stroke-linecap="round" stroke-dasharray="236.4 414.7" transform="rotate(-90 70 70)"/>
+      </svg>
+      <div class="hero-avatar">M</div>
+      <div class="hero-side l">✕</div>
+      <div class="hero-side r">⏭</div>
+      <div class="hero-chip focus">⏸</div>
+      <div class="hero-time l">0:04</div>
+      <div class="hero-time r">0:07</div>
+      <div class="hero-title">Mama · 1 of 2</div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Indicator peri at 57% (0:04 of 0:07). Hero = 86×86 avatar circle. Focus cycles ✕ → play → next-note; ✕ speaks "Delete". Notes auto-advance; queue exhausts back to TalkContact.</span>
+  </div>
+
+</div>
+
+<div class="specs">
+  <h3>Delta table — Talk Replay vs. Listen NowPlaying</h3>
+  <table class="spec">
+    <thead><tr><th>Aspect</th><th>Listen NowPlaying (normative)</th><th>Talk Replay (this file)</th></tr></thead>
+    <tbody>
+      <tr><td>Hero</td><td class="mono">86×86 square art tile, radius 12, note-glyph fallback</td><td class="mono">86×86 avatar circle at (77, 63), radius 43, no border (flat) — contact color fill, Mont-24 initial fallback</td></tr>
+      <tr><td>Ring indicator</td><td class="mono">c_lime</td><td class="mono">c_peri</td></tr>
+      <tr><td>Play/pause chip fill</td><td class="mono">c_lime</td><td class="mono">c_peri</td></tr>
+      <tr><td>Left focus target</td><td class="mono">prev ⏮ · voice "Previous"</td><td class="mono">discard ✕ at (24, 94, 24, 24) · voice "Delete" — double-press removes the note and advances</td></tr>
+      <tr><td>Title (10, 198, 220, 22)</td><td>Track title, Mont-18</td><td>"Mama · 1 of 2" — contact · position in queue, Mont-18</td></tr>
+      <tr><td>Times</td><td colspan="2">Elapsed / total, Mont-12 tabular — unchanged (0:04 / 0:07 shown)</td></tr>
+      <tr><td>Focus cycle</td><td class="mono">prev → play → next</td><td class="mono">✕ → play → next-note (right glyph ⏭ at (192, 94, 24, 24))</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Everything not listed — arc geometry and angles, animation timing, composed fallback, focus styling (scale 1.1 + ink outline) — is inherited unchanged from the Listen spec.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>5 · Call overlays — de-boxed</h2>
+<p>Full-bleed <code>bg_stage_peri</code> stage. No card, no pill chips — an uppercase state label, a big avatar, a Mont-24 name, and 44×44 round buttons. Deck dims to 55% on all four states. Focus: 2 targets (1 on Outgoing) — press toggles between them, double-press activates; focused = scale 1.1 + ink outline.</p>
+
+<div class="row">
+
+  <div class="stack">
+    <span class="label">5a · IncomingCall</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage"></div>
+      <div class="call-state">Incoming</div>
+      <div class="call-pulse"></div>
+      <div class="call-avatar">M</div>
+      <div class="call-name">Mama</div>
+      <div class="call-btn answer x56 focus">☎</div>
+      <div class="call-btn hangup x140">✕</div>
+      <div class="deck" style="opacity:.55">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Answer focused by default (scale 1.1 + ink outline). Two concentric peri pulse rings — existing call_pulse fx. Press toggles answer ↔ hangup, double-press activates.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">5b · OutgoingCall</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage"></div>
+      <div class="call-state">Calling…</div>
+      <div class="call-pulse"></div>
+      <div class="call-avatar" style="background:var(--c-lime)">P</div>
+      <div class="call-name">Papa</div>
+      <div class="call-btn hangup x98">✕</div>
+      <div class="deck" style="opacity:.55">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Single hangup target, centered at (98, 178). Pulse continues until pickup or timeout.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">5c · InCall</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage"></div>
+      <div class="call-state">In call</div>
+      <div class="call-avatar sm">M</div>
+      <div class="call-name sm">Mama</div>
+      <div class="call-duration">02:14</div>
+      <div class="call-btn mute x56 focus">🎙︎</div>
+      <div class="call-btn hangup x140">✕</div>
+      <div class="deck" style="opacity:.55">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">72×72 avatar frees room for name (Mont-18) + duration (Mont-24 tabular). Mute chip cream, hangup tomato. No pulse in-call.</span>
+  </div>
+
+  <div class="stack">
+    <span class="label">5d · InCall · muted</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="stage"></div>
+      <div class="call-state">In call</div>
+      <div class="call-avatar sm">M</div>
+      <div class="call-name sm">Mama</div>
+      <div class="call-duration">02:38</div>
+      <div class="call-btn mute active x56 focus">🎙︎</div>
+      <div class="call-btn hangup x140">✕</div>
+      <div class="deck" style="opacity:.55">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk focus"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Mute chip flips coral; voice announces "Muted". Everything else identical to 5c.</span>
+  </div>
+
+</div>
+
+<div class="specs">
+  <h3>Call overlay geometry (all coordinates panel-relative)</h3>
+  <table class="spec">
+    <thead><tr><th>Element</th><th>Rect / value</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Stage</td><td class="mono">bg_stage_peri #E7E5F7 · full-bleed y 22–228</td><td>No card, no inset.</td></tr>
+      <tr><td>State label</td><td class="num">(20, 28, 200, 14)</td><td>Mont-12 uppercase ink_soft, centered — INCOMING / CALLING… / IN CALL.</td></tr>
+      <tr><td>Avatar (Incoming / Outgoing)</td><td class="num">(76, 48, 88, 88) · radius 44 · border/shadow none (flat)</td><td>Contact color fill, Mont-24 initial.</td></tr>
+      <tr><td>Pulse rings</td><td class="mono">2 concentric c_peri rings · callPulse 1600 ms ease-out · 800 ms offset</td><td>Existing call_pulse fx; Incoming + Outgoing only.</td></tr>
+      <tr><td>Avatar (InCall / Muted)</td><td class="num">(84, 44, 72, 72) · radius 36 · border/shadow none (flat)</td><td>Smaller to make room for name + duration.</td></tr>
+      <tr><td>Name (Incoming / Outgoing)</td><td class="num">(20, 144, 200, 26)</td><td>Mont-24 ink, centered.</td></tr>
+      <tr><td>Name (InCall / Muted)</td><td class="num">(20, 122, 200, 22)</td><td>Mont-18 ink, centered.</td></tr>
+      <tr><td>Duration (InCall / Muted)</td><td class="num">(20, 148, 200, 26)</td><td>Mont-24 tabular, centered.</td></tr>
+      <tr><td>Buttons</td><td class="num">44×44 at y 178 · radius 22 · border/shadow none (flat)</td><td>Answer x 56 (c_mint) · hangup x 140 (c_tomato) · single hangup centered x 98 · mute x 56 (bg_cream; c_coral when active). Ink glyphs ☎ / ✕ / 🎙︎. Bottoms at y 222 ≤ 224.</td></tr>
+      <tr><td>Focus ring</td><td class="mono">scale 1.1 + 2 px ink outline (offset 2)</td><td>The one surviving stroke in the flat UI. 2 targets: press toggles, double-press activates. Outgoing has a single target.</td></tr>
+      <tr><td>Deck</td><td class="mono">55% opacity, Talk slot stays peri-focused (inset pill)</td><td>All four overlay states — dim applied to the flat deck.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>6 · Talk-specific LVGL roles (layouts.ron / theme.ron)</h2>
+<div class="specs">
+  <p style="margin-top:0"><b>FFI additions + wheel/hero primitive tables: normative in <code>mockup_listen.html</code> §7/§8.</b> Below are only the roles this flow introduces. Rects are panel-relative except <code>wheel_*</code>, which are tile-relative (the tile itself — plate, name/label, roll animation — is a Listen-owned role).</p>
+  <table class="spec">
+    <thead><tr><th>Role</th><th>layouts.ron rect</th><th>theme.ron values</th><th>Used at</th></tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="4">Wheel — contact variant (tile-relative)</td></tr>
+      <tr><td class="mono">wheel_avatar</td><td class="num">(60, 8, 56, 56)</td><td class="mono">radius 28 · border_width 0 · fill = per-contact color · Mont-24 initial</td><td>§2 contact tiles</td></tr>
+      <tr><td class="mono">wheel_badge</td><td class="num">(148, 6, 22, 22)</td><td class="mono">radius 11 · border_width 0 · fill c_coral | c_tomato (stuck)</td><td>§2 / §3 Replay tile</td></tr>
+      <tr><td class="mono">wheel_badge_label</td><td class="num">centered in badge</td><td class="mono">Mont-12 · ink (count) | bg_cream ("!")</td><td>§2 / §3</td></tr>
+      <tr class="grp"><td colspan="4">Call overlays</td></tr>
+      <tr><td class="mono">call_state</td><td class="num">(20, 28, 200, 14)</td><td class="mono">Mont-12 uppercase · ink_soft · centered</td><td>§5 all</td></tr>
+      <tr><td class="mono">call_avatar</td><td class="num">(76, 48, 88, 88)</td><td class="mono">radius 44 · border_width 0 · shadow none · Mont-24 initial</td><td>§5 Incoming / Outgoing</td></tr>
+      <tr><td class="mono">call_avatar_sm</td><td class="num">(84, 44, 72, 72)</td><td class="mono">radius 36 · border_width 0 · shadow none</td><td>§5 InCall / Muted</td></tr>
+      <tr><td class="mono">call_name</td><td class="num">(20, 144, 200, 26)</td><td class="mono">Mont-24 · ink · centered</td><td>§5 Incoming / Outgoing</td></tr>
+      <tr><td class="mono">call_name_sm</td><td class="num">(20, 122, 200, 22)</td><td class="mono">Mont-18 · ink · centered</td><td>§5 InCall / Muted</td></tr>
+      <tr><td class="mono">call_duration</td><td class="num">(20, 148, 200, 26)</td><td class="mono">Mont-24 tabular · ink · centered</td><td>§5 InCall / Muted</td></tr>
+      <tr><td class="mono">call_btn</td><td class="num">(56, 178, 44, 44) · repeat_x: 84</td><td class="mono">radius 22 · border_width 0 · shadow none · fill c_mint | c_tomato | bg_cream | c_coral by state</td><td>§5 all (single btn: x 98)</td></tr>
+      <tr><td class="mono">call_btn_icon</td><td class="num">centered, 24×24</td><td class="mono">A8 ink glyph</td><td>§5 all</td></tr>
+      <tr class="grp"><td colspan="4">Recording</td></tr>
+      <tr><td class="mono">rec_timer</td><td class="num">(20, 70, 200, 28)</td><td class="mono">Mont-24 tabular · bg_cream · centered</td><td>§3b</td></tr>
+      <tr><td class="mono">rec_hint</td><td class="num">(20, 180, 200, 14)</td><td class="mono">Mont-12 · bg_cream · centered</td><td>§3b</td></tr>
+      <tr><td class="mono">rec_meter</td><td class="num">(64, 118, 112, 42)</td><td class="mono">radius 8 · border_width 0 · track fill bg_cream @ 35% opa · inner level bar bg_cream, width = level</td><td>§3b</td></tr>
+      <tr class="grp"><td colspan="4">Empty state</td></tr>
+      <tr><td class="mono">empty_plus</td><td class="num">(92, 74, 56, 56)</td><td class="mono">radius 28 · border_width 0 · shadow none · fill c_peri · plus glyph</td><td>§2c</td></tr>
+      <tr><td class="mono">empty_hint</td><td class="num">(20, 140, 200, 32)</td><td class="mono">Mont-14 · ink · centered · 2 lines</td><td>§2c</td></tr>
+    </tbody>
+  </table>
+
+  <p style="margin:0 0 12px"><b>Flat (v5.1):</b> every role above carries <code>border_width 0</code> and <code>shadow none</code>. The deck's focused slot renders as an <b>inset pill</b> — flow-color fill inset 6&nbsp;px vertical / 8&nbsp;px horizontal within the slot, radius 12; idle slots are bare glyphs on cream, no top rule, no dividers (the deck role itself is Listen-owned). The recording voice meter's cream frame becomes a semi-transparent cream <b>track fill</b> (bg_cream at ~35% opa) under the level bar.</p>
+
+  <h3>theme.ron color tokens this flow needs (RGB565 recomputed)</h3>
+  <table class="spec">
+    <thead><tr><th>Token</th><th>Hex</th><th>RGB565</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">c_mint</td><td class="mono">#6FDFB1</td><td class="mono">0x6EF6</td><td><b>NEW</b> — answer button fill.</td></tr>
+      <tr><td class="mono">bg_stage_peri</td><td class="mono">#E7E5F7</td><td class="mono">0xE73E</td><td><b>NEW</b> — Talk stage tint (Listen adds its lime twin).</td></tr>
+      <tr><td class="mono">c_tomato</td><td class="mono">#E5443B</td><td class="mono">0xE227</td><td>Recording stage · hangup · stuck badge (existing token).</td></tr>
+      <tr><td class="mono">bg_cream</td><td class="mono">#FCE6D2</td><td class="mono">0xFF3A</td><td>Foreground on the recording stage · idle mute chip (existing token).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>New A8 icon assets this flow needs</h3>
+  <table class="spec">
+    <thead><tr><th>Asset</th><th>Size</th><th>Used at</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">mic</td><td class="num">56×56</td><td>Hold-to-record tile (§3a). Shared with Listen's icon list.</td></tr>
+      <tr><td class="mono">plus</td><td class="num">56×56</td><td>Empty-state circle (§2c). Shared with Listen's icon list.</td></tr>
+      <tr><td class="mono">call</td><td class="num">56×56</td><td>Call tile (§3a) — <b>may already exist as an alias</b> of a shipped asset; verify against <code>assets/icons</code> before adding.</td></tr>
+      <tr><td class="mono">close_sm</td><td class="num">24×24</td><td>Replay discard ✕ (§4) + hangup button glyph (§5). Shared with Listen's list.</td></tr>
+      <tr><td class="mono">mic_sm</td><td class="num">24×24</td><td>Mute button glyph (§5c/§5d).</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0"><code>play</code> 56×56 (Replay tile) and <code>pause_sm</code> / <code>next_sm</code> 24×24 (arc-hero chip + next-note glyph) come from Listen's asset list — not re-listed here. Reminder from the Listen spec: the icon loader silently falls back to SETUP for unknown keys — fix flagged there.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>7 · Route inventory — v5 (carried from v4 §5)</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Depth</th><th>Route</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td>  <td class="mono">Talk</td>          <td>Contact wheel directly. No depth-1 sub-routes.</td></tr>
+      <tr><td class="num">2</td>  <td class="mono">TalkContact</td>   <td>3 tiles: Call · Hold to record · Replay. Recording = hold gesture (full-bleed state), no separate route.</td></tr>
+      <tr><td class="num">3</td>  <td class="mono">Replay</td>        <td>Per-contact playback queue (arc hero). Reached only from TalkContact.</td></tr>
+      <tr class="grp"><td colspan="3">Overlays (NavigationPolicy::Call)</td></tr>
+      <tr><td>—</td><td class="mono">IncomingCall</td><td>Answer left, hangup right.</td></tr>
+      <tr><td>—</td><td class="mono">OutgoingCall</td><td>Single hangup.</td></tr>
+      <tr><td>—</td><td class="mono">InCall</td>      <td>Mute + hangup (muted = same route, mute chip active).</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0 0 8px"><b>Deleted from v3</b>: <code>Contacts</code> (no longer a sub-route — it <i>is</i> Talk), <code>Messages</code> archive, <code>ContactHistory</code>.  <b>Also gone</b>: the depth-1 "Stuck" row (failure surfaces on the contact's avatar badge instead).</p>
+  <p style="margin:0"><b>Runtime divergence note (consolidation):</b> the shipped router (<code>device/ui/src/router/routes.rs</code>) still has Talk → <code>Contacts</code> / <code>CallHistory</code> / <code>VoiceNote</code> as separate routes, with recording on the dedicated <code>VoiceNote</code> screen. Implementing v5 means: fold <code>Contacts</code> into the Talk root, retire <code>CallHistory</code> and <code>VoiceNote</code>, add the per-contact <code>Replay</code> route. Tracked in <code>README.md</code> → "Mockup ↔ runtime mapping".</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>8 · Object budget (LVGL objects per screen · cap 60)</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Screen</th><th>Breakdown</th><th>Total</th><th>Headroom</th></tr></thead>
+    <tbody>
+      <tr><td>Talk root — contact wheel</td>
+          <td>statusbar 6 · deck 10 (incl. stuck dot) · stage tint 1 · wheel strip 1 · counter label 1 · 4 tile instances (3 visible + 1 entering mid-roll) × 6 (plate, avatar, initial, name, badge, badge label) = 24</td>
+          <td class="num">≈43</td><td class="num">17</td></tr>
+      <tr><td>TalkContact — action wheel</td>
+          <td>statusbar 6 · deck 10 · stage tint 1 · wheel strip 1 · context label 1 · 4 tiles × 4 (plate, icon, label, badge) = 16 · badge labels 2</td>
+          <td class="num">≈37</td><td class="num">23</td></tr>
+      <tr><td>Recording</td>
+          <td>statusbar 6 · deck 10 (dim = container opa, 0 objs) · tomato stage 1 · context label 1 · timer dot + label 2 · meter track + fill 2 · hint 1 · pulse spare 1</td>
+          <td class="num">≈24</td><td class="num">36</td></tr>
+      <tr><td>Replay — arc hero</td>
+          <td>statusbar 6 · deck 10 · stage tint 1 · context label 1 · lv_arc 1 · avatar + initial 2 · chip bg + glyph 2 · side glyphs 2 · title 1 · times 2 · focus outline 1 = 29 native; composed fallback (bar frame + fill + extra glyphs) adds ≈4–6</td>
+          <td class="num">≈35 ceiling</td><td class="num">25</td></tr>
+      <tr><td>Call overlays (worst: InCall)</td>
+          <td>statusbar 6 · deck 10 · stage tint 1 · state label 1 · avatar + initial 2 · pulse rings 2 (Incoming/Outgoing) or name_sm + duration 2 (InCall) · name 1 · 2 buttons × (bg, glyph) 4 · focus outline 1 · spare 1</td>
+          <td class="num">≈29</td><td class="num">31</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Flat (v5.1): no ink-shadow siblings anywhere — hard shadows left with the flat pass and took their per-plate object cost (and the old shadow-offset FFI ask) with them. Counting method and the shared statusbar/deck breakdown match the Listen spec.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>9 · Typography</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Font</th><th>Runtime status</th><th>Used at</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">Montserrat 12</td><td>linked (<code>lv_font_montserrat_12</code>)</td><td>Context label · call state · badge counts · rec hint · replay times.</td></tr>
+      <tr><td class="mono">Montserrat 14</td><td><b>needs FFI extern link</b> (already enabled in <code>lv_conf.h</code>)</td><td>Empty-state hint (§2c).</td></tr>
+      <tr><td class="mono">Montserrat 18</td><td>linked (<code>lv_font_montserrat_18</code>)</td><td>Wheel names / action labels · call_name_sm · replay title.</td></tr>
+      <tr><td class="mono">Montserrat 24</td><td><b>needs FFI extern link</b> (already enabled in <code>lv_conf.h</code>)</td><td>Avatar initials · call_name · call_duration · rec timer.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">No Inter anywhere. No emoji at runtime — every glyph in these renders (☎ 🎙︎ ▶ ⏭ ✕ ● +) maps to an A8 icon asset (§6). FFI link details: <code>mockup_listen.html</code> §7.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>10 · Open questions for the next pass</h2>
+<div class="specs">
+  <ul>
+    <li><b>Notifications on Home.</b> Still punted. When a note arrives while the user is on Home, how do they find out without an auto-play mechanism? Options: small badge on the Talk deck slot (consistent with the stuck-dot pattern), a transient toast on Home, a peri pulse on the deck. To be designed.</li>
+    <li><b>Stuck send retry policy.</b> When does a failed send retry automatically? Suggest: on next successful network connect, silently retry once. If still fails, the contact's badge goes tomato "!" and the deck dot appears. The user enters the contact to retry manually from there.</li>
+    <li><b>Replay scoping.</b> The Replay queue is per-contact. What happens to a contact's old notes — auto-delete after N days? Cap at N notes? Probably cap (~20 notes per contact, drop oldest). Storage on the device is small.</li>
+    <li><b>Contact ordering.</b> The wheel shows Mama / Papa / Grandma in a fixed order. Recency-based (last interaction focused first) or pinned (Setup defines order)? Instinct: pinned. A 5-year-old doesn't want their contact wheel reshuffling.</li>
+    <li><b>Empty-state "+" animation.</b> NEW — does the plus circle deserve a slow breathing animation (scale ~1.0 → 1.06, ≈2 s loop, echoing the Home blob)? Costs one animation slot, zero extra objects. To decide.</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2>11 · Changelog</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Date</th><th>Rev</th><th>Summary</th></tr></thead>
+    <tbody>
+      <tr><td class="num">2026-07-15</td><td class="num">v5.1</td><td>Flat pass (user decision): borders + hard shadows removed, deck dividers → inset pill, focus ring = the one surviving stroke; matches Listen v2.1.</td></tr>
+      <tr><td class="num">2026-07-15</td><td class="num">v5</td><td>Contact wheel replaces peri card+rows; tab strip → context label; call overlays de-boxed; recording = full-bleed tomato state; wheel/arc primitives normative in <code>mockup_listen.html</code>.</td></tr>
+      <tr><td class="num">2026-05-16</td><td class="num">v4</td><td>Talk root = contacts list directly, peri-tinted card, walkie-talkie unchanged; v3's 4-state blob / companion-on-focus / Messages archive all dropped.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<p style="margin-top:32px" class="muted">Spec rev 2026-07-15 · v5.1 · pairs with <code>mockup_listen.html</code> (primitives), <code>mockup_input_model.html</code> (gesture contract), <code>README.md</code> (decision log).</p>
+
+</body>
+</html>

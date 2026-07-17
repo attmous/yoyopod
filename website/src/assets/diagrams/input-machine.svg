@@ -1,0 +1,61 @@
+<svg viewBox="0 0 760 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The one-button input state machine: tap advances, double-tap selects, long-hold goes back, hold is push-to-talk on capture screens">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #2b2122); stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; }
+    .out { fill: var(--sl-color-accent-low, #4a2420); stroke: var(--sl-color-accent, #f37767); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f5ece1); font-size: 15px; font-weight: 600; }
+    .s { fill: var(--sl-color-gray-3, #a5937f); font-size: 12.5px; }
+    .lbl { fill: var(--sl-color-gray-2, #d8c8b3); font-size: 12.5px; }
+    .arrow { stroke: var(--sl-color-gray-3, #a5937f); stroke-width: 2; fill: none; marker-end: url(#ihead); }
+  </style>
+  <defs>
+    <marker id="ihead" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a5937f)"/>
+    </marker>
+  </defs>
+
+  <rect class="box" x="40" y="30" width="150" height="52" rx="26"/>
+  <text class="t" x="78" y="61">Idle</text>
+
+  <rect class="box" x="270" y="30" width="190" height="52" rx="10"/>
+  <text class="t" x="290" y="52">Pressed</text>
+  <text class="s" x="290" y="70">debounce 50 ms</text>
+
+  <path class="arrow" d="M190,56 L268,56"/>
+  <text class="lbl" x="200" y="46">press</text>
+
+  <!-- release, wait double window -->
+  <rect class="box" x="270" y="130" width="190" height="52" rx="10"/>
+  <text class="t" x="290" y="152">Released</text>
+  <text class="s" x="290" y="170">double window 300 ms</text>
+  <path class="arrow" d="M365,82 L365,128"/>
+  <text class="lbl" x="373" y="110">release &lt; 800 ms</text>
+
+  <rect class="out" x="560" y="130" width="160" height="52" rx="10"/>
+  <text class="t" x="580" y="152">Advance</text>
+  <text class="s" x="580" y="170">roll the wheel</text>
+  <path class="arrow" d="M460,156 L558,156"/>
+  <text class="lbl" x="466" y="147">window expires</text>
+
+  <rect class="out" x="560" y="220" width="160" height="52" rx="10"/>
+  <text class="t" x="580" y="242">Select</text>
+  <text class="s" x="580" y="260">open / activate</text>
+  <path class="arrow" d="M400,182 C430,230 500,246 558,246"/>
+  <text class="lbl" x="410" y="228">2nd press in window</text>
+
+  <rect class="out" x="560" y="30" width="160" height="52" rx="10"/>
+  <text class="t" x="580" y="52">Back</text>
+  <text class="s" x="580" y="70">long-hold ≥ 800 ms</text>
+  <path class="arrow" d="M460,56 L558,56"/>
+  <text class="lbl" x="472" y="46">held</text>
+
+  <!-- PTT passthrough -->
+  <rect class="out" x="270" y="310" width="450" height="76" rx="10"/>
+  <text class="t" x="290" y="336">PTT passthrough — capture screens only</text>
+  <text class="s" x="290" y="356">on Ask and voice-capture screens, hold ≠ Back:</text>
+  <text class="s" x="290" y="374">hold emits PttPress, release emits PttRelease (talk while holding)</text>
+  <path class="arrow" d="M340,82 C300,180 300,250 330,308"/>
+  <text class="lbl" x="220" y="210">hold, when the screen</text>
+  <text class="lbl" x="220" y="226">opts into passthrough</text>
+
+  <text class="s" x="40" y="416">Shipped timings: debounce 50 ms · double window 300 ms · long-hold 800 ms (design contract: 400/350 — see Known Gaps, item 14)</text>
+</svg>

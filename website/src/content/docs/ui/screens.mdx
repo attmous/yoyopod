@@ -1,0 +1,72 @@
+---
+title: Screens & Navigation
+description: The 17 routes, their normative mockups, per-route policies, and the navigation model.
+---
+
+The route table in
+[`device/ui/src/router/routes.rs`](https://github.com/attmous/yoyocore/blob/main/device/ui/src/router/routes.rs)
+declares every screen with its policies: how focus behaves (`FocusPolicy`:
+wrap / clamp / none), where it sits in navigation (`NavigationPolicy`: root /
+stack / call / overlay), whether it persists, what double-press targets, and
+whether PTT passthrough applies.
+
+## The routes
+
+| Route | Component (`components/screens/`) | Normative mockup | v5 status |
+| --- | --- | --- | --- |
+| `Hub` | `hub.rs` | `mockup_home.html` | current — Home stage + companion |
+| `Listen` | `listen.rs` | `mockup_listen.html` | current — becomes a wheel root |
+| `Playlists` | `playlists.rs` | `mockup_listen.html` | current |
+| `RecentTracks` | `recent_tracks.rs` | `mockup_listen.html` | current |
+| `NowPlaying` | `now_playing.rs` | `mockup_listen.html` §4 | current — gains the arc hero |
+| `Ask` | `ask.rs` | `mockup_ask.html` | current — 4 states + offline |
+| `Talk` | `talk.rs` | `mockup_talk.html` | **changes**: root becomes the contact wheel (item 10) |
+| `TalkContact` | `talk_contact.rs` | `mockup_talk.html` | **changes**: gains record PTT passthrough (item 11) |
+| `Contacts` | `contacts.rs` | — | **retire** (folds into Talk root) |
+| `CallHistory` | `call_history.rs` | — | **retire** |
+| `VoiceNote` | `voice_note.rs` | — | **retire** (capture moves to TalkContact) |
+| `IncomingCall` | `incoming_call.rs` | `mockup_talk.html` | current — de-boxed overlay |
+| `OutgoingCall` | `outgoing_call.rs` | `mockup_talk.html` | current — de-boxed overlay |
+| `InCall` | `in_call.rs` | `mockup_talk.html` | current — de-boxed overlay |
+| `Power` | `power.rs` | `mockup_setup.html` | **replaced** by the Setup wheel (item 10) |
+| `Loading` | `loading.rs` | `mockup_system.html` | current — gains 8 s → Error timer (item 13) |
+| `Error` | `error.rs` | `mockup_system.html` | current — needs retry target + overlay clearing (item 13) |
+
+Plus one **new** route in the v5 contract: `Replay` (voice-message replay,
+`mockup_talk.html`).
+
+## Two primitives cover every screen
+
+- **The wheel** (menu): focused tile center-stage, dimmed scaled peeks,
+  press rolls one step with a spoken label, double-press opens. Normative
+  spec: `mockup_listen.html` §3.
+- **The arc hero** (player): art or avatar wrapped in a progress ring, one
+  play chip, bare side glyphs. Normative spec: `mockup_listen.html` §4 —
+  canonical as `lv_arc`, shipping first as the zero-FFI bar fallback.
+
+Everything else is composition: status bar, footer bar, chips, plates.
+
+## Navigation model
+
+- **Stack, not graph.** The navigator pushes and pops; roots (Hub, Listen,
+  Talk, Ask, Setup) sit at the bottom, detail screens stack above.
+- **Long-hold leaves.** The contract sends long-hold to Home from anywhere
+  (today it pops a single screen — gap item 4). Capture screens trade
+  long-hold for PTT, so Home from those is via their explicit exit.
+- **Runtime preemption.** Worker events can push screens uninvited: an
+  incoming call pushes `IncomingCall`; an error condition pushes the
+  `Error` overlay.
+
+:::caution[Overlay gotcha]
+The `Error` overlay is re-pushed by `runtime_preemption` for as long as
+`snapshot.overlay.error` is set — without a path that *clears* the error
+state, dismissing the overlay just invites it back on the next snapshot.
+Interactions (retry target, clear path, auto-retry timers) are gap item 13.
+:::
+
+## Per-screen input contracts
+
+Every mockup carries an input-contract table for its screen: what press,
+double-press, and long-press do in each state. Those tables — not this page
+— are the acceptance reference. See the [gallery](/ui/mockups/) and the
+[acceptance checklist](/ui/gaps/#acceptance-checklist).

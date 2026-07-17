@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>YoyoPod — Companion Variants · Dark Theme · Owl / Cat / Bunny / Robot</title>
+<style>
+  :root {
+    --panel-w: 240px;
+    --panel-h: 280px;
+    --panel-radius: 22px;
+
+    /* ─── Palette (DARK) ─── */
+    --bg-cream:    #1B1B1F;  /* surface 0 */
+    --bg-cream-2:  #2A2A30;  /* surface 1 */
+
+    --ink:         #F2E8DA;  /* warm off-white text & borders */
+    --ink-soft:    #B8AC9A;
+    --ink-300:     #6E665C;
+
+    /* Accents unchanged (they pop on dark) */
+    --c-lime:      #9DFC7C;
+    --c-peri:      #A9A6E5;
+    --c-butter:    #FFD06A;
+    --c-coral:     #F37767;
+    --c-tomato:    #E5443B;
+    --c-mustard:   #E8A93C;
+
+    /* Companion bodies — Owl and Bunny unchanged; Cat and Robot tuned for dark. */
+    --c-owl:       #B5895D;
+    --c-owl-beak:  #FFC233;
+    --c-cat:       #E89B3A;   /* dark-theme: deeper amber, more saturated than butter */
+    --c-bunny:     #9FB89A;
+    --c-bunny-inner:#7C947B;
+    --c-robot:      #5A6B82;   /* dark-theme: slate blue, industrial */
+    --c-robot-screen:#9DFC7C;  /* dark-theme: lime chest reads vividly on slate */
+    --c-robot-led:  #F37767;
+
+    /* Text/border color when sitting ON a bright accent (focused deck slot) */
+    --ink-on-accent: #1B1B1F;
+
+    --border-w: 2px;
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --statusbar-h: 22px;
+    --deck-h:      52px;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: #0d0d10;
+    color: #efe4d6;
+    font-family: "Montserrat","Segoe UI",system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { padding: 32px 24px 80px; }
+  h1 { font-weight: 700; font-size: 22px; margin: 0 0 4px; color: #fff; }
+  h2 { font-weight: 600; font-size: 14px; margin: 32px 0 12px; color: #d3b89a; letter-spacing: 0.04em; text-transform: uppercase; }
+  h3 { margin: 14px 0 8px; font-size: 13px; color: #ffd9b3; }
+  p  { font-size: 13px; line-height: 1.55; max-width: 760px; color: #c9b9a3; }
+  .muted { color: #8a7c6c; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 11px; color: #8a7c6c; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  .device {
+    width: calc(var(--panel-w) + 24px);
+    padding: 12px;
+    border-radius: 26px;
+    background: #221c1f;
+    box-shadow: none;
+  }
+  .panel {
+    position: relative;
+    width: var(--panel-w);
+    height: var(--panel-h);
+    box-sizing: border-box;
+    background: var(--bg-cream);
+    overflow: hidden;
+    color: var(--ink);
+    border-radius: var(--panel-radius);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
+  }
+
+  .statusbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: var(--statusbar-h);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 12px 0 8px;
+    font-size: 11px;
+    background: var(--bg-cream);
+    z-index: 30;
+    font-weight: 700;
+  }
+  .statusbar .left  { display: flex; align-items: center; gap: 5px; justify-self: start; }
+  .statusbar .time  { font-variant-numeric: tabular-nums; justify-self: center; }
+  .statusbar .right { display: flex; align-items: center; gap: 5px; justify-self: end; }
+  .sb-bars { display: flex; align-items: flex-end; gap: 1px; height: 10px; }
+  .sb-bars > i { display: block; width: 2px; background: var(--ink); }
+  .sb-bars > i:nth-child(1) { height: 3px; }
+  .sb-bars > i:nth-child(2) { height: 5px; }
+  .sb-bars > i:nth-child(3) { height: 7px; }
+  .sb-bars > i:nth-child(4) { height: 9px; }
+  .sb-bars > i.off { background: transparent; border: 1px solid var(--ink); box-sizing: border-box; }
+  .sb-gps { width: 8px; height: 11px; position: relative; }
+  .sb-gps::before {
+    content: ""; position: absolute; left: 0; top: 0;
+    width: 8px; height: 8px;
+    background: var(--ink);
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+  }
+  .sb-gps::after {
+    content: ""; position: absolute; left: 3px; top: 2.5px;
+    width: 2px; height: 2px;
+    background: var(--bg-cream);
+    border-radius: 50%;
+  }
+  .sb-pct { font-variant-numeric: tabular-nums; font-size: 10px; }
+  .batt {
+    width: 20px; height: 10px;
+    border: 1.5px solid var(--ink);
+    border-radius: 1px;
+    position: relative; padding: 1px;
+  }
+  .batt::after {
+    content: ""; position: absolute; right: -3px; top: 2px;
+    width: 2px; height: 4px; background: var(--ink); border-radius: 0 1px 1px 0;
+  }
+  .batt > i { display: block; width: 70%; height: 100%; background: var(--ink); }
+
+  .deck {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: var(--deck-h);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    background: var(--bg-cream);
+    z-index: 20;
+  }
+  .deck .slot {
+    background: var(--bg-cream);
+    color: var(--ink-300);
+    display: grid; place-items: center;
+  }
+  .deck .slot .glyph { font-size: 30px; font-weight: 800; line-height: 1; }
+  .deck .slot.listen .glyph { font-size: 24px; }
+
+  /* ── stage + companion ─────────────────────────────────── */
+  .home-stage {
+    position: absolute;
+    top: var(--statusbar-h); left: 0; right: 0;
+    bottom: var(--deck-h);
+    background: var(--bg-cream);
+    overflow: hidden;
+  }
+
+  .companion {
+    position: absolute;
+    width: 140px; height: 110px;
+    left: 50px;     /* (240-140)/2 = 50 → centered */
+    top: 45px;
+    animation: breathe 4.2s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.04); }
+  }
+  .companion svg {
+    width: 100%; height: 100%;
+    display: block;
+    overflow: visible;
+  }
+
+  /* Eye blink (shared, all variants) */
+  .companion .eye-iris { animation: blink 5.5s infinite; transform-origin: center; transform-box: fill-box; }
+  @keyframes blink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    94%, 98%      { transform: scaleY(0.1); }
+  }
+
+  /* ── spec tables ──────────────────────────────────────── */
+  .specs {
+    max-width: 1080px;
+    background: #221b1d;
+    border: 1px solid #3b2e2e;
+    border-radius: 10px;
+    padding: 16px 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #d8c8b3;
+    margin-top: 12px;
+  }
+  .specs code { background: #000; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #ffcfae; }
+  table.spec {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin: 6px 0 12px;
+  }
+  table.spec th {
+    text-align: left;
+    color: #ffd9b3;
+    padding: 6px 8px;
+    background: #2b2122;
+    border-bottom: 1px solid #3b2e2e;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  table.spec td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #2a2222;
+    vertical-align: top;
+  }
+  table.spec td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.spec td.mono, table.spec th.mono { font-family: ui-monospace, "JetBrains Mono", Consolas, monospace; }
+  table.spec td .sw {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    vertical-align: -3px;
+    margin-right: 6px;
+  }
+  table.spec tr:last-child td { border-bottom: none; }
+</style>
+</head>
+<body>
+
+<h1>YoyoPod — Companion Variants · Dark Theme</h1>
+<p class="muted">Dark-theme variant of the companion spec. <b>Owl and Bunny fills stay unchanged</b> — they already read well on either surface. <b>Cat and Robot get re-tuned</b>: cat butter washes out on dark (→ deep amber), and robot light-grey reads like white plastic (→ slate blue). What flips:</p>
+<ul class="muted" style="max-width: 760px; font-size: 13px; line-height: 1.55; margin-top: 6px;">
+  <li><b>Outlines</b> (the 3 px stroke that wraps every body) flip from ink (near-black) to <code>ink</code> = warm off-white <code>#F2E8DA</code>, so the silhouettes show against the dark surface. Characters keep their ink outlines (illustrations, not UI); no drop-shadow.</li>
+  <li><b>Internal dark fills</b> (eye pupils, robot screen buttons, cat/bunny nose, bunny sunglasses) stay at <code>#1B1B1F</code> — they sit on top of light-colored character parts (eye-whites, periwinkle chest panel, body bodies), where dark is the only readable choice.</li>
+</ul>
+
+<!-- ============================================================ -->
+<div class="specs" style="max-width: 760px; margin-bottom: 14px;">
+  <h3 style="margin-top:0">Light → Dark diff for companions</h3>
+  <table class="spec">
+    <thead><tr><th>Token / element</th><th>Light</th><th>Dark</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">bg_cream (panel/stage)</td>     <td class="mono"><span class="sw" style="background:#FCE6D2"></span>#FCE6D2</td><td class="mono"><span class="sw" style="background:#1B1B1F"></span>#1B1B1F</td><td>Surface inversion.</td></tr>
+      <tr><td class="mono">ink (body outlines)</td>         <td class="mono"><span class="sw" style="background:#1B1B1F"></span>#1B1B1F</td><td class="mono"><span class="sw" style="background:#F2E8DA"></span>#F2E8DA</td><td>Outlines flip so silhouettes stay visible on the dark stage.</td></tr>
+      <tr><td>Eye pupils, dark facial fills</td>            <td class="mono">#1B1B1F</td>     <td class="mono">#1B1B1F</td>     <td>Stay dark — they sit on top of light fills (eye-whites, periwinkle chest, character bodies).</td></tr>
+      <tr><td class="mono">c_cat</td>          <td class="mono"><span class="sw" style="background:#FFD06A"></span>#FFD06A</td><td class="mono"><span class="sw" style="background:#E89B3A"></span>#E89B3A</td><td>Deeper amber — butter washes out on dark; amber holds the "warm cat" feel without going neon.</td></tr>
+      <tr><td class="mono">c_robot</td>        <td class="mono"><span class="sw" style="background:#DDE3E8"></span>#DDE3E8</td><td class="mono"><span class="sw" style="background:#5A6B82"></span>#5A6B82</td><td>Slate blue — light grey reads as washed-out plastic on dark. Slate gives an industrial "metal" feel.</td></tr>
+      <tr><td class="mono">c_robot_screen</td> <td class="mono"><span class="sw" style="background:#A9A6E5"></span>#A9A6E5 (= c_peri)</td><td class="mono"><span class="sw" style="background:#9DFC7C"></span>#9DFC7C (= c_lime)</td><td>Periwinkle on slate looks muddy. Lime pops as a glowing screen against the cool body.</td></tr>
+      <tr><td>c_owl, c_owl_beak, c_bunny, c_bunny_inner, c_robot_led</td><td colspan="2" style="text-align:center">unchanged</td><td>These read well on both surfaces.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Net effect: outline color swap. Geometry, animation, and body colors are byte-identical with the light theme.</p>
+</div>
+
+<h2>1 · Four variants on the Home screen (dark)</h2>
+
+<div class="row">
+
+  <!-- ░░ OWL ░░ -->
+  <div class="stack">
+    <span class="label">Owl</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="home-stage">
+        <div class="companion" style="width:110px; height:140px; left:65px; top:30px;">
+          <svg viewBox="0 0 110 140" xmlns="http://www.w3.org/2000/svg" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" fill="var(--c-owl)">
+            <!-- ear tufts (drawn first, head overlaps) -->
+            <path d="M20 30 L 12 6  L 32 22 Z"/>
+            <path d="M90 30 L 98 6  L 78 22 Z"/>
+            <!-- head + body (single rounded silhouette, like the reference) -->
+            <path d="M55 14
+                     C 22 14, 8 38, 12 70
+                     C 14 100, 28 122, 55 122
+                     C 82 122, 96 100, 98 70
+                     C 102 38, 88 14, 55 14 Z"/>
+            <!-- eye whites (large, joined) -->
+            <ellipse cx="38" cy="50" rx="16" ry="18" fill="#FFFFFF"/>
+            <ellipse cx="72" cy="50" rx="16" ry="18" fill="#FFFFFF"/>
+            <!-- irises (huge black) -->
+            <circle class="eye-iris" cx="38" cy="52" r="11" fill="#1B1B1F" stroke-width="0"/>
+            <circle class="eye-iris" cx="72" cy="52" r="11" fill="#1B1B1F" stroke-width="0"/>
+            <!-- catchlights -->
+            <circle cx="42" cy="48" r="2.6" fill="#FFFFFF" stroke-width="0"/>
+            <circle cx="76" cy="48" r="2.6" fill="#FFFFFF" stroke-width="0"/>
+            <!-- eyelashes (3 each, like the reference) -->
+            <path d="M24 38 L 20 33 M 28 34 L 26 28 M 32 32 L 32 26" stroke-width="2" fill="none"/>
+            <path d="M86 38 L 90 33 M 82 34 L 84 28 M 78 32 L 78 26" stroke-width="2" fill="none"/>
+            <!-- beak (yellow diamond) -->
+            <path d="M55 66 L 62 74 L 55 82 L 48 74 Z" fill="var(--c-owl-beak)" stroke-width="2.5"/>
+            <!-- wing seams -->
+            <path d="M18 78 Q 14 96, 22 110" fill="none" stroke-width="2.5"/>
+            <path d="M92 78 Q 96 96, 88 110" fill="none" stroke-width="2.5"/>
+            <!-- belly chevrons (white V marks, like the reference) -->
+            <path d="M42 92 L 47 98 L 52 92" stroke="#FFFFFF" stroke-width="2.5" fill="none"/>
+            <path d="M58 92 L 63 98 L 68 92" stroke="#FFFFFF" stroke-width="2.5" fill="none"/>
+            <path d="M50 104 L 55 110 L 60 104" stroke="#FFFFFF" stroke-width="2.5" fill="none"/>
+            <!-- feet (yellow scalloped) -->
+            <path d="M42 122
+                     q 2 4, 6 4 q 2 -2, 0 -5
+                     q 3 3, 6 2 q 2 -2, 0 -5
+                     q -2 -1, -6 -1
+                     q -4 0, -6 5 z" fill="var(--c-owl-beak)" stroke-width="2"/>
+            <path d="M62 122
+                     q 2 4, 6 4 q 2 -2, 0 -5
+                     q 3 3, 6 2 q 2 -2, 0 -5
+                     q -2 -1, -6 -1
+                     q -4 0, -6 5 z" fill="var(--c-owl-beak)" stroke-width="2"/>
+          </svg>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Body fill: <code>c_owl #B5895D</code>. Beak + feet: <code>c_owl_beak #FFC233</code>. Belly chevrons: white. Personality: wise, watchful.</span>
+  </div>
+
+  <!-- ░░ CAT ░░ -->
+  <div class="stack">
+    <span class="label">Cat</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="home-stage">
+        <div class="companion" style="width:140px; height:140px; left:50px; top:35px;">
+          <svg viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" fill="var(--c-cat)">
+            <!-- ears (drawn first so head outline overlaps cleanly) -->
+            <path d="M22 30 L 18 4  L 42 24 Z"/>
+            <path d="M88 30 L 92 4  L 68 24 Z"/>
+            <!-- inner ear -->
+            <path d="M26 26 L 26 14 L 38 24 Z" fill="#F37767" stroke-width="2"/>
+            <path d="M84 26 L 84 14 L 72 24 Z" fill="#F37767" stroke-width="2"/>
+            <!-- head -->
+            <ellipse cx="55" cy="58" rx="42" ry="38"/>
+            <!-- cheeks (subtle) -->
+            <circle cx="32" cy="68" r="6" fill="#F37767" stroke-width="2" opacity="0.55"/>
+            <circle cx="78" cy="68" r="6" fill="#F37767" stroke-width="2" opacity="0.55"/>
+            <!-- eyes -->
+            <circle cx="40" cy="54" r="9" fill="#FFFFFF"/>
+            <circle cx="70" cy="54" r="9" fill="#FFFFFF"/>
+            <circle class="eye-iris" cx="40" cy="55" r="5" fill="#1B1B1F"/>
+            <circle class="eye-iris" cx="70" cy="55" r="5" fill="#1B1B1F"/>
+            <!-- nose -->
+            <path d="M51 66 L 59 66 L 55 72 Z" fill="#1B1B1F" stroke-width="0"/>
+            <!-- mouth -->
+            <path d="M55 72 L 55 76 M 55 76 Q 50 82, 45 78 M 55 76 Q 60 82, 65 78" fill="none" stroke-width="2.5"/>
+            <!-- whiskers -->
+            <path d="M10 70 L 30 72 M 12 76 L 30 76" stroke-width="2" fill="none"/>
+            <path d="M100 70 L 80 72 M 98 76 L 80 76" stroke-width="2" fill="none"/>
+          </svg>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Body fill: <code>c_cat #E89B3A</code> (deep amber, tuned for dark). Inner ear/cheek: <code>c_coral</code>. Personality: curious, friendly.</span>
+  </div>
+
+  <!-- ░░ BUNNY ░░ -->
+  <div class="stack">
+    <span class="label">Bunny</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="home-stage">
+        <div class="companion" style="width:120px; height:160px; left:60px; top:18px;">
+          <svg viewBox="0 0 120 160" xmlns="http://www.w3.org/2000/svg" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" fill="var(--c-bunny)">
+            <!-- left ear (tall, slightly outward) -->
+            <path d="M40 12
+                     C 30 14, 28 38, 32 70
+                     C 34 80, 44 82, 48 76
+                     C 52 60, 52 30, 46 16
+                     C 44 12, 42 11, 40 12 Z" transform="rotate(-4 40 44)"/>
+            <path d="M41 22
+                     C 37 26, 36 44, 39 66
+                     C 41 72, 45 72, 46 68
+                     C 48 52, 48 32, 44 22 Z"
+                  transform="rotate(-4 41 44)" fill="var(--c-bunny-inner)" stroke-width="2"/>
+            <!-- right ear (mirror) -->
+            <path d="M80 12
+                     C 90 14, 92 38, 88 70
+                     C 86 80, 76 82, 72 76
+                     C 68 60, 68 30, 74 16
+                     C 76 12, 78 11, 80 12 Z" transform="rotate(4 80 44)"/>
+            <path d="M79 22
+                     C 83 26, 84 44, 81 66
+                     C 79 72, 75 72, 74 68
+                     C 72 52, 72 32, 76 22 Z"
+                  transform="rotate(4 79 44)" fill="var(--c-bunny-inner)" stroke-width="2"/>
+
+            <!-- forehead tuft (two soft bumps between the ears) -->
+            <path d="M50 74
+                     Q 52 62, 60 62
+                     Q 68 62, 70 74
+                     Z"/>
+
+            <!-- head (broad, slightly squarer jaw) -->
+            <path d="M18 100
+                     Q 18 74, 60 70
+                     Q 102 74, 102 100
+                     Q 102 132, 84 142
+                     Q 60 150, 36 142
+                     Q 18 132, 18 100 Z"/>
+
+            <!-- ─── sunglasses ─── -->
+            <!-- bridge bar -->
+            <path d="M50 96 L 70 96" stroke-width="3" fill="none"/>
+            <!-- left lens -->
+            <path d="M28 90
+                     Q 28 86, 32 86
+                     L 50 86
+                     Q 54 86, 54 90
+                     L 54 100
+                     Q 54 106, 48 106
+                     L 34 106
+                     Q 28 106, 28 100 Z" fill="#1B1B1F" stroke-width="3"/>
+            <!-- right lens -->
+            <path d="M66 90
+                     Q 66 86, 70 86
+                     L 88 86
+                     Q 92 86, 92 90
+                     L 92 100
+                     Q 92 106, 86 106
+                     L 72 106
+                     Q 66 106, 66 100 Z" fill="#1B1B1F" stroke-width="3"/>
+            <!-- lens highlights (diagonal stripes, white) -->
+            <path d="M36 88 L 32 102" stroke="#FFFFFF" stroke-width="2.5" fill="none"/>
+            <path d="M42 88 L 38 102" stroke="#FFFFFF" stroke-width="2.5" fill="none"/>
+            <path d="M74 88 L 70 102" stroke="#FFFFFF" stroke-width="2.5" fill="none"/>
+            <path d="M80 88 L 76 102" stroke="#FFFFFF" stroke-width="2.5" fill="none"/>
+            <!-- temple arms (short stubs into ear area) -->
+            <path d="M28 94 L 22 94" stroke-width="3" fill="none"/>
+            <path d="M92 94 L 98 94" stroke-width="3" fill="none"/>
+
+            <!-- nose (ink triangle) -->
+            <path d="M55 118 L 65 118 L 60 126 Z" fill="#1B1B1F" stroke-width="0"/>
+
+            <!-- mouth Y-line (philtrum + small curved upper lip) -->
+            <path d="M60 126 L 60 132
+                     M 60 132 Q 54 136, 50 132
+                     M 60 132 Q 66 136, 70 132" stroke-width="2.5" fill="none"/>
+
+            <!-- buck tooth (single, centered under the mouth) -->
+            <rect x="56.5" y="134" width="7" height="8" fill="#FFFFFF" stroke-width="2"/>
+
+            <!-- whiskers (2 per side, clean) -->
+            <path d="M20 126 Q 32 128, 44 130" stroke-width="2" fill="none"/>
+            <path d="M20 134 Q 32 134, 44 134" stroke-width="2" fill="none"/>
+            <path d="M100 126 Q 88 128, 76 130" stroke-width="2" fill="none"/>
+            <path d="M100 134 Q 88 134, 76 134" stroke-width="2" fill="none"/>
+          </svg>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Cool-bunny: tall ears, soft forehead tuft, ink sunglasses with diagonal lens highlights, two whiskers per side, single buck tooth. Body <code>c_bunny #9FB89A</code>, inner-ear <code>c_bunny_inner #7C947B</code>. Personality: laid-back, confident.</span>
+  </div>
+
+  <!-- ░░ ROBOT ░░ -->
+  <div class="stack">
+    <span class="label">Robot</span>
+    <div class="device"><div class="panel">
+      <div class="statusbar">
+        <span class="left"><span class="sb-bars"><i></i><i></i><i></i><i class="off"></i></span><span class="sb-gps"></span></span>
+        <span class="time">6:16</span>
+        <span class="right"><span class="sb-pct">70%</span><span class="batt"><i></i></span></span>
+      </div>
+      <div class="home-stage">
+        <div class="companion" style="width:110px; height:150px; left:65px; top:24px;">
+          <svg viewBox="0 0 110 150" xmlns="http://www.w3.org/2000/svg" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" fill="var(--c-robot)">
+            <!-- antenna mast -->
+            <path d="M55 16 L 55 4" stroke-width="3" fill="none"/>
+            <!-- antenna bulb -->
+            <circle cx="55" cy="4" r="5" fill="var(--c-robot-led)"/>
+
+            <!-- ear-pods (left + right, drawn behind head) -->
+            <rect x="6"  y="38" width="14" height="22" rx="4"/>
+            <rect x="90" y="38" width="14" height="22" rx="4"/>
+
+            <!-- head (rounded rectangle) -->
+            <rect x="20" y="16" width="70" height="56" rx="14"/>
+
+            <!-- eyes -->
+            <circle cx="40" cy="42" r="9" fill="#FFFFFF"/>
+            <circle cx="70" cy="42" r="9" fill="#FFFFFF"/>
+            <circle class="eye-iris" cx="40" cy="42" r="5" fill="#1B1B1F" stroke-width="0"/>
+            <circle class="eye-iris" cx="70" cy="42" r="5" fill="#1B1B1F" stroke-width="0"/>
+
+            <!-- mouth: upward smile arc -->
+            <path d="M40 56 Q 55 68, 70 56" fill="none" stroke-width="3" stroke-linecap="round"/>
+
+            <!-- neck -->
+            <rect x="46" y="72" width="18" height="8"/>
+
+            <!-- body (trapezoid: wider at base, like the reference) -->
+            <path d="M28 82
+                     L 82 82
+                     Q 92 82, 94 96
+                     L 100 132
+                     Q 100 138, 94 138
+                     L 16 138
+                     Q 10 138, 10 132
+                     L 16 96
+                     Q 18 82, 28 82 Z"/>
+
+            <!-- chest collar/yoke (small horizontal band at top of body) -->
+            <rect x="36" y="82" width="38" height="8" rx="3" fill="#FFFFFF" stroke-width="2.5"/>
+
+            <!-- chest screen/panel -->
+            <rect x="34" y="102" width="42" height="22" rx="4" fill="var(--c-robot-screen)" stroke-width="2.5"/>
+            <!-- screen buttons -->
+            <circle cx="46" cy="113" r="1.8" fill="#1B1B1F" stroke-width="0"/>
+            <circle cx="54" cy="113" r="1.8" fill="#1B1B1F" stroke-width="0"/>
+          </svg>
+        </div>
+      </div>
+      <div class="deck">
+        <div class="slot listen"><div class="glyph">🎧︎</div></div>
+        <div class="slot talk"><div class="glyph">💬︎</div></div>
+        <div class="slot ask"><div class="glyph">?</div></div>
+        <div class="slot setup"><div class="glyph">⚙</div></div>
+      </div>
+    </div></div>
+    <span class="muted" style="font-size:11px;max-width:240px">Body fill: <code>c_robot #5A6B82</code> (slate blue, tuned for dark). Chest panel: <code>c_robot_screen #9DFC7C</code> (= c_lime, swapped from peri to pop against slate). Antenna LED: <code>c_robot_led #F37767</code> (= c_coral). Personality: helpful, exact.</span>
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2>2 · Variant table</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Variant</th><th>Bbox</th><th>Body fill</th><th>Accent</th><th>Eye style</th><th>Tone</th></tr></thead>
+    <tbody>
+      <tr><td>Owl</td>    <td class="num">110 × 140</td><td class="mono"><span class="sw" style="background:#B5895D"></span>c_owl   #B5895D</td><td class="mono"><span class="sw" style="background:#FFC233"></span>c_owl_beak (beak, feet)</td><td>oversized, w/ lashes + catchlight</td><td>wise, watchful</td></tr>
+      <tr><td>Cat</td>    <td class="num">140 × 140</td><td class="mono"><span class="sw" style="background:#FFD06A"></span>c_cat   #FFD06A</td><td class="mono"><span class="sw" style="background:#F37767"></span>c_coral (inner ear, cheek)</td><td>two round, w/ pupils</td><td>curious, friendly</td></tr>
+      <tr><td>Bunny</td>  <td class="num">120 × 160</td><td class="mono"><span class="sw" style="background:#9FB89A"></span>c_bunny #9FB89A</td><td class="mono"><span class="sw" style="background:#7C947B"></span>c_bunny_inner (ears, muzzle)</td><td>opaque ink sunglasses, no eye sprites</td><td>laid-back, confident</td></tr>
+      <tr><td>Robot</td>  <td class="num">110 × 150</td><td class="mono"><span class="sw" style="background:#DDE3E8"></span>c_robot #DDE3E8</td><td class="mono"><span class="sw" style="background:#A9A6E5"></span>c_robot_screen (chest) · <span class="sw" style="background:#F37767"></span>c_robot_led (antenna)</td><td>two round, w/ pupils</td><td>helpful, exact</td></tr>
+      <tr><td>Blob (default)</td><td class="num">110 × 110</td><td class="mono"><span class="sw" style="background:#9DFC7C"></span>c_lime  #9DFC7C</td><td>—</td><td>two round, w/ catchlight</td><td>neutral, playful</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Each variant is one root SVG with a single <code>fill</code> hook on its body path (<code>var(--c-*)</code>). Recoloring = one CSS variable change. Eye groups carry the class <code>.eye-iris</code> so the shared 5.5 s blink animation drives all variants uniformly.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>3 · Shared style rules (apply to every variant)</h2>
+<div class="specs">
+  <ul>
+    <li><b>Outline:</b> 3 px <code>ink</code> stroke, <code>stroke-linejoin: round</code>, <code>stroke-linecap: round</code>. On dark theme <code>ink</code> resolves to <code>#F2E8DA</code> (warm off-white). Characters keep their ink outlines (illustrations, not UI); no drop-shadow. (In LVGL the outline is baked into the sprite — generate a separate atlas per theme.)</li>
+    <li><b>Breathing:</b> <code>scale 1.00 ↔ 1.04</code>, 4200 ms ease-in-out, infinite. Applied to the wrapper, not the SVG.</li>
+    <li><b>Blink:</b> eye groups carry <code>.eye-iris</code>; shared <code>scaleY 1 ↔ 0.1</code> keyframes (5500 ms) fire on each. <code>transform-box: fill-box</code> keeps the scale anchored to each eye's center.</li>
+    <li><b>Stage position:</b> wrapper is <code>position: absolute</code> inside <code>.home-stage</code>. Each variant chooses its own <code>top</code>/<code>left</code> within the 240 × 206 stage area to keep the visual center between status bar and deck.</li>
+    <li><b>Layer order:</b> always above stage bg (<code>z-index: 10</code>), always below Deck and StatusBar.</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2>4 · LVGL render mapping</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Approach</th><th>Cost</th><th>When to pick it</th></tr></thead>
+    <tbody>
+      <tr><td><b>Sprite atlas</b> (recommended)</td>
+          <td>~135 KB / variant @ RGB565 (32 frames × 110×110 + alpha) — load one variant at a time</td>
+          <td>Default. Cheapest CPU. Animation is just blits. Outline baked in.</td></tr>
+      <tr><td><b>SVG → static PNG + procedural breathe/blink</b></td>
+          <td>~6 KB body sprite + per-frame transform</td>
+          <td>If RAM is tight; lose the morph but keep breathe/blink via <code>lv_anim</code> on scale + eye alpha.</td></tr>
+      <tr><td><b>Vector primitives</b> (1 ellipse body + 2 ellipse eyes + ...)</td>
+          <td>~12 objects per variant; per-frame style recalc</td>
+          <td>Only for variants where sprite atlas memory is unavailable. Higher CPU.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Variant switch contract: <code>set_companion(Variant)</code> swaps the active sprite atlas. State (breathe phase, blink schedule) resets to t=0 on switch. Variant choice is persisted in user settings (<code>Setup → Companion</code>).</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>5 · Color tokens introduced</h2>
+<div class="specs">
+  <table class="spec">
+    <thead><tr><th>Token</th><th>Hex</th><th>RGB</th><th>RGB565</th><th>Usage</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">c_owl</td>       <td class="mono"><span class="sw" style="background:#B5895D"></span>#B5895D</td><td class="num">181,137,93</td> <td class="num">0xB44B</td><td>Owl body fill. Warm tan; reads as "brown" without going muddy.</td></tr>
+      <tr><td class="mono">c_owl_beak</td>  <td class="mono"><span class="sw" style="background:#FFC233"></span>#FFC233</td><td class="num">255,194,51</td> <td class="num">0xFE06</td><td>Owl beak + scalloped feet. Saturated yellow against the brown body.</td></tr>
+      <tr><td class="mono">c_robot</td>       <td class="mono"><span class="sw" style="background:#DDE3E8"></span>#DDE3E8</td><td class="num">221,227,232</td><td class="num">0xDF1D</td><td>Robot body + head + ear-pods. Cool light grey reads as "metal" without going cold.</td></tr>
+      <tr><td class="mono">c_robot_screen</td><td class="mono"><span class="sw" style="background:#A9A6E5"></span>#A9A6E5</td><td class="num">169,166,229</td><td class="num">0xAD3C</td><td>Chest panel / display surface. Reuses <code>c_peri</code> — no new RGB565 entry needed.</td></tr>
+      <tr><td class="mono">c_robot_led</td>   <td class="mono"><span class="sw" style="background:#F37767"></span>#F37767</td><td class="num">243,119,103</td><td class="num">0xF3AC</td><td>Antenna LED bulb. Reuses <code>c_coral</code>.</td></tr>
+      <tr><td class="mono">c_cat</td>    <td class="mono"><span class="sw" style="background:#FFD06A"></span>#FFD06A</td><td class="num">255,208,106</td><td class="num">0xFE8D</td><td>Cat body fill. Reuses existing <code>c_butter</code> — no new token needed.</td></tr>
+      <tr><td class="mono">c_bunny</td>       <td class="mono"><span class="sw" style="background:#9FB89A"></span>#9FB89A</td><td class="num">159,184,154</td><td class="num">0x9DD3</td><td>Bunny body fill. Sage green — masculine, earthy read; no other companion uses green.</td></tr>
+      <tr><td class="mono">c_bunny_inner</td> <td class="mono"><span class="sw" style="background:#7C947B"></span>#7C947B</td><td class="num">124,148,123</td><td class="num">0x7CAF</td><td>Bunny inner-ear, darker tone of body.</td></tr>
+      <tr><td class="mono">c_coral</td>  <td class="mono"><span class="sw" style="background:#F37767"></span>#F37767</td><td class="num">243,119,103</td><td class="num">0xF3AC</td><td>Inner ears, cheeks, bunny nose. Reuses existing <code>c_coral</code>.</td></tr>
+      <tr><td class="mono">#FFFFFF</td>  <td class="mono"><span class="sw" style="background:#FFFFFF"></span>#FFFFFF</td><td class="num">255,255,255</td><td class="num">0xFFFF</td><td>Shark belly + teeth, all eye-whites.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0">Four new colors ship with this feature: <code>c_owl</code>, <code>c_owl_beak</code>, <code>c_bunny</code>, <code>c_robot</code>. Cat reuses <code>c_butter</code>; Robot accents reuse <code>c_coral</code> + <code>c_peri</code>.</p>
+</div>
+
+<p style="margin-top:24px" class="muted">Spec rev. 2026-05-13 · Companions add-on. Drops into the Home screen spec as a swappable variant set behind the existing Blob component.</p>
+<p class="muted" style="font-size:12px">2026-07-15 · flat pass — UI chrome flattened (characters keep ink outlines, drop-shadows removed), neutral bezel. Matches Listen v2.1 / Talk v5.1.</p>
+
+</body>
+</html>

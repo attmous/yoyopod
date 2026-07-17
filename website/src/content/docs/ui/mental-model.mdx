@@ -1,0 +1,94 @@
+---
+title: "The Mental Model: A Tiny Theater"
+description: One picture and one metaphor that make the whole UI system stick — the runtime writes the script, screens build the set, and only what changed ever moves.
+---
+
+import MentalModel from '../../../assets/diagrams/mental-model.svg';
+
+If you keep only one sentence from this entire guide, keep this one:
+
+> **yoyopod's UI is a tiny theater: the runtime writes the script, the
+> director picks the scene, set builders build the set, stagehands move
+> only what changed, the painter repaints only the dirty panels — and the
+> audience has exactly one buzzer.**
+
+This isn't a decoration bolted onto the docs. The codebase literally uses
+theater vocabulary — `scene`, `stage`, `actors`, `roles`, `backdrop`,
+`fx`, `chrome`, `deck`, `cursor` are real module and type names in
+`device/ui/src/scene/`. Learn the metaphor and you've learned the naming
+scheme.
+
+<MentalModel class="diagram" />
+
+## The stations
+
+| In the theater | In the code | Where |
+| --- | --- | --- |
+| **The office** writes the script — the theater never invents the story | `RuntimeSnapshot` from `yoyopod-runtime`; the *only* way world state enters the UI | `application/snapshot/` |
+| **The director** decides which scene is on stage and where focus sits | `UiRuntime` + the navigator, consulting the route policy tables | `application/{state,runtime,navigator}.rs`, `router/routes.rs` |
+| **The set builders** read the script and build the set — fresh every time, no memory of the last show | each screen's `props_from` + `scene` pair; stateless and declarative | `components/screens/` |
+| **The stagehands** compare tonight's set with last night's and move *only what differs* | the engine reconciler diffing element trees into `Mutation`s | `engine/reconciler.rs` |
+| **The painter** repaints only the panels the stagehands touched | LVGL 9.5.0 in partial mode, 40-row buffer, dirty areas only | `renderer/` |
+| **The window** shows the result — only changed regions cross the glass | the ST7789 over SPI; `Region` writes, full frames only on transitions | `hardware/whisplay.rs` |
+| **The audience** has one buzzer and three ways to press it | the single button: tap / double-tap / hold → `OneButtonMachine` | `input/machine.rs` |
+| **The buzzer note** goes back to the office — the theater never fulfils requests itself | `UiIntent` ("play the next one, please") emitted to the runtime, which tells a worker; the *next script* reflects the result | `transport/outbound.rs` |
+
+And two supporting characters:
+
+- **The proscenium** — the frame around the stage that belongs to the
+  theater, not to any scene: title, status bar, footer. The code calls it
+  exactly that kind of thing: `chrome` (`components/screens/chrome.rs`),
+  layered on by the runtime so scenes never draw their own frame.
+- **The fire alarm** — an incoming call or an error interrupts whatever
+  show is running: the director pushes its screen uninvited
+  (`router/guards.rs::runtime_preemption`). When the alarm state clears
+  from a later script, the show resumes where it left off.
+
+## The three laws
+
+Every design decision in the system is one of these three laws applied
+somewhere. If code you're reading seems odd, check which law it serves.
+
+### 1. State flows down, intents flow up
+
+The UI is **told** (snapshots in) and it **asks** (intents out) — it never
+acts and never fetches. Selecting "play" doesn't play anything; it sends a
+note to the office. The music starts only when the next script says it
+did. This is why the UI can never lie for long, and why every screen is a
+pure function of the snapshot.
+
+### 2. Only what changed ever moves
+
+The same diff idea, applied three times at three scales:
+
+| Scale | Mechanism |
+| --- | --- |
+| Scene trees | the reconciler emits `Mutation`s only for differing nodes |
+| Pixels | LVGL re-rasterizes only invalidated (dirty) areas |
+| The wire to the glass | only dirty regions cross the SPI bus |
+
+Nothing dirty → nothing rendered → nothing transmitted. On a Zero 2W with
+no GPU and no DMA, this triple diff *is* the performance model.
+
+### 3. One clock, one thread
+
+One event loop owns every subsystem; LVGL time only advances when that
+loop calls `lv_tick_inc`. Animations, rendering, input, and tests all
+agree on "now." Nothing happens between ticks, nothing happens
+concurrently — which is why the whole theater is deterministic and can run
+headless in CI with a mock window.
+
+## The pocket version
+
+For the shower, the commute, the whiteboard:
+
+1. The office writes the script. *(snapshot in)*
+2. The set is rebuilt from the script every time. *(stateless screens)*
+3. Stagehands, painter, and window each move only what changed. *(the triple diff)*
+4. The audience's buzzer sends a note to the office. *(intent out)*
+5. The next script tells the truth. *(one-way loop closes)*
+
+When you're ready to attach real file names to each station, the
+[Source Map](/ui/advanced/source-map/) is the cast list, and
+[Runtime Data Flow](/ui/advanced/data-flow/) is the show's minute-by-minute
+schedule.

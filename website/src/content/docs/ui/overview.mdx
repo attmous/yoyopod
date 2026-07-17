@@ -1,0 +1,100 @@
+---
+title: "Overview: A Pixel's Journey"
+description: The end-to-end tour — from a screen component in Rust to RGB565 pixels on the ST7789 panel — and the five rules the whole system serves.
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+import Layers from '../../../assets/diagrams/layers.svg';
+
+yoyopod's entire user interface lives on one small pane of glass: a 240×280
+RGB565 panel driven over SPI, controlled with a single physical button. This
+page is the guided tour — every layer involved in presenting any shape or
+animation on the glass, at 30,000 feet. Each stop links to the deep page for
+that layer. (If you want one picture to hang all of this on first, read
+[The Mental Model](/ui/mental-model/).)
+
+## The system in five rules
+
+The design handoff package distills the whole UI into five rules. Everything
+else in this guide is machinery in service of them.
+
+<CardGrid>
+	<Card title="Three gestures, one button" icon="right-caret">
+		Press = advance/roll · double-press = open/activate · long-press = go
+		Home. The prototype has exactly one physical button; "hold to talk" is
+		that same button remapped per screen.
+	</Card>
+	<Card title="Flat chrome" icon="seti:image">
+		No UI borders, no drop shadows — fills and radius only. Ink (#1B1B1F) is
+		reserved for text, glyphs, and the single surviving stroke: the focus
+		ring.
+	</Card>
+	<Card title="The wheel" icon="list-format">
+		The only menu primitive: a focused tile center-stage with scaled, dimmed
+		peeks above and below. Press rolls one step; double-press opens.
+	</Card>
+	<Card title="The arc hero" icon="play">
+		The only player primitive: cover art or an avatar wrapped in a progress
+		ring, one play chip, bare side glyphs.
+	</Card>
+	<Card title="Voice carries the pre-readers" icon="megaphone">
+		Every focus change speaks the focused label. No flow may require reading
+		to complete.
+	</Card>
+</CardGrid>
+
+## The stack at 30,000 feet
+
+<Layers class="diagram" />
+
+Two layers are ours (screens/scene graph and the engine), one is stock
+open-source (LVGL 9.5.0, used strictly as a renderer), and two are
+hardware-facing (the userspace Whisplay driver and the panel itself). The
+UI runs as its own binary, `yoyopod-ui-host`, supervised by
+`yoyopod-runtime` over a line protocol — the
+[Advanced section](/ui/advanced/architecture/) dissects that process model.
+
+## The pixel tour
+
+What happens between "a screen wants to show something" and light leaving
+the glass, in ten steps:
+
+1. **A screen component builds a scene graph** — a declarative tree of
+   containers, labels, images, and decks in `device/ui/src/components/`.
+   → [Screens & Navigation](/ui/screens/)
+2. **The engine diffs the new scene against the old one** and emits only
+   the mutations that changed, under a hard budget of 60 live widgets.
+   → [The Custom Framework](/ui/framework/)
+3. **Animations advance on the same tick** — a custom timeline engine
+   (keyframes, easing, presets), not LVGL's animation system.
+   → [Motion & Theming](/ui/motion-and-theming/)
+4. **The facade applies mutations to LVGL objects** through a hand-written
+   C FFI — there is no Rust binding crate. → [The LVGL Layer](/ui/lvgl/)
+5. **LVGL renders the dirty areas** in partial mode into a single 240×40
+   draw buffer. → [The Render Loop](/ui/rendering/)
+6. **The flush callback byte-swaps every pixel** from little-endian RGB565
+   (what LVGL emits) to big-endian (what the panel wants).
+   → [The Render Loop](/ui/rendering/)
+7. **Pixels land in a shadow framebuffer** — an in-memory `Vec<u16>`, not
+   `/dev/fb0`; there is no kernel display driver at all.
+   → [The Render Loop](/ui/rendering/)
+8. **The worker decides what to push**: the full frame, just the status
+   bar, or just the dirty region — and only if something is dirty.
+   → [The Render Loop](/ui/rendering/)
+9. **The driver streams bytes over SPI** at 100 MHz in 4096-byte chunks
+   after setting the panel's address window.
+   → [Talking to the Panel](/ui/driver/)
+10. **The ST7789 lights the glass**: a 240×280 window into a 240×320
+    controller, offset by 20 rows. → [The Glass and the Board](/ui/hardware/)
+
+## Layer → source → page
+
+| Layer | Source | Guide page |
+| --- | --- | --- |
+| Screens, widgets, scene graph | `device/ui/src/{components,scene}/` | [Screens](/ui/screens/) · [Framework](/ui/framework/) |
+| Engine, animation, routing | `device/ui/src/{engine,animation,router,application}/` | [Framework](/ui/framework/) · [Motion](/ui/motion-and-theming/) |
+| LVGL 9.5.0 + FFI | `device/ui/src/renderer/` · `device/ui/native/lvgl/` | [LVGL](/ui/lvgl/) · [Rendering](/ui/rendering/) |
+| Input | `device/ui/src/input/` | [Input](/ui/input/) |
+| Panel driver | `device/ui/src/hardware/` | [Driver](/ui/driver/) |
+| The glass | PiSugar Whisplay HAT (ST7789) | [Hardware](/ui/hardware/) |
+| Process model & interconnections | `device/ui/src/{worker.rs,transport/}` | [Advanced](/ui/advanced/architecture/) |

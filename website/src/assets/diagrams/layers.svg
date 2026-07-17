@@ -1,0 +1,33 @@
+<svg viewBox="0 0 760 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The five layers of the yoyopod UI stack, from screens down to the glass">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #2b2122); stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; rx: 10; }
+    .box-accent { fill: var(--sl-color-accent-low, #4a2420); stroke: var(--sl-color-accent, #f37767); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f5ece1); font-size: 16px; font-weight: 600; }
+    .s { fill: var(--sl-color-gray-3, #a5937f); font-size: 13px; }
+    .m { fill: var(--sl-color-gray-2, #d8c8b3); font-size: 12.5px; font-family: ui-monospace, monospace; }
+  </style>
+  <rect class="box" x="40" y="20" width="500" height="60" rx="10"/>
+  <text class="t" x="60" y="45">Screens &amp; scene graph</text>
+  <text class="s" x="60" y="66">17 screens, decks, widgets — what the child sees</text>
+  <text class="m" x="560" y="54">components/  scene/</text>
+
+  <rect class="box" x="40" y="92" width="500" height="60" rx="10"/>
+  <text class="t" x="60" y="117">Engine: reconciler, focus, timelines</text>
+  <text class="s" x="60" y="138">diffs scenes into mutations; runs the animation clock</text>
+  <text class="m" x="560" y="126">engine/  animation/</text>
+
+  <rect class="box box-accent" x="40" y="164" width="500" height="60" rx="10"/>
+  <text class="t" x="60" y="189">LVGL 9.5.0 — the renderer</text>
+  <text class="s" x="60" y="210">stock upstream C, hand-written FFI, 40-row partial buffer</text>
+  <text class="m" x="560" y="198">renderer/  native/lvgl/</text>
+
+  <rect class="box" x="40" y="236" width="500" height="60" rx="10"/>
+  <text class="t" x="60" y="261">Whisplay driver</text>
+  <text class="s" x="60" y="282">userspace SPI + GPIO via rppal — no kernel framebuffer</text>
+  <text class="m" x="560" y="270">hardware/whisplay*.rs</text>
+
+  <rect class="box" x="40" y="308" width="500" height="60" rx="10"/>
+  <text class="t" x="60" y="333">The glass: ST7789 panel</text>
+  <text class="s" x="60" y="354">240×280 RGB565, SPI0 @ 100 MHz, on the PiSugar Whisplay HAT</text>
+  <text class="m" x="560" y="342">Pi Zero 2W GPIO</text>
+</svg>

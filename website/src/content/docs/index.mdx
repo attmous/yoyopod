@@ -1,0 +1,53 @@
+---
+title: yoyopod
+description: A screen-light audio companion for kids — documentation for the runtime, hardware, and UI system.
+template: splash
+hero:
+  tagline: A screen-light audio companion for kids. One button, one small pane of glass, and a runtime built in Rust from the SPI bus up.
+  actions:
+    - text: UI System Guide
+      link: /ui/
+      icon: right-arrow
+    - text: Repo Map & Source of Truth
+      link: /start/repo-map/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Explore the documentation
+
+<CardGrid stagger>
+	<Card title="UI System Guide" icon="palette">
+		The flagship section: how any shape or animation reaches the glass —
+		hardware, drivers, LVGL 9.5.0, the custom scene-graph framework, and the
+		playbook for extending it. [Open the guide](/ui/).
+	</Card>
+	<Card title="Architecture" icon="puzzle">
+		The runtime supervisor, per-domain worker hosts, and how events flow into
+		app state. [System architecture](/architecture/system-architecture/).
+	</Card>
+	<Card title="Hardware" icon="seti:config">
+		Raspberry Pi Zero 2W with the PiSugar Whisplay HAT: audio, power, and the
+		panel itself. [Audio stack](/hardware/audio-stack/) ·
+		[Power module](/hardware/power-module/).
+	</Card>
+	<Card title="Features" icon="rocket">
+		Cloud provisioning, voice workers, local-first music, and remote playback.
+		[Browse features](/features/cloud-provisioning/).
+	</Card>
+	<Card title="Operations" icon="setting">
+		From a fresh checkout to a credible PR, and from your dev machine to a
+		running device. [Development guide](/operations/development-guide/).
+	</Card>
+	<Card title="Product" icon="heart">
+		What yoyopod is, who it is for, and where it is heading.
+		[Product definition](/product/definition/).
+	</Card>
+</CardGrid>
+
+:::note
+Sections marked **Stub** summarize and link to the canonical Markdown documents
+in the repository — the repo docs remain the source of truth while this site
+grows around them.
+:::

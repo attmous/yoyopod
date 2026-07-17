@@ -1,0 +1,83 @@
+---
+title: One Button, Three Gestures
+description: The one-button input state machine — tap, double-tap, long-hold, and per-screen push-to-talk passthrough.
+---
+
+import InputMachine from '../../../assets/diagrams/input-machine.svg';
+
+The device has **exactly one physical control**: the Whisplay HAT's side
+button on GPIO 17. There is no rotary encoder and no touch — the "wheel" you
+see in the UI is a software menu primitive. Every interaction on the device
+is spelled with three gestures on that one button.
+
+## The gesture grammar
+
+<InputMachine class="diagram" />
+
+| Gesture | Action | Meaning |
+| --- | --- | --- |
+| Press | `Advance` | roll the wheel one step / move focus |
+| Double-press | `Select` | open, activate, confirm |
+| Long-hold | `Back` | leave (the contract says *pop to Home*; today it pops one screen — item 4) |
+| Hold (capture screens only) | `PttPress` / `PttRelease` | push-to-talk: hold to speak, release to stop |
+
+The grammar is implemented by `OneButtonMachine` in
+[`device/ui/src/input/machine.rs`](https://github.com/attmous/yoyocore/blob/main/device/ui/src/input/machine.rs):
+debounce, double-tap disambiguation, and hold detection are all hand-rolled
+in one state machine. LVGL's input-device layer is not involved — raw GPIO
+level goes in, semantic `InputAction`s come out.
+
+## PTT passthrough: same button, different meaning
+
+Capture screens (Ask, voice recording) call
+`observe_ptt_passthrough` instead of `observe`, which remaps *hold* from
+"go back" to "talk while holding." Whether a screen gets the passthrough is
+a **route policy**, not screen code — `UiRuntime::wants_ptt_passthrough()`
+consults the route table per active screen.
+
+This is rule 1 of the design system in action: a dedicated PTT side button
+is a future-hardware option, so the grammar is built to carry PTT on the
+one button we have.
+
+## From GPIO to app command
+
+```
+GPIO 17 level
+  → worker.rs::handle_button_input          (poll)
+  → input/mod.rs::poll_button_actions       (feed the machine)
+  → OneButtonMachine                        (gesture recognition)
+  → InputAction                             (Advance / Select / Back / Ptt*)
+  → application/input_router.rs::route      (per-screen mapping)
+  → AppCommand                              (AdvanceFocus / SelectFocused / GoBack / Ptt*)
+  → navigator / focus / intents
+```
+
+Each `InputAction` also carries a method string ("single_tap",
+"double_tap", "long_hold", …) and durations for telemetry. The runtime can
+inject `UiCommand::InputAction` over the transport, which is how on-device
+validation drives navigation without touching the button.
+
+## Timing: shipped vs. contract
+
+Timing constants live in `input/config.rs` and are configurable via
+[`config/device/hardware.yaml`](https://github.com/attmous/yoyocore/blob/main/config/device/hardware.yaml):
+
+| Parameter | Shipped | Design contract | Status |
+| --- | --- | --- | --- |
+| Debounce | 50 ms | 50 ms | ✔ agree |
+| Double-tap window | 300 ms | **350 ms** (tuned for small hands) | item 14 |
+| Long-hold threshold | 800 ms | **400 ms** | item 14 |
+| Dead zone | none | 180–400 ms | item 14 |
+
+The divergence is tracked, not accidental — the contract's numbers come from
+the input-model spec and are meant to be validated with kids on real
+hardware before flipping the config.
+
+## The normative reference
+
+The single source of truth for the grammar, timing, and the Home/Ambient
+state machine is `mockup_input_model.html`:
+
+<iframe class="mockup" src="/mockups/mockup_input_model.html" loading="lazy" height="720" title="Input model specification"></iframe>
+
+<a href="/mockups/mockup_input_model.html" target="_blank" rel="noopener">Open the full spec ↗</a>

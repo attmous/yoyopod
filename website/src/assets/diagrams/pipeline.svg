@@ -1,0 +1,70 @@
+<svg viewBox="0 0 760 700" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The render pipeline from scene graph to the ST7789 panel">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #2b2122); stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; }
+    .box-accent { fill: var(--sl-color-accent-low, #4a2420); stroke: var(--sl-color-accent, #f37767); }
+    .t { fill: var(--sl-color-white, #f5ece1); font-size: 15px; font-weight: 600; }
+    .s { fill: var(--sl-color-gray-3, #a5937f); font-size: 12.5px; }
+    .m { fill: var(--sl-color-gray-2, #d8c8b3); font-size: 12px; font-family: ui-monospace, monospace; }
+    .arrow { stroke: var(--sl-color-gray-3, #a5937f); stroke-width: 2; fill: none; marker-end: url(#head); }
+  </style>
+  <defs>
+    <marker id="head" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a5937f)"/>
+    </marker>
+  </defs>
+
+  <rect class="box" x="40" y="16" width="440" height="52" rx="10"/>
+  <text class="t" x="60" y="38">1 · Screen builds a scene graph</text>
+  <text class="s" x="60" y="56">declarative nodes: containers, labels, images, decks</text>
+  <text class="m" x="500" y="46">components/screens/*</text>
+  <path class="arrow" d="M260,68 L260,86"/>
+
+  <rect class="box" x="40" y="88" width="440" height="52" rx="10"/>
+  <text class="t" x="60" y="110">2 · Engine diffs → mutations</text>
+  <text class="s" x="60" y="128">only what changed; hard budget of 60 live widgets</text>
+  <text class="m" x="500" y="118">engine/</text>
+  <path class="arrow" d="M260,140 L260,158"/>
+
+  <rect class="box" x="40" y="160" width="440" height="52" rx="10"/>
+  <text class="t" x="60" y="182">3 · Facade applies mutations to LVGL objects</text>
+  <text class="s" x="60" y="200">create / restyle / move / retire lv_obj instances</text>
+  <text class="m" x="500" y="190">renderer/lvgl_renderer.rs</text>
+  <path class="arrow" d="M260,212 L260,230"/>
+
+  <rect class="box box-accent" x="40" y="232" width="440" height="52" rx="10"/>
+  <text class="t" x="60" y="254">4 · LVGL renders dirty areas</text>
+  <text class="s" x="60" y="272">partial mode, one 240 × 40 draw buffer, single-buffered</text>
+  <text class="m" x="500" y="262">renderer/lvgl/lifecycle.rs</text>
+  <path class="arrow" d="M260,284 L260,302"/>
+
+  <rect class="box box-accent" x="40" y="304" width="440" height="52" rx="10"/>
+  <text class="t" x="60" y="326">5 · Flush callback: RGB565 byte-swap</text>
+  <text class="s" x="60" y="344">LVGL emits little-endian; the ST7789 wants big-endian</text>
+  <text class="m" x="500" y="334">renderer/lvgl/flush.rs</text>
+  <path class="arrow" d="M260,356 L260,374"/>
+
+  <rect class="box" x="40" y="376" width="440" height="52" rx="10"/>
+  <text class="t" x="60" y="398">6 · Shadow framebuffer</text>
+  <text class="s" x="60" y="416">an in-memory Vec&lt;u16&gt; — not /dev/fb0, not DRM</text>
+  <text class="m" x="500" y="406">renderer/framebuffer.rs</text>
+  <path class="arrow" d="M260,428 L260,446"/>
+
+  <rect class="box" x="40" y="448" width="440" height="52" rx="10"/>
+  <text class="t" x="60" y="470">7 · Worker picks the write mode</text>
+  <text class="s" x="60" y="488">FullFrame · HudRegion · Region(dirty) — only if dirty</text>
+  <text class="m" x="500" y="478">worker.rs · hardware/mod.rs</text>
+  <path class="arrow" d="M260,500 L260,518"/>
+
+  <rect class="box" x="40" y="520" width="440" height="52" rx="10"/>
+  <text class="t" x="60" y="542">8 · SPI stream to the panel</text>
+  <text class="s" x="60" y="560">window address, then pixels in 4096-byte chunks @ 100 MHz</text>
+  <text class="m" x="500" y="550">hardware/whisplay.rs</text>
+  <path class="arrow" d="M260,572 L260,590"/>
+
+  <rect class="box" x="40" y="592" width="440" height="52" rx="10"/>
+  <text class="t" x="60" y="614">9 · ST7789 glass</text>
+  <text class="s" x="60" y="632">240×280 visible window, 20-row offset, MADCTL rotation</text>
+  <text class="m" x="500" y="622">hardware/whisplay_panel.rs</text>
+
+  <text class="s" x="40" y="682">Highlighted stages are where LVGL-specific behavior (and its workarounds) live.</text>
+</svg>
