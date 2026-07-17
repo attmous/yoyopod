@@ -8,6 +8,7 @@ pub mod list_row;
 pub mod progress_sweep;
 pub mod status_bar;
 pub mod voice_meter;
+pub mod wheel_item;
 
 pub use call_panel::{call_panel, CallPanelProps};
 pub use card::card;
@@ -19,3 +20,4 @@ pub use list_row::list_row;
 pub use progress_sweep::{progress_sweep, ProgressSweepProps};
 pub use status_bar::{status_bar, StatusBarProps};
 pub use voice_meter::{voice_meter, VoiceMeterProps};
+pub use wheel_item::wheel_item;

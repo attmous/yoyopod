@@ -51,6 +51,20 @@ impl LvImageDsc {
         }
     }
 
+    const fn a8_24(data: &'static [u8; 576]) -> Self {
+        Self {
+            header: LvImageHeader {
+                magic_cf_flags: LV_IMAGE_HEADER_MAGIC | (LV_COLOR_FORMAT_A8 << 8),
+                width_height: 24 | (24 << 16),
+                stride_reserved: 24,
+            },
+            data_size: 576,
+            data: data.as_ptr(),
+            reserved: std::ptr::null(),
+            reserved_2: std::ptr::null(),
+        }
+    }
+
     const fn a8_30(data: &'static [u8; 900]) -> Self {
         Self {
             header: LvImageHeader {
@@ -81,6 +95,149 @@ const fn downsample_56_to_30(source: &[u8; 3136]) -> [u8; 900] {
     }
     target
 }
+
+const fn abs_i32(value: i32) -> i32 {
+    if value < 0 {
+        -value
+    } else {
+        value
+    }
+}
+
+const fn generated_wheel_icon(kind: u8) -> [u8; 3136] {
+    let mut map = [0u8; 3136];
+    let mut y = 0usize;
+    while y < 56 {
+        let mut x = 0usize;
+        while x < 56 {
+            let xi = x as i32;
+            let yi = y as i32;
+            let on = match kind {
+                // Playlists: paired music notes joined by a beam.
+                0 => {
+                    ((xi >= 15 && xi <= 19) || (xi >= 37 && xi <= 41)) && yi >= 15 && yi <= 38
+                        || (xi >= 15 && xi <= 41 && yi >= 14 && yi <= 18)
+                        || ((xi - 14) * (xi - 14) + (yi - 40) * (yi - 40) <= 42)
+                        || ((xi - 36) * (xi - 36) + (yi - 40) * (yi - 40) <= 42)
+                }
+                // Recents: open circular arrow with clock hands.
+                1 => {
+                    let d2 = (xi - 28) * (xi - 28) + (yi - 28) * (yi - 28);
+                    (d2 >= 190 && d2 <= 330 && !(xi < 19 && yi < 20))
+                        || (xi >= 11 && xi <= 23 && yi >= 12 && yi <= 17)
+                        || (xi >= 11 && xi <= 16 && yi >= 12 && yi <= 24)
+                        || (xi >= 26 && xi <= 30 && yi >= 20 && yi <= 30)
+                        || (yi >= 27 && yi <= 31 && xi >= 28 && xi <= 38)
+                }
+                // Shuffle: two crossing paths and right-facing arrowheads.
+                2 => {
+                    let rising = 14 + ((xi - 10) * 28 / 34);
+                    let falling = 42 - ((xi - 10) * 28 / 34);
+                    (xi >= 10
+                        && xi <= 44
+                        && (abs_i32(yi - rising) <= 2 || abs_i32(yi - falling) <= 2))
+                        || (xi >= 39 && xi <= 47 && abs_i32(yi - (xi - 5)) <= 2)
+                        || (xi >= 39 && xi <= 47 && abs_i32(yi - (49 - xi)) <= 2)
+                }
+                // Microphone: capsule, yoke, and stand.
+                3 => {
+                    (((xi >= 21 && xi <= 24) || (xi >= 32 && xi <= 35)) && yi >= 15 && yi <= 34)
+                        || ((yi >= 11 && yi <= 15) || (yi >= 34 && yi <= 38))
+                            && xi >= 24
+                            && xi <= 32
+                        || ((xi >= 16 && xi <= 20) || (xi >= 36 && xi <= 40))
+                            && yi >= 26
+                            && yi <= 37
+                        || (yi >= 37 && yi <= 41 && xi >= 20 && xi <= 36)
+                        || (xi >= 26 && xi <= 30 && yi >= 39 && yi <= 47)
+                        || (yi >= 45 && yi <= 49 && xi >= 20 && xi <= 36)
+                }
+                // Plus.
+                _ => {
+                    (xi >= 24 && xi <= 32 && yi >= 11 && yi <= 45)
+                        || (yi >= 24 && yi <= 32 && xi >= 11 && xi <= 45)
+                }
+            };
+            if on {
+                map[y * 56 + x] = 0xFF;
+            }
+            x += 1;
+        }
+        y += 1;
+    }
+    map
+}
+
+static PLAYLISTS_MAP: [u8; 3136] = generated_wheel_icon(0);
+static RECENTS_MAP: [u8; 3136] = generated_wheel_icon(1);
+static SHUFFLE_MAP: [u8; 3136] = generated_wheel_icon(2);
+static MICROPHONE_MAP: [u8; 3136] = generated_wheel_icon(3);
+static PLUS_MAP: [u8; 3136] = generated_wheel_icon(4);
+static PLAYLISTS: LvImageDsc = LvImageDsc::a8_56(&PLAYLISTS_MAP);
+static RECENTS: LvImageDsc = LvImageDsc::a8_56(&RECENTS_MAP);
+static SHUFFLE: LvImageDsc = LvImageDsc::a8_56(&SHUFFLE_MAP);
+static MICROPHONE: LvImageDsc = LvImageDsc::a8_56(&MICROPHONE_MAP);
+static PLUS: LvImageDsc = LvImageDsc::a8_56(&PLUS_MAP);
+
+const fn generated_control_icon(kind: u8) -> [u8; 576] {
+    let mut map = [0u8; 576];
+    let mut y = 0usize;
+    while y < 24 {
+        let mut x = 0usize;
+        while x < 24 {
+            let xi = x as i32;
+            let yi = y as i32;
+            let on = match kind {
+                // Play: right-facing triangle.
+                0 => xi >= 7 && xi <= 18 && abs_i32(yi - 12) <= (18 - xi) * 7 / 11,
+                // Pause: paired vertical bars.
+                1 => ((xi >= 6 && xi <= 9) || (xi >= 14 && xi <= 17)) && yi >= 5 && yi <= 19,
+                // Previous: leading bar and left-facing triangle.
+                2 => {
+                    (xi >= 5 && xi <= 7 && yi >= 5 && yi <= 19)
+                        || (xi >= 8 && xi <= 19 && abs_i32(yi - 12) <= (xi - 8) * 7 / 11)
+                }
+                // Next: right-facing triangle and trailing bar.
+                3 => {
+                    (xi >= 17 && xi <= 19 && yi >= 5 && yi <= 19)
+                        || (xi >= 5 && xi <= 16 && abs_i32(yi - 12) <= (16 - xi) * 7 / 11)
+                }
+                // Close: diagonal cross.
+                4 => {
+                    xi >= 5
+                        && xi <= 18
+                        && yi >= 5
+                        && yi <= 18
+                        && (abs_i32(xi - yi) <= 2 || abs_i32((23 - xi) - yi) <= 2)
+                }
+                // Check: rising two-stroke tick.
+                _ => {
+                    (xi >= 4 && xi <= 10 && abs_i32(yi - (xi + 5)) <= 2)
+                        || (xi >= 9 && xi <= 20 && abs_i32(yi - (28 - xi)) <= 2)
+                }
+            };
+            if on {
+                map[y * 24 + x] = 0xFF;
+            }
+            x += 1;
+        }
+        y += 1;
+    }
+    map
+}
+
+static PLAY_SM_MAP: [u8; 576] = generated_control_icon(0);
+static PAUSE_SM_MAP: [u8; 576] = generated_control_icon(1);
+static PREV_SM_MAP: [u8; 576] = generated_control_icon(2);
+static NEXT_SM_MAP: [u8; 576] = generated_control_icon(3);
+static CLOSE_SM_MAP: [u8; 576] = generated_control_icon(4);
+static CHECK_SM_MAP: [u8; 576] = generated_control_icon(5);
+static PLAY_SM: LvImageDsc = LvImageDsc::a8_24(&PLAY_SM_MAP);
+static PAUSE_SM: LvImageDsc = LvImageDsc::a8_24(&PAUSE_SM_MAP);
+static PREV_SM: LvImageDsc = LvImageDsc::a8_24(&PREV_SM_MAP);
+static NEXT_SM: LvImageDsc = LvImageDsc::a8_24(&NEXT_SM_MAP);
+static CLOSE_SM: LvImageDsc = LvImageDsc::a8_24(&CLOSE_SM_MAP);
+static CHECK_SM: LvImageDsc = LvImageDsc::a8_24(&CHECK_SM_MAP);
 
 const fn cellular_signal_map(level: u8) -> [u8; 196] {
     let heights = [3usize, 5, 7, 9];
@@ -936,17 +1093,29 @@ static DECK_TALK: LvImageDsc = LvImageDsc::a8_30(&DECK_TALK_MAP);
 static DECK_ASK: LvImageDsc = LvImageDsc::a8_30(&DECK_ASK_MAP);
 static DECK_SETUP: LvImageDsc = LvImageDsc::a8_30(&DECK_SETUP_MAP);
 
-pub(crate) fn descriptor_for_key(icon_key: &str) -> &'static LvImageDsc {
+pub(crate) fn descriptor_for_key(icon_key: &str) -> Option<&'static LvImageDsc> {
     match icon_key {
-        "deck_listen" => &DECK_LISTEN,
-        "deck_talk" => &DECK_TALK,
-        "deck_ask" => &DECK_ASK,
-        "deck_setup" => &DECK_SETUP,
-        "listen" | "music_note" | "play" | "track" => &LISTEN,
-        "talk" | "call" | "call_active" | "call_incoming" | "call_outgoing" => &TALK,
-        "ask" | "microphone" | "mic" | "voice_note" => &ASK,
-        "setup" | "power" | "battery" => &SETUP,
-        _ => &SETUP,
+        "deck_listen" => Some(&DECK_LISTEN),
+        "deck_talk" => Some(&DECK_TALK),
+        "deck_ask" => Some(&DECK_ASK),
+        "deck_setup" => Some(&DECK_SETUP),
+        "icon_playlists" | "playlist" | "playlists" => Some(&PLAYLISTS),
+        "icon_recents" | "recent" | "recents" | "clock" | "history" | "retry" => Some(&RECENTS),
+        "icon_shuffle" | "shuffle" | "shuffle_all" => Some(&SHUFFLE),
+        "icon_microphone" | "microphone" | "mic" | "voice_note" | "mic_off" => Some(&MICROPHONE),
+        "icon_plus" | "plus" | "add" => Some(&PLUS),
+        "play_sm" => Some(&PLAY_SM),
+        "pause_sm" => Some(&PAUSE_SM),
+        "prev_sm" => Some(&PREV_SM),
+        "next_sm" => Some(&NEXT_SM),
+        "close_sm" | "close" => Some(&CLOSE_SM),
+        "check" => Some(&CHECK_SM),
+        "listen" | "music_note" | "play" | "track" => Some(&LISTEN),
+        "talk" | "call" | "call_active" | "call_incoming" | "call_outgoing" => Some(&TALK),
+        "ask" => Some(&ASK),
+        "setup" | "power" | "battery" | "care" | "settings" => Some(&SETUP),
+        "people" | "person" | "contact" | "contacts" => Some(&TALK),
+        _ => None,
     }
 }
 
@@ -966,6 +1135,38 @@ pub(crate) fn source_for_key(icon_key: &str) -> *const c_void {
         "status_battery_2" => SYMBOL_BATTERY_2.as_ptr().cast(),
         "status_battery_1" => SYMBOL_BATTERY_1.as_ptr().cast(),
         "status_battery_empty" => SYMBOL_BATTERY_EMPTY.as_ptr().cast(),
-        _ => descriptor_for_key(icon_key) as *const LvImageDsc as *const c_void,
+        _ => {
+            let descriptor = descriptor_for_key(icon_key);
+            debug_assert!(descriptor.is_some(), "unknown LVGL icon key: {icon_key}");
+            descriptor.unwrap_or(&SETUP) as *const LvImageDsc as *const c_void
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn listen_wheel_icons_have_explicit_descriptors() {
+        for key in [
+            "icon_playlists",
+            "icon_recents",
+            "icon_shuffle",
+            "icon_microphone",
+            "icon_plus",
+            "play_sm",
+            "pause_sm",
+            "prev_sm",
+            "next_sm",
+            "close_sm",
+        ] {
+            assert!(descriptor_for_key(key).is_some(), "missing {key}");
+        }
+    }
+
+    #[test]
+    fn unknown_icon_keys_do_not_alias_setup_in_the_registry() {
+        assert!(descriptor_for_key("definitely_unknown").is_none());
     }
 }

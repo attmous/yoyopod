@@ -1,13 +1,15 @@
 use yoyopod_protocol::ui::{ListItemSnapshot, RuntimeSnapshot, UiScreen};
 
 use crate::scene::{
-    Cursor, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, ItemRender, RegionId, RowModel,
-    Scene, SceneDefaults, SceneId,
+    Backdrop, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, ItemRender, RegionId, Scene,
+    SceneDefaults, SceneId, WheelItemModel, WheelItemVariant,
 };
+
+const LISTEN_STAGE_LIME: u32 = 0xE6FDE0;
 
 pub struct ListenProps {
     pub defaults: SceneDefaults,
-    pub rows: Vec<RowModel>,
+    pub items: Vec<WheelItemModel>,
     pub focus: usize,
 }
 
@@ -18,14 +20,14 @@ pub fn props_from(
 ) -> ListenProps {
     ListenProps {
         defaults,
-        rows: items(snapshot)
+        items: items(snapshot)
             .iter()
-            .map(|item| RowModel {
-                id: item.id.clone(),
+            .map(|item| WheelItemModel {
                 title: item.title.clone(),
                 subtitle: item.subtitle.clone(),
-                icon_key: item.icon_key.clone(),
-                selected: false,
+                variant: WheelItemVariant::Icon {
+                    icon_key: item.icon_key.clone(),
+                },
             })
             .collect(),
         focus,
@@ -34,43 +36,63 @@ pub fn props_from(
 
 pub fn items(_snapshot: &RuntimeSnapshot) -> Vec<ListItemSnapshot> {
     vec![
-        ListItemSnapshot::new("playlists", "Playlists", "Saved mixes", "playlist"),
-        ListItemSnapshot::new("recent_tracks", "Recent", "Recently played", "recent"),
-        ListItemSnapshot::new("shuffle", "Shuffle All", "Start music", "shuffle"),
+        ListItemSnapshot::new("playlists", "Playlists", "", "icon_playlists"),
+        ListItemSnapshot::new("recent_tracks", "Recents", "", "icon_recents"),
+        ListItemSnapshot::new("shuffle", "Shuffle all", "", "icon_shuffle"),
     ]
 }
 
 pub fn scene(props: &ListenProps) -> Scene {
     let deck = Deck {
-        kind: DeckKind::List,
-        region: RegionId::ListBody,
+        kind: DeckKind::Wheel,
+        region: RegionId::Auto,
         items: props
-            .rows
+            .items
             .iter()
-            .map(|row| DeckItem {
-                key: crate::engine::Key::String(row.id.clone()),
-                render: ItemRender::Row(row.clone()),
+            .enumerate()
+            .map(|(index, item)| DeckItem {
+                key: crate::engine::Key::Indexed(index),
+                render: ItemRender::Wheel(item.clone()),
             })
             .collect(),
         focus_index: props.focus,
         focus_policy: FocusPolicy::Wrap,
-        item_anim: DeckItemAnim::StaggerEnter {
-            delay_per_index_ms: 40,
+        item_anim: DeckItemAnim::ScaleOnFocus {
+            from_permille: 700,
+            to_permille: 1000,
         },
         swap_anim: None,
-        recycle_window: Some(4),
+        recycle_window: Some(3),
     };
-    let cursor_index = deck.focused_visible_index();
     Scene {
         id: SceneId::new(UiScreen::Listen),
-        backdrop: props.defaults.backdrop(0x3ddd53),
+        backdrop: Backdrop::Solid(LISTEN_STAGE_LIME),
         stage: props.defaults.stage,
         decks: vec![deck],
-        cursor: Some(Cursor::RowGlow {
-            index: cursor_index,
-        }),
-        fx: props.defaults.fx_layer(0x3ddd53),
+        cursor: None,
+        fx: Default::default(),
         modal: None,
-        timelines: props.defaults.fx_timelines(),
+        timelines: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scene::defaults_for;
+
+    #[test]
+    fn listen_root_is_a_three_slot_wrapping_wheel() {
+        let snapshot = RuntimeSnapshot::default();
+        let props = props_from(&snapshot, 0, defaults_for(UiScreen::Listen));
+        let scene = scene(&props);
+        let deck = &scene.decks[0];
+
+        assert_eq!(scene.backdrop, Backdrop::Solid(LISTEN_STAGE_LIME));
+        assert_eq!(deck.kind, DeckKind::Wheel);
+        assert_eq!(deck.focus_policy, FocusPolicy::Wrap);
+        assert_eq!(deck.recycle_window, Some(3));
+        assert_eq!(deck.focused_visible_index(), 1);
+        assert!(scene.cursor.is_none());
     }
 }

@@ -84,6 +84,11 @@ impl Element {
         self
     }
 
+    pub fn opacity(mut self, opacity: u8) -> Self {
+        self.props.opacity = Some(opacity);
+        self
+    }
+
     pub fn offset_y(mut self, offset: i32) -> Self {
         self.props.offset_y = Some(offset);
         self

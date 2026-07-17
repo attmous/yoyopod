@@ -106,18 +106,22 @@ impl NativeLvglFacade {
         y_offset: i32,
         scale_permille: i32,
     ) {
-        let scale = scale_permille.max(1);
-        let width = ((layout.width * scale) / 1000).max(1);
-        let height = ((layout.height * scale) / 1000).max(1);
         Self::apply_layout_raw(
             obj,
             Layout {
-                x: layout.x + x_offset - ((width - layout.width) / 2),
-                y: layout.y + y_offset - ((height - layout.height) / 2),
-                width,
-                height,
+                x: layout.x + x_offset,
+                y: layout.y + y_offset,
+                width: layout.width,
+                height: layout.height,
             },
         );
+        let lv_scale = ((scale_permille.max(1) * 256) + 500) / 1000;
+        unsafe {
+            ffi::lv_obj_set_style_transform_pivot_x(obj.as_ptr(), layout.width / 2, 0);
+            ffi::lv_obj_set_style_transform_pivot_y(obj.as_ptr(), layout.height / 2, 0);
+            ffi::lv_obj_set_style_transform_scale_x(obj.as_ptr(), lv_scale, 0);
+            ffi::lv_obj_set_style_transform_scale_y(obj.as_ptr(), lv_scale, 0);
+        }
     }
 
     fn layout_for_role_asset(&self, role: WidgetRole, occurrence: usize) -> Option<Layout> {
