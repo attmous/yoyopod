@@ -11,7 +11,6 @@ pub struct ScreenChrome {
     pub title: String,
     pub status: HudStatus,
     pub deck: DeckBarProps,
-    pub show_status_safe_area_guide: bool,
 }
 
 pub fn chrome_for_screen(
@@ -29,7 +28,6 @@ pub fn chrome_for_screen(
             focused_index: deck_focus_for_screen(screen, home_focus),
             visible: deck_visible,
         },
-        show_status_safe_area_guide: false,
     }
 }
 
@@ -39,7 +37,6 @@ pub fn hud_scene(chrome: ScreenChrome) -> HudScene {
             .key(Key::Static("hud"))
             .child(status_bar(&StatusBarProps {
                 status: chrome.status,
-                show_safe_area_guide: chrome.show_status_safe_area_guide,
             }))
             .child(deck_bar(&chrome.deck)),
     )

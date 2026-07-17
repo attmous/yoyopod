@@ -63,7 +63,6 @@ pub(crate) const LIST_ROW_SUBTITLE: &str = "list_row_subtitle";
 pub(crate) const LIST_ROW_TITLE: &str = "list_row_title";
 
 pub(crate) const STATUS_BAR: &str = "status_bar";
-pub(crate) const STATUS_SAFE_AREA_GUIDE: &str = "status_safe_area_guide";
 pub(crate) const STATUS_LEFT_CLUSTER: &str = "status_left_cluster";
 pub(crate) const STATUS_NETWORK_ICON: &str = "status_network_icon";
 pub(crate) const STATUS_GPS_ICON: &str = "status_gps_icon";

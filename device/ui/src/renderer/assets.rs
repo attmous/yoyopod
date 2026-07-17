@@ -268,7 +268,6 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::SCENE_ROOT,
         roles::SCENE_STAGE,
         roles::STATUS_BAR,
-        roles::STATUS_SAFE_AREA_GUIDE,
         roles::STATUS_LEFT_CLUSTER,
         roles::STATUS_NETWORK_ICON,
         roles::STATUS_GPS_ICON,
@@ -305,6 +304,14 @@ fn required_selected_theme_roles() -> Vec<&'static str> {
 mod tests {
     use super::*;
 
+    fn layout<'a>(asset: &'a LayoutAsset, role: &str) -> &'a LayoutRole {
+        asset
+            .roles
+            .iter()
+            .find(|layout| layout.role == role)
+            .unwrap_or_else(|| panic!("missing layout role {role}"))
+    }
+
     #[test]
     fn shipped_layout_and_theme_cover_every_runtime_role() {
         let layouts = parse_layout_asset().expect("layouts.ron should be valid");
@@ -323,5 +330,25 @@ mod tests {
             .roles
             .iter()
             .any(|role| role.role == roles::COMPANION_BODY));
+    }
+
+    #[test]
+    fn status_bar_is_centered_and_fits_the_charging_worst_case() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let left = layout(&layouts, roles::STATUS_LEFT_CLUSTER);
+        let time = layout(&layouts, roles::STATUS_TIME);
+        let right = layout(&layouts, roles::STATUS_RIGHT_CLUSTER);
+        let label = layout(&layouts, roles::STATUS_BATTERY_LABEL);
+        let charge = layout(&layouts, roles::STATUS_CHARGE_ICON);
+        let battery = layout(&layouts, roles::STATUS_BATTERY_ICON);
+
+        assert_eq!(left.x, 28);
+        assert_eq!(240 - (right.x + right.width), 28);
+        assert_eq!(time.x * 2 + time.width, 240);
+        assert!(left.x + left.width <= time.x);
+        assert!(time.x + time.width <= right.x);
+
+        let two_flex_gaps = 2 * 3;
+        assert!(label.width + charge.width + battery.width + two_flex_gaps <= right.width);
     }
 }

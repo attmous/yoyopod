@@ -192,7 +192,6 @@ impl UiRuntime {
         );
         if self.status_bar_preview_enabled {
             chrome.status = status_bar_preview_status(now_ms);
-            chrome.show_status_safe_area_guide = true;
             chrome.deck.visible = false;
         } else {
             chrome.status.time = current_status_time().1;
@@ -422,11 +421,10 @@ mod tests {
     }
 
     #[test]
-    fn status_bar_preview_isolated_slice_hides_the_deck_and_shows_safe_area() {
+    fn status_bar_preview_isolated_slice_hides_the_deck() {
         let runtime = UiRuntime::with_status_bar_preview(true);
         let graph = flatten::flatten(&runtime.scene_graph(0));
 
-        assert_eq!(count_visible_role(&graph, roles::STATUS_SAFE_AREA_GUIDE), 1);
         assert_eq!(count_visible_role(&graph, roles::DECK_BAR), 0);
     }
 

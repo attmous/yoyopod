@@ -2,7 +2,6 @@
     roles: [
         (role: "root", fill_rgb: Some(16574162), text_rgb: Some(1776415), opacity: Some(255)),
         (role: "status_bar", fill_rgb: Some(16574162), opacity: Some(255)),
-        (role: "status_safe_area_guide", border_rgb: Some(15955815), border_width: 1, radius: 3),
         (role: "status_left_cluster"),
         (role: "status_network_icon", text_rgb: Some(1776415)),
         (role: "status_gps_icon", text_rgb: Some(1776415)),

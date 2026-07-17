@@ -53,9 +53,6 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 ffi::lv_obj_set_style_pad_bottom(obj.as_ptr(), 0, SELECTOR);
                 ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
             }
-            roles::STATUS_SAFE_AREA_GUIDE => {
-                ffi::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_TRANSP, SELECTOR);
-            }
             _ => return false,
         }
     }

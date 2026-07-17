@@ -9,7 +9,6 @@ const INK_MUTED: u32 = 0x8A8076;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusBarProps {
     pub status: HudStatus,
-    pub show_safe_area_guide: bool,
 }
 
 pub fn status_bar(props: &StatusBarProps) -> Element {
@@ -17,11 +16,6 @@ pub fn status_bar(props: &StatusBarProps) -> Element {
     container(roles::STATUS_BAR)
         .key(Key::Static("status_bar"))
         .region(RegionId::StatusBar)
-        .child(
-            container(roles::STATUS_SAFE_AREA_GUIDE)
-                .key(Key::Static("status_safe_area_guide"))
-                .visible(props.show_safe_area_guide),
-        )
         .child(
             container(roles::STATUS_LEFT_CLUSTER)
                 .key(Key::Static("status_left_cluster"))
