@@ -236,9 +236,10 @@ pub fn ui_smoke_check(worker: &Path, hardware: &str, hold_seconds: f64) -> Check
 
 /// Drive semantic one-button navigation through the worker protocol.
 ///
-/// Each cycle: select into the hub's active card, back out to the hub,
-/// advance the hub selection. Cycle 0 lands on `listen`; later cycles on
-/// `talk` — matching the hub card order the Python suite validated.
+/// Focus the hub first, then for each cycle: select into the active card,
+/// back out to the hub, and advance the hub selection. Cycle 0 lands on
+/// `listen`; later cycles on `talk` — matching the hub card order the Python
+/// suite validated and the Home idle/focused interaction contract.
 pub fn ui_navigation_check(
     worker: &Path,
     cycles: u32,
@@ -258,6 +259,11 @@ pub fn ui_navigation_check(
             expect_ready(&mut supervisor)?;
             supervisor.send(UiCommand::RuntimeSnapshot(RuntimeSnapshot::default()))?;
             expect_screen(&mut supervisor, "hub")?;
+
+            // Home starts idle: the first press reveals/focuses the deck, while
+            // the following double-press opens the focused destination.
+            supervisor.send(UiCommand::InputAction(InputAction::Advance))?;
+            pump_ticks(&mut supervisor, hold_seconds)?;
 
             let mut visited = vec!["hub".to_string()];
             let mut expected_selected_screen = "listen";
