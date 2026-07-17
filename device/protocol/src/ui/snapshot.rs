@@ -159,6 +159,8 @@ pub struct CallRuntimeSnapshot {
     #[serde(default = "default_call_state")]
     pub state: String,
     #[serde(default)]
+    pub registered: bool,
+    #[serde(default)]
     pub peer_name: String,
     #[serde(default)]
     pub peer_address: String,
@@ -180,6 +182,7 @@ impl Default for CallRuntimeSnapshot {
     fn default() -> Self {
         Self {
             state: default_call_state(),
+            registered: false,
             peer_name: String::new(),
             peer_address: String::new(),
             duration_text: String::new(),

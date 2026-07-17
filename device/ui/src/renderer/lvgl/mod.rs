@@ -268,13 +268,9 @@ impl LvglFacade for NativeLvglFacade {
     fn set_icon(&mut self, widget: WidgetId, icon_key: &str) -> Result<()> {
         let node = self.widget_node_mut(widget)?;
         if node.kind == WidgetKind::Image {
-            let descriptor = icons::descriptor_for_key(icon_key);
+            let source = icons::source_for_key(icon_key);
             unsafe {
-                ffi::lv_image_set_src(
-                    node.obj.as_ptr(),
-                    descriptor as *const _ as *const std::ffi::c_void,
-                );
-                ffi::lv_obj_center(node.obj.as_ptr());
+                ffi::lv_image_set_src(node.obj.as_ptr(), source);
             }
             return Ok(());
         }
@@ -284,29 +280,15 @@ impl LvglFacade for NativeLvglFacade {
     fn set_progress(&mut self, widget: WidgetId, value: i32) -> Result<()> {
         let value = value.clamp(0, 1000);
         let node = self.widget_node_mut(widget)?;
-        if node.role == roles::STATUS_BATTERY_FILL {
-            let fill_width = (12 * value) / 100;
-            if fill_width <= 0 {
-                styling::hide_widget_raw(node.obj);
-            } else {
-                Self::apply_layout_raw(
-                    node.obj,
-                    Layout {
-                        width: fill_width,
-                        ..node.layout
-                    },
-                );
-            }
-            return Ok(());
-        }
         if matches!(
             node.role,
             roles::PROGRESS_SWEEP_FILL | roles::VOICE_METER_LEVEL
         ) {
             let fill_width = (node.layout.width * value) / 1000;
             if fill_width <= 0 {
-                styling::hide_widget_raw(node.obj);
+                styling::set_widget_hidden_raw(node.obj, true);
             } else {
+                styling::set_widget_hidden_raw(node.obj, false);
                 Self::apply_layout_raw(
                     node.obj,
                     Layout {
@@ -331,17 +313,7 @@ impl LvglFacade for NativeLvglFacade {
 
     fn set_visible(&mut self, widget: WidgetId, visible: bool) -> Result<()> {
         let node = self.widget_node_mut(widget)?;
-        if visible {
-            Self::apply_node_layout_raw(
-                node.obj,
-                node.layout,
-                node.x_offset,
-                node.y_offset,
-                node.scale_permille,
-            );
-        } else {
-            styling::hide_widget_raw(node.obj);
-        }
+        styling::set_widget_hidden_raw(node.obj, !visible);
         Ok(())
     }
 

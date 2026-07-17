@@ -1515,6 +1515,7 @@ impl RuntimeState {
             },
             "call": {
                 "state": self.call.state.as_str(),
+                "registered": self.call.registered,
                 "peer_name": self.call.peer_name,
                 "peer_address": self.call.peer_address,
                 "duration_text": self.call.duration_text,

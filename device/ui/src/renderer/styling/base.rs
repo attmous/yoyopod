@@ -3,8 +3,6 @@ use std::ptr::NonNull;
 use crate::renderer::lvgl::ffi;
 use crate::renderer::styling::style::WidgetStyle;
 
-const OFFSCREEN: i32 = -4096;
-
 pub(crate) fn reset_style_raw(obj: NonNull<ffi::lv_obj_t>) {
     unsafe {
         ffi::lv_obj_remove_style_all(obj.as_ptr());
@@ -46,9 +44,12 @@ pub(crate) fn apply_style_raw(obj: NonNull<ffi::lv_obj_t>, style: WidgetStyle) {
     }
 }
 
-pub(crate) fn hide_widget_raw(obj: NonNull<ffi::lv_obj_t>) {
+pub(crate) fn set_widget_hidden_raw(obj: NonNull<ffi::lv_obj_t>, hidden: bool) {
     unsafe {
-        ffi::lv_obj_set_pos(obj.as_ptr(), OFFSCREEN, OFFSCREEN);
-        ffi::lv_obj_set_size(obj.as_ptr(), 1, 1);
+        if hidden {
+            ffi::lv_obj_add_flag(obj.as_ptr(), ffi::LV_OBJ_FLAG_HIDDEN);
+        } else {
+            ffi::lv_obj_remove_flag(obj.as_ptr(), ffi::LV_OBJ_FLAG_HIDDEN);
+        }
     }
 }

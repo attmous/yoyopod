@@ -210,7 +210,7 @@ fn validate_role_coverage<'a>(
 }
 
 fn required_layout_roles() -> Vec<&'static str> {
-    let mut roles = vec![
+    let roles = vec![
         roles::BUTTON,
         roles::BUTTON_ICON,
         roles::BUTTON_TITLE,
@@ -268,20 +268,19 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::SCENE_ROOT,
         roles::SCENE_STAGE,
         roles::STATUS_BAR,
-        roles::STATUS_WIFI,
-        roles::STATUS_GPS_RING,
-        roles::STATUS_GPS_CENTER,
-        roles::STATUS_GPS_TAIL,
-        roles::STATUS_VOIP_DOT_AFTER_GPS,
+        roles::STATUS_SAFE_AREA_GUIDE,
+        roles::STATUS_LEFT_CLUSTER,
+        roles::STATUS_NETWORK_ICON,
+        roles::STATUS_GPS_ICON,
+        roles::STATUS_VOIP_ICON,
         roles::STATUS_TIME,
-        roles::STATUS_BATTERY_OUTLINE,
-        roles::STATUS_BATTERY_FILL,
-        roles::STATUS_BATTERY_TIP,
+        roles::STATUS_RIGHT_CLUSTER,
         roles::STATUS_BATTERY_LABEL,
+        roles::STATUS_CHARGE_ICON,
+        roles::STATUS_BATTERY_ICON,
         roles::VOICE_METER,
         roles::VOICE_METER_LEVEL,
     ];
-    roles.extend(roles::STATUS_SIGNAL_BARS);
     roles
 }
 

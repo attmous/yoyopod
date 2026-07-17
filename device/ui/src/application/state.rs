@@ -25,6 +25,9 @@ pub struct UiRuntime {
     pub(crate) transitions: Vec<Transition>,
     pub(crate) full_snapshots: u64,
     pub(crate) patches_per_domain: BTreeMap<RuntimeSnapshotDomain, u64>,
+    pub(crate) status_bar_preview_enabled: bool,
+    pub(crate) status_bar_preview_stage: Option<u8>,
+    pub(crate) status_clock_minute: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,6 +155,9 @@ impl Default for UiRuntime {
             transitions: Vec::new(),
             full_snapshots: 0,
             patches_per_domain: BTreeMap::new(),
+            status_bar_preview_enabled: false,
+            status_bar_preview_stage: None,
+            status_clock_minute: None,
         }
     }
 }

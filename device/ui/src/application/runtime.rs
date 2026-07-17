@@ -1,3 +1,4 @@
+use time::OffsetDateTime;
 use yoyopod_protocol::ui::{
     AnimationRequest, InputAction, RuntimeSnapshot, RuntimeSnapshotPatch, UiIntent,
 };
@@ -5,7 +6,10 @@ use yoyopod_protocol::ui::{
 use crate::animation;
 use crate::components;
 use crate::router::history::HistoryEntry;
-use crate::scene::{defaults_for, GlobalClock, SceneGraph, SceneId};
+use crate::scene::{
+    defaults_for, GlobalClock, HudBattery, HudConnectivity, HudConnectivityKind, HudStatus,
+    SceneGraph, SceneId,
+};
 use crate::DirtyRegion;
 
 use super::state::{DirtyState, HomeMode, UiRuntime};
@@ -18,6 +22,30 @@ pub struct FrameRequest {
 }
 
 impl UiRuntime {
+    pub(crate) fn with_status_bar_preview(enabled: bool) -> Self {
+        Self {
+            status_bar_preview_enabled: enabled,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn advance_status_bar(&mut self, now_ms: u64) {
+        let (minute, _) = current_status_time();
+        if self.status_clock_minute != Some(minute) {
+            self.status_clock_minute = Some(minute);
+            self.dirty.power = true;
+        }
+
+        if self.status_bar_preview_enabled {
+            let stage = status_bar_preview_stage(now_ms);
+            if self.status_bar_preview_stage != Some(stage) {
+                self.status_bar_preview_stage = Some(stage);
+                self.dirty.network = true;
+                self.dirty.power = true;
+            }
+        }
+    }
+
     pub fn apply_snapshot(&mut self, snapshot: RuntimeSnapshot) {
         let change = snapshot::replace_full(&mut self.snapshot, snapshot);
         self.full_snapshots += 1;
@@ -162,7 +190,13 @@ impl UiRuntime {
                 .then_some(self.focus_index),
             self.active_screen != UiScreen::Hub || self.home_mode != HomeMode::Ambient,
         );
-        chrome.status.time = elapsed_time_label(now_ms);
+        if self.status_bar_preview_enabled {
+            chrome.status = status_bar_preview_status(now_ms);
+            chrome.show_status_safe_area_guide = true;
+            chrome.deck.visible = false;
+        } else {
+            chrome.status.time = current_status_time().1;
+        }
         let hud = components::screens::chrome::hud_scene(chrome);
         let modal_stack = active.modal.clone().into_iter().collect();
         SceneGraph {
@@ -243,11 +277,102 @@ fn scene_cache_entry(entry: &HistoryEntry) -> crate::scene::SceneCacheEntry {
     }
 }
 
-fn elapsed_time_label(now_ms: u64) -> String {
-    let total_seconds = now_ms / 1_000;
-    let minutes = (total_seconds / 60).min(99);
-    let seconds = total_seconds % 60;
-    format!("{minutes:02}:{seconds:02}")
+const STATUS_BAR_PREVIEW_STAGE_MS: u64 = 5_000;
+const STATUS_BAR_PREVIEW_STAGE_COUNT: u8 = 6;
+
+fn current_status_time() -> (i64, String) {
+    let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
+    (
+        now.unix_timestamp() / 60,
+        format!("{:02}:{:02}", now.hour(), now.minute()),
+    )
+}
+
+fn status_bar_preview_stage(now_ms: u64) -> u8 {
+    ((now_ms / STATUS_BAR_PREVIEW_STAGE_MS) % u64::from(STATUS_BAR_PREVIEW_STAGE_COUNT)) as u8
+}
+
+fn status_bar_preview_status(now_ms: u64) -> HudStatus {
+    let stage = status_bar_preview_stage(now_ms);
+    let (kind, connected, strength, gps_has_fix, voip_registered, percent, charging, label) =
+        match stage {
+            0 => (
+                HudConnectivityKind::Unknown,
+                false,
+                0,
+                false,
+                false,
+                0,
+                false,
+                "S0 OFF",
+            ),
+            1 => (
+                HudConnectivityKind::Cellular,
+                true,
+                1,
+                false,
+                false,
+                25,
+                false,
+                "S1 25",
+            ),
+            2 => (
+                HudConnectivityKind::Cellular,
+                true,
+                2,
+                true,
+                false,
+                50,
+                false,
+                "S2 50",
+            ),
+            3 => (
+                HudConnectivityKind::Cellular,
+                true,
+                3,
+                true,
+                true,
+                75,
+                false,
+                "S3 75",
+            ),
+            4 => (
+                HudConnectivityKind::Cellular,
+                true,
+                4,
+                true,
+                true,
+                100,
+                false,
+                "S4 100",
+            ),
+            _ => (
+                HudConnectivityKind::Wifi,
+                true,
+                4,
+                true,
+                true,
+                100,
+                true,
+                "S5 CHG",
+            ),
+        };
+
+    HudStatus {
+        time: label.to_string(),
+        connectivity: HudConnectivity {
+            kind,
+            connected,
+            strength,
+        },
+        gps_has_fix,
+        voip_registered,
+        battery: HudBattery {
+            percent,
+            charging,
+            available: true,
+        },
+    }
 }
 
 #[cfg(test)]
@@ -263,6 +388,46 @@ mod tests {
                 .iter()
                 .map(|child| count_visible_role(child, role))
                 .sum::<usize>()
+    }
+
+    #[test]
+    fn status_bar_preview_cycles_every_contract_state() {
+        let stages = (0..STATUS_BAR_PREVIEW_STAGE_COUNT)
+            .map(|stage| status_bar_preview_status(u64::from(stage) * STATUS_BAR_PREVIEW_STAGE_MS))
+            .collect::<Vec<_>>();
+
+        assert_eq!(stages[0].time, "S0 OFF");
+        assert!(!stages[0].connectivity.connected);
+        assert_eq!(stages[0].battery.percent, 0);
+
+        assert_eq!(stages[1].connectivity.kind, HudConnectivityKind::Cellular);
+        assert_eq!(stages[1].connectivity.strength, 1);
+        assert_eq!(stages[1].battery.percent, 25);
+
+        assert!(stages[2].gps_has_fix);
+        assert!(!stages[2].voip_registered);
+        assert_eq!(stages[2].battery.percent, 50);
+
+        assert!(stages[3].voip_registered);
+        assert_eq!(stages[3].connectivity.strength, 3);
+        assert_eq!(stages[3].battery.percent, 75);
+
+        assert_eq!(stages[4].connectivity.strength, 4);
+        assert_eq!(stages[4].battery.percent, 100);
+        assert!(!stages[4].battery.charging);
+
+        assert_eq!(stages[5].connectivity.kind, HudConnectivityKind::Wifi);
+        assert!(stages[5].battery.charging);
+        assert_eq!(stages[5].time, "S5 CHG");
+    }
+
+    #[test]
+    fn status_bar_preview_isolated_slice_hides_the_deck_and_shows_safe_area() {
+        let runtime = UiRuntime::with_status_bar_preview(true);
+        let graph = flatten::flatten(&runtime.scene_graph(0));
+
+        assert_eq!(count_visible_role(&graph, roles::STATUS_SAFE_AREA_GUIDE), 1);
+        assert_eq!(count_visible_role(&graph, roles::DECK_BAR), 0);
     }
 
     #[test]

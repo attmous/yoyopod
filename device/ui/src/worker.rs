@@ -88,7 +88,14 @@ where
 {
     let mut input_events = 0usize;
     let mut button_machine = OneButtonMachine::new(ButtonTiming::default());
-    let mut ui_runtime = UiRuntime::default();
+    let status_bar_preview = status_bar_preview_enabled();
+    if status_bar_preview {
+        writeln!(
+            errors,
+            "status-bar hardware preview enabled via YOYOPOD_UI_STATUS_BAR_PREVIEW"
+        )?;
+    }
+    let mut ui_runtime = UiRuntime::with_status_bar_preview(status_bar_preview);
     let mut render_state = RenderState::open(display.width(), display.height())?;
     let mut shutdown_complete_emitted = false;
     let mut watchdog = RuntimeWatchdog::new();
@@ -285,6 +292,7 @@ where
         }
         dispatcher::AppEvent::Tick => {
             let now_ms = outbound::monotonic_millis();
+            context.ui_runtime.advance_status_bar(now_ms);
             context.ui_runtime.advance_animations(now_ms);
             context.ui_runtime.advance_home_state(now_ms);
             if context.render_state.engine.animation_frame_dirty(now_ms) {
@@ -351,6 +359,17 @@ where
         outbound::emit_event(context.output, event)?;
     }
     Ok(false)
+}
+
+fn status_bar_preview_enabled() -> bool {
+    std::env::var("YOYOPOD_UI_STATUS_BAR_PREVIEW")
+        .ok()
+        .is_some_and(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on" | "cycle"
+            )
+        })
 }
 
 fn handle_button_input<W, B>(

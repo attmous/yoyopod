@@ -1,86 +1,158 @@
-use crate::components::primitives::{container, label};
-use crate::engine::Element;
-use crate::engine::Key;
+use crate::components::primitives::{container, image, label};
+use crate::engine::{Element, Key};
 use crate::scene::roles;
-use crate::scene::RegionId;
+use crate::scene::{HudConnectivityKind, HudStatus, RegionId};
+
+const INK: u32 = 0x1B1B1F;
+const INK_MUTED: u32 = 0x8A8076;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusBarProps {
-    pub time: String,
-    pub battery_label: String,
-    pub battery_percent: u8,
-    pub signal_strength: u8,
-    pub network_online: bool,
+    pub status: HudStatus,
+    pub show_safe_area_guide: bool,
 }
 
 pub fn status_bar(props: &StatusBarProps) -> Element {
-    let mut status_bar = container(roles::STATUS_BAR)
+    let status = &props.status;
+    container(roles::STATUS_BAR)
         .key(Key::Static("status_bar"))
-        .region(RegionId::StatusBar);
-
-    for bar in signal_bars(props.signal_strength) {
-        status_bar = status_bar.child(bar);
-    }
-
-    status_bar
-        .child(gps_ring(props.network_online))
-        .child(gps_center(props.network_online))
-        .child(gps_tail(props.network_online))
+        .region(RegionId::StatusBar)
+        .child(
+            container(roles::STATUS_SAFE_AREA_GUIDE)
+                .key(Key::Static("status_safe_area_guide"))
+                .visible(props.show_safe_area_guide),
+        )
+        .child(
+            container(roles::STATUS_LEFT_CLUSTER)
+                .key(Key::Static("status_left_cluster"))
+                .child(status_icon(
+                    roles::STATUS_NETWORK_ICON,
+                    "status_network",
+                    network_icon_key(status),
+                    status.connectivity.connected,
+                ))
+                .child(status_icon(
+                    roles::STATUS_GPS_ICON,
+                    "status_gps",
+                    "status_gps",
+                    status.gps_has_fix,
+                ))
+                .child(status_icon(
+                    roles::STATUS_VOIP_ICON,
+                    "status_voip",
+                    "status_voip",
+                    status.voip_registered,
+                )),
+        )
         .child(
             label(roles::STATUS_TIME)
                 .key(Key::Static("status_time"))
-                .text(&props.time),
+                .text(&status.time),
         )
         .child(
-            label(roles::STATUS_BATTERY_LABEL)
-                .key(Key::Static("status_battery_label"))
-                .text(&props.battery_label),
-        )
-        .child(battery_outline(props.battery_percent))
-        .child(container(roles::STATUS_BATTERY_TIP).key(Key::Static("battery_tip")))
-}
-
-fn signal_bars(strength: u8) -> [Element; 4] {
-    core::array::from_fn(|index| {
-        container(signal_bar_role(index))
-            .key(Key::Indexed(index))
-            .visible(index < usize::from(strength.min(4)))
-    })
-}
-
-fn gps_ring(active: bool) -> Element {
-    container(roles::STATUS_GPS_RING)
-        .key(Key::Static("gps_ring"))
-        .selected(active)
-}
-
-fn gps_center(active: bool) -> Element {
-    container(roles::STATUS_GPS_CENTER)
-        .key(Key::Static("gps_center"))
-        .visible(active)
-}
-
-fn gps_tail(active: bool) -> Element {
-    container(roles::STATUS_GPS_TAIL)
-        .key(Key::Static("gps_tail"))
-        .visible(active)
-}
-
-fn battery_outline(percent: u8) -> Element {
-    container(roles::STATUS_BATTERY_OUTLINE)
-        .key(Key::Static("battery_outline"))
-        .child(
-            container(roles::STATUS_BATTERY_FILL)
-                .key(Key::Static("battery_fill"))
-                .progress(i32::from(percent.min(100))),
+            container(roles::STATUS_RIGHT_CLUSTER)
+                .key(Key::Static("status_right_cluster"))
+                .child(
+                    label(roles::STATUS_BATTERY_LABEL)
+                        .key(Key::Static("status_battery_label"))
+                        .text(battery_label(status)),
+                )
+                .child(
+                    image(roles::STATUS_CHARGE_ICON)
+                        .key(Key::Static("status_charge"))
+                        .icon("status_charge")
+                        .accent(INK)
+                        .visible(status.battery.available && status.battery.charging),
+                )
+                .child(
+                    image(roles::STATUS_BATTERY_ICON)
+                        .key(Key::Static("status_battery"))
+                        .icon(battery_icon_key(status.battery.percent))
+                        .accent(if status.battery.available {
+                            INK
+                        } else {
+                            INK_MUTED
+                        }),
+                ),
         )
 }
 
-const fn signal_bar_role(index: usize) -> &'static str {
-    match index {
-        0 => roles::STATUS_SIGNAL_BAR_0,
-        1 => roles::STATUS_SIGNAL_BAR_1,
-        2 => roles::STATUS_SIGNAL_BAR_2,
-        _ => roles::STATUS_SIGNAL_BAR_3,
+fn status_icon(
+    role: &'static str,
+    key: &'static str,
+    icon_key: &'static str,
+    active: bool,
+) -> Element {
+    image(role)
+        .key(Key::Static(key))
+        .icon(icon_key)
+        .accent(if active { INK } else { INK_MUTED })
+}
+
+fn network_icon_key(status: &HudStatus) -> &'static str {
+    match status.connectivity.kind {
+        HudConnectivityKind::Wifi => "status_wifi",
+        HudConnectivityKind::Cellular | HudConnectivityKind::Unknown => {
+            match status.connectivity.strength.min(4) {
+                0 => "status_cellular_0",
+                1 => "status_cellular_1",
+                2 => "status_cellular_2",
+                3 => "status_cellular_3",
+                _ => "status_cellular_4",
+            }
+        }
+    }
+}
+
+fn battery_icon_key(percent: u8) -> &'static str {
+    match percent.min(100) {
+        0 => "status_battery_empty",
+        1..=25 => "status_battery_1",
+        26..=50 => "status_battery_2",
+        51..=75 => "status_battery_3",
+        _ => "status_battery_full",
+    }
+}
+
+fn battery_label(status: &HudStatus) -> String {
+    if status.battery.available {
+        format!("{}%", status.battery.percent.min(100))
+    } else {
+        "--".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scene::{HudBattery, HudConnectivity};
+
+    #[test]
+    fn battery_symbols_follow_quartiles() {
+        assert_eq!(battery_icon_key(0), "status_battery_empty");
+        assert_eq!(battery_icon_key(25), "status_battery_1");
+        assert_eq!(battery_icon_key(50), "status_battery_2");
+        assert_eq!(battery_icon_key(75), "status_battery_3");
+        assert_eq!(battery_icon_key(100), "status_battery_full");
+    }
+
+    #[test]
+    fn connectivity_selects_one_image_source() {
+        let mut status = HudStatus {
+            connectivity: HudConnectivity {
+                kind: HudConnectivityKind::Cellular,
+                connected: true,
+                strength: 3,
+            },
+            battery: HudBattery {
+                available: true,
+                ..HudBattery::default()
+            },
+            ..HudStatus::default()
+        };
+        assert_eq!(network_icon_key(&status), "status_cellular_3");
+
+        status.connectivity.kind = HudConnectivityKind::Wifi;
+        assert_eq!(network_icon_key(&status), "status_wifi");
     }
 }

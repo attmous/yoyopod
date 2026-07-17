@@ -3,7 +3,7 @@ use yoyopod_protocol::ui::{ListItemSnapshot, RuntimeSnapshot, UiScreen};
 use crate::components::widgets::{deck_bar, status_bar, DeckBarProps, StatusBarProps};
 use crate::engine::{Element, Key};
 use crate::scene::roles;
-use crate::scene::{HudScene, HudStatus};
+use crate::scene::{HudBattery, HudConnectivity, HudConnectivityKind, HudScene, HudStatus};
 use crate::ElementKind;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,6 +11,7 @@ pub struct ScreenChrome {
     pub title: String,
     pub status: HudStatus,
     pub deck: DeckBarProps,
+    pub show_status_safe_area_guide: bool,
 }
 
 pub fn chrome_for_screen(
@@ -28,6 +29,7 @@ pub fn chrome_for_screen(
             focused_index: deck_focus_for_screen(screen, home_focus),
             visible: deck_visible,
         },
+        show_status_safe_area_guide: false,
     }
 }
 
@@ -36,11 +38,8 @@ pub fn hud_scene(chrome: ScreenChrome) -> HudScene {
         Element::new(ElementKind::Container, Some(roles::HUD))
             .key(Key::Static("hud"))
             .child(status_bar(&StatusBarProps {
-                time: chrome.status.time,
-                battery_label: chrome.status.battery_label,
-                battery_percent: chrome.status.battery_percent,
-                signal_strength: chrome.status.signal_strength,
-                network_online: chrome.status.network_online,
+                status: chrome.status,
+                show_safe_area_guide: chrome.show_status_safe_area_guide,
             }))
             .child(deck_bar(&chrome.deck)),
     )
@@ -103,15 +102,31 @@ fn status_from_snapshot(snapshot: &RuntimeSnapshot) -> HudStatus {
     let battery_percent = snapshot.power.battery_percent.clamp(0, 100) as u8;
     HudStatus {
         time: "00:00".to_string(),
-        battery_label: format!("{battery_percent}%"),
-        battery_percent,
-        signal_strength: signal_strength(snapshot.network.signal_strength),
-        network_online: snapshot.network.connected,
+        connectivity: HudConnectivity {
+            kind: connectivity_kind(&snapshot.network.connection_type),
+            connected: snapshot.network.connected,
+            strength: signal_strength(snapshot.network.signal_strength),
+        },
+        gps_has_fix: snapshot.network.gps_has_fix,
+        voip_registered: snapshot.call.registered,
+        battery: HudBattery {
+            percent: battery_percent,
+            charging: snapshot.power.charging,
+            available: snapshot.power.power_available,
+        },
     }
 }
 
 fn signal_strength(value: i32) -> u8 {
     value.clamp(0, 4) as u8
+}
+
+fn connectivity_kind(value: &str) -> HudConnectivityKind {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "wifi" | "wi-fi" | "wlan" | "wireless" => HudConnectivityKind::Wifi,
+        "cellular" | "mobile" | "ppp" | "lte" | "4g" | "5g" => HudConnectivityKind::Cellular,
+        _ => HudConnectivityKind::Unknown,
+    }
 }
 
 fn talk_contact_title(

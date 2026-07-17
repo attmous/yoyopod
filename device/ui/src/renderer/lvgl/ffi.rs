@@ -86,6 +86,12 @@ pub const LV_LABEL_LONG_MODE_CLIP: i32 = 4;
 pub const LV_SCROLLBAR_MODE_OFF: i32 = 0;
 pub const LV_TEXT_ALIGN_CENTER: i32 = 2;
 pub const LV_RADIUS_CIRCLE: i32 = 0x7FFF;
+pub const LV_OBJ_FLAG_HIDDEN: u32 = 1 << 0;
+pub const LV_FLEX_FLOW_ROW: i32 = 0;
+pub const LV_FLEX_ALIGN_START: i32 = 0;
+pub const LV_FLEX_ALIGN_END: i32 = 1;
+pub const LV_FLEX_ALIGN_CENTER: i32 = 2;
+pub const LV_IMAGE_ALIGN_CENTER: i32 = 9;
 
 unsafe extern "C" {
     pub static lv_font_montserrat_12: lv_font_t;
@@ -117,6 +123,8 @@ unsafe extern "C" {
     pub fn lv_obj_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_obj_delete(obj: *mut lv_obj_t);
     pub fn lv_obj_move_to_index(obj: *mut lv_obj_t, index: i32);
+    pub fn lv_obj_add_flag(obj: *mut lv_obj_t, flag: u32);
+    pub fn lv_obj_remove_flag(obj: *mut lv_obj_t, flag: u32);
     pub fn lv_obj_set_pos(obj: *mut lv_obj_t, x: i32, y: i32);
     pub fn lv_obj_set_size(obj: *mut lv_obj_t, width: i32, height: i32);
     pub fn lv_obj_invalidate(obj: *mut lv_obj_t);
@@ -171,7 +179,15 @@ unsafe extern "C" {
     pub fn lv_obj_set_style_pad_bottom(obj: *mut lv_obj_t, value: i32, selector: LvStyleSelector);
     pub fn lv_obj_set_style_pad_left(obj: *mut lv_obj_t, value: i32, selector: LvStyleSelector);
     pub fn lv_obj_set_style_pad_right(obj: *mut lv_obj_t, value: i32, selector: LvStyleSelector);
+    pub fn lv_obj_set_style_pad_column(obj: *mut lv_obj_t, value: i32, selector: LvStyleSelector);
     pub fn lv_obj_set_scrollbar_mode(obj: *mut lv_obj_t, mode: i32);
+    pub fn lv_obj_set_flex_flow(obj: *mut lv_obj_t, flow: i32);
+    pub fn lv_obj_set_flex_align(
+        obj: *mut lv_obj_t,
+        main_place: i32,
+        cross_place: i32,
+        track_place: i32,
+    );
     pub fn lv_obj_center(obj: *mut lv_obj_t);
 
     pub fn lv_label_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
@@ -180,6 +196,7 @@ unsafe extern "C" {
 
     pub fn lv_image_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_image_set_src(obj: *mut lv_obj_t, src: *const c_void);
+    pub fn lv_image_set_inner_align(obj: *mut lv_obj_t, align: i32);
 
     pub fn lv_screen_load(screen: *mut lv_obj_t);
 

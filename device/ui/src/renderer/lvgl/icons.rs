@@ -23,6 +23,20 @@ pub(crate) struct LvImageDsc {
 unsafe impl Sync for LvImageDsc {}
 
 impl LvImageDsc {
+    const fn a8_14(data: &'static [u8; 196]) -> Self {
+        Self {
+            header: LvImageHeader {
+                magic_cf_flags: LV_IMAGE_HEADER_MAGIC | (LV_COLOR_FORMAT_A8 << 8),
+                width_height: 14 | (14 << 16),
+                stride_reserved: 14,
+            },
+            data_size: 196,
+            data: data.as_ptr(),
+            reserved: std::ptr::null(),
+            reserved_2: std::ptr::null(),
+        }
+    }
+
     const fn a8_56(data: &'static [u8; 3136]) -> Self {
         Self {
             header: LvImageHeader {
@@ -67,6 +81,47 @@ const fn downsample_56_to_30(source: &[u8; 3136]) -> [u8; 900] {
     }
     target
 }
+
+const fn cellular_signal_map(level: u8) -> [u8; 196] {
+    let heights = [3usize, 5, 7, 9];
+    let mut map = [0u8; 196];
+    let mut bar = 0usize;
+    while bar < 4 {
+        let x = 1 + bar * 3;
+        let height = heights[bar];
+        let first_y = 13 - height;
+        let alpha = if (bar as u8) < level { 0xFF } else { 0x30 };
+        let mut y = first_y;
+        while y < 13 {
+            map[y * 14 + x] = alpha;
+            map[y * 14 + x + 1] = alpha;
+            y += 1;
+        }
+        bar += 1;
+    }
+    map
+}
+
+static CELLULAR_0_MAP: [u8; 196] = cellular_signal_map(0);
+static CELLULAR_1_MAP: [u8; 196] = cellular_signal_map(1);
+static CELLULAR_2_MAP: [u8; 196] = cellular_signal_map(2);
+static CELLULAR_3_MAP: [u8; 196] = cellular_signal_map(3);
+static CELLULAR_4_MAP: [u8; 196] = cellular_signal_map(4);
+static CELLULAR_0: LvImageDsc = LvImageDsc::a8_14(&CELLULAR_0_MAP);
+static CELLULAR_1: LvImageDsc = LvImageDsc::a8_14(&CELLULAR_1_MAP);
+static CELLULAR_2: LvImageDsc = LvImageDsc::a8_14(&CELLULAR_2_MAP);
+static CELLULAR_3: LvImageDsc = LvImageDsc::a8_14(&CELLULAR_3_MAP);
+static CELLULAR_4: LvImageDsc = LvImageDsc::a8_14(&CELLULAR_4_MAP);
+
+static SYMBOL_WIFI: [u8; 4] = *b"\xEF\x87\xAB\0";
+static SYMBOL_GPS: [u8; 4] = *b"\xEF\x84\xA4\0";
+static SYMBOL_CALL: [u8; 4] = *b"\xEF\x82\x95\0";
+static SYMBOL_CHARGE: [u8; 4] = *b"\xEF\x83\xA7\0";
+static SYMBOL_BATTERY_FULL: [u8; 4] = *b"\xEF\x89\x80\0";
+static SYMBOL_BATTERY_3: [u8; 4] = *b"\xEF\x89\x81\0";
+static SYMBOL_BATTERY_2: [u8; 4] = *b"\xEF\x89\x82\0";
+static SYMBOL_BATTERY_1: [u8; 4] = *b"\xEF\x89\x83\0";
+static SYMBOL_BATTERY_EMPTY: [u8; 4] = *b"\xEF\x89\x84\0";
 
 static LISTEN_MAP: [u8; 3136] = [
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -892,5 +947,25 @@ pub(crate) fn descriptor_for_key(icon_key: &str) -> &'static LvImageDsc {
         "ask" | "microphone" | "mic" | "voice_note" => &ASK,
         "setup" | "power" | "battery" => &SETUP,
         _ => &SETUP,
+    }
+}
+
+pub(crate) fn source_for_key(icon_key: &str) -> *const c_void {
+    match icon_key {
+        "status_cellular_0" => &CELLULAR_0 as *const LvImageDsc as *const c_void,
+        "status_cellular_1" => &CELLULAR_1 as *const LvImageDsc as *const c_void,
+        "status_cellular_2" => &CELLULAR_2 as *const LvImageDsc as *const c_void,
+        "status_cellular_3" => &CELLULAR_3 as *const LvImageDsc as *const c_void,
+        "status_cellular_4" => &CELLULAR_4 as *const LvImageDsc as *const c_void,
+        "status_wifi" => SYMBOL_WIFI.as_ptr().cast(),
+        "status_gps" => SYMBOL_GPS.as_ptr().cast(),
+        "status_voip" => SYMBOL_CALL.as_ptr().cast(),
+        "status_charge" => SYMBOL_CHARGE.as_ptr().cast(),
+        "status_battery_full" => SYMBOL_BATTERY_FULL.as_ptr().cast(),
+        "status_battery_3" => SYMBOL_BATTERY_3.as_ptr().cast(),
+        "status_battery_2" => SYMBOL_BATTERY_2.as_ptr().cast(),
+        "status_battery_1" => SYMBOL_BATTERY_1.as_ptr().cast(),
+        "status_battery_empty" => SYMBOL_BATTERY_EMPTY.as_ptr().cast(),
+        _ => descriptor_for_key(icon_key) as *const LvImageDsc as *const c_void,
     }
 }
