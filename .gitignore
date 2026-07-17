@@ -37,6 +37,7 @@ target/
 !cli/yoyopod/src/commands/target/
 Cargo.lock
 !device/Cargo.lock
+!device/ui/tools/icon-gen/Cargo.lock
 !workers/ui/rust/Cargo.lock
 !cli/Cargo.lock
 

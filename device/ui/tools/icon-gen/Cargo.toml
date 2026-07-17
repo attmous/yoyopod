@@ -1,0 +1,12 @@
+[package]
+name = "yoyopod-icon-gen"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+publish = false
+
+[dependencies]
+resvg = { version = "=0.45.1", default-features = false }
+
+# Keep this host-only asset tool outside the ARM device workspace.
+[workspace]
