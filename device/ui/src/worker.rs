@@ -473,3 +473,120 @@ fn screen_changed_if_needed(
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct TestButton {
+        pressed: bool,
+    }
+
+    impl ButtonDevice for TestButton {
+        fn pressed(&mut self) -> Result<bool> {
+            Ok(self.pressed)
+        }
+    }
+
+    fn sample_button(
+        button: &mut TestButton,
+        machine: &mut OneButtonMachine,
+        runtime: &mut UiRuntime,
+        output: &mut Vec<u8>,
+        input_events: &mut usize,
+        pressed: bool,
+        now_ms: u64,
+    ) {
+        button.pressed = pressed;
+        handle_button_input(output, button, machine, runtime, input_events, now_ms).unwrap();
+    }
+
+    fn deliberate_short_press(
+        button: &mut TestButton,
+        machine: &mut OneButtonMachine,
+        runtime: &mut UiRuntime,
+        output: &mut Vec<u8>,
+        input_events: &mut usize,
+        started_ms: u64,
+    ) {
+        sample_button(
+            button,
+            machine,
+            runtime,
+            output,
+            input_events,
+            true,
+            started_ms,
+        );
+        sample_button(
+            button,
+            machine,
+            runtime,
+            output,
+            input_events,
+            true,
+            started_ms + 50,
+        );
+        sample_button(
+            button,
+            machine,
+            runtime,
+            output,
+            input_events,
+            false,
+            started_ms + 250,
+        );
+        sample_button(
+            button,
+            machine,
+            runtime,
+            output,
+            input_events,
+            false,
+            started_ms + 300,
+        );
+        sample_button(
+            button,
+            machine,
+            runtime,
+            output,
+            input_events,
+            false,
+            started_ms + 600,
+        );
+    }
+
+    #[test]
+    fn physical_deliberate_short_presses_cycle_home_deck_focus() {
+        let mut button = TestButton::default();
+        let mut machine = OneButtonMachine::new(ButtonTiming::default());
+        let mut runtime = UiRuntime::default();
+        let mut output = Vec::new();
+        let mut input_events = 0;
+
+        for (started_ms, expected_focus) in [(0, 0), (700, 1), (1_400, 2), (2_100, 3), (2_800, 0)] {
+            deliberate_short_press(
+                &mut button,
+                &mut machine,
+                &mut runtime,
+                &mut output,
+                &mut input_events,
+                started_ms,
+            );
+            assert_eq!(runtime.focus_index, expected_focus);
+            assert_eq!(runtime.active_screen(), UiScreen::Hub);
+        }
+
+        assert_eq!(input_events, 5);
+        let emitted = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| yoyopod_protocol::WorkerEnvelope::decode(line.as_bytes()).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(emitted.len(), 5);
+        assert!(emitted
+            .iter()
+            .all(|envelope| envelope.message_type == "ui.input"));
+    }
+}

@@ -737,15 +737,24 @@ fn commands_for_power_intent(intent: &PowerIntent) -> Vec<RuntimeCommand> {
 }
 
 fn commands_for_ui_input(state: &RuntimeState, input: &UiInputEvent) -> Vec<RuntimeCommand> {
+    let mut commands = vec![RuntimeCommand::AppendAppLog {
+        line: format!(
+            "UI input action={} method={} duration_ms={}",
+            input.action.as_str(),
+            input.method,
+            input.duration_ms
+        ),
+    }];
+
     if state.call.state == CallState::Incoming && input.action == InputAction::Select {
-        return vec![worker_command(
+        commands.push(worker_command(
             WorkerDomain::Voip,
             "voip.answer",
             empty_payload(),
-        )];
+        ));
     }
 
-    Vec::new()
+    commands
 }
 
 fn commands_for_cloud_command(command: &Value) -> Vec<RuntimeCommand> {
@@ -1246,6 +1255,25 @@ mod tests {
         let event = runtime_event_from_worker(WorkerDomain::Ui, envelope).unwrap();
 
         assert_eq!(event, RuntimeEvent::UiInput(input));
+    }
+
+    #[test]
+    fn ui_input_is_written_to_the_app_log() {
+        let input = UiInputEvent {
+            action: InputAction::Advance,
+            method: "single_tap".to_string(),
+            timestamp_ms: 10,
+            duration_ms: 0,
+        };
+
+        let commands = commands_for_ui_input(&RuntimeState::default(), &input);
+
+        assert_eq!(commands.len(), 1);
+        assert!(matches!(
+            &commands[0],
+            RuntimeCommand::AppendAppLog { line }
+                if line == "UI input action=advance method=single_tap duration_ms=0"
+        ));
     }
 
     #[test]

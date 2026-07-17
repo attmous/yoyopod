@@ -3,7 +3,6 @@
 input:
   ptt_navigation: true
   whisplay_debounce_ms: 50
-  whisplay_short_press_max_ms: 180
   whisplay_double_tap_ms: 350
   whisplay_long_hold_ms: 400
 

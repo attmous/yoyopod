@@ -237,12 +237,6 @@ impl OneButtonMachine {
             return Vec::new();
         }
 
-        if duration >= self.timing.short_press_max_ms {
-            self.pending_single_tap_ms = None;
-            self.double_tap_candidate = false;
-            return Vec::new();
-        }
-
         if self.double_tap_candidate {
             self.pending_single_tap_ms = None;
             self.double_tap_candidate = false;
@@ -275,12 +269,6 @@ impl OneButtonMachine {
             self.double_tap_candidate = false;
             self.hold_back_fired = false;
             return vec![InputEvent::ptt_release(duration)];
-        }
-
-        if duration >= self.timing.short_press_max_ms {
-            self.pending_single_tap_ms = None;
-            self.double_tap_candidate = false;
-            return Vec::new();
         }
 
         if self.double_tap_candidate {
@@ -346,11 +334,14 @@ mod tests {
     }
 
     #[test]
-    fn medium_press_is_dead_zone() {
+    fn deliberate_press_below_long_hold_is_short_press() {
         let mut machine = OneButtonMachine::new(ButtonTiming::default());
         tap(&mut machine, 0, 250);
 
-        assert!(machine.observe(false, 700).is_empty());
+        assert_eq!(
+            actions(machine.observe(false, 700)),
+            vec![InputAction::Advance]
+        );
     }
 
     #[test]

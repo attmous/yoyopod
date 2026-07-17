@@ -323,20 +323,17 @@ input source. Decision log lives in <code>README.md</code> in this folder.</p>
   <table>
     <thead><tr><th>Range</th><th>Classified as</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td>0 – 180 ms</td><td><b>press</b></td><td>Fires on <i>release</i>, not on press-down. Required so we can disambiguate from long-press. Applies identically to the hardware button and to a future touch surface.</td></tr>
-      <tr><td>180 – 400 ms</td><td>dead zone</td><td>Released here = no action. Prevents accidental gestures from sloppy presses. The press-ring (see §4) does not appear in this range — only past 400 ms.</td></tr>
+      <tr><td>0 – &lt;400 ms</td><td><b>press</b></td><td>Fires on <i>release</i>, after the double-press window expires. Hardware testing showed that a 180 ms cap discarded ordinary deliberate presses, so every release below the long-hold boundary is a press candidate. Applies identically to the hardware button and to a future touch surface.</td></tr>
       <tr><td>≥ 400 ms (still pressed)</td><td><b>long-press armed</b></td><td>Visual press-ring appears (§4.1). Releasing now (even at 401 ms) fires the long-press action.</td></tr>
       <tr><td>Double-press window</td><td>≤ 350 ms gap between two presses</td><td>Two presses within 350 ms of each other count as a double-press. Any third press is ignored until the second press's processing completes. <b>Open:</b> this window needs testing with 4–6-year-olds; small hands may need it wider.</td></tr>
     </tbody>
   </table>
   <p style="background:#2a2025; border:1px solid #4a3a30; border-radius:8px; padding:10px 14px; font-size:13px; color:#c9b9a3; max-width:760px;">
-  <b style="color:#ffd9b3;">Runtime divergence — these numbers are the contract, not the shipped config.</b>
-  Today's classifier uses <b>800 ms</b> long-hold and a <b>300 ms</b> double window
-  (<code>input/config.rs</code>: <code>DEFAULT_LONG_HOLD_MS = 800</code>, <code>DEFAULT_DOUBLE_TAP_MS = 300</code>;
-  mirrored in <code>config/device/hardware.yaml</code>), and it has <b>no dead zone</b> — any release below
-  <code>long_hold_ms</code> becomes a press candidate. Implementing this contract means: set 400/350 in the
-  config, and add the 180–400 ms dead-zone rejection to <code>OneButtonMachine</code>. Tracked in
-  <code>HANDOFF.md</code> → runtime work items.</p>
+  <b style="color:#ffd9b3;">Hardware-validated timing.</b>
+  The classifier uses a <b>400 ms</b> long-hold boundary and a <b>350 ms</b> double window
+  (<code>input/config.rs</code>, mirrored in <code>config/device/hardware.yaml</code>). A release before
+  <code>long_hold_ms</code> remains a press candidate; holding through the boundary emits Home or the active
+  screen's PTT action. There is one classification boundary rather than a silent dead zone.</p>
 </section>
 
 <section class="sect">
