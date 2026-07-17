@@ -222,8 +222,7 @@ fn resolve_sim7600_interface_port_with_dirs(
         let index = interface
             .strip_prefix("if")
             .and_then(|value| value.parse::<u8>().ok())?;
-        let suffix = format!(":1.{index}-port0");
-        find_named_serial_port(by_path_dir, |name| name.ends_with(&suffix))
+        find_named_serial_port(by_path_dir, |name| sim7600_by_path_matches(name, index))
     })
     .or_else(|| {
         let index = interface
@@ -231,6 +230,10 @@ fn resolve_sim7600_interface_port_with_dirs(
             .and_then(|value| value.parse::<u8>().ok())?;
         Some(format!("/dev/ttyUSB{index}"))
     })
+}
+
+fn sim7600_by_path_matches(name: &str, interface_index: u8) -> bool {
+    name.ends_with(&format!(":1.{interface_index}-port0"))
 }
 
 fn normalize_sim7600_interface(interface: &str) -> Option<String> {
@@ -280,14 +283,25 @@ mod tests {
             "",
         )
         .unwrap();
-        fs::write(by_path.join("platform-3f980000.usb-usb-0:1:1.2-port0"), "").unwrap();
-
         let resolved = resolve_sim7600_interface_port_with_dirs("if02", &by_id, &by_path).unwrap();
 
         assert!(resolved.ends_with("0123456789ABCDEF-if02-port0"));
     }
 
     #[test]
+    fn sim7600_by_path_match_uses_usb_interface_index() {
+        assert!(sim7600_by_path_matches(
+            "platform-3f980000.usb-usb-0:1:1.3-port0",
+            3
+        ));
+        assert!(!sim7600_by_path_matches(
+            "platform-3f980000.usb-usb-0:1:1.2-port0",
+            3
+        ));
+    }
+
+    #[test]
+    #[cfg(not(windows))]
     fn sim7600_alias_falls_back_to_by_path_interface_link() {
         let temp = tempfile::tempdir().unwrap();
         let by_id = temp.path().join("by-id");

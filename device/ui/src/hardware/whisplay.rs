@@ -13,12 +13,40 @@ use crate::DirtyRegion;
 
 const SPI_CHUNK_BYTES: usize = 4096;
 
+/// Advisory lock guarding exclusive ownership of the Whisplay panel.
+/// Two UI hosts flushing the same SPI panel interleave command streams
+/// and corrupt or garble the display (observed 2026-07-13 when a stale
+/// runtime survived a service restart). The flock is held for the
+/// lifetime of `WhisplayDisplay` and released automatically on exit.
+const PANEL_LOCK_PATH: &str = "/tmp/yoyopod-whisplay-panel.lock";
+
+fn acquire_panel_lock() -> Result<std::fs::File> {
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(PANEL_LOCK_PATH)
+        // The service runs as root; a non-root UI host can still take the
+        // advisory lock through a read-only open of the existing file.
+        .or_else(|_| std::fs::File::open(PANEL_LOCK_PATH))
+        .with_context(|| format!("opening Whisplay panel lock {PANEL_LOCK_PATH}"))?;
+    lock.try_lock().map_err(|_| {
+        anyhow::anyhow!(
+            "another process already owns the Whisplay panel (flock \
+             {PANEL_LOCK_PATH} is held). Stop yoyopod-dev.service or the \
+             other yoyopod-ui-host before starting a second UI host."
+        )
+    })?;
+    Ok(lock)
+}
+
 pub struct WhisplayDisplay {
     spi: Spi,
     dc: OutputPin,
     reset: Option<OutputPin>,
     backlight: Option<OutputPin>,
     backlight_active_low: bool,
+    _panel_lock: std::fs::File,
 }
 
 pub struct WhisplayButton {
@@ -44,6 +72,7 @@ pub fn open_from_env() -> Result<(WhisplayDisplay, WhisplayButton)> {
         DEFAULT_BUTTON_ACTIVE_LOW,
     )?;
 
+    let panel_lock = acquire_panel_lock()?;
     let spi = Spi::new(
         spi_bus_from_u8(spi_bus)?,
         spi_cs_from_u8(spi_cs)?,
@@ -69,6 +98,7 @@ pub fn open_from_env() -> Result<(WhisplayDisplay, WhisplayButton)> {
         reset,
         backlight,
         backlight_active_low,
+        _panel_lock: panel_lock,
     };
     display.init_panel()?;
 

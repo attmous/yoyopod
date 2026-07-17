@@ -319,6 +319,7 @@ pub unsafe extern "C" fn yoyopod_liblinphone_make_call(sip_address: *const c_cha
         error::set_last_error("failed to create Liblinphone call params");
         return -1;
     }
+    unsafe { configure_audio_call_params(&api, params) };
     let call = unsafe { (api.core_invite_address_with_params)(core, address, params) };
     unsafe {
         (api.call_params_unref)(params);
@@ -334,11 +335,27 @@ pub unsafe extern "C" fn yoyopod_liblinphone_make_call(sip_address: *const c_cha
     0
 }
 
+unsafe fn configure_audio_call_params(api: &LinphoneApi, params: *mut ffi::LinphoneCallParams) {
+    unsafe {
+        (api.call_params_enable_audio)(params, TRUE);
+        (api.call_params_enable_video)(params, FALSE);
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn yoyopod_liblinphone_answer_call() -> c_int {
     with_current_call(
         "No incoming call is available to answer",
-        |api, call| unsafe { (api.call_accept)(call) },
+        |api, core, call| unsafe {
+            let params = (api.core_create_call_params)(core, call);
+            if params.is_null() {
+                return (api.call_accept)(call);
+            }
+            configure_audio_call_params(api, params);
+            let status = (api.call_accept_with_params)(call, params);
+            (api.call_params_unref)(params);
+            status
+        },
     )
 }
 
@@ -346,7 +363,7 @@ pub unsafe extern "C" fn yoyopod_liblinphone_answer_call() -> c_int {
 pub unsafe extern "C" fn yoyopod_liblinphone_reject_call() -> c_int {
     with_current_call(
         "No incoming call is available to reject",
-        |api, call| unsafe { (api.call_decline)(call, LINPHONE_REASON_DECLINED) },
+        |api, _core, call| unsafe { (api.call_decline)(call, LINPHONE_REASON_DECLINED) },
     )
 }
 
@@ -354,16 +371,19 @@ pub unsafe extern "C" fn yoyopod_liblinphone_reject_call() -> c_int {
 pub unsafe extern "C" fn yoyopod_liblinphone_hangup() -> c_int {
     with_current_call(
         "No active call is available to hang up",
-        |api, call| unsafe { (api.call_terminate)(call) },
+        |api, _core, call| unsafe { (api.call_terminate)(call) },
     )
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn yoyopod_liblinphone_set_muted(muted: i32) -> c_int {
-    with_current_call("No active call is available to mute", |api, call| unsafe {
-        (api.call_set_microphone_muted)(call, if muted != 0 { TRUE } else { FALSE });
-        0
-    })
+    with_current_call(
+        "No active call is available to mute",
+        |api, _core, call| unsafe {
+            (api.call_set_microphone_muted)(call, if muted != 0 { TRUE } else { FALSE });
+            0
+        },
+    )
 }
 
 #[no_mangle]
@@ -1011,19 +1031,19 @@ fn state_handles() -> Result<
 
 fn with_current_call(
     missing_message: &str,
-    function: impl FnOnce(&LinphoneApi, *mut LinphoneCall) -> c_int,
+    function: impl FnOnce(&LinphoneApi, *mut LinphoneCore, *mut LinphoneCall) -> c_int,
 ) -> c_int {
-    let (api, call) = match STATE.lock() {
+    let (api, core, call) = match STATE.lock() {
         Ok(state) if state.started && !state.current_call.is_null() => {
             let api = state.api.clone().expect("started state has API");
-            (api, state.current_call)
+            (api, state.core, state.current_call)
         }
         _ => {
             error::set_last_error(missing_message);
             return -1;
         }
     };
-    let status = function(&api, call);
+    let status = function(&api, core, call);
     if status == 0 {
         0
     } else {

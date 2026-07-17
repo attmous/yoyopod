@@ -217,8 +217,12 @@ pub struct LinphoneApi {
     pub address_unref: unsafe extern "C" fn(*mut LinphoneAddress),
     pub auth_info_unref: unsafe extern "C" fn(*mut LinphoneAuthInfo),
     pub call_params_unref: unsafe extern "C" fn(*mut LinphoneCallParams),
+    pub call_params_enable_audio: unsafe extern "C" fn(*mut LinphoneCallParams, c_int),
+    pub call_params_enable_video: unsafe extern "C" fn(*mut LinphoneCallParams, c_int),
     pub call_get_remote_address: unsafe extern "C" fn(*mut LinphoneCall) -> *const LinphoneAddress,
     pub call_accept: unsafe extern "C" fn(*mut LinphoneCall) -> c_int,
+    pub call_accept_with_params:
+        unsafe extern "C" fn(*mut LinphoneCall, *const LinphoneCallParams) -> c_int,
     pub call_decline: unsafe extern "C" fn(*mut LinphoneCall, c_int) -> c_int,
     pub call_terminate: unsafe extern "C" fn(*mut LinphoneCall) -> c_int,
     pub call_set_microphone_muted: unsafe extern "C" fn(*mut LinphoneCall, c_int),
@@ -479,10 +483,19 @@ impl LinphoneApi {
             address_unref: unsafe { required_symbol(library, c"linphone_address_unref")? },
             auth_info_unref: unsafe { required_symbol(library, c"linphone_auth_info_unref")? },
             call_params_unref: unsafe { required_symbol(library, c"linphone_call_params_unref")? },
+            call_params_enable_audio: unsafe {
+                required_symbol(library, c"linphone_call_params_enable_audio")?
+            },
+            call_params_enable_video: unsafe {
+                required_symbol(library, c"linphone_call_params_enable_video")?
+            },
             call_get_remote_address: unsafe {
                 required_symbol(library, c"linphone_call_get_remote_address")?
             },
             call_accept: unsafe { required_symbol(library, c"linphone_call_accept")? },
+            call_accept_with_params: unsafe {
+                required_symbol(library, c"linphone_call_accept_with_params")?
+            },
             call_decline: unsafe { required_symbol(library, c"linphone_call_decline")? },
             call_terminate: unsafe { required_symbol(library, c"linphone_call_terminate")? },
             call_set_microphone_muted: unsafe {

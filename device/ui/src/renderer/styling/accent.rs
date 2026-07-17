@@ -11,11 +11,20 @@ pub(crate) fn apply_accent_raw(obj: NonNull<ffi::lv_obj_t>, role: &'static str, 
     let accent = unsafe { ffi::lv_color_hex(rgb & 0xFFFFFF) };
     unsafe {
         match role {
-            roles::SCENE_BACKDROP => {
-                ffi::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
-                ffi::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+            // roles::SCENE_BACKDROP is handled by `apply_variant_raw`: its
+            // fill depends on the (variant, accent) pair, so the facade
+            // restyles it there whenever either prop changes.
+            // The hero halo covers most of the hub-family screens: at the
+            // former 30% accent share it read as "the whole screen is
+            // tinted" on the physical panel. Keep it a whisper.
+            roles::FX_HALO => {
+                ffi::lv_obj_set_style_bg_color(
+                    obj.as_ptr(),
+                    ffi::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 90)),
+                    SELECTOR,
+                );
             }
-            roles::FX_HALO | roles::FX_PULSE | roles::FX_GLOW | roles::FX_SPINNER => {
+            roles::FX_PULSE | roles::FX_GLOW | roles::FX_SPINNER => {
                 ffi::lv_obj_set_style_bg_color(
                     obj.as_ptr(),
                     ffi::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 70)),

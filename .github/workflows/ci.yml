@@ -164,6 +164,7 @@ jobs:
           cp target/release/yoyopod-on-pi "${bundle_root}/device/onpi/build/yoyopod-on-pi"
           cp target/release/yoyopod-power-host "${bundle_root}/device/power/build/yoyopod-power-host"
           cp target/release/yoyopod-speech-host "${bundle_root}/device/speech/build/yoyopod-speech-host"
+          printf '%s\n' "${RUST_ARTIFACT_SHA}" > "${bundle_root}/device/runtime/build/ARTIFACT_SHA"
           tar -C "${bundle_root}" -czf "target/${bundle_name}.tar.gz" device
 
       - name: Upload Rust device ARM64 bundle

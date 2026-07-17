@@ -10,11 +10,17 @@ pub(crate) fn apply_variant_raw(
     variant: &'static str,
     accent_rgb: u32,
 ) {
-    let _ = accent_rgb;
     const SELECTOR: ffi::LvStyleSelector = 0;
     unsafe {
         match (role, variant) {
-            (roles::SCENE_BACKDROP, "solid" | "gradient" | "accent_drift" | "vignette") => {}
+            (roles::SCENE_BACKDROP, "solid" | "gradient" | "accent_drift" | "vignette") => {
+                ffi::lv_obj_set_style_bg_color(
+                    obj.as_ptr(),
+                    ffi::lv_color_hex(super::backdrop_bg_rgb(variant, accent_rgb)),
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+            }
             (roles::MODAL, "loading") => {
                 ffi::lv_obj_set_style_border_color(
                     obj.as_ptr(),

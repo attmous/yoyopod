@@ -31,8 +31,11 @@ pub fn build_status(pi: &PiPaths) -> String {
     let pid = shell_quote(&pi.pid_file);
     format!(
         "echo '=== git ===' && git rev-parse HEAD && \
-         echo '=== processes ===' && (ps aux | grep -E 'yoyopod-runtime|mpv' | grep -v grep || true) && \
+         echo '=== artifact ===' && \
+         (cat device/runtime/build/ARTIFACT_SHA 2>/dev/null || echo 'no artifact SHA marker') && \
          echo '=== pid ===' && (cat {pid} 2>/dev/null || echo 'no pid file') && \
+         echo '=== workers ===' && \
+         (ps aux | grep -E 'yoyopod-(runtime|[a-z-]+-host)|[m]pv' | grep -v grep || true) && \
          echo '=== log tail ===' && (tail -n 20 {log} 2>/dev/null || echo 'no log file')"
     )
 }
@@ -58,7 +61,28 @@ pub fn build_startup_verification(pi: &PiPaths, attempts: u32) -> String {
 }
 
 pub fn build_stale_runtime_cleanup() -> String {
-    r"pkill -f '[y]oyopod-runtime' || true".to_string()
+    // Match actual executable basenames through /proc rather than command
+    // text. `pkill -f` can match and kill the validator shell itself because
+    // its generated command contains worker paths later in the same argv.
+    // Escalate first for root-owned service strays, with a developer-owned
+    // standalone-process fallback.
+    r#"yoyopod_process_pids() { \
+         for proc in /proc/[0-9]*; do \
+           exe="$(readlink "$proc/exe" 2>/dev/null || true)"; \
+           name="${exe##*/}"; name="${name% (deleted)}"; \
+           case "$name" in yoyopod-runtime|yoyopod-*-host) printf '%s ' "${proc##*/}";; esac; \
+         done; \
+       }; \
+       pids="$(yoyopod_process_pids)"; \
+       if [ -n "$pids" ]; then \
+         sudo kill -TERM $pids 2>/dev/null || kill -TERM $pids 2>/dev/null || true; \
+         sleep 1; \
+       fi; \
+       pids="$(yoyopod_process_pids)"; \
+       if [ -n "$pids" ]; then \
+         sudo kill -KILL $pids 2>/dev/null || kill -KILL $pids 2>/dev/null || true; \
+       fi"#
+        .to_string()
 }
 
 pub fn build_restart(pi: &PiPaths, lane: &LanePaths) -> String {
@@ -90,4 +114,34 @@ pub fn build_restart(pi: &PiPaths, lane: &LanePaths) -> String {
          sudo systemctl start {dev_service} || exit $?"
     );
     [managed_restart, build_startup_verification(pi, 20)].join(" && ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_cleanup_uses_executable_identity_and_sweeps_workers() {
+        let cleanup = build_stale_runtime_cleanup();
+        assert!(cleanup.contains("/proc/[0-9]*"));
+        assert!(cleanup.contains("readlink \"$proc/exe\""));
+        assert!(cleanup.contains("yoyopod-runtime|yoyopod-*-host"));
+        assert!(cleanup.contains("sudo kill -TERM"));
+        assert!(cleanup.contains("sudo kill -KILL"));
+        assert!(!cleanup.contains("pkill -f"));
+    }
+
+    #[test]
+    fn restart_includes_the_stale_sweep() {
+        let restart = build_restart(&PiPaths::default(), &LanePaths::default());
+        assert!(restart.contains("yoyopod_process_pids"));
+        assert!(restart.contains("sudo systemctl stop yoyopod-dev.service"));
+    }
+
+    #[test]
+    fn status_reports_artifact_and_every_worker_host() {
+        let status = build_status(&PiPaths::default());
+        assert!(status.contains("device/runtime/build/ARTIFACT_SHA"));
+        assert!(status.contains("[a-z-]+-host"));
+    }
 }

@@ -78,7 +78,7 @@ pub fn dispatch(args: TargetArgs, dry_run: bool) -> Result<i32> {
         }
         TargetCommand::Validate(a) => {
             validate_connection(&ctx.conn)?;
-            validate::run(&ctx, a)
+            validate::run(&ctx, &base, &local, a)
         }
     }
 }

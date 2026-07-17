@@ -13,6 +13,7 @@ use crate::proc::run_with_timeout;
 use crate::report::CheckResult;
 
 const DRY_RUN_TIMEOUT: Duration = Duration::from_secs(10);
+pub const ARTIFACT_SHA_FILE: &str = "device/runtime/build/ARTIFACT_SHA";
 
 /// The eight CI-built worker binaries, as repo-relative paths.
 pub const WORKER_BINARIES: [&str; 8] = [
@@ -133,7 +134,11 @@ pub fn required_config_files(config_dir: &Path) -> Vec<PathBuf> {
     [
         "app/core.yaml",
         "audio/music.yaml",
+        "cloud/backend.yaml",
         "device/hardware.yaml",
+        "network/cellular.yaml",
+        "boards/rpi-zero-2w/network/cellular.yaml",
+        "power/backend.yaml",
         "voice/assistant.yaml",
         "communication/calling.yaml",
         "communication/messaging.yaml",
@@ -144,6 +149,60 @@ pub fn required_config_files(config_dir: &Path) -> Vec<PathBuf> {
     .iter()
     .map(|suffix| config_dir.join(suffix))
     .collect()
+}
+
+/// Verify that the installed worker bundle belongs to the source revision
+/// being validated. The CLI sets the expected SHA explicitly; direct dev-lane
+/// invocations fall back to the checkout's Git HEAD.
+pub fn artifact_sha_check() -> CheckResult {
+    let expected = std::env::var("YOYOPOD_EXPECTED_ARTIFACT_SHA")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(git_head_sha);
+    let Some(expected) = expected else {
+        return CheckResult::fail(
+            "artifact_sha",
+            "cannot determine expected commit SHA from environment or git",
+        );
+    };
+    artifact_sha_check_at(&slot_aware_path(Path::new(ARTIFACT_SHA_FILE)), &expected)
+}
+
+fn git_head_sha() -> Option<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn artifact_sha_check_at(path: &Path, expected: &str) -> CheckResult {
+    let installed = match std::fs::read_to_string(path) {
+        Ok(value) => value.trim().to_string(),
+        Err(error) => {
+            return CheckResult::fail(
+                "artifact_sha",
+                format!("cannot read {}: {error}", path.display()),
+            );
+        }
+    };
+    if installed != expected.trim() {
+        return CheckResult::fail(
+            "artifact_sha",
+            format!(
+                "installed_sha={installed}, expected_sha={}; redeploy the exact CI artifact",
+                expected.trim()
+            ),
+        );
+    }
+    CheckResult::pass(
+        "artifact_sha",
+        format!("installed_sha={installed}, marker={}", path.display()),
+    )
 }
 
 /// Validate that the tracked runtime config files are present.
@@ -312,11 +371,31 @@ mod tests {
     #[test]
     fn required_config_files_are_rooted_at_config_dir() {
         let files = required_config_files(Path::new("config"));
-        assert_eq!(files.len(), 9);
+        assert_eq!(files.len(), 13);
         assert!(files.iter().all(|path| path.starts_with("config")));
         assert!(files
             .iter()
             .any(|path| path.ends_with("communication/integrations/liblinphone_factory.conf")));
+    }
+
+    #[test]
+    fn artifact_sha_must_match_expected_commit() {
+        let dir =
+            std::env::temp_dir().join(format!("yoyopod-artifact-sha-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let marker = dir.join("ARTIFACT_SHA");
+        std::fs::write(&marker, "abc123\n").unwrap();
+
+        assert_eq!(
+            artifact_sha_check_at(&marker, "abc123").status,
+            CheckStatus::Pass
+        );
+        assert_eq!(
+            artifact_sha_check_at(&marker, "def456").status,
+            CheckStatus::Fail
+        );
+
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

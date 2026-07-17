@@ -112,6 +112,7 @@ Authoritative implementation contracts as of today:
 - [`operations/QUALITY_GATES.md`](operations/QUALITY_GATES.md)
 - [`operations/DEV_PROD_LANES.md`](operations/DEV_PROD_LANES.md)
 - [`operations/PI_DEV_WORKFLOW.md`](operations/PI_DEV_WORKFLOW.md)
+- [`operations/PILLAR_VALIDATION.md`](operations/PILLAR_VALIDATION.md)
 - [`hardware/POWER_MODULE.md`](hardware/POWER_MODULE.md)
 - [`hardware/AUDIO_STACK.md`](hardware/AUDIO_STACK.md)
 - [`features/CLOUD_PROVISIONING_AND_BACKEND.md`](features/CLOUD_PROVISIONING_AND_BACKEND.md)
