@@ -5,7 +5,7 @@ description: The runtime supervisor, per-domain worker hosts, and the operator C
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/architecture/SYSTEM_ARCHITECTURE.md`](https://github.com/attmous/yoyocore/blob/main/docs/architecture/SYSTEM_ARCHITECTURE.md)
+[`docs/architecture/SYSTEM_ARCHITECTURE.md`](https://github.com/attmous/yoyopod/blob/main/docs/architecture/SYSTEM_ARCHITECTURE.md)
 in the repository.
 :::
 

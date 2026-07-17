@@ -5,7 +5,7 @@ description: The verification required before merging.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/operations/QUALITY_GATES.md`](https://github.com/attmous/yoyocore/blob/main/docs/operations/QUALITY_GATES.md)
+[`docs/operations/QUALITY_GATES.md`](https://github.com/attmous/yoyopod/blob/main/docs/operations/QUALITY_GATES.md)
 in the repository.
 :::
 

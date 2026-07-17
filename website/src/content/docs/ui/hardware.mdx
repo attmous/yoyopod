@@ -22,7 +22,7 @@ The glass is driven by an **ST7789** controller over SPI:
 | Rotation | in-panel, via MADCTL (`0x36 = 0xC0`) — never in software |
 
 Constants live at the top of
-[`device/ui/src/hardware/whisplay_panel.rs`](https://github.com/attmous/yoyocore/blob/main/device/ui/src/hardware/whisplay_panel.rs).
+[`device/ui/src/hardware/whisplay_panel.rs`](https://github.com/attmous/yoyopod/blob/main/device/ui/src/hardware/whisplay_panel.rs).
 
 The 20-row offset matters: the controller believes it drives a 240×320
 display, but only rows 20–299 exist as glass. The driver adds the offset to

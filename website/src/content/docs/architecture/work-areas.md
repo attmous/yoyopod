@@ -5,7 +5,7 @@ description: Where Rust-first work belongs, by area of the codebase.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/architecture/WORK_AREAS.md`](https://github.com/attmous/yoyocore/blob/main/docs/architecture/WORK_AREAS.md)
+[`docs/architecture/WORK_AREAS.md`](https://github.com/attmous/yoyopod/blob/main/docs/architecture/WORK_AREAS.md)
 in the repository.
 :::
 

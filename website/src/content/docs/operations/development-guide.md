@@ -5,7 +5,7 @@ description: Toolchain setup, running the workspace, validation, and daily workf
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/operations/DEVELOPMENT_GUIDE.md`](https://github.com/attmous/yoyocore/blob/main/docs/operations/DEVELOPMENT_GUIDE.md)
+[`docs/operations/DEVELOPMENT_GUIDE.md`](https://github.com/attmous/yoyopod/blob/main/docs/operations/DEVELOPMENT_GUIDE.md)
 in the repository.
 :::
 

@@ -22,7 +22,7 @@ is spelled with three gestures on that one button.
 | Hold (capture screens only) | `PttPress` / `PttRelease` | push-to-talk: hold to speak, release to stop |
 
 The grammar is implemented by `OneButtonMachine` in
-[`device/ui/src/input/machine.rs`](https://github.com/attmous/yoyocore/blob/main/device/ui/src/input/machine.rs):
+[`device/ui/src/input/machine.rs`](https://github.com/attmous/yoyopod/blob/main/device/ui/src/input/machine.rs):
 debounce, double-tap disambiguation, and hold detection are all hand-rolled
 in one state machine. LVGL's input-device layer is not involved — raw GPIO
 level goes in, semantic `InputAction`s come out.
@@ -60,7 +60,7 @@ validation drives navigation without touching the button.
 ## Timing: shipped vs. contract
 
 Timing constants live in `input/config.rs` and are configurable via
-[`config/device/hardware.yaml`](https://github.com/attmous/yoyocore/blob/main/config/device/hardware.yaml):
+[`config/device/hardware.yaml`](https://github.com/attmous/yoyopod/blob/main/config/device/hardware.yaml):
 
 | Parameter | Shipped | Design contract | Status |
 | --- | --- | --- | --- |

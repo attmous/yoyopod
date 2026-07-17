@@ -5,7 +5,7 @@ description: Device claiming, authentication, config sync, and MQTT telemetry.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/features/CLOUD_PROVISIONING_AND_BACKEND.md`](https://github.com/attmous/yoyocore/blob/main/docs/features/CLOUD_PROVISIONING_AND_BACKEND.md)
+[`docs/features/CLOUD_PROVISIONING_AND_BACKEND.md`](https://github.com/attmous/yoyopod/blob/main/docs/features/CLOUD_PROVISIONING_AND_BACKEND.md)
 in the repository.
 :::
 

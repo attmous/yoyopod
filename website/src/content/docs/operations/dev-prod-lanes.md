@@ -5,7 +5,7 @@ description: The two deployment lanes on the device and how to switch between th
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/operations/DEV_PROD_LANES.md`](https://github.com/attmous/yoyocore/blob/main/docs/operations/DEV_PROD_LANES.md)
+[`docs/operations/DEV_PROD_LANES.md`](https://github.com/attmous/yoyopod/blob/main/docs/operations/DEV_PROD_LANES.md)
 in the repository.
 :::
 

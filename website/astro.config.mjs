@@ -12,7 +12,7 @@ export default defineConfig({
 			description:
 				'A screen-light audio companion for kids — documentation for the runtime, hardware, and UI system.',
 			social: [
-				{ icon: 'github', label: 'GitHub', href: 'https://github.com/attmous/yoyocore' },
+				{ icon: 'github', label: 'GitHub', href: 'https://github.com/attmous/yoyopod' },
 			],
 			customCss: ['./src/styles/custom.css'],
 			sidebar: [

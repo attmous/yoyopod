@@ -5,7 +5,7 @@ description: WM8960 codec, ALSA routing, and the mpv and Liblinphone audio paths
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/hardware/AUDIO_STACK.md`](https://github.com/attmous/yoyocore/blob/main/docs/hardware/AUDIO_STACK.md)
+[`docs/hardware/AUDIO_STACK.md`](https://github.com/attmous/yoyopod/blob/main/docs/hardware/AUDIO_STACK.md)
 in the repository.
 :::
 

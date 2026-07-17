@@ -7,9 +7,9 @@ import Rgb565 from '../../../assets/diagrams/rgb565.svg';
 
 The panel driver is two files, both in `device/ui/src/hardware/`:
 
-- [`whisplay_panel.rs`](https://github.com/attmous/yoyocore/blob/main/device/ui/src/hardware/whisplay_panel.rs)
+- [`whisplay_panel.rs`](https://github.com/attmous/yoyopod/blob/main/device/ui/src/hardware/whisplay_panel.rs)
   — the panel's constants and command sequences (what to send)
-- [`whisplay.rs`](https://github.com/attmous/yoyocore/blob/main/device/ui/src/hardware/whisplay.rs)
+- [`whisplay.rs`](https://github.com/attmous/yoyopod/blob/main/device/ui/src/hardware/whisplay.rs)
   — the rppal-backed transport (how to send it): SPI setup, GPIO control,
   chunking, backlight, and the button
 
@@ -67,7 +67,7 @@ write paths:
 ## Developing without a Pi
 
 The second implementation of `DisplayDevice` is
-[`hardware/mock.rs`](https://github.com/attmous/yoyocore/blob/main/device/ui/src/hardware/mock.rs)
+[`hardware/mock.rs`](https://github.com/attmous/yoyopod/blob/main/device/ui/src/hardware/mock.rs)
 — an in-memory display selected with `--hardware mock` (the real panel is
 `--hardware whisplay`). The mock path is what CI and host-machine
 development use; the whisplay path only compiles on Linux with the

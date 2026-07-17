@@ -5,7 +5,7 @@ description: The direction for on-device music storage and playback.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/features/LOCAL_FIRST_MUSIC_PLAN.md`](https://github.com/attmous/yoyocore/blob/main/docs/features/LOCAL_FIRST_MUSIC_PLAN.md)
+[`docs/features/LOCAL_FIRST_MUSIC_PLAN.md`](https://github.com/attmous/yoyopod/blob/main/docs/features/LOCAL_FIRST_MUSIC_PLAN.md)
 in the repository.
 :::
 

@@ -5,7 +5,7 @@ description: How events travel from worker hosts through the runtime into app st
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/architecture/RUNTIME_EVENT_FLOW.md`](https://github.com/attmous/yoyocore/blob/main/docs/architecture/RUNTIME_EVENT_FLOW.md)
+[`docs/architecture/RUNTIME_EVENT_FLOW.md`](https://github.com/attmous/yoyopod/blob/main/docs/architecture/RUNTIME_EVENT_FLOW.md)
 in the repository.
 :::
 

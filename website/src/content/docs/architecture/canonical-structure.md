@@ -5,7 +5,7 @@ description: Config topology, package ownership, and board overlay rules.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/architecture/CANONICAL_STRUCTURE.md`](https://github.com/attmous/yoyocore/blob/main/docs/architecture/CANONICAL_STRUCTURE.md)
+[`docs/architecture/CANONICAL_STRUCTURE.md`](https://github.com/attmous/yoyopod/blob/main/docs/architecture/CANONICAL_STRUCTURE.md)
 in the repository.
 :::
 

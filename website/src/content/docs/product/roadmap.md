@@ -5,7 +5,7 @@ description: The staged Rust rebuild — what works today and what is paused.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/ROADMAP.md`](https://github.com/attmous/yoyocore/blob/main/docs/ROADMAP.md)
+[`docs/ROADMAP.md`](https://github.com/attmous/yoyopod/blob/main/docs/ROADMAP.md)
 in the repository.
 :::
 

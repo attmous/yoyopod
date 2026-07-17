@@ -5,7 +5,7 @@ description: How the yoyopod repository is organized and which documents to trus
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/README.md`](https://github.com/attmous/yoyocore/blob/main/docs/README.md)
+[`docs/README.md`](https://github.com/attmous/yoyopod/blob/main/docs/README.md)
 in the repository.
 :::
 
@@ -19,7 +19,7 @@ When documents disagree, trust sources in this order:
 
 1. Current Rust runtime and worker host code in `device/`
 2. The Rust operator CLI in `cli/` and deploy tooling under `deploy/`
-3. [`docs/ROADMAP.md`](https://github.com/attmous/yoyocore/blob/main/docs/ROADMAP.md) — what is currently broken or paused
+3. [`docs/ROADMAP.md`](https://github.com/attmous/yoyopod/blob/main/docs/ROADMAP.md) — what is currently broken or paused
 4. The operations, architecture, hardware, features, and design docs under `docs/`
 5. Rules and agent guidance in `rules/`, `AGENTS.md`, and `skills/`
 

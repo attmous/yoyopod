@@ -5,7 +5,7 @@ description: What yoyopod is, who it serves, and the experience it commits to.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/product/PRODUCT_DEFINITION.md`](https://github.com/attmous/yoyocore/blob/main/docs/product/PRODUCT_DEFINITION.md)
+[`docs/product/PRODUCT_DEFINITION.md`](https://github.com/attmous/yoyopod/blob/main/docs/product/PRODUCT_DEFINITION.md)
 in the repository.
 :::
 

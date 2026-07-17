@@ -5,7 +5,7 @@ description: From a fresh checkout to a credible pull request.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/operations/CONTRIBUTOR_WORKFLOW.md`](https://github.com/attmous/yoyocore/blob/main/docs/operations/CONTRIBUTOR_WORKFLOW.md)
+[`docs/operations/CONTRIBUTOR_WORKFLOW.md`](https://github.com/attmous/yoyopod/blob/main/docs/operations/CONTRIBUTOR_WORKFLOW.md)
 in the repository.
 :::
 

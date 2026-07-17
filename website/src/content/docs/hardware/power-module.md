@@ -5,7 +5,7 @@ description: PiSugar 3 battery, RTC, watchdog, and the power safety policy.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/hardware/POWER_MODULE.md`](https://github.com/attmous/yoyocore/blob/main/docs/hardware/POWER_MODULE.md)
+[`docs/hardware/POWER_MODULE.md`](https://github.com/attmous/yoyopod/blob/main/docs/hardware/POWER_MODULE.md)
 in the repository.
 :::
 

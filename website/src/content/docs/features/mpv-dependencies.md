@@ -5,7 +5,7 @@ description: What the mpv playback integration requires on the device image.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/features/MPV_DEPENDENCIES.md`](https://github.com/attmous/yoyocore/blob/main/docs/features/MPV_DEPENDENCIES.md)
+[`docs/features/MPV_DEPENDENCIES.md`](https://github.com/attmous/yoyopod/blob/main/docs/features/MPV_DEPENDENCIES.md)
 in the repository.
 :::
 

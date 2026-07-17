@@ -5,7 +5,7 @@ description: Homepage and landing-page messaging for yoyopod.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/product/LANDING_PAGE_POSITIONING.md`](https://github.com/attmous/yoyocore/blob/main/docs/product/LANDING_PAGE_POSITIONING.md)
+[`docs/product/LANDING_PAGE_POSITIONING.md`](https://github.com/attmous/yoyopod/blob/main/docs/product/LANDING_PAGE_POSITIONING.md)
 in the repository.
 :::
 

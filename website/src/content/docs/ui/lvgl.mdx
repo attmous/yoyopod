@@ -16,12 +16,12 @@ layer up. This page is the ledger of those decisions.
 | --- | --- |
 | Version | **9.5.0**, cloned at upstream tag `v9.5.0` (pinned in `.github/workflows/ci.yml`) |
 | Patches / fork | **None** — stock upstream source |
-| Binding | **Hand-written C FFI** in [`device/ui/src/renderer/lvgl/ffi.rs`](https://github.com/attmous/yoyocore/blob/main/device/ui/src/renderer/lvgl/ffi.rs) — no `lvgl-rs`, no `lv_binding_rust` |
+| Binding | **Hand-written C FFI** in [`device/ui/src/renderer/lvgl/ffi.rs`](https://github.com/attmous/yoyopod/blob/main/device/ui/src/renderer/lvgl/ffi.rs) — no `lvgl-rs`, no `lv_binding_rust` |
 | Build | `cmake` crate + `device/ui/native/lvgl/{CMakeLists.txt, lv_conf.h}` → static `liblvgl.a`, linked with `-llvgl -lm` |
 | Gate | cargo feature `native-lvgl` + env `YOYOPOD_LVGL_SOURCE_DIR` pointing at the LVGL checkout |
 
 Two hard rules from
-[`rules/lvgl.md`](https://github.com/attmous/yoyocore/blob/main/rules/lvgl.md):
+[`rules/lvgl.md`](https://github.com/attmous/yoyopod/blob/main/rules/lvgl.md):
 
 :::caution[Do not rebuild LVGL on the Pi]
 Device binaries come from the pinned CI artifact. If `lv_conf.h` or binding
@@ -50,7 +50,7 @@ pinned LVGL version moves, which is rarely.
 ## `lv_conf.h`: the decision matrix
 
 The entire LVGL configuration
-([`device/ui/native/lvgl/lv_conf.h`](https://github.com/attmous/yoyocore/blob/main/device/ui/native/lvgl/lv_conf.h))
+([`device/ui/native/lvgl/lv_conf.h`](https://github.com/attmous/yoyopod/blob/main/device/ui/native/lvgl/lv_conf.h))
 is deliberately minimal:
 
 | Setting | Value | Why |
@@ -116,7 +116,7 @@ renderer.
 | Focus-ring outline color (`lv_obj_set_style_outline_color`) | not yet callable; focus is shown with fill + size only | HANDOFF item 5 |
 | Montserrat 14 / 24 | enabled in `lv_conf.h` but no `extern` declared — only 12 and 18 are usable from Rust | HANDOFF item 5: add the externs |
 | Drop shadows | **deleted on purpose** — the flat design pass removed the shadow FFI requirement entirely to save fill-rate | none needed; an "LCD washout escape hatch" (darker stage tint) exists as a token change if device testing demands it |
-| Little-endian RGB565 output vs. big-endian panel | every flush byte-swaps each 16-bit pixel (`RGB565_SWAPPED`) in [`flush.rs`](https://github.com/attmous/yoyocore/blob/main/device/ui/src/renderer/lvgl/flush.rs) | permanent — this is just the ST7789's wire format |
+| Little-endian RGB565 output vs. big-endian panel | every flush byte-swaps each 16-bit pixel (`RGB565_SWAPPED`) in [`flush.rs`](https://github.com/attmous/yoyopod/blob/main/device/ui/src/renderer/lvgl/flush.rs) | permanent — this is just the ST7789's wire format |
 
 The full, current list of tracked gaps — including the non-LVGL ones — lives
 in [Known Gaps & Build Order](/ui/gaps/).

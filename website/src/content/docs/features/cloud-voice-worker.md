@@ -5,7 +5,7 @@ description: Cloud STT/TTS worker setup, secrets, and smoke validation.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/features/CLOUD_VOICE_WORKER.md`](https://github.com/attmous/yoyocore/blob/main/docs/features/CLOUD_VOICE_WORKER.md)
+[`docs/features/CLOUD_VOICE_WORKER.md`](https://github.com/attmous/yoyopod/blob/main/docs/features/CLOUD_VOICE_WORKER.md)
 in the repository.
 :::
 

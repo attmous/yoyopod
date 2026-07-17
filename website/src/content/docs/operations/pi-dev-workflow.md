@@ -5,7 +5,7 @@ description: The day-to-day loop from your dev machine to a running device.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/operations/PI_DEV_WORKFLOW.md`](https://github.com/attmous/yoyocore/blob/main/docs/operations/PI_DEV_WORKFLOW.md)
+[`docs/operations/PI_DEV_WORKFLOW.md`](https://github.com/attmous/yoyopod/blob/main/docs/operations/PI_DEV_WORKFLOW.md)
 in the repository.
 :::
 

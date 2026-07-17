@@ -5,7 +5,7 @@ description: The backend-issued playback and media import contract.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/features/REMOTE_PLAYBACK.md`](https://github.com/attmous/yoyocore/blob/main/docs/features/REMOTE_PLAYBACK.md)
+[`docs/features/REMOTE_PLAYBACK.md`](https://github.com/attmous/yoyopod/blob/main/docs/features/REMOTE_PLAYBACK.md)
 in the repository.
 :::
 

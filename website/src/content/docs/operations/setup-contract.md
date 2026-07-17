@@ -5,7 +5,7 @@ description: What a dev machine and a device must have before work starts.
 
 :::note[Canonical source]
 This page is a summary. The authoritative document is
-[`docs/operations/SETUP_CONTRACT.md`](https://github.com/attmous/yoyocore/blob/main/docs/operations/SETUP_CONTRACT.md)
+[`docs/operations/SETUP_CONTRACT.md`](https://github.com/attmous/yoyopod/blob/main/docs/operations/SETUP_CONTRACT.md)
 in the repository.
 :::
 
