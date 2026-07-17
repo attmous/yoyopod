@@ -371,6 +371,10 @@ where
         ui_runtime.wants_ptt_passthrough(),
         now_ms,
     )?;
+    if button_machine.debounced_pressed() && ui_runtime.wake_home_from_ambient(now_ms) {
+        button_machine.cancel_current_gesture();
+        return Ok(());
+    }
     for event in button_events {
         *input_events += 1;
         outbound::emit_input_action(

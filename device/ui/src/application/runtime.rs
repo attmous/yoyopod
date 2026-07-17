@@ -47,13 +47,10 @@ impl UiRuntime {
     }
 
     pub fn handle_input(&mut self, action: InputAction, now_ms: u64) {
-        self.last_input_ms = Some(now_ms);
-        if self.active_screen == UiScreen::Hub && self.home_mode == HomeMode::Ambient {
-            self.home_mode = HomeMode::Idle;
-            self.dirty.input = true;
-            self.dirty.focus = true;
+        if self.wake_home_from_ambient(now_ms) {
             return;
         }
+        self.last_input_ms = Some(now_ms);
         let route_state = input_router::InputRouteState {
             active_screen: self.active_screen,
             voice_note_phase: self.voice_note_phase(),
@@ -69,6 +66,18 @@ impl UiRuntime {
         navigator::clamp_focus(self);
         self.dirty.input = true;
         self.dirty.focus = true;
+    }
+
+    pub(crate) fn wake_home_from_ambient(&mut self, now_ms: u64) -> bool {
+        if self.active_screen != UiScreen::Hub || self.home_mode != HomeMode::Ambient {
+            return false;
+        }
+
+        self.last_input_ms = Some(now_ms);
+        self.home_mode = HomeMode::Idle;
+        self.dirty.input = true;
+        self.dirty.focus = true;
+        true
     }
 
     pub fn advance_home_state(&mut self, now_ms: u64) {
@@ -310,5 +319,40 @@ mod tests {
 
         runtime.handle_input(InputAction::Advance, 30_200);
         assert_eq!(runtime.home_mode, HomeMode::Idle);
+        let awake = flatten::flatten(&runtime.scene_graph(30_200));
+        assert_eq!(count_visible_role(&awake, roles::DECK_BAR), 1);
+    }
+
+    #[test]
+    fn ambient_wake_emits_a_visible_deck_mutation() {
+        let mut runtime = UiRuntime::default();
+        let mut engine = crate::engine::Engine::default();
+        runtime.advance_home_state(0);
+        engine.render(&runtime.scene_graph(0), 0);
+
+        runtime.advance_home_state(30_000);
+        let ambient_graph = runtime.scene_graph(30_000);
+        let hidden = engine.render(&ambient_graph, 30_000).to_vec();
+        let deck_node = hidden
+            .iter()
+            .find_map(|mutation| match mutation {
+                crate::engine::Mutation::Update {
+                    node,
+                    prop: crate::engine::PropChange::Visible(false),
+                } => Some(*node),
+                _ => None,
+            })
+            .expect("ambient transition must hide the deck");
+
+        assert!(runtime.wake_home_from_ambient(30_100));
+        let awake_graph = runtime.scene_graph(30_100);
+        let awake = engine.render(&awake_graph, 30_100);
+        assert!(awake.iter().any(|mutation| matches!(
+            mutation,
+            crate::engine::Mutation::Update {
+                node,
+                prop: crate::engine::PropChange::Visible(true),
+            } if *node == deck_node
+        )));
     }
 }

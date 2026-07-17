@@ -67,6 +67,7 @@ pub struct OneButtonMachine {
     pending_single_tap_ms: Option<u64>,
     double_tap_candidate: bool,
     hold_back_fired: bool,
+    cancel_until_release: bool,
 }
 
 impl OneButtonMachine {
@@ -80,7 +81,23 @@ impl OneButtonMachine {
             pending_single_tap_ms: None,
             double_tap_candidate: false,
             hold_back_fired: false,
+            cancel_until_release: false,
         }
+    }
+
+    pub fn debounced_pressed(&self) -> bool {
+        self.debounced_pressed
+    }
+
+    pub fn cancel_current_gesture(&mut self) {
+        if !self.debounced_pressed {
+            return;
+        }
+        self.press_start_ms = None;
+        self.pending_single_tap_ms = None;
+        self.double_tap_candidate = false;
+        self.hold_back_fired = false;
+        self.cancel_until_release = true;
     }
 
     pub fn observe(&mut self, pressed: bool, now_ms: u64) -> Vec<InputEvent> {
@@ -182,6 +199,7 @@ impl OneButtonMachine {
     fn handle_press(&mut self, now_ms: u64) -> Vec<InputEvent> {
         let mut events = Vec::new();
         self.debounced_pressed = true;
+        self.cancel_until_release = false;
         self.double_tap_candidate = self
             .pending_single_tap_ms
             .map(|pending| now_ms.saturating_sub(pending) < self.timing.double_tap_ms)
@@ -198,6 +216,14 @@ impl OneButtonMachine {
 
     fn handle_release(&mut self, now_ms: u64) -> Vec<InputEvent> {
         self.debounced_pressed = false;
+        if self.cancel_until_release {
+            self.cancel_until_release = false;
+            self.press_start_ms = None;
+            self.pending_single_tap_ms = None;
+            self.double_tap_candidate = false;
+            self.hold_back_fired = false;
+            return Vec::new();
+        }
         let duration = self
             .press_start_ms
             .map(|started| now_ms.saturating_sub(started))
@@ -230,6 +256,14 @@ impl OneButtonMachine {
 
     fn handle_ptt_release(&mut self, now_ms: u64) -> Vec<InputEvent> {
         self.debounced_pressed = false;
+        if self.cancel_until_release {
+            self.cancel_until_release = false;
+            self.press_start_ms = None;
+            self.pending_single_tap_ms = None;
+            self.double_tap_candidate = false;
+            self.hold_back_fired = false;
+            return Vec::new();
+        }
         let duration = self
             .press_start_ms
             .map(|started| now_ms.saturating_sub(started))
@@ -286,6 +320,19 @@ mod tests {
             actions(machine.observe(false, 451)),
             vec![InputAction::Advance]
         );
+    }
+
+    #[test]
+    fn cancelled_press_is_consumed_through_release() {
+        let mut machine = OneButtonMachine::new(ButtonTiming::default());
+        machine.observe(true, 0);
+        assert!(machine.observe(true, 50).is_empty());
+        assert!(machine.debounced_pressed());
+        machine.cancel_current_gesture();
+
+        assert!(machine.observe(false, 100).is_empty());
+        assert!(machine.observe(false, 150).is_empty());
+        assert!(machine.observe(false, 600).is_empty());
     }
 
     #[test]
