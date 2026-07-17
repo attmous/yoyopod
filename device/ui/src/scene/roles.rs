@@ -1,6 +1,16 @@
 pub(crate) const ROOT: &str = "root";
 pub(crate) const FOOTER_BAR: &str = "footer_bar";
 pub(crate) const FOOTER_LABEL: &str = "footer_label";
+pub(crate) const DECK_BAR: &str = "deck_bar";
+pub(crate) const DECK_SLOT: &str = "deck_slot";
+pub(crate) const DECK_PILL: &str = "deck_pill";
+pub(crate) const DECK_GLYPH: &str = "deck_glyph";
+
+pub(crate) const COMPANION: &str = "companion";
+pub(crate) const COMPANION_BODY: &str = "companion_body";
+pub(crate) const COMPANION_EYE: &str = "companion_eye";
+pub(crate) const COMPANION_CATCHLIGHT: &str = "companion_catchlight";
+pub(crate) const COMPANION_MOUTH: &str = "companion_mouth";
 
 pub(crate) const BUTTON: &str = "button";
 pub(crate) const BUTTON_ICON: &str = "button_icon";
@@ -53,23 +63,12 @@ pub(crate) const LIST_ROW_SUBTITLE: &str = "list_row_subtitle";
 pub(crate) const LIST_ROW_TITLE: &str = "list_row_title";
 
 pub(crate) const STATUS_BAR: &str = "status_bar";
-pub(crate) const STATUS_SIGNAL_BAR_0: &str = "status_signal_bar_0";
-pub(crate) const STATUS_SIGNAL_BAR_1: &str = "status_signal_bar_1";
-pub(crate) const STATUS_SIGNAL_BAR_2: &str = "status_signal_bar_2";
-pub(crate) const STATUS_SIGNAL_BAR_3: &str = "status_signal_bar_3";
-pub(crate) const STATUS_WIFI: &str = "status_wifi";
-pub(crate) const STATUS_GPS_RING: &str = "status_gps_ring";
-pub(crate) const STATUS_GPS_CENTER: &str = "status_gps_center";
-pub(crate) const STATUS_GPS_TAIL: &str = "status_gps_tail";
-pub(crate) const STATUS_VOIP_DOT_AFTER_GPS: &str = "status_voip_dot_after_gps";
+pub(crate) const STATUS_LEFT_CLUSTER: &str = "status_left_cluster";
+pub(crate) const STATUS_NETWORK_ICON: &str = "status_network_icon";
+pub(crate) const STATUS_GPS_ICON: &str = "status_gps_icon";
+pub(crate) const STATUS_VOIP_ICON: &str = "status_voip_icon";
 pub(crate) const STATUS_TIME: &str = "status_time";
-pub(crate) const STATUS_BATTERY_OUTLINE: &str = "status_battery_outline";
-pub(crate) const STATUS_BATTERY_FILL: &str = "status_battery_fill";
-pub(crate) const STATUS_BATTERY_TIP: &str = "status_battery_tip";
+pub(crate) const STATUS_RIGHT_CLUSTER: &str = "status_right_cluster";
 pub(crate) const STATUS_BATTERY_LABEL: &str = "status_battery_label";
-pub(crate) const STATUS_SIGNAL_BARS: [&str; 4] = [
-    STATUS_SIGNAL_BAR_0,
-    STATUS_SIGNAL_BAR_1,
-    STATUS_SIGNAL_BAR_2,
-    STATUS_SIGNAL_BAR_3,
-];
+pub(crate) const STATUS_CHARGE_ICON: &str = "status_charge_icon";
+pub(crate) const STATUS_BATTERY_ICON: &str = "status_battery_icon";

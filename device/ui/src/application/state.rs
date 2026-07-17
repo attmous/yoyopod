@@ -17,12 +17,24 @@ pub struct UiRuntime {
     pub(crate) active_screen: UiScreen,
     pub(crate) screen_stack: Vec<HistoryEntry>,
     pub(crate) focus_index: usize,
+    pub(crate) home_mode: HomeMode,
+    pub(crate) last_input_ms: Option<u64>,
     pub(crate) intents: Vec<UiIntent>,
     pub(crate) dirty: DirtyState,
     pub(crate) selected_contact: Option<ListItemSnapshot>,
     pub(crate) transitions: Vec<Transition>,
     pub(crate) full_snapshots: u64,
     pub(crate) patches_per_domain: BTreeMap<RuntimeSnapshotDomain, u64>,
+    pub(crate) status_bar_preview_enabled: bool,
+    pub(crate) status_bar_preview_stage: Option<u8>,
+    pub(crate) status_clock_minute: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HomeMode {
+    Idle,
+    Focused,
+    Ambient,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -131,6 +143,8 @@ impl Default for UiRuntime {
             active_screen: UiScreen::Hub,
             screen_stack: Vec::new(),
             focus_index: 0,
+            home_mode: HomeMode::Idle,
+            last_input_ms: None,
             intents: Vec::new(),
             dirty: {
                 let mut dirty = DirtyState::default();
@@ -141,6 +155,9 @@ impl Default for UiRuntime {
             transitions: Vec::new(),
             full_snapshots: 0,
             patches_per_domain: BTreeMap::new(),
+            status_bar_preview_enabled: false,
+            status_bar_preview_stage: None,
+            status_clock_minute: None,
         }
     }
 }

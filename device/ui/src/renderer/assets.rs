@@ -210,7 +210,7 @@ fn validate_role_coverage<'a>(
 }
 
 fn required_layout_roles() -> Vec<&'static str> {
-    let mut roles = vec![
+    let roles = vec![
         roles::BUTTON,
         roles::BUTTON_ICON,
         roles::BUTTON_TITLE,
@@ -225,6 +225,10 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::CURSOR_DOT,
         roles::CURSOR_DOTS,
         roles::CURSOR_ROW_GLOW,
+        roles::DECK_BAR,
+        roles::DECK_GLYPH,
+        roles::DECK_PILL,
+        roles::DECK_SLOT,
         roles::DECK_BUTTONS,
         roles::DECK_CARD_ROW,
         roles::DECK_GRID,
@@ -238,6 +242,11 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::FX_SPINNER,
         roles::FOOTER_BAR,
         roles::FOOTER_LABEL,
+        roles::COMPANION,
+        roles::COMPANION_BODY,
+        roles::COMPANION_CATCHLIGHT,
+        roles::COMPANION_EYE,
+        roles::COMPANION_MOUTH,
         roles::HUD,
         roles::LIST_ROW,
         roles::LIST_ROW_ICON,
@@ -259,20 +268,18 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::SCENE_ROOT,
         roles::SCENE_STAGE,
         roles::STATUS_BAR,
-        roles::STATUS_WIFI,
-        roles::STATUS_GPS_RING,
-        roles::STATUS_GPS_CENTER,
-        roles::STATUS_GPS_TAIL,
-        roles::STATUS_VOIP_DOT_AFTER_GPS,
+        roles::STATUS_LEFT_CLUSTER,
+        roles::STATUS_NETWORK_ICON,
+        roles::STATUS_GPS_ICON,
+        roles::STATUS_VOIP_ICON,
         roles::STATUS_TIME,
-        roles::STATUS_BATTERY_OUTLINE,
-        roles::STATUS_BATTERY_FILL,
-        roles::STATUS_BATTERY_TIP,
+        roles::STATUS_RIGHT_CLUSTER,
         roles::STATUS_BATTERY_LABEL,
+        roles::STATUS_CHARGE_ICON,
+        roles::STATUS_BATTERY_ICON,
         roles::VOICE_METER,
         roles::VOICE_METER_LEVEL,
     ];
-    roles.extend(roles::STATUS_SIGNAL_BARS);
     roles
 }
 
@@ -291,4 +298,57 @@ fn required_selected_theme_roles() -> Vec<&'static str> {
         roles::LIST_ROW_SUBTITLE,
         roles::LIST_ROW_TITLE,
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn layout<'a>(asset: &'a LayoutAsset, role: &str) -> &'a LayoutRole {
+        asset
+            .roles
+            .iter()
+            .find(|layout| layout.role == role)
+            .unwrap_or_else(|| panic!("missing layout role {role}"))
+    }
+
+    #[test]
+    fn shipped_layout_and_theme_cover_every_runtime_role() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let theme = parse_theme_asset().expect("theme.ron should be valid");
+
+        assert!(layouts
+            .roles
+            .iter()
+            .any(|role| role.role == roles::DECK_BAR));
+        assert!(layouts
+            .roles
+            .iter()
+            .any(|role| role.role == roles::COMPANION));
+        assert!(theme.roles.iter().any(|role| role.role == roles::DECK_PILL));
+        assert!(theme
+            .roles
+            .iter()
+            .any(|role| role.role == roles::COMPANION_BODY));
+    }
+
+    #[test]
+    fn status_bar_is_centered_and_fits_the_charging_worst_case() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let left = layout(&layouts, roles::STATUS_LEFT_CLUSTER);
+        let time = layout(&layouts, roles::STATUS_TIME);
+        let right = layout(&layouts, roles::STATUS_RIGHT_CLUSTER);
+        let label = layout(&layouts, roles::STATUS_BATTERY_LABEL);
+        let charge = layout(&layouts, roles::STATUS_CHARGE_ICON);
+        let battery = layout(&layouts, roles::STATUS_BATTERY_ICON);
+
+        assert_eq!(left.x, 28);
+        assert_eq!(240 - (right.x + right.width), 28);
+        assert_eq!(time.x * 2 + time.width, 240);
+        assert!(left.x + left.width <= time.x);
+        assert!(time.x + time.width <= right.x);
+
+        let two_flex_gaps = 2 * 3;
+        assert!(label.width + charge.width + battery.width + two_flex_gaps <= right.width);
+    }
 }

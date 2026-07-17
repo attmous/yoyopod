@@ -88,7 +88,14 @@ where
 {
     let mut input_events = 0usize;
     let mut button_machine = OneButtonMachine::new(ButtonTiming::default());
-    let mut ui_runtime = UiRuntime::default();
+    let status_bar_preview = status_bar_preview_enabled();
+    if status_bar_preview {
+        writeln!(
+            errors,
+            "status-bar hardware preview enabled via YOYOPOD_UI_STATUS_BAR_PREVIEW"
+        )?;
+    }
+    let mut ui_runtime = UiRuntime::with_status_bar_preview(status_bar_preview);
     let mut render_state = RenderState::open(display.width(), display.height())?;
     let mut shutdown_complete_emitted = false;
     let mut watchdog = RuntimeWatchdog::new();
@@ -280,12 +287,14 @@ where
             *context.input_events += 1;
             let now_ms = outbound::monotonic_millis();
             outbound::emit_input_action(context.output, action, "command", now_ms, 0)?;
-            context.ui_runtime.handle_input(action);
+            context.ui_runtime.handle_input(action, now_ms);
             outbound::emit_intents(context.output, context.ui_runtime.take_intents())?;
         }
         dispatcher::AppEvent::Tick => {
             let now_ms = outbound::monotonic_millis();
+            context.ui_runtime.advance_status_bar(now_ms);
             context.ui_runtime.advance_animations(now_ms);
+            context.ui_runtime.advance_home_state(now_ms);
             if context.render_state.engine.animation_frame_dirty(now_ms) {
                 context.ui_runtime.mark_animation_frame();
             }
@@ -352,6 +361,17 @@ where
     Ok(false)
 }
 
+fn status_bar_preview_enabled() -> bool {
+    std::env::var("YOYOPOD_UI_STATUS_BAR_PREVIEW")
+        .ok()
+        .is_some_and(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on" | "cycle"
+            )
+        })
+}
+
 fn handle_button_input<W, B>(
     output: &mut W,
     button: &mut B,
@@ -370,6 +390,10 @@ where
         ui_runtime.wants_ptt_passthrough(),
         now_ms,
     )?;
+    if button_machine.debounced_pressed() && ui_runtime.wake_home_from_ambient(now_ms) {
+        button_machine.cancel_current_gesture();
+        return Ok(());
+    }
     for event in button_events {
         *input_events += 1;
         outbound::emit_input_action(
@@ -379,7 +403,7 @@ where
             event.timestamp_ms,
             event.duration_ms,
         )?;
-        ui_runtime.handle_input(event.action);
+        ui_runtime.handle_input(event.action, now_ms);
     }
     Ok(())
 }
@@ -448,4 +472,121 @@ fn screen_changed_if_needed(
         return event;
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct TestButton {
+        pressed: bool,
+    }
+
+    impl ButtonDevice for TestButton {
+        fn pressed(&mut self) -> Result<bool> {
+            Ok(self.pressed)
+        }
+    }
+
+    fn sample_button(
+        button: &mut TestButton,
+        machine: &mut OneButtonMachine,
+        runtime: &mut UiRuntime,
+        output: &mut Vec<u8>,
+        input_events: &mut usize,
+        pressed: bool,
+        now_ms: u64,
+    ) {
+        button.pressed = pressed;
+        handle_button_input(output, button, machine, runtime, input_events, now_ms).unwrap();
+    }
+
+    fn deliberate_short_press(
+        button: &mut TestButton,
+        machine: &mut OneButtonMachine,
+        runtime: &mut UiRuntime,
+        output: &mut Vec<u8>,
+        input_events: &mut usize,
+        started_ms: u64,
+    ) {
+        sample_button(
+            button,
+            machine,
+            runtime,
+            output,
+            input_events,
+            true,
+            started_ms,
+        );
+        sample_button(
+            button,
+            machine,
+            runtime,
+            output,
+            input_events,
+            true,
+            started_ms + 50,
+        );
+        sample_button(
+            button,
+            machine,
+            runtime,
+            output,
+            input_events,
+            false,
+            started_ms + 250,
+        );
+        sample_button(
+            button,
+            machine,
+            runtime,
+            output,
+            input_events,
+            false,
+            started_ms + 300,
+        );
+        sample_button(
+            button,
+            machine,
+            runtime,
+            output,
+            input_events,
+            false,
+            started_ms + 600,
+        );
+    }
+
+    #[test]
+    fn physical_deliberate_short_presses_cycle_home_deck_focus() {
+        let mut button = TestButton::default();
+        let mut machine = OneButtonMachine::new(ButtonTiming::default());
+        let mut runtime = UiRuntime::default();
+        let mut output = Vec::new();
+        let mut input_events = 0;
+
+        for (started_ms, expected_focus) in [(0, 0), (700, 1), (1_400, 2), (2_100, 3), (2_800, 0)] {
+            deliberate_short_press(
+                &mut button,
+                &mut machine,
+                &mut runtime,
+                &mut output,
+                &mut input_events,
+                started_ms,
+            );
+            assert_eq!(runtime.focus_index, expected_focus);
+            assert_eq!(runtime.active_screen(), UiScreen::Hub);
+        }
+
+        assert_eq!(input_events, 5);
+        let emitted = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| yoyopod_protocol::WorkerEnvelope::decode(line.as_bytes()).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(emitted.len(), 5);
+        assert!(emitted
+            .iter()
+            .all(|envelope| envelope.message_type == "ui.input"));
+    }
 }

@@ -1,16 +1,16 @@
 use yoyopod_protocol::ui::{ListItemSnapshot, RuntimeSnapshot, UiScreen};
 
-use crate::components::widgets::{footer_bar, status_bar, FooterBarProps, StatusBarProps};
+use crate::components::widgets::{deck_bar, status_bar, DeckBarProps, StatusBarProps};
 use crate::engine::{Element, Key};
 use crate::scene::roles;
-use crate::scene::{HudScene, HudStatus};
+use crate::scene::{HudBattery, HudConnectivity, HudConnectivityKind, HudScene, HudStatus};
 use crate::ElementKind;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScreenChrome {
     pub title: String,
     pub status: HudStatus,
-    pub footer_text: String,
+    pub deck: DeckBarProps,
 }
 
 pub fn chrome_for_screen(
@@ -18,11 +18,16 @@ pub fn chrome_for_screen(
     snapshot: &RuntimeSnapshot,
     focus_index: usize,
     selected_contact: Option<&ListItemSnapshot>,
+    home_focus: Option<usize>,
+    deck_visible: bool,
 ) -> ScreenChrome {
     ScreenChrome {
         title: title_for_screen(screen, snapshot, focus_index, selected_contact),
         status: status_from_snapshot(snapshot),
-        footer_text: footer_for_screen(screen, snapshot),
+        deck: DeckBarProps {
+            focused_index: deck_focus_for_screen(screen, home_focus),
+            visible: deck_visible,
+        },
     }
 }
 
@@ -31,16 +36,9 @@ pub fn hud_scene(chrome: ScreenChrome) -> HudScene {
         Element::new(ElementKind::Container, Some(roles::HUD))
             .key(Key::Static("hud"))
             .child(status_bar(&StatusBarProps {
-                time: chrome.status.time,
-                battery_label: chrome.status.battery_label,
-                battery_percent: chrome.status.battery_percent,
-                signal_strength: chrome.status.signal_strength,
-                network_online: chrome.status.network_online,
+                status: chrome.status,
             }))
-            .child(footer_bar(&FooterBarProps {
-                text: chrome.footer_text,
-                accent: None,
-            })),
+            .child(deck_bar(&chrome.deck)),
     )
 }
 
@@ -77,46 +75,55 @@ fn title_for_screen(
     }
 }
 
-fn footer_for_screen(screen: UiScreen, snapshot: &RuntimeSnapshot) -> String {
+fn deck_focus_for_screen(screen: UiScreen, home_focus: Option<usize>) -> Option<usize> {
     match screen {
-        UiScreen::Hub => "Tap = Next | 2x Tap = Open",
-        UiScreen::Listen | UiScreen::Contacts => "Tap = Next | 2x Tap = Open | Hold = Back",
-        UiScreen::Playlists | UiScreen::RecentTracks => "Tap = Next | 2x Tap = Play | Hold = Back",
-        UiScreen::NowPlaying => "Tap = Next | 2x Tap = Play/Pause | Hold = Back",
-        UiScreen::Ask => "2x Tap = Ask | Hold = Back",
-        UiScreen::Talk => "Tap = Next | 2x Tap = Open | Hold = Back",
-        UiScreen::CallHistory => "Tap = Next | 2x Tap = Call | Hold = Back",
-        UiScreen::TalkContact => "Tap Next | 2x Select | Hold Back",
-        UiScreen::VoiceNote => voice_note_footer(snapshot),
-        UiScreen::IncomingCall => "Tap = Answer | Hold = Decline",
-        UiScreen::OutgoingCall => "Hold = Cancel",
-        UiScreen::InCall => {
-            if snapshot.call.muted {
-                "Tap = Unmute | Hold = End"
-            } else {
-                "Tap = Mute | Hold = End"
-            }
+        UiScreen::Hub => home_focus,
+        UiScreen::Listen | UiScreen::Playlists | UiScreen::RecentTracks | UiScreen::NowPlaying => {
+            Some(0)
         }
-        UiScreen::Power => "Tap page / Hold back",
-        UiScreen::Loading => "",
-        UiScreen::Error => "Hold = Back",
+        UiScreen::Talk
+        | UiScreen::Contacts
+        | UiScreen::CallHistory
+        | UiScreen::TalkContact
+        | UiScreen::VoiceNote
+        | UiScreen::IncomingCall
+        | UiScreen::OutgoingCall
+        | UiScreen::InCall => Some(1),
+        UiScreen::Ask => Some(2),
+        UiScreen::Power => Some(3),
+        UiScreen::Loading | UiScreen::Error => None,
     }
-    .to_string()
 }
 
 fn status_from_snapshot(snapshot: &RuntimeSnapshot) -> HudStatus {
     let battery_percent = snapshot.power.battery_percent.clamp(0, 100) as u8;
     HudStatus {
         time: "00:00".to_string(),
-        battery_label: format!("{battery_percent}%"),
-        battery_percent,
-        signal_strength: signal_strength(snapshot.network.signal_strength),
-        network_online: snapshot.network.connected,
+        connectivity: HudConnectivity {
+            kind: connectivity_kind(&snapshot.network.connection_type),
+            connected: snapshot.network.connected,
+            strength: signal_strength(snapshot.network.signal_strength),
+        },
+        gps_has_fix: snapshot.network.gps_has_fix,
+        voip_registered: snapshot.call.registered,
+        battery: HudBattery {
+            percent: battery_percent,
+            charging: snapshot.power.charging,
+            available: snapshot.power.power_available,
+        },
     }
 }
 
 fn signal_strength(value: i32) -> u8 {
     value.clamp(0, 4) as u8
+}
+
+fn connectivity_kind(value: &str) -> HudConnectivityKind {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "wifi" | "wi-fi" | "wlan" | "wireless" => HudConnectivityKind::Wifi,
+        "cellular" | "mobile" | "ppp" | "lte" | "4g" | "5g" => HudConnectivityKind::Cellular,
+        _ => HudConnectivityKind::Unknown,
+    }
 }
 
 fn talk_contact_title(
@@ -162,16 +169,6 @@ fn voice_note_title(snapshot: &RuntimeSnapshot, focus_index: usize) -> String {
         .copied()
         .unwrap_or("Voice Note")
         .to_string()
-}
-
-fn voice_note_footer(snapshot: &RuntimeSnapshot) -> &'static str {
-    match voice_note_phase(snapshot).as_str() {
-        "review" | "failed" => "Tap next / Double choose",
-        "sending" => "Please wait",
-        "sent" => "Double done / Hold back",
-        "recording" => "Release to stop",
-        _ => "Hold record / Double back",
-    }
 }
 
 fn voice_note_phase(snapshot: &RuntimeSnapshot) -> String {

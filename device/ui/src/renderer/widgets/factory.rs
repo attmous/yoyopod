@@ -45,9 +45,6 @@ pub(crate) fn create_image_object(
         unsafe { ffi::lv_image_create(parent.as_ptr()) },
         format!("image for {role}"),
     )?;
-    unsafe {
-        ffi::lv_obj_center(obj.as_ptr());
-    }
     Ok(obj)
 }
 

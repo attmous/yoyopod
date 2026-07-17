@@ -66,7 +66,7 @@ Verified against the code; file references are the places to change.
 | 11 | Move the voice-capture passthrough from `VoiceNote` to `TalkContact`, gated on the Record action being focused (today `TalkContact` = `NO_PASSTHROUGH`, so PTT on that screen is ignored) | `router/routes.rs` (`passthrough_policies`) | S |
 | 12 | Ask stop path: barge-in-stop in the voice/speech worker (an `ask_start` while speaking halts playback) **or** a dedicated stop intent — today `start_work` rejects while busy, so "double-press to stop" does nothing | speech worker, `router/routes.rs` | M |
 | 13 | Error overlay interactions: retry select target, a path that clears `snapshot.overlay.error` (else `runtime_preemption` re-pushes the overlay forever), 8 s Loading→Error + 4 s auto-retry timers | `router/routes.rs`, `application/navigator.rs` | M |
-| 14 | Button timing: contract is 400 ms long-hold / 350 ms double window / 180–400 ms dead zone — shipped config is 800 / 300 / no dead zone | `input/config.rs`, `input/machine.rs`, `config/device/hardware.yaml` | S |
+| 14 | Button timing: release before 400 ms = press / hold at least 400 ms = Home or PTT / 350 ms double window. Hardware testing retired the 180–400 ms dead zone because it discarded ordinary deliberate presses. | `input/config.rs`, `input/machine.rs`, `config/device/hardware.yaml` | S |
 
 ## Suggested build order
 

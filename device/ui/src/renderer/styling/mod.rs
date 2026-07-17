@@ -15,7 +15,7 @@ mod variants;
 #[cfg(feature = "native-lvgl")]
 pub(crate) use accent::apply_accent_raw;
 #[cfg(feature = "native-lvgl")]
-pub(crate) use base::{apply_style_raw, hide_widget_raw, reset_style_raw};
+pub(crate) use base::{apply_style_raw, reset_style_raw, set_widget_hidden_raw};
 #[cfg(feature = "native-lvgl")]
 pub(crate) use icons::icon_label;
 #[cfg(feature = "native-lvgl")]

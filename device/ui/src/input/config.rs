@@ -1,6 +1,6 @@
 pub const DEFAULT_DEBOUNCE_MS: u64 = 50;
-pub const DEFAULT_DOUBLE_TAP_MS: u64 = 300;
-pub const DEFAULT_LONG_HOLD_MS: u64 = 800;
+pub const DEFAULT_DOUBLE_TAP_MS: u64 = 350;
+pub const DEFAULT_LONG_HOLD_MS: u64 = 400;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ButtonTiming {

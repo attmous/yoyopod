@@ -1,6 +1,7 @@
 pub mod call_panel;
 pub mod card;
 pub mod chip;
+pub mod deck_bar;
 pub mod footer_bar;
 pub mod icon_halo;
 pub mod list_row;
@@ -11,6 +12,7 @@ pub mod voice_meter;
 pub use call_panel::{call_panel, CallPanelProps};
 pub use card::card;
 pub use chip::{chip, ChipProps};
+pub use deck_bar::{deck_bar, DeckBarProps};
 pub use footer_bar::{footer_bar, FooterBarProps};
 pub use icon_halo::{icon_halo, IconHaloProps};
 pub use list_row::list_row;

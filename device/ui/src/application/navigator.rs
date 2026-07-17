@@ -6,6 +6,7 @@ use crate::router::{
 use crate::scene::FocusPolicy;
 use yoyopod_protocol::ui::{CallIntent, ListItemSnapshot, MusicIntent, UiIntent, VoiceIntent};
 
+use super::state::HomeMode;
 use super::{focus, intents, options, UiRuntime, UiScreen};
 
 pub fn apply_runtime_preemption(runtime: &mut UiRuntime) {
@@ -37,10 +38,18 @@ pub fn apply_app_state_route(
         runtime.screen_stack.clear();
         runtime.active_screen = *app_state;
         runtime.focus_index = 0;
+        if *app_state == UiScreen::Hub {
+            runtime.home_mode = HomeMode::Idle;
+        }
     }
 }
 
 pub fn advance_focus(runtime: &mut UiRuntime) {
+    if runtime.active_screen == UiScreen::Hub && runtime.home_mode == HomeMode::Idle {
+        runtime.focus_index = 0;
+        runtime.home_mode = HomeMode::Focused;
+        return;
+    }
     let count = focus_count(runtime);
     runtime.focus_index = match route_for(runtime.active_screen).focus_policy {
         FocusPolicy::None => runtime.focus_index,
@@ -50,11 +59,22 @@ pub fn advance_focus(runtime: &mut UiRuntime) {
 }
 
 pub fn select_focused(runtime: &mut UiRuntime) {
+    if runtime.active_screen == UiScreen::Hub && runtime.home_mode != HomeMode::Focused {
+        return;
+    }
     let route = route_for(runtime.active_screen);
     let Some(target) = router::select::selection_target(route, runtime.focus_index) else {
         return;
     };
     apply_selection_target(runtime, target);
+}
+
+pub fn go_home(runtime: &mut UiRuntime) {
+    runtime.screen_stack.clear();
+    runtime.active_screen = UiScreen::Hub;
+    runtime.focus_index = 0;
+    runtime.home_mode = HomeMode::Idle;
+    runtime.selected_contact = None;
 }
 
 pub fn go_back_or_emit(runtime: &mut UiRuntime) {

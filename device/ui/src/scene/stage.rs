@@ -22,7 +22,6 @@ pub enum RegionId {
     Title,
     Subtitle,
     Footer,
-    StatusBar,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,12 +40,6 @@ pub const fn region_rect(stage: Stage, region: RegionId) -> Option<LayoutRect> {
             y: 0,
             w: 240,
             h: 280,
-        }),
-        (_, RegionId::StatusBar) => Some(LayoutRect {
-            x: 14,
-            y: 10,
-            w: 212,
-            h: 16,
         }),
         (_, RegionId::Footer) => Some(LayoutRect {
             x: 14,
