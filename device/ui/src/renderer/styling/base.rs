@@ -4,8 +4,18 @@ use crate::renderer::lvgl::ffi;
 use crate::renderer::styling::style::WidgetStyle;
 
 pub(crate) fn reset_style_raw(obj: NonNull<ffi::lv_obj_t>) {
+    const SELECTOR: ffi::LvStyleSelector = 0;
     unsafe {
         ffi::lv_obj_remove_style_all(obj.as_ptr());
+        // Generic LVGL objects receive the default theme's padded card style.
+        // YoYoPod layouts are explicit, so establish a zero-padding base and
+        // let role tuning opt into spacing deliberately.
+        ffi::lv_obj_set_style_pad_left(obj.as_ptr(), 0, SELECTOR);
+        ffi::lv_obj_set_style_pad_right(obj.as_ptr(), 0, SELECTOR);
+        ffi::lv_obj_set_style_pad_top(obj.as_ptr(), 0, SELECTOR);
+        ffi::lv_obj_set_style_pad_bottom(obj.as_ptr(), 0, SELECTOR);
+        ffi::lv_obj_set_style_pad_row(obj.as_ptr(), 0, SELECTOR);
+        ffi::lv_obj_set_style_pad_column(obj.as_ptr(), 0, SELECTOR);
     }
 }
 
