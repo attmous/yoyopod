@@ -159,7 +159,7 @@ fn update_widget(
         PropChange::OffsetX(offset) => facade.set_x_offset(widget, *offset),
         PropChange::OffsetY(offset) => facade.set_y_offset(widget, *offset),
         PropChange::ScalePermille(scale) => facade.set_scale(widget, *scale),
-        PropChange::SelectionOffset(offset) => facade.set_x_offset(widget, *offset),
+        PropChange::SelectionOffset(offset) => facade.set_y_offset(widget, *offset),
         PropChange::Variant(variant) => facade.set_variant(widget, variant, 0),
         PropChange::Progress(value) => facade.set_progress(widget, *value),
     }

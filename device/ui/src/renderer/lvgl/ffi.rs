@@ -136,6 +136,26 @@ unsafe extern "C" {
     );
     pub fn lv_obj_set_style_bg_opa(obj: *mut lv_obj_t, value: u8, selector: LvStyleSelector);
     pub fn lv_obj_set_style_opa(obj: *mut lv_obj_t, value: u8, selector: LvStyleSelector);
+    pub fn lv_obj_set_style_transform_scale_x(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: LvStyleSelector,
+    );
+    pub fn lv_obj_set_style_transform_scale_y(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: LvStyleSelector,
+    );
+    pub fn lv_obj_set_style_transform_pivot_x(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: LvStyleSelector,
+    );
+    pub fn lv_obj_set_style_transform_pivot_y(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: LvStyleSelector,
+    );
     pub fn lv_obj_set_style_text_color(
         obj: *mut lv_obj_t,
         value: lv_color_t,

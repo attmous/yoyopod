@@ -1,7 +1,7 @@
 use crate::animation::{presets, ActorRef, Timeline, TimelineRef, TrackIndex};
 use crate::components::widgets::{
     call_panel as call_panel_widget, card as card_widget, list_row as list_row_widget,
-    CallPanelProps,
+    wheel_item as wheel_item_widget, CallPanelProps,
 };
 use crate::engine::{AnimSlot, Element, Key};
 use crate::scene::roles;
@@ -32,6 +32,7 @@ pub struct Deck {
 pub enum DeckKind {
     CardRow,
     List,
+    Wheel,
     Page,
     Grid,
     Buttons,
@@ -48,6 +49,7 @@ pub enum ItemRender {
     Companion,
     Card(CardModel),
     Row(RowModel),
+    Wheel(WheelItemModel),
     Page(PageModel),
     Button(ButtonModel),
     CallPanel(CallPanelModel),
@@ -68,6 +70,19 @@ pub struct RowModel {
     pub subtitle: String,
     pub icon_key: String,
     pub selected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WheelItemModel {
+    pub title: String,
+    pub subtitle: String,
+    pub variant: WheelItemVariant,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WheelItemVariant {
+    Icon { icon_key: String },
+    Media { initial: String, plate_rgb: u32 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,25 +126,49 @@ impl Deck {
                     .key(Key::Static("deck_region"))
                     .region(self.region),
             );
+        let short_wheel_offset = if self.kind == DeckKind::Wheel && self.items.len() < 3 {
+            80
+        } else {
+            0
+        };
+        let focused_item_index = self.normalized_focus_index();
         for (visible_index, (item_index, item)) in self.visible_items().enumerate() {
-            element = element.child(deck_item_element(
+            let mut item_element = deck_item_element(
                 item,
-                item_index == self.focus_index,
+                Some(item_index) == focused_item_index,
                 self.item_anim,
                 index,
                 visible_index,
-            ));
+            );
+            if short_wheel_offset != 0 {
+                item_element = item_element.offset_y(short_wheel_offset);
+            }
+            element = element.child(item_element);
         }
         element
     }
 
     fn visible_items(&self) -> impl Iterator<Item = (usize, &DeckItem)> {
-        let range = self.visible_range();
-        self.items
-            .iter()
-            .enumerate()
-            .skip(range.start)
-            .take(range.end.saturating_sub(range.start))
+        self.visible_indices()
+            .into_iter()
+            .map(|index| (index, &self.items[index]))
+    }
+
+    fn visible_indices(&self) -> Vec<usize> {
+        let len = self.items.len();
+        if len == 0 {
+            return Vec::new();
+        }
+        if self.kind != DeckKind::Wheel || self.focus_policy != FocusPolicy::Wrap {
+            return self.visible_range().collect();
+        }
+
+        let focus = self.focus_index % len;
+        let window = self.recycle_window.unwrap_or(len).clamp(1, len);
+        let focus_slot = if window == 2 { 0 } else { window / 2 };
+        (0..window)
+            .map(|slot| (focus + len + slot - focus_slot) % len)
+            .collect()
     }
 
     fn visible_range(&self) -> std::ops::Range<usize> {
@@ -153,10 +192,20 @@ impl Deck {
     }
 
     pub fn focused_visible_index(&self) -> usize {
-        let range = self.visible_range();
-        self.focus_index
-            .min(self.items.len().saturating_sub(1))
-            .saturating_sub(range.start)
+        let Some(focus) = self.normalized_focus_index() else {
+            return 0;
+        };
+        self.visible_indices()
+            .iter()
+            .position(|index| *index == focus)
+            .unwrap_or(0)
+    }
+
+    fn normalized_focus_index(&self) -> Option<usize> {
+        (!self.items.is_empty()).then(|| match self.focus_policy {
+            FocusPolicy::Wrap => self.focus_index % self.items.len(),
+            FocusPolicy::None | FocusPolicy::Clamp => self.focus_index.min(self.items.len() - 1),
+        })
     }
 
     pub fn enter_timeline(&self) -> Option<Timeline> {
@@ -196,10 +245,16 @@ fn deck_item_element(
     deck_index: usize,
     visible_index: usize,
 ) -> Element {
+    let is_wheel = matches!(item.render, ItemRender::Wheel(_));
     let element = match &item.render {
         ItemRender::Companion => companion_element().key(item.key.clone()),
         ItemRender::Card(card) => card_widget(card).key(item.key.clone()),
         ItemRender::Row(row) => list_row_widget(row, selected, item.key.clone()),
+        ItemRender::Wheel(model) => wheel_item_widget(
+            model,
+            selected,
+            Key::String(format!("wheel-slot:{visible_index}")),
+        ),
         ItemRender::Page(page) => Element::new(ElementKind::Container, Some(roles::PAGE))
             .key(item.key.clone())
             .child(Element::new(ElementKind::Label, Some(roles::PAGE_TITLE)).text(&page.title))
@@ -229,11 +284,18 @@ fn deck_item_element(
         DeckItemAnim::ScaleOnFocus {
             from_permille,
             to_permille,
-        } => element.scale_permille(if selected {
-            i32::from(to_permille)
-        } else {
-            i32::from(from_permille)
-        }),
+        } => {
+            let element = element.scale_permille(if selected {
+                i32::from(to_permille)
+            } else {
+                i32::from(from_permille)
+            });
+            if is_wheel {
+                element.opacity(if selected { 255 } else { 115 })
+            } else {
+                element
+            }
+        }
         DeckItemAnim::BreatheWhenFocused => {
             element.scale_permille(if selected { 1000 } else { 960 })
         }
@@ -268,8 +330,91 @@ const fn deck_role(kind: DeckKind) -> &'static str {
     match kind {
         DeckKind::CardRow => roles::DECK_CARD_ROW,
         DeckKind::List => roles::DECK_LIST,
+        DeckKind::Wheel => roles::DECK_WHEEL,
         DeckKind::Page => roles::DECK_PAGE,
         DeckKind::Grid => roles::DECK_GRID,
         DeckKind::Buttons => roles::DECK_BUTTONS,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn wheel(item_count: usize, focus_index: usize) -> Deck {
+        Deck {
+            kind: DeckKind::Wheel,
+            region: RegionId::Auto,
+            items: (0..item_count)
+                .map(|index| DeckItem {
+                    key: Key::Indexed(index),
+                    render: ItemRender::Wheel(WheelItemModel {
+                        title: format!("Item {index}"),
+                        subtitle: String::new(),
+                        variant: WheelItemVariant::Icon {
+                            icon_key: "icon_playlists".to_string(),
+                        },
+                    }),
+                })
+                .collect(),
+            focus_index,
+            focus_policy: FocusPolicy::Wrap,
+            item_anim: DeckItemAnim::ScaleOnFocus {
+                from_permille: 700,
+                to_permille: 1000,
+            },
+            swap_anim: None,
+            recycle_window: Some(3),
+        }
+    }
+
+    #[test]
+    fn wheel_window_wraps_around_the_first_item() {
+        let deck = wheel(7, 0);
+        assert_eq!(deck.visible_indices(), vec![6, 0, 1]);
+        assert_eq!(deck.focused_visible_index(), 1);
+    }
+
+    #[test]
+    fn two_item_wheel_never_duplicates_a_peek() {
+        let deck = wheel(2, 0);
+        assert_eq!(deck.visible_indices(), vec![0, 1]);
+
+        let element = deck.element(0);
+        let wheel_items = &element.children[1..];
+        assert_eq!(wheel_items[0].props.offset_y, Some(80));
+        assert_eq!(wheel_items[1].props.offset_y, Some(80));
+    }
+
+    #[test]
+    fn wheel_peeks_are_scaled_and_dimmed() {
+        let element = wheel(3, 0).element(0);
+        let wheel_items = &element.children[1..];
+        assert_eq!(wheel_items[0].props.scale_permille, Some(700));
+        assert_eq!(wheel_items[0].props.opacity, Some(115));
+        assert_eq!(wheel_items[1].props.scale_permille, Some(1000));
+        assert_eq!(wheel_items[1].props.opacity, Some(255));
+    }
+
+    #[test]
+    fn wheel_normalizes_wrapped_focus_before_selecting() {
+        let element = wheel(3, 4).element(0);
+        let wheel_items = &element.children[1..];
+        assert_eq!(wheel_items[1].props.scale_permille, Some(1000));
+        assert_eq!(wheel_items[1].props.opacity, Some(255));
+    }
+
+    #[test]
+    fn wheel_keys_are_stable_physical_slots_across_focus_changes() {
+        let first = wheel(3, 0).element(0);
+        let next = wheel(3, 1).element(0);
+        let first_items = &first.children[1..];
+        let next_items = &next.children[1..];
+
+        assert_eq!(first_items[0].key, next_items[0].key);
+        assert_eq!(first_items[1].key, next_items[1].key);
+        assert_eq!(first_items[2].key, next_items[2].key);
+        assert_eq!(next_items[1].props.scale_permille, Some(1000));
+        assert_eq!(next_items[1].props.opacity, Some(255));
     }
 }

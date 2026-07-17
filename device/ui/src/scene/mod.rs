@@ -15,7 +15,7 @@ pub use backdrop::Backdrop;
 pub use cursor::Cursor;
 pub use deck::{
     ButtonModel, CallPanelModel, CardModel, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy,
-    ItemRender, PageModel, RowModel,
+    ItemRender, PageModel, RowModel, WheelItemModel, WheelItemVariant,
 };
 pub use defaults::{defaults_for, load_scene_defaults, SceneDefaults, SceneDefaultsCatalog};
 pub use fx::{FxLayer, FxLayerId, GlowBloom, Halo, ParticleField, PulseRing};

@@ -33,7 +33,6 @@ pub struct NativeLvglFacade {
     pub(crate) last_tick: Instant,
     pub(crate) widgets: WidgetRegistry,
     pub(crate) active_root: Option<WidgetId>,
-    pub(crate) role_occurrences: std::collections::HashMap<&'static str, usize>,
     pub(crate) render_assets: RenderAssets,
 }
 
@@ -88,7 +87,6 @@ impl NativeLvglFacade {
         self.blank_screen = None;
         self.widgets.clear();
         self.active_root = None;
-        self.role_occurrences.clear();
         self.flush_target.framebuffer = ptr::null_mut();
     }
 
@@ -106,18 +104,22 @@ impl NativeLvglFacade {
         y_offset: i32,
         scale_permille: i32,
     ) {
-        let scale = scale_permille.max(1);
-        let width = ((layout.width * scale) / 1000).max(1);
-        let height = ((layout.height * scale) / 1000).max(1);
         Self::apply_layout_raw(
             obj,
             Layout {
-                x: layout.x + x_offset - ((width - layout.width) / 2),
-                y: layout.y + y_offset - ((height - layout.height) / 2),
-                width,
-                height,
+                x: layout.x + x_offset,
+                y: layout.y + y_offset,
+                width: layout.width,
+                height: layout.height,
             },
         );
+        let lv_scale = ((scale_permille.max(1) * 256) + 500) / 1000;
+        unsafe {
+            ffi::lv_obj_set_style_transform_pivot_x(obj.as_ptr(), layout.width / 2, 0);
+            ffi::lv_obj_set_style_transform_pivot_y(obj.as_ptr(), layout.height / 2, 0);
+            ffi::lv_obj_set_style_transform_scale_x(obj.as_ptr(), lv_scale, 0);
+            ffi::lv_obj_set_style_transform_scale_y(obj.as_ptr(), lv_scale, 0);
+        }
     }
 
     fn layout_for_role_asset(&self, role: WidgetRole, occurrence: usize) -> Option<Layout> {
@@ -145,13 +147,15 @@ impl NativeLvglFacade {
     }
 
     pub(super) fn next_role_layout(
-        &mut self,
-        _parent: Option<WidgetId>,
+        &self,
+        parent: Option<WidgetId>,
         role: WidgetRole,
     ) -> Result<Layout> {
-        let occurrence = *self.role_occurrences.entry(role).or_insert(0);
+        let occurrence = parent
+            .map(|parent| self.widgets.child_role_count(parent, role))
+            .transpose()?
+            .unwrap_or(0);
         if let Some(layout) = self.layout_for_role_asset(role, occurrence) {
-            self.role_occurrences.insert(role, occurrence + 1);
             return Ok(layout);
         }
 
@@ -181,7 +185,6 @@ impl LvglFacade for NativeLvglFacade {
         unsafe {
             ffi::lv_screen_load(obj.as_ptr());
         }
-        self.role_occurrences.clear();
         let id = self.register_widget(obj, WidgetKind::Root, roles::ROOT, None, layout);
         self.active_root = Some(id);
         Ok(id)
@@ -420,7 +423,6 @@ impl LvglFacade for NativeLvglFacade {
         self.widgets.remove_subtree(widget);
         if self.active_root == Some(widget) {
             self.active_root = None;
-            self.role_occurrences.clear();
         }
         Ok(())
     }

@@ -233,6 +233,7 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::DECK_CARD_ROW,
         roles::DECK_GRID,
         roles::DECK_LIST,
+        roles::DECK_WHEEL,
         roles::DECK_PAGE,
         roles::DECK_REGION,
         roles::FX_GLOW,
@@ -252,6 +253,14 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::LIST_ROW_ICON,
         roles::LIST_ROW_SUBTITLE,
         roles::LIST_ROW_TITLE,
+        roles::WHEEL_CONTEXT,
+        roles::WHEEL_ITEM,
+        roles::WHEEL_ICON,
+        roles::WHEEL_PLATE,
+        roles::WHEEL_INITIAL,
+        roles::WHEEL_LABEL,
+        roles::WHEEL_LABEL_B,
+        roles::WHEEL_SUB,
         roles::MODAL,
         roles::MODAL_MESSAGE,
         roles::MODAL_STACK,
@@ -297,6 +306,7 @@ fn required_selected_theme_roles() -> Vec<&'static str> {
         roles::LIST_ROW,
         roles::LIST_ROW_SUBTITLE,
         roles::LIST_ROW_TITLE,
+        roles::WHEEL_ITEM,
     ]
 }
 

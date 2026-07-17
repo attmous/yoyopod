@@ -62,6 +62,16 @@ pub(crate) const LIST_ROW_ICON: &str = "list_row_icon";
 pub(crate) const LIST_ROW_SUBTITLE: &str = "list_row_subtitle";
 pub(crate) const LIST_ROW_TITLE: &str = "list_row_title";
 
+pub(crate) const DECK_WHEEL: &str = "deck_wheel";
+pub(crate) const WHEEL_CONTEXT: &str = "wheel_context";
+pub(crate) const WHEEL_ITEM: &str = "wheel_item";
+pub(crate) const WHEEL_ICON: &str = "wheel_icon";
+pub(crate) const WHEEL_PLATE: &str = "wheel_plate";
+pub(crate) const WHEEL_INITIAL: &str = "wheel_initial";
+pub(crate) const WHEEL_LABEL: &str = "wheel_label";
+pub(crate) const WHEEL_LABEL_B: &str = "wheel_label_b";
+pub(crate) const WHEEL_SUB: &str = "wheel_sub";
+
 pub(crate) const STATUS_BAR: &str = "status_bar";
 pub(crate) const STATUS_LEFT_CLUSTER: &str = "status_left_cluster";
 pub(crate) const STATUS_NETWORK_ICON: &str = "status_network_icon";

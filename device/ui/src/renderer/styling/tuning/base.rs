@@ -10,6 +10,7 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
         match role {
             roles::FOOTER_BAR
             | roles::DECK_BAR
+            | roles::DECK_WHEEL
             | roles::DECK_SLOT
             | roles::DECK_PILL
             | roles::COMPANION
@@ -47,6 +48,13 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 );
             }
             roles::LIST_ROW => {
+                ffi::lv_obj_set_style_pad_left(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_pad_right(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_pad_top(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_pad_bottom(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
+            }
+            roles::WHEEL_ITEM | roles::WHEEL_PLATE => {
                 ffi::lv_obj_set_style_pad_left(obj.as_ptr(), 0, SELECTOR);
                 ffi::lv_obj_set_style_pad_right(obj.as_ptr(), 0, SELECTOR);
                 ffi::lv_obj_set_style_pad_top(obj.as_ptr(), 0, SELECTOR);
