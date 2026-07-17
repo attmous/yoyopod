@@ -1,0 +1,93 @@
+---
+title: The Render Loop
+description: Partial rendering, the 40-row buffer, the byte-swap flush, the shadow framebuffer, and the 60-widget budget.
+---
+
+import Pipeline from '../../../assets/diagrams/pipeline.svg';
+
+Every visible change on the glass flows through one loop in
+`device/ui/src/worker.rs`. This page follows a frame through it.
+
+<Pipeline class="diagram" />
+
+## Partial rendering with a 40-row buffer
+
+`renderer/lvgl/lifecycle.rs` registers a 240×280 LVGL display in
+`LV_DISPLAY_RENDER_MODE_PARTIAL` with a **single draw buffer of 240 × 40
+pixels** (2 bytes each) and no second buffer. When a frame renders, LVGL
+walks the dirty areas and rasterizes them through that 40-row window,
+calling the flush callback for each slice.
+
+Why this shape:
+
+- **Memory.** A full 240×280×2 frame is ~131 KB; the partial buffer is
+  ~19 KB against LVGL's 256 KB heap.
+- **Latency where it matters.** Most updates (a focus change, a progress
+  tick, the clock) touch a small region — partial mode makes those cheap
+  and lets the flat design's simple fills rasterize quickly in software.
+- **Single-buffered is enough.** The panel push happens from the shadow
+  framebuffer, not the draw buffer, so there is nothing to double-buffer
+  against tearing at this stage.
+
+## The flush callback: swap, then paste
+
+For each rendered slice,
+[`renderer/lvgl/flush.rs`](https://github.com/attmous/yoyopod/blob/main/device/ui/src/renderer/lvgl/flush.rs)
+does two things:
+
+1. **Byte-swaps every 16-bit pixel** — LVGL emits little-endian RGB565, the
+   ST7789 consumes big-endian. (See the byte diagram on
+   [Talking to the Panel](/ui/driver/).)
+2. **Pastes the swapped bytes into the shadow framebuffer** and tells LVGL
+   the slice is done (`lv_display_flush_ready`).
+
+## The shadow framebuffer
+
+`renderer/framebuffer.rs` holds the full frame as an in-memory `Vec<u16>` —
+"framebuffer" in this codebase never means a kernel device. It exists for
+three reasons:
+
+- it decouples LVGL's 40-row rendering rhythm from the panel's
+  region-write rhythm,
+- it lets the worker re-push any region (or the full frame) without
+  re-rendering,
+- it doubles as a screenshot source (below).
+
+## Dispatch: `render_if_dirty`
+
+The worker's `render_if_dirty` runs per tick: advance animations, render if
+anything is invalid, then choose the cheapest panel write through the
+`DisplayDevice` trait — `FullFrame`, `HudRegion` (status bar only), or
+`Region(dirty)`. If nothing is dirty, nothing is rendered and nothing
+crosses the SPI bus.
+
+## The 60-widget budget
+
+The renderer enforces a hard cap: **`MAX_ACTIVE_WIDGETS = 60`** live LVGL
+objects. This is a load-bearing constraint, not a guideline:
+
+- it bounds LVGL heap usage against the fixed 256 KB,
+- it bounds worst-case restyle/layout cost per frame on the software
+  renderer,
+- it forces screens to recycle: decks render a visibility window
+  (focused tile + peeks), not their whole item list.
+
+Every screen spec in the [mockup gallery](/ui/mockups/) carries a §budget
+section; every current screen fits with **at least 13 objects of headroom**.
+When you build a screen, count your nodes first — the
+[playbook](/ui/playbook/#respect-the-60-widget-budget) shows how.
+
+## Screenshots
+
+Two signal-driven capture paths, both writing atomically to
+`/tmp/yoyopod_screenshot.png`:
+
+| Signal | Path | What you get |
+| --- | --- | --- |
+| `SIGUSR1` | `lv_snapshot_take(screen, LV_COLOR_FORMAT_RGB565)` | LVGL's own readback of the active screen |
+| `SIGUSR2` (default) | shadow framebuffer dump | exactly the bytes the panel was last sent |
+
+The pair is deliberately redundant: if the two images differ, the bug is in
+the flush/paste path; if they agree but the glass looks wrong, the bug is in
+the driver or panel init. The operator CLI's screenshot command rides these
+signals for remote validation.

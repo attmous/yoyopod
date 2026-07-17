@@ -1,0 +1,111 @@
+<svg viewBox="0 0 760 800" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Module architecture of the yoyopod-ui crate: transport feeds the worker loop, which drives application state, scene building, the engine, and the renderer down to the hardware">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #2b2122); stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; }
+    .ext { fill: none; stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .hub { fill: var(--sl-color-accent-low, #4a2420); stroke: var(--sl-color-accent, #f37767); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f5ece1); font-size: 15px; font-weight: 600; }
+    .s { fill: var(--sl-color-gray-3, #a5937f); font-size: 12px; }
+    .m { fill: var(--sl-color-gray-2, #d8c8b3); font-size: 12px; font-family: ui-monospace, monospace; }
+    .arrow { stroke: var(--sl-color-gray-3, #a5937f); stroke-width: 2; fill: none; marker-end: url(#ahead); }
+    .lbl { fill: var(--sl-color-gray-2, #d8c8b3); font-size: 11.5px; }
+  </style>
+  <defs>
+    <marker id="ahead" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a5937f)"/>
+    </marker>
+  </defs>
+
+  <!-- external supervisor -->
+  <rect class="ext" x="200" y="16" width="360" height="46" rx="10"/>
+  <text class="t" x="220" y="36">yoyopod-runtime</text>
+  <text class="s" x="220" y="53">external supervisor — one process per worker host</text>
+
+  <path class="arrow" d="M330,62 L330,88"/>
+  <text class="lbl" x="180" y="80">UiCommand (stdin)</text>
+  <path class="arrow" d="M430,88 L430,62"/>
+  <text class="lbl" x="440" y="80">UiEvent · UiIntent (stdout)</text>
+
+  <!-- transport -->
+  <rect class="box" x="200" y="90" width="360" height="56" rx="10"/>
+  <text class="t" x="220" y="112">transport/</text>
+  <text class="s" x="220" y="130">line codec · handshake · inbound decode · dispatcher · outbound emit</text>
+
+  <path class="arrow" d="M380,146 L380,172"/>
+
+  <!-- worker hub -->
+  <rect class="hub" x="200" y="174" width="360" height="56" rx="10"/>
+  <text class="t" x="220" y="196">worker.rs — the event loop</text>
+  <text class="s" x="220" y="214">owns every subsystem; single thread; watchdogs; AppEvent handling</text>
+
+  <!-- input + hardware side column -->
+  <rect class="box" x="590" y="174" width="150" height="56" rx="10"/>
+  <text class="t" x="604" y="196">input/</text>
+  <text class="s" x="604" y="214">OneButtonMachine</text>
+  <path class="arrow" d="M588,202 L562,202"/>
+
+  <rect class="box" x="20" y="174" width="150" height="56" rx="10"/>
+  <text class="t" x="34" y="196">screenshot.rs</text>
+  <text class="s" x="34" y="214">PNG capture paths</text>
+  <path class="arrow" d="M198,202 L172,202"/>
+
+  <path class="arrow" d="M290,230 L290,258"/>
+  <text class="lbl" x="150" y="250">state + input</text>
+  <path class="arrow" d="M470,230 L470,258"/>
+  <text class="lbl" x="480" y="250">render tick</text>
+
+  <!-- application + router row -->
+  <rect class="box" x="110" y="260" width="260" height="72" rx="10"/>
+  <text class="t" x="130" y="282">application/</text>
+  <text class="s" x="130" y="300">UiRuntime state · snapshot (full/patch)</text>
+  <text class="s" x="130" y="316">navigator · focus · input_router · intents</text>
+
+  <rect class="box" x="400" y="260" width="240" height="72" rx="10"/>
+  <text class="t" x="420" y="282">router/</text>
+  <text class="s" x="420" y="300">route table · policies · guards</text>
+  <text class="s" x="420" y="316">passthrough · back · select</text>
+
+  <path class="arrow" d="M370,296 L398,296"/>
+  <path class="arrow" d="M240,332 L240,360"/>
+
+  <!-- components + scene -->
+  <rect class="box" x="110" y="362" width="530" height="72" rx="10"/>
+  <text class="t" x="130" y="384">components/ + scene/</text>
+  <text class="s" x="130" y="402">screens (17) · widgets · primitives — build a declarative scene graph</text>
+  <text class="s" x="130" y="418">decks · stage · layers · hud · modal · fx · roles</text>
+
+  <path class="arrow" d="M375,434 L375,462"/>
+  <text class="lbl" x="385" y="454">scene tree</text>
+
+  <!-- engine + animation -->
+  <rect class="box" x="110" y="464" width="260" height="72" rx="10"/>
+  <text class="t" x="130" y="486">engine/</text>
+  <text class="s" x="130" y="504">reconciler · dirty tracking · flatten</text>
+  <text class="s" x="130" y="520">scheduler · tree cache → Mutations</text>
+
+  <rect class="box" x="400" y="464" width="240" height="72" rx="10"/>
+  <text class="t" x="420" y="486">animation/</text>
+  <text class="s" x="420" y="504">timelines · easing · sampler</text>
+  <text class="s" x="420" y="520">presets · clock</text>
+
+  <path class="arrow" d="M398,500 L372,500"/>
+  <text class="lbl" x="352" y="456"></text>
+  <path class="arrow" d="M240,536 L240,564"/>
+  <text class="lbl" x="250" y="556">mutations</text>
+
+  <!-- renderer -->
+  <rect class="box" x="110" y="566" width="530" height="72" rx="10"/>
+  <text class="t" x="130" y="588">renderer/</text>
+  <text class="s" x="130" y="606">lvgl_renderer facade · node registry · styling (theme/layout resolvers)</text>
+  <text class="s" x="130" y="622">lvgl/ (FFI · lifecycle · flush · icons · snapshot) · shadow framebuffer</text>
+
+  <path class="arrow" d="M375,638 L375,666"/>
+  <text class="lbl" x="385" y="658">BE RGB565 regions</text>
+
+  <!-- hardware -->
+  <rect class="box" x="110" y="668" width="530" height="56" rx="10"/>
+  <text class="t" x="130" y="690">hardware/</text>
+  <text class="s" x="130" y="708">DisplayDevice + ButtonDevice traits — whisplay (rppal SPI/GPIO) or mock</text>
+
+  <path class="arrow" d="M375,724 L375,752"/>
+  <text class="t" x="330" y="775">the glass</text>
+</svg>

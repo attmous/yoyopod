@@ -1,0 +1,150 @@
+---
+title: Playbook & Recipes
+description: Step-by-step recipes — add a screen, add an icon, extend the FFI, respect the budget, screenshot, and deploy.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Working recipes for the changes you'll actually make. Each one respects the
+two hard rules: never rebuild LVGL on the Pi, and fail loudly rather than
+degrade silently.
+
+## Add a screen
+
+<Steps>
+
+1. **Declare the route** in `device/ui/src/router/routes.rs`: add the
+   variant to `UiScreen`, then give it a `FocusPolicy` (wrap for wheels,
+   clamp for lists, none for overlays), a `NavigationPolicy` (root / stack /
+   call / overlay), persistence, select targets, and — only for capture
+   screens — a PTT passthrough policy.
+
+2. **Write the component** in `device/ui/src/components/screens/` and
+   register it in `scene_for_screen` (`screens/mod.rs`). Compose from the
+   existing widgets and primitives; reach for a deck if the screen is a
+   menu — the wheel is the only menu primitive.
+
+3. **Add the roles** your nodes reference to `assets/layouts.ron` (geometry)
+   and `assets/theme.ron` (colors), plus `scene/roles.rs` if the role is
+   new. Take the values from the screen's mockup token table — the RGB565
+   column, not the CSS hex.
+
+4. **Count your objects** against the mockup's §budget section — the hard
+   cap is 60 live widgets, and current screens keep ≥ 13 headroom.
+
+5. **Run it on the mock display** — `--hardware mock` — and check the
+   spoken-label story: every focus change must speak; no flow may require
+   reading.
+
+</Steps>
+
+## Add an icon
+
+<Steps>
+
+1. **Produce a 56×56 A8 bitmap** (8-bit alpha only — color comes from the
+   role tint at render time). Small control glyphs (play/pause/prev/next/
+   close) are 24×24.
+
+2. **Embed it in `renderer/lvgl/icons.rs`** as a byte array wrapped in an
+   `LvImageDsc` (the A8 header magic is already handled by the
+   constructor).
+
+3. **Register the key** in `descriptor_for_key`.
+
+</Steps>
+
+:::danger[The fallback trap]
+Unknown icon keys currently fall back to the SETUP glyph **silently**. If
+your new icon renders as a wrench, the key never matched. Until gap item 8
+lands, double-check the key string — the renderer won't tell you.
+:::
+
+## Add a font or FFI symbol
+
+<Steps>
+
+1. **Enable it in `device/ui/native/lvgl/lv_conf.h`** if it's a compile-time
+   feature (a Montserrat size, a widget class). Fonts 12–40 are already
+   compiled in.
+
+2. **Declare the `extern`** in `device/ui/src/renderer/lvgl/ffi.rs` — a
+   font is one line (`lv_font_montserrat_24`); a new API is its function
+   signatures plus any opaque types. Keep structs opaque unless you truly
+   need field access, and if you read a struct prefix, document the layout
+   assumption next to it.
+
+3. **Rebuild against the pinned LVGL source**: the `native-lvgl` cargo
+   feature with `YOYOPOD_LVGL_SOURCE_DIR` pointing at the `v9.5.0`
+   checkout — locally for iteration, then **validate with a fresh CI
+   artifact**. Never rebuild LVGL on the Pi.
+
+4. **Wire it upward**: expose the call through the facade, then through a
+   scene property, so screens stay LVGL-free. (`lv_arc` is the worked
+   example waiting to happen — gap item 5 lists its full surface.)
+
+</Steps>
+
+## Respect the 60-widget budget
+
+- Every mockup carries a §budget table — treat it as the screen's object
+  ledger and stay within it.
+- Decks already window their items; never materialize a full list.
+- One `progress_sweep` or `voice_meter` is a container **plus** a child
+  fill — count composite widgets by their parts.
+- If you're near the cap, retire nodes (the engine supports it) rather than
+  hiding them — hidden objects still count.
+
+## Take a screenshot
+
+<Steps>
+
+1. Send `SIGUSR2` to `yoyopod-ui-host` for the shadow-framebuffer dump
+   (exactly what the panel was sent), or `SIGUSR1` for LVGL's own
+   `lv_snapshot_take` readback.
+
+2. Collect `/tmp/yoyopod_screenshot.png` (written atomically).
+
+3. Comparing the two paths is a diagnostic in itself: if they differ, the
+   bug lives in flush/paste; if they agree but the glass is wrong, look at
+   the driver or panel init.
+
+</Steps>
+
+The operator CLI wraps this: `yoyopod target screenshot`.
+
+## Run without hardware
+
+`yoyopod-ui-host --hardware mock` runs the full pipeline — scene, engine,
+LVGL render, flush, shadow framebuffer — against an in-memory display.
+Combined with screenshots, this is the fastest verification loop and the
+one CI uses. The `whisplay` path only compiles on Linux with the
+`whisplay-hardware` feature.
+
+## Deploy and verify on the device
+
+<Steps>
+
+1. **Push your branch** — CI builds the arm64 bundle
+   (`yoyopod-rust-device-arm64-<sha>`) with LVGL compiled from the pinned
+   `v9.5.0` source.
+
+2. **Activate the dev lane** if needed: `yoyopod target mode activate dev`.
+
+3. **Deploy**: `yoyopod target deploy --branch <branch>` — fetches the CI
+   artifact, syncs `/opt/yoyopod-dev/checkout`, installs binaries, restarts
+   `yoyopod-dev.service`, and verifies startup. The service runs
+   `yoyopod-runtime --config-dir <checkout>/config --hardware whisplay`,
+   which supervises `yoyopod-ui-host`.
+
+4. **Verify on glass**: `yoyopod target screenshot`, then walk the screen's
+   input-contract table with the physical button.
+
+</Steps>
+
+:::note
+On feature branches, always pass `--branch` — and remember the roadmap:
+during the CLI rebuild, check
+[`docs/ROADMAP.md`](https://github.com/attmous/yoyopod/blob/main/docs/ROADMAP.md)
+for which target commands are live.
+:::

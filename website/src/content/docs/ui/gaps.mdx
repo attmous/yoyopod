@@ -1,0 +1,68 @@
+---
+title: Known Gaps & Build Order
+description: The 14 tracked runtime work items between today's code and the design contract, the suggested build order, and the acceptance checklist.
+---
+
+The design handoff is final; the runtime is honest about what it still
+lacks. This page mirrors the canonical ledger so the gaps are visible next
+to the guide that documents them.
+
+:::note[Canonical source]
+The authoritative document is
+[`device/ui/assets/ui/HANDOFF.md`](https://github.com/attmous/yoyopod/blob/main/device/ui/assets/ui/HANDOFF.md)
+in the repository — verified against the code, with file references for
+every item.
+:::
+
+## The 14 runtime work items
+
+| # | Item | Where | Size |
+| --- | --- | --- | --- |
+| 1 | `SelectionOffset` maps to `set_x_offset` only; the vertical wheel needs a Y mapping | `renderer/lvgl_renderer.rs` | XS |
+| 2 | Wrap-aware `visible_range` for >6-item wheels (currently clamps) | `scene/deck.rs` | S |
+| 3 | Facade `set_scale` / `set_opacity` / offsets are no-ops — implement them | `renderer/lvgl/facade.rs` | S |
+| 4 | Long-hold emits `Back` (pop one); the contract is pop-to-root | `input/machine.rs`, `application/input_router.rs` | XS |
+| 5 | FFI additions: `lv_arc_*` + arc styles (+ `ElementKind::Arc`), `lv_obj_set_style_outline_color` (+pad), externs `lv_font_montserrat_14`/`_24`, transform-scale. **No shadow FFI** — the flat pass removed the need | `renderer/lvgl/ffi.rs`, `renderer/widgets/factory.rs` | M |
+| 6 | `theme.ron` schema: `font_size` field (+ optional `arc_width`/`arc_rgb`) | `renderer/assets.rs`, `styling/` | S |
+| 7 | New roles in `layouts.ron` / `theme.ron` / `scene/roles.rs` + required-role lists | per-mockup §roles tables | M |
+| 8 | New A8 icons (playlist, recents, shuffle, mic, plus @56×56; play/pause/prev/next/close @24×24) and **fix the silent fallback-to-SETUP** | `renderer/lvgl/icons.rs` | M |
+| 9 | Voice-prompt-on-focus hook (TTS speaks the focused label; interruptible; "Speak names" toggle) | app/intent layer | M |
+| 10 | Route changes: Talk root = contacts; add `Replay`; retire `Contacts`/`CallHistory`/`VoiceNote`; Setup tree replaces `Power` | `router/routes.rs`, `device/protocol` | M |
+| 11 | Move voice-capture passthrough from `VoiceNote` to `TalkContact`, gated on the Record action being focused | `router/routes.rs` | S |
+| 12 | Ask stop path: barge-in stop in the speech worker or a dedicated stop intent — today "double-press to stop" does nothing while speaking | speech worker, `router/routes.rs` | M |
+| 13 | Error overlay interactions: retry select target, a path that clears `snapshot.overlay.error` (else preemption re-pushes it forever), 8 s Loading→Error + 4 s auto-retry timers | `router/routes.rs`, `application/navigator.rs` | M |
+| 14 | Button timing: contract is 400 ms long-hold / 350 ms double window / 180–400 ms dead zone — shipped is 800 / 300 / none | `input/config.rs`, `config/device/hardware.yaml` | S |
+
+## Suggested build order
+
+1. **Flat theme + deck pill** on existing screens — a pure `theme.ron`
+   token pass; immediate visible win, no new machinery.
+2. **Wheel on Listen** (items 1–3, 7, 8) — Listen's routes already match
+   the shipped router, so this is pure presentation.
+3. **Arc hero on NowPlaying** — start with the zero-FFI bar fallback,
+   upgrade to `lv_arc` when item 5 lands.
+4. **Input remap** (item 4) + voice prompts (item 9).
+5. **Talk v5** (item 10), then Ask, then Setup.
+6. **System overlays** (item 13) — smallest, do anytime.
+
+## Acceptance checklist (per screen)
+
+- Renders match the spec's device frames at 240×280 — judged against the
+  **RGB565 token values**, not the CSS hexes.
+- Press / double-press / long-press behave per the screen's input-contract
+  table; long-press lands on Home everywhere except capture screens, where
+  hold = talk.
+- Focus is visible without reading: fill + size (+ ring on controls).
+- The focused label is spoken on every focus change (when "Speak names" is
+  on).
+- No UI borders or shadows anywhere; characters keep their ink outlines.
+- Object count stays within the spec's §budget.
+
+## Deliberately open — do not block on these
+
+Notifications on Home without auto-play · stuck-send retry policy · replay
+cap (~20/contact suggested) · contact ordering (pinned suggested) ·
+double-press window for small hands (350 ms default, to be tested with
+kids) · parent gate on Setup · haptics · the LCD washout escape hatch
+(darken the stage tint or a 1 px self-color outline — a token change, only
+if device testing shows the need).

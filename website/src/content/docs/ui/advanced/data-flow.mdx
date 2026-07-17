@@ -1,0 +1,139 @@
+---
+title: Runtime Data Flow
+description: "Advanced: the line protocol, the command dispatcher, the loops that drive the UI, the watchdogs, and end-to-end sequence walkthroughs."
+---
+
+import Dataflow from '../../../../assets/diagrams/dataflow.svg';
+
+[Software Architecture](/ui/advanced/architecture/) showed the static
+structure; this page shows what moves through it at runtime — every message,
+loop, and timeout that connects the pieces.
+
+<Dataflow class="diagram" />
+
+## The protocol: commands in, events out
+
+The UI host speaks newline-delimited envelopes over stdin/stdout with its
+supervisor. The vocabulary is small and lives in `yoyopod_protocol::ui`:
+
+**Inbound — `UiCommand`** (decoded in `transport/inbound.rs`, mapped to an
+`AppEvent` by `transport/dispatcher.rs`):
+
+| Command | AppEvent | What the loop does |
+| --- | --- | --- |
+| `Tick` | `Tick` | advance LVGL time + animations, feed the tick watchdog, render if dirty |
+| `RuntimeSnapshot` | `RuntimeSnapshot` | replace the world state in `UiRuntime`, rebuild the scene |
+| `RuntimePatch` | `RuntimePatch` | apply a delta to the same state — the cheap path for frequent updates |
+| `InputAction` | `InputAction` | inject a semantic input (used by on-device validation — bypasses the button) |
+| `PollInput` | `PollInput` | poll the physical button through the gesture machine |
+| `SetBacklight` | `SetBacklight` | drive the backlight GPIO through the display device |
+| `Animate` | `Animate` | start a runtime-requested animation |
+| `Screenshot` | `Screenshot` | capture to a path (readback or framebuffer) and report back |
+| `Health` | `Health` | emit a `UiHealth` report (frames rendered, input count, renderer id) |
+| `Shutdown` / `WorkerStop` | `Shutdown` | drain, emit `shutdown_complete`, exit |
+
+**Outbound — `UiEvent`** (emitted by `transport/outbound.rs`, each stamped
+with a monotonic timestamp):
+
+| Event | Meaning |
+| --- | --- |
+| `Intent(UiIntent)` | *the UI wants something to happen* — play this, call them, volume up. The host never acts directly; it asks. |
+| `Input(UiInputEvent)` | telemetry for every recognized gesture: action, method string, duration |
+| `ScreenChanged` | navigation happened; the supervisor tracks where the UI is |
+| `ScreenshotCaptured` | a capture finished (path + dimensions) |
+| `Health` | the health report answering a `Health` command |
+| `Error(UiError)` | decode failures, invalid commands, runtime stalls — typed with `UiErrorCode` |
+
+The **line reader is the only second thread** in the process: it feeds
+decoded lines into a channel the loop reads with a 250 ms timeout
+(`INPUT_POLL_INTERVAL`), so a silent wire still lets the loop poll the
+button and feed watchdogs.
+
+## The loops
+
+Four rhythms drive everything; all of them meet in the single event loop:
+
+1. **The state loop** (runtime-paced). Worker hosts report to
+   `yoyopod-runtime`; it aggregates and sends the UI host a
+   `RuntimeSnapshot` (or a `RuntimePatch` delta). The snapshot is the
+   *only* way world state enters the UI — screens render state, they never
+   fetch it.
+2. **The tick loop** (500 ms at idle). The runtime pumps `Tick`; the host
+   advances `lv_tick_inc` by the measured elapsed time, samples active
+   animation timelines, and runs `lv_timer_handler`. Between ticks, LVGL
+   time stands still — deterministic by construction.
+3. **The input loop** (250 ms poll + event-driven). `PollInput` commands
+   and channel timeouts both funnel the GPIO level into
+   `OneButtonMachine`; recognized gestures become `InputAction`s, the
+   router maps them to `AppCommand`s, navigation/focus update, and an
+   `Input` telemetry event goes out.
+4. **The render loop** (demand-driven). After any of the above,
+   `render_if_dirty` runs: rebuild the active screen's scene, diff it,
+   apply mutations, let LVGL render dirty areas, and push the cheapest
+   region set over SPI. Nothing dirty → nothing rendered, nothing pushed.
+
+## Intents: the loop closes outside
+
+The UI host **never performs side effects**. Selecting "play" emits
+`UiEvent::Intent` — the runtime routes it to the media worker, `mpv`
+starts, the media worker reports new playback state, the runtime folds that
+into the next `RuntimeSnapshot`, and the UI re-renders showing the track
+playing. One-way data flow, with the return path running through the real
+world:
+
+```
+button → gesture → AppCommand → Intent ↗ runtime → media worker → mpv
+glass ← SPI ← render ← scene ← UiRuntime ← RuntimeSnapshot ↙ state change
+```
+
+The practical consequence: **the UI can never lie for long.** It shows what
+the snapshot says, not what it hopes happened — if the intent failed, the
+next snapshot simply doesn't reflect it (and the Error overlay machinery
+takes over if the runtime flags a fault).
+
+## Watchdogs and failure paths
+
+Two timers guard the loop (`worker.rs::RuntimeWatchdog`):
+
+| Watchdog | Timeout | On expiry |
+| --- | --- | --- |
+| Manager heartbeat | **15 s** without any inbound message | emit `manager_timeout` and exit — the supervisor owns restarts |
+| Tick stall | **5 s** without a `Tick` | emit `Error(RuntimeStalled)`, call `UiRuntime::mark_runtime_stalled()` so the UI can show the stall, keep serving input/render |
+
+Plus the decode failure paths: an undecodable line or unknown command never
+kills the loop — it emits a typed `Error` event (`DecodeError` /
+`InvalidCommand`) and continues. The philosophy across all three: **the UI
+host degrades visibly, never silently**, and dying is preferred to lying.
+
+## Worked sequences
+
+**A button press becomes music:**
+
+1. Loop timeout fires → GPIO 17 polled → `OneButtonMachine` recognizes a
+   double-press → `InputAction::Select`
+2. `input_router` maps it (per the active route's policy) →
+   `AppCommand::SelectFocused` → the focused deck item resolves to an
+   intent → `UiEvent::Intent(PlayTrack …)` + `UiEvent::Input(telemetry)`
+3. Runtime routes the intent to the media worker → `mpv` plays
+4. Next `RuntimeSnapshot` carries the playing state → `UiRuntime` updates
+   → scene rebuilds with the arc hero progressing → diff → render →
+   `Region` SPI push
+
+**An incoming call preempts:**
+
+1. The VoIP worker reports ringing → runtime marks it in the snapshot
+2. The UI host applies the snapshot; the navigator's preemption logic
+   pushes `IncomingCall` above whatever the child was doing
+3. `ScreenChanged` goes out; the call screen's route policy remaps the
+   button (select = answer)
+4. When the call state clears from a later snapshot, the stack pops back —
+   the same mechanism that makes the Error overlay re-push until its state
+   is cleared (gap item 13's subject).
+
+**A screenshot request:**
+
+1. `Screenshot { path, prefer_readback }` arrives (the CLI sends it — or
+   `SIGUSR1`/`SIGUSR2` trigger the same capture code path directly)
+2. `RenderState::capture_screenshot` picks LVGL readback or the shadow
+   framebuffer, encodes PNG, writes atomically
+3. `ScreenshotCaptured { path }` goes out; the CLI collects the file

@@ -1,0 +1,46 @@
+<svg viewBox="0 0 760 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="RGB565 bit layout and the little-endian to big-endian byte swap performed in the flush callback">
+  <style>
+    .cell { stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; }
+    .r { fill: var(--sl-color-accent-low, #4a2420); }
+    .g { fill: var(--sl-color-gray-6, #2b2122); }
+    .b { fill: var(--sl-color-gray-5, #3b2e2e); }
+    .t { fill: var(--sl-color-white, #f5ece1); font-size: 15px; font-weight: 600; }
+    .bit { fill: var(--sl-color-white, #f5ece1); font-size: 13px; font-family: ui-monospace, monospace; text-anchor: middle; }
+    .s { fill: var(--sl-color-gray-3, #a5937f); font-size: 12.5px; }
+    .m { fill: var(--sl-color-gray-2, #d8c8b3); font-size: 12.5px; font-family: ui-monospace, monospace; }
+    .arrow { stroke: var(--sl-color-accent, #f37767); stroke-width: 2; fill: none; marker-end: url(#rhead); }
+  </style>
+  <defs>
+    <marker id="rhead" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-accent, #f37767)"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="40" y="34">One pixel = 16 bits: 5 red · 6 green · 5 blue</text>
+  <!-- 16 cells of 40px starting x=40, y=50 -->
+  <g>
+    <rect class="cell r" x="40"  y="50" width="200" height="44"/>
+    <rect class="cell g" x="240" y="50" width="240" height="44"/>
+    <rect class="cell b" x="480" y="50" width="200" height="44"/>
+    <text class="bit" x="140" y="78">R4 … R0</text>
+    <text class="bit" x="360" y="78">G5 … G0</text>
+    <text class="bit" x="580" y="78">B4 … B0</text>
+  </g>
+  <text class="s" x="40" y="116">bit 15</text>
+  <text class="s" x="648" y="116">bit 0</text>
+
+  <text class="t" x="40" y="160">LVGL writes the two bytes little-endian…</text>
+  <rect class="cell g" x="40"  y="174" width="220" height="44"/>
+  <rect class="cell r" x="260" y="174" width="220" height="44"/>
+  <text class="bit" x="150" y="202">byte 0: G2 G1 G0 B4 B3 B2 B1 B0</text>
+  <text class="bit" x="370" y="202">byte 1: R4 R3 R2 R1 R0 G5 G4 G3</text>
+
+  <text class="t" x="40" y="262">…and flush.rs swaps them for the ST7789 (big-endian wire order)</text>
+  <rect class="cell r" x="40"  y="276" width="220" height="44"/>
+  <rect class="cell g" x="260" y="276" width="220" height="44"/>
+  <text class="bit" x="150" y="304">byte 0: R4 R3 R2 R1 R0 G5 G4 G3</text>
+  <text class="bit" x="370" y="304">byte 1: G2 G1 G0 B4 B3 B2 B1 B0</text>
+
+  <path class="arrow" d="M540,196 C620,210 620,270 500,292"/>
+  <text class="m" x="560" y="250">swap per pixel</text>
+</svg>

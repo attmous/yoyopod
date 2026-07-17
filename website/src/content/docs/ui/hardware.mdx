@@ -1,0 +1,82 @@
+---
+title: The Glass and the Board
+description: Raspberry Pi Zero 2W, the PiSugar Whisplay HAT, and the ST7789 panel — the hardware truth behind the UI.
+---
+
+The only supported hardware bundle is a **Raspberry Pi Zero 2W** wearing the
+**PiSugar Whisplay HAT** — screen, side button, microphone, and speaker in
+one package — plus a PiSugar 3 battery HAT. Everything in this guide assumes
+that bundle; non-canonical boards were deliberately removed from the repo.
+
+## The panel
+
+The glass is driven by an **ST7789** controller over SPI:
+
+| Property | Value |
+| --- | --- |
+| Visible resolution | **240 × 280**, portrait |
+| Controller addressing | 240 × 320, visible window offset by `ROW_OFFSET = 20` |
+| Color format | **RGB565** (16 bits per pixel; `0x3A = 0x05` in the init sequence) |
+| Interface | SPI0, chip-select 0, **100 MHz**, Mode 0 |
+| Write granularity | 4096-byte chunks (blocking writes, no DMA) |
+| Rotation | in-panel, via MADCTL (`0x36 = 0xC0`) — never in software |
+
+Constants live at the top of
+[`device/ui/src/hardware/whisplay_panel.rs`](https://github.com/attmous/yoyopod/blob/main/device/ui/src/hardware/whisplay_panel.rs).
+
+The 20-row offset matters: the controller believes it drives a 240×320
+display, but only rows 20–299 exist as glass. The driver adds the offset to
+every window address, so the rest of the stack can pretend the panel is a
+clean 240×280.
+
+## GPIO map
+
+| Signal | GPIO | Notes |
+| --- | --- | --- |
+| Data/Command (DC) | 27 | command vs. pixel-data select |
+| Reset | 4 | hardware reset during init |
+| Backlight | 22 | **active-low**, on/off only — there is no PWM dimming; any brightness > 0 means "on" |
+| Button | 17 | input with pull-up; the device's only physical control |
+
+All pins and the SPI bus/speed are overridable through
+`YOYOPOD_WHISPLAY_SPI_BUS`, `YOYOPOD_WHISPLAY_SPI_CS`, and
+`YOYOPOD_WHISPLAY_SPI_HZ` environment variables for bench setups.
+
+## No kernel display stack — by choice
+
+There is no `/dev/fb0`, no DRM/KMS, and no `fbtft` kernel module in the
+pipeline. The UI host talks to the panel directly from userspace through the
+[`rppal`](https://crates.io/crates/rppal) crate (GPIO + SPI).
+
+What this buys:
+
+- **One binary owns the glass.** No kernel driver version drift, no display
+  server, no compositor — the deploy artifact is the whole display stack.
+- **Deterministic startup.** The UI host either initializes the panel or
+  fails loudly (a hard rule from `rules/lvgl.md`) — there is no silent
+  degradation into a half-working display.
+
+What it costs:
+
+- **Every pixel crosses the CPU.** Flushes are blocking SPI writes from the
+  render thread; there is no DMA and no GPU. This is why the render loop is
+  aggressive about dirty-region tracking and why the design system is flat —
+  shadows and gradients burn fill-rate the Zero 2W's software renderer
+  doesn't have. See [The Render Loop](/ui/rendering/).
+
+## Ambient hardware around the UI
+
+- **Backlight sleep** — the power worker turns the backlight off after
+  inactivity (`display.backlight_timeout_seconds`, default 60 s, in
+  `config/device/hardware.yaml`).
+- **Audio** — WM8960 codec on the HAT over I2S; the UI's Listen/Talk/Ask
+  flows drive it via the media and speech workers. See the
+  [Audio Stack](/hardware/audio-stack/).
+- **No haptics, no LEDs** — both are future-hardware options that appear in
+  mockups only. The "LED" in the robot companion is a drawn SVG bulb.
+
+:::tip[Where "the glass" name comes from]
+There is no physical cover-glass part in the BOM — "the glass" is the
+project's shorthand for the panel's visible window, and the mockups frame it
+in a neutral `#221c1f` device bezel.
+:::

@@ -1,0 +1,131 @@
+---
+title: The LVGL Layer
+description: LVGL 9.5.0 as yoyopod uses it — the exact version and build, what it offers, what we don't use, and every workaround in between.
+---
+
+yoyopod renders with **LVGL 9.5.0** — stock, upstream, zero patches. That
+last part is the design decision that shapes this whole layer: LVGL is used
+strictly as a *renderer*, and everything above it (scenes, animation,
+theming, navigation) is our own code. When LVGL lacks something we need, we
+don't fork it — we either add a small FFI surface or emulate the feature one
+layer up. This page is the ledger of those decisions.
+
+## The exact version, and how it builds
+
+| Fact | Value |
+| --- | --- |
+| Version | **9.5.0**, cloned at upstream tag `v9.5.0` (pinned in `.github/workflows/ci.yml`) |
+| Patches / fork | **None** — stock upstream source |
+| Binding | **Hand-written C FFI** in [`device/ui/src/renderer/lvgl/ffi.rs`](https://github.com/attmous/yoyopod/blob/main/device/ui/src/renderer/lvgl/ffi.rs) — no `lvgl-rs`, no `lv_binding_rust` |
+| Build | `cmake` crate + `device/ui/native/lvgl/{CMakeLists.txt, lv_conf.h}` → static `liblvgl.a`, linked with `-llvgl -lm` |
+| Gate | cargo feature `native-lvgl` + env `YOYOPOD_LVGL_SOURCE_DIR` pointing at the LVGL checkout |
+
+Two hard rules from
+[`rules/lvgl.md`](https://github.com/attmous/yoyopod/blob/main/rules/lvgl.md):
+
+:::caution[Do not rebuild LVGL on the Pi]
+Device binaries come from the pinned CI artifact. If `lv_conf.h` or binding
+code changes, validate against a **fresh CI build** — never a Pi-local
+rebuild.
+:::
+
+:::caution[Fail loudly]
+If the Whisplay driver or the LVGL backend is unavailable at startup, the UI
+host must exit with an error. No silent degradation, ever.
+:::
+
+### Why a hand-written FFI?
+
+The binding crates track LVGL releases slowly and pull in their own build
+machinery. The hand-written `extern "C"` block declares exactly the ~dozens
+of symbols we actually call (`lv_init`, `lv_timer_handler`,
+`lv_display_*`, `lv_obj_*` style setters, `lv_label_*`, `lv_image_*`,
+`lv_snapshot_take`, …) and nothing else. Structs are declared opaque, with
+two deliberate exceptions read as **prefix-only structs**
+(`lv_image_header_t`, `lv_draw_buf_t`): Rust sees only the leading fields it
+needs, and the layout relies on LSB-first bitfield packing on little-endian
+GCC/Clang. That is a documented, accepted risk — it is checked when the
+pinned LVGL version moves, which is rarely.
+
+## `lv_conf.h`: the decision matrix
+
+The entire LVGL configuration
+([`device/ui/native/lvgl/lv_conf.h`](https://github.com/attmous/yoyopod/blob/main/device/ui/native/lvgl/lv_conf.h))
+is deliberately minimal:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| `LV_COLOR_DEPTH` | `16` | the panel is RGB565; anything deeper is wasted work |
+| `LV_USE_OS` | `LV_OS_NONE` | single-threaded tick model — the worker loop is the only thread touching LVGL |
+| `LV_MEM_SIZE` | 256 KB | LVGL's internal heap; sized to the 60-widget budget |
+| Fonts | Montserrat 12–40 compiled in | design system sizes (note: only 12 and 18 have FFI externs today — see the gap table) |
+| Widgets | `LIST`, `LABEL`, `BUTTON`, `IMAGE`, `FLEX` only | everything else in the UI is composed from these plus plain objects |
+| `LV_USE_SNAPSHOT` | `1` | powers screenshot readback for remote validation |
+| ThorVG / vector / Lottie | **off** (forced in CMake) | no vector rendering on a Zero 2W software renderer |
+| `LV_USE_LOG` | `0` | logging happens in Rust, not in C |
+
+## The tick model
+
+There is no hardware tick interrupt and no LVGL OS layer. Each frame, the
+Rust side:
+
+1. computes the elapsed time from a monotonic `Instant`,
+2. calls `lv_tick_inc(elapsed_ms)`,
+3. calls `lv_timer_handler()`.
+
+Ticks are pumped by `UiCommand::Tick` messages from the supervising runtime
+(every 500 ms at idle), and by input/state activity in between. The
+practical consequence: **LVGL time only advances when our loop runs**, which
+makes rendering deterministic and testable — and is one of the reasons the
+project uses its own animation engine instead of `lv_anim` (see below).
+
+## What LVGL gives us, what we skip, what we emulate
+
+This is the centerpiece table — the honest contract between yoyopod and its
+renderer.
+
+### Offered by LVGL and used
+
+| Capability | How yoyopod uses it |
+| --- | --- |
+| Object tree + styles | every scene node becomes an `lv_obj` with per-role styles (fill, radius, text color) |
+| Labels, images, flex layout | the four primitives — container, label, image, progress — cover every screen |
+| Partial rendering | `LV_DISPLAY_RENDER_MODE_PARTIAL` with a single 240×40 draw buffer |
+| Custom flush callback | where the RGB565 byte-swap and shadow-framebuffer paste happen |
+| Snapshot (`lv_snapshot_take`) | on-demand RGB565 readback of the active screen for screenshots |
+| Montserrat fonts | compiled into the static lib at design-system sizes |
+| Default theme | as a base; real theming is our token system in `theme.ron` |
+
+### Offered by LVGL and deliberately not used
+
+| Capability | Why we skip it |
+| --- | --- |
+| `lv_anim` (animation system) | timing would be owned by C while the scene diff is owned by Rust; instead a custom timeline engine drives properties and the diff emits the results — see [Motion & Theming](/ui/motion-and-theming/) |
+| Rich widget set (sliders, charts, tables, …) | a kids' device with one button needs exactly two composite primitives: the wheel and the arc hero — both are ours |
+| ThorVG vector graphics / Lottie | fill-rate: the Zero 2W renders in software; vector rasterization per frame doesn't fit the budget |
+| LVGL's input device layer (`lv_indev`) | one GPIO button feeds a Rust state machine; LVGL never sees raw input — see [One Button, Three Gestures](/ui/input/) |
+| Built-in screen/anim transitions | navigation and transitions belong to the router + engine, not the renderer |
+
+### Not available (or not wired) — and the workaround in place
+
+| Gap | Workaround today | Real fix |
+| --- | --- | --- |
+| `lv_arc` isn't in the FFI yet | the arc-hero progress ring ships as a **bar fallback**: a container with a child fill whose width scales per-mille | HANDOFF item 5: add `lv_arc_*` + arc styles + `ElementKind::Arc` |
+| Transform scale isn't wired (`lv_obj_set_style_transform_scale`) | `set_scale` is **emulated by resizing + recentering** the object — the wheel's focused-tile zoom works this way | same item 5: wire the transform FFI |
+| `set_opacity` on the facade | currently a no-op; dimmed wheel peeks rely on color tokens instead | HANDOFF item 3 |
+| Focus-ring outline color (`lv_obj_set_style_outline_color`) | not yet callable; focus is shown with fill + size only | HANDOFF item 5 |
+| Montserrat 14 / 24 | enabled in `lv_conf.h` but no `extern` declared — only 12 and 18 are usable from Rust | HANDOFF item 5: add the externs |
+| Drop shadows | **deleted on purpose** — the flat design pass removed the shadow FFI requirement entirely to save fill-rate | none needed; an "LCD washout escape hatch" (darker stage tint) exists as a token change if device testing demands it |
+| Little-endian RGB565 output vs. big-endian panel | every flush byte-swaps each 16-bit pixel (`RGB565_SWAPPED`) in [`flush.rs`](https://github.com/attmous/yoyopod/blob/main/device/ui/src/renderer/lvgl/flush.rs) | permanent — this is just the ST7789's wire format |
+
+The full, current list of tracked gaps — including the non-LVGL ones — lives
+in [Known Gaps & Build Order](/ui/gaps/).
+
+## The takeaway
+
+If you're extending the UI: **you will almost never call LVGL directly.**
+You write scene nodes and roles; the engine and facade translate them. The
+only times this page's details bite are when you need a new LVGL symbol
+(follow the [FFI recipe](/ui/playbook/#add-a-font-or-ffi-symbol)) or when
+you're tempted to reach for an LVGL feature in the "skipped" table — check
+the reasoning here first, because the omission is usually load-bearing.

@@ -1,0 +1,92 @@
+---
+title: Design Reference Gallery
+description: The normative HTML mockups for every screen — pixel and behavior specs, embedded.
+---
+
+These are the **normative design specs** for the device UI, final as of
+2026-07-15. Each file renders the 240×280 panel 1:1 inside a neutral device
+bezel, followed by the token, geometry, and behavior tables an implementer
+needs. The acceptance rule: renders are judged against the **RGB565 values
+in each token table**, not the CSS hexes.
+
+:::note[These are copied snapshots]
+The canonical files live at `device/ui/assets/ui/` in the repository,
+alongside [`HANDOFF.md`](https://github.com/attmous/yoyopod/blob/main/device/ui/assets/ui/HANDOFF.md)
+(the implementation handoff) and
+[`README.md`](https://github.com/attmous/yoyopod/blob/main/device/ui/assets/ui/README.md)
+(the decision log). After any change there, refresh these copies with
+`npm run sync:mockups`.
+:::
+
+## Input model — the cross-cutting contract
+
+Gesture grammar, timing, and the Home/Ambient state machine.
+<a href="/mockups/mockup_input_model.html" target="_blank" rel="noopener">Open full spec ↗</a>
+
+<iframe class="mockup" src="/mockups/mockup_input_model.html" loading="lazy" height="640" title="Input model"></iframe>
+
+## Home — stage, companion, deck
+
+Routes: `Hub`.
+<a href="/mockups/mockup_home.html" target="_blank" rel="noopener">Open full spec ↗</a>
+
+<iframe class="mockup" src="/mockups/mockup_home.html" loading="lazy" height="640" title="Home"></iframe>
+
+## Listen — the wheel and the arc hero
+
+Routes: `Listen`, `Playlists`, `RecentTracks`, `NowPlaying`. **Owns the two
+primitives** (§3 wheel, §4 arc hero) and the FFI additions table (§7).
+<a href="/mockups/mockup_listen.html" target="_blank" rel="noopener">Open full spec ↗</a>
+
+<iframe class="mockup" src="/mockups/mockup_listen.html" loading="lazy" height="640" title="Listen"></iframe>
+
+### Listen, dark
+
+The proof that theme = tokens only: a strict dark token swap of the same
+screens.
+<a href="/mockups/mockup_listen_dark.html" target="_blank" rel="noopener">Open full spec ↗</a>
+
+<iframe class="mockup" src="/mockups/mockup_listen_dark.html" loading="lazy" height="640" title="Listen (dark)"></iframe>
+
+## Talk — contact wheel, recording, replay, calls
+
+Routes: `Talk`, `TalkContact`, `IncomingCall`, `OutgoingCall`, `InCall`,
+plus the new `Replay`; retires `Contacts`, `CallHistory`, `VoiceNote`.
+<a href="/mockups/mockup_talk.html" target="_blank" rel="noopener">Open full spec ↗</a>
+
+<iframe class="mockup" src="/mockups/mockup_talk.html" loading="lazy" height="640" title="Talk"></iframe>
+
+## Ask — spoken Q&A
+
+Route: `Ask` — idle, listening, thinking, answering, plus offline.
+<a href="/mockups/mockup_ask.html" target="_blank" rel="noopener">Open full spec ↗</a>
+
+<iframe class="mockup" src="/mockups/mockup_ask.html" loading="lazy" height="640" title="Ask"></iframe>
+
+## Setup — the settings wheel
+
+Replaces `Power`: Volume, Companion, Contacts, Theme, About.
+<a href="/mockups/mockup_setup.html" target="_blank" rel="noopener">Open full spec ↗</a>
+
+<iframe class="mockup" src="/mockups/mockup_setup.html" loading="lazy" height="640" title="Setup"></iframe>
+
+## System — loading and error overlays
+
+Routes: `Loading`, `Error`.
+<a href="/mockups/mockup_system.html" target="_blank" rel="noopener">Open full spec ↗</a>
+
+<iframe class="mockup" src="/mockups/mockup_system.html" loading="lazy" height="640" title="System overlays"></iframe>
+
+## Companions — the Home characters
+
+Swappable illustrations (Owl, Cat, Bunny, Robot) — characters keep 2 px ink
+outlines; they are illustrations, not chrome.
+<a href="/mockups/mockup_companions.html" target="_blank" rel="noopener">Open full spec ↗</a>
+
+<iframe class="mockup" src="/mockups/mockup_companions.html" loading="lazy" height="640" title="Companions"></iframe>
+
+### Companions, dark
+
+<a href="/mockups/mockup_companions_dark.html" target="_blank" rel="noopener">Open full spec ↗</a>
+
+<iframe class="mockup" src="/mockups/mockup_companions_dark.html" loading="lazy" height="640" title="Companions (dark)"></iframe>

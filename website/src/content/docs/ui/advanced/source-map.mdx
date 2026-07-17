@@ -1,0 +1,279 @@
+---
+title: "Source Map: Every File Explained"
+description: "Advanced: a file-by-file reference for device/ui/src — what each file is for, its key items, and what it connects to."
+---
+
+[Software Architecture](/ui/advanced/architecture/) explains the crate at
+module level. This page goes one level deeper: **every file** in
+`device/ui/src`, what it's for, and what it connects to — so when you're
+staring at the folder tree, you can name the purpose of the thing under
+your cursor.
+
+Modules are ordered along the data flow, the same top-to-bottom direction
+as the architecture diagram: wire → app state → routes → screens → scene →
+engine → animation → renderer → input → hardware.
+
+## The 30-second orientation
+
+If you want to *read* the codebase rather than look things up, follow this
+thread — it visits every layer once:
+
+1. `main.rs` — how the process starts and which hardware it picks
+2. `worker.rs` — the event loop everything hangs off
+3. `transport/dispatcher.rs` — the complete list of things that can happen (`AppEvent`)
+4. `application/runtime.rs` — how state becomes a `SceneGraph`
+5. `router/routes.rs` — the per-screen behavior tables
+6. `components/screens/listen.rs` — one screen, start to finish
+7. `engine/scheduler.rs` — how a scene becomes mutations
+8. `renderer/lvgl_renderer.rs` — how mutations become LVGL calls
+9. `hardware/whisplay.rs` — how pixels reach the glass
+
+## Top level
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `lib.rs` | Crate root: declares all modules, re-exports the core engine types. Nothing else. | `DirtyRegion`, `Mutation`, `NodeId`, `RenderMode` |
+| `main.rs` | Binary entry point: parses `--hardware mock\|whisplay`, builds the display + button devices, hands them to the worker loop over stdin/stdout. | `main`, `HardwareMode` |
+| `worker.rs` | **The event loop.** Reads protocol envelopes, dispatches commands into `UiRuntime`, polls the button, renders when dirty, and runs the two watchdogs (manager heartbeat, tick stall). If you're lost, start here — everything is wired in this file. | `run_worker`, `RenderState`, `handle_app_event`, `RuntimeWatchdog` |
+| `screenshot.rs` | Captures the current frame (LVGL readback or shadow framebuffer) and writes it **atomically** to PNG, so the CLI never copies a half-written file. | `Rgb565Image`, `capture` |
+
+## transport/ — the wire
+
+Everything about talking to `yoyopod-runtime` over stdin/stdout. Used only
+by `worker.rs`.
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `mod.rs` | Module declarations only. | — |
+| `codec.rs` | Line framing: spawns the background stdin line-reader thread (the process's only second thread) and encodes/decodes `WorkerEnvelope`s. | `spawn_line_reader`, `decode_envelope` |
+| `inbound.rs` | Thin wrapper: envelope → typed `UiCommand`. | `decode_command` |
+| `dispatcher.rs` | Translates a `UiCommand` into an internal `AppEvent` — this enum is the complete list of everything the UI host can be asked to do. | `AppEvent`, `dispatch_command` |
+| `outbound.rs` | Emits `UiEvent`s, intents, and input telemetry back to the manager, timestamped from the monotonic clock it also owns. | `emit_event`, `emit_intents`, `monotonic_millis` |
+| `handshake.rs` | Lifecycle events: `Ready` (display size + schema version + screen capabilities), shutdown-complete, manager-timeout. | `emit_ready`, `emit_shutdown_complete` |
+
+## application/ — app state and navigation
+
+The model of the world and the logic that changes it. `UiRuntime` is the
+central struct; `navigator.rs` is where input becomes navigation.
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `mod.rs` | Re-exports `UiRuntime` and `UiScreen`. | — |
+| `state.rs` | Defines the `UiRuntime` struct itself (snapshot + screen stack + focus) and the `DirtyState` bitset that maps per-domain changes to render regions. | `UiRuntime`, `DirtyState` |
+| `runtime.rs` | `UiRuntime`'s behavior: apply snapshots/patches, handle input, drive animations, and build the per-frame `SceneGraph` + dirty-region frame request. The bridge from state to scene. | `apply_snapshot`, `handle_input`, `scene_graph`, `frame_request` |
+| `navigator.rs` | **The heart of navigation**: applies runtime preemption (calls, overlays), advances focus, resolves selections into screen pushes or intents, handles back and PTT — all by consulting the router policy tables. | `advance_focus`, `select_focused`, `go_back_or_emit`, `apply_runtime_preemption` |
+| `input_router.rs` | Pure mapping: protocol `InputAction` → internal `AppCommand` (advance/select/back/PTT). | `AppCommand`, `route` |
+| `focus.rs` | Focus-index arithmetic (wrap/clamp advance) and per-screen focusable-item counting. | `advance`, `focus_count` |
+| `intents.rs` | Builders that turn snapshot items (list rows, contacts, voice notes) into protocol intent payloads. | `list_item_action`, `contact_action` |
+| `options.rs` | Dynamic option lists that aren't in the snapshot: static Listen/Talk menus, per-contact action sets, settings page counts. | `listen_items`, `talk_contact_actions` |
+
+### application/snapshot/ — how state arrives
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `mod.rs` | Defines `SnapshotChange` (which domain changed, and any app-state transition) — what `runtime.rs` uses to mark dirt and re-route. | `SnapshotChange` |
+| `full.rs` | Replaces the entire `RuntimeSnapshot` at once. | `replace_full` |
+| `patch.rs` | Dispatches a `RuntimeSnapshotPatch` delta to the matching domain applier — the cheap path for frequent updates. | `apply_patch` |
+
+`snapshot/domains/` is a uniform group: seven single-function modules, each
+overwriting one field of the snapshot — `hub` (home cards), `music`
+(playback/playlists/recents), `call` (call state, contacts, history),
+`voice` (assistant + capture phase), `power` (battery + settings),
+`network` (connectivity/signal), `overlay` (loading/error).
+
+## router/ — the behavior tables
+
+Declarative, per-screen policy. No logic about *what* screens contain —
+only *how they behave* in navigation.
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `mod.rs` | Re-exports the route model and table helpers. | — |
+| `route.rs` | The declarative route model: enums for navigation, persistence, selection, intent templates, and snapshot conditions, bound together by the `Route` struct. | `Route`, `NavigationPolicy`, `SelectionTarget` |
+| `routes.rs` | **The static `ROUTES` table** — one `Route` per `UiScreen`, plus validation, status-bar region helpers, and capability export for the `Ready` handshake. The single place a screen's policies live. | `ROUTES`, `route_for`, `validate_routes` |
+| `guards.rs` | Global preemption rules: which screen an error/loading/call state forces onto the stack. | `runtime_preemption`, `is_call_screen` |
+| `history.rs` | The screen back-stack: push/pop/pop-until over history entries. | `HistoryEntry`, `pop_or_hub` |
+| `back.rs` | Picks the first matching back policy for a route given the current snapshot. | `back_policy` |
+| `passthrough.rs` | Resolves PTT passthrough policies — whether a route captures the button, per condition. | `passthrough_policy`, `captures_button` |
+| `select.rs` | Indexes a route's selection-target list by focus index. | `selection_target` |
+
+## components/ — what screens are made of
+
+Three tiers: primitives wrap `Element` construction, widgets compose
+primitives into reusable pieces, screens compose widgets into a `Scene`.
+
+**primitives/** — four one-function files, each building one `Element`
+kind with a style role: `container.rs`, `label.rs`, `image.rs`, and
+`progress.rs` (which carries the value prop that progress fills render
+from).
+
+**widgets/** :
+
+| File | Purpose |
+| --- | --- |
+| `status_bar.rs` | The top HUD bar: signal bars, wifi/GPS/VoIP indicators, clock, battery outline + fill. |
+| `footer_bar.rs` | The bottom hint bar (keyed to `RegionId::Footer`). |
+| `card.rs` | Hero card: icon halo + title/subtitle — the hub/ask tile. |
+| `icon_halo.rs` | Accented halo container wrapping an accented icon — the shared base of `card`. |
+| `list_row.rs` | Selectable list row (icon + title + subtitle) for `DeckKind::List`. |
+| `chip.rs` | Small labeled, optionally accented pill. |
+| `call_panel.rs` | The active-call panel: peer title, call state, mute label. |
+| `progress_sweep.rs` | Progress track + fill from a per-mille value (the arc hero's current bar fallback). |
+| `voice_meter.rs` | Voice-level meter with fill and recording state. |
+
+**screens/** — one module per route, plus three shared files:
+
+| File | Purpose |
+| --- | --- |
+| `mod.rs` | The dispatcher: maps a `UiScreen` to its module's `props_from` + `scene`, then layers in scene/deck timelines. |
+| `chrome.rs` | The shared HUD: per-screen title, status bar, footer hint — layered on by the runtime, not by the screens themselves. |
+| `common.rs` | The five reusable scene shapes screens delegate to: `hero_scene`, `list_scene`, `action_scene`, `call_scene`, `overlay_scene`. |
+
+Every screen module follows the same **two-function contract**:
+`props_from(snapshot, focus, defaults)` projects the immutable snapshot
+into a small screen-specific props struct, and `scene(&props)` assembles a
+`Scene` — usually by delegating to a `common.rs` builder and patching in
+its own deck items. Screens are declarative and stateless: they read state
+and emit a scene; navigation, selection, and intents live entirely in
+`router/` and `application/navigator.rs`.
+
+The screens themselves: `hub` (home card row), `listen` (music menu),
+`playlists` / `recent_tracks` (dynamic music lists), `now_playing`
+(playback + progress), `ask` (assistant hero card, PTT-driven), `talk`
+(comms menu), `contacts` / `call_history` (dynamic call lists),
+`talk_contact` (per-contact actions), `voice_note` (phase-driven capture
+flow), `incoming_call` / `outgoing_call` / `in_call` (preempted call
+screens), `power` (paged settings/status), `loading` / `error` (modal
+overlays, preempted via `guards.rs`).
+
+## scene/ — the declarative scene model
+
+What a screen *contains*, as data: backdrop, stage regions, decks, cursor,
+effects, HUD, modals.
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `mod.rs` | Re-exports the scene API. | — |
+| `scene.rs` | The active-screen aggregate (backdrop + stage + decks + cursor + fx + timelines) and the `SceneId` that gives scenes stable identity for enter animations. | `Scene`, `SceneId` |
+| `graph.rs` | The full navigable UI state: active scene, HUD, modal stack, navigation history with actor-state caching, route params, and the global clock. The engine's input. | `SceneGraph`, `ActorState` |
+| `stage.rs` | Layout templates and named regions; resolves `(Stage, RegionId)` to absolute pixel rects on the 240×280 display — the layout backbone. | `Stage`, `RegionId`, `region_rect` |
+| `deck.rs` | **The wheel.** Deck kinds (card row, list, page, grid, buttons), focus/recycle windowing, and per-item entry/focus/swap animations. | `Deck`, `DeckKind`, `DeckItem` |
+| `layers.rs` | The fixed compositing order (backdrop→stage→decks→cursor→fx→hud→modal) and which slots belong to the scene vs. the graph overlay. | `LAYER_ORDER`, `LayerSlot` |
+| `backdrop.rs` | Background variants: solid, gradient, accent-drift, vignette. | `Backdrop` |
+| `cursor.rs` | The selection indicator (underline dots / row glow) as an animatable actor. | `Cursor` |
+| `fx.rs` | The effects layer data model: halos, pulse rings, particle fields, glow blooms. | `FxLayer`, `Halo` |
+| `hud.rs` | Wraps the pre-built status bar as a graph overlay; defines the HUD status data model. | `HudScene`, `HudStatus` |
+| `modal.rs` | Overlay dialogs (loading, error) as modal elements. | `Modal` |
+| `roles.rs` | The central table of `&'static str` role identifiers — the semantic tags connecting elements to `theme.ron`/`layouts.ron` styling. Constants only. | role constants |
+| `defaults.rs` | Loads per-screen presets from `assets/scenes.ron` (backdrop/fx/timeline choices), enforcing full screen coverage at startup. | `load_scene_defaults`, `SceneDefaults` |
+
+## engine/ — declarative → imperative
+
+The retained-mode core: flatten the scene, diff against last frame, emit
+minimal mutations.
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `mod.rs` | Re-exports the engine surface. | — |
+| `scheduler.rs` | The frame driver: each tick advances clocks, syncs timelines, flattens the graph, diffs it, and returns the render mode + mutations. Also detects animation-only dirtiness via a quantized signature. | `Engine`, `Engine::tick`, `FrameOutcome` |
+| `element.rs` | The immutable virtual-DOM node: props, layout, key, animation binding — the intermediate representation everything diffs over. | `Element`, `ElementKind`, `NodeId` |
+| `flatten.rs` | Flattens a `SceneGraph` into one root `Element` tree, walking the fixed layer order. | `flatten` |
+| `reconciler.rs` | **The diff.** Reconciles previous vs. next element trees by node path, reusing `NodeId`s and emitting the minimal mutation list (including animation-sampled prop updates). | `Reconciler`, `Reconciler::diff` |
+| `props.rs` | Per-property diffing: emits a `PropChange` only for fields that actually changed. | `diff_props` |
+| `mutation.rs` | The renderer command vocabulary: create/update/place/reorder/remove plus `PropChange`. | `Mutation`, `PropChange` |
+| `dirty.rs` | Dirty-region tracking; decides full-frame vs. HUD vs. region redraw. | `DirtyRegion`, `RenderMode` |
+| `tree_cache.rs` | Caches the previous frame's tree and its path→id map for stable identity across frames. | `TreeCache`, `NodePath` |
+| `timelines.rs` | The set of currently-active timelines, hard-capped at 16 for the frame budget. | `ActiveTimelines` |
+
+## animation/ — the motion system
+
+Keyframe timelines sampled against a clock — deliberately not `lv_anim`
+(see [Motion & Theming](/ui/motion-and-theming/)).
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `mod.rs` | Re-exports the animation API. | — |
+| `timeline.rs` | The data model: `Timeline` → `Track`s → `Keyframe`s, plus loop mode and completion actions. | `Timeline`, `Track`, `Keyframe` |
+| `property.rs` | What can be animated: the property set, value payloads, and actor references (which node a track targets). | `AnimatableProp`, `ActorRef` |
+| `sampler.rs` | Evaluates active timelines at a time point — easing interpolation plus the quantized signature used to detect animation-driven dirtiness. | `TimelineSampler` |
+| `easing.rs` | The easing curve options. | `Easing` |
+| `clock.rs` | Which time base a timeline runs against: scene-local, global, or an event's start. | `ClockSource` |
+| `presets.rs` | The canonical named motions with fixed keyframes: scene enter, stagger, breathe, pulse, progress sweep, selection snap. | `stagger_enter`, `breathe_focused_item` |
+| `transition.rs` | Bridges protocol `AnimationRequest`s into internal timelines (the `Animate` command's implementation). | `Transition` |
+
+## renderer/ — mutations → pixels
+
+Everything from mutation application down to the shadow framebuffer.
+Everything LVGL-touching is feature-gated behind `native-lvgl`; without
+it, `LvglRenderer` degrades to error-returning stubs and `null_renderer`
+serves tests.
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `mod.rs` | Defines the `Renderer` trait all backends implement. | `Renderer`, `RenderReport` |
+| `lvgl_renderer.rs` | The production renderer: translates mutations into facade calls, **enforces the 60-widget budget**, flushes frames, provides RGB565 readback. | `LvglRenderer` |
+| `node_registry.rs` | Maps scene `NodeId`s to backend `WidgetId`s so mutations can address live LVGL widgets. | `NodeRegistry` |
+| `framebuffer.rs` | The in-memory RGB565 buffer with big-endian import/export — the shared render target the flush callback writes and the display device reads. | `Framebuffer` |
+| `assets.rs` | Loads and validates the embedded `layouts.ron`/`theme.ron` at startup — every required role must be present, unique, known. | `RenderAssets`, `LayoutRole`, `ThemeRole` |
+| `null_renderer.rs` | A no-op `Renderer` recording mutations without drawing, for tests and headless builds. | `NullRenderer` |
+
+### renderer/lvgl/ — the C boundary
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `mod.rs` | `NativeLvglFacade` — the stateful owner of the LVGL display and widget tree; implements the facade trait (create/update/reorder/destroy, geometry, styling). | `NativeLvglFacade` |
+| `ffi.rs` | The raw `extern "C"` bindings and `#[repr(C)]` structs for LVGL 9 — the only file that speaks C. ~62 bindings. | `lv_obj_t`, `lv_display_t` |
+| `lifecycle.rs` | LVGL init/teardown: open the library, create the display + 40-row draw buffer, tick the timer, invalidate, clean up on `Drop`. | `ensure_display_registered`, `render_frame` |
+| `flush.rs` | The flush callback: copies rendered partial regions into the `Framebuffer`, byte-swapping to big-endian on the way. | `lvgl_flush_callback` |
+| `snapshot.rs` | Screen readback via `lv_snapshot_take` — the screenshot path independent of the shadow buffer. | `snapshot_active_screen` |
+| `icons.rs` | The large generated file of A8 icon bitmaps (LISTEN/TALK/ASK/SETUP) and the key→descriptor mapping (with the silent SETUP fallback — gap item 8). | `descriptor_for_key` |
+
+### renderer/styling/ — roles → pixels styles
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `mod.rs` | Re-exports the styling helpers; provides color mixing. | `mix_u24` |
+| `style.rs` | The palette constants and the resolved `WidgetStyle` struct applied to widgets. | `WidgetStyle` |
+| `theme.rs` | Resolves a role (+ selected-state variant) into a concrete `WidgetStyle` from `theme.ron`. | `ThemeResolver` |
+| `layout.rs` | Resolves a role + occurrence index into an absolute rect, with repeat offsets for repeated widgets like list rows. | `LayoutResolver` |
+| `base.rs` | Applies a `WidgetStyle` to a raw LVGL object (bg/text/border/radius), plus reset and hide helpers. | `apply_style_raw` |
+| `accent.rs` | Applies per-role runtime accent colors (backdrop fills, glow mixes, battery/signal tints). | `apply_accent_raw` |
+| `icons.rs` | Maps icon keys to FontAwesome glyph labels for label-based (non-image) icons. | `icon_label` |
+| `tuning/` | Per-role widget tuning applied after creation, split into `base.rs` (scrollbars, padding, radii), `communication.rs` (call-panel text), `text.rs` (footer/status labels). | `apply_role_tuning_raw` |
+| `variants/mod.rs` | Role+variant style overrides (e.g. modal loading vs. error border colors). | `apply_variant_raw` |
+
+### renderer/widgets/ — the backend widget layer
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `facade.rs` | `LvglFacade` — the backend-agnostic trait the renderer drives; `NativeLvglFacade` implements it. | `LvglFacade` |
+| `factory.rs` | Thin constructors for raw LVGL root/container/label/image objects, with null-checking. | `create_container_object` |
+| `registry.rs` | Tracks the live widget tree: object handles, kinds, parent-child links, layout/offset/scale state. | `WidgetRegistry` |
+| `primitives.rs` | The opaque `WidgetId` (u64) identifying live backend widgets. | `WidgetId` |
+| `roles.rs` | The `WidgetRole = &'static str` alias used wherever a role name is passed. | `WidgetRole` |
+| `mod.rs` | Re-exports the above. | — |
+
+## input/ — the button
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `mod.rs` | Polls a `ButtonDevice` and feeds it through the state machine (normal or PTT passthrough mode), producing input events. | `poll_button_actions` |
+| `machine.rs` | The one-button gesture state machine: debounce, then classify into advance/select/back/PTT press/release. | `OneButtonMachine`, `InputEvent` |
+| `config.rs` | The timing thresholds (debounce, double-tap, long-hold). | `ButtonTiming` |
+
+## hardware/ — the physical seam
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `mod.rs` | The two device traits abstracting the panel and the button — the boundary that makes everything above hardware-independent. | `DisplayDevice`, `ButtonDevice` |
+| `whisplay_panel.rs` | Pure panel data, no I/O: dimensions, GPIO/SPI defaults, the ST7789 init sequence, address-window helpers. Testable anywhere. | `whisplay_init_sequence`, `whisplay_address_window` |
+| `whisplay.rs` | The real driver: opens SPI/GPIO from env vars, runs the init sequence, flushes frames and backlight over SPI. Linux + `whisplay-hardware` feature only. | `WhisplayDisplay`, `WhisplayButton`, `open_from_env` |
+| `mock.rs` | In-memory stand-ins that count frames and report a fixed button state — what tests, CI, and `--hardware mock` use. | `MockDisplay`, `MockButton` |
+
+---
+
+:::tip[Keeping this page honest]
+This map was written from the source on the docs branch. File purposes are
+stable, but if a file here doesn't match what you're reading, trust the
+code — and treat the mismatch as a docs bug worth fixing.
+:::

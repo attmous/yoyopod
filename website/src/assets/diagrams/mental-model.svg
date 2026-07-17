@@ -1,0 +1,105 @@
+<svg viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The tiny theater mental model: the runtime writes the script, the director picks the scene, set builders build it, stagehands swap only what changed, the painter repaints dirty panels, the glass shows it, and the audience's one buzzer sends intents back to the office">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #2b2122); stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; }
+    .ext { fill: none; stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .hero { fill: var(--sl-color-accent-low, #4a2420); stroke: var(--sl-color-accent, #f37767); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f5ece1); font-size: 14.5px; font-weight: 700; }
+    .m { fill: var(--sl-color-gray-2, #d8c8b3); font-size: 11.5px; font-family: ui-monospace, monospace; }
+    .s { fill: var(--sl-color-gray-3, #a5937f); font-size: 11.5px; }
+    .big { fill: var(--sl-color-accent, #f37767); font-size: 19px; font-weight: 800; letter-spacing: 0.04em; }
+    .mid { fill: var(--sl-color-white, #f5ece1); font-size: 13.5px; font-weight: 600; }
+    .flow { stroke: var(--sl-color-gray-3, #a5937f); stroke-width: 2.5; fill: none; marker-end: url(#mh1); }
+    .back { stroke: var(--sl-color-accent, #f37767); stroke-width: 2.5; fill: none; marker-end: url(#mh2); stroke-dasharray: 8 5; }
+    .lbl { fill: var(--sl-color-accent, #f37767); font-size: 12px; font-weight: 600; }
+  </style>
+  <defs>
+    <marker id="mh1" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="var(--sl-color-gray-3, #a5937f)"/>
+    </marker>
+    <marker id="mh2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="var(--sl-color-accent, #f37767)"/>
+    </marker>
+  </defs>
+
+  <!-- TOP ROW: state flows right -->
+  <rect class="ext" x="19" y="36" width="170" height="88" rx="12"/>
+  <text class="t" x="33" y="60">The office</text>
+  <text class="m" x="33" y="79">yoyopod-runtime</text>
+  <text class="s" x="33" y="97">writes the script</text>
+  <text class="s" x="33" y="112">(RuntimeSnapshot)</text>
+
+  <rect class="box" x="203" y="36" width="170" height="88" rx="12"/>
+  <text class="t" x="217" y="60">The director</text>
+  <text class="m" x="217" y="79">UiRuntime · navigator</text>
+  <text class="s" x="217" y="97">decides which scene</text>
+  <text class="s" x="217" y="112">is on stage</text>
+
+  <rect class="box" x="387" y="36" width="170" height="88" rx="12"/>
+  <text class="t" x="401" y="60">The set builders</text>
+  <text class="m" x="401" y="79">components/screens</text>
+  <text class="s" x="401" y="97">read the script, build</text>
+  <text class="s" x="401" y="112">the set (a Scene)</text>
+
+  <rect class="box" x="571" y="36" width="170" height="88" rx="12"/>
+  <text class="t" x="585" y="60">The stagehands</text>
+  <text class="m" x="585" y="79">engine reconciler</text>
+  <text class="s" x="585" y="97">between frames, move</text>
+  <text class="s" x="585" y="112">only what changed</text>
+
+  <path class="flow" d="M189,80 L200,80"/>
+  <path class="flow" d="M373,80 L384,80"/>
+  <path class="flow" d="M557,80 L568,80"/>
+
+  <!-- right side down -->
+  <path class="flow" d="M656,124 L656,296"/>
+  <text class="s" x="666" y="200">Mutations —</text>
+  <text class="s" x="666" y="216">a work order,</text>
+  <text class="s" x="666" y="232">not a repaint</text>
+
+  <!-- CENTER mnemonic -->
+  <text class="big" x="232" y="196">STATE FLOWS DOWN · INTENTS FLOW UP</text>
+  <text class="mid" x="298" y="224">and only what changed ever moves</text>
+  <text class="s" x="240" y="250">the UI never acts, and never fetches — it is told, then it asks</text>
+
+  <!-- BOTTOM ROW: right to left -->
+  <rect class="hero" x="571" y="300" width="170" height="88" rx="12"/>
+  <text class="t" x="585" y="324">The painter</text>
+  <text class="m" x="585" y="343">LVGL 9.5.0</text>
+  <text class="s" x="585" y="361">repaints only the</text>
+  <text class="s" x="585" y="376">dirty panels</text>
+
+  <rect class="box" x="295" y="300" width="170" height="88" rx="12"/>
+  <text class="t" x="309" y="324">The window</text>
+  <text class="m" x="309" y="343">ST7789 · 240×280</text>
+  <text class="s" x="309" y="361">the glass — changed</text>
+  <text class="s" x="309" y="376">regions cross the SPI</text>
+
+  <rect class="box" x="19" y="300" width="170" height="88" rx="12"/>
+  <text class="t" x="33" y="324">The audience</text>
+  <text class="m" x="33" y="343">one button · GPIO 17</text>
+  <text class="s" x="33" y="361">tap · double-tap · hold</text>
+  <text class="s" x="33" y="376">— the only voice it has</text>
+
+  <path class="flow" d="M568,344 L468,344"/>
+  <path class="flow" d="M292,344 L192,344"/>
+
+  <!-- left side up: intents -->
+  <path class="back" d="M104,296 L104,128"/>
+  <text class="lbl" x="114" y="176">the buzzer:</text>
+  <text class="lbl" x="114" y="192">an Intent</text>
+  <text class="s" x="114" y="210">"play the next</text>
+  <text class="s" x="114" y="225">one, please"</text>
+
+  <!-- bottom callouts -->
+  <rect class="box" x="19" y="428" width="350" height="72" rx="12"/>
+  <text class="t" x="33" y="452">The fire alarm</text>
+  <text class="s" x="33" y="471">an incoming call or error preempts the show —</text>
+  <text class="s" x="33" y="486">the director pushes its screen uninvited (guards.rs)</text>
+
+  <rect class="box" x="391" y="428" width="350" height="72" rx="12"/>
+  <text class="t" x="405" y="452">One clock, one thread</text>
+  <text class="s" x="405" y="471">time only advances when the loop ticks — animations,</text>
+  <text class="s" x="405" y="486">rendering, and tests all agree on "now"</text>
+
+  <text class="s" x="19" y="536">The vocabulary is literal: scene, stage, actors, roles, backdrop, fx, chrome, deck, cursor are real module names in device/ui/src/scene/.</text>
+</svg>

@@ -1,0 +1,81 @@
+---
+title: The Custom Framework
+description: The retained-mode framework above LVGL — scene graph, reconciler, decks, and the application layer.
+---
+
+Everything above the renderer is yoyopod's own retained-mode UI framework.
+If you've used React or Flutter the shape will feel familiar: screens
+*declare* what should be on the glass, and a reconciler figures out the
+minimal set of changes to make it so.
+
+## The layers
+
+| Module | Role |
+| --- | --- |
+| `components/` | 17 screen modules plus shared widgets and primitives — the code you'll touch most |
+| `scene/` | the scene graph: decks, stage, layers, HUD, modal overlays, effects |
+| `engine/` | the reconciler, dirty tracking, scheduler, and timeline integration |
+| `application/` | runtime state, navigator, focus management, input routing |
+| `router/` | the route table and per-screen policies |
+| `renderer/` | the LVGL bridge that consumes the engine's mutations |
+| `transport/` | the line protocol to `yoyopod-runtime` (state snapshots in, intents out) |
+
+## Declare, diff, mutate
+
+A screen module builds a scene: a tree of nodes over four primitives —
+**container, label, image, progress** — plus composite widgets (card,
+list_row, chip, status_bar, footer_bar, call_panel, icon_halo,
+progress_sweep, voice_meter). On every relevant change (a state snapshot
+from the runtime, an input action, an animation tick), the engine:
+
+1. rebuilds the scene for the active screen,
+2. **diffs it against the previous scene**, producing `Mutation`s —
+   create, restyle, move, retire,
+3. hands the mutations to the renderer's facade, which applies them to
+   live LVGL objects.
+
+The diff is what makes the [60-widget budget](/ui/rendering/#the-60-widget-budget)
+workable: unchanged nodes cost nothing, and the renderer never rebuilds a
+screen wholesale.
+
+## The deck: one menu primitive
+
+`scene/deck.rs` implements the **wheel** — the only menu primitive in the
+design system. A deck holds an item list plus:
+
+- a `FocusPolicy` (wrap or clamp at the ends),
+- a **visibility window** (`visible_range` / `recycle_window`): only the
+  focused tile and its peeks materialize as widgets, however long the list,
+- per-item animation modes: `ScaleOnFocus`, `BreatheWhenFocused`,
+  `StaggerEnter`.
+
+Deck kinds (`CardRow`, `List`, `Page`, `Grid`, `Buttons`) share this
+machinery with different geometry.
+
+:::caution[Known limitation]
+`visible_range` currently **clamps instead of wrapping** for wheels with
+more than 6 items, and the focused-tile offset only maps to the X axis —
+both tracked as items 1–2 in [Known Gaps](/ui/gaps/).
+:::
+
+Focused-tile scaling is real but emulated: the facade's `set_scale` resizes
+and recenters the object rather than using LVGL's transform (which isn't in
+the FFI yet — see [The LVGL Layer](/ui/lvgl/)).
+
+## The application layer
+
+`application/` owns the model the screens render:
+
+- **runtime** — holds the latest state snapshot from `yoyopod-runtime`
+  (playback, calls, battery, network) and exposes per-domain views,
+- **navigator** — the screen stack; pushes/pops driven by input actions and
+  by runtime preemption (an incoming call pushes the call screen),
+- **focus** — which element on the active screen owns the wheel,
+- **input_router** — maps `InputAction`s from the
+  [one-button machine](/ui/input/) into `AppCommand`s
+  (`AdvanceFocus`, `SelectFocused`, `GoBack`, `PttPress`, `PttRelease`).
+
+Screens never perform side effects directly. Selecting "play" emits an
+**intent** over the transport; the media worker acts; a new state snapshot
+comes back; the scene re-renders from that. One-way data flow, all the way
+around the loop.

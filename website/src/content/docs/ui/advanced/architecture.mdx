@@ -1,0 +1,113 @@
+---
+title: Software Architecture
+description: "Advanced: the UI host process model, the full module map of the yoyopod-ui crate, its key types, and the trait seams that make it testable."
+---
+
+import Architecture from '../../../../assets/diagrams/architecture.svg';
+
+This page dissects the `yoyopod-ui` crate as software: what process it is,
+which module owns what, and where the seams are. Read the
+[Overview](/ui/overview/) first if you haven't — this page assumes you know
+what each layer does and focuses on **how the pieces are wired**.
+
+## The process model
+
+The UI is one binary, `yoyopod-ui-host`, spawned and supervised by
+`yoyopod-runtime`. It is deliberately boring as a process:
+
+- **Single-threaded core.** One event loop (`worker.rs::run_worker`) owns
+  every subsystem. The only extra thread is the transport's line reader,
+  which feeds the loop through a channel. LVGL is configured with
+  `LV_OS_NONE` for exactly this reason — nothing touches it concurrently.
+- **All I/O is injected.** `run_worker` is generic over its dependencies:
+  `Read`/`Write` for the protocol streams, `DisplayDevice` for the panel,
+  `ButtonDevice` for input. Production wires stdin/stdout and the Whisplay
+  hardware; tests and CI wire byte buffers and mocks — the same loop runs
+  in both.
+- **Event-driven, timeout-polled.** The loop blocks on the command channel
+  with a 250 ms timeout; each wakeup handles one command (or a timeout) and
+  then polls the button, feeds watchdogs, and renders if dirty.
+
+## The module map
+
+<Architecture class="diagram" />
+
+All paths below are under `device/ui/src/`.
+
+| Module | Owns | Key contents |
+| --- | --- | --- |
+| `main.rs` | process entry | CLI flags (`--hardware mock\|whisplay`), device construction, calls `run_worker` |
+| `worker.rs` | **the event loop** | `run_worker`, `RenderState` (framebuffer + engine + renderer), `AppEvent` handling, watchdogs |
+| `transport/` | the wire | `codec` (line framing + envelope), `handshake` (ready/shutdown), `inbound` (envelope → `UiCommand`), `dispatcher` (`UiCommand` → `AppEvent`), `outbound` (events, intents, telemetry) |
+| `application/` | app state | `UiRuntime` (in `state.rs` — the current model of the world), `snapshot/` (full + patch + per-domain views), `navigator` (screen stack), `focus`, `input_router` (`InputAction` → `AppCommand`), `intents`, `options` |
+| `router/` | the route table | `routes.rs` (all 17 routes), plus the policy machinery: `guards`, `passthrough`, `back`, `select`, `history` |
+| `components/` | what screens are | `screens/` (one module per route + `chrome`/`common`), `widgets/` (status bar, cards, meters, …), `primitives/` (container, label, image, progress) |
+| `scene/` | what screens build | `graph`/`scene` (the tree), `deck` (the wheel), `stage`, `layers`, `hud`, `modal`, `backdrop`, `fx`, `cursor`, `roles`, `defaults` (RON loading) |
+| `engine/` | declarative → imperative | `reconciler` (the diff), `mutation`, `element`, `props`, `flatten`, `dirty`, `tree_cache`, `scheduler`, `timelines` |
+| `animation/` | motion | `timeline`, `easing`, `sampler`, `property`, `transition`, `presets`, `clock` |
+| `renderer/` | mutations → pixels | `lvgl_renderer` (the facade), `node_registry` (scene node ↔ `lv_obj` mapping), `styling/` (theme + layout resolvers), `assets` (RON schemas), `framebuffer` (the `Vec<u16>` shadow), `lvgl/` (`ffi`, `lifecycle`, `flush`, `icons`, `snapshot`), `null_renderer` (no-op for tests) |
+| `input/` | the button | `machine.rs` (`OneButtonMachine`), `config.rs` (timings) |
+| `hardware/` | the physical seam | `DisplayDevice` + `ButtonDevice` traits, `whisplay`/`whisplay_panel` (real), `mock` (fake) |
+| `screenshot.rs` | capture | PNG encoding, atomic write, readback-vs-framebuffer selection |
+
+Shared message types (`UiCommand`, `UiEvent`, `UiIntent`, `RuntimeSnapshot`,
+`UiScreen`, …) live outside the crate in **`device/protocol`**
+(`yoyopod_protocol::ui`) — they are the contract with `yoyopod-runtime`, so
+neither side owns them.
+
+## Key types, and who holds whom
+
+```
+run_worker
+├── OneButtonMachine        gesture recognition state
+├── UiRuntime               application state (application/state.rs)
+├── RenderState
+│   ├── Framebuffer         Vec<u16> shadow framebuffer
+│   ├── Engine              reconciler + caches
+│   └── LvglRenderer        the facade over the C library
+├── D: DisplayDevice        whisplay or mock
+└── B: ButtonDevice         whisplay button or mock
+```
+
+Ownership is a straight tree with the loop at the root — no `Arc`, no
+locks, no globals apart from LVGL's own internal state (which is why the
+loop is the only place allowed to call into it).
+
+## The seams
+
+Four boundaries keep the crate testable and the layers honest:
+
+1. **`Read`/`Write` at the transport** — the whole host can be driven by a
+   script of protocol lines in a unit test; no process spawning needed.
+2. **`DisplayDevice`/`ButtonDevice` at the hardware** — everything above
+   the driver runs identically on a dev machine (`--hardware mock`) and CI.
+3. **The `Renderer` trait at the LVGL boundary** — `null_renderer` lets
+   engine and application tests run without linking C at all; the real
+   `LvglRenderer` only exists behind the `native-lvgl` feature.
+4. **`yoyopod_protocol` at the process boundary** — the runtime and the UI
+   host compile against the same envelope types; a protocol change is a
+   visible, shared-crate change, never an implicit drift.
+
+Where the layering is *deliberately* thin: `worker.rs` knows about every
+subsystem (it is the composition root), and `application/input_router.rs`
+knows about routes. Everything else talks only to its neighbors — a screen
+never touches LVGL, the renderer never reads app state, the driver never
+sees a scene.
+
+## Startup and shutdown
+
+**Startup order** (in `RenderState::open` + `run_worker`):
+`router::validate_routes()` → `load_scene_defaults()` (RON assets) →
+framebuffer → `LvglRenderer::open` + display registration → handshake
+`emit_ready(width, height)`. Any failure aborts the process — the
+fail-loudly rule — and the supervisor decides what happens next.
+
+**Shutdown**: a `Shutdown` (or `WorkerStop`) command drains the loop and
+emits `shutdown_complete`; if the loop exits any other way (manager
+timeout, stream EOF), the handshake still emits it on the way out so the
+supervisor never has to guess.
+
+Continue with [Runtime Data Flow](/ui/advanced/data-flow/) for what moves
+across these seams at runtime, or drop to the
+[Source Map](/ui/advanced/source-map/) for a file-by-file breakdown of
+every module listed above.

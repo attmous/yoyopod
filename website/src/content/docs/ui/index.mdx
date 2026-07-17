@@ -1,0 +1,154 @@
+---
+title: UI System Guide
+description: The guide to everything that puts a shape or an animation on the yoyopod glass — how it's organized and where to start.
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+This guide is the playbook for the yoyopod UI system: every hardware and
+software component involved in presenting any shape or animation on the
+glass, what each layer offers, what it doesn't, and the workarounds in
+between. It documents the system as it **is** — including the honest
+divergences between shipped code and the design contract.
+
+New here? Start with these two:
+
+<CardGrid>
+	<LinkCard
+		title="Overview: A Pixel's Journey"
+		description="The five system rules, the layer cake, and the ten-step trip from a Rust screen component to light on the glass."
+		href="/ui/overview/"
+	/>
+	<LinkCard
+		title="The Mental Model: A Tiny Theater"
+		description="One picture and one metaphor that make the whole design stick — and it's built from the code's own vocabulary."
+		href="/ui/mental-model/"
+	/>
+</CardGrid>
+
+## How this guide is organized
+
+The guide follows the stack **bottom-up**: physical foundations first, then
+the software stack layer by layer, then how people interact with it, then
+the working references. The Advanced part cuts across all of it.
+
+### Part I — Foundations
+
+The physical layer: what the glass actually is and how bytes reach it.
+
+<CardGrid>
+	<LinkCard
+		title="The Glass and the Board"
+		description="Pi Zero 2W + Whisplay HAT: the ST7789 panel, resolution and row offset, SPI parameters, GPIO map, and why there is no kernel display stack."
+		href="/ui/hardware/"
+	/>
+	<LinkCard
+		title="Talking to the Panel"
+		description="The userspace driver: init sequence, window addressing, chunked SPI writes, the DisplayDevice trait, and the mock display."
+		href="/ui/driver/"
+	/>
+</CardGrid>
+
+### Part II — The Stack
+
+The software layers, bottom-up: the renderer, the loop around it, and the
+framework on top.
+
+<CardGrid>
+	<LinkCard
+		title="The LVGL Layer ★"
+		description="The centerpiece: LVGL 9.5.0 exactly as we use it — version, build, config matrix, and the full ledger of what it offers, what we skip, and what we emulate."
+		href="/ui/lvgl/"
+	/>
+	<LinkCard
+		title="The Render Loop"
+		description="Partial rendering, the 40-row buffer, the byte-swap flush, the shadow framebuffer, the 60-widget budget, and screenshots."
+		href="/ui/rendering/"
+	/>
+	<LinkCard
+		title="The Custom Framework"
+		description="The retained-mode framework above LVGL: scene graph, reconciler, the deck/wheel primitive, and the application layer."
+		href="/ui/framework/"
+	/>
+	<LinkCard
+		title="Motion & Theming"
+		description="The custom timeline animation engine, RON design tokens, fonts, and the icon system — with their current gotchas."
+		href="/ui/motion-and-theming/"
+	/>
+</CardGrid>
+
+### Part III — Interaction
+
+How one button and 17 screens become a navigable device.
+
+<CardGrid>
+	<LinkCard
+		title="One Button, Three Gestures"
+		description="The input state machine: tap, double-tap, long-hold, PTT passthrough, and the shipped-vs-contract timing table."
+		href="/ui/input/"
+	/>
+	<LinkCard
+		title="Screens & Navigation"
+		description="The route table with per-screen policies, the two composite primitives, and the navigation model."
+		href="/ui/screens/"
+	/>
+</CardGrid>
+
+### Part IV — Reference
+
+The working documents you'll return to while building.
+
+<CardGrid>
+	<LinkCard
+		title="Design Reference Gallery"
+		description="All ten normative HTML mockups, embedded — the pixel and behavior specs every screen is judged against."
+		href="/ui/mockups/"
+	/>
+	<LinkCard
+		title="Playbook & Recipes"
+		description="Step-by-step: add a screen, add an icon, extend the FFI, respect the budget, screenshot, deploy to a device."
+		href="/ui/playbook/"
+	/>
+	<LinkCard
+		title="Known Gaps & Build Order"
+		description="The 14 tracked work items between today's code and the design contract, the build order, and the acceptance checklist."
+		href="/ui/gaps/"
+	/>
+</CardGrid>
+
+### Advanced
+
+The software architecture behind all of the above — for contributors going
+deeper than any single layer.
+
+<CardGrid>
+	<LinkCard
+		title="Software Architecture"
+		description="The UI host process model, the full module map of the yoyopod-ui crate, its key types, and the trait seams that make it testable."
+		href="/ui/advanced/architecture/"
+	/>
+	<LinkCard
+		title="Runtime Data Flow"
+		description="How the pieces talk: the line protocol, the command dispatcher, the loops (tick, input, state, render), and the watchdogs."
+		href="/ui/advanced/data-flow/"
+	/>
+	<LinkCard
+		title="Source Map"
+		description="Every file in device/ui/src explained — what it's for, its key items, and what it connects to."
+		href="/ui/advanced/source-map/"
+	/>
+</CardGrid>
+
+## Reading paths
+
+| If you want to… | Read |
+| --- | --- |
+| understand the whole system quickly | [Overview](/ui/overview/) |
+| make the design stick in your head | [The Mental Model](/ui/mental-model/) |
+| build or change a screen | [Playbook](/ui/playbook/) → [Screens](/ui/screens/) → the screen's [mockup](/ui/mockups/) |
+| know what LVGL can and can't do here | [The LVGL Layer](/ui/lvgl/) → [Known Gaps](/ui/gaps/) |
+| debug something visual | [The Render Loop](/ui/rendering/) → [Talking to the Panel](/ui/driver/) |
+| change input behavior | [One Button, Three Gestures](/ui/input/) |
+| understand the process & module structure | [Software Architecture](/ui/advanced/architecture/) → [Runtime Data Flow](/ui/advanced/data-flow/) |
+| know what a specific file in `device/ui/src` is for | [Source Map](/ui/advanced/source-map/) |
+| review the design contract | [Design Reference Gallery](/ui/mockups/) → [Known Gaps](/ui/gaps/) |

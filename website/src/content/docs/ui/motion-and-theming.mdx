@@ -1,0 +1,86 @@
+---
+title: Motion & Theming
+description: The custom timeline animation engine, RON design tokens, and the icon system — plus their current gotchas.
+---
+
+## Animation: our clock, not LVGL's
+
+yoyopod does not use `lv_anim`. All motion comes from a purpose-built
+timeline engine in `device/ui/src/animation/`:
+
+| Piece | What it does |
+| --- | --- |
+| `timeline` | keyframes, tracks, loop modes, on-complete actions |
+| `easing` | the easing curves |
+| `sampler` | evaluates a timeline at the current clock |
+| `property` | `AnimatableProp` / `AnimatableValue` bound to an `ActorRef` (a scene node) |
+| `transition` | screen-level enter/exit choreography |
+| `presets` | the named motions from the design spec — e.g. `stagger_enter`, `breathe_focused_item` |
+
+Each tick, the worker advances active timelines
+(`advance_animations`), the sampled values feed into the scene, and the
+[engine diff](/ui/framework/) turns the difference into mutations. Nothing
+animates "behind the scene graph's back."
+
+Why not `lv_anim`? Two reasons, both structural:
+
+1. **One source of truth.** The engine diffs scenes; if LVGL mutated object
+   properties on its own timer, the diff would fight the animator over
+   every animated property.
+2. **One clock.** LVGL time only advances when the worker pumps
+   `lv_tick_inc` (see [the tick model](/ui/lvgl/#the-tick-model)) — the
+   timeline engine samples from the same clock, so animation, rendering,
+   and tests all agree on "now."
+
+## Theming: tokens in RON
+
+Three RON assets in `device/ui/assets/` define the look without touching
+code:
+
+- **`theme.ron`** — per-role colors, radius, opacity (packed 24-bit RGB,
+  rendered down to RGB565),
+- **`layouts.ron`** — per-role geometry,
+- **`scenes.ron`** — scene composition data.
+
+Screens reference **roles**; the `ThemeResolver` and `LayoutResolver` in
+`renderer/styling/` turn a role into concrete style values. The dark
+mockups prove the discipline: a dark theme is a token swap only, no code
+changes.
+
+:::caution[Live divergence: the shipped theme is still dark]
+The normative mockups are **flat light** (cream surfaces, ink text), but the
+shipped `theme.ron` still carries the older dark theme. Applying the flat
+token pass is deliberately **step 1 of the build order** — an immediate
+visible win with no new machinery. See [Known Gaps](/ui/gaps/).
+:::
+
+The design system's RGB565 note applies here: acceptance is judged against
+the **RGB565 values in each mockup's token table**, not the CSS hex values —
+five v1 values were corrected after being converted wrong.
+
+## Icons: A8 byte arrays
+
+Icons are 8-bit-alpha (A8) LVGL image descriptors embedded as Rust byte
+arrays in `renderer/lvgl/icons.rs` — a hand-built `lv_image_header_t`
+(A8 = color format `0x0E`) over a 56×56 alpha bitmap, tinted at render time
+by the role's color. Only four glyphs exist today: **LISTEN, TALK, ASK,
+SETUP**.
+
+:::danger[Gotcha: unknown icons silently become SETUP]
+`descriptor_for_key` maps many keys onto the four existing glyphs and falls
+back to `SETUP` for anything unknown — silently. If a screen shows a wrench
+where you expected a playlist glyph, this is why. Fixing the silent
+fallback (and adding the missing glyph set) is item 8 in
+[Known Gaps](/ui/gaps/).
+:::
+
+The v5 design needs new glyphs — playlist, recents, shuffle, mic, plus at
+56×56; play/pause/prev/next/close at 24×24 — see the
+[icon recipe](/ui/playbook/#add-an-icon) for the pipeline.
+
+## Fonts
+
+Montserrat 12–40 are compiled into the LVGL static lib, but only sizes
+**12 and 18** have `extern` declarations in the FFI today; 14 and 24 are
+awaited by the design spec (item 5). Adding a size is a two-line change —
+see the [font recipe](/ui/playbook/#add-a-font-or-ffi-symbol).
