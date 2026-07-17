@@ -1,7 +1,7 @@
 use crate::components::primitives::{container, image, label};
 use crate::engine::{Element, Key};
 use crate::scene::roles;
-use crate::scene::{HudConnectivityKind, HudStatus, RegionId};
+use crate::scene::{HudConnectivityKind, HudStatus};
 
 const INK: u32 = 0x1B1B1F;
 const INK_MUTED: u32 = 0x8A8076;
@@ -15,7 +15,6 @@ pub fn status_bar(props: &StatusBarProps) -> Element {
     let status = &props.status;
     container(roles::STATUS_BAR)
         .key(Key::Static("status_bar"))
-        .region(RegionId::StatusBar)
         .child(
             container(roles::STATUS_LEFT_CLUSTER)
                 .key(Key::Static("status_left_cluster"))
@@ -119,6 +118,7 @@ fn battery_label(status: &HudStatus) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::Layout;
     use crate::scene::{HudBattery, HudConnectivity};
 
     #[test]
@@ -148,5 +148,14 @@ mod tests {
 
         status.connectivity.kind = HudConnectivityKind::Wifi;
         assert_eq!(network_icon_key(&status), "status_wifi");
+    }
+
+    #[test]
+    fn status_bar_uses_the_renderer_asset_layout() {
+        let element = status_bar(&StatusBarProps {
+            status: HudStatus::default(),
+        });
+
+        assert_eq!(element.layout, Layout::Region(crate::scene::RegionId::Auto));
     }
 }
