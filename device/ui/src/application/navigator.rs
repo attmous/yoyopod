@@ -37,9 +37,11 @@ pub fn apply_app_state_route(
     if runtime.active_screen != *app_state {
         runtime.screen_stack.clear();
         runtime.active_screen = *app_state;
-        runtime.focus_index = 0;
+        runtime.focus_index = initial_focus(*app_state);
         if *app_state == UiScreen::Hub {
             runtime.home_mode = HomeMode::Idle;
+            runtime.selected_playlist = None;
+            runtime.selected_contact = None;
         }
     }
 }
@@ -74,6 +76,7 @@ pub fn go_home(runtime: &mut UiRuntime) {
     runtime.active_screen = UiScreen::Hub;
     runtime.focus_index = 0;
     runtime.home_mode = HomeMode::Idle;
+    runtime.selected_playlist = None;
     runtime.selected_contact = None;
 }
 
@@ -138,13 +141,29 @@ fn select_dynamic_list_item(runtime: &mut UiRuntime, kind: ListKind) {
                 .get(runtime.focus_index)
                 .cloned()
             {
-                runtime
-                    .intents
-                    .push(UiIntent::Music(MusicIntent::LoadPlaylist(
-                        intents::list_item_action(&item),
-                    )));
-                push_screen(runtime, UiScreen::NowPlaying);
+                runtime.selected_playlist = Some(item);
+                push_screen(runtime, UiScreen::PlaylistTracks);
             }
+        }
+        ListKind::PlaylistTracks => {
+            let Some(playlist) = runtime.selected_playlist.as_ref() else {
+                return;
+            };
+            let Some(track) = runtime
+                .snapshot
+                .music
+                .playlist_tracks
+                .get(&playlist.id)
+                .and_then(|tracks| tracks.get(runtime.focus_index))
+            else {
+                return;
+            };
+            runtime
+                .intents
+                .push(UiIntent::Music(MusicIntent::PlayPlaylistTrack(
+                    intents::playlist_track_action(playlist, track, runtime.focus_index),
+                )));
+            push_screen(runtime, UiScreen::NowPlaying);
         }
         ListKind::RecentTracks => {
             if let Some(item) = runtime
@@ -335,7 +354,13 @@ fn push_screen(runtime: &mut UiRuntime, screen: UiScreen) {
     let selected_id = runtime
         .selected_contact
         .as_ref()
-        .map(|contact| contact.id.clone());
+        .map(|contact| contact.id.clone())
+        .or_else(|| {
+            runtime
+                .selected_playlist
+                .as_ref()
+                .map(|playlist| playlist.id.clone())
+        });
     router::history::push(
         &mut runtime.screen_stack,
         &mut runtime.active_screen,
@@ -343,7 +368,15 @@ fn push_screen(runtime: &mut UiRuntime, screen: UiScreen) {
         selected_id,
         screen,
     );
-    runtime.focus_index = 0;
+    runtime.focus_index = initial_focus(screen);
+}
+
+const fn initial_focus(screen: UiScreen) -> usize {
+    if matches!(screen, UiScreen::NowPlaying) {
+        1
+    } else {
+        0
+    }
 }
 
 fn pop_screen_or_hub(runtime: &mut UiRuntime) {
@@ -373,6 +406,7 @@ fn focus_count(runtime: &UiRuntime) -> usize {
     focus::focus_count(
         runtime.active_screen,
         &runtime.snapshot,
+        runtime.selected_playlist.as_ref(),
         runtime.selected_contact.as_ref(),
     )
 }

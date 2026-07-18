@@ -136,6 +136,7 @@ fn create_widget(
         ElementKind::Container | ElementKind::Progress => facade.create_container(parent, role)?,
         ElementKind::Label => facade.create_label(parent, role)?,
         ElementKind::Image => facade.create_image(parent, role)?,
+        ElementKind::Arc => facade.create_arc(parent, role)?,
     };
     registry.bind(node, widget);
     Ok(())

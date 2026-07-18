@@ -223,6 +223,23 @@ impl LvglFacade for NativeLvglFacade {
         Ok(self.register_widget(obj, WidgetKind::Image, role, Some(parent), layout))
     }
 
+    fn create_arc(&mut self, parent: WidgetId, role: WidgetRole) -> Result<WidgetId> {
+        let parent_obj = self.widget_obj(parent)?;
+        let obj = factory::create_arc_object(parent_obj, role)?;
+        let layout = self.next_role_layout(Some(parent), role)?;
+        let style = self.style_for_role(role)?;
+        styling::reset_style_raw(obj);
+        styling::apply_style_raw(obj, style);
+        styling::apply_arc_indicator_style_raw(obj, style);
+        Self::apply_layout_raw(obj, layout);
+        unsafe {
+            ffi::lv_arc_set_range(obj.as_ptr(), 0, 1000);
+            ffi::lv_arc_set_bg_angles(obj.as_ptr(), 0, 360);
+            ffi::lv_arc_set_rotation(obj.as_ptr(), 270);
+        }
+        Ok(self.register_widget(obj, WidgetKind::Arc, role, Some(parent), layout))
+    }
+
     fn reorder_children(&mut self, parent: WidgetId, order: &[WidgetId]) -> Result<()> {
         self.widgets.reorder_children(parent, order)?;
         for (index, child) in order.iter().copied().enumerate() {
@@ -283,6 +300,12 @@ impl LvglFacade for NativeLvglFacade {
     fn set_progress(&mut self, widget: WidgetId, value: i32) -> Result<()> {
         let value = value.clamp(0, 1000);
         let node = self.widget_node_mut(widget)?;
+        if node.kind == WidgetKind::Arc {
+            unsafe {
+                ffi::lv_arc_set_value(node.obj.as_ptr(), value);
+            }
+            return Ok(());
+        }
         if matches!(
             node.role,
             roles::PROGRESS_SWEEP_FILL | roles::VOICE_METER_LEVEL

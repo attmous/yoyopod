@@ -32,13 +32,19 @@ pub fn clamp(current: usize, count: usize) -> usize {
 pub fn focus_count(
     screen: UiScreen,
     snapshot: &RuntimeSnapshot,
+    selected_playlist: Option<&ListItemSnapshot>,
     selected_contact: Option<&ListItemSnapshot>,
 ) -> usize {
     match screen {
         UiScreen::Hub => snapshot.hub.cards.len().max(1),
         UiScreen::Listen => options::listen_items(snapshot).len(),
         UiScreen::Playlists => snapshot.music.playlists.len(),
+        UiScreen::PlaylistTracks => selected_playlist
+            .and_then(|playlist| snapshot.music.playlist_tracks.get(&playlist.id))
+            .map(Vec::len)
+            .unwrap_or(0),
         UiScreen::RecentTracks => snapshot.music.recent_tracks.len(),
+        UiScreen::NowPlaying => 3,
         UiScreen::Talk => options::talk_items().len(),
         UiScreen::Contacts => snapshot.call.contacts.len(),
         UiScreen::CallHistory => snapshot.call.history.len(),

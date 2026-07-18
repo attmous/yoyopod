@@ -63,14 +63,37 @@ pub(crate) const LIST_ROW_SUBTITLE: &str = "list_row_subtitle";
 pub(crate) const LIST_ROW_TITLE: &str = "list_row_title";
 
 pub(crate) const DECK_WHEEL: &str = "deck_wheel";
-pub(crate) const WHEEL_CONTEXT: &str = "wheel_context";
 pub(crate) const WHEEL_ITEM: &str = "wheel_item";
 pub(crate) const WHEEL_ICON: &str = "wheel_icon";
-pub(crate) const WHEEL_PLATE: &str = "wheel_plate";
-pub(crate) const WHEEL_INITIAL: &str = "wheel_initial";
 pub(crate) const WHEEL_LABEL: &str = "wheel_label";
-pub(crate) const WHEEL_LABEL_B: &str = "wheel_label_b";
-pub(crate) const WHEEL_SUB: &str = "wheel_sub";
+
+pub(crate) const MEDIA_WHEEL_HEADER: &str = "media_wheel_header";
+pub(crate) const MEDIA_WHEEL_HEADER_TITLE: &str = "media_wheel_header_title";
+pub(crate) const MEDIA_WHEEL_HEADER_COUNTER: &str = "media_wheel_header_counter";
+pub(crate) const MEDIA_WHEEL_HEADER_DIVIDER: &str = "media_wheel_header_divider";
+pub(crate) const MEDIA_WHEEL_PREVIOUS: &str = "media_wheel_previous";
+pub(crate) const MEDIA_WHEEL_NEXT: &str = "media_wheel_next";
+pub(crate) const MEDIA_WHEEL_PEEK_PLATE: &str = "media_wheel_peek_plate";
+pub(crate) const MEDIA_WHEEL_PEEK_INITIAL: &str = "media_wheel_peek_initial";
+pub(crate) const MEDIA_WHEEL_PEEK_TITLE: &str = "media_wheel_peek_title";
+pub(crate) const MEDIA_WHEEL_FOCUS: &str = "media_wheel_focus";
+pub(crate) const MEDIA_WHEEL_FOCUS_PLATE: &str = "media_wheel_focus_plate";
+pub(crate) const MEDIA_WHEEL_FOCUS_INITIAL: &str = "media_wheel_focus_initial";
+pub(crate) const MEDIA_WHEEL_FOCUS_TITLE: &str = "media_wheel_focus_title";
+pub(crate) const MEDIA_WHEEL_FOCUS_SUB: &str = "media_wheel_focus_sub";
+
+pub(crate) const HERO_PLAYER: &str = "hero_player";
+pub(crate) const HERO_CONTEXT: &str = "hero_context";
+pub(crate) const HERO_ARC: &str = "hero_arc";
+pub(crate) const HERO_ART: &str = "hero_art";
+pub(crate) const HERO_ART_ICON: &str = "hero_art_icon";
+pub(crate) const HERO_PREV: &str = "hero_prev";
+pub(crate) const HERO_PLAY: &str = "hero_play";
+pub(crate) const HERO_PLAY_ICON: &str = "hero_play_icon";
+pub(crate) const HERO_NEXT: &str = "hero_next";
+pub(crate) const HERO_TIME_L: &str = "hero_time_l";
+pub(crate) const HERO_TIME_R: &str = "hero_time_r";
+pub(crate) const HERO_TITLE: &str = "hero_title";
 
 pub(crate) const STATUS_BAR: &str = "status_bar";
 pub(crate) const STATUS_LEFT_CLUSTER: &str = "status_left_cluster";

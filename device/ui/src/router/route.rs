@@ -22,7 +22,9 @@ pub enum Persistence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntentTemplate {
     MusicShuffleAll,
+    MusicPreviousTrack,
     MusicPlayPause,
+    MusicNextTrack,
     VoiceAskStart,
     VoiceAskStop,
     VoiceCaptureStartRecipient,
@@ -38,6 +40,7 @@ pub enum IntentTemplate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListKind {
     Playlists,
+    PlaylistTracks,
     RecentTracks,
     Contacts,
     CallHistory,

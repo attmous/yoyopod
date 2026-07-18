@@ -26,6 +26,7 @@ pub fn scene(props: &HubProps) -> Scene {
         id: SceneId::new(UiScreen::Hub),
         backdrop: props.defaults.backdrop(0xFCE6D2),
         stage: props.defaults.stage,
+        context: None,
         decks: vec![Deck {
             kind: DeckKind::CardRow,
             region: RegionId::Auto,

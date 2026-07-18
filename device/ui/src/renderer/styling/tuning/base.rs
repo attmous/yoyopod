@@ -16,6 +16,9 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
             | roles::COMPANION
             | roles::COMPANION_BODY
             | roles::COMPANION_EYE
+            | roles::HERO_PLAYER
+            | roles::HERO_ART
+            | roles::HERO_PLAY
             | roles::CALL_PANEL
             | roles::STATUS_BAR => {
                 ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
@@ -54,7 +57,13 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 ffi::lv_obj_set_style_pad_bottom(obj.as_ptr(), 0, SELECTOR);
                 ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
             }
-            roles::WHEEL_ITEM | roles::WHEEL_PLATE => {
+            roles::WHEEL_ITEM
+            | roles::MEDIA_WHEEL_HEADER
+            | roles::MEDIA_WHEEL_PREVIOUS
+            | roles::MEDIA_WHEEL_NEXT
+            | roles::MEDIA_WHEEL_PEEK_PLATE
+            | roles::MEDIA_WHEEL_FOCUS
+            | roles::MEDIA_WHEEL_FOCUS_PLATE => {
                 ffi::lv_obj_set_style_pad_left(obj.as_ptr(), 0, SELECTOR);
                 ffi::lv_obj_set_style_pad_right(obj.as_ptr(), 0, SELECTOR);
                 ffi::lv_obj_set_style_pad_top(obj.as_ptr(), 0, SELECTOR);

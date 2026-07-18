@@ -15,7 +15,7 @@ pub use backdrop::Backdrop;
 pub use cursor::Cursor;
 pub use deck::{
     ButtonModel, CallPanelModel, CardModel, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy,
-    ItemRender, PageModel, RowModel, WheelItemModel, WheelItemVariant,
+    ItemRender, PageModel, PlayerHeroModel, RowModel, WheelItemModel, WheelItemVariant,
 };
 pub use defaults::{defaults_for, load_scene_defaults, SceneDefaults, SceneDefaultsCatalog};
 pub use fx::{FxLayer, FxLayerId, GlowBloom, Halo, ParticleField, PulseRing};
@@ -25,5 +25,5 @@ pub use graph::{
 pub use hud::{HudBattery, HudConnectivity, HudConnectivityKind, HudScene, HudStatus};
 pub use layers::{LayerSlot, LAYER_ORDER};
 pub use modal::Modal;
-pub use scene::{Scene, SceneId};
+pub use scene::{Scene, SceneId, WheelHeaderModel};
 pub use stage::{region_rect, LayoutRect, RegionId, Stage};

@@ -1,6 +1,6 @@
 use yoyopod_protocol::ui::{
-    ContactAction, ListItemAction, ListItemSnapshot, VoiceFileAction, VoiceNoteSummarySnapshot,
-    VoiceRecipientAction,
+    ContactAction, ListItemAction, ListItemSnapshot, PlaylistTrackAction, VoiceFileAction,
+    VoiceNoteSummarySnapshot, VoiceRecipientAction,
 };
 
 pub fn list_item_action(item: &ListItemSnapshot) -> ListItemAction {
@@ -9,6 +9,18 @@ pub fn list_item_action(item: &ListItemSnapshot) -> ListItemAction {
         title: item.title.clone(),
         path: String::new(),
         track_uri: String::new(),
+    }
+}
+
+pub fn playlist_track_action(
+    playlist: &ListItemSnapshot,
+    track: &ListItemSnapshot,
+    track_index: usize,
+) -> PlaylistTrackAction {
+    PlaylistTrackAction {
+        playlist_path: playlist.id.clone(),
+        track_uri: track.id.clone(),
+        track_index,
     }
 }
 

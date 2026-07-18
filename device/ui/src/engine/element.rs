@@ -10,6 +10,7 @@ pub enum ElementKind {
     Label,
     Image,
     Progress,
+    Arc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -19,6 +19,7 @@ pub enum UiScreen {
     Hub,
     Listen,
     Playlists,
+    PlaylistTracks,
     RecentTracks,
     NowPlaying,
     Ask,
@@ -36,10 +37,11 @@ pub enum UiScreen {
 }
 
 impl UiScreen {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::Hub,
         Self::Listen,
         Self::Playlists,
+        Self::PlaylistTracks,
         Self::RecentTracks,
         Self::NowPlaying,
         Self::Ask,
@@ -61,6 +63,7 @@ impl UiScreen {
             Self::Hub => "hub",
             Self::Listen => "listen",
             Self::Playlists => "playlists",
+            Self::PlaylistTracks => "playlist_tracks",
             Self::RecentTracks => "recent_tracks",
             Self::NowPlaying => "now_playing",
             Self::Ask => "ask",
@@ -509,6 +512,7 @@ pub enum MusicIntent {
     PreviousTrack,
     ShuffleAll,
     LoadPlaylist(ListItemAction),
+    PlayPlaylistTrack(PlaylistTrackAction),
     PlayRecentTrack(ListItemAction),
 }
 
@@ -520,6 +524,7 @@ impl MusicIntent {
             "previous" | "previous_track" => Ok(Self::PreviousTrack),
             "shuffle_all" => Ok(Self::ShuffleAll),
             "load_playlist" => Ok(Self::LoadPlaylist(decode_payload(payload.clone())?)),
+            "play_playlist_track" => Ok(Self::PlayPlaylistTrack(decode_payload(payload.clone())?)),
             "play_recent_track" => Ok(Self::PlayRecentTrack(decode_payload(payload.clone())?)),
             other => Err(ProtocolError::InvalidEnvelope(format!(
                 "unknown music intent action {other}"
@@ -534,6 +539,7 @@ impl MusicIntent {
             Self::PreviousTrack => "previous_track",
             Self::ShuffleAll => "shuffle_all",
             Self::LoadPlaylist(_) => "load_playlist",
+            Self::PlayPlaylistTrack(_) => "play_playlist_track",
             Self::PlayRecentTrack(_) => "play_recent_track",
         }
     }
@@ -541,6 +547,7 @@ impl MusicIntent {
     fn payload(&self) -> Value {
         match self {
             Self::LoadPlaylist(action) | Self::PlayRecentTrack(action) => payload(action),
+            Self::PlayPlaylistTrack(action) => payload(action),
             _ => empty_payload(),
         }
     }
@@ -756,6 +763,13 @@ pub struct ListItemAction {
     pub track_uri: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlaylistTrackAction {
+    pub playlist_path: String,
+    pub track_uri: String,
+    pub track_index: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ContactAction {
     #[serde(default)]
@@ -961,6 +975,18 @@ mod tests {
             id: "mix".to_string(),
             title: "Mix".to_string(),
             ..ListItemAction::default()
+        }));
+        let envelope = UiEvent::Intent(intent.clone()).into_envelope();
+        let decoded = UiEvent::from_envelope(envelope).unwrap();
+        assert_eq!(decoded, UiEvent::Intent(intent));
+    }
+
+    #[test]
+    fn playlist_track_intent_round_trips_with_its_queue_position() {
+        let intent = UiIntent::Music(MusicIntent::PlayPlaylistTrack(PlaylistTrackAction {
+            playlist_path: "/music/Open Classics.m3u".to_string(),
+            track_uri: "/music/02 - March.mp3".to_string(),
+            track_index: 1,
         }));
         let envelope = UiEvent::Intent(intent.clone()).into_envelope();
         let decoded = UiEvent::from_envelope(envelope).unwrap();

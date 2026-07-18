@@ -169,8 +169,11 @@ pub struct MediaState {
     pub title: String,
     pub artist: String,
     pub progress_permille: i32,
+    pub position_ms: i64,
+    pub length_ms: i64,
     pub volume: i32,
     pub playlists: Vec<ListItem>,
+    pub playlist_tracks: BTreeMap<String, Vec<ListItem>>,
     pub recent_tracks: Vec<ListItem>,
 }
 
@@ -182,8 +185,11 @@ impl Default for MediaState {
             title: "Nothing Playing".to_string(),
             artist: String::new(),
             progress_permille: 0,
+            position_ms: 0,
+            length_ms: 0,
             volume: 50,
             playlists: Vec::new(),
+            playlist_tracks: BTreeMap::new(),
             recent_tracks: Vec::new(),
         }
     }
@@ -919,6 +925,9 @@ impl RuntimeState {
         {
             self.media.volume = volume.clamp(0, 100);
         }
+        if let Some(position_ms) = i64_field(snapshot, "time_position_ms") {
+            self.media.position_ms = position_ms.max(0);
+        }
         let explicit_progress_permille = i32_field(snapshot, "progress_permille")
             .filter(|progress_permille| (0..=1000).contains(progress_permille));
         if let Some(progress_permille) = explicit_progress_permille {
@@ -929,6 +938,7 @@ impl RuntimeState {
                 .or_else(|| string_field(track, "title"))
                 .unwrap_or_else(|| "Nothing Playing".to_string());
             self.media.artist = first_artist(track).unwrap_or_default();
+            self.media.length_ms = i64_field(track, "length_ms").unwrap_or(0).max(0);
             if let Some(progress_permille) = derived_progress_permille(snapshot, track) {
                 self.media.progress_permille = progress_permille;
             } else if explicit_progress_permille.is_none() {
@@ -936,6 +946,24 @@ impl RuntimeState {
             }
         }
         if let Some(playlists) = snapshot.get("playlists").and_then(Value::as_array) {
+            self.media.playlist_tracks = playlists
+                .iter()
+                .filter_map(|playlist| {
+                    let playlist_id =
+                        string_field(playlist, "uri").or_else(|| string_field(playlist, "id"))?;
+                    let tracks = playlist
+                        .get("tracks")
+                        .and_then(Value::as_array)
+                        .map(|tracks| {
+                            tracks
+                                .iter()
+                                .filter_map(|track| ListItem::from_snapshot(track, "track"))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    Some((playlist_id, tracks))
+                })
+                .collect();
             self.media.playlists = playlists
                 .iter()
                 .filter_map(|item| ListItem::from_snapshot(item, "playlist"))
@@ -1509,8 +1537,11 @@ impl RuntimeState {
                 "title": self.media.title,
                 "artist": self.media.artist,
                 "progress_permille": self.media.progress_permille,
+                "elapsed_text": media_time_text(self.media.position_ms, self.media.length_ms),
+                "total_text": media_time_text(self.media.length_ms, self.media.length_ms),
                 "volume": self.media.volume,
                 "playlists": list_payload(&self.media.playlists),
+                "playlist_tracks": list_map_payload(&self.media.playlist_tracks),
                 "recent_tracks": list_payload(&self.media.recent_tracks),
             },
             "call": {
@@ -1955,7 +1986,7 @@ fn playlist_track_count_subtitle(value: &Value, icon_key: &str) -> Option<String
     }
 
     let track_count = value.get("track_count")?.as_u64()?;
-    let suffix = if track_count == 1 { "track" } else { "tracks" };
+    let suffix = if track_count == 1 { "song" } else { "songs" };
     Some(format!("{track_count} {suffix}"))
 }
 
@@ -1968,6 +1999,14 @@ fn derived_progress_permille(snapshot: &Value, track: &Value) -> Option<i32> {
 
     let permille = ((position_ms as i128) * 1000 / (length_ms as i128)).clamp(0, 1000);
     i32::try_from(permille).ok()
+}
+
+fn media_time_text(value_ms: i64, known_length_ms: i64) -> String {
+    if known_length_ms <= 0 {
+        return "--:--".to_string();
+    }
+    let total_seconds = value_ms.max(0) / 1000;
+    format!("{}:{:02}", total_seconds / 60, total_seconds % 60)
 }
 
 fn call_duration_text(snapshot: &Value, call_state: CallState) -> Option<String> {
@@ -2035,6 +2074,13 @@ fn format_duration_text(total_seconds: u64) -> String {
 
 fn list_payload(items: &[ListItem]) -> Vec<Value> {
     items.iter().map(ListItem::to_payload).collect()
+}
+
+fn list_map_payload(items: &BTreeMap<String, Vec<ListItem>>) -> BTreeMap<String, Vec<Value>> {
+    items
+        .iter()
+        .map(|(key, values)| (key.clone(), list_payload(values)))
+        .collect()
 }
 
 fn setup_page(title: &str, icon_key: &str, rows: Vec<SetupRow>) -> Value {

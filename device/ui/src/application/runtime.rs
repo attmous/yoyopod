@@ -47,16 +47,19 @@ impl UiRuntime {
     }
 
     pub fn apply_snapshot(&mut self, snapshot: RuntimeSnapshot) {
+        let pending_identity = self.pending_media_wheel_identity();
         let change = snapshot::replace_full(&mut self.snapshot, snapshot);
         self.full_snapshots += 1;
         navigator::apply_app_state_route(self, &change.previous_app_state, &change.app_state);
         navigator::apply_runtime_preemption(self);
         navigator::clamp_focus(self);
+        self.reconcile_pending_media_wheel_roll(pending_identity);
         self.dirty.mark_full();
     }
 
     pub fn apply_patch(&mut self, patch: RuntimeSnapshotPatch) {
         let domain = patch.domain();
+        let pending_identity = self.pending_media_wheel_identity();
         let previous_screen = self.active_screen;
         let previous_focus = self.focus_index;
         let previous_stack_len = self.screen_stack.len();
@@ -65,6 +68,7 @@ impl UiRuntime {
         navigator::apply_app_state_route(self, &change.previous_app_state, &change.app_state);
         navigator::apply_runtime_preemption(self);
         navigator::clamp_focus(self);
+        self.reconcile_pending_media_wheel_roll(pending_identity);
         self.dirty.mark_patch_domain(change.domain);
         if self.active_screen != previous_screen || self.screen_stack.len() != previous_stack_len {
             self.dirty.navigation = true;
@@ -79,17 +83,32 @@ impl UiRuntime {
             return;
         }
         self.last_input_ms = Some(now_ms);
+        if self.pending_media_wheel_roll.is_some() {
+            if action == InputAction::Advance {
+                self.dirty.input = true;
+                return;
+            }
+            self.commit_pending_media_wheel_roll();
+        }
+        let previous_screen = self.active_screen;
         let route_state = input_router::InputRouteState {
             active_screen: self.active_screen,
             voice_note_phase: self.voice_note_phase(),
         };
         match input_router::route(action, &route_state) {
-            input_router::AppCommand::AdvanceFocus => navigator::advance_focus(self),
+            input_router::AppCommand::AdvanceFocus => {
+                if !self.begin_media_wheel_roll(now_ms) {
+                    navigator::advance_focus(self);
+                }
+            }
             input_router::AppCommand::SelectFocused => navigator::select_focused(self),
             input_router::AppCommand::GoHome => navigator::go_home(self),
             input_router::AppCommand::GoBack => navigator::go_back_or_emit(self),
             input_router::AppCommand::PttPress => navigator::handle_ptt_press(self),
             input_router::AppCommand::PttRelease => navigator::handle_ptt_release(self),
+        }
+        if self.active_screen != previous_screen {
+            self.pending_media_wheel_roll = None;
         }
         navigator::clamp_focus(self);
         self.dirty.input = true;
@@ -141,12 +160,25 @@ impl UiRuntime {
 
     pub fn advance_animations(&mut self, now_ms: u64) -> bool {
         let had_transitions = !self.transitions.is_empty();
+        let had_media_wheel_roll = self.pending_media_wheel_roll.is_some();
         self.transitions
             .retain(|transition| !transition.is_complete(now_ms));
-        if had_transitions {
+        let roll_completed = self
+            .pending_media_wheel_roll
+            .as_ref()
+            .is_some_and(|pending| {
+                now_ms.saturating_sub(pending.timeline.started_ms)
+                    >= animation::presets::MEDIA_WHEEL_ROLL_DURATION_MS
+            });
+        if roll_completed {
+            self.commit_pending_media_wheel_roll();
+            navigator::clamp_focus(self);
+            self.dirty.focus = true;
+        }
+        if had_transitions || had_media_wheel_roll {
             self.dirty.animation = true;
         }
-        had_transitions
+        had_transitions || had_media_wheel_roll
     }
 
     pub fn mark_animation_frame(&mut self) {
@@ -172,19 +204,29 @@ impl UiRuntime {
             self.active_screen,
             &self.snapshot,
             self.focus_index,
+            self.selected_playlist.as_ref(),
             self.selected_contact.as_ref(),
             defaults,
         );
         active.id = SceneId::with_route_key(self.active_screen, self.active_route_key());
+        active.id.generation = active.id.generation.wrapping_add(self.scene_revision);
         active.timelines.extend(
             self.transitions
                 .iter()
                 .map(|transition| transition.timeline()),
         );
+        if let Some(pending) = self
+            .pending_media_wheel_roll
+            .as_ref()
+            .filter(|pending| pending.screen == self.active_screen)
+        {
+            active.timelines.push(pending.timeline.clone());
+        }
         let mut chrome = components::screens::chrome::chrome_for_screen(
             self.active_screen,
             &self.snapshot,
             self.focus_index,
+            self.selected_playlist.as_ref(),
             self.selected_contact.as_ref(),
             (self.active_screen == UiScreen::Hub && self.home_mode == HomeMode::Focused)
                 .then_some(self.focus_index),
@@ -232,6 +274,7 @@ impl UiRuntime {
             self.active_screen,
             &self.snapshot,
             self.focus_index,
+            self.selected_playlist.as_ref(),
             self.selected_contact.as_ref(),
             (self.active_screen == UiScreen::Hub && self.home_mode == HomeMode::Focused)
                 .then_some(self.focus_index),
@@ -254,6 +297,10 @@ impl UiRuntime {
 
     fn active_route_key(&self) -> Option<&str> {
         match self.active_screen {
+            UiScreen::PlaylistTracks => self
+                .selected_playlist
+                .as_ref()
+                .map(|playlist| playlist.id.as_str()),
             UiScreen::TalkContact | UiScreen::VoiceNote => self
                 .selected_contact
                 .as_ref()
@@ -261,6 +308,113 @@ impl UiRuntime {
             _ => None,
         }
     }
+
+    fn begin_media_wheel_roll(&mut self, now_ms: u64) -> bool {
+        let Some(item_count) = self.media_wheel_item_count() else {
+            return false;
+        };
+        let Some(timeline) = animation::presets::media_wheel_roll(item_count, 0, now_ms) else {
+            return false;
+        };
+
+        let source_focus = self.focus_index;
+        navigator::advance_focus(self);
+        let target_focus = self.focus_index;
+        // Keep the old focus painted while its three semantic slots roll.
+        // The target becomes authoritative when the 180 ms timeline completes.
+        self.focus_index = source_focus;
+        if target_focus == source_focus {
+            return false;
+        }
+
+        self.pending_media_wheel_roll = Some(super::state::PendingMediaWheelRoll {
+            screen: self.active_screen,
+            target_focus,
+            timeline,
+        });
+        true
+    }
+
+    fn commit_pending_media_wheel_roll(&mut self) {
+        let Some(pending) = self.pending_media_wheel_roll.take() else {
+            return;
+        };
+        if pending.screen == self.active_screen {
+            self.focus_index = pending.target_focus;
+            self.dirty.focus = true;
+        }
+    }
+
+    fn abort_pending_media_wheel_roll(&mut self) {
+        if self.pending_media_wheel_roll.take().is_none() {
+            return;
+        }
+
+        // Animation tracks mutate native LVGL transform and opacity styles. A
+        // list replacement makes those actors ambiguous, so force a new scene
+        // generation and let reconciliation rebuild every media slot cleanly.
+        self.scene_revision = self.scene_revision.wrapping_add(1);
+        self.dirty.focus = true;
+    }
+
+    fn pending_media_wheel_identity(&self) -> Option<MediaWheelIdentity> {
+        let pending = self.pending_media_wheel_roll.as_ref()?;
+        Some(MediaWheelIdentity {
+            screen: pending.screen,
+            route_key: self.active_route_key().map(str::to_owned),
+            item_ids: self.media_wheel_item_ids(pending.screen)?,
+        })
+    }
+
+    fn reconcile_pending_media_wheel_roll(&mut self, before: Option<MediaWheelIdentity>) {
+        let Some(before) = before else {
+            return;
+        };
+        if self.pending_media_wheel_roll.is_none() {
+            return;
+        }
+        if self.active_screen != before.screen {
+            self.pending_media_wheel_roll = None;
+            return;
+        }
+
+        let after = MediaWheelIdentity {
+            screen: self.active_screen,
+            route_key: self.active_route_key().map(str::to_owned),
+            item_ids: self
+                .media_wheel_item_ids(self.active_screen)
+                .unwrap_or_default(),
+        };
+        if after != before {
+            self.abort_pending_media_wheel_roll();
+        }
+    }
+
+    fn media_wheel_item_count(&self) -> Option<usize> {
+        self.media_wheel_item_ids(self.active_screen)
+            .map(|ids| ids.len())
+    }
+
+    fn media_wheel_item_ids(&self, screen: UiScreen) -> Option<Vec<String>> {
+        let items = match screen {
+            UiScreen::Playlists => &self.snapshot.music.playlists,
+            UiScreen::PlaylistTracks => self
+                .selected_playlist
+                .as_ref()
+                .and_then(|playlist| self.snapshot.music.playlist_tracks.get(&playlist.id))
+                .map_or(&[][..], Vec::as_slice),
+            UiScreen::RecentTracks => &self.snapshot.music.recent_tracks,
+            _ => return None,
+        };
+        Some(items.iter().map(|item| item.id.clone()).collect())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MediaWheelIdentity {
+    screen: UiScreen,
+    route_key: Option<String>,
+    item_ids: Vec<String>,
 }
 
 fn scene_cache_entry(entry: &HistoryEntry) -> crate::scene::SceneCacheEntry {
@@ -379,6 +533,7 @@ mod tests {
     use super::*;
     use crate::engine::flatten;
     use crate::scene::roles;
+    use yoyopod_protocol::ui::{ListItemSnapshot, MusicIntent, PlaylistTrackAction};
 
     fn count_visible_role(element: &crate::engine::Element, role: &'static str) -> usize {
         usize::from(element.role == Some(role) && element.props.visible != Some(false))
@@ -466,6 +621,243 @@ mod tests {
         assert_eq!(runtime.active_screen, UiScreen::Hub);
         assert!(runtime.screen_stack.is_empty());
         assert_eq!(runtime.home_mode, HomeMode::Idle);
+    }
+
+    #[test]
+    fn now_playing_rolls_and_activates_all_transport_targets() {
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::Listen;
+        runtime.focus_index = 2;
+
+        runtime.handle_input(InputAction::Select, 50);
+        assert_eq!(runtime.active_screen, UiScreen::NowPlaying);
+        assert_eq!(runtime.focus_index, 1);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Music(MusicIntent::ShuffleAll)]
+        );
+
+        runtime.handle_input(InputAction::Select, 100);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Music(MusicIntent::PlayPause)]
+        );
+
+        runtime.handle_input(InputAction::Advance, 200);
+        assert_eq!(runtime.focus_index, 2);
+        runtime.handle_input(InputAction::Select, 300);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Music(MusicIntent::NextTrack)]
+        );
+
+        runtime.handle_input(InputAction::Advance, 400);
+        assert_eq!(runtime.focus_index, 0);
+        runtime.handle_input(InputAction::Select, 500);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Music(MusicIntent::PreviousTrack)]
+        );
+    }
+
+    #[test]
+    fn playlist_wheel_opens_tracks_and_plays_the_focused_track() {
+        let playlist = ListItemSnapshot::new(
+            "/music/Open Classics.m3u",
+            "Open Classics",
+            "2 tracks",
+            "playlist",
+        );
+        let tracks = vec![
+            ListItemSnapshot::new("/music/1.mp3", "Chaconne", "5:32", "track"),
+            ListItemSnapshot::new("/music/2.mp3", "March", "4:18", "track"),
+        ];
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.music.playlists = vec![playlist.clone()];
+        runtime
+            .snapshot
+            .music
+            .playlist_tracks
+            .insert(playlist.id.clone(), tracks);
+        runtime.active_screen = UiScreen::Listen;
+
+        runtime.handle_input(InputAction::Select, 100);
+        assert_eq!(runtime.active_screen, UiScreen::Playlists);
+        runtime.handle_input(InputAction::Select, 200);
+        assert_eq!(runtime.active_screen, UiScreen::PlaylistTracks);
+        assert_eq!(runtime.selected_playlist, Some(playlist.clone()));
+        assert!(runtime.take_intents().is_empty());
+
+        runtime.handle_input(InputAction::Advance, 300);
+        assert_eq!(runtime.focus_index, 0);
+        assert_eq!(
+            runtime
+                .pending_media_wheel_roll
+                .as_ref()
+                .map(|pending| pending.timeline.tracks.len()),
+            Some(6)
+        );
+        runtime.advance_animations(479);
+        assert_eq!(runtime.focus_index, 0);
+        runtime.advance_animations(480);
+        assert_eq!(runtime.focus_index, 1);
+        assert!(runtime.pending_media_wheel_roll.is_none());
+
+        runtime.handle_input(InputAction::Select, 500);
+        assert_eq!(runtime.active_screen, UiScreen::NowPlaying);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Music(MusicIntent::PlayPlaylistTrack(
+                PlaylistTrackAction {
+                    playlist_path: playlist.id,
+                    track_uri: "/music/2.mp3".to_string(),
+                    track_index: 1,
+                }
+            ))]
+        );
+    }
+
+    #[test]
+    fn three_item_media_wheel_runs_the_approved_roll_before_committing_focus() {
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.music.recent_tracks = vec![
+            ListItemSnapshot::new("/music/1.mp3", "Chaconne", "5:32", "track"),
+            ListItemSnapshot::new("/music/2.mp3", "Intermezzo", "4:18", "track"),
+            ListItemSnapshot::new("/music/3.mp3", "March", "3:07", "track"),
+        ];
+        runtime.active_screen = UiScreen::RecentTracks;
+        runtime.focus_index = 0;
+        runtime.mark_clean();
+
+        runtime.handle_input(InputAction::Advance, 1_000);
+        assert_eq!(runtime.focus_index, 0);
+        let pending = runtime
+            .pending_media_wheel_roll
+            .as_ref()
+            .expect("media advance should schedule a roll");
+        assert_eq!(pending.target_focus, 1);
+        assert_eq!(pending.timeline.tracks.len(), 9);
+        assert!(runtime
+            .scene_graph(1_000)
+            .active
+            .timelines
+            .iter()
+            .any(|timeline| timeline.id == animation::presets::MEDIA_WHEEL_ROLL_TIMELINE_ID));
+
+        runtime.advance_animations(1_179);
+        assert_eq!(runtime.focus_index, 0);
+        runtime.mark_clean();
+        runtime.advance_animations(1_180);
+        assert_eq!(runtime.focus_index, 1);
+        assert!(runtime.pending_media_wheel_roll.is_none());
+        assert!(runtime.dirty.focus);
+    }
+
+    #[test]
+    fn playback_progress_patch_does_not_interrupt_media_wheel_roll() {
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.music.recent_tracks = vec![
+            ListItemSnapshot::new("/music/1.mp3", "Chaconne", "5:32", "track"),
+            ListItemSnapshot::new("/music/2.mp3", "Intermezzo", "4:18", "track"),
+            ListItemSnapshot::new("/music/3.mp3", "March", "3:07", "track"),
+        ];
+        runtime.active_screen = UiScreen::RecentTracks;
+
+        runtime.handle_input(InputAction::Advance, 1_000);
+        let mut music = runtime.snapshot.music.clone();
+        music.progress_permille = 375;
+        music.elapsed_text = "1:23".to_string();
+        runtime.apply_patch(RuntimeSnapshotPatch::Music(music));
+
+        assert_eq!(runtime.focus_index, 0);
+        let pending = runtime
+            .pending_media_wheel_roll
+            .as_ref()
+            .expect("stable media identity must preserve the active roll");
+        assert_eq!(pending.target_focus, 1);
+        assert_eq!(pending.timeline.started_ms, 1_000);
+
+        runtime.advance_animations(1_179);
+        assert_eq!(runtime.focus_index, 0);
+        runtime.advance_animations(1_180);
+        assert_eq!(runtime.focus_index, 1);
+        assert!(runtime.pending_media_wheel_roll.is_none());
+    }
+
+    #[test]
+    fn media_list_replacement_aborts_roll_and_rebuilds_transformed_slots() {
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.music.recent_tracks = vec![
+            ListItemSnapshot::new("/music/1.mp3", "Chaconne", "5:32", "track"),
+            ListItemSnapshot::new("/music/2.mp3", "Intermezzo", "4:18", "track"),
+            ListItemSnapshot::new("/music/3.mp3", "March", "3:07", "track"),
+        ];
+        runtime.active_screen = UiScreen::RecentTracks;
+        let mut engine = crate::engine::Engine::default();
+        engine.render(&runtime.scene_graph(900), 900);
+
+        runtime.handle_input(InputAction::Advance, 1_000);
+        engine.render(&runtime.scene_graph(1_090), 1_090);
+        let previous_revision = runtime.scene_revision;
+        let mut music = runtime.snapshot.music.clone();
+        music.recent_tracks.pop();
+        runtime.apply_patch(RuntimeSnapshotPatch::Music(music));
+
+        assert!(runtime.pending_media_wheel_roll.is_none());
+        assert_eq!(runtime.focus_index, 0);
+        assert_eq!(runtime.scene_revision, previous_revision.wrapping_add(1));
+        assert!(runtime.dirty.focus);
+        let rebuilt = engine.render(&runtime.scene_graph(1_100), 1_100);
+        assert!(rebuilt.iter().any(|mutation| matches!(
+            mutation,
+            crate::engine::Mutation::Create {
+                role: Some(role),
+                ..
+            } if *role == roles::MEDIA_WHEEL_FOCUS
+        )));
+    }
+
+    #[test]
+    fn media_wheel_roll_emits_motion_then_refreshes_the_slot_roots() {
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.music.recent_tracks = vec![
+            ListItemSnapshot::new("/music/1.mp3", "Chaconne", "5:32", "track"),
+            ListItemSnapshot::new("/music/2.mp3", "Intermezzo", "4:18", "track"),
+            ListItemSnapshot::new("/music/3.mp3", "March", "3:07", "track"),
+        ];
+        runtime.active_screen = UiScreen::RecentTracks;
+        let mut engine = crate::engine::Engine::default();
+        engine.render(&runtime.scene_graph(900), 900);
+
+        runtime.handle_input(InputAction::Advance, 1_000);
+        engine.render(&runtime.scene_graph(1_000), 1_000);
+        runtime.advance_animations(1_090);
+        let moving = engine.render(&runtime.scene_graph(1_090), 1_090);
+        assert!(moving.iter().any(|mutation| matches!(
+            mutation,
+            crate::engine::Mutation::Update {
+                prop: crate::engine::PropChange::OffsetY(value),
+                ..
+            } if *value < 0
+        )));
+        assert!(moving.iter().any(|mutation| matches!(
+            mutation,
+            crate::engine::Mutation::Update {
+                prop: crate::engine::PropChange::ScalePermille(value),
+                ..
+            } if *value != 1_000
+        )));
+
+        runtime.advance_animations(1_180);
+        let committed = engine.render(&runtime.scene_graph(1_180), 1_180);
+        assert!(committed.iter().any(|mutation| matches!(
+            mutation,
+            crate::engine::Mutation::Create {
+                role: Some(role),
+                ..
+            } if *role == roles::MEDIA_WHEEL_FOCUS
+        )));
+        assert_eq!(runtime.focus_index, 1);
     }
 
     #[test]

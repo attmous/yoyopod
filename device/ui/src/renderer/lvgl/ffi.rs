@@ -85,6 +85,8 @@ pub const LV_LABEL_LONG_MODE_DOTS: i32 = 1;
 pub const LV_LABEL_LONG_MODE_CLIP: i32 = 4;
 pub const LV_SCROLLBAR_MODE_OFF: i32 = 0;
 pub const LV_TEXT_ALIGN_CENTER: i32 = 2;
+pub const LV_TEXT_ALIGN_LEFT: i32 = 0;
+pub const LV_TEXT_ALIGN_RIGHT: i32 = 1;
 pub const LV_RADIUS_CIRCLE: i32 = 0x7FFF;
 pub const LV_OBJ_FLAG_HIDDEN: u32 = 1 << 0;
 pub const LV_FLEX_FLOW_ROW: i32 = 0;
@@ -92,10 +94,12 @@ pub const LV_FLEX_ALIGN_START: i32 = 0;
 pub const LV_FLEX_ALIGN_END: i32 = 1;
 pub const LV_FLEX_ALIGN_CENTER: i32 = 2;
 pub const LV_IMAGE_ALIGN_CENTER: i32 = 9;
+pub const LV_PART_INDICATOR: LvStyleSelector = 0x020000;
 
 unsafe extern "C" {
     pub static lv_font_montserrat_12: lv_font_t;
     pub static lv_font_montserrat_18: lv_font_t;
+    pub static lv_font_montserrat_24: lv_font_t;
 
     pub fn lv_init();
     pub fn lv_deinit();
@@ -183,6 +187,19 @@ unsafe extern "C" {
         value: i32,
         selector: LvStyleSelector,
     );
+    pub fn lv_obj_set_style_outline_color(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: LvStyleSelector,
+    );
+    pub fn lv_obj_set_style_outline_pad(obj: *mut lv_obj_t, value: i32, selector: LvStyleSelector);
+    pub fn lv_obj_set_style_arc_width(obj: *mut lv_obj_t, value: i32, selector: LvStyleSelector);
+    pub fn lv_obj_set_style_arc_rounded(obj: *mut lv_obj_t, value: bool, selector: LvStyleSelector);
+    pub fn lv_obj_set_style_arc_color(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: LvStyleSelector,
+    );
     pub fn lv_obj_set_style_shadow_width(obj: *mut lv_obj_t, value: i32, selector: LvStyleSelector);
     pub fn lv_obj_set_style_shadow_color(
         obj: *mut lv_obj_t,
@@ -217,6 +234,12 @@ unsafe extern "C" {
     pub fn lv_image_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_image_set_src(obj: *mut lv_obj_t, src: *const c_void);
     pub fn lv_image_set_inner_align(obj: *mut lv_obj_t, align: i32);
+
+    pub fn lv_arc_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
+    pub fn lv_arc_set_range(obj: *mut lv_obj_t, min: i32, max: i32);
+    pub fn lv_arc_set_value(obj: *mut lv_obj_t, value: i32);
+    pub fn lv_arc_set_bg_angles(obj: *mut lv_obj_t, start: i32, end: i32);
+    pub fn lv_arc_set_rotation(obj: *mut lv_obj_t, rotation: i32);
 
     pub fn lv_screen_load(screen: *mut lv_obj_t);
 

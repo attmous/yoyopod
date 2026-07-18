@@ -5,26 +5,33 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const ICON_SIZE: u32 = 56;
-const ICONS: [IconSpec; 5] = [
-    IconSpec::new("playlists", "PLAYLISTS"),
-    IconSpec::new("recents", "RECENTS"),
-    IconSpec::new("shuffle", "SHUFFLE"),
-    IconSpec::new("microphone", "MICROPHONE"),
-    IconSpec::new("plus", "PLUS"),
+const PREVIEW_CELL_SIZE: u32 = 56;
+const ICONS: [IconSpec; 10] = [
+    IconSpec::new("playlists", "PLAYLISTS", 56),
+    IconSpec::new("recents", "RECENTS", 56),
+    IconSpec::new("shuffle", "SHUFFLE", 56),
+    IconSpec::new("microphone", "MICROPHONE", 56),
+    IconSpec::new("plus", "PLUS", 56),
+    IconSpec::new("music_note", "MUSIC_NOTE", 56),
+    IconSpec::new("play_sm", "PLAY_SM", 24),
+    IconSpec::new("pause_sm", "PAUSE_SM", 24),
+    IconSpec::new("prev_sm", "PREV_SM", 24),
+    IconSpec::new("next_sm", "NEXT_SM", 24),
 ];
 
 #[derive(Clone, Copy)]
 struct IconSpec {
     file_stem: &'static str,
     rust_name: &'static str,
+    size: u32,
 }
 
 impl IconSpec {
-    const fn new(file_stem: &'static str, rust_name: &'static str) -> Self {
+    const fn new(file_stem: &'static str, rust_name: &'static str, size: u32) -> Self {
         Self {
             file_stem,
             rust_name,
+            size,
         }
     }
 }
@@ -114,17 +121,19 @@ fn render_icon(source_dir: &Path, spec: IconSpec) -> Result<RenderedIcon, Box<dy
     let options = usvg::Options::default();
     let tree = usvg::Tree::from_data(&source, &options)?;
     let natural_size = tree.size().to_int_size();
-    if natural_size.width() != ICON_SIZE || natural_size.height() != ICON_SIZE {
+    if natural_size.width() != spec.size || natural_size.height() != spec.size {
         return Err(format!(
-            "{} must have a {ICON_SIZE}x{ICON_SIZE} viewport, got {}x{}",
+            "{} must have a {}x{} viewport, got {}x{}",
             source_path.display(),
+            spec.size,
+            spec.size,
             natural_size.width(),
             natural_size.height()
         )
         .into());
     }
 
-    let mut pixmap = tiny_skia::Pixmap::new(ICON_SIZE, ICON_SIZE)
+    let mut pixmap = tiny_skia::Pixmap::new(spec.size, spec.size)
         .ok_or("failed to allocate icon raster surface")?;
     resvg::render(
         &tree,
@@ -152,7 +161,8 @@ fn validate_alpha(spec: IconSpec, alpha: &[u8]) -> Result<(), Box<dyn Error>> {
         .iter()
         .filter(|value| **value > 0 && **value < u8::MAX)
         .count();
-    if visible < 80 {
+    let minimum_visible = if spec.size <= 24 { 32 } else { 80 };
+    if visible < minimum_visible {
         return Err(format!("{} icon is unexpectedly empty", spec.file_stem).into());
     }
     if antialiased < 12 {
@@ -177,7 +187,7 @@ fn generated_module(icons: &[RenderedIcon]) -> String {
             output,
             "#[rustfmt::skip]\nstatic {}_MAP: [u8; {}] = [",
             icon.spec.rust_name,
-            ICON_SIZE * ICON_SIZE
+            icon.spec.size * icon.spec.size
         )
         .unwrap();
         for row in icon.alpha.chunks(16) {
@@ -201,16 +211,18 @@ fn generated_module(icons: &[RenderedIcon]) -> String {
 
 fn write_preview(icons: &[RenderedIcon], path: &Path) -> Result<(), Box<dyn Error>> {
     const GUTTER: u32 = 8;
-    let width = GUTTER + icons.len() as u32 * (ICON_SIZE + GUTTER);
-    let height = ICON_SIZE + GUTTER * 2;
+    let width = GUTTER + icons.len() as u32 * (PREVIEW_CELL_SIZE + GUTTER);
+    let height = PREVIEW_CELL_SIZE + GUTTER * 2;
     let mut preview =
         tiny_skia::Pixmap::new(width, height).ok_or("failed to allocate icon preview surface")?;
     preview.fill(tiny_skia::Color::from_rgba8(246, 242, 235, 255));
 
     for (index, icon) in icons.iter().enumerate() {
         preview.draw_pixmap(
-            (GUTTER + index as u32 * (ICON_SIZE + GUTTER)) as i32,
-            GUTTER as i32,
+            (GUTTER
+                + index as u32 * (PREVIEW_CELL_SIZE + GUTTER)
+                + (PREVIEW_CELL_SIZE - icon.spec.size) / 2) as i32,
+            (GUTTER + (PREVIEW_CELL_SIZE - icon.spec.size) / 2) as i32,
             icon.pixmap.as_ref(),
             &tiny_skia::PixmapPaint::default(),
             tiny_skia::Transform::identity(),

@@ -17,12 +17,19 @@ pub fn chrome_for_screen(
     screen: UiScreen,
     snapshot: &RuntimeSnapshot,
     focus_index: usize,
+    selected_playlist: Option<&ListItemSnapshot>,
     selected_contact: Option<&ListItemSnapshot>,
     home_focus: Option<usize>,
     deck_visible: bool,
 ) -> ScreenChrome {
     ScreenChrome {
-        title: title_for_screen(screen, snapshot, focus_index, selected_contact),
+        title: title_for_screen(
+            screen,
+            snapshot,
+            focus_index,
+            selected_playlist,
+            selected_contact,
+        ),
         status: status_from_snapshot(snapshot),
         deck: DeckBarProps {
             focused_index: deck_focus_for_screen(screen, home_focus),
@@ -46,6 +53,7 @@ fn title_for_screen(
     screen: UiScreen,
     snapshot: &RuntimeSnapshot,
     focus_index: usize,
+    selected_playlist: Option<&ListItemSnapshot>,
     selected_contact: Option<&ListItemSnapshot>,
 ) -> String {
     match screen {
@@ -58,6 +66,9 @@ fn title_for_screen(
             .unwrap_or_else(|| "Listen".to_string()),
         UiScreen::Listen => "Listen".to_string(),
         UiScreen::Playlists => "Playlists".to_string(),
+        UiScreen::PlaylistTracks => selected_playlist
+            .map(|playlist| playlist.title.clone())
+            .unwrap_or_else(|| "Playlist".to_string()),
         UiScreen::RecentTracks => "Recent".to_string(),
         UiScreen::NowPlaying => snapshot.music.title.clone(),
         UiScreen::Ask => snapshot.voice.headline.clone(),
@@ -78,9 +89,11 @@ fn title_for_screen(
 fn deck_focus_for_screen(screen: UiScreen, home_focus: Option<usize>) -> Option<usize> {
     match screen {
         UiScreen::Hub => home_focus,
-        UiScreen::Listen | UiScreen::Playlists | UiScreen::RecentTracks | UiScreen::NowPlaying => {
-            Some(0)
-        }
+        UiScreen::Listen
+        | UiScreen::Playlists
+        | UiScreen::PlaylistTracks
+        | UiScreen::RecentTracks
+        | UiScreen::NowPlaying => Some(0),
         UiScreen::Talk
         | UiScreen::Contacts
         | UiScreen::CallHistory

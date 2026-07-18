@@ -48,6 +48,16 @@ pub(crate) fn create_image_object(
     Ok(obj)
 }
 
+pub(crate) fn create_arc_object(
+    parent: NonNull<ffi::lv_obj_t>,
+    role: WidgetRole,
+) -> Result<NonNull<ffi::lv_obj_t>> {
+    non_null(
+        unsafe { ffi::lv_arc_create(parent.as_ptr()) },
+        format!("arc for {role}"),
+    )
+}
+
 fn non_null(
     obj: *mut ffi::lv_obj_t,
     context: impl std::fmt::Display,
