@@ -1,0 +1,72 @@
+---
+title: The 50 Hz Loop
+description: run_once anatomy — drain, translate, apply, diff, tick — and why only changed domains ever cross the wire.
+---
+
+import RuntimeLoop from '../../../assets/diagrams/runtime-loop.svg';
+
+Everything the runtime does at steady state happens inside one function,
+`run_once` (`device/runtime/src/runtime_loop.rs`), called in a loop with a
+20 ms sleep — roughly **50 Hz**.
+
+<RuntimeLoop class="diagram" />
+
+## One turn of the loop
+
+1. **Forward signals** — pending SIGUSR1/2 become `ui.screenshot`
+   commands.
+2. **Drain the inbox** — up to **64 messages per domain per turn**, so a
+   flooding worker can slow the loop but never starve the other six.
+3. **Translate** — each envelope becomes a `RuntimeEvent`, and
+   `event.rs` maps events to `RuntimeCommand`s: intent routing, the
+   [house rules](/runtime/routing-and-policies/), telemetry publishes,
+   cloud acks.
+4. **Apply** — commands mutate `RuntimeState`, the master ledger.
+5. **Diff → patch** — the state before the turn is compared with the
+   state after; each changed domain becomes one
+   `RuntimeSnapshotPatch` to the UI.
+6. **Dispatch** — outbound worker commands are written to the target
+   worker's stdin.
+7. **Tick** — `UiCommand::Tick` goes to the UI every turn, then the 20 ms
+   sleep.
+
+## Only what changed crosses the wire
+
+The patch diff is the office-side twin of the UI's reconciler — the same
+law at a different altitude
+([The Mental Model, law 2](/ui/mental-model/#2-only-what-changed-ever-moves)):
+
+| Level | Diff |
+| --- | --- |
+| Runtime → UI | per-domain snapshot patches; unchanged domains send nothing |
+| UI scene → LVGL | the reconciler's mutations |
+| LVGL → glass | dirty regions over SPI |
+
+One deliberate subtlety: **worker-health-only changes emit no UI patch.**
+The child doesn't need to know a worker hiccupped unless a domain
+snapshot actually changed — the health block travels only in full
+snapshots and health reports.
+
+## The timing contract
+
+The UI host runs two watchdogs
+([its side of the story](/ui/advanced/data-flow/#watchdogs-and-failure-paths)):
+a **5 s** tick-stall alarm and a **15 s** manager-heartbeat that is fatal.
+Against those budgets the runtime's ~50 Hz cadence is a ~250× margin —
+every turn sends at least a Tick, and usually more.
+
+:::caution[The single-thread caveat]
+The loop is one thread, sequential. A blocking `write` to a **stalled
+worker's stdin** — or a slow shutdown command — delays everything behind
+it, including the Tick. The drain cap bounds inbound flooding, but
+outbound writes have no such guard. In practice the margins absorb it;
+in principle it's the loop's soft spot, tracked in
+[Known Gaps](/runtime/gaps/) and traced honestly in
+[Failure Paths](/runtime/advanced/failure-paths/).
+:::
+
+:::note[Canonical source]
+The prose description of this flow lives in
+[`docs/architecture/RUNTIME_EVENT_FLOW.md`](https://github.com/attmous/yoyopod/blob/main/docs/architecture/RUNTIME_EVENT_FLOW.md)
+— this page adds the concrete numbers and message names.
+:::

@@ -1,0 +1,111 @@
+<svg viewBox="0 0 760 620" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The process tree: systemd supervises yoyopod-runtime, which spawns seven worker children over piped stdio, each wrapping an external service">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #2b2122); stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; }
+    .ext { fill: none; stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .hub { fill: var(--sl-color-accent-low, #4a2420); stroke: var(--sl-color-accent, #f37767); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f5ece1); font-size: 14px; font-weight: 700; }
+    .m { fill: var(--sl-color-gray-2, #d8c8b3); font-size: 11px; font-family: ui-monospace, monospace; }
+    .s { fill: var(--sl-color-gray-3, #a5937f); font-size: 11.5px; }
+    .flow { stroke: var(--sl-color-gray-3, #a5937f); stroke-width: 2; fill: none; marker-end: url(#pth); }
+    .plain { stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; fill: none; stroke-dasharray: 4 4; }
+  </style>
+  <defs>
+    <marker id="pth" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a5937f)"/>
+    </marker>
+  </defs>
+
+  <rect class="ext" x="250" y="16" width="260" height="52" rx="10"/>
+  <text class="t" x="270" y="38">systemd</text>
+  <text class="s" x="270" y="56">Restart=on-failure · RestartSec=5 — restarts everything below</text>
+
+  <path class="flow" d="M380,68 L380,94"/>
+
+  <rect class="hub" x="200" y="96" width="360" height="66" rx="10"/>
+  <text class="t" x="220" y="120">yoyopod-runtime</text>
+  <text class="s" x="220" y="138">spawns each worker once · piped stdin/stdout · stderr → journald</text>
+  <text class="s" x="220" y="154">one reader thread per child feeds a single mpsc inbox</text>
+
+  <!-- children row 1: UI highlighted -->
+  <path class="flow" d="M255,162 L120,196"/>
+  <path class="flow" d="M310,162 L290,196"/>
+  <path class="flow" d="M380,162 L460,196"/>
+  <path class="flow" d="M450,162 L630,196"/>
+
+  <rect class="hub" x="40" y="198" width="160" height="60" rx="10"/>
+  <text class="t" x="54" y="220">yoyopod-ui-host</text>
+  <text class="s" x="54" y="238">the one fatal child:</text>
+  <text class="s" x="54" y="252">no ready in 5 s → abort</text>
+
+  <rect class="box" x="216" y="198" width="150" height="60" rx="10"/>
+  <text class="t" x="230" y="220">media-host</text>
+  <text class="s" x="230" y="238">ready wait 3 s</text>
+  <text class="s" x="230" y="252">→ degrade</text>
+
+  <rect class="box" x="386" y="198" width="150" height="60" rx="10"/>
+  <text class="t" x="400" y="220">voip-host</text>
+  <text class="s" x="400" y="238">ready wait 3 s</text>
+  <text class="s" x="400" y="252">→ degrade</text>
+
+  <rect class="box" x="556" y="198" width="150" height="60" rx="10"/>
+  <text class="t" x="570" y="220">network-host</text>
+  <text class="s" x="570" y="238">ready wait 3 s</text>
+  <text class="s" x="570" y="252">→ degrade</text>
+
+  <!-- children row 2 -->
+  <path class="flow" d="M300,162 L120,330"/>
+  <path class="flow" d="M340,162 L290,330"/>
+  <path class="flow" d="M420,162 L460,330"/>
+
+  <rect class="box" x="40" y="332" width="160" height="60" rx="10"/>
+  <text class="t" x="54" y="354">cloud-host</text>
+  <text class="s" x="54" y="372">ready wait 3 s</text>
+  <text class="s" x="54" y="386">→ degrade</text>
+
+  <rect class="box" x="216" y="332" width="150" height="60" rx="10"/>
+  <text class="t" x="230" y="354">power-host</text>
+  <text class="s" x="230" y="372">ready wait 3 s</text>
+  <text class="s" x="230" y="386">→ degrade</text>
+
+  <rect class="box" x="386" y="332" width="150" height="60" rx="10"/>
+  <text class="t" x="400" y="354">speech-host</text>
+  <text class="s" x="400" y="372">spawned only if enabled</text>
+  <text class="s" x="400" y="386">(else marked Disabled)</text>
+
+  <!-- externals -->
+  <rect class="ext" x="40" y="452" width="160" height="52" rx="10"/>
+  <text class="t" x="54" y="474">glass + button</text>
+  <text class="m" x="54" y="492">SPI · GPIO (rppal)</text>
+  <path class="plain" d="M120,392 L120,450"/>
+  <path class="plain" d="M120,258 L120,330"/>
+
+  <rect class="ext" x="216" y="452" width="150" height="52" rx="10"/>
+  <text class="t" x="230" y="474">mpv · ALSA</text>
+  <text class="m" x="230" y="492">JSON-IPC socket</text>
+  <path class="plain" d="M290,258 C260,290 250,420 280,450"/>
+
+  <rect class="ext" x="386" y="452" width="150" height="52" rx="10"/>
+  <text class="t" x="400" y="474">liblinphone</text>
+  <text class="m" x="400" y="492">dlopen, in-process</text>
+  <path class="plain" d="M460,258 C440,290 430,420 450,450"/>
+
+  <rect class="ext" x="556" y="452" width="150" height="52" rx="10"/>
+  <text class="t" x="570" y="474">SIM7600 · pppd</text>
+  <text class="m" x="570" y="492">serial AT · sudo pppd</text>
+  <path class="plain" d="M630,258 L630,450"/>
+
+  <rect class="ext" x="128" y="540" width="180" height="52" rx="10"/>
+  <text class="t" x="142" y="562">MQTT broker</text>
+  <text class="m" x="142" y="580">rumqttc tcp/tls/ws</text>
+  <path class="plain" d="M120,392 C120,480 160,520 200,538"/>
+
+  <rect class="ext" x="330" y="540" width="190" height="52" rx="10"/>
+  <text class="t" x="344" y="562">pisugar-server · I²C</text>
+  <text class="m" x="344" y="580">unix socket / i2cset</text>
+  <path class="plain" d="M290,392 C300,460 340,510 400,538"/>
+
+  <rect class="ext" x="544" y="540" width="196" height="52" rx="10"/>
+  <text class="t" x="558" y="562">OpenAI APIs</text>
+  <text class="m" x="558" y="580">STT · TTS · Ask (ureq)</text>
+  <path class="plain" d="M460,392 C480,460 540,510 590,538"/>
+</svg>

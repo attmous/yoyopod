@@ -1,0 +1,103 @@
+---
+title: "Overview: One Intent's Round Trip"
+description: The five rules of the runtime, the process tree, and the full round trip from a button press to a re-rendered screen.
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+import ProcessTree from '../../../assets/diagrams/process-tree.svg';
+
+Behind the glass, yoyopod is one supervisor process and up to seven
+children, talking in newline-framed JSON over stdio pipes. This page is
+the guided tour; each stop links to its deep page. (For the one picture
+that makes it stick, read [The Mental Model](/runtime/mental-model/)
+first.)
+
+## The system in five rules
+
+<CardGrid>
+	<Card title="One supervisor, seven children" icon="puzzle">
+		Everything is a child process of yoyopod-runtime with piped stdio.
+		No sockets, no bus daemons — the process tree is the architecture.
+	</Card>
+	<Card title="Telegrams, not calls" icon="email">
+		Every message is one NDJSON line with a typed envelope and a strict
+		schema stamp. Mismatched peers fail closed at the first line.
+	</Card>
+	<Card title="State lives in the runtime" icon="open-book">
+		Workers report; the runtime aggregates the one true ledger; the UI
+		renders it. Nobody else holds the world.
+	</Card>
+	<Card title="Nobody restarts anybody" icon="warning">
+		A dead worker's domain is marked Stopped — and stays that way.
+		Recovery is systemd restarting the whole runtime, by design.
+	</Card>
+	<Card title="Policies live in one place" icon="document">
+		Every cross-domain behavior — a call pausing music, low battery
+		ending the show — is runtime code in event.rs. Workers never talk
+		to each other.
+	</Card>
+</CardGrid>
+
+## The process tree
+
+<ProcessTree class="diagram" />
+
+The UI host is the one **fatal** child — no `ui.ready` within 5 seconds
+and the runtime aborts. Every other worker gets 3 seconds and a shrug:
+marked `Degraded`, boot continues. Details in
+[Startup & Shutdown](/runtime/lifecycle/).
+
+## One intent's round trip
+
+What happens when the child double-presses "next song", in ten steps:
+
+1. **The button speaks** — the UI's gesture machine emits
+   `Select`, its navigator resolves the focused item, and
+   `UiIntent Music::NextTrack` goes out on stdout.
+   → [The UI Contract](/runtime/ui-contract/)
+2. **A mail clerk delivers it** — the UI's reader thread pushes the
+   envelope into the runtime's one inbox.
+   → [Seven Processes, One Desk](/runtime/process-model/)
+3. **The office routes it** — `commands_for_ui_intent` maps the intent
+   to `media.next_track`. → [Intents & House Rules](/runtime/routing-and-policies/)
+4. **The work order goes down** — the envelope is written to the media
+   host's stdin. → [The 50 Hz Loop](/runtime/loop/)
+5. **The record library acts** — the media host tells mpv over its
+   JSON-IPC socket. → [Media: The Record Library](/runtime/workers/media/)
+6. **mpv changes track** — and its observed properties fire.
+7. **A telegram comes back up** — `media.track_changed` and a fresh
+   `media.snapshot` flow to the inbox.
+8. **The ledger updates** — `RuntimeState.music` mutates.
+   → [The 50 Hz Loop](/runtime/loop/)
+9. **Only the changed page is rewritten** — the diff emits
+   `RuntimePatch{domain: music}` to the UI.
+   → [The UI Contract](/runtime/ui-contract/#the-script-runtimesnapshot)
+10. **The theater re-renders** — the UI applies the patch, the scene
+    rebuilds, and the arc hero shows the new track. From here the story
+    continues in the [UI guide](/ui/overview/).
+
+The loop closes through the real world every time: the UI never showed
+"next track" because it *hoped* — it showed it because the snapshot said
+so.
+
+## The cast of directories
+
+| Directory | One-liner |
+| --- | --- |
+| `device/runtime/` | the supervisor: spawning, the loop, the ledger, the house rules |
+| `device/protocol/` | the envelope + the UI contract — [the wire](/runtime/protocol/) |
+| `device/worker/` | tiny shared helpers for uniform ready/health/error envelopes |
+| `device/media/` | mpv + the local music library — [profile](/runtime/workers/media/) |
+| `device/voip/` | liblinphone: calls, messages, voice notes — [profile](/runtime/workers/voip/) |
+| `device/network/` | SIM7600, PPP, GPS — [profile](/runtime/workers/network/) |
+| `device/cloud/` | MQTT to the backend — [profile](/runtime/workers/cloud/) |
+| `device/power/` | PiSugar battery, RTC, watchdog — [profile](/runtime/workers/power/) |
+| `device/speech/` | cloud STT/TTS/Ask — [profile](/runtime/workers/speech/) |
+| `device/harness/` + `device/onpi/` | test decoding + on-device validation — [Testing](/runtime/testing/) |
+
+:::note[Canonical source]
+The topology this page tours is canonically described in
+[`docs/architecture/SYSTEM_ARCHITECTURE.md`](https://github.com/attmous/yoyopod/blob/main/docs/architecture/SYSTEM_ARCHITECTURE.md)
+(which also covers the operator CLI on the dev-machine side). This guide
+adds the numbers, the message names, and the failure behavior.
+:::

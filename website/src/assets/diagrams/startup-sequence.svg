@@ -1,0 +1,55 @@
+<svg viewBox="0 0 760 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Startup sequence: seed state, spawn UI first with a fatal five-second ready wait, spawn six workers with three-second degrade waits, send startup commands, send the full snapshot, enter the loop">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #2b2122); stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; }
+    .hub { fill: var(--sl-color-accent-low, #4a2420); stroke: var(--sl-color-accent, #f37767); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f5ece1); font-size: 14px; font-weight: 700; }
+    .s { fill: var(--sl-color-gray-3, #a5937f); font-size: 11.5px; }
+    .m { fill: var(--sl-color-gray-2, #d8c8b3); font-size: 11px; font-family: ui-monospace, monospace; }
+    .warn { fill: var(--sl-color-accent, #f37767); font-size: 11.5px; font-weight: 700; }
+    .flow { stroke: var(--sl-color-gray-3, #a5937f); stroke-width: 2; fill: none; marker-end: url(#ssh); }
+  </style>
+  <defs>
+    <marker id="ssh" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a5937f)"/>
+    </marker>
+  </defs>
+
+  <rect class="box" x="200" y="16" width="360" height="52" rx="10"/>
+  <text class="t" x="220" y="38">0 · Seed the ledger</text>
+  <text class="s" x="220" y="56">contacts, volumes, voice settings, power-safety config</text>
+  <path class="flow" d="M380,68 L380,88"/>
+
+  <rect class="hub" x="200" y="90" width="360" height="66" rx="10"/>
+  <text class="t" x="220" y="112">1 · Spawn the UI — first, and fatal</text>
+  <text class="m" x="220" y="130">yoyopod-ui-host --hardware whisplay</text>
+  <text class="warn" x="220" y="148">wait 5 s for ui.ready — timeout aborts the whole runtime</text>
+  <path class="flow" d="M380,156 L380,176"/>
+
+  <rect class="box" x="200" y="178" width="360" height="130" rx="10"/>
+  <text class="t" x="220" y="200">2 · Spawn the departments — tolerant</text>
+  <text class="s" x="220" y="220">cloud → media → voip → network → power → speech,</text>
+  <text class="s" x="220" y="236">each with a 3 s ready wait; a timeout marks the domain</text>
+  <text class="s" x="220" y="252">Degraded and boot continues</text>
+  <text class="s" x="220" y="272">speech is spawned only if voice.worker_enabled —</text>
+  <text class="s" x="220" y="288">otherwise the domain is marked Disabled</text>
+  <path class="flow" d="M380,308 L380,328"/>
+
+  <rect class="box" x="200" y="330" width="360" height="118" rx="10"/>
+  <text class="t" x="220" y="352">3 · Startup commands</text>
+  <text class="m" x="220" y="372">ui.set_backlight · media.configure + media.start</text>
+  <text class="m" x="220" y="390">voip.configure + voip.register · network.query_gps</text>
+  <text class="m" x="220" y="408">cloud.publish_heartbeat · *.health probes</text>
+  <text class="s" x="220" y="428">config is pushed to media/voip; others self-loaded theirs</text>
+  <path class="flow" d="M380,448 L380,468"/>
+
+  <rect class="box" x="200" y="470" width="360" height="52" rx="10"/>
+  <text class="t" x="220" y="492">4 · One full script</text>
+  <text class="s" x="220" y="510">the only full RuntimeSnapshot — patches from here on</text>
+  <path class="flow" d="M380,522 L380,542"/>
+
+  <rect class="hub" x="200" y="544" width="360" height="52" rx="10"/>
+  <text class="t" x="220" y="566">5 · The loop</text>
+  <text class="s" x="220" y="584">run_once every ~20 ms until shutdown or the landlord acts</text>
+
+  <text class="s" x="20" y="626">Shutdown mirrors it: SIGTERM / UI intent → worker.stop to all seven → 1 s grace → kill survivors → markers logged.</text>
+</svg>

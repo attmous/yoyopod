@@ -1,0 +1,77 @@
+---
+title: Telegrams on the Wire
+description: The yoyopod_protocol crate — envelope anatomy, NDJSON framing, the strict schema gate, and what is deliberately not in the shared crate.
+---
+
+import Envelope from '../../../assets/diagrams/envelope.svg';
+
+Every message in the system — runtime to worker, worker to runtime — is a
+**telegram**: one newline-framed JSON object called a `WorkerEnvelope`,
+defined in the shared crate at
+[`device/protocol/src/lib.rs`](https://github.com/attmous/yoyopod/blob/main/device/protocol/src/lib.rs).
+The crate is deliberately tiny: the envelope layer plus the UI contract,
+and nothing else.
+
+<Envelope class="diagram" />
+
+## The envelope
+
+| Field | Type | Behavior |
+| --- | --- | --- |
+| `schema_version` | `u16` | **must equal 1** — `validate()` hard-rejects anything else; defaults to 1 if absent on decode |
+| `kind` | enum | `command` · `event` · `result` · `error` · `heartbeat` |
+| `type` | string | the routing key, `"domain.action"` (e.g. `media.next_track`); empty is rejected |
+| `request_id` | optional string | correlation slip — a `result`/`error` echoes the command's id |
+| `timestamp_ms` | `u64` | stamped by the sender's transport layer (monotonic) |
+| `deadline_ms` | `u64` | optional per-request deadline (the speech worker honors it) |
+| `payload` | JSON object | **must be an object** — `validate()` rejects anything else; `null` is coerced to `{}` on decode |
+
+Errors are typed (`ProtocolError`): `InvalidJson`, `UnsupportedSchema
+{actual, expected}`, and `InvalidEnvelope` for everything structural. There
+is no partial acceptance — a bad telegram is refused whole.
+
+:::caution[Heartbeat exists, and nobody sends one]
+The `heartbeat` kind is defined in the enum but **never sent and ignored
+inbound**. Liveness toward the UI is carried by the
+[Tick stream](/runtime/loop/), not heartbeat envelopes. Tracked in
+[Known Gaps](/runtime/gaps/).
+:::
+
+## The framing: NDJSON, nothing fancier
+
+`encode()` serializes with `serde_json` and **appends `\n`**; every reader
+splits on newlines. One line = one telegram. No length prefixes, no binary
+framing, no compression — the transport is stdio pipes between processes
+on the same board, and debuggability wins: you can read the entire
+conversation with `cat`.
+
+## What's deliberately *not* in the shared crate
+
+Two absences are design decisions, not omissions:
+
+1. **Per-worker contracts.** Only the UI has a shared, typed contract
+   ([next page](/runtime/ui-contract/)). The `media.*`, `voip.*`,
+   `network.*`, `cloud.*`, `power.*`, and `voice.*` message types are
+   string literals owned by each worker crate — the runtime and the worker
+   agree by convention, documented on each
+   [worker's page](/runtime/workers/media/). This keeps the shared crate
+   from becoming a bottleneck every worker change must pass through.
+2. **The scaffolding.** `device/worker/` provides tiny helpers
+   (`emit`, `ready_event`, `health_result`, `stopped_event`,
+   `standard_error`) so `*.ready`/`*.error` envelopes look uniform — but
+   it is currently **used only by the power worker**; the other five
+   reimplement the equivalents locally ([Known Gaps](/runtime/gaps/)).
+
+## Evolution rules
+
+- **Adding an optional field** to a payload is safe: nearly every struct is
+  `#[serde(default)]`, so old peers ignore what they don't know.
+- **Adding a message type** requires both sides to know it — unknown
+  `type`s are rejected with `InvalidEnvelope`, never guessed at.
+- **Changing the framing or envelope semantics** requires bumping
+  `SUPPORTED_SCHEMA_VERSION`, and the strict-equality gate means old and
+  new peers fail closed against each other immediately — loudly, at the
+  first telegram, not subtly at the worst moment.
+
+Continue to [The UI Contract](/runtime/ui-contract/) — the one worker
+whose vocabulary lives in the shared crate.

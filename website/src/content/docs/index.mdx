@@ -8,6 +8,10 @@ hero:
     - text: UI System Guide
       link: /ui/
       icon: right-arrow
+    - text: Runtime & Workers Guide
+      link: /runtime/
+      icon: right-arrow
+      variant: secondary
     - text: Repo Map & Source of Truth
       link: /start/repo-map/
       variant: minimal
@@ -23,9 +27,11 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 		hardware, drivers, LVGL 9.5.0, the custom scene-graph framework, and the
 		playbook for extending it. [Open the guide](/ui/).
 	</Card>
-	<Card title="Architecture" icon="puzzle">
-		The runtime supervisor, per-domain worker hosts, and how events flow into
-		app state. [System architecture](/architecture/system-architecture/).
+	<Card title="Runtime & Workers Guide" icon="puzzle">
+		The second flagship section: the supervisor, the NDJSON wire, and the six
+		domain workers behind the glass. [Open the guide](/runtime/) ·
+		[Canonical structure](/architecture/canonical-structure/) ·
+		[Work areas](/architecture/work-areas/).
 	</Card>
 	<Card title="Hardware" icon="seti:config">
 		Raspberry Pi Zero 2W with the PiSugar Whisplay HAT: audio, power, and the

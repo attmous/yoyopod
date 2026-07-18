@@ -1,0 +1,57 @@
+---
+title: Startup & Shutdown
+description: The boot sequence — UI first and fatal, workers tolerant — the startup command volley, and the three ways the show ends.
+---
+
+import StartupSequence from '../../../assets/diagrams/startup-sequence.svg';
+
+<StartupSequence class="diagram" />
+
+## Boot, in order
+
+1. **Seed the ledger.** `RuntimeState` is pre-filled from config:
+   contacts, media volume, voice settings, and the power-safety policy —
+   so the first snapshot is never empty.
+2. **The UI, first and fatal.** `yoyopod-ui-host` is spawned with
+   `["--hardware", <whisplay|mock>]` and the runtime blocks up to
+   **5 seconds** for [`ui.ready`](/runtime/ui-contract/#the-handshake-uiready).
+   Timeout or spawn failure aborts the entire runtime — a yoyopod with no
+   glass is not degraded, it's off. This is the fail-loudly rule from the
+   UI guide, seen from the other end.
+3. **The departments, tolerant.** Cloud, media, voip, network, power, and
+   (if enabled) speech are spawned in that order, each with a **3-second**
+   ready wait. A no-show is marked `Degraded` and boot continues — the
+   child can still listen to music if the cellular modem is sulking.
+   Speech, when disabled by config, is never spawned and marked
+   `Disabled`.
+4. **The startup volley** (`send_startup_commands`):
+
+   | Target | Commands |
+   | --- | --- |
+   | UI | `ui.set_backlight` |
+   | media | `media.configure` (config pushed) + `media.start` |
+   | voip | `voip.configure` (config pushed) + `voip.register` |
+   | network | `network.health` + `network.query_gps` |
+   | cloud | `cloud.health` + `cloud.publish_heartbeat` (with firmware version) |
+   | power, voice | `*.health` probes |
+
+   Note the two config-delivery styles: media and voip receive their
+   config *pushed* in `*.configure`; the others loaded their own —
+   see [Configuration Wiring](/runtime/configuration/).
+5. **One full script.** The only complete `RuntimeSnapshot` the UI will
+   ever receive; everything after is
+   [patches](/runtime/loop/#only-what-changed-crosses-the-wire).
+6. **The loop.** `run_once` every ~20 ms until something ends the show.
+
+## Shutdown — three doors, one exit
+
+The show ends by **SIGINT/SIGTERM** (the operator or the landlord), a
+**`Runtime::Shutdown` intent** from the UI (the polite off switch), or a
+completed **low-battery auto-shutdown**
+([house rule](/runtime/routing-and-policies/#house-rules)).
+
+All three converge on `stop_all`: broadcast `worker.stop` to every child,
+wait **1 second** (polling every 10 ms), then `kill()` any survivor and
+reap it. Finally the shutdown marker is logged and the PID file removed.
+The grace period is short on purpose — workers hold no unsaved state worth
+waiting for, because the ledger lives in the runtime.

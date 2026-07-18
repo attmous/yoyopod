@@ -1,0 +1,83 @@
+---
+title: Failure Paths & Timeouts
+description: "Advanced: every timeout in one table, the failure walkthroughs, and the recovery matrix — who fixes what, and who deliberately doesn't."
+---
+
+Every duration that governs the runtime's behavior, in one place — then
+what actually happens when things go wrong.
+
+## The timeout budget
+
+| Duration | What it bounds | On expiry |
+| --- | --- | --- |
+| **5 s** | UI `ui.ready` wait at startup | **fatal** — the runtime aborts |
+| **3 s** | every other worker's ready wait | domain marked `Degraded`, boot continues |
+| **20 ms** | the loop period (~50 Hz) | — (the heartbeat of everything) |
+| **≤64 msgs/domain/turn** | inbox drain cap | excess waits for the next turn |
+| **1 s** | shutdown grace after `worker.stop` | survivors are killed |
+| **5 s** | UI-side tick-stall watchdog | UI emits `RuntimeStalled`, keeps running |
+| **15 s** | UI-side manager heartbeat | UI exits → systemd restarts the runtime |
+| **5 s** | systemd `RestartSec` | the whole building is rebuilt |
+| **1 s → 30 s** | network recovery backoff (doubling) | next bring-up attempt |
+| **15 s** | power watchdog feed interval | hardware reset if feeding stops unannounced |
+| **15 s / 300 s** | low-battery shutdown delay / warning cooldown | clean poweroff |
+| **`deadline_ms`** | per-request deadline (speech honors it) | request cancelled |
+
+## Walkthroughs
+
+### A worker crashes mid-run
+
+The reader thread sees EOF → one `worker.exited` event → the domain is
+marked `Stopped` — and that's all. No respawn. If the domain's snapshot
+changed, the UI gets a patch (a dead network shows as offline); the rest
+of the device keeps working. The domain stays down until the next
+whole-runtime restart. This is [the design](/runtime/process-model/),
+not an oversight.
+
+### The UI crashes
+
+The runtime keeps running — but the UI process's exit means nothing is
+consuming Ticks. On the UI side this case never happens (it's dead); on
+the runtime side, writes to the dead child's stdin fail, errors surface,
+and practically the operator (or the watchdog chain) restarts the
+service. Conversely, if the *runtime* dies, the UI notices within 15 s
+(manager heartbeat), exits, and systemd rebuilds everything — the two
+processes are mutually assured restarters.
+
+### A malformed telegram arrives
+
+`decode` rejects it whole (`InvalidJson` / `UnsupportedSchema` /
+`InvalidEnvelope`); the error travels the separate protocol-error channel;
+the domain is marked `Degraded`; the stream continues with the next line.
+One bad line never poisons the pipe.
+
+### A worker's stdin stalls
+
+The soft spot ([gap #6](/runtime/gaps/)): outbound writes are blocking
+and the loop is single-threaded, so a worker that stops reading its
+stdin delays the turn — including the Tick to the UI. The UI's budgets
+(5 s / 15 s) mean the stall must persist hundreds of turns before
+anything visible happens; if it does, the UI's manager-heartbeat exit
+ultimately triggers the systemd rebuild. Slow degradation, loud ending.
+
+### The battery dies
+
+The full chain: power snapshot ≤ 20% → warning (throttled to 300 s) →
+≤ 10% → 15 s delay → `power.watchdog_suppress` (so the hardware watchdog
+doesn't yank power mid-write) → shutdown-state file written →
+`sudo -n shutdown -h now`. Next boot reads the state file and knows why
+it happened. The [boiler room](/runtime/workers/power/) and the
+[house rule](/runtime/routing-and-policies/#low-battery-ends-the-show--safely)
+each own half of this dance.
+
+## The recovery matrix
+
+| Layer | Recovers | Mechanism |
+| --- | --- | --- |
+| **Worker-internal** | its own subsystem | network's backoff FSM to `Online`; voip's `recovery_pending` re-registration; cloud's reconnect + queue flush |
+| **Runtime** | **nothing — by design** | domains degrade or stop; the ledger stays consistent |
+| **systemd** | everything | whole-process rebuild, 5 s, into a provably consistent state |
+
+The pattern: recovery happens either *inside* a worker (where the domain
+knows what retry means) or *outside* the whole process (where consistency
+is guaranteed) — never in the murky middle.

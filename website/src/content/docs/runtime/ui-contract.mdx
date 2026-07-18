@@ -1,0 +1,98 @@
+---
+title: The UI Contract
+description: The typed contract between the runtime and the UI host — commands, events, the intent taxonomy, snapshots, patches, and the ready handshake.
+---
+
+The UI is the only worker with a fully typed, shared contract
+(`device/protocol/src/ui/`). Everything the runtime can say to the theater,
+and everything the theater can say back, is enumerated here. This page is
+the wire-level companion to the UI guide's
+[Runtime Data Flow](/ui/advanced/data-flow/) — same conversation, seen
+from the office's side.
+
+## Commands: runtime → UI (`UiCommand`, 11)
+
+| Variant | Wire `type` | Effect |
+| --- | --- | --- |
+| `Tick` | `ui.tick` | advance LVGL time + animations; feeds the UI's stall watchdog |
+| `RuntimeSnapshot(...)` | `ui.runtime_snapshot` | the full script — sent once at startup |
+| `RuntimePatch(...)` | `ui.runtime_patch` | a revised page — one changed domain |
+| `InputAction(...)` | `ui.input_action` | inject a semantic input (used by on-device validation) |
+| `PollInput` | `ui.poll_input` | poll the physical button |
+| `SetBacklight{brightness}` | `ui.set_backlight` | drive the backlight GPIO (clamped 0–1) |
+| `Animate(...)` | `ui.animate` | start a runtime-requested animation |
+| `Screenshot{path, prefer_readback}` | `ui.screenshot` | capture and report |
+| `Health` | `ui.health` | request a health report |
+| `Shutdown` | `ui.shutdown` | drain and exit politely |
+| `WorkerStop` | `worker.stop` | the generic stop every worker honors |
+
+## Events: UI → runtime (`UiEvent`, 8)
+
+| Variant | Wire `type` | Meaning |
+| --- | --- | --- |
+| `Ready(UiReady)` | `ui.ready` | the handshake (below) — display size, schema, capabilities |
+| `Intent(UiIntent)` | `ui.intent` | *the buzzer note*: the UI wants something to happen |
+| `Input(...)` | `ui.input` | gesture telemetry (action, method, duration) |
+| `ScreenChanged(...)` | `ui.screen_changed` | navigation happened |
+| `Health(...)` | `ui.health` | the health report (frames, input count, patch counts per domain) |
+| `ScreenshotCaptured(...)` | `ui.screenshot_captured` | a capture finished |
+| `Error(UiError)` | `ui.error` | typed: decode_error · invalid_command · manager_timeout · runtime_stalled · worker_error |
+| `ShutdownComplete` | `ui.shutdown_complete` | the polite goodbye |
+
+## The intent taxonomy (`UiIntent`, 6 domains)
+
+Wire shape `{"domain", "action", "payload"}`; many actions accept aliases
+(e.g. `next` and `next_track`). The runtime routes each domain to a worker
+— the full routing map is on
+[Intents & House Rules](/runtime/routing-and-policies/).
+
+| Domain | Actions | Routed to |
+| --- | --- | --- |
+| `Music` | 6 — play_pause, next, previous, shuffle_all, load_playlist, play_recent_track | media |
+| `Call` | 5 — answer, reject, hangup, toggle_mute, start | voip |
+| `Voice` | **13** — ask start/stop/cancel, capture start/stop/cancel/toggle, send, play, play_latest, stop_playback, mark_seen, discard | voip + speech |
+| `Power` | 5 — refresh, sync_time_to_rtc, sync_time_from_rtc, set_rtc_alarm, disable_rtc_alarm | power |
+| `Navigation` | Back | handled inside the UI — never leaves the process |
+| `Runtime` | Shutdown | the runtime itself |
+
+Action payloads (`ListItemAction`, `ContactAction`,
+`VoiceRecipientAction`, `VoiceFileAction`, `RtcAlarmAction`) are all
+serde-default structs — every field optional on the wire.
+
+## The script: `RuntimeSnapshot`
+
+The snapshot is the UI's entire world: `app_state` (which screen the
+runtime believes is active) plus seven domain blocks, every field
+serde-default so partial data never breaks decoding:
+
+| Domain | Carries |
+| --- | --- |
+| `hub` | the home cards (defaults to listen/talk/ask/setup) |
+| `music` | playing/paused, title/artist, progress (per-mille), playlists, recent tracks |
+| `call` | call state + peer, contacts, history, unread/latest voice notes per contact |
+| `voice` | assistant phase, headline/body, capture-in-flight, PTT active |
+| `power` | battery %, charging, settings pages/rows |
+| `network` | connected, connection type, signal strength, GPS fix |
+| `overlay` | loading flag, error text, message |
+
+**Patches** (`RuntimeSnapshotPatch`) are a tagged union
+`{"domain": "music", "snapshot": {...}}` with one variant per domain plus
+`Full` and `AppState`. After the single full snapshot at startup, only
+patches cross the wire — the office-side twin of the UI's
+[only-what-changed law](/ui/mental-model/#2-only-what-changed-ever-moves).
+
+## The handshake: `ui.ready`
+
+The UI's first telegram carries `UiReady`:
+
+- the **display size** (240×280 — the runtime doesn't hardcode it),
+- `UI_SCHEMA_VERSION = 2` — **advertised, not enforced**; nothing checks
+  it today ([Known Gaps](/runtime/gaps/)),
+- `screens: Vec<ScreenCapabilities>` — for every screen, which intents it
+  can emit and whether it holds a PTT passthrough. This is capability
+  *discovery*: the runtime learns what the UI build in front of it can do
+  rather than assuming.
+
+The runtime waits **5 seconds** for this telegram, and treats silence as
+fatal — the one hire the office cannot open without. See
+[Startup & Shutdown](/runtime/lifecycle/).

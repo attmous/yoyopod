@@ -1,0 +1,68 @@
+---
+title: "VoIP: The Switchboard"
+description: The voip host — liblinphone through a hand-rolled FFI shim, SIP lifecycle, calls, messaging, and voice notes.
+---
+
+## What it owns
+
+The entire communication surface: SIP registration, call control, text
+and voice-note messaging, call history, and voice-note record/playback —
+all through a native **liblinphone** core. At ~5,600 LoC it is the
+largest worker, and the only one requiring a cargo feature
+(`native-liblinphone`; the binary refuses to start without it).
+
+## How it's wired
+
+| | |
+| --- | --- |
+| Binary | `yoyopod-voip-host` |
+| Config | **pushed** — `voip.configure` composed from `communication/calling.yaml` + `calling.secrets.yaml` + `messaging.yaml` + `device/hardware.yaml` audio ids; secrets redacted in every log path |
+| Wraps | liblinphone, **in-process** via a hand-rolled dlopen FFI shim (`yoyopod_liblinphone_*` C ABI) |
+| Audio | ALSA devices (WM8960 defaults) for call + capture audio |
+| Playback helpers | `aplay` for WAV voice notes, `ffplay` (+12 dB) for the rest |
+
+The FFI shim mirrors the UI's LVGL approach — hand-written bindings, no
+wrapper crate — but goes further: liblinphone is *dynamically loaded* at
+runtime, and all state lives behind a single global `Mutex<ShimState>`.
+One core per process, enforced by construction.
+
+## Lifecycle
+
+The registration FSM tracks SIP state with a `recovery_pending` flag: a
+re-registration after a failure is reported as *recovered*, not merely
+*registered* — so the runtime (and telemetry) can tell a clean start from
+a comeback. Calls move through **13 states**; a backend stop marks
+recovery pending and clears any active call.
+
+Messaging keeps a client-id ↔ backend-id map for outbound messages
+(terminal delivery states drop the mapping), a 200-entry persistent JSON
+store with per-contact unread summaries, and a voice-note session FSM
+(idle → recording → recorded → sending).
+
+## Commands & events
+
+19 commands / 12 events:
+
+| Group | Commands |
+| --- | --- |
+| Lifecycle | `configure` · `health` · `register` · `unregister` · `shutdown` |
+| Calls | `dial` · `answer` · `reject` · `hangup` · `set_mute` |
+| Messaging | `send_text_message` · `mark_call_history_seen` |
+| Voice notes | `start/stop/cancel_voice_note_recording` · `send_voice_note` · `mark_voice_notes_seen` · `play_voice_note` · `stop_voice_note_playback` |
+
+Events: `ready` · `snapshot` · `lifecycle_changed` ·
+`registration_changed` · `incoming_call` · `call_state_changed` ·
+`backend_stopped` · `message_received` · `message_delivery_changed` ·
+`message_download_completed` · `message_failed` · `error`.
+
+## Gotchas
+
+- The backend polls at `iterate_interval_ms` (default 20 ms) — liblinphone
+  wants frequent iteration; starving it delays call state.
+- The `incoming_call` event is what triggers the runtime's screen
+  preemption and the pause-the-music
+  [house rule](/runtime/routing-and-policies/#house-rules) — the
+  switchboard itself only reports.
+- Voice-note *capture* is here, but Ask-flow speech is the
+  [interpreter's](/runtime/workers/speech/) job — the split follows the
+  wire: `voip.*` vs `voice.*`.

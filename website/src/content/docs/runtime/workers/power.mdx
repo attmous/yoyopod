@@ -1,0 +1,65 @@
+---
+title: "Power: The Boiler Room"
+description: The power host — PiSugar battery telemetry, RTC control, and the hardware watchdog fed over I²C.
+---
+
+## What it owns
+
+Power truth and time truth: battery telemetry, charging state, the
+real-time clock (sync + alarms), and the PiSugar **hardware watchdog** —
+the circuit that power-cycles the board if software stops feeding it.
+
+## How it's wired
+
+| | |
+| --- | --- |
+| Binary | `yoyopod-power-host` (~1,650 LoC) |
+| Config | **self-loads** `power/backend.yaml` |
+| Wraps | `pisugar-server` over its Unix socket (`/tmp/pisugar-server.sock`) or TCP (`127.0.0.1:8423`), mode `auto` falls back |
+| Watchdog | direct I²C via `i2cget`/`i2cset`, registers `0x06`/`0x07` (bus 1, addr `0x57`) |
+
+When the backend is disabled in config, a `DisabledPowerBackend` reports
+unavailable — the domain degrades visibly instead of faking numbers.
+
+## The watchdog dance
+
+The host feeds the hardware watchdog on a timer (default every **15 s**;
+the configured timeout is coerced to the chip's `ceil(seconds/2)` units,
+clamped 1–255). Two distinct off-switches, and the difference matters:
+
+| Operation | When | Effect |
+| --- | --- | --- |
+| `watchdog_suppress` | before an **intentional** shutdown | stops feeding *without* disabling — the [low-battery house rule](/runtime/routing-and-policies/#low-battery-ends-the-show--safely) uses this so the board powers down cleanly instead of being yanked mid-write |
+| `watchdog_disable` | on worker stop | turns the watchdog off entirely |
+
+## Commands & events
+
+11 commands / 4 events:
+
+| Group | Commands |
+| --- | --- |
+| Telemetry | `power.health` · `power.refresh` |
+| RTC | `sync_time_to_rtc` · `sync_time_from_rtc` · `set_rtc_alarm` (repeat mask, default 127 = daily) · `disable_rtc_alarm` |
+| Watchdog | `watchdog_enable` · `watchdog_feed` · `watchdog_disable` · `watchdog_suppress` |
+| Lifecycle | `power.shutdown` |
+
+Events: `power.ready` (capabilities incl. `rtc_control`, `watchdog`) ·
+`power.snapshot` · `power.stopped` · `power.error`. Control commands echo
+their own type as a result with `{ok, snapshot}`.
+
+## Two distinctions worth knowing
+
+1. **The only scaffolding user.** This is the single worker built on the
+   shared `device/worker` helpers — the other five reimplement them
+   ([Known Gaps](/runtime/gaps/)). If the scaffolding ever grows, this
+   crate is the reference consumer.
+2. **Its config has two readers.** `power/backend.yaml` is read by this
+   host *and* independently by the runtime for the battery-safety
+   thresholds — the
+   [dual-reader callout](/runtime/configuration/#the-worker--config-map)
+   exists because editing one consumer's expectations can surprise the
+   other.
+
+The systemd unit orders the runtime `After=pisugar-server.service` — an
+ordering dependency, not a hard requirement: boot proceeds without it,
+and this domain simply reports unavailable.

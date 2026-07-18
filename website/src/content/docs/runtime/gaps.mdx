@@ -1,0 +1,37 @@
+---
+title: Known Gaps & Honest Caveats
+description: The runtime's honesty ledger — what exists but is unused, what is configured but unimplemented, and what to lean on vs. step around.
+---
+
+Like the UI guide's [gaps page](/ui/gaps/), this is the ledger of the
+distance between the code and its own ambitions — verified against the
+source, kept next to the guide that documents it.
+
+## The ledger
+
+| # | Item | Where | Impact |
+| --- | --- | --- | --- |
+| 1 | `WorkerHealth.restart_count` exists and is **never incremented** — there are no in-process restarts to count | `runtime/src/state.rs` | harmless today; misleading if you chart it |
+| 2 | The `Heartbeat` envelope kind is defined, **never sent, ignored inbound** — liveness is the Tick stream | `protocol/src/lib.rs` | don't build on it; either use it or remove it |
+| 3 | Cloud **HTTP sync is configured but unimplemented** — `api_base_url` etc. describe a REST surface that doesn't exist | `cloud/src/config.rs` | MQTT is the only live transport |
+| 4 | onpi `voip` and `cloud-voice` validation stages are **stubbed** (exit 2) | `onpi/src/stages.rs` | those paths ship without on-device validation |
+| 5 | `CANONICAL_STRUCTURE.md`'s package-ownership half describes the **retired Python layout** | `docs/architecture/` | config half still authoritative; [Configuration Wiring](/runtime/configuration/) supersedes the rest |
+| 6 | The loop is **single-threaded**: a blocking write to a stalled worker's stdin can delay everything behind it, including the UI's Tick | `runtime/src/runtime_loop.rs` | margins are huge (~250×), but see [Failure Paths](/runtime/advanced/failure-paths/) |
+| 7 | `UI_SCHEMA_VERSION = 2` is **advertised in `ui.ready` but never enforced** anywhere | `protocol/src/ui/mod.rs` | version drift between runtime and UI would go unnoticed |
+| 8 | The `device/worker` scaffolding is used **only by power** — five workers reimplement emit/ready/health/stopped/error locally | `device/worker/` | uniformity by convention, not by construction |
+
+## What this means for contributors
+
+**Safe to lean on:** the envelope schema gate (it really does fail
+closed), the patch-diff contract, the intent routing table, the
+no-restarts model, network's internal recovery FSM.
+
+**Traps:** don't add a feature that assumes heartbeats exist (#2), don't
+wire anything to `restart_count` (#1), don't trust the Python package map
+in the canonical structure doc (#5), and if you add a worker, decide
+consciously whether to adopt the scaffolding (#8) — power is the
+reference consumer.
+
+**Worth fixing when touched:** enforcing the UI schema version during the
+handshake (#7) is a small, high-value hardening; the stubbed onpi stages
+(#4) block confident voip/speech refactors.

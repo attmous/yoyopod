@@ -1,0 +1,57 @@
+<svg viewBox="0 0 760 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Anatomy of a worker envelope: one newline-framed JSON object with schema version, kind, type, request id, timestamps, and an object payload">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #2b2122); stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; }
+    .hub { fill: var(--sl-color-accent-low, #4a2420); stroke: var(--sl-color-accent, #f37767); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f5ece1); font-size: 14px; font-weight: 700; }
+    .m { fill: var(--sl-color-gray-1, #efe4d6); font-size: 13px; font-family: ui-monospace, monospace; }
+    .mc { fill: var(--sl-color-accent, #f37767); font-size: 13px; font-family: ui-monospace, monospace; font-weight: 700; }
+    .s { fill: var(--sl-color-gray-3, #a5937f); font-size: 11.5px; }
+    .call { stroke: var(--sl-color-gray-3, #a5937f); stroke-width: 1.5; fill: none; }
+  </style>
+
+  <text class="t" x="40" y="34">One telegram = one line on stdin/stdout</text>
+
+  <rect class="hub" x="40" y="50" width="680" height="66" rx="10"/>
+  <text class="m" x="58" y="78">{"schema_version":1, "kind":"command", "type":"media.next_track",</text>
+  <text class="m" x="58" y="100"> "request_id":"r-42", "timestamp_ms":81234, "payload":{}}<tspan class="mc">\n</tspan></text>
+
+  <!-- callouts -->
+  <path class="call" d="M118,116 L118,152"/>
+  <rect class="box" x="40" y="154" width="200" height="66" rx="10"/>
+  <text class="t" x="54" y="176">schema_version</text>
+  <text class="s" x="54" y="194">strict gate: must equal 1;</text>
+  <text class="s" x="54" y="208">anything else fails closed</text>
+
+  <path class="call" d="M300,116 L300,152"/>
+  <rect class="box" x="260" y="154" width="220" height="66" rx="10"/>
+  <text class="t" x="274" y="176">kind — one of five</text>
+  <text class="s" x="274" y="194">command · event · result · error</text>
+  <text class="s" x="274" y="208">· heartbeat (defined, unused)</text>
+
+  <path class="call" d="M560,116 L560,152"/>
+  <rect class="box" x="500" y="154" width="220" height="66" rx="10"/>
+  <text class="t" x="514" y="176">type — "domain.action"</text>
+  <text class="s" x="514" y="194">the routing key; unknown types</text>
+  <text class="s" x="514" y="208">are rejected, never guessed</text>
+
+  <path class="call" d="M150,220 L150,256"/>
+  <rect class="box" x="40" y="258" width="220" height="66" rx="10"/>
+  <text class="t" x="54" y="280">request_id (optional)</text>
+  <text class="s" x="54" y="298">correlation slip: a result or error</text>
+  <text class="s" x="54" y="312">echoes the command's id</text>
+
+  <path class="call" d="M390,220 L390,256"/>
+  <rect class="box" x="290" y="258" width="220" height="66" rx="10"/>
+  <text class="t" x="304" y="280">payload — always an object</text>
+  <text class="s" x="304" y="298">validate() rejects non-objects;</text>
+  <text class="s" x="304" y="312">null is coerced to {} on decode</text>
+
+  <path class="call" d="M650,220 L650,256"/>
+  <rect class="box" x="540" y="258" width="180" height="66" rx="10"/>
+  <text class="t" x="554" y="280">\n framing</text>
+  <text class="s" x="554" y="298">encode appends it; the</text>
+  <text class="s" x="554" y="312">reader splits on it. NDJSON.</text>
+
+  <text class="s" x="40" y="368">Extra fields ride along safely (serde defaults) — adding an optional field never breaks an old peer.</text>
+  <text class="s" x="40" y="388">New message types require both sides to know them; changing the framing requires a schema_version bump and fails closed.</text>
+</svg>
