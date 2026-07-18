@@ -9,12 +9,27 @@ pub struct Scene {
     pub id: SceneId,
     pub backdrop: Backdrop,
     pub stage: Stage,
-    pub context: Option<String>,
+    pub context: Option<WheelHeaderModel>,
     pub decks: Vec<Deck>,
     pub cursor: Option<Cursor>,
     pub fx: FxLayer,
     pub modal: Option<Modal>,
     pub timelines: Vec<Timeline>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WheelHeaderModel {
+    pub title: String,
+    pub counter: Option<String>,
+}
+
+impl WheelHeaderModel {
+    pub fn new(title: impl Into<String>, counter: Option<String>) -> Self {
+        Self {
+            title: title.into(),
+            counter,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

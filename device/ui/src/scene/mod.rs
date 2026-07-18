@@ -25,5 +25,5 @@ pub use graph::{
 pub use hud::{HudBattery, HudConnectivity, HudConnectivityKind, HudScene, HudStatus};
 pub use layers::{LayerSlot, LAYER_ORDER};
 pub use modal::Modal;
-pub use scene::{Scene, SceneId};
+pub use scene::{Scene, SceneId, WheelHeaderModel};
 pub use stage::{region_rect, LayoutRect, RegionId, Stage};

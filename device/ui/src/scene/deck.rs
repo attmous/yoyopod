@@ -2,6 +2,7 @@ use crate::animation::{presets, ActorRef, Timeline, TimelineRef, TrackIndex};
 use crate::components::widgets::{
     call_panel as call_panel_widget, card as card_widget, list_row as list_row_widget,
     player_hero as player_hero_widget, wheel_item as wheel_item_widget, CallPanelProps,
+    WheelItemSlot,
 };
 use crate::engine::{AnimSlot, Element, Key};
 use crate::scene::roles;
@@ -138,19 +139,39 @@ impl Deck {
                     .key(Key::Static("deck_region"))
                     .region(self.region),
             );
-        let short_wheel_offset = if self.kind == DeckKind::Wheel && self.items.len() < 3 {
-            80
-        } else {
-            0
-        };
+        let short_wheel_offset =
+            if self.kind == DeckKind::Wheel && !self.has_media_items() && self.items.len() < 3 {
+                80
+            } else {
+                0
+            };
         let focused_item_index = self.normalized_focus_index();
+        let focused_visible_index = self.focused_visible_index();
         for (visible_index, (item_index, item)) in self.visible_items().enumerate() {
+            let selected = Some(item_index) == focused_item_index;
+            let wheel_slot = match &item.render {
+                ItemRender::Wheel(WheelItemModel {
+                    variant: WheelItemVariant::Media { .. },
+                    ..
+                }) if selected => WheelItemSlot::Focused,
+                ItemRender::Wheel(WheelItemModel {
+                    variant: WheelItemVariant::Media { .. },
+                    ..
+                }) if visible_index < focused_visible_index => WheelItemSlot::Previous,
+                ItemRender::Wheel(WheelItemModel {
+                    variant: WheelItemVariant::Media { .. },
+                    ..
+                }) => WheelItemSlot::Next,
+                _ => WheelItemSlot::Standard,
+            };
             let mut item_element = deck_item_element(
                 item,
-                Some(item_index) == focused_item_index,
+                selected,
                 self.item_anim,
                 index,
                 visible_index,
+                item_index,
+                wheel_slot,
             );
             if short_wheel_offset != 0 {
                 item_element = item_element.offset_y(short_wheel_offset);
@@ -158,6 +179,18 @@ impl Deck {
             element = element.child(item_element);
         }
         element
+    }
+
+    fn has_media_items(&self) -> bool {
+        self.items.iter().any(|item| {
+            matches!(
+                item.render,
+                ItemRender::Wheel(WheelItemModel {
+                    variant: WheelItemVariant::Media { .. },
+                    ..
+                })
+            )
+        })
     }
 
     fn visible_items(&self) -> impl Iterator<Item = (usize, &DeckItem)> {
@@ -256,17 +289,26 @@ fn deck_item_element(
     item_anim: DeckItemAnim,
     deck_index: usize,
     visible_index: usize,
+    item_index: usize,
+    wheel_slot: WheelItemSlot,
 ) -> Element {
     let is_wheel = matches!(item.render, ItemRender::Wheel(_));
     let element = match &item.render {
         ItemRender::Companion => companion_element().key(item.key.clone()),
         ItemRender::Card(card) => card_widget(card).key(item.key.clone()),
         ItemRender::Row(row) => list_row_widget(row, selected, item.key.clone()),
-        ItemRender::Wheel(model) => wheel_item_widget(
-            model,
-            selected,
-            Key::String(format!("wheel-slot:{visible_index}")),
-        ),
+        ItemRender::Wheel(model) => {
+            let key = if wheel_slot == WheelItemSlot::Standard {
+                Key::String(format!("wheel-slot:{visible_index}"))
+            } else {
+                // Media roots are refreshed after a committed roll so LVGL
+                // cannot retain the outgoing slot's transform or opacity.
+                Key::String(format!(
+                    "media-wheel-slot:{visible_index}:item:{item_index}"
+                ))
+            };
+            wheel_item_widget(model, selected, wheel_slot, key)
+        }
         ItemRender::Page(page) => Element::new(ElementKind::Container, Some(roles::PAGE))
             .key(item.key.clone())
             .child(Element::new(ElementKind::Label, Some(roles::PAGE_TITLE)).text(&page.title))
@@ -381,6 +423,31 @@ mod tests {
         }
     }
 
+    fn media_wheel(item_count: usize, focus_index: usize) -> Deck {
+        Deck {
+            kind: DeckKind::Wheel,
+            region: RegionId::Auto,
+            items: (0..item_count)
+                .map(|index| DeckItem {
+                    key: Key::Indexed(index),
+                    render: ItemRender::Wheel(WheelItemModel {
+                        title: format!("Track {index}"),
+                        subtitle: format!("{index}:00"),
+                        variant: WheelItemVariant::Media {
+                            initial: "T".to_string(),
+                            plate_rgb: 0xE5443B,
+                        },
+                    }),
+                })
+                .collect(),
+            focus_index,
+            focus_policy: FocusPolicy::Wrap,
+            item_anim: DeckItemAnim::None,
+            swap_anim: None,
+            recycle_window: Some(3),
+        }
+    }
+
     #[test]
     fn wheel_window_wraps_around_the_first_item() {
         let deck = wheel(7, 0);
@@ -429,5 +496,53 @@ mod tests {
         assert_eq!(first_items[2].key, next_items[2].key);
         assert_eq!(next_items[1].props.scale_permille, Some(1000));
         assert_eq!(next_items[1].props.opacity, Some(255));
+    }
+
+    #[test]
+    fn media_wheel_uses_asymmetric_semantic_slots() {
+        let element = media_wheel(3, 0).element(0);
+        let items = &element.children[1..];
+
+        assert_eq!(items[0].role, Some(roles::MEDIA_WHEEL_PREVIOUS));
+        assert_eq!(items[1].role, Some(roles::MEDIA_WHEEL_FOCUS));
+        assert_eq!(items[2].role, Some(roles::MEDIA_WHEEL_NEXT));
+        assert_eq!(
+            items[0].props.opacity,
+            Some(crate::animation::presets::MEDIA_WHEEL_PEEK_OPACITY)
+        );
+        assert_eq!(items[1].props.selected, Some(true));
+        assert_eq!(
+            items[2].props.opacity,
+            Some(crate::animation::presets::MEDIA_WHEEL_PEEK_OPACITY)
+        );
+        assert!(items.iter().all(|item| item.props.offset_y.is_none()));
+        assert!(items.iter().all(|item| item.props.scale_permille.is_none()));
+    }
+
+    #[test]
+    fn short_media_wheels_keep_focus_and_next_in_their_named_slots() {
+        let two = media_wheel(2, 0).element(0);
+        let items = &two.children[1..];
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].role, Some(roles::MEDIA_WHEEL_FOCUS));
+        assert_eq!(items[1].role, Some(roles::MEDIA_WHEEL_NEXT));
+        assert!(items.iter().all(|item| item.props.offset_y.is_none()));
+
+        let one = media_wheel(1, 0).element(0);
+        let items = &one.children[1..];
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].role, Some(roles::MEDIA_WHEEL_FOCUS));
+        assert!(items[0].props.offset_y.is_none());
+    }
+
+    #[test]
+    fn media_wheel_refreshes_slot_roots_after_the_roll_commits() {
+        let first = media_wheel(3, 0).element(0);
+        let next = media_wheel(3, 1).element(0);
+
+        for (first, next) in first.children[1..].iter().zip(&next.children[1..]) {
+            assert_ne!(first.key, next.key);
+            assert_eq!(first.role, next.role);
+        }
     }
 }

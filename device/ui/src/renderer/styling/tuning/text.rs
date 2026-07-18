@@ -66,7 +66,24 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 );
                 ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
             }
-            roles::WHEEL_CONTEXT => {
+            roles::MEDIA_WHEEL_HEADER_TITLE | roles::MEDIA_WHEEL_HEADER_COUNTER => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_12,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(
+                    obj.as_ptr(),
+                    if role == roles::MEDIA_WHEEL_HEADER_COUNTER {
+                        ffi::LV_TEXT_ALIGN_RIGHT
+                    } else {
+                        ffi::LV_TEXT_ALIGN_LEFT
+                    },
+                    SELECTOR,
+                );
+            }
+            roles::MEDIA_WHEEL_FOCUS_SUB => {
                 ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
                 ffi::lv_obj_set_style_text_font(
                     obj.as_ptr(),
@@ -75,16 +92,7 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 );
                 ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_LEFT, SELECTOR);
             }
-            roles::WHEEL_SUB => {
-                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
-                ffi::lv_obj_set_style_text_font(
-                    obj.as_ptr(),
-                    &ffi::lv_font_montserrat_12,
-                    SELECTOR,
-                );
-                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
-            }
-            roles::WHEEL_LABEL | roles::WHEEL_LABEL_B => {
+            roles::WHEEL_LABEL => {
                 ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
                 ffi::lv_obj_set_style_text_font(
                     obj.as_ptr(),
@@ -93,7 +101,29 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 );
                 ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
             }
-            roles::WHEEL_INITIAL => {
+            roles::MEDIA_WHEEL_PEEK_TITLE | roles::MEDIA_WHEEL_FOCUS_TITLE => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    if role == roles::MEDIA_WHEEL_PEEK_TITLE {
+                        &ffi::lv_font_montserrat_12
+                    } else {
+                        &ffi::lv_font_montserrat_18
+                    },
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_LEFT, SELECTOR);
+            }
+            roles::MEDIA_WHEEL_PEEK_INITIAL => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_18,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
+            }
+            roles::MEDIA_WHEEL_FOCUS_INITIAL => {
                 ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
                 ffi::lv_obj_set_style_text_font(
                     obj.as_ptr(),

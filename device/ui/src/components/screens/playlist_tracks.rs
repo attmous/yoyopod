@@ -1,10 +1,10 @@
 use yoyopod_protocol::ui::{ListItemSnapshot, RuntimeSnapshot, UiScreen};
 
-use crate::scene::{Scene, SceneDefaults, WheelItemModel};
+use crate::scene::{Scene, SceneDefaults, WheelHeaderModel, WheelItemModel};
 
 pub struct PlaylistTracksProps {
     pub defaults: SceneDefaults,
-    pub context: String,
+    pub header: WheelHeaderModel,
     pub items: Vec<WheelItemModel>,
     pub focus: usize,
 }
@@ -19,14 +19,12 @@ pub fn props_from(
         .and_then(|playlist| snapshot.music.playlist_tracks.get(&playlist.id))
         .cloned()
         .unwrap_or_default();
-    let context = selected_playlist
-        .map(|playlist| {
-            super::media_wheel::context_with_counter(&playlist.title, tracks.len(), focus)
-        })
-        .unwrap_or_else(|| "PLAYLIST".to_string());
+    let header = selected_playlist
+        .map(|playlist| super::media_wheel::header(&playlist.title, tracks.len(), focus))
+        .unwrap_or_else(|| super::media_wheel::header("PLAYLIST", tracks.len(), focus));
     PlaylistTracksProps {
         defaults,
-        context,
+        header,
         items: super::media_wheel::models(&tracks),
         focus,
     }
@@ -36,7 +34,7 @@ pub fn scene(props: &PlaylistTracksProps) -> Scene {
     super::media_wheel::scene(
         UiScreen::PlaylistTracks,
         &props.defaults,
-        props.context.clone(),
+        props.header.clone(),
         &props.items,
         props.focus,
     )
@@ -51,7 +49,7 @@ mod tests {
     fn selected_playlist_tracks_render_as_a_depth_three_wheel() {
         let playlist = ListItemSnapshot::new(
             "/music/Open Classics.m3u",
-            "Open Classics",
+            "Open Classics - Holst",
             "3 tracks",
             "playlist",
         );
@@ -71,7 +69,17 @@ mod tests {
             defaults_for(UiScreen::PlaylistTracks),
         );
         let scene = scene(&props);
-        assert_eq!(scene.context.as_deref(), Some("OPEN CLASSICS"));
+        assert_eq!(
+            scene.context.as_ref().map(|header| header.title.as_str()),
+            Some("HOLST")
+        );
+        assert_eq!(
+            scene
+                .context
+                .as_ref()
+                .and_then(|header| header.counter.as_deref()),
+            Some("2 / 2")
+        );
         assert_eq!(scene.decks[0].kind, DeckKind::Wheel);
         assert_eq!(scene.decks[0].focus_policy, FocusPolicy::Wrap);
         assert_eq!(scene.decks[0].focused_visible_index(), 0);

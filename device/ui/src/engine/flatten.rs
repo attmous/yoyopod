@@ -1,4 +1,5 @@
 use crate::animation::{presets, ActorRef, TimelineRef, TrackIndex};
+use crate::components::widgets::wheel_header as wheel_header_widget;
 use crate::scene::roles;
 use crate::scene::{
     FxLayer, GlowBloom, Halo, HudScene, LayerSlot, Modal, ParticleField, PulseRing, Scene,
@@ -82,12 +83,8 @@ fn decks_element(scene: &Scene) -> Element {
         .fold(root, |element, (index, deck)| {
             element.child(deck.element(index))
         });
-    match scene.context.as_deref() {
-        Some(context) => root.child(
-            Element::new(ElementKind::Label, Some(roles::WHEEL_CONTEXT))
-                .key(Key::Static("wheel_context"))
-                .text(context),
-        ),
+    match scene.context.as_ref() {
+        Some(context) => root.child(wheel_header_widget(context)),
         None => root,
     }
 }

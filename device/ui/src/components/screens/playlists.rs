@@ -24,7 +24,7 @@ pub fn scene(props: &PlaylistsProps) -> Scene {
     super::media_wheel::scene(
         UiScreen::Playlists,
         &props.defaults,
-        "LISTEN".to_string(),
+        super::media_wheel::header("LISTEN", props.items.len(), props.focus),
         &props.items,
         props.focus,
     )
@@ -49,7 +49,17 @@ mod tests {
         let scene = scene(&props);
 
         assert_eq!(scene.backdrop, Backdrop::Solid(0xE6FDE0));
-        assert_eq!(scene.context.as_deref(), Some("LISTEN"));
+        assert_eq!(
+            scene.context.as_ref().map(|header| header.title.as_str()),
+            Some("LISTEN")
+        );
+        assert_eq!(
+            scene
+                .context
+                .as_ref()
+                .and_then(|header| header.counter.as_deref()),
+            None
+        );
         assert_eq!(scene.decks[0].kind, DeckKind::Wheel);
         assert_eq!(scene.decks[0].focus_policy, FocusPolicy::Wrap);
         assert_eq!(scene.decks[0].focused_visible_index(), 0);

@@ -263,14 +263,23 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::LIST_ROW_ICON,
         roles::LIST_ROW_SUBTITLE,
         roles::LIST_ROW_TITLE,
-        roles::WHEEL_CONTEXT,
         roles::WHEEL_ITEM,
         roles::WHEEL_ICON,
-        roles::WHEEL_PLATE,
-        roles::WHEEL_INITIAL,
         roles::WHEEL_LABEL,
-        roles::WHEEL_LABEL_B,
-        roles::WHEEL_SUB,
+        roles::MEDIA_WHEEL_HEADER,
+        roles::MEDIA_WHEEL_HEADER_TITLE,
+        roles::MEDIA_WHEEL_HEADER_COUNTER,
+        roles::MEDIA_WHEEL_HEADER_DIVIDER,
+        roles::MEDIA_WHEEL_PREVIOUS,
+        roles::MEDIA_WHEEL_NEXT,
+        roles::MEDIA_WHEEL_PEEK_PLATE,
+        roles::MEDIA_WHEEL_PEEK_INITIAL,
+        roles::MEDIA_WHEEL_PEEK_TITLE,
+        roles::MEDIA_WHEEL_FOCUS,
+        roles::MEDIA_WHEEL_FOCUS_PLATE,
+        roles::MEDIA_WHEEL_FOCUS_INITIAL,
+        roles::MEDIA_WHEEL_FOCUS_TITLE,
+        roles::MEDIA_WHEEL_FOCUS_SUB,
         roles::HERO_PLAYER,
         roles::HERO_CONTEXT,
         roles::HERO_ARC,
@@ -329,6 +338,7 @@ fn required_selected_theme_roles() -> Vec<&'static str> {
         roles::LIST_ROW_SUBTITLE,
         roles::LIST_ROW_TITLE,
         roles::WHEEL_ITEM,
+        roles::MEDIA_WHEEL_FOCUS,
         roles::HERO_PREV,
         roles::HERO_PLAY,
         roles::HERO_NEXT,
@@ -385,5 +395,29 @@ mod tests {
 
         let two_flex_gaps = 2 * 3;
         assert!(label.width + charge.width + battery.width + two_flex_gaps <= right.width);
+    }
+
+    #[test]
+    fn media_wheel_regions_do_not_overlap() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let header = layout(&layouts, roles::MEDIA_WHEEL_HEADER);
+        let title = layout(&layouts, roles::MEDIA_WHEEL_HEADER_TITLE);
+        let counter = layout(&layouts, roles::MEDIA_WHEEL_HEADER_COUNTER);
+        let divider = layout(&layouts, roles::MEDIA_WHEEL_HEADER_DIVIDER);
+        let previous = layout(&layouts, roles::MEDIA_WHEEL_PREVIOUS);
+        let focus = layout(&layouts, roles::MEDIA_WHEEL_FOCUS);
+        let next = layout(&layouts, roles::MEDIA_WHEEL_NEXT);
+        let navigation = layout(&layouts, roles::DECK_BAR);
+
+        assert!(title.x + title.width <= counter.x);
+        assert!(divider.y + divider.height <= header.height);
+        assert!(header.y + header.height <= previous.y);
+        assert!(previous.y + previous.height <= focus.y);
+        assert!(focus.y + focus.height <= next.y);
+        assert!(next.y + next.height <= navigation.y);
+        for region in [header, previous, focus, next] {
+            assert!(region.x >= 0);
+            assert!(region.x + region.width <= 240);
+        }
     }
 }

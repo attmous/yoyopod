@@ -3,7 +3,7 @@ use yoyopod_protocol::ui::{ListItemSnapshot, UiScreen};
 use crate::engine::Key;
 use crate::scene::{
     Backdrop, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, ItemRender, RegionId, Scene,
-    SceneDefaults, SceneId, WheelItemModel, WheelItemVariant,
+    SceneDefaults, SceneId, WheelHeaderModel, WheelItemModel, WheelItemVariant,
 };
 
 const LISTEN_STAGE_LIME: u32 = 0xE6FDE0;
@@ -26,7 +26,7 @@ pub fn models(items: &[ListItemSnapshot]) -> Vec<WheelItemModel> {
 pub fn scene(
     screen: UiScreen,
     defaults: &SceneDefaults,
-    context: String,
+    header: WheelHeaderModel,
     items: &[WheelItemModel],
     focus: usize,
 ) -> Scene {
@@ -43,10 +43,7 @@ pub fn scene(
             .collect(),
         focus_index: focus,
         focus_policy: FocusPolicy::Wrap,
-        item_anim: DeckItemAnim::ScaleOnFocus {
-            from_permille: 700,
-            to_permille: 1000,
-        },
+        item_anim: DeckItemAnim::None,
         swap_anim: None,
         recycle_window: Some(3),
     };
@@ -54,7 +51,7 @@ pub fn scene(
         id: SceneId::new(screen),
         backdrop: Backdrop::Solid(LISTEN_STAGE_LIME),
         stage: defaults.stage,
-        context: Some(context),
+        context: Some(header),
         decks: vec![deck],
         cursor: None,
         fx: Default::default(),
@@ -63,13 +60,23 @@ pub fn scene(
     }
 }
 
-pub fn context_with_counter(title: &str, item_count: usize, focus: usize) -> String {
-    let title = title.trim().to_uppercase();
-    if item_count > 6 {
-        format!("{title} · {}/{}", focus % item_count + 1, item_count)
-    } else {
-        title
-    }
+pub fn header(title: &str, item_count: usize, focus: usize) -> WheelHeaderModel {
+    let counter = (item_count > 1).then(|| format!("{} / {item_count}", focus % item_count + 1));
+    WheelHeaderModel::new(compact_context_title(title), counter)
+}
+
+fn compact_context_title(title: &str) -> String {
+    let title = title.trim();
+    let suffix = [" - ", " – ", " — "]
+        .into_iter()
+        .find_map(|separator| {
+            title
+                .rsplit_once(separator)
+                .map(|(_, suffix)| suffix.trim())
+        })
+        .filter(|suffix| !suffix.is_empty())
+        .unwrap_or(title);
+    suffix.to_uppercase()
 }
 
 fn title_initial(title: &str) -> String {
@@ -107,11 +114,26 @@ mod tests {
     }
 
     #[test]
-    fn long_wheels_add_a_focus_counter_to_the_context() {
+    fn media_header_keeps_title_and_counter_separate() {
         assert_eq!(
-            context_with_counter("Morning Songs", 12, 3),
-            "MORNING SONGS · 4/12"
+            header("Morning Songs", 12, 3),
+            WheelHeaderModel::new("MORNING SONGS", Some("4 / 12".to_string()))
         );
-        assert_eq!(context_with_counter("Morning Songs", 3, 1), "MORNING SONGS");
+        assert_eq!(
+            header("Morning Songs", 1, 0),
+            WheelHeaderModel::new("MORNING SONGS", None)
+        );
+        assert_eq!(
+            header("Morning Songs", 0, 0),
+            WheelHeaderModel::new("MORNING SONGS", None)
+        );
+    }
+
+    #[test]
+    fn media_header_prefers_a_specific_title_suffix() {
+        assert_eq!(
+            header("Open Classics - Holst", 3, 0),
+            WheelHeaderModel::new("HOLST", Some("1 / 3".to_string()))
+        );
     }
 }

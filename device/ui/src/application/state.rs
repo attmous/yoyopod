@@ -1,4 +1,4 @@
-use crate::animation::Transition;
+use crate::animation::{Timeline, Transition};
 use crate::router;
 use crate::router::history::HistoryEntry;
 use crate::DirtyRegion;
@@ -24,11 +24,20 @@ pub struct UiRuntime {
     pub(crate) selected_playlist: Option<ListItemSnapshot>,
     pub(crate) selected_contact: Option<ListItemSnapshot>,
     pub(crate) transitions: Vec<Transition>,
+    pub(crate) pending_media_wheel_roll: Option<PendingMediaWheelRoll>,
+    pub(crate) scene_revision: u32,
     pub(crate) full_snapshots: u64,
     pub(crate) patches_per_domain: BTreeMap<RuntimeSnapshotDomain, u64>,
     pub(crate) status_bar_preview_enabled: bool,
     pub(crate) status_bar_preview_stage: Option<u8>,
     pub(crate) status_clock_minute: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PendingMediaWheelRoll {
+    pub screen: UiScreen,
+    pub target_focus: usize,
+    pub timeline: Timeline,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,6 +164,8 @@ impl Default for UiRuntime {
             selected_playlist: None,
             selected_contact: None,
             transitions: Vec::new(),
+            pending_media_wheel_roll: None,
+            scene_revision: 0,
             full_snapshots: 0,
             patches_per_domain: BTreeMap::new(),
             status_bar_preview_enabled: false,

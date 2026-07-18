@@ -9,6 +9,7 @@ pub mod player_hero;
 pub mod progress_sweep;
 pub mod status_bar;
 pub mod voice_meter;
+pub mod wheel_header;
 pub mod wheel_item;
 
 pub use call_panel::{call_panel, CallPanelProps};
@@ -22,4 +23,5 @@ pub use player_hero::player_hero;
 pub use progress_sweep::{progress_sweep, ProgressSweepProps};
 pub use status_bar::{status_bar, StatusBarProps};
 pub use voice_meter::{voice_meter, VoiceMeterProps};
-pub use wheel_item::wheel_item;
+pub use wheel_header::wheel_header;
+pub use wheel_item::{wheel_item, WheelItemSlot};

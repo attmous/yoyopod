@@ -24,7 +24,7 @@ pub fn scene(props: &RecentTracksProps) -> Scene {
     super::media_wheel::scene(
         UiScreen::RecentTracks,
         &props.defaults,
-        "LISTEN".to_string(),
+        super::media_wheel::header("LISTEN", props.items.len(), props.focus),
         &props.items,
         props.focus,
     )
