@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "website", "run", "dev"],
       "port": 4321
+    },
+    {
+      "name": "docs-vision",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "website-vision", "run", "dev"],
+      "port": 4322
     }
   ]
 }

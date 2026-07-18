@@ -1,0 +1,69 @@
+---
+title: About This Site
+description: Why the vision docs are all stubs, how they relate to the as-built engineering docs, and how a stub becomes a page.
+---
+
+*This page explains the site itself: what it is, what it is not, and how to
+work with it.*
+
+## Two sites, one honest split
+
+The yoyopod repository carries **two** documentation sites, and the split is
+deliberate:
+
+| Site | Accent | What it documents |
+| --- | --- | --- |
+| `website/` — the as-built docs | coral | What is **actually implemented today**, code-verified, with honest gap ledgers. The engineering source of truth. |
+| `website-vision/` — this site | teal | The **target state**: the documentation a complete hardware + software product would ship with. Structure decided, content pending. |
+
+Nothing on this site is a promise that a feature exists. When a vision page
+and an as-built page disagree, the as-built page wins.
+
+## Who this site is shaped for
+
+Three audiences, three entry paths from the landing page:
+
+- **Families** — parents (the buyers) and kids 7–14 (the users): setup,
+  everyday use, safety, and privacy, written for people who will never open
+  a terminal.
+- **Builders** — engineers and contributors: the hardware platform, the
+  software platform, and the developer guide.
+- **Company** — anyone who wants the *why*: mission, principles,
+  anti-positioning, roadmap.
+
+Two cross-cutting sections serve all three: **User Stories** (persona
+narratives that show what the product is for) and **Applications** (the
+experiences themselves: Listen, Talk, Locate, the Parent App, Setup).
+
+## The stub convention
+
+Every page except the landing page and the six section indexes is a
+**structured stub** with one uniform shape:
+
+- an *italic one-liner* stating the page's purpose,
+- a `Vision stub` caution so nobody mistakes outline for fact,
+- 2–4 section-family headings with bullet outlines of the content to come,
+- an **Open questions** list of TODOs that must be answered before the page
+  can be written.
+
+Sibling pages share a heading skeleton (all story pages have the same four
+headings, all app pages the same five, and so on) so the site reads
+consistently even as a skeleton.
+
+## How a stub becomes a page
+
+1. Answer the stub's open questions (or move them to an issue).
+2. Replace the bullet outline under each heading with prose — keep the
+   headings.
+3. Delete the `Vision stub` caution.
+4. If the page states something as *currently true*, verify it against the
+   as-built docs first.
+
+## Where the vocabulary comes from
+
+The structure is grounded in the repository's real product language —
+`docs/product/` and the root README: "the first device before a smartphone",
+the V1 pillars (whitelist calls & voice messages, live-ish location,
+music/audio, the parent app), the on-device screens (Hub, Listen, Talk,
+Setup), and the anti-positioning list. The stubs echo that vocabulary so
+this reads as *yoyopod's* future docs, not a generic template.

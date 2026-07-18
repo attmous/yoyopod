@@ -1,0 +1,61 @@
+---
+title: The Builders Guide
+description: The hardware platform, the software platform, and the developer guide — what the machine is made of and how to work on it.
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+*For engineers and contributors: what yoyopod is made of (hardware), how it
+thinks (software), and how to build, flash, and test one.*
+
+## How this guide is organized
+
+Three parts, from atoms to workflows:
+
+1. **Hardware Platform** — the physical device: display, audio, power,
+   connectivity, and the path from Pi prototype to a product board.
+2. **Software Platform** — the running system: architecture, the device
+   runtime and its workers, the UI system, cloud, apps, and security.
+3. **Developer Guide** — you and the repo: environment, build & flash,
+   testing, and the API/SDK surface.
+
+Vision pages here describe the **target** platform. For what is implemented
+today, each page's *Today vs. target* section points to the as-built
+engineering docs (the `website/` site in this repository — coral accent),
+which include full deep-dive guides for the UI system and the runtime.
+
+## Hardware Platform
+
+<CardGrid>
+	<LinkCard title="Device Overview & Specs" href="/builders/hardware/overview/" description="The whole machine on one page, plus the spec table." />
+	<LinkCard title="The Glass: Display & Input" href="/builders/hardware/display/" description="The small calm screen and the one physical button." />
+	<LinkCard title="Audio Path" href="/builders/hardware/audio/" description="Speaker, microphone, and the signal chain between them." />
+	<LinkCard title="Power & Battery" href="/builders/hardware/power/" description="Battery, charging, and power management." />
+	<LinkCard title="Connectivity: 4G & GPS" href="/builders/hardware/connectivity/" description="The modem, the SIM, and location hardware." />
+	<LinkCard title="From Prototype to Product" href="/builders/hardware/roadmap/" description="Pi Zero 2W + HAT today; what a product board changes." />
+</CardGrid>
+
+## Software Platform
+
+<CardGrid>
+	<LinkCard title="Architecture at a Glance" href="/builders/software/architecture/" description="One diagram's worth of system: device, cloud, apps." />
+	<LinkCard title="Device Runtime & Workers" href="/builders/software/runtime/" description="The supervisor and its worker processes." />
+	<LinkCard title="UI System" href="/builders/software/ui/" description="How shapes and motion reach the glass." />
+	<LinkCard title="Cloud & Provisioning" href="/builders/software/cloud/" description="Backend, provisioning, and the device's cloud link." />
+	<LinkCard title="App Platform" href="/builders/software/apps/" description="The parent app and future shared packages." />
+	<LinkCard title="Security Model" href="/builders/software/security/" description="Identity, whitelisting, transport, and updates." />
+</CardGrid>
+
+## Developer Guide
+
+<CardGrid>
+	<LinkCard title="Dev Environment" href="/builders/dev/environment/" description="Toolchain and repo orientation." />
+	<LinkCard title="Build & Flash a Device" href="/builders/dev/build-and-flash/" description="From checkout to a running device." />
+	<LinkCard title="Testing & Validation" href="/builders/dev/testing/" description="What green means, on host and on hardware." />
+	<LinkCard title="APIs & SDKs" href="/builders/dev/apis/" description="The future contracts and packages surface." />
+</CardGrid>
+
+:::note[Section status]
+The pages in this guide are structured stubs. See
+[About This Site](/start/about-this-site/).
+:::

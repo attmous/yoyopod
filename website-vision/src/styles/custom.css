@@ -1,0 +1,48 @@
+/*
+ * yoyopod VISION docs theme.
+ * Same warm-cream neutral family as the as-built site (website/), but the
+ * accent is deliberately swapped coral -> teal so the two sites are
+ * visually unmistakable: teal = target-state vision, coral = as built.
+ */
+
+/* Dark mode (Starlight default theme scope is :root) */
+:root {
+	--sl-color-accent-low: #14403c;
+	--sl-color-accent: #45c4b0;
+	--sl-color-accent-high: #c6f5ec;
+	--sl-color-white: #f5ece1;
+	--sl-color-gray-1: #efe4d6;
+	--sl-color-gray-2: #d8c8b3;
+	--sl-color-gray-3: #a5937f;
+	--sl-color-gray-4: #6d5f52;
+	--sl-color-gray-5: #3b2e2e;
+	--sl-color-gray-6: #2b2122;
+	--sl-color-black: #1a1518;
+}
+
+/* Light mode */
+:root[data-theme='light'] {
+	--sl-color-accent-low: #d5f0ea;
+	--sl-color-accent: #0f766e;
+	--sl-color-accent-high: #0b3f3a;
+	--sl-color-white: #1b1b1f;
+	--sl-color-gray-1: #3a3a40;
+	--sl-color-gray-2: #4f4a44;
+	--sl-color-gray-3: #8a8076;
+	--sl-color-gray-4: #b9ab99;
+	--sl-color-gray-5: #e9dccb;
+	--sl-color-gray-6: #f7ecdd;
+	--sl-color-gray-7: #fdf6ec;
+	--sl-color-black: #fffaf3;
+}
+
+/* Slightly rounder, friendlier chrome — matches the device UI's fills + radius look. */
+:root {
+	--sl-border-radius: 12px;
+}
+
+/* Hero title weight, matching the bold m3-style landing feel */
+[data-has-hero] .hero h1 {
+	font-weight: 800;
+	letter-spacing: -0.02em;
+}
