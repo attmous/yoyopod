@@ -38,9 +38,17 @@ Run from this directory:
   roadmap.
 - Sidebar and site config: `astro.config.mjs`. Theme: `src/styles/custom.css`.
 
-## Stub convention
+## Content status convention
 
-Every stub page carries a `:::caution[Vision stub]` aside, 2–4
-section-family H2s with bullet outlines, and an "Open questions" list of
-TODOs. Filling a stub means replacing the outline with prose and deleting
-the caution — the H2 skeleton should survive.
+The ideal structure is fixed; real content is condensed into it wherever
+the repository has it. Three states, mirrored by sidebar badges in
+`astro.config.mjs`:
+
+- **Filled** (no badge) — condensed from as-built docs; ends with a
+  `:::note[Sources]` aside.
+- **Partial** (`Partial` badge) — real sections plus inline
+  "*Placeholder — no as-built content yet.*" markers.
+- **Placeholder** (`Placeholder` badge) — `:::caution[Placeholder]` aside;
+  the outline is the target structure. The badge map is the gap list.
+
+The H2 skeleton must survive every state transition.

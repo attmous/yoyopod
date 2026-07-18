@@ -5,10 +5,8 @@ description: First solo walk — location on the parent's phone, one check-in ca
 
 *Mia's first solo walk to school, and what her mother Aylin sees from the kitchen.*
 
-:::caution[Vision stub]
-Placeholder in the vision docs — the structure is decided, the content is
-not written yet. As-built engineering docs live in the main docs site
-(`website/` in the repository).
+:::caution[Placeholder]
+No as-built content exists for this page yet — the outline below is the target structure.
 :::
 
 ## The moment

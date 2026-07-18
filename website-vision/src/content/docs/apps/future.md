@@ -5,10 +5,8 @@ description: The vision parking lot — bounded by what yoyopod is not.
 
 *Ideas compatible with the principles, parked until the V1 pillars are solid.*
 
-:::caution[Vision stub]
-Placeholder in the vision docs — the structure is decided, the content is
-not written yet. As-built engineering docs live in the main docs site
-(`website/` in the repository).
+:::caution[Placeholder]
+No as-built content exists for this page yet — the outline below is the target structure.
 :::
 
 ## How ideas earn a place here

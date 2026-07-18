@@ -5,10 +5,8 @@ description: A morning of music that works with no internet at all.
 
 *Jonas and a Saturday morning of music, offline in the garden.*
 
-:::caution[Vision stub]
-Placeholder in the vision docs — the structure is decided, the content is
-not written yet. As-built engineering docs live in the main docs site
-(`website/` in the repository).
+:::caution[Placeholder]
+No as-built content exists for this page yet — the outline below is the target structure.
 :::
 
 ## The moment

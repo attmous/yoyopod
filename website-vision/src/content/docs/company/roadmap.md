@@ -5,37 +5,77 @@ description: "The rounds: where V1 stands and what comes after."
 
 *The honest trajectory: V1 pillars first, everything else after.*
 
-:::caution[Vision stub]
-Placeholder in the vision docs — the structure is decided, the content is
-not written yet. As-built engineering docs live in the main docs site
-(`website/` in the repository).
-:::
-
 ## Where V1 stands
 
-- Local-first music/audio: playback works on-device today (Rust runtime, media worker via mpv)
-- Whitelist calls & voice messages: staged — the voip worker exists, end-to-end calling not yet complete
-- Live-ish location: hardware in place (4G modem + GPS), pillar status TBD
-- Parent mobile app: future work — planned apps/ directory, nothing shipped yet
-- Prototype hardware carries all of this: Raspberry Pi Zero 2W + PiSugar Whisplay HAT, explicitly a prototype path
+The roadmap is kept as the project's **honesty doc**: what is broken
+today, what works, and when it gets fixed. Its current subject is the
+**Rust CLI rebuild** — the old Python operator CLI (~21k lines) was
+deleted in one move, and a new Rust CLI is being rebuilt at `cli/` in
+business-need-sized rounds. Each round restores a capability shaped for
+current reality rather than porting assumptions that no longer hold.
+
+The rounds ledger (as of 2026-07-12):
+
+| Round | Scope | State |
+| --- | --- | --- |
+| 0 | Demolition + scaffolding | ✅ merged |
+| 1 | Daily dev loop (`yoyopod target …` Rust MVP) | ✅ merged |
+| 2 | Restore hardware validation (`yoyopod target validate`) | 🔄 in progress |
+| 3 | Restore prod release pipeline | ⏳ not started |
+| 4+ | Diagnostics (`pi voip/power/network/rust-ui-host`) | ⏳ not started |
+
+What works today: the Rust dev runtime on the device (no Python
+anywhere in the path), the prod runtime on already-shipped slots, CI's
+per-commit ARM64 artifact, and the Round-1 CLI — with `target deploy`
+as the centerpiece (push → find the CI artifact for the exact commit →
+sync the Pi → install binaries → restart → verify).
+
+What is broken today, stated plainly:
+
+- **Prod slot builds are paused** — the release CI jobs are disabled;
+  no new release tarballs until Round 3 lands.
+- **Diagnostics are gone** with the Python CLI — SSH manually until
+  Round 4+.
+- **VoIP and cloud-voice validation stages are stubs** (exit 2) until
+  the Round-2 follow-up ports them.
 
 ## Next
 
-- Finish the four V1 pillars before anything new — the gate for calling it V1
-- Parent app from planned to real: pairing, whitelist management, location view
-- Product board evaluation: a board with its own display may replace the prototype path (TBD)
-- Hardening the runtime and workers for daily-driver use by real families
-- Sequencing and rough timeframes for the above (TBD — deliberately not dated here)
+Round 2 is in flight (started 2026-07-12): hardware validation returns
+as `yoyopod target validate`, with the validation stages living in a
+new on-Pi companion binary (`yoyopod-on-pi`) rather than driving SSH
+from the dev machine. That architecture was chosen because the stages
+supervise worker binaries over a long-lived process, the validator
+consumes the shared protocol crate so it cannot drift from what the
+workers speak, and CI ships it in the same per-commit bundle so
+validation always matches the deployed commit. The base stages
+(deploy, smoke, stability, navigation, lvgl) come first; the follow-up
+ports the VoIP stage (SIP registration + call soak) and the
+cloud-voice stage (STT/TTS worker boundary checks).
+
+Round 3 then restores the prod release pipeline: release manifest,
+slot contract, slot tarball builder, and health preflight ported to
+Rust, and the disabled CI release jobs re-enabled. Until it lands,
+shipping a prod release is simply not possible — release windows are
+planned around the rebuild.
 
 ## Later
 
-- Everything beyond the V1 pillars lives in one place: [What Comes Next](/apps/future/)
-- SDK packages (planned packages/ directory) — future work, scope undecided
-- How "later" ideas get admitted: they must pass the [Product Principles](/company/principles/) and never cross [What yoyopod Is Not](/company/what-we-are-not/)
-- What we will not put on any roadmap, ever — see [What yoyopod Is Not](/company/what-we-are-not/)
+Round 4+ restores diagnostics (`pi voip`, `pi power`, `pi network`,
+`pi rust-ui-host`) on a business-need basis — each gap that proves
+painful enough to fix becomes its own small round, and diagnostics can
+join the same on-Pi binary the validator lives in. The rounds carry
+ordering and status flags, not dates.
 
 ## Open questions
 
 - TODO: confirm the current staged status of calling and the real status of the location pillar
 - TODO: decide whether this public page shows timeframes at all, or only ordering
 - TODO: define the exit criteria that let us call the prototype path done and commit to a product board
+
+:::note[Sources]
+Condensed from
+[`docs/ROADMAP.md`](https://github.com/attmous/yoyopod/blob/main/docs/ROADMAP.md)
+and the as-built docs site (`website/` in the repository): the Roadmap
+page.
+:::

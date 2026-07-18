@@ -3,7 +3,7 @@ title: yoyopod vision
 description: The target-state documentation for yoyopod — the first device before a smartphone. Structure first, content later.
 template: splash
 hero:
-  tagline: The first device before a smartphone. This site is the documentation yoyopod will have when the product is complete — the structure is decided, the pages are stubs waiting for their content.
+  tagline: The first device before a smartphone. This site is the documentation yoyopod will have when the product is complete — real content is placed where it exists, and every gap is tagged Placeholder.
   actions:
     - text: For Families
       link: /families/
@@ -53,8 +53,11 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 </CardGrid>
 
 :::note[This is the vision site]
-Every page beyond this one and the section indexes is a **structured stub**:
-the headings and outlines are the deliverable, the prose is not written yet.
-The as-built engineering documentation — what is actually implemented today —
-lives in the main docs site (`website/` in the repository, coral accent).
+The structure is the ideal; the content is placed wherever the repository
+actually has it. Pages condensed from real documentation carry a *Sources*
+note; pages with nothing real behind them yet are tagged **Placeholder** in
+the sidebar — the badges are the gap list. See
+[About This Site](/start/about-this-site/) for the legend. The as-built
+engineering documentation lives in the main docs site (`website/` in the
+repository, coral accent).
 :::

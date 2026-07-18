@@ -5,20 +5,22 @@ description: First boot to paired-and-ready.
 
 *The on-device onboarding that binds a new device to a family.*
 
-:::caution[Vision stub]
-Placeholder in the vision docs — the structure is decided, the content is
-not written yet. As-built engineering docs live in the main docs site
-(`website/` in the repository).
+:::caution[Partially filled]
+Sections marked *Placeholder* have no as-built content yet; everything else is condensed from the repository (see Sources at the bottom).
 :::
 
 ## What it is
 
-- The path from first boot to paired-and-ready, entirely on the small glass
-- One of the four on-device screens (Hub, Listen, Talk, Setup) — a real screen today
-- Designed for the kitchen-table moment right after [the unboxing](/families/unboxing/)
-- Ends in exactly one state: bound to a family, connected, ready for a kid
+Setup is the path from first boot to paired-and-ready, entirely on the
+small glass — designed for the kitchen-table moment right after
+[the unboxing](/families/unboxing/). In the on-device navigation model it
+is one of the root screens the whole UI stands on (alongside Hub, Listen,
+Talk, and Ask), and it ends in exactly one state: bound to a family,
+connected, ready for a kid.
 
 ## Key flows
+
+*Placeholder — no as-built content yet.*
 
 - First boot: charge, power on, and what the glass shows first (TBD)
 - Pairing: how the device and the family account meet (mechanism TBD)
@@ -27,11 +29,23 @@ not written yet. As-built engineering docs live in the main docs site
 
 ## On the device
 
-- The Setup screen: minimal steps navigable with one button and one small glass
-- Progress and error states a parent can read without a manual (TBD)
-- Re-entering Setup later for re-pairing or troubleshooting (TBD)
+The system surface exists on the glass today as the Power screen, whose
+normative design mockup is the setup mockup; the v5 UI contract replaces
+it with a **Setup wheel** root. Underneath, the provisioning machinery is
+real:
+
+- Device identity is two runtime-only secrets — a device id and a device
+  secret — stored in the device's cloud secrets config.
+- The states are explicit: both secrets present means *provisioned*,
+  neither means *unprovisioned*, and a partial pair means *invalid
+  provisioning*.
+- When provisioning is valid, the device runs its MQTT client on
+  per-device topics — the cloud link Setup exists to establish; see
+  [the cloud link](/builders/software/cloud/).
 
 ## In the parent app
+
+*Placeholder — no as-built content yet.*
 
 - The mirrored half of pairing — [parent app setup](/families/parent-app-setup/) (the app itself is future work)
 - Naming the device and the kid profile during pairing (TBD)
@@ -39,13 +53,27 @@ not written yet. As-built engineering docs live in the main docs site
 
 ## Status today
 
-- Setup is a real on-device screen in the custom LVGL-based UI today
-- The device-side cloud link (MQTT worker in the Rust runtime) exists — pairing will ride on it; see [the cloud link](/builders/software/cloud/)
-- The parent-app half of pairing is future work
-- The final pairing mechanism is not locked (TBD)
+- The provisioning flow exists and drives the cloud link today: a
+  provisioned device connects over MQTT, publishes heartbeat, battery,
+  and connectivity, and queues messages while offline.
+- Claiming and household/parent flows are owned by the backend and
+  dashboard — the device consumes provisioned secrets and the command
+  channel, and never talks to the dashboard directly.
+- On the glass, the dedicated Setup wheel is part of the v5 contract but
+  **staged, not shipped** — today's screen is the Power screen it
+  replaces.
+- The parent-app half of pairing is future work, and the final pairing
+  mechanism is not locked.
 
 ## Open questions
 
 - TODO: What is the pairing mechanism given one button, no camera, and no browser on the device?
 - TODO: How does setup behave with weak or no 4G coverage at first boot?
 - TODO: Can a device be re-bound to a new family (resale, sibling handover)?
+
+:::note[Sources]
+Condensed from
+[`docs/features/CLOUD_PROVISIONING_AND_BACKEND.md`](https://github.com/attmous/yoyopod/blob/main/docs/features/CLOUD_PROVISIONING_AND_BACKEND.md)
+and the as-built docs site (`website/` in the repository): the Cloud
+Provisioning & Backend feature page and the Screens & Navigation page.
+:::

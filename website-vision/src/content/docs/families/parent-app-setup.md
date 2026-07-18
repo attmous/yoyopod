@@ -5,10 +5,8 @@ description: Connect your phone to the device and take the controls.
 
 *Pair the parent app with the device and complete the family's first configuration.*
 
-:::caution[Vision stub]
-Placeholder in the vision docs — the structure is decided, the content is
-not written yet. As-built engineering docs live in the main docs site
-(`website/` in the repository).
+:::caution[Placeholder]
+No as-built content exists for this page yet — the outline below is the target structure.
 :::
 
 ## What you'll need

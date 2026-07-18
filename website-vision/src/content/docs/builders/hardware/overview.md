@@ -5,45 +5,82 @@ description: The whole machine on one page, plus the spec table.
 
 *One page that names every hardware subsystem and links its deep dive.*
 
-:::caution[Vision stub]
-Placeholder in the vision docs — the structure is decided, the content is
-not written yet. As-built engineering docs live in the main docs site
-(`website/` in the repository).
-:::
-
 ## Overview
 
-- What YoYoPod is at the hardware level: a screen-light, single-button audio companion for kids ages 7-14
-- The physical shape of the device: one small calm screen, one side button, speaker, microphone — no camera, no browser, no app store
-- The design stance: everything the hardware includes (and excludes) follows from "before the smartphone", not from feature ambition
-- How this page relates to the deep dives: one paragraph per subsystem, each linking to its own page
-- Spec TABLE: screen (~240x280 portrait), battery capacity (TBD), radios (4G + GPS; Wi-Fi/Bluetooth role TBD), audio (speaker + microphone, codec TBD), enclosure dimensions and weight (TBD)
+At the hardware level, YoYoPod today is one supported bundle: a **Raspberry
+Pi Zero 2W** wearing the **PiSugar Whisplay HAT** — screen, side button,
+microphone, and speaker in one package — plus a **PiSugar 3 battery HAT**
+for power and a **SIM7600-family 4G modem** for the radio. Non-canonical
+boards were deliberately removed from the repository; everything below
+assumes this bundle. There is no camera, no browser, and no app store — and
+no haptics or LEDs either; both are future-hardware options that appear in
+mockups only.
+
+### Spec table — the prototype path
+
+| Subsystem | As built today |
+| --- | --- |
+| Compute | Raspberry Pi Zero 2W |
+| Display | ST7789 panel on the Whisplay HAT: **240 × 280 portrait**, RGB565, SPI |
+| Input | One physical side button (GPIO 17, pull-up) — the device's only control |
+| Audio | Speaker + microphone through a WM8960 codec over I²S, on the HAT |
+| Power | PiSugar 3 battery HAT: battery telemetry, RTC, hardware watchdog |
+| Radio | SIM7600-family 4G modem (serial AT commands + pppd); GPS via the modem |
+
+Battery capacity, enclosure dimensions, and weight are prototype-dependent
+and not yet published as committed product specs.
 
 ## Key components
 
-- The glass and the button — see [The Glass: Display & Input](/builders/hardware/display/)
-- Speaker, microphone, and the signal chain — see [Audio Path](/builders/hardware/audio/)
-- Battery, charging, and power management — see [Power & Battery](/builders/hardware/power/)
-- 4G modem, SIM, and GPS — see [Connectivity: 4G & GPS](/builders/hardware/connectivity/)
-- Compute: Raspberry Pi Zero 2W in the prototype; product board (TBD) — see [From Prototype to Product](/builders/hardware/roadmap/)
+| Subsystem | Deep dive |
+| --- | --- |
+| The panel and the button | [The Glass: Display & Input](/builders/hardware/display/) |
+| Speaker, microphone, signal chain | [Audio Path](/builders/hardware/audio/) |
+| Battery, charging, watchdog | [Power & Battery](/builders/hardware/power/) |
+| 4G modem, SIM, GPS | [Connectivity: 4G & GPS](/builders/hardware/connectivity/) |
+| Compute and the product-board story | [From Prototype to Product](/builders/hardware/roadmap/) |
 
 ## Interfaces & contracts
 
-- How each subsystem is exposed to software: buses, kernel interfaces, and the worker process that owns it (per-subsystem detail on the deep-dive pages)
-- The boundary rule: hardware details stay behind worker processes so the rest of the Rust runtime never talks to a bus directly
-- Where the as-built engineering docs (`website/` in the repository) document the current wiring in depth
-- What a hardware abstraction contract for the product board would need to preserve (TBD)
+Every subsystem sits behind exactly one owner in software, so the rest of
+the Rust runtime never talks to a bus directly:
+
+- **Display** — driven from userspace over SPI by the UI host itself; there
+  is no kernel display stack (no framebuffer device, no DRM/KMS) by choice.
+- **Audio** — two software paths, one codec: the media worker supervises mpv
+  for playback, the voip worker runs calls through Liblinphone, and both
+  converge on the WM8960 via ALSA.
+- **Power** — the power worker wraps `pisugar-server` for telemetry and RTC,
+  and feeds the hardware watchdog directly over I²C.
+- **Radio** — the network worker owns the SIM7600 over its serial port and
+  supervises the pppd process that turns a registered modem into an IP link.
+
+The as-built docs site (`website/` in the repository) documents the current
+wiring of each subsystem in depth.
 
 ## Today vs. target
 
-- Today: Raspberry Pi Zero 2W + PiSugar Whisplay HAT — explicitly a prototype path
-- Target: a product board that may integrate its own display, audio, power, and modem choices
-- Which specs are fixed by product intent (one button, small portrait screen, no camera) vs. open for the product board (TBD)
-- Pointer to [From Prototype to Product](/builders/hardware/roadmap/) for the migration story
+Today's bundle is explicitly a **prototype path, not a permanent promise**:
+off-the-shelf hardware chosen to iterate on the experience before committing
+to a board spin. The target is a product board that may integrate its own
+display, audio, power, and modem choices. What is fixed by intent rather
+than by the prototype: one button, a small calm portrait screen, speaker
+plus microphone, 4G plus GPS, and no camera. The migration story — and
+where the supporting tooling stands — lives in
+[From Prototype to Product](/builders/hardware/roadmap/).
 
 ## Open questions
 
 - TODO: Which spec-table values can we commit to publicly now, and which stay TBD until a product board is selected?
 - TODO: Do Wi-Fi and Bluetooth appear in the product spec at all, or is 4G the only radio we promise?
 - TODO: What enclosure durability targets (drop, water resistance) does a kids-carry-it-daily device need to state?
-- TODO: Should the spec table describe the prototype, the target product, or both side by side?
+
+:::note[Sources]
+Condensed from
+[`docs/hardware/AUDIO_STACK.md`](https://github.com/attmous/yoyopod/blob/main/docs/hardware/AUDIO_STACK.md)
+and
+[`docs/hardware/POWER_MODULE.md`](https://github.com/attmous/yoyopod/blob/main/docs/hardware/POWER_MODULE.md),
+and the as-built docs site (`website/` in the repository): the UI System
+Guide's hardware page, the Audio Stack and Power Module pages, and the
+network worker profile.
+:::

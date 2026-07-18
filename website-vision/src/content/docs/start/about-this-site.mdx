@@ -35,29 +35,35 @@ Two cross-cutting sections serve all three: **User Stories** (persona
 narratives that show what the product is for) and **Applications** (the
 experiences themselves: Listen, Talk, Locate, the Parent App, Setup).
 
-## The stub convention
+## Content status: how to read this site
 
-Every page except the landing page and the six section indexes is a
-**structured stub** with one uniform shape:
+The structure is the ideal; the content is placed wherever the repository
+actually has it. Every page is in one of three states, visible both in the
+sidebar badge and in the aside at the top of the page:
 
-- an *italic one-liner* stating the page's purpose,
-- a `Vision stub` caution so nobody mistakes outline for fact,
-- 2–4 section-family headings with bullet outlines of the content to come,
-- an **Open questions** list of TODOs that must be answered before the page
-  can be written.
+| State | Sidebar badge | Meaning |
+| --- | --- | --- |
+| **Filled** | *(no badge)* | Condensed from real, as-built documentation. Ends with a *Sources* note. |
+| **Partially filled** | `Partial` | Some sections carry real content; the rest is outline marked *Placeholder* inline. |
+| **Placeholder** | `Placeholder` | No as-built content exists yet — the outline is the target structure. |
 
-Sibling pages share a heading skeleton (all story pages have the same four
-headings, all app pages the same five, and so on) so the site reads
-consistently even as a skeleton.
+The badge map **is** the gap list: every `Placeholder` badge marks a real
+gap between the product vision and what exists today. Sibling pages share
+a heading skeleton (all story pages have the same four headings, all app
+pages the same five, and so on) so the site reads consistently regardless
+of state.
 
-## How a stub becomes a page
+## How a placeholder becomes a page
 
-1. Answer the stub's open questions (or move them to an issue).
-2. Replace the bullet outline under each heading with prose — keep the
-   headings.
-3. Delete the `Vision stub` caution.
-4. If the page states something as *currently true*, verify it against the
-   as-built docs first.
+1. Answer the page's open questions (or move them to an issue).
+2. Build the thing, document it in the canonical repo docs, and let the
+   as-built site absorb it first.
+3. Condense it here — replace the outline under each heading with prose,
+   keep the headings, swap the caution for a *Sources* note.
+4. Remove the sidebar badge in `astro.config.mjs`.
+5. If the page states something as *currently true*, verify it against the
+   as-built docs first — when the two sites disagree, the as-built site
+   wins.
 
 ## Where the vocabulary comes from
 

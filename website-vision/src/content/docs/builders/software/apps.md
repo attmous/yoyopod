@@ -5,10 +5,8 @@ description: The parent app and future shared packages.
 
 *The planned apps/ and packages/ layer: the parent app and the contracts it shares with the device.*
 
-:::caution[Vision stub]
-Placeholder in the vision docs — the structure is decided, the content is
-not written yet. As-built engineering docs live in the main docs site
-(`website/` in the repository).
+:::caution[Placeholder]
+No as-built content exists for this page yet — the outline below is the target structure.
 :::
 
 ## Overview

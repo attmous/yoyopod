@@ -5,39 +5,67 @@ description: Battery, charging, and power management.
 
 *Battery, charging, the power worker, and safe-shutdown behavior.*
 
-:::caution[Vision stub]
-Placeholder in the vision docs — the structure is decided, the content is
-not written yet. As-built engineering docs live in the main docs site
-(`website/` in the repository).
-:::
-
 ## Overview
 
-- Why power is a trust feature: a dead device means no calls home and no location, so battery behavior is a parent promise
-- The battery-day target: what "lasts the school day" means in hours and duty cycle (values TBD)
-- The three power stories: everyday charging, low-battery behavior, and safe shutdown
-- How the parent app should surface battery state (planned, part of future parent-app work)
+The **PiSugar 3 HAT owns power truth**: battery telemetry, charging state,
+the real-time clock, and a hardware watchdog that power-cycles the board if
+software stops feeding it. On the software side, the power worker is the
+single owner of that truth — it polls telemetry (every 30 seconds by
+default), applies the low-battery safety policy, and brings the device down
+cleanly before the battery does it uncleanly.
 
 ## Key components
 
-- Battery pack: prototype battery on the PiSugar Whisplay HAT path; product cell chemistry and capacity (TBD)
-- Charging hardware: connector, charge controller, and charge-state signaling (product parts TBD)
-- Fuel gauge / battery telemetry source the software reads (prototype vs. product board TBD)
-- The power worker: the Rust runtime process that owns power management today
+- **Battery + telemetry** — the PiSugar 3 reports level, voltage, charging
+  and external-power state, and temperature through `pisugar-server` (Unix
+  socket first, TCP fallback).
+- **RTC** — time sync in both directions plus alarms, owned by the same
+  worker.
+- **Hardware watchdog** — bypasses the server entirely: raw I²C on bus 1,
+  address `0x57`, fed on a timer (default every 15 seconds).
+- **The power worker** — the Rust runtime process that wraps all of the
+  above. When the backend is disabled in config, the domain reports
+  unavailable rather than faking numbers.
 
 ## Interfaces & contracts
 
-- The power worker as the single owner of battery state, charge state, and shutdown decisions
-- Low-battery safe shutdown as it exists today: power worker plus watchdog bring the device down cleanly
-- How other workers learn about power events (battery level, charger attach/detach) — contract shape TBD
-- What the runtime guarantees on brownout or abrupt power loss, and what filesystem/state protection backs it (TBD)
+The safety policy, in rules (defaults from the power config):
+
+| Rule | Behavior |
+| --- | --- |
+| No data | absence of telemetry **never** triggers a shutdown |
+| Below warning (20%) | a cooldown-protected warning (5-minute cooldown) |
+| Below critical (10%) | **one** delayed shutdown (15 s): overlay shown, state file written, system shutdown run |
+| Power restored | a pending shutdown is cancelled |
+
+The watchdog has two distinct off-switches, and the difference matters:
+`watchdog_suppress` stops feeding *without* disabling — used before an
+intentional low-battery shutdown so the board powers down cleanly while the
+watchdog stays a recovery backstop — while `watchdog_disable` turns it off
+entirely on worker stop. The power config file has **two readers**: the
+power worker and, independently, the runtime's shutdown policy read the
+same safety thresholds. The systemd unit orders the runtime after
+`pisugar-server` — an ordering preference, not a hard requirement; without
+it, boot proceeds and power simply reports unavailable.
+
+### The pogo-pin lesson
+
+The PiSugar connects through pogo pins under the GPIO header. If I²C
+address `0x57` drops off the bus while `0x68` still responds, suspect
+pogo-pin contact: clean the pads, reseat, power-cycle, restart
+`pisugar-server`. This is the first field check before blaming software.
 
 ## Today vs. target
 
-- Today: prototype power path on the Pi Zero 2W + Whisplay HAT; low-battery safe shutdown implemented (power worker + watchdog)
-- Target: product board with an integrated charge controller and fuel gauge chosen for the battery-day target (TBD)
-- Fixed by intent: the device must fail calm — warn early, shut down cleanly, never corrupt state
-- Open: charging connector choice, charge-time target, and battery replaceability/serviceability (TBD)
+Today: the prototype power path on the Pi Zero 2W + PiSugar, with
+low-battery safe shutdown implemented (power worker + watchdog) and the
+config keys and safety policy verified against the Rust code. One honesty
+flag carried from the as-built docs: parts of the canonical power doc still
+reference retired Python-era diagnostic commands, which return in a later
+rebuild round — the current implementation is the Rust worker. Target: a
+product board with an integrated charge controller and fuel gauge chosen
+for the battery-day goal — still to be decided. Fixed by intent: fail
+calm — warn early, shut down cleanly, never corrupt state.
 
 ## Open questions
 
@@ -45,3 +73,10 @@ not written yet. As-built engineering docs live in the main docs site
 - TODO: Which charging connector does the product use, and is charging-dock hardware in or out of scope?
 - TODO: At what battery threshold should the device notify the parent app before it shuts down?
 - TODO: Is the battery user-replaceable or service-only, and what does that mean for the enclosure?
+
+:::note[Sources]
+Condensed from
+[`docs/hardware/POWER_MODULE.md`](https://github.com/attmous/yoyopod/blob/main/docs/hardware/POWER_MODULE.md)
+and the as-built docs site (`website/` in the repository): the Power Module
+page and the power worker profile ("The Boiler Room").
+:::

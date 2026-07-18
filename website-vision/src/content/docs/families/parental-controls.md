@@ -5,10 +5,8 @@ description: Contacts, content, and time — what parents decide from the app.
 
 *Every control a parent holds, in one place.*
 
-:::caution[Vision stub]
-Placeholder in the vision docs — the structure is decided, the content is
-not written yet. As-built engineering docs live in the main docs site
-(`website/` in the repository).
+:::caution[Placeholder]
+No as-built content exists for this page yet — the outline below is the target structure.
 :::
 
 ## What parents control

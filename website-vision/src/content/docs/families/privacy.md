@@ -5,10 +5,8 @@ description: What data exists, where it lives, and who can see it.
 
 *The plain-language privacy promise a parent can actually read.*
 
-:::caution[Vision stub]
-Placeholder in the vision docs — the structure is decided, the content is
-not written yet. As-built engineering docs live in the main docs site
-(`website/` in the repository).
+:::caution[Placeholder]
+No as-built content exists for this page yet — the outline below is the target structure.
 :::
 
 ## Our promises
