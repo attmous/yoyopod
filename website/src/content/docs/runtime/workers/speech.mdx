@@ -1,0 +1,65 @@
+---
+title: "Speech: The Interpreter"
+description: The speech host — cloud STT, TTS, and Ask over OpenAI APIs, one conversation at a time.
+---
+
+:::caution[The naming trap]
+The crate and binary say **speech** (`device/speech/`,
+`yoyopod-speech-host`) — but the wire domain is **`voice.*`**
+(`voice.transcribe`, `voice.ask`, …). When grepping, search both.
+:::
+
+## What it owns
+
+The spoken-language work: **transcription** (STT), **synthesis** (TTS),
+and **Ask** — the LLM question-and-answer behind the Ask screen. It is a
+pure translator between WAV files and cloud APIs; capture and playback
+hardware belong to other workers.
+
+## How it's wired
+
+| | |
+| --- | --- |
+| Binary | `yoyopod-speech-host` (~1,400 LoC) |
+| Config | **environment only** — no YAML, no configure command; per-request parameters ride in each command payload |
+| Providers | `mock` (tests/CI) or `openai`, selected by `YOYOPOD_VOICE_WORKER_PROVIDER` |
+| APIs | `/v1/audio/transcriptions` (`gpt-4o-mini-transcribe`) · `/v1/audio/speech` (`gpt-4o-mini-tts`, voice `alloy`) · `/v1/responses` (`gpt-4.1-mini`) — all over ureq/TLS |
+
+Model and voice defaults come from `voice/assistant.yaml` — but the
+*runtime* reads that file and passes values per request; the interpreter
+itself only reads env (`OPENAI_API_KEY`, `OPENAI_BASE_URL`,
+`YOYOPOD_CLOUD_ASK/STT/TTS_MODEL`, `YOYOPOD_CLOUD_TTS_VOICE`).
+
+## One conversation at a time
+
+The host holds **a single in-flight request**. A second command while
+busy returns a `busy` error (retryable) — matching the product reality
+that the child asks one thing at a time. Each request carries:
+
+- **cooperative cancellation** — `voice.cancel` (or a new PTT press)
+  flips a flag the work loop checks every 10 ms; a cancelled request
+  returns promptly even though the underlying HTTP call finishes
+  detached,
+- **a deadline** — the envelope's `deadline_ms` is honored, the only
+  worker that does.
+
+## Commands & events
+
+| Commands | Events / results |
+| --- | --- |
+| `voice.health` · `voice.transcribe` · `voice.speak` · `voice.ask` · `voice.cancel` · `voice.shutdown` | `voice.ready` · `voice.transcribe.result` · `voice.speak.result` · `voice.ask.result` · `voice.health.result` · `voice.cancelled` · `voice.stopped` · `voice.error` |
+
+Error codes: `invalid_payload` · `provider_error` (retryable) · `busy` ·
+`protocol_error` · `invalid_kind` · `unknown_command`.
+
+## Gotchas
+
+- **Streaming-WAV fixup:** TTS responses arrive with streaming RIFF/data
+  sizes (`0xFFFFFFFF`); the host rewrites them to real lengths so
+  downstream players don't choke.
+- Transcription enforces `max_audio_seconds` by parsing the WAV header
+  (with a conservative byte-cap fallback) — a runaway recording is
+  refused, not billed.
+- This worker is optional: with `voice.worker_enabled` off it is never
+  spawned and the domain reads `Disabled` — the Ask screen's offline
+  state is the UI-visible result.

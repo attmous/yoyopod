@@ -1,0 +1,80 @@
+---
+title: Intents & House Rules
+description: How buzzer notes become work orders, and the cross-domain policies that live in exactly one file.
+---
+
+import IntentRouting from '../../../assets/diagrams/intent-routing.svg';
+
+<IntentRouting class="diagram" />
+
+## Intent routing
+
+When the UI emits a [`UiIntent`](/runtime/ui-contract/#the-intent-taxonomy-uiintent-6-domains),
+`commands_for_ui_intent` (`device/runtime/src/event.rs`) turns it into
+worker command envelopes:
+
+| Intent domain | Becomes | Example |
+| --- | --- | --- |
+| `Music` | `media.*` | `Music::NextTrack` → `media.next_track` |
+| `Call` | `voip.*` | `Call::Answer` → `voip.answer` |
+| `Voice` | `voip.*` **and** `voice.*` | voice-note actions → voip; ask/transcribe/speak → speech |
+| `Power` | `power.*` | `Power::SetRtcAlarm` → `power.set_rtc_alarm` |
+| `Navigation` | nothing | `Back` never leaves the UI process |
+| `Runtime` | the shutdown path | the polite off switch |
+
+The UI never addresses a worker; it states a desire, and the office
+decides who fulfills it. That indirection is what lets workers be
+replaced, disabled, or degraded without the UI knowing.
+
+## House rules
+
+Every cross-domain policy in the system is written in **one file** —
+`event.rs`. Workers never talk to each other; if two domains interact,
+there is a house rule at the office making it happen, legible and
+testable without hardware.
+
+### A call pauses the music
+
+When a voip snapshot shows an active or incoming call, the runtime sends
+`media.pause`. The media worker knows nothing about calls; the policy is
+pure office code.
+
+### Low battery ends the show — safely
+
+The power-safety state machine (config in `power/backend.yaml`, defaults
+shown):
+
+| Threshold | Action |
+| --- | --- |
+| ≤ 20% (`low_battery_warning_percent`) | warn, at most every 300 s (`cooldown`) |
+| ≤ 10% (`critical_shutdown_percent`) | begin shutdown after a 15 s delay |
+
+The shutdown itself is a careful dance: first
+`power.watchdog_suppress{reason: "pending_system_poweroff"}` — so the
+[hardware watchdog](/runtime/workers/power/) doesn't yank power mid-write
+— then the shutdown-state file, then the configured command (default
+`sudo -n shutdown -h now`). The next boot finds a clean filesystem and a
+note explaining why it happened.
+
+### Everything interesting is telegraphed
+
+Battery, connectivity, and playback changes become
+`cloud.publish_battery` / `cloud.publish_connectivity` /
+`cloud.publish_playback_event` — the runtime decides *what* is
+telemetry-worthy; the [telegraph desk](/runtime/workers/cloud/) only
+decides *how* it reaches the backend.
+
+### Backend commands are acknowledged
+
+An inbound MQTT command surfaces as a `cloud.command` event; the runtime
+routes it and answers with `cloud.ack` carrying the outcome — the backend
+always learns whether its request landed.
+
+## Why one file matters
+
+Concentrating policy in `event.rs` is the architectural bet of the whole
+runtime: workers stay dumb integrations
+("[the runtime owns policy, hosts own integration](https://github.com/attmous/yoyopod/blob/main/docs/architecture/SYSTEM_ARCHITECTURE.md)"),
+every behavior with two domains in it has exactly one home, and the file
+reads as the device's rulebook. When you wonder "why did the music stop?"
+— the answer is grep-distance away.

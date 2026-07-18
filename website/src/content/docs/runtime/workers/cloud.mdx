@@ -1,0 +1,62 @@
+---
+title: "Cloud: The Telegraph Desk"
+description: The cloud host — MQTT to the backend, offline queueing, provisioning states, and inbound command forwarding.
+---
+
+## What it owns
+
+The device ↔ backend link: publishing heartbeat, battery, connectivity,
+playback, and telemetry events over **MQTT**, receiving backend commands,
+and maintaining a provisioning/connection status snapshot persisted to
+disk.
+
+## How it's wired
+
+| | |
+| --- | --- |
+| Binary | `yoyopod-cloud-host` (~1,400 LoC) |
+| Config | **self-loads** `cloud/backend.yaml` + `cloud/device.secrets.yaml` (fallback `/etc/yoyopod/cloud/`) |
+| Wraps | an MQTT broker connection via rumqttc (tcp / tls / ws / wss, rustls) — default `yoyopod.moraouf.net:1883` |
+| Topics | `yoyopod/<device_id>/evt` (out) · `…/ack` (out) · `…/cmd` (in) |
+| Persists | `data/cloud/status.json` |
+
+The broker connection runs on its own thread, pushing
+`Connected/Disconnected/Command/Error` events into the host's loop.
+
+## Provisioning
+
+Identity comes from the secrets file: both `device_id` **and**
+`device_secret` present → `provisioned`; neither → `unprovisioned`; a
+partial pair → `invalid_provisioning`. The telegraph desk works (and
+queues) regardless — provisioning gates what the backend will accept, not
+what the host will try.
+
+## Store-and-forward
+
+The desk's defining behavior: **publishes are queued while disconnected**
+(max 32, drop-oldest) and flushed on reconnect. On a device that lives on
+cellular, "the line is down" is weather, not failure. Connectivity and
+telemetry publishes are deduplicated against their last value; battery
+reports are throttled to the configured interval.
+
+## Commands & events
+
+| Commands | Events |
+| --- | --- |
+| `cloud.health` · `publish_heartbeat` · `publish_battery` · `publish_connectivity` · `publish_playback_event` · `publish_event` · `publish_telemetry` · `cloud.ack` · `cloud.shutdown` | `cloud.ready` (advertises capabilities) · `cloud.snapshot` · `cloud.command` (inbound, forwarded to the runtime) · `cloud.stopped` · `cloud.error` |
+
+Note the shape: the *runtime* decides what is telemetry-worthy (a
+[house rule](/runtime/routing-and-policies/#everything-interesting-is-telegraphed))
+and sends explicit `publish_*` commands — the desk never invents
+messages. Inbound backend commands surface as `cloud.command` events; the
+runtime routes them and answers with `cloud.ack`.
+
+## Gotchas
+
+- **HTTP sync is configured but not implemented** — `api_base_url` and
+  friends describe an intended REST surface that doesn't exist in this
+  crate yet ([Known Gaps](/runtime/gaps/)). MQTT is the only live
+  transport.
+- The `cloud.ready` event advertises a capability list
+  (`mqtt, telemetry, heartbeat, …`) — the informal feature-negotiation
+  channel for future backend evolution.

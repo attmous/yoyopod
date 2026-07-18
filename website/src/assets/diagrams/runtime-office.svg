@@ -1,0 +1,96 @@
+<svg viewBox="0 0 760 660" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The office floor plan: systemd is the landlord around everything, the runtime desk keeps the ledger and clock, script pages flow to the theater and buzzer notes come back, and six department rooms exchange work orders and telegrams through one inbox">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #2b2122); stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; }
+    .ext { fill: none; stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .hub { fill: var(--sl-color-accent-low, #4a2420); stroke: var(--sl-color-accent, #f37767); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f5ece1); font-size: 14px; font-weight: 700; }
+    .s { fill: var(--sl-color-gray-3, #a5937f); font-size: 11.5px; }
+    .m { fill: var(--sl-color-gray-2, #d8c8b3); font-size: 11px; font-family: ui-monospace, monospace; }
+    .flow { stroke: var(--sl-color-gray-3, #a5937f); stroke-width: 2; fill: none; marker-end: url(#roh); }
+    .back { stroke: var(--sl-color-accent, #f37767); stroke-width: 2; fill: none; stroke-dasharray: 8 5; marker-end: url(#roh2); }
+    .lbl { fill: var(--sl-color-accent, #f37767); font-size: 11.5px; font-weight: 600; }
+  </style>
+  <defs>
+    <marker id="roh" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a5937f)"/>
+    </marker>
+    <marker id="roh2" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-accent, #f37767)"/>
+    </marker>
+  </defs>
+
+  <!-- the building -->
+  <rect class="ext" x="16" y="40" width="728" height="580" rx="14"/>
+  <text class="t" x="28" y="28">The building — the landlord (systemd) never repairs a room; he rebuilds the whole building, 5 s later</text>
+
+  <!-- the office -->
+  <rect class="hub" x="60" y="70" width="380" height="106" rx="12"/>
+  <text class="t" x="78" y="94">The office — yoyopod-runtime</text>
+  <text class="s" x="78" y="114">the desk clock strikes every 20 ms (run_once)</text>
+  <text class="s" x="78" y="130">the master ledger (RuntimeState) records everything</text>
+  <text class="s" x="78" y="146">house rules (event.rs): a call pauses the music,</text>
+  <text class="s" x="78" y="162">a dying battery ends the show safely</text>
+
+  <!-- the theater -->
+  <rect class="hub" x="500" y="70" width="220" height="106" rx="12"/>
+  <text class="t" x="516" y="94">The theater</text>
+  <text class="m" x="516" y="112">yoyopod-ui-host</text>
+  <text class="s" x="516" y="130">the one fatal hire: silent</text>
+  <text class="s" x="516" y="146">for 5 s at opening night</text>
+  <text class="s" x="516" y="162">→ the office closes</text>
+
+  <path class="flow" d="M440,100 L498,100"/>
+  <text class="lbl" x="444" y="90">script pages</text>
+  <path class="back" d="M498,150 L440,150"/>
+  <text class="lbl" x="444" y="172">buzzer notes</text>
+
+  <!-- inbox -->
+  <rect class="box" x="180" y="230" width="200" height="56" rx="10"/>
+  <text class="t" x="194" y="252">The inbox (mpsc)</text>
+  <text class="s" x="194" y="270">one mail clerk per department</text>
+
+  <path class="back" d="M280,288 C280,310 260,330 250,350"/>
+  <path class="flow" d="M250,176 L250,228"/>
+  <text class="lbl" x="258" y="206">telegrams up</text>
+
+  <!-- work orders down (right side) -->
+  <path class="flow" d="M420,176 C480,240 520,300 540,350"/>
+  <text class="lbl" x="500" y="270">work orders down</text>
+
+  <!-- departments: 2 rows of 3 -->
+  <rect class="box" x="40" y="360" width="220" height="72" rx="10"/>
+  <text class="t" x="54" y="382">The record library</text>
+  <text class="m" x="54" y="400">media — mpv &amp; the .m3u shelves</text>
+  <text class="s" x="54" y="416">plays whatever the order says</text>
+
+  <rect class="box" x="280" y="360" width="220" height="72" rx="10"/>
+  <text class="t" x="294" y="382">The switchboard</text>
+  <text class="m" x="294" y="400">voip — liblinphone lines</text>
+  <text class="s" x="294" y="416">calls, messages, voice notes</text>
+
+  <rect class="box" x="520" y="360" width="220" height="72" rx="10"/>
+  <text class="t" x="534" y="382">The radio room</text>
+  <text class="m" x="534" y="400">network — SIM7600 &amp; pppd</text>
+  <text class="s" x="534" y="416">keeps retuning until it's Online</text>
+
+  <rect class="box" x="40" y="452" width="220" height="72" rx="10"/>
+  <text class="t" x="54" y="474">The telegraph desk</text>
+  <text class="m" x="54" y="492">cloud — MQTT to the backend</text>
+  <text class="s" x="54" y="508">queues wires while the line is down</text>
+
+  <rect class="box" x="280" y="452" width="220" height="72" rx="10"/>
+  <text class="t" x="294" y="474">The boiler room</text>
+  <text class="m" x="294" y="492">power — PiSugar &amp; watchdog</text>
+  <text class="s" x="294" y="508">feeds the boiler every 15 s</text>
+
+  <rect class="box" x="520" y="452" width="220" height="72" rx="10"/>
+  <text class="t" x="534" y="474">The interpreter</text>
+  <text class="m" x="534" y="492">speech — OpenAI STT/TTS/Ask</text>
+  <text class="s" x="534" y="508">one conversation at a time</text>
+
+  <text class="s" x="40" y="556">Departments never visit each other's rooms. Every telegram goes to the office; every cross-department effect is a</text>
+  <text class="s" x="40" y="572">house rule written at the desk. A department that walks out is not re-hired — its room is marked closed until the</text>
+  <text class="s" x="40" y="588">landlord rebuilds the building.</text>
+
+  <text class="m" x="40" y="610">Vocabulary check: "the office writes the script" was rule one of the theater — this floor plan is that office, opened up.</text>
+</svg>

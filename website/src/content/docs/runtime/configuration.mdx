@@ -1,0 +1,68 @@
+---
+title: Configuration Wiring
+description: What the runtime reads, what each worker reads, the three config-delivery styles, and the universal env-override rule.
+---
+
+Configuration is a YAML tree under `config/`, but *who reads what, and
+how it reaches each worker* follows three distinct styles. This page is
+the wiring diagram.
+
+## What the runtime itself loads
+
+`RuntimeConfig::load` (`device/runtime/src/config.rs`) reads, from
+`--config-dir` (default `config/`):
+
+| File | Feeds |
+| --- | --- |
+| `app/core.yaml` | PID file, app-log path |
+| `device/hardware.yaml` | display/audio device wiring, button timing |
+| `audio/music.yaml` | media config (pushed onward) |
+| `communication/calling.yaml` + `calling.secrets.yaml` + `messaging.yaml` | voip config (pushed onward; secrets redacted in logs) |
+| `people/directory.yaml` (+ seed contacts) | the contact ledger |
+| `power/backend.yaml` | the **runtime's own** power-safety policy |
+| `voice/assistant.yaml` | voice defaults passed per-request to speech |
+
+Missing files degrade to empty maps — absence is never fatal. **Every
+field has a `YOYOPOD_*` environment override**, which is the escape hatch
+bench setups and tests use. Worker binary paths follow the same pattern
+(`YOYOPOD_RUST_*_WORKER`).
+
+## Three delivery styles
+
+| Style | Workers | How it works |
+| --- | --- | --- |
+| **Pushed** | media, voip | the runtime composes a typed config and sends it in `media.configure` / `voip.configure` during [startup](/runtime/lifecycle/) — the worker never touches YAML |
+| **Self-loading** | network, cloud, power | the worker gets `--config-dir` and reads its own file(s) |
+| **Environment-only** | speech | no files at all: provider and API keys from env (`YOYOPOD_VOICE_WORKER_PROVIDER`, `OPENAI_API_KEY`, model/voice overrides), per-request parameters in each command payload |
+
+## The worker → config map
+
+| Worker | Files (under `config/`) | Notes |
+| --- | --- | --- |
+| media | `audio/music.yaml` + `device/hardware.yaml` (`media_audio`) | pushed |
+| voip | `communication/calling.yaml` + `calling.secrets.yaml` + `messaging.yaml` + `device/hardware.yaml` (`communication_audio`) + `integrations/liblinphone_factory.conf` | pushed; secrets file untracked (only `.example` in git) |
+| network | `network/cellular.yaml` + board overlay `boards/rpi-zero-2w/network/cellular.yaml` | self-loads; resolves `sim7600:ifNN` port aliases |
+| cloud | `cloud/backend.yaml` + `cloud/device.secrets.yaml` (fallback `/etc/yoyopod/cloud/`) | self-loads; secrets define provisioning identity |
+| power | `power/backend.yaml` | self-loads — **see below** |
+| speech | — (env only) | `voice/assistant.yaml` defaults arrive per-request from the runtime |
+
+:::caution[One file, two readers]
+`power/backend.yaml` is read **twice**: by the power worker (backend,
+watchdog, RTC settings) *and* by the runtime itself (the low-battery
+safety thresholds in the
+[house rules](/runtime/routing-and-policies/#low-battery-ends-the-show--safely)).
+Edit it knowing both consumers exist.
+:::
+
+Board overlays compose over the base tree (only `rpi-zero-2w` exists
+today); mutable data lives under `data/`, never `config/`.
+
+:::caution[This page supersedes part of a canonical doc]
+[`docs/architecture/CANONICAL_STRUCTURE.md`](https://github.com/attmous/yoyopod/blob/main/docs/architecture/CANONICAL_STRUCTURE.md)
+remains the authority on the config *topology* (domains, secrets
+boundary, overlays) — but its "Canonical Package Ownership" section
+describes the **retired Python layout** and no longer matches the Rust
+crates. For current ownership, trust this page and the
+[Source Map](/runtime/advanced/source-map/). Tracked in
+[Known Gaps](/runtime/gaps/).
+:::

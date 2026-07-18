@@ -1,0 +1,85 @@
+---
+title: "The Mental Model: Inside the Office"
+description: The Tiny Theater's office, opened up — one keeper sentence, a floor plan, and three laws that explain every design decision in the runtime.
+---
+
+import RuntimeOffice from '../../../assets/diagrams/runtime-office.svg';
+
+The UI guide's [Tiny Theater](/ui/mental-model/) established the cast:
+the theater on the glass, and *"the office upstairs that writes the
+script."* This page walks into that office. Nothing is retconned — we're
+zooming in.
+
+The sentence to keep:
+
+> **The runtime is the office upstairs: it hires every department exactly
+> once, reads their telegrams from one inbox, keeps the master ledger,
+> rewrites only the changed pages of the theater's script — and when
+> anything truly breaks, the landlord rebuilds the whole building.**
+
+<RuntimeOffice class="diagram" />
+
+## The stations
+
+| In the building | In the code | Where |
+| --- | --- | --- |
+| **The landlord** — never repairs a room; rebuilds the whole building, five seconds later | systemd, `Restart=on-failure` / `RestartSec=5` | `deploy/systemd/yoyopod-dev.service` |
+| **The office desk & clock** — one desk, striking every 20 ms | the `run_once` loop, ~50 Hz | `runtime_loop.rs` |
+| **Hiring the departments** — once, in order, never twice | worker spawning with piped stdio | `worker.rs` |
+| **The mail clerks** — one per department, all feeding one inbox | per-child reader threads → a single mpsc | `worker.rs` |
+| **Telegrams** — one line, a typed form, a schema stamp | `WorkerEnvelope` NDJSON, five kinds | `device/protocol` |
+| **The master ledger** — the only record of the world | `RuntimeState` | `state.rs` |
+| **Revised script pages** — never the whole script twice | `RuntimeSnapshotPatch`; the full script only at opening | `state.rs` diffing |
+| **The departments** | record library · switchboard · radio room · telegraph desk · boiler room · interpreter | [the six workers](/runtime/workers/media/) |
+| **The one fatal hire** — no stage manager, no show | UI ready-wait, 5 s, aborts the runtime | `cli.rs` |
+| **A no-show department** | 3 s ready wait → `Degraded`, the show goes on | `cli.rs` |
+| **A walk-out** — the room is closed, nobody re-hired | worker exit → `Stopped`, one `worker.exited` notice | `worker.rs` |
+| **House rules** — posted at the desk, not in the rooms | cross-domain policies | `event.rs` |
+| **Work orders from buzzer notes** | `commands_for_ui_intent` | `event.rs` |
+
+## The three laws
+
+The theater had [three laws](/ui/mental-model/#the-three-laws); the
+office has three of its own. Every odd-looking design decision in this
+guide is one of them applied somewhere.
+
+### 1. Everything passes through the ledger
+
+Departments never talk to each other. The switchboard doesn't tell the
+record library a call started — it telegraphs the office, the office
+consults the house rules, and *the office* orders the music paused. Every
+cross-domain behavior has exactly one home
+([`event.rs`](/runtime/routing-and-policies/)), which makes the device's
+whole personality grep-able.
+
+### 2. Telegrams, never phone calls
+
+Every interaction is a one-way line carrying one-line messages, with
+correlation slips (`request_id`) where an answer is expected. No shared
+memory, no blocking conversations, no callbacks across processes. The
+[wire format](/runtime/protocol/) is plain enough to read with `cat` —
+and the strict schema stamp means a mismatched peer fails at the first
+telegram, not the worst one.
+
+### 3. Die loudly, restart wholesale
+
+A department in trouble degrades in place or walks out — and the office
+**never performs surgery on a running department**. There is no worker
+restart, no backoff dance, no partial resync. Real failure means the
+landlord rebuilds the whole building, five seconds later, into a state
+that is *provably* consistent because it's the same state every boot
+reaches. ([Seven Processes, One Desk](/runtime/process-model/) argues why
+this beats being clever.)
+
+## The pocket version
+
+1. The office hires each department once. *(spawn, no restarts)*
+2. Telegrams in, one inbox. *(NDJSON → mpsc)*
+3. The ledger is the only truth. *(RuntimeState)*
+4. Only revised pages go to the theater. *(snapshot patches)*
+5. When it really breaks, the landlord rebuilds the building. *(systemd)*
+
+When you're ready for names and numbers: the
+[Source Map](/runtime/advanced/source-map/) is the staff directory, and
+[Failure Paths & Timeouts](/runtime/advanced/failure-paths/) is the
+building's emergency handbook.

@@ -1,0 +1,63 @@
+---
+title: "Media: The Record Library"
+description: The media host — mpv over JSON-IPC, the local .m3u library, recents, and the remote-asset cache.
+---
+
+## What it owns
+
+Everything that makes sound *from files*: the local music library,
+playlists, recent tracks, remote-asset caching and import — and the whole
+lifecycle of an out-of-process **mpv** player. The rest of the system
+never touches mpv; it sends `media.*` work orders and reads the
+snapshots.
+
+## How it's wired
+
+| | |
+| --- | --- |
+| Binary | `yoyopod-media-host` (~2,750 LoC) |
+| Config | **pushed** — waits for `media.configure` composed by the runtime from `audio/music.yaml` + `device/hardware.yaml` |
+| Wraps | the `mpv` binary, spawned `--idle --no-video --input-ipc-server=…` with `alsa/<device>` output |
+| Talks over | mpv's JSON-IPC Unix socket (default `/tmp/yoyopod-mpv.sock`) |
+
+The host observes seven mpv properties (title, metadata, pause,
+idle-active, duration, path, time-pos) and translates property changes
+into playback state. Startup retries the IPC connect for up to 10 s or
+until the mpv process dies — whichever comes first.
+
+## The library
+
+- **Playlists** are plain `.m3u` files in the music directory.
+- **Recents** is a JSON store capped at 50 — and only URIs inside
+  `music_dir` are recordable, so a streamed remote asset can't sneak into
+  the child's history.
+- **Remote assets** land in an LRU disk cache (SHA-256 verified,
+  512 MiB default, 32 MiB floor, path-sanitized); imported assets are
+  persisted into `music_dir/dashboard_uploads/` plus a
+  `Dashboard Uploads.m3u`.
+
+## Commands & events
+
+21 commands / 6 events — the largest command surface of any worker:
+
+| Group | Commands |
+| --- | --- |
+| Lifecycle | `configure` · `start` · `stop` · `health` · `shutdown` |
+| Transport | `play` · `pause` · `resume` · `stop_playback` · `next_track` · `previous_track` |
+| Library | `load_tracks` · `load_playlist` · `list_playlists` · `list_recent_tracks` · `shuffle_all` · `play_recent_track` |
+| Remote | `prepare_remote_asset` · `import_remote_asset` |
+| Audio | `set_volume` · `set_audio_device` |
+
+Events: `media.ready` · `media.snapshot` · `media.track_changed` ·
+`media.playback_state_changed` · `media.backend_availability_changed` ·
+`media.error`. (Time-position updates mutate state but deliberately emit
+no event of their own — the snapshot carries progress.)
+
+## Gotchas
+
+- An `end-file` from mpv with any reason other than `eof` clears the
+  current track — a crash mid-song doesn't leave a ghost "now playing".
+- mpv's Unix-socket IPC is unix-only; there is no Windows path.
+- The pause-on-call behavior is **not here** — it's a
+  [house rule](/runtime/routing-and-policies/#a-call-pauses-the-music)
+  at the office. The record library knows nothing about telephones.

@@ -14,7 +14,9 @@ loop, and timeout that connects the pieces.
 ## The protocol: commands in, events out
 
 The UI host speaks newline-delimited envelopes over stdin/stdout with its
-supervisor. The vocabulary is small and lives in `yoyopod_protocol::ui`:
+supervisor. The vocabulary is small and lives in `yoyopod_protocol::ui`
+(documented wire-by-wire in the runtime guide's
+[UI Contract](/runtime/ui-contract/)):
 
 **Inbound — `UiCommand`** (decoded in `transport/inbound.rs`, mapped to an
 `AppEvent` by `transport/dispatcher.rs`):
@@ -57,7 +59,8 @@ Four rhythms drive everything; all of them meet in the single event loop:
    `yoyopod-runtime`; it aggregates and sends the UI host a
    `RuntimeSnapshot` (or a `RuntimePatch` delta). The snapshot is the
    *only* way world state enters the UI — screens render state, they never
-   fetch it.
+   fetch it. (The runtime's side of this loop is documented in
+   [The 50 Hz Loop](/runtime/loop/).)
 2. **The tick loop** (500 ms at idle). The runtime pumps `Tick`; the host
    advances `lv_tick_inc` by the measured elapsed time, samples active
    animation timelines, and runs `lv_timer_handler`. Between ticks, LVGL

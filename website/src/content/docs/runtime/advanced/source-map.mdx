@@ -1,0 +1,60 @@
+---
+title: "Source Map: Runtime & Protocol"
+description: "Advanced: a file-by-file reference for the shared spine — device/runtime, device/protocol, and device/worker."
+---
+
+The file-level map of the guide's shared spine. Per-worker module tables
+live on [each worker's page](/runtime/workers/media/); the supporting
+crates (`harness`, `onpi`) are covered in [Testing](/runtime/testing/).
+Format matches the UI guide's [Source Map](/ui/advanced/source-map/).
+
+## The 30-second orientation
+
+To *read* the runtime rather than look things up, follow this thread —
+each stop earns the next:
+
+1. `main.rs` → `cli.rs` — how the process starts, and the UI-first spawn order
+2. `runtime_loop.rs` — the 50 Hz heart; everything else is called from here
+3. `worker.rs` — how children are spawned and their output reaches the inbox
+4. `event.rs` — the translation layer; the house rules live here
+5. `state.rs` — the ledger and the patch diff
+6. `device/protocol/src/lib.rs` — the envelope everything rides in
+
+## `device/runtime/src` — the supervisor
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `main.rs` | Entry: parse args, run, print dry-run output. | `main` |
+| `lib.rs` | Module declarations + the runtime's name. | `runtime_name` |
+| `cli.rs` | Process lifecycle: args (`--config-dir`, `--hardware`, `--dry-run`), the **UI-first fatal spawn order**, startup command volley, signal handlers (ctrl-c + screenshot), the outer loop with its 20 ms sleep. | `Args`, `run_runtime`, `start_workers`, `send_startup_commands`, `ScreenshotSignals` |
+| `worker.rs` | The supervisor proper: spawn with piped stdio, per-child reader threads → mpsc, ready waiting, message draining, `stop_all` (1 s grace then kill). One `worker.exited` per death, never a respawn. | `WorkerSupervisor`, `WorkerProcess`, `wait_for_ready`, `drain_messages`, `stop_all` |
+| `runtime_loop.rs` | One turn of the world: drain ≤64/domain → translate → apply → diff → dispatch → Tick. Also executes the pending power shutdown. | `RuntimeLoop`, `run_once`, `send_tick`, `dispatch_command`, `WORKER_DOMAINS` |
+| `event.rs` | The translation layer: envelope → `RuntimeEvent` → `RuntimeCommand`s. **Intent routing and every house rule live here.** | `runtime_event_from_worker`, `commands_for_event`, `commands_for_ui_intent` |
+| `state.rs` | The master ledger (2,381 lines): aggregated `RuntimeState`, the snapshot builder, the **full-vs-patch diff**, worker health bookkeeping, the power-safety state machine. | `RuntimeState`, `ui_snapshot`, `ui_snapshot_patches_since`, `power_safety_actions` |
+| `config.rs` | YAML loading with per-field `YOYOPOD_*` env overrides, worker binary path resolution, secret redaction in Debug/Serialize. | `RuntimeConfig::load`, `WorkerPaths` |
+| `voice.rs` | Voice-command routing: transcript → route kind, dictionaries, confirmation matching. | `route_voice_transcript`, `VoiceCommandSettings` |
+| `logging.rs` | Dual logging: stderr (journald) + app-log markers whose wording is contract (external skills grep them); PID file. | `startup_marker`, `append_marker_to_log`, `write_pid_file` |
+| `status.rs` | Thin wrapper exposing the status payload. | `build_status_payload` |
+| `protocol.rs` | Pure re-export of the shared envelope types. | — |
+
+## `device/protocol/src` — the wire
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `lib.rs` | The envelope layer: `WorkerEnvelope` (7 fields), the five kinds, NDJSON encode/decode, the strict `schema_version == 1` gate, typed errors. | `WorkerEnvelope`, `EnvelopeKind`, `ProtocolError`, `SUPPORTED_SCHEMA_VERSION` |
+| `ui/mod.rs` | The full UI vocabulary: `UiCommand` (11), `UiEvent` (8), `UiIntent` (6 domains + aliases), the `ui.ready` handshake types, animation requests, health, typed errors. | `UiCommand`, `UiEvent`, `UiIntent`, `UiReady`, `ScreenCapabilities`, `UI_SCHEMA_VERSION` |
+| `ui/snapshot.rs` | The world model pushed to the UI: `RuntimeSnapshot` + seven domain snapshots (all serde-default) and the tagged `RuntimeSnapshotPatch`. | `RuntimeSnapshot`, `RuntimeSnapshotPatch`, `RuntimeSnapshotDomain` |
+
+## `device/worker/src` — the scaffolding
+
+| File | Purpose | Key items |
+| --- | --- | --- |
+| `lib.rs` | Five helpers for uniform worker envelopes: write+flush, and the standard ready/health/stopped/error shapes. 48 lines. **Used only by the power worker** — the other five reimplement locally ([gap #8](/runtime/gaps/)). | `emit`, `ready_event`, `health_result`, `stopped_event`, `standard_error` |
+
+---
+
+:::tip[Keeping this page honest]
+Written from the source on the docs branch. If a file here doesn't match
+what you're reading, trust the code — and treat the mismatch as a docs
+bug worth fixing.
+:::

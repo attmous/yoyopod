@@ -1,0 +1,74 @@
+---
+title: "Network: The Radio Room"
+description: The network host — SIM7600 over serial AT commands, pppd, GPS, and the richest recovery state machine in the system.
+---
+
+## What it owns
+
+The cellular data path, end to end: the SIM7600 modem over a serial
+port, the AT-command bring-up (SIM, registration, signal, carrier, GPS),
+the **pppd** process that turns a registered modem into an IP link, link
+health monitoring, and GPS fixes.
+
+## How it's wired
+
+| | |
+| --- | --- |
+| Binary | `yoyopod-network-host` (~3,100 LoC) |
+| Config | **self-loads** `network/cellular.yaml` + the board overlay (`boards/rpi-zero-2w/…`) given `--config-dir` |
+| Wraps | the SIM7600 (serialport crate) and a spawned `pppd` (via `sudo -n` when not root, chat `ATD*99#`) |
+| Probes | `/sys/class/net/ppp0` for link health |
+
+Port aliases like `sim7600:if02` resolve through `/dev/serial/by-id` /
+`by-path` to the right ttyUSB interface — the config names the modem
+*function*, not a device node that renumbers.
+
+## The lifecycle FSM — worth reading in full
+
+This is the richest state machine in the system, because radio reality
+demands it:
+
+| State | Meaning |
+| --- | --- |
+| `Off` | not started |
+| `Probing` | opening the serial port, first AT contact |
+| `Ready` | modem answers; SIM checked (`AT+CPIN?`) |
+| `Registering` | waiting for network registration (`AT+CEREG?`) |
+| `Registered` | on the network; signal/carrier read (`+CSQ`, `+COPS?`) |
+| `PppStarting` | pppd spawned, waiting for `ppp0` |
+| `Online` | IP link up — the steady state |
+| `PppStopping` | tearing down the data session |
+| `Recovering` | a retryable fault occurred; backoff timer running |
+| `Degraded` | a fatal fault (or config failure) — no bring-up attempts |
+
+**Recovery is exponential backoff, 1 s doubling to a 30 s cap.** Faults
+are classified: transport hiccups, registration timeouts, and PPP
+failures are *retryable*; **SIM PIN required-but-missing, PUK, and
+no-SIM are fatal** — retrying a locked SIM helps nobody. `tick()` (every
+100 ms) runs due recoveries, polls PPP health, and refreshes live facts
+every 5 s.
+
+This is the one worker with real *internal* recovery — the exception that
+proves the [no-restarts rule](/runtime/process-model/): the process never
+dies to recover; it walks its own FSM back to `Online`.
+
+## Commands & events
+
+The smallest command surface — the radio room mostly runs itself:
+
+| Commands | Events |
+| --- | --- |
+| `network.health` · `network.query_gps` · `network.reset_modem` · `network.shutdown` | `network.ready` · `network.snapshot` · `network.stopped` · `network.error` |
+
+Snapshot events are **deduplicated** — published only when the projected
+state actually changed, so the runtime's inbox isn't flooded by a
+steady-state radio.
+
+## Gotchas
+
+- If config fails to load, the host boots `Degraded/config_load_failed`
+  and never attempts bring-up — visible, not silent.
+- `pppd` runs under `sudo -n`; the Pi image must grant it passwordless,
+  which is part of the [setup contract](/operations/setup-contract/).
+- GPS coordinates arrive as `ddmm.mmmm` and are converted to decimal
+  degrees in the host — consumers see clean numbers only.

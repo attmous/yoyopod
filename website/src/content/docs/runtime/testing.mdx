@@ -1,0 +1,41 @@
+---
+title: Testing & Validation
+description: The harness crate for wire-level tests, and yoyopod-on-pi for staged on-device validation.
+---
+
+Two crates keep the runtime honest — one on the dev machine, one on the
+device.
+
+## `device/harness` — wire-level assertions
+
+A tiny test library that decodes a worker's raw stdout bytes into typed
+envelopes (`decode_envelopes`, `find_envelope`) and **panics loudly** on
+any malformed line. Because it depends on `yoyopod-protocol` itself,
+integration tests assert against the *exact* wire format the workers
+speak — the tests can't drift from the protocol any more than the workers
+can.
+
+## `device/onpi` — `yoyopod-on-pi`
+
+The on-device validator: cross-compiled to arm64, shipped in the CI
+bundle, and executed on the Pi by `yoyopod target validate` over SSH.
+Exit codes are the contract: **0 pass · 1 fail · 2 blocked**.
+
+| Stage | Checks |
+| --- | --- |
+| `smoke` | the 8 worker binaries exist and are executable; required config present; systemd units in place; runtime `--dry-run` emits valid JSON |
+| `deploy` | deploy-layout assertions (paths, permissions) |
+| `stability` | the runtime stays up under observation |
+| `navigation` | drives the **real** `yoyopod-ui-host` over the real envelope protocol: pumps ticks at 500 ms, requests `ui.health`, requires `frames ≥ 1`, `last_ui_renderer == "lvgl"`, a non-empty active screen |
+| `lvgl` | display-backend specific checks |
+| `voip`, `cloud-voice` | **stubbed — exit 2** ([Known Gaps](/runtime/gaps/)) |
+
+The navigation stage is the closest thing to an end-to-end UI test on
+real hardware: same binary, same protocol, same LVGL — only the tick
+cadence differs (500 ms vs the runtime's ~50 Hz, both comfortably inside
+the UI's 5 s stall budget).
+
+For the dev-machine → device loop itself (deploy, screenshots,
+journals), see the UI guide's
+[Playbook](/ui/playbook/#deploy-and-verify-on-the-device) and the
+[Pi Dev Workflow](/operations/pi-dev-workflow/).

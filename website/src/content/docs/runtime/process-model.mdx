@@ -1,0 +1,75 @@
+---
+title: Seven Processes, One Desk
+description: How the runtime spawns and supervises its workers — piped stdio, reader threads, no in-process restarts, and the landlord upstairs.
+---
+
+import ProcessTree from '../../../assets/diagrams/process-tree.svg';
+
+<ProcessTree class="diagram" />
+
+## Spawning
+
+`WorkerSupervisor` (`device/runtime/src/worker.rs`) starts each worker
+host exactly once:
+
+- **stdin/stdout are piped** — commands go down as NDJSON lines, events
+  come back up the same way.
+- **stderr is inherited** — worker logs flow straight through the
+  runtime's stderr into journald; no log plumbing to maintain.
+- **One reader thread per child** does blocking line reads on the child's
+  stdout, decodes each line into a `WorkerEnvelope`, and forwards it into
+  a single shared mpsc channel — the office's one inbox. Decode failures
+  travel a separate error channel and mark the domain degraded rather
+  than poisoning the stream.
+
+Worker binary paths come from `WorkerPaths` (defaults like
+`device/ui/build/yoyopod-ui-host`), each overridable via a
+`YOYOPOD_RUST_*_WORKER` environment variable — which is how tests and
+bench setups substitute mocks without code changes.
+
+## Supervision — or deliberately, the lack of it
+
+This is the design decision to internalize: **the runtime never restarts
+a worker.**
+
+- A worker that exits gets its domain marked `Stopped` and exactly one
+  synthesized `worker.exited` event — then nothing. No respawn, no
+  backoff, no retry.
+- `WorkerHealth.restart_count` exists in the code and is **never
+  incremented** — there are no restarts to count
+  ([Known Gaps](/runtime/gaps/)).
+- Real recovery belongs to **the landlord**: the systemd unit
+  (`Restart=on-failure`, `RestartSec=5`) restarts the *entire runtime*,
+  which rebuilds every process from scratch.
+
+Why wholesale over surgical? **State consistency.** The runtime's ledger,
+each worker's internal state, and the UI's rendered world are only
+guaranteed coherent at startup, when everything handshakes and one full
+snapshot flows. Restarting a single worker mid-flight would mean
+re-synchronizing partial state along every edge — a class of bugs the
+project simply refuses to have. A clean rebuild five seconds later is
+slower but *provably* consistent.
+
+Between exit and rebuild, "health" is soft bookkeeping: domains are
+`Running`, `Degraded` (ready-timeout, protocol errors, `*.error`
+envelopes), `Disabled` (voice, when not enabled), or `Stopped`.
+
+## Signals
+
+| Signal | Effect |
+| --- | --- |
+| `SIGINT` / `SIGTERM` | graceful shutdown — see [Startup & Shutdown](/runtime/lifecycle/) |
+| `SIGUSR1` | forward `ui.screenshot` (LVGL-readback first) to the UI host |
+| `SIGUSR2` | forward `ui.screenshot` (shadow-buffer first) |
+
+The screenshot handlers only flip atomics; the
+[loop](/runtime/loop/) polls and forwards them — signal handlers stay
+async-signal-safe.
+
+## Logging & identity
+
+Dual-channel: RFC3339-stamped lines to **stderr** (journald), plus
+startup/shutdown/screenshot **markers appended to the app log**
+(`logs/yoyopod.log` by default) — external tooling greps those markers,
+so their wording is contract. A PID file (default `state/yoyopod.pid`)
+identifies the running instance.

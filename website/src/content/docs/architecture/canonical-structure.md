@@ -15,3 +15,11 @@ overrides under `config/boards/` — today only `rpi-zero-2w`. The canonical
 structure document defines which package owns which config file, how board
 overlays compose with the base tree, and where new configuration must go so
 that ownership stays unambiguous.
+
+:::caution[Partially superseded]
+The config wiring is now documented in depth at
+[Configuration Wiring](/runtime/configuration/). The canonical document's
+"Canonical Package Ownership" section describes the **retired Python
+layout** and no longer matches the Rust crates — see the runtime guide's
+[Known Gaps](/runtime/gaps/).
+:::

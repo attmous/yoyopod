@@ -6,6 +6,10 @@ const stub = { text: 'Stub', variant: 'caution' };
 
 // https://astro.build/config
 export default defineConfig({
+	redirects: {
+		'/architecture/system-architecture/': '/runtime/overview/',
+		'/architecture/runtime-event-flow/': '/runtime/loop/',
+	},
 	integrations: [
 		starlight({
 			title: 'yoyopod',
@@ -71,6 +75,56 @@ export default defineConfig({
 					],
 				},
 				{
+					label: 'Runtime & Workers Guide',
+					items: [
+						{ label: 'Guide Index', slug: 'runtime' },
+						{ label: "Overview: One Intent's Round Trip", slug: 'runtime/overview' },
+						{ label: 'The Mental Model', slug: 'runtime/mental-model' },
+						{
+							label: 'The Protocol',
+							items: [
+								{ label: 'Telegrams on the Wire', slug: 'runtime/protocol' },
+								{ label: 'The UI Contract', slug: 'runtime/ui-contract' },
+							],
+						},
+						{
+							label: 'The Supervisor',
+							items: [
+								{ label: 'Seven Processes, One Desk', slug: 'runtime/process-model' },
+								{ label: 'Startup & Shutdown', slug: 'runtime/lifecycle' },
+								{ label: 'The 50 Hz Loop', slug: 'runtime/loop' },
+								{ label: 'Intents & House Rules', slug: 'runtime/routing-and-policies' },
+								{ label: 'Configuration Wiring', slug: 'runtime/configuration' },
+							],
+						},
+						{
+							label: 'The Workers',
+							items: [
+								{ label: 'Media: The Record Library', slug: 'runtime/workers/media' },
+								{ label: 'VoIP: The Switchboard', slug: 'runtime/workers/voip' },
+								{ label: 'Network: The Radio Room', slug: 'runtime/workers/network' },
+								{ label: 'Cloud: The Telegraph Desk', slug: 'runtime/workers/cloud' },
+								{ label: 'Power: The Boiler Room', slug: 'runtime/workers/power' },
+								{ label: 'Speech: The Interpreter', slug: 'runtime/workers/speech' },
+							],
+						},
+						{
+							label: 'Reference',
+							items: [
+								{ label: 'Testing & Validation', slug: 'runtime/testing' },
+								{ label: 'Known Gaps & Honest Caveats', slug: 'runtime/gaps' },
+							],
+						},
+						{
+							label: 'Advanced',
+							items: [
+								{ label: 'Failure Paths & Timeouts', slug: 'runtime/advanced/failure-paths' },
+								{ label: 'Source Map', slug: 'runtime/advanced/source-map' },
+							],
+						},
+					],
+				},
+				{
 					label: 'Product',
 					items: [
 						{ label: 'Product Definition', slug: 'product/definition', badge: stub },
@@ -81,8 +135,6 @@ export default defineConfig({
 				{
 					label: 'Architecture',
 					items: [
-						{ label: 'System Architecture', slug: 'architecture/system-architecture', badge: stub },
-						{ label: 'Runtime Event Flow', slug: 'architecture/runtime-event-flow', badge: stub },
 						{ label: 'Canonical Structure', slug: 'architecture/canonical-structure', badge: stub },
 						{ label: 'Work Areas', slug: 'architecture/work-areas', badge: stub },
 					],

@@ -1,0 +1,156 @@
+---
+title: Runtime & Workers Guide
+description: The guide to everything behind the glass — one supervisor, one wire format, six domain workers — and how it's organized.
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+This guide covers everything *behind* the glass: the `yoyopod-runtime`
+supervisor, the NDJSON wire every process speaks, and the six domain
+workers that touch the real world. Like its sibling, the
+[UI System Guide](/ui/), it documents the system as it **is** — honest
+divergences included.
+
+New here? Start with these two:
+
+<CardGrid>
+	<LinkCard
+		title="Overview: One Intent's Round Trip"
+		description="The five system rules, the process tree, and the full trip from a button press to a re-rendered screen."
+		href="/runtime/overview/"
+	/>
+	<LinkCard
+		title="The Mental Model: Inside the Office"
+		description="The Tiny Theater's office, opened up — the landlord, the ledger, the telegrams, and the three laws."
+		href="/runtime/mental-model/"
+	/>
+</CardGrid>
+
+## How this guide is organized
+
+Bottom-up, like the UI guide: the wire first, then the supervisor that
+speaks it, then the workers on the other end, then the references.
+
+### Part I — The Protocol
+
+<CardGrid>
+	<LinkCard
+		title="Telegrams on the Wire"
+		description="The envelope anatomy, NDJSON framing, the strict schema gate, and what's deliberately not in the shared crate."
+		href="/runtime/protocol/"
+	/>
+	<LinkCard
+		title="The UI Contract"
+		description="Every command, event, and intent between the runtime and the theater — plus snapshots, patches, and the ready handshake."
+		href="/runtime/ui-contract/"
+	/>
+</CardGrid>
+
+### Part II — The Supervisor
+
+<CardGrid>
+	<LinkCard
+		title="Seven Processes, One Desk"
+		description="Spawning, reader threads, the one inbox — and why the runtime deliberately never restarts a worker."
+		href="/runtime/process-model/"
+	/>
+	<LinkCard
+		title="Startup & Shutdown"
+		description="UI first and fatal, workers tolerant; the startup command volley; the three ways the show ends."
+		href="/runtime/lifecycle/"
+	/>
+	<LinkCard
+		title="The 50 Hz Loop"
+		description="run_once anatomy — drain, translate, apply, diff, tick — and why only changed domains cross the wire."
+		href="/runtime/loop/"
+	/>
+	<LinkCard
+		title="Intents & House Rules"
+		description="How buzzer notes become work orders, and every cross-domain policy — all in one file."
+		href="/runtime/routing-and-policies/"
+	/>
+	<LinkCard
+		title="Configuration Wiring"
+		description="Three config-delivery styles, the worker-to-file map, the env-override rule, and the one file with two readers."
+		href="/runtime/configuration/"
+	/>
+</CardGrid>
+
+### Part III — The Workers
+
+<CardGrid>
+	<LinkCard
+		title="Media: The Record Library"
+		description="mpv over JSON-IPC, the .m3u library, recents, and the remote-asset cache."
+		href="/runtime/workers/media/"
+	/>
+	<LinkCard
+		title="VoIP: The Switchboard"
+		description="liblinphone through a dlopen FFI shim — SIP lifecycle, calls, messaging, voice notes."
+		href="/runtime/workers/voip/"
+	/>
+	<LinkCard
+		title="Network: The Radio Room"
+		description="SIM7600 AT commands, pppd, GPS — and the richest recovery state machine in the system."
+		href="/runtime/workers/network/"
+	/>
+	<LinkCard
+		title="Cloud: The Telegraph Desk"
+		description="MQTT to the backend, store-and-forward queueing, provisioning states."
+		href="/runtime/workers/cloud/"
+	/>
+	<LinkCard
+		title="Power: The Boiler Room"
+		description="PiSugar battery and RTC, and the hardware watchdog fed over I²C."
+		href="/runtime/workers/power/"
+	/>
+	<LinkCard
+		title="Speech: The Interpreter"
+		description="Cloud STT/TTS/Ask, one conversation at a time — and the speech-vs-voice naming trap."
+		href="/runtime/workers/speech/"
+	/>
+</CardGrid>
+
+### Part IV — Reference
+
+<CardGrid>
+	<LinkCard
+		title="Testing & Validation"
+		description="The harness crate for wire-level tests, and yoyopod-on-pi's staged on-device validation."
+		href="/runtime/testing/"
+	/>
+	<LinkCard
+		title="Known Gaps & Honest Caveats"
+		description="The 8-item ledger — unused heartbeats, unimplemented HTTP sync, the single-thread caveat — and what to lean on."
+		href="/runtime/gaps/"
+	/>
+</CardGrid>
+
+### Advanced
+
+<CardGrid>
+	<LinkCard
+		title="Failure Paths & Timeouts"
+		description="Every timeout in one table, the failure walkthroughs, and the recovery matrix."
+		href="/runtime/advanced/failure-paths/"
+	/>
+	<LinkCard
+		title="Source Map: Runtime & Protocol"
+		description="Every file in device/runtime, device/protocol, and device/worker explained."
+		href="/runtime/advanced/source-map/"
+	/>
+</CardGrid>
+
+## Reading paths
+
+| If you want to… | Read |
+| --- | --- |
+| understand the whole system quickly | [Overview](/runtime/overview/) |
+| make the design stick in your head | [The Mental Model](/runtime/mental-model/) |
+| add or change a worker command | that [worker's page](/runtime/workers/media/) → [Telegrams on the Wire](/runtime/protocol/) |
+| trace a button press end to end | [Overview](/runtime/overview/) → [Intents & House Rules](/runtime/routing-and-policies/) |
+| debug a worker that won't start | [Startup & Shutdown](/runtime/lifecycle/) → [Failure Paths](/runtime/advanced/failure-paths/) |
+| change configuration safely | [Configuration Wiring](/runtime/configuration/) |
+| know what a file in `device/runtime/src` is for | [Source Map](/runtime/advanced/source-map/) |
+| know what's honestly missing | [Known Gaps](/runtime/gaps/) |
+| see the other end of the wire | the UI guide's [Runtime Data Flow](/ui/advanced/data-flow/) |
