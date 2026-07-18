@@ -13,14 +13,6 @@ pub fn listen_items(_snapshot: &RuntimeSnapshot) -> Vec<ListItemSnapshot> {
     ]
 }
 
-pub fn talk_items() -> Vec<ListItemSnapshot> {
-    vec![
-        ListItemSnapshot::new("contacts", "Contacts", "Call someone", "contact"),
-        ListItemSnapshot::new("call_history", "History", "Recent calls", "history"),
-        ListItemSnapshot::new("voice_note", "Voice Note", "Record a note", "mic"),
-    ]
-}
-
 pub fn talk_contact_actions(
     snapshot: &RuntimeSnapshot,
     selected_contact: Option<&ListItemSnapshot>,

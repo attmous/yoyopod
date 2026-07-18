@@ -13,8 +13,10 @@ pub const SLIDE_IN_FROM_RIGHT_TIMELINE_ID: TimelineId = TimelineId(4);
 pub const PROGRESS_SWEEP_TIMELINE_ID: TimelineId = TimelineId(5);
 pub const SELECTION_SNAP_TIMELINE_ID: TimelineId = TimelineId(6);
 pub const MEDIA_WHEEL_ROLL_TIMELINE_ID: TimelineId = TimelineId(7);
-pub const MEDIA_WHEEL_ROLL_DURATION_MS: u64 = 180;
+pub const CONTACT_WHEEL_ROLL_TIMELINE_ID: TimelineId = TimelineId(8);
+pub const WHEEL_ROLL_DURATION_MS: u64 = 180;
 pub const MEDIA_WHEEL_PEEK_OPACITY: u8 = 148;
+pub const CONTACT_WHEEL_PEEK_OPACITY: u8 = 115;
 
 pub fn breathe_focused_item(deck: usize, index: usize) -> Timeline {
     Timeline {
@@ -270,17 +272,41 @@ pub fn media_wheel_roll(item_count: usize, deck_index: usize, started_ms: u64) -
     // focus only after this timeline ends, so labels never change mid-roll.
     let tracks = if item_count == 2 {
         [
-            motion_tracks(deck_index, 0, 102, 600, 255, 0),
-            motion_tracks(deck_index, 1, -102, 1_120, MEDIA_WHEEL_PEEK_OPACITY, 255),
+            motion_tracks(deck_index, 0, 102, 1_000, 600, 255, 0),
+            motion_tracks(
+                deck_index,
+                1,
+                -102,
+                1_000,
+                1_120,
+                MEDIA_WHEEL_PEEK_OPACITY,
+                255,
+            ),
         ]
         .into_iter()
         .flatten()
         .collect()
     } else {
         [
-            motion_tracks(deck_index, 0, -12, 860, MEDIA_WHEEL_PEEK_OPACITY, 0),
-            motion_tracks(deck_index, 1, -34, 780, 255, MEDIA_WHEEL_PEEK_OPACITY),
-            motion_tracks(deck_index, 2, -82, 1_120, MEDIA_WHEEL_PEEK_OPACITY, 255),
+            motion_tracks(deck_index, 0, -12, 1_000, 860, MEDIA_WHEEL_PEEK_OPACITY, 0),
+            motion_tracks(
+                deck_index,
+                1,
+                -34,
+                1_000,
+                780,
+                255,
+                MEDIA_WHEEL_PEEK_OPACITY,
+            ),
+            motion_tracks(
+                deck_index,
+                2,
+                -82,
+                1_000,
+                1_120,
+                MEDIA_WHEEL_PEEK_OPACITY,
+                255,
+            ),
         ]
         .into_iter()
         .flatten()
@@ -297,10 +323,81 @@ pub fn media_wheel_roll(item_count: usize, deck_index: usize, started_ms: u64) -
     })
 }
 
+pub fn contact_wheel_roll(
+    item_count: usize,
+    deck_index: usize,
+    started_ms: u64,
+) -> Option<Timeline> {
+    if item_count < 2 {
+        return None;
+    }
+
+    let tracks = if item_count == 2 {
+        [
+            motion_tracks(
+                deck_index,
+                0,
+                -80,
+                1_000,
+                700,
+                255,
+                CONTACT_WHEEL_PEEK_OPACITY,
+            ),
+            motion_tracks(
+                deck_index,
+                1,
+                -80,
+                700,
+                1_000,
+                CONTACT_WHEEL_PEEK_OPACITY,
+                255,
+            ),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    } else {
+        [
+            motion_tracks(deck_index, 0, -80, 700, 700, CONTACT_WHEEL_PEEK_OPACITY, 0),
+            motion_tracks(
+                deck_index,
+                1,
+                -80,
+                1_000,
+                700,
+                255,
+                CONTACT_WHEEL_PEEK_OPACITY,
+            ),
+            motion_tracks(
+                deck_index,
+                2,
+                -80,
+                700,
+                1_000,
+                CONTACT_WHEEL_PEEK_OPACITY,
+                255,
+            ),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    };
+
+    Some(Timeline {
+        id: CONTACT_WHEEL_ROLL_TIMELINE_ID,
+        clock: ClockSource::EventTime(EventId(8)),
+        tracks,
+        loop_mode: LoopMode::Once,
+        on_complete: None,
+        started_ms,
+    })
+}
+
 fn motion_tracks(
     deck: usize,
     index: usize,
     to_y: i32,
+    from_scale: i32,
     to_scale: i32,
     from_opacity: u8,
     to_opacity: u8,
@@ -316,7 +413,7 @@ fn motion_tracks(
                     value: AnimatableValue::I32(0),
                 },
                 Keyframe {
-                    at_ms: MEDIA_WHEEL_ROLL_DURATION_MS as u32,
+                    at_ms: WHEEL_ROLL_DURATION_MS as u32,
                     value: AnimatableValue::I32(to_y),
                 },
             ],
@@ -328,10 +425,10 @@ fn motion_tracks(
             keyframes: vec![
                 Keyframe {
                     at_ms: 0,
-                    value: AnimatableValue::I32(1_000),
+                    value: AnimatableValue::I32(from_scale),
                 },
                 Keyframe {
-                    at_ms: MEDIA_WHEEL_ROLL_DURATION_MS as u32,
+                    at_ms: WHEEL_ROLL_DURATION_MS as u32,
                     value: AnimatableValue::I32(to_scale),
                 },
             ],
@@ -346,7 +443,7 @@ fn motion_tracks(
                     value: AnimatableValue::U8(from_opacity),
                 },
                 Keyframe {
-                    at_ms: MEDIA_WHEEL_ROLL_DURATION_MS as u32,
+                    at_ms: WHEEL_ROLL_DURATION_MS as u32,
                     value: AnimatableValue::U8(to_opacity),
                 },
             ],
@@ -393,6 +490,47 @@ mod tests {
         assert_eq!(
             media_wheel_roll(2, 0, 0)
                 .expect("two tracks should cross-roll")
+                .tracks
+                .len(),
+            6
+        );
+    }
+
+    #[test]
+    fn contact_wheel_roll_matches_the_three_slot_motion_contract() {
+        let timeline = contact_wheel_roll(3, 0, 1_000).expect("three contacts should roll");
+        assert_eq!(timeline.id, CONTACT_WHEEL_ROLL_TIMELINE_ID);
+        assert_eq!(timeline.tracks.len(), 9);
+        let timelines = [timeline];
+        let sampler = TimelineSampler::new(&timelines, 1_180, 0);
+
+        assert_eq!(
+            sampler.value(
+                ActorRef::DeckItem { deck: 0, index: 0 },
+                AnimatableProp::Opacity
+            ),
+            Some(AnimatableValue::U8(0))
+        );
+        assert_eq!(
+            sampler.value(ActorRef::DeckItem { deck: 0, index: 1 }, AnimatableProp::Y),
+            Some(AnimatableValue::I32(-80))
+        );
+        assert_eq!(
+            sampler.value(
+                ActorRef::DeckItem { deck: 0, index: 2 },
+                AnimatableProp::Scale
+            ),
+            Some(AnimatableValue::I32(1_000))
+        );
+    }
+
+    #[test]
+    fn contact_wheel_roll_handles_empty_single_and_two_contact_lists() {
+        assert!(contact_wheel_roll(0, 0, 0).is_none());
+        assert!(contact_wheel_roll(1, 0, 0).is_none());
+        assert_eq!(
+            contact_wheel_roll(2, 0, 0)
+                .expect("two contacts should cross-roll")
                 .tracks
                 .len(),
             6

@@ -47,19 +47,19 @@ impl UiRuntime {
     }
 
     pub fn apply_snapshot(&mut self, snapshot: RuntimeSnapshot) {
-        let pending_identity = self.pending_media_wheel_identity();
+        let pending_identity = self.pending_wheel_identity();
         let change = snapshot::replace_full(&mut self.snapshot, snapshot);
         self.full_snapshots += 1;
         navigator::apply_app_state_route(self, &change.previous_app_state, &change.app_state);
         navigator::apply_runtime_preemption(self);
         navigator::clamp_focus(self);
-        self.reconcile_pending_media_wheel_roll(pending_identity);
+        self.reconcile_pending_wheel_roll(pending_identity);
         self.dirty.mark_full();
     }
 
     pub fn apply_patch(&mut self, patch: RuntimeSnapshotPatch) {
         let domain = patch.domain();
-        let pending_identity = self.pending_media_wheel_identity();
+        let pending_identity = self.pending_wheel_identity();
         let previous_screen = self.active_screen;
         let previous_focus = self.focus_index;
         let previous_stack_len = self.screen_stack.len();
@@ -68,7 +68,7 @@ impl UiRuntime {
         navigator::apply_app_state_route(self, &change.previous_app_state, &change.app_state);
         navigator::apply_runtime_preemption(self);
         navigator::clamp_focus(self);
-        self.reconcile_pending_media_wheel_roll(pending_identity);
+        self.reconcile_pending_wheel_roll(pending_identity);
         self.dirty.mark_patch_domain(change.domain);
         if self.active_screen != previous_screen || self.screen_stack.len() != previous_stack_len {
             self.dirty.navigation = true;
@@ -83,12 +83,12 @@ impl UiRuntime {
             return;
         }
         self.last_input_ms = Some(now_ms);
-        if self.pending_media_wheel_roll.is_some() {
+        if self.pending_wheel_roll.is_some() {
             if action == InputAction::Advance {
                 self.dirty.input = true;
                 return;
             }
-            self.commit_pending_media_wheel_roll();
+            self.commit_pending_wheel_roll();
         }
         let previous_screen = self.active_screen;
         let route_state = input_router::InputRouteState {
@@ -97,7 +97,7 @@ impl UiRuntime {
         };
         match input_router::route(action, &route_state) {
             input_router::AppCommand::AdvanceFocus => {
-                if !self.begin_media_wheel_roll(now_ms) {
+                if !self.begin_wheel_roll(now_ms) {
                     navigator::advance_focus(self);
                 }
             }
@@ -108,7 +108,7 @@ impl UiRuntime {
             input_router::AppCommand::PttRelease => navigator::handle_ptt_release(self),
         }
         if self.active_screen != previous_screen {
-            self.pending_media_wheel_roll = None;
+            self.pending_wheel_roll = None;
         }
         navigator::clamp_focus(self);
         self.dirty.input = true;
@@ -160,25 +160,22 @@ impl UiRuntime {
 
     pub fn advance_animations(&mut self, now_ms: u64) -> bool {
         let had_transitions = !self.transitions.is_empty();
-        let had_media_wheel_roll = self.pending_media_wheel_roll.is_some();
+        let had_wheel_roll = self.pending_wheel_roll.is_some();
         self.transitions
             .retain(|transition| !transition.is_complete(now_ms));
-        let roll_completed = self
-            .pending_media_wheel_roll
-            .as_ref()
-            .is_some_and(|pending| {
-                now_ms.saturating_sub(pending.timeline.started_ms)
-                    >= animation::presets::MEDIA_WHEEL_ROLL_DURATION_MS
-            });
+        let roll_completed = self.pending_wheel_roll.as_ref().is_some_and(|pending| {
+            now_ms.saturating_sub(pending.timeline.started_ms)
+                >= animation::presets::WHEEL_ROLL_DURATION_MS
+        });
         if roll_completed {
-            self.commit_pending_media_wheel_roll();
+            self.commit_pending_wheel_roll();
             navigator::clamp_focus(self);
             self.dirty.focus = true;
         }
-        if had_transitions || had_media_wheel_roll {
+        if had_transitions || had_wheel_roll {
             self.dirty.animation = true;
         }
-        had_transitions || had_media_wheel_roll
+        had_transitions || had_wheel_roll
     }
 
     pub fn mark_animation_frame(&mut self) {
@@ -216,7 +213,7 @@ impl UiRuntime {
                 .map(|transition| transition.timeline()),
         );
         if let Some(pending) = self
-            .pending_media_wheel_roll
+            .pending_wheel_roll
             .as_ref()
             .filter(|pending| pending.screen == self.active_screen)
         {
@@ -309,11 +306,18 @@ impl UiRuntime {
         }
     }
 
-    fn begin_media_wheel_roll(&mut self, now_ms: u64) -> bool {
-        let Some(item_count) = self.media_wheel_item_count() else {
+    fn begin_wheel_roll(&mut self, now_ms: u64) -> bool {
+        let Some(item_count) = self.wheel_item_count() else {
             return false;
         };
-        let Some(timeline) = animation::presets::media_wheel_roll(item_count, 0, now_ms) else {
+        let timeline = match self.active_screen {
+            UiScreen::Talk => animation::presets::contact_wheel_roll(item_count, 0, now_ms),
+            UiScreen::Playlists | UiScreen::PlaylistTracks | UiScreen::RecentTracks => {
+                animation::presets::media_wheel_roll(item_count, 0, now_ms)
+            }
+            _ => None,
+        };
+        let Some(timeline) = timeline else {
             return false;
         };
 
@@ -327,7 +331,7 @@ impl UiRuntime {
             return false;
         }
 
-        self.pending_media_wheel_roll = Some(super::state::PendingMediaWheelRoll {
+        self.pending_wheel_roll = Some(super::state::PendingWheelRoll {
             screen: self.active_screen,
             target_focus,
             timeline,
@@ -335,8 +339,8 @@ impl UiRuntime {
         true
     }
 
-    fn commit_pending_media_wheel_roll(&mut self) {
-        let Some(pending) = self.pending_media_wheel_roll.take() else {
+    fn commit_pending_wheel_roll(&mut self) {
+        let Some(pending) = self.pending_wheel_roll.take() else {
             return;
         };
         if pending.screen == self.active_screen {
@@ -345,57 +349,54 @@ impl UiRuntime {
         }
     }
 
-    fn abort_pending_media_wheel_roll(&mut self) {
-        if self.pending_media_wheel_roll.take().is_none() {
+    fn abort_pending_wheel_roll(&mut self) {
+        if self.pending_wheel_roll.take().is_none() {
             return;
         }
 
         // Animation tracks mutate native LVGL transform and opacity styles. A
         // list replacement makes those actors ambiguous, so force a new scene
-        // generation and let reconciliation rebuild every media slot cleanly.
+        // generation and let reconciliation rebuild every wheel slot cleanly.
         self.scene_revision = self.scene_revision.wrapping_add(1);
         self.dirty.focus = true;
     }
 
-    fn pending_media_wheel_identity(&self) -> Option<MediaWheelIdentity> {
-        let pending = self.pending_media_wheel_roll.as_ref()?;
-        Some(MediaWheelIdentity {
+    fn pending_wheel_identity(&self) -> Option<WheelIdentity> {
+        let pending = self.pending_wheel_roll.as_ref()?;
+        Some(WheelIdentity {
             screen: pending.screen,
             route_key: self.active_route_key().map(str::to_owned),
-            item_ids: self.media_wheel_item_ids(pending.screen)?,
+            item_ids: self.wheel_item_ids(pending.screen)?,
         })
     }
 
-    fn reconcile_pending_media_wheel_roll(&mut self, before: Option<MediaWheelIdentity>) {
+    fn reconcile_pending_wheel_roll(&mut self, before: Option<WheelIdentity>) {
         let Some(before) = before else {
             return;
         };
-        if self.pending_media_wheel_roll.is_none() {
+        if self.pending_wheel_roll.is_none() {
             return;
         }
         if self.active_screen != before.screen {
-            self.pending_media_wheel_roll = None;
+            self.pending_wheel_roll = None;
             return;
         }
 
-        let after = MediaWheelIdentity {
+        let after = WheelIdentity {
             screen: self.active_screen,
             route_key: self.active_route_key().map(str::to_owned),
-            item_ids: self
-                .media_wheel_item_ids(self.active_screen)
-                .unwrap_or_default(),
+            item_ids: self.wheel_item_ids(self.active_screen).unwrap_or_default(),
         };
         if after != before {
-            self.abort_pending_media_wheel_roll();
+            self.abort_pending_wheel_roll();
         }
     }
 
-    fn media_wheel_item_count(&self) -> Option<usize> {
-        self.media_wheel_item_ids(self.active_screen)
-            .map(|ids| ids.len())
+    fn wheel_item_count(&self) -> Option<usize> {
+        self.wheel_item_ids(self.active_screen).map(|ids| ids.len())
     }
 
-    fn media_wheel_item_ids(&self, screen: UiScreen) -> Option<Vec<String>> {
+    fn wheel_item_ids(&self, screen: UiScreen) -> Option<Vec<String>> {
         let items = match screen {
             UiScreen::Playlists => &self.snapshot.music.playlists,
             UiScreen::PlaylistTracks => self
@@ -404,6 +405,7 @@ impl UiRuntime {
                 .and_then(|playlist| self.snapshot.music.playlist_tracks.get(&playlist.id))
                 .map_or(&[][..], Vec::as_slice),
             UiScreen::RecentTracks => &self.snapshot.music.recent_tracks,
+            UiScreen::Talk => &self.snapshot.call.contacts,
             _ => return None,
         };
         Some(items.iter().map(|item| item.id.clone()).collect())
@@ -411,7 +413,7 @@ impl UiRuntime {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct MediaWheelIdentity {
+struct WheelIdentity {
     screen: UiScreen,
     route_key: Option<String>,
     item_ids: Vec<String>,
@@ -535,6 +537,14 @@ mod tests {
     use crate::scene::roles;
     use yoyopod_protocol::ui::{ListItemSnapshot, MusicIntent, PlaylistTrackAction};
 
+    fn contact(id: &str, title: &str) -> ListItemSnapshot {
+        let initial = title
+            .chars()
+            .find(|character| character.is_alphanumeric())
+            .unwrap_or('?');
+        ListItemSnapshot::new(id, title, "", format!("mono:{initial}"))
+    }
+
     fn count_visible_role(element: &crate::engine::Element, role: &'static str) -> usize {
         usize::from(element.role == Some(role) && element.props.visible != Some(false))
             + element
@@ -607,6 +617,29 @@ mod tests {
 
         runtime.handle_input(InputAction::Select, 600);
         assert_eq!(runtime.active_screen, UiScreen::Listen);
+    }
+
+    #[test]
+    fn home_opens_talk_and_talk_selects_the_focused_contact_directly() {
+        let mama = contact("sip:mama@example.test", "Mama");
+        let papa = contact("sip:papa@example.test", "Papa");
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![mama, papa.clone()];
+
+        runtime.handle_input(InputAction::Advance, 100);
+        runtime.handle_input(InputAction::Advance, 200);
+        runtime.handle_input(InputAction::Select, 300);
+        assert_eq!(runtime.active_screen, UiScreen::Talk);
+        assert_eq!(runtime.focus_index, 0);
+
+        runtime.handle_input(InputAction::Advance, 400);
+        runtime.advance_animations(580);
+        assert_eq!(runtime.focus_index, 1);
+
+        runtime.handle_input(InputAction::Select, 600);
+        assert_eq!(runtime.active_screen, UiScreen::TalkContact);
+        assert_eq!(runtime.selected_contact, Some(papa));
+        assert!(runtime.take_intents().is_empty());
     }
 
     #[test]
@@ -692,7 +725,7 @@ mod tests {
         assert_eq!(runtime.focus_index, 0);
         assert_eq!(
             runtime
-                .pending_media_wheel_roll
+                .pending_wheel_roll
                 .as_ref()
                 .map(|pending| pending.timeline.tracks.len()),
             Some(6)
@@ -701,7 +734,7 @@ mod tests {
         assert_eq!(runtime.focus_index, 0);
         runtime.advance_animations(480);
         assert_eq!(runtime.focus_index, 1);
-        assert!(runtime.pending_media_wheel_roll.is_none());
+        assert!(runtime.pending_wheel_roll.is_none());
 
         runtime.handle_input(InputAction::Select, 500);
         assert_eq!(runtime.active_screen, UiScreen::NowPlaying);
@@ -732,7 +765,7 @@ mod tests {
         runtime.handle_input(InputAction::Advance, 1_000);
         assert_eq!(runtime.focus_index, 0);
         let pending = runtime
-            .pending_media_wheel_roll
+            .pending_wheel_roll
             .as_ref()
             .expect("media advance should schedule a roll");
         assert_eq!(pending.target_focus, 1);
@@ -749,7 +782,84 @@ mod tests {
         runtime.mark_clean();
         runtime.advance_animations(1_180);
         assert_eq!(runtime.focus_index, 1);
-        assert!(runtime.pending_media_wheel_roll.is_none());
+        assert!(runtime.pending_wheel_roll.is_none());
+        assert!(runtime.dirty.focus);
+    }
+
+    #[test]
+    fn contact_wheel_rolls_for_180_ms_before_committing_focus() {
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![
+            contact("sip:mama@example.test", "Mama"),
+            contact("sip:papa@example.test", "Papa"),
+            contact("sip:grandma@example.test", "Grandma"),
+        ];
+        runtime.active_screen = UiScreen::Talk;
+
+        runtime.handle_input(InputAction::Advance, 1_000);
+        assert_eq!(runtime.focus_index, 0);
+        let pending = runtime
+            .pending_wheel_roll
+            .as_ref()
+            .expect("contact advance should schedule a roll");
+        assert_eq!(pending.target_focus, 1);
+        assert_eq!(pending.timeline.tracks.len(), 9);
+        assert_eq!(
+            pending.timeline.id,
+            animation::presets::CONTACT_WHEEL_ROLL_TIMELINE_ID
+        );
+
+        runtime.advance_animations(1_179);
+        assert_eq!(runtime.focus_index, 0);
+        runtime.advance_animations(1_180);
+        assert_eq!(runtime.focus_index, 1);
+        assert!(runtime.pending_wheel_roll.is_none());
+    }
+
+    #[test]
+    fn call_status_patch_preserves_a_contact_roll_when_contact_ids_are_stable() {
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![
+            contact("sip:mama@example.test", "Mama"),
+            contact("sip:papa@example.test", "Papa"),
+            contact("sip:grandma@example.test", "Grandma"),
+        ];
+        runtime.active_screen = UiScreen::Talk;
+
+        runtime.handle_input(InputAction::Advance, 1_000);
+        let mut call = runtime.snapshot.call.clone();
+        call.registered = true;
+        runtime.apply_patch(RuntimeSnapshotPatch::Call(call));
+
+        let pending = runtime
+            .pending_wheel_roll
+            .as_ref()
+            .expect("stable contact identity must preserve the active roll");
+        assert_eq!(pending.target_focus, 1);
+        assert_eq!(pending.timeline.started_ms, 1_000);
+        runtime.advance_animations(1_180);
+        assert_eq!(runtime.focus_index, 1);
+    }
+
+    #[test]
+    fn contact_replacement_aborts_a_contact_roll_and_resets_wheel_actors() {
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![
+            contact("sip:mama@example.test", "Mama"),
+            contact("sip:papa@example.test", "Papa"),
+            contact("sip:grandma@example.test", "Grandma"),
+        ];
+        runtime.active_screen = UiScreen::Talk;
+        runtime.handle_input(InputAction::Advance, 1_000);
+        let previous_revision = runtime.scene_revision;
+
+        let mut call = runtime.snapshot.call.clone();
+        call.contacts.pop();
+        runtime.apply_patch(RuntimeSnapshotPatch::Call(call));
+
+        assert!(runtime.pending_wheel_roll.is_none());
+        assert_eq!(runtime.focus_index, 0);
+        assert_eq!(runtime.scene_revision, previous_revision.wrapping_add(1));
         assert!(runtime.dirty.focus);
     }
 
@@ -771,7 +881,7 @@ mod tests {
 
         assert_eq!(runtime.focus_index, 0);
         let pending = runtime
-            .pending_media_wheel_roll
+            .pending_wheel_roll
             .as_ref()
             .expect("stable media identity must preserve the active roll");
         assert_eq!(pending.target_focus, 1);
@@ -781,7 +891,7 @@ mod tests {
         assert_eq!(runtime.focus_index, 0);
         runtime.advance_animations(1_180);
         assert_eq!(runtime.focus_index, 1);
-        assert!(runtime.pending_media_wheel_roll.is_none());
+        assert!(runtime.pending_wheel_roll.is_none());
     }
 
     #[test]
@@ -803,7 +913,7 @@ mod tests {
         music.recent_tracks.pop();
         runtime.apply_patch(RuntimeSnapshotPatch::Music(music));
 
-        assert!(runtime.pending_media_wheel_roll.is_none());
+        assert!(runtime.pending_wheel_roll.is_none());
         assert_eq!(runtime.focus_index, 0);
         assert_eq!(runtime.scene_revision, previous_revision.wrapping_add(1));
         assert!(runtime.dirty.focus);

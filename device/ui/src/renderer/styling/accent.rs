@@ -27,6 +27,14 @@ pub(crate) fn apply_accent_raw(obj: NonNull<ffi::lv_obj_t>, role: &'static str, 
                 ffi::lv_obj_set_style_image_recolor(obj.as_ptr(), accent, SELECTOR);
                 ffi::lv_obj_set_style_image_recolor_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
             }
+            roles::WHEEL_AVATAR | roles::WHEEL_BADGE | roles::EMPTY_PLUS => {
+                ffi::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
+                ffi::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+            }
+            roles::EMPTY_PLUS_ICON => {
+                ffi::lv_obj_set_style_image_recolor(obj.as_ptr(), accent, SELECTOR);
+                ffi::lv_obj_set_style_image_recolor_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+            }
             roles::MEDIA_WHEEL_PEEK_PLATE | roles::MEDIA_WHEEL_FOCUS_PLATE => {
                 ffi::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
                 ffi::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);

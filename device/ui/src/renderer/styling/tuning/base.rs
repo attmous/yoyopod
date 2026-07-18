@@ -58,6 +58,11 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
             }
             roles::WHEEL_ITEM
+            | roles::TALK_WHEEL_ITEM
+            | roles::WHEEL_AVATAR
+            | roles::WHEEL_BADGE
+            | roles::EMPTY_STATE
+            | roles::EMPTY_PLUS
             | roles::MEDIA_WHEEL_HEADER
             | roles::MEDIA_WHEEL_PREVIOUS
             | roles::MEDIA_WHEEL_NEXT

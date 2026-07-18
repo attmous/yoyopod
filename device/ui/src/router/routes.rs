@@ -249,11 +249,6 @@ const LISTEN_SELECT: &[SelectionTarget] = &[
         intent: IntentTemplate::MusicShuffleAll,
     },
 ];
-const TALK_SELECT: &[SelectionTarget] = &[
-    SelectionTarget::PushScreen(UiScreen::Contacts),
-    SelectionTarget::PushScreen(UiScreen::CallHistory),
-    SelectionTarget::PushScreen(UiScreen::VoiceNote),
-];
 const PLAYLISTS_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicListItem {
     kind: ListKind::Playlists,
 }];
@@ -337,7 +332,7 @@ const fn select_targets(screen: UiScreen) -> &'static [SelectionTarget] {
     match screen {
         UiScreen::Hub => HUB_SELECT,
         UiScreen::Listen => LISTEN_SELECT,
-        UiScreen::Talk => TALK_SELECT,
+        UiScreen::Talk => CONTACTS_SELECT,
         UiScreen::Playlists => PLAYLISTS_SELECT,
         UiScreen::PlaylistTracks => PLAYLIST_TRACKS_SELECT,
         UiScreen::RecentTracks => RECENT_TRACKS_SELECT,

@@ -1,8 +1,8 @@
 use crate::animation::{presets, ActorRef, Timeline, TimelineRef, TrackIndex};
 use crate::components::widgets::{
-    call_panel as call_panel_widget, card as card_widget, list_row as list_row_widget,
-    player_hero as player_hero_widget, wheel_item as wheel_item_widget, CallPanelProps,
-    WheelItemSlot,
+    call_panel as call_panel_widget, card as card_widget, empty_state as empty_state_widget,
+    list_row as list_row_widget, player_hero as player_hero_widget,
+    wheel_item as wheel_item_widget, CallPanelProps, WheelItemSlot,
 };
 use crate::engine::{AnimSlot, Element, Key};
 use crate::scene::roles;
@@ -55,6 +55,7 @@ pub enum ItemRender {
     PlayerHero(PlayerHeroModel),
     Button(ButtonModel),
     CallPanel(CallPanelModel),
+    EmptyState(EmptyStateModel),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,8 +84,30 @@ pub struct WheelItemModel {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WheelItemVariant {
-    Icon { icon_key: String },
-    Media { initial: String, plate_rgb: u32 },
+    Icon {
+        icon_key: String,
+    },
+    Media {
+        initial: String,
+        plate_rgb: u32,
+    },
+    Contact {
+        initial: String,
+        avatar_rgb: u32,
+        badge: Option<WheelBadgeModel>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WheelBadgeModel {
+    pub label: String,
+    pub kind: WheelBadgeKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WheelBadgeKind {
+    Count,
+    Stuck,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,6 +138,13 @@ pub struct CallPanelModel {
     pub title: String,
     pub state: String,
     pub muted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmptyStateModel {
+    pub icon_key: String,
+    pub message: String,
+    pub accent: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -298,14 +328,21 @@ fn deck_item_element(
         ItemRender::Card(card) => card_widget(card).key(item.key.clone()),
         ItemRender::Row(row) => list_row_widget(row, selected, item.key.clone()),
         ItemRender::Wheel(model) => {
-            let key = if wheel_slot == WheelItemSlot::Standard {
-                Key::String(format!("wheel-slot:{visible_index}"))
-            } else {
-                // Media roots are refreshed after a committed roll so LVGL
-                // cannot retain the outgoing slot's transform or opacity.
-                Key::String(format!(
-                    "media-wheel-slot:{visible_index}:item:{item_index}"
-                ))
+            let key = match (&model.variant, wheel_slot) {
+                (WheelItemVariant::Icon { .. }, WheelItemSlot::Standard) => {
+                    Key::String(format!("wheel-slot:{visible_index}"))
+                }
+                (WheelItemVariant::Contact { .. }, WheelItemSlot::Standard) => Key::String(
+                    format!("contact-wheel-slot:{visible_index}:item:{item_index}"),
+                ),
+                (WheelItemVariant::Media { .. }, _) => {
+                    // Media roots are refreshed after a committed roll so LVGL
+                    // cannot retain the outgoing slot's transform or opacity.
+                    Key::String(format!(
+                        "media-wheel-slot:{visible_index}:item:{item_index}"
+                    ))
+                }
+                _ => unreachable!("wheel variant received an invalid semantic slot"),
             };
             wheel_item_widget(model, selected, wheel_slot, key)
         }
@@ -320,6 +357,7 @@ fn deck_item_element(
             muted: call.muted,
         })
         .key(item.key.clone()),
+        ItemRender::EmptyState(model) => empty_state_widget(model).key(item.key.clone()),
         ItemRender::Button(button) => Element::new(ElementKind::Container, Some(roles::BUTTON))
             .key(item.key.clone())
             .child(
