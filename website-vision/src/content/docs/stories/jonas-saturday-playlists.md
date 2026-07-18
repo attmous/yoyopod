@@ -37,7 +37,7 @@ No as-built content exists for this page yet — the outline below is the target
 - The pillar made concrete: local-first audio means the fun does not depend on coverage or a subscription being reachable
 - For Jonas: his music is *his*, on his device, wherever he is
 - For parents: no streaming account on a kid's device, no algorithm choosing what plays next
-- Screen-light in practice: two hours of use, maybe ninety seconds of looking at the glass
+- Screen-light in practice: two hours of use, maybe ninety seconds of looking at the canvas
 
 ## Open questions
 

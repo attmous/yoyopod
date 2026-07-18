@@ -7,7 +7,7 @@ description: The supervisor and its worker processes.
 
 ## Overview
 
-Behind the glass, yoyopod is one supervisor process — `yoyopod-runtime` —
+Behind the canvas, yoyopod is one supervisor process — `yoyopod-runtime` —
 and up to seven child processes, talking newline-framed JSON over stdio
 pipes. No sockets, no bus daemons: the process tree is the architecture.
 Workers report; the runtime aggregates the one true state ledger; the UI

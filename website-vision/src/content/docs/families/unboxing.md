@@ -21,7 +21,7 @@ No as-built content exists for this page yet — the outline below is the target
 - The first ten minutes: charge, power on, meet the Hub wheel
 - Peel, unbox, let the kid hold it first — this is their device
 - First power-on with the one side button (hold to turn on, exact duration TBD)
-- What the small screen ("the glass") shows on first boot
+- What the small screen ("the canvas") shows on first boot
 - Landing on the Setup screen, ready to pair with the parent app
 - Handoff to [The Parent App & Pairing](/families/parent-app-setup/)
 
@@ -43,5 +43,5 @@ No as-built content exists for this page yet — the outline below is the target
 
 - TODO: Final box contents — is a charger brick included, or cable only?
 - TODO: SIM/connectivity activation story — pre-provisioned, eSIM, or parent-activated?
-- TODO: What exactly does the first-boot sequence show on the glass before pairing?
+- TODO: What exactly does the first-boot sequence show on the canvas before pairing?
 - TODO: Should first setup require a full charge, or is partial charge enough?

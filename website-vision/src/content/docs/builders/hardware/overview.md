@@ -34,7 +34,7 @@ and not yet published as committed product specs.
 
 | Subsystem | Deep dive |
 | --- | --- |
-| The panel and the button | [The Glass: Display & Input](/builders/hardware/display/) |
+| The panel and the button | [The Canvas: Display & Input](/builders/hardware/display/) |
 | Speaker, microphone, signal chain | [Audio Path](/builders/hardware/audio/) |
 | Battery, charging, watchdog | [Power & Battery](/builders/hardware/power/) |
 | 4G modem, SIM, GPS | [Connectivity: 4G & GPS](/builders/hardware/connectivity/) |

@@ -25,7 +25,7 @@ classic ST7789 initialization:
 | Pixel format | `0x3A = 0x05` | 16-bit RGB565 |
 | Panel tuning | `0xB2`, `0xB7`, `0xBB`, `0xC2`–`0xC6`, `0xD0` | porch, gate, VCOM, and power settings |
 | Gamma | `0xE0` / `0xE1` | positive/negative gamma curves |
-| Polarity | `0x21` (INVON) | inversion on — required for correct colors on this glass |
+| Polarity | `0x21` (INVON) | inversion on — required for correct colors on this panel |
 | Go | `0x29` (DISPON) | display on |
 
 Commands go out with the DC GPIO low; data bytes with DC high. If any part

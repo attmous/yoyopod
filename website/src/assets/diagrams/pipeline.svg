@@ -62,7 +62,7 @@
   <path class="arrow" d="M260,572 L260,590"/>
 
   <rect class="box" x="40" y="592" width="440" height="52" rx="10"/>
-  <text class="t" x="60" y="614">9 · ST7789 glass</text>
+  <text class="t" x="60" y="614">9 · ST7789 canvas</text>
   <text class="s" x="60" y="632">240×280 visible window, 20-row offset, MADCTL rotation</text>
   <text class="m" x="500" y="622">hardware/whisplay_panel.rs</text>
 

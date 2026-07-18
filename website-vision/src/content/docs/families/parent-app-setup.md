@@ -20,7 +20,7 @@ No as-built content exists for this page yet — the outline below is the target
 
 - Install the parent app and create the family account
 - Put the device in pairing mode from its Setup screen
-- Pair phone and device (mechanism TBD — code on the glass, QR, or similar)
+- Pair phone and device (mechanism TBD — code on the canvas, QR, or similar)
 - First configuration pass: name the device, set the contact whitelist
 - Load the first music and stories into the library
 - Confirm location sharing settings before the first solo outing

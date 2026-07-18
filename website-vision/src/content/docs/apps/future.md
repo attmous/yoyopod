@@ -13,7 +13,7 @@ No as-built content exists for this page yet — the outline below is the target
 
 - V1 pillars come first: whitelist calls and voice messages, live-ish location, local-first listening, the parent app
 - Every idea must pass the [company principles](/company/principles/) before it gets a slot
-- Screen-light test: does it add calm audio value without pulling the kid's eyes to the glass?
+- Screen-light test: does it add calm audio value without pulling the kid's eyes to the canvas?
 - Parent-managed test: does it keep parents in charge without turning them into wardens?
 - This page is a parking lot, not a roadmap — nothing here is committed
 

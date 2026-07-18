@@ -20,7 +20,7 @@ No as-built content exists for this page yet — the outline below is the target
 ## What yoyopod does
 
 - Whitelist calls: only contacts a parent has approved can reach the device — everyone else simply never rings
-- What answering looks like for a 7-year-old: one glance at the glass, one tap
+- What answering looks like for a 7-year-old: one glance at the canvas, one tap
 - The unknown caller from Emil's side: no missed-call anxiety, no blinking badge, no decision to make (how parents are informed, if at all, TBD)
 - Grandma's side of it: she calls a normal number from her normal phone — no app, no account (exact mechanics TBD)
 

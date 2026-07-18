@@ -14,7 +14,7 @@ No as-built content exists for this page yet — the outline below is the target
 - 3:40 p.m., the school bus: Lina, 11, remembers she is going to Merve's house instead of straight home
 - Around her: half the bus is bent over smartphones; Lina's yoyopod is in her jacket pocket
 - Scene beat: she pulls it out, holds the side button, says "Mama, I'm going to Merve's, back by six," lets go
-- Scene beat: the glass confirms the note went — then back in the pocket, total interaction under fifteen seconds
+- Scene beat: the canvas confirms the note went — then back in the pocket, total interaction under fifteen seconds
 - Scene beat: her mother hears it minutes later and sends a short voice note back (delivery timing hedge TBD)
 
 ## What yoyopod does

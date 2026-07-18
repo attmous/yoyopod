@@ -74,7 +74,7 @@
 
   <!-- externals -->
   <rect class="ext" x="40" y="452" width="160" height="52" rx="10"/>
-  <text class="t" x="54" y="474">glass + button</text>
+  <text class="t" x="54" y="474">canvas + button</text>
   <text class="m" x="54" y="492">SPI · GPIO (rppal)</text>
   <path class="plain" d="M120,392 L120,450"/>
   <path class="plain" d="M120,258 L120,330"/>

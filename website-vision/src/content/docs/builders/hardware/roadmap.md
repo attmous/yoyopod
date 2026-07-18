@@ -30,7 +30,7 @@ port would rebuild assumptions that no longer hold.
 *Placeholder — no as-built content yet.*
 
 - Compute: Pi Zero 2W today; product SoC/module selection criteria (cost, power, Linux support) (TBD)
-- Display: prototype SPI panel today; the product device may ship its own display and driver — see [The Glass: Display & Input](/builders/hardware/display/)
+- Display: prototype SPI panel today; the product device may ship its own display and driver — see [The Canvas: Display & Input](/builders/hardware/display/)
 - Peripherals bundled on the Whisplay HAT today (display, audio, power) that a product board would integrate directly
 - Enclosure and industrial design: from bare prototype to a kid-proof product shell (TBD)
 

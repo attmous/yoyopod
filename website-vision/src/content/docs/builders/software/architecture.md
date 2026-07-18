@@ -9,7 +9,7 @@ description: "One diagram's worth of system: device, cloud, apps."
 
 Three boxes. The **device** is one Rust supervisor process
 (`yoyopod-runtime`) and its child worker processes, plus a custom
-LVGL-based UI on the glass. The **cloud** is the device's line home: an
+LVGL-based UI on the canvas. The **cloud** is the device's line home: an
 MQTT link and provisioning, owned by the device's cloud worker. The
 **apps** box — the parent app and its shared packages — is future work:
 planned directories, not present ones.

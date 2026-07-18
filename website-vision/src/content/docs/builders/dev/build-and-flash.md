@@ -69,7 +69,7 @@ Every board hosts two mutually exclusive lanes: **dev** (mutable git
 checkout, `yoyopod-dev.service`) and **prod** (immutable versioned
 slots, `yoyopod-prod.service`, with `previous` as the rollback target —
 never delete it). Lane-switch commands stop the other lane first.
-`target screenshot` captures the glass; `target restart` restarts with
+`target screenshot` captures the canvas; `target restart` restarts with
 startup verification. Until Round 2 restores `target validate`,
 validate manually: `target logs --follow` plus
 `ssh <user>@<host> 'journalctl -u yoyopod-dev.service -f'`. Common

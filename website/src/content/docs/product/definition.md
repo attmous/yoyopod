@@ -45,7 +45,7 @@ Two trust anchors carry that promise: **reliable reachability** and
 ## How the device delivers it
 
 The engineering choices documented across this site all trace back to
-this definition: one button and a small glass
+this definition: one button and a small canvas
 ([UI System Guide](/ui/)) because simplicity *is* the product;
 whitelisted SIP calling and voice notes
 ([the switchboard](/runtime/workers/voip/)) because safe communication

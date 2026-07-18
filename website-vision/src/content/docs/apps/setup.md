@@ -12,7 +12,7 @@ Sections marked *Placeholder* have no as-built content yet; everything else is c
 ## What it is
 
 Setup is the path from first boot to paired-and-ready, entirely on the
-small glass — designed for the kitchen-table moment right after
+small canvas — designed for the kitchen-table moment right after
 [the unboxing](/families/unboxing/). In the on-device navigation model it
 is one of the root screens the whole UI stands on (alongside Hub, Listen,
 Talk, and Ask), and it ends in exactly one state: bound to a family,
@@ -22,14 +22,14 @@ connected, ready for a kid.
 
 *Placeholder — no as-built content yet.*
 
-- First boot: charge, power on, and what the glass shows first (TBD)
+- First boot: charge, power on, and what the canvas shows first (TBD)
 - Pairing: how the device and the family account meet (mechanism TBD)
 - Connectivity bring-up: 4G registration and first contact with the cloud link
 - Handover: the moment setup ends and the Hub wheel appears
 
 ## On the device
 
-The system surface exists on the glass today as the Power screen, whose
+The system surface exists on the canvas today as the Power screen, whose
 normative design mockup is the setup mockup; the v5 UI contract replaces
 it with a **Setup wheel** root. Underneath, the provisioning machinery is
 real:
@@ -59,7 +59,7 @@ real:
 - Claiming and household/parent flows are owned by the backend and
   dashboard — the device consumes provisioned secrets and the command
   channel, and never talks to the dashboard directly.
-- On the glass, the dedicated Setup wheel is part of the v5 contract but
+- On the canvas, the dedicated Setup wheel is part of the v5 contract but
   **staged, not shipped** — today's screen is the Power screen it
   replaces.
 - The parent-app half of pairing is future work, and the final pairing

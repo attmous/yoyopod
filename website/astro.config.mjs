@@ -35,7 +35,7 @@ export default defineConfig({
 						{
 							label: 'Foundations',
 							items: [
-								{ label: 'The Glass and the Board', slug: 'ui/hardware' },
+								{ label: 'The Canvas and the Board', slug: 'ui/hardware' },
 								{ label: 'Talking to the Panel', slug: 'ui/driver' },
 							],
 						},

@@ -31,11 +31,11 @@ No as-built content exists for this page yet — the outline below is the target
 - Who to call: any contact on the whitelist, anytime it's allowed
 - Volume within the parent-set ceiling (TBD)
 - Sending a check-in from the device
-- Nothing else — no settings maze on the glass, on purpose
+- Nothing else — no settings maze on the canvas, on purpose
 
 ## Open questions
 
 - TODO: Which controls are actually in V1 versus later — especially quiet hours and volume limits?
 - TODO: How fast do control changes propagate to a device with spotty coverage?
 - TODO: Can two parents hold equal controls, and how are conflicts resolved?
-- TODO: What does the kid see on the glass when a parent changes something?
+- TODO: What does the kid see on the canvas when a parent changes something?

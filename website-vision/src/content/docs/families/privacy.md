@@ -31,7 +31,7 @@ No as-built content exists for this page yet — the outline below is the target
 - No feed, no follower counts, no engagement mechanics aimed at kids
 - No listening in: the microphone serves calls and push-to-talk, nothing else
 - No public profiles for kids, no discovery by strangers
-- No dark patterns to keep kids on the glass — the device is built to be put down
+- No dark patterns to keep kids on the canvas — the device is built to be put down
 
 ## Open questions
 

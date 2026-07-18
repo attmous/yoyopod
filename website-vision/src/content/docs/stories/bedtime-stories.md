@@ -14,7 +14,7 @@ No as-built content exists for this page yet — the outline below is the target
 - 7:55 p.m.: Ben, 7, is tucked in, lights low, yoyopod on the nightstand
 - His dad Tobias is downstairs finishing the dishes — story duty is his tonight
 - Scene beat: from the parent app, Tobias picks up where last night's chapter ended and presses play (the parent app is future work — this is the target experience)
-- Scene beat: upstairs, the story starts softly from the speaker; the glass stays dark and calm
+- Scene beat: upstairs, the story starts softly from the speaker; the canvas stays dark and calm
 - Scene beat: the chapter ends, playback stops on its own, and the room is quiet — no autoplay into chapter four
 
 ## What yoyopod does
@@ -22,7 +22,7 @@ No as-built content exists for this page yet — the outline below is the target
 - Remote playback: a parent starts, pauses, and stops audio on the device from the parent app
 - Stories live on the device — local-first, so the bedtime ritual works even if the family Wi-Fi is down (how the remote command reaches the device offline is TBD)
 - Resume-from-last-position across nights, so "where were we?" never happens (TBD)
-- Bedtime-appropriate behavior: soft volume, dark glass, playback that ends rather than escalates (sleep-timer concept TBD)
+- Bedtime-appropriate behavior: soft volume, dark canvas, playback that ends rather than escalates (sleep-timer concept TBD)
 
 ## Behind the scenes
 
@@ -41,5 +41,5 @@ No as-built content exists for this page yet — the outline below is the target
 
 - TODO: Does remote playback require the device to be online at that moment, and what is the offline fallback story?
 - TODO: Who wins a control conflict — Ben's button press or the parent app command? (TBD)
-- TODO: Is there a bedtime mode (volume cap, dimmed glass, no incoming calls) or is that scope creep for V1? (TBD)
+- TODO: Is there a bedtime mode (volume cap, dimmed canvas, no incoming calls) or is that scope creep for V1? (TBD)
 - TODO: Where do the stories themselves come from — bundled content, parent-provided files, or partnerships? (TBD)

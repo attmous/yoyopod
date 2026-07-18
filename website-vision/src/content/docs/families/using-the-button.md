@@ -49,7 +49,7 @@ settled by watching real kids use real devices — not by guessing.
 
 - Teach hold-to-talk like a walkie-talkie: hold, speak, release
 - There is nothing to break — every path leads back to the Hub
-- The glass stays calm on purpose: one small screen, no feed, no notifications to chase
+- The canvas stays calm on purpose: one small screen, no feed, no notifications to chase
 - A fridge-note cheat sheet: tap / double-tap / hold (printable version TBD)
 
 ## Troubleshooting

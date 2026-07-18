@@ -89,7 +89,7 @@ export default defineConfig({
 							label: 'Hardware Platform',
 							items: [
 								{ label: 'Device Overview & Specs', slug: 'builders/hardware/overview' },
-								{ label: 'The Glass: Display & Input', slug: 'builders/hardware/display' },
+								{ label: 'The Canvas: Display & Input', slug: 'builders/hardware/display' },
 								{ label: 'Audio Path', slug: 'builders/hardware/audio' },
 								{ label: 'Power & Battery', slug: 'builders/hardware/power' },
 								{ label: 'Connectivity: 4G & GPS', slug: 'builders/hardware/connectivity', badge: pt },

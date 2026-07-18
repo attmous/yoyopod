@@ -13,7 +13,7 @@ Sections marked *Placeholder* have no as-built content yet; everything else is c
 
 Whitelist calls and voice messages are **pillar one** of the product:
 kids reach the people their parents approved, and nobody else. Talk is
-contact-first — names on the glass, never a number pad, never an unknown
+contact-first — names on the canvas, never a number pad, never an unknown
 caller. Reliable reachability is one of the two trust anchors the whole
 product stands on, which is why safe communication gets the largest
 engineering investment on the device.
@@ -67,7 +67,7 @@ messaging, call history, and voice-note record and playback.
   end to end: the v5 UI contract retires the standalone voice-note screen,
   moves capture into the contact screen with push-to-talk passthrough, and
   adds a new replay screen that does not exist yet.
-- On the glass, the Talk root becomes the contact wheel in the v5
+- On the canvas, the Talk root becomes the contact wheel in the v5
   contract, folding the separate contacts and call-history screens away.
 - Whitelist management waits on the parent app (future work).
 

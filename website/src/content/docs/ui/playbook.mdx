@@ -106,7 +106,7 @@ lands, double-check the key string — the renderer won't tell you.
 2. Collect `/tmp/yoyopod_screenshot.png` (written atomically).
 
 3. Comparing the two paths is a diagnostic in itself: if they differ, the
-   bug lives in flush/paste; if they agree but the glass is wrong, look at
+   bug lives in flush/paste; if they agree but the canvas is wrong, look at
    the driver or panel init.
 
 </Steps>
@@ -137,7 +137,7 @@ one CI uses. The `whisplay` path only compiles on Linux with the
    `yoyopod-runtime --config-dir <checkout>/config --hardware whisplay`,
    which supervises `yoyopod-ui-host`.
 
-4. **Verify on glass**: `yoyopod target screenshot`, then walk the screen's
+4. **Verify on canvas**: `yoyopod target screenshot`, then walk the screen's
    input-contract table with the physical button.
 
 </Steps>

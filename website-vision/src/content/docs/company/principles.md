@@ -18,7 +18,7 @@ product definition and positioning:
 | Principle | Where it is documented today |
 | --- | --- |
 | Parent-managed | Pillar 4: contacts, settings, and device controls stay with the parent — the buyer is the parent, the user is the kid ages 7–14. |
-| Screen-light, one-button simplicity | The documented form factor: "walkie-talkie-like, tiny screen, minimal input" — one button and a small glass, because simplicity *is* the product. |
+| Screen-light, one-button simplicity | The documented form factor: "walkie-talkie-like, tiny screen, minimal input" — one button and a small canvas, because simplicity *is* the product. |
 | Independence, not distraction | Value prop 3: "tiny screen, simple controls, no app rabbit-holes" — and the contrast line "independence without endless distraction". |
 | Safe communication first | Pillar 1: whitelist calls and voice messages, approved contacts only. |
 | Honest location | Pillar 2 is deliberately hedged as **live-ish** location — visibility when it matters, not marketed as real-time tracking. |

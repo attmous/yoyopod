@@ -1,5 +1,5 @@
 ---
-title: "The Glass: Display & Input"
+title: "The Canvas: Display & Input"
 description: The small calm screen and the one physical button.
 ---
 
@@ -7,8 +7,8 @@ description: The small calm screen and the one physical button.
 
 ## Overview
 
-"The glass" is the project's shorthand for the panel's visible window —
-there is no physical cover-glass part in the BOM. The screen is small and
+"The canvas" is the project's shorthand for the panel's visible window —
+the surface every shape and animation lands on. The screen is small and
 portrait by design: it shows state, it is not the product. Input is one
 physical side button, the device's only control. Both live on the PiSugar
 Whisplay HAT worn by the Raspberry Pi Zero 2W.
@@ -36,7 +36,7 @@ SPI speed are overridable through environment variables for bench setups.
 
 There is **no kernel display stack — by choice**: no `/dev/fb0`, no
 DRM/KMS, no `fbtft` module. The UI host drives the panel directly from
-userspace (GPIO + SPI via the `rppal` crate). One binary owns the glass —
+userspace (GPIO + SPI via the `rppal` crate). One binary owns the canvas —
 no kernel driver version drift, no display server, no compositor — and
 startup is deterministic: the host either initializes the panel or fails
 loudly. The cost: every pixel crosses the CPU, which is why the render
@@ -69,6 +69,6 @@ resolution, and touch.
 
 :::note[Sources]
 Condensed from the as-built docs site (`website/` in the repository): the
-UI System Guide's hardware page ("The Glass and the Board") and
+UI System Guide's hardware page ("The Canvas and the Board") and
 display-driver page ("Talking to the Panel").
 :::

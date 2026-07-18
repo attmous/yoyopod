@@ -26,7 +26,7 @@ No as-built content exists for this page yet — the outline below is the target
 ## On the device
 
 - GPS plus the 4G modem provide position fixes
-- What, if anything, the glass shows about location state (TBD)
+- What, if anything, the canvas shows about location state (TBD)
 - Battery budget: fix frequency versus battery life trade-off (TBD)
 - No kid-facing map or tracking UI — transparency cues only (TBD)
 

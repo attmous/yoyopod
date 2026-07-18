@@ -73,7 +73,7 @@ snapshots. Details that protect the kid experience:
   track into an ordinary local file.
 - The parent-app side of library management is future work — the app is not
   built yet.
-- On the glass, Listen is a current screen and becomes a wheel root in the
+- On the canvas, Listen is a current screen and becomes a wheel root in the
   v5 UI contract; the arc hero ships first as a simpler progress-bar
   fallback.
 

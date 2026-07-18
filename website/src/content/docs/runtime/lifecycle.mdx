@@ -16,7 +16,7 @@ import StartupSequence from '../../../assets/diagrams/startup-sequence.svg';
    `["--hardware", <whisplay|mock>]` and the runtime blocks up to
    **5 seconds** for [`ui.ready`](/runtime/ui-contract/#the-handshake-uiready).
    Timeout or spawn failure aborts the entire runtime — a yoyopod with no
-   glass is not degraded, it's off. This is the fail-loudly rule from the
+   canvas is not degraded, it's off. This is the fail-loudly rule from the
    UI guide, seen from the other end.
 3. **The departments, tolerant.** Cloud, media, voip, network, power, and
    (if enabled) speech are spawned in that order, each with a **3-second**

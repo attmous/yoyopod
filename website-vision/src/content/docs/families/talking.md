@@ -37,7 +37,7 @@ An honest status check, so this page doesn't promise more than exists:
 *Placeholder — no as-built content yet.*
 
 - Turn the wheel to [Talk](/apps/talk/) from the Hub
-- Picking a contact from the whitelist on the glass
+- Picking a contact from the whitelist on the canvas
 - Making a call: how it starts, sounds, and ends (exact flow TBD)
 - Sending a voice note: hold the button, speak, release — push-to-talk
 - Receiving: what an incoming call or voice note looks and sounds like (TBD)
@@ -63,7 +63,7 @@ An honest status check, so this page doesn't promise more than exists:
 
 ## Open questions
 
-- TODO: What exactly does an incoming call look like on the glass, and can a kid decline?
+- TODO: What exactly does an incoming call look like on the canvas, and can a kid decline?
 - TODO: Do voice notes queue and retry when coverage drops mid-send?
 - TODO: Can whitelisted contacts use a plain phone, or do they need the parent app?
 - TODO: Is there any call-length or quiet-hours limit on Talk (parent-set)?

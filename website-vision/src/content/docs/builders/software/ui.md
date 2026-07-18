@@ -1,13 +1,13 @@
 ---
 title: UI System
-description: How shapes and motion reach the glass.
+description: How shapes and motion reach the canvas.
 ---
 
 *The UI stack from scene graph to panel, and the one-button interaction model.*
 
 ## Overview
 
-The entire interface lives on one small pane of glass: a 240×280 RGB565
+The entire interface lives on one small canvas: a 240×280 RGB565
 panel driven over SPI, controlled with a single physical button. The UI
 runs as its own binary, `yoyopod-ui-host`, supervised by the runtime over
 a line protocol.

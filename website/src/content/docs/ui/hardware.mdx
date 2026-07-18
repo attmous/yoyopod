@@ -1,5 +1,5 @@
 ---
-title: The Glass and the Board
+title: The Canvas and the Board
 description: Raspberry Pi Zero 2W, the PiSugar Whisplay HAT, and the ST7789 panel — the hardware truth behind the UI.
 ---
 
@@ -10,7 +10,7 @@ that bundle; non-canonical boards were deliberately removed from the repo.
 
 ## The panel
 
-The glass is driven by an **ST7789** controller over SPI:
+The canvas is driven by an **ST7789** controller over SPI:
 
 | Property | Value |
 | --- | --- |
@@ -25,7 +25,7 @@ Constants live at the top of
 [`device/ui/src/hardware/whisplay_panel.rs`](https://github.com/attmous/yoyopod/blob/main/device/ui/src/hardware/whisplay_panel.rs).
 
 The 20-row offset matters: the controller believes it drives a 240×320
-display, but only rows 20–299 exist as glass. The driver adds the offset to
+display, but only rows 20–299 exist as canvas. The driver adds the offset to
 every window address, so the rest of the stack can pretend the panel is a
 clean 240×280.
 
@@ -50,7 +50,7 @@ pipeline. The UI host talks to the panel directly from userspace through the
 
 What this buys:
 
-- **One binary owns the glass.** No kernel driver version drift, no display
+- **One binary owns the canvas.** No kernel driver version drift, no display
   server, no compositor — the deploy artifact is the whole display stack.
 - **Deterministic startup.** The UI host either initializes the panel or
   fails loudly (a hard rule from `rules/lvgl.md`) — there is no silent
@@ -75,8 +75,8 @@ What it costs:
 - **No haptics, no LEDs** — both are future-hardware options that appear in
   mockups only. The "LED" in the robot companion is a drawn SVG bulb.
 
-:::tip[Where "the glass" name comes from]
-There is no physical cover-glass part in the BOM — "the glass" is the
-project's shorthand for the panel's visible window, and the mockups frame it
-in a neutral `#221c1f` device bezel.
+:::tip[Where "the canvas" name comes from]
+"The canvas" is the project's shorthand for the panel's visible window —
+the surface every shape and animation in this guide ultimately lands on.
+The mockups frame it in a neutral `#221c1f` device bezel.
 :::

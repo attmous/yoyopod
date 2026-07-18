@@ -50,14 +50,14 @@
   <text class="lbl" x="250" y="372">UiEvent: Intent · Input · ScreenChanged · Health · Error</text>
   <path d="M470,320 L470,350 L330,350" stroke="var(--sl-color-accent, #f37767)" stroke-width="2" fill="none"/>
 
-  <!-- button and glass -->
+  <!-- button and canvas -->
   <rect class="box" x="330" y="30" width="185" height="52" rx="10"/>
   <text class="t" x="348" y="52">button (GPIO 17)</text>
   <text class="s" x="348" y="70">polled every 250 ms</text>
   <path class="in" d="M420,82 L420,128"/>
 
   <rect class="box" x="555" y="30" width="185" height="52" rx="10"/>
-  <text class="t" x="573" y="52">the glass (SPI)</text>
+  <text class="t" x="573" y="52">the canvas (SPI)</text>
   <text class="s" x="573" y="70">dirty regions only</text>
   <path class="out" d="M645,128 L645,82"/>
 

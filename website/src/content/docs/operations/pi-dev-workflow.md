@@ -50,7 +50,7 @@ timeout), and `--clean-native` after native LVGL/CMake input changes
 | --- | --- |
 | `target status` | deployed SHA, processes, log tail |
 | `target logs --lines 200` / `--errors` / `--filter comm` / `--follow` | remote logs, filtered |
-| `target screenshot` (`--readback` for LVGL readback) | the glass, into `logs/screenshots/` |
+| `target screenshot` (`--readback` for LVGL readback) | the canvas, into `logs/screenshots/` |
 | `target restart` | restart + startup verification |
 
 Until Round 2 lands `target validate`
