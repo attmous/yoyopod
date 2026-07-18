@@ -111,6 +111,7 @@ static RECENTS: LvImageDsc = LvImageDsc::a8_56(&RECENTS_MAP);
 static SHUFFLE: LvImageDsc = LvImageDsc::a8_56(&SHUFFLE_MAP);
 static MICROPHONE: LvImageDsc = LvImageDsc::a8_56(&MICROPHONE_MAP);
 static PLUS: LvImageDsc = LvImageDsc::a8_56(&PLUS_MAP);
+static MUSIC_NOTE: LvImageDsc = LvImageDsc::a8_56(&MUSIC_NOTE_MAP);
 
 const fn generated_control_icon(kind: u8) -> [u8; 576] {
     let mut map = [0u8; 576];
@@ -1039,7 +1040,8 @@ pub(crate) fn descriptor_for_key(icon_key: &str) -> Option<&'static LvImageDsc> 
         "next_sm" => Some(&NEXT_SM),
         "close_sm" | "close" => Some(&CLOSE_SM),
         "check" => Some(&CHECK_SM),
-        "listen" | "music_note" | "play" | "track" => Some(&LISTEN),
+        "music_note" => Some(&MUSIC_NOTE),
+        "listen" | "play" | "track" => Some(&LISTEN),
         "talk" | "call" | "call_active" | "call_incoming" | "call_outgoing" => Some(&TALK),
         "ask" => Some(&ASK),
         "setup" | "power" | "battery" | "care" | "settings" => Some(&SETUP),
@@ -1076,7 +1078,7 @@ pub(crate) fn source_for_key(icon_key: &str) -> *const c_void {
 mod tests {
     use super::*;
 
-    const LISTEN_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 5] = [
+    const LISTEN_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 6] = [
         (
             "playlists",
             &PLAYLISTS_MAP,
@@ -1106,6 +1108,12 @@ mod tests {
             &PLUS_MAP,
             include_bytes!("../../../assets/icons/listen/plus.svg"),
             PLUS_SOURCE_FNV1A64,
+        ),
+        (
+            "music_note",
+            &MUSIC_NOTE_MAP,
+            include_bytes!("../../../assets/icons/listen/music_note.svg"),
+            MUSIC_NOTE_SOURCE_FNV1A64,
         ),
     ];
 
@@ -1144,6 +1152,7 @@ mod tests {
             "icon_shuffle",
             "icon_microphone",
             "icon_plus",
+            "music_note",
             "play_sm",
             "pause_sm",
             "prev_sm",

@@ -26,7 +26,7 @@ pub fn player_hero(model: &PlayerHeroModel) -> Element {
                 .child(
                     Element::new(ElementKind::Image, Some(roles::HERO_ART_ICON))
                         .key(Key::Static("hero_art_icon"))
-                        .icon("listen")
+                        .icon("music_note")
                         .accent(INK),
                 ),
         )
