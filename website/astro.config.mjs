@@ -2,7 +2,6 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
-const stub = { text: 'Stub', variant: 'caution' };
 
 // https://astro.build/config
 export default defineConfig({
@@ -127,44 +126,44 @@ export default defineConfig({
 				{
 					label: 'Product',
 					items: [
-						{ label: 'Product Definition', slug: 'product/definition', badge: stub },
-						{ label: 'Positioning', slug: 'product/positioning', badge: stub },
-						{ label: 'Roadmap', slug: 'product/roadmap', badge: stub },
+						{ label: 'Product Definition', slug: 'product/definition' },
+						{ label: 'Positioning', slug: 'product/positioning' },
+						{ label: 'Roadmap', slug: 'product/roadmap' },
 					],
 				},
 				{
 					label: 'Architecture',
 					items: [
-						{ label: 'Canonical Structure', slug: 'architecture/canonical-structure', badge: stub },
-						{ label: 'Work Areas', slug: 'architecture/work-areas', badge: stub },
+						{ label: 'Canonical Structure', slug: 'architecture/canonical-structure' },
+						{ label: 'Work Areas', slug: 'architecture/work-areas' },
 					],
 				},
 				{
 					label: 'Hardware',
 					items: [
-						{ label: 'Audio Stack', slug: 'hardware/audio-stack', badge: stub },
-						{ label: 'Power Module', slug: 'hardware/power-module', badge: stub },
+						{ label: 'Audio Stack', slug: 'hardware/audio-stack' },
+						{ label: 'Power Module', slug: 'hardware/power-module' },
 					],
 				},
 				{
 					label: 'Features',
 					items: [
-						{ label: 'Cloud Provisioning & Backend', slug: 'features/cloud-provisioning', badge: stub },
-						{ label: 'Cloud Voice Worker', slug: 'features/cloud-voice-worker', badge: stub },
-						{ label: 'Local-First Music', slug: 'features/local-first-music', badge: stub },
-						{ label: 'Remote Playback', slug: 'features/remote-playback', badge: stub },
-						{ label: 'MPV Dependencies', slug: 'features/mpv-dependencies', badge: stub },
+						{ label: 'Cloud Provisioning & Backend', slug: 'features/cloud-provisioning' },
+						{ label: 'Cloud Voice Worker', slug: 'features/cloud-voice-worker' },
+						{ label: 'Local-First Music', slug: 'features/local-first-music' },
+						{ label: 'Remote Playback', slug: 'features/remote-playback' },
+						{ label: 'MPV Dependencies', slug: 'features/mpv-dependencies' },
 					],
 				},
 				{
 					label: 'Operations',
 					items: [
-						{ label: 'Development Guide', slug: 'operations/development-guide', badge: stub },
-						{ label: 'Pi Dev Workflow', slug: 'operations/pi-dev-workflow', badge: stub },
-						{ label: 'Dev/Prod Lanes', slug: 'operations/dev-prod-lanes', badge: stub },
-						{ label: 'Quality Gates', slug: 'operations/quality-gates', badge: stub },
-						{ label: 'Setup Contract', slug: 'operations/setup-contract', badge: stub },
-						{ label: 'Contributor Workflow', slug: 'operations/contributor-workflow', badge: stub },
+						{ label: 'Development Guide', slug: 'operations/development-guide' },
+						{ label: 'Pi Dev Workflow', slug: 'operations/pi-dev-workflow' },
+						{ label: 'Dev/Prod Lanes', slug: 'operations/dev-prod-lanes' },
+						{ label: 'Quality Gates', slug: 'operations/quality-gates' },
+						{ label: 'Setup Contract', slug: 'operations/setup-contract' },
+						{ label: 'Contributor Workflow', slug: 'operations/contributor-workflow' },
 					],
 				},
 			],

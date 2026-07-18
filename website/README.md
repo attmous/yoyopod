@@ -18,13 +18,15 @@ Run from this directory:
 
 ## Content layout
 
-- `src/content/docs/ui/` — the **UI System Guide**, the flagship section:
-  full authored pages covering hardware → driver → LVGL → framework → input →
-  playbook.
-- Everything else (`product/`, `architecture/`, `hardware/`, `features/`,
-  `operations/`) is **stub pages**: they summarize and link to the canonical
-  Markdown under `docs/` in the repo root. Do not duplicate canonical docs
-  here — update the summary and keep the link.
+- `src/content/docs/ui/` — the **UI System Guide** flagship section:
+  hardware → driver → LVGL → framework → input → playbook.
+- `src/content/docs/runtime/` — the **Runtime & Workers Guide** flagship
+  section: protocol → supervisor → the six domain workers.
+- The other sections (`product/`, `architecture/`, `hardware/`,
+  `features/`, `operations/`) are curated pages **condensed from the
+  canonical Markdown** under `docs/` in the repo root. The repo docs stay
+  the source of truth — each page carries a "Canonical source" note; keep
+  content condensed, never wholesale-duplicated.
 - `public/mockups/` — copied snapshots of the design mockups; canonical
   source is `device/ui/assets/ui/`. Refresh with `npm run sync:mockups`.
 - `src/assets/diagrams/` — hand-authored theme-aware SVG diagrams, inlined
