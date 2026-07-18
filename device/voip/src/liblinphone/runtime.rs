@@ -118,8 +118,9 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start(
 
     let sip_server_value = unsafe { ptr_to_string(sip_server) };
     let sip_identity_value = unsafe { ptr_to_string(sip_identity) };
-    if sip_server_value.is_empty() || sip_identity_value.is_empty() {
-        error::set_last_error("missing SIP identity or SIP server for Liblinphone startup");
+    let has_sip_account = !sip_identity_value.is_empty();
+    if has_sip_account && sip_server_value.is_empty() {
+        error::set_last_error("missing SIP server for configured Liblinphone identity");
         return -1;
     }
     let api = match state.api.clone() {
@@ -213,24 +214,26 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start(
         return -1;
     }
 
-    let account_result = configure_account(
-        &mut state,
-        &api,
-        AccountConfig {
-            sip_server: sip_server_value,
-            sip_username: unsafe { ptr_to_string(sip_username) },
-            sip_password: unsafe { ptr_to_string(sip_password) },
-            sip_password_ha1: unsafe { ptr_to_string(sip_password_ha1) },
-            sip_identity: sip_identity_value,
-            transport: unsafe { ptr_to_string(transport) },
-            conference_factory_uri: unsafe { ptr_to_string(conference_factory_uri) },
-            file_transfer_server_url: unsafe { ptr_to_string(file_transfer_server_url) },
-            lime_server_url: unsafe { ptr_to_string(lime_server_url) },
-        },
-    );
-    if account_result != 0 {
-        stop_locked(&mut state);
-        return -1;
+    if has_sip_account {
+        let account_result = configure_account(
+            &mut state,
+            &api,
+            AccountConfig {
+                sip_server: sip_server_value,
+                sip_username: unsafe { ptr_to_string(sip_username) },
+                sip_password: unsafe { ptr_to_string(sip_password) },
+                sip_password_ha1: unsafe { ptr_to_string(sip_password_ha1) },
+                sip_identity: sip_identity_value,
+                transport: unsafe { ptr_to_string(transport) },
+                conference_factory_uri: unsafe { ptr_to_string(conference_factory_uri) },
+                file_transfer_server_url: unsafe { ptr_to_string(file_transfer_server_url) },
+                lime_server_url: unsafe { ptr_to_string(lime_server_url) },
+            },
+        );
+        if account_result != 0 {
+            stop_locked(&mut state);
+            return -1;
+        }
     }
 
     if unsafe { (api.core_start)(state.core) } != 0 {

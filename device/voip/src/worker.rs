@@ -213,7 +213,7 @@ where
                 &WorkerEnvelope::result(
                     "voip.register",
                     envelope.request_id,
-                    json!({"registered": true}),
+                    host.health_payload(),
                 ),
             )?;
             write_lifecycle_events(host, output)?;

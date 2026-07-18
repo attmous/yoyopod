@@ -9,6 +9,7 @@ use serde_json::json;
 
 pub struct RuntimeSnapshot<'a> {
     pub configured: bool,
+    pub backend_started: bool,
     pub registered: bool,
     pub registration_state: &'a str,
     pub lifecycle: &'a LifecycleState,
@@ -34,7 +35,7 @@ impl RuntimeSnapshot<'_> {
             "configured": self.configured,
             "registered": self.registered,
             "registration_state": self.registration_state,
-            "lifecycle": self.lifecycle.payload(self.registered),
+            "lifecycle": self.lifecycle.payload(self.backend_started),
             "call_state": self.call.state(),
             "active_call_id": self.call.active_call_id(),
             "active_call_peer": self.call.active_peer(),
