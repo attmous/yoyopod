@@ -141,6 +141,8 @@ pub struct MusicRuntimeSnapshot {
     #[serde(default)]
     pub playlists: Vec<ListItemSnapshot>,
     #[serde(default)]
+    pub playlist_tracks: BTreeMap<String, Vec<ListItemSnapshot>>,
+    #[serde(default)]
     pub recent_tracks: Vec<ListItemSnapshot>,
 }
 
@@ -155,6 +157,7 @@ impl Default for MusicRuntimeSnapshot {
             elapsed_text: default_music_time_text(),
             total_text: default_music_time_text(),
             playlists: Vec::new(),
+            playlist_tracks: BTreeMap::new(),
             recent_tracks: Vec::new(),
         }
     }

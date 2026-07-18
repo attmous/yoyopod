@@ -26,6 +26,7 @@ pub const ROUTES: [Route; UiScreen::ALL.len()] = [
     route(UiScreen::Hub),
     route(UiScreen::Listen),
     route(UiScreen::Playlists),
+    route(UiScreen::PlaylistTracks),
     route(UiScreen::RecentTracks),
     route(UiScreen::NowPlaying),
     route(UiScreen::Ask),
@@ -131,7 +132,9 @@ fn add_selection_intent(target: SelectionTarget, supported_intents: &mut Vec<Int
             intent: template, ..
         } => add_intent_kind(template_intent_kind(template), supported_intents),
         SelectionTarget::DynamicListItem { kind } => {
-            add_intent_kind(dynamic_list_intent_kind(kind), supported_intents);
+            if let Some(intent) = dynamic_list_intent_kind(kind) {
+                add_intent_kind(intent, supported_intents);
+            }
         }
         SelectionTarget::DynamicAction { kind } => {
             for intent in dynamic_action_intent_kinds(kind) {
@@ -171,20 +174,21 @@ fn template_intent_kind(template: IntentTemplate) -> IntentKind {
     }
 }
 
-fn dynamic_list_intent_kind(kind: ListKind) -> IntentKind {
+fn dynamic_list_intent_kind(kind: ListKind) -> Option<IntentKind> {
     match kind {
-        ListKind::Playlists => IntentKind {
+        ListKind::Playlists => None,
+        ListKind::PlaylistTracks => Some(IntentKind {
             domain: "music".to_string(),
-            action: "load_playlist".to_string(),
-        },
-        ListKind::RecentTracks => IntentKind {
+            action: "play_playlist_track".to_string(),
+        }),
+        ListKind::RecentTracks => Some(IntentKind {
             domain: "music".to_string(),
             action: "play_recent_track".to_string(),
-        },
-        ListKind::Contacts | ListKind::CallHistory => IntentKind {
+        }),
+        ListKind::Contacts | ListKind::CallHistory => Some(IntentKind {
             domain: "call".to_string(),
             action: "start".to_string(),
-        },
+        }),
     }
 }
 
@@ -252,6 +256,9 @@ const TALK_SELECT: &[SelectionTarget] = &[
 ];
 const PLAYLISTS_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicListItem {
     kind: ListKind::Playlists,
+}];
+const PLAYLIST_TRACKS_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicListItem {
+    kind: ListKind::PlaylistTracks,
 }];
 const RECENT_TRACKS_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicListItem {
     kind: ListKind::RecentTracks,
@@ -332,6 +339,7 @@ const fn select_targets(screen: UiScreen) -> &'static [SelectionTarget] {
         UiScreen::Listen => LISTEN_SELECT,
         UiScreen::Talk => TALK_SELECT,
         UiScreen::Playlists => PLAYLISTS_SELECT,
+        UiScreen::PlaylistTracks => PLAYLIST_TRACKS_SELECT,
         UiScreen::RecentTracks => RECENT_TRACKS_SELECT,
         UiScreen::NowPlaying => NOW_PLAYING_SELECT,
         UiScreen::Ask => ASK_SELECT,
@@ -414,11 +422,11 @@ const fn focus_policy(screen: UiScreen) -> FocusPolicy {
         | UiScreen::TalkContact
         | UiScreen::VoiceNote
         | UiScreen::Power => FocusPolicy::Wrap,
+        UiScreen::Contacts | UiScreen::CallHistory => FocusPolicy::Clamp,
         UiScreen::Playlists
+        | UiScreen::PlaylistTracks
         | UiScreen::RecentTracks
-        | UiScreen::Contacts
-        | UiScreen::CallHistory => FocusPolicy::Clamp,
-        UiScreen::NowPlaying => FocusPolicy::Wrap,
+        | UiScreen::NowPlaying => FocusPolicy::Wrap,
         UiScreen::Ask
         | UiScreen::IncomingCall
         | UiScreen::OutgoingCall

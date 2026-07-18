@@ -172,6 +172,7 @@ impl UiRuntime {
             self.active_screen,
             &self.snapshot,
             self.focus_index,
+            self.selected_playlist.as_ref(),
             self.selected_contact.as_ref(),
             defaults,
         );
@@ -185,6 +186,7 @@ impl UiRuntime {
             self.active_screen,
             &self.snapshot,
             self.focus_index,
+            self.selected_playlist.as_ref(),
             self.selected_contact.as_ref(),
             (self.active_screen == UiScreen::Hub && self.home_mode == HomeMode::Focused)
                 .then_some(self.focus_index),
@@ -232,6 +234,7 @@ impl UiRuntime {
             self.active_screen,
             &self.snapshot,
             self.focus_index,
+            self.selected_playlist.as_ref(),
             self.selected_contact.as_ref(),
             (self.active_screen == UiScreen::Hub && self.home_mode == HomeMode::Focused)
                 .then_some(self.focus_index),
@@ -254,6 +257,10 @@ impl UiRuntime {
 
     fn active_route_key(&self) -> Option<&str> {
         match self.active_screen {
+            UiScreen::PlaylistTracks => self
+                .selected_playlist
+                .as_ref()
+                .map(|playlist| playlist.id.as_str()),
             UiScreen::TalkContact | UiScreen::VoiceNote => self
                 .selected_contact
                 .as_ref()
@@ -379,7 +386,7 @@ mod tests {
     use super::*;
     use crate::engine::flatten;
     use crate::scene::roles;
-    use yoyopod_protocol::ui::MusicIntent;
+    use yoyopod_protocol::ui::{ListItemSnapshot, MusicIntent, PlaylistTrackAction};
 
     fn count_visible_role(element: &crate::engine::Element, role: &'static str) -> usize {
         usize::from(element.role == Some(role) && element.props.visible != Some(false))
@@ -503,6 +510,50 @@ mod tests {
         assert_eq!(
             runtime.take_intents(),
             vec![UiIntent::Music(MusicIntent::PreviousTrack)]
+        );
+    }
+
+    #[test]
+    fn playlist_wheel_opens_tracks_and_plays_the_focused_track() {
+        let playlist = ListItemSnapshot::new(
+            "/music/Open Classics.m3u",
+            "Open Classics",
+            "2 tracks",
+            "playlist",
+        );
+        let tracks = vec![
+            ListItemSnapshot::new("/music/1.mp3", "Chaconne", "5:32", "track"),
+            ListItemSnapshot::new("/music/2.mp3", "March", "4:18", "track"),
+        ];
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.music.playlists = vec![playlist.clone()];
+        runtime
+            .snapshot
+            .music
+            .playlist_tracks
+            .insert(playlist.id.clone(), tracks);
+        runtime.active_screen = UiScreen::Listen;
+
+        runtime.handle_input(InputAction::Select, 100);
+        assert_eq!(runtime.active_screen, UiScreen::Playlists);
+        runtime.handle_input(InputAction::Select, 200);
+        assert_eq!(runtime.active_screen, UiScreen::PlaylistTracks);
+        assert_eq!(runtime.selected_playlist, Some(playlist.clone()));
+        assert!(runtime.take_intents().is_empty());
+
+        runtime.handle_input(InputAction::Advance, 300);
+        assert_eq!(runtime.focus_index, 1);
+        runtime.handle_input(InputAction::Select, 400);
+        assert_eq!(runtime.active_screen, UiScreen::NowPlaying);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Music(MusicIntent::PlayPlaylistTrack(
+                PlaylistTrackAction {
+                    playlist_path: playlist.id,
+                    track_uri: "/music/2.mp3".to_string(),
+                    track_index: 1,
+                }
+            ))]
         );
     }
 

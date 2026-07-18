@@ -40,6 +40,7 @@ pub enum IntentTemplate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListKind {
     Playlists,
+    PlaylistTracks,
     RecentTracks,
     Contacts,
     CallHistory,

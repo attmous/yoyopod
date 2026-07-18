@@ -68,6 +68,7 @@ pub fn scene(props: &ListenProps) -> Scene {
         id: SceneId::new(UiScreen::Listen),
         backdrop: Backdrop::Solid(LISTEN_STAGE_LIME),
         stage: props.defaults.stage,
+        context: None,
         decks: vec![deck],
         cursor: None,
         fx: Default::default(),

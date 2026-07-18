@@ -42,6 +42,7 @@ pub fn scene(props: &NowPlayingProps) -> Scene {
         id: SceneId::new(UiScreen::NowPlaying),
         backdrop: Backdrop::Solid(LISTEN_STAGE_LIME),
         stage: props.defaults.stage,
+        context: None,
         decks: vec![Deck {
             kind: DeckKind::Page,
             region: RegionId::Auto,

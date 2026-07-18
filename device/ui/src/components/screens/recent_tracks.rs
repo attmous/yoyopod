@@ -1,10 +1,10 @@
-use yoyopod_protocol::ui::{ListItemSnapshot, RuntimeSnapshot, UiScreen};
+use yoyopod_protocol::ui::{RuntimeSnapshot, UiScreen};
 
-use crate::scene::{FocusPolicy, Scene, SceneDefaults};
+use crate::scene::{Scene, SceneDefaults, WheelItemModel};
 
 pub struct RecentTracksProps {
     pub defaults: SceneDefaults,
-    pub items: Vec<ListItemSnapshot>,
+    pub items: Vec<WheelItemModel>,
     pub focus: usize,
 }
 
@@ -15,17 +15,17 @@ pub fn props_from(
 ) -> RecentTracksProps {
     RecentTracksProps {
         defaults,
-        items: snapshot.music.recent_tracks.clone(),
+        items: super::media_wheel::models(&snapshot.music.recent_tracks),
         focus,
     }
 }
 
 pub fn scene(props: &RecentTracksProps) -> Scene {
-    super::common::list_scene(
+    super::media_wheel::scene(
         UiScreen::RecentTracks,
         &props.defaults,
+        "LISTEN".to_string(),
         &props.items,
         props.focus,
-        FocusPolicy::Clamp,
     )
 }

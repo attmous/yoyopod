@@ -26,6 +26,7 @@ pub fn scene(props: &PowerProps) -> Scene {
         id: SceneId::new(UiScreen::Power),
         backdrop: props.defaults.backdrop(0x3ddd53),
         stage: props.defaults.stage,
+        context: None,
         decks: vec![Deck {
             kind: DeckKind::Page,
             region: RegionId::ListBody,

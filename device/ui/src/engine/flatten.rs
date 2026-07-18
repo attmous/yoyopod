@@ -1,7 +1,7 @@
 use crate::animation::{presets, ActorRef, TimelineRef, TrackIndex};
 use crate::scene::roles;
 use crate::scene::{
-    Deck, FxLayer, GlowBloom, Halo, HudScene, LayerSlot, Modal, ParticleField, PulseRing, Scene,
+    FxLayer, GlowBloom, Halo, HudScene, LayerSlot, Modal, ParticleField, PulseRing, Scene,
     SceneGraph, LAYER_ORDER,
 };
 use crate::ElementKind;
@@ -49,7 +49,7 @@ fn scene_layer_element(scene: &Scene, slot: LayerSlot) -> Option<Element> {
     match slot {
         LayerSlot::Backdrop => Some(scene.backdrop.element()),
         LayerSlot::Stage => Some(stage_element(scene.stage)),
-        LayerSlot::Decks => Some(decks_element(&scene.decks)),
+        LayerSlot::Decks => Some(decks_element(scene)),
         LayerSlot::Cursor => scene.cursor.as_ref().map(|cursor| cursor.element()),
         LayerSlot::Fx => fx_element(&scene.fx),
         LayerSlot::Hud | LayerSlot::Modal => None,
@@ -72,11 +72,24 @@ fn stage_element(_stage: crate::scene::Stage) -> Element {
     Element::new(ElementKind::Container, Some(roles::SCENE_STAGE)).key(Key::Static("stage"))
 }
 
-fn decks_element(decks: &[Deck]) -> Element {
-    decks.iter().enumerate().fold(
-        Element::new(ElementKind::Container, Some(roles::SCENE_DECKS)).key(Key::Static("decks")),
-        |element, (index, deck)| element.child(deck.element(index)),
-    )
+fn decks_element(scene: &Scene) -> Element {
+    let root =
+        Element::new(ElementKind::Container, Some(roles::SCENE_DECKS)).key(Key::Static("decks"));
+    let root = scene
+        .decks
+        .iter()
+        .enumerate()
+        .fold(root, |element, (index, deck)| {
+            element.child(deck.element(index))
+        });
+    match scene.context.as_deref() {
+        Some(context) => root.child(
+            Element::new(ElementKind::Label, Some(roles::WHEEL_CONTEXT))
+                .key(Key::Static("wheel_context"))
+                .text(context),
+        ),
+        None => root,
+    }
 }
 
 fn hud_element(hud: &HudScene) -> Element {

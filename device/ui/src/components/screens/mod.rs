@@ -9,8 +9,10 @@ pub mod in_call;
 pub mod incoming_call;
 pub mod listen;
 pub mod loading;
+mod media_wheel;
 pub mod now_playing;
 pub mod outgoing_call;
+pub mod playlist_tracks;
 pub mod playlists;
 pub mod power;
 pub mod recent_tracks;
@@ -26,6 +28,7 @@ pub fn scene_for_screen(
     screen: UiScreen,
     snapshot: &RuntimeSnapshot,
     focus: usize,
+    selected_playlist: Option<&ListItemSnapshot>,
     selected_contact: Option<&ListItemSnapshot>,
     defaults: SceneDefaults,
 ) -> Scene {
@@ -35,6 +38,12 @@ pub fn scene_for_screen(
         UiScreen::Playlists => {
             playlists::scene(&playlists::props_from(snapshot, focus, defaults.clone()))
         }
+        UiScreen::PlaylistTracks => playlist_tracks::scene(&playlist_tracks::props_from(
+            snapshot,
+            focus,
+            selected_playlist,
+            defaults.clone(),
+        )),
         UiScreen::RecentTracks => recent_tracks::scene(&recent_tracks::props_from(
             snapshot,
             focus,

@@ -406,6 +406,21 @@ fn commands_for_music_intent(state: &RuntimeState, intent: &MusicIntent) -> Vec<
                 )]
             })
             .unwrap_or_default(),
+        MusicIntent::PlayPlaylistTrack(action) => {
+            if action.playlist_path.trim().is_empty() {
+                Vec::new()
+            } else {
+                vec![worker_command(
+                    WorkerDomain::Media,
+                    "media.play_playlist_track",
+                    json!({
+                        "path": action.playlist_path,
+                        "track_uri": action.track_uri,
+                        "track_index": action.track_index,
+                    }),
+                )]
+            }
+        }
         MusicIntent::PlayRecentTrack(action) => list_item_track_uri(action)
             .map(|track_uri| {
                 vec![worker_command(
@@ -1206,7 +1221,7 @@ fn empty_payload() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use yoyopod_protocol::ui::{ListItemAction, MusicIntent, UiEvent};
+    use yoyopod_protocol::ui::{ListItemAction, MusicIntent, PlaylistTrackAction, UiEvent};
 
     #[test]
     fn typed_music_intent_routes_to_media_command() {
@@ -1255,6 +1270,26 @@ mod tests {
         let event = runtime_event_from_worker(WorkerDomain::Ui, envelope).unwrap();
 
         assert_eq!(event, RuntimeEvent::UiInput(input));
+    }
+
+    #[test]
+    fn playlist_track_intent_preserves_playlist_and_focus_index() {
+        let intent = UiIntent::Music(MusicIntent::PlayPlaylistTrack(PlaylistTrackAction {
+            playlist_path: "/music/Open Classics.m3u".to_string(),
+            track_uri: "/music/02 - March.mp3".to_string(),
+            track_index: 1,
+        }));
+        let commands = commands_for_ui_intent(&RuntimeState::default(), &intent);
+
+        assert_eq!(commands.len(), 1);
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected worker command");
+        };
+        assert_eq!(*domain, WorkerDomain::Media);
+        assert_eq!(envelope.message_type, "media.play_playlist_track");
+        assert_eq!(envelope.payload["path"], "/music/Open Classics.m3u");
+        assert_eq!(envelope.payload["track_uri"], "/music/02 - March.mp3");
+        assert_eq!(envelope.payload["track_index"], 1);
     }
 
     #[test]

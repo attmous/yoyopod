@@ -9,6 +9,7 @@ pub struct Scene {
     pub id: SceneId,
     pub backdrop: Backdrop,
     pub stage: Stage,
+    pub context: Option<String>,
     pub decks: Vec<Deck>,
     pub cursor: Option<Cursor>,
     pub fx: FxLayer,

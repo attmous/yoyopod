@@ -209,7 +209,7 @@ pub fn handle_command(envelope: WorkerEnvelope, host: &mut MediaHost) -> Result<
     match envelope.message_type.as_str() {
         "media.configure" => {
             let config = MediaConfig::from_payload(&envelope.payload)?;
-            host.configure(config);
+            host.configure(config)?;
             Ok(CommandOutcome::continue_with(vec![
                 WorkerEnvelope::result("media.configure", request_id, json!({"configured": true})),
                 WorkerEnvelope::event("media.snapshot", host.snapshot_payload()),
@@ -314,6 +314,30 @@ pub fn handle_command(envelope: WorkerEnvelope, host: &mut MediaHost) -> Result<
                 "media.load_playlist",
                 request_id,
                 json!({"accepted": true}),
+            )]))
+        }
+        "media.play_playlist_track" => {
+            let path = envelope
+                .payload
+                .get("path")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| anyhow!("media.play_playlist_track requires path"))?;
+            let track_index = envelope
+                .payload
+                .get("track_index")
+                .and_then(|value| value.as_u64())
+                .ok_or_else(|| anyhow!("media.play_playlist_track requires track_index"))?
+                as usize;
+            let track_uri = envelope
+                .payload
+                .get("track_uri")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| anyhow!("media.play_playlist_track requires track_uri"))?;
+            host.play_playlist_track(path, track_uri, track_index)?;
+            Ok(CommandOutcome::continue_with(vec![WorkerEnvelope::result(
+                "media.play_playlist_track",
+                request_id,
+                json!({"accepted": true, "track_index": track_index}),
             )]))
         }
         "media.list_playlists" => {

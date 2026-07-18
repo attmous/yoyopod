@@ -17,6 +17,7 @@ pub fn hero_scene(
         id: SceneId::new(screen),
         backdrop: defaults.backdrop(accent),
         stage: defaults.stage,
+        context: None,
         decks: vec![Deck {
             kind: DeckKind::CardRow,
             region: RegionId::HeroIcon,
@@ -71,6 +72,7 @@ pub fn list_scene(
         id: SceneId::new(screen),
         backdrop: defaults.backdrop(0x3ddd53),
         stage: defaults.stage,
+        context: None,
         decks: vec![deck],
         cursor: Some(Cursor::RowGlow {
             index: cursor_index,
@@ -86,6 +88,7 @@ pub fn action_scene(screen: UiScreen, defaults: &SceneDefaults, focus: usize) ->
         id: SceneId::new(screen),
         backdrop: defaults.backdrop(0x00d4ff),
         stage: defaults.stage,
+        context: None,
         decks: vec![Deck {
             kind: DeckKind::Buttons,
             region: RegionId::ButtonRow,
@@ -117,6 +120,7 @@ pub fn call_scene(
         id: SceneId::new(screen),
         backdrop: defaults.backdrop(0x3ddd53),
         stage: defaults.stage,
+        context: None,
         decks: vec![Deck {
             kind: DeckKind::Page,
             region: RegionId::ListBody,
@@ -150,6 +154,7 @@ pub fn overlay_scene(
         id: SceneId::new(screen),
         backdrop: defaults.backdrop(0x3ddd53),
         stage: defaults.stage,
+        context: None,
         decks: Vec::new(),
         cursor: None,
         fx: defaults.fx_layer(0x3ddd53),

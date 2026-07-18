@@ -21,6 +21,7 @@ pub struct UiRuntime {
     pub(crate) last_input_ms: Option<u64>,
     pub(crate) intents: Vec<UiIntent>,
     pub(crate) dirty: DirtyState,
+    pub(crate) selected_playlist: Option<ListItemSnapshot>,
     pub(crate) selected_contact: Option<ListItemSnapshot>,
     pub(crate) transitions: Vec<Transition>,
     pub(crate) full_snapshots: u64,
@@ -151,6 +152,7 @@ impl Default for UiRuntime {
                 dirty.mark_full();
                 dirty
             },
+            selected_playlist: None,
             selected_contact: None,
             transitions: Vec::new(),
             full_snapshots: 0,

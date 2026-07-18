@@ -173,6 +173,7 @@ pub struct MediaState {
     pub length_ms: i64,
     pub volume: i32,
     pub playlists: Vec<ListItem>,
+    pub playlist_tracks: BTreeMap<String, Vec<ListItem>>,
     pub recent_tracks: Vec<ListItem>,
 }
 
@@ -188,6 +189,7 @@ impl Default for MediaState {
             length_ms: 0,
             volume: 50,
             playlists: Vec::new(),
+            playlist_tracks: BTreeMap::new(),
             recent_tracks: Vec::new(),
         }
     }
@@ -944,6 +946,24 @@ impl RuntimeState {
             }
         }
         if let Some(playlists) = snapshot.get("playlists").and_then(Value::as_array) {
+            self.media.playlist_tracks = playlists
+                .iter()
+                .filter_map(|playlist| {
+                    let playlist_id =
+                        string_field(playlist, "uri").or_else(|| string_field(playlist, "id"))?;
+                    let tracks = playlist
+                        .get("tracks")
+                        .and_then(Value::as_array)
+                        .map(|tracks| {
+                            tracks
+                                .iter()
+                                .filter_map(|track| ListItem::from_snapshot(track, "track"))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    Some((playlist_id, tracks))
+                })
+                .collect();
             self.media.playlists = playlists
                 .iter()
                 .filter_map(|item| ListItem::from_snapshot(item, "playlist"))
@@ -1521,6 +1541,7 @@ impl RuntimeState {
                 "total_text": media_time_text(self.media.length_ms, self.media.length_ms),
                 "volume": self.media.volume,
                 "playlists": list_payload(&self.media.playlists),
+                "playlist_tracks": list_map_payload(&self.media.playlist_tracks),
                 "recent_tracks": list_payload(&self.media.recent_tracks),
             },
             "call": {
@@ -1965,7 +1986,7 @@ fn playlist_track_count_subtitle(value: &Value, icon_key: &str) -> Option<String
     }
 
     let track_count = value.get("track_count")?.as_u64()?;
-    let suffix = if track_count == 1 { "track" } else { "tracks" };
+    let suffix = if track_count == 1 { "song" } else { "songs" };
     Some(format!("{track_count} {suffix}"))
 }
 
@@ -2053,6 +2074,13 @@ fn format_duration_text(total_seconds: u64) -> String {
 
 fn list_payload(items: &[ListItem]) -> Vec<Value> {
     items.iter().map(ListItem::to_payload).collect()
+}
+
+fn list_map_payload(items: &BTreeMap<String, Vec<ListItem>>) -> BTreeMap<String, Vec<Value>> {
+    items
+        .iter()
+        .map(|(key, values)| (key.clone(), list_payload(values)))
+        .collect()
 }
 
 fn setup_page(title: &str, icon_key: &str, rows: Vec<SetupRow>) -> Value {
