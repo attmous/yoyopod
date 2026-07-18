@@ -53,7 +53,7 @@ pub fn scene_for_screen(
             now_playing::scene(&now_playing::props_from(snapshot, focus, defaults.clone()))
         }
         UiScreen::Ask => ask::scene(&ask::props_from(snapshot, focus, defaults.clone())),
-        UiScreen::Talk => talk::scene(&talk::props_from(focus, defaults.clone())),
+        UiScreen::Talk => talk::scene(&talk::props_from(snapshot, focus, defaults.clone())),
         UiScreen::Contacts => {
             contacts::scene(&contacts::props_from(snapshot, focus, defaults.clone()))
         }

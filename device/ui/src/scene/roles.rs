@@ -66,6 +66,17 @@ pub(crate) const DECK_WHEEL: &str = "deck_wheel";
 pub(crate) const WHEEL_ITEM: &str = "wheel_item";
 pub(crate) const WHEEL_ICON: &str = "wheel_icon";
 pub(crate) const WHEEL_LABEL: &str = "wheel_label";
+pub(crate) const TALK_WHEEL_ITEM: &str = "talk_wheel_item";
+pub(crate) const WHEEL_AVATAR: &str = "wheel_avatar";
+pub(crate) const WHEEL_AVATAR_INITIAL: &str = "wheel_avatar_initial";
+pub(crate) const WHEEL_BADGE: &str = "wheel_badge";
+pub(crate) const WHEEL_BADGE_LABEL: &str = "wheel_badge_label";
+pub(crate) const WHEEL_BADGE_LABEL_STUCK: &str = "wheel_badge_label_stuck";
+
+pub(crate) const EMPTY_STATE: &str = "empty_state";
+pub(crate) const EMPTY_PLUS: &str = "empty_plus";
+pub(crate) const EMPTY_PLUS_ICON: &str = "empty_plus_icon";
+pub(crate) const EMPTY_HINT: &str = "empty_hint";
 
 pub(crate) const MEDIA_WHEEL_HEADER: &str = "media_wheel_header";
 pub(crate) const MEDIA_WHEEL_HEADER_TITLE: &str = "media_wheel_header_title";

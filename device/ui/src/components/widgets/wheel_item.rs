@@ -1,7 +1,7 @@
 use crate::animation::presets::MEDIA_WHEEL_PEEK_OPACITY;
 use crate::components::primitives::{container, image, label};
 use crate::engine::{Element, Key};
-use crate::scene::deck::{WheelItemModel, WheelItemVariant};
+use crate::scene::deck::{WheelBadgeKind, WheelItemModel, WheelItemVariant};
 use crate::scene::roles;
 
 const INK: u32 = 0x1B1B1F;
@@ -47,6 +47,39 @@ pub fn wheel_item(
                 unreachable!("media wheel item requires a semantic slot")
             }
         },
+        WheelItemVariant::Contact {
+            initial,
+            avatar_rgb,
+            badge,
+        } => {
+            assert_eq!(slot, WheelItemSlot::Standard);
+            let root = container(roles::TALK_WHEEL_ITEM)
+                .key(key)
+                .selected(selected)
+                .child(
+                    container(roles::WHEEL_AVATAR)
+                        .accent(*avatar_rgb)
+                        .child(label(roles::WHEEL_AVATAR_INITIAL).text(initial)),
+                )
+                .child(label(roles::WHEEL_LABEL).text(&model.title));
+            match badge {
+                Some(badge) => root.child(
+                    container(roles::WHEEL_BADGE)
+                        .accent(match badge.kind {
+                            WheelBadgeKind::Count => 0xF37767,
+                            WheelBadgeKind::Stuck => 0xE5443B,
+                        })
+                        .child(
+                            label(match badge.kind {
+                                WheelBadgeKind::Count => roles::WHEEL_BADGE_LABEL,
+                                WheelBadgeKind::Stuck => roles::WHEEL_BADGE_LABEL_STUCK,
+                            })
+                            .text(&badge.label),
+                        ),
+                ),
+                None => root,
+            }
+        }
     }
 }
 
