@@ -49,6 +49,7 @@ pub fn focus_count(
         UiScreen::Contacts => snapshot.call.contacts.len(),
         UiScreen::CallHistory => snapshot.call.history.len(),
         UiScreen::TalkContact => options::talk_contact_actions(snapshot, selected_contact).len(),
+        UiScreen::Replay => 3,
         UiScreen::VoiceNote => options::voice_note_action_count(snapshot),
         UiScreen::Power => options::power_page_count(snapshot),
         _ => 0,

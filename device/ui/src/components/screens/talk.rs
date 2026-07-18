@@ -93,7 +93,7 @@ fn contact_items(snapshot: &RuntimeSnapshot) -> Vec<DeckItem> {
         .collect()
 }
 
-fn contact_initial(contact: &ListItemSnapshot) -> String {
+pub(crate) fn contact_initial(contact: &ListItemSnapshot) -> String {
     contact
         .icon_key
         .strip_prefix("mono:")
@@ -106,6 +106,16 @@ fn contact_initial(contact: &ListItemSnapshot) -> String {
         })
         .map(|character| character.to_uppercase().collect())
         .unwrap_or_else(|| "?".to_string())
+}
+
+pub(crate) fn contact_color(snapshot: &RuntimeSnapshot, contact: &ListItemSnapshot) -> u32 {
+    snapshot
+        .call
+        .contacts
+        .iter()
+        .position(|candidate| candidate.id == contact.id)
+        .map(|index| CONTACT_COLORS[index % CONTACT_COLORS.len()])
+        .unwrap_or(CONTACT_COLORS[0])
 }
 
 fn contact_badge(

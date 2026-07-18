@@ -23,6 +23,9 @@ pub struct UiRuntime {
     pub(crate) dirty: DirtyState,
     pub(crate) selected_playlist: Option<ListItemSnapshot>,
     pub(crate) selected_contact: Option<ListItemSnapshot>,
+    pub(crate) replay_index: usize,
+    pub(crate) replay_auto_advance_armed: bool,
+    pub(crate) replay_pending_delete_message_id: Option<String>,
     pub(crate) transitions: Vec<Transition>,
     pub(crate) pending_wheel_roll: Option<PendingWheelRoll>,
     pub(crate) scene_revision: u32,
@@ -163,6 +166,9 @@ impl Default for UiRuntime {
             },
             selected_playlist: None,
             selected_contact: None,
+            replay_index: 0,
+            replay_auto_advance_armed: false,
+            replay_pending_delete_message_id: None,
             transitions: Vec::new(),
             pending_wheel_roll: None,
             scene_revision: 0,
@@ -198,16 +204,28 @@ impl UiRuntime {
         intents::voice_recipient_action(contact)
     }
 
-    pub(crate) fn latest_voice_note_payload(&self) -> Option<VoiceFileAction> {
+    pub(crate) fn replay_notes(&self) -> &[VoiceNoteSummarySnapshot] {
+        let Some(contact) = self
+            .selected_contact
+            .as_ref()
+            .or_else(|| self.snapshot.call.contacts.first())
+        else {
+            return &[];
+        };
+        self.snapshot
+            .call
+            .voice_notes_by_contact
+            .get(&contact.id)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn replay_note_payload(&self) -> Option<VoiceFileAction> {
         let contact = self
             .selected_contact
             .as_ref()
             .or_else(|| self.snapshot.call.contacts.first())?;
-        let note = self
-            .snapshot
-            .call
-            .latest_voice_note_by_contact
-            .get(&contact.id)?;
+        let note = self.replay_notes().get(self.replay_index)?;
         voice_file_action(contact, note)
     }
 }

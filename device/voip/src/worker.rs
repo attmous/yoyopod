@@ -481,6 +481,7 @@ where
         }
         "voip.play_voice_note" => {
             let file_path = envelope.payload["file_path"].as_str().unwrap_or("").trim();
+            let duration_ms = envelope.payload["duration_ms"].as_i64().unwrap_or_default() as i32;
             if file_path.is_empty() {
                 write_envelope_to(
                     output,
@@ -492,7 +493,7 @@ where
                     ),
                 )?;
             } else {
-                host.play_voice_note(file_path)
+                host.play_voice_note(file_path, duration_ms)
                     .map_err(|error| anyhow!(error))?;
                 write_envelope_to(
                     output,
@@ -505,6 +506,32 @@ where
                 write_session_snapshot(host, output)?;
             }
         }
+        "voip.pause_voice_note_playback" => {
+            host.pause_voice_note_playback()
+                .map_err(|error| anyhow!(error))?;
+            write_envelope_to(
+                output,
+                &WorkerEnvelope::result(
+                    "voip.pause_voice_note_playback",
+                    envelope.request_id,
+                    json!({"paused": true}),
+                ),
+            )?;
+            write_session_snapshot(host, output)?;
+        }
+        "voip.resume_voice_note_playback" => {
+            host.resume_voice_note_playback()
+                .map_err(|error| anyhow!(error))?;
+            write_envelope_to(
+                output,
+                &WorkerEnvelope::result(
+                    "voip.resume_voice_note_playback",
+                    envelope.request_id,
+                    json!({"playing": true}),
+                ),
+            )?;
+            write_session_snapshot(host, output)?;
+        }
         "voip.stop_voice_note_playback" => {
             host.stop_voice_note_playback();
             write_envelope_to(
@@ -516,6 +543,33 @@ where
                 ),
             )?;
             write_session_snapshot(host, output)?;
+        }
+        "voip.delete_voice_note" => {
+            let message_id = envelope.payload["message_id"].as_str().unwrap_or("").trim();
+            if message_id.is_empty() {
+                write_envelope_to(
+                    output,
+                    &WorkerEnvelope::error(
+                        "voip.error",
+                        envelope.request_id,
+                        "invalid_command",
+                        "voip.delete_voice_note requires message_id",
+                    ),
+                )?;
+            } else {
+                let deleted = host
+                    .delete_voice_note(message_id)
+                    .map_err(|error| anyhow!(error))?;
+                write_envelope_to(
+                    output,
+                    &WorkerEnvelope::result(
+                        "voip.delete_voice_note",
+                        envelope.request_id,
+                        json!({"deleted": deleted, "message_id": message_id}),
+                    ),
+                )?;
+                write_session_snapshot(host, output)?;
+            }
         }
         "voip.shutdown" | "worker.stop" => {
             backend.unregister(host);
@@ -552,6 +606,7 @@ where
     S: WorkerBackendState,
     W: Write + ?Sized,
 {
+    let playback_changed = host.refresh_voice_note_playback();
     if backend.is_running() {
         let events = backend.with_backend(|backend_ref| host.poll_backend_events(backend_ref))?;
         let metrics_changed = backend
@@ -559,9 +614,11 @@ where
         let lifecycle_events = host.take_lifecycle_events();
         let has_events = !events.is_empty() || !lifecycle_events.is_empty();
         emit_backend_events(events, lifecycle_events, host, output)?;
-        if metrics_changed && !has_events {
+        if (metrics_changed || playback_changed) && !has_events {
             write_session_snapshot(host, output)?;
         }
+    } else if playback_changed {
+        write_session_snapshot(host, output)?;
     }
     Ok(())
 }

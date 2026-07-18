@@ -2347,6 +2347,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "libc",
  "once_cell",
  "pkg-config",
  "serde",

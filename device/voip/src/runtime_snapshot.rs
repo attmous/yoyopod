@@ -50,6 +50,7 @@ impl RuntimeSnapshot<'_> {
             "unread_voice_notes": message_summary["unread_voice_notes"].clone(),
             "unread_voice_notes_by_contact": message_summary["unread_voice_notes_by_contact"].clone(),
             "latest_voice_note_by_contact": message_summary["latest_voice_note_by_contact"].clone(),
+            "voice_notes_by_contact": message_summary["voice_notes_by_contact"].clone(),
         })
     }
 }

@@ -131,6 +131,16 @@ pub struct PlayerHeroModel {
     pub progress_permille: i32,
     pub playing: bool,
     pub focus_index: usize,
+    pub accent: u32,
+    pub artwork: PlayerHeroArtwork,
+    pub left_icon_key: String,
+    pub right_icon_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlayerHeroArtwork {
+    Track { icon_key: String, fill_rgb: u32 },
+    Contact { initial: String, fill_rgb: u32 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

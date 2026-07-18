@@ -12,6 +12,9 @@ use super::{focus, intents, options, UiRuntime, UiScreen};
 pub fn apply_runtime_preemption(runtime: &mut UiRuntime) {
     if let Some(screen) = runtime_preemption(&runtime.snapshot) {
         if runtime.active_screen != screen {
+            if runtime.active_screen == UiScreen::Replay {
+                leave_replay(runtime);
+            }
             push_screen(runtime, screen);
         }
         return;
@@ -35,6 +38,9 @@ pub fn apply_app_state_route(
         return;
     }
     if runtime.active_screen != *app_state {
+        if runtime.active_screen == UiScreen::Replay {
+            leave_replay(runtime);
+        }
         runtime.screen_stack.clear();
         runtime.active_screen = *app_state;
         runtime.focus_index = initial_focus(*app_state);
@@ -42,6 +48,7 @@ pub fn apply_app_state_route(
             runtime.home_mode = HomeMode::Idle;
             runtime.selected_playlist = None;
             runtime.selected_contact = None;
+            reset_replay_state(runtime);
         }
     }
 }
@@ -72,12 +79,16 @@ pub fn select_focused(runtime: &mut UiRuntime) {
 }
 
 pub fn go_home(runtime: &mut UiRuntime) {
+    if runtime.active_screen == UiScreen::Replay {
+        leave_replay(runtime);
+    }
     runtime.screen_stack.clear();
     runtime.active_screen = UiScreen::Hub;
     runtime.focus_index = 0;
     runtime.home_mode = HomeMode::Idle;
     runtime.selected_playlist = None;
     runtime.selected_contact = None;
+    reset_replay_state(runtime);
 }
 
 pub fn go_back_or_emit(runtime: &mut UiRuntime) {
@@ -210,6 +221,7 @@ fn select_dynamic_list_item(runtime: &mut UiRuntime, kind: ListKind) {
 fn select_dynamic_action(runtime: &mut UiRuntime, kind: DynamicActionKind) {
     match kind {
         DynamicActionKind::TalkContact => select_talk_contact_action(runtime),
+        DynamicActionKind::Replay => select_replay_action(runtime),
         DynamicActionKind::VoiceNote => select_voice_note(runtime),
     }
 }
@@ -266,14 +278,145 @@ fn select_talk_contact_action(runtime: &mut UiRuntime) {
         // this action is focused; selecting the tile does not change routes.
         "record" => {}
         "replay" => {
-            if let Some(payload) = runtime.latest_voice_note_payload() {
-                runtime
-                    .intents
-                    .push(UiIntent::Voice(VoiceIntent::PlayLatest(payload)));
+            runtime.replay_index = 0;
+            if runtime.replay_note_payload().is_some() {
+                push_screen(runtime, UiScreen::Replay);
+                start_current_replay_note(runtime);
             }
         }
         _ => {}
     }
+}
+
+fn select_replay_action(runtime: &mut UiRuntime) {
+    let Some(payload) = runtime.replay_note_payload() else {
+        pop_screen_or_hub(runtime);
+        return;
+    };
+    match runtime.focus_index {
+        0 => {
+            runtime.replay_auto_advance_armed = false;
+            runtime.replay_pending_delete_message_id = Some(payload.message_id.clone());
+            if runtime.snapshot.voice.playback_active || runtime.snapshot.voice.playback_paused {
+                runtime
+                    .intents
+                    .push(UiIntent::Voice(VoiceIntent::StopPlayback));
+            }
+            runtime
+                .intents
+                .push(UiIntent::Voice(VoiceIntent::Delete(payload)));
+        }
+        1 => {
+            let is_current = runtime.snapshot.voice.playback_file_path == payload.file_path;
+            if is_current && runtime.snapshot.voice.playback_active {
+                runtime.replay_auto_advance_armed = false;
+                runtime
+                    .intents
+                    .push(UiIntent::Voice(VoiceIntent::PausePlayback));
+            } else if is_current && runtime.snapshot.voice.playback_paused {
+                runtime.replay_auto_advance_armed = true;
+                runtime
+                    .intents
+                    .push(UiIntent::Voice(VoiceIntent::ResumePlayback));
+            } else {
+                start_current_replay_note(runtime);
+            }
+        }
+        _ => {
+            runtime.replay_auto_advance_armed = false;
+            if runtime.replay_index + 1 < runtime.replay_notes().len() {
+                if runtime.snapshot.voice.playback_active || runtime.snapshot.voice.playback_paused
+                {
+                    runtime
+                        .intents
+                        .push(UiIntent::Voice(VoiceIntent::StopPlayback));
+                }
+                advance_replay_note(runtime);
+            } else {
+                pop_screen_or_hub(runtime);
+            }
+        }
+    }
+}
+
+fn start_current_replay_note(runtime: &mut UiRuntime) -> bool {
+    let Some(payload) = runtime.replay_note_payload() else {
+        return false;
+    };
+    runtime.replay_auto_advance_armed = true;
+    runtime
+        .intents
+        .push(UiIntent::Voice(VoiceIntent::PlayLatest(payload)));
+    true
+}
+
+fn advance_replay_note(runtime: &mut UiRuntime) {
+    let note_count = runtime.replay_notes().len();
+    if runtime.replay_index + 1 >= note_count {
+        pop_screen_or_hub(runtime);
+        return;
+    }
+    runtime.replay_index += 1;
+    start_current_replay_note(runtime);
+}
+
+pub(crate) fn reconcile_replay_snapshot(
+    runtime: &mut UiRuntime,
+    previous_playing: bool,
+    previous_file_path: &str,
+) {
+    if runtime.active_screen != UiScreen::Replay {
+        return;
+    }
+
+    if let Some(message_id) = runtime.replay_pending_delete_message_id.clone() {
+        let deleted = !runtime
+            .replay_notes()
+            .iter()
+            .any(|note| note.message_id == message_id);
+        if deleted {
+            runtime.replay_pending_delete_message_id = None;
+            if runtime.replay_index >= runtime.replay_notes().len() {
+                pop_screen_or_hub(runtime);
+            } else {
+                start_current_replay_note(runtime);
+            }
+        }
+        return;
+    }
+
+    if runtime.replay_index >= runtime.replay_notes().len() {
+        pop_screen_or_hub(runtime);
+        return;
+    }
+    let current_file_path = runtime
+        .replay_note_payload()
+        .map(|payload| payload.file_path)
+        .unwrap_or_default();
+    let completed = previous_playing
+        && !runtime.snapshot.voice.playback_active
+        && !runtime.snapshot.voice.playback_paused
+        && runtime.replay_auto_advance_armed
+        && previous_file_path == current_file_path;
+    if completed {
+        runtime.replay_auto_advance_armed = false;
+        advance_replay_note(runtime);
+    }
+}
+
+fn leave_replay(runtime: &mut UiRuntime) {
+    if runtime.snapshot.voice.playback_active || runtime.snapshot.voice.playback_paused {
+        runtime
+            .intents
+            .push(UiIntent::Voice(VoiceIntent::StopPlayback));
+    }
+    reset_replay_state(runtime);
+}
+
+fn reset_replay_state(runtime: &mut UiRuntime) {
+    runtime.replay_index = 0;
+    runtime.replay_auto_advance_armed = false;
+    runtime.replay_pending_delete_message_id = None;
 }
 
 fn select_voice_note(runtime: &mut UiRuntime) {
@@ -380,7 +523,7 @@ fn push_screen(runtime: &mut UiRuntime, screen: UiScreen) {
 }
 
 const fn initial_focus(screen: UiScreen) -> usize {
-    if matches!(screen, UiScreen::NowPlaying) {
+    if matches!(screen, UiScreen::NowPlaying | UiScreen::Replay) {
         1
     } else {
         0
@@ -388,6 +531,9 @@ const fn initial_focus(screen: UiScreen) -> usize {
 }
 
 fn pop_screen_or_hub(runtime: &mut UiRuntime) {
+    if runtime.active_screen == UiScreen::Replay {
+        leave_replay(runtime);
+    }
     let entry = router::history::pop_or_hub(&mut runtime.screen_stack, &mut runtime.active_screen);
     runtime.focus_index = entry.map(|entry| entry.focus_index).unwrap_or(0);
 }

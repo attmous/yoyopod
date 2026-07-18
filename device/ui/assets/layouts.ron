@@ -66,6 +66,8 @@
         (role: "hero_arc", x: 50, y: 36, width: 140, height: 140),
         (role: "hero_art", x: 77, y: 63, width: 86, height: 86),
         (role: "hero_art_icon", x: 15, y: 15, width: 56, height: 56),
+        (role: "hero_avatar", x: 77, y: 63, width: 86, height: 86),
+        (role: "hero_avatar_initial", x: 0, y: 29, width: 86, height: 28),
         (role: "hero_prev", x: 24, y: 94, width: 24, height: 24),
         (role: "hero_play", x: 104, y: 160, width: 32, height: 32),
         (role: "hero_play_icon", x: 4, y: 4, width: 24, height: 24),

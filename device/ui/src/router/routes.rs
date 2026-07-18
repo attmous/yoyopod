@@ -34,6 +34,7 @@ pub const ROUTES: [Route; UiScreen::ALL.len()] = [
     route(UiScreen::Contacts),
     route(UiScreen::CallHistory),
     route(UiScreen::TalkContact),
+    route(UiScreen::Replay),
     route(UiScreen::VoiceNote),
     route(UiScreen::IncomingCall),
     route(UiScreen::OutgoingCall),
@@ -207,9 +208,17 @@ fn dynamic_action_intent_kinds(kind: DynamicActionKind) -> &'static [IntentKindL
         IntentKindLiteral::new("voice", "play"),
         IntentKindLiteral::new("voice", "discard"),
     ];
+    const REPLAY_INTENTS: &[IntentKindLiteral] = &[
+        IntentKindLiteral::new("voice", "play_latest"),
+        IntentKindLiteral::new("voice", "pause_playback"),
+        IntentKindLiteral::new("voice", "resume_playback"),
+        IntentKindLiteral::new("voice", "stop_playback"),
+        IntentKindLiteral::new("voice", "delete"),
+    ];
 
     match kind {
         DynamicActionKind::TalkContact => TALK_CONTACT_INTENTS,
+        DynamicActionKind::Replay => REPLAY_INTENTS,
         DynamicActionKind::VoiceNote => VOICE_NOTE_INTENTS,
     }
 }
@@ -273,6 +282,9 @@ const ASK_SELECT: &[SelectionTarget] =
     &[SelectionTarget::EmitIntent(IntentTemplate::VoiceAskStart)];
 const TALK_CONTACT_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
     kind: DynamicActionKind::TalkContact,
+}];
+const REPLAY_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
+    kind: DynamicActionKind::Replay,
 }];
 const VOICE_NOTE_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
     kind: DynamicActionKind::VoiceNote,
@@ -341,6 +353,7 @@ const fn select_targets(screen: UiScreen) -> &'static [SelectionTarget] {
         UiScreen::VoiceNote => VOICE_NOTE_SELECT,
         UiScreen::Contacts => CONTACTS_SELECT,
         UiScreen::TalkContact => TALK_CONTACT_SELECT,
+        UiScreen::Replay => REPLAY_SELECT,
         UiScreen::CallHistory => CALL_HISTORY_SELECT,
         UiScreen::IncomingCall => INCOMING_SELECT,
         UiScreen::InCall => IN_CALL_SELECT,
@@ -415,6 +428,7 @@ const fn focus_policy(screen: UiScreen) -> FocusPolicy {
         | UiScreen::Listen
         | UiScreen::Talk
         | UiScreen::TalkContact
+        | UiScreen::Replay
         | UiScreen::VoiceNote
         | UiScreen::Power => FocusPolicy::Wrap,
         UiScreen::Contacts | UiScreen::CallHistory => FocusPolicy::Clamp,

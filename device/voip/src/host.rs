@@ -10,6 +10,8 @@ use crate::playback::VoiceNotePlayback;
 use crate::runtime_snapshot::RuntimeSnapshot;
 use crate::voice_notes::VoiceNoteSession;
 use serde_json::json;
+use std::fs;
+use std::io::ErrorKind;
 
 pub use crate::lifecycle::LifecycleEvent;
 pub use crate::messages::MessageRecord;
@@ -390,9 +392,6 @@ impl VoipHost {
         if client_id.is_empty() {
             return Err("voip voice note requires client_id".to_string());
         }
-        let backend_id = backend.send_voice_note(sip_address, file_path, duration_ms, mime_type)?;
-        self.outbound_message_ids
-            .remember(&backend_id, client_id, "voip voice note")?;
         self.voice_note
             .start_sending(file_path, duration_ms, mime_type, client_id);
         let sender_sip_address = self.local_identity();
@@ -412,6 +411,34 @@ impl VoipHost {
         }) {
             eprintln!("failed to persist accepted outgoing VoIP voice note: {error}");
         }
+        let backend_id =
+            match backend.send_voice_note(sip_address, file_path, duration_ms, mime_type) {
+                Ok(message_id) => message_id,
+                Err(error) => {
+                    self.voice_note.fail(client_id);
+                    self.last_message = Some(MessageSessionState::failed(client_id, &error));
+                    if let Err(store_error) = self
+                        .message_store
+                        .update_delivery(client_id, "failed", file_path)
+                    {
+                        eprintln!(
+                            "failed to persist local voice-note delivery failure: {store_error}"
+                        );
+                    }
+                    return Ok(client_id.to_string());
+                }
+            };
+        if let Err(error) =
+            self.outbound_message_ids
+                .remember(&backend_id, client_id, "voip voice note")
+        {
+            self.voice_note.fail(client_id);
+            self.last_message = Some(MessageSessionState::failed(client_id, &error));
+            let _ = self
+                .message_store
+                .update_delivery(client_id, "failed", file_path);
+            return Ok(client_id.to_string());
+        }
         Ok(client_id.to_string())
     }
 
@@ -423,12 +450,45 @@ impl VoipHost {
         self.call_history.mark_seen(sip_address);
     }
 
-    pub fn play_voice_note(&mut self, file_path: &str) -> Result<(), String> {
-        self.voice_note_playback.play(file_path)
+    pub fn play_voice_note(&mut self, file_path: &str, duration_ms: i32) -> Result<(), String> {
+        self.voice_note_playback.play(file_path, duration_ms)
+    }
+
+    pub fn pause_voice_note_playback(&mut self) -> Result<(), String> {
+        self.voice_note_playback.pause()
+    }
+
+    pub fn resume_voice_note_playback(&mut self) -> Result<(), String> {
+        self.voice_note_playback.resume()
     }
 
     pub fn stop_voice_note_playback(&mut self) {
         self.voice_note_playback.stop();
+    }
+
+    pub fn refresh_voice_note_playback(&mut self) -> bool {
+        self.voice_note_playback.refresh()
+    }
+
+    pub fn delete_voice_note(&mut self, message_id: &str) -> Result<bool, String> {
+        let Some(file_path) = self.message_store.delete_voice_note(message_id)? else {
+            return Ok(false);
+        };
+        if self.voice_note_playback.payload()["file_path"].as_str() == Some(file_path.as_str()) {
+            self.voice_note_playback.stop();
+        }
+        if !file_path.trim().is_empty() {
+            match fs::remove_file(&file_path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(format!(
+                        "failed to remove voice-note audio {file_path}: {error}"
+                    ));
+                }
+            }
+        }
+        Ok(true)
     }
 
     pub fn poll_backend_events<B: VoipRuntimeBackend + ?Sized>(
@@ -725,5 +785,47 @@ mod recording_tests {
         assert_eq!(snapshot["voice_note"]["state"], "recording");
         assert_eq!(snapshot["voice_note"]["duration_ms"], 200);
         assert_eq!(snapshot["voice_note"]["capture_level_permille"], 618);
+    }
+
+    #[test]
+    fn failed_sip_send_remains_in_the_local_replay_queue() {
+        let config = VoipConfig::from_payload(&json!({
+            "sip_identity": "",
+            "message_store_dir": "",
+            "voice_note_store_dir": "data/communication/voice_notes"
+        }))
+        .expect("local-only config");
+        let mut backend = LocalRecordingBackend::default();
+        let mut host = VoipHost::default();
+
+        host.configure(config);
+        host.register(&mut backend).expect("start local backend");
+        host.start_voice_recording(&mut backend, "/tmp/local.wav")
+            .expect("start local recording");
+        let duration_ms = host
+            .stop_voice_recording(&mut backend)
+            .expect("stop local recording");
+        let message_id = host
+            .send_voice_note(
+                &mut backend,
+                "sip:mama@example.test",
+                "/tmp/local.wav",
+                duration_ms,
+                "audio/wav",
+                "local-note-1",
+            )
+            .expect("accept the local note even when SIP delivery fails");
+
+        assert_eq!(message_id, "local-note-1");
+        let snapshot = host.session_snapshot_payload();
+        assert_eq!(snapshot["voice_note"]["state"], "failed");
+        assert_eq!(
+            snapshot["voice_notes_by_contact"]["sip:mama@example.test"][0]["message_id"],
+            "local-note-1"
+        );
+        assert_eq!(
+            snapshot["voice_notes_by_contact"]["sip:mama@example.test"][0]["delivery_state"],
+            "failed"
+        );
     }
 }

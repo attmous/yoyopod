@@ -27,6 +27,7 @@ pub enum UiScreen {
     Contacts,
     CallHistory,
     TalkContact,
+    Replay,
     VoiceNote,
     IncomingCall,
     OutgoingCall,
@@ -37,7 +38,7 @@ pub enum UiScreen {
 }
 
 impl UiScreen {
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 19] = [
         Self::Hub,
         Self::Listen,
         Self::Playlists,
@@ -49,6 +50,7 @@ impl UiScreen {
         Self::Contacts,
         Self::CallHistory,
         Self::TalkContact,
+        Self::Replay,
         Self::VoiceNote,
         Self::IncomingCall,
         Self::OutgoingCall,
@@ -71,6 +73,7 @@ impl UiScreen {
             Self::Contacts => "contacts",
             Self::CallHistory => "call_history",
             Self::TalkContact => "talk_contact",
+            Self::Replay => "replay",
             Self::VoiceNote => "voice_note",
             Self::IncomingCall => "incoming_call",
             Self::OutgoingCall => "outgoing_call",
@@ -607,7 +610,10 @@ pub enum VoiceIntent {
     Send(VoiceRecipientAction),
     Play(Option<VoiceFileAction>),
     PlayLatest(VoiceFileAction),
+    PausePlayback,
+    ResumePlayback,
     StopPlayback,
+    Delete(VoiceFileAction),
     MarkSeen(ContactAction),
     Discard,
 }
@@ -630,7 +636,10 @@ impl VoiceIntent {
             "send" | "send_voice_note" => Ok(Self::Send(decode_payload(payload.clone())?)),
             "play" | "play_voice_note" => Ok(Self::Play(optional_payload(payload)?)),
             "play_latest" => Ok(Self::PlayLatest(decode_payload(payload.clone())?)),
+            "pause_playback" => Ok(Self::PausePlayback),
+            "resume_playback" => Ok(Self::ResumePlayback),
             "stop_playback" => Ok(Self::StopPlayback),
+            "delete" | "delete_voice_note" => Ok(Self::Delete(decode_payload(payload.clone())?)),
             "mark_seen" => Ok(Self::MarkSeen(decode_payload(payload.clone())?)),
             "discard" | "again" | "reset" => Ok(Self::Discard),
             other => Err(ProtocolError::InvalidEnvelope(format!(
@@ -652,7 +661,10 @@ impl VoiceIntent {
             Self::Send(_) => "send",
             Self::Play(_) => "play",
             Self::PlayLatest(_) => "play_latest",
+            Self::PausePlayback => "pause_playback",
+            Self::ResumePlayback => "resume_playback",
             Self::StopPlayback => "stop_playback",
+            Self::Delete(_) => "delete",
             Self::MarkSeen(_) => "mark_seen",
             Self::Discard => "discard",
         }
@@ -664,7 +676,9 @@ impl VoiceIntent {
                 payload(action)
             }
             Self::CaptureToggle(Some(action)) => payload(action),
-            Self::Play(Some(action)) | Self::PlayLatest(action) => payload(action),
+            Self::Play(Some(action)) | Self::PlayLatest(action) | Self::Delete(action) => {
+                payload(action)
+            }
             Self::MarkSeen(action) => payload(action),
             _ => empty_payload(),
         }
@@ -813,6 +827,10 @@ pub struct VoiceFileAction {
     pub uri: String,
     #[serde(default)]
     pub sip_address: String,
+    #[serde(default)]
+    pub message_id: String,
+    #[serde(default)]
+    pub duration_ms: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

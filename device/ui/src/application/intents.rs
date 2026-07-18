@@ -58,5 +58,7 @@ pub fn voice_file_action(
         file_path: note.local_file_path.clone(),
         uri: String::new(),
         sip_address: String::new(),
+        message_id: note.message_id.clone(),
+        duration_ms: note.duration_ms.max(0),
     })
 }

@@ -55,6 +55,8 @@
         (role: "hero_arc", arc_rgb: Some(16243650), arc_width: 8, arc_rounded: true),
         (role: "hero_art", fill_rgb: Some(15247676), opacity: Some(255), radius: 18),
         (role: "hero_art_icon", text_rgb: Some(1776415)),
+        (role: "hero_avatar", fill_rgb: Some(11118309), opacity: Some(255), radius: 43),
+        (role: "hero_avatar_initial", text_rgb: Some(1776415)),
         (role: "hero_prev", text_rgb: Some(1776415)),
         (role: "hero_play", fill_rgb: Some(10353788), opacity: Some(255), radius: 16),
         (role: "hero_play_icon", text_rgb: Some(1776415)),

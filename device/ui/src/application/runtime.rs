@@ -48,10 +48,13 @@ impl UiRuntime {
 
     pub fn apply_snapshot(&mut self, snapshot: RuntimeSnapshot) {
         let pending_identity = self.pending_wheel_identity();
+        let previous_playing = self.snapshot.voice.playback_active;
+        let previous_file_path = self.snapshot.voice.playback_file_path.clone();
         let change = snapshot::replace_full(&mut self.snapshot, snapshot);
         self.full_snapshots += 1;
         navigator::apply_app_state_route(self, &change.previous_app_state, &change.app_state);
         navigator::apply_runtime_preemption(self);
+        navigator::reconcile_replay_snapshot(self, previous_playing, &previous_file_path);
         navigator::clamp_focus(self);
         self.reconcile_pending_wheel_roll(pending_identity);
         self.dirty.mark_full();
@@ -63,10 +66,13 @@ impl UiRuntime {
         let previous_screen = self.active_screen;
         let previous_focus = self.focus_index;
         let previous_stack_len = self.screen_stack.len();
+        let previous_playing = self.snapshot.voice.playback_active;
+        let previous_file_path = self.snapshot.voice.playback_file_path.clone();
         let change = snapshot::apply_patch(&mut self.snapshot, patch);
         *self.patches_per_domain.entry(domain).or_insert(0) += 1;
         navigator::apply_app_state_route(self, &change.previous_app_state, &change.app_state);
         navigator::apply_runtime_preemption(self);
+        navigator::reconcile_replay_snapshot(self, previous_playing, &previous_file_path);
         navigator::clamp_focus(self);
         self.reconcile_pending_wheel_roll(pending_identity);
         self.dirty.mark_patch_domain(change.domain);
@@ -203,6 +209,7 @@ impl UiRuntime {
             self.focus_index,
             self.selected_playlist.as_ref(),
             self.selected_contact.as_ref(),
+            self.replay_index,
             defaults,
         );
         active.id = SceneId::with_route_key(self.active_screen, self.active_route_key());
@@ -298,7 +305,7 @@ impl UiRuntime {
                 .selected_playlist
                 .as_ref()
                 .map(|playlist| playlist.id.as_str()),
-            UiScreen::TalkContact | UiScreen::VoiceNote => self
+            UiScreen::TalkContact | UiScreen::Replay | UiScreen::VoiceNote => self
                 .selected_contact
                 .as_ref()
                 .map(|contact| contact.id.as_str()),
@@ -552,11 +559,12 @@ fn status_bar_preview_status(now_ms: u64) -> HudStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::intents;
     use crate::engine::flatten;
     use crate::scene::roles;
     use yoyopod_protocol::ui::{
         CallIntent, ContactAction, ListItemSnapshot, MusicIntent, PlaylistTrackAction, VoiceIntent,
-        VoiceRecipientAction,
+        VoiceNoteSummarySnapshot, VoiceRecipientAction,
     };
 
     fn contact(id: &str, title: &str) -> ListItemSnapshot {
@@ -953,6 +961,135 @@ mod tests {
                 sip_address: String::new(),
                 uri: String::new(),
             }))]
+        );
+    }
+
+    fn replay_note(
+        message_id: &str,
+        file_path: &str,
+        duration_ms: i32,
+    ) -> VoiceNoteSummarySnapshot {
+        VoiceNoteSummarySnapshot {
+            message_id: message_id.to_string(),
+            local_file_path: file_path.to_string(),
+            duration_ms,
+            ..VoiceNoteSummarySnapshot::default()
+        }
+    }
+
+    #[test]
+    fn talk_replay_opens_pauses_resumes_and_auto_advances_the_contact_queue() {
+        let mama = contact("sip:mama@example.test", "Mama");
+        let first = replay_note("note-1", "/tmp/one.wav", 7_000);
+        let second = replay_note("note-2", "/tmp/two.wav", 5_000);
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![mama.clone()];
+        runtime
+            .snapshot
+            .call
+            .voice_notes_by_contact
+            .insert(mama.id.clone(), vec![first.clone(), second.clone()]);
+        runtime.selected_contact = Some(mama.clone());
+        runtime.active_screen = UiScreen::TalkContact;
+        runtime.focus_index = 2;
+
+        runtime.handle_input(InputAction::Select, 100);
+        assert_eq!(runtime.active_screen, UiScreen::Replay);
+        assert_eq!(runtime.focus_index, 1);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::PlayLatest(
+                intents::voice_file_action(&mama, &first).expect("first note payload")
+            ))]
+        );
+
+        let mut voice = runtime.snapshot.voice.clone();
+        voice.playback_active = true;
+        voice.playback_file_path = first.local_file_path.clone();
+        voice.playback_duration_ms = first.duration_ms;
+        runtime.apply_patch(RuntimeSnapshotPatch::Voice(voice.clone()));
+        runtime.handle_input(InputAction::Select, 200);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::PausePlayback)]
+        );
+
+        voice.playback_active = false;
+        voice.playback_paused = true;
+        runtime.apply_patch(RuntimeSnapshotPatch::Voice(voice.clone()));
+        runtime.handle_input(InputAction::Select, 300);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::ResumePlayback)]
+        );
+
+        voice.playback_active = true;
+        voice.playback_paused = false;
+        runtime.apply_patch(RuntimeSnapshotPatch::Voice(voice.clone()));
+        voice.playback_active = false;
+        voice.playback_file_path.clear();
+        runtime.apply_patch(RuntimeSnapshotPatch::Voice(voice.clone()));
+        assert_eq!(runtime.replay_index, 1);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::PlayLatest(
+                intents::voice_file_action(&mama, &second).expect("second note payload")
+            ))]
+        );
+
+        voice.playback_active = true;
+        voice.playback_file_path = second.local_file_path.clone();
+        runtime.apply_patch(RuntimeSnapshotPatch::Voice(voice.clone()));
+        voice.playback_active = false;
+        voice.playback_file_path.clear();
+        runtime.apply_patch(RuntimeSnapshotPatch::Voice(voice));
+        assert_eq!(runtime.active_screen, UiScreen::TalkContact);
+        assert_eq!(runtime.focus_index, 2);
+    }
+
+    #[test]
+    fn replay_delete_waits_for_store_confirmation_then_plays_the_next_note() {
+        let mama = contact("sip:mama@example.test", "Mama");
+        let first = replay_note("note-1", "/tmp/one.wav", 7_000);
+        let second = replay_note("note-2", "/tmp/two.wav", 5_000);
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![mama.clone()];
+        runtime
+            .snapshot
+            .call
+            .voice_notes_by_contact
+            .insert(mama.id.clone(), vec![first.clone(), second.clone()]);
+        runtime.selected_contact = Some(mama.clone());
+        runtime.active_screen = UiScreen::TalkContact;
+        runtime.focus_index = 2;
+        runtime.handle_input(InputAction::Select, 100);
+        runtime.take_intents();
+
+        runtime.snapshot.voice.playback_active = true;
+        runtime.snapshot.voice.playback_file_path = first.local_file_path.clone();
+        runtime.focus_index = 0;
+        runtime.handle_input(InputAction::Select, 200);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![
+                UiIntent::Voice(VoiceIntent::StopPlayback),
+                UiIntent::Voice(VoiceIntent::Delete(
+                    intents::voice_file_action(&mama, &first).expect("delete payload")
+                )),
+            ]
+        );
+
+        let mut call = runtime.snapshot.call.clone();
+        call.voice_notes_by_contact
+            .insert(mama.id.clone(), vec![second.clone()]);
+        runtime.apply_patch(RuntimeSnapshotPatch::Call(call));
+        assert_eq!(runtime.active_screen, UiScreen::Replay);
+        assert_eq!(runtime.replay_index, 0);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::PlayLatest(
+                intents::voice_file_action(&mama, &second).expect("next note payload")
+            ))]
         );
     }
 

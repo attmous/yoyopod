@@ -164,11 +164,28 @@ impl MessageStore {
         Ok(())
     }
 
+    pub fn delete_voice_note(&mut self, message_id: &str) -> Result<Option<String>, String> {
+        let Some(index) = self
+            .messages
+            .iter()
+            .position(|message| message.id == message_id && message.kind == "voice_note")
+        else {
+            return Ok(None);
+        };
+        let removed = self.messages.remove(index);
+        if let Err(error) = self.save() {
+            self.messages.insert(index, removed);
+            return Err(error);
+        }
+        Ok(Some(removed.local_file_path))
+    }
+
     pub fn summary_payload(&self) -> Value {
         json!({
             "unread_voice_notes": self.unread_voice_note_count(),
             "unread_voice_notes_by_contact": self.unread_voice_note_counts_by_contact(),
             "latest_voice_note_by_contact": self.latest_voice_note_by_contact(),
+            "voice_notes_by_contact": self.voice_notes_by_contact(),
         })
     }
 
@@ -259,6 +276,23 @@ impl MessageStore {
         latest
     }
 
+    fn voice_notes_by_contact(&self) -> BTreeMap<String, Vec<Value>> {
+        let mut notes: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+        for message in &self.messages {
+            if message.kind != "voice_note"
+                || message.peer_sip_address.is_empty()
+                || message.local_file_path.is_empty()
+            {
+                continue;
+            }
+            notes
+                .entry(message.peer_sip_address.clone())
+                .or_default()
+                .push(voice_note_value(message));
+        }
+        notes
+    }
+
     fn take_message(&mut self, message_id: &str) -> Option<StoredMessage> {
         let index = self
             .messages
@@ -285,6 +319,18 @@ impl MessageStore {
     }
 }
 
+fn voice_note_value(message: &StoredMessage) -> Value {
+    json!({
+        "message_id": message.id,
+        "direction": message.direction,
+        "delivery_state": message.delivery_state,
+        "local_file_path": message.local_file_path,
+        "duration_ms": message.duration_ms.max(0),
+        "unread": message.unread,
+        "display_name": message.display_name,
+    })
+}
+
 fn is_unread_incoming_voice_note(message: &StoredMessage) -> bool {
     message.kind == "voice_note" && message.direction == "incoming" && message.unread
 }
@@ -301,4 +347,70 @@ fn fallback_timestamp() -> String {
         .map(|duration| duration.as_secs())
         .unwrap_or_default();
     format!("1970-01-01T00:00:{:02}Z", seconds % 60)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn voice_note(id: &str, peer: &str, file_path: &str) -> MessageRecord {
+        MessageRecord {
+            message_id: id.to_string(),
+            peer_sip_address: peer.to_string(),
+            sender_sip_address: "sip:yoyopod@example.test".to_string(),
+            recipient_sip_address: peer.to_string(),
+            kind: "voice_note".to_string(),
+            direction: "outgoing".to_string(),
+            delivery_state: "failed".to_string(),
+            text: String::new(),
+            local_file_path: file_path.to_string(),
+            mime_type: "audio/wav".to_string(),
+            duration_ms: 7_000,
+            unread: false,
+        }
+    }
+
+    #[test]
+    fn replay_queue_preserves_newest_first_contact_order() {
+        let mut store = MessageStore::memory(10);
+        store
+            .upsert(voice_note(
+                "first",
+                "sip:mama@example.test",
+                "/tmp/first.wav",
+            ))
+            .expect("store first note");
+        store
+            .upsert(voice_note(
+                "second",
+                "sip:mama@example.test",
+                "/tmp/second.wav",
+            ))
+            .expect("store second note");
+
+        let payload = store.summary_payload();
+        let queue = payload["voice_notes_by_contact"]["sip:mama@example.test"]
+            .as_array()
+            .expect("contact queue");
+        assert_eq!(queue.len(), 2);
+        assert_eq!(queue[0]["message_id"], "second");
+        assert_eq!(queue[1]["message_id"], "first");
+    }
+
+    #[test]
+    fn deleting_a_voice_note_removes_it_from_replay() {
+        let mut store = MessageStore::memory(10);
+        store
+            .upsert(voice_note("note", "sip:mama@example.test", "/tmp/note.wav"))
+            .expect("store note");
+
+        assert_eq!(
+            store.delete_voice_note("note").expect("delete note"),
+            Some("/tmp/note.wav".to_string())
+        );
+        assert!(store.summary_payload()["voice_notes_by_contact"]
+            .as_object()
+            .expect("queue map")
+            .is_empty());
+    }
 }

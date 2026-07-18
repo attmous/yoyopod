@@ -296,6 +296,8 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::HERO_ARC,
         roles::HERO_ART,
         roles::HERO_ART_ICON,
+        roles::HERO_AVATAR,
+        roles::HERO_AVATAR_INITIAL,
         roles::HERO_PREV,
         roles::HERO_PLAY,
         roles::HERO_PLAY_ICON,
