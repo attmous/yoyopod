@@ -27,7 +27,7 @@ pub enum IntentTemplate {
     MusicNextTrack,
     VoiceAskStart,
     VoiceAskStop,
-    VoiceCaptureStartRecipient,
+    VoiceCaptureStartAndSendRecipient,
     VoiceCaptureStop,
     VoiceCaptureCancel,
     VoiceDiscard,
@@ -73,10 +73,10 @@ pub enum SelectionTarget {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapshotCondition {
     Always,
-    VoiceReady,
     VoiceRecording,
     VoiceReviewOrFailedOrSent,
-    VoiceReadyOrRecording,
+    TalkContactRecordAvailable,
+    TalkContactRecordHeldOrPending,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

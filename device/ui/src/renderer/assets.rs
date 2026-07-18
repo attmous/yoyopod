@@ -330,6 +330,11 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::STATUS_BATTERY_ICON,
         roles::VOICE_METER,
         roles::VOICE_METER_LEVEL,
+        roles::RECORDING_PANEL,
+        roles::RECORDING_CONTEXT,
+        roles::RECORDING_TIMER_DOT,
+        roles::RECORDING_TIMER,
+        roles::RECORDING_HINT,
     ];
     roles
 }
@@ -369,6 +374,14 @@ mod tests {
             .unwrap_or_else(|| panic!("missing layout role {role}"))
     }
 
+    fn theme<'a>(asset: &'a ThemeAsset, role: &str) -> &'a ThemeRole {
+        asset
+            .roles
+            .iter()
+            .find(|theme| theme.role == role)
+            .unwrap_or_else(|| panic!("missing theme role {role}"))
+    }
+
     #[test]
     fn shipped_layout_and_theme_cover_every_runtime_role() {
         let layouts = parse_layout_asset().expect("layouts.ron should be valid");
@@ -387,6 +400,26 @@ mod tests {
             .roles
             .iter()
             .any(|role| role.role == roles::COMPANION_BODY));
+    }
+
+    #[test]
+    fn recording_palette_uses_cream_content_and_a_coral_signal() {
+        let asset = parse_theme_asset().expect("theme.ron should be valid");
+        let meter = theme(&asset, roles::VOICE_METER);
+        let meter_level = theme(&asset, roles::VOICE_METER_LEVEL);
+        let timer_dot = theme(&asset, roles::RECORDING_TIMER_DOT);
+
+        assert_eq!(meter.fill_rgb, Some(0xFCE6D2));
+        assert_eq!(meter.opacity, Some(51));
+        assert_eq!(meter_level.fill_rgb, Some(0xFCE6D2));
+        assert_eq!(timer_dot.fill_rgb, Some(0xF37767));
+        for role in [
+            roles::RECORDING_CONTEXT,
+            roles::RECORDING_TIMER,
+            roles::RECORDING_HINT,
+        ] {
+            assert_eq!(theme(&asset, role).text_rgb, Some(0xFCE6D2));
+        }
     }
 
     #[test]

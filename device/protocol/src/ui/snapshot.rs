@@ -238,6 +238,10 @@ pub struct VoiceRuntimeSnapshot {
     pub capture_in_flight: bool,
     #[serde(default)]
     pub ptt_active: bool,
+    #[serde(default)]
+    pub recording_duration_ms: i32,
+    #[serde(default)]
+    pub capture_level_permille: i32,
 }
 
 impl Default for VoiceRuntimeSnapshot {
@@ -248,6 +252,8 @@ impl Default for VoiceRuntimeSnapshot {
             body: default_voice_body(),
             capture_in_flight: false,
             ptt_active: false,
+            recording_duration_ms: 0,
+            capture_level_permille: 0,
         }
     }
 }

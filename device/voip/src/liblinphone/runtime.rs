@@ -1,6 +1,7 @@
 use super::ffi::{
     self, LinphoneAccount, LinphoneAddress, LinphoneApi, LinphoneCall, LinphoneChatMessage,
-    LinphoneChatRoom, LinphoneContent, LinphoneCore, LinphoneEventLog, LinphoneRecorderParams,
+    LinphoneChatRoom, LinphoneContent, LinphoneCore, LinphoneEventLog, LinphoneRecorderFileFormat,
+    LinphoneRecorderParams,
 };
 use super::{abi_event as event, runtime_error as error, state};
 use once_cell::sync::Lazy;
@@ -14,7 +15,6 @@ pub use super::abi_event::YoyopodLiblinphoneEvent;
 const FALSE: c_int = 0;
 const TRUE: c_int = 1;
 const LINPHONE_REASON_DECLINED: c_int = 4;
-const LINPHONE_RECORDER_FILE_FORMAT_WAV: c_int = 0;
 
 static VERSION: &[u8] = b"yoyopod-voip-host-liblinphone/0.1.0\0";
 static STATE: Lazy<std::sync::Mutex<state::ShimState>> =
@@ -118,8 +118,9 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start(
 
     let sip_server_value = unsafe { ptr_to_string(sip_server) };
     let sip_identity_value = unsafe { ptr_to_string(sip_identity) };
-    if sip_server_value.is_empty() || sip_identity_value.is_empty() {
-        error::set_last_error("missing SIP identity or SIP server for Liblinphone startup");
+    let has_sip_account = !sip_identity_value.is_empty();
+    if has_sip_account && sip_server_value.is_empty() {
+        error::set_last_error("missing SIP server for configured Liblinphone identity");
         return -1;
     }
     let api = match state.api.clone() {
@@ -213,24 +214,26 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start(
         return -1;
     }
 
-    let account_result = configure_account(
-        &mut state,
-        &api,
-        AccountConfig {
-            sip_server: sip_server_value,
-            sip_username: unsafe { ptr_to_string(sip_username) },
-            sip_password: unsafe { ptr_to_string(sip_password) },
-            sip_password_ha1: unsafe { ptr_to_string(sip_password_ha1) },
-            sip_identity: sip_identity_value,
-            transport: unsafe { ptr_to_string(transport) },
-            conference_factory_uri: unsafe { ptr_to_string(conference_factory_uri) },
-            file_transfer_server_url: unsafe { ptr_to_string(file_transfer_server_url) },
-            lime_server_url: unsafe { ptr_to_string(lime_server_url) },
-        },
-    );
-    if account_result != 0 {
-        stop_locked(&mut state);
-        return -1;
+    if has_sip_account {
+        let account_result = configure_account(
+            &mut state,
+            &api,
+            AccountConfig {
+                sip_server: sip_server_value,
+                sip_username: unsafe { ptr_to_string(sip_username) },
+                sip_password: unsafe { ptr_to_string(sip_password) },
+                sip_password_ha1: unsafe { ptr_to_string(sip_password_ha1) },
+                sip_identity: sip_identity_value,
+                transport: unsafe { ptr_to_string(transport) },
+                conference_factory_uri: unsafe { ptr_to_string(conference_factory_uri) },
+                file_transfer_server_url: unsafe { ptr_to_string(file_transfer_server_url) },
+                lime_server_url: unsafe { ptr_to_string(lime_server_url) },
+            },
+        );
+        if account_result != 0 {
+            stop_locked(&mut state);
+            return -1;
+        }
     }
 
     if unsafe { (api.core_start)(state.core) } != 0 {
@@ -476,6 +479,44 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start_voice_recording(
         return -1;
     }
     state.recorder_running = true;
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn yoyopod_liblinphone_voice_recording_metrics(
+    duration_ms_out: *mut i32,
+    capture_volume_out: *mut f32,
+) -> c_int {
+    let state = match STATE.lock() {
+        Ok(state) => state,
+        Err(_) => {
+            error::set_last_error("liblinphone runtime state lock poisoned");
+            return -1;
+        }
+    };
+    if !state.started || state.current_recorder.is_null() || !state.recorder_running {
+        error::set_last_error("No active Liblinphone voice-note recording is running");
+        return -1;
+    }
+    let api = state.api.as_ref().expect("initialized state has API");
+    let duration_ms = api
+        .recorder_get_duration
+        .map_or(0, |function| unsafe { function(state.current_recorder) })
+        .max(0);
+    let capture_volume = api.recorder_get_capture_volume.map_or(0.0, |function| {
+        let value = unsafe { function(state.current_recorder) };
+        if value.is_finite() {
+            value.clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    });
+    if !duration_ms_out.is_null() {
+        unsafe { *duration_ms_out = duration_ms };
+    }
+    if !capture_volume_out.is_null() {
+        unsafe { *capture_volume_out = capture_volume };
+    }
     0
 }
 
@@ -983,7 +1024,7 @@ unsafe fn create_recorder_params(
         return Err("failed to create Liblinphone recorder params".to_string());
     }
     if let Some(set_format) = api.recorder_params_set_file_format {
-        unsafe { set_format(params, LINPHONE_RECORDER_FILE_FORMAT_WAV) };
+        unsafe { set_format(params, LinphoneRecorderFileFormat::WAV) };
     }
     Ok(params)
 }

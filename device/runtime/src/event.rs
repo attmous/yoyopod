@@ -487,7 +487,7 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             "voip.cancel_voice_note_recording",
             empty_payload(),
         )],
-        VoiceIntent::CaptureStart(_) => {
+        VoiceIntent::CaptureStart(_) | VoiceIntent::CaptureStartAndSend(_) => {
             let file_path = state.voice.recording_file_path();
             vec![worker_command(
                 WorkerDomain::Voip,
@@ -892,6 +892,9 @@ fn commands_for_voip_snapshot(state: &RuntimeState, snapshot: &Value) -> Vec<Run
             "ts": current_epoch_seconds(),
         }),
     ));
+    if let Some(command) = auto_send_voice_note_command(state, snapshot) {
+        commands.push(command);
+    }
     if !is_music_playing(state) {
         if let Some(command) = ask_capture_transcribe_command(state, snapshot) {
             commands.push(command);
@@ -916,6 +919,41 @@ fn commands_for_voip_snapshot(state: &RuntimeState, snapshot: &Value) -> Vec<Run
     }
 
     commands
+}
+
+fn auto_send_voice_note_command(state: &RuntimeState, snapshot: &Value) -> Option<RuntimeCommand> {
+    if !state.voice.auto_send_after_capture {
+        return None;
+    }
+    let recipient = state.voice.pending_voice_recipient.as_ref()?;
+    let uri = voice_recipient_uri(recipient)?;
+    let voice_note = snapshot.get("voice_note")?;
+    let raw_state = string_field(voice_note, "state").unwrap_or_default();
+    if !matches!(normalized(&raw_state).as_str(), "recorded" | "review") {
+        return None;
+    }
+    let file_path =
+        string_field(voice_note, "file_path").filter(|value| !value.trim().is_empty())?;
+    let duration_ms = voice_note
+        .get("duration_ms")
+        .and_then(Value::as_i64)
+        .and_then(|value| i32::try_from(value).ok())
+        .unwrap_or_default()
+        .max(0);
+    let mime_type = string_field(voice_note, "mime_type")
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "audio/wav".to_string());
+    Some(worker_command(
+        WorkerDomain::Voip,
+        "voip.send_voice_note",
+        json!({
+            "uri": uri,
+            "file_path": file_path,
+            "duration_ms": duration_ms,
+            "mime_type": mime_type,
+            "client_id": new_voice_note_client_id(),
+        }),
+    ))
 }
 
 fn ask_capture_transcribe_command(
@@ -1322,5 +1360,78 @@ mod tests {
         };
         assert_eq!(domain, WorkerDomain::Ui);
         assert!(message.contains("unknown UI event type ui.nope"));
+    }
+
+    #[test]
+    fn held_recording_snapshot_auto_sends_once_to_the_captured_recipient() {
+        let mut state = RuntimeState::default();
+        state.apply_ui_intent(&UiIntent::Voice(VoiceIntent::CaptureStartAndSend(
+            VoiceRecipientAction {
+                id: "sip:mama@example.test".to_string(),
+                recipient_address: "sip:mama@example.test".to_string(),
+                recipient_name: "Mama".to_string(),
+                file_path: String::new(),
+            },
+        )));
+        let snapshot = json!({
+            "call_state": "idle",
+            "voice_note": {
+                "state": "recorded",
+                "file_path": "/tmp/mama-note.wav",
+                "duration_ms": 2_340,
+                "mime_type": "audio/wav",
+            }
+        });
+        let event = RuntimeEvent::VoipSnapshot(snapshot);
+
+        let commands = commands_for_event(&state, &event);
+        let sends = commands
+            .iter()
+            .filter_map(|command| match command {
+                RuntimeCommand::WorkerCommand { domain, envelope }
+                    if *domain == WorkerDomain::Voip
+                        && envelope.message_type == "voip.send_voice_note" =>
+                {
+                    Some(envelope)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(sends.len(), 1);
+        assert_eq!(sends[0].payload["uri"], "sip:mama@example.test");
+        assert_eq!(sends[0].payload["file_path"], "/tmp/mama-note.wav");
+        assert_eq!(sends[0].payload["duration_ms"], 2_340);
+
+        event.apply(&mut state);
+        assert!(!state.voice.auto_send_after_capture);
+        assert!(state.voice.pending_voice_recipient.is_none());
+        assert!(!commands_for_event(&state, &event).iter().any(|command| {
+            matches!(
+                command,
+                RuntimeCommand::WorkerCommand { domain, envelope }
+                    if *domain == WorkerDomain::Voip
+                        && envelope.message_type == "voip.send_voice_note"
+            )
+        }));
+    }
+
+    #[test]
+    fn live_liblinphone_metrics_reach_the_shared_ui_snapshot() {
+        let mut state = RuntimeState::default();
+        RuntimeEvent::VoipSnapshot(json!({
+            "voice_note": {
+                "state": "recording",
+                "file_path": "/tmp/live.wav",
+                "duration_ms": 7_420,
+                "capture_level_permille": 618,
+                "mime_type": "audio/wav",
+            }
+        }))
+        .apply(&mut state);
+
+        let snapshot = state.ui_snapshot();
+        assert!(snapshot.voice.ptt_active);
+        assert_eq!(snapshot.voice.recording_duration_ms, 7_420);
+        assert_eq!(snapshot.voice.capture_level_permille, 618);
     }
 }

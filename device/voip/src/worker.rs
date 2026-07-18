@@ -213,7 +213,7 @@ where
                 &WorkerEnvelope::result(
                     "voip.register",
                     envelope.request_id,
-                    json!({"registered": true}),
+                    host.health_payload(),
                 ),
             )?;
             write_lifecycle_events(host, output)?;
@@ -554,8 +554,14 @@ where
 {
     if backend.is_running() {
         let events = backend.with_backend(|backend_ref| host.poll_backend_events(backend_ref))?;
+        let metrics_changed = backend
+            .with_backend(|backend_ref| host.refresh_voice_recording_metrics(backend_ref))?;
         let lifecycle_events = host.take_lifecycle_events();
+        let has_events = !events.is_empty() || !lifecycle_events.is_empty();
         emit_backend_events(events, lifecycle_events, host, output)?;
+        if metrics_changed && !has_events {
+            write_session_snapshot(host, output)?;
+        }
     }
     Ok(())
 }

@@ -262,7 +262,9 @@ fn select_talk_contact_action(runtime: &mut UiRuntime) {
                 emit_call_start(runtime, &item);
             }
         }
-        "record" => push_screen(runtime, UiScreen::VoiceNote),
+        // Recording is owned by the physical-button hold passthrough while
+        // this action is focused; selecting the tile does not change routes.
+        "record" => {}
         "replay" => {
             if let Some(payload) = runtime.latest_voice_note_payload() {
                 runtime
@@ -324,11 +326,11 @@ fn apply_passthrough_trigger(runtime: &mut UiRuntime, trigger: yoyopod_protocol:
 
 fn emit_passthrough_intent(runtime: &mut UiRuntime, policy: PassthroughPolicy) {
     match policy.intent {
-        IntentTemplate::VoiceCaptureStartRecipient => {
+        IntentTemplate::VoiceCaptureStartAndSendRecipient => {
             if let Some(payload) = runtime.voice_note_recipient_payload() {
                 runtime
                     .intents
-                    .push(UiIntent::Voice(VoiceIntent::CaptureStart(payload)));
+                    .push(UiIntent::Voice(VoiceIntent::CaptureStartAndSend(payload)));
             }
         }
         template => emit_static_intent(runtime, template),
@@ -338,14 +340,20 @@ fn emit_passthrough_intent(runtime: &mut UiRuntime, policy: PassthroughPolicy) {
 fn matches_condition(runtime: &UiRuntime, condition: SnapshotCondition) -> bool {
     match condition {
         SnapshotCondition::Always => true,
-        SnapshotCondition::VoiceReady => runtime.voice_note_phase() == "ready",
         SnapshotCondition::VoiceRecording => runtime.voice_note_phase() == "recording",
         SnapshotCondition::VoiceReviewOrFailedOrSent => matches!(
             runtime.voice_note_phase().as_str(),
             "review" | "failed" | "sent"
         ),
-        SnapshotCondition::VoiceReadyOrRecording => {
-            matches!(runtime.voice_note_phase().as_str(), "ready" | "recording")
+        SnapshotCondition::TalkContactRecordAvailable => {
+            runtime.active_screen == UiScreen::TalkContact
+                && runtime.focus_index == 1
+                && !matches!(runtime.voice_note_phase().as_str(), "recording" | "sending")
+        }
+        SnapshotCondition::TalkContactRecordHeldOrPending => {
+            runtime.active_screen == UiScreen::TalkContact
+                && runtime.focus_index == 1
+                && runtime.voice_note_phase() != "sending"
         }
     }
 }

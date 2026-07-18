@@ -25,6 +25,7 @@ pub trait VoipRuntimeBackend {
     fn set_muted(&mut self, muted: bool) -> Result<(), String>;
     fn send_text_message(&mut self, sip_address: &str, text: &str) -> Result<String, String>;
     fn start_voice_recording(&mut self, file_path: &str) -> Result<(), String>;
+    fn voice_recording_metrics(&mut self) -> Result<VoiceRecordingMetrics, String>;
     fn stop_voice_recording(&mut self) -> Result<i32, String>;
     fn cancel_voice_recording(&mut self) -> Result<(), String>;
     fn send_voice_note(
@@ -35,6 +36,14 @@ pub trait VoipRuntimeBackend {
         mime_type: &str,
     ) -> Result<String, String>;
 }
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct VoiceRecordingMetrics {
+    pub duration_ms: i32,
+    pub capture_level_permille: i32,
+}
+
+const MAX_VOICE_NOTE_DURATION_MS: i32 = 60_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackendEvent {
@@ -76,6 +85,7 @@ pub enum BackendEvent {
 #[derive(Debug)]
 pub struct VoipHost {
     config: Option<VoipConfig>,
+    backend_started: bool,
     registered: bool,
     registration_state: String,
     lifecycle: LifecycleState,
@@ -92,6 +102,7 @@ impl Default for VoipHost {
     fn default() -> Self {
         Self {
             config: None,
+            backend_started: false,
             registered: false,
             registration_state: "none".to_string(),
             lifecycle: LifecycleState::default(),
@@ -110,6 +121,7 @@ impl VoipHost {
     pub fn configure(&mut self, config: VoipConfig) {
         self.message_store = MessageStore::open(&config.message_store_dir, 200);
         self.config = Some(config);
+        self.backend_started = false;
         self.registered = false;
         self.registration_state = "none".to_string();
         self.lifecycle.clear_recovery_pending();
@@ -140,7 +152,7 @@ impl VoipHost {
             "active_call_id": self.call.active_call_id(),
             "lifecycle_state": self.lifecycle.state(),
             "lifecycle_reason": self.lifecycle.reason(),
-            "backend_available": self.lifecycle.backend_available(self.registered),
+            "backend_available": self.lifecycle.backend_available(self.backend_started),
         })
     }
 
@@ -151,6 +163,7 @@ impl VoipHost {
     pub fn session_snapshot_payload(&self) -> serde_json::Value {
         RuntimeSnapshot {
             configured: self.config.is_some(),
+            backend_started: self.backend_started,
             registered: self.registered,
             registration_state: &self.registration_state,
             lifecycle: &self.lifecycle,
@@ -181,24 +194,52 @@ impl VoipHost {
             .as_ref()
             .ok_or_else(|| "voip host is not configured".to_string())?
             .clone();
-        self.lifecycle.record("registering", "registering", false);
+        let has_sip_account = config.has_sip_account();
+        self.lifecycle.record(
+            if has_sip_account {
+                "registering"
+            } else {
+                "starting_local"
+            },
+            if has_sip_account {
+                "registering"
+            } else {
+                "starting local voice-note backend"
+            },
+            false,
+        );
         if let Err(error) = backend.start(&config) {
+            self.backend_started = false;
             self.registered = false;
             self.registration_state = "failed".to_string();
             self.lifecycle.mark_recovery_pending();
             self.lifecycle.record("failed", &error, false);
             return Err(error);
         }
-        self.registered = true;
-        self.registration_state = "none".to_string();
+        self.backend_started = true;
+        self.registered = false;
+        self.registration_state = if has_sip_account { "progress" } else { "none" }.to_string();
         let recovered = self.lifecycle.recovery_pending();
         self.lifecycle.clear_recovery_pending();
-        self.lifecycle.record("registered", "registered", recovered);
+        self.lifecycle.record(
+            if has_sip_account {
+                "started"
+            } else {
+                "local_ready"
+            },
+            if has_sip_account {
+                "SIP backend started; awaiting registration"
+            } else {
+                "local voice-note backend ready"
+            },
+            recovered,
+        );
         Ok(())
     }
 
     pub fn unregister<B: VoipRuntimeBackend + ?Sized>(&mut self, backend: &mut B) {
         backend.stop();
+        self.backend_started = false;
         self.registered = false;
         self.registration_state = "none".to_string();
         self.lifecycle.clear_recovery_pending();
@@ -301,9 +342,30 @@ impl VoipHost {
         &mut self,
         backend: &mut B,
     ) -> Result<i32, String> {
+        if let Some(duration_ms) = self.voice_note.recorded_duration_ms() {
+            return Ok(duration_ms);
+        }
         let duration_ms = backend.stop_voice_recording()?;
         self.voice_note.finish_recording(duration_ms);
         Ok(duration_ms)
+    }
+
+    pub fn refresh_voice_recording_metrics<B: VoipRuntimeBackend + ?Sized>(
+        &mut self,
+        backend: &mut B,
+    ) -> Result<bool, String> {
+        if !self.voice_note.is_recording() {
+            return Ok(false);
+        }
+        let metrics = backend.voice_recording_metrics()?;
+        if voice_recording_limit_reached(metrics.duration_ms) {
+            let duration_ms = backend.stop_voice_recording()?;
+            self.voice_note.finish_recording(duration_ms);
+            return Ok(true);
+        }
+        Ok(self
+            .voice_note
+            .update_recording_metrics(metrics.duration_ms, metrics.capture_level_permille))
     }
 
     pub fn cancel_voice_recording<B: VoipRuntimeBackend + ?Sized>(
@@ -418,6 +480,7 @@ impl VoipHost {
                 self.record_finished_call_history();
             }
             BackendEvent::BackendStopped { reason } => {
+                self.backend_started = false;
                 self.registered = false;
                 self.registration_state = "failed".to_string();
                 self.lifecycle.mark_recovery_pending();
@@ -533,5 +596,134 @@ impl VoipHost {
             .as_ref()
             .map(|config| config.sip_identity.clone())
             .unwrap_or_default()
+    }
+}
+
+fn voice_recording_limit_reached(duration_ms: i32) -> bool {
+    duration_ms >= MAX_VOICE_NOTE_DURATION_MS
+}
+
+#[cfg(test)]
+mod recording_tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct LocalRecordingBackend {
+        started: bool,
+        recording: bool,
+    }
+
+    impl VoipRuntimeBackend for LocalRecordingBackend {
+        fn start(&mut self, config: &VoipConfig) -> Result<(), String> {
+            if config.has_sip_account() {
+                return Err("test backend expected local-only config".to_string());
+            }
+            self.started = true;
+            Ok(())
+        }
+
+        fn stop(&mut self) {
+            self.started = false;
+            self.recording = false;
+        }
+
+        fn iterate(&mut self) -> Result<Vec<BackendEvent>, String> {
+            Ok(Vec::new())
+        }
+
+        fn make_call(&mut self, _sip_address: &str) -> Result<String, String> {
+            Err("SIP unavailable".to_string())
+        }
+
+        fn answer_call(&mut self) -> Result<(), String> {
+            Err("SIP unavailable".to_string())
+        }
+
+        fn reject_call(&mut self) -> Result<(), String> {
+            Err("SIP unavailable".to_string())
+        }
+
+        fn hangup(&mut self) -> Result<(), String> {
+            Err("SIP unavailable".to_string())
+        }
+
+        fn set_muted(&mut self, _muted: bool) -> Result<(), String> {
+            Err("SIP unavailable".to_string())
+        }
+
+        fn send_text_message(&mut self, _sip_address: &str, _text: &str) -> Result<String, String> {
+            Err("SIP unavailable".to_string())
+        }
+
+        fn start_voice_recording(&mut self, _file_path: &str) -> Result<(), String> {
+            if !self.started {
+                return Err("backend not started".to_string());
+            }
+            self.recording = true;
+            Ok(())
+        }
+
+        fn voice_recording_metrics(&mut self) -> Result<VoiceRecordingMetrics, String> {
+            if !self.recording {
+                return Err("not recording".to_string());
+            }
+            Ok(VoiceRecordingMetrics {
+                duration_ms: 200,
+                capture_level_permille: 618,
+            })
+        }
+
+        fn stop_voice_recording(&mut self) -> Result<i32, String> {
+            self.recording = false;
+            Ok(420)
+        }
+
+        fn cancel_voice_recording(&mut self) -> Result<(), String> {
+            self.recording = false;
+            Ok(())
+        }
+
+        fn send_voice_note(
+            &mut self,
+            _sip_address: &str,
+            _file_path: &str,
+            _duration_ms: i32,
+            _mime_type: &str,
+        ) -> Result<String, String> {
+            Err("SIP unavailable".to_string())
+        }
+    }
+
+    #[test]
+    fn held_recording_has_a_hard_sixty_second_limit() {
+        assert!(!voice_recording_limit_reached(59_999));
+        assert!(voice_recording_limit_reached(60_000));
+    }
+
+    #[test]
+    fn local_first_backend_records_without_sip_registration() {
+        let config = VoipConfig::from_payload(&json!({
+            "sip_identity": "",
+            "message_store_dir": "",
+            "voice_note_store_dir": "data/communication/voice_notes"
+        }))
+        .expect("local-only config");
+        let mut backend = LocalRecordingBackend::default();
+        let mut host = VoipHost::default();
+
+        host.configure(config);
+        host.register(&mut backend).expect("start local backend");
+        assert_eq!(host.health_payload()["backend_available"], true);
+        assert_eq!(host.health_payload()["registered"], false);
+
+        host.start_voice_recording(&mut backend, "/tmp/local.wav")
+            .expect("start local recording");
+        assert!(host
+            .refresh_voice_recording_metrics(&mut backend)
+            .expect("refresh local metrics"));
+        let snapshot = host.session_snapshot_payload();
+        assert_eq!(snapshot["voice_note"]["state"], "recording");
+        assert_eq!(snapshot["voice_note"]["duration_ms"], 200);
+        assert_eq!(snapshot["voice_note"]["capture_level_permille"], 618);
     }
 }

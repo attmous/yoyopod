@@ -555,7 +555,8 @@ mod tests {
     use crate::engine::flatten;
     use crate::scene::roles;
     use yoyopod_protocol::ui::{
-        CallIntent, ContactAction, ListItemSnapshot, MusicIntent, PlaylistTrackAction,
+        CallIntent, ContactAction, ListItemSnapshot, MusicIntent, PlaylistTrackAction, VoiceIntent,
+        VoiceRecipientAction,
     };
 
     fn contact(id: &str, title: &str) -> ListItemSnapshot {
@@ -573,6 +574,19 @@ mod tests {
                 .iter()
                 .map(|child| count_visible_role(child, role))
                 .sum::<usize>()
+    }
+
+    fn find_role<'a>(
+        element: &'a crate::engine::Element,
+        role: &'static str,
+    ) -> Option<&'a crate::engine::Element> {
+        if element.role == Some(role) {
+            return Some(element);
+        }
+        element
+            .children
+            .iter()
+            .find_map(|child| find_role(child, role))
     }
 
     #[test]
@@ -838,7 +852,7 @@ mod tests {
     }
 
     #[test]
-    fn talk_contact_action_wheel_rolls_then_opens_the_record_flow() {
+    fn talk_contact_action_wheel_rolls_then_keeps_recording_on_the_same_route() {
         let mama = contact("sip:mama@example.test", "Mama");
         let mut runtime = UiRuntime::default();
         runtime.snapshot.call.contacts = vec![mama.clone()];
@@ -866,8 +880,59 @@ mod tests {
             "committing a wheel roll must retire actors carrying native timeline styles"
         );
         runtime.handle_input(InputAction::Select, 1_200);
-        assert_eq!(runtime.active_screen, UiScreen::VoiceNote);
+        assert_eq!(runtime.active_screen, UiScreen::TalkContact);
         assert!(runtime.take_intents().is_empty());
+    }
+
+    #[test]
+    fn talk_contact_ptt_is_focused_only_and_release_stops_the_live_capture() {
+        let mama = contact("sip:mama@example.test", "Mama");
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![mama.clone()];
+        runtime.selected_contact = Some(mama);
+        runtime.active_screen = UiScreen::TalkContact;
+
+        assert!(!runtime.wants_ptt_passthrough());
+        runtime.focus_index = 1;
+        assert!(runtime.wants_ptt_passthrough());
+
+        runtime.handle_input(InputAction::PttPress, 400);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::CaptureStartAndSend(
+                VoiceRecipientAction {
+                    id: "sip:mama@example.test".to_string(),
+                    recipient_address: "sip:mama@example.test".to_string(),
+                    recipient_name: "Mama".to_string(),
+                    file_path: String::new(),
+                }
+            ))]
+        );
+
+        runtime.snapshot.voice.phase = "recording".to_string();
+        runtime.snapshot.voice.capture_in_flight = true;
+        runtime.snapshot.voice.ptt_active = true;
+        runtime.snapshot.voice.recording_duration_ms = 7_420;
+        runtime.snapshot.voice.capture_level_permille = 618;
+        assert!(runtime.wants_ptt_passthrough());
+        let held = flatten::flatten(&runtime.scene_graph(1_000));
+        assert_eq!(
+            find_role(&held, roles::DECK_BAR).and_then(|deck| deck.props.opacity),
+            Some(140)
+        );
+        assert_eq!(
+            find_role(&held, roles::RECORDING_TIMER).and_then(|timer| timer.props.text.as_deref()),
+            Some("0:07")
+        );
+        assert_eq!(
+            find_role(&held, roles::VOICE_METER_LEVEL).and_then(|meter| meter.props.progress),
+            Some(618)
+        );
+        runtime.handle_input(InputAction::PttRelease, 1_400);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::CaptureStop)]
+        );
     }
 
     #[test]

@@ -600,6 +600,7 @@ pub enum VoiceIntent {
     AskStop,
     AskCancel,
     CaptureStart(VoiceRecipientAction),
+    CaptureStartAndSend(VoiceRecipientAction),
     CaptureStop,
     CaptureCancel,
     CaptureToggle(Option<VoiceRecipientAction>),
@@ -619,6 +620,9 @@ impl VoiceIntent {
             "ask_cancel" => Ok(Self::AskCancel),
             "capture_start" | "start_recording" => {
                 Ok(Self::CaptureStart(decode_payload(payload.clone())?))
+            }
+            "capture_start_and_send" | "start_recording_and_send" => {
+                Ok(Self::CaptureStartAndSend(decode_payload(payload.clone())?))
             }
             "capture_stop" | "stop_recording" => Ok(Self::CaptureStop),
             "capture_cancel" | "cancel_recording" => Ok(Self::CaptureCancel),
@@ -641,6 +645,7 @@ impl VoiceIntent {
             Self::AskStop => "ask_stop",
             Self::AskCancel => "ask_cancel",
             Self::CaptureStart(_) => "capture_start",
+            Self::CaptureStartAndSend(_) => "capture_start_and_send",
             Self::CaptureStop => "capture_stop",
             Self::CaptureCancel => "capture_cancel",
             Self::CaptureToggle(_) => "capture_toggle",
@@ -655,7 +660,9 @@ impl VoiceIntent {
 
     fn payload(&self) -> Value {
         match self {
-            Self::CaptureStart(action) | Self::Send(action) => payload(action),
+            Self::CaptureStart(action) | Self::CaptureStartAndSend(action) | Self::Send(action) => {
+                payload(action)
+            }
             Self::CaptureToggle(Some(action)) => payload(action),
             Self::Play(Some(action)) | Self::PlayLatest(action) => payload(action),
             Self::MarkSeen(action) => payload(action),
@@ -991,6 +998,20 @@ mod tests {
         let envelope = UiEvent::Intent(intent.clone()).into_envelope();
         let decoded = UiEvent::from_envelope(envelope).unwrap();
         assert_eq!(decoded, UiEvent::Intent(intent));
+    }
+
+    #[test]
+    fn held_recording_auto_send_intent_round_trips_with_its_recipient() {
+        let intent = UiIntent::Voice(VoiceIntent::CaptureStartAndSend(VoiceRecipientAction {
+            id: "sip:mama@example.test".to_string(),
+            recipient_address: "sip:mama@example.test".to_string(),
+            recipient_name: "Mama".to_string(),
+            ..VoiceRecipientAction::default()
+        }));
+
+        let decoded = UiIntent::from_event_payload(&intent.to_event_payload()).unwrap();
+
+        assert_eq!(decoded, intent);
     }
 
     #[test]

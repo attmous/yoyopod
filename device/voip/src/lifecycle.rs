@@ -48,15 +48,15 @@ impl LifecycleState {
         self.recovery_pending = false;
     }
 
-    pub fn backend_available(&self, registered: bool) -> bool {
-        registered && self.state == "registered"
+    pub fn backend_available(&self, backend_started: bool) -> bool {
+        backend_started
     }
 
-    pub fn payload(&self, registered: bool) -> serde_json::Value {
+    pub fn payload(&self, backend_started: bool) -> serde_json::Value {
         json!({
             "state": self.state,
             "reason": self.reason,
-            "backend_available": self.backend_available(registered),
+            "backend_available": self.backend_available(backend_started),
         })
     }
 
