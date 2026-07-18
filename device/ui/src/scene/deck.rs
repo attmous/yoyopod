@@ -1,7 +1,7 @@
 use crate::animation::{presets, ActorRef, Timeline, TimelineRef, TrackIndex};
 use crate::components::widgets::{
     call_panel as call_panel_widget, card as card_widget, list_row as list_row_widget,
-    wheel_item as wheel_item_widget, CallPanelProps,
+    player_hero as player_hero_widget, wheel_item as wheel_item_widget, CallPanelProps,
 };
 use crate::engine::{AnimSlot, Element, Key};
 use crate::scene::roles;
@@ -51,6 +51,7 @@ pub enum ItemRender {
     Row(RowModel),
     Wheel(WheelItemModel),
     Page(PageModel),
+    PlayerHero(PlayerHeroModel),
     Button(ButtonModel),
     CallPanel(CallPanelModel),
 }
@@ -89,6 +90,17 @@ pub enum WheelItemVariant {
 pub struct PageModel {
     pub title: String,
     pub body: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayerHeroModel {
+    pub context: String,
+    pub title: String,
+    pub elapsed: String,
+    pub total: String,
+    pub progress_permille: i32,
+    pub playing: bool,
+    pub focus_index: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -259,6 +271,7 @@ fn deck_item_element(
             .key(item.key.clone())
             .child(Element::new(ElementKind::Label, Some(roles::PAGE_TITLE)).text(&page.title))
             .child(Element::new(ElementKind::Label, Some(roles::PAGE_BODY)).text(&page.body)),
+        ItemRender::PlayerHero(model) => player_hero_widget(model).key(item.key.clone()),
         ItemRender::CallPanel(call) => call_panel_widget(&CallPanelProps {
             title: call.title.clone(),
             state: call.state.clone(),

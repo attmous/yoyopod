@@ -40,6 +40,32 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
             roles::WHEEL_ICON => {
                 ffi::lv_image_set_inner_align(obj.as_ptr(), ffi::LV_IMAGE_ALIGN_CENTER);
             }
+            roles::HERO_ART_ICON | roles::HERO_PREV | roles::HERO_PLAY_ICON | roles::HERO_NEXT => {
+                ffi::lv_image_set_inner_align(obj.as_ptr(), ffi::LV_IMAGE_ALIGN_CENTER);
+            }
+            roles::HERO_CONTEXT | roles::HERO_TIME_L | roles::HERO_TIME_R => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_12,
+                    SELECTOR,
+                );
+                let align = if role == roles::HERO_TIME_L {
+                    ffi::LV_TEXT_ALIGN_RIGHT
+                } else {
+                    ffi::LV_TEXT_ALIGN_LEFT
+                };
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), align, SELECTOR);
+            }
+            roles::HERO_TITLE => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_18,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
+            }
             roles::WHEEL_CONTEXT | roles::WHEEL_SUB => {
                 ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
                 ffi::lv_obj_set_style_text_font(

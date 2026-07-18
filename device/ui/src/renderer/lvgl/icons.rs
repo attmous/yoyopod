@@ -159,10 +159,6 @@ const fn generated_control_icon(kind: u8) -> [u8; 576] {
     map
 }
 
-static PLAY_SM_MAP: [u8; 576] = generated_control_icon(0);
-static PAUSE_SM_MAP: [u8; 576] = generated_control_icon(1);
-static PREV_SM_MAP: [u8; 576] = generated_control_icon(2);
-static NEXT_SM_MAP: [u8; 576] = generated_control_icon(3);
 static CLOSE_SM_MAP: [u8; 576] = generated_control_icon(4);
 static CHECK_SM_MAP: [u8; 576] = generated_control_icon(5);
 static PLAY_SM: LvImageDsc = LvImageDsc::a8_24(&PLAY_SM_MAP);
@@ -1113,6 +1109,33 @@ mod tests {
         ),
     ];
 
+    const TRANSPORT_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 4] = [
+        (
+            "play_sm",
+            &PLAY_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/play_sm.svg"),
+            PLAY_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "pause_sm",
+            &PAUSE_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/pause_sm.svg"),
+            PAUSE_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "prev_sm",
+            &PREV_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/prev_sm.svg"),
+            PREV_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "next_sm",
+            &NEXT_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/next_sm.svg"),
+            NEXT_SM_SOURCE_FNV1A64,
+        ),
+    ];
+
     #[test]
     fn listen_wheel_icons_have_explicit_descriptors() {
         for key in [
@@ -1140,6 +1163,31 @@ mod tests {
     fn listen_wheel_icon_sources_match_generated_masks() {
         for (name, _, source, expected_hash) in LISTEN_ICON_SOURCES {
             assert_eq!(fnv1a64(source), expected_hash, "stale {name} A8 mask");
+        }
+    }
+
+    #[test]
+    fn listen_transport_icon_sources_match_generated_masks() {
+        for (name, _, source, expected_hash) in TRANSPORT_ICON_SOURCES {
+            assert_eq!(fnv1a64(source), expected_hash, "stale {name} A8 mask");
+        }
+    }
+
+    #[test]
+    fn listen_transport_icons_are_antialiased_and_edge_safe() {
+        for (name, mask, _, _) in TRANSPORT_ICON_SOURCES {
+            let antialiased = mask
+                .iter()
+                .filter(|value| **value > 0 && **value < u8::MAX)
+                .count();
+            assert!(antialiased >= 12, "{name} mask lost antialiasing");
+
+            for coordinate in 0..24 {
+                assert_eq!(mask[coordinate], 0, "{name} touches top edge");
+                assert_eq!(mask[23 * 24 + coordinate], 0, "{name} touches bottom edge");
+                assert_eq!(mask[coordinate * 24], 0, "{name} touches left edge");
+                assert_eq!(mask[coordinate * 24 + 23], 0, "{name} touches right edge");
+            }
         }
     }
 

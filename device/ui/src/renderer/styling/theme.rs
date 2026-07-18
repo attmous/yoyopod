@@ -42,6 +42,11 @@ fn style_from_theme_role(theme_role: &ThemeRole) -> WidgetStyle {
         border_width: theme_role.border_width,
         radius: theme_role.radius,
         outline_width: theme_role.outline_width,
+        outline_color: theme_role.outline_rgb,
+        outline_pad: theme_role.outline_pad,
+        arc_color: theme_role.arc_rgb,
+        arc_width: theme_role.arc_width,
+        arc_rounded: theme_role.arc_rounded,
         shadow_width: theme_role.shadow_width,
     }
 }

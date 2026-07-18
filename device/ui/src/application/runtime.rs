@@ -379,6 +379,7 @@ mod tests {
     use super::*;
     use crate::engine::flatten;
     use crate::scene::roles;
+    use yoyopod_protocol::ui::MusicIntent;
 
     fn count_visible_role(element: &crate::engine::Element, role: &'static str) -> usize {
         usize::from(element.role == Some(role) && element.props.visible != Some(false))
@@ -466,6 +467,43 @@ mod tests {
         assert_eq!(runtime.active_screen, UiScreen::Hub);
         assert!(runtime.screen_stack.is_empty());
         assert_eq!(runtime.home_mode, HomeMode::Idle);
+    }
+
+    #[test]
+    fn now_playing_rolls_and_activates_all_transport_targets() {
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::Listen;
+        runtime.focus_index = 2;
+
+        runtime.handle_input(InputAction::Select, 50);
+        assert_eq!(runtime.active_screen, UiScreen::NowPlaying);
+        assert_eq!(runtime.focus_index, 1);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Music(MusicIntent::ShuffleAll)]
+        );
+
+        runtime.handle_input(InputAction::Select, 100);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Music(MusicIntent::PlayPause)]
+        );
+
+        runtime.handle_input(InputAction::Advance, 200);
+        assert_eq!(runtime.focus_index, 2);
+        runtime.handle_input(InputAction::Select, 300);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Music(MusicIntent::NextTrack)]
+        );
+
+        runtime.handle_input(InputAction::Advance, 400);
+        assert_eq!(runtime.focus_index, 0);
+        runtime.handle_input(InputAction::Select, 500);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Music(MusicIntent::PreviousTrack)]
+        );
     }
 
     #[test]

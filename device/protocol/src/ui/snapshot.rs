@@ -134,6 +134,10 @@ pub struct MusicRuntimeSnapshot {
     pub artist: String,
     #[serde(default)]
     pub progress_permille: i32,
+    #[serde(default = "default_music_time_text")]
+    pub elapsed_text: String,
+    #[serde(default = "default_music_time_text")]
+    pub total_text: String,
     #[serde(default)]
     pub playlists: Vec<ListItemSnapshot>,
     #[serde(default)]
@@ -148,10 +152,16 @@ impl Default for MusicRuntimeSnapshot {
             title: default_music_title(),
             artist: String::new(),
             progress_permille: 0,
+            elapsed_text: default_music_time_text(),
+            total_text: default_music_time_text(),
             playlists: Vec::new(),
             recent_tracks: Vec::new(),
         }
     }
+}
+
+fn default_music_time_text() -> String {
+    "--:--".to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -76,6 +76,16 @@ pub struct ThemeRole {
     #[serde(default)]
     pub outline_width: i32,
     #[serde(default)]
+    pub outline_rgb: Option<u32>,
+    #[serde(default)]
+    pub outline_pad: i32,
+    #[serde(default)]
+    pub arc_rgb: Option<u32>,
+    #[serde(default)]
+    pub arc_width: i32,
+    #[serde(default)]
+    pub arc_rounded: bool,
+    #[serde(default)]
     pub shadow_width: i32,
 }
 
@@ -261,6 +271,18 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::WHEEL_LABEL,
         roles::WHEEL_LABEL_B,
         roles::WHEEL_SUB,
+        roles::HERO_PLAYER,
+        roles::HERO_CONTEXT,
+        roles::HERO_ARC,
+        roles::HERO_ART,
+        roles::HERO_ART_ICON,
+        roles::HERO_PREV,
+        roles::HERO_PLAY,
+        roles::HERO_PLAY_ICON,
+        roles::HERO_NEXT,
+        roles::HERO_TIME_L,
+        roles::HERO_TIME_R,
+        roles::HERO_TITLE,
         roles::MODAL,
         roles::MODAL_MESSAGE,
         roles::MODAL_STACK,
@@ -307,6 +329,9 @@ fn required_selected_theme_roles() -> Vec<&'static str> {
         roles::LIST_ROW_SUBTITLE,
         roles::LIST_ROW_TITLE,
         roles::WHEEL_ITEM,
+        roles::HERO_PREV,
+        roles::HERO_PLAY,
+        roles::HERO_NEXT,
     ]
 }
 

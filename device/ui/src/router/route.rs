@@ -22,7 +22,9 @@ pub enum Persistence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntentTemplate {
     MusicShuffleAll,
+    MusicPreviousTrack,
     MusicPlayPause,
+    MusicNextTrack,
     VoiceAskStart,
     VoiceAskStop,
     VoiceCaptureStartRecipient,

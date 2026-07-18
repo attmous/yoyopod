@@ -37,7 +37,7 @@ pub fn apply_app_state_route(
     if runtime.active_screen != *app_state {
         runtime.screen_stack.clear();
         runtime.active_screen = *app_state;
-        runtime.focus_index = 0;
+        runtime.focus_index = initial_focus(*app_state);
         if *app_state == UiScreen::Hub {
             runtime.home_mode = HomeMode::Idle;
         }
@@ -343,7 +343,15 @@ fn push_screen(runtime: &mut UiRuntime, screen: UiScreen) {
         selected_id,
         screen,
     );
-    runtime.focus_index = 0;
+    runtime.focus_index = initial_focus(screen);
+}
+
+const fn initial_focus(screen: UiScreen) -> usize {
+    if matches!(screen, UiScreen::NowPlaying) {
+        1
+    } else {
+        0
+    }
 }
 
 fn pop_screen_or_hub(runtime: &mut UiRuntime) {

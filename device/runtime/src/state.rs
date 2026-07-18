@@ -169,6 +169,8 @@ pub struct MediaState {
     pub title: String,
     pub artist: String,
     pub progress_permille: i32,
+    pub position_ms: i64,
+    pub length_ms: i64,
     pub volume: i32,
     pub playlists: Vec<ListItem>,
     pub recent_tracks: Vec<ListItem>,
@@ -182,6 +184,8 @@ impl Default for MediaState {
             title: "Nothing Playing".to_string(),
             artist: String::new(),
             progress_permille: 0,
+            position_ms: 0,
+            length_ms: 0,
             volume: 50,
             playlists: Vec::new(),
             recent_tracks: Vec::new(),
@@ -919,6 +923,9 @@ impl RuntimeState {
         {
             self.media.volume = volume.clamp(0, 100);
         }
+        if let Some(position_ms) = i64_field(snapshot, "time_position_ms") {
+            self.media.position_ms = position_ms.max(0);
+        }
         let explicit_progress_permille = i32_field(snapshot, "progress_permille")
             .filter(|progress_permille| (0..=1000).contains(progress_permille));
         if let Some(progress_permille) = explicit_progress_permille {
@@ -929,6 +936,7 @@ impl RuntimeState {
                 .or_else(|| string_field(track, "title"))
                 .unwrap_or_else(|| "Nothing Playing".to_string());
             self.media.artist = first_artist(track).unwrap_or_default();
+            self.media.length_ms = i64_field(track, "length_ms").unwrap_or(0).max(0);
             if let Some(progress_permille) = derived_progress_permille(snapshot, track) {
                 self.media.progress_permille = progress_permille;
             } else if explicit_progress_permille.is_none() {
@@ -1509,6 +1517,8 @@ impl RuntimeState {
                 "title": self.media.title,
                 "artist": self.media.artist,
                 "progress_permille": self.media.progress_permille,
+                "elapsed_text": media_time_text(self.media.position_ms, self.media.length_ms),
+                "total_text": media_time_text(self.media.length_ms, self.media.length_ms),
                 "volume": self.media.volume,
                 "playlists": list_payload(&self.media.playlists),
                 "recent_tracks": list_payload(&self.media.recent_tracks),
@@ -1968,6 +1978,14 @@ fn derived_progress_permille(snapshot: &Value, track: &Value) -> Option<i32> {
 
     let permille = ((position_ms as i128) * 1000 / (length_ms as i128)).clamp(0, 1000);
     i32::try_from(permille).ok()
+}
+
+fn media_time_text(value_ms: i64, known_length_ms: i64) -> String {
+    if known_length_ms <= 0 {
+        return "--:--".to_string();
+    }
+    let total_seconds = value_ms.max(0) / 1000;
+    format!("{}:{:02}", total_seconds / 60, total_seconds % 60)
 }
 
 fn call_duration_text(snapshot: &Value, call_state: CallState) -> Option<String> {

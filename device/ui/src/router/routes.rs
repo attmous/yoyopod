@@ -151,7 +151,9 @@ fn add_intent_kind(intent: IntentKind, supported_intents: &mut Vec<IntentKind>) 
 fn template_intent_kind(template: IntentTemplate) -> IntentKind {
     let (domain, action) = match template {
         IntentTemplate::MusicShuffleAll => ("music", "shuffle_all"),
+        IntentTemplate::MusicPreviousTrack => ("music", "previous_track"),
         IntentTemplate::MusicPlayPause => ("music", "play_pause"),
+        IntentTemplate::MusicNextTrack => ("music", "next_track"),
         IntentTemplate::VoiceAskStart => ("voice", "ask_start"),
         IntentTemplate::VoiceAskStop => ("voice", "ask_stop"),
         IntentTemplate::VoiceCaptureStartRecipient => ("voice", "capture_start"),
@@ -260,8 +262,11 @@ const CONTACTS_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicListItem {
 const CALL_HISTORY_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicListItem {
     kind: ListKind::CallHistory,
 }];
-const NOW_PLAYING_SELECT: &[SelectionTarget] =
-    &[SelectionTarget::EmitIntent(IntentTemplate::MusicPlayPause)];
+const NOW_PLAYING_SELECT: &[SelectionTarget] = &[
+    SelectionTarget::EmitIntent(IntentTemplate::MusicPreviousTrack),
+    SelectionTarget::EmitIntent(IntentTemplate::MusicPlayPause),
+    SelectionTarget::EmitIntent(IntentTemplate::MusicNextTrack),
+];
 const ASK_SELECT: &[SelectionTarget] =
     &[SelectionTarget::EmitIntent(IntentTemplate::VoiceAskStart)];
 const TALK_CONTACT_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
@@ -361,8 +366,14 @@ pub fn static_intent_template(template: IntentTemplate) -> Option<UiIntent> {
         IntentTemplate::MusicShuffleAll => Some(UiIntent::Music(
             yoyopod_protocol::ui::MusicIntent::ShuffleAll,
         )),
+        IntentTemplate::MusicPreviousTrack => Some(UiIntent::Music(
+            yoyopod_protocol::ui::MusicIntent::PreviousTrack,
+        )),
         IntentTemplate::MusicPlayPause => Some(UiIntent::Music(
             yoyopod_protocol::ui::MusicIntent::PlayPause,
+        )),
+        IntentTemplate::MusicNextTrack => Some(UiIntent::Music(
+            yoyopod_protocol::ui::MusicIntent::NextTrack,
         )),
         IntentTemplate::VoiceAskStart => {
             Some(UiIntent::Voice(yoyopod_protocol::ui::VoiceIntent::AskStart))
@@ -407,8 +418,8 @@ const fn focus_policy(screen: UiScreen) -> FocusPolicy {
         | UiScreen::RecentTracks
         | UiScreen::Contacts
         | UiScreen::CallHistory => FocusPolicy::Clamp,
-        UiScreen::NowPlaying
-        | UiScreen::Ask
+        UiScreen::NowPlaying => FocusPolicy::Wrap,
+        UiScreen::Ask
         | UiScreen::IncomingCall
         | UiScreen::OutgoingCall
         | UiScreen::InCall

@@ -72,6 +72,19 @@ pub(crate) const WHEEL_LABEL: &str = "wheel_label";
 pub(crate) const WHEEL_LABEL_B: &str = "wheel_label_b";
 pub(crate) const WHEEL_SUB: &str = "wheel_sub";
 
+pub(crate) const HERO_PLAYER: &str = "hero_player";
+pub(crate) const HERO_CONTEXT: &str = "hero_context";
+pub(crate) const HERO_ARC: &str = "hero_arc";
+pub(crate) const HERO_ART: &str = "hero_art";
+pub(crate) const HERO_ART_ICON: &str = "hero_art_icon";
+pub(crate) const HERO_PREV: &str = "hero_prev";
+pub(crate) const HERO_PLAY: &str = "hero_play";
+pub(crate) const HERO_PLAY_ICON: &str = "hero_play_icon";
+pub(crate) const HERO_NEXT: &str = "hero_next";
+pub(crate) const HERO_TIME_L: &str = "hero_time_l";
+pub(crate) const HERO_TIME_R: &str = "hero_time_r";
+pub(crate) const HERO_TITLE: &str = "hero_title";
+
 pub(crate) const STATUS_BAR: &str = "status_bar";
 pub(crate) const STATUS_LEFT_CLUSTER: &str = "status_left_cluster";
 pub(crate) const STATUS_NETWORK_ICON: &str = "status_network_icon";
