@@ -347,6 +347,12 @@ impl UiRuntime {
         };
         if pending.screen == self.active_screen {
             self.focus_index = pending.target_focus;
+            // Wheel timelines write transient transform and opacity styles to
+            // native LVGL actors. Retire that actor generation when the
+            // semantic focus commits so the next frame is rebuilt from the
+            // static scene model instead of retaining the timeline's terminal
+            // styles.
+            self.scene_revision = self.scene_revision.wrapping_add(1);
             self.dirty.focus = true;
         }
     }
@@ -851,8 +857,14 @@ mod tests {
             animation::presets::CONTACT_WHEEL_ROLL_TIMELINE_ID
         );
 
+        let animated_generation = runtime.scene_graph(1_100).active.id.generation;
         runtime.advance_animations(1_180);
         assert_eq!(runtime.focus_index, 1);
+        assert_eq!(
+            runtime.scene_graph(1_180).active.id.generation,
+            animated_generation.wrapping_add(1),
+            "committing a wheel roll must retire actors carrying native timeline styles"
+        );
         runtime.handle_input(InputAction::Select, 1_200);
         assert_eq!(runtime.active_screen, UiScreen::VoiceNote);
         assert!(runtime.take_intents().is_empty());
