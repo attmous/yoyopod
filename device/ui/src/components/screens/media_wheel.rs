@@ -51,7 +51,7 @@ pub fn scene(
         id: SceneId::new(screen),
         backdrop: Backdrop::Solid(LISTEN_STAGE_LIME),
         stage: defaults.stage,
-        context: Some(header),
+        context: Some(header.into()),
         decks: vec![deck],
         cursor: None,
         fx: Default::default(),

@@ -1,9 +1,11 @@
 use crate::animation::{presets, ActorRef, TimelineRef, TrackIndex};
-use crate::components::widgets::wheel_header as wheel_header_widget;
+use crate::components::widgets::{
+    context_label as context_label_widget, wheel_header as wheel_header_widget,
+};
 use crate::scene::roles;
 use crate::scene::{
     FxLayer, GlowBloom, Halo, HudScene, LayerSlot, Modal, ParticleField, PulseRing, Scene,
-    SceneGraph, LAYER_ORDER,
+    SceneContext, SceneGraph, LAYER_ORDER,
 };
 use crate::ElementKind;
 
@@ -84,7 +86,8 @@ fn decks_element(scene: &Scene) -> Element {
             element.child(deck.element(index))
         });
     match scene.context.as_ref() {
-        Some(context) => root.child(wheel_header_widget(context)),
+        Some(SceneContext::WheelHeader(header)) => root.child(wheel_header_widget(header)),
+        Some(SceneContext::Label(label)) => root.child(context_label_widget(label)),
         None => root,
     }
 }

@@ -80,6 +80,31 @@ pub fn wheel_item(
                 None => root,
             }
         }
+        WheelItemVariant::Action { icon_key, badge } => {
+            assert_eq!(slot, WheelItemSlot::Standard);
+            let root = container(roles::TALK_WHEEL_ITEM)
+                .key(key)
+                .selected(selected)
+                .child(image(roles::WHEEL_ICON).icon(icon_key).accent(INK))
+                .child(label(roles::WHEEL_LABEL).text(&model.title));
+            match badge {
+                Some(badge) => root.child(
+                    container(roles::WHEEL_BADGE)
+                        .accent(match badge.kind {
+                            WheelBadgeKind::Count => 0xF37767,
+                            WheelBadgeKind::Stuck => 0xE5443B,
+                        })
+                        .child(
+                            label(match badge.kind {
+                                WheelBadgeKind::Count => roles::WHEEL_BADGE_LABEL,
+                                WheelBadgeKind::Stuck => roles::WHEEL_BADGE_LABEL_STUCK,
+                            })
+                            .text(&badge.label),
+                        ),
+                ),
+                None => root,
+            }
+        }
     }
 }
 

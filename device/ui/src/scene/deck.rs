@@ -96,6 +96,10 @@ pub enum WheelItemVariant {
         avatar_rgb: u32,
         badge: Option<WheelBadgeModel>,
     },
+    Action {
+        icon_key: String,
+        badge: Option<WheelBadgeModel>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -335,6 +339,9 @@ fn deck_item_element(
                 (WheelItemVariant::Contact { .. }, WheelItemSlot::Standard) => Key::String(
                     format!("contact-wheel-slot:{visible_index}:item:{item_index}"),
                 ),
+                (WheelItemVariant::Action { .. }, WheelItemSlot::Standard) => Key::String(format!(
+                    "action-wheel-slot:{visible_index}:item:{item_index}"
+                )),
                 (WheelItemVariant::Media { .. }, _) => {
                     // Media roots are refreshed after a committed roll so LVGL
                     // cannot retain the outgoing slot's transform or opacity.
