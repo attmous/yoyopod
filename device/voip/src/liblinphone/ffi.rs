@@ -287,6 +287,7 @@ pub struct LinphoneApi {
     pub recorder_start: Option<unsafe extern "C" fn(*mut LinphoneRecorder) -> c_int>,
     pub recorder_pause: Option<unsafe extern "C" fn(*mut LinphoneRecorder) -> c_int>,
     pub recorder_get_duration: Option<unsafe extern "C" fn(*mut LinphoneRecorder) -> c_int>,
+    pub recorder_get_capture_volume: Option<unsafe extern "C" fn(*const LinphoneRecorder) -> f32>,
     pub recorder_close: Option<unsafe extern "C" fn(*mut LinphoneRecorder) -> c_int>,
     pub recorder_unref: Option<unsafe extern "C" fn(*mut LinphoneRecorder)>,
     pub core_get_version: unsafe extern "C" fn() -> *const c_char,
@@ -608,6 +609,9 @@ impl LinphoneApi {
             recorder_pause: unsafe { optional_symbol(library, c"linphone_recorder_pause") },
             recorder_get_duration: unsafe {
                 optional_symbol(library, c"linphone_recorder_get_duration")
+            },
+            recorder_get_capture_volume: unsafe {
+                optional_symbol(library, c"linphone_recorder_get_capture_volume")
             },
             recorder_close: unsafe { optional_symbol(library, c"linphone_recorder_close") },
             recorder_unref: unsafe { optional_symbol(library, c"linphone_recorder_unref") },

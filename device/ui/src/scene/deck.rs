@@ -2,7 +2,8 @@ use crate::animation::{presets, ActorRef, Timeline, TimelineRef, TrackIndex};
 use crate::components::widgets::{
     call_panel as call_panel_widget, card as card_widget, empty_state as empty_state_widget,
     list_row as list_row_widget, player_hero as player_hero_widget,
-    wheel_item as wheel_item_widget, CallPanelProps, WheelItemSlot,
+    recording_panel as recording_panel_widget, wheel_item as wheel_item_widget, CallPanelProps,
+    RecordingPanelProps, WheelItemSlot,
 };
 use crate::engine::{AnimSlot, Element, Key};
 use crate::scene::roles;
@@ -56,6 +57,7 @@ pub enum ItemRender {
     Button(ButtonModel),
     CallPanel(CallPanelModel),
     EmptyState(EmptyStateModel),
+    RecordingPanel(RecordingPanelModel),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,6 +151,13 @@ pub struct EmptyStateModel {
     pub icon_key: String,
     pub message: String,
     pub accent: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordingPanelModel {
+    pub context: String,
+    pub duration_ms: i32,
+    pub level_permille: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -365,6 +374,12 @@ fn deck_item_element(
         })
         .key(item.key.clone()),
         ItemRender::EmptyState(model) => empty_state_widget(model).key(item.key.clone()),
+        ItemRender::RecordingPanel(model) => recording_panel_widget(&RecordingPanelProps {
+            context: model.context.clone(),
+            duration_ms: model.duration_ms,
+            level_permille: model.level_permille,
+        })
+        .key(item.key.clone()),
         ItemRender::Button(button) => Element::new(ElementKind::Container, Some(roles::BUTTON))
             .key(item.key.clone())
             .child(

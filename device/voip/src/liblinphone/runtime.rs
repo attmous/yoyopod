@@ -480,6 +480,44 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start_voice_recording(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn yoyopod_liblinphone_voice_recording_metrics(
+    duration_ms_out: *mut i32,
+    capture_volume_out: *mut f32,
+) -> c_int {
+    let state = match STATE.lock() {
+        Ok(state) => state,
+        Err(_) => {
+            error::set_last_error("liblinphone runtime state lock poisoned");
+            return -1;
+        }
+    };
+    if !state.started || state.current_recorder.is_null() || !state.recorder_running {
+        error::set_last_error("No active Liblinphone voice-note recording is running");
+        return -1;
+    }
+    let api = state.api.as_ref().expect("initialized state has API");
+    let duration_ms = api
+        .recorder_get_duration
+        .map_or(0, |function| unsafe { function(state.current_recorder) })
+        .max(0);
+    let capture_volume = api.recorder_get_capture_volume.map_or(0.0, |function| {
+        let value = unsafe { function(state.current_recorder) };
+        if value.is_finite() {
+            value.clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    });
+    if !duration_ms_out.is_null() {
+        unsafe { *duration_ms_out = duration_ms };
+    }
+    if !capture_volume_out.is_null() {
+        unsafe { *capture_volume_out = capture_volume };
+    }
+    0
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn yoyopod_liblinphone_stop_voice_recording(
     duration_ms_out: *mut i32,
 ) -> c_int {

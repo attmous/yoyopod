@@ -2,7 +2,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 
 use crate::config::VoipConfig;
-use crate::host::{BackendEvent, MessageRecord, VoipRuntimeBackend};
+use crate::host::{BackendEvent, MessageRecord, VoiceRecordingMetrics, VoipRuntimeBackend};
 
 use super::abi_event::{self, YoyopodLiblinphoneEvent};
 use super::error::LiblinphoneError;
@@ -178,6 +178,22 @@ impl VoipRuntimeBackend for LiblinphoneBackend {
         let file_path = CString::new(file_path).map_err(|error| error.to_string())?;
         check(unsafe { runtime::yoyopod_liblinphone_start_voice_recording(file_path.as_ptr()) })
             .map_err(|error| error.to_string())
+    }
+
+    fn voice_recording_metrics(&mut self) -> Result<VoiceRecordingMetrics, String> {
+        let mut duration_ms = 0;
+        let mut capture_volume = 0.0;
+        check(unsafe {
+            runtime::yoyopod_liblinphone_voice_recording_metrics(
+                &mut duration_ms,
+                &mut capture_volume,
+            )
+        })
+        .map_err(|error| error.to_string())?;
+        Ok(VoiceRecordingMetrics {
+            duration_ms: duration_ms.max(0),
+            capture_level_permille: (capture_volume * 1000.0).round().clamp(0.0, 1000.0) as i32,
+        })
     }
 
     fn stop_voice_recording(&mut self) -> Result<i32, String> {

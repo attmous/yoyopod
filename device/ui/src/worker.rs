@@ -589,4 +589,86 @@ mod tests {
             .iter()
             .all(|envelope| envelope.message_type == "ui.input"));
     }
+
+    #[test]
+    fn physical_hold_on_focused_record_emits_ptt_press_and_release() {
+        let mama = yoyopod_protocol::ui::ListItemSnapshot::new(
+            "sip:mama@example.test",
+            "Mama",
+            "",
+            "mono:M",
+        );
+        let mut button = TestButton::default();
+        let mut machine = OneButtonMachine::new(ButtonTiming::default());
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![mama.clone()];
+        runtime.selected_contact = Some(mama);
+        runtime.active_screen = UiScreen::TalkContact;
+        runtime.focus_index = 1;
+        let mut output = Vec::new();
+        let mut input_events = 0;
+
+        sample_button(
+            &mut button,
+            &mut machine,
+            &mut runtime,
+            &mut output,
+            &mut input_events,
+            true,
+            0,
+        );
+        sample_button(
+            &mut button,
+            &mut machine,
+            &mut runtime,
+            &mut output,
+            &mut input_events,
+            true,
+            50,
+        );
+        sample_button(
+            &mut button,
+            &mut machine,
+            &mut runtime,
+            &mut output,
+            &mut input_events,
+            true,
+            400,
+        );
+        assert!(matches!(
+            runtime.take_intents().as_slice(),
+            [yoyopod_protocol::ui::UiIntent::Voice(
+                yoyopod_protocol::ui::VoiceIntent::CaptureStartAndSend(_)
+            )]
+        ));
+
+        runtime.snapshot.voice.phase = "recording".to_string();
+        runtime.snapshot.voice.capture_in_flight = true;
+        runtime.snapshot.voice.ptt_active = true;
+        sample_button(
+            &mut button,
+            &mut machine,
+            &mut runtime,
+            &mut output,
+            &mut input_events,
+            false,
+            1_000,
+        );
+        sample_button(
+            &mut button,
+            &mut machine,
+            &mut runtime,
+            &mut output,
+            &mut input_events,
+            false,
+            1_050,
+        );
+        assert_eq!(
+            runtime.take_intents(),
+            vec![yoyopod_protocol::ui::UiIntent::Voice(
+                yoyopod_protocol::ui::VoiceIntent::CaptureStop,
+            )]
+        );
+        assert_eq!(input_events, 2);
+    }
 }

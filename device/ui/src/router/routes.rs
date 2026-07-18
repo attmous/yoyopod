@@ -159,7 +159,7 @@ fn template_intent_kind(template: IntentTemplate) -> IntentKind {
         IntentTemplate::MusicNextTrack => ("music", "next_track"),
         IntentTemplate::VoiceAskStart => ("voice", "ask_start"),
         IntentTemplate::VoiceAskStop => ("voice", "ask_stop"),
-        IntentTemplate::VoiceCaptureStartRecipient => ("voice", "capture_start"),
+        IntentTemplate::VoiceCaptureStartAndSendRecipient => ("voice", "capture_start_and_send"),
         IntentTemplate::VoiceCaptureStop => ("voice", "capture_stop"),
         IntentTemplate::VoiceCaptureCancel => ("voice", "capture_cancel"),
         IntentTemplate::VoiceDiscard => ("voice", "discard"),
@@ -298,16 +298,16 @@ const ASK_PASSTHROUGH: &[PassthroughPolicy] = &[
         captures_button: false,
     },
 ];
-const VOICE_NOTE_PASSTHROUGH: &[PassthroughPolicy] = &[
+const TALK_CONTACT_PASSTHROUGH: &[PassthroughPolicy] = &[
     PassthroughPolicy {
         trigger: InputAction::PttPress,
-        when: SnapshotCondition::VoiceReady,
-        intent: IntentTemplate::VoiceCaptureStartRecipient,
+        when: SnapshotCondition::TalkContactRecordAvailable,
+        intent: IntentTemplate::VoiceCaptureStartAndSendRecipient,
         captures_button: true,
     },
     PassthroughPolicy {
         trigger: InputAction::PttRelease,
-        when: SnapshotCondition::VoiceRecording,
+        when: SnapshotCondition::TalkContactRecordHeldOrPending,
         intent: IntentTemplate::VoiceCaptureStop,
         captures_button: true,
     },
@@ -352,7 +352,7 @@ const fn select_targets(screen: UiScreen) -> &'static [SelectionTarget] {
 const fn passthrough_policies(screen: UiScreen) -> &'static [PassthroughPolicy] {
     match screen {
         UiScreen::Ask => ASK_PASSTHROUGH,
-        UiScreen::VoiceNote => VOICE_NOTE_PASSTHROUGH,
+        UiScreen::TalkContact => TALK_CONTACT_PASSTHROUGH,
         _ => NO_PASSTHROUGH,
     }
 }
@@ -384,7 +384,7 @@ pub fn static_intent_template(template: IntentTemplate) -> Option<UiIntent> {
         IntentTemplate::VoiceAskStop => {
             Some(UiIntent::Voice(yoyopod_protocol::ui::VoiceIntent::AskStop))
         }
-        IntentTemplate::VoiceCaptureStartRecipient => None,
+        IntentTemplate::VoiceCaptureStartAndSendRecipient => None,
         IntentTemplate::VoiceCaptureStop => Some(UiIntent::Voice(
             yoyopod_protocol::ui::VoiceIntent::CaptureStop,
         )),

@@ -51,6 +51,11 @@ pub(crate) const SCENE_ROOT: &str = "scene_root";
 pub(crate) const SCENE_STAGE: &str = "scene_stage";
 pub(crate) const VOICE_METER: &str = "voice_meter";
 pub(crate) const VOICE_METER_LEVEL: &str = "voice_meter_level";
+pub(crate) const RECORDING_PANEL: &str = "recording_panel";
+pub(crate) const RECORDING_CONTEXT: &str = "recording_context";
+pub(crate) const RECORDING_TIMER_DOT: &str = "recording_timer_dot";
+pub(crate) const RECORDING_TIMER: &str = "recording_timer";
+pub(crate) const RECORDING_HINT: &str = "recording_hint";
 
 pub(crate) const CALL_MUTE_LABEL: &str = "call_mute_label";
 pub(crate) const CALL_PANEL: &str = "call_panel";

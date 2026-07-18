@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 use yoyopod_protocol::ui::{
-    RuntimeSnapshot, RuntimeSnapshotPatch, UiIntent, UiScreen, VoiceIntent,
+    RuntimeSnapshot, RuntimeSnapshotPatch, UiIntent, UiScreen, VoiceIntent, VoiceRecipientAction,
 };
 
 use crate::voice::{
@@ -279,6 +279,7 @@ pub struct VoiceRuntimeState {
     pub status_text: String,
     pub file_path: String,
     pub duration_ms: i32,
+    pub capture_level_permille: i32,
     pub mime_type: String,
     pub message_id: String,
     pub playback_active: bool,
@@ -293,6 +294,8 @@ pub struct VoiceRuntimeState {
     pub pending_ask_question: String,
     pub ask_history: Vec<VoiceAskTurn>,
     pub pending_call_confirmation: Option<VoiceCallConfirmation>,
+    pub pending_voice_recipient: Option<VoiceRecipientAction>,
+    pub auto_send_after_capture: bool,
 }
 
 impl Default for VoiceRuntimeState {
@@ -304,6 +307,7 @@ impl Default for VoiceRuntimeState {
             status_text: String::new(),
             file_path: String::new(),
             duration_ms: 0,
+            capture_level_permille: 0,
             mime_type: "audio/wav".to_string(),
             message_id: String::new(),
             playback_active: false,
@@ -318,6 +322,8 @@ impl Default for VoiceRuntimeState {
             pending_ask_question: String::new(),
             ask_history: Vec::new(),
             pending_call_confirmation: None,
+            pending_voice_recipient: None,
+            auto_send_after_capture: false,
         }
     }
 }
@@ -1076,9 +1082,14 @@ impl RuntimeState {
                 self.voice
                     .set_interaction("idle", "Ask", "Ask me anything...");
             }
-            VoiceIntent::CaptureStart(action) => {
+            VoiceIntent::CaptureStart(action) | VoiceIntent::CaptureStartAndSend(action) => {
                 self.voice.phase = "recording".to_string();
                 self.voice.status_text = "Recording...".to_string();
+                self.voice.duration_ms = 0;
+                self.voice.capture_level_permille = 0;
+                self.voice.pending_voice_recipient = Some(action.clone());
+                self.voice.auto_send_after_capture =
+                    matches!(intent, VoiceIntent::CaptureStartAndSend(_));
                 if !action.file_path.trim().is_empty() {
                     self.voice.file_path = action.file_path.clone();
                 }
@@ -1279,6 +1290,9 @@ impl RuntimeState {
         if let Some(duration_ms) = i32_field(voice_note, "duration_ms") {
             self.voice.duration_ms = duration_ms.max(0);
         }
+        if let Some(capture_level_permille) = i32_field(voice_note, "capture_level_permille") {
+            self.voice.capture_level_permille = capture_level_permille.clamp(0, 1000);
+        }
         match normalized(&raw_state).as_str() {
             "recording" => {
                 if self.voice.phase != "thinking" {
@@ -1335,11 +1349,24 @@ impl RuntimeState {
         if let Some(duration_ms) = i32_field(voice_note, "duration_ms") {
             self.voice.duration_ms = duration_ms.max(0);
         }
+        if let Some(capture_level_permille) = i32_field(voice_note, "capture_level_permille") {
+            self.voice.capture_level_permille = capture_level_permille.clamp(0, 1000);
+        }
         if let Some(mime_type) = string_field(voice_note, "mime_type") {
             self.voice.mime_type = mime_type;
         }
         if let Some(message_id) = string_field(voice_note, "message_id") {
             self.voice.message_id = message_id;
+        }
+        if phase != "recording" {
+            self.voice.capture_level_permille = 0;
+        }
+        if phase == "review" && self.voice.auto_send_after_capture {
+            // commands_for_voip_snapshot consumes this pending send before the
+            // snapshot is applied. Clearing it here makes repeated recorded
+            // snapshots idempotent.
+            self.voice.auto_send_after_capture = false;
+            self.voice.pending_voice_recipient = None;
         }
     }
 
@@ -1562,6 +1589,8 @@ impl RuntimeState {
                 "body": voice_body_text(&self.voice),
                 "capture_in_flight": self.voice.ask_capture_active || self.voice.phase == "recording",
                 "ptt_active": self.voice.phase == "recording",
+                "recording_duration_ms": self.voice.duration_ms,
+                "capture_level_permille": self.voice.capture_level_permille,
             },
             "power": {
                 "battery_percent": self.power.battery_percent,

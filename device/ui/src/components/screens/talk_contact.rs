@@ -3,17 +3,21 @@ use yoyopod_protocol::ui::{ListItemSnapshot, RuntimeSnapshot, UiScreen};
 use crate::engine::Key;
 use crate::scene::{
     Backdrop, ContextLabelModel, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, ItemRender,
-    RegionId, Scene, SceneContext, SceneDefaults, SceneId, WheelBadgeKind, WheelBadgeModel,
-    WheelItemModel, WheelItemVariant,
+    RecordingPanelModel, RegionId, Scene, SceneContext, SceneDefaults, SceneId, WheelBadgeKind,
+    WheelBadgeModel, WheelItemModel, WheelItemVariant,
 };
 
 const TALK_STAGE_PERI: u32 = 0xE7E5F7;
+const TALK_STAGE_RECORDING: u32 = 0xE5443B;
 
 pub struct TalkContactProps {
     pub defaults: SceneDefaults,
     pub context: String,
     pub actions: Vec<DeckItem>,
     pub focus: usize,
+    pub recording: bool,
+    pub recording_duration_ms: i32,
+    pub capture_level_permille: i32,
 }
 
 pub fn props_from(
@@ -31,10 +35,18 @@ pub fn props_from(
             .unwrap_or_else(|| "CONTACT".to_string()),
         actions: actions(snapshot, contact),
         focus,
+        recording: snapshot.voice.ptt_active
+            || snapshot.voice.capture_in_flight
+            || snapshot.voice.phase.eq_ignore_ascii_case("recording"),
+        recording_duration_ms: snapshot.voice.recording_duration_ms.max(0),
+        capture_level_permille: snapshot.voice.capture_level_permille.clamp(0, 1000),
     }
 }
 
 pub fn scene(props: &TalkContactProps) -> Scene {
+    if props.recording {
+        return recording_scene(props);
+    }
     Scene {
         id: SceneId::new(UiScreen::TalkContact),
         backdrop: Backdrop::Solid(TALK_STAGE_PERI),
@@ -52,6 +64,36 @@ pub fn scene(props: &TalkContactProps) -> Scene {
             },
             swap_anim: None,
             recycle_window: Some(3),
+        }],
+        cursor: None,
+        fx: Default::default(),
+        modal: None,
+        timelines: Vec::new(),
+    }
+}
+
+fn recording_scene(props: &TalkContactProps) -> Scene {
+    Scene {
+        id: SceneId::new(UiScreen::TalkContact),
+        backdrop: Backdrop::Solid(TALK_STAGE_RECORDING),
+        stage: props.defaults.stage,
+        context: None,
+        decks: vec![Deck {
+            kind: DeckKind::Buttons,
+            region: RegionId::Auto,
+            items: vec![DeckItem {
+                key: Key::Static("held_recording"),
+                render: ItemRender::RecordingPanel(RecordingPanelModel {
+                    context: props.context.clone(),
+                    duration_ms: props.recording_duration_ms,
+                    level_permille: props.capture_level_permille,
+                }),
+            }],
+            focus_index: 0,
+            focus_policy: FocusPolicy::None,
+            item_anim: DeckItemAnim::None,
+            swap_anim: None,
+            recycle_window: Some(1),
         }],
         cursor: None,
         fx: Default::default(),
@@ -171,5 +213,35 @@ mod tests {
                 kind: WheelBadgeKind::Count,
             })
         );
+    }
+
+    #[test]
+    fn live_recording_replaces_the_wheel_with_the_full_bleed_meter() {
+        let mama = contact();
+        let mut snapshot = RuntimeSnapshot::default();
+        snapshot.call.contacts = vec![mama.clone()];
+        snapshot.voice.phase = "recording".to_string();
+        snapshot.voice.ptt_active = true;
+        snapshot.voice.recording_duration_ms = 7_420;
+        snapshot.voice.capture_level_permille = 618;
+
+        let scene = scene(&props_from(
+            &snapshot,
+            1,
+            Some(&mama),
+            defaults_for(UiScreen::TalkContact),
+        ));
+
+        assert_eq!(scene.backdrop, Backdrop::Solid(TALK_STAGE_RECORDING));
+        assert!(scene.context.is_none());
+        assert_eq!(scene.decks[0].kind, DeckKind::Buttons);
+        assert_eq!(scene.decks[0].focus_policy, FocusPolicy::None);
+        assert!(scene.cursor.is_none());
+        let ItemRender::RecordingPanel(panel) = &scene.decks[0].items[0].render else {
+            panic!("recording must replace the action wheel with the recording panel");
+        };
+        assert_eq!(panel.context, "MAMA");
+        assert_eq!(panel.duration_ms, 7_420);
+        assert_eq!(panel.level_permille, 618);
     }
 }

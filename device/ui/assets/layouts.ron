@@ -117,5 +117,10 @@
         (role: "progress_sweep_fill", x: 0, y: 0, width: 168, height: 8),
         (role: "voice_meter", x: 64, y: 118, width: 112, height: 42),
         (role: "voice_meter_level", x: 4, y: 4, width: 104, height: 34),
+        (role: "recording_panel", x: 0, y: 0, width: 240, height: 228),
+        (role: "recording_context", x: 10, y: 26, width: 130, height: 14),
+        (role: "recording_timer_dot", x: 82, y: 80, width: 8, height: 8),
+        (role: "recording_timer", x: 20, y: 70, width: 200, height: 28),
+        (role: "recording_hint", x: 20, y: 180, width: 200, height: 14),
     ],
 )

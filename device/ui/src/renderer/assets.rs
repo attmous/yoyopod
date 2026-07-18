@@ -330,6 +330,11 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::STATUS_BATTERY_ICON,
         roles::VOICE_METER,
         roles::VOICE_METER_LEVEL,
+        roles::RECORDING_PANEL,
+        roles::RECORDING_CONTEXT,
+        roles::RECORDING_TIMER_DOT,
+        roles::RECORDING_TIMER,
+        roles::RECORDING_HINT,
     ];
     roles
 }

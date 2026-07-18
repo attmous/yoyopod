@@ -25,6 +25,7 @@ pub trait VoipRuntimeBackend {
     fn set_muted(&mut self, muted: bool) -> Result<(), String>;
     fn send_text_message(&mut self, sip_address: &str, text: &str) -> Result<String, String>;
     fn start_voice_recording(&mut self, file_path: &str) -> Result<(), String>;
+    fn voice_recording_metrics(&mut self) -> Result<VoiceRecordingMetrics, String>;
     fn stop_voice_recording(&mut self) -> Result<i32, String>;
     fn cancel_voice_recording(&mut self) -> Result<(), String>;
     fn send_voice_note(
@@ -35,6 +36,14 @@ pub trait VoipRuntimeBackend {
         mime_type: &str,
     ) -> Result<String, String>;
 }
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct VoiceRecordingMetrics {
+    pub duration_ms: i32,
+    pub capture_level_permille: i32,
+}
+
+const MAX_VOICE_NOTE_DURATION_MS: i32 = 60_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackendEvent {
@@ -301,9 +310,30 @@ impl VoipHost {
         &mut self,
         backend: &mut B,
     ) -> Result<i32, String> {
+        if let Some(duration_ms) = self.voice_note.recorded_duration_ms() {
+            return Ok(duration_ms);
+        }
         let duration_ms = backend.stop_voice_recording()?;
         self.voice_note.finish_recording(duration_ms);
         Ok(duration_ms)
+    }
+
+    pub fn refresh_voice_recording_metrics<B: VoipRuntimeBackend + ?Sized>(
+        &mut self,
+        backend: &mut B,
+    ) -> Result<bool, String> {
+        if !self.voice_note.is_recording() {
+            return Ok(false);
+        }
+        let metrics = backend.voice_recording_metrics()?;
+        if voice_recording_limit_reached(metrics.duration_ms) {
+            let duration_ms = backend.stop_voice_recording()?;
+            self.voice_note.finish_recording(duration_ms);
+            return Ok(true);
+        }
+        Ok(self
+            .voice_note
+            .update_recording_metrics(metrics.duration_ms, metrics.capture_level_permille))
     }
 
     pub fn cancel_voice_recording<B: VoipRuntimeBackend + ?Sized>(
@@ -533,5 +563,20 @@ impl VoipHost {
             .as_ref()
             .map(|config| config.sip_identity.clone())
             .unwrap_or_default()
+    }
+}
+
+fn voice_recording_limit_reached(duration_ms: i32) -> bool {
+    duration_ms >= MAX_VOICE_NOTE_DURATION_MS
+}
+
+#[cfg(test)]
+mod recording_tests {
+    use super::*;
+
+    #[test]
+    fn held_recording_has_a_hard_sixty_second_limit() {
+        assert!(!voice_recording_limit_reached(59_999));
+        assert!(voice_recording_limit_reached(60_000));
     }
 }
