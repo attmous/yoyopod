@@ -8,7 +8,7 @@ use crate::scene::{
 };
 
 const TALK_STAGE_PERI: u32 = 0xE7E5F7;
-const TALK_STAGE_RECORDING: u32 = 0xE5443B;
+const TALK_STAGE_RECORDING: u32 = 0x625D9C;
 
 pub struct TalkContactProps {
     pub defaults: SceneDefaults,
@@ -232,7 +232,7 @@ mod tests {
             defaults_for(UiScreen::TalkContact),
         ));
 
-        assert_eq!(scene.backdrop, Backdrop::Solid(TALK_STAGE_RECORDING));
+        assert_eq!(scene.backdrop, Backdrop::Solid(0x625D9C));
         assert!(scene.context.is_none());
         assert_eq!(scene.decks[0].kind, DeckKind::Buttons);
         assert_eq!(scene.decks[0].focus_policy, FocusPolicy::None);
