@@ -31,7 +31,8 @@ The family-facing view of talking lives at [Talking](/families/talking/).
 
 ## On the device
 
-Talking belongs to the voip worker — "the switchboard" — the largest
+Talking belongs to the [Calling Engine](/builders/software/calling-engine/):
+the voip worker — "the switchboard" — the largest
 worker in the Rust runtime at roughly 5,600 lines. It wraps a native
 **liblinphone** core through a hand-rolled FFI shim and owns the entire
 communication surface: SIP registration, call control, text and voice-note

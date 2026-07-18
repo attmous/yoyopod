@@ -25,13 +25,13 @@ gets 3 seconds; a late one is marked `Degraded` and boot continues.
 
 | Child | Owns |
 | --- | --- |
-| UI host (`device/ui/`) | rendering and button-facing behavior — see [UI System](/builders/software/ui/) |
-| media | local music playback via mpv |
-| voip | liblinphone: calls, messages, voice notes |
+| UI host (`device/ui/`) | rendering and button-facing behavior — see [UI Engine](/builders/software/ui/) |
+| media | local music playback via mpv — see [Media Engine](/builders/software/media-engine/) |
+| voip | liblinphone: calls, messages, voice notes — see [Calling Engine](/builders/software/calling-engine/) |
 | network | cellular modem (SIM7600), PPP, GPS |
 | cloud | MQTT to the backend — see [Cloud & Provisioning](/builders/software/cloud/) |
 | power | PiSugar battery, RTC, watchdog |
-| speech | cloud STT/TTS/Ask |
+| speech | cloud STT/TTS/Ask — see [Voice & Ask Engine](/builders/software/voice-ask/) |
 
 Shared pieces: `device/protocol/` (the envelope plus the UI contract) and
 `device/worker/` (helpers for uniform ready/health/error envelopes).

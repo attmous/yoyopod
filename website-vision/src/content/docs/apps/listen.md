@@ -42,7 +42,8 @@ The ritual this is built for: [Jonas's Saturday playlists](/stories/jonas-saturd
 
 ## On the device
 
-Playback belongs to a dedicated media worker in the Rust runtime, which
+Playback belongs to the [Media Engine](/builders/software/media-engine/):
+a dedicated media worker in the Rust runtime, which
 spawns and supervises an out-of-process **mpv** player over a JSON-IPC
 socket — the rest of the system only sends work orders and reads state
 snapshots. Details that protect the kid experience:

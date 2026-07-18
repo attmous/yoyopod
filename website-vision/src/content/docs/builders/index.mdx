@@ -15,7 +15,8 @@ Three parts, from atoms to workflows:
 1. **Hardware Platform** — the physical device: display, audio, power,
    connectivity, and the path from Pi prototype to a product board.
 2. **Software Platform** — the running system: architecture, the device
-   runtime and its workers, the UI system, cloud, apps, and security.
+   runtime, and the four peer engines — UI, media, calling, and voice &
+   ask — plus cloud, apps, and security.
 3. **Developer Guide** — you and the repo: environment, build & flash,
    testing, and the API/SDK surface.
 
@@ -40,7 +41,10 @@ which include full deep-dive guides for the UI system and the runtime.
 <CardGrid>
 	<LinkCard title="Architecture at a Glance" href="/builders/software/architecture/" description="Two sides and a backbone: yoyoOS + yoyocore on the device, yoyocloud, the yoyopod app." />
 	<LinkCard title="Device Runtime & Workers" href="/builders/software/runtime/" description="The supervisor and its worker processes." />
-	<LinkCard title="UI System" href="/builders/software/ui/" description="How shapes and motion reach the canvas." />
+	<LinkCard title="UI Engine" href="/builders/software/ui/" description="How shapes and motion reach the canvas." />
+	<LinkCard title="Media Engine" href="/builders/software/media-engine/" description="Local-first playback: the media worker, mpv, and the playback contract." />
+	<LinkCard title="Calling Engine" href="/builders/software/calling-engine/" description="Whitelist calling: the voip worker and liblinphone." />
+	<LinkCard title="Voice & Ask Engine" href="/builders/software/voice-ask/" description="Push-to-talk speech: STT/TTS and the Ask experience's engine." />
 	<LinkCard title="Cloud & Provisioning" href="/builders/software/cloud/" description="Backend, provisioning, and the device's cloud link." />
 	<LinkCard title="App Platform" href="/builders/software/apps/" description="The parent app and future shared packages." />
 	<LinkCard title="Security Model" href="/builders/software/security/" description="Identity, whitelisting, transport, and updates." />
@@ -56,8 +60,9 @@ which include full deep-dive guides for the UI system and the runtime.
 </CardGrid>
 
 :::note[Section status]
-The best-covered section: ten pages are fully condensed from the as-built
-docs, three are *Partial* (connectivity, hardware roadmap, cloud), and
-three are *Placeholder* (app platform, security model, APIs & SDKs). See
+The best-covered section: eleven pages are fully condensed from the
+as-built docs, five are *Partial* (connectivity, hardware roadmap, calling
+engine, voice & ask engine, cloud), and three are *Placeholder* (app
+platform, security model, APIs & SDKs). See
 [About This Site](/start/about-this-site/) for the legend.
 :::
