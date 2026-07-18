@@ -51,10 +51,10 @@ pub fn props_from(
         .filter(|name| !name.is_empty())
         .unwrap_or("Contact");
     let title = if notes.is_empty() {
-        format!("{contact_name} · no notes")
+        format!("{contact_name} - no notes")
     } else {
         format!(
-            "{contact_name} · {} of {}",
+            "{contact_name} - {} of {}",
             replay_index.min(notes.len() - 1) + 1,
             notes.len()
         )
@@ -148,7 +148,7 @@ mod tests {
             0,
             defaults_for(UiScreen::Replay),
         );
-        assert_eq!(props.model.title, "Mama · 1 of 1");
+        assert_eq!(props.model.title, "Mama - 1 of 1");
         assert_eq!(props.model.elapsed, "0:04");
         assert_eq!(props.model.total, "0:07");
         assert_eq!(props.model.progress_permille, 571);

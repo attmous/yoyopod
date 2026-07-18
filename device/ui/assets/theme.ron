@@ -124,7 +124,7 @@
         (role: "talk_wheel_item", fill_rgb: Some(11118309), text_rgb: Some(1776415), opacity: Some(255), radius: 16),
         (role: "media_wheel_focus", fill_rgb: Some(10353788), text_rgb: Some(1776415), opacity: Some(255), radius: 16),
         (role: "hero_prev", text_rgb: Some(1776415), outline_rgb: Some(1776415), outline_width: 2, outline_pad: 2),
-        (role: "hero_play", fill_rgb: Some(10353788), opacity: Some(255), radius: 16, outline_rgb: Some(1776415), outline_width: 2, outline_pad: 2),
+        (role: "hero_play", opacity: Some(255), radius: 16, outline_rgb: Some(1776415), outline_width: 2, outline_pad: 2),
         (role: "hero_next", text_rgb: Some(1776415), outline_rgb: Some(1776415), outline_width: 2, outline_pad: 2),
         (role: "cursor_dot", fill_rgb: Some(16777215), opacity: Some(255), radius: 2),
         (role: "list_row_title", text_rgb: Some(1776415)),

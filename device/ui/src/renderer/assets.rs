@@ -384,6 +384,14 @@ mod tests {
             .unwrap_or_else(|| panic!("missing theme role {role}"))
     }
 
+    fn selected_theme<'a>(asset: &'a ThemeAsset, role: &str) -> &'a ThemeRole {
+        asset
+            .selected_roles
+            .iter()
+            .find(|theme| theme.role == role)
+            .unwrap_or_else(|| panic!("missing selected theme role {role}"))
+    }
+
     #[test]
     fn shipped_layout_and_theme_cover_every_runtime_role() {
         let layouts = parse_layout_asset().expect("layouts.ron should be valid");
@@ -422,6 +430,16 @@ mod tests {
         ] {
             assert_eq!(theme(&asset, role).text_rgb, Some(0xFCE6D2));
         }
+    }
+
+    #[test]
+    fn hero_focus_outline_does_not_override_the_semantic_accent() {
+        let asset = parse_theme_asset().expect("theme.ron should be valid");
+        let focused_play = selected_theme(&asset, roles::HERO_PLAY);
+
+        assert_eq!(focused_play.fill_rgb, None);
+        assert_eq!(focused_play.outline_rgb, Some(0x1B1B1F));
+        assert_eq!(focused_play.outline_width, 2);
     }
 
     #[test]
