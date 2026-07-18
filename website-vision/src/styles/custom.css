@@ -52,6 +52,17 @@
 	letter-spacing: -0.02em;
 }
 
+/* Theme-aware inline SVG diagrams */
+.diagram {
+	width: 100%;
+	height: auto;
+	display: block;
+	margin: 1.5rem 0;
+}
+.diagram text {
+	font-family: var(--sl-font-system);
+}
+
 /* Brand-kit swatches (used on /company/brand-kit/) */
 .swatch {
 	display: inline-block;

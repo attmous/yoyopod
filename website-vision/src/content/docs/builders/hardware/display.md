@@ -11,7 +11,9 @@ description: The small calm screen and the one physical button.
 the surface every shape and animation lands on. The screen is small and
 portrait by design: it shows state, it is not the product. Input is one
 physical side button, the device's only control. Both live on the PiSugar
-Whisplay HAT worn by the Raspberry Pi Zero 2W.
+Whisplay HAT worn by the Raspberry Pi Zero 2W — an off-the-shelf part of
+the V0 “Dawn” rig; the V1 “Daylight” board may ship its own panel and
+driver ([From Prototype to Product](/builders/hardware/roadmap/)).
 
 ## Key components
 

@@ -3,7 +3,7 @@ title: Cloud & Provisioning
 description: Backend, provisioning, and the device's cloud link.
 ---
 
-*How a device gets an identity, a SIM, and a safe line home.*
+*How a device gets an identity, a SIM, and a safe line home — the device's side of **yoyocloud**, the backend backbone.*
 
 :::caution[Partially filled]
 Sections marked *Placeholder* have no as-built content yet; everything else is condensed from the repository (see Sources at the bottom).
@@ -11,9 +11,13 @@ Sections marked *Placeholder* have no as-built content yet; everything else is c
 
 ## Overview
 
-The cloud domain is the device ↔ backend link, owned by the device's
-cloud worker. Identity is two runtime-only secrets — `device_id` plus
-`device_secret` — and the line home is MQTT. The division of labor is
+The backend backbone is named **yoyocloud**: it speaks MQTT with the
+device, receives location and telemetry, and routes them to the parent
+app. Whether we build yoyocloud ourselves or adopt an open-source solution
+is a deliberately open decision — what is fixed is the contract on this
+page. The cloud domain is the device ↔ backbone link, owned by the
+device's cloud worker. Identity is two runtime-only secrets — `device_id`
+plus `device_secret` — and the line home is MQTT. The division of labor is
 strict: the device loads provisioned secrets, publishes requested
 telemetry, receives backend commands, and persists an operator-visible
 status snapshot; the backend/dashboard own claiming, household and parent
@@ -64,6 +68,7 @@ Location reporting stays live-ish by design, never real-time.
 
 ## Open questions
 
+- TODO: yoyocloud build-vs-adopt — which open-source backends are candidates?
 - TODO: which provisioning steps happen at the factory vs. in a parent's hands?
 - TODO: broker topology for the MQTT link — managed service or self-hosted (TBD)?
 - TODO: how does a device change families — resale, hand-me-down to a sibling?

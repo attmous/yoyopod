@@ -7,9 +7,11 @@ description: The supervisor and its worker processes.
 
 ## Overview
 
-Behind the canvas, yoyopod is one supervisor process — `yoyopod-runtime` —
-and up to seven child processes, talking newline-framed JSON over stdio
-pipes. No sockets, no bus daemons: the process tree is the architecture.
+This is **yoyocore** — the Rust device application that runs on top of
+yoyoOS (the Linux image) and handles everything (naming canon:
+[Architecture at a Glance](/builders/software/architecture/)). Behind the
+canvas it is one supervisor process — `yoyopod-runtime` — and up to seven
+child processes, talking newline-framed JSON over stdio pipes. No sockets, no bus daemons: the process tree is the architecture.
 Workers report; the runtime aggregates the one true state ledger; the UI
 renders it. Every cross-domain behavior (a call pausing music, low
 battery ending the show) is runtime code — workers never talk to each

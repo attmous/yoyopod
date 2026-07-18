@@ -12,22 +12,23 @@ No as-built content exists for this page yet — the outline below is the target
 ## Overview
 
 - The buyer's half of the product: parents manage from their phone, kids use the device
+- **The yoyopod app** ships native on **iOS + Android** (implementation approach TBD — see open questions)
 - Planned repository shape: `apps/` for the parent app, `packages/` for shared contracts
 - What the parent app must carry for V1: whitelist calls and voice messages, live-ish location, setup
 - Entirely future work — nothing in this layer exists yet
 
 ## Key components
 
-- The parent mobile app (future) — product-facing outline at [Parent App](/apps/parent-app/)
+- The yoyopod app (iOS + Android, future) — product-facing outline at [Parent App](/apps/parent-app/)
 - Shared `packages/`: types and contracts shared across app, cloud, and device (future)
 - Pairing and setup flow inside the parent app — family-facing walkthrough at [Parent App Setup](/families/parent-app-setup/)
 - The live-ish location view (future)
 
 ## Interfaces & contracts
 
-- The app-to-cloud contract: shape and protocol (TBD)
+- The app talks to [yoyocloud](/builders/software/cloud/) only — never directly to devices; protocol and shape (TBD)
 - Shared packages as the single source of truth between app, cloud, and device (TBD)
-- The whitelist editing flow: how a parent's change reaches the device
+- The whitelist editing flow: how a parent's change reaches the device through yoyocloud
 - The pairing contract between a new device and a family account (TBD)
 
 ## Today vs. target

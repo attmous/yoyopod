@@ -1,22 +1,30 @@
 ---
 title: Device Overview & Specs
-description: The whole machine on one page, plus the spec table.
+description: The whole machine on one page — the V0 “Dawn” block diagram plus the spec table.
 ---
+
+import HardwareV0 from '../../../../assets/diagrams/hardware-v0.svg';
 
 *One page that names every hardware subsystem and links its deep dive.*
 
 ## Overview
 
-At the hardware level, YoYoPod today is one supported bundle: a **Raspberry
-Pi Zero 2W** wearing the **PiSugar Whisplay HAT** — screen, side button,
-microphone, and speaker in one package — plus a **PiSugar 3 battery HAT**
-for power and a **SIM7600-family 4G modem** for the radio. Non-canonical
-boards were deliberately removed from the repository; everything below
-assumes this bundle. There is no camera, no browser, and no app store — and
-no haptics or LEDs either; both are future-hardware options that appear in
-mockups only.
+At the hardware level, yoyopod today is **V0 “Dawn”**: one supported bundle
+of **off-the-shelf boards and kits, wired together** to realize the kid's
+device fast — a **Raspberry Pi Zero 2W** wearing the **PiSugar Whisplay
+HAT** (screen, side button, microphone, and speaker in one package), plus a
+**PiSugar 3 battery HAT** for power and a **SIM7600-family 4G modem** for
+the radio. None of these parts were designed for yoyopod; they were picked
+because they are available on the market, and that is the point — see
+[From Prototype to Product](/builders/hardware/roadmap/) for the V1
+“Daylight” designed-PCB story. Non-canonical boards were deliberately
+removed from the repository; everything below assumes this bundle. There is
+no camera, no browser, and no app store — and no haptics or LEDs either;
+both are future-hardware options that appear in mockups only.
 
-### Spec table — the prototype path
+<HardwareV0 class="diagram" />
+
+### Spec table — V0 “Dawn”
 
 | Subsystem | As built today |
 | --- | --- |
@@ -38,7 +46,7 @@ and not yet published as committed product specs.
 | Speaker, microphone, signal chain | [Audio Path](/builders/hardware/audio/) |
 | Battery, charging, watchdog | [Power & Battery](/builders/hardware/power/) |
 | 4G modem, SIM, GPS | [Connectivity: 4G & GPS](/builders/hardware/connectivity/) |
-| Compute and the product-board story | [From Prototype to Product](/builders/hardware/roadmap/) |
+| Compute and the V1 “Daylight” story | [From Prototype to Product](/builders/hardware/roadmap/) |
 
 ## Interfaces & contracts
 
@@ -60,19 +68,20 @@ wiring of each subsystem in depth.
 
 ## Today vs. target
 
-Today's bundle is explicitly a **prototype path, not a permanent promise**:
+V0 “Dawn” is explicitly a **prototype path, not a permanent promise**:
 off-the-shelf hardware chosen to iterate on the experience before committing
-to a board spin. The target is a product board that may integrate its own
-display, audio, power, and modem choices. What is fixed by intent rather
-than by the prototype: one button, a small calm portrait screen, speaker
-plus microphone, 4G plus GPS, and no camera. The migration story — and
-where the supporting tooling stands — lives in
+to a board spin. The target is **V1 “Daylight”** — a designed PCB with
+components picked and soldered per the product design, which may integrate
+its own display, audio, power, and modem choices. What is fixed by intent
+rather than by the prototype: one button, a small calm portrait screen,
+speaker plus microphone, 4G plus GPS, and no camera. The migration story —
+including the EVT → DVT → PVT build stages — lives in
 [From Prototype to Product](/builders/hardware/roadmap/).
 
 ## Open questions
 
-- TODO: Which spec-table values can we commit to publicly now, and which stay TBD until a product board is selected?
-- TODO: Do Wi-Fi and Bluetooth appear in the product spec at all, or is 4G the only radio we promise?
+- TODO: Which spec-table values can we commit to publicly now, and which stay TBD until the V1 board is designed?
+- TODO: Do Wi-Fi and Bluetooth appear in the product spec at all, or is 4G the only radio we promise? (They exist on the Pi's SoC but sit outside the documented path — drawn dashed in the diagram.)
 - TODO: What enclosure durability targets (drop, water resistance) does a kids-carry-it-daily device need to state?
 
 :::note[Sources]

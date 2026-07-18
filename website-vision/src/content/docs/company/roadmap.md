@@ -67,11 +67,15 @@ painful enough to fix becomes its own small round, and diagnostics can
 join the same on-Pi binary the validator lives in. The rounds carry
 ordering and status flags, not dates.
 
+On the hardware side, "later" is **V1 “Daylight”** — the designed PCB that
+replaces today's V0 “Dawn” off-the-shelf rig once its exit criteria are
+defined; see [From Prototype to Product](/builders/hardware/roadmap/).
+
 ## Open questions
 
 - TODO: confirm the current staged status of calling and the real status of the location pillar
 - TODO: decide whether this public page shows timeframes at all, or only ordering
-- TODO: define the exit criteria that let us call the prototype path done and commit to a product board
+- TODO: define the exit criteria that let us call V0 “Dawn” done and commit to the V1 “Daylight” board
 
 :::note[Sources]
 Condensed from

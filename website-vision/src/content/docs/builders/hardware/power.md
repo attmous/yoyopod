@@ -9,7 +9,8 @@ description: Battery, charging, and power management.
 
 The **PiSugar 3 HAT owns power truth**: battery telemetry, charging state,
 the real-time clock, and a hardware watchdog that power-cycles the board if
-software stops feeding it. On the software side, the power worker is the
+software stops feeding it. Like the rest of the V0 “Dawn” rig it is an
+off-the-shelf board ([From Prototype to Product](/builders/hardware/roadmap/)). On the software side, the power worker is the
 single owner of that truth — it polls telemetry (every 30 seconds by
 default), applies the low-battery safety policy, and brings the device down
 cleanly before the battery does it uncleanly.

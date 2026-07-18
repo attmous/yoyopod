@@ -13,7 +13,8 @@ Sections marked *Placeholder* have no as-built content yet; everything else is c
 
 Connectivity exists for a short list: whitelist calls, voice messages,
 live-ish location, and the cloud link — nothing else, because there is no
-browser or app store to feed. The device still works offline: local-first
+browser or app store to feed. The modem is an off-the-shelf part of the V0
+“Dawn” rig ([From Prototype to Product](/builders/hardware/roadmap/)). The device still works offline: local-first
 music and stories do not depend on the modem. The honesty rule for location
 stands: GPS gives **live-ish** position, and we never call it real-time. As
 built today, the radio is a **SIM7600-family 4G modem**, owned end to end

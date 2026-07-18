@@ -1,0 +1,70 @@
+<svg viewBox="0 0 760 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The yoyopod software sides: on the device, yoyocore (the Rust application) runs on yoyoOS (the Linux image); yoyocloud, the backend backbone, links the device to the parent mobile app on iOS and Android over MQTT">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #232136); stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; }
+    .ext { fill: none; stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .hub { fill: var(--sl-color-accent-low, #4a3414); stroke: var(--sl-color-accent, #f6b02c); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f8f4e9); font-size: 14px; font-weight: 700; }
+    .m { fill: var(--sl-color-gray-2, #d3cdc5); font-size: 11px; font-family: ui-monospace, monospace; }
+    .s { fill: var(--sl-color-gray-3, #a09aa8); font-size: 11.5px; }
+    .flow { stroke: var(--sl-color-gray-3, #a09aa8); stroke-width: 2; fill: none; marker-end: url(#sws-arrow); }
+  </style>
+  <defs>
+    <marker id="sws-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a09aa8)"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="30" y="34" style="font-size:17px">Two sides and a backbone</text>
+  <text class="s" x="30" y="54">the device software, the parent app — and yoyocloud routing between them</text>
+
+  <!-- The device -->
+  <rect class="box" x="30" y="80" width="220" height="240" rx="10"/>
+  <text class="t" x="46" y="104">The device</text>
+
+  <rect class="hub" x="46" y="118" width="188" height="90" rx="8"/>
+  <text class="t" x="58" y="141">yoyocore</text>
+  <text class="s" x="58" y="159">the Rust device application</text>
+  <text class="s" x="58" y="174">runtime · workers · UI</text>
+  <text class="s" x="58" y="189">— it handles everything</text>
+
+  <text class="s" x="112" y="224">runs on</text>
+
+  <rect class="box" x="46" y="232" width="188" height="76" rx="8"/>
+  <text class="t" x="58" y="255">yoyoOS</text>
+  <text class="s" x="58" y="273">the Linux image — RPi OS Lite</text>
+  <text class="s" x="58" y="288">today → Yocto/Buildroot later</text>
+
+  <!-- yoyocloud -->
+  <rect class="hub" x="310" y="110" width="200" height="150" rx="10"/>
+  <text class="t" x="326" y="134">yoyocloud</text>
+  <text class="s" x="326" y="152">the backend backbone</text>
+  <text class="s" x="326" y="168">MQTT broker + routing</text>
+  <text class="s" x="326" y="184">location · telemetry · provisioning</text>
+  <text class="s" x="326" y="204">build, or adopt open-source</text>
+  <text class="s" x="326" y="220">— decision open</text>
+
+  <!-- the yoyopod app -->
+  <rect class="box" x="570" y="110" width="160" height="150" rx="10"/>
+  <text class="t" x="584" y="134">the yoyopod app</text>
+  <text class="s" x="584" y="152">parent mobile app</text>
+  <text class="s" x="584" y="168">iOS + Android</text>
+  <text class="s" x="584" y="188">contacts · content</text>
+  <text class="s" x="584" y="204">controls · location view</text>
+
+  <!-- flows -->
+  <path class="flow" d="M250,160 L308,160"/>
+  <text class="m" x="262" y="150">MQTT</text>
+  <path class="flow" d="M310,200 L252,200"/>
+  <text class="m" x="254" y="218">commands</text>
+
+  <path class="flow" d="M510,160 L568,160"/>
+  <text class="m" x="518" y="150">routes</text>
+  <path class="flow" d="M570,200 L512,200"/>
+  <text class="m" x="512" y="218">commands</text>
+
+  <!-- caption -->
+  <rect class="ext" x="30" y="350" width="700" height="80" rx="10"/>
+  <text class="t" x="46" y="376">The parent app never talks to the device directly.</text>
+  <text class="s" x="46" y="394">The device publishes location and telemetry to yoyocloud over MQTT; yoyocloud routes them to the</text>
+  <text class="s" x="46" y="410">parent app — and parent commands (like remote playback) travel back down the same road.</text>
+</svg>

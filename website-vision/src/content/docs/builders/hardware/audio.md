@@ -9,7 +9,8 @@ description: Speaker, microphone, and the signal chain between them.
 
 Two independent audio paths share one piece of hardware. Music and calls
 travel separate software stacks that converge on a single **WM8960 codec**
-on the Whisplay HAT — knowing which path a sound takes is the first step of
+on the Whisplay HAT — an off-the-shelf part of the V0 “Dawn” rig
+([From Prototype to Product](/builders/hardware/roadmap/)) — knowing which path a sound takes is the first step of
 every audio debug, because music dead but calls fine (or vice versa)
 localizes the fault immediately; the paths only share the codec. Playback
 is local-first: mpv is the local-only playback engine, and streaming
