@@ -83,6 +83,15 @@ pub struct LinphoneRecorderParams {
     _private: [u8; 0],
 }
 
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+pub struct LinphoneRecorderFileFormat(c_int);
+
+impl LinphoneRecorderFileFormat {
+    // LinphoneRecorderFileFormatWav in linphone/types.h.
+    pub const WAV: Self = Self(1);
+}
+
 pub type CoreCallStateChangedCb =
     Option<unsafe extern "C" fn(*mut LinphoneCore, *mut LinphoneCall, c_int, *const c_char)>;
 pub type CoreMessageReceivedCb = Option<
@@ -281,7 +290,7 @@ pub struct LinphoneApi {
     pub nat_policy_set_stun_server: unsafe extern "C" fn(*mut LinphoneNatPolicy, *const c_char),
     pub nat_policy_unref: unsafe extern "C" fn(*mut LinphoneNatPolicy),
     pub recorder_params_set_file_format:
-        Option<unsafe extern "C" fn(*mut LinphoneRecorderParams, c_int)>,
+        Option<unsafe extern "C" fn(*mut LinphoneRecorderParams, LinphoneRecorderFileFormat)>,
     pub recorder_params_unref: Option<unsafe extern "C" fn(*mut LinphoneRecorderParams)>,
     pub recorder_open: Option<unsafe extern "C" fn(*mut LinphoneRecorder, *const c_char) -> c_int>,
     pub recorder_start: Option<unsafe extern "C" fn(*mut LinphoneRecorder) -> c_int>,

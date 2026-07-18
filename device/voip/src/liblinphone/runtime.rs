@@ -1,6 +1,7 @@
 use super::ffi::{
     self, LinphoneAccount, LinphoneAddress, LinphoneApi, LinphoneCall, LinphoneChatMessage,
-    LinphoneChatRoom, LinphoneContent, LinphoneCore, LinphoneEventLog, LinphoneRecorderParams,
+    LinphoneChatRoom, LinphoneContent, LinphoneCore, LinphoneEventLog, LinphoneRecorderFileFormat,
+    LinphoneRecorderParams,
 };
 use super::{abi_event as event, runtime_error as error, state};
 use once_cell::sync::Lazy;
@@ -14,7 +15,6 @@ pub use super::abi_event::YoyopodLiblinphoneEvent;
 const FALSE: c_int = 0;
 const TRUE: c_int = 1;
 const LINPHONE_REASON_DECLINED: c_int = 4;
-const LINPHONE_RECORDER_FILE_FORMAT_WAV: c_int = 0;
 
 static VERSION: &[u8] = b"yoyopod-voip-host-liblinphone/0.1.0\0";
 static STATE: Lazy<std::sync::Mutex<state::ShimState>> =
@@ -1024,7 +1024,7 @@ unsafe fn create_recorder_params(
         return Err("failed to create Liblinphone recorder params".to_string());
     }
     if let Some(set_format) = api.recorder_params_set_file_format {
-        unsafe { set_format(params, LINPHONE_RECORDER_FILE_FORMAT_WAV) };
+        unsafe { set_format(params, LinphoneRecorderFileFormat::WAV) };
     }
     Ok(params)
 }
