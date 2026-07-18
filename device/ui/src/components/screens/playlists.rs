@@ -50,13 +50,18 @@ mod tests {
 
         assert_eq!(scene.backdrop, Backdrop::Solid(0xE6FDE0));
         assert_eq!(
-            scene.context.as_ref().map(|header| header.title.as_str()),
+            scene
+                .context
+                .as_ref()
+                .and_then(|context| context.wheel_header())
+                .map(|header| header.title.as_str()),
             Some("LISTEN")
         );
         assert_eq!(
             scene
                 .context
                 .as_ref()
+                .and_then(|context| context.wheel_header())
                 .and_then(|header| header.counter.as_deref()),
             None
         );

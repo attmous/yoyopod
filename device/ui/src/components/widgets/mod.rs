@@ -1,6 +1,7 @@
 pub mod call_panel;
 pub mod card;
 pub mod chip;
+pub mod context_label;
 pub mod deck_bar;
 pub mod empty_state;
 pub mod footer_bar;
@@ -16,6 +17,7 @@ pub mod wheel_item;
 pub use call_panel::{call_panel, CallPanelProps};
 pub use card::card;
 pub use chip::{chip, ChipProps};
+pub use context_label::context_label;
 pub use deck_bar::{deck_bar, DeckBarProps};
 pub use empty_state::empty_state;
 pub use footer_bar::{footer_bar, FooterBarProps};

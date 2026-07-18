@@ -17,18 +17,12 @@ pub fn talk_contact_actions(
     snapshot: &RuntimeSnapshot,
     selected_contact: Option<&ListItemSnapshot>,
 ) -> Vec<TalkContactAction> {
-    let contact = selected_contact.or_else(|| snapshot.call.contacts.first());
-    let mut actions = vec![
+    let _ = (snapshot, selected_contact);
+    vec![
         TalkContactAction { kind: "call" },
-        TalkContactAction { kind: "voice_note" },
-    ];
-    if contact
-        .and_then(|contact| snapshot.call.latest_voice_note_by_contact.get(&contact.id))
-        .is_some_and(|note| !note.local_file_path.trim().is_empty())
-    {
-        actions.push(TalkContactAction { kind: "play_note" });
-    }
-    actions
+        TalkContactAction { kind: "record" },
+        TalkContactAction { kind: "replay" },
+    ]
 }
 
 pub fn voice_note_action_count(snapshot: &RuntimeSnapshot) -> usize {

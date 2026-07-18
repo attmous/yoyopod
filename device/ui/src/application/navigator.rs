@@ -262,8 +262,8 @@ fn select_talk_contact_action(runtime: &mut UiRuntime) {
                 emit_call_start(runtime, &item);
             }
         }
-        "voice_note" => push_screen(runtime, UiScreen::VoiceNote),
-        "play_note" => {
+        "record" => push_screen(runtime, UiScreen::VoiceNote),
+        "replay" => {
             if let Some(payload) = runtime.latest_voice_note_payload() {
                 runtime
                     .intents

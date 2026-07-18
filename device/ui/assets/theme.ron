@@ -31,6 +31,7 @@
         (role: "wheel_badge", opacity: Some(255), radius: 11),
         (role: "wheel_badge_label", text_rgb: Some(1776415)),
         (role: "wheel_badge_label_stuck", text_rgb: Some(16574162)),
+        (role: "context_label", text_rgb: Some(3816000)),
         (role: "empty_state"),
         (role: "empty_plus", opacity: Some(255), radius: 28),
         (role: "empty_plus_icon", text_rgb: Some(1776415)),

@@ -70,13 +70,18 @@ mod tests {
         );
         let scene = scene(&props);
         assert_eq!(
-            scene.context.as_ref().map(|header| header.title.as_str()),
+            scene
+                .context
+                .as_ref()
+                .and_then(|context| context.wheel_header())
+                .map(|header| header.title.as_str()),
             Some("HOLST")
         );
         assert_eq!(
             scene
                 .context
                 .as_ref()
+                .and_then(|context| context.wheel_header())
                 .and_then(|header| header.counter.as_deref()),
             Some("2 / 2")
         );

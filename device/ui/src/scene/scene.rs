@@ -9,7 +9,7 @@ pub struct Scene {
     pub id: SceneId,
     pub backdrop: Backdrop,
     pub stage: Stage,
-    pub context: Option<WheelHeaderModel>,
+    pub context: Option<SceneContext>,
     pub decks: Vec<Deck>,
     pub cursor: Option<Cursor>,
     pub fx: FxLayer,
@@ -21,6 +21,51 @@ pub struct Scene {
 pub struct WheelHeaderModel {
     pub title: String,
     pub counter: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextLabelModel {
+    pub text: String,
+}
+
+impl ContextLabelModel {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SceneContext {
+    WheelHeader(WheelHeaderModel),
+    Label(ContextLabelModel),
+}
+
+impl SceneContext {
+    pub fn wheel_header(&self) -> Option<&WheelHeaderModel> {
+        match self {
+            Self::WheelHeader(header) => Some(header),
+            Self::Label(_) => None,
+        }
+    }
+
+    pub fn label(&self) -> Option<&ContextLabelModel> {
+        match self {
+            Self::Label(label) => Some(label),
+            Self::WheelHeader(_) => None,
+        }
+    }
+}
+
+impl From<WheelHeaderModel> for SceneContext {
+    fn from(value: WheelHeaderModel) -> Self {
+        Self::WheelHeader(value)
+    }
+}
+
+impl From<ContextLabelModel> for SceneContext {
+    fn from(value: ContextLabelModel) -> Self {
+        Self::Label(value)
+    }
 }
 
 impl WheelHeaderModel {

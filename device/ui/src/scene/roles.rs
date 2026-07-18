@@ -72,6 +72,7 @@ pub(crate) const WHEEL_AVATAR_INITIAL: &str = "wheel_avatar_initial";
 pub(crate) const WHEEL_BADGE: &str = "wheel_badge";
 pub(crate) const WHEEL_BADGE_LABEL: &str = "wheel_badge_label";
 pub(crate) const WHEEL_BADGE_LABEL_STUCK: &str = "wheel_badge_label_stuck";
+pub(crate) const CONTEXT_LABEL: &str = "context_label";
 
 pub(crate) const EMPTY_STATE: &str = "empty_state";
 pub(crate) const EMPTY_PLUS: &str = "empty_plus";

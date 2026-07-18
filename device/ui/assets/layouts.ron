@@ -40,6 +40,7 @@
         (role: "wheel_badge", x: 148, y: 6, width: 22, height: 22),
         (role: "wheel_badge_label", x: 0, y: 4, width: 22, height: 14),
         (role: "wheel_badge_label_stuck", x: 0, y: 4, width: 22, height: 14),
+        (role: "context_label", x: 10, y: 26, width: 130, height: 14),
         (role: "empty_state", x: 0, y: 0, width: 240, height: 228),
         (role: "empty_plus", x: 92, y: 74, width: 56, height: 56),
         (role: "empty_plus_icon", x: 0, y: 0, width: 56, height: 56),

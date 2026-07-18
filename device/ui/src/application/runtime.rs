@@ -311,7 +311,9 @@ impl UiRuntime {
             return false;
         };
         let timeline = match self.active_screen {
-            UiScreen::Talk => animation::presets::contact_wheel_roll(item_count, 0, now_ms),
+            UiScreen::Talk | UiScreen::TalkContact => {
+                animation::presets::contact_wheel_roll(item_count, 0, now_ms)
+            }
             UiScreen::Playlists | UiScreen::PlaylistTracks | UiScreen::RecentTracks => {
                 animation::presets::media_wheel_roll(item_count, 0, now_ms)
             }
@@ -397,6 +399,17 @@ impl UiRuntime {
     }
 
     fn wheel_item_ids(&self, screen: UiScreen) -> Option<Vec<String>> {
+        if screen == UiScreen::TalkContact {
+            return Some(
+                super::options::talk_contact_actions(
+                    &self.snapshot,
+                    self.selected_contact.as_ref(),
+                )
+                .into_iter()
+                .map(|action| action.kind.to_string())
+                .collect(),
+            );
+        }
         let items = match screen {
             UiScreen::Playlists => &self.snapshot.music.playlists,
             UiScreen::PlaylistTracks => self
@@ -535,7 +548,9 @@ mod tests {
     use super::*;
     use crate::engine::flatten;
     use crate::scene::roles;
-    use yoyopod_protocol::ui::{ListItemSnapshot, MusicIntent, PlaylistTrackAction};
+    use yoyopod_protocol::ui::{
+        CallIntent, ContactAction, ListItemSnapshot, MusicIntent, PlaylistTrackAction,
+    };
 
     fn contact(id: &str, title: &str) -> ListItemSnapshot {
         let initial = title
@@ -814,6 +829,54 @@ mod tests {
         runtime.advance_animations(1_180);
         assert_eq!(runtime.focus_index, 1);
         assert!(runtime.pending_wheel_roll.is_none());
+    }
+
+    #[test]
+    fn talk_contact_action_wheel_rolls_then_opens_the_record_flow() {
+        let mama = contact("sip:mama@example.test", "Mama");
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![mama.clone()];
+        runtime.selected_contact = Some(mama);
+        runtime.active_screen = UiScreen::TalkContact;
+
+        runtime.handle_input(InputAction::Advance, 1_000);
+        assert_eq!(runtime.focus_index, 0);
+        let pending = runtime
+            .pending_wheel_roll
+            .as_ref()
+            .expect("TalkContact advance should schedule the shared wheel roll");
+        assert_eq!(pending.target_focus, 1);
+        assert_eq!(
+            pending.timeline.id,
+            animation::presets::CONTACT_WHEEL_ROLL_TIMELINE_ID
+        );
+
+        runtime.advance_animations(1_180);
+        assert_eq!(runtime.focus_index, 1);
+        runtime.handle_input(InputAction::Select, 1_200);
+        assert_eq!(runtime.active_screen, UiScreen::VoiceNote);
+        assert!(runtime.take_intents().is_empty());
+    }
+
+    #[test]
+    fn talk_contact_call_action_still_emits_the_selected_contact() {
+        let mama = contact("sip:mama@example.test", "Mama");
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![mama.clone()];
+        runtime.selected_contact = Some(mama);
+        runtime.active_screen = UiScreen::TalkContact;
+
+        runtime.handle_input(InputAction::Select, 100);
+
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Call(CallIntent::Start(ContactAction {
+                id: "sip:mama@example.test".to_string(),
+                name: "Mama".to_string(),
+                sip_address: String::new(),
+                uri: String::new(),
+            }))]
+        );
     }
 
     #[test]

@@ -272,6 +272,7 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::WHEEL_BADGE,
         roles::WHEEL_BADGE_LABEL,
         roles::WHEEL_BADGE_LABEL_STUCK,
+        roles::CONTEXT_LABEL,
         roles::EMPTY_STATE,
         roles::EMPTY_PLUS,
         roles::EMPTY_PLUS_ICON,

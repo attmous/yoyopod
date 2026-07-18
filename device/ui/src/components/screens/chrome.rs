@@ -140,31 +140,16 @@ fn connectivity_kind(value: &str) -> HudConnectivityKind {
 }
 
 fn talk_contact_title(
-    snapshot: &RuntimeSnapshot,
+    _snapshot: &RuntimeSnapshot,
     focus_index: usize,
-    selected_contact: Option<&ListItemSnapshot>,
+    _selected_contact: Option<&ListItemSnapshot>,
 ) -> String {
-    let has_latest_note = talk_contact_has_latest_note(
-        snapshot,
-        selected_contact.or_else(|| snapshot.call.contacts.first()),
-    );
     match focus_index {
         0 => "Call",
-        1 => "Voice Note",
-        2 if has_latest_note => "Play Note",
-        _ if has_latest_note => "Play Note",
-        _ => "Voice Note",
+        1 => "Hold to record",
+        _ => "Replay",
     }
     .to_string()
-}
-
-fn talk_contact_has_latest_note(
-    snapshot: &RuntimeSnapshot,
-    selected_contact: Option<&ListItemSnapshot>,
-) -> bool {
-    selected_contact
-        .and_then(|contact| snapshot.call.latest_voice_note_by_contact.get(&contact.id))
-        .is_some_and(|note| !note.local_file_path.trim().is_empty())
 }
 
 fn voice_note_title(snapshot: &RuntimeSnapshot, focus_index: usize) -> String {
