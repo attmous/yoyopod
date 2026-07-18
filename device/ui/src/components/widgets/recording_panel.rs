@@ -26,7 +26,6 @@ pub fn recording_panel(props: &RecordingPanelProps) -> Element {
         )
         .child(voice_meter(VoiceMeterProps {
             level_permille: props.level_permille.clamp(0, 1000),
-            recording: true,
         }))
         .child(
             label(roles::RECORDING_HINT)
