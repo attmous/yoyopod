@@ -120,6 +120,7 @@ export default defineConfig({
 						{ label: 'Mission & Story', slug: 'company/mission' },
 						{ label: 'Product Principles', slug: 'company/principles' },
 						{ label: 'What yoyopod Is Not', slug: 'company/what-we-are-not' },
+						{ label: 'Brand Kit', slug: 'company/brand-kit' },
 						{ label: 'Roadmap', slug: 'company/roadmap' },
 					],
 				},

@@ -9,8 +9,10 @@ written yet.
 
 This is deliberately a second site. The as-built engineering documentation
 lives in [`website/`](../website/) and remains the source of truth for what
-is actually implemented today. Teal accent = vision site; coral accent =
-as-built site.
+is actually implemented today. This site wears the startup's brand kit —
+"Sunrise & Midnight": marigold amber on midnight indigo and warm paper,
+documented at `/company/brand-kit/`. The as-built site keeps its coral
+device-token theme, so the two are visually unmistakable.
 
 ## Commands
 
