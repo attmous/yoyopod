@@ -5,8 +5,10 @@ description: "Push-to-talk speech under yoyocore: the speech worker, cloud STT/T
 
 *The platform capability behind Ask — hold the button, speak, hear an answer.*
 
-:::caution[Partially filled]
-Sections marked *Placeholder* have no as-built content yet; everything else is condensed from the repository (see Sources at the bottom).
+:::tip[Proposed — the ideal design]
+This page mixes as-built fact (covered by the Sources note) with the target
+design, written out in full so it can be adopted, adapted, or dropped.
+Everything marked *Proposed* is neither implemented nor committed.
 :::
 
 ## Overview
@@ -42,19 +44,67 @@ Today, with a key configured, cloud STT, TTS, and Ask work end-to-end: the docum
 
 The target keeps the same shape — push-to-talk in, spoken answer out — with the validation gap closed and the experience polish tracked on the [Ask page](/apps/ask/).
 
+### Model strategy
+
+*Proposed — the ideal design, not yet adopted.*
+
+Today the engine is OpenAI-backed through a single environment key, and the model names are tunables, not an abstraction — swapping providers means rewriting the worker's cloud path. The proposed target puts a thin provider abstraction inside the engine's cloud path so STT, TTS, and the Ask model can each be chosen independently, per cost and per safety. The gate for any swap is not price alone: every candidate model must first pass a kid-appropriateness test set — a fixed battery of child-voiced questions, boundary probes, and tone checks (contents TBD) — before it can serve a single family. The abstraction is deliberately boring: same `voice.*` wire contract, same one-in-flight discipline, different HTTP shapes behind it. The device never learns which provider answered; that decision lives in configuration, where [yoyocloud](/builders/software/cloud/) can steer it.
+
 ### Wake word and hands-free interaction
 
-*Placeholder — no as-built content yet.*
+*Proposed — the ideal design, not yet adopted.*
 
-- Nothing wake-word-like or always-listening exists in the repository, and nothing of the sort is promised.
-- Any future exploration would have to be tested against [what we are not](/company/what-we-are-not/) first — see Open questions.
+The proposed decision is explicit, and it closes this placeholder permanently: **no always-listening, ever.** No wake word, no hands-free capture, no "hey yoyopod" — not as a roadmap item, not as an experiment, not in any version. Push-to-talk is not a stopgap awaiting a better microphone strategy; it is the design. The [held button](/families/using-the-button/) is the only key that opens the microphone, and the [privacy promise](/families/privacy/) to families depends on that sentence staying true without asterisks. The recommendation is to record this as a permanent commitment in [principles](/company/principles/) rather than leaving it an open slot that every future planning meeting has to re-litigate.
+
+### The Help Agent registry
+
+*Proposed — the ideal design, not yet adopted.*
+
+The Ask root screen becomes the **Ask wheel**: a wheel of **Help Agents**. The default entry is the yoyopod companion voice; parents add specialists. The kid spins the wheel, picks a helper, holds the button, and asks — curiosity-driven answers, spoken back. This section is the engine-side home of that idea; the family-facing story lives on the [Ask page](/apps/ask/) and in the [yoyopod app](/apps/parent-app/).
+
+The engine-side insight is that a Help Agent is not code — it is configuration. An agent profile holds exactly the four parent choices: a name, a **topic area** (math, science, animals, reading, …), a **tone** (playful, patient, matter-of-fact), and **boundaries** (what is off-limits). Every helper speaks with the same disclosed AI-generated voice underneath — a per-agent voice is deliberately not part of the profile. Parents author profiles in the yoyopod app; yoyocloud stores them as part of the family's configuration and syncs them to the device the same way every other piece of configuration arrives. The Voice & Ask Engine does not grow a new pipeline: each profile becomes system context layered over the same STT → model → TTS path the engine already runs. On the wire, the selected agent's profile id rides in the `voice.ask` payload exactly like the per-request parameters that already ride there — no new commands, no new worker.
+
+Where the profile turns into model context is a real choice:
+
+| Option | What it means | Trade-off |
+| --- | --- | --- |
+| On the device, in yoyocore | Profiles sync down; the device assembles the prompt | Prompt logic ships in firmware; every safety fix is a device update |
+| **In yoyocloud, at request time** | The device sends audio + profile id; yoyocloud assembles context and enforces policy | Policy and prompts evolve server-side; the device stays the pure translator it already is |
+| In the yoyopod app, at authoring time | The full prompt is baked into the profile when the parent saves it | Brittle — behavior pins to whatever app version the parent last opened |
+
+**Recommendation: in yoyocloud, at request time** — it keeps the device a thin translator (which it already is, as-built) and lets safety and prompt improvements reach every family without a firmware release.
+
+The wheel itself is a contract with the [UI Engine](/builders/software/ui/): agents appear as wheel entries on the canvas, and every focus change speaks the label aloud — voice carries pre-readers, so a five-year-old who cannot read "Animals" hears it. When the device is offline, the Ask wheel degrades gracefully to its offline state, exactly as the Ask screen does today; the wheel never pretends a helper is available when the cloud is not.
+
+One positioning guard, stated here because engineers write marketing copy by accident: Help Agents feed curiosity. They do not make yoyopod an educational device or "AI for kids," and the refusal list at [what we are not](/company/what-we-are-not/) stands unamended.
+
+### The safety layer
+
+*Proposed — the ideal design, not yet adopted.*
+
+The safety design rests on one principle: a prompt is a suggestion; a policy check is a gate. Every safety property below is enforced in [yoyocloud](/builders/software/cloud/), not merely written into an agent's system context.
+
+**Content policy in yoyocloud.** Every Ask request and every generated answer passes a server-side, age-appropriate content policy check — regardless of which Help Agent is selected and regardless of what its prompt says. An agent's parent-set boundaries ("no scary stuff", "skip anything about weight") are compiled into that same server-side policy, so a clever question cannot talk its way past them. If a model swap ever weakens prompt adherence, the gate still holds; that is the whole point of not trusting the prompt alone.
+
+**Transcripts, parent-controlled.** Parents can review what was asked and answered in the yoyopod app — oversight is part of the [parental controls](/families/parental-controls/) story, not a surveillance afterthought. Retention is a genuine choice:
+
+| Option | What it means | Trade-off |
+| --- | --- | --- |
+| No transcripts stored | Audio and text discarded after the answer | Maximum privacy; parents fly blind on what their child is being told |
+| **30 days, parent-controlled** | Default 30-day retention; parents can shorten it or turn it off | Real oversight without yoyocloud becoming a childhood archive |
+| Indefinite until deleted | Everything kept until a parent acts | An ever-growing record of a child's questions is a liability, not a feature |
+
+**Recommendation: 30 days, parent-controlled** — long enough for a parent to notice a pattern, short enough that the record expires by default.
+
+**The standing invariants.** These are design commitments, not tunables: push-to-talk only, never always-listening (the [decision above](#wake-word-and-hands-free-interaction), aligned with the [privacy promise](/families/privacy/)); the AI-generated voice is always disclosed to families — during [setup](/apps/setup/) and in the yoyopod app, not only in builder docs; Help Agents never initiate contact — the device speaks only after the child holds the button; and there are no ads, ever, in any Ask answer or anywhere near one. Enforcement mechanics — key handling, transport, and the policy service boundary — belong with the rest of the [security posture](/builders/software/security/).
 
 ## Open questions
 
-- Always-listening capture likely conflicts with the privacy promise outright — does the wake-word placeholder above deserve a permanent "no", recorded in [principles](/company/principles/), rather than an open slot?
-- Where should the AI-generated-voice disclosure surface for families — setup, the yoyopod app, the device itself — beyond the builder docs stating the obligation?
-- Automated on-device voice validation is paused (Round-2 follow-up): what guards against cloud-voice regressions until it resumes?
-- The naming split — crate says *speech*, wire says `voice.*` — is documented as a trap; should it eventually be unified, or declared permanent?
+- **Adopt or drop the Ask wheel and Help Agent registry** as the Ask root screen — the single largest product decision on this page, and it commits the yoyopod app, yoyocloud, and the UI Engine simultaneously.
+- **Adopt the permanent "no always-listening, ever" commitment** and record it in [principles](/company/principles/), closing the wake-word placeholder for good — or keep it an open slot.
+- **Adopt the 30-day parent-controlled transcript default**, or choose one of the other retention stances before any transcript is ever stored.
+- **Adopt provider abstraction plus the kid-appropriateness test set** as the precondition for any model change — or accept single-provider dependence as a deliberate simplification.
+- **Unify or declare permanent the speech/`voice.*` naming split** — either rename the crate to match the wire, or write the trap into the docs as canon and stop revisiting it.
 
 :::note[Sources]
 Condensed from [`docs/features/CLOUD_VOICE_WORKER.md`](https://github.com/attmous/yoyopod/blob/main/docs/features/CLOUD_VOICE_WORKER.md) and the as-built docs site (website/ in the repository): the speech worker profile, the cloud voice worker runbook, and the screens and navigation page.

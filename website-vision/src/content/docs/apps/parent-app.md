@@ -15,6 +15,7 @@ Sections marked *Placeholder* have no as-built content yet; everything else is c
 
 - **The yoyopod app**: one phone app for everything — contacts, content, controls, and reassurance
 - Ships on **iOS + Android**; talks only to [yoyocloud](/builders/software/cloud/), never directly to the device
+- Summon and configure **Help Agents** for the [Ask wheel](/apps/ask/) — topic area, tone, boundaries, name
 - The buyer-facing half of yoyopod: parents manage, kids simply use the device
 - A companion, not a mirror — it manages the device rather than duplicating it
 - The experience it must nail: [a parent's first week](/stories/first-week-parent/)

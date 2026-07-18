@@ -40,7 +40,7 @@ which include full deep-dive guides for the UI system and the runtime.
 
 <CardGrid>
 	<LinkCard title="Architecture at a Glance" href="/builders/software/architecture/" description="Two sides and a backbone: yoyoOS + yoyocore on the device, yoyocloud, the yoyopod app." />
-	<LinkCard title="Device Runtime & Workers" href="/builders/software/runtime/" description="The supervisor and its worker processes." />
+	<LinkCard title="The yoyocore Runtime" href="/builders/software/runtime/" description="The supervisor that runs every engine as a separate process." />
 	<LinkCard title="UI Engine" href="/builders/software/ui/" description="How shapes and motion reach the canvas." />
 	<LinkCard title="Media Engine" href="/builders/software/media-engine/" description="Local-first playback: the media worker, mpv, and the playback contract." />
 	<LinkCard title="Calling Engine" href="/builders/software/calling-engine/" description="Whitelist calling: the voip worker and liblinphone." />
@@ -61,8 +61,9 @@ which include full deep-dive guides for the UI system and the runtime.
 
 :::note[Section status]
 The best-covered section: eleven pages are fully condensed from the
-as-built docs, five are *Partial* (connectivity, hardware roadmap, calling
-engine, voice & ask engine, cloud), and three are *Placeholder* (app
-platform, security model, APIs & SDKs). See
+as-built docs, two are *Partial* (connectivity, hardware roadmap), five
+are *Proposed* — the ideal designs of the calling, voice & ask, cloud,
+app-platform, and security pages, written in full for adopt/adapt/drop
+decisions — and one is *Placeholder* (APIs & SDKs). See
 [About This Site](/start/about-this-site/) for the legend.
 :::

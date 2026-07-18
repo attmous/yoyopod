@@ -1,15 +1,19 @@
 ---
-title: Device Runtime & Workers
-description: The supervisor and its worker processes.
+title: The yoyocore Runtime
+description: The supervisor that runs every engine as a separate process.
 ---
 
-*The Rust runtime that supervises every on-device capability as a worker process.*
+*The Rust runtime that supervises every on-device capability.*
 
 ## Overview
 
 This is **yoyocore** — the Rust device application that runs on top of
 yoyoOS (the Linux image) and handles everything (naming canon:
-[Architecture at a Glance](/builders/software/architecture/)). Behind the
+[Architecture at a Glance](/builders/software/architecture/)). One naming
+rule keeps this section straight: **"engine" names the capability,
+"worker" names its process** — every engine runs as a worker process
+supervised by the runtime, and this page says "worker" only when talking
+about process mechanics. Behind the
 canvas it is one supervisor process — `yoyopod-runtime` — and up to seven
 child processes, talking newline-framed JSON over stdio pipes. No sockets, no bus daemons: the process tree is the architecture.
 Workers report; the runtime aggregates the one true state ledger; the UI

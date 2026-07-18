@@ -3,9 +3,12 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 // Content-status badges: `ph` = no as-built content exists yet;
-// `pt` = some sections carry real content, the rest is placeholder.
+// `pt` = some sections carry real content, the rest is placeholder;
+// `pr` = the ideal target design is written out in full, awaiting
+// adopt/adapt/drop decisions — not implemented.
 const ph = { text: 'Placeholder', variant: 'caution' };
 const pt = { text: 'Partial', variant: 'note' };
+const pr = { text: 'Proposed', variant: 'success' };
 
 // https://astro.build/config
 export default defineConfig({
@@ -75,7 +78,7 @@ export default defineConfig({
 						{ label: 'Apps Index', slug: 'apps' },
 						{ label: 'Listen: Music & Stories', slug: 'apps/listen', badge: pt },
 						{ label: 'Talk: Calls & Voice Notes', slug: 'apps/talk', badge: pt },
-						{ label: 'Ask: The Voice Companion', slug: 'apps/ask', badge: pt },
+						{ label: 'Ask: The Voice Companion', slug: 'apps/ask', badge: pr },
 						{ label: 'Locate: Location & Check-Ins', slug: 'apps/locate', badge: ph },
 						{ label: 'The Parent App', slug: 'apps/parent-app', badge: pt },
 						{ label: 'Setup: On-Device Onboarding', slug: 'apps/setup', badge: pt },
@@ -101,14 +104,14 @@ export default defineConfig({
 							label: 'Software Platform',
 							items: [
 								{ label: 'Architecture at a Glance', slug: 'builders/software/architecture' },
-								{ label: 'Device Runtime & Workers', slug: 'builders/software/runtime' },
+								{ label: 'The yoyocore Runtime', slug: 'builders/software/runtime' },
 								{ label: 'UI Engine', slug: 'builders/software/ui' },
 								{ label: 'Media Engine', slug: 'builders/software/media-engine' },
-								{ label: 'Calling Engine', slug: 'builders/software/calling-engine', badge: pt },
-								{ label: 'Voice & Ask Engine', slug: 'builders/software/voice-ask', badge: pt },
-								{ label: 'Cloud & Provisioning', slug: 'builders/software/cloud', badge: pt },
-								{ label: 'App Platform', slug: 'builders/software/apps', badge: ph },
-								{ label: 'Security Model', slug: 'builders/software/security', badge: ph },
+								{ label: 'Calling Engine', slug: 'builders/software/calling-engine', badge: pr },
+								{ label: 'Voice & Ask Engine', slug: 'builders/software/voice-ask', badge: pr },
+								{ label: 'Cloud & Provisioning', slug: 'builders/software/cloud', badge: pr },
+								{ label: 'App Platform', slug: 'builders/software/apps', badge: pr },
+								{ label: 'Security Model', slug: 'builders/software/security', badge: pr },
 							],
 						},
 						{

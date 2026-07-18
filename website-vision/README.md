@@ -50,5 +50,9 @@ the repository has it. Three states, mirrored by sidebar badges in
   "*Placeholder — no as-built content yet.*" markers.
 - **Placeholder** (`Placeholder` badge) — `:::caution[Placeholder]` aside;
   the outline is the target structure. The badge map is the gap list.
+- **Proposed** (`Proposed` badge) — `:::tip[Proposed — the ideal design]`
+  aside; the full target design written for an adopt/adapt/drop decision,
+  with inline "*Proposed — the ideal design, not yet adopted.*" markers on
+  hybrid pages. Not implemented.
 
 The H2 skeleton must survive every state transition.
