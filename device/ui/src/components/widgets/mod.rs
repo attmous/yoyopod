@@ -1,4 +1,4 @@
-pub mod call_panel;
+pub mod call_overlay;
 pub mod card;
 pub mod chip;
 pub mod context_label;
@@ -15,7 +15,7 @@ pub mod voice_meter;
 pub mod wheel_header;
 pub mod wheel_item;
 
-pub use call_panel::{call_panel, CallPanelProps};
+pub use call_overlay::call_overlay;
 pub use card::card;
 pub use chip::{chip, ChipProps};
 pub use context_label::context_label;

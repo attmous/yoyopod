@@ -1,8 +1,8 @@
 use crate::animation::{presets, ActorRef, Timeline, TimelineRef, TrackIndex};
 use crate::components::widgets::{
-    call_panel as call_panel_widget, card as card_widget, empty_state as empty_state_widget,
+    call_overlay as call_overlay_widget, card as card_widget, empty_state as empty_state_widget,
     list_row as list_row_widget, player_hero as player_hero_widget,
-    recording_panel as recording_panel_widget, wheel_item as wheel_item_widget, CallPanelProps,
+    recording_panel as recording_panel_widget, wheel_item as wheel_item_widget,
     RecordingPanelProps, WheelItemSlot,
 };
 use crate::engine::{AnimSlot, Element, Key};
@@ -55,7 +55,7 @@ pub enum ItemRender {
     Page(PageModel),
     PlayerHero(PlayerHeroModel),
     Button(ButtonModel),
-    CallPanel(CallPanelModel),
+    CallOverlay(CallOverlayModel),
     EmptyState(EmptyStateModel),
     RecordingPanel(RecordingPanelModel),
 }
@@ -152,10 +152,22 @@ pub struct ButtonModel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CallPanelModel {
-    pub title: String,
+pub struct CallOverlayModel {
+    pub kind: CallOverlayKind,
     pub state: String,
+    pub name: String,
+    pub initial: String,
+    pub avatar_rgb: u32,
+    pub duration: String,
     pub muted: bool,
+    pub focus_index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallOverlayKind {
+    Incoming,
+    Outgoing,
+    Active,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -379,12 +391,7 @@ fn deck_item_element(
             .child(Element::new(ElementKind::Label, Some(roles::PAGE_TITLE)).text(&page.title))
             .child(Element::new(ElementKind::Label, Some(roles::PAGE_BODY)).text(&page.body)),
         ItemRender::PlayerHero(model) => player_hero_widget(model).key(item.key.clone()),
-        ItemRender::CallPanel(call) => call_panel_widget(&CallPanelProps {
-            title: call.title.clone(),
-            state: call.state.clone(),
-            muted: call.muted,
-        })
-        .key(item.key.clone()),
+        ItemRender::CallOverlay(call) => call_overlay_widget(call).key(item.key.clone()),
         ItemRender::EmptyState(model) => empty_state_widget(model).key(item.key.clone()),
         ItemRender::RecordingPanel(model) => recording_panel_widget(&RecordingPanelProps {
             context: model.context.clone(),

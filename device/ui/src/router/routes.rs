@@ -289,10 +289,16 @@ const REPLAY_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
 const VOICE_NOTE_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
     kind: DynamicActionKind::VoiceNote,
 }];
-const INCOMING_SELECT: &[SelectionTarget] =
-    &[SelectionTarget::EmitIntent(IntentTemplate::CallAnswer)];
-const IN_CALL_SELECT: &[SelectionTarget] =
-    &[SelectionTarget::EmitIntent(IntentTemplate::CallToggleMute)];
+const INCOMING_SELECT: &[SelectionTarget] = &[
+    SelectionTarget::EmitIntent(IntentTemplate::CallAnswer),
+    SelectionTarget::EmitIntent(IntentTemplate::CallReject),
+];
+const OUTGOING_SELECT: &[SelectionTarget] =
+    &[SelectionTarget::EmitIntent(IntentTemplate::CallHangup)];
+const IN_CALL_SELECT: &[SelectionTarget] = &[
+    SelectionTarget::EmitIntent(IntentTemplate::CallToggleMute),
+    SelectionTarget::EmitIntent(IntentTemplate::CallHangup),
+];
 const POWER_SELECT: &[SelectionTarget] = &[SelectionTarget::AdvanceFocus];
 const NO_SELECT: &[SelectionTarget] = &[SelectionTarget::Noop];
 
@@ -356,9 +362,10 @@ const fn select_targets(screen: UiScreen) -> &'static [SelectionTarget] {
         UiScreen::Replay => REPLAY_SELECT,
         UiScreen::CallHistory => CALL_HISTORY_SELECT,
         UiScreen::IncomingCall => INCOMING_SELECT,
+        UiScreen::OutgoingCall => OUTGOING_SELECT,
         UiScreen::InCall => IN_CALL_SELECT,
         UiScreen::Power => POWER_SELECT,
-        UiScreen::OutgoingCall | UiScreen::Loading | UiScreen::Error => NO_SELECT,
+        UiScreen::Loading | UiScreen::Error => NO_SELECT,
     }
 }
 
@@ -430,18 +437,17 @@ const fn focus_policy(screen: UiScreen) -> FocusPolicy {
         | UiScreen::TalkContact
         | UiScreen::Replay
         | UiScreen::VoiceNote
+        | UiScreen::IncomingCall
+        | UiScreen::InCall
         | UiScreen::Power => FocusPolicy::Wrap,
         UiScreen::Contacts | UiScreen::CallHistory => FocusPolicy::Clamp,
         UiScreen::Playlists
         | UiScreen::PlaylistTracks
         | UiScreen::RecentTracks
         | UiScreen::NowPlaying => FocusPolicy::Wrap,
-        UiScreen::Ask
-        | UiScreen::IncomingCall
-        | UiScreen::OutgoingCall
-        | UiScreen::InCall
-        | UiScreen::Loading
-        | UiScreen::Error => FocusPolicy::None,
+        UiScreen::Ask | UiScreen::OutgoingCall | UiScreen::Loading | UiScreen::Error => {
+            FocusPolicy::None
+        }
     }
 }
 

@@ -57,10 +57,20 @@ pub(crate) const RECORDING_TIMER_DOT: &str = "recording_timer_dot";
 pub(crate) const RECORDING_TIMER: &str = "recording_timer";
 pub(crate) const RECORDING_HINT: &str = "recording_hint";
 
-pub(crate) const CALL_MUTE_LABEL: &str = "call_mute_label";
-pub(crate) const CALL_PANEL: &str = "call_panel";
-pub(crate) const CALL_STATE_LABEL: &str = "call_state_label";
-pub(crate) const CALL_TITLE: &str = "call_title";
+pub(crate) const CALL_OVERLAY: &str = "call_overlay";
+pub(crate) const CALL_STATE: &str = "call_state";
+pub(crate) const CALL_AVATAR: &str = "call_avatar";
+pub(crate) const CALL_AVATAR_INITIAL: &str = "call_avatar_initial";
+pub(crate) const CALL_AVATAR_SM: &str = "call_avatar_sm";
+pub(crate) const CALL_AVATAR_INITIAL_SM: &str = "call_avatar_initial_sm";
+pub(crate) const CALL_NAME: &str = "call_name";
+pub(crate) const CALL_NAME_SM: &str = "call_name_sm";
+pub(crate) const CALL_DURATION: &str = "call_duration";
+pub(crate) const CALL_ANSWER: &str = "call_answer";
+pub(crate) const CALL_MUTE: &str = "call_mute";
+pub(crate) const CALL_HANGUP: &str = "call_hangup";
+pub(crate) const CALL_HANGUP_CENTER: &str = "call_hangup_center";
+pub(crate) const CALL_BUTTON_ICON: &str = "call_button_icon";
 
 pub(crate) const LIST_ROW: &str = "list_row";
 pub(crate) const LIST_ROW_ICON: &str = "list_row_icon";

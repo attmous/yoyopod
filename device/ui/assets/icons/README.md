@@ -5,9 +5,9 @@ alpha-only (`A8`) icon masks. LVGL does not parse these files on the device.
 Instead, the Rust icon generator rasterizes each SVG at its final pixel size
 and writes the antialiased alpha bytes into the generated Rust module.
 
-Listen wheel icons use a `56 x 56` view box and a shared rounded-line visual
-language. Keep the artwork monochrome: runtime colour comes from LVGL image
-recolouring.
+Wheel icons use a `56 x 56` view box and compact controls use `24 x 24`.
+Both use the same rounded-line visual language across Listen and Talk. Keep
+the artwork monochrome: runtime colour comes from LVGL image recolouring.
 
 Regenerate the masks and a local review strip with:
 

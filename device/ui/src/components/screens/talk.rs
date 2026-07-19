@@ -7,7 +7,7 @@ use crate::scene::{
     WheelItemVariant,
 };
 
-const TALK_STAGE_PERI: u32 = 0xE7E5F7;
+pub(crate) const TALK_STAGE_PERI: u32 = 0xE7E5F7;
 const CONTACT_COLORS: [u32; 4] = [0xE8A93C, 0x9DFC7C, 0xF37767, 0xA9A6E5];
 
 pub struct TalkProps {
@@ -85,12 +85,16 @@ fn contact_items(snapshot: &RuntimeSnapshot) -> Vec<DeckItem> {
                 subtitle: String::new(),
                 variant: WheelItemVariant::Contact {
                     initial: contact_initial(contact),
-                    avatar_rgb: CONTACT_COLORS[index % CONTACT_COLORS.len()],
+                    avatar_rgb: contact_color(index),
                     badge: contact_badge(snapshot, contact),
                 },
             }),
         })
         .collect()
+}
+
+pub(crate) fn contact_color(index: usize) -> u32 {
+    CONTACT_COLORS[index % CONTACT_COLORS.len()]
 }
 
 pub(crate) fn contact_initial(contact: &ListItemSnapshot) -> String {

@@ -54,21 +54,28 @@ pub(crate) fn apply_accent_raw(obj: NonNull<ffi::lv_obj_t>, role: &'static str, 
                 ffi::lv_obj_set_style_image_recolor(obj.as_ptr(), accent, SELECTOR);
                 ffi::lv_obj_set_style_image_recolor_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
             }
-            roles::FX_HALO | roles::FX_PULSE | roles::FX_GLOW | roles::FX_SPINNER => {
+            roles::FX_HALO | roles::FX_GLOW | roles::FX_SPINNER => {
                 ffi::lv_obj_set_style_bg_color(
                     obj.as_ptr(),
                     ffi::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 70)),
                     SELECTOR,
                 );
             }
-            roles::CALL_PANEL => {
+            roles::FX_PULSE => {
+                ffi::lv_obj_set_style_bg_opa(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_border_color(obj.as_ptr(), accent, SELECTOR);
+            }
+            roles::CALL_AVATAR
+            | roles::CALL_AVATAR_SM
+            | roles::CALL_ANSWER
+            | roles::CALL_MUTE
+            | roles::CALL_HANGUP
+            | roles::CALL_HANGUP_CENTER => {
                 ffi::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
                 ffi::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
-                ffi::lv_obj_set_style_shadow_color(obj.as_ptr(), accent, SELECTOR);
             }
             roles::LIST_ROW_ICON
             | roles::HERO_AVATAR_INITIAL
-            | roles::CALL_STATE_LABEL
             | roles::STATUS_TIME
             | roles::STATUS_BATTERY_LABEL => {
                 ffi::lv_obj_set_style_text_color(obj.as_ptr(), accent, SELECTOR);
@@ -79,6 +86,10 @@ pub(crate) fn apply_accent_raw(obj: NonNull<ffi::lv_obj_t>, role: &'static str, 
             | roles::STATUS_CHARGE_ICON
             | roles::STATUS_BATTERY_ICON => {
                 ffi::lv_obj_set_style_text_color(obj.as_ptr(), accent, SELECTOR);
+                ffi::lv_obj_set_style_image_recolor(obj.as_ptr(), accent, SELECTOR);
+                ffi::lv_obj_set_style_image_recolor_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+            }
+            roles::CALL_BUTTON_ICON => {
                 ffi::lv_obj_set_style_image_recolor(obj.as_ptr(), accent, SELECTOR);
                 ffi::lv_obj_set_style_image_recolor_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
             }
