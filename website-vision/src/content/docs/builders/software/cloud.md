@@ -69,7 +69,7 @@ state, so resale and sibling hand-me-downs are ordinary flows.
 lives in yoyocloud as the single source of truth; parents edit it in the
 yoyopod app, and yoyocloud syncs a copy down to the device so calls keep
 working when the line home is down. The [Calling
-Engine](/builders/software/calling-engine/) consumes the synced copy and
+Engine](/builders/software/voip-engine/) consumes the synced copy and
 never accepts a contact that yoyocloud has not blessed.
 
 **Help Agent profile storage.** Help Agents are created in the yoyopod
@@ -159,7 +159,7 @@ ours to define and ours to keep small.
 
 - **Build-vs-adopt:** adopt option (a) — a thin custom API over a proven MQTT broker and Postgres — or trade contract ownership for a platform's faster start?
 - **App-facing API:** confirm REST + JSON plus push as the yoyopod app's surface (MQTT stays device-side), consistent with the [App Platform](/builders/software/apps/) recommendation, or drop it for a streaming design?
-- **Whitelist authority:** adopt yoyocloud as the single source of truth for approved contacts, with the device holding only a synced copy the [Calling Engine](/builders/software/calling-engine/) consumes?
+- **Whitelist authority:** adopt yoyocloud as the single source of truth for approved contacts, with the device holding only a synced copy the [VoIP Engine](/builders/software/voip-engine/) consumes?
 - **Help Agent data policy:** adopt the 30-day parent-controlled transcript retention default and the rule that content policy is enforced in yoyocloud, not only in the prompt?
 - **Claim/unclaim model:** adopt factory secrets plus a parent claim code as the pairing story, with unclaiming as a first-class flow covering resale and sibling hand-me-downs?
 

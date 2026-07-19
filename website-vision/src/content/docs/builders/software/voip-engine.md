@@ -1,5 +1,5 @@
 ---
-title: Calling Engine
+title: VoIP Engine
 description: "Whitelist calling under yoyocore: the voip worker, liblinphone, and the switchboard contract."
 ---
 
@@ -13,7 +13,7 @@ Everything marked *Proposed* is neither implemented nor committed.
 
 ## Overview
 
-Whitelist calls and voice messages are pillar one of V1 “Daylight”: approved contacts only, because reliable reachability is one of the two trust anchors the whole product rests on. The Calling Engine is where that pillar becomes software. Inside yoyocore it takes the form of the voip worker — the as-built docs call it "the switchboard" — which owns the entire communication surface: SIP registration, call control, text and voice-note messaging, and call history. The family-facing experience it powers is described at [Talk](/apps/talk/); how the worker sits among its peers is described in the [architecture overview](/builders/software/architecture/).
+Whitelist calls and voice messages are pillar one of V1 “Daylight”: approved contacts only, because reliable reachability is one of the two trust anchors the whole product rests on. The VoIP Engine is where that pillar becomes software. Inside yoyocore it takes the form of the voip worker — the as-built docs call it "the switchboard" — which owns the entire communication surface: SIP registration, call control, text and voice-note messaging, and call history. The family-facing experience it powers is described at [Talk](/apps/talk/); how the worker sits among its peers is described in the [architecture overview](/builders/software/architecture/).
 
 ## Key components
 
@@ -41,7 +41,7 @@ The recommendation is cloud-authoritative with a device cache: it gives parents 
 
 **Enforced at two layers.** A single enforcement point is a single bug away from a stranger's call ringing on a child's device, so the ideal design enforces the list twice, independently:
 
-1. **The dialing layer.** The Calling Engine refuses to place an outbound call to any identity not on the mirrored list, and rejects inbound calls from non-whitelist identities before the device ever rings — no missed-call trace, no notification, nothing for the child to see. This check lives in the voip worker's call path itself, not in whatever UI happens to sit above it.
+1. **The dialing layer.** The VoIP Engine refuses to place an outbound call to any identity not on the mirrored list, and rejects inbound calls from non-whitelist identities before the device ever rings — no missed-call trace, no notification, nothing for the child to see. This check lives in the voip worker's call path itself, not in whatever UI happens to sit above it.
 2. **The contact-first UI.** The canvas has no dial pad and no address field. [Talk](/apps/talk/) renders whitelisted contacts and only whitelisted contacts — calling a stranger is not merely blocked, it is unexpressible in the interface. The UI layer never even learns that non-whitelist identities exist.
 
 If the SIP infrastructure ends up self-hosted (see [Today vs. target](#today-vs-target) below), the SIP server in yoyocloud becomes a natural third enforcement point: the server declines to route calls outside a family's whitelist, which makes the promise hold even against a hypothetically compromised device.

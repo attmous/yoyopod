@@ -31,7 +31,7 @@ gets 3 seconds; a late one is marked `Degraded` and boot continues.
 | --- | --- |
 | UI host (`device/ui/`) | rendering and button-facing behavior — see [UI Engine](/builders/software/ui/) |
 | media | local music playback via mpv — see [Media Engine](/builders/software/media-engine/) |
-| voip | liblinphone: calls, messages, voice notes — see [Calling Engine](/builders/software/calling-engine/) |
+| voip | liblinphone: calls, messages, voice notes — see [VoIP Engine](/builders/software/voip-engine/) |
 | network | cellular modem (SIM7600), PPP, GPS |
 | cloud | MQTT to the backend — see [Cloud & Provisioning](/builders/software/cloud/) |
 | power | PiSugar battery, RTC, watchdog |

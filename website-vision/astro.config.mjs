@@ -107,7 +107,7 @@ export default defineConfig({
 								{ label: 'The yoyocore Runtime', slug: 'builders/software/runtime' },
 								{ label: 'UI Engine', slug: 'builders/software/ui' },
 								{ label: 'Media Engine', slug: 'builders/software/media-engine' },
-								{ label: 'Calling Engine', slug: 'builders/software/calling-engine', badge: pr },
+								{ label: 'VoIP Engine', slug: 'builders/software/voip-engine', badge: pr },
 								{ label: 'Voice & Ask Engine', slug: 'builders/software/voice-ask', badge: pr },
 								{ label: 'Cloud & Provisioning', slug: 'builders/software/cloud', badge: pr },
 								{ label: 'App Platform', slug: 'builders/software/apps', badge: pr },
