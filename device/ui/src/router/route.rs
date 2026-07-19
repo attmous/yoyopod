@@ -49,6 +49,7 @@ pub enum ListKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DynamicActionKind {
     TalkContact,
+    Replay,
     VoiceNote,
 }
 

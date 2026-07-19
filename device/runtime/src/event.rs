@@ -546,7 +546,10 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
                 vec![worker_command(
                     WorkerDomain::Voip,
                     "voip.play_voice_note",
-                    json!({ "file_path": file_path }),
+                    json!({
+                        "file_path": file_path,
+                        "duration_ms": action.as_ref().map(|value| value.duration_ms).unwrap_or_default(),
+                    }),
                 )]
             })
             .unwrap_or_default(),
@@ -557,7 +560,10 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             let mut commands = vec![worker_command(
                 WorkerDomain::Voip,
                 "voip.play_voice_note",
-                json!({ "file_path": file_path }),
+                json!({
+                    "file_path": file_path,
+                    "duration_ms": action.duration_ms.max(0),
+                }),
             )];
             if let Some(uri) = voice_file_uri(action) {
                 commands.push(worker_command(
@@ -568,11 +574,30 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             }
             commands
         }
+        VoiceIntent::PausePlayback => vec![worker_command(
+            WorkerDomain::Voip,
+            "voip.pause_voice_note_playback",
+            empty_payload(),
+        )],
+        VoiceIntent::ResumePlayback => vec![worker_command(
+            WorkerDomain::Voip,
+            "voip.resume_voice_note_playback",
+            empty_payload(),
+        )],
         VoiceIntent::StopPlayback => vec![worker_command(
             WorkerDomain::Voip,
             "voip.stop_voice_note_playback",
             empty_payload(),
         )],
+        VoiceIntent::Delete(action) => non_empty_string(&action.message_id)
+            .map(|message_id| {
+                vec![worker_command(
+                    WorkerDomain::Voip,
+                    "voip.delete_voice_note",
+                    json!({ "message_id": message_id }),
+                )]
+            })
+            .unwrap_or_default(),
         VoiceIntent::MarkSeen(action) => contact_uri(action)
             .map(|uri| {
                 vec![worker_command(

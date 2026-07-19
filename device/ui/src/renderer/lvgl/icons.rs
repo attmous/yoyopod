@@ -167,6 +167,7 @@ static PLAY_SM: LvImageDsc = LvImageDsc::a8_24(&PLAY_SM_MAP);
 static PAUSE_SM: LvImageDsc = LvImageDsc::a8_24(&PAUSE_SM_MAP);
 static PREV_SM: LvImageDsc = LvImageDsc::a8_24(&PREV_SM_MAP);
 static NEXT_SM: LvImageDsc = LvImageDsc::a8_24(&NEXT_SM_MAP);
+static TRASH_SM: LvImageDsc = LvImageDsc::a8_24(&TRASH_SM_MAP);
 static CLOSE_SM: LvImageDsc = LvImageDsc::a8_24(&CLOSE_SM_MAP);
 static CHECK_SM: LvImageDsc = LvImageDsc::a8_24(&CHECK_SM_MAP);
 
@@ -1039,6 +1040,7 @@ pub(crate) fn descriptor_for_key(icon_key: &str) -> Option<&'static LvImageDsc> 
         "pause_sm" => Some(&PAUSE_SM),
         "prev_sm" => Some(&PREV_SM),
         "next_sm" => Some(&NEXT_SM),
+        "trash_sm" => Some(&TRASH_SM),
         "close_sm" | "close" => Some(&CLOSE_SM),
         "check" => Some(&CHECK_SM),
         "music_note" => Some(&MUSIC_NOTE),
@@ -1125,7 +1127,7 @@ mod tests {
         ),
     ];
 
-    const TRANSPORT_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 4] = [
+    const TRANSPORT_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 5] = [
         (
             "play_sm",
             &PLAY_SM_MAP,
@@ -1149,6 +1151,12 @@ mod tests {
             &NEXT_SM_MAP,
             include_bytes!("../../../assets/icons/listen/next_sm.svg"),
             NEXT_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "trash_sm",
+            &TRASH_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/trash_sm.svg"),
+            TRASH_SM_SOURCE_FNV1A64,
         ),
     ];
 

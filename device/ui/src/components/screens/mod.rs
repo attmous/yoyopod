@@ -16,6 +16,7 @@ pub mod playlist_tracks;
 pub mod playlists;
 pub mod power;
 pub mod recent_tracks;
+pub mod replay;
 pub mod talk;
 pub mod talk_contact;
 pub mod voice_note;
@@ -30,6 +31,7 @@ pub fn scene_for_screen(
     focus: usize,
     selected_playlist: Option<&ListItemSnapshot>,
     selected_contact: Option<&ListItemSnapshot>,
+    replay_index: usize,
     defaults: SceneDefaults,
 ) -> Scene {
     let scene = match screen {
@@ -64,6 +66,13 @@ pub fn scene_for_screen(
             snapshot,
             focus,
             selected_contact,
+            defaults.clone(),
+        )),
+        UiScreen::Replay => replay::scene(&replay::props_from(
+            snapshot,
+            focus,
+            selected_contact,
+            replay_index,
             defaults.clone(),
         )),
         UiScreen::VoiceNote => {

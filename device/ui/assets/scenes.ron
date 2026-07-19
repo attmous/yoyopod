@@ -11,6 +11,7 @@
         (screen: "contacts", backdrop: "solid", stage: "list_with_chrome", fx: [], timelines: ["stagger_enter"]),
         (screen: "call_history", backdrop: "solid", stage: "list_with_chrome", fx: [], timelines: ["stagger_enter"]),
         (screen: "talk_contact", backdrop: "solid", stage: "talk_actions_grid", fx: [], timelines: ["scene_enter"]),
+        (screen: "replay", backdrop: "solid", stage: "now_playing_panel", fx: [], timelines: ["scene_enter"]),
         (screen: "voice_note", backdrop: "accent_drift", stage: "talk_actions_grid", fx: ["voice_meter"], timelines: ["scene_enter"]),
         (screen: "incoming_call", backdrop: "solid", stage: "call_panel", fx: ["call_pulse"], timelines: ["scene_enter"]),
         (screen: "outgoing_call", backdrop: "solid", stage: "call_panel", fx: ["call_pulse"], timelines: ["scene_enter"]),

@@ -189,6 +189,8 @@ pub struct CallRuntimeSnapshot {
     pub unread_voice_notes_by_contact: BTreeMap<String, usize>,
     #[serde(default)]
     pub latest_voice_note_by_contact: BTreeMap<String, VoiceNoteSummarySnapshot>,
+    #[serde(default)]
+    pub voice_notes_by_contact: BTreeMap<String, Vec<VoiceNoteSummarySnapshot>>,
 }
 
 impl Default for CallRuntimeSnapshot {
@@ -204,6 +206,7 @@ impl Default for CallRuntimeSnapshot {
             history: Vec::new(),
             unread_voice_notes_by_contact: BTreeMap::new(),
             latest_voice_note_by_contact: BTreeMap::new(),
+            voice_notes_by_contact: BTreeMap::new(),
         }
     }
 }
@@ -242,6 +245,16 @@ pub struct VoiceRuntimeSnapshot {
     pub recording_duration_ms: i32,
     #[serde(default)]
     pub capture_level_permille: i32,
+    #[serde(default)]
+    pub playback_active: bool,
+    #[serde(default)]
+    pub playback_paused: bool,
+    #[serde(default)]
+    pub playback_file_path: String,
+    #[serde(default)]
+    pub playback_elapsed_ms: i32,
+    #[serde(default)]
+    pub playback_duration_ms: i32,
 }
 
 impl Default for VoiceRuntimeSnapshot {
@@ -254,6 +267,11 @@ impl Default for VoiceRuntimeSnapshot {
             ptt_active: false,
             recording_duration_ms: 0,
             capture_level_permille: 0,
+            playback_active: false,
+            playback_paused: false,
+            playback_file_path: String::new(),
+            playback_elapsed_ms: 0,
+            playback_duration_ms: 0,
         }
     }
 }

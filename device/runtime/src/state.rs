@@ -208,6 +208,7 @@ pub struct CallRuntimeState {
     pub history: Vec<ListItem>,
     pub unread_voice_notes_by_contact: BTreeMap<String, usize>,
     pub latest_voice_note_by_contact: BTreeMap<String, VoiceNoteSummary>,
+    pub voice_notes_by_contact: BTreeMap<String, Vec<VoiceNoteSummary>>,
 }
 
 impl Default for CallRuntimeState {
@@ -224,6 +225,7 @@ impl Default for CallRuntimeState {
             history: Vec::new(),
             unread_voice_notes_by_contact: BTreeMap::new(),
             latest_voice_note_by_contact: BTreeMap::new(),
+            voice_notes_by_contact: BTreeMap::new(),
         }
     }
 }
@@ -283,7 +285,10 @@ pub struct VoiceRuntimeState {
     pub mime_type: String,
     pub message_id: String,
     pub playback_active: bool,
+    pub playback_paused: bool,
     pub playback_file_path: String,
+    pub playback_elapsed_ms: i32,
+    pub playback_duration_ms: i32,
     pub voice_note_store_dir: String,
     pub last_transcript: String,
     pub command_settings: VoiceCommandSettings,
@@ -311,7 +316,10 @@ impl Default for VoiceRuntimeState {
             mime_type: "audio/wav".to_string(),
             message_id: String::new(),
             playback_active: false,
+            playback_paused: false,
             playback_file_path: String::new(),
+            playback_elapsed_ms: 0,
+            playback_duration_ms: 0,
             voice_note_store_dir: "data/communication/voice_notes".to_string(),
             last_transcript: String::new(),
             command_settings: VoiceCommandSettings::default(),
@@ -1041,6 +1049,26 @@ impl RuntimeState {
                 })
                 .collect();
         }
+        if let Some(queues) = snapshot
+            .get("voice_notes_by_contact")
+            .and_then(Value::as_object)
+        {
+            self.call.voice_notes_by_contact = queues
+                .iter()
+                .map(|(key, value)| {
+                    let notes = value
+                        .as_array()
+                        .map(|items| {
+                            items
+                                .iter()
+                                .filter_map(voice_note_summary_from_value)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    (key.clone(), notes)
+                })
+                .collect();
+        }
         if let Some(voice_note) = snapshot.get("voice_note") {
             if self.voice.ask_capture_active {
                 self.apply_ask_capture_snapshot(voice_note);
@@ -1106,27 +1134,43 @@ impl RuntimeState {
             }
             VoiceIntent::Play(action) => {
                 self.voice.playback_active = true;
+                self.voice.playback_paused = false;
                 self.voice.status_text = "Playing preview".to_string();
                 if let Some(action) = action {
                     if !action.file_path.trim().is_empty() {
                         self.voice.playback_file_path = action.file_path.clone();
                     }
+                    self.voice.playback_duration_ms = action.duration_ms.max(0);
                 }
             }
             VoiceIntent::PlayLatest(action) => {
                 self.voice.playback_active = true;
+                self.voice.playback_paused = false;
                 self.voice.status_text = "Playing preview".to_string();
                 if !action.file_path.trim().is_empty() {
                     self.voice.playback_file_path = action.file_path.clone();
                 }
+                self.voice.playback_duration_ms = action.duration_ms.max(0);
+            }
+            VoiceIntent::PausePlayback => {
+                self.voice.playback_active = false;
+                self.voice.playback_paused = true;
+            }
+            VoiceIntent::ResumePlayback => {
+                self.voice.playback_active = true;
+                self.voice.playback_paused = false;
             }
             VoiceIntent::StopPlayback => {
                 self.voice.playback_active = false;
+                self.voice.playback_paused = false;
                 self.voice.playback_file_path.clear();
+                self.voice.playback_elapsed_ms = 0;
+                self.voice.playback_duration_ms = 0;
             }
             VoiceIntent::Discard => self.voice.reset_draft(),
             VoiceIntent::CaptureCancel
             | VoiceIntent::CaptureToggle(_)
+            | VoiceIntent::Delete(_)
             | VoiceIntent::MarkSeen(_) => {}
         }
     }
@@ -1377,11 +1421,22 @@ impl RuntimeState {
                 self.voice.status_text = "Playing preview".to_string();
             }
         }
+        if let Some(paused) = playback.get("paused").and_then(Value::as_bool) {
+            self.voice.playback_paused = paused;
+        }
         if let Some(file_path) = string_field(playback, "file_path") {
             self.voice.playback_file_path = file_path;
         }
-        if !self.voice.playback_active {
+        if let Some(elapsed_ms) = i32_field(playback, "elapsed_ms") {
+            self.voice.playback_elapsed_ms = elapsed_ms.max(0);
+        }
+        if let Some(duration_ms) = i32_field(playback, "duration_ms") {
+            self.voice.playback_duration_ms = duration_ms.max(0);
+        }
+        if !self.voice.playback_active && !self.voice.playback_paused {
             self.voice.playback_file_path.clear();
+            self.voice.playback_elapsed_ms = 0;
+            self.voice.playback_duration_ms = 0;
         }
     }
 
@@ -1582,6 +1637,7 @@ impl RuntimeState {
                 "history": list_payload(&self.call.history),
                 "unread_voice_notes_by_contact": self.call.unread_voice_notes_by_contact,
                 "latest_voice_note_by_contact": voice_note_summary_payload(&self.call.latest_voice_note_by_contact),
+                "voice_notes_by_contact": voice_note_queue_payload(&self.call.voice_notes_by_contact),
             },
             "voice": {
                 "phase": self.voice.phase,
@@ -1591,6 +1647,11 @@ impl RuntimeState {
                 "ptt_active": self.voice.phase == "recording",
                 "recording_duration_ms": self.voice.duration_ms,
                 "capture_level_permille": self.voice.capture_level_permille,
+                "playback_active": self.voice.playback_active,
+                "playback_paused": self.voice.playback_paused,
+                "playback_file_path": self.voice.playback_file_path,
+                "playback_elapsed_ms": self.voice.playback_elapsed_ms,
+                "playback_duration_ms": self.voice.playback_duration_ms,
             },
             "power": {
                 "battery_percent": self.power.battery_percent,
@@ -2204,6 +2265,20 @@ fn voice_note_summary_payload(summaries: &BTreeMap<String, VoiceNoteSummary>) ->
         summaries
             .iter()
             .map(|(key, summary)| (key.clone(), summary.to_payload()))
+            .collect(),
+    )
+}
+
+fn voice_note_queue_payload(queues: &BTreeMap<String, Vec<VoiceNoteSummary>>) -> Value {
+    Value::Object(
+        queues
+            .iter()
+            .map(|(key, notes)| {
+                (
+                    key.clone(),
+                    Value::Array(notes.iter().map(VoiceNoteSummary::to_payload).collect()),
+                )
+            })
             .collect(),
     )
 }

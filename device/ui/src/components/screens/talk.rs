@@ -93,7 +93,7 @@ fn contact_items(snapshot: &RuntimeSnapshot) -> Vec<DeckItem> {
         .collect()
 }
 
-fn contact_initial(contact: &ListItemSnapshot) -> String {
+pub(crate) fn contact_initial(contact: &ListItemSnapshot) -> String {
     contact
         .icon_key
         .strip_prefix("mono:")
