@@ -261,9 +261,6 @@ impl LvglFacade for NativeLvglFacade {
         })?;
         unsafe {
             ffi::lv_label_set_text(node.obj.as_ptr(), text.as_ptr());
-            if matches!(node.role, roles::CALL_STATE_LABEL | roles::CALL_MUTE_LABEL) {
-                ffi::lv_obj_center(node.obj.as_ptr());
-            }
         }
         Ok(())
     }

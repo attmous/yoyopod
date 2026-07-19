@@ -78,13 +78,17 @@ pub fn scene_for_screen(
         UiScreen::VoiceNote => {
             voice_note::scene(&voice_note::props_from(snapshot, focus, defaults.clone()))
         }
-        UiScreen::IncomingCall => {
-            incoming_call::scene(&incoming_call::props_from(snapshot, defaults.clone()))
-        }
-        UiScreen::OutgoingCall => {
-            outgoing_call::scene(&outgoing_call::props_from(snapshot, defaults.clone()))
-        }
-        UiScreen::InCall => in_call::scene(&in_call::props_from(snapshot, defaults.clone())),
+        UiScreen::IncomingCall => incoming_call::scene(&incoming_call::props_from(
+            snapshot,
+            focus,
+            defaults.clone(),
+        )),
+        UiScreen::OutgoingCall => outgoing_call::scene(&outgoing_call::props_from(
+            snapshot,
+            focus,
+            defaults.clone(),
+        )),
+        UiScreen::InCall => in_call::scene(&in_call::props_from(snapshot, focus, defaults.clone())),
         UiScreen::Power => power::scene(&power::props_from(snapshot, focus, defaults.clone())),
         UiScreen::Loading => loading::scene(&loading::props_from(snapshot, defaults.clone())),
         UiScreen::Error => error::scene(&error::props_from(snapshot, defaults.clone())),

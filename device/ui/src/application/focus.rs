@@ -63,6 +63,9 @@ pub fn focus_count(
             }
         }
         UiScreen::VoiceNote => options::voice_note_action_count(snapshot),
+        UiScreen::IncomingCall => 2,
+        UiScreen::OutgoingCall => 1,
+        UiScreen::InCall => 2,
         UiScreen::Power => options::power_page_count(snapshot),
         _ => 0,
     }

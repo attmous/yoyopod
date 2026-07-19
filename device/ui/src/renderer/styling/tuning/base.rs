@@ -20,7 +20,7 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
             | roles::HERO_ART
             | roles::HERO_AVATAR
             | roles::HERO_PLAY
-            | roles::CALL_PANEL
+            | roles::CALL_OVERLAY
             | roles::STATUS_BAR => {
                 ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
             }
@@ -77,6 +77,18 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
             }
             roles::RECORDING_PANEL | roles::VOICE_METER | roles::RECORDING_TIMER_DOT => {
+                ffi::lv_obj_set_style_pad_left(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_pad_right(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_pad_top(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_pad_bottom(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
+            }
+            roles::CALL_AVATAR
+            | roles::CALL_AVATAR_SM
+            | roles::CALL_ANSWER
+            | roles::CALL_MUTE
+            | roles::CALL_HANGUP
+            | roles::CALL_HANGUP_CENTER => {
                 ffi::lv_obj_set_style_pad_left(obj.as_ptr(), 0, SELECTOR);
                 ffi::lv_obj_set_style_pad_right(obj.as_ptr(), 0, SELECTOR);
                 ffi::lv_obj_set_style_pad_top(obj.as_ptr(), 0, SELECTOR);

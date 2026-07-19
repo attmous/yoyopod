@@ -161,14 +161,15 @@ const fn generated_control_icon(kind: u8) -> [u8; 576] {
     map
 }
 
-static CLOSE_SM_MAP: [u8; 576] = generated_control_icon(4);
 static CHECK_SM_MAP: [u8; 576] = generated_control_icon(5);
 static PLAY_SM: LvImageDsc = LvImageDsc::a8_24(&PLAY_SM_MAP);
 static PAUSE_SM: LvImageDsc = LvImageDsc::a8_24(&PAUSE_SM_MAP);
 static PREV_SM: LvImageDsc = LvImageDsc::a8_24(&PREV_SM_MAP);
 static NEXT_SM: LvImageDsc = LvImageDsc::a8_24(&NEXT_SM_MAP);
 static TRASH_SM: LvImageDsc = LvImageDsc::a8_24(&TRASH_SM_MAP);
+static ANSWER_SM: LvImageDsc = LvImageDsc::a8_24(&ANSWER_SM_MAP);
 static CLOSE_SM: LvImageDsc = LvImageDsc::a8_24(&CLOSE_SM_MAP);
+static MIC_SM: LvImageDsc = LvImageDsc::a8_24(&MIC_SM_MAP);
 static CHECK_SM: LvImageDsc = LvImageDsc::a8_24(&CHECK_SM_MAP);
 
 const fn cellular_signal_map(level: u8) -> [u8; 196] {
@@ -1041,7 +1042,9 @@ pub(crate) fn descriptor_for_key(icon_key: &str) -> Option<&'static LvImageDsc> 
         "prev_sm" => Some(&PREV_SM),
         "next_sm" => Some(&NEXT_SM),
         "trash_sm" => Some(&TRASH_SM),
+        "answer_sm" => Some(&ANSWER_SM),
         "close_sm" | "close" => Some(&CLOSE_SM),
+        "mic_sm" => Some(&MIC_SM),
         "check" => Some(&CHECK_SM),
         "music_note" => Some(&MUSIC_NOTE),
         "icon_play" | "play" => Some(&PLAY),
@@ -1127,7 +1130,7 @@ mod tests {
         ),
     ];
 
-    const TRANSPORT_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 5] = [
+    const TRANSPORT_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 8] = [
         (
             "play_sm",
             &PLAY_SM_MAP,
@@ -1158,6 +1161,24 @@ mod tests {
             include_bytes!("../../../assets/icons/listen/trash_sm.svg"),
             TRASH_SM_SOURCE_FNV1A64,
         ),
+        (
+            "answer_sm",
+            &ANSWER_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/answer_sm.svg"),
+            ANSWER_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "close_sm",
+            &CLOSE_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/close_sm.svg"),
+            CLOSE_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "mic_sm",
+            &MIC_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/mic_sm.svg"),
+            MIC_SM_SOURCE_FNV1A64,
+        ),
     ];
 
     #[test]
@@ -1174,7 +1195,9 @@ mod tests {
             "pause_sm",
             "prev_sm",
             "next_sm",
+            "answer_sm",
             "close_sm",
+            "mic_sm",
         ] {
             assert!(descriptor_for_key(key).is_some(), "missing {key}");
         }

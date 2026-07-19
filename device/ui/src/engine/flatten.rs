@@ -146,7 +146,8 @@ fn pulse_element(index: usize, pulse: &PulseRing) -> Element {
         pulse.target,
     )
     .accent(pulse.color)
-    .with_opacity(96)
+    .scale_permille((pulse.max_radius * 1_000 / 62).clamp(100, 1_000))
+    .with_opacity(if index == 0 { 72 } else { 48 })
 }
 
 fn particle_element(field_index: usize, index: u8, field: &ParticleField) -> Element {

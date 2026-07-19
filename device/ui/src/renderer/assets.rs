@@ -224,10 +224,20 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::BUTTON,
         roles::BUTTON_ICON,
         roles::BUTTON_TITLE,
-        roles::CALL_MUTE_LABEL,
-        roles::CALL_PANEL,
-        roles::CALL_STATE_LABEL,
-        roles::CALL_TITLE,
+        roles::CALL_OVERLAY,
+        roles::CALL_STATE,
+        roles::CALL_AVATAR,
+        roles::CALL_AVATAR_INITIAL,
+        roles::CALL_AVATAR_SM,
+        roles::CALL_AVATAR_INITIAL_SM,
+        roles::CALL_NAME,
+        roles::CALL_NAME_SM,
+        roles::CALL_DURATION,
+        roles::CALL_ANSWER,
+        roles::CALL_MUTE,
+        roles::CALL_HANGUP,
+        roles::CALL_HANGUP_CENTER,
+        roles::CALL_BUTTON_ICON,
         roles::CARD,
         roles::CARD_ICON,
         roles::CARD_SUBTITLE,
@@ -372,6 +382,10 @@ fn required_selected_theme_roles() -> Vec<&'static str> {
         roles::REPLAY_DELETE,
         roles::REPLAY_PLAY,
         roles::REPLAY_NEXT,
+        roles::CALL_ANSWER,
+        roles::CALL_MUTE,
+        roles::CALL_HANGUP,
+        roles::CALL_HANGUP_CENTER,
     ]
 }
 
@@ -441,6 +455,38 @@ mod tests {
         ] {
             assert_eq!(theme(&asset, role).text_rgb, Some(0xFCE6D2));
         }
+    }
+
+    #[test]
+    fn call_overlay_geometry_is_deboxed_and_glass_safe() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let theme_asset = parse_theme_asset().expect("theme.ron should be valid");
+        let overlay = layout(&layouts, roles::CALL_OVERLAY);
+        let state = layout(&layouts, roles::CALL_STATE);
+        let avatar = layout(&layouts, roles::CALL_AVATAR);
+        let answer = layout(&layouts, roles::CALL_ANSWER);
+        let hangup = layout(&layouts, roles::CALL_HANGUP);
+        let deck = layout(&layouts, roles::DECK_BAR);
+
+        assert_eq!(
+            (overlay.x, overlay.y, overlay.width, overlay.height),
+            (0, 0, 240, 228)
+        );
+        assert_eq!(
+            (state.x, state.y, state.width, state.height),
+            (20, 28, 200, 14)
+        );
+        assert_eq!(
+            (avatar.x, avatar.y, avatar.width, avatar.height),
+            (76, 48, 88, 88)
+        );
+        assert_eq!(answer.width, 44);
+        assert_eq!(hangup.width, 44);
+        assert!(answer.y + answer.height <= deck.y);
+        assert!(hangup.y + hangup.height <= deck.y);
+        assert_eq!(theme(&theme_asset, roles::CALL_OVERLAY).fill_rgb, None);
+        assert_eq!(theme(&theme_asset, roles::CALL_ANSWER).radius, 22);
+        assert_eq!(theme(&theme_asset, roles::CALL_HANGUP).radius, 22);
     }
 
     #[test]

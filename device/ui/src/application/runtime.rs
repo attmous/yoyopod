@@ -964,6 +964,89 @@ mod tests {
         );
     }
 
+    #[test]
+    fn call_overlays_cycle_and_activate_every_visible_control() {
+        let mama = contact("sip:mama@example.test", "Mama");
+
+        let mut incoming = UiRuntime::default();
+        incoming.snapshot.call.contacts = vec![mama.clone()];
+        incoming.snapshot.call.peer_name = mama.title.clone();
+        incoming.snapshot.call.peer_address = mama.id.clone();
+        incoming.snapshot.call.state = "incoming".to_string();
+        incoming.active_screen = UiScreen::IncomingCall;
+
+        incoming.handle_input(InputAction::Advance, 100);
+        assert_eq!(incoming.focus_index, 1);
+        incoming.handle_input(InputAction::Select, 200);
+        assert_eq!(
+            incoming.take_intents(),
+            vec![UiIntent::Call(CallIntent::Reject)]
+        );
+        incoming.handle_input(InputAction::Advance, 300);
+        assert_eq!(incoming.focus_index, 0);
+        incoming.handle_input(InputAction::Select, 400);
+        assert_eq!(
+            incoming.take_intents(),
+            vec![UiIntent::Call(CallIntent::Answer)]
+        );
+
+        let mut outgoing = UiRuntime::default();
+        outgoing.snapshot.call.state = "outgoing".to_string();
+        outgoing.active_screen = UiScreen::OutgoingCall;
+        outgoing.handle_input(InputAction::Advance, 100);
+        assert_eq!(outgoing.focus_index, 0);
+        outgoing.handle_input(InputAction::Select, 200);
+        assert_eq!(
+            outgoing.take_intents(),
+            vec![UiIntent::Call(CallIntent::Hangup)]
+        );
+
+        let mut active = UiRuntime::default();
+        active.snapshot.call.state = "active".to_string();
+        active.active_screen = UiScreen::InCall;
+        active.handle_input(InputAction::Select, 100);
+        assert_eq!(
+            active.take_intents(),
+            vec![UiIntent::Call(CallIntent::ToggleMute)]
+        );
+        active.handle_input(InputAction::Advance, 200);
+        assert_eq!(active.focus_index, 1);
+        active.handle_input(InputAction::Select, 300);
+        assert_eq!(
+            active.take_intents(),
+            vec![UiIntent::Call(CallIntent::Hangup)]
+        );
+    }
+
+    #[test]
+    fn call_overlay_dims_the_deck_and_keeps_talk_selected() {
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.state = "active".to_string();
+        runtime.snapshot.call.peer_name = "Mama".to_string();
+        runtime.snapshot.call.duration_text = "02:14".to_string();
+        runtime.active_screen = UiScreen::InCall;
+
+        let graph = flatten::flatten(&runtime.scene_graph(1_000));
+        let deck = find_role(&graph, roles::DECK_BAR).expect("deck bar");
+        let state = find_role(&graph, roles::CALL_STATE).expect("call state");
+        let duration = find_role(&graph, roles::CALL_DURATION).expect("call duration");
+
+        assert_eq!(deck.props.opacity, Some(140));
+        assert_eq!(state.props.text.as_deref(), Some("IN CALL"));
+        assert_eq!(duration.props.text.as_deref(), Some("02:14"));
+    }
+
+    #[test]
+    fn ringing_call_uses_two_outlined_pulse_layers() {
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.state = "incoming".to_string();
+        runtime.snapshot.call.peer_name = "Mama".to_string();
+        runtime.active_screen = UiScreen::IncomingCall;
+
+        let graph = flatten::flatten(&runtime.scene_graph(1_000));
+        assert_eq!(count_visible_role(&graph, roles::FX_PULSE), 2);
+    }
+
     fn replay_note(
         message_id: &str,
         file_path: &str,

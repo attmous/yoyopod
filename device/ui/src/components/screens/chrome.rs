@@ -34,7 +34,12 @@ pub fn chrome_for_screen(
         deck: DeckBarProps {
             focused_index: deck_focus_for_screen(screen, home_focus),
             visible: deck_visible,
-            opacity: if screen == UiScreen::TalkContact
+            opacity: if matches!(
+                screen,
+                UiScreen::IncomingCall | UiScreen::OutgoingCall | UiScreen::InCall
+            ) {
+                140
+            } else if screen == UiScreen::TalkContact
                 && (snapshot.voice.ptt_active
                     || snapshot.voice.capture_in_flight
                     || snapshot.voice.phase.eq_ignore_ascii_case("recording"))
