@@ -504,6 +504,24 @@ mod tests {
     }
 
     #[test]
+    fn call_focus_outline_preserves_the_semantic_action_fill() {
+        let asset = parse_theme_asset().expect("theme.ron should be valid");
+
+        for role in [
+            roles::CALL_ANSWER,
+            roles::CALL_MUTE,
+            roles::CALL_HANGUP,
+            roles::CALL_HANGUP_CENTER,
+        ] {
+            let focused = selected_theme(&asset, role);
+            assert_eq!(focused.fill_rgb, None, "{role} keeps its runtime accent");
+            assert_eq!(focused.opacity, Some(255), "{role} keeps its fill visible");
+            assert_eq!(focused.outline_rgb, Some(0x1B1B1F));
+            assert_eq!(focused.outline_width, 2);
+        }
+    }
+
+    #[test]
     fn status_bar_is_centered_and_fits_the_charging_worst_case() {
         let layouts = parse_layout_asset().expect("layouts.ron should be valid");
         let left = layout(&layouts, roles::STATUS_LEFT_CLUSTER);
