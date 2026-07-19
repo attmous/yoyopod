@@ -52,6 +52,7 @@ pub fn focus_count(
         UiScreen::TalkContact => options::talk_contact_actions(snapshot, selected_contact).len(),
         UiScreen::Replay => {
             let note_count = selected_contact
+                .or_else(|| snapshot.call.contacts.first())
                 .and_then(|contact| snapshot.call.voice_notes_by_contact.get(&contact.id))
                 .map(Vec::len)
                 .unwrap_or(0);
@@ -76,6 +77,7 @@ mod tests {
     fn replay_removes_next_from_focus_on_the_last_recording() {
         let contact = ListItemSnapshot::new("mama", "Mama", "", "mono:M");
         let mut snapshot = RuntimeSnapshot::default();
+        snapshot.call.contacts.push(contact.clone());
         snapshot.call.voice_notes_by_contact.insert(
             contact.id.clone(),
             vec![VoiceNoteSummarySnapshot::default(); 2],
@@ -85,6 +87,7 @@ mod tests {
             focus_count(UiScreen::Replay, &snapshot, None, Some(&contact), 0),
             3
         );
+        assert_eq!(focus_count(UiScreen::Replay, &snapshot, None, None, 0), 3);
         assert_eq!(
             focus_count(UiScreen::Replay, &snapshot, None, Some(&contact), 1),
             2
