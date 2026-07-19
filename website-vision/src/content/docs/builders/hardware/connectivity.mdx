@@ -3,6 +3,8 @@ title: "Connectivity: 4G & GPS"
 description: The modem, the SIM, and location hardware.
 ---
 
+import ModemFsm from '../../../../assets/diagrams/modem-fsm.svg';
+
 *The 4G modem, SIM provisioning, and GPS — the hardware behind Locate and Talk.*
 
 :::tip[Proposed — the ideal design]
@@ -97,6 +99,8 @@ state machine back to `Online`. If config fails to load, it boots
 surface is the smallest in the system (health, GPS query, modem reset,
 shutdown), and snapshot events are deduplicated so a steady-state radio
 doesn't flood the runtime.
+
+<ModemFsm class="diagram" />
 
 ### From GPS fix to a location feature
 

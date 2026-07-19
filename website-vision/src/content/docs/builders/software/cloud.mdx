@@ -3,6 +3,8 @@ title: Cloud & Provisioning
 description: Backend, provisioning, and the device's cloud link.
 ---
 
+import CloudTwoFaces from '../../../../assets/diagrams/cloud-two-faces.svg';
+
 *How a device gets an identity, a SIM, and a safe line home — the device's side of **yoyocloud**, the backend backbone.*
 
 :::tip[Proposed — the ideal design]
@@ -49,6 +51,8 @@ to a device directly, just as the device never talks to a dashboard
 directly. Everything a parent sees or changes flows through yoyocloud,
 which is the only place policy can be enforced honestly. The surface
 owns seven things.
+
+<CloudTwoFaces class="diagram" />
 
 **Accounts and households.** A parent account belongs to a household; a
 household owns devices and child profiles. This is the smallest possible

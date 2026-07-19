@@ -3,6 +3,8 @@ title: VoIP Engine
 description: "Whitelist calling under yoyocore: the voip worker, liblinphone, and the switchboard contract."
 ---
 
+import WhitelistLayers from '../../../../assets/diagrams/whitelist-layers.svg';
+
 *The platform capability behind Talk — calls that only family can place or receive.*
 
 :::tip[Proposed — the ideal design]
@@ -28,6 +30,8 @@ Whitelist calls and voice messages are pillar one of V1 “Daylight”: approved
 *Proposed — the ideal design, not yet adopted.*
 
 The whitelist is the load-bearing wall of the Talk promise, so the ideal design treats it the way load-bearing walls are treated: one authoritative copy, mirrored where it is needed, enforced in more than one place, and fail-closed everywhere.
+
+<WhitelistLayers class="diagram" />
 
 **Where the list lives.** The authoritative whitelist lives in yoyocloud, and it is edited in exactly one place: [the yoyopod app](/apps/parent-app/), behind the parent's account. The device holds a mirrored copy — a cache of the last list yoyocloud confirmed — and enforcement always runs against that local mirror, so a dead network never turns enforcement off. Three architectures were considered:
 

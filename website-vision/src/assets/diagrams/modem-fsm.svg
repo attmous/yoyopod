@@ -1,0 +1,92 @@
+<svg viewBox="0 0 760 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The network worker's modem state machine from Off through registration to Online, with backoff recovery and fatal SIM states on the side">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #232136); stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; }
+    .ext { fill: none; stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .hub { fill: var(--sl-color-accent-low, #4a3414); stroke: var(--sl-color-accent, #f6b02c); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f8f4e9); font-size: 14px; font-weight: 700; }
+    .m { fill: var(--sl-color-gray-2, #d3cdc5); font-size: 11px; font-family: ui-monospace, monospace; }
+    .s { fill: var(--sl-color-gray-3, #a09aa8); font-size: 11.5px; }
+    .flow { stroke: var(--sl-color-gray-3, #a09aa8); stroke-width: 2; fill: none; marker-end: url(#fsm-arrow); }
+  </style>
+  <defs>
+    <marker id="fsm-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a09aa8)"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="30" y="34" style="font-size:17px">The modem state machine</text>
+  <text class="s" x="30" y="54">the network worker owns bring-up end to end — recovery and degraded states on the side</text>
+
+  <!-- row 1: Off → Probing → Ready → Registering -->
+  <rect class="box" x="30" y="84" width="100" height="56" rx="8"/>
+  <text class="t" x="42" y="105">Off</text>
+  <text class="s" x="42" y="122">powered down</text>
+
+  <rect class="box" x="180" y="84" width="130" height="56" rx="8"/>
+  <text class="t" x="192" y="105">Probing</text>
+  <text class="s" x="192" y="122">first AT contact</text>
+
+  <rect class="box" x="360" y="84" width="110" height="56" rx="8"/>
+  <text class="t" x="372" y="105">Ready</text>
+  <text class="s" x="372" y="122">SIM checked</text>
+
+  <rect class="box" x="520" y="84" width="140" height="56" rx="8"/>
+  <text class="t" x="532" y="105">Registering</text>
+  <text class="s" x="532" y="122">attaching to network</text>
+
+  <path class="flow" d="M130,112 L178,112"/>
+  <path class="flow" d="M310,112 L358,112"/>
+  <path class="flow" d="M470,112 L518,112"/>
+
+  <!-- wrap down to row 2 -->
+  <path class="flow" d="M590,140 L590,186"/>
+
+  <!-- row 2: Registered → PppStarting → Online -->
+  <rect class="box" x="520" y="190" width="140" height="56" rx="8"/>
+  <text class="t" x="532" y="211">Registered</text>
+  <text class="s" x="532" y="228">signal + carrier</text>
+
+  <rect class="box" x="330" y="190" width="140" height="56" rx="8"/>
+  <text class="t" x="342" y="211">PppStarting</text>
+  <text class="m" x="342" y="228">pppd · ATD*99#</text>
+
+  <rect class="hub" x="120" y="190" width="160" height="56" rx="8"/>
+  <text class="t" x="132" y="211">Online</text>
+  <text class="s" x="132" y="228">IP link up · ppp0</text>
+
+  <path class="flow" d="M520,218 L472,218"/>
+  <path class="flow" d="M330,218 L282,218"/>
+
+  <!-- recovery on the side -->
+  <rect class="ext" x="330" y="306" width="180" height="88" rx="8"/>
+  <text class="t" x="342" y="327">Recovering</text>
+  <text class="s" x="342" y="344">exponential backoff</text>
+  <text class="m" x="342" y="359">1 s → 30 s cap</text>
+  <text class="s" x="342" y="374">walks itself back</text>
+
+  <path class="flow" d="M400,246 L400,304"/>
+  <text class="m" x="412" y="280">retryable fault</text>
+
+  <path class="flow" d="M330,336 L200,336 L200,249"/>
+  <text class="m" x="210" y="326">back to Online</text>
+
+  <path class="flow" d="M640,268 L640,304"/>
+  <text class="m" x="560" y="262">at boot: config load failed</text>
+
+  <rect class="ext" x="550" y="306" width="180" height="70" rx="8"/>
+  <text class="t" x="562" y="327">Degraded</text>
+  <text class="s" x="562" y="344">config failed → visible,</text>
+  <text class="s" x="562" y="359">never silent</text>
+
+  <!-- fatal strip -->
+  <rect class="ext" x="30" y="430" width="700" height="40" rx="8"/>
+  <text class="t" x="46" y="455" style="font-size:12.5px">fatal, no retry</text>
+  <text class="m" x="190" y="455">SIM PIN required · PUK · no SIM</text>
+  <text class="s" x="430" y="455">retrying a locked SIM helps nobody</text>
+
+  <!-- caption -->
+  <rect class="ext" x="30" y="496" width="700" height="76" rx="10"/>
+  <text class="t" x="46" y="522">The richest state machine in the system</text>
+  <text class="s" x="46" y="540">— the one worker with real internal recovery: the process never dies to recover;</text>
+  <text class="s" x="46" y="556">it walks its own state machine back to Online.</text>
+</svg>

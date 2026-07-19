@@ -1,0 +1,92 @@
+<svg viewBox="0 0 760 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="One Ask question's round trip: push-to-talk audio to the speech worker, Help Agent profile and policy gate in yoyocloud, STT to model to TTS, and a disclosed AI voice answer back">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #232136); stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; }
+    .ext { fill: none; stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .hub { fill: var(--sl-color-accent-low, #4a3414); stroke: var(--sl-color-accent, #f6b02c); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f8f4e9); font-size: 14px; font-weight: 700; }
+    .m { fill: var(--sl-color-gray-2, #d3cdc5); font-size: 11px; font-family: ui-monospace, monospace; }
+    .s { fill: var(--sl-color-gray-3, #a09aa8); font-size: 11.5px; }
+    .flow { stroke: var(--sl-color-gray-3, #a09aa8); stroke-width: 2; fill: none; marker-end: url(#ask-arrow); }
+  </style>
+  <defs>
+    <marker id="ask-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a09aa8)"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="30" y="34" style="font-size:17px">One Ask question — the round trip</text>
+  <text class="s" x="30" y="54">hold the button, speak — and hear a disclosed AI voice, gated in the cloud</text>
+
+  <!-- Kid + held button -->
+  <rect class="box" x="30" y="80" width="190" height="104" rx="10"/>
+  <text class="t" x="46" y="104">Kid + held button</text>
+  <text class="s" x="46" y="122">hold to talk — the only</text>
+  <text class="s" x="46" y="137">way the microphone</text>
+  <text class="s" x="46" y="152">opens</text>
+
+  <!-- Speech worker -->
+  <rect class="box" x="280" y="80" width="195" height="104" rx="10"/>
+  <text class="t" x="296" y="104">Speech worker</text>
+  <text class="m" x="296" y="124">voice.ask</text>
+  <text class="m" x="296" y="138">+ agent profile id</text>
+  <text class="s" x="296" y="156">one in-flight request</text>
+
+  <!-- yoyocloud -->
+  <rect class="hub" x="535" y="80" width="195" height="140" rx="10"/>
+  <text class="t" x="551" y="104">yoyocloud</text>
+  <text class="s" x="551" y="122">Help Agent profile</text>
+  <text class="s" x="551" y="137">→ system context</text>
+  <text class="s" x="551" y="157">policy gate checks</text>
+  <text class="s" x="551" y="172">request AND response</text>
+
+  <!-- top row flows -->
+  <path class="flow" d="M220,132 L278,132"/>
+  <text class="m" x="228" y="122">audio</text>
+  <path class="flow" d="M475,132 L533,132"/>
+  <text class="m" x="482" y="122">request</text>
+
+  <!-- into the pipeline -->
+  <path class="flow" d="M675,220 L675,288"/>
+  <text class="s" x="545" y="258">runs the pipeline</text>
+
+  <!-- pipeline strip: STT → model → TTS (flowing back left) -->
+  <rect class="box" x="620" y="290" width="110" height="60" rx="8"/>
+  <text class="t" x="630" y="311" style="font-size:12.5px">STT</text>
+  <text class="s" x="630" y="328">speech → text</text>
+
+  <rect class="box" x="470" y="290" width="110" height="60" rx="8"/>
+  <text class="t" x="480" y="311" style="font-size:12.5px">model</text>
+  <text class="s" x="480" y="328">the answer</text>
+
+  <rect class="box" x="320" y="290" width="110" height="60" rx="8"/>
+  <text class="t" x="330" y="311" style="font-size:12.5px">TTS</text>
+  <text class="s" x="330" y="328">text → speech</text>
+
+  <path class="flow" d="M618,320 L582,320"/>
+  <path class="flow" d="M468,320 L432,320"/>
+
+  <!-- back to the device -->
+  <rect class="box" x="30" y="400" width="250" height="100" rx="10"/>
+  <text class="t" x="46" y="424">Back on the device</text>
+  <text class="s" x="46" y="442">spoken answer — always disclosed</text>
+  <text class="s" x="46" y="457">as an AI-generated voice</text>
+
+  <path class="flow" d="M318,335 L242,398"/>
+  <text class="m" x="150" y="382">answer audio</text>
+
+  <path class="flow" d="M120,398 L120,186"/>
+  <text class="m" x="132" y="296">heard aloud</text>
+
+  <!-- side note: the Ask wheel -->
+  <rect class="ext" x="440" y="400" width="290" height="100" rx="10"/>
+  <text class="t" x="456" y="424" style="font-size:12.5px">Ask wheel entries = agent profiles</text>
+  <text class="s" x="456" y="442">synced like any other config</text>
+  <text class="m" x="456" y="460">name · topic · tone · boundaries</text>
+  <text class="s" x="456" y="477">— the four parent choices</text>
+
+  <!-- caption -->
+  <rect class="ext" x="30" y="530" width="700" height="80" rx="10"/>
+  <text class="t" x="46" y="556">Push-to-talk only — forever.</text>
+  <text class="s" x="46" y="574">Prompts steer a Help Agent's tone; the server-side policy gate in yoyocloud enforces — it checks</text>
+  <text class="s" x="46" y="590">every request and every response, no matter what any prompt says.</text>
+</svg>

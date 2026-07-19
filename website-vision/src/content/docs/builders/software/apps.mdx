@@ -3,6 +3,8 @@ title: App Platform
 description: The yoyopod app and the shared contracts underneath it.
 ---
 
+import PairingFlow from '../../../../assets/diagrams/pairing-flow.svg';
+
 *The planned apps/ and packages/ layer: the yoyopod app and the contracts it shares with the device.*
 
 :::tip[Proposed — the ideal design]
@@ -52,6 +54,8 @@ Anything beyond these five is V2 material and should be resisted until V1 ships.
 **The Help Agent builder.** The app-side half of the Help Agents concept. A parent creates a Help Agent in four steps: pick a **topic area** (math, science, animals, reading, and so on), pick a **tone** (playful, patient, or matter-of-fact), set **boundaries** (what is off-limits for this helper), and give it a name. The result is a configuration object — not a prompt string — that yoyocloud stores and enforces server-side; the age-appropriate content policy lives in yoyocloud regardless of what any agent configuration says (see [Speech Engine](/builders/software/speech-engine/)). The kid's side of the same feature is the Ask wheel: spin, pick a helper, hold the button, ask. The builder also surfaces transcript review (proposed default retention 30 days, parent-controlled) so a parent can see what was asked and answered.
 
 **The pairing flow.** Pairing is the one moment the app and the device must agree on something before any trust exists, so it is kept dumb and observable: the device shows a short code on the canvas; the parent types it into the app or scans it; the app sends the code to yoyocloud; yoyocloud verifies that this device is currently presenting that code and binds the device to the household. The device and the phone never talk to each other directly — yoyocloud is the matchmaker, which means pairing works identically whether the phone and device share a room or a continent. Threat model and code lifetime belong to [Security](/builders/software/security/).
+
+<PairingFlow class="diagram" />
 
 ## Interfaces & contracts
 

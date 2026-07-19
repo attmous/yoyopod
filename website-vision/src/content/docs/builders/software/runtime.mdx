@@ -3,6 +3,8 @@ title: The yoyocore Runtime
 description: The supervisor that runs every engine as a separate process.
 ---
 
+import RuntimeEngines from '../../../../assets/diagrams/runtime-engines.svg';
+
 *The Rust runtime that supervises every on-device capability.*
 
 ## Overview
@@ -26,6 +28,8 @@ Startup is UI-first: the UI host is the one **fatal** child — no
 gets 3 seconds; a late one is marked `Degraded` and boot continues.
 
 ## Key components
+
+<RuntimeEngines class="diagram" />
 
 | Child | Owns |
 | --- | --- |

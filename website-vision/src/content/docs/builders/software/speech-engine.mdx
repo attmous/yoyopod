@@ -3,6 +3,8 @@ title: Speech Engine
 description: "Push-to-talk speech under yoyocore: the speech worker, cloud STT/TTS, and the Ask experience's engine."
 ---
 
+import AskRoundTrip from '../../../../assets/diagrams/ask-round-trip.svg';
+
 *The platform capability behind Ask — hold the button, speak, hear an answer.*
 
 :::tip[Proposed — the ideal design]
@@ -14,6 +16,8 @@ Everything marked *Proposed* is neither implemented nor committed.
 ## Overview
 
 The Speech Engine is the platform layer behind the [Ask experience](/apps/ask/): the child holds the side button, speaks, and hears an answer. It is strictly push-to-talk — speech capture happens only while the [held button](/families/using-the-button/) says so; there is no wake word and no always-on microphone. Under yoyocore it lives as one worker among the [engine peers](/builders/software/architecture/), owning the spoken-language work: transcription (STT), synthesis (TTS), and Ask — the question-and-answer behind the Ask screen. It is a pure translator between WAV files and cloud APIs; capture and playback hardware belong to other workers.
+
+<AskRoundTrip class="diagram" />
 
 One naming trap to carry with you: the crate and binary say **speech** (`device/speech/`, `yoyopod-speech-host`), but the wire domain is **`voice.*`** (`voice.transcribe`, `voice.ask`, …). When searching the codebase, search both.
 
