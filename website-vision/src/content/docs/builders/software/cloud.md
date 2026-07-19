@@ -83,8 +83,9 @@ default retention of 30 days under parent control. See the
 this contract.
 
 **Location ingestion and a live-ish location API.** Devices publish
-location telemetry over MQTT; yoyocloud keeps the latest fix and a short
-history, and the yoyopod app reads it through a live-ish API — the
+location telemetry over MQTT; yoyocloud keeps only the latest passive
+fix (deliberate check-ins linger a few days), and the yoyopod app reads
+it through a live-ish API — the
 backend half of [Locate](/apps/locate/). Live-ish is a promise, not a
 euphemism: the API's shape should make real-time expectations
 impossible to form.

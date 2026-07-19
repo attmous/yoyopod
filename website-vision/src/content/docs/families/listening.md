@@ -5,17 +5,25 @@ description: Local-first music and stories, playlists, and the now-playing flow.
 
 *Everyday listening: what plays, how kids choose it, and how parents load it.*
 
-:::caution[Partially filled]
-Sections marked *Placeholder* have no as-built content yet; everything else is condensed from the repository (see Sources at the bottom).
+:::tip[Proposed — the ideal design]
+This page mixes as-built fact (covered by the Sources note) with the target
+design, written out in full so it can be adopted, adapted, or dropped.
+Everything marked *Proposed* is neither implemented nor committed.
 :::
 
 ## What you'll need
 
-*Placeholder — no as-built content yet.*
+*Proposed — the ideal design, not yet adopted.*
 
-- A paired device with some music or stories loaded by a parent
-- The parent app for managing the library (loading flow TBD)
-- No internet required for playback — the library lives on the device
+Not much: a paired device, and [the yoyopod app](/apps/parent-app/) on a
+parent's phone. Loading content is one of the app's core jobs — a parent
+picks music and stories in the app and taps to send them, and the next
+time the device is on and connected, they arrive quietly on their own.
+Once a track has landed, it lives on the device as an ordinary file, and
+from that moment playback needs no internet at all. The app is honest
+about the difference between *sent* and *arrived*: it shows what is
+already on the device and what is still on its way, so you are never
+left guessing whether the bedtime story made it in time for bedtime.
 
 ## Steps
 
@@ -47,28 +55,52 @@ describes is where things are headed, not where they are.
 
 ## Tips
 
-*Placeholder — no as-built content yet.*
+*Proposed — the ideal design, not yet adopted.*
 
-- Local-first means the tunnel, the basement, and the forest all work fine
-- Build playlists together — the kid picks, the parent loads
-- Stories at bedtime, music on the way to school: playlists per moment
-- Volume limits and listening-time expectations (parent-side controls TBD)
+Build the library together: the kid picks, the parent loads. The best
+libraries on these devices are small and loved, not large and ignored —
+and a kid who chose the songs owns the ritual that plays them.
+
+Make playlists for moments, not just moods: stories for
+[bedtime](/stories/bedtime-stories/), the loud one for Saturday morning
+([Jonas has opinions](/stories/jonas-saturday-playlists/)), a short one
+for the walk to school. On a wheel with no search box, a well-named
+playlist *is* the interface.
+
+Load before the trip, not during it. Getting new content onto the device
+needs the device online once; playing it never does. Ten minutes of
+loading the night before a holiday buys two weeks of tunnel-proof,
+ferry-proof, middle-of-nowhere-proof listening.
 
 ## Troubleshooting
 
-*Placeholder — no as-built content yet.*
+*Proposed — the ideal design, not yet adopted.*
 
-- "Nothing to play" — the library is empty until a parent loads it
-- A playlist changed on the phone but not on the device yet (sync timing TBD)
-- Sound too quiet or too loud — where volume is controlled (device vs. app, TBD)
-- Playback stops unexpectedly — battery, sleep, or quiet-hours behavior (TBD)
+**"Nothing to play."** The device starts empty and stays empty until a
+parent loads it — an empty library is a to-do in the yoyopod app, not a
+fault on the device.
+
+**Sent from the phone, but not on the device.** New content arrives the
+next time the device is on and connected — check the app, which shows
+for each item whether it has landed or is still on its way. A device in
+a drawer with a flat battery receives nothing; charge it, switch it on,
+and the library catches up by itself.
+
+**A song stopped mid-play.** It is never coverage — playback is local,
+so the tunnel is innocent. Check the battery first: the device warns
+when it is low and switches itself off safely when it is nearly empty
+(see [Charging & Care](/families/care/)).
+
+**Too quiet or too loud.** Volume is adjusted on the device itself, not
+from the app — worth a minute of practice together, so the kid can fix
+it alone the first time it happens on a bus.
 
 ## Open questions
 
-- TODO: Where does the content come from — parent uploads, bundled catalogs, or both?
-- TODO: How and when does the library sync from the parent app to the device?
-- TODO: Is there a maximum library size on the device, and how is it communicated?
-- TODO: Can kids reorder or favorite tracks on-device, or is curation parent-only?
+- Adopt the yoyopod app as the only way content reaches the device, or also ship a small starter set of music and stories in the box so the first hour is never silent?
+- Adopt parent-only curation — kids choose what plays, parents choose what is loaded — or give kids on-device favoriting and reordering?
+- Adopt a visible storage gauge in the app that declines new loads gracefully at the limit, or handle capacity silently and hope it is never hit?
+- One library or two: do music and stories share a single view on the canvas, or split into separate wheels?
 
 :::note[Sources]
 Condensed from

@@ -5,8 +5,10 @@ description: Local-first music and stories — playlists, shuffle, now playing.
 
 *The listening experience: the library, the wheel, and now playing.*
 
-:::caution[Partially filled]
-Sections marked *Placeholder* have no as-built content yet; everything else is condensed from the repository (see Sources at the bottom).
+:::tip[Proposed — the ideal design]
+This page mixes as-built fact (covered by the Sources note) with the target
+design, written out in full so it can be adopted, adapted, or dropped.
+Everything marked *Proposed* is neither implemented nor committed.
 :::
 
 ## What it is
@@ -58,11 +60,41 @@ snapshots. Details that protect the kid experience:
 
 ## In the parent app
 
-*Placeholder — no as-built content yet.*
+*Proposed — the ideal design, not yet adopted.*
 
-- Parents build the library from their phone: add music and stories, organize playlists (future)
-- Sync model: how new content reaches the device over the cloud link (TBD)
-- What parents can see about listening, and what they deliberately cannot (TBD)
+Content loading is one of the yoyopod app's five V1 “Daylight” jobs, and it
+works the way a parent would hope: pick something, and it shows up on the
+device. From the device view in [the yoyopod app](/apps/parent-app/), a
+parent adds audio — music the family already owns, stories they pick out or
+purchase — and the app hands it to yoyocloud, which delivers it to the
+device over the device's own link. The app and the device never talk
+directly; yoyocloud is always in between, which is why loading works the
+same whether the yoyopod is on the kitchen shelf or at grandma's for the
+weekend.
+
+Once delivered, a track is an ordinary local file — the import path
+described under [On the device](#on-the-device) — so everything a parent
+loads keeps playing with no internet at all. If the device is offline when
+the parent adds something, the delivery simply waits: the app shows the
+content as **saved**, and marks it **on the device** once the yoyopod has
+fetched it. No spinners to babysit, no failed transfers to retry — the
+plumbing catches up on its own.
+
+The app also shows the library as the device sees it: which playlists,
+music, and stories are actually on the yoyopod, and roughly how much room
+is left. What the app deliberately does not show is a listening log.
+Parents decide what goes on the device; what a kid plays, and how often,
+stays the kid's own — the same restraint described at
+[Privacy](/families/privacy/).
+
+**Remote start — the bedtime flow.** One small, warm exception to "the app
+is for parents, the device is for kids": a parent can start a story on the
+device from their phone. Pick the story in the app, tap play, and it begins
+on the yoyopod's speaker across the room — the flow
+[Bedtime stories](/stories/bedtime-stories/) is built on. Under the hood it
+rides the same validated remote-playback contract as content delivery, and
+on the device it behaves like any other playback: the kid can pause it,
+skip it, or turn it off with the button, because the device is theirs.
 
 ## Status today
 
@@ -80,8 +112,22 @@ snapshots. Details that protect the kid experience:
 
 ## Open questions
 
-- TODO: How large can the local library be, and what happens at the storage limit?
-- TODO: Do music and stories share one library view or split into two?
+- **Adopt a storage budget with a visible gauge?** The app showing "how
+  much room is left" implies a decided cap and a decided behavior at the
+  limit — nothing should ever silently delete a kid's music, so the honest
+  option is a full-library message that asks the parent to remove
+  something.
+- **Adopt one library or two?** Music and stories could share one view or
+  split in two — on the wheel and in the app both. Splitting reads better
+  at bedtime; sharing is simpler. Decide once, before the app's library
+  screens are designed.
+- **Adopt remote start in V1, or defer it?** It rides the already-validated
+  remote-playback contract, so the cost is app UI, not device work — but it
+  sits just beyond the five-job scope and should be admitted as an
+  exception knowingly if adopted.
+- **Adopt the no-listening-log stance as permanent?** Parents see what is
+  on the device, never what was played and when — a values decision worth
+  writing down before anyone asks for the chart.
 
 :::note[Sources]
 Condensed from

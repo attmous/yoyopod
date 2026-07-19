@@ -5,8 +5,10 @@ description: The modem, the SIM, and location hardware.
 
 *The 4G modem, SIM provisioning, and GPS — the hardware behind Locate and Talk.*
 
-:::caution[Partially filled]
-Sections marked *Placeholder* have no as-built content yet; everything else is condensed from the repository (see Sources at the bottom).
+:::tip[Proposed — the ideal design]
+This page mixes as-built fact (covered by the Sources note) with the target
+design, written out in full so it can be adopted, adapted, or dropped.
+Everything marked *Proposed* is neither implemented nor committed.
 :::
 
 ## Overview
@@ -36,11 +38,48 @@ an IP link, and link health monitoring.
 
 ### SIM and antenna
 
-*Placeholder — no as-built content yet.*
+*Proposed — the ideal design, not yet adopted.*
 
-- SIM: physical SIM vs. eSIM, and how a family gets a provisioned SIM in the box (TBD)
-- GPS receiver and antenna path (shared with or separate from the modem — product TBD)
-- Antenna design and placement in a small kid-carried enclosure (TBD)
+The family experience is decided before the component is: **the SIM
+arrives provisioned in the box**. A yoyopod ships with its line already
+alive — the family never shops for a data plan, never types an APN, and
+never handles a SIM at all. Connectivity is part of the product, arranged
+with a carrier or MVNO on our side and bound to the device during
+[first-time setup](/apps/setup/). The first time a parent should have to
+think about the SIM is never — and a SIM the family must never touch
+should be a SIM the family *cannot* touch.
+
+| Option | What it means | Trade-off |
+| --- | --- | --- |
+| Physical nano-SIM in a slot | a removable SIM behind a tray or cover, provisioned before shipping | familiar logistics and easy carrier swaps in the field — but it adds a mechanical opening to a kid-carried enclosure, a small removable part, and a SIM-swap surface we would rather not have |
+| **Soldered eSIM (eUICC)** | a solder-down SIM chip on the V1 board, provisioned electronically at the factory or via remote SIM provisioning | **Recommended** — nothing to lose, remove, or swap; one fewer hole in the enclosure; and carrier profiles can still change over remote provisioning without touching the hardware |
+
+V0 “Dawn” stays on a physical SIM because the SIM7600 rig demands one;
+the recommendation is for the V1 “Daylight” board, where the SIM is a
+design decision rather than an accident of the prototype.
+
+**GPS receiver path.** The proposal keeps GNSS integrated in the modem on
+V1, as it is on V0: one radio module, one antenna problem fewer, and fix
+quality that is comfortably sufficient for a feature that is
+[live-ish by promise](/apps/locate/) — periodic, coarse fixes were never
+going to justify a dedicated receiver's cost and board space. A separate
+receiver stays on the table only if EVT shows the integrated GNSS cannot
+get a usable fix inside the real enclosure.
+
+**Antenna placement is a V1 “Daylight” design input, not a detail.** On a
+board this small, the antennas are placed first and the rest of the
+layout follows: an LTE main antenna (plus diversity if the modem supports
+it) with a clean keep-out zone, and a GNSS antenna oriented sky-facing in
+the positions a kid actually carries the device. Three constraints shape
+the placement from day one: the enclosure material must be RF-transparent
+where the antennas live, whatever industrial design would prefer; the SAR
+budget for a device carried close to a child's body bounds antenna
+position and transmit power together; and the assembly must hold its
+performance after the drop testing a kid-carried product has to pass.
+This is exactly the kind of decision that cannot be retrofitted, which is
+why it belongs to the EVT stage
+([From Prototype to Product](/builders/hardware/roadmap/)) rather than to
+a later polish pass.
 
 ## Interfaces & contracts
 
@@ -61,10 +100,56 @@ doesn't flood the runtime.
 
 ### From GPS fix to a location feature
 
-*Placeholder — no as-built content yet.*
+*Proposed — the ideal design, not yet adopted.*
 
-- How GPS fixes flow from hardware to the Locate experience — see [Locate](/apps/locate/); the worker can query fixes today, but no location feature is built on top yet
-- The contract a different product modem must satisfy (AT/QMI surface, GPS access, power states) so workers survive the swap (TBD)
+The pipeline from silicon to a parent's phone is short on purpose, and
+every stage of it repeats the same promise: **live-ish, never real-time**.
+
+**The fix.** On a periodic cadence — minutes, not seconds — the network
+worker queries the modem's GNSS for a fix, normalizes the raw
+`ddmm.mmmm` output to decimal degrees (as it already does today), and
+coarsens it to the precision the product actually needs. Cadence and
+coarseness are set device-side, so no cloud bug can quietly turn the
+device into a tracker.
+
+**The publish.** The fix travels the same road as every other telemetry:
+the runtime hands it to the cloud worker, which publishes it on the
+device's event topic over the MQTT line home. Location gets one special
+rule on top of store-and-forward: while the device is offline, only the
+latest fix is kept — older fixes are dropped, not queued — because a
+stale position replayed in bulk is worse than no position. Every fix
+carries its timestamp, so nothing downstream can mistake old for now.
+
+**The ingestion.** yoyocloud keeps only the latest passive fix (deliberate
+check-ins linger a few days), retained under the same minimization rule as everything else
+([Security Model](/builders/software/security/)). There is no long
+location archive to breach, subpoena, or explain.
+
+**The live-ish API.** The yoyopod app reads location the way the
+[Cloud & Provisioning](/builders/software/cloud/) page recommends: a REST
+pull when a parent opens [Locate](/apps/locate/), with a push nudge when
+a fresh fix is worth a look. The response carries the fix *and its age*,
+and the app shows both — the API's shape makes a real-time expectation
+impossible to form, which is the honest way to keep the
+[location promise](/families/location/).
+
+**The modem contract.** A V1 “Daylight” modem can be a completely
+different part, as long as it satisfies the contract the network worker
+already implies. Written out, so a candidate can be scored before a board
+exists:
+
+| The V1 modem must provide | Because the workers depend on it |
+| --- | --- |
+| A control surface addressable by function — a stable by-id serial port or a QMI/MBIM endpoint | the bring-up state machine (probe → SIM → registration → signal → carrier) maps onto it unchanged |
+| A data path that yields a supervisable IP interface | link health is probed through `/sys/class/net`, whether the link is pppd or raw-IP |
+| On-demand GNSS fix queries | live-ish is a pull cadence, not a continuous NMEA stream the worker must babysit |
+| Distinguishable fault classes — no-SIM, PIN, and PUK separate from transport hiccups | the fatal-vs-retryable split above is the worker's whole recovery story |
+| Sleep states that keep paging alive, plus a hardware reset line | the modem must sleep hard for battery life without ever missing an incoming whitelist call, and the worker's reset command needs a real wire |
+
+Any modem that satisfies the table lands as a driver and worker-config
+change; the feature code above the workers — Locate, Talk, the cloud
+link — does not move. That is the whole point of the
+[worker architecture](/builders/software/runtime/).
 
 ## Today vs. target
 
@@ -78,10 +163,10 @@ fixes are queryable, and nothing user-facing consumes them yet.
 
 ## Open questions
 
-- TODO: Physical SIM or eSIM — and who provisions it, the family or us as part of the product?
-- TODO: Which regional 4G band sets must the product modem cover for the launch markets?
-- TODO: What is the modem's power budget, and how aggressively can it sleep without missing incoming calls?
-- TODO: Does the product keep using modem-integrated GPS, or move to a dedicated receiver?
+- **SIM:** adopt the soldered eSIM (eUICC) with in-box provisioning for V1 “Daylight”, or keep a physical nano-SIM slot for field-swap flexibility?
+- **Bands and carrier:** commit the V1 modem to the EU launch-market band set (cheaper, lower power), or pay up front for global coverage — and one MVNO with multi-network roaming, or per-market carriers?
+- **GPS receiver:** adopt modem-integrated GNSS for V1, holding a dedicated receiver only as the EVT fallback if in-enclosure fix quality fails?
+- **Modem power:** adopt the paging-aware sleep contract as a hard V1 selection requirement — the modem sleeps deeply yet never misses an incoming call?
 
 :::note[Sources]
 Condensed from the as-built docs site (`website/` in the repository): the

@@ -5,17 +5,23 @@ description: Battery life, charging, cleaning, and keeping it healthy.
 
 *Keep the device charged, clean, updated, and out of the washing machine.*
 
-:::caution[Partially filled]
-Sections marked *Placeholder* have no as-built content yet; everything else is condensed from the repository (see Sources at the bottom).
+:::tip[Proposed — the ideal design]
+This page mixes as-built fact (covered by the Sources note) with the target
+design, written out in full so it can be adopted, adapted, or dropped.
+Everything marked *Proposed* is neither implemented nor committed.
 :::
 
 ## What you'll need
 
-*Placeholder — no as-built content yet.*
+*Proposed — the ideal design, not yet adopted.*
 
-- The charging cable from the box (connector type TBD)
-- A regular charging spot at home — same place every evening
-- A soft, dry cloth for cleaning
+Very little, and all of it ordinary: the charging cable from the box, a
+regular charging spot at home — the same shelf every evening, so
+charging becomes a place as much as a chore — and a soft, dry cloth. No
+cleaning fluids, no tools, no maintenance apps. The device is meant to
+be looked after by a kid with a grown-up nearby, and that sets the bar
+where it belongs: if caring for it needed a manual, it would be too much
+care.
 
 ## Steps
 
@@ -42,34 +48,76 @@ pressed. There is a battery status view on the device, and the battery
 gauge, charging state, and clock all come from a dedicated power module
 that the device checks about twice a minute.
 
-What is *not* written yet, honestly: how software updates arrive and
-install, and cleaning guidance. Those stay in the placeholder sections
-below until there is something real to say.
+How software updates arrive and how to clean the device are not built
+yet — the Tips and Troubleshooting below describe the proposed design
+for both.
 
 ## Tips
 
-*Placeholder — no as-built content yet.*
+*Proposed — the ideal design, not yet adopted.*
 
-- Kids own the routine: charging the device is their job, like brushing teeth
-- Water, sand, and washing machines: what the device tolerates (rating TBD) — and what it doesn't
-- Heat and cold: don't leave it on radiators or in summer cars
-- Low-battery behavior: what the device does to keep calls and location alive longest (TBD)
+**Cleaning.** A soft, dry cloth handles almost everything, the canvas
+included. For sticky days — jam happens — a barely damp cloth, water
+only, on the shell, then dry it off. Keep liquids, wipes, and sprays
+away from the speaker openings and the charging port, and never poke
+anything into either.
+
+**Storage.** Going in a drawer for a few weeks? Charge to about half,
+switch it off, and pick somewhere cool and dry. Batteries age fastest
+when stored completely full or completely empty — half-charged and cool
+is how they nap best. Day to day the rules are shorter still: no
+radiators, no summer cars, no sunny windowsills.
+
+**Updates.** Updates look after themselves. The device fetches new
+software quietly in the background, checks that it genuinely came from
+us before touching anything, and installs it *next to* the software it
+is already running rather than over it. At the next restart it switches
+to the new version — and if anything about it is not right, it switches
+straight back to the version that worked, all by itself. An update can
+never leave the device stuck or half-changed, there is nothing to
+approve or click, and a kid never meets an update screen mid-song.
+
+**The routine.** Charging is a fine first responsibility: plugging in
+each evening is the kid's job, like brushing teeth. The device does its
+part by warning early and switching off safely instead of punishing a
+forgotten evening (see Steps above).
 
 ## Troubleshooting
 
-*Placeholder — no as-built content yet.*
+*Proposed — the ideal design, not yet adopted.*
 
-- Battery drains faster than expected — what eats power and what to check
-- Device won't charge — cable, port, and power-source checks
-- Device feels warm while charging — what's normal, what isn't
-- It went through the wash — honest guidance on what to do next (TBD)
+**The battery drains faster than usual.** The hungriest days are call
+days and low-coverage days — with weak bars, the device works harder to
+stay reachable. Cold days sap batteries too, temporarily. The screen
+already sleeps on its own, so the usual fix is simply a steadier spot in
+the evening charging routine.
+
+**It won't charge.** Suspect the cable and the wall adapter before the
+device — cables fail far more often. Then look into the charging port
+for pocket fluff and clear it gently with something soft and dry, never
+anything metal.
+
+**It feels warm while charging.** Slightly warm is normal. Hot to hold
+is not: unplug it, let it cool in the open — never charge it under a
+pillow or blanket — and if the heat comes back, contact us.
+
+**It went through the wash.** It is built for a kid's life — rain,
+splashes, sand at arm's length — not for a spin cycle. If it happens:
+switch it off if it is still on, do not plug it in, and let it dry
+thoroughly for a day or two before trying to charge. If it will not wake
+up after that, get in touch.
+
+**Something seems different after an overnight restart.** That was
+probably an update installing itself. If a new version ever truly
+misbehaves, the device returns to the previous one on its own — and if
+it looks like that has not happened, contact us.
 
 ## Open questions
 
-- TODO: Real-world battery life targets per usage pattern, and what we promise publicly
-- TODO: Charging connector and whether a wall adapter ships in the box
-- TODO: Any water/dust ingress rating for the production device, or none for V1?
-- TODO: Update policy — automatic overnight, parent-approved, or both?
+- Adopt fully automatic background updates with automatic roll-back as the only mode, or add an optional "install tonight?" approval in the yoyopod app?
+- Publish concrete battery-life numbers per usage pattern, or keep the public promise qualitative until production hardware settles?
+- Adopt a certified water- and dust-resistance rating for V1 “Daylight”, or ship the honest plain-language line — rain yes, washing machine no — without certifying one?
+- Decide the charging connector and whether a wall adapter ships in the box before the box copy is written.
 
 :::note[Sources]
 Condensed from
