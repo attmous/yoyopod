@@ -1,5 +1,5 @@
 ---
-title: Voice & Ask Engine
+title: Speech Engine
 description: "Push-to-talk speech under yoyocore: the speech worker, cloud STT/TTS, and the Ask experience's engine."
 ---
 
@@ -13,7 +13,7 @@ Everything marked *Proposed* is neither implemented nor committed.
 
 ## Overview
 
-The Voice & Ask Engine is the platform layer behind the [Ask experience](/apps/ask/): the child holds the side button, speaks, and hears an answer. It is strictly push-to-talk — speech capture happens only while the [held button](/families/using-the-button/) says so; there is no wake word and no always-on microphone. Under yoyocore it lives as one worker among the [engine peers](/builders/software/architecture/), owning the spoken-language work: transcription (STT), synthesis (TTS), and Ask — the question-and-answer behind the Ask screen. It is a pure translator between WAV files and cloud APIs; capture and playback hardware belong to other workers.
+The Speech Engine is the platform layer behind the [Ask experience](/apps/ask/): the child holds the side button, speaks, and hears an answer. It is strictly push-to-talk — speech capture happens only while the [held button](/families/using-the-button/) says so; there is no wake word and no always-on microphone. Under yoyocore it lives as one worker among the [engine peers](/builders/software/architecture/), owning the spoken-language work: transcription (STT), synthesis (TTS), and Ask — the question-and-answer behind the Ask screen. It is a pure translator between WAV files and cloud APIs; capture and playback hardware belong to other workers.
 
 One naming trap to carry with you: the crate and binary say **speech** (`device/speech/`, `yoyopod-speech-host`), but the wire domain is **`voice.*`** (`voice.transcribe`, `voice.ask`, …). When searching the codebase, search both.
 
@@ -62,7 +62,7 @@ The proposed decision is explicit, and it closes this placeholder permanently: *
 
 The Ask root screen becomes the **Ask wheel**: a wheel of **Help Agents**. The default entry is the yoyopod companion voice; parents add specialists. The kid spins the wheel, picks a helper, holds the button, and asks — curiosity-driven answers, spoken back. This section is the engine-side home of that idea; the family-facing story lives on the [Ask page](/apps/ask/) and in the [yoyopod app](/apps/parent-app/).
 
-The engine-side insight is that a Help Agent is not code — it is configuration. An agent profile holds exactly the four parent choices: a name, a **topic area** (math, science, animals, reading, …), a **tone** (playful, patient, matter-of-fact), and **boundaries** (what is off-limits). Every helper speaks with the same disclosed AI-generated voice underneath — a per-agent voice is deliberately not part of the profile. Parents author profiles in the yoyopod app; yoyocloud stores them as part of the family's configuration and syncs them to the device the same way every other piece of configuration arrives. The Voice & Ask Engine does not grow a new pipeline: each profile becomes system context layered over the same STT → model → TTS path the engine already runs. On the wire, the selected agent's profile id rides in the `voice.ask` payload exactly like the per-request parameters that already ride there — no new commands, no new worker.
+The engine-side insight is that a Help Agent is not code — it is configuration. An agent profile holds exactly the four parent choices: a name, a **topic area** (math, science, animals, reading, …), a **tone** (playful, patient, matter-of-fact), and **boundaries** (what is off-limits). Every helper speaks with the same disclosed AI-generated voice underneath — a per-agent voice is deliberately not part of the profile. Parents author profiles in the yoyopod app; yoyocloud stores them as part of the family's configuration and syncs them to the device the same way every other piece of configuration arrives. The Speech Engine does not grow a new pipeline: each profile becomes system context layered over the same STT → model → TTS path the engine already runs. On the wire, the selected agent's profile id rides in the `voice.ask` payload exactly like the per-request parameters that already ride there — no new commands, no new worker.
 
 Where the profile turns into model context is a real choice:
 

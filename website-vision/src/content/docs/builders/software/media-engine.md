@@ -7,7 +7,7 @@ description: "Local-first playback under yoyocore: the media worker, mpv, and th
 
 ## Overview
 
-The Media Engine is one of the four peer engines of the software platform, alongside the UI Engine, the VoIP Engine, and the Voice & Ask Engine (see [the architecture](/builders/software/architecture/)). It owns everything that makes sound *from files*: the local music library, playlists, recent tracks, remote-asset caching and import — and the whole lifecycle of an out-of-process mpv player. The rest of yoyocore never touches mpv directly; it sends `media.*` work orders and reads back state snapshots.
+The Media Engine is one of the four peer engines of the software platform, alongside the UI Engine, the VoIP Engine, and the Speech Engine (see [the architecture](/builders/software/architecture/)). It owns everything that makes sound *from files*: the local music library, playlists, recent tracks, remote-asset caching and import — and the whole lifecycle of an out-of-process mpv player. The rest of yoyocore never touches mpv directly; it sends `media.*` work orders and reads back state snapshots.
 
 The engine is built on a deliberate product decision: **Listen is local-first and local-only.** Spotify, Amazon Music, and other streaming providers are not active Listen sources, and must not be treated as active sources unless a separate, explicit decision reverses that. Music on yoyopod means on-device files, played by an app-owned mpv backend over a filesystem library — which is why the library works with no internet at all.
 

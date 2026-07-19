@@ -78,9 +78,9 @@ live in yoyocloud, synced to the device's Ask wheel. Crucially, the
 age-appropriate content policy is enforced in yoyocloud on every
 exchange, not only in the prompt, so a clever question cannot talk its
 way past it. Transcripts are reviewable by parents, with a proposed
-default retention of 30 days under parent control. See the [Voice & Ask
-Engine](/builders/software/voice-ask/) for the device side of this
-contract.
+default retention of 30 days under parent control. See the
+[Speech Engine](/builders/software/speech-engine/) for the device side of
+this contract.
 
 **Location ingestion and a live-ish location API.** Devices publish
 location telemetry over MQTT; yoyocloud keeps the latest fix and a short

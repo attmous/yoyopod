@@ -34,7 +34,7 @@ The naming canon — these four names are used across the docs:
 | Name | What it is | Today |
 | --- | --- | --- |
 | **yoyoOS** | the Linux image the device boots | Raspberry Pi OS Lite; target: a Yocto/Buildroot-minimal custom image |
-| **yoyocore** | the Rust device application on top of yoyoOS: `device/runtime/` supervising the domain workers and the UI host (`device/ui/`), one process tree, surfaced as four peer engines — [UI](/builders/software/ui/), [Media](/builders/software/media-engine/), [VoIP](/builders/software/voip-engine/), [Voice & Ask](/builders/software/voice-ask/) | real and documented in depth — see [The yoyocore Runtime](/builders/software/runtime/) |
+| **yoyocore** | the Rust device application on top of yoyoOS: `device/runtime/` supervising the domain workers and the UI host (`device/ui/`), one process tree, surfaced as four peer engines — [UI](/builders/software/ui/), [Media](/builders/software/media-engine/), [VoIP](/builders/software/voip-engine/), [Speech](/builders/software/speech-engine/) | real and documented in depth — see [The yoyocore Runtime](/builders/software/runtime/) |
 | **yoyocloud** | the backend backbone: MQTT broker + routing, provisioning, telemetry | the device-side MQTT link and provisioning exist (`device/cloud/`); the backbone itself is build-or-adopt, decision open — see [Cloud & Provisioning](/builders/software/cloud/) |
 | **the yoyopod app** | the parent mobile app, iOS + Android | **future** — planned `apps/` (the app) and `packages/` (shared contracts); see [App Platform](/builders/software/apps/) |
 

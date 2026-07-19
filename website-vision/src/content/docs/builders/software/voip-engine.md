@@ -75,7 +75,7 @@ The worker speaks a contract of 19 commands and 12 events. Commands group into l
 
 Two contract details carry real product weight. The registration FSM tracks a `recovery_pending` flag so that a re-registration after a failure is reported as *recovered*, not merely *registered* — the runtime and telemetry can tell a clean start from a comeback, which matters when reachability is the promise. And calls move through thirteen states, with a backend stop clearing any active call.
 
-The boundary with the [Voice & Ask Engine](/builders/software/voice-ask/) follows the wire: voice-note *capture* lives here under `voip.*`, while Ask-flow speech is the interpreter's job under `voice.*`. One operational note: the backend polls liblinphone at a 20 ms default interval — starving that loop delays call state.
+The boundary with the [Speech Engine](/builders/software/speech-engine/) follows the wire: voice-note *capture* lives here under `voip.*`, while Ask-flow speech is the interpreter's job under `voice.*`. One operational note: the backend polls liblinphone at a 20 ms default interval — starving that loop delays call state.
 
 ## Today vs. target
 

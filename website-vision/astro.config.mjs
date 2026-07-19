@@ -108,7 +108,7 @@ export default defineConfig({
 								{ label: 'UI Engine', slug: 'builders/software/ui' },
 								{ label: 'Media Engine', slug: 'builders/software/media-engine' },
 								{ label: 'VoIP Engine', slug: 'builders/software/voip-engine', badge: pr },
-								{ label: 'Voice & Ask Engine', slug: 'builders/software/voice-ask', badge: pr },
+								{ label: 'Speech Engine', slug: 'builders/software/speech-engine', badge: pr },
 								{ label: 'Cloud & Provisioning', slug: 'builders/software/cloud', badge: pr },
 								{ label: 'App Platform', slug: 'builders/software/apps', badge: pr },
 								{ label: 'Security Model', slug: 'builders/software/security', badge: pr },

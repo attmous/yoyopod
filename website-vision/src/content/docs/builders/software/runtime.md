@@ -35,7 +35,7 @@ gets 3 seconds; a late one is marked `Degraded` and boot continues.
 | network | cellular modem (SIM7600), PPP, GPS |
 | cloud | MQTT to the backend — see [Cloud & Provisioning](/builders/software/cloud/) |
 | power | PiSugar battery, RTC, watchdog |
-| speech | cloud STT/TTS/Ask — see [Voice & Ask Engine](/builders/software/voice-ask/) |
+| speech | cloud STT/TTS/Ask — see [Speech Engine](/builders/software/speech-engine/) |
 
 Shared pieces: `device/protocol/` (the envelope plus the UI contract) and
 `device/worker/` (helpers for uniform ready/health/error envelopes).
