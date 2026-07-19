@@ -2,8 +2,8 @@ use yoyopod_protocol::ui::{RuntimeSnapshot, UiScreen};
 
 use crate::engine::Key;
 use crate::scene::{
-    Backdrop, Deck, DeckItem, DeckItemAnim, DeckKind, ItemRender, PlayerHeroArtwork,
-    PlayerHeroModel, RegionId, Scene, SceneDefaults, SceneId,
+    Backdrop, Deck, DeckItem, DeckItemAnim, DeckKind, ItemRender, PlayerHeroModel,
+    PlayerHeroVariant, RegionId, Scene, SceneDefaults, SceneId,
 };
 
 const LISTEN_STAGE_LIME: u32 = 0xE6FDE0;
@@ -28,18 +28,20 @@ pub fn props_from(
         model: PlayerHeroModel {
             context,
             title: snapshot.music.title.clone(),
+            subtitle: String::new(),
             elapsed: snapshot.music.elapsed_text.clone(),
             total: snapshot.music.total_text.clone(),
             progress_permille: snapshot.music.progress_permille.clamp(0, 1000),
             playing: snapshot.music.playing,
             focus_index: focus.min(2),
             accent: 0x9DFC7C,
-            artwork: PlayerHeroArtwork::Track {
+            variant: PlayerHeroVariant::Music {
                 icon_key: "music_note".to_string(),
                 fill_rgb: 0xE8A93C,
             },
             left_icon_key: "prev_sm".to_string(),
             right_icon_key: "next_sm".to_string(),
+            right_enabled: true,
         },
     }
 }

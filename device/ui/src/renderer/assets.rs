@@ -305,6 +305,14 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::HERO_TIME_L,
         roles::HERO_TIME_R,
         roles::HERO_TITLE,
+        roles::REPLAY_DELETE,
+        roles::REPLAY_DELETE_ICON,
+        roles::REPLAY_PLAY,
+        roles::REPLAY_PLAY_ICON,
+        roles::REPLAY_NEXT,
+        roles::REPLAY_NEXT_ICON,
+        roles::REPLAY_TITLE,
+        roles::REPLAY_META,
         roles::MODAL,
         roles::MODAL_MESSAGE,
         roles::MODAL_STACK,
@@ -361,6 +369,9 @@ fn required_selected_theme_roles() -> Vec<&'static str> {
         roles::HERO_PREV,
         roles::HERO_PLAY,
         roles::HERO_NEXT,
+        roles::REPLAY_DELETE,
+        roles::REPLAY_PLAY,
+        roles::REPLAY_NEXT,
     ]
 }
 
@@ -436,10 +447,14 @@ mod tests {
     fn hero_focus_outline_does_not_override_the_semantic_accent() {
         let asset = parse_theme_asset().expect("theme.ron should be valid");
         let focused_play = selected_theme(&asset, roles::HERO_PLAY);
+        let focused_replay = selected_theme(&asset, roles::REPLAY_PLAY);
 
         assert_eq!(focused_play.fill_rgb, None);
         assert_eq!(focused_play.outline_rgb, Some(0x1B1B1F));
         assert_eq!(focused_play.outline_width, 2);
+        assert_eq!(focused_replay.fill_rgb, None);
+        assert_eq!(focused_replay.outline_rgb, Some(0x1B1B1F));
+        assert_eq!(focused_replay.outline_width, 2);
     }
 
     #[test]
@@ -484,5 +499,22 @@ mod tests {
             assert!(region.x >= 0);
             assert!(region.x + region.width <= 240);
         }
+    }
+
+    #[test]
+    fn replay_disc_is_centered_and_metadata_clears_the_navigation() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let arc = layout(&layouts, roles::HERO_ARC);
+        let play = layout(&layouts, roles::REPLAY_PLAY);
+        let elapsed = layout(&layouts, roles::HERO_TIME_L);
+        let title = layout(&layouts, roles::REPLAY_TITLE);
+        let meta = layout(&layouts, roles::REPLAY_META);
+        let navigation = layout(&layouts, roles::DECK_BAR);
+
+        assert_eq!(play.x * 2 + play.width, 240);
+        assert_eq!(play.y * 2 + play.height, arc.y * 2 + arc.height);
+        assert!(elapsed.y + elapsed.height <= title.y);
+        assert!(title.y + title.height <= meta.y);
+        assert!(meta.y + meta.height <= navigation.y);
     }
 }

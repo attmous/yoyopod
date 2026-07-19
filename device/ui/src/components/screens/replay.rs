@@ -4,11 +4,9 @@ use yoyopod_protocol::ui::{ListItemSnapshot, RuntimeSnapshot, UiScreen};
 
 use crate::engine::Key;
 use crate::scene::{
-    Backdrop, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, ItemRender, PlayerHeroArtwork,
-    PlayerHeroModel, RegionId, Scene, SceneDefaults, SceneId,
+    Backdrop, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, ItemRender, PlayerHeroModel,
+    PlayerHeroVariant, RegionId, Scene, SceneDefaults, SceneId,
 };
-
-use super::talk::{contact_color, contact_initial};
 
 const TALK_STAGE_PERI: u32 = 0xE7E5F7;
 const REPLAY_PERI: u32 = 0xA9A6E5;
@@ -50,39 +48,33 @@ pub fn props_from(
         .map(|contact| contact.title.trim())
         .filter(|name| !name.is_empty())
         .unwrap_or("Contact");
-    let title = if notes.is_empty() {
-        format!("{contact_name} - no notes")
+    let subtitle = if notes.is_empty() {
+        "No recordings".to_string()
     } else {
         format!(
-            "{contact_name} - {} of {}",
+            "Recording {} of {}",
             replay_index.min(notes.len() - 1) + 1,
             notes.len()
         )
     };
-    let initial = contact
-        .map(contact_initial)
-        .unwrap_or_else(|| "?".to_string());
-    let avatar_rgb = contact
-        .map(|contact| contact_color(snapshot, contact))
-        .unwrap_or(REPLAY_PERI);
+    let has_next = replay_index + 1 < notes.len();
 
     ReplayProps {
         defaults,
         model: PlayerHeroModel {
             context: "REPLAY".to_string(),
-            title,
+            title: contact_name.to_string(),
+            subtitle,
             elapsed: time_text(elapsed_ms),
             total: time_text(duration_ms),
             progress_permille,
             playing: current_file_matches && snapshot.voice.playback_active,
             focus_index: focus.min(2),
             accent: REPLAY_PERI,
-            artwork: PlayerHeroArtwork::Contact {
-                initial,
-                fill_rgb: avatar_rgb,
-            },
-            left_icon_key: "close_sm".to_string(),
+            variant: PlayerHeroVariant::VoiceReplay,
+            left_icon_key: "trash_sm".to_string(),
             right_icon_key: "next_sm".to_string(),
+            right_enabled: has_next,
         },
     }
 }
@@ -148,15 +140,17 @@ mod tests {
             0,
             defaults_for(UiScreen::Replay),
         );
-        assert_eq!(props.model.title, "Mama - 1 of 1");
+        assert_eq!(props.model.title, "Mama");
+        assert_eq!(props.model.subtitle, "Recording 1 of 1");
         assert_eq!(props.model.elapsed, "0:04");
         assert_eq!(props.model.total, "0:07");
         assert_eq!(props.model.progress_permille, 571);
         assert!(props.model.playing);
-        assert_eq!(props.model.left_icon_key, "close_sm");
+        assert_eq!(props.model.left_icon_key, "trash_sm");
+        assert!(!props.model.right_enabled);
         assert!(matches!(
-            props.model.artwork,
-            PlayerHeroArtwork::Contact { .. }
+            props.model.variant,
+            PlayerHeroVariant::VoiceReplay
         ));
     }
 }

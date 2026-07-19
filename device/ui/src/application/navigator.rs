@@ -562,5 +562,6 @@ fn focus_count(runtime: &UiRuntime) -> usize {
         &runtime.snapshot,
         runtime.selected_playlist.as_ref(),
         runtime.selected_contact.as_ref(),
+        runtime.replay_index,
     )
 }

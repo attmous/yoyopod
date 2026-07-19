@@ -40,7 +40,13 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
             roles::WHEEL_ICON | roles::EMPTY_PLUS_ICON => {
                 ffi::lv_image_set_inner_align(obj.as_ptr(), ffi::LV_IMAGE_ALIGN_CENTER);
             }
-            roles::HERO_ART_ICON | roles::HERO_PREV | roles::HERO_PLAY_ICON | roles::HERO_NEXT => {
+            roles::HERO_ART_ICON
+            | roles::HERO_PREV
+            | roles::HERO_PLAY_ICON
+            | roles::HERO_NEXT
+            | roles::REPLAY_DELETE_ICON
+            | roles::REPLAY_PLAY_ICON
+            | roles::REPLAY_NEXT_ICON => {
                 ffi::lv_image_set_inner_align(obj.as_ptr(), ffi::LV_IMAGE_ALIGN_CENTER);
             }
             roles::CONTEXT_LABEL
@@ -70,7 +76,7 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 );
                 ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
             }
-            roles::RECORDING_HINT => {
+            roles::RECORDING_HINT | roles::REPLAY_META => {
                 ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
                 ffi::lv_obj_set_style_text_font(
                     obj.as_ptr(),
@@ -79,7 +85,7 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 );
                 ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
             }
-            roles::HERO_TITLE => {
+            roles::HERO_TITLE | roles::REPLAY_TITLE => {
                 ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
                 ffi::lv_obj_set_style_text_font(
                     obj.as_ptr(),

@@ -113,6 +113,14 @@ pub(crate) const HERO_NEXT: &str = "hero_next";
 pub(crate) const HERO_TIME_L: &str = "hero_time_l";
 pub(crate) const HERO_TIME_R: &str = "hero_time_r";
 pub(crate) const HERO_TITLE: &str = "hero_title";
+pub(crate) const REPLAY_DELETE: &str = "replay_delete";
+pub(crate) const REPLAY_DELETE_ICON: &str = "replay_delete_icon";
+pub(crate) const REPLAY_PLAY: &str = "replay_play";
+pub(crate) const REPLAY_PLAY_ICON: &str = "replay_play_icon";
+pub(crate) const REPLAY_NEXT: &str = "replay_next";
+pub(crate) const REPLAY_NEXT_ICON: &str = "replay_next_icon";
+pub(crate) const REPLAY_TITLE: &str = "replay_title";
+pub(crate) const REPLAY_META: &str = "replay_meta";
 
 pub(crate) const STATUS_BAR: &str = "status_bar";
 pub(crate) const STATUS_LEFT_CLUSTER: &str = "status_left_cluster";

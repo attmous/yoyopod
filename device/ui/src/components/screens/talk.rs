@@ -108,16 +108,6 @@ pub(crate) fn contact_initial(contact: &ListItemSnapshot) -> String {
         .unwrap_or_else(|| "?".to_string())
 }
 
-pub(crate) fn contact_color(snapshot: &RuntimeSnapshot, contact: &ListItemSnapshot) -> u32 {
-    snapshot
-        .call
-        .contacts
-        .iter()
-        .position(|candidate| candidate.id == contact.id)
-        .map(|index| CONTACT_COLORS[index % CONTACT_COLORS.len()])
-        .unwrap_or(CONTACT_COLORS[0])
-}
-
 fn contact_badge(
     snapshot: &RuntimeSnapshot,
     contact: &ListItemSnapshot,
