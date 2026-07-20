@@ -40,6 +40,7 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
             roles::WHEEL_ICON
             | roles::EMPTY_PLUS_ICON
             | roles::ASK_HERO_ICON
+            | roles::SETUP_PEEK_ICON
             | roles::SETUP_TILE_ICON
             | roles::SETUP_VOLUME_ICON => {
                 ffi::lv_image_set_inner_align(obj.as_ptr(), ffi::LV_IMAGE_ALIGN_CENTER);
@@ -150,6 +151,15 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                     SELECTOR,
                 );
                 ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
+            }
+            roles::SETUP_PEEK_TITLE => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_14,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_LEFT, SELECTOR);
             }
             roles::SETUP_TILE_SUB
             | roles::SETUP_COUNTER

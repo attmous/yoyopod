@@ -23,13 +23,18 @@ pub(crate) fn apply_accent_raw(obj: NonNull<ffi::lv_obj_t>, role: &'static str, 
                 ffi::lv_obj_set_style_image_recolor(obj.as_ptr(), accent, SELECTOR);
                 ffi::lv_obj_set_style_image_recolor_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
             }
-            roles::WHEEL_ICON | roles::SETUP_TILE_ICON | roles::SETUP_VOLUME_ICON => {
+            roles::WHEEL_ICON
+            | roles::SETUP_PEEK_ICON
+            | roles::SETUP_TILE_ICON
+            | roles::SETUP_VOLUME_ICON => {
                 ffi::lv_obj_set_style_image_recolor(obj.as_ptr(), accent, SELECTOR);
                 ffi::lv_obj_set_style_image_recolor_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
             }
             roles::WHEEL_AVATAR
             | roles::WHEEL_BADGE
             | roles::EMPTY_PLUS
+            | roles::SETUP_PEEK_PLATE
+            | roles::SETUP_PEEK_PLATE_ROUND
             | roles::SETUP_TILE_PLATE
             | roles::SETUP_TILE_PLATE_ROUND
             | roles::SETUP_VOLUME_BLOCK => {

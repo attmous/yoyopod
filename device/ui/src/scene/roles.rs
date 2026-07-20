@@ -120,7 +120,13 @@ pub(crate) const MEDIA_WHEEL_FOCUS_TITLE: &str = "media_wheel_focus_title";
 pub(crate) const MEDIA_WHEEL_FOCUS_SUB: &str = "media_wheel_focus_sub";
 
 pub(crate) const SETUP_COUNTER: &str = "setup_counter";
+pub(crate) const SETUP_WHEEL_PREVIOUS: &str = "setup_wheel_previous";
+pub(crate) const SETUP_WHEEL_NEXT: &str = "setup_wheel_next";
 pub(crate) const SETUP_WHEEL_ITEM: &str = "setup_wheel_item";
+pub(crate) const SETUP_PEEK_PLATE: &str = "setup_peek_plate";
+pub(crate) const SETUP_PEEK_PLATE_ROUND: &str = "setup_peek_plate_round";
+pub(crate) const SETUP_PEEK_ICON: &str = "setup_peek_icon";
+pub(crate) const SETUP_PEEK_TITLE: &str = "setup_peek_title";
 pub(crate) const SETUP_TILE_PLATE: &str = "setup_tile_plate";
 pub(crate) const SETUP_TILE_PLATE_ROUND: &str = "setup_tile_plate_round";
 pub(crate) const SETUP_TILE_ICON: &str = "setup_tile_icon";

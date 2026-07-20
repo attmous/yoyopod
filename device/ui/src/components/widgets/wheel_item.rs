@@ -1,4 +1,4 @@
-use crate::animation::presets::MEDIA_WHEEL_PEEK_OPACITY;
+use crate::animation::presets::{MEDIA_WHEEL_PEEK_OPACITY, SETUP_WHEEL_PEEK_OPACITY};
 use crate::components::primitives::{container, image, label};
 use crate::engine::{Element, Key};
 use crate::scene::deck::{WheelBadgeKind, WheelItemModel, WheelItemVariant};
@@ -109,11 +109,26 @@ pub fn wheel_item(
             icon_key,
             plate_rgb,
             round,
-        } => {
-            assert_eq!(slot, WheelItemSlot::Standard);
-            container(roles::SETUP_WHEEL_ITEM)
+        } => match slot {
+            WheelItemSlot::Previous => setup_peek(
+                roles::SETUP_WHEEL_PREVIOUS,
+                model,
+                icon_key,
+                *plate_rgb,
+                *round,
+                key,
+            ),
+            WheelItemSlot::Next => setup_peek(
+                roles::SETUP_WHEEL_NEXT,
+                model,
+                icon_key,
+                *plate_rgb,
+                *round,
+                key,
+            ),
+            WheelItemSlot::Focused => container(roles::SETUP_WHEEL_ITEM)
                 .key(key)
-                .selected(selected)
+                .selected(true)
                 .child(
                     container(if *round {
                         roles::SETUP_TILE_PLATE_ROUND
@@ -124,9 +139,40 @@ pub fn wheel_item(
                     .child(image(roles::SETUP_TILE_ICON).icon(icon_key).accent(INK)),
                 )
                 .child(label(roles::SETUP_TILE_NAME).text(&model.title))
-                .child(label(roles::SETUP_TILE_SUB).text(&model.subtitle))
-        }
+                .child(label(roles::SETUP_TILE_SUB).text(&model.subtitle)),
+            WheelItemSlot::Standard => {
+                unreachable!("setup wheel item requires a semantic slot")
+            }
+        },
     }
+}
+
+fn setup_peek(
+    role: &'static str,
+    model: &WheelItemModel,
+    icon_key: &str,
+    plate_rgb: u32,
+    round: bool,
+    key: Key,
+) -> Element {
+    container(role)
+        .key(key)
+        .opacity(SETUP_WHEEL_PEEK_OPACITY)
+        .child(
+            container(if round {
+                roles::SETUP_PEEK_PLATE_ROUND
+            } else {
+                roles::SETUP_PEEK_PLATE
+            })
+            .accent(plate_rgb)
+            .child(
+                image(roles::SETUP_PEEK_ICON)
+                    .icon(icon_key)
+                    .accent(INK)
+                    .scale_permille(500),
+            ),
+        )
+        .child(label(roles::SETUP_PEEK_TITLE).text(&model.title))
 }
 
 fn media_peek(

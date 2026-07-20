@@ -318,12 +318,13 @@ impl UiRuntime {
             return false;
         };
         let timeline = match self.active_screen {
-            UiScreen::Talk
-            | UiScreen::TalkContact
-            | UiScreen::Setup
+            UiScreen::Talk | UiScreen::TalkContact => {
+                animation::presets::contact_wheel_roll(item_count, 0, now_ms)
+            }
+            UiScreen::Setup
             | UiScreen::SetupCompanion
             | UiScreen::SetupContacts
-            | UiScreen::SetupTheme => animation::presets::contact_wheel_roll(item_count, 0, now_ms),
+            | UiScreen::SetupTheme => animation::presets::setup_wheel_roll(item_count, 0, now_ms),
             UiScreen::Playlists | UiScreen::PlaylistTracks | UiScreen::RecentTracks => {
                 animation::presets::media_wheel_roll(item_count, 0, now_ms)
             }

@@ -91,10 +91,7 @@ fn wheel_scene(
                 .collect(),
             focus_index: focus,
             focus_policy: FocusPolicy::Wrap,
-            item_anim: DeckItemAnim::ScaleOnFocus {
-                from_permille: 700,
-                to_permille: 1000,
-            },
+            item_anim: DeckItemAnim::None,
             swap_anim: None,
             recycle_window: Some(3),
         }],

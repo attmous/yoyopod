@@ -302,7 +302,13 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::MEDIA_WHEEL_FOCUS_TITLE,
         roles::MEDIA_WHEEL_FOCUS_SUB,
         roles::SETUP_COUNTER,
+        roles::SETUP_WHEEL_PREVIOUS,
+        roles::SETUP_WHEEL_NEXT,
         roles::SETUP_WHEEL_ITEM,
+        roles::SETUP_PEEK_PLATE,
+        roles::SETUP_PEEK_PLATE_ROUND,
+        roles::SETUP_PEEK_ICON,
+        roles::SETUP_PEEK_TITLE,
         roles::SETUP_TILE_PLATE,
         roles::SETUP_TILE_PLATE_ROUND,
         roles::SETUP_TILE_ICON,
@@ -603,6 +609,25 @@ mod tests {
         assert!(focus.y + focus.height <= next.y);
         assert!(next.y + next.height <= navigation.y);
         for region in [header, previous, focus, next] {
+            assert!(region.x >= 0);
+            assert!(region.x + region.width <= 240);
+        }
+    }
+
+    #[test]
+    fn setup_wheel_slots_clear_the_header_and_navigation() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let header = layout(&layouts, roles::CONTEXT_LABEL);
+        let previous = layout(&layouts, roles::SETUP_WHEEL_PREVIOUS);
+        let focus = layout(&layouts, roles::SETUP_WHEEL_ITEM);
+        let next = layout(&layouts, roles::SETUP_WHEEL_NEXT);
+        let navigation = layout(&layouts, roles::DECK_BAR);
+
+        assert!(header.y + header.height <= previous.y);
+        assert!(previous.y + previous.height <= focus.y);
+        assert!(focus.y + focus.height <= next.y);
+        assert!(next.y + next.height <= navigation.y);
+        for region in [previous, focus, next] {
             assert!(region.x >= 0);
             assert!(region.x + region.width <= 240);
         }
