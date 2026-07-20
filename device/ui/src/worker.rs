@@ -318,6 +318,7 @@ where
             context.ui_runtime.advance_status_bar(now_ms);
             context.ui_runtime.advance_animations(now_ms);
             context.ui_runtime.advance_home_state(now_ms);
+            context.ui_runtime.advance_ask_state(now_ms);
             context.ui_runtime.advance_system_overlay(now_ms);
             if context.render_state.engine.animation_frame_dirty(now_ms) {
                 context.ui_runtime.mark_animation_frame();

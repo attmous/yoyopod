@@ -69,6 +69,9 @@ impl RuntimeEvent {
         match self {
             Self::WorkerReady { domain } => {
                 state.mark_worker(*domain, WorkerState::Running, "ready");
+                if *domain == WorkerDomain::Voice {
+                    state.mark_ask_available();
+                }
             }
             Self::CloudSnapshot(snapshot) => state.apply_cloud_snapshot(snapshot),
             Self::CloudCommand(_) => {}
@@ -90,16 +93,22 @@ impl RuntimeEvent {
             }
             Self::VoiceTranscript(snapshot) => state.apply_voice_transcript(snapshot),
             Self::VoiceAskResult(snapshot) => state.apply_voice_ask_result(snapshot),
-            Self::VoiceSpeakResult(_) => {}
+            Self::VoiceSpeakResult(_) => state.mark_ask_available(),
             Self::UiScreenChanged { screen } => {
                 state.current_screen = *screen;
             }
             Self::WorkerError { domain, message } => {
                 state.mark_worker(*domain, WorkerState::Degraded, message.clone());
+                if *domain == WorkerDomain::Voice {
+                    state.mark_ask_unavailable();
+                }
                 state.fail_overlay_for(*domain);
             }
             Self::WorkerExited { domain, reason } => {
                 state.mark_worker(*domain, WorkerState::Stopped, reason.clone());
+                if *domain == WorkerDomain::Voice {
+                    state.mark_ask_unavailable();
+                }
             }
             Self::UiIntent(intent) => state.apply_ui_intent(intent),
             Self::UiInput(_) | Self::UiScreenshotCaptured(_) | Self::Shutdown | Self::Ignored => {}
@@ -202,13 +211,25 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         RuntimeEvent::VoipSnapshot(snapshot) => commands_for_voip_snapshot(state, snapshot),
         RuntimeEvent::NetworkSnapshot(snapshot) => commands_for_network_snapshot(snapshot),
         RuntimeEvent::PowerSnapshot(snapshot) => commands_for_power_snapshot(state, snapshot),
-        RuntimeEvent::VoiceTranscript(snapshot) => commands_for_voice_transcript(state, snapshot),
-        RuntimeEvent::VoiceAskResult(snapshot) => commands_for_voice_ask_result(state, snapshot),
-        RuntimeEvent::VoiceSpeakResult(snapshot) => commands_for_voice_speak_result(snapshot),
+        RuntimeEvent::VoiceTranscript(snapshot) => with_ask_log(
+            commands_for_voice_transcript(state, snapshot),
+            "transcript_received",
+        ),
+        RuntimeEvent::VoiceAskResult(snapshot) => with_ask_log(
+            commands_for_voice_ask_result(state, snapshot),
+            "answer_received",
+        ),
+        RuntimeEvent::VoiceSpeakResult(snapshot) => {
+            with_ask_log(commands_for_voice_speak_result(snapshot), "audio_ready")
+        }
         RuntimeEvent::UiScreenshotCaptured(captured) => vec![RuntimeCommand::AppendAppLog {
             line: screenshot_log_line(captured),
         }],
         RuntimeEvent::Shutdown => vec![RuntimeCommand::Shutdown],
+        RuntimeEvent::WorkerError {
+            domain: WorkerDomain::Voice,
+            ..
+        } => with_ask_log(Vec::new(), "failed"),
         RuntimeEvent::WorkerError { domain, .. }
             if state.overlay.pending_domain == Some(*domain) =>
         {
@@ -228,6 +249,13 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         | RuntimeEvent::WorkerExited { .. }
         | RuntimeEvent::Ignored => Vec::new(),
     }
+}
+
+fn with_ask_log(mut commands: Vec<RuntimeCommand>, stage: &str) -> Vec<RuntimeCommand> {
+    commands.push(RuntimeCommand::AppendAppLog {
+        line: format!("Ask pipeline stage={stage}"),
+    });
+    commands
 }
 
 /// App log line for a UI screenshot capture result. The success wording is a
@@ -1529,6 +1557,56 @@ mod tests {
         );
         assert!(message_types.contains(&"voice.cancel"));
         assert!(message_types.contains(&"voip.stop_voice_note_playback"));
+    }
+
+    #[test]
+    fn voice_failure_is_the_explicit_ask_offline_signal_and_is_safe_to_log() {
+        let mut state = RuntimeState::default();
+        state.network.connected = false;
+        let failure = RuntimeEvent::WorkerError {
+            domain: WorkerDomain::Voice,
+            message: "provider rejected secret request details".to_string(),
+        };
+
+        let diagnostics = commands_for_event(&state, &failure);
+        assert_eq!(
+            diagnostics,
+            vec![RuntimeCommand::AppendAppLog {
+                line: "Ask pipeline stage=failed".to_string(),
+            }]
+        );
+        assert!(!format!("{diagnostics:?}").contains("secret"));
+
+        failure.apply(&mut state);
+        assert!(state.voice.ask_unavailable);
+        assert!(state.ui_snapshot().voice.ask_unavailable);
+        assert_eq!(state.voice.phase, "offline");
+
+        RuntimeEvent::UiIntent(UiIntent::Voice(VoiceIntent::AskStart)).apply(&mut state);
+        assert!(!state.voice.ask_unavailable);
+        assert_eq!(state.voice.phase, "listening");
+    }
+
+    #[test]
+    fn voice_pipeline_results_emit_stage_diagnostics_without_user_content() {
+        let state = RuntimeState::default();
+        let event = RuntimeEvent::VoiceAskResult(json!({"answer": "private answer"}));
+
+        let diagnostics = commands_for_event(&state, &event);
+
+        assert!(diagnostics.iter().any(|command| matches!(
+            command,
+            RuntimeCommand::AppendAppLog { line } if line == "Ask pipeline stage=answer_received"
+        )));
+        let log_text = diagnostics
+            .iter()
+            .filter_map(|command| match command {
+                RuntimeCommand::AppendAppLog { line } => Some(line.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!log_text.contains("private answer"));
     }
 
     #[test]

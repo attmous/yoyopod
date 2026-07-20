@@ -273,6 +273,8 @@ pub struct VoiceRuntimeSnapshot {
     #[serde(default = "default_voice_body")]
     pub body: String,
     #[serde(default)]
+    pub ask_unavailable: bool,
+    #[serde(default)]
     pub capture_in_flight: bool,
     #[serde(default)]
     pub ptt_active: bool,
@@ -298,6 +300,7 @@ impl Default for VoiceRuntimeSnapshot {
             phase: default_voice_phase(),
             headline: default_voice_headline(),
             body: default_voice_body(),
+            ask_unavailable: false,
             capture_in_flight: false,
             ptt_active: false,
             recording_duration_ms: 0,

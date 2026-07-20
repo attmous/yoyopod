@@ -38,6 +38,7 @@ pub struct UiRuntime {
     pub(crate) system_overlay: SystemOverlayState,
     pub(crate) system_overlay_preview: Option<SystemOverlayPreview>,
     pub(crate) companion_preview: Option<CompanionVariant>,
+    pub(crate) ask_offline_started_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,6 +230,7 @@ impl Default for UiRuntime {
             system_overlay: SystemOverlayState::default(),
             system_overlay_preview: None,
             companion_preview: None,
+            ask_offline_started_ms: None,
         }
     }
 }
