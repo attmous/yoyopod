@@ -9,12 +9,14 @@ const INK_MUTED: u32 = 0x8A8076;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusBarProps {
     pub status: HudStatus,
+    pub opacity: u8,
 }
 
 pub fn status_bar(props: &StatusBarProps) -> Element {
     let status = &props.status;
     container(roles::STATUS_BAR)
         .key(Key::Static("status_bar"))
+        .opacity(props.opacity)
         .child(
             container(roles::STATUS_LEFT_CLUSTER)
                 .key(Key::Static("status_left_cluster"))
@@ -154,6 +156,7 @@ mod tests {
     fn status_bar_uses_the_renderer_asset_layout() {
         let element = status_bar(&StatusBarProps {
             status: HudStatus::default(),
+            opacity: 255,
         });
 
         assert_eq!(element.layout, Layout::Region(crate::scene::RegionId::Auto));

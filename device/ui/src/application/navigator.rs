@@ -220,9 +220,25 @@ fn select_dynamic_list_item(runtime: &mut UiRuntime, kind: ListKind) {
 
 fn select_dynamic_action(runtime: &mut UiRuntime, kind: DynamicActionKind) {
     match kind {
+        DynamicActionKind::Ask => select_ask_action(runtime),
         DynamicActionKind::TalkContact => select_talk_contact_action(runtime),
         DynamicActionKind::Replay => select_replay_action(runtime),
         DynamicActionKind::VoiceNote => select_voice_note(runtime),
+    }
+}
+
+fn select_ask_action(runtime: &mut UiRuntime) {
+    let phase = runtime.snapshot.voice.phase.trim().to_ascii_lowercase();
+    if runtime.snapshot.voice.playback_active
+        || runtime.snapshot.voice.playback_paused
+        || matches!(
+            phase.as_str(),
+            "thinking" | "reply" | "answering" | "offline"
+        )
+    {
+        runtime
+            .intents
+            .push(UiIntent::Voice(VoiceIntent::AskCancel));
     }
 }
 

@@ -355,6 +355,15 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::RECORDING_TIMER_DOT,
         roles::RECORDING_TIMER,
         roles::RECORDING_HINT,
+        roles::ASK_SURFACE,
+        roles::ASK_HERO,
+        roles::ASK_HERO_ICON,
+        roles::ASK_WAVE_BAR,
+        roles::ASK_THINKING_DOT,
+        roles::ASK_LINE,
+        roles::ASK_HINT,
+        roles::ASK_PROGRESS,
+        roles::ASK_PROGRESS_FILL,
     ];
     roles
 }

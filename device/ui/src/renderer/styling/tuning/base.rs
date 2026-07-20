@@ -21,6 +21,9 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
             | roles::HERO_AVATAR
             | roles::HERO_PLAY
             | roles::CALL_OVERLAY
+            | roles::ASK_SURFACE
+            | roles::ASK_HERO
+            | roles::ASK_PROGRESS
             | roles::STATUS_BAR => {
                 ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
             }

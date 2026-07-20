@@ -371,27 +371,20 @@ fn handle_cancel<W>(
 where
     W: Write,
 {
-    let target_id = payload
+    let requested_target_id = payload
         .get("request_id")
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| request_id.clone());
-    let Some(target_id) = target_id else {
-        emit(
-            output,
-            &voice_error(
-                request_id,
-                "invalid_payload",
-                "voice.cancel requires request_id",
-                false,
-            ),
-        )?;
-        return Ok(());
+    let matched = match requested_target_id.as_deref() {
+        Some(target_id) => {
+            active
+                .as_ref()
+                .and_then(|active| active.request_id.as_deref())
+                == Some(target_id)
+        }
+        None => active.is_some(),
     };
-    let matched = active
-        .as_ref()
-        .and_then(|active| active.request_id.as_deref())
-        == Some(target_id.as_str());
     if matched {
         if let Some(active) = active.as_mut() {
             active.context.cancel();
@@ -402,11 +395,11 @@ where
         output,
         &WorkerEnvelope::result(
             "voice.cancelled",
-            request_id.or_else(|| Some(target_id.clone())),
+            request_id.or_else(|| requested_target_id.clone()),
             json!({
                 "cancelled": matched,
                 "reason": if matched { "cancel_requested" } else { "not_active" },
-                "target_request_id": target_id,
+                "target_request_id": requested_target_id,
             }),
         ),
     )?;
@@ -499,4 +492,28 @@ where
     output.write_all(&envelope.encode()?)?;
     output.flush()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancel_without_request_id_cancels_the_single_active_request() {
+        let context = SpeechRequestContext::new(5_000);
+        let mut active = Some(ActiveRequest {
+            request_id: None,
+            context: context.clone(),
+            cancel_acknowledged: false,
+        });
+        let mut output = Vec::new();
+
+        handle_cancel(&mut output, &mut active, None, json!({})).unwrap();
+
+        assert!(context.is_cancelled());
+        assert!(active.as_ref().unwrap().cancel_acknowledged);
+        let envelope = WorkerEnvelope::decode(&output).unwrap();
+        assert_eq!(envelope.message_type, "voice.cancelled");
+        assert_eq!(envelope.payload["cancelled"], true);
+    }
 }

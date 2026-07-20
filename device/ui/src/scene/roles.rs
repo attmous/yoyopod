@@ -57,6 +57,16 @@ pub(crate) const RECORDING_TIMER_DOT: &str = "recording_timer_dot";
 pub(crate) const RECORDING_TIMER: &str = "recording_timer";
 pub(crate) const RECORDING_HINT: &str = "recording_hint";
 
+pub(crate) const ASK_SURFACE: &str = "ask_surface";
+pub(crate) const ASK_HERO: &str = "ask_hero";
+pub(crate) const ASK_HERO_ICON: &str = "ask_hero_icon";
+pub(crate) const ASK_WAVE_BAR: &str = "ask_wave_bar";
+pub(crate) const ASK_THINKING_DOT: &str = "ask_thinking_dot";
+pub(crate) const ASK_LINE: &str = "ask_line";
+pub(crate) const ASK_HINT: &str = "ask_hint";
+pub(crate) const ASK_PROGRESS: &str = "ask_progress";
+pub(crate) const ASK_PROGRESS_FILL: &str = "ask_progress_fill";
+
 pub(crate) const CALL_OVERLAY: &str = "call_overlay";
 pub(crate) const CALL_STATE: &str = "call_state";
 pub(crate) const CALL_AVATAR: &str = "call_avatar";

@@ -160,6 +160,7 @@ fn template_intent_kind(template: IntentTemplate) -> IntentKind {
         IntentTemplate::MusicNextTrack => ("music", "next_track"),
         IntentTemplate::VoiceAskStart => ("voice", "ask_start"),
         IntentTemplate::VoiceAskStop => ("voice", "ask_stop"),
+        IntentTemplate::VoiceAskCancel => ("voice", "ask_cancel"),
         IntentTemplate::VoiceCaptureStartAndSendRecipient => ("voice", "capture_start_and_send"),
         IntentTemplate::VoiceCaptureStop => ("voice", "capture_stop"),
         IntentTemplate::VoiceCaptureCancel => ("voice", "capture_cancel"),
@@ -215,8 +216,14 @@ fn dynamic_action_intent_kinds(kind: DynamicActionKind) -> &'static [IntentKindL
         IntentKindLiteral::new("voice", "stop_playback"),
         IntentKindLiteral::new("voice", "delete"),
     ];
+    const ASK_INTENTS: &[IntentKindLiteral] = &[
+        IntentKindLiteral::new("voice", "ask_start"),
+        IntentKindLiteral::new("voice", "ask_stop"),
+        IntentKindLiteral::new("voice", "ask_cancel"),
+    ];
 
     match kind {
+        DynamicActionKind::Ask => ASK_INTENTS,
         DynamicActionKind::TalkContact => TALK_CONTACT_INTENTS,
         DynamicActionKind::Replay => REPLAY_INTENTS,
         DynamicActionKind::VoiceNote => VOICE_NOTE_INTENTS,
@@ -278,8 +285,9 @@ const NOW_PLAYING_SELECT: &[SelectionTarget] = &[
     SelectionTarget::EmitIntent(IntentTemplate::MusicPlayPause),
     SelectionTarget::EmitIntent(IntentTemplate::MusicNextTrack),
 ];
-const ASK_SELECT: &[SelectionTarget] =
-    &[SelectionTarget::EmitIntent(IntentTemplate::VoiceAskStart)];
+const ASK_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
+    kind: DynamicActionKind::Ask,
+}];
 const TALK_CONTACT_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
     kind: DynamicActionKind::TalkContact,
 }];
@@ -307,13 +315,13 @@ const ASK_PASSTHROUGH: &[PassthroughPolicy] = &[
         trigger: InputAction::PttPress,
         when: SnapshotCondition::Always,
         intent: IntentTemplate::VoiceAskStart,
-        captures_button: false,
+        captures_button: true,
     },
     PassthroughPolicy {
         trigger: InputAction::PttRelease,
         when: SnapshotCondition::Always,
         intent: IntentTemplate::VoiceAskStop,
-        captures_button: false,
+        captures_button: true,
     },
 ];
 const TALK_CONTACT_PASSTHROUGH: &[PassthroughPolicy] = &[
@@ -404,6 +412,9 @@ pub fn static_intent_template(template: IntentTemplate) -> Option<UiIntent> {
         IntentTemplate::VoiceAskStop => {
             Some(UiIntent::Voice(yoyopod_protocol::ui::VoiceIntent::AskStop))
         }
+        IntentTemplate::VoiceAskCancel => Some(UiIntent::Voice(
+            yoyopod_protocol::ui::VoiceIntent::AskCancel,
+        )),
         IntentTemplate::VoiceCaptureStartAndSendRecipient => None,
         IntentTemplate::VoiceCaptureStop => Some(UiIntent::Voice(
             yoyopod_protocol::ui::VoiceIntent::CaptureStop,

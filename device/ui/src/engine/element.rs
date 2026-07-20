@@ -110,6 +110,11 @@ impl Element {
         self
     }
 
+    pub fn absolute(mut self, x: i32, y: i32, w: i32, h: i32) -> Self {
+        self.layout = Layout::Absolute { x, y, w, h };
+        self
+    }
+
     pub fn with_anim(mut self, anim: AnimSlot) -> Self {
         self.anim = Some(anim);
         self

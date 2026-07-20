@@ -10,6 +10,7 @@ use crate::ElementKind;
 pub struct ScreenChrome {
     pub title: String,
     pub status: HudStatus,
+    pub status_opacity: u8,
     pub deck: DeckBarProps,
 }
 
@@ -22,6 +23,13 @@ pub fn chrome_for_screen(
     home_focus: Option<usize>,
     deck_visible: bool,
 ) -> ScreenChrome {
+    let capture_dimmed = (screen == UiScreen::TalkContact || screen == UiScreen::Ask)
+        && (snapshot.voice.ptt_active
+            || snapshot.voice.capture_in_flight
+            || matches!(
+                snapshot.voice.phase.trim().to_ascii_lowercase().as_str(),
+                "recording" | "listening"
+            ));
     ScreenChrome {
         title: title_for_screen(
             screen,
@@ -31,6 +39,7 @@ pub fn chrome_for_screen(
             selected_contact,
         ),
         status: status_from_snapshot(snapshot),
+        status_opacity: if capture_dimmed { 140 } else { 255 },
         deck: DeckBarProps {
             focused_index: deck_focus_for_screen(screen, home_focus),
             visible: deck_visible,
@@ -39,11 +48,7 @@ pub fn chrome_for_screen(
                 UiScreen::IncomingCall | UiScreen::OutgoingCall | UiScreen::InCall
             ) {
                 140
-            } else if screen == UiScreen::TalkContact
-                && (snapshot.voice.ptt_active
-                    || snapshot.voice.capture_in_flight
-                    || snapshot.voice.phase.eq_ignore_ascii_case("recording"))
-            {
+            } else if capture_dimmed {
                 140
             } else {
                 255
@@ -58,6 +63,7 @@ pub fn hud_scene(chrome: ScreenChrome) -> HudScene {
             .key(Key::Static("hud"))
             .child(status_bar(&StatusBarProps {
                 status: chrome.status,
+                opacity: chrome.status_opacity,
             }))
             .child(deck_bar(&chrome.deck)),
     )
