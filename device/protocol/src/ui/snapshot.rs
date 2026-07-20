@@ -380,6 +380,14 @@ pub struct OverlayRuntimeSnapshot {
     pub error: String,
     #[serde(default)]
     pub message: String,
+    #[serde(default)]
+    pub retryable: bool,
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub retry_count: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

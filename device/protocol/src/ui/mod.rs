@@ -470,6 +470,7 @@ pub enum UiIntent {
     Power(PowerIntent),
     Settings(SettingsIntent),
     Navigation(NavigationIntent),
+    System(SystemIntent),
     Runtime(RuntimeIntent),
 }
 
@@ -504,6 +505,7 @@ impl UiIntent {
                 &intent_payload,
             )?)),
             "navigation" => Ok(Self::Navigation(NavigationIntent::from_parts(&action)?)),
+            "system" => Ok(Self::System(SystemIntent::from_parts(&action)?)),
             "runtime" => Ok(Self::Runtime(RuntimeIntent::from_parts(&action)?)),
             other => Err(ProtocolError::InvalidEnvelope(format!(
                 "unknown UI intent domain {other}"
@@ -519,6 +521,7 @@ impl UiIntent {
             Self::Power(intent) => ("power", intent.action_name(), intent.payload()),
             Self::Settings(intent) => ("settings", intent.action_name(), intent.payload()),
             Self::Navigation(intent) => ("navigation", intent.action_name(), empty_payload()),
+            Self::System(intent) => ("system", intent.action_name(), empty_payload()),
             Self::Runtime(intent) => ("runtime", intent.action_name(), empty_payload()),
         };
         json!({
@@ -526,6 +529,46 @@ impl UiIntent {
             "action": action,
             "payload": payload,
         })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemIntent {
+    RetryOverlay,
+    DismissOverlay,
+    LoadingTimedOut,
+    AnnounceWait,
+    AnnounceRecoverableError,
+    AnnounceUnrecoverableError,
+    AnnounceRetry,
+}
+
+impl SystemIntent {
+    fn from_parts(action: &str) -> Result<Self, ProtocolError> {
+        match normalized(action).as_str() {
+            "retry_overlay" => Ok(Self::RetryOverlay),
+            "dismiss_overlay" => Ok(Self::DismissOverlay),
+            "loading_timed_out" => Ok(Self::LoadingTimedOut),
+            "announce_wait" => Ok(Self::AnnounceWait),
+            "announce_recoverable_error" => Ok(Self::AnnounceRecoverableError),
+            "announce_unrecoverable_error" => Ok(Self::AnnounceUnrecoverableError),
+            "announce_retry" => Ok(Self::AnnounceRetry),
+            other => Err(ProtocolError::InvalidEnvelope(format!(
+                "unknown system intent action {other}"
+            ))),
+        }
+    }
+
+    fn action_name(self) -> &'static str {
+        match self {
+            Self::RetryOverlay => "retry_overlay",
+            Self::DismissOverlay => "dismiss_overlay",
+            Self::LoadingTimedOut => "loading_timed_out",
+            Self::AnnounceWait => "announce_wait",
+            Self::AnnounceRecoverableError => "announce_recoverable_error",
+            Self::AnnounceUnrecoverableError => "announce_unrecoverable_error",
+            Self::AnnounceRetry => "announce_retry",
+        }
     }
 }
 
@@ -1164,6 +1207,7 @@ mod tests {
             })),
             UiIntent::Settings(SettingsIntent::CompanionSet("Bunny".to_string())),
             UiIntent::Navigation(NavigationIntent::Back),
+            UiIntent::System(SystemIntent::RetryOverlay),
             UiIntent::Runtime(RuntimeIntent::Shutdown),
         ];
 

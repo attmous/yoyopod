@@ -1,6 +1,6 @@
 use time::OffsetDateTime;
 use yoyopod_protocol::ui::{
-    AnimationRequest, InputAction, RuntimeSnapshot, RuntimeSnapshotPatch, UiIntent,
+    AnimationRequest, InputAction, RuntimeSnapshot, RuntimeSnapshotPatch, SystemIntent, UiIntent,
 };
 
 use crate::animation;
@@ -12,7 +12,7 @@ use crate::scene::{
 };
 use crate::DirtyRegion;
 
-use super::state::{DirtyState, HomeMode, UiRuntime};
+use super::state::{DirtyState, HomeMode, SystemOverlayPreview, UiRuntime};
 use super::{input_router, navigator, snapshot, UiScreen};
 
 #[derive(Debug, Clone)]
@@ -51,6 +51,8 @@ impl UiRuntime {
         let previous_playing = self.snapshot.voice.playback_active;
         let previous_file_path = self.snapshot.voice.playback_file_path.clone();
         let change = snapshot::replace_full(&mut self.snapshot, snapshot);
+        self.enforce_system_overlay_preview();
+        self.reconcile_system_overlay_snapshot();
         self.full_snapshots += 1;
         navigator::apply_app_state_route(self, &change.previous_app_state, &change.app_state);
         navigator::apply_runtime_preemption(self);
@@ -69,6 +71,8 @@ impl UiRuntime {
         let previous_playing = self.snapshot.voice.playback_active;
         let previous_file_path = self.snapshot.voice.playback_file_path.clone();
         let change = snapshot::apply_patch(&mut self.snapshot, patch);
+        self.enforce_system_overlay_preview();
+        self.reconcile_system_overlay_snapshot();
         *self.patches_per_domain.entry(domain).or_insert(0) += 1;
         navigator::apply_app_state_route(self, &change.previous_app_state, &change.app_state);
         navigator::apply_runtime_preemption(self);
@@ -89,6 +93,27 @@ impl UiRuntime {
             return;
         }
         self.last_input_ms = Some(now_ms);
+        if crate::router::is_overlay_screen(self.active_screen) {
+            match action {
+                InputAction::Home => {
+                    self.dismiss_system_overlay();
+                    navigator::go_home(self);
+                }
+                InputAction::Select
+                    if self.active_screen == UiScreen::Error && self.snapshot.overlay.retryable =>
+                {
+                    self.retry_system_overlay(true);
+                }
+                InputAction::Advance
+                | InputAction::Select
+                | InputAction::Back
+                | InputAction::PttPress
+                | InputAction::PttRelease => {}
+            }
+            self.dirty.input = true;
+            self.dirty.focus = true;
+            return;
+        }
         if self.pending_wheel_roll.is_some() {
             if action == InputAction::Advance {
                 self.dirty.input = true;
@@ -151,6 +176,126 @@ impl UiRuntime {
         }
     }
 
+    pub fn advance_system_overlay(&mut self, now_ms: u64) -> bool {
+        if let Some(preview) = self.system_overlay_preview {
+            self.enforce_system_overlay_preview();
+            let previous_step = self.system_overlay.spinner_step;
+            self.system_overlay.loading_visible = preview == SystemOverlayPreview::Loading;
+            if preview == SystemOverlayPreview::Loading {
+                self.system_overlay.spinner_step = ((now_ms / 80) % 8) as u8;
+            }
+            navigator::apply_runtime_preemption(self);
+            let changed = self.system_overlay.spinner_step != previous_step;
+            if changed {
+                self.dirty.animation = true;
+                self.dirty.overlay = true;
+            }
+            return changed;
+        }
+        if !self.snapshot.overlay.error.trim().is_empty() {
+            self.system_overlay.reset_loading();
+            let signature = self.system_overlay_signature();
+            if self.system_overlay.error_signature != signature {
+                self.system_overlay.reset_error();
+                self.system_overlay.error_signature = signature;
+            }
+            let entered_ms = *self.system_overlay.error_started_ms.get_or_insert(now_ms);
+            let elapsed_ms = now_ms.saturating_sub(entered_ms);
+            let mut changed = false;
+            if !self.system_overlay.error_announced {
+                self.intents
+                    .push(UiIntent::System(if self.snapshot.overlay.retryable {
+                        SystemIntent::AnnounceRecoverableError
+                    } else {
+                        SystemIntent::AnnounceUnrecoverableError
+                    }));
+                self.system_overlay.error_announced = true;
+                changed = true;
+            }
+            if self.snapshot.overlay.retryable
+                && self.snapshot.overlay.retry_count == 0
+                && elapsed_ms >= 4_000
+            {
+                self.retry_system_overlay(false);
+                return true;
+            }
+            if !self.snapshot.overlay.retryable
+                && elapsed_ms >= 60_000
+                && !self.system_overlay.unrecoverable_repeat_announced
+            {
+                self.intents
+                    .push(UiIntent::System(SystemIntent::AnnounceUnrecoverableError));
+                self.system_overlay.unrecoverable_repeat_announced = true;
+                changed = true;
+            }
+            navigator::apply_runtime_preemption(self);
+            return changed;
+        }
+
+        self.system_overlay.reset_error();
+        if self.snapshot.overlay.loading {
+            let started_ms = *self.system_overlay.loading_started_ms.get_or_insert(now_ms);
+            let elapsed_ms = now_ms.saturating_sub(started_ms);
+            let mut changed = false;
+            if elapsed_ms >= 300 && !self.system_overlay.loading_visible {
+                self.system_overlay.loading_visible = true;
+                changed = true;
+            }
+            if elapsed_ms >= 2_000 && !self.system_overlay.loading_announced {
+                self.intents
+                    .push(UiIntent::System(SystemIntent::AnnounceWait));
+                self.system_overlay.loading_announced = true;
+                changed = true;
+            }
+            if elapsed_ms >= 8_000 {
+                self.intents
+                    .push(UiIntent::System(SystemIntent::LoadingTimedOut));
+                self.snapshot.overlay.loading = false;
+                self.snapshot.overlay.error = "operation_timeout".to_string();
+                self.snapshot.overlay.code = "operation_timeout".to_string();
+                self.snapshot.overlay.retryable = true;
+                self.system_overlay.reset();
+                navigator::apply_runtime_preemption(self);
+                self.dirty.overlay = true;
+                self.dirty.navigation = true;
+                return true;
+            }
+            if self.system_overlay.loading_visible {
+                let spinner_step = ((elapsed_ms / 80) % 8) as u8;
+                if spinner_step != self.system_overlay.spinner_step {
+                    self.system_overlay.spinner_step = spinner_step;
+                    self.dirty.animation = true;
+                    changed = true;
+                }
+            }
+            if changed {
+                self.dirty.overlay = true;
+            }
+            navigator::apply_runtime_preemption(self);
+            return changed;
+        }
+
+        let was_active = crate::router::is_overlay_screen(self.active_screen);
+        self.system_overlay.reset();
+        navigator::apply_runtime_preemption(self);
+        if was_active {
+            self.dirty.overlay = true;
+            self.dirty.navigation = true;
+        }
+        was_active
+    }
+
+    pub(crate) fn note_system_overlay_snapshot_received(&mut self, now_ms: u64) {
+        if self.snapshot.overlay.loading && self.system_overlay.loading_started_ms.is_none() {
+            self.system_overlay.loading_started_ms = Some(now_ms);
+        }
+        if !self.snapshot.overlay.error.trim().is_empty()
+            && self.system_overlay.error_started_ms.is_none()
+        {
+            self.system_overlay.error_started_ms = Some(now_ms);
+        }
+    }
+
     pub fn start_animation(&mut self, request: AnimationRequest, started_at_ms: u64) {
         let transition = animation::Transition::from_request(
             request,
@@ -196,23 +341,29 @@ impl UiRuntime {
         self.snapshot.overlay.loading = false;
         self.snapshot.overlay.error = "Lost runtime link".to_string();
         self.snapshot.overlay.message.clear();
+        self.snapshot.overlay.retryable = false;
+        self.snapshot.overlay.code = "runtime_stalled".to_string();
+        self.snapshot.overlay.source = "ui.watchdog".to_string();
+        self.snapshot.overlay.retry_count = 0;
+        self.reconcile_system_overlay_snapshot();
         navigator::apply_runtime_preemption(self);
         self.dirty.overlay = true;
         self.dirty.navigation = true;
     }
 
     pub fn scene_graph(&self, now_ms: u64) -> SceneGraph {
-        let defaults = defaults_for(self.active_screen);
+        let (rendered_screen, rendered_focus) = self.rendered_screen_and_focus();
+        let defaults = defaults_for(rendered_screen);
         let mut active = components::screens::scene_for_screen(
-            self.active_screen,
+            rendered_screen,
             &self.snapshot,
-            self.focus_index,
+            rendered_focus,
             self.selected_playlist.as_ref(),
             self.selected_contact.as_ref(),
             self.replay_index,
             defaults,
         );
-        active.id = SceneId::with_route_key(self.active_screen, self.active_route_key());
+        active.id = SceneId::with_route_key(rendered_screen, self.route_key(rendered_screen));
         active.id.generation = active.id.generation.wrapping_add(self.scene_revision);
         active.timelines.extend(
             self.transitions
@@ -222,20 +373,24 @@ impl UiRuntime {
         if let Some(pending) = self
             .pending_wheel_roll
             .as_ref()
-            .filter(|pending| pending.screen == self.active_screen)
+            .filter(|pending| pending.screen == rendered_screen)
         {
             active.timelines.push(pending.timeline.clone());
         }
         let mut chrome = components::screens::chrome::chrome_for_screen(
-            self.active_screen,
+            rendered_screen,
             &self.snapshot,
-            self.focus_index,
+            rendered_focus,
             self.selected_playlist.as_ref(),
             self.selected_contact.as_ref(),
-            (self.active_screen == UiScreen::Hub && self.home_mode == HomeMode::Focused)
-                .then_some(self.focus_index),
-            self.active_screen != UiScreen::Hub || self.home_mode != HomeMode::Ambient,
+            (rendered_screen == UiScreen::Hub && self.home_mode == HomeMode::Focused)
+                .then_some(rendered_focus),
+            rendered_screen != UiScreen::Hub || self.home_mode != HomeMode::Ambient,
         );
+        if crate::router::is_overlay_screen(self.active_screen) {
+            chrome.status_opacity = 255;
+            chrome.deck.opacity = 140;
+        }
         if self.status_bar_preview_enabled {
             chrome.status = status_bar_preview_status(now_ms);
             chrome.deck.visible = false;
@@ -243,7 +398,15 @@ impl UiRuntime {
             chrome.status.time = current_status_time().1;
         }
         let hud = components::screens::chrome::hud_scene(chrome);
-        let modal_stack = active.modal.clone().into_iter().collect();
+        let modal_stack = match self.active_screen {
+            UiScreen::Loading => vec![crate::scene::Modal::Loading {
+                spinner_step: self.system_overlay.spinner_step,
+            }],
+            UiScreen::Error => vec![crate::scene::Modal::Error {
+                retryable: self.snapshot.overlay.retryable,
+            }],
+            _ => active.modal.clone().into_iter().collect(),
+        };
         SceneGraph {
             hud,
             active,
@@ -274,15 +437,15 @@ impl UiRuntime {
     }
 
     pub fn active_title(&self) -> String {
+        let (screen, focus) = self.rendered_screen_and_focus();
         components::screens::chrome::chrome_for_screen(
-            self.active_screen,
+            screen,
             &self.snapshot,
-            self.focus_index,
+            focus,
             self.selected_playlist.as_ref(),
             self.selected_contact.as_ref(),
-            (self.active_screen == UiScreen::Hub && self.home_mode == HomeMode::Focused)
-                .then_some(self.focus_index),
-            self.active_screen != UiScreen::Hub || self.home_mode != HomeMode::Ambient,
+            (screen == UiScreen::Hub && self.home_mode == HomeMode::Focused).then_some(focus),
+            screen != UiScreen::Hub || self.home_mode != HomeMode::Ambient,
         )
         .title
     }
@@ -299,8 +462,8 @@ impl UiRuntime {
         navigator::wants_ptt_passthrough(self)
     }
 
-    fn active_route_key(&self) -> Option<&str> {
-        match self.active_screen {
+    fn route_key(&self, screen: UiScreen) -> Option<&str> {
+        match screen {
             UiScreen::PlaylistTracks => self
                 .selected_playlist
                 .as_ref()
@@ -311,6 +474,111 @@ impl UiRuntime {
                 .map(|contact| contact.id.as_str()),
             _ => None,
         }
+    }
+
+    fn rendered_screen_and_focus(&self) -> (UiScreen, usize) {
+        if !crate::router::is_overlay_screen(self.active_screen) {
+            return (self.active_screen, self.focus_index);
+        }
+        self.screen_stack
+            .iter()
+            .rev()
+            .find(|entry| !crate::router::is_overlay_screen(entry.screen))
+            .map(|entry| (entry.screen, entry.focus_index))
+            .unwrap_or((UiScreen::Hub, 0))
+    }
+
+    fn reconcile_system_overlay_snapshot(&mut self) {
+        if !self.snapshot.overlay.loading {
+            self.system_overlay.reset_loading();
+        }
+        if self.snapshot.overlay.error.trim().is_empty() {
+            self.system_overlay.reset_error();
+        } else {
+            let signature = self.system_overlay_signature();
+            if self.system_overlay.error_signature != signature {
+                self.system_overlay.reset_error();
+                self.system_overlay.error_signature = signature;
+            }
+        }
+    }
+
+    pub(crate) fn enable_system_overlay_preview(&mut self, preview: SystemOverlayPreview) {
+        self.screen_stack.clear();
+        self.active_screen = UiScreen::Hub;
+        self.focus_index = 2;
+        self.home_mode = HomeMode::Focused;
+        self.system_overlay_preview = Some(preview);
+        self.enforce_system_overlay_preview();
+        self.reconcile_system_overlay_snapshot();
+        if preview == SystemOverlayPreview::Loading {
+            self.system_overlay.loading_visible = true;
+        }
+        navigator::apply_runtime_preemption(self);
+        self.dirty.overlay = true;
+        self.dirty.navigation = true;
+    }
+
+    fn enforce_system_overlay_preview(&mut self) {
+        let Some(preview) = self.system_overlay_preview else {
+            return;
+        };
+        self.snapshot.overlay.loading = preview == SystemOverlayPreview::Loading;
+        self.snapshot.overlay.error = match preview {
+            SystemOverlayPreview::Loading => String::new(),
+            SystemOverlayPreview::RecoverableError => "preview_recoverable".to_string(),
+            SystemOverlayPreview::UnrecoverableError => "preview_unrecoverable".to_string(),
+        };
+        self.snapshot.overlay.message.clear();
+        self.snapshot.overlay.retryable = preview == SystemOverlayPreview::RecoverableError;
+        self.snapshot.overlay.code = match preview {
+            SystemOverlayPreview::Loading => String::new(),
+            SystemOverlayPreview::RecoverableError => "preview_recoverable".to_string(),
+            SystemOverlayPreview::UnrecoverableError => "preview_unrecoverable".to_string(),
+        };
+        self.snapshot.overlay.source = "ui.preview".to_string();
+        self.snapshot.overlay.retry_count =
+            u8::from(preview == SystemOverlayPreview::RecoverableError);
+    }
+
+    fn system_overlay_signature(&self) -> String {
+        format!(
+            "{}|{}|{}|{}",
+            self.snapshot.overlay.code,
+            self.snapshot.overlay.source,
+            self.snapshot.overlay.retryable,
+            self.snapshot.overlay.retry_count
+        )
+    }
+
+    fn retry_system_overlay(&mut self, announce: bool) {
+        if announce {
+            self.intents
+                .push(UiIntent::System(SystemIntent::AnnounceRetry));
+        }
+        self.intents
+            .push(UiIntent::System(SystemIntent::RetryOverlay));
+        self.clear_local_system_overlay();
+    }
+
+    fn dismiss_system_overlay(&mut self) {
+        self.intents
+            .push(UiIntent::System(SystemIntent::DismissOverlay));
+        self.clear_local_system_overlay();
+    }
+
+    fn clear_local_system_overlay(&mut self) {
+        self.snapshot.overlay.loading = false;
+        self.snapshot.overlay.error.clear();
+        self.snapshot.overlay.message.clear();
+        self.snapshot.overlay.retryable = false;
+        self.snapshot.overlay.code.clear();
+        self.snapshot.overlay.source.clear();
+        self.snapshot.overlay.retry_count = 0;
+        self.system_overlay.reset();
+        navigator::apply_runtime_preemption(self);
+        self.dirty.overlay = true;
+        self.dirty.navigation = true;
     }
 
     fn begin_wheel_roll(&mut self, now_ms: u64) -> bool {
@@ -384,7 +652,7 @@ impl UiRuntime {
         let pending = self.pending_wheel_roll.as_ref()?;
         Some(WheelIdentity {
             screen: pending.screen,
-            route_key: self.active_route_key().map(str::to_owned),
+            route_key: self.route_key(self.active_screen).map(str::to_owned),
             item_ids: self.wheel_item_ids(pending.screen)?,
         })
     }
@@ -403,7 +671,7 @@ impl UiRuntime {
 
         let after = WheelIdentity {
             screen: self.active_screen,
-            route_key: self.active_route_key().map(str::to_owned),
+            route_key: self.route_key(self.active_screen).map(str::to_owned),
             item_ids: self.wheel_item_ids(self.active_screen).unwrap_or_default(),
         };
         if after != before {
@@ -589,8 +857,9 @@ mod tests {
     use crate::engine::flatten;
     use crate::scene::roles;
     use yoyopod_protocol::ui::{
-        CallIntent, ContactAction, ListItemSnapshot, MusicIntent, PlaylistTrackAction,
-        SettingsIntent, VoiceIntent, VoiceNoteSummarySnapshot, VoiceRecipientAction,
+        CallIntent, ContactAction, ListItemSnapshot, MusicIntent, OverlayRuntimeSnapshot,
+        PlaylistTrackAction, SettingsIntent, SystemIntent, VoiceIntent, VoiceNoteSummarySnapshot,
+        VoiceRecipientAction,
     };
 
     fn contact(id: &str, title: &str) -> ListItemSnapshot {
@@ -660,6 +929,179 @@ mod tests {
         let graph = flatten::flatten(&runtime.scene_graph(0));
 
         assert_eq!(count_visible_role(&graph, roles::DECK_BAR), 0);
+    }
+
+    #[test]
+    fn system_overlay_preview_survives_runtime_snapshots_for_hardware_review() {
+        let mut runtime = UiRuntime::default();
+        runtime.enable_system_overlay_preview(SystemOverlayPreview::Loading);
+        runtime.apply_snapshot(RuntimeSnapshot::default());
+        runtime.advance_system_overlay(60_000);
+
+        assert_eq!(runtime.active_screen, UiScreen::Loading);
+        assert!(runtime.snapshot.overlay.loading);
+        assert!(runtime.snapshot.overlay.error.is_empty());
+        assert!(runtime.take_intents().is_empty());
+    }
+
+    #[test]
+    fn system_error_is_a_true_overlay_with_safe_copy_and_live_chrome() {
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::Ask,
+            ..UiRuntime::default()
+        };
+        runtime.apply_patch(RuntimeSnapshotPatch::Overlay(OverlayRuntimeSnapshot {
+            error: "raw backend exception must never render".to_string(),
+            retryable: true,
+            code: "voice_failed".to_string(),
+            source: "voice.ask".to_string(),
+            ..OverlayRuntimeSnapshot::default()
+        }));
+
+        assert_eq!(runtime.active_screen, UiScreen::Error);
+        let graph = runtime.scene_graph(0);
+        assert_eq!(graph.active.id.screen, UiScreen::Ask);
+        let flattened = flatten::flatten(&graph);
+        assert_eq!(count_visible_role(&flattened, roles::SYS_SCRIM), 1);
+        assert_eq!(count_visible_role(&flattened, roles::SYS_BADGE), 1);
+        assert_eq!(count_visible_role(&flattened, roles::SYS_MSG), 1);
+        assert_eq!(
+            find_role(&flattened, roles::STATUS_BAR)
+                .unwrap()
+                .props
+                .opacity,
+            Some(255)
+        );
+        assert_eq!(
+            find_role(&flattened, roles::DECK_BAR)
+                .unwrap()
+                .props
+                .opacity,
+            Some(140)
+        );
+        let message = find_role(&flattened, roles::SYS_MSG)
+            .and_then(|element| element.props.text.as_deref())
+            .unwrap();
+        assert_eq!(message, "Oops, something went wrong.\nLet's try again!");
+        assert!(!message.contains("backend"));
+    }
+
+    #[test]
+    fn loading_debounces_animates_announces_and_escalates() {
+        let mut runtime = UiRuntime::default();
+        runtime.apply_patch(RuntimeSnapshotPatch::Overlay(OverlayRuntimeSnapshot {
+            loading: true,
+            source: "music.load_playlist".to_string(),
+            ..OverlayRuntimeSnapshot::default()
+        }));
+
+        runtime.advance_system_overlay(1_000);
+        runtime.advance_system_overlay(1_299);
+        assert_eq!(runtime.active_screen, UiScreen::Hub);
+
+        runtime.advance_system_overlay(1_300);
+        assert_eq!(runtime.active_screen, UiScreen::Loading);
+        let loading = flatten::flatten(&runtime.scene_graph(1_300));
+        assert_eq!(count_visible_role(&loading, roles::SYS_SPINNER_DOT), 8);
+        assert_eq!(count_visible_role(&loading, roles::SYS_MSG), 1);
+
+        runtime.advance_system_overlay(3_000);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::System(SystemIntent::AnnounceWait)]
+        );
+
+        runtime.advance_system_overlay(9_000);
+        assert_eq!(runtime.active_screen, UiScreen::Error);
+        assert!(runtime.snapshot.overlay.retryable);
+        assert_eq!(runtime.snapshot.overlay.code, "operation_timeout");
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::System(SystemIntent::LoadingTimedOut)]
+        );
+    }
+
+    #[test]
+    fn recoverable_error_retries_manually_and_cannot_be_repushed_locally() {
+        let mut runtime = UiRuntime::default();
+        runtime.apply_patch(RuntimeSnapshotPatch::Overlay(OverlayRuntimeSnapshot {
+            error: "worker_error".to_string(),
+            retryable: true,
+            code: "worker_media_error".to_string(),
+            source: "music.play".to_string(),
+            ..OverlayRuntimeSnapshot::default()
+        }));
+
+        runtime.handle_input(InputAction::Select, 100);
+
+        assert_eq!(runtime.active_screen, UiScreen::Hub);
+        assert!(runtime.snapshot.overlay.error.is_empty());
+        assert_eq!(
+            runtime.take_intents(),
+            vec![
+                UiIntent::System(SystemIntent::AnnounceRetry),
+                UiIntent::System(SystemIntent::RetryOverlay),
+            ]
+        );
+    }
+
+    #[test]
+    fn recoverable_error_auto_retries_only_the_first_failure() {
+        let mut runtime = UiRuntime::default();
+        runtime.apply_patch(RuntimeSnapshotPatch::Overlay(OverlayRuntimeSnapshot {
+            error: "worker_error".to_string(),
+            retryable: true,
+            code: "worker_media_error".to_string(),
+            source: "music.play".to_string(),
+            ..OverlayRuntimeSnapshot::default()
+        }));
+        runtime.advance_system_overlay(0);
+        runtime.take_intents();
+        runtime.advance_system_overlay(4_000);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::System(SystemIntent::RetryOverlay)]
+        );
+
+        runtime.apply_patch(RuntimeSnapshotPatch::Overlay(OverlayRuntimeSnapshot {
+            error: "worker_error".to_string(),
+            retryable: true,
+            code: "worker_media_error".to_string(),
+            source: "music.play".to_string(),
+            retry_count: 1,
+            ..OverlayRuntimeSnapshot::default()
+        }));
+        runtime.advance_system_overlay(5_000);
+        runtime.take_intents();
+        runtime.advance_system_overlay(10_000);
+        assert!(runtime.take_intents().is_empty());
+        assert_eq!(runtime.active_screen, UiScreen::Error);
+    }
+
+    #[test]
+    fn unrecoverable_error_consumes_select_and_long_press_goes_home() {
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::Talk,
+            ..UiRuntime::default()
+        };
+        runtime.apply_patch(RuntimeSnapshotPatch::Overlay(OverlayRuntimeSnapshot {
+            error: "hardware_fault".to_string(),
+            retryable: false,
+            code: "power_hardware_fault".to_string(),
+            source: "power.refresh".to_string(),
+            ..OverlayRuntimeSnapshot::default()
+        }));
+
+        runtime.handle_input(InputAction::Select, 100);
+        assert_eq!(runtime.active_screen, UiScreen::Error);
+        assert!(runtime.take_intents().is_empty());
+
+        runtime.handle_input(InputAction::Home, 500);
+        assert_eq!(runtime.active_screen, UiScreen::Hub);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::System(SystemIntent::DismissOverlay)]
+        );
     }
 
     #[test]

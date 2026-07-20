@@ -81,6 +81,25 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 );
                 ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
             }
+            roles::SYS_BADGE => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
+                ffi::lv_obj_set_style_pad_top(obj.as_ptr(), 14, SELECTOR);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_24,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
+            }
+            roles::SYS_MSG => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_14,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
+            }
             roles::RECORDING_HINT | roles::REPLAY_META | roles::ASK_HINT => {
                 ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
                 ffi::lv_obj_set_style_text_font(
