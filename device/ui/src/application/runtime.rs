@@ -12,6 +12,7 @@ use crate::scene::{
     defaults_for, GlobalClock, HudBattery, HudConnectivity, HudConnectivityKind, HudStatus,
     SceneGraph, SceneId,
 };
+use crate::theme::ColorScheme;
 use crate::DirtyRegion;
 
 use super::state::{DirtyState, HomeMode, SystemOverlayPreview, UiRuntime};
@@ -467,6 +468,9 @@ impl UiRuntime {
             _ => active.modal.clone().into_iter().collect(),
         };
         SceneGraph {
+            color_scheme: self.theme_preview.unwrap_or_else(|| {
+                ColorScheme::resolve(&self.snapshot.settings.theme, current_local_hour())
+            }),
             hud,
             active,
             history: self
@@ -626,6 +630,11 @@ impl UiRuntime {
         self.reset_companion_phase_if_changed(previous_companion);
         self.dirty.settings = true;
         self.dirty.navigation = true;
+    }
+
+    pub(crate) fn enable_theme_preview(&mut self, preview: ColorScheme) {
+        self.theme_preview = Some(preview);
+        self.dirty.settings = true;
     }
 
     fn enforce_companion_preview(&mut self) {
@@ -897,6 +906,12 @@ fn current_status_time() -> (i64, String) {
         now.unix_timestamp() / 60,
         format!("{:02}:{:02}", now.hour(), now.minute()),
     )
+}
+
+fn current_local_hour() -> u8 {
+    OffsetDateTime::now_local()
+        .unwrap_or_else(|_| OffsetDateTime::now_utc())
+        .hour()
 }
 
 fn status_bar_preview_stage(now_ms: u64) -> u8 {
@@ -1453,6 +1468,32 @@ mod tests {
             vec![UiIntent::Settings(SettingsIntent::ThemeSet(
                 "Dark".to_string()
             ))]
+        );
+    }
+
+    #[test]
+    fn theme_snapshot_selects_the_renderer_scheme() {
+        let mut runtime = UiRuntime::default();
+        runtime.apply_patch(RuntimeSnapshotPatch::Settings(SettingsRuntimeSnapshot {
+            theme: "Dark".to_string(),
+            ..SettingsRuntimeSnapshot::default()
+        }));
+
+        assert_eq!(
+            runtime.scene_graph(100).color_scheme,
+            crate::theme::ColorScheme::Dark
+        );
+    }
+
+    #[test]
+    fn theme_preview_stays_authoritative_during_runtime_snapshots() {
+        let mut runtime = UiRuntime::default();
+        runtime.enable_theme_preview(crate::theme::ColorScheme::Dark);
+        runtime.apply_snapshot(RuntimeSnapshot::default());
+
+        assert_eq!(
+            runtime.scene_graph(100).color_scheme,
+            crate::theme::ColorScheme::Dark
         );
     }
 

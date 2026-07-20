@@ -16,6 +16,7 @@ use crate::renderer::{Framebuffer, LvglRenderer, Renderer};
 use crate::router;
 use crate::scene::load_scene_defaults;
 use crate::screenshot::{self, Rgb565Image};
+use crate::theme::ColorScheme;
 use crate::transport::{codec, dispatcher, handshake, inbound, outbound};
 use crate::RenderMode;
 
@@ -30,6 +31,7 @@ pub struct RenderState {
     frames: usize,
     last_active_screen: Option<UiScreen>,
     last_ui_renderer: String,
+    color_scheme: ColorScheme,
 }
 
 impl RenderState {
@@ -46,7 +48,18 @@ impl RenderState {
             frames: 0,
             last_active_screen: None,
             last_ui_renderer: String::new(),
+            color_scheme: ColorScheme::Light,
         })
+    }
+
+    fn set_color_scheme(&mut self, color_scheme: ColorScheme) -> Result<()> {
+        if self.color_scheme == color_scheme {
+            return Ok(());
+        }
+        self.renderer.set_color_scheme(color_scheme)?;
+        self.engine = Engine::default();
+        self.color_scheme = color_scheme;
+        Ok(())
     }
 
     pub fn frames(&self) -> usize {
@@ -92,6 +105,7 @@ where
     let status_bar_preview = status_bar_preview_enabled();
     let system_overlay_preview = system_overlay_preview();
     let companion_preview = companion_preview();
+    let theme_preview = theme_preview();
     if status_bar_preview {
         writeln!(
             errors,
@@ -99,6 +113,13 @@ where
         )?;
     }
     let mut ui_runtime = UiRuntime::with_status_bar_preview(status_bar_preview);
+    if let Some(preview) = theme_preview {
+        writeln!(
+            errors,
+            "theme hardware preview enabled via YOYOPOD_UI_THEME_PREVIEW: {preview:?}"
+        )?;
+        ui_runtime.enable_theme_preview(preview);
+    }
     if let Some(preview) = system_overlay_preview {
         writeln!(
             errors,
@@ -438,6 +459,19 @@ fn companion_preview() -> Option<CompanionVariant> {
     parse_companion_preview(&value)
 }
 
+fn theme_preview() -> Option<ColorScheme> {
+    let value = std::env::var("YOYOPOD_UI_THEME_PREVIEW").ok()?;
+    parse_theme_preview(&value)
+}
+
+fn parse_theme_preview(value: &str) -> Option<ColorScheme> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "light" => Some(ColorScheme::Light),
+        "dark" => Some(ColorScheme::Dark),
+        _ => None,
+    }
+}
+
 fn parse_companion_preview(value: &str) -> Option<CompanionVariant> {
     match value.trim().to_ascii_lowercase().as_str() {
         "blob" => Some(CompanionVariant::Blob),
@@ -497,6 +531,7 @@ where
     let Some(frame) = ui_runtime.frame_request(now_ms) else {
         return Ok(None);
     };
+    render.set_color_scheme(frame.scene_graph.color_scheme)?;
     let outcome = render.engine.tick(
         &frame.scene_graph,
         frame.dirty_region,
@@ -562,6 +597,13 @@ mod tests {
             Some(CompanionVariant::Bunny)
         );
         assert_eq!(parse_companion_preview("unsupported"), None);
+    }
+
+    #[test]
+    fn theme_preview_accepts_only_resolved_color_schemes() {
+        assert_eq!(parse_theme_preview("light"), Some(ColorScheme::Light));
+        assert_eq!(parse_theme_preview("Dark"), Some(ColorScheme::Dark));
+        assert_eq!(parse_theme_preview("auto"), None);
     }
 
     #[derive(Default)]

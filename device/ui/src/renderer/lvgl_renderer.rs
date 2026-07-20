@@ -11,6 +11,7 @@ use crate::renderer::node_registry::NodeRegistry;
 #[cfg(feature = "native-lvgl")]
 use crate::renderer::widgets::{LvglFacade, WidgetId};
 use crate::renderer::{Framebuffer, RenderReport, Renderer};
+use crate::theme::ColorScheme;
 use crate::Mutation;
 use crate::RenderMode;
 #[cfg(feature = "native-lvgl")]
@@ -44,6 +45,14 @@ impl LvglRenderer {
     /// Capture the active screen via LVGL's native snapshot (readback path).
     pub fn readback_rgb565(&mut self) -> Result<crate::screenshot::Rgb565Image> {
         self.facade.snapshot_active_screen()
+    }
+
+    pub fn set_color_scheme(&mut self, color_scheme: ColorScheme) -> Result<bool> {
+        let changed = self.facade.set_color_scheme(color_scheme)?;
+        if changed {
+            self.node_registry.clear();
+        }
+        Ok(changed)
     }
 }
 
@@ -184,6 +193,10 @@ impl LvglRenderer {
     }
 
     pub fn readback_rgb565(&mut self) -> Result<crate::screenshot::Rgb565Image> {
+        anyhow::bail!("native-lvgl feature is disabled for this build")
+    }
+
+    pub fn set_color_scheme(&mut self, _color_scheme: ColorScheme) -> Result<bool> {
         anyhow::bail!("native-lvgl feature is disabled for this build")
     }
 }

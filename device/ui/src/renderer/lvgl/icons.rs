@@ -151,6 +151,11 @@ static COMPANION_OWL: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_OWL_MAP, 110,
 static COMPANION_CAT: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_CAT_MAP, 140, 140);
 static COMPANION_BUNNY: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_BUNNY_MAP, 120, 160);
 static COMPANION_ROBOT: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_ROBOT_MAP, 110, 150);
+static COMPANION_BLOB_DARK: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_BLOB_DARK_MAP, 114, 114);
+static COMPANION_OWL_DARK: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_OWL_DARK_MAP, 110, 140);
+static COMPANION_CAT_DARK: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_CAT_DARK_MAP, 140, 140);
+static COMPANION_BUNNY_DARK: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_BUNNY_DARK_MAP, 120, 160);
+static COMPANION_ROBOT_DARK: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_ROBOT_DARK_MAP, 110, 150);
 
 const fn generated_control_icon(kind: u8) -> [u8; 576] {
     let mut map = [0u8; 576];
@@ -1141,6 +1146,26 @@ pub(crate) fn source_for_key(icon_key: &str) -> *const c_void {
     }
 }
 
+pub(crate) fn source_for_key_with_scheme(
+    icon_key: &str,
+    color_scheme: crate::theme::ColorScheme,
+) -> *const c_void {
+    if color_scheme == crate::theme::ColorScheme::Dark {
+        let descriptor = match icon_key {
+            "companion_blob" => Some(&COMPANION_BLOB_DARK),
+            "companion_owl" => Some(&COMPANION_OWL_DARK),
+            "companion_cat" => Some(&COMPANION_CAT_DARK),
+            "companion_bunny" => Some(&COMPANION_BUNNY_DARK),
+            "companion_robot" => Some(&COMPANION_ROBOT_DARK),
+            _ => None,
+        };
+        if let Some(descriptor) = descriptor {
+            return descriptor as *const LvImageDsc as *const c_void;
+        }
+    }
+    source_for_key(icon_key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1279,6 +1304,44 @@ mod tests {
         ),
     ];
 
+    const DARK_COMPANION_SOURCES: [(&str, &[u8], &[u8], u64, (u32, u32)); 5] = [
+        (
+            "companion_blob",
+            &COMPANION_BLOB_DARK_MAP,
+            include_bytes!("../../../assets/icons/companions/dark/blob.svg"),
+            COMPANION_BLOB_DARK_SOURCE_FNV1A64,
+            (114, 114),
+        ),
+        (
+            "companion_owl",
+            &COMPANION_OWL_DARK_MAP,
+            include_bytes!("../../../assets/icons/companions/dark/owl.svg"),
+            COMPANION_OWL_DARK_SOURCE_FNV1A64,
+            (110, 140),
+        ),
+        (
+            "companion_cat",
+            &COMPANION_CAT_DARK_MAP,
+            include_bytes!("../../../assets/icons/companions/dark/cat.svg"),
+            COMPANION_CAT_DARK_SOURCE_FNV1A64,
+            (140, 140),
+        ),
+        (
+            "companion_bunny",
+            &COMPANION_BUNNY_DARK_MAP,
+            include_bytes!("../../../assets/icons/companions/dark/bunny.svg"),
+            COMPANION_BUNNY_DARK_SOURCE_FNV1A64,
+            (120, 160),
+        ),
+        (
+            "companion_robot",
+            &COMPANION_ROBOT_DARK_MAP,
+            include_bytes!("../../../assets/icons/companions/dark/robot.svg"),
+            COMPANION_ROBOT_DARK_SOURCE_FNV1A64,
+            (110, 150),
+        ),
+    ];
+
     #[test]
     fn listen_wheel_icons_have_explicit_descriptors() {
         for key in [
@@ -1318,6 +1381,19 @@ mod tests {
             assert_eq!(
                 (descriptor.header.magic_cf_flags >> 8) & 0xFF,
                 LV_COLOR_FORMAT_RGB565A8
+            );
+        }
+    }
+
+    #[test]
+    fn dark_companion_sources_match_their_theme_specific_sprites() {
+        for (key, bytes, source, expected_hash, (width, height)) in DARK_COMPANION_SOURCES {
+            assert_eq!(fnv1a64(source), expected_hash, "stale dark {key} sprite");
+            assert_eq!(bytes.len(), (width * height * 3) as usize);
+            assert_ne!(
+                source_for_key_with_scheme(key, crate::theme::ColorScheme::Dark),
+                source_for_key_with_scheme(key, crate::theme::ColorScheme::Light),
+                "{key} must switch descriptors with the theme"
             );
         }
     }
