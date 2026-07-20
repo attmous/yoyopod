@@ -136,7 +136,12 @@ pub fn wheel_item(
                         roles::SETUP_TILE_PLATE
                     })
                     .accent(*plate_rgb)
-                    .child(image(roles::SETUP_TILE_ICON).icon(icon_key).accent(INK)),
+                    .child(
+                        image(roles::SETUP_TILE_ICON)
+                            .icon(icon_key)
+                            .accent(INK)
+                            .scale_permille(900),
+                    ),
                 )
                 .child(label(roles::SETUP_TILE_NAME).text(&model.title))
                 .child(label(roles::SETUP_TILE_SUB).text(&model.subtitle)),

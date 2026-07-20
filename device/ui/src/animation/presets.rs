@@ -18,7 +18,7 @@ pub const SETUP_WHEEL_ROLL_TIMELINE_ID: TimelineId = TimelineId(9);
 pub const WHEEL_ROLL_DURATION_MS: u64 = 180;
 pub const MEDIA_WHEEL_PEEK_OPACITY: u8 = 148;
 pub const CONTACT_WHEEL_PEEK_OPACITY: u8 = 115;
-pub const SETUP_WHEEL_PEEK_OPACITY: u8 = 168;
+pub const SETUP_WHEEL_PEEK_OPACITY: u8 = 190;
 
 pub fn breathe_focused_item(deck: usize, index: usize) -> Timeline {
     Timeline {
@@ -402,11 +402,11 @@ pub fn setup_wheel_roll(item_count: usize, deck_index: usize, started_ms: u64) -
 
     let tracks = if item_count == 2 {
         [
-            motion_tracks(deck_index, 0, -36, 1_000, 700, 255, 0),
+            motion_tracks(deck_index, 0, -40, 1_000, 700, 255, 0),
             motion_tracks(
                 deck_index,
                 1,
-                -108,
+                -104,
                 1_000,
                 1_000,
                 SETUP_WHEEL_PEEK_OPACITY,
@@ -422,7 +422,7 @@ pub fn setup_wheel_roll(item_count: usize, deck_index: usize, started_ms: u64) -
             motion_tracks(
                 deck_index,
                 1,
-                -36,
+                -40,
                 1_000,
                 700,
                 255,
@@ -431,7 +431,7 @@ pub fn setup_wheel_roll(item_count: usize, deck_index: usize, started_ms: u64) -
             motion_tracks(
                 deck_index,
                 2,
-                -108,
+                -104,
                 1_000,
                 1_000,
                 SETUP_WHEEL_PEEK_OPACITY,
@@ -607,11 +607,11 @@ mod tests {
 
         assert_eq!(
             sampler.value(ActorRef::DeckItem { deck: 0, index: 1 }, AnimatableProp::Y),
-            Some(AnimatableValue::I32(-36))
+            Some(AnimatableValue::I32(-40))
         );
         assert_eq!(
             sampler.value(ActorRef::DeckItem { deck: 0, index: 2 }, AnimatableProp::Y),
-            Some(AnimatableValue::I32(-108))
+            Some(AnimatableValue::I32(-104))
         );
         assert_eq!(
             sampler.value(

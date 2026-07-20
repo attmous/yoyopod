@@ -717,6 +717,10 @@ mod tests {
         );
         assert_eq!(items[1].props.selected, Some(true));
         assert_eq!(
+            items[1].children[0].children[0].props.scale_permille,
+            Some(900)
+        );
+        assert_eq!(
             items[2].props.opacity,
             Some(crate::animation::presets::SETUP_WHEEL_PEEK_OPACITY)
         );

@@ -72,7 +72,7 @@
         (role: "setup_peek_title", text_rgb: Some(3816000)),
         (role: "setup_wheel_item"),
         (role: "setup_tile_plate", opacity: Some(255), radius: 10),
-        (role: "setup_tile_plate_round", opacity: Some(255), radius: 28),
+        (role: "setup_tile_plate_round", opacity: Some(255), radius: 26),
         (role: "setup_tile_icon", text_rgb: Some(1776415)),
         (role: "setup_tile_name", text_rgb: Some(1776415)),
         (role: "setup_tile_sub", text_rgb: Some(3816000)),
