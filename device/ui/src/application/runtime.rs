@@ -134,6 +134,12 @@ impl UiRuntime {
             }
             self.commit_pending_wheel_roll();
         }
+        if self.active_screen == UiScreen::Ask
+            && action == InputAction::PttPress
+            && self.snapshot.voice.ask_unavailable
+        {
+            self.clear_local_ask_failure();
+        }
         let previous_screen = self.active_screen;
         let route_state = input_router::InputRouteState {
             active_screen: self.active_screen,
@@ -187,6 +193,37 @@ impl UiRuntime {
             self.home_mode = next;
             self.dirty.focus = true;
         }
+    }
+
+    pub fn advance_ask_state(&mut self, now_ms: u64) -> bool {
+        if self.active_screen != UiScreen::Ask || !self.snapshot.voice.ask_unavailable {
+            self.ask_offline_started_ms = None;
+            return false;
+        }
+
+        let started_ms = *self.ask_offline_started_ms.get_or_insert(now_ms);
+        if now_ms.saturating_sub(started_ms) < ASK_FAILURE_VISIBLE_MS {
+            return false;
+        }
+
+        self.clear_local_ask_failure();
+        self.intents.push(UiIntent::Voice(
+            yoyopod_protocol::ui::VoiceIntent::AskCancel,
+        ));
+        true
+    }
+
+    fn clear_local_ask_failure(&mut self) {
+        self.ask_offline_started_ms = None;
+        self.snapshot.voice.ask_unavailable = false;
+        self.snapshot.voice.phase = "idle".to_string();
+        self.snapshot.voice.headline = "Ask".to_string();
+        self.snapshot.voice.body = "Ask me anything...".to_string();
+        self.snapshot.voice.capture_in_flight = false;
+        self.snapshot.voice.ptt_active = false;
+        self.snapshot.voice.playback_active = false;
+        self.snapshot.voice.playback_paused = false;
+        self.dirty.voice = true;
     }
 
     pub fn advance_system_overlay(&mut self, now_ms: u64) -> bool {
@@ -805,6 +842,7 @@ fn scene_cache_entry(entry: &HistoryEntry) -> crate::scene::SceneCacheEntry {
 
 const STATUS_BAR_PREVIEW_STAGE_MS: u64 = 5_000;
 const STATUS_BAR_PREVIEW_STAGE_COUNT: u8 = 6;
+const ASK_FAILURE_VISIBLE_MS: u64 = 4_000;
 
 fn current_status_time() -> (i64, String) {
     let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
@@ -1572,7 +1610,6 @@ mod tests {
     fn ask_captures_the_physical_hold_and_release_end_to_end() {
         let mut runtime = UiRuntime::default();
         runtime.active_screen = UiScreen::Ask;
-        runtime.snapshot.network.connected = true;
 
         assert!(runtime.wants_ptt_passthrough());
         runtime.handle_input(InputAction::PttPress, 400);
@@ -1599,6 +1636,44 @@ mod tests {
         assert_eq!(
             runtime.take_intents(),
             vec![UiIntent::Voice(VoiceIntent::AskStop)]
+        );
+    }
+
+    #[test]
+    fn ask_failure_returns_to_idle_after_four_seconds() {
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::Ask;
+        runtime.snapshot.voice.ask_unavailable = true;
+        runtime.snapshot.voice.phase = "offline".to_string();
+
+        assert!(!runtime.advance_ask_state(1_000));
+        assert!(!runtime.advance_ask_state(4_999));
+        assert!(runtime.take_intents().is_empty());
+
+        assert!(runtime.advance_ask_state(5_000));
+        assert!(!runtime.snapshot.voice.ask_unavailable);
+        assert_eq!(runtime.snapshot.voice.phase, "idle");
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::AskCancel)]
+        );
+    }
+
+    #[test]
+    fn ptt_retries_immediately_during_an_ask_failure() {
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::Ask;
+        runtime.snapshot.voice.ask_unavailable = true;
+        runtime.snapshot.voice.phase = "offline".to_string();
+        runtime.advance_ask_state(1_000);
+
+        runtime.handle_input(InputAction::PttPress, 2_000);
+
+        assert!(!runtime.snapshot.voice.ask_unavailable);
+        assert!(runtime.ask_offline_started_ms.is_none());
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::AskStart)]
         );
     }
 

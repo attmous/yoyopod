@@ -70,14 +70,13 @@ pub fn scene(props: &AskProps) -> Scene {
 
 fn ask_phase(snapshot: &RuntimeSnapshot) -> AskPhase {
     let phase = snapshot.voice.phase.trim().to_ascii_lowercase();
-    if !snapshot.network.connected && !matches!(phase.as_str(), "listening" | "recording") {
-        return AskPhase::Offline;
-    }
     if snapshot.voice.ptt_active
         || snapshot.voice.capture_in_flight
         || matches!(phase.as_str(), "listening" | "recording")
     {
         AskPhase::Listening
+    } else if snapshot.voice.ask_unavailable {
+        AskPhase::Offline
     } else if phase == "thinking" {
         AskPhase::Thinking
     } else if snapshot.voice.playback_active || matches!(phase.as_str(), "reply" | "answering") {
@@ -104,8 +103,7 @@ mod tests {
 
     #[test]
     fn ask_uses_full_bleed_butter_and_no_focus_cursor() {
-        let mut snapshot = RuntimeSnapshot::default();
-        snapshot.network.connected = true;
+        let snapshot = RuntimeSnapshot::default();
         let props = props_from(&snapshot, 0, crate::scene::defaults_for(UiScreen::Ask));
         let scene = scene(&props);
         assert_eq!(scene.backdrop, Backdrop::Solid(ASK_STAGE_BUTTER));
@@ -116,7 +114,6 @@ mod tests {
     #[test]
     fn ask_state_tracks_runtime_voice_phase() {
         let mut snapshot = RuntimeSnapshot::default();
-        snapshot.network.connected = true;
         snapshot.voice.phase = "thinking".to_string();
         assert_eq!(
             props_from(&snapshot, 0, crate::scene::defaults_for(UiScreen::Ask))
@@ -131,6 +128,42 @@ mod tests {
                 .model
                 .phase,
             AskPhase::Answering
+        );
+    }
+
+    #[test]
+    fn cellular_disconnect_does_not_make_cloud_ask_offline() {
+        let mut snapshot = RuntimeSnapshot::default();
+        snapshot.network.connected = false;
+
+        assert_eq!(
+            props_from(&snapshot, 0, crate::scene::defaults_for(UiScreen::Ask))
+                .model
+                .phase,
+            AskPhase::Idle
+        );
+
+        snapshot.voice.ask_unavailable = true;
+        assert_eq!(
+            props_from(&snapshot, 0, crate::scene::defaults_for(UiScreen::Ask))
+                .model
+                .phase,
+            AskPhase::Offline
+        );
+    }
+
+    #[test]
+    fn a_fresh_capture_takes_priority_over_the_previous_failure() {
+        let mut snapshot = RuntimeSnapshot::default();
+        snapshot.voice.ask_unavailable = true;
+        snapshot.voice.ptt_active = true;
+        snapshot.voice.phase = "listening".to_string();
+
+        assert_eq!(
+            props_from(&snapshot, 0, crate::scene::defaults_for(UiScreen::Ask))
+                .model
+                .phase,
+            AskPhase::Listening
         );
     }
 }

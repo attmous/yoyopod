@@ -279,6 +279,7 @@ pub struct VoiceRuntimeState {
     pub phase: String,
     pub headline: String,
     pub body: String,
+    pub ask_unavailable: bool,
     pub status_text: String,
     pub file_path: String,
     pub duration_ms: i32,
@@ -310,6 +311,7 @@ impl Default for VoiceRuntimeState {
             phase: "idle".to_string(),
             headline: "Ask".to_string(),
             body: "Ask me anything...".to_string(),
+            ask_unavailable: false,
             status_text: String::new(),
             file_path: String::new(),
             duration_ms: 0,
@@ -445,6 +447,24 @@ impl VoiceRuntimeState {
         self.headline = headline.into();
         self.body = body.into();
         self.status_text.clear();
+    }
+
+    fn mark_ask_available(&mut self) {
+        self.ask_unavailable = false;
+    }
+
+    fn mark_ask_unavailable(&mut self) {
+        self.ask_unavailable = true;
+        self.ask_capture_active = false;
+        self.ask_transcribe_requested = false;
+        self.pending_ask_question.clear();
+        self.playback_active = false;
+        self.playback_paused = false;
+        self.set_interaction(
+            "offline",
+            "Ask unavailable",
+            "I can't think right now - try again soon.",
+        );
     }
 }
 
@@ -712,6 +732,14 @@ impl RuntimeState {
         let health = self.worker_health_mut(domain);
         health.state = state;
         health.last_reason = reason.into();
+    }
+
+    pub fn mark_ask_available(&mut self) {
+        self.voice.mark_ask_available();
+    }
+
+    pub fn mark_ask_unavailable(&mut self) {
+        self.voice.mark_ask_unavailable();
     }
 
     pub fn resolve_overlay_for(&mut self, domain: WorkerDomain) {
@@ -1222,6 +1250,7 @@ impl RuntimeState {
     fn apply_voice_intent(&mut self, intent: &VoiceIntent) {
         match intent {
             VoiceIntent::AskStart => {
+                self.voice.mark_ask_available();
                 self.voice.ask_capture_active = true;
                 self.voice.ask_transcribe_requested = false;
                 self.voice.playback_active = false;
@@ -1238,6 +1267,7 @@ impl RuntimeState {
                     .set_interaction("thinking", "Thinking", "Just a moment...");
             }
             VoiceIntent::AskCancel => {
+                self.voice.mark_ask_available();
                 self.voice.ask_capture_active = false;
                 self.voice.ask_transcribe_requested = false;
                 self.voice.pending_ask_question.clear();
@@ -1315,6 +1345,7 @@ impl RuntimeState {
     }
 
     pub fn apply_voice_transcript(&mut self, payload: &Value) {
+        self.voice.mark_ask_available();
         self.voice.ask_capture_active = false;
         self.voice.ask_transcribe_requested = false;
         let transcript = string_field(payload, "text")
@@ -1401,6 +1432,7 @@ impl RuntimeState {
     }
 
     pub fn apply_voice_ask_result(&mut self, payload: &Value) {
+        self.voice.mark_ask_available();
         self.voice.ask_capture_active = false;
         self.voice.ask_transcribe_requested = false;
         let answer_from_payload = string_field(payload, "answer");
@@ -1786,6 +1818,7 @@ impl RuntimeState {
                 "phase": self.voice.phase,
                 "headline": self.voice.headline,
                 "body": voice_body_text(&self.voice),
+                "ask_unavailable": self.voice.ask_unavailable,
                 "capture_in_flight": self.voice.ask_capture_active || self.voice.phase == "recording",
                 "ptt_active": self.voice.phase == "recording",
                 "recording_duration_ms": self.voice.duration_ms,
