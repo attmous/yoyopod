@@ -8,7 +8,7 @@ pub use snapshot::{
     CallRuntimeSnapshot, HubCardSnapshot, HubRuntimeSnapshot, ListItemSnapshot,
     MusicRuntimeSnapshot, NetworkRuntimeSnapshot, OverlayRuntimeSnapshot, PowerPageSnapshot,
     PowerRuntimeSnapshot, RuntimeSnapshot, RuntimeSnapshotDomain, RuntimeSnapshotPatch,
-    VoiceNoteSummarySnapshot, VoiceRuntimeSnapshot,
+    SettingsRuntimeSnapshot, VoiceNoteSummarySnapshot, VoiceRuntimeSnapshot,
 };
 
 use crate::{EnvelopeKind, ProtocolError, WorkerEnvelope};
@@ -32,13 +32,18 @@ pub enum UiScreen {
     IncomingCall,
     OutgoingCall,
     InCall,
-    Power,
+    Setup,
+    SetupVolume,
+    SetupCompanion,
+    SetupContacts,
+    SetupTheme,
+    SetupAbout,
     Loading,
     Error,
 }
 
 impl UiScreen {
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 24] = [
         Self::Hub,
         Self::Listen,
         Self::Playlists,
@@ -55,7 +60,12 @@ impl UiScreen {
         Self::IncomingCall,
         Self::OutgoingCall,
         Self::InCall,
-        Self::Power,
+        Self::Setup,
+        Self::SetupVolume,
+        Self::SetupCompanion,
+        Self::SetupContacts,
+        Self::SetupTheme,
+        Self::SetupAbout,
         Self::Loading,
         Self::Error,
     ];
@@ -78,7 +88,12 @@ impl UiScreen {
             Self::IncomingCall => "incoming_call",
             Self::OutgoingCall => "outgoing_call",
             Self::InCall => "in_call",
-            Self::Power => "power",
+            Self::Setup => "setup",
+            Self::SetupVolume => "setup_volume",
+            Self::SetupCompanion => "setup_companion",
+            Self::SetupContacts => "setup_contacts",
+            Self::SetupTheme => "setup_theme",
+            Self::SetupAbout => "setup_about",
             Self::Loading => "loading",
             Self::Error => "error",
         }
@@ -453,6 +468,7 @@ pub enum UiIntent {
     Call(CallIntent),
     Voice(VoiceIntent),
     Power(PowerIntent),
+    Settings(SettingsIntent),
     Navigation(NavigationIntent),
     Runtime(RuntimeIntent),
 }
@@ -483,6 +499,10 @@ impl UiIntent {
                 &action,
                 &intent_payload,
             )?)),
+            "settings" => Ok(Self::Settings(SettingsIntent::from_parts(
+                &action,
+                &intent_payload,
+            )?)),
             "navigation" => Ok(Self::Navigation(NavigationIntent::from_parts(&action)?)),
             "runtime" => Ok(Self::Runtime(RuntimeIntent::from_parts(&action)?)),
             other => Err(ProtocolError::InvalidEnvelope(format!(
@@ -497,6 +517,7 @@ impl UiIntent {
             Self::Call(intent) => ("call", intent.action_name(), intent.payload()),
             Self::Voice(intent) => ("voice", intent.action_name(), intent.payload()),
             Self::Power(intent) => ("power", intent.action_name(), intent.payload()),
+            Self::Settings(intent) => ("settings", intent.action_name(), intent.payload()),
             Self::Navigation(intent) => ("navigation", intent.action_name(), empty_payload()),
             Self::Runtime(intent) => ("runtime", intent.action_name(), empty_payload()),
         };
@@ -505,6 +526,44 @@ impl UiIntent {
             "action": action,
             "payload": payload,
         })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SettingsIntent {
+    VolumeStep,
+    CompanionSet(String),
+    ThemeSet(String),
+    SpeakNamesToggle,
+}
+
+impl SettingsIntent {
+    fn from_parts(action: &str, payload: &Value) -> Result<Self, ProtocolError> {
+        match normalized(action).as_str() {
+            "volume_step" => Ok(Self::VolumeStep),
+            "companion_set" => Ok(Self::CompanionSet(required_string(payload, "value")?)),
+            "theme_set" => Ok(Self::ThemeSet(required_string(payload, "value")?)),
+            "speak_names_toggle" => Ok(Self::SpeakNamesToggle),
+            other => Err(ProtocolError::InvalidEnvelope(format!(
+                "unknown settings intent action {other}"
+            ))),
+        }
+    }
+
+    fn action_name(&self) -> &'static str {
+        match self {
+            Self::VolumeStep => "volume_step",
+            Self::CompanionSet(_) => "companion_set",
+            Self::ThemeSet(_) => "theme_set",
+            Self::SpeakNamesToggle => "speak_names_toggle",
+        }
+    }
+
+    fn payload(&self) -> Value {
+        match self {
+            Self::CompanionSet(value) | Self::ThemeSet(value) => json!({ "value": value }),
+            Self::VolumeStep | Self::SpeakNamesToggle => empty_payload(),
+        }
     }
 }
 
@@ -1103,6 +1162,7 @@ mod tests {
                 when: "2026-05-12T08:00:00Z".to_string(),
                 repeat_mask: 31,
             })),
+            UiIntent::Settings(SettingsIntent::CompanionSet("Bunny".to_string())),
             UiIntent::Navigation(NavigationIntent::Back),
             UiIntent::Runtime(RuntimeIntent::Shutdown),
         ];
@@ -1134,16 +1194,16 @@ mod tests {
     #[test]
     fn runtime_snapshot_uses_typed_screen_identity() {
         let snapshot = RuntimeSnapshot {
-            app_state: UiScreen::Power,
+            app_state: UiScreen::Setup,
             ..RuntimeSnapshot::default()
         };
         let payload = serde_json::to_value(&snapshot).unwrap();
-        assert_eq!(payload["app_state"], "power");
+        assert_eq!(payload["app_state"], "setup");
 
         let decoded = RuntimeSnapshot::from_payload(&payload).unwrap();
-        assert_eq!(decoded.app_state, UiScreen::Power);
+        assert_eq!(decoded.app_state, UiScreen::Setup);
         assert!(matches!(
-            RuntimeSnapshot::from_payload(&json!({ "app_state": "setup" })),
+            RuntimeSnapshot::from_payload(&json!({ "app_state": "setup_legacy" })),
             Err(ProtocolError::InvalidEnvelope(_))
         ));
     }

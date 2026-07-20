@@ -1,10 +1,12 @@
 use crate::router::{
     self, is_call_screen, is_overlay_screen, route_for, runtime_preemption, static_intent_template,
-    BackPolicy, DynamicActionKind, IntentTemplate, ListKind, NavigationPolicy, PassthroughPolicy,
-    SelectionTarget, SnapshotCondition,
+    AdvanceTarget, BackPolicy, DynamicActionKind, IntentTemplate, ListKind, NavigationPolicy,
+    PassthroughPolicy, SelectionTarget, SnapshotCondition,
 };
 use crate::scene::FocusPolicy;
-use yoyopod_protocol::ui::{CallIntent, ListItemSnapshot, MusicIntent, UiIntent, VoiceIntent};
+use yoyopod_protocol::ui::{
+    CallIntent, ListItemSnapshot, MusicIntent, SettingsIntent, UiIntent, VoiceIntent,
+};
 
 use super::state::HomeMode;
 use super::{focus, intents, options, UiRuntime, UiScreen};
@@ -54,6 +56,10 @@ pub fn apply_app_state_route(
 }
 
 pub fn advance_focus(runtime: &mut UiRuntime) {
+    if let AdvanceTarget::EmitIntent(template) = route_for(runtime.active_screen).advance {
+        emit_static_intent(runtime, template);
+        return;
+    }
     if runtime.active_screen == UiScreen::Hub && runtime.home_mode == HomeMode::Idle {
         runtime.focus_index = 0;
         runtime.home_mode = HomeMode::Focused;
@@ -132,6 +138,7 @@ fn apply_selection_target(runtime: &mut UiRuntime, target: SelectionTarget) {
         SelectionTarget::DynamicListItem { kind } => select_dynamic_list_item(runtime, kind),
         SelectionTarget::DynamicAction { kind } => select_dynamic_action(runtime, kind),
         SelectionTarget::AdvanceFocus => advance_focus(runtime),
+        SelectionTarget::PopScreen => pop_screen_or_hub(runtime),
         SelectionTarget::Noop => {}
     }
 }
@@ -224,7 +231,35 @@ fn select_dynamic_action(runtime: &mut UiRuntime, kind: DynamicActionKind) {
         DynamicActionKind::TalkContact => select_talk_contact_action(runtime),
         DynamicActionKind::Replay => select_replay_action(runtime),
         DynamicActionKind::VoiceNote => select_voice_note(runtime),
+        DynamicActionKind::SetupCompanion => select_setup_companion(runtime),
+        DynamicActionKind::SetupTheme => select_setup_theme(runtime),
     }
+}
+
+const COMPANIONS: [&str; 5] = ["Blob", "Owl", "Cat", "Bunny", "Robot"];
+const THEMES: [&str; 3] = ["Light", "Dark", "Auto"];
+
+fn select_setup_companion(runtime: &mut UiRuntime) {
+    let Some(value) = COMPANIONS.get(runtime.focus_index) else {
+        return;
+    };
+    runtime
+        .intents
+        .push(UiIntent::Settings(SettingsIntent::CompanionSet(
+            (*value).to_string(),
+        )));
+    go_home(runtime);
+}
+
+fn select_setup_theme(runtime: &mut UiRuntime) {
+    let Some(value) = THEMES.get(runtime.focus_index) else {
+        return;
+    };
+    runtime
+        .intents
+        .push(UiIntent::Settings(SettingsIntent::ThemeSet(
+            (*value).to_string(),
+        )));
 }
 
 fn select_ask_action(runtime: &mut UiRuntime) {

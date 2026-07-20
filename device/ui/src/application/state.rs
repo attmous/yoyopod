@@ -59,6 +59,7 @@ pub struct DirtyState {
     pub call: bool,
     pub voice: bool,
     pub power: bool,
+    pub settings: bool,
     pub network: bool,
     pub overlay: bool,
     pub navigation: bool,
@@ -76,6 +77,7 @@ impl DirtyState {
             || self.call
             || self.voice
             || self.power
+            || self.settings
             || self.network
             || self.overlay
             || self.navigation
@@ -92,6 +94,7 @@ impl DirtyState {
         self.call = true;
         self.voice = true;
         self.power = true;
+        self.settings = true;
         self.network = true;
         self.overlay = true;
         self.navigation = true;
@@ -110,6 +113,7 @@ impl DirtyState {
             RuntimeSnapshotDomain::Call => self.call = true,
             RuntimeSnapshotDomain::Voice => self.voice = true,
             RuntimeSnapshotDomain::Power => self.power = true,
+            RuntimeSnapshotDomain::Settings => self.settings = true,
             RuntimeSnapshotDomain::Network => self.network = true,
             RuntimeSnapshotDomain::Overlay => self.overlay = true,
         }
@@ -126,6 +130,7 @@ impl DirtyState {
             || self.music
             || self.call
             || self.voice
+            || self.settings
             || self.overlay
         {
             return None;

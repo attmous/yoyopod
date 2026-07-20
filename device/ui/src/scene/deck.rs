@@ -59,6 +59,8 @@ pub enum ItemRender {
     EmptyState(EmptyStateModel),
     RecordingPanel(RecordingPanelModel),
     AskSurface(AskSurfaceModel),
+    SetupVolume(SetupVolumeModel),
+    SetupAbout(SetupAboutModel),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,6 +105,23 @@ pub enum WheelItemVariant {
         icon_key: String,
         badge: Option<WheelBadgeModel>,
     },
+    Setup {
+        icon_key: String,
+        plate_rgb: u32,
+        round: bool,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetupVolumeModel {
+    pub level: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetupAboutModel {
+    pub battery_percent: i32,
+    pub charging: bool,
+    pub rows: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -224,30 +243,33 @@ impl Deck {
                     .key(Key::Static("deck_region"))
                     .region(self.region),
             );
-        let short_wheel_offset =
-            if self.kind == DeckKind::Wheel && !self.has_media_items() && self.items.len() < 3 {
-                80
-            } else {
-                0
-            };
+        let short_wheel_offset = if self.kind == DeckKind::Wheel
+            && !self.has_semantic_wheel_items()
+            && self.items.len() < 3
+        {
+            80
+        } else {
+            0
+        };
         let focused_item_index = self.normalized_focus_index();
         let focused_visible_index = self.focused_visible_index();
         for (visible_index, (item_index, item)) in self.visible_items().enumerate() {
             let selected = Some(item_index) == focused_item_index;
-            let wheel_slot = match &item.render {
+            let semantic_slot = matches!(
+                &item.render,
                 ItemRender::Wheel(WheelItemModel {
-                    variant: WheelItemVariant::Media { .. },
+                    variant: WheelItemVariant::Media { .. } | WheelItemVariant::Setup { .. },
                     ..
-                }) if selected => WheelItemSlot::Focused,
-                ItemRender::Wheel(WheelItemModel {
-                    variant: WheelItemVariant::Media { .. },
-                    ..
-                }) if visible_index < focused_visible_index => WheelItemSlot::Previous,
-                ItemRender::Wheel(WheelItemModel {
-                    variant: WheelItemVariant::Media { .. },
-                    ..
-                }) => WheelItemSlot::Next,
-                _ => WheelItemSlot::Standard,
+                })
+            );
+            let wheel_slot = if !semantic_slot {
+                WheelItemSlot::Standard
+            } else if selected {
+                WheelItemSlot::Focused
+            } else if visible_index < focused_visible_index {
+                WheelItemSlot::Previous
+            } else {
+                WheelItemSlot::Next
             };
             let mut item_element = deck_item_element(
                 item,
@@ -266,12 +288,12 @@ impl Deck {
         element
     }
 
-    fn has_media_items(&self) -> bool {
+    fn has_semantic_wheel_items(&self) -> bool {
         self.items.iter().any(|item| {
             matches!(
                 item.render,
                 ItemRender::Wheel(WheelItemModel {
-                    variant: WheelItemVariant::Media { .. },
+                    variant: WheelItemVariant::Media { .. } | WheelItemVariant::Setup { .. },
                     ..
                 })
             )
@@ -393,6 +415,9 @@ fn deck_item_element(
                 (WheelItemVariant::Action { .. }, WheelItemSlot::Standard) => Key::String(format!(
                     "action-wheel-slot:{visible_index}:item:{item_index}"
                 )),
+                (WheelItemVariant::Setup { .. }, _) => Key::String(format!(
+                    "setup-wheel-slot:{visible_index}:item:{item_index}"
+                )),
                 (WheelItemVariant::Media { .. }, _) => {
                     // Media roots are refreshed after a committed roll so LVGL
                     // cannot retain the outgoing slot's transform or opacity.
@@ -419,6 +444,12 @@ fn deck_item_element(
         .key(item.key.clone()),
         ItemRender::AskSurface(model) => {
             crate::components::widgets::ask_surface(model).key(item.key.clone())
+        }
+        ItemRender::SetupVolume(model) => {
+            crate::components::widgets::setup_volume(model).key(item.key.clone())
+        }
+        ItemRender::SetupAbout(model) => {
+            crate::components::widgets::setup_about(model).key(item.key.clone())
         }
         ItemRender::Button(button) => Element::new(ElementKind::Container, Some(roles::BUTTON))
             .key(item.key.clone())
@@ -548,6 +579,32 @@ mod tests {
         }
     }
 
+    fn setup_wheel(item_count: usize, focus_index: usize) -> Deck {
+        Deck {
+            kind: DeckKind::Wheel,
+            region: RegionId::Auto,
+            items: (0..item_count)
+                .map(|index| DeckItem {
+                    key: Key::Indexed(index),
+                    render: ItemRender::Wheel(WheelItemModel {
+                        title: format!("Setting {index}"),
+                        subtitle: format!("Value {index}"),
+                        variant: WheelItemVariant::Setup {
+                            icon_key: "setup_theme".to_string(),
+                            plate_rgb: 0xF7DBC2,
+                            round: false,
+                        },
+                    }),
+                })
+                .collect(),
+            focus_index,
+            focus_policy: FocusPolicy::Wrap,
+            item_anim: DeckItemAnim::None,
+            swap_anim: None,
+            recycle_window: Some(3),
+        }
+    }
+
     #[test]
     fn wheel_window_wraps_around_the_first_item() {
         let deck = wheel(7, 0);
@@ -644,5 +701,39 @@ mod tests {
             assert_ne!(first.key, next.key);
             assert_eq!(first.role, next.role);
         }
+    }
+
+    #[test]
+    fn setup_wheel_uses_bounded_semantic_slots_without_outer_scaling() {
+        let element = setup_wheel(3, 0).element(0);
+        let items = &element.children[1..];
+
+        assert_eq!(items[0].role, Some(roles::SETUP_WHEEL_PREVIOUS));
+        assert_eq!(items[1].role, Some(roles::SETUP_WHEEL_ITEM));
+        assert_eq!(items[2].role, Some(roles::SETUP_WHEEL_NEXT));
+        assert_eq!(
+            items[0].props.opacity,
+            Some(crate::animation::presets::SETUP_WHEEL_PEEK_OPACITY)
+        );
+        assert_eq!(items[1].props.selected, Some(true));
+        assert_eq!(
+            items[1].children[0].children[0].props.scale_permille,
+            Some(900)
+        );
+        assert_eq!(
+            items[2].props.opacity,
+            Some(crate::animation::presets::SETUP_WHEEL_PEEK_OPACITY)
+        );
+        assert!(items.iter().all(|item| item.props.offset_y.is_none()));
+        assert!(items.iter().all(|item| item.props.scale_permille.is_none()));
+    }
+
+    #[test]
+    fn short_setup_wheels_do_not_receive_the_generic_vertical_offset() {
+        let two = setup_wheel(2, 0).element(0);
+        let items = &two.children[1..];
+        assert_eq!(items[0].role, Some(roles::SETUP_WHEEL_ITEM));
+        assert_eq!(items[1].role, Some(roles::SETUP_WHEEL_NEXT));
+        assert!(items.iter().all(|item| item.props.offset_y.is_none()));
     }
 }

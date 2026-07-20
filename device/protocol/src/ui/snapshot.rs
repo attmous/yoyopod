@@ -20,6 +20,8 @@ pub struct RuntimeSnapshot {
     #[serde(default)]
     pub power: PowerRuntimeSnapshot,
     #[serde(default)]
+    pub settings: SettingsRuntimeSnapshot,
+    #[serde(default)]
     pub network: NetworkRuntimeSnapshot,
     #[serde(default)]
     pub overlay: OverlayRuntimeSnapshot,
@@ -34,6 +36,7 @@ impl Default for RuntimeSnapshot {
             call: CallRuntimeSnapshot::default(),
             voice: VoiceRuntimeSnapshot::default(),
             power: PowerRuntimeSnapshot::default(),
+            settings: SettingsRuntimeSnapshot::default(),
             network: NetworkRuntimeSnapshot::default(),
             overlay: OverlayRuntimeSnapshot::default(),
         }
@@ -58,6 +61,7 @@ pub enum RuntimeSnapshotPatch {
     Call(CallRuntimeSnapshot),
     Voice(VoiceRuntimeSnapshot),
     Power(PowerRuntimeSnapshot),
+    Settings(SettingsRuntimeSnapshot),
     Network(NetworkRuntimeSnapshot),
     Overlay(OverlayRuntimeSnapshot),
 }
@@ -72,6 +76,7 @@ pub enum RuntimeSnapshotDomain {
     Call,
     Voice,
     Power,
+    Settings,
     Network,
     Overlay,
 }
@@ -92,6 +97,7 @@ impl RuntimeSnapshotPatch {
             Self::Call(_) => RuntimeSnapshotDomain::Call,
             Self::Voice(_) => RuntimeSnapshotDomain::Voice,
             Self::Power(_) => RuntimeSnapshotDomain::Power,
+            Self::Settings(_) => RuntimeSnapshotDomain::Settings,
             Self::Network(_) => RuntimeSnapshotDomain::Network,
             Self::Overlay(_) => RuntimeSnapshotDomain::Overlay,
         }
@@ -159,6 +165,35 @@ impl Default for MusicRuntimeSnapshot {
             playlists: Vec::new(),
             playlist_tracks: BTreeMap::new(),
             recent_tracks: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettingsRuntimeSnapshot {
+    #[serde(default = "default_volume_level")]
+    pub volume_level: i32,
+    #[serde(default = "default_companion")]
+    pub companion: String,
+    #[serde(default = "default_theme")]
+    pub theme: String,
+    #[serde(default = "default_speak_names")]
+    pub speak_names: bool,
+    #[serde(default = "default_device_name")]
+    pub device_name: String,
+    #[serde(default = "default_firmware_version")]
+    pub firmware_version: String,
+}
+
+impl Default for SettingsRuntimeSnapshot {
+    fn default() -> Self {
+        Self {
+            volume_level: default_volume_level(),
+            companion: default_companion(),
+            theme: default_theme(),
+            speak_names: default_speak_names(),
+            device_name: default_device_name(),
+            firmware_version: default_firmware_version(),
         }
     }
 }
@@ -407,6 +442,25 @@ fn default_power_icon() -> String {
 
 fn default_connection_type() -> String {
     "none".to_string()
+}
+
+fn default_volume_level() -> i32 {
+    5
+}
+fn default_companion() -> String {
+    "Bunny".to_string()
+}
+fn default_theme() -> String {
+    "Light".to_string()
+}
+fn default_speak_names() -> bool {
+    true
+}
+fn default_device_name() -> String {
+    "yoyopod".to_string()
+}
+fn default_firmware_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 fn default_hub_accent() -> u32 {

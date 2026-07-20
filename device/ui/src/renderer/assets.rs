@@ -301,6 +301,29 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::MEDIA_WHEEL_FOCUS_INITIAL,
         roles::MEDIA_WHEEL_FOCUS_TITLE,
         roles::MEDIA_WHEEL_FOCUS_SUB,
+        roles::SETUP_COUNTER,
+        roles::SETUP_WHEEL_PREVIOUS,
+        roles::SETUP_WHEEL_NEXT,
+        roles::SETUP_WHEEL_ITEM,
+        roles::SETUP_PEEK_PLATE,
+        roles::SETUP_PEEK_PLATE_ROUND,
+        roles::SETUP_PEEK_ICON,
+        roles::SETUP_PEEK_TITLE,
+        roles::SETUP_TILE_PLATE,
+        roles::SETUP_TILE_PLATE_ROUND,
+        roles::SETUP_TILE_ICON,
+        roles::SETUP_TILE_NAME,
+        roles::SETUP_TILE_SUB,
+        roles::SETUP_VOLUME,
+        roles::SETUP_VOLUME_ICON,
+        roles::SETUP_VOLUME_METER,
+        roles::SETUP_VOLUME_BLOCK,
+        roles::SETUP_VOLUME_VALUE,
+        roles::SETUP_ABOUT,
+        roles::SETUP_ABOUT_BATTERY,
+        roles::SETUP_ABOUT_LABEL,
+        roles::SETUP_ABOUT_VALUE,
+        roles::SETUP_HINT,
         roles::HERO_PLAYER,
         roles::HERO_CONTEXT,
         roles::HERO_ARC,
@@ -385,6 +408,7 @@ fn required_selected_theme_roles() -> Vec<&'static str> {
         roles::WHEEL_ITEM,
         roles::TALK_WHEEL_ITEM,
         roles::MEDIA_WHEEL_FOCUS,
+        roles::SETUP_WHEEL_ITEM,
         roles::HERO_PREV,
         roles::HERO_PLAY,
         roles::HERO_NEXT,
@@ -588,6 +612,43 @@ mod tests {
             assert!(region.x >= 0);
             assert!(region.x + region.width <= 240);
         }
+    }
+
+    #[test]
+    fn setup_wheel_slots_clear_the_header_and_navigation() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let header = layout(&layouts, roles::CONTEXT_LABEL);
+        let counter = layout(&layouts, roles::SETUP_COUNTER);
+        let previous = layout(&layouts, roles::SETUP_WHEEL_PREVIOUS);
+        let focus = layout(&layouts, roles::SETUP_WHEEL_ITEM);
+        let next = layout(&layouts, roles::SETUP_WHEEL_NEXT);
+        let navigation = layout(&layouts, roles::DECK_BAR);
+
+        assert!(240 - (counter.x + counter.width) >= 16);
+        assert!(header.y + header.height <= previous.y);
+        assert!(previous.y + previous.height <= focus.y);
+        assert!(focus.y + focus.height <= next.y);
+        assert!(next.y + next.height <= navigation.y);
+        assert_eq!(focus.y - (previous.y + previous.height), 8);
+        assert_eq!(next.y - (focus.y + focus.height), 8);
+        for region in [previous, focus, next] {
+            assert!(region.x >= 0);
+            assert!(region.x + region.width <= 240);
+        }
+    }
+
+    #[test]
+    fn setup_focus_content_is_centered_and_clears_the_card_bottom() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let focus = layout(&layouts, roles::SETUP_WHEEL_ITEM);
+        let plate = layout(&layouts, roles::SETUP_TILE_PLATE);
+        let title = layout(&layouts, roles::SETUP_TILE_NAME);
+        let subtitle = layout(&layouts, roles::SETUP_TILE_SUB);
+
+        assert_eq!(plate.x * 2 + plate.width, focus.width);
+        assert!(plate.y + plate.height <= title.y);
+        assert!(title.y + title.height <= subtitle.y);
+        assert!(focus.height - (subtitle.y + subtitle.height) >= 5);
     }
 
     #[test]

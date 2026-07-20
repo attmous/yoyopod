@@ -321,6 +321,10 @@ impl UiRuntime {
             UiScreen::Talk | UiScreen::TalkContact => {
                 animation::presets::contact_wheel_roll(item_count, 0, now_ms)
             }
+            UiScreen::Setup
+            | UiScreen::SetupCompanion
+            | UiScreen::SetupContacts
+            | UiScreen::SetupTheme => animation::presets::setup_wheel_roll(item_count, 0, now_ms),
             UiScreen::Playlists | UiScreen::PlaylistTracks | UiScreen::RecentTracks => {
                 animation::presets::media_wheel_roll(item_count, 0, now_ms)
             }
@@ -423,6 +427,27 @@ impl UiRuntime {
                 .collect(),
             );
         }
+        let static_items: &[&str] = match screen {
+            UiScreen::Setup => &[
+                "volume",
+                "companion",
+                "contacts",
+                "theme",
+                "speak_names",
+                "about",
+            ],
+            UiScreen::SetupCompanion => &["blob", "owl", "cat", "bunny", "robot"],
+            UiScreen::SetupTheme => &["light", "dark", "auto"],
+            _ => &[],
+        };
+        if !static_items.is_empty() {
+            return Some(
+                static_items
+                    .iter()
+                    .map(|value| (*value).to_string())
+                    .collect(),
+            );
+        }
         let items = match screen {
             UiScreen::Playlists => &self.snapshot.music.playlists,
             UiScreen::PlaylistTracks => self
@@ -432,6 +457,7 @@ impl UiRuntime {
                 .map_or(&[][..], Vec::as_slice),
             UiScreen::RecentTracks => &self.snapshot.music.recent_tracks,
             UiScreen::Talk => &self.snapshot.call.contacts,
+            UiScreen::SetupContacts => &self.snapshot.call.contacts,
             _ => return None,
         };
         Some(items.iter().map(|item| item.id.clone()).collect())
@@ -563,8 +589,8 @@ mod tests {
     use crate::engine::flatten;
     use crate::scene::roles;
     use yoyopod_protocol::ui::{
-        CallIntent, ContactAction, ListItemSnapshot, MusicIntent, PlaylistTrackAction, VoiceIntent,
-        VoiceNoteSummarySnapshot, VoiceRecipientAction,
+        CallIntent, ContactAction, ListItemSnapshot, MusicIntent, PlaylistTrackAction,
+        SettingsIntent, VoiceIntent, VoiceNoteSummarySnapshot, VoiceRecipientAction,
     };
 
     fn contact(id: &str, title: &str) -> ListItemSnapshot {
@@ -660,6 +686,73 @@ mod tests {
 
         runtime.handle_input(InputAction::Select, 600);
         assert_eq!(runtime.active_screen, UiScreen::Listen);
+    }
+
+    #[test]
+    fn setup_root_rolls_opens_volume_and_volume_steps_then_pops() {
+        let mut runtime = UiRuntime::default();
+        runtime.home_mode = HomeMode::Focused;
+        runtime.focus_index = 3;
+        runtime.handle_input(InputAction::Select, 100);
+        assert_eq!(runtime.active_screen, UiScreen::Setup);
+
+        runtime.handle_input(InputAction::Select, 200);
+        assert_eq!(runtime.active_screen, UiScreen::SetupVolume);
+        runtime.handle_input(InputAction::Advance, 300);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Settings(SettingsIntent::VolumeStep)]
+        );
+
+        runtime.handle_input(InputAction::Select, 400);
+        assert_eq!(runtime.active_screen, UiScreen::Setup);
+        assert_eq!(runtime.focus_index, 0);
+    }
+
+    #[test]
+    fn setup_root_roll_is_animated_and_speak_names_toggles_in_place() {
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::Setup;
+        runtime.handle_input(InputAction::Advance, 100);
+        assert_eq!(runtime.focus_index, 0);
+        assert!(runtime.pending_wheel_roll.is_some());
+        runtime.advance_animations(280);
+        assert_eq!(runtime.focus_index, 1);
+
+        runtime.focus_index = 4;
+        runtime.handle_input(InputAction::Select, 300);
+        assert_eq!(runtime.active_screen, UiScreen::Setup);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Settings(SettingsIntent::SpeakNamesToggle)]
+        );
+    }
+
+    #[test]
+    fn setup_companion_selects_and_returns_home_while_theme_stays_open() {
+        let mut companion = UiRuntime::default();
+        companion.active_screen = UiScreen::SetupCompanion;
+        companion.focus_index = 3;
+        companion.handle_input(InputAction::Select, 100);
+        assert_eq!(companion.active_screen, UiScreen::Hub);
+        assert_eq!(
+            companion.take_intents(),
+            vec![UiIntent::Settings(SettingsIntent::CompanionSet(
+                "Bunny".to_string()
+            ))]
+        );
+
+        let mut theme = UiRuntime::default();
+        theme.active_screen = UiScreen::SetupTheme;
+        theme.focus_index = 1;
+        theme.handle_input(InputAction::Select, 100);
+        assert_eq!(theme.active_screen, UiScreen::SetupTheme);
+        assert_eq!(
+            theme.take_intents(),
+            vec![UiIntent::Settings(SettingsIntent::ThemeSet(
+                "Dark".to_string()
+            ))]
+        );
     }
 
     #[test]

@@ -36,6 +36,14 @@ pub enum IntentTemplate {
     CallReject,
     CallHangup,
     CallToggleMute,
+    SettingsVolumeStep,
+    SettingsSpeakNamesToggle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdvanceTarget {
+    Focus,
+    EmitIntent(IntentTemplate),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +61,8 @@ pub enum DynamicActionKind {
     TalkContact,
     Replay,
     VoiceNote,
+    SetupCompanion,
+    SetupTheme,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +80,7 @@ pub enum SelectionTarget {
         kind: DynamicActionKind,
     },
     AdvanceFocus,
+    PopScreen,
     Noop,
 }
 
@@ -105,6 +116,7 @@ pub struct Route {
     pub nav_policy: NavigationPolicy,
     pub persistence: Persistence,
     pub select: &'static [SelectionTarget],
+    pub advance: AdvanceTarget,
     pub back: &'static [BackPolicy],
     pub passthrough: &'static [PassthroughPolicy],
     pub on_enter: Option<TimelineRef>,

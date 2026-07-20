@@ -14,9 +14,11 @@ pub const PROGRESS_SWEEP_TIMELINE_ID: TimelineId = TimelineId(5);
 pub const SELECTION_SNAP_TIMELINE_ID: TimelineId = TimelineId(6);
 pub const MEDIA_WHEEL_ROLL_TIMELINE_ID: TimelineId = TimelineId(7);
 pub const CONTACT_WHEEL_ROLL_TIMELINE_ID: TimelineId = TimelineId(8);
+pub const SETUP_WHEEL_ROLL_TIMELINE_ID: TimelineId = TimelineId(9);
 pub const WHEEL_ROLL_DURATION_MS: u64 = 180;
 pub const MEDIA_WHEEL_PEEK_OPACITY: u8 = 148;
 pub const CONTACT_WHEEL_PEEK_OPACITY: u8 = 115;
+pub const SETUP_WHEEL_PEEK_OPACITY: u8 = 190;
 
 pub fn breathe_focused_item(deck: usize, index: usize) -> Timeline {
     Timeline {
@@ -393,6 +395,64 @@ pub fn contact_wheel_roll(
     })
 }
 
+pub fn setup_wheel_roll(item_count: usize, deck_index: usize, started_ms: u64) -> Option<Timeline> {
+    if item_count < 2 {
+        return None;
+    }
+
+    let tracks = if item_count == 2 {
+        [
+            motion_tracks(deck_index, 0, -40, 1_000, 700, 255, 0),
+            motion_tracks(
+                deck_index,
+                1,
+                -104,
+                1_000,
+                1_000,
+                SETUP_WHEEL_PEEK_OPACITY,
+                255,
+            ),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    } else {
+        [
+            motion_tracks(deck_index, 0, -32, 1_000, 850, SETUP_WHEEL_PEEK_OPACITY, 0),
+            motion_tracks(
+                deck_index,
+                1,
+                -40,
+                1_000,
+                700,
+                255,
+                SETUP_WHEEL_PEEK_OPACITY,
+            ),
+            motion_tracks(
+                deck_index,
+                2,
+                -104,
+                1_000,
+                1_000,
+                SETUP_WHEEL_PEEK_OPACITY,
+                255,
+            ),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    };
+
+    Some(Timeline {
+        id: SETUP_WHEEL_ROLL_TIMELINE_ID,
+        clock: ClockSource::EventTime(EventId(9)),
+        tracks,
+        loop_mode: LoopMode::Once,
+        on_complete: None,
+        started_ms,
+    })
+}
+
 fn motion_tracks(
     deck: usize,
     index: usize,
@@ -531,6 +591,43 @@ mod tests {
         assert_eq!(
             contact_wheel_roll(2, 0, 0)
                 .expect("two contacts should cross-roll")
+                .tracks
+                .len(),
+            6
+        );
+    }
+
+    #[test]
+    fn setup_wheel_roll_lands_on_the_named_slot_offsets() {
+        let timeline = setup_wheel_roll(3, 0, 1_000).expect("three setup slots should roll");
+        assert_eq!(timeline.id, SETUP_WHEEL_ROLL_TIMELINE_ID);
+        assert_eq!(timeline.tracks.len(), 9);
+        let timelines = [timeline];
+        let sampler = TimelineSampler::new(&timelines, 1_180, 0);
+
+        assert_eq!(
+            sampler.value(ActorRef::DeckItem { deck: 0, index: 1 }, AnimatableProp::Y),
+            Some(AnimatableValue::I32(-40))
+        );
+        assert_eq!(
+            sampler.value(ActorRef::DeckItem { deck: 0, index: 2 }, AnimatableProp::Y),
+            Some(AnimatableValue::I32(-104))
+        );
+        assert_eq!(
+            sampler.value(
+                ActorRef::DeckItem { deck: 0, index: 2 },
+                AnimatableProp::Opacity
+            ),
+            Some(AnimatableValue::U8(255))
+        );
+    }
+
+    #[test]
+    fn setup_wheel_roll_handles_short_lists_without_fake_slots() {
+        assert!(setup_wheel_roll(1, 0, 0).is_none());
+        assert_eq!(
+            setup_wheel_roll(2, 0, 0)
+                .expect("two setup slots should cross-roll")
                 .tracks
                 .len(),
             6

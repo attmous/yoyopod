@@ -3,8 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 use yoyopod_protocol::ui::{
     CallIntent, ContactAction, InputAction, ListItemAction, MusicIntent, PowerIntent,
-    RuntimeIntent, UiCommand, UiEvent, UiInputEvent, UiIntent, UiScreen, UiScreenshotCaptured,
-    VoiceFileAction, VoiceIntent, VoiceRecipientAction,
+    RuntimeIntent, UiCommand, UiEvent, UiInputEvent, UiIntent, UiScreen,
+    UiScreenshotCaptured, VoiceFileAction, VoiceIntent, VoiceRecipientAction,
 };
 
 use crate::protocol::{EnvelopeKind, WorkerEnvelope};
@@ -363,8 +363,30 @@ fn commands_for_ui_intent(state: &RuntimeState, intent: &UiIntent) -> Vec<Runtim
         UiIntent::Call(intent) => commands_for_call_intent(state, intent),
         UiIntent::Voice(intent) => commands_for_voice_intent(state, intent),
         UiIntent::Power(intent) => commands_for_power_intent(intent),
+        UiIntent::Settings(intent) => commands_for_settings_intent(state, intent),
         UiIntent::Navigation(_) => Vec::new(),
         UiIntent::Runtime(RuntimeIntent::Shutdown) => vec![RuntimeCommand::Shutdown],
+    }
+}
+
+fn commands_for_settings_intent(
+    state: &RuntimeState,
+    intent: &yoyopod_protocol::ui::SettingsIntent,
+) -> Vec<RuntimeCommand> {
+    use yoyopod_protocol::ui::SettingsIntent;
+    match intent {
+        SettingsIntent::VolumeStep => {
+            let level = ((state.media.volume.clamp(0, 100) + 5) / 10).clamp(1, 10);
+            let next = if level >= 10 { 1 } else { level + 1 };
+            vec![worker_command(
+                WorkerDomain::Media,
+                "media.set_volume",
+                json!({"volume": next * 10}),
+            )]
+        }
+        SettingsIntent::CompanionSet(_)
+        | SettingsIntent::ThemeSet(_)
+        | SettingsIntent::SpeakNamesToggle => Vec::new(),
     }
 }
 
@@ -1305,7 +1327,9 @@ fn empty_payload() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use yoyopod_protocol::ui::{ListItemAction, MusicIntent, PlaylistTrackAction, UiEvent};
+    use yoyopod_protocol::ui::{
+        ListItemAction, MusicIntent, PlaylistTrackAction, SettingsIntent, UiEvent,
+    };
 
     #[test]
     fn typed_music_intent_routes_to_media_command() {
@@ -1327,6 +1351,25 @@ mod tests {
         assert_eq!(*domain, WorkerDomain::Media);
         assert_eq!(envelope.message_type, "media.load_playlist");
         assert_eq!(envelope.payload["path"], "favorites.m3u");
+    }
+
+    #[test]
+    fn setup_volume_step_wraps_and_routes_to_media() {
+        let mut state = RuntimeState::default();
+        state.media.volume = 100;
+        let event = RuntimeEvent::UiIntent(UiIntent::Settings(SettingsIntent::VolumeStep));
+        let commands = commands_for_event(&state, &event);
+
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected media command");
+        };
+        assert_eq!(*domain, WorkerDomain::Media);
+        assert_eq!(envelope.message_type, "media.set_volume");
+        assert_eq!(envelope.payload["volume"], 10);
+
+        event.apply(&mut state);
+        assert_eq!(state.media.volume, 10);
+        assert_eq!(state.ui_snapshot().settings.volume_level, 1);
     }
 
     #[test]

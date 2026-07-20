@@ -33,16 +33,6 @@ pub fn voice_note_action_count(snapshot: &RuntimeSnapshot) -> usize {
     }
 }
 
-pub fn power_page_count(snapshot: &RuntimeSnapshot) -> usize {
-    if !snapshot.power.pages.is_empty() {
-        return snapshot.power.pages.len();
-    }
-    if !snapshot.power.rows.is_empty() {
-        return 1;
-    }
-    4
-}
-
 fn voice_note_phase(snapshot: &RuntimeSnapshot) -> String {
     let phase = snapshot.voice.phase.trim().to_ascii_lowercase();
     if snapshot.voice.capture_in_flight || snapshot.voice.ptt_active || phase == "recording" {

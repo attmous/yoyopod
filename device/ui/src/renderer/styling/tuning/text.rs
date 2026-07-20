@@ -37,7 +37,12 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 );
                 ffi::lv_image_set_inner_align(obj.as_ptr(), ffi::LV_IMAGE_ALIGN_CENTER);
             }
-            roles::WHEEL_ICON | roles::EMPTY_PLUS_ICON | roles::ASK_HERO_ICON => {
+            roles::WHEEL_ICON
+            | roles::EMPTY_PLUS_ICON
+            | roles::ASK_HERO_ICON
+            | roles::SETUP_PEEK_ICON
+            | roles::SETUP_TILE_ICON
+            | roles::SETUP_VOLUME_ICON => {
                 ffi::lv_image_set_inner_align(obj.as_ptr(), ffi::LV_IMAGE_ALIGN_CENTER);
             }
             roles::HERO_ART_ICON
@@ -137,6 +142,62 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                     SELECTOR,
                 );
                 ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
+            }
+            roles::SETUP_TILE_NAME => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_18,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
+            }
+            roles::SETUP_PEEK_TITLE => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_14,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_LEFT, SELECTOR);
+            }
+            roles::SETUP_TILE_SUB
+            | roles::SETUP_COUNTER
+            | roles::SETUP_ABOUT_LABEL
+            | roles::SETUP_HINT => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_12,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(
+                    obj.as_ptr(),
+                    if role == roles::SETUP_COUNTER {
+                        ffi::LV_TEXT_ALIGN_RIGHT
+                    } else {
+                        ffi::LV_TEXT_ALIGN_CENTER
+                    },
+                    SELECTOR,
+                );
+            }
+            roles::SETUP_VOLUME_VALUE => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_18,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
+            }
+            roles::SETUP_ABOUT_VALUE | roles::SETUP_ABOUT_BATTERY => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_14,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_LEFT, SELECTOR);
             }
             roles::MEDIA_WHEEL_PEEK_TITLE | roles::MEDIA_WHEEL_FOCUS_TITLE => {
                 ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
