@@ -15,6 +15,8 @@ use crate::DirtyRegion;
 use super::state::{DirtyState, HomeMode, UiRuntime};
 use super::{input_router, navigator, snapshot, UiScreen};
 
+const RUNTIME_LINK_ERROR: &str = "Lost runtime link";
+
 #[derive(Debug, Clone)]
 pub struct FrameRequest {
     pub scene_graph: SceneGraph,
@@ -194,11 +196,24 @@ impl UiRuntime {
 
     pub fn mark_runtime_stalled(&mut self) {
         self.snapshot.overlay.loading = false;
-        self.snapshot.overlay.error = "Lost runtime link".to_string();
+        self.snapshot.overlay.error = RUNTIME_LINK_ERROR.to_string();
         self.snapshot.overlay.message.clear();
         navigator::apply_runtime_preemption(self);
         self.dirty.overlay = true;
         self.dirty.navigation = true;
+    }
+
+    pub fn mark_runtime_connected(&mut self) -> bool {
+        if self.snapshot.overlay.error != RUNTIME_LINK_ERROR {
+            return false;
+        }
+
+        self.snapshot.overlay.error.clear();
+        navigator::apply_runtime_preemption(self);
+        navigator::clamp_focus(self);
+        self.dirty.overlay = true;
+        self.dirty.navigation = true;
+        true
     }
 
     pub fn scene_graph(&self, now_ms: u64) -> SceneGraph {
@@ -634,6 +649,28 @@ mod tests {
         let graph = flatten::flatten(&runtime.scene_graph(0));
 
         assert_eq!(count_visible_role(&graph, roles::DECK_BAR), 0);
+    }
+
+    #[test]
+    fn runtime_link_recovery_clears_only_the_watchdog_error_and_restores_the_route() {
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::Talk;
+
+        runtime.mark_runtime_stalled();
+        assert_eq!(runtime.active_screen, UiScreen::Error);
+        assert_eq!(runtime.snapshot.overlay.error, RUNTIME_LINK_ERROR);
+
+        assert!(runtime.mark_runtime_connected());
+        assert_eq!(runtime.active_screen, UiScreen::Talk);
+        assert!(runtime.snapshot.overlay.error.is_empty());
+        assert!(runtime.dirty.overlay);
+        assert!(runtime.dirty.navigation);
+
+        runtime.snapshot.overlay.error = "Call failed".to_string();
+        runtime.active_screen = UiScreen::Error;
+        assert!(!runtime.mark_runtime_connected());
+        assert_eq!(runtime.active_screen, UiScreen::Error);
+        assert_eq!(runtime.snapshot.overlay.error, "Call failed");
     }
 
     #[test]

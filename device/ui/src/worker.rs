@@ -155,7 +155,9 @@ where
 
         let outcome = dispatcher::dispatch_command(command);
         if matches!(outcome.event, dispatcher::AppEvent::Tick) {
-            watchdog.note_tick();
+            if watchdog.note_tick() {
+                ui_runtime.mark_runtime_connected();
+            }
         }
         let mut context = AppEventContext {
             output,
@@ -206,9 +208,11 @@ impl RuntimeWatchdog {
         self.last_manager_message = Instant::now();
     }
 
-    fn note_tick(&mut self) {
+    fn note_tick(&mut self) -> bool {
+        let recovered = self.runtime_stalled_emitted;
         self.last_tick = Instant::now();
         self.runtime_stalled_emitted = false;
+        recovered
     }
 
     fn manager_timed_out(&self) -> bool {
@@ -588,6 +592,16 @@ mod tests {
         assert!(emitted
             .iter()
             .all(|envelope| envelope.message_type == "ui.input"));
+    }
+
+    #[test]
+    fn runtime_watchdog_reports_recovery_only_after_a_stall() {
+        let mut watchdog = RuntimeWatchdog::new();
+        assert!(!watchdog.note_tick());
+
+        watchdog.runtime_stalled_emitted = true;
+        assert!(watchdog.note_tick());
+        assert!(!watchdog.note_tick());
     }
 
     #[test]
