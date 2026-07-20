@@ -103,6 +103,13 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 ffi::lv_obj_set_style_pad_bottom(obj.as_ptr(), 0, SELECTOR);
                 ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
             }
+            roles::MODAL | roles::SYS_SCRIM | roles::SYS_SPINNER_DOT => {
+                ffi::lv_obj_set_style_pad_left(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_pad_right(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_pad_top(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_pad_bottom(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
+            }
             roles::CALL_AVATAR
             | roles::CALL_AVATAR_SM
             | roles::CALL_ANSWER

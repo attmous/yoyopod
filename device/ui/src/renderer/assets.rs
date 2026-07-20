@@ -350,6 +350,10 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::MODAL_MESSAGE,
         roles::MODAL_STACK,
         roles::MODAL_TITLE,
+        roles::SYS_SCRIM,
+        roles::SYS_SPINNER_DOT,
+        roles::SYS_MSG,
+        roles::SYS_BADGE,
         roles::PAGE,
         roles::PAGE_BODY,
         roles::PAGE_TITLE,
@@ -468,6 +472,42 @@ mod tests {
             .roles
             .iter()
             .any(|role| role.role == roles::COMPANION_BODY));
+    }
+
+    #[test]
+    fn system_overlay_geometry_and_palette_match_the_panel_contract() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let theme_asset = parse_theme_asset().expect("theme.ron should be valid");
+
+        let scrim = layout(&layouts, roles::SYS_SCRIM);
+        assert_eq!(
+            (scrim.x, scrim.y, scrim.width, scrim.height),
+            (0, 22, 240, 206)
+        );
+        let dot = layout(&layouts, roles::SYS_SPINNER_DOT);
+        assert_eq!((dot.x, dot.y, dot.width, dot.height), (117, 93, 6, 6));
+        let message = layout(&layouts, roles::SYS_MSG);
+        assert_eq!(
+            (message.x, message.y, message.width, message.height),
+            (12, 140, 216, 36)
+        );
+        let badge = layout(&layouts, roles::SYS_BADGE);
+        assert_eq!(
+            (badge.x, badge.y, badge.width, badge.height),
+            (92, 64, 56, 56)
+        );
+
+        assert_eq!(
+            theme(&theme_asset, roles::SYS_SCRIM).fill_rgb,
+            Some(0x1B1B1F)
+        );
+        assert_eq!(theme(&theme_asset, roles::SYS_SCRIM).opacity, Some(102));
+        assert_eq!(theme(&theme_asset, roles::SYS_SPINNER_DOT).radius, 3);
+        assert_eq!(
+            theme(&theme_asset, roles::SYS_BADGE).fill_rgb,
+            Some(0xFFD06A)
+        );
+        assert_eq!(theme(&theme_asset, roles::SYS_BADGE).radius, 28);
     }
 
     #[test]

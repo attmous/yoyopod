@@ -7,7 +7,7 @@ use yoyopod_protocol::ui::{
     UiError, UiErrorCode, UiEvent, UiHealth, UiScreen, UiScreenChanged, UiScreenshotCaptured,
 };
 
-use crate::application::UiRuntime;
+use crate::application::{SystemOverlayPreview, UiRuntime};
 use crate::engine::Engine;
 use crate::hardware::{ButtonDevice, DisplayDevice};
 use crate::input::{ButtonTiming, OneButtonMachine};
@@ -89,6 +89,7 @@ where
     let mut input_events = 0usize;
     let mut button_machine = OneButtonMachine::new(ButtonTiming::default());
     let status_bar_preview = status_bar_preview_enabled();
+    let system_overlay_preview = system_overlay_preview();
     if status_bar_preview {
         writeln!(
             errors,
@@ -96,6 +97,13 @@ where
         )?;
     }
     let mut ui_runtime = UiRuntime::with_status_bar_preview(status_bar_preview);
+    if let Some(preview) = system_overlay_preview {
+        writeln!(
+            errors,
+            "system-overlay hardware preview enabled via YOYOPOD_UI_SYSTEM_OVERLAY_PREVIEW: {preview:?}"
+        )?;
+        ui_runtime.enable_system_overlay_preview(preview);
+    }
     let mut render_state = RenderState::open(display.width(), display.height())?;
     let mut shutdown_complete_emitted = false;
     let mut watchdog = RuntimeWatchdog::new();
@@ -279,9 +287,15 @@ where
         }
         dispatcher::AppEvent::RuntimeSnapshot(snapshot) => {
             context.ui_runtime.apply_snapshot(snapshot);
+            context
+                .ui_runtime
+                .note_system_overlay_snapshot_received(outbound::monotonic_millis());
         }
         dispatcher::AppEvent::RuntimePatch(patch) => {
             context.ui_runtime.apply_patch(patch);
+            context
+                .ui_runtime
+                .note_system_overlay_snapshot_received(outbound::monotonic_millis());
         }
         dispatcher::AppEvent::InputAction(action) => {
             *context.input_events += 1;
@@ -295,6 +309,7 @@ where
             context.ui_runtime.advance_status_bar(now_ms);
             context.ui_runtime.advance_animations(now_ms);
             context.ui_runtime.advance_home_state(now_ms);
+            context.ui_runtime.advance_system_overlay(now_ms);
             if context.render_state.engine.animation_frame_dirty(now_ms) {
                 context.ui_runtime.mark_animation_frame();
             }
@@ -370,6 +385,20 @@ fn status_bar_preview_enabled() -> bool {
                 "1" | "true" | "yes" | "on" | "cycle"
             )
         })
+}
+
+fn system_overlay_preview() -> Option<SystemOverlayPreview> {
+    let value = std::env::var("YOYOPOD_UI_SYSTEM_OVERLAY_PREVIEW").ok()?;
+    match value.trim().to_ascii_lowercase().as_str() {
+        "loading" => Some(SystemOverlayPreview::Loading),
+        "recoverable" | "recoverable_error" | "error" => {
+            Some(SystemOverlayPreview::RecoverableError)
+        }
+        "unrecoverable" | "unrecoverable_error" | "fatal" => {
+            Some(SystemOverlayPreview::UnrecoverableError)
+        }
+        _ => None,
+    }
 }
 
 fn handle_button_input<W, B>(

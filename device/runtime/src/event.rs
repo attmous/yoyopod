@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 use yoyopod_protocol::ui::{
     CallIntent, ContactAction, InputAction, ListItemAction, MusicIntent, PowerIntent,
-    RuntimeIntent, UiCommand, UiEvent, UiInputEvent, UiIntent, UiScreen,
+    RuntimeIntent, SystemIntent, UiCommand, UiEvent, UiInputEvent, UiIntent, UiScreen,
     UiScreenshotCaptured, VoiceFileAction, VoiceIntent, VoiceRecipientAction,
 };
 
@@ -72,10 +72,22 @@ impl RuntimeEvent {
             }
             Self::CloudSnapshot(snapshot) => state.apply_cloud_snapshot(snapshot),
             Self::CloudCommand(_) => {}
-            Self::MediaSnapshot(snapshot) => state.apply_media_snapshot(snapshot),
-            Self::VoipSnapshot(snapshot) => state.apply_voip_snapshot(snapshot),
-            Self::NetworkSnapshot(snapshot) => state.apply_network_snapshot(snapshot),
-            Self::PowerSnapshot(snapshot) => state.apply_power_snapshot(snapshot),
+            Self::MediaSnapshot(snapshot) => {
+                state.resolve_overlay_for(WorkerDomain::Media);
+                state.apply_media_snapshot(snapshot);
+            }
+            Self::VoipSnapshot(snapshot) => {
+                state.resolve_overlay_for(WorkerDomain::Voip);
+                state.apply_voip_snapshot(snapshot);
+            }
+            Self::NetworkSnapshot(snapshot) => {
+                state.resolve_overlay_for(WorkerDomain::Network);
+                state.apply_network_snapshot(snapshot);
+            }
+            Self::PowerSnapshot(snapshot) => {
+                state.resolve_overlay_for(WorkerDomain::Power);
+                state.apply_power_snapshot(snapshot);
+            }
             Self::VoiceTranscript(snapshot) => state.apply_voice_transcript(snapshot),
             Self::VoiceAskResult(snapshot) => state.apply_voice_ask_result(snapshot),
             Self::VoiceSpeakResult(_) => {}
@@ -84,6 +96,7 @@ impl RuntimeEvent {
             }
             Self::WorkerError { domain, message } => {
                 state.mark_worker(*domain, WorkerState::Degraded, message.clone());
+                state.fail_overlay_for(*domain);
             }
             Self::WorkerExited { domain, reason } => {
                 state.mark_worker(*domain, WorkerState::Stopped, reason.clone());
@@ -196,6 +209,18 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
             line: screenshot_log_line(captured),
         }],
         RuntimeEvent::Shutdown => vec![RuntimeCommand::Shutdown],
+        RuntimeEvent::WorkerError { domain, .. }
+            if state.overlay.pending_domain == Some(*domain) =>
+        {
+            vec![RuntimeCommand::AppendAppLog {
+                line: format!(
+                    "System overlay error code=worker_{}_error source={} retry_count={}",
+                    domain.as_str(),
+                    state.overlay.source,
+                    state.overlay.retry_count
+                ),
+            }]
+        }
         RuntimeEvent::WorkerReady { .. }
         | RuntimeEvent::CloudSnapshot(_)
         | RuntimeEvent::UiScreenChanged { .. }
@@ -365,8 +390,53 @@ fn commands_for_ui_intent(state: &RuntimeState, intent: &UiIntent) -> Vec<Runtim
         UiIntent::Power(intent) => commands_for_power_intent(intent),
         UiIntent::Settings(intent) => commands_for_settings_intent(state, intent),
         UiIntent::Navigation(_) => Vec::new(),
+        UiIntent::System(intent) => commands_for_system_intent(state, *intent),
         UiIntent::Runtime(RuntimeIntent::Shutdown) => vec![RuntimeCommand::Shutdown],
     }
+}
+
+fn commands_for_system_intent(state: &RuntimeState, intent: SystemIntent) -> Vec<RuntimeCommand> {
+    match intent {
+        SystemIntent::RetryOverlay => state
+            .overlay
+            .retry_intent
+            .as_ref()
+            .map(|intent| commands_for_ui_intent(state, intent))
+            .unwrap_or_default(),
+        SystemIntent::DismissOverlay => match state.overlay.pending_domain {
+            Some(WorkerDomain::Media) => vec![worker_command(
+                WorkerDomain::Media,
+                "media.stop",
+                empty_payload(),
+            )],
+            _ => Vec::new(),
+        },
+        SystemIntent::LoadingTimedOut => vec![RuntimeCommand::AppendAppLog {
+            line: format!(
+                "System overlay error code=operation_timeout source={} retry_count={}",
+                state.overlay.source, state.overlay.retry_count
+            ),
+        }],
+        SystemIntent::AnnounceWait => system_speech_command(state, "One moment…"),
+        SystemIntent::AnnounceRecoverableError => {
+            system_speech_command(state, "Oops, something went wrong. Let's try again!")
+        }
+        SystemIntent::AnnounceUnrecoverableError => system_speech_command(
+            state,
+            "That's not working right now. Ask a grown-up to help!",
+        ),
+        SystemIntent::AnnounceRetry => system_speech_command(state, "Okay — trying again!"),
+    }
+}
+
+fn system_speech_command(state: &RuntimeState, line: &str) -> Vec<RuntimeCommand> {
+    let mut envelope =
+        WorkerEnvelope::command("voice.speak", None, state.voice.speak_payload(line));
+    envelope.deadline_ms = state.voice.speech_settings.request_timeout_ms;
+    vec![RuntimeCommand::WorkerCommand {
+        domain: WorkerDomain::Voice,
+        envelope,
+    }]
 }
 
 fn commands_for_settings_intent(
@@ -1328,7 +1398,7 @@ fn empty_payload() -> Value {
 mod tests {
     use super::*;
     use yoyopod_protocol::ui::{
-        ListItemAction, MusicIntent, PlaylistTrackAction, SettingsIntent, UiEvent,
+        ListItemAction, MusicIntent, PlaylistTrackAction, SettingsIntent, SystemIntent, UiEvent,
     };
 
     #[test]
@@ -1351,6 +1421,50 @@ mod tests {
         assert_eq!(*domain, WorkerDomain::Media);
         assert_eq!(envelope.message_type, "media.load_playlist");
         assert_eq!(envelope.payload["path"], "favorites.m3u");
+    }
+
+    #[test]
+    fn asynchronous_intent_drives_loading_failure_retry_and_resolution() {
+        let intent = UiIntent::Music(MusicIntent::LoadPlaylist(ListItemAction {
+            id: "favorites.m3u".to_string(),
+            title: "Favorites".to_string(),
+            ..ListItemAction::default()
+        }));
+        let mut state = RuntimeState::default();
+        RuntimeEvent::UiIntent(intent.clone()).apply(&mut state);
+        assert!(state.overlay.loading);
+        assert_eq!(state.overlay.source, "music.load_playlist");
+
+        let failure = RuntimeEvent::WorkerError {
+            domain: WorkerDomain::Media,
+            message: "raw decoder internals".to_string(),
+        };
+        let diagnostics = commands_for_event(&state, &failure);
+        assert!(matches!(
+            diagnostics.as_slice(),
+            [RuntimeCommand::AppendAppLog { line }]
+                if line.contains("code=worker_media_error")
+                    && line.contains("source=music.load_playlist")
+                    && !line.contains("decoder")
+        ));
+        failure.apply(&mut state);
+        assert!(!state.overlay.loading);
+        assert!(state.overlay.retryable);
+        assert_eq!(state.overlay.error, "worker_media_error");
+
+        let retry = RuntimeEvent::UiIntent(UiIntent::System(SystemIntent::RetryOverlay));
+        let retry_commands = commands_for_event(&state, &retry);
+        assert!(matches!(
+            retry_commands.as_slice(),
+            [RuntimeCommand::WorkerCommand { domain: WorkerDomain::Media, envelope }]
+                if envelope.message_type == "media.load_playlist"
+        ));
+        retry.apply(&mut state);
+        assert!(state.overlay.loading);
+        assert_eq!(state.overlay.retry_count, 1);
+
+        RuntimeEvent::MediaSnapshot(json!({"connected": true})).apply(&mut state);
+        assert_eq!(state.overlay, crate::state::OverlayRuntimeState::default());
     }
 
     #[test]

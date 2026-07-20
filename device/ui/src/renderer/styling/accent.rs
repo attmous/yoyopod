@@ -88,7 +88,12 @@ pub(crate) fn apply_accent_raw(obj: NonNull<ffi::lv_obj_t>, role: &'static str, 
                 ffi::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
                 ffi::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
             }
-            roles::LIST_ROW_ICON
+            roles::SYS_BADGE => {
+                ffi::lv_obj_set_style_bg_color(obj.as_ptr(), accent, SELECTOR);
+                ffi::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
+            }
+            roles::SYS_MSG
+            | roles::LIST_ROW_ICON
             | roles::HERO_AVATAR_INITIAL
             | roles::STATUS_TIME
             | roles::STATUS_BATTERY_LABEL => {

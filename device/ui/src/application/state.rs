@@ -34,6 +34,48 @@ pub struct UiRuntime {
     pub(crate) status_bar_preview_enabled: bool,
     pub(crate) status_bar_preview_stage: Option<u8>,
     pub(crate) status_clock_minute: Option<i64>,
+    pub(crate) system_overlay: SystemOverlayState,
+    pub(crate) system_overlay_preview: Option<SystemOverlayPreview>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemOverlayPreview {
+    Loading,
+    RecoverableError,
+    UnrecoverableError,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SystemOverlayState {
+    pub loading_started_ms: Option<u64>,
+    pub loading_visible: bool,
+    pub loading_announced: bool,
+    pub spinner_step: u8,
+    pub error_started_ms: Option<u64>,
+    pub error_signature: String,
+    pub error_announced: bool,
+    pub unrecoverable_repeat_announced: bool,
+}
+
+impl SystemOverlayState {
+    pub fn reset_loading(&mut self) {
+        self.loading_started_ms = None;
+        self.loading_visible = false;
+        self.loading_announced = false;
+        self.spinner_step = 0;
+    }
+
+    pub fn reset_error(&mut self) {
+        self.error_started_ms = None;
+        self.error_signature.clear();
+        self.error_announced = false;
+        self.unrecoverable_repeat_announced = false;
+    }
+
+    pub fn reset(&mut self) {
+        self.reset_loading();
+        self.reset_error();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -182,6 +224,8 @@ impl Default for UiRuntime {
             status_bar_preview_enabled: false,
             status_bar_preview_stage: None,
             status_clock_minute: None,
+            system_overlay: SystemOverlayState::default(),
+            system_overlay_preview: None,
         }
     }
 }

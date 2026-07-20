@@ -4,7 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 use yoyopod_protocol::ui::{
-    RuntimeSnapshot, RuntimeSnapshotPatch, UiIntent, UiScreen, VoiceIntent, VoiceRecipientAction,
+    MusicIntent, PowerIntent, RuntimeSnapshot, RuntimeSnapshotPatch, SystemIntent, UiIntent,
+    UiScreen, VoiceIntent, VoiceRecipientAction,
 };
 
 use crate::voice::{
@@ -610,6 +611,19 @@ impl SetupRow {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct OverlayRuntimeState {
+    pub loading: bool,
+    pub error: String,
+    pub message: String,
+    pub retryable: bool,
+    pub code: String,
+    pub source: String,
+    pub retry_count: u8,
+    pub pending_domain: Option<WorkerDomain>,
+    pub retry_intent: Option<UiIntent>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeState {
     pub current_screen: UiScreen,
@@ -620,6 +634,7 @@ pub struct RuntimeState {
     pub settings: SettingsRuntimeState,
     pub network: NetworkRuntimeState,
     pub cloud: CloudRuntimeState,
+    pub overlay: OverlayRuntimeState,
     pub ui: WorkerHealth,
     pub cloud_worker: WorkerHealth,
     pub media_worker: WorkerHealth,
@@ -644,6 +659,7 @@ impl Default for RuntimeState {
             settings: SettingsRuntimeState::default(),
             network: NetworkRuntimeState::default(),
             cloud: CloudRuntimeState::default(),
+            overlay: OverlayRuntimeState::default(),
             ui: WorkerHealth::default(),
             cloud_worker: WorkerHealth::default(),
             media_worker: WorkerHealth::default(),
@@ -696,6 +712,23 @@ impl RuntimeState {
         let health = self.worker_health_mut(domain);
         health.state = state;
         health.last_reason = reason.into();
+    }
+
+    pub fn resolve_overlay_for(&mut self, domain: WorkerDomain) {
+        if self.overlay.pending_domain == Some(domain) {
+            self.overlay = OverlayRuntimeState::default();
+        }
+    }
+
+    pub fn fail_overlay_for(&mut self, domain: WorkerDomain) {
+        if self.overlay.pending_domain != Some(domain) {
+            return;
+        }
+        self.overlay.loading = false;
+        self.overlay.error = format!("worker_{}_error", domain.as_str());
+        self.overlay.code = self.overlay.error.clone();
+        self.overlay.retryable = !matches!(domain, WorkerDomain::Ui | WorkerDomain::Power);
+        self.overlay.message.clear();
     }
 
     pub fn seed_contacts(&mut self, contacts: Vec<ListItem>) {
@@ -1104,7 +1137,69 @@ impl RuntimeState {
         match intent {
             UiIntent::Voice(intent) => self.apply_voice_intent(intent),
             UiIntent::Settings(intent) => self.apply_settings_intent(intent),
+            UiIntent::System(intent) => self.apply_system_intent(*intent),
             _ => {}
+        }
+        if !matches!(intent, UiIntent::System(_)) {
+            self.begin_overlay_operation(intent);
+        }
+    }
+
+    fn begin_overlay_operation(&mut self, intent: &UiIntent) {
+        let Some(domain) = overlay_domain_for_intent(intent) else {
+            return;
+        };
+        let payload = intent.to_event_payload();
+        let source_domain = payload
+            .get("domain")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let source_action = payload
+            .get("action")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        self.overlay = OverlayRuntimeState {
+            loading: true,
+            error: String::new(),
+            message: "One moment…".to_string(),
+            retryable: true,
+            code: String::new(),
+            source: format!("{source_domain}.{source_action}"),
+            retry_count: 0,
+            pending_domain: Some(domain),
+            retry_intent: Some(intent.clone()),
+        };
+    }
+
+    fn apply_system_intent(&mut self, intent: SystemIntent) {
+        match intent {
+            SystemIntent::RetryOverlay => {
+                let Some(retry_intent) = self.overlay.retry_intent.clone() else {
+                    self.overlay = OverlayRuntimeState::default();
+                    return;
+                };
+                self.overlay.loading = true;
+                self.overlay.error.clear();
+                self.overlay.message = "One moment…".to_string();
+                self.overlay.code.clear();
+                self.overlay.retry_count = self.overlay.retry_count.saturating_add(1);
+                self.overlay.pending_domain = overlay_domain_for_intent(&retry_intent);
+            }
+            SystemIntent::DismissOverlay => {
+                self.overlay = OverlayRuntimeState::default();
+            }
+            SystemIntent::LoadingTimedOut if self.overlay.loading => {
+                self.overlay.loading = false;
+                self.overlay.error = "operation_timeout".to_string();
+                self.overlay.code = "operation_timeout".to_string();
+                self.overlay.retryable = self.overlay.retry_intent.is_some();
+                self.overlay.message.clear();
+            }
+            SystemIntent::LoadingTimedOut
+            | SystemIntent::AnnounceWait
+            | SystemIntent::AnnounceRecoverableError
+            | SystemIntent::AnnounceUnrecoverableError
+            | SystemIntent::AnnounceRetry => {}
         }
     }
 
@@ -1731,9 +1826,13 @@ impl RuntimeState {
                 "last_error_summary": self.cloud.last_error_summary,
             },
             "overlay": {
-                "loading": false,
-                "error": "",
-                "message": "",
+                "loading": self.overlay.loading,
+                "error": self.overlay.error,
+                "message": self.overlay.message,
+                "retryable": self.overlay.retryable,
+                "code": self.overlay.code,
+                "source": self.overlay.source,
+                "retry_count": self.overlay.retry_count,
             },
             "workers": {
                 WorkerDomain::Ui.as_str(): worker_payload(&self.ui),
@@ -2582,6 +2681,33 @@ fn seconds_to_u64_ceiling(seconds: f64) -> u64 {
 
 fn normalized(value: &str) -> String {
     value.trim().to_ascii_lowercase()
+}
+
+fn overlay_domain_for_intent(intent: &UiIntent) -> Option<WorkerDomain> {
+    match intent {
+        UiIntent::Music(
+            MusicIntent::PlayPause
+            | MusicIntent::NextTrack
+            | MusicIntent::PreviousTrack
+            | MusicIntent::ShuffleAll
+            | MusicIntent::LoadPlaylist(_)
+            | MusicIntent::PlayPlaylistTrack(_)
+            | MusicIntent::PlayRecentTrack(_),
+        ) => Some(WorkerDomain::Media),
+        UiIntent::Power(
+            PowerIntent::Refresh
+            | PowerIntent::SyncTimeToRtc
+            | PowerIntent::SyncTimeFromRtc
+            | PowerIntent::SetRtcAlarm(_)
+            | PowerIntent::DisableRtcAlarm,
+        ) => Some(WorkerDomain::Power),
+        UiIntent::Call(_)
+        | UiIntent::Voice(_)
+        | UiIntent::Settings(_)
+        | UiIntent::Navigation(_)
+        | UiIntent::System(_)
+        | UiIntent::Runtime(_) => None,
+    }
 }
 
 fn worker_payload(worker: &WorkerHealth) -> Value {

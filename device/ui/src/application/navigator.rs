@@ -1,7 +1,7 @@
 use crate::router::{
-    self, is_call_screen, is_overlay_screen, route_for, runtime_preemption, static_intent_template,
-    AdvanceTarget, BackPolicy, DynamicActionKind, IntentTemplate, ListKind, NavigationPolicy,
-    PassthroughPolicy, SelectionTarget, SnapshotCondition,
+    self, is_call_screen, is_overlay_screen, route_for, runtime_preemption_for_display,
+    static_intent_template, AdvanceTarget, BackPolicy, DynamicActionKind, IntentTemplate, ListKind,
+    NavigationPolicy, PassthroughPolicy, SelectionTarget, SnapshotCondition,
 };
 use crate::scene::FocusPolicy;
 use yoyopod_protocol::ui::{
@@ -12,12 +12,19 @@ use super::state::HomeMode;
 use super::{focus, intents, options, UiRuntime, UiScreen};
 
 pub fn apply_runtime_preemption(runtime: &mut UiRuntime) {
-    if let Some(screen) = runtime_preemption(&runtime.snapshot) {
+    if let Some(screen) =
+        runtime_preemption_for_display(&runtime.snapshot, runtime.system_overlay.loading_visible)
+    {
         if runtime.active_screen != screen {
             if runtime.active_screen == UiScreen::Replay {
                 leave_replay(runtime);
             }
-            push_screen(runtime, screen);
+            if is_overlay_screen(runtime.active_screen) && is_overlay_screen(screen) {
+                runtime.active_screen = screen;
+                runtime.focus_index = 0;
+            } else {
+                push_screen(runtime, screen);
+            }
         }
         return;
     }
