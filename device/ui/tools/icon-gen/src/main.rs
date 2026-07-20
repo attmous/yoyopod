@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const PREVIEW_CELL_SIZE: u32 = 56;
-const ICONS: [IconSpec; 18] = [
+const ICONS: [IconSpec; 32] = [
     IconSpec::new("playlists", "PLAYLISTS", 56),
     IconSpec::new("recents", "RECENTS", 56),
     IconSpec::new("shuffle", "SHUFFLE", 56),
@@ -25,6 +25,20 @@ const ICONS: [IconSpec; 18] = [
     IconSpec::new("ask_q", "ASK_Q", 56),
     IconSpec::new("ask_speaker", "ASK_SPEAKER", 56),
     IconSpec::new("ask_cloud_zzz", "ASK_CLOUD_ZZZ", 56),
+    IconSpec::new("setup_volume", "SETUP_VOLUME", 56),
+    IconSpec::new("setup_companion", "SETUP_COMPANION", 56),
+    IconSpec::new("setup_contacts", "SETUP_CONTACTS", 56),
+    IconSpec::new("setup_theme", "SETUP_THEME", 56),
+    IconSpec::new("setup_speak", "SETUP_SPEAK", 56),
+    IconSpec::new("setup_about", "SETUP_ABOUT", 56),
+    IconSpec::new("setup_blob", "SETUP_BLOB", 56),
+    IconSpec::new("setup_owl", "SETUP_OWL", 56),
+    IconSpec::new("setup_cat", "SETUP_CAT", 56),
+    IconSpec::new("setup_bunny", "SETUP_BUNNY", 56),
+    IconSpec::new("setup_robot", "SETUP_ROBOT", 56),
+    IconSpec::new("setup_light", "SETUP_LIGHT", 56),
+    IconSpec::new("setup_dark", "SETUP_DARK", 56),
+    IconSpec::new("setup_auto", "SETUP_AUTO", 56),
 ];
 
 #[derive(Clone, Copy)]

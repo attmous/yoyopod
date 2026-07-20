@@ -14,9 +14,9 @@ pub mod now_playing;
 pub mod outgoing_call;
 pub mod playlist_tracks;
 pub mod playlists;
-pub mod power;
 pub mod recent_tracks;
 pub mod replay;
+pub mod setup;
 pub mod talk;
 pub mod talk_contact;
 pub mod voice_note;
@@ -89,7 +89,12 @@ pub fn scene_for_screen(
             defaults.clone(),
         )),
         UiScreen::InCall => in_call::scene(&in_call::props_from(snapshot, focus, defaults.clone())),
-        UiScreen::Power => power::scene(&power::props_from(snapshot, focus, defaults.clone())),
+        UiScreen::Setup
+        | UiScreen::SetupVolume
+        | UiScreen::SetupCompanion
+        | UiScreen::SetupContacts
+        | UiScreen::SetupTheme
+        | UiScreen::SetupAbout => setup::scene(screen, snapshot, focus, defaults.clone()),
         UiScreen::Loading => loading::scene(&loading::props_from(snapshot, defaults.clone())),
         UiScreen::Error => error::scene(&error::props_from(snapshot, defaults.clone())),
     };

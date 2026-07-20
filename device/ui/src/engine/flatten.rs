@@ -1,6 +1,7 @@
 use crate::animation::{presets, ActorRef, TimelineRef, TrackIndex};
 use crate::components::widgets::{
-    context_label as context_label_widget, wheel_header as wheel_header_widget,
+    context_label as context_label_widget, setup_counter as setup_counter_widget,
+    wheel_header as wheel_header_widget,
 };
 use crate::scene::roles;
 use crate::scene::{
@@ -88,6 +89,7 @@ fn decks_element(scene: &Scene) -> Element {
     match scene.context.as_ref() {
         Some(SceneContext::WheelHeader(header)) => root.child(wheel_header_widget(header)),
         Some(SceneContext::Label(label)) => root.child(context_label_widget(label)),
+        Some(SceneContext::SetupCounter(counter)) => root.child(setup_counter_widget(counter)),
         None => root,
     }
 }

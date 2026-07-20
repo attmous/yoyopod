@@ -617,6 +617,7 @@ pub struct RuntimeState {
     pub call: CallRuntimeState,
     pub voice: VoiceRuntimeState,
     pub power: PowerRuntimeState,
+    pub settings: SettingsRuntimeState,
     pub network: NetworkRuntimeState,
     pub cloud: CloudRuntimeState,
     pub ui: WorkerHealth,
@@ -640,6 +641,7 @@ impl Default for RuntimeState {
             call: CallRuntimeState::default(),
             voice: VoiceRuntimeState::default(),
             power: PowerRuntimeState::default(),
+            settings: SettingsRuntimeState::default(),
             network: NetworkRuntimeState::default(),
             cloud: CloudRuntimeState::default(),
             ui: WorkerHealth::default(),
@@ -652,6 +654,23 @@ impl Default for RuntimeState {
             loop_iterations: 0,
             last_loop_duration_ms: 0,
             app_log_file: "logs/yoyopod.log".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsRuntimeState {
+    pub companion: String,
+    pub theme: String,
+    pub speak_names: bool,
+}
+
+impl Default for SettingsRuntimeState {
+    fn default() -> Self {
+        Self {
+            companion: "Bunny".to_string(),
+            theme: "Light".to_string(),
+            speak_names: true,
         }
     }
 }
@@ -1082,8 +1101,26 @@ impl RuntimeState {
     }
 
     pub fn apply_ui_intent(&mut self, intent: &UiIntent) {
-        if let UiIntent::Voice(intent) = intent {
-            self.apply_voice_intent(intent);
+        match intent {
+            UiIntent::Voice(intent) => self.apply_voice_intent(intent),
+            UiIntent::Settings(intent) => self.apply_settings_intent(intent),
+            _ => {}
+        }
+    }
+
+    fn apply_settings_intent(&mut self, intent: &yoyopod_protocol::ui::SettingsIntent) {
+        use yoyopod_protocol::ui::SettingsIntent;
+        match intent {
+            SettingsIntent::VolumeStep => {
+                let level = volume_level(self.media.volume);
+                let next = if level >= 10 { 1 } else { level + 1 };
+                self.media.volume = next * 10;
+            }
+            SettingsIntent::CompanionSet(value) => self.settings.companion = value.clone(),
+            SettingsIntent::ThemeSet(value) => self.settings.theme = value.clone(),
+            SettingsIntent::SpeakNamesToggle => {
+                self.settings.speak_names = !self.settings.speak_names;
+            }
         }
     }
 
@@ -1671,6 +1708,14 @@ impl RuntimeState {
                 "rows": self.power_rows(),
                 "pages": self.setup_pages(),
             },
+            "settings": {
+                "volume_level": volume_level(self.media.volume),
+                "companion": self.settings.companion,
+                "theme": self.settings.theme,
+                "speak_names": self.settings.speak_names,
+                "device_name": self.cloud.device_id,
+                "firmware_version": env!("CARGO_PKG_VERSION"),
+            },
             "network": {
                 "enabled": self.network.enabled,
                 "connected": self.network.connected,
@@ -1729,6 +1774,9 @@ impl RuntimeState {
         }
         if before.power != after.power {
             patches.push(RuntimeSnapshotPatch::Power(after.power.clone()));
+        }
+        if before.settings != after.settings {
+            patches.push(RuntimeSnapshotPatch::Settings(after.settings.clone()));
         }
         if before.network != after.network {
             patches.push(RuntimeSnapshotPatch::Network(after.network.clone()));
@@ -2031,6 +2079,10 @@ impl RuntimeState {
     }
 }
 
+fn volume_level(volume: i32) -> i32 {
+    ((volume.clamp(0, 100) + 5) / 10).clamp(1, 10)
+}
+
 fn string_field(value: &Value, key: &str) -> Option<String> {
     value.get(key).and_then(Value::as_str).map(str::to_string)
 }
@@ -2331,7 +2383,7 @@ fn screen_for_voice_route(route_name: &str) -> Option<UiScreen> {
     match normalized(route_name).as_str() {
         "open_talk" => Some(UiScreen::Talk),
         "open_listen" => Some(UiScreen::Listen),
-        "open_setup" => Some(UiScreen::Power),
+        "open_setup" => Some(UiScreen::Setup),
         "go_home" => Some(UiScreen::Hub),
         _ => None,
     }

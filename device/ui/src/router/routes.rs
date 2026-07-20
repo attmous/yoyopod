@@ -7,8 +7,8 @@ use crate::scene::FocusPolicy;
 use crate::DirtyRegion;
 
 use super::route::{
-    BackPolicy, DynamicActionKind, IntentTemplate, ListKind, NavigationPolicy, PassthroughPolicy,
-    Persistence, Route, SelectionTarget, SnapshotCondition,
+    AdvanceTarget, BackPolicy, DynamicActionKind, IntentTemplate, ListKind, NavigationPolicy,
+    PassthroughPolicy, Persistence, Route, SelectionTarget, SnapshotCondition,
 };
 
 const STATUS_BAR_REGION: DirtyRegion = DirtyRegion {
@@ -39,7 +39,12 @@ pub const ROUTES: [Route; UiScreen::ALL.len()] = [
     route(UiScreen::IncomingCall),
     route(UiScreen::OutgoingCall),
     route(UiScreen::InCall),
-    route(UiScreen::Power),
+    route(UiScreen::Setup),
+    route(UiScreen::SetupVolume),
+    route(UiScreen::SetupCompanion),
+    route(UiScreen::SetupContacts),
+    route(UiScreen::SetupTheme),
+    route(UiScreen::SetupAbout),
     route(UiScreen::Loading),
     route(UiScreen::Error),
 ];
@@ -78,6 +83,7 @@ const fn route(screen: UiScreen) -> Route {
         nav_policy: navigation_policy(screen),
         persistence: persistence(screen),
         select: select_targets(screen),
+        advance: advance_target(screen),
         passthrough: passthrough_policies(screen),
         back: back_policies(screen),
         on_enter: None,
@@ -90,7 +96,9 @@ pub const fn dirty_region_for(
     domain: RuntimeSnapshotDomain,
 ) -> Option<DirtyRegion> {
     match (screen, domain) {
-        (UiScreen::Power, RuntimeSnapshotDomain::Power) => None,
+        (UiScreen::SetupAbout, RuntimeSnapshotDomain::Power | RuntimeSnapshotDomain::Network) => {
+            None
+        }
         (_, RuntimeSnapshotDomain::Power | RuntimeSnapshotDomain::Network) => {
             Some(STATUS_BAR_REGION)
         }
@@ -107,6 +115,9 @@ pub fn screen_capabilities() -> Vec<ScreenCapabilities> {
             let mut supported_intents = Vec::new();
             for target in entry.select {
                 add_selection_intent(*target, &mut supported_intents);
+            }
+            if let AdvanceTarget::EmitIntent(intent) = entry.advance {
+                add_intent_kind(template_intent_kind(intent), &mut supported_intents);
             }
             for passthrough in entry.passthrough {
                 add_intent_kind(
@@ -142,7 +153,10 @@ fn add_selection_intent(target: SelectionTarget, supported_intents: &mut Vec<Int
                 add_intent_kind((*intent).into(), supported_intents);
             }
         }
-        SelectionTarget::PushScreen(_) | SelectionTarget::AdvanceFocus | SelectionTarget::Noop => {}
+        SelectionTarget::PushScreen(_)
+        | SelectionTarget::AdvanceFocus
+        | SelectionTarget::PopScreen
+        | SelectionTarget::Noop => {}
     }
 }
 
@@ -169,6 +183,8 @@ fn template_intent_kind(template: IntentTemplate) -> IntentKind {
         IntentTemplate::CallReject => ("call", "reject"),
         IntentTemplate::CallHangup => ("call", "hangup"),
         IntentTemplate::CallToggleMute => ("call", "toggle_mute"),
+        IntentTemplate::SettingsVolumeStep => ("settings", "volume_step"),
+        IntentTemplate::SettingsSpeakNamesToggle => ("settings", "speak_names_toggle"),
     };
     IntentKind {
         domain: domain.to_string(),
@@ -221,12 +237,18 @@ fn dynamic_action_intent_kinds(kind: DynamicActionKind) -> &'static [IntentKindL
         IntentKindLiteral::new("voice", "ask_stop"),
         IntentKindLiteral::new("voice", "ask_cancel"),
     ];
+    const SETUP_COMPANION_INTENTS: &[IntentKindLiteral] =
+        &[IntentKindLiteral::new("settings", "companion_set")];
+    const SETUP_THEME_INTENTS: &[IntentKindLiteral] =
+        &[IntentKindLiteral::new("settings", "theme_set")];
 
     match kind {
         DynamicActionKind::Ask => ASK_INTENTS,
         DynamicActionKind::TalkContact => TALK_CONTACT_INTENTS,
         DynamicActionKind::Replay => REPLAY_INTENTS,
         DynamicActionKind::VoiceNote => VOICE_NOTE_INTENTS,
+        DynamicActionKind::SetupCompanion => SETUP_COMPANION_INTENTS,
+        DynamicActionKind::SetupTheme => SETUP_THEME_INTENTS,
     }
 }
 
@@ -255,7 +277,7 @@ const HUB_SELECT: &[SelectionTarget] = &[
     SelectionTarget::PushScreen(UiScreen::Listen),
     SelectionTarget::PushScreen(UiScreen::Talk),
     SelectionTarget::PushScreen(UiScreen::Ask),
-    SelectionTarget::PushScreen(UiScreen::Power),
+    SelectionTarget::PushScreen(UiScreen::Setup),
 ];
 const LISTEN_SELECT: &[SelectionTarget] = &[
     SelectionTarget::PushScreen(UiScreen::Playlists),
@@ -307,7 +329,21 @@ const IN_CALL_SELECT: &[SelectionTarget] = &[
     SelectionTarget::EmitIntent(IntentTemplate::CallToggleMute),
     SelectionTarget::EmitIntent(IntentTemplate::CallHangup),
 ];
-const POWER_SELECT: &[SelectionTarget] = &[SelectionTarget::AdvanceFocus];
+const SETUP_SELECT: &[SelectionTarget] = &[
+    SelectionTarget::PushScreen(UiScreen::SetupVolume),
+    SelectionTarget::PushScreen(UiScreen::SetupCompanion),
+    SelectionTarget::PushScreen(UiScreen::SetupContacts),
+    SelectionTarget::PushScreen(UiScreen::SetupTheme),
+    SelectionTarget::EmitIntent(IntentTemplate::SettingsSpeakNamesToggle),
+    SelectionTarget::PushScreen(UiScreen::SetupAbout),
+];
+const SETUP_VOLUME_SELECT: &[SelectionTarget] = &[SelectionTarget::PopScreen];
+const SETUP_COMPANION_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
+    kind: DynamicActionKind::SetupCompanion,
+}];
+const SETUP_THEME_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
+    kind: DynamicActionKind::SetupTheme,
+}];
 const NO_SELECT: &[SelectionTarget] = &[SelectionTarget::Noop];
 
 const ASK_PASSTHROUGH: &[PassthroughPolicy] = &[
@@ -372,7 +408,11 @@ const fn select_targets(screen: UiScreen) -> &'static [SelectionTarget] {
         UiScreen::IncomingCall => INCOMING_SELECT,
         UiScreen::OutgoingCall => OUTGOING_SELECT,
         UiScreen::InCall => IN_CALL_SELECT,
-        UiScreen::Power => POWER_SELECT,
+        UiScreen::Setup => SETUP_SELECT,
+        UiScreen::SetupVolume => SETUP_VOLUME_SELECT,
+        UiScreen::SetupCompanion => SETUP_COMPANION_SELECT,
+        UiScreen::SetupContacts | UiScreen::SetupAbout => NO_SELECT,
+        UiScreen::SetupTheme => SETUP_THEME_SELECT,
         UiScreen::Loading | UiScreen::Error => NO_SELECT,
     }
 }
@@ -437,6 +477,12 @@ pub fn static_intent_template(template: IntentTemplate) -> Option<UiIntent> {
         IntentTemplate::CallToggleMute => {
             Some(UiIntent::Call(yoyopod_protocol::ui::CallIntent::ToggleMute))
         }
+        IntentTemplate::SettingsVolumeStep => Some(UiIntent::Settings(
+            yoyopod_protocol::ui::SettingsIntent::VolumeStep,
+        )),
+        IntentTemplate::SettingsSpeakNamesToggle => Some(UiIntent::Settings(
+            yoyopod_protocol::ui::SettingsIntent::SpeakNamesToggle,
+        )),
     }
 }
 
@@ -450,7 +496,12 @@ const fn focus_policy(screen: UiScreen) -> FocusPolicy {
         | UiScreen::VoiceNote
         | UiScreen::IncomingCall
         | UiScreen::InCall
-        | UiScreen::Power => FocusPolicy::Wrap,
+        | UiScreen::Setup
+        | UiScreen::SetupVolume
+        | UiScreen::SetupCompanion
+        | UiScreen::SetupContacts
+        | UiScreen::SetupTheme
+        | UiScreen::SetupAbout => FocusPolicy::Wrap,
         UiScreen::Contacts | UiScreen::CallHistory => FocusPolicy::Clamp,
         UiScreen::Playlists
         | UiScreen::PlaylistTracks
@@ -459,6 +510,13 @@ const fn focus_policy(screen: UiScreen) -> FocusPolicy {
         UiScreen::Ask | UiScreen::OutgoingCall | UiScreen::Loading | UiScreen::Error => {
             FocusPolicy::None
         }
+    }
+}
+
+const fn advance_target(screen: UiScreen) -> AdvanceTarget {
+    match screen {
+        UiScreen::SetupVolume => AdvanceTarget::EmitIntent(IntentTemplate::SettingsVolumeStep),
+        _ => AdvanceTarget::Focus,
     }
 }
 

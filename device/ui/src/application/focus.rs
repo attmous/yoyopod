@@ -66,7 +66,12 @@ pub fn focus_count(
         UiScreen::IncomingCall => 2,
         UiScreen::OutgoingCall => 1,
         UiScreen::InCall => 2,
-        UiScreen::Power => options::power_page_count(snapshot),
+        UiScreen::Setup => 6,
+        UiScreen::SetupVolume => 1,
+        UiScreen::SetupCompanion => 5,
+        UiScreen::SetupContacts => snapshot.call.contacts.len(),
+        UiScreen::SetupTheme => 3,
+        UiScreen::SetupAbout => 5,
         _ => 0,
     }
 }

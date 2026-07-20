@@ -105,6 +105,27 @@ pub fn wheel_item(
                 None => root,
             }
         }
+        WheelItemVariant::Setup {
+            icon_key,
+            plate_rgb,
+            round,
+        } => {
+            assert_eq!(slot, WheelItemSlot::Standard);
+            container(roles::SETUP_WHEEL_ITEM)
+                .key(key)
+                .selected(selected)
+                .child(
+                    container(if *round {
+                        roles::SETUP_TILE_PLATE_ROUND
+                    } else {
+                        roles::SETUP_TILE_PLATE
+                    })
+                    .accent(*plate_rgb)
+                    .child(image(roles::SETUP_TILE_ICON).icon(icon_key).accent(INK)),
+                )
+                .child(label(roles::SETUP_TILE_NAME).text(&model.title))
+                .child(label(roles::SETUP_TILE_SUB).text(&model.subtitle))
+        }
     }
 }
 

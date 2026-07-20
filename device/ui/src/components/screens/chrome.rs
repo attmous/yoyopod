@@ -101,7 +101,12 @@ fn title_for_screen(
         UiScreen::IncomingCall | UiScreen::OutgoingCall | UiScreen::InCall => {
             call_peer_name(snapshot)
         }
-        UiScreen::Power => power_title(snapshot, focus_index),
+        UiScreen::Setup => "Setup".to_string(),
+        UiScreen::SetupVolume => "Volume".to_string(),
+        UiScreen::SetupCompanion => "Companion".to_string(),
+        UiScreen::SetupContacts => "Contacts".to_string(),
+        UiScreen::SetupTheme => "Theme".to_string(),
+        UiScreen::SetupAbout => "About".to_string(),
         UiScreen::Loading => "Loading".to_string(),
         UiScreen::Error => "Error".to_string(),
     }
@@ -125,7 +130,12 @@ fn deck_focus_for_screen(screen: UiScreen, home_focus: Option<usize>) -> Option<
         | UiScreen::OutgoingCall
         | UiScreen::InCall => Some(1),
         UiScreen::Ask => Some(2),
-        UiScreen::Power => Some(3),
+        UiScreen::Setup
+        | UiScreen::SetupVolume
+        | UiScreen::SetupCompanion
+        | UiScreen::SetupContacts
+        | UiScreen::SetupTheme
+        | UiScreen::SetupAbout => Some(3),
         UiScreen::Loading | UiScreen::Error => None,
     }
 }
@@ -207,21 +217,5 @@ fn call_peer_name(snapshot: &RuntimeSnapshot) -> String {
         "Unknown".to_string()
     } else {
         snapshot.call.peer_name.clone()
-    }
-}
-
-fn power_title(snapshot: &RuntimeSnapshot, focus_index: usize) -> String {
-    if !snapshot.power.pages.is_empty() {
-        let page = &snapshot.power.pages[focus_index % snapshot.power.pages.len()];
-        if page.title.trim().is_empty() {
-            "Setup".to_string()
-        } else {
-            page.title.clone()
-        }
-    } else if !snapshot.power.rows.is_empty() {
-        "Power".to_string()
-    } else {
-        const DEFAULT_PAGES: [&str; 4] = ["Power", "Time", "Care", "Voice"];
-        DEFAULT_PAGES[focus_index % DEFAULT_PAGES.len()].to_string()
     }
 }

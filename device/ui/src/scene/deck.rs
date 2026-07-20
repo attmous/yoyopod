@@ -59,6 +59,8 @@ pub enum ItemRender {
     EmptyState(EmptyStateModel),
     RecordingPanel(RecordingPanelModel),
     AskSurface(AskSurfaceModel),
+    SetupVolume(SetupVolumeModel),
+    SetupAbout(SetupAboutModel),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,6 +105,23 @@ pub enum WheelItemVariant {
         icon_key: String,
         badge: Option<WheelBadgeModel>,
     },
+    Setup {
+        icon_key: String,
+        plate_rgb: u32,
+        round: bool,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetupVolumeModel {
+    pub level: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetupAboutModel {
+    pub battery_percent: i32,
+    pub charging: bool,
+    pub rows: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -393,6 +412,9 @@ fn deck_item_element(
                 (WheelItemVariant::Action { .. }, WheelItemSlot::Standard) => Key::String(format!(
                     "action-wheel-slot:{visible_index}:item:{item_index}"
                 )),
+                (WheelItemVariant::Setup { .. }, WheelItemSlot::Standard) => Key::String(format!(
+                    "setup-wheel-slot:{visible_index}:item:{item_index}"
+                )),
                 (WheelItemVariant::Media { .. }, _) => {
                     // Media roots are refreshed after a committed roll so LVGL
                     // cannot retain the outgoing slot's transform or opacity.
@@ -419,6 +441,12 @@ fn deck_item_element(
         .key(item.key.clone()),
         ItemRender::AskSurface(model) => {
             crate::components::widgets::ask_surface(model).key(item.key.clone())
+        }
+        ItemRender::SetupVolume(model) => {
+            crate::components::widgets::setup_volume(model).key(item.key.clone())
+        }
+        ItemRender::SetupAbout(model) => {
+            crate::components::widgets::setup_about(model).key(item.key.clone())
         }
         ItemRender::Button(button) => Element::new(ElementKind::Container, Some(roles::BUTTON))
             .key(item.key.clone())

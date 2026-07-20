@@ -28,6 +28,11 @@ pub struct ContextLabelModel {
     pub text: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetupCounterModel {
+    pub text: String,
+}
+
 impl ContextLabelModel {
     pub fn new(text: impl Into<String>) -> Self {
         Self { text: text.into() }
@@ -38,6 +43,7 @@ impl ContextLabelModel {
 pub enum SceneContext {
     WheelHeader(WheelHeaderModel),
     Label(ContextLabelModel),
+    SetupCounter(SetupCounterModel),
 }
 
 impl SceneContext {
@@ -45,6 +51,7 @@ impl SceneContext {
         match self {
             Self::WheelHeader(header) => Some(header),
             Self::Label(_) => None,
+            Self::SetupCounter(_) => None,
         }
     }
 
@@ -52,6 +59,14 @@ impl SceneContext {
         match self {
             Self::Label(label) => Some(label),
             Self::WheelHeader(_) => None,
+            Self::SetupCounter(_) => None,
+        }
+    }
+
+    pub fn setup_counter(&self) -> Option<&SetupCounterModel> {
+        match self {
+            Self::SetupCounter(counter) => Some(counter),
+            Self::WheelHeader(_) | Self::Label(_) => None,
         }
     }
 }
@@ -65,6 +80,12 @@ impl From<WheelHeaderModel> for SceneContext {
 impl From<ContextLabelModel> for SceneContext {
     fn from(value: ContextLabelModel) -> Self {
         Self::Label(value)
+    }
+}
+
+impl From<SetupCounterModel> for SceneContext {
+    fn from(value: SetupCounterModel) -> Self {
+        Self::SetupCounter(value)
     }
 }
 
