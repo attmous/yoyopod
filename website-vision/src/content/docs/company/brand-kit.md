@@ -48,6 +48,11 @@ paper is for everything else.**
 
 - This site's theme: `website-vision/src/styles/custom.css` — the CSS
   custom properties are the reference values.
+- The brand art: `src/assets/art/device-art.svg` (the landing hero) and
+  `src/assets/art/internals-art.svg` (the exploded V0 view), both fixed
+  to the kit's hexes so they read identically in either theme.
+- The promo: [yoyopod in 30 Seconds](/start/promo/) — five looping scenes
+  animated in the kit's colors (`src/styles/promo.css`).
 
 ## Open questions
 

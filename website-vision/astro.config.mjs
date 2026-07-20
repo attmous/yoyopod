@@ -20,13 +20,14 @@ export default defineConfig({
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/attmous/yoyopod' },
 			],
-			customCss: ['./src/styles/custom.css'],
+			customCss: ['./src/styles/custom.css', './src/styles/promo.css'],
 			sidebar: [
 				{
 					label: 'Start Here',
 					items: [
 						{ label: 'Welcome', link: '/' },
 						{ label: 'About This Site', slug: 'start/about-this-site' },
+						{ label: 'yoyopod in 30 Seconds', slug: 'start/promo' },
 					],
 				},
 				{
