@@ -175,9 +175,9 @@
   }
   .sys-badge.tomato { background: var(--c-tomato); }
 
-  /* error message — Mont-14 ink, 2 lines, (20,140,200,36) */
+  /* error message — Mont-14 ink, 2 lines, hardware-fit (12,140,216,36) */
   .sys-msg {
-    position: absolute; left: 20px; top: 140px; width: 200px; height: 36px;
+    position: absolute; left: 12px; top: 140px; width: 216px; height: 36px;
     font: 600 14px/18px "Montserrat", "Segoe UI", system-ui, sans-serif;
     color: var(--ink); text-align: center; z-index: 40;
   }
@@ -334,7 +334,7 @@
       <tr class="grp"><td colspan="3">Error</td></tr>
       <tr><td>Badge</td><td class="num">56 × 56 at x 92, y 64</td><td>Circle (radius 28), butter <code>#FFD06A</code> fill, flat — no border. Unrecoverable variant: tomato <code>#E5443B</code>, identical geometry.</td></tr>
       <tr><td>Badge glyph</td><td class="mono">"!" · Mont-24 · ink</td><td>Centered in the badge. At runtime a 24 px A8 glyph asset (<code>sys_alert.a8</code>) or a Mont-24 label — Mont-24 needs a font extern (§5).</td></tr>
-      <tr><td>Message</td><td class="num">(20, 140, 200, 36)</td><td>Mont-14 / 18 px line height, ink, centered, 2 lines: "Oops, something went wrong. / Let's try again!". Unrecoverable: "That's not working right now. / Ask a grown-up to help!". Loading's wait label reuses this rect (single line, vertically centered).</td></tr>
+      <tr><td>Message</td><td class="num">(12, 140, 216, 36)</td><td>Mont-14 / 18 px line height, ink, centered, 2 lines: "Oops, something went wrong. / Let's try again!". Unrecoverable: "That's not working right now. / Ask a grown-up to help!". The width is the hardware-validated Montserrat fit; Loading keeps its separate (20, 150, 200, 16) wait-label rect.</td></tr>
     </tbody>
   </table>
 </div>
@@ -420,7 +420,7 @@
     <tbody>
       <tr><td class="mono">sys_scrim</td><td class="mono">(x: 0, y: 22, width: 240, height: 206)</td><td class="mono">fill_rgb: 1776415, opacity: 102, radius: 0</td><td>ink @ 40%. Stage-only — statusbar and deck are outside it.</td></tr>
       <tr><td class="mono">sys_spinner_dot</td><td class="mono">(x: 117, y: 93, width: 6, height: 6)</td><td class="mono">fill_rgb: 1776415, opacity: 255, radius: 3</td><td>Rect is the 12-o'clock dot. Not a <code>repeat_y</code> — the spinner fx instantiates 8 copies at 45° steps on the 18 px orbit around (120, 114) and cycles opacity 255 → 51. Supersedes the legacy dark-theme <code>fx_spinner</code> values.</td></tr>
-      <tr><td class="mono">sys_msg</td><td class="mono">(x: 20, y: 140, width: 200, height: 36)</td><td class="mono">text_rgb: 1776415</td><td>Mont-14, centered. Error: 2 lines, ink. Loading: 1 line vertically centered, tinted ink_soft (3816000) by the loading scene style.</td></tr>
+      <tr><td class="mono">sys_msg</td><td class="mono">(x: 12, y: 140, width: 216, height: 36)</td><td class="mono">text_rgb: 1776415</td><td>Mont-14, centered. Error: 2 lines, ink. Loading overrides the shared role with its (20, 150, 200, 16) one-line rect and ink_soft tint (3816000).</td></tr>
       <tr><td class="mono">sys_badge</td><td class="mono">(x: 92, y: 64, width: 56, height: 56)</td><td class="mono">fill_rgb: 16765034, text_rgb: 1776415, opacity: 255, radius: 28</td><td>Butter circle + ink "!". Unrecoverable state swaps <code>fill_rgb</code> to 15025211 (tomato) — same rect, same radius.</td></tr>
     </tbody>
   </table>
@@ -429,7 +429,7 @@
 <!-- ============================================================ -->
 <h2>7 · Runtime mapping</h2>
 <div class="specs">
-  <p style="margin-top:0">The screens exist, but <b>the Error interaction paths in §3 are required route/controller work, not shipped behavior</b>. As shipped, both routes are <code>NO_SELECT</code> with no back policy — so the documented double-press-retry does nothing today. Worse, <code>runtime_preemption</code> re-pushes Error for as long as <code>snapshot.overlay.error</code> stays set, so a long-press Home just bounces straight back to the overlay. Implementing §3 requires: (a) a select target on Error emitting a retry intent, (b) a controller path that <b>clears <code>snapshot.overlay.error</code></b> on retry / auto-dismiss / long-press for the recoverable variant (the unrecoverable variant intentionally persists until the underlying condition clears), and (c) the 8 s Loading→Error and 4 s auto-retry timers. Tracked in <code>HANDOFF.md</code> → runtime work items. This spec closes <b>README open question #7</b> ("Loading / Error overlay design — routes exist in the runtime, no mockup").</p>
+  <p style="margin-top:0">The route/controller contract in §3 is implemented by the retained-screen system-overlay controller and typed <code>SystemIntent</code> path. Retry, auto-retry, timeout escalation, and long-press dismissal clear the local overlay state immediately, while the runtime owns retry metadata and re-issues the retained failed intent. Raw diagnostic fields remain log-only. This spec closes <b>README open question #7</b> ("Loading / Error overlay design — routes exist in the runtime, no mockup").</p>
   <table class="spec">
     <thead><tr><th>Runtime fact</th><th>Where</th></tr></thead>
     <tbody>
@@ -448,6 +448,7 @@
 <div class="specs">
   <ul style="margin:0">
     <li><b>2026-07-15 · v1</b> — created in the finalization pass; flat + neutral bezel from birth.</li>
+    <li><b>2026-07-20 · v2</b> — widened the Error message role to 216 px after LVGL readback exposed Montserrat-14 first-glyph clipping; recorded the shipped controller contract.</li>
   </ul>
 </div>
 

@@ -50,8 +50,11 @@ impl UiRuntime {
         let pending_identity = self.pending_wheel_identity();
         let previous_playing = self.snapshot.voice.playback_active;
         let previous_file_path = self.snapshot.voice.playback_file_path.clone();
-        let change = snapshot::replace_full(&mut self.snapshot, snapshot);
+        let mut change = snapshot::replace_full(&mut self.snapshot, snapshot);
         self.enforce_system_overlay_preview();
+        if self.system_overlay_preview.is_some() {
+            change.app_state = self.snapshot.app_state;
+        }
         self.reconcile_system_overlay_snapshot();
         self.full_snapshots += 1;
         navigator::apply_app_state_route(self, &change.previous_app_state, &change.app_state);
@@ -70,8 +73,11 @@ impl UiRuntime {
         let previous_stack_len = self.screen_stack.len();
         let previous_playing = self.snapshot.voice.playback_active;
         let previous_file_path = self.snapshot.voice.playback_file_path.clone();
-        let change = snapshot::apply_patch(&mut self.snapshot, patch);
+        let mut change = snapshot::apply_patch(&mut self.snapshot, patch);
         self.enforce_system_overlay_preview();
+        if self.system_overlay_preview.is_some() {
+            change.app_state = self.snapshot.app_state;
+        }
         self.reconcile_system_overlay_snapshot();
         *self.patches_per_domain.entry(domain).or_insert(0) += 1;
         navigator::apply_app_state_route(self, &change.previous_app_state, &change.app_state);
@@ -505,9 +511,8 @@ impl UiRuntime {
 
     pub(crate) fn enable_system_overlay_preview(&mut self, preview: SystemOverlayPreview) {
         self.screen_stack.clear();
-        self.active_screen = UiScreen::Hub;
-        self.focus_index = 2;
-        self.home_mode = HomeMode::Focused;
+        self.active_screen = UiScreen::Ask;
+        self.focus_index = 0;
         self.system_overlay_preview = Some(preview);
         self.enforce_system_overlay_preview();
         self.reconcile_system_overlay_snapshot();
@@ -523,6 +528,7 @@ impl UiRuntime {
         let Some(preview) = self.system_overlay_preview else {
             return;
         };
+        self.snapshot.app_state = UiScreen::Ask;
         self.snapshot.overlay.loading = preview == SystemOverlayPreview::Loading;
         self.snapshot.overlay.error = match preview {
             SystemOverlayPreview::Loading => String::new(),
