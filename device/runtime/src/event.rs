@@ -102,7 +102,9 @@ impl RuntimeEvent {
             Self::VoiceSpeakResult(_) => state.mark_ask_available(),
             Self::VoiceFocusPromptResult { .. } => {}
             Self::UiScreenChanged { screen } => {
-                state.current_screen = *screen;
+                if !matches!(screen, UiScreen::Loading | UiScreen::Error) {
+                    state.current_screen = *screen;
+                }
             }
             Self::WorkerError { domain, message } => {
                 state.mark_worker(*domain, WorkerState::Degraded, message.clone());
@@ -1819,6 +1821,28 @@ mod tests {
         let event = runtime_event_from_worker(WorkerDomain::Ui, envelope).unwrap();
 
         assert_eq!(event, RuntimeEvent::UiInput(input));
+    }
+
+    #[test]
+    fn local_ui_overlays_do_not_replace_the_runtime_app_route() {
+        let mut state = RuntimeState::default();
+        state.current_screen = UiScreen::Talk;
+
+        RuntimeEvent::UiScreenChanged {
+            screen: UiScreen::Error,
+        }
+        .apply(&mut state);
+        RuntimeEvent::UiScreenChanged {
+            screen: UiScreen::Loading,
+        }
+        .apply(&mut state);
+        assert_eq!(state.current_screen, UiScreen::Talk);
+
+        RuntimeEvent::UiScreenChanged {
+            screen: UiScreen::Hub,
+        }
+        .apply(&mut state);
+        assert_eq!(state.current_screen, UiScreen::Hub);
     }
 
     #[test]
