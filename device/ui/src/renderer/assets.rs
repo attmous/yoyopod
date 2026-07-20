@@ -469,6 +469,11 @@ mod tests {
             .roles
             .iter()
             .any(|role| role.role == roles::COMPANION_SPRITE));
+        assert_eq!(
+            self::theme(&theme, roles::COMPANION_SPRITE).opacity,
+            None,
+            "companion image alpha must not be replaced by an opaque widget background"
+        );
     }
 
     #[test]

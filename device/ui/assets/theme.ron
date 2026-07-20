@@ -16,7 +16,9 @@
         (role: "deck_pill", opacity: Some(255), radius: 12),
         (role: "deck_glyph"),
         (role: "companion"),
-        (role: "companion_sprite", opacity: Some(255)),
+        // RGB565A8 owns image opacity; the LVGL image object's background
+        // must remain transparent so the Home stage shows through.
+        (role: "companion_sprite"),
         (role: "call_overlay"),
         (role: "call_state", text_rgb: Some(3816000)),
         (role: "call_avatar", opacity: Some(255), radius: 44),
