@@ -468,7 +468,9 @@ impl UiRuntime {
             _ => active.modal.clone().into_iter().collect(),
         };
         SceneGraph {
-            color_scheme: ColorScheme::resolve(&self.snapshot.settings.theme, current_local_hour()),
+            color_scheme: self.theme_preview.unwrap_or_else(|| {
+                ColorScheme::resolve(&self.snapshot.settings.theme, current_local_hour())
+            }),
             hud,
             active,
             history: self
@@ -628,6 +630,11 @@ impl UiRuntime {
         self.reset_companion_phase_if_changed(previous_companion);
         self.dirty.settings = true;
         self.dirty.navigation = true;
+    }
+
+    pub(crate) fn enable_theme_preview(&mut self, preview: ColorScheme) {
+        self.theme_preview = Some(preview);
+        self.dirty.settings = true;
     }
 
     fn enforce_companion_preview(&mut self) {
@@ -1471,6 +1478,18 @@ mod tests {
             theme: "Dark".to_string(),
             ..SettingsRuntimeSnapshot::default()
         }));
+
+        assert_eq!(
+            runtime.scene_graph(100).color_scheme,
+            crate::theme::ColorScheme::Dark
+        );
+    }
+
+    #[test]
+    fn theme_preview_stays_authoritative_during_runtime_snapshots() {
+        let mut runtime = UiRuntime::default();
+        runtime.enable_theme_preview(crate::theme::ColorScheme::Dark);
+        runtime.apply_snapshot(RuntimeSnapshot::default());
 
         assert_eq!(
             runtime.scene_graph(100).color_scheme,

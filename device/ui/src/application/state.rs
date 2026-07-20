@@ -11,6 +11,7 @@ use yoyopod_protocol::ui::{
 
 use super::intents;
 use crate::components::widgets::CompanionVariant;
+use crate::theme::ColorScheme;
 
 #[derive(Debug, Clone)]
 pub struct UiRuntime {
@@ -38,6 +39,7 @@ pub struct UiRuntime {
     pub(crate) system_overlay: SystemOverlayState,
     pub(crate) system_overlay_preview: Option<SystemOverlayPreview>,
     pub(crate) companion_preview: Option<CompanionVariant>,
+    pub(crate) theme_preview: Option<ColorScheme>,
     pub(crate) ask_offline_started_ms: Option<u64>,
     pub(crate) last_focus_identity: Option<String>,
     pub(crate) focus_prompt_sequence: u64,
@@ -233,6 +235,7 @@ impl Default for UiRuntime {
             system_overlay: SystemOverlayState::default(),
             system_overlay_preview: None,
             companion_preview: None,
+            theme_preview: None,
             ask_offline_started_ms: None,
             last_focus_identity: None,
             focus_prompt_sequence: 0,
