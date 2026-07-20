@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>YoYoPod is a tiny Pi-powered music player and phone for kids aged 7-13.</strong>
+  <strong>YoYoPod is a tiny Pi-powered music player and phone for kids aged 7-14.</strong>
 </p>
 
 <p align="center">
@@ -28,8 +28,8 @@ The current prototype runs on a Raspberry Pi Zero 2W and uses the Whisplay HAT b
 ## What YoYoPod Can Do
 
 - `Music playback` - local-first music, playlists, recent tracks, shuffle, and a simple now-playing flow.
-- `Calls and voice messages` - family-friendly calling, quick voice notes, and a contact-first Talk experience.
-- `Location and connectivity` - 4G modem support, GPS/location awareness, and device-level network handling.
+- `Calls and voice messages` - family-friendly calling, quick voice notes, and a contact-first Talk experience. Implemented in the runtime via liblinphone; bring-up on the current prototype image is in progress.
+- `Location and connectivity` - 4G modem support, GPS/location awareness, and device-level network handling. Location reporting to the parent dashboard is still being wired end to end.
 - `Device care` - battery/power integration, watchdogs, runtime diagnostics, and Pi validation tooling.
 - `A physical interaction model` - small-screen navigation plus a side push-to-talk button instead of a UI built around tapping glass all day.
 

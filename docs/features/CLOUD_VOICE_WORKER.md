@@ -1,7 +1,7 @@
 # Cloud Voice Worker
 
-This document covers the dev/prod environment needed to run the Go cloud voice
-worker with OpenAI STT/TTS.
+This document covers the dev/prod environment needed to run the Rust cloud
+voice worker (`yoyopod-speech-host`) with OpenAI STT/TTS.
 
 The API key is a device secret. Do not commit it to repo config files.
 
