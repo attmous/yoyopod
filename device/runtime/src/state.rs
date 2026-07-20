@@ -1092,6 +1092,8 @@ impl RuntimeState {
             VoiceIntent::AskStart => {
                 self.voice.ask_capture_active = true;
                 self.voice.ask_transcribe_requested = false;
+                self.voice.playback_active = false;
+                self.voice.playback_paused = false;
                 self.voice.set_interaction(
                     "listening",
                     "Listening",
@@ -1107,6 +1109,11 @@ impl RuntimeState {
                 self.voice.ask_capture_active = false;
                 self.voice.ask_transcribe_requested = false;
                 self.voice.pending_ask_question.clear();
+                self.voice.playback_active = false;
+                self.voice.playback_paused = false;
+                self.voice.playback_file_path.clear();
+                self.voice.playback_elapsed_ms = 0;
+                self.voice.playback_duration_ms = 0;
                 self.voice
                     .set_interaction("idle", "Ask", "Ask me anything...");
             }
@@ -1415,6 +1422,7 @@ impl RuntimeState {
     }
 
     fn apply_voice_note_playback_snapshot(&mut self, playback: &Value) {
+        let was_playing = self.voice.playback_active;
         if let Some(playing) = playback.get("playing").and_then(Value::as_bool) {
             self.voice.playback_active = playing;
             if playing {
@@ -1437,6 +1445,9 @@ impl RuntimeState {
             self.voice.playback_file_path.clear();
             self.voice.playback_elapsed_ms = 0;
             self.voice.playback_duration_ms = 0;
+            if was_playing && self.current_screen == UiScreen::Ask && self.voice.phase == "reply" {
+                self.voice.set_interaction("idle", "Ask", "Ask me another!");
+            }
         }
     }
 

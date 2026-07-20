@@ -944,6 +944,61 @@ mod tests {
     }
 
     #[test]
+    fn ask_captures_the_physical_hold_and_release_end_to_end() {
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::Ask;
+        runtime.snapshot.network.connected = true;
+
+        assert!(runtime.wants_ptt_passthrough());
+        runtime.handle_input(InputAction::PttPress, 400);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::AskStart)]
+        );
+
+        runtime.snapshot.voice.phase = "listening".to_string();
+        runtime.snapshot.voice.capture_in_flight = true;
+        runtime.snapshot.voice.ptt_active = true;
+        runtime.snapshot.voice.capture_level_permille = 720;
+        let held = flatten::flatten(&runtime.scene_graph(1_000));
+        assert_eq!(
+            find_role(&held, roles::STATUS_BAR).and_then(|status| status.props.opacity),
+            Some(140)
+        );
+        assert_eq!(
+            find_role(&held, roles::DECK_BAR).and_then(|deck| deck.props.opacity),
+            Some(140)
+        );
+
+        runtime.handle_input(InputAction::PttRelease, 1_400);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::AskStop)]
+        );
+    }
+
+    #[test]
+    fn ask_double_press_cancels_thinking_or_answer_playback() {
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::Ask;
+        runtime.snapshot.network.connected = true;
+        runtime.snapshot.voice.phase = "thinking".to_string();
+        runtime.handle_input(InputAction::Select, 100);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::AskCancel)]
+        );
+
+        runtime.snapshot.voice.phase = "reply".to_string();
+        runtime.snapshot.voice.playback_active = true;
+        runtime.handle_input(InputAction::Select, 200);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::AskCancel)]
+        );
+    }
+
+    #[test]
     fn talk_contact_call_action_still_emits_the_selected_contact() {
         let mama = contact("sip:mama@example.test", "Mama");
         let mut runtime = UiRuntime::default();

@@ -471,22 +471,27 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
     match intent {
         VoiceIntent::AskStart => {
             let file_path = state.voice.ask_recording_file_path();
-            vec![worker_command(
+            let mut commands = if state.voice.playback_active
+                || state.voice.playback_paused
+                || matches!(state.voice.phase.as_str(), "thinking" | "reply" | "answering")
+            {
+                cancel_active_ask_commands()
+            } else {
+                Vec::new()
+            };
+            commands.push(worker_command(
                 WorkerDomain::Voip,
                 "voip.start_voice_note_recording",
                 json!({ "file_path": file_path }),
-            )]
+            ));
+            commands
         }
         VoiceIntent::AskStop => vec![worker_command(
             WorkerDomain::Voip,
             "voip.stop_voice_note_recording",
             empty_payload(),
         )],
-        VoiceIntent::AskCancel => vec![worker_command(
-            WorkerDomain::Voip,
-            "voip.cancel_voice_note_recording",
-            empty_payload(),
-        )],
+        VoiceIntent::AskCancel => cancel_active_ask_commands(),
         VoiceIntent::CaptureStart(_) | VoiceIntent::CaptureStartAndSend(_) => {
             let file_path = state.voice.recording_file_path();
             vec![worker_command(
@@ -609,6 +614,22 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             .unwrap_or_default(),
         VoiceIntent::Discard => Vec::new(),
     }
+}
+
+fn cancel_active_ask_commands() -> Vec<RuntimeCommand> {
+    vec![
+        worker_command(WorkerDomain::Voice, "voice.cancel", empty_payload()),
+        worker_command(
+            WorkerDomain::Voip,
+            "voip.cancel_voice_note_recording",
+            empty_payload(),
+        ),
+        worker_command(
+            WorkerDomain::Voip,
+            "voip.stop_voice_note_playback",
+            empty_payload(),
+        ),
+    ]
 }
 
 fn commands_for_voice_transcript(state: &RuntimeState, payload: &Value) -> Vec<RuntimeCommand> {
@@ -1306,6 +1327,51 @@ mod tests {
         assert_eq!(*domain, WorkerDomain::Media);
         assert_eq!(envelope.message_type, "media.load_playlist");
         assert_eq!(envelope.payload["path"], "favorites.m3u");
+    }
+
+    #[test]
+    fn ask_cancel_stops_recording_speech_work_and_playback() {
+        let commands = commands_for_voice_intent(&RuntimeState::default(), &VoiceIntent::AskCancel);
+        let message_types = commands
+            .iter()
+            .filter_map(|command| match command {
+                RuntimeCommand::WorkerCommand { envelope, .. } => {
+                    Some(envelope.message_type.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            message_types,
+            vec![
+                "voice.cancel",
+                "voip.cancel_voice_note_recording",
+                "voip.stop_voice_note_playback"
+            ]
+        );
+    }
+
+    #[test]
+    fn ask_barge_in_cancels_the_old_answer_before_recording() {
+        let mut state = RuntimeState::default();
+        state.voice.phase = "reply".to_string();
+        state.voice.playback_active = true;
+        let commands = commands_for_voice_intent(&state, &VoiceIntent::AskStart);
+        let message_types = commands
+            .iter()
+            .filter_map(|command| match command {
+                RuntimeCommand::WorkerCommand { envelope, .. } => {
+                    Some(envelope.message_type.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            message_types.last(),
+            Some(&"voip.start_voice_note_recording")
+        );
+        assert!(message_types.contains(&"voice.cancel"));
+        assert!(message_types.contains(&"voip.stop_voice_note_playback"));
     }
 
     #[test]

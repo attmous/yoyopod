@@ -58,6 +58,7 @@ pub enum ItemRender {
     CallOverlay(CallOverlayModel),
     EmptyState(EmptyStateModel),
     RecordingPanel(RecordingPanelModel),
+    AskSurface(AskSurfaceModel),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -182,6 +183,23 @@ pub struct RecordingPanelModel {
     pub context: String,
     pub duration_ms: i32,
     pub level_permille: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AskPhase {
+    Idle,
+    Listening,
+    Thinking,
+    Answering,
+    Offline,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AskSurfaceModel {
+    pub phase: AskPhase,
+    pub hint: String,
+    pub level_permille: i32,
+    pub progress_permille: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -399,6 +417,9 @@ fn deck_item_element(
             level_permille: model.level_permille,
         })
         .key(item.key.clone()),
+        ItemRender::AskSurface(model) => {
+            crate::components::widgets::ask_surface(model).key(item.key.clone())
+        }
         ItemRender::Button(button) => Element::new(ElementKind::Container, Some(roles::BUTTON))
             .key(item.key.clone())
             .child(

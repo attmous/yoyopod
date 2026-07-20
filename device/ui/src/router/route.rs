@@ -27,6 +27,7 @@ pub enum IntentTemplate {
     MusicNextTrack,
     VoiceAskStart,
     VoiceAskStop,
+    VoiceAskCancel,
     VoiceCaptureStartAndSendRecipient,
     VoiceCaptureStop,
     VoiceCaptureCancel,
@@ -48,6 +49,7 @@ pub enum ListKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DynamicActionKind {
+    Ask,
     TalkContact,
     Replay,
     VoiceNote,

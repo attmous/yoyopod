@@ -113,6 +113,9 @@ static MICROPHONE: LvImageDsc = LvImageDsc::a8_56(&MICROPHONE_MAP);
 static PLUS: LvImageDsc = LvImageDsc::a8_56(&PLUS_MAP);
 static MUSIC_NOTE: LvImageDsc = LvImageDsc::a8_56(&MUSIC_NOTE_MAP);
 static PLAY: LvImageDsc = LvImageDsc::a8_56(&PLAY_MAP);
+static ASK_Q: LvImageDsc = LvImageDsc::a8_56(&ASK_Q_MAP);
+static ASK_SPEAKER: LvImageDsc = LvImageDsc::a8_56(&ASK_SPEAKER_MAP);
+static ASK_CLOUD_ZZZ: LvImageDsc = LvImageDsc::a8_56(&ASK_CLOUD_ZZZ_MAP);
 
 const fn generated_control_icon(kind: u8) -> [u8; 576] {
     let mut map = [0u8; 576];
@@ -1051,6 +1054,9 @@ pub(crate) fn descriptor_for_key(icon_key: &str) -> Option<&'static LvImageDsc> 
         "listen" | "track" => Some(&LISTEN),
         "talk" | "call" | "call_active" | "call_incoming" | "call_outgoing" => Some(&TALK),
         "ask" => Some(&ASK),
+        "ask_q" => Some(&ASK_Q),
+        "ask_speaker" => Some(&ASK_SPEAKER),
+        "ask_cloud_zzz" => Some(&ASK_CLOUD_ZZZ),
         "setup" | "power" | "battery" | "care" | "settings" => Some(&SETUP),
         "people" | "person" | "contact" | "contacts" => Some(&TALK),
         _ => None,

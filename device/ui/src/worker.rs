@@ -671,4 +671,56 @@ mod tests {
         );
         assert_eq!(input_events, 2);
     }
+
+    #[test]
+    fn physical_hold_on_ask_emits_start_then_stop_without_navigating_home() {
+        let mut button = TestButton::default();
+        let mut machine = OneButtonMachine::new(ButtonTiming::default());
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::Ask;
+        runtime.snapshot.network.connected = true;
+        let mut output = Vec::new();
+        let mut input_events = 0;
+
+        for (pressed, now_ms) in [(true, 0), (true, 50), (true, 400)] {
+            sample_button(
+                &mut button,
+                &mut machine,
+                &mut runtime,
+                &mut output,
+                &mut input_events,
+                pressed,
+                now_ms,
+            );
+        }
+        assert_eq!(
+            runtime.take_intents(),
+            vec![yoyopod_protocol::ui::UiIntent::Voice(
+                yoyopod_protocol::ui::VoiceIntent::AskStart,
+            )]
+        );
+
+        runtime.snapshot.voice.phase = "listening".to_string();
+        runtime.snapshot.voice.capture_in_flight = true;
+        runtime.snapshot.voice.ptt_active = true;
+        for (pressed, now_ms) in [(false, 1_000), (false, 1_050)] {
+            sample_button(
+                &mut button,
+                &mut machine,
+                &mut runtime,
+                &mut output,
+                &mut input_events,
+                pressed,
+                now_ms,
+            );
+        }
+        assert_eq!(
+            runtime.take_intents(),
+            vec![yoyopod_protocol::ui::UiIntent::Voice(
+                yoyopod_protocol::ui::VoiceIntent::AskStop,
+            )]
+        );
+        assert_eq!(runtime.active_screen(), UiScreen::Ask);
+        assert_eq!(input_events, 2);
+    }
 }

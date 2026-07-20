@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const PREVIEW_CELL_SIZE: u32 = 56;
-const ICONS: [IconSpec; 15] = [
+const ICONS: [IconSpec; 18] = [
     IconSpec::new("playlists", "PLAYLISTS", 56),
     IconSpec::new("recents", "RECENTS", 56),
     IconSpec::new("shuffle", "SHUFFLE", 56),
@@ -22,6 +22,9 @@ const ICONS: [IconSpec; 15] = [
     IconSpec::new("answer_sm", "ANSWER_SM", 24),
     IconSpec::new("close_sm", "CLOSE_SM", 24),
     IconSpec::new("mic_sm", "MIC_SM", 24),
+    IconSpec::new("ask_q", "ASK_Q", 56),
+    IconSpec::new("ask_speaker", "ASK_SPEAKER", 56),
+    IconSpec::new("ask_cloud_zzz", "ASK_CLOUD_ZZZ", 56),
 ];
 
 #[derive(Clone, Copy)]
