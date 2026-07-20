@@ -12,6 +12,11 @@ const BUTTER: u32 = 0xFFD06A;
 const CREAM: u32 = 0xFCE6D2;
 const INK: u32 = 0x1B1B1F;
 
+const IDLE_LINE: &str = "Hold the side button\nand ask me anything";
+const LISTENING_LINE: &str = "I'm listening...";
+const THINKING_LINE: &str = "Hmm, let me think...";
+const OFFLINE_LINE: &str = "I can't think right now -\ntry again soon";
+
 pub fn ask_surface(model: &AskSurfaceModel) -> Element {
     let listening = model.phase == AskPhase::Listening;
     let thinking = model.phase == AskPhase::Thinking;
@@ -23,11 +28,11 @@ pub fn ask_surface(model: &AskSurfaceModel) -> Element {
         AskPhase::Listening | AskPhase::Thinking => "ask_q",
     };
     let line = match model.phase {
-        AskPhase::Idle => "Hold the side button\nand ask me anything",
-        AskPhase::Listening => "I'm listening…",
-        AskPhase::Thinking => "Hmm, let me think…",
+        AskPhase::Idle => IDLE_LINE,
+        AskPhase::Listening => LISTENING_LINE,
+        AskPhase::Thinking => THINKING_LINE,
         AskPhase::Answering => "",
-        AskPhase::Offline => "I can't think right now —\ntry again soon",
+        AskPhase::Offline => OFFLINE_LINE,
     };
     let hint_y = match model.phase {
         AskPhase::Idle | AskPhase::Offline => 168,
@@ -160,6 +165,16 @@ fn waveform_heights(level_permille: i32) -> [i32; 7] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ask_copy_stays_within_the_builtin_montserrat_glyph_set() {
+        for text in [IDLE_LINE, LISTENING_LINE, THINKING_LINE, OFFLINE_LINE] {
+            assert!(
+                text.is_ascii(),
+                "Ask copy contains a glyph missing from LVGL's built-in Montserrat font: {text}"
+            );
+        }
+    }
 
     #[test]
     fn listening_surface_has_seven_live_bars() {

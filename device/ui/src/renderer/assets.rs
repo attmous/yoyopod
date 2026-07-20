@@ -467,6 +467,22 @@ mod tests {
     }
 
     #[test]
+    fn ask_palette_keeps_primary_content_opaque_and_high_contrast() {
+        let asset = parse_theme_asset().expect("theme.ron should be valid");
+
+        let hero = theme(&asset, roles::ASK_HERO);
+        let wave = theme(&asset, roles::ASK_WAVE_BAR);
+        let dots = theme(&asset, roles::ASK_THINKING_DOT);
+        assert_eq!(hero.opacity, Some(255));
+        assert_eq!(wave.opacity, Some(255));
+        assert_eq!(dots.opacity, Some(255));
+
+        assert_eq!(theme(&asset, roles::ASK_HERO_ICON).text_rgb, Some(0x1B1B1F));
+        assert_eq!(theme(&asset, roles::ASK_LINE).text_rgb, Some(0x1B1B1F));
+        assert_eq!(theme(&asset, roles::ASK_HINT).text_rgb, Some(0x3A3A40));
+    }
+
+    #[test]
     fn call_overlay_geometry_is_deboxed_and_glass_safe() {
         let layouts = parse_layout_asset().expect("layouts.ron should be valid");
         let theme_asset = parse_theme_asset().expect("theme.ron should be valid");
