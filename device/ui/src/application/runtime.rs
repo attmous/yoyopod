@@ -1,6 +1,7 @@
 use time::OffsetDateTime;
 use yoyopod_protocol::ui::{
-    AnimationRequest, InputAction, RuntimeSnapshot, RuntimeSnapshotPatch, SystemIntent, UiIntent,
+    AnimationRequest, InputAction, RuntimeSnapshot, RuntimeSnapshotPatch, SystemIntent, UiEvent,
+    UiFocusChanged, UiIntent,
 };
 
 use crate::animation;
@@ -67,6 +68,7 @@ impl UiRuntime {
         navigator::clamp_focus(self);
         self.reconcile_pending_wheel_roll(pending_identity);
         self.dirty.mark_full();
+        self.refresh_focus_accessibility();
     }
 
     pub fn apply_patch(&mut self, patch: RuntimeSnapshotPatch) {
@@ -99,6 +101,7 @@ impl UiRuntime {
         if self.focus_index != previous_focus {
             self.dirty.focus = true;
         }
+        self.refresh_focus_accessibility();
     }
 
     pub fn handle_input(&mut self, action: InputAction, now_ms: u64) {
@@ -125,6 +128,7 @@ impl UiRuntime {
             }
             self.dirty.input = true;
             self.dirty.focus = true;
+            self.refresh_focus_accessibility();
             return;
         }
         if self.pending_wheel_roll.is_some() {
@@ -163,6 +167,7 @@ impl UiRuntime {
         navigator::clamp_focus(self);
         self.dirty.input = true;
         self.dirty.focus = true;
+        self.refresh_focus_accessibility();
     }
 
     pub(crate) fn wake_home_from_ambient(&mut self, now_ms: u64) -> bool {
@@ -174,6 +179,7 @@ impl UiRuntime {
         self.home_mode = HomeMode::Idle;
         self.dirty.input = true;
         self.dirty.focus = true;
+        self.refresh_focus_accessibility();
         true
     }
 
@@ -192,6 +198,7 @@ impl UiRuntime {
         if let Some(next) = next {
             self.home_mode = next;
             self.dirty.focus = true;
+            self.refresh_focus_accessibility();
         }
     }
 
@@ -372,6 +379,7 @@ impl UiRuntime {
             self.commit_pending_wheel_roll();
             navigator::clamp_focus(self);
             self.dirty.focus = true;
+            self.refresh_focus_accessibility();
         }
         if had_transitions || had_wheel_roll {
             self.dirty.animation = true;
@@ -399,6 +407,7 @@ impl UiRuntime {
         navigator::apply_runtime_preemption(self);
         self.dirty.overlay = true;
         self.dirty.navigation = true;
+        self.refresh_focus_accessibility();
     }
 
     pub fn scene_graph(&self, now_ms: u64) -> SceneGraph {
@@ -506,6 +515,44 @@ impl UiRuntime {
 
     pub fn take_intents(&mut self) -> Vec<UiIntent> {
         std::mem::take(&mut self.intents)
+    }
+
+    pub fn take_accessibility_events(&mut self) -> Vec<UiEvent> {
+        std::mem::take(&mut self.accessibility_events)
+    }
+
+    pub(crate) fn refresh_focus_accessibility(&mut self) {
+        let descriptor = super::accessibility::focused_item(self);
+        if !self.snapshot.settings.speak_names || descriptor.is_none() {
+            if self.last_focus_identity.take().is_some() {
+                self.accessibility_events.push(UiEvent::FocusCleared);
+            }
+            return;
+        }
+
+        let descriptor = descriptor.expect("focus descriptor checked above");
+        if descriptor.label.trim().is_empty() {
+            return;
+        }
+        let identity = format!(
+            "{}|{}|{}|{}|{}",
+            self.active_screen.as_str(),
+            self.route_key(self.active_screen).unwrap_or_default(),
+            self.focus_index,
+            descriptor.key,
+            descriptor.label,
+        );
+        if self.last_focus_identity.as_deref() == Some(identity.as_str()) {
+            return;
+        }
+
+        self.focus_prompt_sequence = self.focus_prompt_sequence.wrapping_add(1);
+        self.last_focus_identity = Some(identity);
+        self.accessibility_events
+            .push(UiEvent::FocusChanged(UiFocusChanged::new(
+                format!("ui-focus-{}", self.focus_prompt_sequence),
+                descriptor.label,
+            )));
     }
 
     pub fn wants_ptt_passthrough(&self) -> bool {
@@ -947,8 +994,8 @@ mod tests {
     use crate::scene::roles;
     use yoyopod_protocol::ui::{
         CallIntent, ContactAction, ListItemSnapshot, MusicIntent, OverlayRuntimeSnapshot,
-        PlaylistTrackAction, SettingsIntent, SystemIntent, VoiceIntent, VoiceNoteSummarySnapshot,
-        VoiceRecipientAction,
+        PlaylistTrackAction, SettingsIntent, SettingsRuntimeSnapshot, SystemIntent, UiEvent,
+        UiFocusChanged, VoiceIntent, VoiceNoteSummarySnapshot, VoiceRecipientAction,
     };
 
     fn contact(id: &str, title: &str) -> ListItemSnapshot {
@@ -979,6 +1026,90 @@ mod tests {
             .children
             .iter()
             .find_map(|child| find_role(child, role))
+    }
+
+    #[test]
+    fn focused_home_card_emits_one_spoken_label_per_focus_change() {
+        let mut runtime = UiRuntime::default();
+
+        runtime.handle_input(InputAction::Advance, 100);
+        assert_eq!(
+            runtime.take_accessibility_events(),
+            vec![UiEvent::FocusChanged(UiFocusChanged::new(
+                "ui-focus-1",
+                "Listen"
+            ))]
+        );
+
+        runtime.handle_input(InputAction::Advance, 200);
+        assert_eq!(
+            runtime.take_accessibility_events(),
+            vec![UiEvent::FocusChanged(UiFocusChanged::new(
+                "ui-focus-2",
+                "Talk"
+            ))]
+        );
+
+        runtime.refresh_focus_accessibility();
+        assert!(runtime.take_accessibility_events().is_empty());
+    }
+
+    #[test]
+    fn wheel_speaks_only_after_the_visible_roll_commits() {
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::Playlists,
+            ..UiRuntime::default()
+        };
+        runtime.snapshot.music.playlists = vec![
+            ListItemSnapshot::new("morning", "Morning songs", "", "playlist"),
+            ListItemSnapshot::new("bedtime", "Bedtime songs", "", "playlist"),
+        ];
+        runtime.refresh_focus_accessibility();
+        runtime.take_accessibility_events();
+
+        runtime.handle_input(InputAction::Advance, 100);
+        assert!(runtime.take_accessibility_events().is_empty());
+
+        runtime.advance_animations(280);
+        assert_eq!(
+            runtime.take_accessibility_events(),
+            vec![UiEvent::FocusChanged(UiFocusChanged::new(
+                "ui-focus-2",
+                "Bedtime songs"
+            ))]
+        );
+    }
+
+    #[test]
+    fn speak_names_toggle_cancels_and_restores_the_current_prompt() {
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::Setup,
+            focus_index: 4,
+            ..UiRuntime::default()
+        };
+        runtime.refresh_focus_accessibility();
+        runtime.take_accessibility_events();
+
+        runtime.apply_patch(RuntimeSnapshotPatch::Settings(SettingsRuntimeSnapshot {
+            speak_names: false,
+            ..runtime.snapshot.settings.clone()
+        }));
+        assert_eq!(
+            runtime.take_accessibility_events(),
+            vec![UiEvent::FocusCleared]
+        );
+
+        runtime.apply_patch(RuntimeSnapshotPatch::Settings(SettingsRuntimeSnapshot {
+            speak_names: true,
+            ..runtime.snapshot.settings.clone()
+        }));
+        assert_eq!(
+            runtime.take_accessibility_events(),
+            vec![UiEvent::FocusChanged(UiFocusChanged::new(
+                "ui-focus-2",
+                "Speak names, on"
+            ))]
+        );
     }
 
     #[test]

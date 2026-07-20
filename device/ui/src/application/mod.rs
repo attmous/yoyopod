@@ -1,3 +1,4 @@
+pub mod accessibility;
 pub mod focus;
 pub mod input_router;
 pub mod intents;

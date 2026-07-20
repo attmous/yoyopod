@@ -506,6 +506,34 @@ where
                 write_session_snapshot(host, output)?;
             }
         }
+        "voip.play_focus_prompt" => {
+            let file_path = envelope.payload["file_path"].as_str().unwrap_or("").trim();
+            let duration_ms = envelope.payload["duration_ms"].as_i64().unwrap_or_default() as i32;
+            if file_path.is_empty() {
+                write_envelope_to(
+                    output,
+                    &WorkerEnvelope::error(
+                        "voip.error",
+                        envelope.request_id,
+                        "invalid_command",
+                        "voip.play_focus_prompt requires file_path",
+                    ),
+                )?;
+            } else {
+                let playing = host
+                    .play_focus_prompt(file_path, duration_ms)
+                    .map_err(|error| anyhow!(error))?;
+                write_envelope_to(
+                    output,
+                    &WorkerEnvelope::result(
+                        "voip.play_focus_prompt",
+                        envelope.request_id,
+                        json!({"playing": playing}),
+                    ),
+                )?;
+                write_session_snapshot(host, output)?;
+            }
+        }
         "voip.pause_voice_note_playback" => {
             host.pause_voice_note_playback()
                 .map_err(|error| anyhow!(error))?;
@@ -543,6 +571,20 @@ where
                 ),
             )?;
             write_session_snapshot(host, output)?;
+        }
+        "voip.stop_focus_prompt_playback" => {
+            let stopped = host.stop_focus_prompt_playback();
+            write_envelope_to(
+                output,
+                &WorkerEnvelope::result(
+                    "voip.stop_focus_prompt_playback",
+                    envelope.request_id,
+                    json!({"stopped": stopped}),
+                ),
+            )?;
+            if stopped {
+                write_session_snapshot(host, output)?;
+            }
         }
         "voip.delete_voice_note" => {
             let message_id = envelope.payload["message_id"].as_str().unwrap_or("").trim();

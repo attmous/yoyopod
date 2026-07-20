@@ -2,6 +2,24 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::Instant;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PlaybackPurpose {
+    #[default]
+    None,
+    VoiceNote,
+    FocusPrompt,
+}
+
+impl PlaybackPurpose {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::VoiceNote => "voice_note",
+            Self::FocusPrompt => "focus_prompt",
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct VoiceNotePlayback {
     current: Option<Child>,
@@ -11,6 +29,7 @@ pub struct VoiceNotePlayback {
     run_started_at: Option<Instant>,
     paused: bool,
     published_bucket: u64,
+    purpose: PlaybackPurpose,
 }
 
 impl std::fmt::Debug for VoiceNotePlayback {
@@ -20,6 +39,7 @@ impl std::fmt::Debug for VoiceNotePlayback {
             .field("playing", &self.is_playing())
             .field("paused", &self.is_paused())
             .field("current_file_path", &self.current_file_path)
+            .field("purpose", &self.purpose)
             .finish()
     }
 }
@@ -42,9 +62,29 @@ impl VoiceNotePlayback {
     }
 
     pub fn play(&mut self, file_path: &str, duration_ms: i32) -> Result<(), String> {
+        self.play_for(file_path, duration_ms, PlaybackPurpose::VoiceNote)
+            .map(|_| ())
+    }
+
+    pub fn play_focus_prompt(&mut self, file_path: &str, duration_ms: i32) -> Result<bool, String> {
+        self.play_for(file_path, duration_ms, PlaybackPurpose::FocusPrompt)
+    }
+
+    fn play_for(
+        &mut self,
+        file_path: &str,
+        duration_ms: i32,
+        purpose: PlaybackPurpose,
+    ) -> Result<bool, String> {
         let file_path = file_path.trim();
         if file_path.is_empty() {
             return Err("voice-note playback requires file_path".to_string());
+        }
+        if purpose == PlaybackPurpose::FocusPrompt
+            && self.current.is_some()
+            && self.purpose == PlaybackPurpose::VoiceNote
+        {
+            return Ok(false);
         }
         self.stop();
         let command = Self::command_for(file_path);
@@ -61,7 +101,8 @@ impl VoiceNotePlayback {
         self.run_started_at = Some(Instant::now());
         self.paused = false;
         self.published_bucket = 0;
-        Ok(())
+        self.purpose = purpose;
+        Ok(true)
     }
 
     pub fn pause(&mut self) -> Result<(), String> {
@@ -124,6 +165,14 @@ impl VoiceNotePlayback {
         self.reset();
     }
 
+    pub fn stop_focus_prompt(&mut self) -> bool {
+        if self.purpose != PlaybackPurpose::FocusPrompt {
+            return false;
+        }
+        self.stop();
+        true
+    }
+
     pub fn is_playing(&self) -> bool {
         self.current.is_some() && !self.paused
     }
@@ -149,6 +198,7 @@ impl VoiceNotePlayback {
         self.run_started_at = None;
         self.paused = false;
         self.published_bucket = 0;
+        self.purpose = PlaybackPurpose::None;
     }
 
     pub fn payload(&self) -> serde_json::Value {
@@ -165,6 +215,7 @@ impl VoiceNotePlayback {
             "elapsed_ms": elapsed_ms,
             "duration_ms": self.duration_ms,
             "progress_permille": progress_permille,
+            "purpose": self.purpose.as_str(),
         })
     }
 }
@@ -216,4 +267,27 @@ fn resume_process(pid: u32) -> Result<(), String> {
 #[cfg(not(unix))]
 fn resume_process(_pid: u32) -> Result<(), String> {
     Err("voice-note resume is only supported on the device runtime".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn focus_stop_cannot_stop_voice_note_playback() {
+        let mut playback = VoiceNotePlayback::default();
+        playback.purpose = PlaybackPurpose::VoiceNote;
+
+        assert!(!playback.stop_focus_prompt());
+        assert_eq!(playback.purpose, PlaybackPurpose::VoiceNote);
+    }
+
+    #[test]
+    fn focus_stop_resets_only_the_prompt_owner() {
+        let mut playback = VoiceNotePlayback::default();
+        playback.purpose = PlaybackPurpose::FocusPrompt;
+
+        assert!(playback.stop_focus_prompt());
+        assert_eq!(playback.payload()["purpose"], "none");
+    }
 }

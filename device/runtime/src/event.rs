@@ -3,8 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 use yoyopod_protocol::ui::{
     CallIntent, ContactAction, InputAction, ListItemAction, MusicIntent, PowerIntent,
-    RuntimeIntent, SystemIntent, UiCommand, UiEvent, UiInputEvent, UiIntent, UiScreen,
-    UiScreenshotCaptured, VoiceFileAction, VoiceIntent, VoiceRecipientAction,
+    RuntimeIntent, SystemIntent, UiCommand, UiEvent, UiFocusChanged, UiInputEvent, UiIntent,
+    UiScreen, UiScreenshotCaptured, VoiceFileAction, VoiceIntent, VoiceRecipientAction,
 };
 
 use crate::protocol::{EnvelopeKind, WorkerEnvelope};
@@ -27,8 +27,14 @@ pub enum RuntimeEvent {
     VoiceTranscript(Value),
     VoiceAskResult(Value),
     VoiceSpeakResult(Value),
+    VoiceFocusPromptResult {
+        request_id: Option<String>,
+        payload: Value,
+    },
     UiInput(UiInputEvent),
     UiIntent(UiIntent),
+    UiFocusChanged(UiFocusChanged),
+    UiFocusCleared,
     UiScreenChanged {
         screen: UiScreen,
     },
@@ -94,6 +100,7 @@ impl RuntimeEvent {
             Self::VoiceTranscript(snapshot) => state.apply_voice_transcript(snapshot),
             Self::VoiceAskResult(snapshot) => state.apply_voice_ask_result(snapshot),
             Self::VoiceSpeakResult(_) => state.mark_ask_available(),
+            Self::VoiceFocusPromptResult { .. } => {}
             Self::UiScreenChanged { screen } => {
                 state.current_screen = *screen;
             }
@@ -111,6 +118,12 @@ impl RuntimeEvent {
                 }
             }
             Self::UiIntent(intent) => state.apply_ui_intent(intent),
+            Self::UiFocusChanged(changed) => {
+                state.focus_prompt_request_id = Some(changed.request_id.clone());
+            }
+            Self::UiFocusCleared => {
+                state.focus_prompt_request_id = None;
+            }
             Self::UiInput(_) | Self::UiScreenshotCaptured(_) | Self::Shutdown | Self::Ignored => {}
         }
     }
@@ -127,6 +140,7 @@ pub fn runtime_event_from_worker(
     let WorkerEnvelope {
         kind,
         message_type,
+        request_id,
         payload,
         ..
     } = envelope;
@@ -150,7 +164,7 @@ pub fn runtime_event_from_worker(
             Some(RuntimeEvent::PowerSnapshot(payload))
         }
         EnvelopeKind::Result if domain == WorkerDomain::Voice => {
-            Some(voice_event_from_message(&message_type, payload))
+            Some(voice_event_from_message(&message_type, request_id, payload))
         }
         EnvelopeKind::Command | EnvelopeKind::Result | EnvelopeKind::Heartbeat => {
             Some(RuntimeEvent::Ignored)
@@ -182,6 +196,8 @@ fn runtime_event_from_ui_envelope(envelope: WorkerEnvelope) -> RuntimeEvent {
                 RuntimeEvent::UiIntent(intent)
             }
         }
+        Ok(UiEvent::FocusChanged(changed)) => RuntimeEvent::UiFocusChanged(changed),
+        Ok(UiEvent::FocusCleared) => RuntimeEvent::UiFocusCleared,
         Ok(UiEvent::ScreenChanged(changed)) => RuntimeEvent::UiScreenChanged {
             screen: changed.screen,
         },
@@ -222,6 +238,12 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         RuntimeEvent::VoiceSpeakResult(snapshot) => {
             with_ask_log(commands_for_voice_speak_result(snapshot), "audio_ready")
         }
+        RuntimeEvent::VoiceFocusPromptResult {
+            request_id,
+            payload,
+        } => commands_for_voice_focus_prompt_result(state, request_id.as_deref(), payload),
+        RuntimeEvent::UiFocusChanged(changed) => commands_for_ui_focus_changed(state, changed),
+        RuntimeEvent::UiFocusCleared => cancel_focus_prompt_commands(),
         RuntimeEvent::UiScreenshotCaptured(captured) => vec![RuntimeCommand::AppendAppLog {
             line: screenshot_log_line(captured),
         }],
@@ -299,7 +321,7 @@ fn runtime_event_from_message(
         WorkerDomain::Voip => voip_event_from_message(message_type, payload),
         WorkerDomain::Network => network_event_from_message(message_type, payload),
         WorkerDomain::Power => power_event_from_message(message_type, payload),
-        WorkerDomain::Voice => voice_event_from_message(message_type, payload),
+        WorkerDomain::Voice => voice_event_from_message(message_type, None, payload),
     }
 }
 
@@ -378,7 +400,11 @@ fn power_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent 
     }
 }
 
-fn voice_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent {
+fn voice_event_from_message(
+    message_type: &str,
+    request_id: Option<String>,
+    payload: Value,
+) -> RuntimeEvent {
     match message_type {
         "voice.ready" => RuntimeEvent::WorkerReady {
             domain: WorkerDomain::Voice,
@@ -402,12 +428,69 @@ fn voice_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent 
         "voice.transcribe.result" | "voice.transcript" => RuntimeEvent::VoiceTranscript(payload),
         "voice.ask.result" => RuntimeEvent::VoiceAskResult(payload),
         "voice.speak.result" => RuntimeEvent::VoiceSpeakResult(payload),
+        "voice.focus_prompt.result" => RuntimeEvent::VoiceFocusPromptResult {
+            request_id,
+            payload,
+        },
         "voice.error" => RuntimeEvent::WorkerError {
             domain: WorkerDomain::Voice,
             message: worker_error_message(message_type, &payload),
         },
         _ => RuntimeEvent::Ignored,
     }
+}
+
+fn commands_for_ui_focus_changed(
+    state: &RuntimeState,
+    changed: &UiFocusChanged,
+) -> Vec<RuntimeCommand> {
+    if !state.settings.speak_names
+        || changed.request_id.trim().is_empty()
+        || changed.label.trim().is_empty()
+    {
+        return Vec::new();
+    }
+    let mut envelope = WorkerEnvelope::command(
+        "voice.focus_prompt",
+        Some(changed.request_id.clone()),
+        state.voice.speak_payload(&changed.label),
+    );
+    envelope.deadline_ms = state.voice.speech_settings.request_timeout_ms;
+    vec![
+        worker_command(
+            WorkerDomain::Voip,
+            "voip.stop_focus_prompt_playback",
+            empty_payload(),
+        ),
+        RuntimeCommand::WorkerCommand {
+            domain: WorkerDomain::Voice,
+            envelope,
+        },
+        RuntimeCommand::AppendAppLog {
+            line: format!(
+                "UI focus prompt request_id={} label={:?}",
+                changed.request_id, changed.label
+            ),
+        },
+    ]
+}
+
+fn cancel_focus_prompt_commands() -> Vec<RuntimeCommand> {
+    vec![
+        worker_command(
+            WorkerDomain::Voice,
+            "voice.cancel_focus_prompt",
+            empty_payload(),
+        ),
+        worker_command(
+            WorkerDomain::Voip,
+            "voip.stop_focus_prompt_playback",
+            empty_payload(),
+        ),
+        RuntimeCommand::AppendAppLog {
+            line: "UI focus prompt cleared".to_string(),
+        },
+    ]
 }
 
 fn commands_for_ui_intent(state: &RuntimeState, intent: &UiIntent) -> Vec<RuntimeCommand> {
@@ -835,6 +918,29 @@ fn commands_for_voice_speak_result(payload: &Value) -> Vec<RuntimeCommand> {
             )]
         })
         .unwrap_or_default()
+}
+
+fn commands_for_voice_focus_prompt_result(
+    state: &RuntimeState,
+    request_id: Option<&str>,
+    payload: &Value,
+) -> Vec<RuntimeCommand> {
+    if request_id.is_none() || state.focus_prompt_request_id.as_deref() != request_id {
+        return Vec::new();
+    }
+    let Some(file_path) = string_field(payload, "audio_path") else {
+        return Vec::new();
+    };
+    vec![
+        worker_command(
+            WorkerDomain::Voip,
+            "voip.play_focus_prompt",
+            json!({ "file_path": file_path }),
+        ),
+        RuntimeCommand::AppendAppLog {
+            line: "UI focus prompt audio ready".to_string(),
+        },
+    ]
 }
 
 fn commands_for_voice_command(
@@ -1427,7 +1533,86 @@ mod tests {
     use super::*;
     use yoyopod_protocol::ui::{
         ListItemAction, MusicIntent, PlaylistTrackAction, SettingsIntent, SystemIntent, UiEvent,
+        UiFocusChanged,
     };
+
+    #[test]
+    fn focus_change_routes_through_cancellable_prompt_pipeline() {
+        let changed = UiFocusChanged::new("ui-focus-3", "Mama");
+        let envelope = UiEvent::FocusChanged(changed.clone()).into_envelope();
+        let event = runtime_event_from_worker(WorkerDomain::Ui, envelope).unwrap();
+        assert_eq!(event, RuntimeEvent::UiFocusChanged(changed));
+
+        let commands = commands_for_event(&RuntimeState::default(), &event);
+        assert_eq!(commands.len(), 3);
+        assert!(matches!(
+            &commands[0],
+            RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voip, envelope }
+                if envelope.message_type == "voip.stop_focus_prompt_playback"
+        ));
+        assert!(matches!(
+            &commands[1],
+            RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voice, envelope }
+                if envelope.message_type == "voice.focus_prompt"
+                    && envelope.request_id.as_deref() == Some("ui-focus-3")
+                    && envelope.payload["text"] == "Mama"
+        ));
+        assert!(matches!(
+            &commands[2],
+            RuntimeCommand::AppendAppLog { line }
+                if line.contains("request_id=ui-focus-3") && line.contains("Mama")
+        ));
+    }
+
+    #[test]
+    fn focus_prompt_audio_uses_its_isolated_voip_channel() {
+        let event = runtime_event_from_worker(
+            WorkerDomain::Voice,
+            WorkerEnvelope::result(
+                "voice.focus_prompt.result",
+                Some("ui-focus-3".to_string()),
+                json!({"audio_path": "/tmp/focus.wav"}),
+            ),
+        )
+        .unwrap();
+        let mut state = RuntimeState::default();
+        state.focus_prompt_request_id = Some("ui-focus-3".to_string());
+        let commands = commands_for_event(&state, &event);
+
+        assert!(matches!(
+            &commands[0],
+            RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voip, envelope }
+                if envelope.message_type == "voip.play_focus_prompt"
+                    && envelope.payload["file_path"] == "/tmp/focus.wav"
+        ));
+
+        state.focus_prompt_request_id = Some("ui-focus-4".to_string());
+        assert!(commands_for_event(&state, &event).is_empty());
+    }
+
+    #[test]
+    fn focus_clear_cancels_only_focus_prompt_work_and_playback() {
+        let event =
+            runtime_event_from_worker(WorkerDomain::Ui, UiEvent::FocusCleared.into_envelope())
+                .unwrap();
+        let commands = commands_for_event(&RuntimeState::default(), &event);
+        let message_types = commands
+            .iter()
+            .filter_map(|command| match command {
+                RuntimeCommand::WorkerCommand { envelope, .. } => {
+                    Some(envelope.message_type.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            message_types,
+            vec![
+                "voice.cancel_focus_prompt",
+                "voip.stop_focus_prompt_playback"
+            ]
+        );
+    }
 
     #[test]
     fn typed_music_intent_routes_to_media_command() {

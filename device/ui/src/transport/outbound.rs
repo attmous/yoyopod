@@ -25,6 +25,20 @@ pub(crate) fn emit_intents<W: Write>(output: &mut W, intents: Vec<UiIntent>) -> 
     Ok(())
 }
 
+pub(crate) fn emit_accessibility_events<W: Write>(
+    output: &mut W,
+    events: Vec<UiEvent>,
+) -> Result<()> {
+    for event in events {
+        debug_assert!(matches!(
+            event,
+            UiEvent::FocusChanged(_) | UiEvent::FocusCleared
+        ));
+        emit_event(output, event)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn emit_input_action<W: Write>(
     output: &mut W,
     action: InputAction,
