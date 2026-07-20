@@ -29,6 +29,11 @@ pub fn ask_surface(model: &AskSurfaceModel) -> Element {
         AskPhase::Answering => "",
         AskPhase::Offline => "I can't think right now —\ntry again soon",
     };
+    let hint_y = match model.phase {
+        AskPhase::Idle | AskPhase::Offline => 168,
+        AskPhase::Listening | AskPhase::Thinking => 150,
+        AskPhase::Answering => 148,
+    };
 
     let mut root = container(roles::ASK_SURFACE)
         .key(Key::Static("ask_surface"))
@@ -96,7 +101,8 @@ pub fn ask_surface(model: &AskSurfaceModel) -> Element {
     .child(
         label(roles::ASK_HINT)
             .key(Key::Static("ask_hint"))
-            .text(&model.hint),
+            .text(&model.hint)
+            .absolute(30, hint_y, 180, 16),
     )
 }
 
@@ -198,6 +204,20 @@ mod tests {
                 y: 0,
                 w: 180,
                 h: 8
+            }
+        );
+        let hint = element
+            .children
+            .iter()
+            .find(|child| child.role == Some(roles::ASK_HINT))
+            .unwrap();
+        assert_eq!(
+            hint.layout,
+            crate::engine::Layout::Absolute {
+                x: 30,
+                y: 148,
+                w: 180,
+                h: 16
             }
         );
     }
