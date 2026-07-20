@@ -147,6 +147,32 @@ fn expect_screen(supervisor: &mut UiHostSupervisor, screen: &str) -> Result<Stri
     Ok(observed)
 }
 
+fn expect_focus_label(supervisor: &mut UiHostSupervisor, label: &str) -> Result<String> {
+    let event = read_until(supervisor, &["ui.focus_changed"])?;
+    let observed = event
+        .payload
+        .get("label")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    if observed != label {
+        bail!(
+            "expected spoken focus label {label:?}, got {}",
+            if observed.is_empty() {
+                event.payload.to_string()
+            } else {
+                format!("{observed:?}")
+            }
+        );
+    }
+    Ok(observed)
+}
+
+fn expect_focus_cleared(supervisor: &mut UiHostSupervisor) -> Result<()> {
+    read_until(supervisor, &["ui.focus_cleared"])?;
+    Ok(())
+}
+
 fn request_health(supervisor: &mut UiHostSupervisor) -> Result<Value> {
     supervisor.send(UiCommand::Health)?;
     let event = read_until(supervisor, &["ui.health"])?;
@@ -237,9 +263,8 @@ pub fn ui_smoke_check(worker: &Path, hardware: &str, hold_seconds: f64) -> Check
 /// Drive semantic one-button navigation through the worker protocol.
 ///
 /// Focus the hub first, then for each cycle: select into the active card,
-/// back out to the hub, and advance the hub selection. Cycle 0 lands on
-/// `listen`; later cycles on `talk` — matching the hub card order the Python
-/// suite validated and the Home idle/focused interaction contract.
+/// back out to the hub, and advance the hub selection. Every semantic focus
+/// transition must emit the same spoken label the child sees on the display.
 pub fn ui_navigation_check(
     worker: &Path,
     cycles: u32,
@@ -263,24 +288,42 @@ pub fn ui_navigation_check(
             // Home starts idle: the first press reveals/focuses the deck, while
             // the following double-press opens the focused destination.
             supervisor.send(UiCommand::InputAction(InputAction::Advance))?;
+            let mut spoken_labels = vec![expect_focus_label(&mut supervisor, "Listen")?];
             pump_ticks(&mut supervisor, hold_seconds)?;
 
             let mut visited = vec!["hub".to_string()];
-            let mut expected_selected_screen = "listen";
+            let hub_routes = [
+                ("Listen", "listen", Some("Playlists")),
+                ("Talk", "talk", Some("No contacts yet. Ask a grown-up!")),
+                ("Ask", "ask", None),
+                ("Setup", "setup", Some("Volume, level 5")),
+            ];
+            let mut hub_index = 0_usize;
             for _cycle in 0..cycles.max(1) {
+                let (hub_label, selected_screen, selected_focus) = hub_routes[hub_index];
                 supervisor.send(UiCommand::InputAction(InputAction::Select))?;
-                visited.push(expect_screen(&mut supervisor, expected_selected_screen)?);
+                if let Some(label) = selected_focus {
+                    spoken_labels.push(expect_focus_label(&mut supervisor, label)?);
+                } else {
+                    expect_focus_cleared(&mut supervisor)?;
+                }
+                visited.push(expect_screen(&mut supervisor, selected_screen)?);
                 pump_ticks(&mut supervisor, hold_seconds)?;
                 pump_ticks(&mut supervisor, idle_seconds)?;
 
                 supervisor.send(UiCommand::InputAction(InputAction::Back))?;
+                spoken_labels.push(expect_focus_label(&mut supervisor, hub_label)?);
                 visited.push(expect_screen(&mut supervisor, "hub")?);
                 pump_ticks(&mut supervisor, hold_seconds)?;
 
                 supervisor.send(UiCommand::InputAction(InputAction::Advance))?;
+                hub_index = (hub_index + 1) % hub_routes.len();
+                spoken_labels.push(expect_focus_label(
+                    &mut supervisor,
+                    hub_routes[hub_index].0,
+                )?);
                 let health = request_health(&mut supervisor)?;
                 require_healthy_ui(&health)?;
-                expected_selected_screen = "talk";
                 pump_ticks(&mut supervisor, hold_seconds)?;
             }
 
@@ -289,9 +332,10 @@ pub fn ui_navigation_check(
             require_healthy_ui(&health)?;
             Ok(format!(
                 "binary={}, protocol=ui.runtime_snapshot/ui.input_action, \
-                 visited={}, frames={}, active_screen={}",
+                 visited={}, spoken_focus={}, frames={}, active_screen={}",
                 worker.display(),
                 visited.join(","),
+                spoken_labels.join(","),
                 health.get("frames").cloned().unwrap_or(Value::Null),
                 health.get("active_screen").cloned().unwrap_or(Value::Null),
             ))

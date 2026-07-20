@@ -5,8 +5,8 @@ use crate::DirtyRegion;
 use std::collections::BTreeMap;
 
 use yoyopod_protocol::ui::{
-    ListItemSnapshot, RuntimeSnapshot, RuntimeSnapshotDomain, UiIntent, UiScreen, VoiceFileAction,
-    VoiceNoteSummarySnapshot, VoiceRecipientAction,
+    ListItemSnapshot, RuntimeSnapshot, RuntimeSnapshotDomain, UiEvent, UiIntent, UiScreen,
+    VoiceFileAction, VoiceNoteSummarySnapshot, VoiceRecipientAction,
 };
 
 use super::intents;
@@ -39,6 +39,9 @@ pub struct UiRuntime {
     pub(crate) system_overlay_preview: Option<SystemOverlayPreview>,
     pub(crate) companion_preview: Option<CompanionVariant>,
     pub(crate) ask_offline_started_ms: Option<u64>,
+    pub(crate) last_focus_identity: Option<String>,
+    pub(crate) focus_prompt_sequence: u64,
+    pub(crate) accessibility_events: Vec<UiEvent>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -231,6 +234,9 @@ impl Default for UiRuntime {
             system_overlay_preview: None,
             companion_preview: None,
             ask_offline_started_ms: None,
+            last_focus_identity: None,
+            focus_prompt_sequence: 0,
+            accessibility_events: Vec::new(),
         }
     }
 }

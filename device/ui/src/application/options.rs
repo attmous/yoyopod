@@ -7,9 +7,9 @@ pub struct TalkContactAction {
 
 pub fn listen_items(_snapshot: &RuntimeSnapshot) -> Vec<ListItemSnapshot> {
     vec![
-        ListItemSnapshot::new("playlists", "Playlists", "Saved mixes", "playlist"),
-        ListItemSnapshot::new("recent_tracks", "Recent", "Recently played", "recent"),
-        ListItemSnapshot::new("shuffle", "Shuffle All", "Start music", "shuffle"),
+        ListItemSnapshot::new("playlists", "Playlists", "", "icon_playlists"),
+        ListItemSnapshot::new("recent_tracks", "Recents", "", "icon_recents"),
+        ListItemSnapshot::new("shuffle", "Shuffle all", "", "icon_shuffle"),
     ]
 }
 

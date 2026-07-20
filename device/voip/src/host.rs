@@ -454,6 +454,11 @@ impl VoipHost {
         self.voice_note_playback.play(file_path, duration_ms)
     }
 
+    pub fn play_focus_prompt(&mut self, file_path: &str, duration_ms: i32) -> Result<bool, String> {
+        self.voice_note_playback
+            .play_focus_prompt(file_path, duration_ms)
+    }
+
     pub fn pause_voice_note_playback(&mut self) -> Result<(), String> {
         self.voice_note_playback.pause()
     }
@@ -464,6 +469,10 @@ impl VoipHost {
 
     pub fn stop_voice_note_playback(&mut self) {
         self.voice_note_playback.stop();
+    }
+
+    pub fn stop_focus_prompt_playback(&mut self) -> bool {
+        self.voice_note_playback.stop_focus_prompt()
     }
 
     pub fn refresh_voice_note_playback(&mut self) -> bool {

@@ -406,6 +406,8 @@ pub enum UiEvent {
     Ready(UiReady),
     Input(UiInputEvent),
     Intent(UiIntent),
+    FocusChanged(UiFocusChanged),
+    FocusCleared,
     ScreenChanged(UiScreenChanged),
     Health(UiHealth),
     ScreenshotCaptured(UiScreenshotCaptured),
@@ -435,6 +437,8 @@ impl UiEvent {
             "ui.intent" => Ok(Self::Intent(UiIntent::from_event_payload(
                 &envelope.payload,
             )?)),
+            "ui.focus_changed" => Ok(Self::FocusChanged(decode_payload(envelope.payload)?)),
+            "ui.focus_cleared" => Ok(Self::FocusCleared),
             "ui.screen_changed" => Ok(Self::ScreenChanged(decode_payload(envelope.payload)?)),
             "ui.health" => Ok(Self::Health(decode_payload(envelope.payload)?)),
             "ui.screenshot_captured" => {
@@ -453,11 +457,28 @@ impl UiEvent {
             Self::Ready(ready) => event("ui.ready", ready),
             Self::Input(input) => event("ui.input", input),
             Self::Intent(intent) => WorkerEnvelope::event("ui.intent", intent.to_event_payload()),
+            Self::FocusChanged(changed) => event("ui.focus_changed", changed),
+            Self::FocusCleared => WorkerEnvelope::event("ui.focus_cleared", json!({})),
             Self::ScreenChanged(changed) => event("ui.screen_changed", changed),
             Self::Health(health) => event("ui.health", health),
             Self::ScreenshotCaptured(captured) => event("ui.screenshot_captured", captured),
             Self::Error(error) => event("ui.error", error),
             Self::ShutdownComplete => WorkerEnvelope::event("ui.shutdown_complete", json!({})),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiFocusChanged {
+    pub request_id: String,
+    pub label: String,
+}
+
+impl UiFocusChanged {
+    pub fn new(request_id: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            request_id: request_id.into(),
+            label: label.into(),
         }
     }
 }
@@ -1152,6 +1173,8 @@ mod tests {
                 duration_ms: 7,
             }),
             UiEvent::Intent(UiIntent::Runtime(RuntimeIntent::Shutdown)),
+            UiEvent::FocusChanged(UiFocusChanged::new("ui-focus-7", "Mama")),
+            UiEvent::FocusCleared,
             UiEvent::ScreenChanged(UiScreenChanged {
                 screen: UiScreen::Hub,
                 title: "Hub".to_string(),

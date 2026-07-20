@@ -253,6 +253,7 @@ where
     }
     watchdog.runtime_stalled_emitted = true;
     ui_runtime.mark_runtime_stalled();
+    outbound::emit_accessibility_events(output, ui_runtime.take_accessibility_events())?;
     outbound::emit_event(
         output,
         UiEvent::Error(UiError::new(
@@ -299,12 +300,20 @@ where
             context
                 .ui_runtime
                 .note_system_overlay_snapshot_received(outbound::monotonic_millis());
+            outbound::emit_accessibility_events(
+                context.output,
+                context.ui_runtime.take_accessibility_events(),
+            )?;
         }
         dispatcher::AppEvent::RuntimePatch(patch) => {
             context.ui_runtime.apply_patch(patch);
             context
                 .ui_runtime
                 .note_system_overlay_snapshot_received(outbound::monotonic_millis());
+            outbound::emit_accessibility_events(
+                context.output,
+                context.ui_runtime.take_accessibility_events(),
+            )?;
         }
         dispatcher::AppEvent::InputAction(action) => {
             *context.input_events += 1;
@@ -312,6 +321,10 @@ where
             outbound::emit_input_action(context.output, action, "command", now_ms, 0)?;
             context.ui_runtime.handle_input(action, now_ms);
             outbound::emit_intents(context.output, context.ui_runtime.take_intents())?;
+            outbound::emit_accessibility_events(
+                context.output,
+                context.ui_runtime.take_accessibility_events(),
+            )?;
         }
         dispatcher::AppEvent::Tick => {
             let now_ms = outbound::monotonic_millis();
@@ -320,6 +333,7 @@ where
             context.ui_runtime.advance_home_state(now_ms);
             context.ui_runtime.advance_ask_state(now_ms);
             context.ui_runtime.advance_system_overlay(now_ms);
+            context.ui_runtime.refresh_focus_accessibility();
             if context.render_state.engine.animation_frame_dirty(now_ms) {
                 context.ui_runtime.mark_animation_frame();
             }
@@ -332,6 +346,10 @@ where
                 now_ms,
             )?;
             outbound::emit_intents(context.output, context.ui_runtime.take_intents())?;
+            outbound::emit_accessibility_events(
+                context.output,
+                context.ui_runtime.take_accessibility_events(),
+            )?;
         }
         dispatcher::AppEvent::PollInput => {
             let now_ms = outbound::monotonic_millis();
@@ -344,6 +362,10 @@ where
                 now_ms,
             )?;
             outbound::emit_intents(context.output, context.ui_runtime.take_intents())?;
+            outbound::emit_accessibility_events(
+                context.output,
+                context.ui_runtime.take_accessibility_events(),
+            )?;
         }
         dispatcher::AppEvent::Health => {
             outbound::emit_event(

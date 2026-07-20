@@ -647,6 +647,7 @@ pub struct OverlayRuntimeState {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeState {
     pub current_screen: UiScreen,
+    pub focus_prompt_request_id: Option<String>,
     pub media: MediaState,
     pub call: CallRuntimeState,
     pub voice: VoiceRuntimeState,
@@ -672,6 +673,7 @@ impl Default for RuntimeState {
     fn default() -> Self {
         Self {
             current_screen: UiScreen::Hub,
+            focus_prompt_request_id: None,
             media: MediaState::default(),
             call: CallRuntimeState::default(),
             voice: VoiceRuntimeState::default(),
@@ -1586,6 +1588,9 @@ impl RuntimeState {
     }
 
     fn apply_voice_note_playback_snapshot(&mut self, playback: &Value) {
+        if playback.get("purpose").and_then(Value::as_str) == Some("focus_prompt") {
+            return;
+        }
         let was_playing = self.voice.playback_active;
         if let Some(playing) = playback.get("playing").and_then(Value::as_bool) {
             self.voice.playback_active = playing;
