@@ -255,6 +255,7 @@ fn select_setup_companion(runtime: &mut UiRuntime) {
         .push(UiIntent::Settings(SettingsIntent::CompanionSet(
             (*value).to_string(),
         )));
+    runtime.apply_companion_choice(value);
     go_home(runtime);
 }
 

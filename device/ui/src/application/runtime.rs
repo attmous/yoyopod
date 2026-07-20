@@ -5,6 +5,7 @@ use yoyopod_protocol::ui::{
 
 use crate::animation;
 use crate::components;
+use crate::components::widgets::CompanionVariant;
 use crate::router::history::HistoryEntry;
 use crate::scene::{
     defaults_for, GlobalClock, HudBattery, HudConnectivity, HudConnectivityKind, HudStatus,
@@ -50,9 +51,12 @@ impl UiRuntime {
         let pending_identity = self.pending_wheel_identity();
         let previous_playing = self.snapshot.voice.playback_active;
         let previous_file_path = self.snapshot.voice.playback_file_path.clone();
+        let previous_companion = CompanionVariant::from_setting(&self.snapshot.settings.companion);
         let mut change = snapshot::replace_full(&mut self.snapshot, snapshot);
         self.enforce_system_overlay_preview();
-        if self.system_overlay_preview.is_some() {
+        self.enforce_companion_preview();
+        self.reset_companion_phase_if_changed(previous_companion);
+        if self.system_overlay_preview.is_some() || self.companion_preview.is_some() {
             change.app_state = self.snapshot.app_state;
         }
         self.reconcile_system_overlay_snapshot();
@@ -73,9 +77,12 @@ impl UiRuntime {
         let previous_stack_len = self.screen_stack.len();
         let previous_playing = self.snapshot.voice.playback_active;
         let previous_file_path = self.snapshot.voice.playback_file_path.clone();
+        let previous_companion = CompanionVariant::from_setting(&self.snapshot.settings.companion);
         let mut change = snapshot::apply_patch(&mut self.snapshot, patch);
         self.enforce_system_overlay_preview();
-        if self.system_overlay_preview.is_some() {
+        self.enforce_companion_preview();
+        self.reset_companion_phase_if_changed(previous_companion);
+        if self.system_overlay_preview.is_some() || self.companion_preview.is_some() {
             change.app_state = self.snapshot.app_state;
         }
         self.reconcile_system_overlay_snapshot();
@@ -524,6 +531,44 @@ impl UiRuntime {
         self.dirty.navigation = true;
     }
 
+    pub(crate) fn enable_companion_preview(&mut self, preview: CompanionVariant) {
+        let previous_companion = CompanionVariant::from_setting(&self.snapshot.settings.companion);
+        self.screen_stack.clear();
+        self.active_screen = UiScreen::Hub;
+        self.focus_index = 0;
+        self.home_mode = HomeMode::Idle;
+        self.companion_preview = Some(preview);
+        self.enforce_companion_preview();
+        self.reset_companion_phase_if_changed(previous_companion);
+        self.dirty.settings = true;
+        self.dirty.navigation = true;
+    }
+
+    fn enforce_companion_preview(&mut self) {
+        let Some(preview) = self.companion_preview else {
+            return;
+        };
+        self.snapshot.app_state = UiScreen::Hub;
+        self.snapshot.settings.companion = preview.name().to_string();
+    }
+
+    pub(crate) fn apply_companion_choice(&mut self, value: &str) {
+        let previous = CompanionVariant::from_setting(&self.snapshot.settings.companion);
+        let selected = CompanionVariant::from_setting(value);
+        self.snapshot.settings.companion = selected.name().to_string();
+        self.reset_companion_phase_if_changed(previous);
+        self.dirty.settings = true;
+    }
+
+    fn reset_companion_phase_if_changed(&mut self, previous: CompanionVariant) {
+        let current = CompanionVariant::from_setting(&self.snapshot.settings.companion);
+        if current == previous {
+            return;
+        }
+        self.scene_revision = self.scene_revision.wrapping_add(1);
+        self.dirty.animation = true;
+    }
+
     fn enforce_system_overlay_preview(&mut self) {
         let Some(preview) = self.system_overlay_preview else {
             return;
@@ -951,6 +996,30 @@ mod tests {
     }
 
     #[test]
+    fn companion_preview_survives_runtime_snapshots_for_hardware_review() {
+        let mut runtime = UiRuntime::default();
+        runtime.enable_companion_preview(CompanionVariant::Robot);
+        runtime.apply_snapshot(RuntimeSnapshot::default());
+
+        assert_eq!(runtime.active_screen, UiScreen::Hub);
+        assert_eq!(runtime.snapshot.settings.companion, "Robot");
+        let graph = flatten::flatten(&runtime.scene_graph(0));
+        let sprite = find_role(&graph, roles::COMPANION_SPRITE).unwrap();
+        assert_eq!(sprite.props.icon_key.as_deref(), Some("companion_robot"));
+    }
+
+    #[test]
+    fn companion_change_rebuilds_the_home_actor_and_resets_breathe_phase() {
+        let mut runtime = UiRuntime::default();
+        let previous_revision = runtime.scene_revision;
+        runtime.apply_companion_choice("Owl");
+
+        assert_eq!(runtime.snapshot.settings.companion, "Owl");
+        assert_eq!(runtime.scene_revision, previous_revision.wrapping_add(1));
+        assert!(runtime.dirty.animation);
+    }
+
+    #[test]
     fn system_error_is_a_true_overlay_with_safe_copy_and_live_chrome() {
         let mut runtime = UiRuntime {
             active_screen: UiScreen::Ask,
@@ -1197,6 +1266,7 @@ mod tests {
         companion.focus_index = 3;
         companion.handle_input(InputAction::Select, 100);
         assert_eq!(companion.active_screen, UiScreen::Hub);
+        assert_eq!(companion.snapshot.settings.companion, "Bunny");
         assert_eq!(
             companion.take_intents(),
             vec![UiIntent::Settings(SettingsIntent::CompanionSet(
