@@ -264,10 +264,7 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::FOOTER_BAR,
         roles::FOOTER_LABEL,
         roles::COMPANION,
-        roles::COMPANION_BODY,
-        roles::COMPANION_CATCHLIGHT,
-        roles::COMPANION_EYE,
-        roles::COMPANION_MOUTH,
+        roles::COMPANION_SPRITE,
         roles::HUD,
         roles::LIST_ROW,
         roles::LIST_ROW_ICON,
@@ -471,7 +468,12 @@ mod tests {
         assert!(theme
             .roles
             .iter()
-            .any(|role| role.role == roles::COMPANION_BODY));
+            .any(|role| role.role == roles::COMPANION_SPRITE));
+        assert_eq!(
+            self::theme(&theme, roles::COMPANION_SPRITE).opacity,
+            None,
+            "companion image alpha must not be replaced by an opaque widget background"
+        );
     }
 
     #[test]

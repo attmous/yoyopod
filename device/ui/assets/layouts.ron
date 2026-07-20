@@ -20,13 +20,10 @@
         (role: "deck_slot", x: 8, y: 0, width: 56, height: 52, repeat_x: Some(56)),
         (role: "deck_pill", x: 6, y: 6, width: 44, height: 40),
         (role: "deck_glyph", x: 13, y: 11, width: 30, height: 30),
-        // The body keeps its specified 110 px bounds. A transparent 2 px
-        // parent gutter prevents LVGL from clipping its right/bottom outline.
+        // Default Blob bounds. Typed companion widgets replace this box with
+        // each variant's normative artwork bounds.
         (role: "companion", x: 63, y: 68, width: 114, height: 114),
-        (role: "companion_body", x: 2, y: 2, width: 110, height: 110),
-        (role: "companion_eye", x: 33, y: 48, width: 14, height: 14, repeat_x: Some(34)),
-        (role: "companion_catchlight", x: 3, y: 2, width: 4, height: 4),
-        (role: "companion_mouth", x: 46, y: 81, width: 22, height: 6),
+        (role: "companion_sprite", x: 0, y: 0, width: 114, height: 114),
         (role: "list_row", x: 16, y: 94, width: 208, height: 32, repeat_y: Some(36)),
         (role: "list_row_icon", x: 8, y: 8, width: 40, height: 14),
         (role: "list_row_title", x: 48, y: 5, width: 144, height: 14),

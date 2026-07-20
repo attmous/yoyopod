@@ -10,6 +10,7 @@ use yoyopod_protocol::ui::{
 };
 
 use super::intents;
+use crate::components::widgets::CompanionVariant;
 
 #[derive(Debug, Clone)]
 pub struct UiRuntime {
@@ -36,6 +37,7 @@ pub struct UiRuntime {
     pub(crate) status_clock_minute: Option<i64>,
     pub(crate) system_overlay: SystemOverlayState,
     pub(crate) system_overlay_preview: Option<SystemOverlayPreview>,
+    pub(crate) companion_preview: Option<CompanionVariant>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -226,6 +228,7 @@ impl Default for UiRuntime {
             status_clock_minute: None,
             system_overlay: SystemOverlayState::default(),
             system_overlay_preview: None,
+            companion_preview: None,
         }
     }
 }

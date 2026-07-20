@@ -23,22 +23,22 @@ pub const SETUP_WHEEL_PEEK_OPACITY: u8 = 190;
 pub fn breathe_focused_item(deck: usize, index: usize) -> Timeline {
     Timeline {
         id: TimelineId(100 + deck as u32 * 16 + index as u32),
-        clock: ClockSource::GlobalTime,
+        clock: ClockSource::SceneTime,
         tracks: vec![Track {
             target: ActorRef::DeckItem { deck, index },
             property: AnimatableProp::Scale,
             keyframes: vec![
                 Keyframe {
                     at_ms: 0,
-                    value: AnimatableValue::I32(980),
+                    value: AnimatableValue::I32(1_000),
                 },
                 Keyframe {
-                    at_ms: 700,
-                    value: AnimatableValue::I32(1020),
+                    at_ms: 2_100,
+                    value: AnimatableValue::I32(1_040),
                 },
                 Keyframe {
-                    at_ms: 1_400,
-                    value: AnimatableValue::I32(980),
+                    at_ms: 4_200,
+                    value: AnimatableValue::I32(1_000),
                 },
             ],
             easing: Easing::EaseInOut,
@@ -516,6 +516,22 @@ fn motion_tracks(
 mod tests {
     use super::*;
     use crate::animation::TimelineSampler;
+
+    #[test]
+    fn companion_breathe_matches_the_mockup_and_resets_with_scene_time() {
+        let timeline = breathe_focused_item(0, 0);
+        assert_eq!(timeline.clock, ClockSource::SceneTime);
+        let timelines = [timeline];
+        let sampler = TimelineSampler::new(&timelines, 2_100, 99_000);
+
+        assert_eq!(
+            sampler.value(
+                ActorRef::DeckItem { deck: 0, index: 0 },
+                AnimatableProp::Scale
+            ),
+            Some(AnimatableValue::I32(1_040))
+        );
+    }
 
     #[test]
     fn media_wheel_roll_matches_the_three_slot_motion_contract() {

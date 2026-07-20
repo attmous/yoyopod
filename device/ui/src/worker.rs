@@ -8,6 +8,7 @@ use yoyopod_protocol::ui::{
 };
 
 use crate::application::{SystemOverlayPreview, UiRuntime};
+use crate::components::widgets::CompanionVariant;
 use crate::engine::Engine;
 use crate::hardware::{ButtonDevice, DisplayDevice};
 use crate::input::{ButtonTiming, OneButtonMachine};
@@ -90,6 +91,7 @@ where
     let mut button_machine = OneButtonMachine::new(ButtonTiming::default());
     let status_bar_preview = status_bar_preview_enabled();
     let system_overlay_preview = system_overlay_preview();
+    let companion_preview = companion_preview();
     if status_bar_preview {
         writeln!(
             errors,
@@ -103,6 +105,13 @@ where
             "system-overlay hardware preview enabled via YOYOPOD_UI_SYSTEM_OVERLAY_PREVIEW: {preview:?}"
         )?;
         ui_runtime.enable_system_overlay_preview(preview);
+    } else if let Some(preview) = companion_preview {
+        writeln!(
+            errors,
+            "companion hardware preview enabled via YOYOPOD_UI_COMPANION_PREVIEW: {}",
+            preview.name()
+        )?;
+        ui_runtime.enable_companion_preview(preview);
     }
     let mut render_state = RenderState::open(display.width(), display.height())?;
     let mut shutdown_complete_emitted = false;
@@ -401,6 +410,22 @@ fn system_overlay_preview() -> Option<SystemOverlayPreview> {
     }
 }
 
+fn companion_preview() -> Option<CompanionVariant> {
+    let value = std::env::var("YOYOPOD_UI_COMPANION_PREVIEW").ok()?;
+    parse_companion_preview(&value)
+}
+
+fn parse_companion_preview(value: &str) -> Option<CompanionVariant> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "blob" => Some(CompanionVariant::Blob),
+        "owl" => Some(CompanionVariant::Owl),
+        "cat" => Some(CompanionVariant::Cat),
+        "bunny" => Some(CompanionVariant::Bunny),
+        "robot" => Some(CompanionVariant::Robot),
+        _ => None,
+    }
+}
+
 fn handle_button_input<W, B>(
     output: &mut W,
     button: &mut B,
@@ -506,6 +531,15 @@ fn screen_changed_if_needed(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn companion_preview_accepts_only_named_setup_variants() {
+        assert_eq!(
+            parse_companion_preview("Bunny"),
+            Some(CompanionVariant::Bunny)
+        );
+        assert_eq!(parse_companion_preview("unsupported"), None);
+    }
 
     #[derive(Default)]
     struct TestButton {

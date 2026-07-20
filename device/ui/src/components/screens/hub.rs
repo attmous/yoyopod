@@ -1,5 +1,6 @@
 use yoyopod_protocol::ui::{RuntimeSnapshot, UiScreen};
 
+use crate::components::widgets::{CompanionModel, CompanionVariant};
 use crate::engine::Key;
 use crate::scene::{
     Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, ItemRender, RegionId, Scene,
@@ -11,12 +12,14 @@ pub struct HubProps {
     pub companion: DeckItem,
 }
 
-pub fn props_from(_snapshot: &RuntimeSnapshot, _focus: usize, defaults: SceneDefaults) -> HubProps {
+pub fn props_from(snapshot: &RuntimeSnapshot, _focus: usize, defaults: SceneDefaults) -> HubProps {
     HubProps {
         defaults,
         companion: DeckItem {
             key: Key::Static("home_companion"),
-            render: ItemRender::Companion,
+            render: ItemRender::Companion(CompanionModel {
+                variant: CompanionVariant::from_setting(&snapshot.settings.companion),
+            }),
         },
     }
 }

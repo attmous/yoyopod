@@ -3,6 +3,7 @@ use std::ffi::c_void;
 
 const LV_IMAGE_HEADER_MAGIC: u32 = 0x19;
 const LV_COLOR_FORMAT_A8: u32 = 0x0E;
+const LV_COLOR_FORMAT_RGB565A8: u32 = 0x14;
 
 #[repr(C)]
 pub(crate) struct LvImageHeader {
@@ -78,6 +79,20 @@ impl LvImageDsc {
             reserved_2: std::ptr::null(),
         }
     }
+
+    const fn rgb565a8(data: &'static [u8], width: u32, height: u32) -> Self {
+        Self {
+            header: LvImageHeader {
+                magic_cf_flags: LV_IMAGE_HEADER_MAGIC | (LV_COLOR_FORMAT_RGB565A8 << 8),
+                width_height: width | (height << 16),
+                stride_reserved: width * 2,
+            },
+            data_size: data.len() as u32,
+            data: data.as_ptr(),
+            reserved: std::ptr::null(),
+            reserved_2: std::ptr::null(),
+        }
+    }
 }
 
 const fn downsample_56_to_30(source: &[u8; 3136]) -> [u8; 900] {
@@ -105,6 +120,7 @@ const fn abs_i32(value: i32) -> i32 {
 }
 
 include!("generated/listen_icons.rs");
+include!("generated/companion_sprites.rs");
 
 static PLAYLISTS: LvImageDsc = LvImageDsc::a8_56(&PLAYLISTS_MAP);
 static RECENTS: LvImageDsc = LvImageDsc::a8_56(&RECENTS_MAP);
@@ -130,6 +146,11 @@ static SETUP_ROBOT: LvImageDsc = LvImageDsc::a8_56(&SETUP_ROBOT_MAP);
 static SETUP_LIGHT: LvImageDsc = LvImageDsc::a8_56(&SETUP_LIGHT_MAP);
 static SETUP_DARK: LvImageDsc = LvImageDsc::a8_56(&SETUP_DARK_MAP);
 static SETUP_AUTO: LvImageDsc = LvImageDsc::a8_56(&SETUP_AUTO_MAP);
+static COMPANION_BLOB: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_BLOB_MAP, 114, 114);
+static COMPANION_OWL: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_OWL_MAP, 110, 140);
+static COMPANION_CAT: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_CAT_MAP, 140, 140);
+static COMPANION_BUNNY: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_BUNNY_MAP, 120, 160);
+static COMPANION_ROBOT: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_ROBOT_MAP, 110, 150);
 
 const fn generated_control_icon(kind: u8) -> [u8; 576] {
     let mut map = [0u8; 576];
@@ -1085,6 +1106,11 @@ pub(crate) fn descriptor_for_key(icon_key: &str) -> Option<&'static LvImageDsc> 
         "setup_light" => Some(&SETUP_LIGHT),
         "setup_dark" => Some(&SETUP_DARK),
         "setup_auto" => Some(&SETUP_AUTO),
+        "companion_blob" => Some(&COMPANION_BLOB),
+        "companion_owl" => Some(&COMPANION_OWL),
+        "companion_cat" => Some(&COMPANION_CAT),
+        "companion_bunny" => Some(&COMPANION_BUNNY),
+        "companion_robot" => Some(&COMPANION_ROBOT),
         "setup" | "power" | "battery" | "care" | "settings" => Some(&SETUP),
         "people" | "person" | "contact" | "contacts" => Some(&TALK),
         _ => None,
@@ -1215,6 +1241,44 @@ mod tests {
         ),
     ];
 
+    const COMPANION_SOURCES: [(&str, &[u8], &[u8], u64, (u32, u32)); 5] = [
+        (
+            "companion_blob",
+            &COMPANION_BLOB_MAP,
+            include_bytes!("../../../assets/icons/companions/blob.svg"),
+            COMPANION_BLOB_SOURCE_FNV1A64,
+            (114, 114),
+        ),
+        (
+            "companion_owl",
+            &COMPANION_OWL_MAP,
+            include_bytes!("../../../assets/icons/companions/owl.svg"),
+            COMPANION_OWL_SOURCE_FNV1A64,
+            (110, 140),
+        ),
+        (
+            "companion_cat",
+            &COMPANION_CAT_MAP,
+            include_bytes!("../../../assets/icons/companions/cat.svg"),
+            COMPANION_CAT_SOURCE_FNV1A64,
+            (140, 140),
+        ),
+        (
+            "companion_bunny",
+            &COMPANION_BUNNY_MAP,
+            include_bytes!("../../../assets/icons/companions/bunny.svg"),
+            COMPANION_BUNNY_SOURCE_FNV1A64,
+            (120, 160),
+        ),
+        (
+            "companion_robot",
+            &COMPANION_ROBOT_MAP,
+            include_bytes!("../../../assets/icons/companions/robot.svg"),
+            COMPANION_ROBOT_SOURCE_FNV1A64,
+            (110, 150),
+        ),
+    ];
+
     #[test]
     fn listen_wheel_icons_have_explicit_descriptors() {
         for key in [
@@ -1240,6 +1304,22 @@ mod tests {
     #[test]
     fn unknown_icon_keys_do_not_alias_setup_in_the_registry() {
         assert!(descriptor_for_key("definitely_unknown").is_none());
+    }
+
+    #[test]
+    fn companion_sources_match_generated_rgb565a8_sprites() {
+        for (key, bytes, source, expected_hash, (width, height)) in COMPANION_SOURCES {
+            assert_eq!(fnv1a64(source), expected_hash, "stale {key} sprite");
+            assert_eq!(bytes.len(), (width * height * 3) as usize);
+            let descriptor = descriptor_for_key(key).expect("companion descriptor");
+            assert_eq!(descriptor.data_size, bytes.len() as u32);
+            assert_eq!(descriptor.header.width_height, width | (height << 16));
+            assert_eq!(descriptor.header.stride_reserved, width * 2);
+            assert_eq!(
+                (descriptor.header.magic_cf_flags >> 8) & 0xFF,
+                LV_COLOR_FORMAT_RGB565A8
+            );
+        }
     }
 
     #[test]

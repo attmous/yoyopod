@@ -7,10 +7,7 @@ pub(crate) const DECK_PILL: &str = "deck_pill";
 pub(crate) const DECK_GLYPH: &str = "deck_glyph";
 
 pub(crate) const COMPANION: &str = "companion";
-pub(crate) const COMPANION_BODY: &str = "companion_body";
-pub(crate) const COMPANION_EYE: &str = "companion_eye";
-pub(crate) const COMPANION_CATCHLIGHT: &str = "companion_catchlight";
-pub(crate) const COMPANION_MOUTH: &str = "companion_mouth";
+pub(crate) const COMPANION_SPRITE: &str = "companion_sprite";
 
 pub(crate) const BUTTON: &str = "button";
 pub(crate) const BUTTON_ICON: &str = "button_icon";

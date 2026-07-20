@@ -1,9 +1,9 @@
 use crate::animation::{presets, ActorRef, Timeline, TimelineRef, TrackIndex};
 use crate::components::widgets::{
-    call_overlay as call_overlay_widget, card as card_widget, empty_state as empty_state_widget,
-    list_row as list_row_widget, player_hero as player_hero_widget,
-    recording_panel as recording_panel_widget, wheel_item as wheel_item_widget,
-    RecordingPanelProps, WheelItemSlot,
+    call_overlay as call_overlay_widget, card as card_widget, companion as companion_widget,
+    empty_state as empty_state_widget, list_row as list_row_widget,
+    player_hero as player_hero_widget, recording_panel as recording_panel_widget,
+    wheel_item as wheel_item_widget, CompanionModel, RecordingPanelProps, WheelItemSlot,
 };
 use crate::engine::{AnimSlot, Element, Key};
 use crate::scene::roles;
@@ -48,7 +48,7 @@ pub struct DeckItem {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ItemRender {
-    Companion,
+    Companion(CompanionModel),
     Card(CardModel),
     Row(RowModel),
     Wheel(WheelItemModel),
@@ -401,7 +401,7 @@ fn deck_item_element(
 ) -> Element {
     let is_wheel = matches!(item.render, ItemRender::Wheel(_));
     let element = match &item.render {
-        ItemRender::Companion => companion_element().key(item.key.clone()),
+        ItemRender::Companion(model) => companion_widget(model).key(item.key.clone()),
         ItemRender::Card(card) => card_widget(card).key(item.key.clone()),
         ItemRender::Row(row) => list_row_widget(row, selected, item.key.clone()),
         ItemRender::Wheel(model) => {
@@ -487,29 +487,6 @@ fn deck_item_element(
         }
         DeckItemAnim::None => element,
     }
-}
-
-fn companion_element() -> Element {
-    let eye = |key: &'static str| {
-        Element::new(ElementKind::Container, Some(roles::COMPANION_EYE))
-            .key(Key::Static(key))
-            .child(
-                Element::new(ElementKind::Container, Some(roles::COMPANION_CATCHLIGHT))
-                    .key(Key::String(format!("{key}:catchlight"))),
-            )
-    };
-
-    Element::new(ElementKind::Container, Some(roles::COMPANION))
-        .child(
-            Element::new(ElementKind::Container, Some(roles::COMPANION_BODY))
-                .key(Key::Static("companion_body")),
-        )
-        .child(eye("companion_eye_left"))
-        .child(eye("companion_eye_right"))
-        .child(
-            Element::new(ElementKind::Container, Some(roles::COMPANION_MOUTH))
-                .key(Key::Static("companion_mouth")),
-        )
 }
 
 const fn deck_role(kind: DeckKind) -> &'static str {

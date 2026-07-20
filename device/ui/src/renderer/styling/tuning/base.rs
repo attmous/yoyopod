@@ -14,8 +14,6 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
             | roles::DECK_SLOT
             | roles::DECK_PILL
             | roles::COMPANION
-            | roles::COMPANION_BODY
-            | roles::COMPANION_EYE
             | roles::HERO_PLAYER
             | roles::HERO_ART
             | roles::HERO_AVATAR
