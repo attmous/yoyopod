@@ -20,6 +20,7 @@ use crate::renderer::widgets::factory;
 use crate::renderer::widgets::registry::{Layout, WidgetKind, WidgetNode, WidgetRegistry};
 use crate::renderer::widgets::{LvglFacade, WidgetId, WidgetRole};
 use crate::scene::roles;
+use crate::theme::ColorScheme;
 
 const DEFAULT_WIDTH: i32 = 240;
 const DEFAULT_HEIGHT: i32 = 280;
@@ -34,6 +35,7 @@ pub struct NativeLvglFacade {
     pub(crate) widgets: WidgetRegistry,
     pub(crate) active_root: Option<WidgetId>,
     pub(crate) render_assets: RenderAssets,
+    pub(crate) color_scheme: ColorScheme,
 }
 
 impl NativeLvglFacade {
@@ -163,7 +165,7 @@ impl NativeLvglFacade {
     }
 
     pub(super) fn style_for_role(&self, role: WidgetRole) -> Result<WidgetStyle> {
-        ThemeResolver::new(&self.render_assets).style_for_role(role)
+        ThemeResolver::new(&self.render_assets, self.color_scheme).style_for_role(role)
     }
 
     pub(super) fn style_for_selected_role(
@@ -171,7 +173,8 @@ impl NativeLvglFacade {
         role: WidgetRole,
         selected: bool,
     ) -> Result<WidgetStyle> {
-        ThemeResolver::new(&self.render_assets).style_for_selected_role(role, selected)
+        ThemeResolver::new(&self.render_assets, self.color_scheme)
+            .style_for_selected_role(role, selected)
     }
 }
 
@@ -283,9 +286,10 @@ impl LvglFacade for NativeLvglFacade {
     }
 
     fn set_icon(&mut self, widget: WidgetId, icon_key: &str) -> Result<()> {
+        let color_scheme = self.color_scheme;
         let node = self.widget_node_mut(widget)?;
         if node.kind == WidgetKind::Image {
-            let source = icons::source_for_key(icon_key);
+            let source = icons::source_for_key_with_scheme(icon_key, color_scheme);
             unsafe {
                 ffi::lv_image_set_src(node.obj.as_ptr(), source);
             }
@@ -424,8 +428,9 @@ impl LvglFacade for NativeLvglFacade {
     }
 
     fn set_accent(&mut self, widget: WidgetId, rgb: u32) -> Result<()> {
+        let color_scheme = self.color_scheme;
         let node = self.widget_node_mut(widget)?;
-        styling::apply_accent_raw(node.obj, node.role, rgb);
+        styling::apply_accent_raw(node.obj, node.role, rgb, color_scheme);
         Ok(())
     }
 

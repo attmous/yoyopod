@@ -16,6 +16,7 @@ use crate::renderer::{Framebuffer, LvglRenderer, Renderer};
 use crate::router;
 use crate::scene::load_scene_defaults;
 use crate::screenshot::{self, Rgb565Image};
+use crate::theme::ColorScheme;
 use crate::transport::{codec, dispatcher, handshake, inbound, outbound};
 use crate::RenderMode;
 
@@ -30,6 +31,7 @@ pub struct RenderState {
     frames: usize,
     last_active_screen: Option<UiScreen>,
     last_ui_renderer: String,
+    color_scheme: ColorScheme,
 }
 
 impl RenderState {
@@ -46,7 +48,18 @@ impl RenderState {
             frames: 0,
             last_active_screen: None,
             last_ui_renderer: String::new(),
+            color_scheme: ColorScheme::Light,
         })
+    }
+
+    fn set_color_scheme(&mut self, color_scheme: ColorScheme) -> Result<()> {
+        if self.color_scheme == color_scheme {
+            return Ok(());
+        }
+        self.renderer.set_color_scheme(color_scheme)?;
+        self.engine = Engine::default();
+        self.color_scheme = color_scheme;
+        Ok(())
     }
 
     pub fn frames(&self) -> usize {
@@ -497,6 +510,7 @@ where
     let Some(frame) = ui_runtime.frame_request(now_ms) else {
         return Ok(None);
     };
+    render.set_color_scheme(frame.scene_graph.color_scheme)?;
     let outcome = render.engine.tick(
         &frame.scene_graph,
         frame.dirty_region,

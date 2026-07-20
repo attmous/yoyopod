@@ -8,6 +8,7 @@ pub mod renderer;
 pub mod router;
 pub mod scene;
 pub mod screenshot;
+pub mod theme;
 pub mod transport;
 pub mod worker;
 

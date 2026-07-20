@@ -9,6 +9,7 @@ use crate::renderer::lvgl::ffi;
 use crate::renderer::lvgl::flush::lvgl_flush_callback;
 use crate::renderer::lvgl::NativeLvglFacade;
 use crate::renderer::Framebuffer;
+use crate::theme::ColorScheme;
 
 const DRAW_BUFFER_ROWS: usize = 40;
 
@@ -30,7 +31,34 @@ impl NativeLvglFacade {
             widgets: Default::default(),
             active_root: None,
             render_assets,
+            color_scheme: ColorScheme::Light,
         })
+    }
+
+    pub(crate) fn set_color_scheme(&mut self, color_scheme: ColorScheme) -> Result<bool> {
+        if self.color_scheme == color_scheme {
+            return Ok(false);
+        }
+        self.color_scheme = color_scheme;
+
+        if let Some(blank) = self.blank_screen {
+            crate::renderer::styling::reset_style_raw(blank);
+            crate::renderer::styling::apply_style_raw(
+                blank,
+                self.style_for_role(crate::scene::roles::ROOT)?,
+            );
+        }
+
+        if let Some(root) = self.active_root.take() {
+            let root_obj = self.widget_obj(root)?;
+            let blank = self.ensure_blank_screen()?;
+            unsafe {
+                ffi::lv_screen_load(blank.as_ptr());
+                ffi::lv_obj_delete(root_obj.as_ptr());
+            }
+        }
+        self.widgets.clear();
+        Ok(true)
     }
 
     pub(crate) fn display_needs_reset(&self, framebuffer: &Framebuffer) -> bool {

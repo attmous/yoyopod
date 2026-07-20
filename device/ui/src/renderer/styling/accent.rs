@@ -3,11 +3,18 @@ use std::ptr::NonNull;
 use crate::renderer::lvgl::ffi;
 use crate::renderer::styling::style as theme;
 use crate::scene::roles;
+use crate::theme::ColorScheme;
 
 use super::mix_u24;
 
-pub(crate) fn apply_accent_raw(obj: NonNull<ffi::lv_obj_t>, role: &'static str, rgb: u32) {
+pub(crate) fn apply_accent_raw(
+    obj: NonNull<ffi::lv_obj_t>,
+    role: &'static str,
+    rgb: u32,
+    color_scheme: ColorScheme,
+) {
     const SELECTOR: ffi::LvStyleSelector = 0;
+    let rgb = color_scheme.resolve_accent(role, rgb);
     let accent = unsafe { ffi::lv_color_hex(rgb & 0xFFFFFF) };
     unsafe {
         match role {
@@ -71,7 +78,7 @@ pub(crate) fn apply_accent_raw(obj: NonNull<ffi::lv_obj_t>, role: &'static str, 
             roles::FX_HALO | roles::FX_GLOW | roles::FX_SPINNER => {
                 ffi::lv_obj_set_style_bg_color(
                     obj.as_ptr(),
-                    ffi::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 70)),
+                    ffi::lv_color_hex(mix_u24(rgb, color_scheme.background(), 70)),
                     SELECTOR,
                 );
             }
@@ -119,7 +126,7 @@ pub(crate) fn apply_accent_raw(obj: NonNull<ffi::lv_obj_t>, role: &'static str, 
             roles::FOOTER_LABEL => {
                 ffi::lv_obj_set_style_text_color(
                     obj.as_ptr(),
-                    ffi::lv_color_hex(mix_u24(rgb, theme::BACKGROUND_RGB, 65)),
+                    ffi::lv_color_hex(mix_u24(rgb, color_scheme.background(), 65)),
                     SELECTOR,
                 );
             }

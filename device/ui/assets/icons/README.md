@@ -25,3 +25,8 @@ cargo run --manifest-path device/ui/tools/icon-gen/Cargo.toml --locked -- --chec
 The `yoyopod-ui` tests also compare an FNV-1a hash of every SVG against the
 generated module, so changing artwork without regenerating fails locally and
 in CI.
+
+Full-colour Home companions live under `companions/`. Their dark variants are
+separate SVG sources under `companions/dark/` because body outlines change to
+warm off-white while pupils and other internal details remain dark; a global
+LVGL recolour cannot preserve that contrast contract.
