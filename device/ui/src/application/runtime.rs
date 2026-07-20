@@ -976,7 +976,7 @@ mod tests {
                 .unwrap()
                 .props
                 .opacity,
-            Some(40)
+            Some(0)
         );
         assert_eq!(
             find_role(&flattened, roles::SCENE_BACKDROP)

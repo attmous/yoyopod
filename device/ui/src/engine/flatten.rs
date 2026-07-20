@@ -35,7 +35,7 @@ pub fn scene_element(scene: &Scene) -> Element {
     scene_element_with_content_opacity(scene, None)
 }
 
-const SYSTEM_OVERLAY_UNDERLAY_OPACITY: u8 = 40;
+const SYSTEM_OVERLAY_UNDERLAY_OPACITY: u8 = 0;
 
 fn scene_element_with_content_opacity(scene: &Scene, content_opacity: Option<u8>) -> Element {
     let root = Element::new(ElementKind::Container, Some(roles::SCENE_ROOT))
