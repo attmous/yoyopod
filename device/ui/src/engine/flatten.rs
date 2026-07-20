@@ -13,13 +13,17 @@ use crate::ElementKind;
 use super::{AnimSlot, Element, Key};
 
 pub fn flatten(graph: &SceneGraph) -> Element {
+    let active = scene_element_with_content_opacity(
+        &graph.active,
+        (!graph.modal_stack.is_empty()).then_some(SYSTEM_OVERLAY_UNDERLAY_OPACITY),
+    );
     LAYER_ORDER
         .into_iter()
         .filter(|slot| slot.is_graph_overlay())
         .fold(
             Element::new(ElementKind::Container, Some(roles::SCENE_GRAPH))
                 .key(Key::Static("scene_graph"))
-                .child(scene_element(&graph.active)),
+                .child(active),
             |element, slot| match graph_overlay_element(graph, slot) {
                 Some(layer) => element.child(layer),
                 None => element,
@@ -28,6 +32,12 @@ pub fn flatten(graph: &SceneGraph) -> Element {
 }
 
 pub fn scene_element(scene: &Scene) -> Element {
+    scene_element_with_content_opacity(scene, None)
+}
+
+const SYSTEM_OVERLAY_UNDERLAY_OPACITY: u8 = 40;
+
+fn scene_element_with_content_opacity(scene: &Scene, content_opacity: Option<u8>) -> Element {
     let root = Element::new(ElementKind::Container, Some(roles::SCENE_ROOT))
         .key(Key::Scene {
             screen: scene.id.screen.as_str(),
@@ -43,7 +53,17 @@ pub fn scene_element(scene: &Scene) -> Element {
         .filter(|slot| slot.is_scene_owned())
         .fold(root, |element, slot| {
             match scene_layer_element(scene, slot) {
-                Some(layer) => element.child(layer),
+                Some(mut layer) => {
+                    if content_opacity.is_some()
+                        && matches!(
+                            slot,
+                            LayerSlot::Stage | LayerSlot::Decks | LayerSlot::Cursor | LayerSlot::Fx
+                        )
+                    {
+                        layer.props.opacity = content_opacity;
+                    }
+                    element.child(layer)
+                }
                 None => element,
             }
         })

@@ -972,6 +972,20 @@ mod tests {
         assert_eq!(count_visible_role(&flattened, roles::SYS_BADGE), 1);
         assert_eq!(count_visible_role(&flattened, roles::SYS_MSG), 1);
         assert_eq!(
+            find_role(&flattened, roles::SCENE_DECKS)
+                .unwrap()
+                .props
+                .opacity,
+            Some(40)
+        );
+        assert_eq!(
+            find_role(&flattened, roles::SCENE_BACKDROP)
+                .unwrap()
+                .props
+                .opacity,
+            None
+        );
+        assert_eq!(
             find_role(&flattened, roles::STATUS_BAR)
                 .unwrap()
                 .props
