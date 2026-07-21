@@ -59,7 +59,7 @@ impl ColorScheme {
         self,
         role: &'static str,
         color_use: ColorUse,
-        selected: bool,
+        _selected: bool,
         rgb: u32,
     ) -> u32 {
         if self == Self::Light {
@@ -70,10 +70,17 @@ impl ColorScheme {
             if color_use == ColorUse::Fill && role == roles::SYS_SCRIM {
                 return INK_ON_ACCENT;
             }
-            if color_use == ColorUse::Text && (selected || uses_ink_on_accent(role)) {
+            if color_use == ColorUse::Text && foreground_policy(role).primary_on_accent {
                 return INK_ON_ACCENT;
             }
             return INK_DARK;
+        }
+
+        if matches!(rgb, INK_SOFT_LIGHT | INK_300_LIGHT)
+            && color_use == ColorUse::Text
+            && foreground_policy(role).secondary_on_accent
+        {
+            return rgb;
         }
 
         if rgb == SURFACE_0_LIGHT {
@@ -94,7 +101,7 @@ impl ColorScheme {
             return rgb;
         }
         if rgb == INK_LIGHT {
-            return if uses_ink_on_accent(role) {
+            return if foreground_policy(role).primary_on_accent {
                 INK_ON_ACCENT
             } else {
                 INK_DARK
@@ -125,8 +132,14 @@ fn resolve_dark_token(rgb: u32) -> u32 {
     }
 }
 
-fn uses_ink_on_accent(role: &'static str) -> bool {
-    matches!(
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ForegroundPolicy {
+    primary_on_accent: bool,
+    secondary_on_accent: bool,
+}
+
+fn foreground_policy(role: &'static str) -> ForegroundPolicy {
+    let primary_on_accent = matches!(
         role,
         roles::DECK_GLYPH
             | roles::WHEEL_FOCUS_ICON
@@ -134,21 +147,32 @@ fn uses_ink_on_accent(role: &'static str) -> bool {
             | roles::WHEEL_AVATAR_INITIAL
             | roles::WHEEL_BADGE_LABEL
             | roles::EMPTY_PLUS_ICON
-            | roles::MEDIA_WHEEL_PEEK_INITIAL
-            | roles::MEDIA_WHEEL_FOCUS_INITIAL
+            | roles::LIST_ROW_FOCUS_ICON
+            | roles::LIST_ROW_FOCUS_TITLE
+            | roles::MEDIA_WHEEL_PEEK_ICON
+            | roles::MEDIA_WHEEL_FOCUS_ICON
+            | roles::MEDIA_WHEEL_FOCUS_TITLE
+            | roles::SETUP_PEEK_ICON
             | roles::SETUP_TILE_ICON
+            | roles::SETUP_TILE_NAME
             | roles::HERO_ART_ICON
             | roles::HERO_AVATAR_INITIAL
             | roles::HERO_PLAY_ICON
-            | roles::REPLAY_DELETE_ICON
             | roles::REPLAY_PLAY_ICON
-            | roles::REPLAY_NEXT_ICON
             | roles::CALL_AVATAR_INITIAL
             | roles::CALL_AVATAR_INITIAL_SM
             | roles::CALL_BUTTON_ICON
             | roles::SYS_BADGE
             | roles::ASK_HERO_ICON
-    )
+    );
+    let secondary_on_accent = matches!(
+        role,
+        roles::LIST_ROW_FOCUS_SUBTITLE | roles::MEDIA_WHEEL_FOCUS_SUB | roles::SETUP_TILE_SUB
+    );
+    ForegroundPolicy {
+        primary_on_accent,
+        secondary_on_accent,
+    }
 }
 
 #[cfg(test)]
@@ -204,6 +228,52 @@ mod tests {
                 INK_LIGHT,
             ),
             INK_DARK
+        );
+        for role in [
+            roles::LIST_ROW_FOCUS_TITLE,
+            roles::MEDIA_WHEEL_FOCUS_TITLE,
+            roles::SETUP_TILE_NAME,
+        ] {
+            assert_eq!(
+                ColorScheme::Dark.resolve_role_color(role, ColorUse::Text, false, INK_LIGHT,),
+                INK_ON_ACCENT,
+                "{role} must use dark ink on its accent surface"
+            );
+        }
+        for role in [
+            roles::LIST_ROW_FOCUS_SUBTITLE,
+            roles::MEDIA_WHEEL_FOCUS_SUB,
+            roles::SETUP_TILE_SUB,
+        ] {
+            assert_eq!(
+                ColorScheme::Dark.resolve_role_color(role, ColorUse::Text, false, INK_SOFT_LIGHT,),
+                INK_SOFT_LIGHT,
+                "{role} must keep soft dark ink on its accent surface"
+            );
+        }
+        for role in [
+            roles::LIST_ROW_IDLE_ICON,
+            roles::REPLAY_DELETE_ICON,
+            roles::REPLAY_NEXT_ICON,
+        ] {
+            assert_eq!(
+                ColorScheme::Dark.resolve_accent(role, INK_LIGHT),
+                INK_DARK,
+                "{role} must use warm light ink on the dark stage"
+            );
+        }
+        assert_eq!(
+            ColorScheme::Dark.resolve_role_color(
+                roles::MEDIA_WHEEL_PEEK_TITLE,
+                ColorUse::Text,
+                false,
+                INK_LIGHT,
+            ),
+            INK_DARK
+        );
+        assert_eq!(
+            ColorScheme::Dark.resolve_accent(roles::SETUP_PEEK_ICON, INK_LIGHT),
+            INK_ON_ACCENT
         );
         assert_eq!(
             ColorScheme::Dark.resolve_role_color(

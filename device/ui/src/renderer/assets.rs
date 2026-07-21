@@ -267,9 +267,12 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::COMPANION_SPRITE,
         roles::HUD,
         roles::LIST_ROW,
-        roles::LIST_ROW_ICON,
-        roles::LIST_ROW_SUBTITLE,
-        roles::LIST_ROW_TITLE,
+        roles::LIST_ROW_FOCUS_ICON,
+        roles::LIST_ROW_FOCUS_SUBTITLE,
+        roles::LIST_ROW_FOCUS_TITLE,
+        roles::LIST_ROW_IDLE_ICON,
+        roles::LIST_ROW_IDLE_SUBTITLE,
+        roles::LIST_ROW_IDLE_TITLE,
         roles::WHEEL_ITEM,
         roles::WHEEL_FOCUS_ICON,
         roles::WHEEL_FOCUS_LABEL,
@@ -293,11 +296,11 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::MEDIA_WHEEL_PREVIOUS,
         roles::MEDIA_WHEEL_NEXT,
         roles::MEDIA_WHEEL_PEEK_PLATE,
-        roles::MEDIA_WHEEL_PEEK_INITIAL,
+        roles::MEDIA_WHEEL_PEEK_ICON,
         roles::MEDIA_WHEEL_PEEK_TITLE,
         roles::MEDIA_WHEEL_FOCUS,
         roles::MEDIA_WHEEL_FOCUS_PLATE,
-        roles::MEDIA_WHEEL_FOCUS_INITIAL,
+        roles::MEDIA_WHEEL_FOCUS_ICON,
         roles::MEDIA_WHEEL_FOCUS_TITLE,
         roles::MEDIA_WHEEL_FOCUS_SUB,
         roles::SETUP_COUNTER,
@@ -406,8 +409,6 @@ fn required_selected_theme_roles() -> Vec<&'static str> {
     vec![
         roles::CURSOR_DOT,
         roles::LIST_ROW,
-        roles::LIST_ROW_SUBTITLE,
-        roles::LIST_ROW_TITLE,
         roles::WHEEL_ITEM,
         roles::TALK_WHEEL_ITEM,
         roles::MEDIA_WHEEL_FOCUS,
@@ -643,6 +644,9 @@ mod tests {
         let divider = layout(&layouts, roles::MEDIA_WHEEL_HEADER_DIVIDER);
         let previous = layout(&layouts, roles::MEDIA_WHEEL_PREVIOUS);
         let focus = layout(&layouts, roles::MEDIA_WHEEL_FOCUS);
+        let focus_plate = layout(&layouts, roles::MEDIA_WHEEL_FOCUS_PLATE);
+        let focus_title = layout(&layouts, roles::MEDIA_WHEEL_FOCUS_TITLE);
+        let focus_sub = layout(&layouts, roles::MEDIA_WHEEL_FOCUS_SUB);
         let next = layout(&layouts, roles::MEDIA_WHEEL_NEXT);
         let navigation = layout(&layouts, roles::DECK_BAR);
 
@@ -652,9 +656,40 @@ mod tests {
         assert!(previous.y + previous.height <= focus.y);
         assert!(focus.y + focus.height <= next.y);
         assert!(next.y + next.height <= navigation.y);
+        assert!(focus_plate.x + focus_plate.width <= focus_title.x);
+        assert!(focus_title.x + focus_title.width <= focus.width);
+        assert!(focus_sub.x + focus_sub.width <= focus.width);
+        assert!(focus_title.y + focus_title.height <= focus_sub.y);
         for region in [header, previous, focus, next] {
             assert!(region.x >= 0);
             assert!(region.x + region.width <= 240);
+        }
+    }
+
+    #[test]
+    fn inner_surface_theme_roles_encode_foreground_context_explicitly() {
+        let asset = parse_theme_asset().expect("theme.ron should be valid");
+
+        for role in [
+            roles::LIST_ROW_FOCUS_TITLE,
+            roles::MEDIA_WHEEL_FOCUS_TITLE,
+            roles::SETUP_TILE_NAME,
+        ] {
+            assert_eq!(theme(&asset, role).text_rgb, Some(0x1B1B1F));
+        }
+        for role in [
+            roles::LIST_ROW_FOCUS_SUBTITLE,
+            roles::MEDIA_WHEEL_FOCUS_SUB,
+            roles::SETUP_TILE_SUB,
+        ] {
+            assert_eq!(theme(&asset, role).text_rgb, Some(0x3A3A40));
+        }
+        for role in [
+            roles::LIST_ROW_IDLE_TITLE,
+            roles::MEDIA_WHEEL_PEEK_TITLE,
+            roles::SETUP_PEEK_TITLE,
+        ] {
+            assert!(theme(&asset, role).text_rgb.is_some());
         }
     }
 

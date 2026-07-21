@@ -93,7 +93,7 @@ pub enum WheelItemVariant {
         icon_key: String,
     },
     Media {
-        initial: String,
+        icon_key: String,
         plate_rgb: u32,
     },
     Contact {
@@ -542,7 +542,7 @@ mod tests {
                         title: format!("Track {index}"),
                         subtitle: format!("{index}:00"),
                         variant: WheelItemVariant::Media {
-                            initial: "T".to_string(),
+                            icon_key: "music_note".to_string(),
                             plate_rgb: 0xE5443B,
                         },
                     }),

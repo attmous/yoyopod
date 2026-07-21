@@ -83,7 +83,7 @@ mod tests {
     use super::*;
     use crate::renderer::assets::load_render_assets;
     use crate::scene::roles;
-    use crate::theme::{INK_DARK, INK_ON_ACCENT, STAGE_LIME_DARK};
+    use crate::theme::{INK_300_DARK, INK_DARK, INK_ON_ACCENT, INK_SOFT_LIGHT, STAGE_LIME_DARK};
 
     #[test]
     fn dark_role_resolution_is_semantic_and_selected_content_stays_legible() {
@@ -95,10 +95,58 @@ mod tests {
             .expect("backdrop style");
         assert_eq!(backdrop.bg_color, Some(crate::theme::SURFACE_0_DARK));
 
-        let selected = dark
-            .style_for_selected_role(roles::WHEEL_ITEM, true)
-            .expect("selected wheel style");
-        assert_eq!(selected.text_color, Some(INK_ON_ACCENT));
+        for role in [
+            roles::WHEEL_FOCUS_LABEL,
+            roles::LIST_ROW_FOCUS_TITLE,
+            roles::MEDIA_WHEEL_FOCUS_TITLE,
+            roles::SETUP_TILE_NAME,
+        ] {
+            let style = dark.style_for_role(role).expect("focus foreground style");
+            assert_eq!(
+                style.text_color,
+                Some(INK_ON_ACCENT),
+                "{role} must use dark ink on an accent surface"
+            );
+        }
+        for role in [
+            roles::LIST_ROW_FOCUS_SUBTITLE,
+            roles::MEDIA_WHEEL_FOCUS_SUB,
+            roles::SETUP_TILE_SUB,
+        ] {
+            let style = dark.style_for_role(role).expect("focus secondary style");
+            assert_eq!(
+                style.text_color,
+                Some(INK_SOFT_LIGHT),
+                "{role} must keep soft dark ink on an accent surface"
+            );
+        }
+        for role in [
+            roles::WHEEL_PEEK_LABEL,
+            roles::LIST_ROW_IDLE_TITLE,
+            roles::MEDIA_WHEEL_PEEK_TITLE,
+        ] {
+            let style = dark.style_for_role(role).expect("stage foreground style");
+            assert_eq!(
+                style.text_color,
+                Some(INK_DARK),
+                "{role} must use warm light ink on the dark stage"
+            );
+        }
+        let setup_peek_title = dark
+            .style_for_role(roles::SETUP_PEEK_TITLE)
+            .expect("setup peek title style");
+        assert_eq!(
+            setup_peek_title.text_color,
+            Some(crate::theme::INK_SOFT_DARK)
+        );
+        let idle_secondary = dark
+            .style_for_role(roles::LIST_ROW_IDLE_SUBTITLE)
+            .expect("idle list secondary style");
+        assert_eq!(idle_secondary.text_color, Some(INK_300_DARK));
+
+        let setup_peek_icon =
+            ColorScheme::Dark.resolve_accent(roles::SETUP_PEEK_ICON, crate::theme::INK_LIGHT);
+        assert_eq!(setup_peek_icon, INK_ON_ACCENT);
 
         let focused_transport = dark
             .style_for_selected_role(roles::HERO_PLAY, true)

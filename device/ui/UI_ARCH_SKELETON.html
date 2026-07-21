@@ -773,9 +773,9 @@ pub fn list_row(row: &amp;ListRowModel, accent: u32) -&gt; Element {
         .key(Key::String(row.id.clone()))
         .selected(row.selected)
         .accent(accent)
-        .child(label("list_row_icon").icon(&amp;row.icon_key).accent(accent))
-        .child(label("list_row_title").text(&amp;row.title))
-        .child(label("list_row_subtitle").text(&amp;row.subtitle))
+        .child(image("list_row_focus_icon").icon(&amp;row.icon_key).accent(accent))
+        .child(label("list_row_focus_title").text(&amp;row.title))
+        .child(label("list_row_focus_subtitle").text(&amp;row.subtitle))
 }</pre>
 
 <h4>Screen (example, abridged)</h4>
