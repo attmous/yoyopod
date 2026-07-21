@@ -61,10 +61,10 @@
         (role: "media_wheel_peek_icon", x: -14, y: -14, width: 56, height: 56),
         (role: "media_wheel_peek_title", x: 36, y: 3, width: 108, height: 22),
         (role: "media_wheel_focus", x: 32, y: 82, width: 176, height: 92),
-        (role: "media_wheel_focus_plate", x: 14, y: 22, width: 48, height: 48),
+        (role: "media_wheel_focus_plate", x: 10, y: 22, width: 48, height: 48),
         (role: "media_wheel_focus_icon", x: -4, y: -4, width: 56, height: 56),
-        (role: "media_wheel_focus_title", x: 70, y: 24, width: 98, height: 20),
-        (role: "media_wheel_focus_sub", x: 70, y: 50, width: 98, height: 16),
+        (role: "media_wheel_focus_title", x: 62, y: 24, width: 110, height: 20),
+        (role: "media_wheel_focus_sub", x: 62, y: 50, width: 110, height: 16),
         (role: "setup_counter", x: 194, y: 26, width: 30, height: 14),
         // Setup wheels use semantic slots instead of scaling three full cards.
         // Every slot clears the 40 px header and the 228 px navigation deck.
