@@ -115,7 +115,10 @@ pub fn persist_status(config: &CloudHostConfig, snapshot: &CloudStatusSnapshot) 
         let _ = fs::create_dir_all(parent);
     }
     if let Ok(payload) = serde_json::to_string_pretty(snapshot) {
-        let _ = fs::write(path, payload);
+        let temporary_path = path.with_extension("tmp");
+        if fs::write(&temporary_path, payload).is_ok() {
+            let _ = fs::rename(temporary_path, path);
+        }
     }
 }
 
