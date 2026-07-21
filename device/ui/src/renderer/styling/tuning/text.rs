@@ -37,7 +37,8 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 );
                 ffi::lv_image_set_inner_align(obj.as_ptr(), ffi::LV_IMAGE_ALIGN_CENTER);
             }
-            roles::WHEEL_ICON
+            roles::WHEEL_FOCUS_ICON
+            | roles::WHEEL_PEEK_ICON
             | roles::EMPTY_PLUS_ICON
             | roles::ASK_HERO_ICON
             | roles::SETUP_PEEK_ICON
@@ -153,7 +154,7 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 );
                 ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_LEFT, SELECTOR);
             }
-            roles::WHEEL_LABEL => {
+            roles::WHEEL_FOCUS_LABEL | roles::WHEEL_PEEK_LABEL => {
                 ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_DOTS);
                 ffi::lv_obj_set_style_text_font(
                     obj.as_ptr(),

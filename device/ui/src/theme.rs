@@ -129,7 +129,8 @@ fn uses_ink_on_accent(role: &'static str) -> bool {
     matches!(
         role,
         roles::DECK_GLYPH
-            | roles::WHEEL_ICON
+            | roles::WHEEL_FOCUS_ICON
+            | roles::WHEEL_FOCUS_LABEL
             | roles::WHEEL_AVATAR_INITIAL
             | roles::WHEEL_BADGE_LABEL
             | roles::EMPTY_PLUS_ICON
@@ -177,6 +178,32 @@ mod tests {
         assert_eq!(
             ColorScheme::Dark.resolve_accent(roles::DECK_GLYPH, INK_LIGHT),
             INK_ON_ACCENT
+        );
+        assert_eq!(
+            ColorScheme::Dark.resolve_accent(roles::WHEEL_FOCUS_ICON, INK_LIGHT),
+            INK_ON_ACCENT
+        );
+        assert_eq!(
+            ColorScheme::Dark.resolve_accent(roles::WHEEL_PEEK_ICON, INK_LIGHT),
+            INK_DARK
+        );
+        assert_eq!(
+            ColorScheme::Dark.resolve_role_color(
+                roles::WHEEL_FOCUS_LABEL,
+                ColorUse::Text,
+                false,
+                INK_LIGHT,
+            ),
+            INK_ON_ACCENT
+        );
+        assert_eq!(
+            ColorScheme::Dark.resolve_role_color(
+                roles::WHEEL_PEEK_LABEL,
+                ColorUse::Text,
+                false,
+                INK_LIGHT,
+            ),
+            INK_DARK
         );
         assert_eq!(
             ColorScheme::Dark.resolve_role_color(

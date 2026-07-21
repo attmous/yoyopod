@@ -20,12 +20,13 @@ pub fn wheel_item(
     slot: WheelItemSlot,
     key: Key,
 ) -> Element {
+    let foreground = WheelForegroundRoles::for_selected(selected);
     match &model.variant {
         WheelItemVariant::Icon { icon_key } => container(roles::WHEEL_ITEM)
             .key(key)
             .selected(selected)
-            .child(image(roles::WHEEL_ICON).icon(icon_key).accent(INK))
-            .child(label(roles::WHEEL_LABEL).text(&model.title)),
+            .child(image(foreground.icon).icon(icon_key).accent(INK))
+            .child(label(foreground.label).text(&model.title)),
         WheelItemVariant::Media { initial, plate_rgb } => match slot {
             WheelItemSlot::Previous => {
                 media_peek(roles::MEDIA_WHEEL_PREVIOUS, model, initial, *plate_rgb, key)
@@ -61,7 +62,7 @@ pub fn wheel_item(
                         .accent(*avatar_rgb)
                         .child(label(roles::WHEEL_AVATAR_INITIAL).text(initial)),
                 )
-                .child(label(roles::WHEEL_LABEL).text(&model.title));
+                .child(label(foreground.label).text(&model.title));
             match badge {
                 Some(badge) => root.child(
                     container(roles::WHEEL_BADGE)
@@ -85,8 +86,8 @@ pub fn wheel_item(
             let root = container(roles::TALK_WHEEL_ITEM)
                 .key(key)
                 .selected(selected)
-                .child(image(roles::WHEEL_ICON).icon(icon_key).accent(INK))
-                .child(label(roles::WHEEL_LABEL).text(&model.title));
+                .child(image(foreground.icon).icon(icon_key).accent(INK))
+                .child(label(foreground.label).text(&model.title));
             match badge {
                 Some(badge) => root.child(
                     container(roles::WHEEL_BADGE)
@@ -152,6 +153,28 @@ pub fn wheel_item(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WheelForegroundRoles {
+    icon: &'static str,
+    label: &'static str,
+}
+
+impl WheelForegroundRoles {
+    const fn for_selected(selected: bool) -> Self {
+        if selected {
+            Self {
+                icon: roles::WHEEL_FOCUS_ICON,
+                label: roles::WHEEL_FOCUS_LABEL,
+            }
+        } else {
+            Self {
+                icon: roles::WHEEL_PEEK_ICON,
+                label: roles::WHEEL_PEEK_LABEL,
+            }
+        }
+    }
+}
+
 fn setup_peek(
     role: &'static str,
     model: &WheelItemModel,
@@ -196,4 +219,45 @@ fn media_peek(
                 .child(label(roles::MEDIA_WHEEL_PEEK_INITIAL).text(initial)),
         )
         .child(label(roles::MEDIA_WHEEL_PEEK_TITLE).text(&model.title))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn icon_model() -> WheelItemModel {
+        WheelItemModel {
+            title: "Recents".to_string(),
+            subtitle: String::new(),
+            variant: WheelItemVariant::Icon {
+                icon_key: "listen_recents".to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn generic_wheel_exposes_focus_context_to_both_foreground_children() {
+        let item = wheel_item(
+            &icon_model(),
+            true,
+            WheelItemSlot::Standard,
+            Key::Indexed(0),
+        );
+
+        assert_eq!(item.children[0].role, Some(roles::WHEEL_FOCUS_ICON));
+        assert_eq!(item.children[1].role, Some(roles::WHEEL_FOCUS_LABEL));
+    }
+
+    #[test]
+    fn generic_wheel_exposes_peek_context_to_both_foreground_children() {
+        let item = wheel_item(
+            &icon_model(),
+            false,
+            WheelItemSlot::Standard,
+            Key::Indexed(0),
+        );
+
+        assert_eq!(item.children[0].role, Some(roles::WHEEL_PEEK_ICON));
+        assert_eq!(item.children[1].role, Some(roles::WHEEL_PEEK_LABEL));
+    }
 }
