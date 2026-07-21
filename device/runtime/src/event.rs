@@ -23,6 +23,7 @@ pub enum RuntimeEvent {
     MediaSnapshot(Value),
     VoipSnapshot(Value),
     NetworkSnapshot(Value),
+    WifiState(Value),
     PowerSnapshot(Value),
     VoiceTranscript(Value),
     VoiceAskResult(Value),
@@ -58,11 +59,12 @@ pub enum RuntimeCommand {
         domain: WorkerDomain,
         envelope: WorkerEnvelope,
     },
-    WorkerCommandWithAck {
+    CorrelatedWorkerCommand {
         domain: WorkerDomain,
         envelope: WorkerEnvelope,
-        success_ack: WorkerEnvelope,
-        failure_ack: WorkerEnvelope,
+        command_id: String,
+        command_type: String,
+        timeout_ms: u64,
     },
     AppendAppLog {
         line: String,
@@ -93,6 +95,7 @@ impl RuntimeEvent {
                 state.resolve_overlay_for(WorkerDomain::Network);
                 state.apply_network_snapshot(snapshot);
             }
+            Self::WifiState(_) => {}
             Self::PowerSnapshot(snapshot) => {
                 state.resolve_overlay_for(WorkerDomain::Power);
                 state.apply_power_snapshot(snapshot);
@@ -148,6 +151,7 @@ pub fn runtime_event_from_worker(
     } = envelope;
 
     match kind {
+        EnvelopeKind::Error if message_type == "wifi_error" => Some(RuntimeEvent::Ignored),
         EnvelopeKind::Error => Some(RuntimeEvent::WorkerError {
             domain,
             message: worker_error_message(&message_type, &payload),
@@ -228,6 +232,14 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         RuntimeEvent::MediaSnapshot(snapshot) => commands_for_media_snapshot(snapshot),
         RuntimeEvent::VoipSnapshot(snapshot) => commands_for_voip_snapshot(state, snapshot),
         RuntimeEvent::NetworkSnapshot(snapshot) => commands_for_network_snapshot(snapshot),
+        RuntimeEvent::WifiState(state) => vec![worker_command(
+            WorkerDomain::Cloud,
+            "cloud.publish_event",
+            json!({
+                "event_type": "wifi_state",
+                "payload": state,
+            }),
+        )],
         RuntimeEvent::PowerSnapshot(snapshot) => commands_for_power_snapshot(state, snapshot),
         RuntimeEvent::VoiceTranscript(snapshot) => with_ask_log(
             commands_for_voice_transcript(state, snapshot),
@@ -380,6 +392,7 @@ fn network_event_from_message(message_type: &str, payload: Value) -> RuntimeEven
             domain: WorkerDomain::Network,
         },
         "network.snapshot" | "network.health" => RuntimeEvent::NetworkSnapshot(payload),
+        "wifi_state" => RuntimeEvent::WifiState(payload),
         "network.error" => RuntimeEvent::WorkerError {
             domain: WorkerDomain::Network,
             message: worker_error_message(message_type, &payload),
@@ -1057,6 +1070,34 @@ fn commands_for_cloud_command(command: &Value) -> Vec<RuntimeCommand> {
         "pause" => remote_media_control("media.pause", command_id, "pause"),
         "resume" => remote_media_control("media.resume", command_id, "resume"),
         "stop" => remote_media_control("media.stop_playback", command_id, "stop"),
+        "wifi_refresh"
+        | "wifi_scan"
+        | "wifi_add_profile"
+        | "wifi_update_profile"
+        | "wifi_forget_profile" => command_id
+            .map(|command_id| {
+                let timeout_ms = if normalized(&command_type) == "wifi_scan" {
+                    15_000
+                } else {
+                    10_000
+                };
+                vec![RuntimeCommand::CorrelatedWorkerCommand {
+                    domain: WorkerDomain::Network,
+                    envelope: WorkerEnvelope::command(
+                        normalized(&command_type),
+                        Some(command_id.clone()),
+                        command
+                            .get("payload")
+                            .cloned()
+                            .filter(Value::is_object)
+                            .unwrap_or_else(empty_payload),
+                    ),
+                    command_id,
+                    command_type: normalized(&command_type),
+                    timeout_ms,
+                }]
+            })
+            .unwrap_or_default(),
         "fetch_config" => Vec::new(),
         "play_track" | "store_media" => command_id
             .map(|command_id| {
@@ -1106,31 +1147,16 @@ fn remote_media_control(
         }];
     };
 
-    vec![RuntimeCommand::WorkerCommandWithAck {
+    vec![RuntimeCommand::CorrelatedWorkerCommand {
         domain: WorkerDomain::Media,
-        envelope: media_command,
-        success_ack: WorkerEnvelope::command(
-            "cloud.ack",
-            None,
-            json!({
-                "command_id": command_id,
-                "ok": true,
-                "payload": {"command": command_type}
-            }),
+        envelope: WorkerEnvelope::command(
+            media_command.message_type,
+            Some(command_id.clone()),
+            media_command.payload,
         ),
-        failure_ack: WorkerEnvelope::command(
-            "cloud.ack",
-            None,
-            json!({
-                "command_id": command_id,
-                "ok": false,
-                "reason": "media_dispatch_failed",
-                "payload": {
-                    "command": command_type,
-                    "media_command": media_message_type
-                }
-            }),
-        ),
+        command_id,
+        command_type: command_type.to_string(),
+        timeout_ms: 8_000,
     }]
 }
 
@@ -1968,5 +1994,56 @@ mod tests {
         assert!(snapshot.voice.ptt_active);
         assert_eq!(snapshot.voice.recording_duration_ms, 7_420);
         assert_eq!(snapshot.voice.capture_level_permille, 618);
+    }
+
+    #[test]
+    fn wifi_cloud_commands_are_correlated_to_the_network_worker() {
+        let commands = commands_for_cloud_command(&json!({
+            "commandId": "command-123",
+            "command": "wifi_add_profile",
+            "payload": {
+                "ssid": "Family WiFi",
+                "security": "wpa2_personal",
+                "password": "never-log-this",
+                "hidden": false
+            }
+        }));
+
+        assert_eq!(commands.len(), 1);
+        let RuntimeCommand::CorrelatedWorkerCommand {
+            domain,
+            envelope,
+            command_id,
+            command_type,
+            ..
+        } = &commands[0]
+        else {
+            panic!("expected correlated Wi-Fi worker command");
+        };
+        assert_eq!(*domain, WorkerDomain::Network);
+        assert_eq!(command_id, "command-123");
+        assert_eq!(command_type, "wifi_add_profile");
+        assert_eq!(envelope.message_type, "wifi_add_profile");
+        assert_eq!(envelope.payload["password"], "never-log-this");
+    }
+
+    #[test]
+    fn wifi_state_is_forwarded_as_a_sanitized_device_event() {
+        let commands = commands_for_event(
+            &RuntimeState::default(),
+            &RuntimeEvent::WifiState(json!({
+                "schema_version": 1,
+                "status": "ready",
+                "saved_profiles": [],
+                "nearby_networks": []
+            })),
+        );
+
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected cloud publish command");
+        };
+        assert_eq!(*domain, WorkerDomain::Cloud);
+        assert_eq!(envelope.message_type, "cloud.publish_event");
+        assert_eq!(envelope.payload["event_type"], "wifi_state");
     }
 }

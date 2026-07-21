@@ -8,14 +8,21 @@ use crate::config::NetworkHostConfig;
 use crate::modem::{ModemController, Sim7600ModemController};
 use crate::protocol::{
     health_result, ready_event, snapshot_event, snapshot_result, stopped_event, stopped_result,
-    EnvelopeKind, WorkerEnvelope,
+    wifi_state_event, wifi_state_result, EnvelopeKind, WorkerEnvelope,
 };
 use crate::runtime::{NetworkRuntime, RuntimeCommandError};
+use crate::wifi::{
+    NetworkManagerWifiController, UnavailableWifiController, WifiAddProfileRequest, WifiController,
+    WifiOperationError, WifiUpdateProfileRequest,
+};
 
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 pub fn run(config_dir: &str) -> Result<()> {
     let mut stdout = io::stdout().lock();
+    let wifi: Box<dyn WifiController> = NetworkManagerWifiController::connect()
+        .map(|controller| Box::new(controller) as Box<dyn WifiController>)
+        .unwrap_or_else(|_| Box::new(UnavailableWifiController));
     match NetworkHostConfig::load(config_dir) {
         Ok(config) => run_with_runtime_loop(
             NetworkRuntime::new(
@@ -26,12 +33,14 @@ pub fn run(config_dir: &str) -> Result<()> {
             stdin_channel(),
             &mut stdout,
             DEFAULT_POLL_INTERVAL,
+            wifi,
         ),
         Err(error) => run_with_runtime_loop(
             NetworkRuntime::degraded_config(config_dir, error.to_string()),
             stdin_channel(),
             &mut stdout,
             DEFAULT_POLL_INTERVAL,
+            wifi,
         ),
     }
 }
@@ -83,7 +92,28 @@ where
     R: Read + Send + 'static,
     W: Write,
 {
-    run_with_runtime_loop(runtime, reader_channel(input), output, poll_interval)
+    run_with_runtime_loop(
+        runtime,
+        reader_channel(input),
+        output,
+        poll_interval,
+        Box::new(UnavailableWifiController),
+    )
+}
+
+pub fn run_with_runtime_io_and_wifi<C, R, W>(
+    runtime: NetworkRuntime<C>,
+    input: R,
+    output: &mut W,
+    poll_interval: Duration,
+    wifi: Box<dyn WifiController>,
+) -> Result<()>
+where
+    C: ModemController,
+    R: Read + Send + 'static,
+    W: Write,
+{
+    run_with_runtime_loop(runtime, reader_channel(input), output, poll_interval, wifi)
 }
 
 fn run_with_runtime_loop<C, W>(
@@ -91,6 +121,7 @@ fn run_with_runtime_loop<C, W>(
     input_rx: mpsc::Receiver<io::Result<String>>,
     output: &mut W,
     poll_interval: Duration,
+    mut wifi: Box<dyn WifiController>,
 ) -> Result<()>
 where
     C: ModemController,
@@ -98,6 +129,11 @@ where
 {
     write_envelope(output, &ready_event(&runtime.snapshot().config_dir))?;
     write_envelope(output, &snapshot_event(runtime.snapshot()))?;
+    emit_wifi_state(
+        output,
+        wifi.refresh()
+            .unwrap_or_else(|_| crate::wifi::WifiState::unavailable()),
+    )?;
     if should_boot_runtime(runtime.snapshot()) {
         runtime.start();
     }
@@ -129,7 +165,7 @@ where
                     continue;
                 }
 
-                match handle_command(&mut runtime, envelope, output)? {
+                match handle_command(&mut runtime, wifi.as_mut(), envelope, output)? {
                     LoopControl::Continue => {}
                     LoopControl::Shutdown => break,
                 }
@@ -168,6 +204,7 @@ enum LoopControl {
 
 fn handle_command<C, W>(
     runtime: &mut NetworkRuntime<C>,
+    wifi: &mut dyn WifiController,
     envelope: WorkerEnvelope,
     output: &mut W,
 ) -> Result<LoopControl>
@@ -203,6 +240,52 @@ where
             }
             emit_pending_snapshots(output, runtime)?;
         }
+        "wifi_refresh" => {
+            let result = wifi.refresh();
+            handle_wifi_operation(output, envelope.request_id, result, wifi)?;
+        }
+        "wifi_scan" => {
+            let result = wifi.scan();
+            handle_wifi_operation(output, envelope.request_id, result, wifi)?;
+        }
+        "wifi_add_profile" => {
+            let request = serde_json::from_value::<WifiAddProfileRequest>(envelope.payload)
+                .map_err(|_| {
+                    WifiOperationError::new(
+                        "wifi_invalid_request",
+                        "The Wi-Fi profile details are invalid",
+                    )
+                });
+            let result = request.and_then(|request| wifi.add_profile(request));
+            handle_wifi_operation(output, envelope.request_id, result, wifi)?;
+        }
+        "wifi_update_profile" => {
+            let request = serde_json::from_value::<WifiUpdateProfileRequest>(envelope.payload)
+                .map_err(|_| {
+                    WifiOperationError::new(
+                        "wifi_invalid_request",
+                        "The Wi-Fi profile details are invalid",
+                    )
+                });
+            let result = request.and_then(|request| wifi.update_profile(request));
+            handle_wifi_operation(output, envelope.request_id, result, wifi)?;
+        }
+        "wifi_forget_profile" => {
+            let profile_id = envelope
+                .payload
+                .get("profile_id")
+                .and_then(serde_json::Value::as_str)
+                .filter(|profile_id| !profile_id.trim().is_empty())
+                .map(str::to_owned)
+                .ok_or_else(|| {
+                    WifiOperationError::new(
+                        "wifi_invalid_request",
+                        "The saved Wi-Fi network reference is invalid",
+                    )
+                });
+            let result = profile_id.and_then(|profile_id| wifi.forget_profile(&profile_id));
+            handle_wifi_operation(output, envelope.request_id, result, wifi)?;
+        }
         "network.shutdown" | "worker.stop" => {
             runtime.shutdown();
             write_envelope(output, &stopped_result(envelope.request_id, "shutdown"))?;
@@ -224,6 +307,35 @@ where
     }
 
     Ok(LoopControl::Continue)
+}
+
+fn handle_wifi_operation(
+    output: &mut dyn Write,
+    request_id: Option<String>,
+    result: Result<crate::wifi::WifiState, WifiOperationError>,
+    wifi: &mut dyn WifiController,
+) -> Result<()> {
+    match result {
+        Ok(state) => {
+            write_envelope(output, &wifi_state_result(request_id, &state))?;
+            emit_wifi_state(output, state)
+        }
+        Err(error) => {
+            write_envelope(
+                output,
+                &WorkerEnvelope::error("wifi_error", request_id, error.code, error.message),
+            )?;
+            emit_wifi_state(
+                output,
+                wifi.refresh()
+                    .unwrap_or_else(|_| crate::wifi::WifiState::unavailable()),
+            )
+        }
+    }
+}
+
+fn emit_wifi_state(output: &mut dyn Write, state: crate::wifi::WifiState) -> Result<()> {
+    write_envelope(output, &wifi_state_event(&state))
 }
 
 fn emit_command_error(
@@ -317,4 +429,155 @@ where
         }
     });
     rx
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wifi::{
+        WifiActiveNetwork, WifiNearbyNetwork, WifiSavedProfile, WifiSecurity, WifiState,
+        WifiStateStatus,
+    };
+    use std::io::Cursor;
+
+    struct FakeWifiController {
+        state: WifiState,
+        fail_scan: bool,
+    }
+
+    impl WifiController for FakeWifiController {
+        fn refresh(&mut self) -> Result<WifiState, WifiOperationError> {
+            Ok(self.state.clone())
+        }
+
+        fn scan(&mut self) -> Result<WifiState, WifiOperationError> {
+            if self.fail_scan {
+                Err(WifiOperationError::new(
+                    "wifi_scan_failed",
+                    "Nearby Wi-Fi networks could not be scanned",
+                ))
+            } else {
+                Ok(self.state.clone())
+            }
+        }
+
+        fn add_profile(
+            &mut self,
+            _request: WifiAddProfileRequest,
+        ) -> Result<WifiState, WifiOperationError> {
+            Ok(self.state.clone())
+        }
+
+        fn update_profile(
+            &mut self,
+            _request: WifiUpdateProfileRequest,
+        ) -> Result<WifiState, WifiOperationError> {
+            Ok(self.state.clone())
+        }
+
+        fn forget_profile(&mut self, _profile_id: &str) -> Result<WifiState, WifiOperationError> {
+            Ok(self.state.clone())
+        }
+    }
+
+    fn fake_state() -> WifiState {
+        WifiState {
+            schema_version: 1,
+            status: WifiStateStatus::Ready,
+            radio_enabled: true,
+            active_network: Some(WifiActiveNetwork {
+                profile_id: "11111111-1111-4111-8111-111111111111".to_string(),
+                ssid: "Family WiFi".to_string(),
+                security: WifiSecurity::Wpa2Personal,
+                signal_percent: 82,
+            }),
+            saved_profiles: vec![WifiSavedProfile {
+                profile_id: "11111111-1111-4111-8111-111111111111".to_string(),
+                ssid: "Family WiFi".to_string(),
+                security: WifiSecurity::Wpa2Personal,
+                hidden: false,
+                active: true,
+                autoconnect: true,
+            }],
+            nearby_networks: vec![WifiNearbyNetwork {
+                ssid: "Guest".to_string(),
+                security: WifiSecurity::Open,
+                signal_percent: 55,
+                saved: false,
+                active: false,
+            }],
+            scanned_at: Some(1_700_000_000),
+            reported_at: 1_700_000_001,
+        }
+    }
+
+    fn run_wifi_command(command: WorkerEnvelope, fail_scan: bool) -> Vec<WorkerEnvelope> {
+        let input = Cursor::new(command.encode().expect("command should encode"));
+        let mut output = Vec::new();
+        run_with_runtime_io_and_wifi(
+            NetworkRuntime::degraded_config("config", "test configuration"),
+            input,
+            &mut output,
+            Duration::from_millis(1),
+            Box::new(FakeWifiController {
+                state: fake_state(),
+                fail_scan,
+            }),
+        )
+        .expect("worker run should succeed");
+        String::from_utf8(output)
+            .expect("worker output should be UTF-8")
+            .lines()
+            .map(|line| WorkerEnvelope::decode(line.as_bytes()).expect("valid worker envelope"))
+            .collect()
+    }
+
+    #[test]
+    fn profile_password_is_not_echoed_in_results_or_state_events() {
+        let envelopes = run_wifi_command(
+            WorkerEnvelope::command(
+                "wifi_add_profile",
+                Some("request-1".to_string()),
+                serde_json::json!({
+                    "ssid": "Family WiFi",
+                    "security": "wpa2_personal",
+                    "password": "never-publish-this",
+                    "hidden": false
+                }),
+            ),
+            false,
+        );
+
+        assert!(envelopes.iter().any(|envelope| {
+            envelope.kind == EnvelopeKind::Result
+                && envelope.request_id.as_deref() == Some("request-1")
+                && envelope.message_type == "wifi_state"
+        }));
+        let encoded = serde_json::to_string(&envelopes).expect("output should serialize");
+        assert!(!encoded.contains("never-publish-this"));
+        assert!(!encoded.contains("password"));
+    }
+
+    #[test]
+    fn failed_operation_emits_error_and_a_fresh_sanitized_state() {
+        let envelopes = run_wifi_command(
+            WorkerEnvelope::command(
+                "wifi_scan",
+                Some("request-2".to_string()),
+                serde_json::json!({}),
+            ),
+            true,
+        );
+
+        let error_index = envelopes
+            .iter()
+            .position(|envelope| {
+                envelope.kind == EnvelopeKind::Error
+                    && envelope.request_id.as_deref() == Some("request-2")
+            })
+            .expect("failed scan should return an error");
+        assert!(envelopes.iter().skip(error_index + 1).any(|envelope| {
+            envelope.kind == EnvelopeKind::Event && envelope.message_type == "wifi_state"
+        }));
+    }
 }
