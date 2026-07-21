@@ -1,0 +1,69 @@
+---
+title: Architecture at a Glance
+description: "Two sides and a backbone: yoyoOS + yoyocore on the device, yoyocloud in the middle, the yoyopod app in the parent's pocket."
+---
+
+import SoftwareSides from '../../../../assets/diagrams/software-sides.svg';
+
+*The three-box picture — device, backbone, parent app — and what flows between them.*
+
+## Overview
+
+The software has **two sides and a backbone**. On the **device** side there
+are two layers: **yoyoOS**, the Linux image (Raspberry Pi OS Lite today;
+later a Yocto- or Buildroot-built minimal image with only what the device
+needs), and **yoyocore**, the Rust application that runs on top and handles
+everything — the runtime supervisor, the domain workers, and the UI. On the
+**parent** side there is **the yoyopod app**, the parent mobile app for iOS
+and Android. Between them sits **yoyocloud**, the backend backbone: it
+speaks MQTT with the device, receives location and telemetry, and routes
+them to the parent app — whether we build it or adopt an open-source
+solution is a deliberately open decision.
+
+<SoftwareSides class="diagram" />
+
+The device stays useful on its own: the media worker plays from the local
+music library via mpv, the voip worker carries calls and voice notes via
+liblinphone, and location reporting stays live-ish by design, never
+real-time.
+
+## Key components
+
+The naming canon — these four names are used across the docs:
+
+| Name | What it is | Today |
+| --- | --- | --- |
+| **yoyoOS** | the Linux image the device boots | Raspberry Pi OS Lite; target: a Yocto/Buildroot-minimal custom image |
+| **yoyocore** | the Rust device application on top of yoyoOS: `device/runtime/` supervising the domain workers and the UI host (`device/ui/`), one process tree, surfaced as four peer engines — [UI](/builders/software/ui/), [Media](/builders/software/media-engine/), [VoIP](/builders/software/voip-engine/), [Speech](/builders/software/speech-engine/) | real and documented in depth — see [The yoyocore Runtime](/builders/software/runtime/) |
+| **yoyocloud** | the backend backbone: MQTT broker + routing, provisioning, telemetry | the device-side MQTT link and provisioning exist (`device/cloud/`); the backbone itself is build-or-adopt, decision open — see [Cloud & Provisioning](/builders/software/cloud/) |
+| **the yoyopod app** | the parent mobile app, iOS + Android | **future** — planned `apps/` (the app) and `packages/` (shared contracts); see [App Platform](/builders/software/apps/) |
+
+Around the boxes sit `cli/` (the Rust operator CLI, rebuilding in rounds)
+and `deploy/` (systemd units, installer scripts, slot/release packaging).
+
+## Interfaces & contracts
+
+- **Inside yoyocore** — every message is one newline-framed JSON envelope with a strict schema stamp; mismatched peers fail closed at the first line. No sockets, no bus daemons — the process tree is the architecture.
+- **Device ↔ yoyocloud** — MQTT from `device/cloud/` to the backbone, over the cellular modem owned by `device/network/`.
+- **The yoyopod app ↔ yoyocloud** — the parent app never talks to the device directly; everything routes through the backbone (protocol TBD, see open questions).
+- **Boundary rules** — device runtime code must never depend on `apps/`; shared contracts should flow through `packages/contracts/` when that package exists (it is intended, not guaranteed present).
+- **Configuration** — authored config is split by ownership under `config/` and composed into one typed runtime model, with an explicit secret boundary (tracked config may never contain SIP credentials) and board overlays (the only supported board is `rpi-zero-2w`).
+
+## Today vs. target
+
+- Today: yoyocore and the device-side cloud link are real — runtime, workers, UI, MQTT transport, and provisioning all exist and are documented in depth in the as-built engineering docs (`website/` in the repository).
+- Today: yoyoOS is stock Raspberry Pi OS Lite — the custom minimal image (Yocto or Buildroot) is target-state.
+- Today: the yoyopod app is future work by design — `apps/` and `packages/` are planned monorepo boundaries with their rules already written down; yoyocloud's build-vs-adopt decision is open.
+- Hardware underneath: the V0 “Dawn” off-the-shelf rig — see [Device Overview & Specs](/builders/hardware/overview/).
+- Target: the same picture with every box real — a minimal yoyoOS, yoyocore unchanged, a chosen yoyocloud, and the yoyopod app shipping on both stores.
+
+## Open questions
+
+- TODO: which protocol the yoyopod app speaks to yoyocloud (REST, MQTT, something else)?
+- TODO: yoyocloud build-vs-adopt — which open-source backends are candidates, and what would disqualify them?
+- TODO: Yocto or Buildroot for the custom yoyoOS image — and what is the minimal package set?
+- TODO: where does the whitelist live authoritatively — device, yoyocloud, or both?
+
+:::note[Sources]
+Condensed from [`docs/architecture/SYSTEM_ARCHITECTURE.md`](https://github.com/attmous/yoyopod/blob/main/docs/architecture/SYSTEM_ARCHITECTURE.md), [`docs/architecture/CANONICAL_STRUCTURE.md`](https://github.com/attmous/yoyopod/blob/main/docs/architecture/CANONICAL_STRUCTURE.md), and [`docs/architecture/WORK_AREAS.md`](https://github.com/attmous/yoyopod/blob/main/docs/architecture/WORK_AREAS.md), and the as-built docs site (`website/` in the repository): the runtime overview, Canonical Structure, and Work Areas pages. The names yoyoOS, yoyocore, yoyocloud, and the V0/V1 hardware codenames are product decisions recorded here first.
+:::

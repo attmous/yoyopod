@@ -1,0 +1,51 @@
+---
+title: Applications
+description: The experiences on the device and in the parent's pocket — Listen, Talk, Locate, the Parent App, and Setup.
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+*yoyopod ships a handful of deliberately small applications. This section
+describes each one as a product experience — what it does, how its flows
+feel, and where it runs.*
+
+## How this section is organized
+
+Six applications plus a parking lot. The first four carry the device's own
+screen names (Hub is the home wheel that leads to them): **Listen**,
+**Talk**, **Ask**, and **Locate** live on the device; the **Parent App**
+lives on the parent's phone; **Setup** is the on-device onboarding that
+binds the two.
+[What Comes Next](/apps/future/) holds vision ideas that are compatible with
+what yoyopod refuses to become.
+
+Every app page shares the same five headings: *What it is · Key flows · On
+the device · In the parent app · Status today* — so you can compare apps
+column by column.
+
+## The applications
+
+<CardGrid>
+	<LinkCard title="Listen: Music & Stories" href="/apps/listen/" description="Local-first music and stories — playlists, shuffle, now playing." />
+	<LinkCard title="Talk: Calls & Voice Notes" href="/apps/talk/" description="Contact-first calling and quick voice messages, whitelist only." />
+	<LinkCard title="Ask: The Voice Companion" href="/apps/ask/" description="Hold the button, ask a question, hear an answer — disclosed AI voice." />
+	<LinkCard title="Locate: Location & Check-Ins" href="/apps/locate/" description="Live-ish location awareness for peace of mind." />
+	<LinkCard title="The Parent App" href="/apps/parent-app/" description="The companion mobile app: contacts, content, controls." />
+	<LinkCard title="Setup: On-Device Onboarding" href="/apps/setup/" description="First boot to paired-and-ready." />
+	<LinkCard title="What Comes Next" href="/apps/future/" description="The vision parking lot — bounded by what yoyopod is not." />
+</CardGrid>
+
+## How apps relate to the rest of the site
+
+- The [User Stories](/stories/) show these apps in family life; every story's
+  "Behind the scenes" names the apps it touches.
+- The [Family Guide](/families/) teaches the same experiences as how-tos.
+- The [Builders Guide](/builders/) explains the platform underneath — one
+  runtime worker family per app, roughly.
+
+:::note[Section status]
+Every application page mixes as-built device fact with its full *Proposed*
+experience design — Ask wheel, parent app, live-ish Locate, and the
+parking lot included — written for adopt/adapt/drop decisions. See
+[About This Site](/start/about-this-site/) for the legend.
+:::

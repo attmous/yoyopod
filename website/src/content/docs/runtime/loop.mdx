@@ -40,7 +40,7 @@ law at a different altitude
 | --- | --- |
 | Runtime → UI | per-domain snapshot patches; unchanged domains send nothing |
 | UI scene → LVGL | the reconciler's mutations |
-| LVGL → glass | dirty regions over SPI |
+| LVGL → canvas | dirty regions over SPI |
 
 One deliberate subtlety: **worker-health-only changes emit no UI patch.**
 The child doesn't need to know a worker hiccupped unless a domain

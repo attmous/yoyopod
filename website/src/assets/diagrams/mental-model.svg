@@ -1,4 +1,4 @@
-<svg viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The tiny theater mental model: the runtime writes the script, the director picks the scene, set builders build it, stagehands swap only what changed, the painter repaints dirty panels, the glass shows it, and the audience's one buzzer sends intents back to the office">
+<svg viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The tiny theater mental model: the runtime writes the script, the director picks the scene, set builders build it, stagehands swap only what changed, the painter repaints dirty panels, the canvas shows it, and the audience's one buzzer sends intents back to the office">
   <style>
     .box { fill: var(--sl-color-gray-6, #2b2122); stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; }
     .ext { fill: none; stroke: var(--sl-color-gray-4, #6d5f52); stroke-width: 1.5; stroke-dasharray: 6 4; }
@@ -71,7 +71,7 @@
   <rect class="box" x="295" y="300" width="170" height="88" rx="12"/>
   <text class="t" x="309" y="324">The window</text>
   <text class="m" x="309" y="343">ST7789 · 240×280</text>
-  <text class="s" x="309" y="361">the glass — changed</text>
+  <text class="s" x="309" y="361">the canvas — changed</text>
   <text class="s" x="309" y="376">regions cross the SPI</text>
 
   <rect class="box" x="19" y="300" width="170" height="88" rx="12"/>

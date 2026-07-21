@@ -1,0 +1,360 @@
+/* ==========================================================================
+   yoyopod — "yoyopod in 30 seconds" self-playing promo
+   Brand kit: Sunrise & Midnight (fixed palette — no CSS variables here;
+   the stage is deliberately Midnight in both themes).
+     Midnight #171528 · Dusk #232136 · Indigo ink #26233d
+     Marigold #f6b02c · Deep marigold #9a6206 · Morning haze #ffe4ad
+     Paper #fdf8ee · Cream #f1e8d7
+   Everything in this file is namespaced under .promo- (it loads site-wide).
+   Timeline: one shared 30s infinite loop.
+     scene1 0–5s · scene2 5–11s · scene3 11–17s · scene4 17–23s · scene5 23–30s
+   (1s = 3.333% of the timeline.)
+   ========================================================================== */
+
+/* ---- Stage -------------------------------------------------------------- */
+
+.promo-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #171528;
+}
+
+.promo-scene {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: clamp(1rem, 5%, 2.5rem);
+  text-align: center;
+  opacity: 0;
+  color: #fdf8ee;
+}
+
+.promo-scene p {
+  margin: 0;
+}
+
+/* ---- Scene visibility windows (shared 30s loop) ------------------------- */
+
+.promo-scene1 { animation: promo-scene1 30s ease-in-out infinite; }
+.promo-scene2 { animation: promo-scene2 30s ease-in-out infinite; }
+.promo-scene3 { animation: promo-scene3 30s ease-in-out infinite; }
+.promo-scene4 { animation: promo-scene4 30s ease-in-out infinite; }
+.promo-scene5 { animation: promo-scene5 30s ease-in-out infinite; }
+
+@keyframes promo-scene1 {
+  0%            { opacity: 0; }
+  2.5%          { opacity: 1; }
+  14.2%         { opacity: 1; }
+  16.7%, 100%   { opacity: 0; }
+}
+
+@keyframes promo-scene2 {
+  0%, 16.7%     { opacity: 0; }
+  19.2%         { opacity: 1; }
+  34.2%         { opacity: 1; }
+  36.7%, 100%   { opacity: 0; }
+}
+
+@keyframes promo-scene3 {
+  0%, 36.7%     { opacity: 0; }
+  39.2%         { opacity: 1; }
+  54.2%         { opacity: 1; }
+  56.7%, 100%   { opacity: 0; }
+}
+
+@keyframes promo-scene4 {
+  0%, 56.7%     { opacity: 0; }
+  59.2%         { opacity: 1; }
+  74.2%         { opacity: 1; }
+  76.7%, 100%   { opacity: 0; }
+}
+
+@keyframes promo-scene5 {
+  0%, 76.7%     { opacity: 0; }
+  79.2%         { opacity: 1; }
+  97.5%         { opacity: 1; }
+  100%          { opacity: 0; }
+}
+
+/* ---- Scene 1 · amber glow rising + headline ----------------------------- */
+
+.promo-glow {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: min(62%, 440px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  /* The one permitted soft radial amber glow. */
+  background: radial-gradient(
+    closest-side,
+    rgba(255, 228, 173, 0.45),
+    rgba(255, 228, 173, 0.12) 55%,
+    rgba(255, 228, 173, 0) 72%
+  );
+  animation: promo-glow 30s ease-in-out infinite;
+}
+
+@keyframes promo-glow {
+  0%          { transform: scale(0.35); }
+  16.7%, 100% { transform: scale(1.12); }
+}
+
+.promo-headline {
+  position: relative;
+  max-width: 24ch;
+  font-size: clamp(1.4rem, 4.2vw, 2.9rem);
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  color: #fdf8ee;
+  animation: promo-headline 30s ease-in-out infinite;
+}
+
+.promo-accent {
+  font-style: normal;
+  color: #f6b02c;
+}
+
+@keyframes promo-headline {
+  0%        { opacity: 0; transform: translateY(16px); }
+  4.2%, 100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Scene 2 · the device sliding up + caption --------------------------- */
+
+.promo-device {
+  width: clamp(84px, 16%, 132px);
+  height: auto;
+  animation: promo-device 30s ease-in-out infinite;
+}
+
+@keyframes promo-device {
+  0%, 16.7%   { opacity: 0; transform: translateY(46px); }
+  21.7%, 100% { opacity: 1; transform: translateY(0); }
+}
+
+/* The Hub wheel on the canvas turns, calm and slow. */
+.promo-wheel {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: promo-wheel-spin 16s linear infinite;
+}
+
+@keyframes promo-wheel-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.promo-caption {
+  font-size: clamp(1rem, 2.6vw, 1.6rem);
+  font-weight: 600;
+  color: #ffe4ad;
+}
+
+.promo-scene2 .promo-caption {
+  animation: promo-caption2 30s ease-in-out infinite;
+}
+
+@keyframes promo-caption2 {
+  0%, 19.2%   { opacity: 0; transform: translateY(12px); }
+  23.3%, 100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Scene 3 · three feature lines, staggered ----------------------------
+   Same 30s keyframes on each line; animation-delay staggers the phase, and
+   the delay persists across iterations, so the stagger survives the loop. */
+
+.promo-lines {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.7rem, 2.2vw, 1.2rem);
+  align-items: flex-start;
+}
+
+.promo-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7em;
+  font-size: clamp(1.05rem, 2.7vw, 1.7rem);
+  font-weight: 600;
+  color: #fdf8ee;
+  text-align: left;
+  animation: promo-line 30s ease-in-out infinite;
+}
+
+.promo-line::before {
+  content: "";
+  flex: none;
+  width: 0.85em;
+  height: 0.28em;
+  border-radius: 999px;
+  background: #f6b02c;
+}
+
+.promo-line2 { animation-delay: 0.9s; }
+.promo-line3 { animation-delay: 1.8s; }
+
+@keyframes promo-line {
+  0%, 37.3%   { opacity: 0; transform: translateY(12px); }
+  40%, 100%   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Scene 4 · calm map dot with a slow ping ripple ----------------------- */
+
+.promo-map {
+  position: relative;
+  width: clamp(110px, 24%, 170px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #232136;
+  overflow: hidden;
+  animation: promo-map 30s ease-in-out infinite;
+}
+
+@keyframes promo-map {
+  0%, 57.5%   { opacity: 0; transform: scale(0.92); }
+  61%, 100%   { opacity: 1; transform: scale(1); }
+}
+
+/* Two faint streets, so the tile reads as a map — paper at low alpha. */
+.promo-map-road {
+  position: absolute;
+  background: rgba(253, 248, 238, 0.08);
+}
+
+.promo-map-road1 {
+  top: 40%;
+  left: -20%;
+  width: 140%;
+  height: 9%;
+  transform: rotate(-9deg);
+}
+
+.promo-map-road2 {
+  top: -20%;
+  left: 58%;
+  width: 9%;
+  height: 140%;
+  transform: rotate(14deg);
+}
+
+.promo-mapdot {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 13%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #f6b02c;
+  box-shadow: 0 0 0 4px rgba(255, 228, 173, 0.25);
+}
+
+.promo-ripple {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 82%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 2px solid #f6b02c;
+  opacity: 0;
+  animation: promo-ping 3.6s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+}
+
+.promo-ripple2 { animation-delay: 1.8s; }
+
+@keyframes promo-ping {
+  0%   { transform: scale(0.2); opacity: 0.75; }
+  75%  { opacity: 0; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+.promo-scene4 .promo-caption {
+  color: #fdf8ee;
+  animation: promo-caption4 30s ease-in-out infinite;
+}
+
+@keyframes promo-caption4 {
+  0%, 59.2%   { opacity: 0; transform: translateY(12px); }
+  63.3%, 100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Scene 5 · end card --------------------------------------------------- */
+
+.promo-wordmark {
+  font-size: clamp(2.4rem, 8vw, 5rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: #fdf8ee;
+  animation: promo-wordmark 30s ease-in-out infinite;
+}
+
+.promo-wordmark-dot {
+  display: inline-block;
+  width: 0.16em;
+  height: 0.16em;
+  margin-left: 0.09em;
+  border-radius: 50%;
+  background: #f6b02c;
+}
+
+@keyframes promo-wordmark {
+  0%, 77.3%   { opacity: 0; transform: translateY(16px) scale(0.98); }
+  80.7%, 100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.promo-subline {
+  max-width: 34ch;
+  font-size: clamp(1rem, 2.5vw, 1.5rem);
+  font-weight: 600;
+  color: #ffe4ad;
+  animation: promo-subline 30s ease-in-out infinite;
+}
+
+@keyframes promo-subline {
+  0%, 78.7%   { opacity: 0; transform: translateY(10px); }
+  82%, 100%   { opacity: 1; transform: translateY(0); }
+}
+
+.promo-footnote {
+  font-size: clamp(0.7rem, 1.6vw, 0.85rem);
+  color: #fdf8ee;
+  opacity: 0.55;
+  animation: promo-footnote 30s ease-in-out infinite;
+}
+
+@keyframes promo-footnote {
+  0%, 80.7%   { opacity: 0; }
+  84%, 100%   { opacity: 0.55; }
+}
+
+/* ---- Reduced motion --------------------------------------------------------
+   No animation at all: scenes 1–4 stay hidden, scene 5 (the end card) is
+   shown statically — the whole pitch is still on screen. */
+
+@media (prefers-reduced-motion: reduce) {
+  .promo-stage .promo-scene,
+  .promo-stage .promo-scene * {
+    animation: none !important;
+  }
+
+  .promo-scene1,
+  .promo-scene2,
+  .promo-scene3,
+  .promo-scene4 {
+    opacity: 0;
+  }
+
+  .promo-scene5 {
+    opacity: 1;
+  }
+}

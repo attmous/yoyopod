@@ -1,0 +1,49 @@
+<svg viewBox="0 0 400 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The yoyopod handheld: a small rounded device with one portrait canvas glowing warmly, the Hub wheel of amber arc segments on screen, and a single marigold side button.">
+  <defs>
+    <radialGradient id="hazeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffe4ad" stop-opacity="1"/>
+      <stop offset="60%" stop-color="#ffe4ad" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#ffe4ad" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- soft morning-haze glow behind the device -->
+  <ellipse cx="200" cy="255" rx="185" ry="225" fill="url(#hazeGlow)" opacity="0.35"/>
+
+  <!-- ground shadow (unrotated, sits beneath) -->
+  <ellipse cx="200" cy="452" rx="112" ry="16" fill="#171528" opacity="0.18"/>
+
+  <!-- the device, tilted slightly for life -->
+  <g transform="rotate(-2.5 200 265)">
+    <!-- side button pill, right edge (drawn first so it tucks behind the body) -->
+    <rect x="306" y="174" width="16" height="58" rx="7" fill="#f6b02c"/>
+
+    <!-- body: Dusk with generous corners -->
+    <rect x="86" y="109" width="228" height="312" rx="44" fill="#232136"/>
+
+    <!-- Midnight bezel framing the canvas -->
+    <rect x="98" y="121" width="204" height="234" rx="28" fill="#171528"/>
+
+    <!-- the canvas: one portrait screen, Paper, glowing -->
+    <rect x="110" y="133" width="180" height="210" rx="20" fill="#fdf8ee"/>
+
+    <!-- warm haze pooled behind the wheel -->
+    <circle cx="200" cy="238" r="78" fill="#ffe4ad" opacity="0.4"/>
+
+    <!-- Hub wheel: four arc segments, top segment focused in Marigold -->
+    <path d="M161.43 192.04 A60 60 0 0 1 238.57 192.04 L223.14 210.42 A36 36 0 0 0 176.86 210.42 Z" fill="#f6b02c"/>
+    <path d="M245.96 199.43 A60 60 0 0 1 245.96 276.57 L227.58 261.14 A36 36 0 0 0 227.58 214.86 Z" fill="#ffe4ad" opacity="0.75"/>
+    <path d="M238.57 283.96 A60 60 0 0 1 161.43 283.96 L176.86 265.58 A36 36 0 0 0 223.14 265.58 Z" fill="#ffe4ad" opacity="0.75"/>
+    <path d="M154.04 276.57 A60 60 0 0 1 154.04 199.43 L172.42 214.86 A36 36 0 0 0 172.42 261.14 Z" fill="#ffe4ad" opacity="0.75"/>
+
+    <!-- Paper center dot with the subtlest indigo ring -->
+    <circle cx="200" cy="238" r="10" fill="#fdf8ee" stroke="#26233d" stroke-width="1" stroke-opacity="0.18"/>
+
+    <!-- speaker hint: 3x6 dot grid on the chin -->
+    <g fill="#171528" opacity="0.5">
+      <circle cx="170" cy="378" r="2"/><circle cx="182" cy="378" r="2"/><circle cx="194" cy="378" r="2"/><circle cx="206" cy="378" r="2"/><circle cx="218" cy="378" r="2"/><circle cx="230" cy="378" r="2"/>
+      <circle cx="170" cy="388" r="2"/><circle cx="182" cy="388" r="2"/><circle cx="194" cy="388" r="2"/><circle cx="206" cy="388" r="2"/><circle cx="218" cy="388" r="2"/><circle cx="230" cy="388" r="2"/>
+      <circle cx="170" cy="398" r="2"/><circle cx="182" cy="398" r="2"/><circle cx="194" cy="398" r="2"/><circle cx="206" cy="398" r="2"/><circle cx="218" cy="398" r="2"/><circle cx="230" cy="398" r="2"/>
+    </g>
+  </g>
+</svg>

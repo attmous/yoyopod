@@ -1,0 +1,76 @@
+<svg viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The whitelist's journey: edited in the yoyopod app, stored authoritatively in yoyocloud, synced to the device, and enforced there at two independent layers">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #232136); stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; }
+    .ext { fill: none; stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .hub { fill: var(--sl-color-accent-low, #4a3414); stroke: var(--sl-color-accent, #f6b02c); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f8f4e9); font-size: 14px; font-weight: 700; }
+    .m { fill: var(--sl-color-gray-2, #d3cdc5); font-size: 11px; font-family: ui-monospace, monospace; }
+    .s { fill: var(--sl-color-gray-3, #a09aa8); font-size: 11.5px; }
+    .flow { stroke: var(--sl-color-gray-3, #a09aa8); stroke-width: 2; fill: none; marker-end: url(#wl-arrow); }
+  </style>
+  <defs>
+    <marker id="wl-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a09aa8)"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="30" y="34" style="font-size:17px">The whitelist’s journey</text>
+  <text class="s" x="30" y="54">edited in the app · stored in yoyocloud · synced to the device · enforced at two layers</text>
+
+  <!-- the yoyopod app -->
+  <rect class="box" x="30" y="84" width="220" height="96" rx="10"/>
+  <text class="t" x="46" y="108">the yoyopod app</text>
+  <text class="s" x="46" y="126">parent edits the list</text>
+  <text class="s" x="46" y="142">PUT whole versioned document</text>
+
+  <path class="flow" d="M250,132 L308,132"/>
+  <text class="m" x="270" y="122">PUT</text>
+
+  <!-- yoyocloud -->
+  <rect class="hub" x="310" y="84" width="220" height="110" rx="10"/>
+  <text class="t" x="326" y="108">yoyocloud</text>
+  <text class="s" x="326" y="126">the authoritative store</text>
+  <text class="s" x="326" y="142">validates · versions · acks</text>
+  <text class="s" x="326" y="158">store-and-forward if offline</text>
+
+  <!-- sync down to the device -->
+  <path class="flow" d="M420,196 L420,278"/>
+  <text class="m" x="432" y="230">saved → active</text>
+  <text class="m" x="432" y="246">on device</text>
+
+  <!-- device cache -->
+  <rect class="box" x="310" y="280" width="220" height="96" rx="10"/>
+  <text class="t" x="326" y="304">device cache</text>
+  <text class="s" x="326" y="322">the last-synced copy</text>
+  <text class="s" x="326" y="338">still enforced offline</text>
+
+  <!-- gate 1: contact-first UI -->
+  <path class="flow" d="M530,300 L558,288"/>
+  <rect class="box" x="560" y="248" width="170" height="84" rx="8"/>
+  <text class="t" x="572" y="269" style="font-size:12.5px">Gate 1 — the UI</text>
+  <text class="s" x="572" y="286">contact-first canvas</text>
+  <text class="s" x="572" y="301">non-whitelist contacts</text>
+  <text class="s" x="572" y="316">are never shown</text>
+
+  <!-- gate 2: VoIP Engine call path -->
+  <path class="flow" d="M530,348 L558,388"/>
+  <rect class="box" x="560" y="352" width="170" height="84" rx="8"/>
+  <text class="t" x="572" y="373" style="font-size:12.5px">Gate 2 — call path</text>
+  <text class="s" x="572" y="390">VoIP Engine worker</text>
+  <text class="s" x="572" y="405">rejects non-whitelist</text>
+  <text class="s" x="572" y="420">calls in and out</text>
+
+  <!-- gate 3: conditional, server-side -->
+  <path class="flow" d="M340,196 L155,278"/>
+  <rect class="ext" x="30" y="280" width="220" height="96" rx="10"/>
+  <text class="t" x="46" y="301" style="font-size:12.5px">Gate 3 — server-side</text>
+  <text class="s" x="46" y="318">SIP server declines to route</text>
+  <text class="s" x="46" y="333">non-whitelist calls — only if</text>
+  <text class="s" x="46" y="348">self-hosted SIP is chosen</text>
+
+  <!-- caption -->
+  <rect class="ext" x="30" y="466" width="700" height="70" rx="10"/>
+  <text class="t" x="46" y="492">Two device-side layers are the invariant.</text>
+  <text class="s" x="46" y="510">The cloud is the store, not the gate: enforcement always runs against the local mirror, so a dead network</text>
+  <text class="s" x="46" y="526">never turns it off — and a never-synced device enforces the empty list. Fail-closed, always.</text>
+</svg>

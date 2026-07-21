@@ -5,7 +5,7 @@ description: Partial rendering, the 40-row buffer, the byte-swap flush, the shad
 
 import Pipeline from '../../../assets/diagrams/pipeline.svg';
 
-Every visible change on the glass flows through one loop in
+Every visible change on the canvas flows through one loop in
 `device/ui/src/worker.rs`. This page follows a frame through it.
 
 <Pipeline class="diagram" />
@@ -88,6 +88,6 @@ Two signal-driven capture paths, both writing atomically to
 | `SIGUSR2` (default) | shadow framebuffer dump | exactly the bytes the panel was last sent |
 
 The pair is deliberately redundant: if the two images differ, the bug is in
-the flush/paste path; if they agree but the glass looks wrong, the bug is in
+the flush/paste path; if they agree but the canvas looks wrong, the bug is in
 the driver or panel init. The operator CLI's screenshot command rides these
 signals for remote validation.

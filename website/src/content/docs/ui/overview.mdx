@@ -6,10 +6,10 @@ description: The end-to-end tour — from a screen component in Rust to RGB565 p
 import { Card, CardGrid } from '@astrojs/starlight/components';
 import Layers from '../../../assets/diagrams/layers.svg';
 
-yoyopod's entire user interface lives on one small pane of glass: a 240×280
+yoyopod's entire user interface lives on one small canvas: a 240×280
 RGB565 panel driven over SPI, controlled with a single physical button. This
 page is the guided tour — every layer involved in presenting any shape or
-animation on the glass, at 30,000 feet. Each stop links to the deep page for
+animation on the canvas, at 30,000 feet. Each stop links to the deep page for
 that layer. (If you want one picture to hang all of this on first, read
 [The Mental Model](/ui/mental-model/).)
 
@@ -59,7 +59,7 @@ supervisor's side in full.
 ## The pixel tour
 
 What happens between "a screen wants to show something" and light leaving
-the glass, in ten steps:
+the canvas, in ten steps:
 
 1. **A screen component builds a scene graph** — a declarative tree of
    containers, labels, images, and decks in `device/ui/src/components/`.
@@ -86,8 +86,8 @@ the glass, in ten steps:
 9. **The driver streams bytes over SPI** at 100 MHz in 4096-byte chunks
    after setting the panel's address window.
    → [Talking to the Panel](/ui/driver/)
-10. **The ST7789 lights the glass**: a 240×280 window into a 240×320
-    controller, offset by 20 rows. → [The Glass and the Board](/ui/hardware/)
+10. **The ST7789 lights the canvas**: a 240×280 window into a 240×320
+    controller, offset by 20 rows. → [The Canvas and the Board](/ui/hardware/)
 
 ## Layer → source → page
 
@@ -98,5 +98,5 @@ the glass, in ten steps:
 | LVGL 9.5.0 + FFI | `device/ui/src/renderer/` · `device/ui/native/lvgl/` | [LVGL](/ui/lvgl/) · [Rendering](/ui/rendering/) |
 | Input | `device/ui/src/input/` | [Input](/ui/input/) |
 | Panel driver | `device/ui/src/hardware/` | [Driver](/ui/driver/) |
-| The glass | PiSugar Whisplay HAT (ST7789) | [Hardware](/ui/hardware/) |
+| The canvas | PiSugar Whisplay HAT (ST7789) | [Hardware](/ui/hardware/) |
 | Process model & interconnections | `device/ui/src/{worker.rs,transport/}` | [Advanced](/ui/advanced/architecture/) |

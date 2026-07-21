@@ -29,7 +29,7 @@ scheme.
 | **The set builders** read the script and build the set — fresh every time, no memory of the last show | each screen's `props_from` + `scene` pair; stateless and declarative | `components/screens/` |
 | **The stagehands** compare tonight's set with last night's and move *only what differs* | the engine reconciler diffing element trees into `Mutation`s | `engine/reconciler.rs` |
 | **The painter** repaints only the panels the stagehands touched | LVGL 9.5.0 in partial mode, 40-row buffer, dirty areas only | `renderer/` |
-| **The window** shows the result — only changed regions cross the glass | the ST7789 over SPI; `Region` writes, full frames only on transitions | `hardware/whisplay.rs` |
+| **The window** shows the result — only changed regions cross the canvas | the ST7789 over SPI; `Region` writes, full frames only on transitions | `hardware/whisplay.rs` |
 | **The audience** has one buzzer and three ways to press it | the single button: tap / double-tap / hold → `OneButtonMachine` | `input/machine.rs` |
 | **The buzzer note** goes back to the office — the theater never fulfils requests itself | `UiIntent` ("play the next one, please") emitted to the runtime, which tells a worker; the *next script* reflects the result | `transport/outbound.rs` |
 
@@ -65,7 +65,7 @@ The same diff idea, applied three times at three scales:
 | --- | --- |
 | Scene trees | the reconciler emits `Mutation`s only for differing nodes |
 | Pixels | LVGL re-rasterizes only invalidated (dirty) areas |
-| The wire to the glass | only dirty regions cross the SPI bus |
+| The wire to the canvas | only dirty regions cross the SPI bus |
 
 Nothing dirty → nothing rendered → nothing transmitted. On a Zero 2W with
 no GPU and no DMA, this triple diff *is* the performance model.
