@@ -104,6 +104,8 @@ pub(crate) fn apply_accent_raw(
             }
             roles::SYS_MSG
             | roles::HERO_AVATAR_INITIAL
+            | roles::LIST_ROW_FOCUS_INITIAL
+            | roles::LIST_ROW_IDLE_INITIAL
             | roles::STATUS_TIME
             | roles::STATUS_BATTERY_LABEL => {
                 ffi::lv_obj_set_style_text_color(obj.as_ptr(), accent, SELECTOR);

@@ -85,9 +85,11 @@ pub(crate) const CALL_BUTTON_ICON: &str = "call_button_icon";
 
 pub(crate) const LIST_ROW: &str = "list_row";
 pub(crate) const LIST_ROW_FOCUS_ICON: &str = "list_row_focus_icon";
+pub(crate) const LIST_ROW_FOCUS_INITIAL: &str = "list_row_focus_initial";
 pub(crate) const LIST_ROW_FOCUS_SUBTITLE: &str = "list_row_focus_subtitle";
 pub(crate) const LIST_ROW_FOCUS_TITLE: &str = "list_row_focus_title";
 pub(crate) const LIST_ROW_IDLE_ICON: &str = "list_row_idle_icon";
+pub(crate) const LIST_ROW_IDLE_INITIAL: &str = "list_row_idle_initial";
 pub(crate) const LIST_ROW_IDLE_SUBTITLE: &str = "list_row_idle_subtitle";
 pub(crate) const LIST_ROW_IDLE_TITLE: &str = "list_row_idle_title";
 

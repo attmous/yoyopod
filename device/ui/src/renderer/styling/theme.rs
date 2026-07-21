@@ -97,6 +97,7 @@ mod tests {
 
         for role in [
             roles::WHEEL_FOCUS_LABEL,
+            roles::LIST_ROW_FOCUS_INITIAL,
             roles::LIST_ROW_FOCUS_TITLE,
             roles::MEDIA_WHEEL_FOCUS_TITLE,
             roles::SETUP_TILE_NAME,

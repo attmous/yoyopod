@@ -148,6 +148,7 @@ fn foreground_policy(role: &'static str) -> ForegroundPolicy {
             | roles::WHEEL_BADGE_LABEL
             | roles::EMPTY_PLUS_ICON
             | roles::LIST_ROW_FOCUS_ICON
+            | roles::LIST_ROW_FOCUS_INITIAL
             | roles::LIST_ROW_FOCUS_TITLE
             | roles::MEDIA_WHEEL_PEEK_ICON
             | roles::MEDIA_WHEEL_FOCUS_ICON
@@ -253,6 +254,7 @@ mod tests {
         }
         for role in [
             roles::LIST_ROW_IDLE_ICON,
+            roles::LIST_ROW_IDLE_INITIAL,
             roles::REPLAY_DELETE_ICON,
             roles::REPLAY_NEXT_ICON,
         ] {

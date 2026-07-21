@@ -268,9 +268,11 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::HUD,
         roles::LIST_ROW,
         roles::LIST_ROW_FOCUS_ICON,
+        roles::LIST_ROW_FOCUS_INITIAL,
         roles::LIST_ROW_FOCUS_SUBTITLE,
         roles::LIST_ROW_FOCUS_TITLE,
         roles::LIST_ROW_IDLE_ICON,
+        roles::LIST_ROW_IDLE_INITIAL,
         roles::LIST_ROW_IDLE_SUBTITLE,
         roles::LIST_ROW_IDLE_TITLE,
         roles::WHEEL_ITEM,
@@ -671,6 +673,7 @@ mod tests {
         let asset = parse_theme_asset().expect("theme.ron should be valid");
 
         for role in [
+            roles::LIST_ROW_FOCUS_INITIAL,
             roles::LIST_ROW_FOCUS_TITLE,
             roles::MEDIA_WHEEL_FOCUS_TITLE,
             roles::SETUP_TILE_NAME,
