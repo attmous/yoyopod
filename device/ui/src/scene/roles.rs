@@ -90,8 +90,10 @@ pub(crate) const LIST_ROW_TITLE: &str = "list_row_title";
 
 pub(crate) const DECK_WHEEL: &str = "deck_wheel";
 pub(crate) const WHEEL_ITEM: &str = "wheel_item";
-pub(crate) const WHEEL_ICON: &str = "wheel_icon";
-pub(crate) const WHEEL_LABEL: &str = "wheel_label";
+pub(crate) const WHEEL_FOCUS_ICON: &str = "wheel_focus_icon";
+pub(crate) const WHEEL_FOCUS_LABEL: &str = "wheel_focus_label";
+pub(crate) const WHEEL_PEEK_ICON: &str = "wheel_peek_icon";
+pub(crate) const WHEEL_PEEK_LABEL: &str = "wheel_peek_label";
 pub(crate) const TALK_WHEEL_ITEM: &str = "talk_wheel_item";
 pub(crate) const WHEEL_AVATAR: &str = "wheel_avatar";
 pub(crate) const WHEEL_AVATAR_INITIAL: &str = "wheel_avatar_initial";

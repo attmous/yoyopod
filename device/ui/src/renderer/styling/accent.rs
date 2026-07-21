@@ -30,7 +30,8 @@ pub(crate) fn apply_accent_raw(
                 ffi::lv_obj_set_style_image_recolor(obj.as_ptr(), accent, SELECTOR);
                 ffi::lv_obj_set_style_image_recolor_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
             }
-            roles::WHEEL_ICON
+            roles::WHEEL_FOCUS_ICON
+            | roles::WHEEL_PEEK_ICON
             | roles::SETUP_PEEK_ICON
             | roles::SETUP_TILE_ICON
             | roles::SETUP_VOLUME_ICON => {
