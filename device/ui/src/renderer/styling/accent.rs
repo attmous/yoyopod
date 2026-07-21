@@ -32,6 +32,8 @@ pub(crate) fn apply_accent_raw(
             }
             roles::WHEEL_FOCUS_ICON
             | roles::WHEEL_PEEK_ICON
+            | roles::MEDIA_WHEEL_PEEK_ICON
+            | roles::MEDIA_WHEEL_FOCUS_ICON
             | roles::SETUP_PEEK_ICON
             | roles::SETUP_TILE_ICON
             | roles::SETUP_VOLUME_ICON => {
@@ -101,11 +103,16 @@ pub(crate) fn apply_accent_raw(
                 ffi::lv_obj_set_style_bg_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
             }
             roles::SYS_MSG
-            | roles::LIST_ROW_ICON
             | roles::HERO_AVATAR_INITIAL
+            | roles::LIST_ROW_FOCUS_INITIAL
+            | roles::LIST_ROW_IDLE_INITIAL
             | roles::STATUS_TIME
             | roles::STATUS_BATTERY_LABEL => {
                 ffi::lv_obj_set_style_text_color(obj.as_ptr(), accent, SELECTOR);
+            }
+            roles::LIST_ROW_FOCUS_ICON | roles::LIST_ROW_IDLE_ICON => {
+                ffi::lv_obj_set_style_image_recolor(obj.as_ptr(), accent, SELECTOR);
+                ffi::lv_obj_set_style_image_recolor_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
             }
             roles::STATUS_NETWORK_ICON
             | roles::STATUS_GPS_ICON

@@ -27,12 +27,19 @@ pub fn wheel_item(
             .selected(selected)
             .child(image(foreground.icon).icon(icon_key).accent(INK))
             .child(label(foreground.label).text(&model.title)),
-        WheelItemVariant::Media { initial, plate_rgb } => match slot {
-            WheelItemSlot::Previous => {
-                media_peek(roles::MEDIA_WHEEL_PREVIOUS, model, initial, *plate_rgb, key)
-            }
+        WheelItemVariant::Media {
+            icon_key,
+            plate_rgb,
+        } => match slot {
+            WheelItemSlot::Previous => media_peek(
+                roles::MEDIA_WHEEL_PREVIOUS,
+                model,
+                icon_key,
+                *plate_rgb,
+                key,
+            ),
             WheelItemSlot::Next => {
-                media_peek(roles::MEDIA_WHEEL_NEXT, model, initial, *plate_rgb, key)
+                media_peek(roles::MEDIA_WHEEL_NEXT, model, icon_key, *plate_rgb, key)
             }
             WheelItemSlot::Focused => container(roles::MEDIA_WHEEL_FOCUS)
                 .key(key)
@@ -40,7 +47,12 @@ pub fn wheel_item(
                 .child(
                     container(roles::MEDIA_WHEEL_FOCUS_PLATE)
                         .accent(*plate_rgb)
-                        .child(label(roles::MEDIA_WHEEL_FOCUS_INITIAL).text(initial)),
+                        .child(
+                            image(roles::MEDIA_WHEEL_FOCUS_ICON)
+                                .icon(icon_key)
+                                .accent(INK)
+                                .scale_permille(650),
+                        ),
                 )
                 .child(label(roles::MEDIA_WHEEL_FOCUS_TITLE).text(&model.title))
                 .child(label(roles::MEDIA_WHEEL_FOCUS_SUB).text(&model.subtitle)),
@@ -206,7 +218,7 @@ fn setup_peek(
 fn media_peek(
     role: &'static str,
     model: &WheelItemModel,
-    initial: &str,
+    icon_key: &str,
     plate_rgb: u32,
     key: Key,
 ) -> Element {
@@ -216,7 +228,12 @@ fn media_peek(
         .child(
             container(roles::MEDIA_WHEEL_PEEK_PLATE)
                 .accent(plate_rgb)
-                .child(label(roles::MEDIA_WHEEL_PEEK_INITIAL).text(initial)),
+                .child(
+                    image(roles::MEDIA_WHEEL_PEEK_ICON)
+                        .icon(icon_key)
+                        .accent(INK)
+                        .scale_permille(450),
+                ),
         )
         .child(label(roles::MEDIA_WHEEL_PEEK_TITLE).text(&model.title))
 }
@@ -259,5 +276,33 @@ mod tests {
 
         assert_eq!(item.children[0].role, Some(roles::WHEEL_PEEK_ICON));
         assert_eq!(item.children[1].role, Some(roles::WHEEL_PEEK_LABEL));
+    }
+
+    #[test]
+    fn media_wheel_uses_designed_svg_artwork_in_focus_and_peek_plates() {
+        let model = WheelItemModel {
+            title: "Open Classics".to_string(),
+            subtitle: "3 tracks".to_string(),
+            variant: WheelItemVariant::Media {
+                icon_key: "icon_playlists".to_string(),
+                plate_rgb: 0xA9A6E5,
+            },
+        };
+
+        let focus = wheel_item(&model, true, WheelItemSlot::Focused, Key::Indexed(0));
+        let peek = wheel_item(&model, false, WheelItemSlot::Previous, Key::Indexed(0));
+
+        assert_eq!(
+            focus.children[0].children[0].role,
+            Some(roles::MEDIA_WHEEL_FOCUS_ICON)
+        );
+        assert_eq!(
+            focus.children[0].children[0].props.icon_key.as_deref(),
+            Some("icon_playlists")
+        );
+        assert_eq!(
+            peek.children[0].children[0].role,
+            Some(roles::MEDIA_WHEEL_PEEK_ICON)
+        );
     }
 }

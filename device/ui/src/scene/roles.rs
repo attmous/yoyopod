@@ -84,9 +84,14 @@ pub(crate) const CALL_HANGUP_CENTER: &str = "call_hangup_center";
 pub(crate) const CALL_BUTTON_ICON: &str = "call_button_icon";
 
 pub(crate) const LIST_ROW: &str = "list_row";
-pub(crate) const LIST_ROW_ICON: &str = "list_row_icon";
-pub(crate) const LIST_ROW_SUBTITLE: &str = "list_row_subtitle";
-pub(crate) const LIST_ROW_TITLE: &str = "list_row_title";
+pub(crate) const LIST_ROW_FOCUS_ICON: &str = "list_row_focus_icon";
+pub(crate) const LIST_ROW_FOCUS_INITIAL: &str = "list_row_focus_initial";
+pub(crate) const LIST_ROW_FOCUS_SUBTITLE: &str = "list_row_focus_subtitle";
+pub(crate) const LIST_ROW_FOCUS_TITLE: &str = "list_row_focus_title";
+pub(crate) const LIST_ROW_IDLE_ICON: &str = "list_row_idle_icon";
+pub(crate) const LIST_ROW_IDLE_INITIAL: &str = "list_row_idle_initial";
+pub(crate) const LIST_ROW_IDLE_SUBTITLE: &str = "list_row_idle_subtitle";
+pub(crate) const LIST_ROW_IDLE_TITLE: &str = "list_row_idle_title";
 
 pub(crate) const DECK_WHEEL: &str = "deck_wheel";
 pub(crate) const WHEEL_ITEM: &str = "wheel_item";
@@ -114,11 +119,11 @@ pub(crate) const MEDIA_WHEEL_HEADER_DIVIDER: &str = "media_wheel_header_divider"
 pub(crate) const MEDIA_WHEEL_PREVIOUS: &str = "media_wheel_previous";
 pub(crate) const MEDIA_WHEEL_NEXT: &str = "media_wheel_next";
 pub(crate) const MEDIA_WHEEL_PEEK_PLATE: &str = "media_wheel_peek_plate";
-pub(crate) const MEDIA_WHEEL_PEEK_INITIAL: &str = "media_wheel_peek_initial";
+pub(crate) const MEDIA_WHEEL_PEEK_ICON: &str = "media_wheel_peek_icon";
 pub(crate) const MEDIA_WHEEL_PEEK_TITLE: &str = "media_wheel_peek_title";
 pub(crate) const MEDIA_WHEEL_FOCUS: &str = "media_wheel_focus";
 pub(crate) const MEDIA_WHEEL_FOCUS_PLATE: &str = "media_wheel_focus_plate";
-pub(crate) const MEDIA_WHEEL_FOCUS_INITIAL: &str = "media_wheel_focus_initial";
+pub(crate) const MEDIA_WHEEL_FOCUS_ICON: &str = "media_wheel_focus_icon";
 pub(crate) const MEDIA_WHEEL_FOCUS_TITLE: &str = "media_wheel_focus_title";
 pub(crate) const MEDIA_WHEEL_FOCUS_SUB: &str = "media_wheel_focus_sub";
 
