@@ -23,6 +23,8 @@ const NM_AP_FLAGS_PRIVACY: u32 = 0x1;
 const NM_AP_SEC_KEY_MGMT_802_1X: u32 = 0x200;
 const NM_AP_SEC_KEY_MGMT_SAE: u32 = 0x400;
 const NM_AP_SEC_KEY_MGMT_OWE: u32 = 0x800;
+const NM_AUTOCONNECT_PRIORITY_MIN: i32 = -999;
+const NM_AUTOCONNECT_PRIORITY_MAX: i32 = 999;
 const MAX_SAVED_PROFILES: usize = 32;
 const MAX_NEARBY_NETWORKS: usize = 64;
 const SCAN_WAIT_TIMEOUT: Duration = Duration::from_secs(4);
@@ -464,6 +466,19 @@ impl NetworkManagerWifiController {
         ensure_profile_inactive(self.active_profile()?.as_ref(), profile_id)
     }
 
+    fn new_profile_autoconnect_priority(&self) -> Result<i32, WifiOperationError> {
+        let active = self.active_profile()?.ok_or_else(|| {
+            WifiOperationError::new(
+                "wifi_active_profile_required",
+                "An active Wi-Fi network is required before saving another network",
+            )
+        })?;
+        let (_, settings) = self.find_connection(&active.profile_id)?;
+        let active_priority =
+            setting_i32(&settings, "connection", "autoconnect-priority").unwrap_or(0);
+        lower_autoconnect_priority(active_priority)
+    }
+
     fn update_connection(
         &self,
         path: &OwnedObjectPath,
@@ -556,7 +571,8 @@ impl WifiController for NetworkManagerWifiController {
         request: WifiAddProfileRequest,
     ) -> Result<WifiState, WifiOperationError> {
         validate_add_request(&request)?;
-        let settings = build_profile_settings(&request, false)?;
+        let autoconnect_priority = self.new_profile_autoconnect_priority()?;
+        let settings = build_profile_settings(&request, false, autoconnect_priority)?;
         let (path, _result): (OwnedObjectPath, HashMap<String, OwnedValue>) = self
             .settings()?
             .call(
@@ -680,6 +696,18 @@ fn ensure_profile_inactive(
     Ok(())
 }
 
+fn lower_autoconnect_priority(active_priority: i32) -> Result<i32, WifiOperationError> {
+    if !(NM_AUTOCONNECT_PRIORITY_MIN..=NM_AUTOCONNECT_PRIORITY_MAX).contains(&active_priority)
+        || active_priority == NM_AUTOCONNECT_PRIORITY_MIN
+    {
+        return Err(WifiOperationError::new(
+            "wifi_profile_priority_unavailable",
+            "Another Wi-Fi network cannot be saved safely while this profile is active",
+        ));
+    }
+    Ok(active_priority - 1)
+}
+
 fn validate_password(
     security: WifiSecurity,
     password: Option<&str>,
@@ -745,6 +773,7 @@ fn validate_update_request(request: &WifiUpdateProfileRequest) -> Result<(), Wif
 fn build_profile_settings(
     request: &WifiAddProfileRequest,
     autoconnect: bool,
+    autoconnect_priority: i32,
 ) -> Result<NmSettings, WifiOperationError> {
     let mut settings = NmSettings::new();
     settings.insert(
@@ -756,7 +785,10 @@ fn build_profile_settings(
             ),
             ("type".to_string(), owned("802-11-wireless".to_string())?),
             ("autoconnect".to_string(), owned(autoconnect)?),
-            ("autoconnect-priority".to_string(), owned(-100_i32)?),
+            (
+                "autoconnect-priority".to_string(),
+                owned(autoconnect_priority)?,
+            ),
         ]),
     );
     settings.insert(
@@ -832,6 +864,10 @@ fn setting_string(settings: &NmSettings, group: &str, key: &str) -> Option<Strin
 
 fn setting_bool(settings: &NmSettings, group: &str, key: &str) -> Option<bool> {
     bool::try_from(setting_value(settings, group, key)?.clone()).ok()
+}
+
+fn setting_i32(settings: &NmSettings, group: &str, key: &str) -> Option<i32> {
+    i32::try_from(setting_value(settings, group, key)?.clone()).ok()
 }
 
 fn setting_ssid(settings: &NmSettings) -> Option<String> {
@@ -940,5 +976,34 @@ mod tests {
 
         assert_eq!(error.code, "wifi_active_profile_immutable");
         assert!(ensure_profile_inactive(Some(&active), "another-profile").is_ok());
+    }
+
+    #[test]
+    fn new_profile_priority_is_strictly_lower_than_the_active_profile() {
+        assert_eq!(lower_autoconnect_priority(0).unwrap(), -1);
+        assert_eq!(lower_autoconnect_priority(-998).unwrap(), -999);
+        assert!(lower_autoconnect_priority(-999).is_err());
+        assert!(lower_autoconnect_priority(1_000).is_err());
+    }
+
+    #[test]
+    fn new_profile_settings_keep_autoconnect_blocked_until_the_profile_is_saved() {
+        let request = WifiAddProfileRequest {
+            ssid: "Family WiFi".to_string(),
+            security: WifiSecurity::Wpa2Personal,
+            password: Some("safe-test-passphrase".to_string()),
+            hidden: false,
+        };
+
+        let settings = build_profile_settings(&request, false, -1).unwrap();
+
+        assert_eq!(
+            setting_bool(&settings, "connection", "autoconnect"),
+            Some(false)
+        );
+        assert_eq!(
+            setting_i32(&settings, "connection", "autoconnect-priority"),
+            Some(-1)
+        );
     }
 }
