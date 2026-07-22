@@ -10,13 +10,35 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "=4.5.50", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
-serialport = "4.7"
+# The worker opens a configured TTY directly and does not enumerate ports. Keep
+# libudev-backed enumeration disabled so host checks and ARM64 builds stay lean.
+serialport = { version = "4.7", default-features = false }
 thiserror = "2.0"
-time = { version = "0.3", features = ["formatting"] }
+time = { version = "=0.3.36", features = ["formatting"] }
+zbus = { version = "=5.12.0", features = ["blocking-api"] }
+# zbus 5.12 declares a semver-compatible macro range, but newer macro releases
+# target newer zbus internals or Rust toolchains. Pin its companion crates to
+# the Rust-1.82-compatible releases used by zbus 5.12.
+zbus_macros = "=5.12.0"
+zbus_names = "=4.2.0"
+zvariant = "=5.5.2"
+zvariant_derive = "=5.5.2"
+zvariant_utils = "=3.2.0"
+# zbus' async-io backend uses broad compatible ranges. The newest releases in
+# those ranges require Rust 1.85, so keep the last Rust-1.82-compatible set.
+async-executor = "=1.11.0"
+async-io = "=2.3.2"
+async-lock = "=3.3.0"
+async-process = "=2.3.1"
+async-signal = "=0.2.13"
+proc-macro-crate = "=3.4.0"
+toml_parser = "=1.0.4"
+indexmap = "=2.7.1"
+uuid = "=1.11.0"
 yoyopod-protocol = { path = "../protocol" }
 
 [dev-dependencies]

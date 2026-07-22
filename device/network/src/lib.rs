@@ -7,4 +7,5 @@ pub mod protocol;
 pub mod runtime;
 pub mod snapshot;
 pub mod transport;
+pub mod wifi;
 pub mod worker;

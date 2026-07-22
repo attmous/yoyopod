@@ -10,6 +10,8 @@ use serde_json::Value;
 
 use crate::config::CloudHostConfig;
 
+const MAX_MQTT_EVENTS_PER_DRAIN: usize = 64;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum MqttRuntimeEvent {
     Connected,
@@ -75,15 +77,18 @@ impl CloudMqttBackend for RumqttBackend {
         let connected = Arc::new(AtomicBool::new(false));
         let connected_for_thread = Arc::clone(&connected);
         thread::spawn(move || {
+            let mut disconnect_reported = false;
             for notification in connection.iter() {
                 match notification {
                     Ok(Event::Incoming(Incoming::ConnAck(_))) => {
-                        connected_for_thread.store(true, Ordering::SeqCst);
+                        mark_connected(&connected_for_thread, &mut disconnect_reported);
                         let _ = tx.send(MqttRuntimeEvent::Connected);
                     }
                     Ok(Event::Incoming(Incoming::Disconnect)) => {
-                        connected_for_thread.store(false, Ordering::SeqCst);
-                        let _ = tx.send(MqttRuntimeEvent::Disconnected("broker disconnect".into()));
+                        if mark_disconnected(&connected_for_thread, &mut disconnect_reported) {
+                            let _ =
+                                tx.send(MqttRuntimeEvent::Disconnected("broker disconnect".into()));
+                        }
                     }
                     Ok(Event::Incoming(Incoming::Publish(publish))) => {
                         match serde_json::from_slice::<Value>(&publish.payload) {
@@ -99,8 +104,9 @@ impl CloudMqttBackend for RumqttBackend {
                     }
                     Ok(_) => {}
                     Err(error) => {
-                        connected_for_thread.store(false, Ordering::SeqCst);
-                        let _ = tx.send(MqttRuntimeEvent::Disconnected(error.to_string()));
+                        if mark_disconnected(&connected_for_thread, &mut disconnect_reported) {
+                            let _ = tx.send(MqttRuntimeEvent::Disconnected(error.to_string()));
+                        }
                     }
                 }
             }
@@ -140,11 +146,28 @@ impl CloudMqttBackend for RumqttBackend {
             return Vec::new();
         };
         let mut events = Vec::new();
-        while let Ok(event) = rx.try_recv() {
+        while events.len() < MAX_MQTT_EVENTS_PER_DRAIN {
+            let Ok(event) = rx.try_recv() else {
+                break;
+            };
             events.push(event);
         }
         events
     }
+}
+
+fn mark_connected(connected: &AtomicBool, disconnect_reported: &mut bool) {
+    connected.store(true, Ordering::SeqCst);
+    *disconnect_reported = false;
+}
+
+fn mark_disconnected(connected: &AtomicBool, disconnect_reported: &mut bool) -> bool {
+    connected.store(false, Ordering::SeqCst);
+    if *disconnect_reported {
+        return false;
+    }
+    *disconnect_reported = true;
+    true
 }
 
 fn mqtt_options(config: &CloudHostConfig) -> Result<MqttOptions> {
@@ -194,5 +217,42 @@ fn qos_from_u8(qos: u8) -> QoS {
         0 => QoS::AtMostOnce,
         2 => QoS::ExactlyOnce,
         _ => QoS::AtLeastOnce,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn disconnect_events_are_reported_once_until_reconnect() {
+        let connected = AtomicBool::new(true);
+        let mut disconnect_reported = false;
+
+        assert!(mark_disconnected(&connected, &mut disconnect_reported));
+        assert!(!connected.load(Ordering::SeqCst));
+        assert!(!mark_disconnected(&connected, &mut disconnect_reported));
+
+        mark_connected(&connected, &mut disconnect_reported);
+        assert!(connected.load(Ordering::SeqCst));
+        assert!(mark_disconnected(&connected, &mut disconnect_reported));
+    }
+
+    #[test]
+    fn mqtt_event_drain_is_bounded() {
+        let (tx, rx) = mpsc::channel();
+        for index in 0..(MAX_MQTT_EVENTS_PER_DRAIN + 3) {
+            tx.send(MqttRuntimeEvent::Command(json!({ "index": index })))
+                .unwrap();
+        }
+        let mut backend = RumqttBackend {
+            client: None,
+            connected: Arc::new(AtomicBool::new(false)),
+            events: Some(rx),
+        };
+
+        assert_eq!(backend.drain_events().len(), MAX_MQTT_EVENTS_PER_DRAIN);
+        assert_eq!(backend.drain_events().len(), 3);
     }
 }
