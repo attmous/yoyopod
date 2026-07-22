@@ -395,7 +395,7 @@ impl NetworkManagerWifiController {
     ) -> Result<(OwnedObjectPath, NmSettings), WifiOperationError> {
         for path in self.connection_paths()? {
             let settings = self.get_settings(&path)?;
-            if setting_string(&settings, "connection", "uuid").as_deref() == Some(profile_id) {
+            if settings_match_wifi_profile(&settings, profile_id) {
                 return Ok((path, settings));
             }
         }
@@ -839,9 +839,11 @@ impl NetworkManagerWifiController {
                 continue;
             };
             let original = settings.clone();
-            let connection = settings.entry("connection".to_string()).or_default();
-            connection.insert("autoconnect".to_string(), owned(true)?);
-            connection.insert("autoconnect-priority".to_string(), owned(next_priority)?);
+            apply_preferred_profile_settings(
+                &mut settings,
+                profile_id == target_profile_id,
+                next_priority,
+            )?;
             updates.push((path, original, settings));
         }
         for (path, _, settings) in &updates {
@@ -1260,6 +1262,24 @@ fn ensure_profile_inactive(
     Ok(())
 }
 
+fn settings_match_wifi_profile(settings: &NmSettings, profile_id: &str) -> bool {
+    setting_string(settings, "connection", "type").as_deref() == Some("802-11-wireless")
+        && setting_string(settings, "connection", "uuid").as_deref() == Some(profile_id)
+}
+
+fn apply_preferred_profile_settings(
+    settings: &mut NmSettings,
+    is_target: bool,
+    priority: i32,
+) -> Result<(), WifiOperationError> {
+    let connection = settings.entry("connection".to_string()).or_default();
+    if is_target {
+        connection.insert("autoconnect".to_string(), owned(true)?);
+    }
+    connection.insert("autoconnect-priority".to_string(), owned(priority)?);
+    Ok(())
+}
+
 fn lower_autoconnect_priority(active_priority: i32) -> Result<i32, WifiOperationError> {
     if !(NM_AUTOCONNECT_PRIORITY_MIN..=NM_AUTOCONNECT_PRIORITY_MAX).contains(&active_priority)
         || active_priority == NM_AUTOCONNECT_PRIORITY_MIN
@@ -1619,6 +1639,60 @@ mod tests {
 
         assert_eq!(error.code, "wifi_active_profile_immutable");
         assert!(ensure_profile_inactive(Some(&active), "another-profile").is_ok());
+    }
+
+    #[test]
+    fn wifi_profile_lookup_rejects_non_wifi_connections_with_the_same_uuid() {
+        let profile_id = "11111111-1111-4111-8111-111111111111";
+        let wifi = NmSettings::from([(
+            "connection".to_string(),
+            HashMap::from([
+                ("uuid".to_string(), owned(profile_id.to_string()).unwrap()),
+                (
+                    "type".to_string(),
+                    owned("802-11-wireless".to_string()).unwrap(),
+                ),
+            ]),
+        )]);
+        let ethernet = NmSettings::from([(
+            "connection".to_string(),
+            HashMap::from([
+                ("uuid".to_string(), owned(profile_id.to_string()).unwrap()),
+                (
+                    "type".to_string(),
+                    owned("802-3-ethernet".to_string()).unwrap(),
+                ),
+            ]),
+        )]);
+
+        assert!(settings_match_wifi_profile(&wifi, profile_id));
+        assert!(!settings_match_wifi_profile(&ethernet, profile_id));
+    }
+
+    #[test]
+    fn preferred_profile_demotion_preserves_disabled_autoconnect() {
+        let mut demoted = NmSettings::from([(
+            "connection".to_string(),
+            HashMap::from([
+                ("autoconnect".to_string(), owned(false).unwrap()),
+                ("autoconnect-priority".to_string(), owned(999_i32).unwrap()),
+            ]),
+        )]);
+        apply_preferred_profile_settings(&mut demoted, false, 998).unwrap();
+        assert_eq!(
+            setting_bool(&demoted, "connection", "autoconnect"),
+            Some(false)
+        );
+        assert_eq!(
+            setting_i32(&demoted, "connection", "autoconnect-priority"),
+            Some(998)
+        );
+
+        apply_preferred_profile_settings(&mut demoted, true, 999).unwrap();
+        assert_eq!(
+            setting_bool(&demoted, "connection", "autoconnect"),
+            Some(true)
+        );
     }
 
     #[test]
