@@ -47,6 +47,10 @@ const PORTAL_GATEWAY: &str = "10.42.0.1";
 const PORTAL_BIND: &str = "0.0.0.0:80";
 const AP_CONNECTION_ID: &str = "YoYoPod Setup";
 const PORTAL_POLL: Duration = Duration::from_millis(250);
+/// If the user has not submitted a network within this window, tear the hotspot
+/// down and let NetworkManager auto-reconnect the previously active profile so
+/// the device returns online on its own.
+const AP_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Captive-portal probe URLs various mobile OSes fetch to detect a login page;
 /// answering with a redirect makes the setup page pop up automatically.
@@ -240,6 +244,16 @@ fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
         PortalOutcome::Stopped => {
             let _ = status_tx.send(WifiProvisioningState::idle());
         }
+        PortalOutcome::TimedOut => {
+            // Hotspot is already down (above); NetworkManager auto-reconnects the
+            // previously active profile. Surface a brief note, then go idle.
+            let _ = status_tx.send(WifiProvisioningState {
+                active: false,
+                phase: "idle".to_string(),
+                status_text: "Wi‑Fi setup timed out — reconnected to Wi‑Fi.".to_string(),
+                ..WifiProvisioningState::base()
+            });
+        }
         PortalOutcome::Connect(request) => {
             let _ = status_tx.send(WifiProvisioningState::phase(
                 "connecting",
@@ -264,6 +278,7 @@ fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
 
 enum PortalOutcome {
     Stopped,
+    TimedOut,
     Connect(ConnectRequest),
 }
 
@@ -282,11 +297,15 @@ fn serve_portal(
     stop_rx: &Receiver<()>,
 ) -> PortalOutcome {
     let networks_json = serde_json::to_string(networks).unwrap_or_else(|_| "[]".to_string());
+    let deadline = Instant::now() + AP_TIMEOUT;
 
     loop {
         match stop_rx.try_recv() {
             Ok(()) | Err(TryRecvError::Disconnected) => return PortalOutcome::Stopped,
             Err(TryRecvError::Empty) => {}
+        }
+        if Instant::now() >= deadline {
+            return PortalOutcome::TimedOut;
         }
         let request = match server.recv_timeout(PORTAL_POLL) {
             Ok(Some(request)) => request,
