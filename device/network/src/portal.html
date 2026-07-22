@@ -81,8 +81,26 @@
     node.setAttribute("aria-selected", "true");
     ssidInput.value = net.ssid;
     selectedSecurity = net.security || "wpa2_personal";
-    if (selectedSecurity === "open") { pwInput.value = ""; pwInput.disabled = true; }
-    else { pwInput.disabled = false; pwInput.focus(); }
+    if (selectedSecurity === "open") {
+      pwInput.value = ""; pwInput.disabled = true; statusEl.textContent = "";
+      return;
+    }
+    pwInput.disabled = false;
+    pwInput.value = "";
+    if (net.saved) {
+      // The device already has this network saved — pre-fill its password.
+      statusEl.className = "status"; statusEl.textContent = "Filling saved password…";
+      fetch("/secret?ssid=" + encodeURIComponent(net.ssid))
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.password) { pwInput.value = j.password; statusEl.textContent = "Saved password filled in."; }
+          else { statusEl.textContent = ""; pwInput.focus(); }
+        })
+        .catch(function () { statusEl.textContent = ""; pwInput.focus(); });
+    } else {
+      statusEl.textContent = "";
+      pwInput.focus();
+    }
   }
 
   function renderNetworks(nets) {

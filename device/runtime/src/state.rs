@@ -1254,7 +1254,7 @@ impl RuntimeState {
                 self.wifi_setup = WifiSetupRuntimeSnapshot {
                     active: true,
                     phase: "starting".to_string(),
-                    status_text: "Starting Wi‑Fi setup…".to_string(),
+                    status_text: "Switching to Wi-Fi pairing mode...".to_string(),
                     ..WifiSetupRuntimeSnapshot::default()
                 };
             }

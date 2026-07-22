@@ -57,19 +57,6 @@ const PORTAL_POLL: Duration = Duration::from_millis(250);
 /// the device returns online on its own.
 const AP_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// Captive-portal probe URLs various mobile OSes fetch to detect a login page;
-/// answering with a redirect makes the setup page pop up automatically.
-const PROBE_PATHS: &[&str] = &[
-    "/generate_204",
-    "/gen_204",
-    "/hotspot-detect.html",
-    "/library/test/success.html",
-    "/ncsi.txt",
-    "/connecttest.txt",
-    "/canonical.html",
-    "/success.txt",
-];
-
 /// Snapshot of the onboarding flow, serialized verbatim into the
 /// `wifi_provisioning_state` event. Field names match the UI's
 /// `WifiSetupRuntimeSnapshot`. The home-network password is never stored here.
@@ -161,7 +148,7 @@ impl WifiProvisioner {
                 stop_tx,
                 handle: Some(handle),
             },
-            WifiProvisioningState::phase("starting", "Starting Wi-Fi setup..."),
+            WifiProvisioningState::phase("starting", "Switching to Wi-Fi pairing mode..."),
         )
     }
 
@@ -202,7 +189,7 @@ fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
     let networks = scan_networks();
     let _ = status_tx.send(WifiProvisioningState::phase(
         "starting",
-        "Setting up hotspot...",
+        "Switching to Wi-Fi pairing mode...",
     ));
 
     let credentials = ApCredentials::generate();
@@ -354,14 +341,115 @@ fn handle_request(mut request: tiny_http::Request, networks_json: &str) -> Optio
         return None;
     }
 
-    if PROBE_PATHS.contains(&path) {
-        let _ = request.respond(redirect_response());
+    if path == "/secret" {
+        // Pre-fill the password when the user taps a network the device already
+        // has saved. Only the requested SSID's key is returned, and only over
+        // the WPA2-protected setup hotspot.
+        let ssid = query_param(&url, "ssid");
+        let password = saved_wifi_secret(&ssid).unwrap_or_default();
+        let _ = request.respond(json_response(
+            200,
+            &json!({ "password": password }).to_string(),
+        ));
         return None;
     }
 
-    // Everything else (including the OS's captive check on "/") gets the page.
+    // Everything else — including every captive-portal probe (captive.apple.com,
+    // /generate_204, etc.) — gets the page directly. Serving it rather than
+    // redirecting pops the OS "sign in to network" sheet more reliably (notably
+    // on iOS, which sometimes will not follow the redirect).
     let _ = request.respond(html_response(PORTAL_HTML));
     None
+}
+
+/// Extract and percent-decode a query parameter from a request URL.
+fn query_param(url: &str, key: &str) -> String {
+    let Some(query) = url.split('?').nth(1) else {
+        return String::new();
+    };
+    let prefix = format!("{key}=");
+    for pair in query.split('&') {
+        if let Some(value) = pair.strip_prefix(&prefix) {
+            return percent_decode(value);
+        }
+    }
+    String::new()
+}
+
+fn percent_decode(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'+' => {
+                out.push(b' ');
+                index += 1;
+            }
+            b'%' if index + 2 < bytes.len() => {
+                let hi = (bytes[index + 1] as char).to_digit(16);
+                let lo = (bytes[index + 2] as char).to_digit(16);
+                if let (Some(hi), Some(lo)) = (hi, lo) {
+                    out.push((hi * 16 + lo) as u8);
+                    index += 3;
+                } else {
+                    out.push(bytes[index]);
+                    index += 1;
+                }
+            }
+            byte => {
+                out.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Look up the saved PSK for an SSID from NetworkManager, if the device already
+/// has a Wi-Fi profile for it. Best-effort — returns None if not saved or the
+/// secret cannot be read.
+fn saved_wifi_secret(ssid: &str) -> Option<String> {
+    if ssid.is_empty() {
+        return None;
+    }
+    let connection = Connection::system().ok()?;
+    let settings_proxy = proxy(&connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE).ok()?;
+    let paths: Vec<OwnedObjectPath> = settings_proxy.call("ListConnections", &()).ok()?;
+    for path in paths {
+        let Ok(conn) = proxy(&connection, path.as_str(), NM_CONNECTION_INTERFACE) else {
+            continue;
+        };
+        let Ok(settings) = conn.call::<_, _, NmSettings>("GetSettings", &()) else {
+            continue;
+        };
+        if profile_ssid(&settings).as_deref() != Some(ssid) {
+            continue;
+        }
+        if let Ok(secrets) =
+            conn.call::<_, _, NmSettings>("GetSecrets", &("802-11-wireless-security",))
+        {
+            if let Some(psk) = secrets
+                .get("802-11-wireless-security")
+                .and_then(|group| group.get("psk"))
+                .cloned()
+                .and_then(|value| String::try_from(value).ok())
+            {
+                return Some(psk);
+            }
+        }
+    }
+    None
+}
+
+/// Read the SSID (as UTF-8) from a NetworkManager 802-11-wireless profile.
+fn profile_ssid(settings: &NmSettings) -> Option<String> {
+    let bytes = settings
+        .get("802-11-wireless")
+        .and_then(|group| group.get("ssid"))
+        .cloned()
+        .and_then(|value| Vec::<u8>::try_from(value).ok())?;
+    Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn parse_connect(body: &str) -> Result<ConnectRequest, String> {
@@ -795,15 +883,6 @@ fn html_response(body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
     let header = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
         .expect("static header is valid");
     Response::from_string(body.to_string()).with_header(header)
-}
-
-fn redirect_response() -> Response<std::io::Cursor<Vec<u8>>> {
-    let location = format!("http://{PORTAL_GATEWAY}/");
-    let header =
-        Header::from_bytes(&b"Location"[..], location.as_bytes()).expect("location header is valid");
-    Response::from_string(String::new())
-        .with_status_code(302)
-        .with_header(header)
 }
 
 const PORTAL_HTML: &str = include_str!("portal.html");

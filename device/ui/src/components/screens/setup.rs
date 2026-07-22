@@ -175,7 +175,6 @@ fn setup_root_items(snapshot: &RuntimeSnapshot) -> Vec<WheelItemModel> {
             CREAM_2,
             false,
         ),
-        setup_item("About", battery, "setup_about", CREAM_2, false),
         setup_item(
             "Wi-Fi",
             if snapshot.network.connected {
@@ -187,6 +186,7 @@ fn setup_root_items(snapshot: &RuntimeSnapshot) -> Vec<WheelItemModel> {
             PERI,
             false,
         ),
+        setup_item("About", battery, "setup_about", CREAM_2, false),
     ]
 }
 
@@ -210,7 +210,7 @@ fn wifi_status_text(snapshot: &RuntimeSnapshot) -> String {
         return setup.status_text.clone();
     }
     match setup.phase.as_str() {
-        "starting" => "Starting Wi-Fi setup...".to_string(),
+        "starting" => "Switching to Wi-Fi pairing mode...".to_string(),
         "awaiting_join" | "portal_ready" => {
             "Scan with your phone, then pick your network".to_string()
         }

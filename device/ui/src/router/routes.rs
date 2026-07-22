@@ -338,11 +338,11 @@ const SETUP_SELECT: &[SelectionTarget] = &[
     SelectionTarget::PushScreen(UiScreen::SetupContacts),
     SelectionTarget::PushScreen(UiScreen::SetupTheme),
     SelectionTarget::EmitIntent(IntentTemplate::SettingsSpeakNamesToggle),
-    SelectionTarget::PushScreen(UiScreen::SetupAbout),
     SelectionTarget::PushWithIntent {
         screen: UiScreen::SetupWifi,
         intent: IntentTemplate::SettingsWifiSetupStart,
     },
+    SelectionTarget::PushScreen(UiScreen::SetupAbout),
 ];
 const SETUP_VOLUME_SELECT: &[SelectionTarget] = &[SelectionTarget::PopScreen];
 const SETUP_COMPANION_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
