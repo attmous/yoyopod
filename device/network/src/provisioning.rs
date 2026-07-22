@@ -40,9 +40,11 @@ const NM_ACTIVE_STATE_DEACTIVATED: u32 = 4;
 /// before reporting failure (wrong password, DHCP timeout, etc.).
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const CONNECT_POLL: Duration = Duration::from_millis(500);
-/// How long to wait for the AP itself to reach ACTIVATED before we announce the
-/// portal, so the QR is never shown for a hotspot that failed to come up.
-const AP_ACTIVATE_TIMEOUT: Duration = Duration::from_secs(20);
+/// How long to wait for the AP to reach ACTIVATED before announcing the portal.
+/// NetworkManager's shared-mode setup (starting dnsmasq for DHCP/DNS) can take
+/// ~25s on the Pi, so keep this generous; a timeout is treated as "still coming
+/// up" rather than a failure (the AP has already begun broadcasting by then).
+const AP_ACTIVATE_TIMEOUT: Duration = Duration::from_secs(40);
 
 /// NetworkManager `ipv4.method=shared` always hands the AP host this address and
 /// runs a DHCP+DNS server for clients, so the portal lives here on port 80.
@@ -446,8 +448,10 @@ fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
     // failure, delete the autoconnect profile we just created so NetworkManager
     // doesn't keep retrying a bad saved network on later onboarding attempts.
     match wait_for_active(&connection, &active_path, true, CONNECT_TIMEOUT) {
-        Ok(()) => Ok(()),
-        Err(()) => {
+        ActiveWait::Activated => Ok(()),
+        // A station connection that never gets an IPv4 lease in time (or drops)
+        // is a real failure — delete the profile so NM stops retrying it.
+        ActiveWait::Deactivated | ActiveWait::TimedOut => {
             if let Ok(profile) = proxy(&connection, connection_path.as_str(), NM_CONNECTION_INTERFACE)
             {
                 let _ = profile.call::<_, _, ()>("Delete", &());
@@ -457,34 +461,46 @@ fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
     }
 }
 
+/// Result of watching an active connection come up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActiveWait {
+    /// Reached ACTIVATED (and, if required, has an IPv4 address).
+    Activated,
+    /// Explicitly failed / was torn down (rfkill, driver, wrong password, …).
+    Deactivated,
+    /// Neither happened before the deadline — still activating.
+    TimedOut,
+}
+
 /// Poll an active-connection object until it reaches ACTIVATED (optionally with
-/// an IPv4 address), or it deactivates / the deadline passes.
+/// an IPv4 address), it deactivates, or the deadline passes.
 fn wait_for_active(
     connection: &Connection,
     active_path: &OwnedObjectPath,
     require_ipv4: bool,
     timeout: Duration,
-) -> Result<(), ()> {
+) -> ActiveWait {
     let deadline = Instant::now() + timeout;
     loop {
-        let active = proxy(connection, active_path.as_str(), NM_ACTIVE_CONNECTION_INTERFACE)
-            .map_err(|_| ())?;
-        let state: u32 = active.get_property("State").unwrap_or(0);
-        if state == NM_ACTIVE_STATE_ACTIVATED {
-            if !require_ipv4 {
-                return Ok(());
+        if let Ok(active) = proxy(connection, active_path.as_str(), NM_ACTIVE_CONNECTION_INTERFACE)
+        {
+            let state: u32 = active.get_property("State").unwrap_or(0);
+            if state == NM_ACTIVE_STATE_ACTIVATED {
+                if !require_ipv4 {
+                    return ActiveWait::Activated;
+                }
+                let ip4: OwnedObjectPath = active
+                    .get_property("Ip4Config")
+                    .unwrap_or_else(|_| root_path());
+                if ip4.as_str() != "/" {
+                    return ActiveWait::Activated;
+                }
+            } else if state == NM_ACTIVE_STATE_DEACTIVATED {
+                return ActiveWait::Deactivated;
             }
-            let ip4: OwnedObjectPath = active
-                .get_property("Ip4Config")
-                .unwrap_or_else(|_| root_path());
-            if ip4.as_str() != "/" {
-                return Ok(());
-            }
-        } else if state == NM_ACTIVE_STATE_DEACTIVATED {
-            return Err(());
         }
         if Instant::now() >= deadline {
-            return Err(());
+            return ActiveWait::TimedOut;
         }
         thread::sleep(CONNECT_POLL);
     }
@@ -516,20 +532,22 @@ impl Hotspot {
                 )
                 .map_err(|_| "could not create the hotspot".to_string())?;
             let manager = proxy(&connection, NM_PATH, NM_INTERFACE)?;
-            let activation = manager
-                .call::<_, _, OwnedObjectPath>(
-                    "ActivateConnection",
-                    &(path.clone(), device, root_path()),
-                )
-                .map_err(|_| ())
-                // ActivateConnection only means the request was accepted; the AP
-                // can still fail asynchronously (rfkill, driver/AP-mode failure,
-                // shared-mode setup). Wait for it to actually reach ACTIVATED so
-                // the caller never shows a QR for a hotspot that never came up.
-                .and_then(|active| {
+            // ActivateConnection only means the request was accepted; the AP can
+            // still fail asynchronously (rfkill, driver/AP-mode failure,
+            // shared-mode setup). Treat only an explicit DEACTIVATED as a real
+            // failure — a timeout means it's still coming up (NM's dnsmasq setup
+            // is slow) and the radio is already broadcasting, so proceed.
+            let failed = match manager.call::<_, _, OwnedObjectPath>(
+                "ActivateConnection",
+                &(path.clone(), device, root_path()),
+            ) {
+                Err(_) => true,
+                Ok(active) => {
                     wait_for_active(&connection, &active, false, AP_ACTIVATE_TIMEOUT)
-                });
-            if activation.is_err() {
+                        == ActiveWait::Deactivated
+                }
+            };
+            if failed {
                 // Don't leave the AP profile behind if it cannot be brought up
                 // (e.g. a missing polkit "share" grant): delete it before failing
                 // so repeated attempts don't accumulate orphaned "YoYoPod Setup"
