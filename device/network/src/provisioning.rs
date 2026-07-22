@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use serde_json::json;
@@ -31,8 +31,15 @@ const NM_SETTINGS_PATH: &str = "/org/freedesktop/NetworkManager/Settings";
 const NM_SETTINGS_INTERFACE: &str = "org.freedesktop.NetworkManager.Settings";
 const NM_CONNECTION_INTERFACE: &str = "org.freedesktop.NetworkManager.Settings.Connection";
 const NM_DEVICE_INTERFACE: &str = "org.freedesktop.NetworkManager.Device";
+const NM_ACTIVE_CONNECTION_INTERFACE: &str = "org.freedesktop.NetworkManager.Connection.Active";
 const NM_DEVICE_TYPE_WIFI: u32 = 2;
 const NM_SETTINGS_ADD_TO_DISK: u32 = 0x1;
+const NM_ACTIVE_STATE_ACTIVATED: u32 = 2;
+const NM_ACTIVE_STATE_DEACTIVATED: u32 = 4;
+/// How long to wait for the chosen station connection to actually activate
+/// before reporting failure (wrong password, DHCP timeout, etc.).
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const CONNECT_POLL: Duration = Duration::from_millis(500);
 
 /// NetworkManager `ipv4.method=shared` always hands the AP host this address and
 /// runs a DHCP+DNS server for clients, so the portal lives here on port 80.
@@ -198,6 +205,21 @@ fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
         }
     };
 
+    // Bind the captive portal BEFORE announcing it. If port 80 is unavailable
+    // (the service is missing CAP_NET_BIND_SERVICE, or something else holds the
+    // port) surface an error and tear the hotspot down, rather than leaving a
+    // "ready" hotspot with no page behind it and blocking forever.
+    let server = match Server::http(PORTAL_BIND) {
+        Ok(server) => server,
+        Err(_) => {
+            hotspot.stop();
+            let _ = status_tx.send(WifiProvisioningState::error(
+                "Wi‑Fi setup could not open its setup page. Please try again.",
+            ));
+            return;
+        }
+    };
+
     let ready = WifiProvisioningState {
         phase: "portal_ready".to_string(),
         ap_ssid: credentials.ssid.clone(),
@@ -209,7 +231,7 @@ fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
     };
     let _ = status_tx.send(ready);
 
-    let outcome = serve_portal(&networks, stop_rx);
+    let outcome = serve_portal(server, &networks, stop_rx);
 
     // Whatever happens next, the hotspot must come down so the radio is free.
     hotspot.stop();
@@ -254,16 +276,11 @@ struct ConnectRequest {
 
 /// Run the captive-portal HTTP server until the user submits a network or the
 /// worker asks us to stop.
-fn serve_portal(networks: &[PortalNetwork], stop_rx: &Receiver<()>) -> PortalOutcome {
-    let server = match Server::http(PORTAL_BIND) {
-        Ok(server) => server,
-        // If we cannot bind (e.g. missing CAP_NET_BIND_SERVICE), there is nothing
-        // to serve; wait for a stop signal so the hotspot still tears down cleanly.
-        Err(_) => {
-            let _ = stop_rx.recv();
-            return PortalOutcome::Stopped;
-        }
-    };
+fn serve_portal(
+    server: Server,
+    networks: &[PortalNetwork],
+    stop_rx: &Receiver<()>,
+) -> PortalOutcome {
     let networks_json = serde_json::to_string(networks).unwrap_or_else(|_| "[]".to_string());
 
     loop {
@@ -380,24 +397,52 @@ fn scan_networks() -> Vec<PortalNetwork> {
 /// creates an autoconnect profile and activates it directly.
 fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
     let connection = Connection::system().map_err(|_| "Wi‑Fi is unavailable".to_string())?;
-    let device = wifi_device_path(&connection)?;
-    let settings = build_station_settings(request)?;
-    let settings_proxy = proxy(&connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE)?;
-    let (path, _result): (OwnedObjectPath, HashMap<String, OwnedValue>) = settings_proxy
-        .call(
-            "AddConnection2",
-            &(
-                settings,
-                NM_SETTINGS_ADD_TO_DISK,
-                HashMap::<String, OwnedValue>::new(),
-            ),
-        )
-        .map_err(|_| "could not save the network".to_string())?;
-    let manager = proxy(&connection, NM_PATH, NM_INTERFACE)?;
-    let _: OwnedObjectPath = manager
-        .call("ActivateConnection", &(path, device, root_path()))
-        .map_err(|_| "could not connect to the network".to_string())?;
-    Ok(())
+    let active_path = {
+        let device = wifi_device_path(&connection)?;
+        let settings = build_station_settings(request)?;
+        let settings_proxy = proxy(&connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE)?;
+        let (path, _result): (OwnedObjectPath, HashMap<String, OwnedValue>) = settings_proxy
+            .call(
+                "AddConnection2",
+                &(
+                    settings,
+                    NM_SETTINGS_ADD_TO_DISK,
+                    HashMap::<String, OwnedValue>::new(),
+                ),
+            )
+            .map_err(|_| "could not save the network".to_string())?;
+        let manager = proxy(&connection, NM_PATH, NM_INTERFACE)?;
+        manager
+            .call::<_, _, OwnedObjectPath>("ActivateConnection", &(path, device, root_path()))
+            .map_err(|_| "could not connect to the network".to_string())?
+    };
+    // ActivateConnection returns as soon as the request is accepted, before the
+    // station link is really up — so a wrong password or DHCP failure would
+    // otherwise be reported as success. Wait for the active connection to reach
+    // ACTIVATED with an IPv4 address (or fail/time out) before returning.
+    wait_for_activation(&connection, &active_path)
+}
+
+fn wait_for_activation(connection: &Connection, active_path: &OwnedObjectPath) -> Result<(), String> {
+    let deadline = Instant::now() + CONNECT_TIMEOUT;
+    loop {
+        let active = proxy(connection, active_path.as_str(), NM_ACTIVE_CONNECTION_INTERFACE)?;
+        let state: u32 = active.get_property("State").unwrap_or(0);
+        if state == NM_ACTIVE_STATE_ACTIVATED {
+            let ip4: OwnedObjectPath = active
+                .get_property("Ip4Config")
+                .unwrap_or_else(|_| root_path());
+            if ip4.as_str() != "/" {
+                return Ok(());
+            }
+        } else if state == NM_ACTIVE_STATE_DEACTIVATED {
+            return Err("Could not join that network — check the password.".to_string());
+        }
+        if Instant::now() >= deadline {
+            return Err("The network did not connect in time.".to_string());
+        }
+        thread::sleep(CONNECT_POLL);
+    }
 }
 
 /// A WPA2 hotspot connection managed through its lifetime by NetworkManager.

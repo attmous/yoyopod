@@ -112,6 +112,12 @@ impl RuntimeEvent {
             Self::UiScreenChanged { screen } => {
                 if !matches!(screen, UiScreen::Loading | UiScreen::Error) {
                     state.current_screen = *screen;
+                    // Deactivate the onboarding UI state when the user navigates
+                    // away from the Wi-Fi setup screen; the worker command that
+                    // actually stops provisioning is emitted in commands_for_event.
+                    if *screen != UiScreen::SetupWifi && state.wifi_setup.active {
+                        state.wifi_setup = Default::default();
+                    }
                 }
             }
             Self::WorkerError { domain, message } => {
@@ -299,9 +305,29 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
                 ),
             }]
         }
+        RuntimeEvent::UiScreenChanged { screen } => {
+            // Leaving the Wi-Fi setup screen by ANY path — Back, Home, or the
+            // one-button home-hold (which maps to Home, not Back) — must tear the
+            // onboarding hotspot down so it stops owning the single Wi-Fi radio.
+            // commands_for_event runs on the pre-apply state, so wifi_setup.active
+            // still marks an in-progress session here.
+            if state.wifi_setup.active
+                && !matches!(
+                    screen,
+                    UiScreen::SetupWifi | UiScreen::Loading | UiScreen::Error
+                )
+            {
+                vec![worker_command(
+                    WorkerDomain::Network,
+                    "wifi_provisioning_stop",
+                    empty_payload(),
+                )]
+            } else {
+                Vec::new()
+            }
+        }
         RuntimeEvent::WorkerReady { .. }
         | RuntimeEvent::CloudSnapshot(_)
-        | RuntimeEvent::UiScreenChanged { .. }
         | RuntimeEvent::WorkerError { .. }
         | RuntimeEvent::WorkerExited { .. }
         | RuntimeEvent::Ignored => Vec::new(),

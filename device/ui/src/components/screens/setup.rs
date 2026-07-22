@@ -349,6 +349,14 @@ mod tests {
         let scene = scene(UiScreen::Setup, &snapshot, 0, defaults_for(UiScreen::Setup));
         assert_eq!(scene.backdrop, Backdrop::Solid(STAGE_CORAL));
         assert_eq!(scene.decks[0].items.len(), 7);
+        // Every wheel item must be reachable: the focus count that bounds
+        // navigation has to match the number of rendered items, or trailing
+        // items (like Wi‑Fi) become unselectable and get skipped.
+        assert_eq!(
+            crate::application::focus::focus_count(UiScreen::Setup, &snapshot, None, None, 0),
+            scene.decks[0].items.len(),
+            "Setup focus_count must match the number of setup wheel items"
+        );
         assert_eq!(scene.decks[0].recycle_window, Some(3));
         assert_eq!(
             scene
