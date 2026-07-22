@@ -244,7 +244,7 @@ where
     C: ModemController,
     W: Write,
 {
-    // While the hotspot/onboarding flow owns the radio, station-mode Wi‑Fi
+    // While the hotspot/onboarding flow owns the radio, station-mode Wi-Fi
     // commands would fight it; reject them until it stops.
     if provisioning.is_some()
         && envelope.message_type.starts_with("wifi_")
@@ -281,12 +281,12 @@ where
             ),
         )?;
         // The runtime already applied WifiSetupStart locally (screen shows
-        // "Starting…") and ignores the uncorrelated wifi_error above, so a
+        // "Starting...") and ignores the uncorrelated wifi_error above, so a
         // refused start would hang the screen. Clear it with an error state.
         if envelope.message_type == "wifi_provisioning_start" {
             emit_provisioning_state(
                 output,
-                &WifiProvisioningState::error("Wi-Fi is busy — try again in a moment."),
+                &WifiProvisioningState::error("Wi-Fi is busy - try again in a moment."),
             )?;
         }
         return Ok(LoopControl::Continue);

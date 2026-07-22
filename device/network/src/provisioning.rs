@@ -1,11 +1,11 @@
-//! On-device Wi‑Fi onboarding: put the radio into Access Point mode, serve a
+//! On-device Wi-Fi onboarding: put the radio into Access Point mode, serve a
 //! captive-portal web page, and connect the device to the home network the user
 //! picks there.
 //!
-//! The device has a single Wi‑Fi radio, so it cannot host an AP and scan at the
+//! The device has a single Wi-Fi radio, so it cannot host an AP and scan at the
 //! same time. The flow is therefore: scan + cache nearby networks, bring up a
-//! WPA2 hotspot (NetworkManager `mode=ap`, `ipv4=shared`), run the portal, and —
-//! once the user submits a network — tear the hotspot down and join as a station.
+//! WPA2 hotspot (NetworkManager `mode=ap`, `ipv4=shared`), run the portal, and -
+//! once the user submits a network - tear the hotspot down and join as a station.
 //!
 //! The whole lifecycle runs on a background thread; status updates flow back to
 //! the worker over a channel and are surfaced to the UI as `wifi_provisioning_state`.
@@ -161,7 +161,7 @@ impl WifiProvisioner {
                 stop_tx,
                 handle: Some(handle),
             },
-            WifiProvisioningState::phase("starting", "Starting Wi‑Fi setup…"),
+            WifiProvisioningState::phase("starting", "Starting Wi-Fi setup..."),
         )
     }
 
@@ -202,7 +202,7 @@ fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
     let networks = scan_networks();
     let _ = status_tx.send(WifiProvisioningState::phase(
         "starting",
-        "Setting up hotspot…",
+        "Setting up hotspot...",
     ));
 
     let credentials = ApCredentials::generate();
@@ -223,7 +223,7 @@ fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
         Err(_) => {
             hotspot.stop();
             let _ = status_tx.send(WifiProvisioningState::error(
-                "Wi‑Fi setup could not open its setup page. Please try again.",
+                "Wi-Fi setup could not open its setup page. Please try again.",
             ));
             return;
         }
@@ -255,14 +255,14 @@ fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
             let _ = status_tx.send(WifiProvisioningState {
                 active: false,
                 phase: "idle".to_string(),
-                status_text: "Wi‑Fi setup timed out — reconnected to Wi‑Fi.".to_string(),
+                status_text: "Wi-Fi setup timed out - reconnected to Wi-Fi.".to_string(),
                 ..WifiProvisioningState::base()
             });
         }
         PortalOutcome::Connect(request) => {
             let _ = status_tx.send(WifiProvisioningState::phase(
                 "connecting",
-                &format!("Connecting to {}…", request.ssid),
+                &format!("Connecting to {}...", request.ssid),
             ));
             match connect_to_network(&request) {
                 Ok(()) => {
@@ -420,7 +420,7 @@ fn scan_networks() -> Vec<PortalNetwork> {
 /// runs with no active station connection (the AP is being torn down), so it
 /// creates an autoconnect profile and activates it directly.
 fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
-    let connection = Connection::system().map_err(|_| "Wi‑Fi is unavailable".to_string())?;
+    let connection = Connection::system().map_err(|_| "Wi-Fi is unavailable".to_string())?;
     let (connection_path, active_path) = {
         let device = wifi_device_path(&connection)?;
         let settings = build_station_settings(request)?;
@@ -442,7 +442,7 @@ fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
         (path, active)
     };
     // ActivateConnection returns as soon as the request is accepted, before the
-    // station link is really up — so a wrong password or DHCP failure would
+    // station link is really up - so a wrong password or DHCP failure would
     // otherwise be reported as success. Wait for the active connection to reach
     // ACTIVATED with an IPv4 address (or fail/time out) before returning. On
     // failure, delete the autoconnect profile we just created so NetworkManager
@@ -450,13 +450,13 @@ fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
     match wait_for_active(&connection, &active_path, true, CONNECT_TIMEOUT) {
         ActiveWait::Activated => Ok(()),
         // A station connection that never gets an IPv4 lease in time (or drops)
-        // is a real failure — delete the profile so NM stops retrying it.
+        // is a real failure - delete the profile so NM stops retrying it.
         ActiveWait::Deactivated | ActiveWait::TimedOut => {
             if let Ok(profile) = proxy(&connection, connection_path.as_str(), NM_CONNECTION_INTERFACE)
             {
                 let _ = profile.call::<_, _, ()>("Delete", &());
             }
-            Err("Could not join that network — check the password.".to_string())
+            Err("Could not join that network - check the password.".to_string())
         }
     }
 }
@@ -466,9 +466,9 @@ fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
 enum ActiveWait {
     /// Reached ACTIVATED (and, if required, has an IPv4 address).
     Activated,
-    /// Explicitly failed / was torn down (rfkill, driver, wrong password, …).
+    /// Explicitly failed / was torn down (rfkill, driver, wrong password, ...).
     Deactivated,
-    /// Neither happened before the deadline — still activating.
+    /// Neither happened before the deadline - still activating.
     TimedOut,
 }
 
@@ -514,7 +514,7 @@ struct Hotspot {
 
 impl Hotspot {
     fn start(credentials: &ApCredentials) -> Result<Self, String> {
-        let connection = Connection::system().map_err(|_| "Wi‑Fi is unavailable".to_string())?;
+        let connection = Connection::system().map_err(|_| "Wi-Fi is unavailable".to_string())?;
         // Scope the D-Bus proxies so their borrow of `connection` ends before it
         // is moved into the returned handle.
         let path = {
@@ -535,7 +535,7 @@ impl Hotspot {
             // ActivateConnection only means the request was accepted; the AP can
             // still fail asynchronously (rfkill, driver/AP-mode failure,
             // shared-mode setup). Treat only an explicit DEACTIVATED as a real
-            // failure — a timeout means it's still coming up (NM's dnsmasq setup
+            // failure - a timeout means it's still coming up (NM's dnsmasq setup
             // is slow) and the radio is already broadcasting, so proceed.
             let failed = match manager.call::<_, _, OwnedObjectPath>(
                 "ActivateConnection",
@@ -602,7 +602,7 @@ impl ApCredentials {
         }
     }
 
-    /// Standard Wi‑Fi-join URI so a phone camera offers to join the hotspot.
+    /// Standard Wi-Fi-join URI so a phone camera offers to join the hotspot.
     fn qr_payload(&self) -> String {
         format!(
             "WIFI:S:{};T:WPA;P:{};;",
@@ -700,7 +700,7 @@ fn wifi_device_path(connection: &Connection) -> Result<OwnedObjectPath, String> 
     let manager = proxy(connection, NM_PATH, NM_INTERFACE)?;
     let paths: Vec<OwnedObjectPath> = manager
         .call("GetDevices", &())
-        .map_err(|_| "Wi‑Fi is unavailable".to_string())?;
+        .map_err(|_| "Wi-Fi is unavailable".to_string())?;
     paths
         .into_iter()
         .find(|path| {
@@ -712,7 +712,7 @@ fn wifi_device_path(connection: &Connection) -> Result<OwnedObjectPath, String> 
                 })
                 .is_ok_and(|device_type| device_type == NM_DEVICE_TYPE_WIFI)
         })
-        .ok_or_else(|| "no Wi‑Fi radio found".to_string())
+        .ok_or_else(|| "no Wi-Fi radio found".to_string())
 }
 
 fn proxy<'a>(
@@ -721,7 +721,7 @@ fn proxy<'a>(
     interface: &'a str,
 ) -> Result<Proxy<'a>, String> {
     Proxy::new(connection, NM_SERVICE, path, interface)
-        .map_err(|_| "Wi‑Fi is unavailable".to_string())
+        .map_err(|_| "Wi-Fi is unavailable".to_string())
 }
 
 fn owned<T>(value: T) -> Result<OwnedValue, String>
@@ -731,7 +731,7 @@ where
     let value: Value<'static> = value.into();
     value
         .try_to_owned()
-        .map_err(|_| "could not encode Wi‑Fi settings".to_string())
+        .map_err(|_| "could not encode Wi-Fi settings".to_string())
 }
 
 fn root_path() -> OwnedObjectPath {

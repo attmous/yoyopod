@@ -177,7 +177,7 @@ fn setup_root_items(snapshot: &RuntimeSnapshot) -> Vec<WheelItemModel> {
         ),
         setup_item("About", battery, "setup_about", CREAM_2, false),
         setup_item(
-            "Wi‑Fi",
+            "Wi-Fi",
             if snapshot.network.connected {
                 "Connected"
             } else {
@@ -210,13 +210,13 @@ fn wifi_status_text(snapshot: &RuntimeSnapshot) -> String {
         return setup.status_text.clone();
     }
     match setup.phase.as_str() {
-        "starting" => "Starting Wi‑Fi setup…".to_string(),
+        "starting" => "Starting Wi-Fi setup...".to_string(),
         "awaiting_join" | "portal_ready" => {
             "Scan with your phone, then pick your network".to_string()
         }
-        "connecting" => "Connecting to your network…".to_string(),
+        "connecting" => "Connecting to your network...".to_string(),
         "connected" => "Connected! You can go back now.".to_string(),
-        _ => "Preparing Wi‑Fi setup…".to_string(),
+        _ => "Preparing Wi-Fi setup...".to_string(),
     }
 }
 
@@ -351,7 +351,7 @@ mod tests {
         assert_eq!(scene.decks[0].items.len(), 7);
         // Every wheel item must be reachable: the focus count that bounds
         // navigation has to match the number of rendered items, or trailing
-        // items (like Wi‑Fi) become unselectable and get skipped.
+        // items (like Wi-Fi) become unselectable and get skipped.
         assert_eq!(
             crate::application::focus::focus_count(UiScreen::Setup, &snapshot, None, None, 0),
             scene.decks[0].items.len(),

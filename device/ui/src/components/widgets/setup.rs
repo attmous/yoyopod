@@ -72,7 +72,7 @@ pub fn setup_about(model: &SetupAboutModel) -> Element {
 }
 
 /// Rendered size of the QR. Must match `lv_qrcode_set_size` in the renderer's
-/// `create_qrcode_object`. The Wi‑Fi-join payload is short (~40 bytes → a
+/// `create_qrcode_object`. The Wi-Fi-join payload is short (~40 bytes → a
 /// version-3 QR), so 132px stays comfortably scannable while leaving room on the
 /// 240×280 panel for the hotspot name/key and a status line.
 const QR_SIZE: i32 = 132;
@@ -80,12 +80,12 @@ const QR_SIZE: i32 = 132;
 pub fn setup_wifi(model: &WifiSetupModel) -> Element {
     let root = container(roles::SETUP_ABOUT).key(Key::Static("setup_wifi"));
 
-    // Once the hotspot is up the worker supplies a Wi‑Fi-join payload; show it as
+    // Once the hotspot is up the worker supplies a Wi-Fi-join payload; show it as
     // a QR the phone scans to auto-join. Before that (starting/connecting/error)
     // there is no payload, so the screen shows a centered status message.
     if model.qr_payload.is_empty() {
         let status = if model.status_text.is_empty() {
-            "Preparing Wi‑Fi setup…".to_string()
+            "Preparing Wi-Fi setup...".to_string()
         } else {
             model.status_text.clone()
         };

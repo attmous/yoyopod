@@ -107,7 +107,7 @@ fn title_for_screen(
         UiScreen::SetupContacts => "Contacts".to_string(),
         UiScreen::SetupTheme => "Theme".to_string(),
         UiScreen::SetupAbout => "About".to_string(),
-        UiScreen::SetupWifi => "Wi‑Fi".to_string(),
+        UiScreen::SetupWifi => "Wi-Fi".to_string(),
         UiScreen::Loading => "Loading".to_string(),
         UiScreen::Error => "Error".to_string(),
     }
