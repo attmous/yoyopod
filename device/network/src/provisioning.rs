@@ -471,9 +471,24 @@ impl Hotspot {
                 )
                 .map_err(|_| "could not create the hotspot".to_string())?;
             let manager = proxy(&connection, NM_PATH, NM_INTERFACE)?;
-            let _: OwnedObjectPath = manager
-                .call("ActivateConnection", &(path.clone(), device, root_path()))
-                .map_err(|_| "could not start the hotspot".to_string())?;
+            if manager
+                .call::<_, _, OwnedObjectPath>(
+                    "ActivateConnection",
+                    &(path.clone(), device, root_path()),
+                )
+                .is_err()
+            {
+                // Don't leave the AP profile behind if it cannot be activated
+                // (e.g. a missing polkit "share" grant): delete it before failing
+                // so repeated attempts don't accumulate orphaned "YoYoPod Setup"
+                // connections.
+                if let Ok(connection_proxy) =
+                    proxy(&connection, path.as_str(), NM_CONNECTION_INTERFACE)
+                {
+                    let _ = connection_proxy.call::<_, _, ()>("Delete", &());
+                }
+                return Err("could not start the hotspot".to_string());
+            }
             path
         };
         Ok(Self { connection, path })

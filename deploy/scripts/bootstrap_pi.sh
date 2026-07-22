@@ -99,6 +99,22 @@ cat > "/etc/NetworkManager/dnsmasq-shared.d/010-yoyopod-captive.conf" <<'EOF'
 address=/#/10.42.0.1
 EOF
 
+# 3c. Authorize the network service to bring up the Wi-Fi setup "shared" AP
+# hotspot. NetworkManager's wifi.share.* polkit actions are only implicitly
+# granted to active local sessions, but the service runs as a non-login systemd
+# session, so without this rule NetworkManager denies AP activation with
+# "Not authorized to share connections via wifi."
+cat > "/etc/polkit-1/rules.d/50-yoyopod-wifi-share.rules" <<'EOF'
+// Written by bootstrap_pi.sh - YoYoPod Wi-Fi setup hotspot authorization.
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.freedesktop.NetworkManager.wifi.share.protected" ||
+         action.id == "org.freedesktop.NetworkManager.wifi.share.open") &&
+        subject.isInGroup("netdev")) {
+        return polkit.Result.YES;
+    }
+});
+EOF
+
 # 4. EnvironmentFiles with the lane roots.
 cat > "/etc/default/yoyopod-prod" <<EOF
 # /etc/default/yoyopod-prod - written by bootstrap_pi.sh
