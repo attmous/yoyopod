@@ -259,14 +259,30 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
                 "payload": candidate,
             }),
         )],
-        RuntimeEvent::WifiProvisioningState(provisioning) => vec![worker_command(
-            WorkerDomain::Cloud,
-            "cloud.publish_event",
-            json!({
-                "event_type": "wifi_provisioning_state",
-                "payload": provisioning,
-            }),
-        )],
+        RuntimeEvent::WifiProvisioningState(provisioning) => {
+            // The raw payload carries the hotspot password and the QR (which
+            // embeds it). Never forward those to the cloud/MQTT — publish only
+            // the lifecycle phase/status so the dashboard can still observe it.
+            let field = |key: &str| {
+                provisioning
+                    .get(key)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null)
+            };
+            vec![worker_command(
+                WorkerDomain::Cloud,
+                "cloud.publish_event",
+                json!({
+                    "event_type": "wifi_provisioning_state",
+                    "payload": {
+                        "active": field("active"),
+                        "phase": field("phase"),
+                        "status_text": field("status_text"),
+                        "error": field("error"),
+                    },
+                }),
+            )]
+        }
         RuntimeEvent::PowerSnapshot(snapshot) => commands_for_power_snapshot(state, snapshot),
         RuntimeEvent::VoiceTranscript(snapshot) => with_ask_log(
             commands_for_voice_transcript(state, snapshot),

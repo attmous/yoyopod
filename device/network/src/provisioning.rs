@@ -40,6 +40,9 @@ const NM_ACTIVE_STATE_DEACTIVATED: u32 = 4;
 /// before reporting failure (wrong password, DHCP timeout, etc.).
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const CONNECT_POLL: Duration = Duration::from_millis(500);
+/// How long to wait for the AP itself to reach ACTIVATED before we announce the
+/// portal, so the QR is never shown for a hotspot that failed to come up.
+const AP_ACTIVATE_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// NetworkManager `ipv4.method=shared` always hands the AP host this address and
 /// runs a DHCP+DNS server for clients, so the portal lives here on port 80.
@@ -116,7 +119,7 @@ impl WifiProvisioningState {
         }
     }
 
-    fn error(message: &str) -> Self {
+    pub fn error(message: &str) -> Self {
         Self {
             active: false,
             phase: "error".to_string(),
@@ -416,7 +419,7 @@ fn scan_networks() -> Vec<PortalNetwork> {
 /// creates an autoconnect profile and activates it directly.
 fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
     let connection = Connection::system().map_err(|_| "Wi‑Fi is unavailable".to_string())?;
-    let active_path = {
+    let (connection_path, active_path) = {
         let device = wifi_device_path(&connection)?;
         let settings = build_station_settings(request)?;
         let settings_proxy = proxy(&connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE)?;
@@ -431,23 +434,46 @@ fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
             )
             .map_err(|_| "could not save the network".to_string())?;
         let manager = proxy(&connection, NM_PATH, NM_INTERFACE)?;
-        manager
-            .call::<_, _, OwnedObjectPath>("ActivateConnection", &(path, device, root_path()))
-            .map_err(|_| "could not connect to the network".to_string())?
+        let active: OwnedObjectPath = manager
+            .call("ActivateConnection", &(path.clone(), device, root_path()))
+            .map_err(|_| "could not connect to the network".to_string())?;
+        (path, active)
     };
     // ActivateConnection returns as soon as the request is accepted, before the
     // station link is really up — so a wrong password or DHCP failure would
     // otherwise be reported as success. Wait for the active connection to reach
-    // ACTIVATED with an IPv4 address (or fail/time out) before returning.
-    wait_for_activation(&connection, &active_path)
+    // ACTIVATED with an IPv4 address (or fail/time out) before returning. On
+    // failure, delete the autoconnect profile we just created so NetworkManager
+    // doesn't keep retrying a bad saved network on later onboarding attempts.
+    match wait_for_active(&connection, &active_path, true, CONNECT_TIMEOUT) {
+        Ok(()) => Ok(()),
+        Err(()) => {
+            if let Ok(profile) = proxy(&connection, connection_path.as_str(), NM_CONNECTION_INTERFACE)
+            {
+                let _ = profile.call::<_, _, ()>("Delete", &());
+            }
+            Err("Could not join that network — check the password.".to_string())
+        }
+    }
 }
 
-fn wait_for_activation(connection: &Connection, active_path: &OwnedObjectPath) -> Result<(), String> {
-    let deadline = Instant::now() + CONNECT_TIMEOUT;
+/// Poll an active-connection object until it reaches ACTIVATED (optionally with
+/// an IPv4 address), or it deactivates / the deadline passes.
+fn wait_for_active(
+    connection: &Connection,
+    active_path: &OwnedObjectPath,
+    require_ipv4: bool,
+    timeout: Duration,
+) -> Result<(), ()> {
+    let deadline = Instant::now() + timeout;
     loop {
-        let active = proxy(connection, active_path.as_str(), NM_ACTIVE_CONNECTION_INTERFACE)?;
+        let active = proxy(connection, active_path.as_str(), NM_ACTIVE_CONNECTION_INTERFACE)
+            .map_err(|_| ())?;
         let state: u32 = active.get_property("State").unwrap_or(0);
         if state == NM_ACTIVE_STATE_ACTIVATED {
+            if !require_ipv4 {
+                return Ok(());
+            }
             let ip4: OwnedObjectPath = active
                 .get_property("Ip4Config")
                 .unwrap_or_else(|_| root_path());
@@ -455,10 +481,10 @@ fn wait_for_activation(connection: &Connection, active_path: &OwnedObjectPath) -
                 return Ok(());
             }
         } else if state == NM_ACTIVE_STATE_DEACTIVATED {
-            return Err("Could not join that network — check the password.".to_string());
+            return Err(());
         }
         if Instant::now() >= deadline {
-            return Err("The network did not connect in time.".to_string());
+            return Err(());
         }
         thread::sleep(CONNECT_POLL);
     }
@@ -490,14 +516,21 @@ impl Hotspot {
                 )
                 .map_err(|_| "could not create the hotspot".to_string())?;
             let manager = proxy(&connection, NM_PATH, NM_INTERFACE)?;
-            if manager
+            let activation = manager
                 .call::<_, _, OwnedObjectPath>(
                     "ActivateConnection",
                     &(path.clone(), device, root_path()),
                 )
-                .is_err()
-            {
-                // Don't leave the AP profile behind if it cannot be activated
+                .map_err(|_| ())
+                // ActivateConnection only means the request was accepted; the AP
+                // can still fail asynchronously (rfkill, driver/AP-mode failure,
+                // shared-mode setup). Wait for it to actually reach ACTIVATED so
+                // the caller never shows a QR for a hotspot that never came up.
+                .and_then(|active| {
+                    wait_for_active(&connection, &active, false, AP_ACTIVATE_TIMEOUT)
+                });
+            if activation.is_err() {
+                // Don't leave the AP profile behind if it cannot be brought up
                 // (e.g. a missing polkit "share" grant): delete it before failing
                 // so repeated attempts don't accumulate orphaned "YoYoPod Setup"
                 // connections.

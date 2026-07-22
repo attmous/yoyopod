@@ -280,6 +280,15 @@ where
                 "Another Wi-Fi connectivity change is already in progress",
             ),
         )?;
+        // The runtime already applied WifiSetupStart locally (screen shows
+        // "Starting…") and ignores the uncorrelated wifi_error above, so a
+        // refused start would hang the screen. Clear it with an error state.
+        if envelope.message_type == "wifi_provisioning_start" {
+            emit_provisioning_state(
+                output,
+                &WifiProvisioningState::error("Wi-Fi is busy — try again in a moment."),
+            )?;
+        }
         return Ok(LoopControl::Continue);
     }
 
@@ -617,7 +626,13 @@ fn service_provisioning(
         finished = worker.finished();
     }
     if finished {
-        if let Some(worker) = provisioning.take() {
+        if let Some(mut worker) = provisioning.take() {
+            // Drain once more before dropping the receiver: the thread may have
+            // sent its terminal connected/error/idle update in the window between
+            // the drain above and observing `finished`.
+            for state in worker.drain() {
+                emit_provisioning_state(output, &state)?;
+            }
             worker.join();
         }
     }

@@ -66,10 +66,10 @@ pub(crate) fn create_qrcode_object(
         unsafe { ffi::lv_qrcode_create(parent.as_ptr()) },
         format!("qrcode for {role}"),
     )?;
-    // Fit the 240px-wide panel with a quiet-zone margin; lv_qrcode defaults to
-    // black-on-white, which is what scanners expect.
+    // Keep in sync with QR_SIZE in components/widgets/setup.rs. lv_qrcode
+    // defaults to black-on-white, which is what scanners expect.
     unsafe {
-        ffi::lv_qrcode_set_size(obj.as_ptr(), 180);
+        ffi::lv_qrcode_set_size(obj.as_ptr(), 132);
     }
     Ok(obj)
 }

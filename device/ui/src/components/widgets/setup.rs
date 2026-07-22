@@ -71,47 +71,58 @@ pub fn setup_about(model: &SetupAboutModel) -> Element {
     )
 }
 
+/// Rendered size of the QR. Must match `lv_qrcode_set_size` in the renderer's
+/// `create_qrcode_object`. The Wi‑Fi-join payload is short (~40 bytes → a
+/// version-3 QR), so 132px stays comfortably scannable while leaving room on the
+/// 240×280 panel for the hotspot name/key and a status line.
+const QR_SIZE: i32 = 132;
+
 pub fn setup_wifi(model: &WifiSetupModel) -> Element {
-    let mut root = container(roles::SETUP_ABOUT).key(Key::Static("setup_wifi"));
+    let root = container(roles::SETUP_ABOUT).key(Key::Static("setup_wifi"));
 
     // Once the hotspot is up the worker supplies a Wi‑Fi-join payload; show it as
-    // a QR the phone scans to auto-join. Before that (starting/error) there is no
-    // payload, so the screen shows the status line only.
-    if !model.qr_payload.is_empty() {
-        root = root.child(
-            qr(roles::PAGE)
-                .key(Key::Static("setup_wifi_qr"))
-                .text(&model.qr_payload)
-                .absolute(30, 12, 180, 180),
+    // a QR the phone scans to auto-join. Before that (starting/connecting/error)
+    // there is no payload, so the screen shows a centered status message.
+    if model.qr_payload.is_empty() {
+        let status = if model.status_text.is_empty() {
+            "Preparing Wi‑Fi setup…".to_string()
+        } else {
+            model.status_text.clone()
+        };
+        return root.child(
+            label(roles::SETUP_HINT)
+                .key(Key::Static("setup_wifi_status"))
+                .text(status)
+                .absolute(16, 108, 208, 84),
         );
     }
 
+    // Hotspot is up: centered QR plus the name/key for manual join. The setup
+    // container is only ~240x228, so keep every row clear of the top status bar
+    // (y >= 40) and above y=228 or it gets clipped.
+    let qr_x = (240 - QR_SIZE) / 2;
+    let mut root = root.child(
+        qr(roles::PAGE)
+            .key(Key::Static("setup_wifi_qr"))
+            .text(&model.qr_payload)
+            .absolute(qr_x, 40, QR_SIZE, QR_SIZE),
+    );
     if !model.ap_ssid.is_empty() {
         root = root.child(
             label(roles::SETUP_ABOUT_LABEL)
                 .key(Key::Static("setup_wifi_ssid"))
                 .text(format!("Join {}", model.ap_ssid))
-                .absolute(12, 198, 216, 16),
+                .absolute(12, 178, 216, 16),
         );
     }
-    if !model.ap_password.is_empty() {
-        root = root.child(
-            label(roles::SETUP_ABOUT_VALUE)
-                .key(Key::Static("setup_wifi_key"))
-                .text(format!("Key {}", model.ap_password))
-                .absolute(12, 218, 216, 16),
-        );
-    }
-
-    let status = if model.status_text.is_empty() {
-        "Preparing Wi‑Fi setup…".to_string()
-    } else {
-        model.status_text.clone()
-    };
     root.child(
-        label(roles::SETUP_HINT)
-            .key(Key::Static("setup_wifi_status"))
-            .text(status)
-            .absolute(12, 240, 216, 34),
+        label(roles::SETUP_ABOUT_VALUE)
+            .key(Key::Static("setup_wifi_key"))
+            .text(if model.ap_password.is_empty() {
+                "Scan to connect".to_string()
+            } else {
+                format!("Key {}", model.ap_password)
+            })
+            .absolute(12, 198, 216, 16),
     )
 }

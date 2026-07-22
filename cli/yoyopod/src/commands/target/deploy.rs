@@ -150,6 +150,36 @@ pub fn run(
         return Ok(rc);
     }
 
+    // Install the AP-mode Wi-Fi setup host prerequisites that live outside the
+    // synced checkout: a NetworkManager shared-DNS rule (so a joined phone
+    // auto-opens the captive portal) and a CAP_NET_BIND_SERVICE drop-in (so the
+    // network worker can bind :80 for it). Both are idempotent.
+    let dns_dir = "/etc/NetworkManager/dnsmasq-shared.d";
+    let dns_file = "/etc/NetworkManager/dnsmasq-shared.d/010-yoyopod-captive.conf";
+    let dropin_dir = format!("/etc/systemd/system/{}.d", lane.dev_service);
+    let dropin_file = format!("{dropin_dir}/10-wifi-portal-cap.conf");
+    let install_portal_prereqs_cmd = format!(
+        "sudo -n install -d -m 0755 {dns_dir} && \
+         printf 'address=/#/10.42.0.1\\n' | sudo -n tee {dns_file} >/dev/null && \
+         sudo -n install -d -m 0755 {dropin_dir} && \
+         printf '[Service]\\nAmbientCapabilities=CAP_NET_BIND_SERVICE\\n' \
+         | sudo -n tee {dropin_file} >/dev/null && \
+         sudo -n systemctl daemon-reload",
+        dns_dir = shell_quote(dns_dir),
+        dns_file = shell_quote(dns_file),
+        dropin_dir = shell_quote(&dropin_dir),
+        dropin_file = shell_quote(&dropin_file),
+    );
+    let rc = run_remote(
+        &ctx.conn,
+        &install_portal_prereqs_cmd,
+        false,
+        RemoteWorkdir::Default,
+    )?;
+    if rc != 0 {
+        return Ok(rc);
+    }
+
     // 5) Extract + chmod on Pi.
     let extract_cmd = format!(
         "tar -xzf {tarball} && \
@@ -219,7 +249,9 @@ polkit.addRule(function(action, subject) {{
         (action.id === "org.freedesktop.NetworkManager.wifi.scan" ||
          action.id === "org.freedesktop.NetworkManager.settings.modify.system" ||
          action.id === "org.freedesktop.NetworkManager.network-control" ||
-         action.id === "org.freedesktop.NetworkManager.checkpoint-rollback")) {{
+         action.id === "org.freedesktop.NetworkManager.checkpoint-rollback" ||
+         action.id === "org.freedesktop.NetworkManager.wifi.share.protected" ||
+         action.id === "org.freedesktop.NetworkManager.wifi.share.open")) {{
         return polkit.Result.YES;
     }}
 }});
@@ -478,7 +510,10 @@ mod tests {
         assert!(rule.contains("org.freedesktop.NetworkManager.settings.modify.system"));
         assert!(rule.contains("org.freedesktop.NetworkManager.network-control"));
         assert!(rule.contains("org.freedesktop.NetworkManager.checkpoint-rollback"));
-        assert_eq!(rule.matches("action.id ===").count(), 4);
+        // AP-mode Wi-Fi setup also needs the shared-connection (hotspot) actions.
+        assert!(rule.contains("org.freedesktop.NetworkManager.wifi.share.protected"));
+        assert!(rule.contains("org.freedesktop.NetworkManager.wifi.share.open"));
+        assert_eq!(rule.matches("action.id ===").count(), 6);
     }
 
     #[test]
