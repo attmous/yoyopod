@@ -176,12 +176,12 @@ fn setup_root_items(snapshot: &RuntimeSnapshot) -> Vec<WheelItemModel> {
             false,
         ),
         setup_item(
+            // `snapshot.network.connected`/`connection_type` describe the cellular
+            // (PPP) link, not Wi-Fi station state, so they can't tell us whether
+            // home Wi-Fi is up. Use neutral copy for this entry point rather than
+            // claiming "Connected" whenever cellular happens to be online.
             "Wi-Fi",
-            if snapshot.network.connected {
-                "Connected"
-            } else {
-                "Set up"
-            },
+            "Set up",
             "setup_wifi",
             PERI,
             false,

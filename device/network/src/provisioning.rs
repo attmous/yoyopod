@@ -49,7 +49,14 @@ const AP_ACTIVATE_TIMEOUT: Duration = Duration::from_secs(40);
 /// NetworkManager `ipv4.method=shared` always hands the AP host this address and
 /// runs a DHCP+DNS server for clients, so the portal lives here on port 80.
 const PORTAL_GATEWAY: &str = "10.42.0.1";
-const PORTAL_BIND: &str = "0.0.0.0:80";
+/// Bind the captive portal to the AP gateway address only, never `0.0.0.0`.
+/// While setup runs the device may still be reachable over cellular/PPP or
+/// another interface, and `/secret` (saved Wi-Fi PSKs) and `/connect` must be
+/// exposed solely on the temporary WPA2 setup hotspot, not on every interface.
+const PORTAL_BIND: &str = "10.42.0.1:80";
+/// The shared-mode gateway address can take a moment to appear on the interface
+/// after activation, so retry the bind briefly rather than failing immediately.
+const PORTAL_BIND_TIMEOUT: Duration = Duration::from_secs(10);
 const AP_CONNECTION_ID: &str = "YoYoPod Setup";
 const PORTAL_POLL: Duration = Duration::from_millis(250);
 /// If the user has not submitted a network within this window, tear the hotspot
@@ -193,8 +200,14 @@ fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
     ));
 
     let credentials = ApCredentials::generate();
-    let hotspot = match Hotspot::start(&credentials) {
-        Ok(hotspot) => hotspot,
+    let hotspot = match Hotspot::start(&credentials, stop_rx) {
+        Ok(Some(hotspot)) => hotspot,
+        // The user left Wi-Fi setup while the AP was still coming up; the
+        // half-started hotspot has already been torn down, so just go idle.
+        Ok(None) => {
+            let _ = status_tx.send(WifiProvisioningState::idle());
+            return;
+        }
         Err(error) => {
             let _ = status_tx.send(WifiProvisioningState::error(&error));
             return;
@@ -205,9 +218,9 @@ fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
     // (the service is missing CAP_NET_BIND_SERVICE, or something else holds the
     // port) surface an error and tear the hotspot down, rather than leaving a
     // "ready" hotspot with no page behind it and blocking forever.
-    let server = match Server::http(PORTAL_BIND) {
-        Ok(server) => server,
-        Err(_) => {
+    let server = match bind_portal(stop_rx) {
+        Some(server) => server,
+        None => {
             hotspot.stop();
             let _ = status_tx.send(WifiProvisioningState::error(
                 "Wi-Fi setup could not open its setup page. Please try again.",
@@ -279,6 +292,28 @@ struct ConnectRequest {
     ssid: String,
     security: WifiSecurity,
     password: String,
+}
+
+/// Bind the captive portal to the AP gateway address (see `PORTAL_BIND`). The
+/// shared-mode address can take a moment to appear on the interface after the AP
+/// activates (especially when we proceed while startup is still finishing), so
+/// retry briefly. Returns `None` if the port never becomes bindable within the
+/// window or teardown is requested first.
+fn bind_portal(stop_rx: &Receiver<()>) -> Option<Server> {
+    let deadline = Instant::now() + PORTAL_BIND_TIMEOUT;
+    loop {
+        if let Ok(server) = Server::http(PORTAL_BIND) {
+            return Some(server);
+        }
+        match stop_rx.try_recv() {
+            Ok(()) | Err(TryRecvError::Disconnected) => return None,
+            Err(TryRecvError::Empty) => {}
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        thread::sleep(PORTAL_POLL);
+    }
 }
 
 /// Run the captive-portal HTTP server until the user submits a network or the
@@ -470,16 +505,31 @@ fn parse_connect(body: &str) -> Result<ConnectRequest, String> {
     let security = match value.get("security").and_then(serde_json::Value::as_str) {
         Some("open") => WifiSecurity::Open,
         Some("wpa3_personal") => WifiSecurity::Wpa3Personal,
+        // 802.1X/enterprise Wi-Fi needs identity + EAP config the portal can't
+        // collect; downgrading it to WPA-PSK would just fail with a misleading
+        // "wrong password". Reject it clearly instead.
+        Some("enterprise") => {
+            return Err("Enterprise (802.1X) Wi-Fi is not supported on this device.".to_string());
+        }
         _ => WifiSecurity::Wpa2Personal,
     };
-    if security != WifiSecurity::Open && (password.len() < 8 || password.len() > 63) {
-        return Err("password must be 8–63 characters".to_string());
+    if security != WifiSecurity::Open && !is_valid_psk(&password) {
+        return Err("password must be 8 to 63 characters".to_string());
     }
     Ok(ConnectRequest {
         ssid,
         security,
         password,
     })
+}
+
+/// A WPA personal credential is either an 8-63 character passphrase or a raw
+/// 64-hex-digit PSK, which NetworkManager also accepts — matching what the
+/// regular Wi-Fi profile path allows, so routers configured with a raw PSK can
+/// still complete on-device onboarding.
+fn is_valid_psk(password: &str) -> bool {
+    let len = password.len();
+    (8..=63).contains(&len) || (len == 64 && password.bytes().all(|byte| byte.is_ascii_hexdigit()))
 }
 
 /// Scan for nearby networks before the AP takes over the radio. Best-effort:
@@ -524,9 +574,18 @@ fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
             )
             .map_err(|_| "could not save the network".to_string())?;
         let manager = proxy(&connection, NM_PATH, NM_INTERFACE)?;
-        let active: OwnedObjectPath = manager
-            .call("ActivateConnection", &(path.clone(), device, root_path()))
-            .map_err(|_| "could not connect to the network".to_string())?;
+        let active: OwnedObjectPath =
+            match manager.call("ActivateConnection", &(path.clone(), device, root_path())) {
+                Ok(active) => active,
+                Err(_) => {
+                    // Activation was rejected synchronously, but AddConnection2
+                    // already wrote the autoconnect profile to disk. Delete it
+                    // before returning so NetworkManager doesn't retry a bad or
+                    // unreachable network on later onboarding attempts.
+                    delete_profile(&connection, &path);
+                    return Err("could not connect to the network".to_string());
+                }
+            };
         (path, active)
     };
     // ActivateConnection returns as soon as the request is accepted, before the
@@ -535,17 +594,23 @@ fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
     // ACTIVATED with an IPv4 address (or fail/time out) before returning. On
     // failure, delete the autoconnect profile we just created so NetworkManager
     // doesn't keep retrying a bad saved network on later onboarding attempts.
-    match wait_for_active(&connection, &active_path, true, CONNECT_TIMEOUT) {
+    match wait_for_active(&connection, &active_path, true, CONNECT_TIMEOUT, None) {
         ActiveWait::Activated => Ok(()),
         // A station connection that never gets an IPv4 lease in time (or drops)
         // is a real failure - delete the profile so NM stops retrying it.
-        ActiveWait::Deactivated | ActiveWait::TimedOut => {
-            if let Ok(profile) = proxy(&connection, connection_path.as_str(), NM_CONNECTION_INTERFACE)
-            {
-                let _ = profile.call::<_, _, ()>("Delete", &());
-            }
+        // `Cancelled` cannot occur here (no stop receiver is passed), but folding
+        // it in keeps the match exhaustive and the cleanup identical.
+        ActiveWait::Deactivated | ActiveWait::TimedOut | ActiveWait::Cancelled => {
+            delete_profile(&connection, &connection_path);
             Err("Could not join that network - check the password.".to_string())
         }
+    }
+}
+
+/// Delete a NetworkManager connection profile by object path, best-effort.
+fn delete_profile(connection: &Connection, path: &OwnedObjectPath) {
+    if let Ok(profile) = proxy(connection, path.as_str(), NM_CONNECTION_INTERFACE) {
+        let _ = profile.call::<_, _, ()>("Delete", &());
     }
 }
 
@@ -558,18 +623,30 @@ enum ActiveWait {
     Deactivated,
     /// Neither happened before the deadline - still activating.
     TimedOut,
+    /// Teardown was requested (user left Wi-Fi setup) before activation finished.
+    Cancelled,
 }
 
 /// Poll an active-connection object until it reaches ACTIVATED (optionally with
-/// an IPv4 address), it deactivates, or the deadline passes.
+/// an IPv4 address), it deactivates, the deadline passes, or - when a stop
+/// receiver is supplied - teardown is requested. Passing `stop_rx` makes a long
+/// activation wait (notably AP startup) abort promptly when the user leaves
+/// Wi-Fi setup, instead of holding the radio for the full timeout.
 fn wait_for_active(
     connection: &Connection,
     active_path: &OwnedObjectPath,
     require_ipv4: bool,
     timeout: Duration,
+    stop_rx: Option<&Receiver<()>>,
 ) -> ActiveWait {
     let deadline = Instant::now() + timeout;
     loop {
+        if let Some(stop_rx) = stop_rx {
+            match stop_rx.try_recv() {
+                Ok(()) | Err(TryRecvError::Disconnected) => return ActiveWait::Cancelled,
+                Err(TryRecvError::Empty) => {}
+            }
+        }
         if let Ok(active) = proxy(connection, active_path.as_str(), NM_ACTIVE_CONNECTION_INTERFACE)
         {
             let state: u32 = active.get_property("State").unwrap_or(0);
@@ -601,7 +678,13 @@ struct Hotspot {
 }
 
 impl Hotspot {
-    fn start(credentials: &ApCredentials) -> Result<Self, String> {
+    /// Bring up the setup AP. Returns `Ok(Some(hotspot))` once it is up (or still
+    /// finishing startup), `Ok(None)` if the user left Wi-Fi setup while it was
+    /// activating (nothing is left behind), or `Err` if it could not start.
+    fn start(
+        credentials: &ApCredentials,
+        stop_rx: &Receiver<()>,
+    ) -> Result<Option<Self>, String> {
         let connection = Connection::system().map_err(|_| "Wi-Fi is unavailable".to_string())?;
         // Scope the D-Bus proxies so their borrow of `connection` ends before it
         // is moved into the returned handle.
@@ -624,32 +707,37 @@ impl Hotspot {
             // still fail asynchronously (rfkill, driver/AP-mode failure,
             // shared-mode setup). Treat only an explicit DEACTIVATED as a real
             // failure - a timeout means it's still coming up (NM's dnsmasq setup
-            // is slow) and the radio is already broadcasting, so proceed.
-            let failed = match manager.call::<_, _, OwnedObjectPath>(
+            // is slow) and the radio is already broadcasting, so proceed. Pass
+            // `stop_rx` so leaving Wi-Fi setup during this wait aborts promptly
+            // instead of holding the radio for the full startup timeout.
+            let wait = match manager.call::<_, _, OwnedObjectPath>(
                 "ActivateConnection",
                 &(path.clone(), device, root_path()),
             ) {
-                Err(_) => true,
+                Err(_) => ActiveWait::Deactivated,
                 Ok(active) => {
-                    wait_for_active(&connection, &active, false, AP_ACTIVATE_TIMEOUT)
-                        == ActiveWait::Deactivated
+                    wait_for_active(&connection, &active, false, AP_ACTIVATE_TIMEOUT, Some(stop_rx))
                 }
             };
-            if failed {
+            match wait {
+                // User left setup mid-startup: tear the half-up AP back down and
+                // report "no hotspot" so the flow returns to idle cleanly.
+                ActiveWait::Cancelled => {
+                    delete_profile(&connection, &path);
+                    return Ok(None);
+                }
                 // Don't leave the AP profile behind if it cannot be brought up
                 // (e.g. a missing polkit "share" grant): delete it before failing
                 // so repeated attempts don't accumulate orphaned "YoYoPod Setup"
                 // connections.
-                if let Ok(connection_proxy) =
-                    proxy(&connection, path.as_str(), NM_CONNECTION_INTERFACE)
-                {
-                    let _ = connection_proxy.call::<_, _, ()>("Delete", &());
+                ActiveWait::Deactivated => {
+                    delete_profile(&connection, &path);
+                    return Err("could not start the hotspot".to_string());
                 }
-                return Err("could not start the hotspot".to_string());
+                ActiveWait::Activated | ActiveWait::TimedOut => path,
             }
-            path
         };
-        Ok(Self { connection, path })
+        Ok(Some(Self { connection, path }))
     }
 
     /// Delete the hotspot profile. NetworkManager deactivates it and reconnects
@@ -925,6 +1013,38 @@ mod tests {
             parse_connect(r#"{"ssid":"Open","security":"open","password":""}"#).is_ok(),
             "open networks need no password"
         );
+    }
+
+    #[test]
+    fn parse_connect_accepts_a_raw_64_hex_psk() {
+        let psk = "0123456789abcdef".repeat(4); // 64 hex chars
+        let ok = parse_connect(&format!(
+            r#"{{"ssid":"Home","security":"wpa2_personal","password":"{psk}"}}"#
+        ))
+        .expect("a raw 64-hex-digit PSK is a valid WPA credential");
+        assert_eq!(ok.password.len(), 64);
+        // 64 characters that are not all hex are still rejected (too long for a
+        // passphrase, not a valid raw PSK).
+        let not_hex = "z".repeat(64);
+        assert!(parse_connect(&format!(r#"{{"ssid":"Home","password":"{not_hex}"}}"#)).is_err());
+    }
+
+    #[test]
+    fn parse_connect_rejects_enterprise_networks() {
+        assert!(
+            parse_connect(r#"{"ssid":"Corp","security":"enterprise","password":"whatever12"}"#)
+                .is_err(),
+            "enterprise Wi-Fi must be rejected, not downgraded to WPA-PSK"
+        );
+    }
+
+    #[test]
+    fn is_valid_psk_matches_wpa_personal_rules() {
+        assert!(is_valid_psk("12345678")); // 8-char passphrase
+        assert!(is_valid_psk(&"a".repeat(63))); // max passphrase
+        assert!(!is_valid_psk("short")); // too short
+        assert!(is_valid_psk(&"0f".repeat(32))); // 64 hex digits
+        assert!(!is_valid_psk(&"g".repeat(64))); // 64 non-hex chars
     }
 
     #[test]

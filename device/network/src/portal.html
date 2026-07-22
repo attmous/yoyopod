@@ -22,6 +22,7 @@
     background: #fff7ef; cursor: pointer; font-size: 16px; text-align: left; width: 100%;
   }
   .net[aria-selected="true"] { border-color: #f37767; background: #ffe9df; }
+  .net:disabled { opacity: .5; cursor: default; }
   .net .bars { color: #a08b7c; font-variant-numeric: tabular-nums; font-size: 13px; }
   .net .lock { color: #a08b7c; font-size: 13px; }
   form { display: flex; flex-direction: column; gap: 12px; }
@@ -77,6 +78,12 @@
   }
 
   function selectNetwork(node, net) {
+    if ((net.security || "") === "enterprise") {
+      // 802.1X/enterprise Wi-Fi needs credentials this portal can't collect.
+      statusEl.className = "status err";
+      statusEl.textContent = "Enterprise (802.1X) Wi-Fi is not supported.";
+      return;
+    }
     var all = document.querySelectorAll(".net");
     for (var i = 0; i < all.length; i++) all[i].setAttribute("aria-selected", "false");
     node.setAttribute("aria-selected", "true");
@@ -111,10 +118,17 @@
     nets.forEach(function (net) {
       var b = document.createElement("button");
       b.type = "button"; b.className = "net";
-      b.innerHTML = '<span>' + escapeHtml(net.ssid) + '</span>' +
-        '<span class="bars">' + (net.security === "open" ? "" : '<span class="lock">🔒</span> ') +
-        bars(net.signal_percent) + '</span>';
-      b.addEventListener("click", function () { selectNetwork(b, net); });
+      if (net.security === "enterprise") {
+        // Enterprise networks can't be joined from here — show them, disabled.
+        b.disabled = true;
+        b.innerHTML = '<span>' + escapeHtml(net.ssid) + '</span>' +
+          '<span class="bars">Unsupported</span>';
+      } else {
+        b.innerHTML = '<span>' + escapeHtml(net.ssid) + '</span>' +
+          '<span class="bars">' + (net.security === "open" ? "" : '<span class="lock">🔒</span> ') +
+          bars(net.signal_percent) + '</span>';
+        b.addEventListener("click", function () { selectNetwork(b, net); });
+      }
       list.appendChild(b);
     });
   }
