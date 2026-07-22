@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::net::Ipv4Addr;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -15,6 +16,7 @@ const NM_CONNECTION_INTERFACE: &str = "org.freedesktop.NetworkManager.Settings.C
 const NM_DEVICE_INTERFACE: &str = "org.freedesktop.NetworkManager.Device";
 const NM_WIRELESS_INTERFACE: &str = "org.freedesktop.NetworkManager.Device.Wireless";
 const NM_ACTIVE_CONNECTION_INTERFACE: &str = "org.freedesktop.NetworkManager.Connection.Active";
+const NM_IP4_CONFIG_INTERFACE: &str = "org.freedesktop.NetworkManager.IP4Config";
 const NM_ACCESS_POINT_INTERFACE: &str = "org.freedesktop.NetworkManager.AccessPoint";
 const NM_DEVICE_TYPE_WIFI: u32 = 2;
 const NM_SETTINGS_ADD_TO_DISK: u32 = 0x1;
@@ -29,6 +31,9 @@ const MAX_SAVED_PROFILES: usize = 32;
 const MAX_NEARBY_NETWORKS: usize = 64;
 const SCAN_WAIT_TIMEOUT: Duration = Duration::from_secs(4);
 const SCAN_POLL_INTERVAL: Duration = Duration::from_millis(200);
+const CHANGE_LOCAL_TIMEOUT: Duration = Duration::from_secs(25);
+const CHANGE_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const CHECKPOINT_ROLLBACK_SECONDS: u32 = 90;
 
 type NmSettings = HashMap<String, HashMap<String, OwnedValue>>;
 
@@ -54,12 +59,60 @@ pub enum WifiStateStatus {
     Unavailable,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WifiIpv4Mode {
+    Dhcp,
+    Static,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WifiIpv4Config {
+    pub mode: WifiIpv4Mode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_length: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gateway: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dns_servers: Vec<String>,
+}
+
+impl WifiIpv4Config {
+    pub fn dhcp() -> Self {
+        Self {
+            mode: WifiIpv4Mode::Dhcp,
+            address: None,
+            prefix_length: None,
+            gateway: None,
+            dns_servers: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WifiActivationPreference {
+    Preferred,
+    SessionOnly,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WifiChangeOperation {
+    ActivateProfile,
+    UpdateIpv4,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WifiActiveNetwork {
     pub profile_id: String,
     pub ssid: String,
     pub security: WifiSecurity,
     pub signal_percent: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ipv4: Option<WifiIpv4Config>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -70,6 +123,7 @@ pub struct WifiSavedProfile {
     pub hidden: bool,
     pub active: bool,
     pub autoconnect: bool,
+    pub ipv4_config: WifiIpv4Config,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -96,7 +150,7 @@ pub struct WifiState {
 impl WifiState {
     pub fn unavailable() -> Self {
         Self {
-            schema_version: 1,
+            schema_version: 2,
             status: WifiStateStatus::Unavailable,
             radio_enabled: false,
             active_network: None,
@@ -131,6 +185,29 @@ pub struct WifiUpdateProfileRequest {
     pub password: Option<String>,
     #[serde(default)]
     pub hidden: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WifiActivateProfileRequest {
+    pub profile_id: String,
+    pub preference: WifiActivationPreference,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WifiUpdateIpv4Request {
+    pub profile_id: String,
+    pub ipv4: WifiIpv4Config,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WifiChangeStart {
+    Immediate(WifiState),
+    Pending {
+        profile_id: String,
+        operation: WifiChangeOperation,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -174,6 +251,16 @@ pub trait WifiController: Send {
         request: WifiUpdateProfileRequest,
     ) -> Result<WifiState, WifiOperationError>;
     fn forget_profile(&mut self, profile_id: &str) -> Result<WifiState, WifiOperationError>;
+    fn begin_activate_profile(
+        &mut self,
+        request: WifiActivateProfileRequest,
+    ) -> Result<WifiChangeStart, WifiOperationError>;
+    fn begin_update_ipv4(
+        &mut self,
+        request: WifiUpdateIpv4Request,
+    ) -> Result<WifiChangeStart, WifiOperationError>;
+    fn confirm_pending_change(&mut self) -> Result<WifiState, WifiOperationError>;
+    fn rollback_pending_change(&mut self) -> Result<WifiState, WifiOperationError>;
 }
 
 #[derive(Debug, Default)]
@@ -205,11 +292,42 @@ impl WifiController for UnavailableWifiController {
     fn forget_profile(&mut self, _profile_id: &str) -> Result<WifiState, WifiOperationError> {
         Err(WifiOperationError::unavailable())
     }
+
+    fn begin_activate_profile(
+        &mut self,
+        _request: WifiActivateProfileRequest,
+    ) -> Result<WifiChangeStart, WifiOperationError> {
+        Err(WifiOperationError::unavailable())
+    }
+
+    fn begin_update_ipv4(
+        &mut self,
+        _request: WifiUpdateIpv4Request,
+    ) -> Result<WifiChangeStart, WifiOperationError> {
+        Err(WifiOperationError::unavailable())
+    }
+
+    fn confirm_pending_change(&mut self) -> Result<WifiState, WifiOperationError> {
+        Err(WifiOperationError::unavailable())
+    }
+
+    fn rollback_pending_change(&mut self) -> Result<WifiState, WifiOperationError> {
+        Err(WifiOperationError::unavailable())
+    }
+}
+
+struct PendingNetworkManagerChange {
+    checkpoint_path: OwnedObjectPath,
+    target_profile_id: String,
+    previous_profile_id: Option<String>,
+    preference: WifiActivationPreference,
+    restore_connection: Option<(OwnedObjectPath, NmSettings)>,
 }
 
 pub struct NetworkManagerWifiController {
     connection: Connection,
     last_scan_at: Option<u64>,
+    pending_change: Option<PendingNetworkManagerChange>,
 }
 
 impl NetworkManagerWifiController {
@@ -218,6 +336,7 @@ impl NetworkManagerWifiController {
             .map(|connection| Self {
                 connection,
                 last_scan_at: None,
+                pending_change: None,
             })
             .map_err(|_| WifiOperationError::unavailable())
     }
@@ -303,14 +422,17 @@ impl NetworkManagerWifiController {
             let profile_id: String = proxy
                 .get_property("Uuid")
                 .map_err(|_| WifiOperationError::operation_failed())?;
+            let ip4_config_path: OwnedObjectPath = proxy
+                .get_property("Ip4Config")
+                .unwrap_or_else(|_| root_object_path());
             let specific: OwnedObjectPath = proxy
                 .get_property("SpecificObject")
                 .map_err(|_| WifiOperationError::operation_failed())?;
+            let (_, settings_for_profile) = self.find_connection(&profile_id)?;
             let (ssid, security, signal_percent) = if specific.as_str() == "/" {
-                let (_, settings) = self.find_connection(&profile_id)?;
                 (
-                    setting_ssid(&settings).unwrap_or_default(),
-                    profile_security(&settings),
+                    setting_ssid(&settings_for_profile).unwrap_or_default(),
+                    profile_security(&settings_for_profile),
                     0,
                 )
             } else {
@@ -322,10 +444,52 @@ impl NetworkManagerWifiController {
                 ssid,
                 security,
                 signal_percent,
+                ipv4: self.active_ipv4_config(&ip4_config_path, &settings_for_profile)?,
             }));
         }
 
         Ok(None)
+    }
+
+    fn active_ipv4_config(
+        &self,
+        path: &OwnedObjectPath,
+        settings: &NmSettings,
+    ) -> Result<Option<WifiIpv4Config>, WifiOperationError> {
+        if path.as_str() == "/" {
+            return Ok(None);
+        }
+        let proxy = self.proxy(path.as_str(), NM_IP4_CONFIG_INTERFACE)?;
+        let address_data: Vec<HashMap<String, OwnedValue>> =
+            proxy.get_property("AddressData").unwrap_or_default();
+        let (address, prefix_length) = address_data
+            .first()
+            .map(|entry| {
+                (
+                    dict_string(entry, "address"),
+                    dict_u32(entry, "prefix").and_then(|value| u8::try_from(value).ok()),
+                )
+            })
+            .unwrap_or((None, None));
+        let gateway = proxy
+            .get_property::<String>("Gateway")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
+        let nameserver_data: Vec<HashMap<String, OwnedValue>> =
+            proxy.get_property("NameserverData").unwrap_or_default();
+        let dns_servers = nameserver_data
+            .iter()
+            .filter_map(|entry| dict_string(entry, "address"))
+            .take(3)
+            .collect();
+        let configured = profile_ipv4_config(settings);
+        Ok(Some(WifiIpv4Config {
+            mode: configured.mode,
+            address,
+            prefix_length,
+            gateway,
+            dns_servers,
+        }))
     }
 
     fn access_point(&self, path: &OwnedObjectPath) -> Result<AccessPointFact, WifiOperationError> {
@@ -425,6 +589,7 @@ impl NetworkManagerWifiController {
                 security: profile_security(&settings),
                 hidden: setting_bool(&settings, "802-11-wireless", "hidden").unwrap_or(false),
                 autoconnect: setting_bool(&settings, "connection", "autoconnect").unwrap_or(true),
+                ipv4_config: profile_ipv4_config(&settings),
             });
         }
         profiles.sort_by(|left, right| {
@@ -530,6 +695,169 @@ impl NetworkManagerWifiController {
         Ok(())
     }
 
+    fn ensure_no_pending_change(&self) -> Result<(), WifiOperationError> {
+        if self.pending_change.is_some() {
+            return Err(WifiOperationError::new(
+                "wifi_change_in_progress",
+                "Another Wi-Fi connectivity change is already in progress",
+            ));
+        }
+        Ok(())
+    }
+
+    fn create_checkpoint(&self) -> Result<OwnedObjectPath, WifiOperationError> {
+        let devices = self.wifi_device_paths()?;
+        if devices.is_empty() {
+            return Err(WifiOperationError::unavailable());
+        }
+        self.manager()?
+            .call(
+                "CheckpointCreate",
+                &(devices, CHECKPOINT_ROLLBACK_SECONDS, 0_u32),
+            )
+            .map_err(|_| {
+                WifiOperationError::new(
+                    "wifi_checkpoint_failed",
+                    "The current Wi-Fi connection could not be protected",
+                )
+            })
+    }
+
+    fn activate_connection_path(
+        &self,
+        connection_path: &OwnedObjectPath,
+    ) -> Result<(), WifiOperationError> {
+        let device_path = self
+            .wifi_device_paths()?
+            .into_iter()
+            .next()
+            .ok_or_else(WifiOperationError::unavailable)?;
+        let _: OwnedObjectPath = self
+            .manager()?
+            .call(
+                "ActivateConnection",
+                &(connection_path.clone(), device_path, root_object_path()),
+            )
+            .map_err(|_| {
+                WifiOperationError::new(
+                    "wifi_activation_failed",
+                    "The saved Wi-Fi network could not be activated",
+                )
+            })?;
+        Ok(())
+    }
+
+    fn wait_for_active_profile(&self, profile_id: &str) -> Result<(), WifiOperationError> {
+        let deadline = std::time::Instant::now() + CHANGE_LOCAL_TIMEOUT;
+        while std::time::Instant::now() < deadline {
+            if self.active_profile()?.is_some_and(|active| {
+                active.profile_id == profile_id
+                    && active
+                        .ipv4
+                        .as_ref()
+                        .and_then(|ipv4| ipv4.address.as_ref())
+                        .is_some()
+            }) {
+                return Ok(());
+            }
+            thread::sleep(CHANGE_POLL_INTERVAL);
+        }
+        Err(WifiOperationError::new(
+            "wifi_activation_timeout",
+            "The saved Wi-Fi network did not become ready in time",
+        ))
+    }
+
+    fn rollback_change_data(
+        &self,
+        pending: PendingNetworkManagerChange,
+    ) -> Result<(), WifiOperationError> {
+        if let Some((path, settings)) = pending.restore_connection {
+            let _ = self.update_connection(&path, settings);
+        }
+        let _result: HashMap<String, u32> = self
+            .manager()?
+            .call("CheckpointRollback", &(pending.checkpoint_path,))
+            .map_err(|_| {
+                WifiOperationError::new(
+                    "wifi_rollback_failed",
+                    "The previous Wi-Fi connection could not be restored automatically",
+                )
+            })?;
+        Ok(())
+    }
+
+    fn make_profile_preferred(
+        &self,
+        target_profile_id: &str,
+    ) -> Result<Vec<(OwnedObjectPath, NmSettings)>, WifiOperationError> {
+        let mut wifi_profiles = Vec::new();
+        for path in self.connection_paths()? {
+            let settings = self.get_settings(&path)?;
+            if setting_string(&settings, "connection", "type").as_deref() != Some("802-11-wireless")
+            {
+                continue;
+            }
+            let Some(profile_id) = setting_string(&settings, "connection", "uuid") else {
+                continue;
+            };
+            let priority =
+                setting_i32(&settings, "connection", "autoconnect-priority").unwrap_or(0);
+            wifi_profiles.push((path, settings, profile_id, priority));
+        }
+        if !wifi_profiles
+            .iter()
+            .any(|(_, _, profile_id, _)| profile_id == target_profile_id)
+        {
+            return Err(WifiOperationError::new(
+                "wifi_profile_not_found",
+                "The saved Wi-Fi network was not found",
+            ));
+        }
+
+        let maximum = wifi_profiles
+            .iter()
+            .map(|(_, _, _, priority)| *priority)
+            .max()
+            .unwrap_or(0)
+            .clamp(NM_AUTOCONNECT_PRIORITY_MIN, NM_AUTOCONNECT_PRIORITY_MAX);
+        let target_priority = if maximum < NM_AUTOCONNECT_PRIORITY_MAX {
+            maximum + 1
+        } else {
+            NM_AUTOCONNECT_PRIORITY_MAX
+        };
+
+        let mut updates = Vec::new();
+        for (path, mut settings, profile_id, priority) in wifi_profiles {
+            let next_priority = if profile_id == target_profile_id {
+                target_priority
+            } else if target_priority == NM_AUTOCONNECT_PRIORITY_MAX
+                && priority == NM_AUTOCONNECT_PRIORITY_MAX
+            {
+                NM_AUTOCONNECT_PRIORITY_MAX - 1
+            } else {
+                continue;
+            };
+            let original = settings.clone();
+            let connection = settings.entry("connection".to_string()).or_default();
+            connection.insert("autoconnect".to_string(), owned(true)?);
+            connection.insert("autoconnect-priority".to_string(), owned(next_priority)?);
+            updates.push((path, original, settings));
+        }
+        for (path, _, settings) in &updates {
+            if let Err(error) = self.update_connection(path, settings.clone()) {
+                for (restore_path, original, _) in &updates {
+                    let _ = self.update_connection(restore_path, original.clone());
+                }
+                return Err(error);
+            }
+        }
+        Ok(updates
+            .into_iter()
+            .map(|(path, original, _)| (path, original))
+            .collect())
+    }
+
     fn build_state(&self) -> Result<WifiState, WifiOperationError> {
         let radio_enabled: bool = self
             .manager()?
@@ -543,7 +871,7 @@ impl NetworkManagerWifiController {
         )?;
         let nearby_networks = self.nearby_networks(&saved_profiles, active_network.as_ref())?;
         Ok(WifiState {
-            schema_version: 1,
+            schema_version: 2,
             status: WifiStateStatus::Ready,
             radio_enabled,
             active_network,
@@ -662,6 +990,142 @@ impl WifiController for NetworkManagerWifiController {
             })?;
         self.build_state()
     }
+
+    fn begin_activate_profile(
+        &mut self,
+        request: WifiActivateProfileRequest,
+    ) -> Result<WifiChangeStart, WifiOperationError> {
+        self.ensure_no_pending_change()?;
+        validate_profile_id(&request.profile_id)?;
+        let previous_profile_id = self.active_profile()?.map(|active| active.profile_id);
+        if previous_profile_id.as_deref() == Some(request.profile_id.as_str()) {
+            return Err(WifiOperationError::new(
+                "wifi_profile_already_active",
+                "This Wi-Fi network is already active",
+            ));
+        }
+        let (connection_path, _) = self.find_connection(&request.profile_id)?;
+        let checkpoint_path = self.create_checkpoint()?;
+        self.pending_change = Some(PendingNetworkManagerChange {
+            checkpoint_path,
+            target_profile_id: request.profile_id.clone(),
+            previous_profile_id,
+            preference: request.preference,
+            restore_connection: None,
+        });
+        if let Err(error) = self
+            .activate_connection_path(&connection_path)
+            .and_then(|_| self.wait_for_active_profile(&request.profile_id))
+        {
+            let _ = self.rollback_pending_change();
+            return Err(error);
+        }
+        Ok(WifiChangeStart::Pending {
+            profile_id: request.profile_id,
+            operation: WifiChangeOperation::ActivateProfile,
+        })
+    }
+
+    fn begin_update_ipv4(
+        &mut self,
+        request: WifiUpdateIpv4Request,
+    ) -> Result<WifiChangeStart, WifiOperationError> {
+        self.ensure_no_pending_change()?;
+        validate_profile_id(&request.profile_id)?;
+        validate_ipv4_config(&request.ipv4)?;
+        let active = self.active_profile()?;
+        let is_active = active
+            .as_ref()
+            .is_some_and(|profile| profile.profile_id == request.profile_id);
+        let (connection_path, mut settings) = self.find_connection(&request.profile_id)?;
+        let previous_settings = settings.clone();
+        apply_ipv4_settings(&mut settings, &request.ipv4)?;
+
+        if !is_active {
+            self.update_connection(&connection_path, settings)?;
+            return self.build_state().map(WifiChangeStart::Immediate);
+        }
+
+        let checkpoint_path = self.create_checkpoint()?;
+        self.pending_change = Some(PendingNetworkManagerChange {
+            checkpoint_path,
+            target_profile_id: request.profile_id.clone(),
+            previous_profile_id: active.map(|profile| profile.profile_id),
+            preference: WifiActivationPreference::SessionOnly,
+            restore_connection: Some((connection_path.clone(), previous_settings)),
+        });
+        let result = self
+            .update_connection(&connection_path, settings)
+            .and_then(|_| self.activate_connection_path(&connection_path))
+            .and_then(|_| self.wait_for_active_profile(&request.profile_id));
+        if let Err(error) = result {
+            let _ = self.rollback_pending_change();
+            return Err(error);
+        }
+        Ok(WifiChangeStart::Pending {
+            profile_id: request.profile_id,
+            operation: WifiChangeOperation::UpdateIpv4,
+        })
+    }
+
+    fn confirm_pending_change(&mut self) -> Result<WifiState, WifiOperationError> {
+        let pending = self.pending_change.take().ok_or_else(|| {
+            WifiOperationError::new(
+                "wifi_change_not_pending",
+                "There is no Wi-Fi connectivity change to confirm",
+            )
+        })?;
+        let priority_restore = if pending.preference == WifiActivationPreference::Preferred {
+            match self.make_profile_preferred(&pending.target_profile_id) {
+                Ok(restore) => restore,
+                Err(error) => {
+                    let _ = self.rollback_change_data(pending);
+                    return Err(error);
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        if self
+            .manager()?
+            .call::<_, _, ()>("CheckpointDestroy", &(pending.checkpoint_path.clone(),))
+            .is_err()
+        {
+            for (path, settings) in priority_restore {
+                let _ = self.update_connection(&path, settings);
+            }
+            let _ = self.rollback_change_data(pending);
+            return Err(WifiOperationError::new(
+                "wifi_checkpoint_commit_failed",
+                "The Wi-Fi connectivity change could not be committed",
+            ));
+        }
+        self.build_state()
+    }
+
+    fn rollback_pending_change(&mut self) -> Result<WifiState, WifiOperationError> {
+        let pending = self.pending_change.take().ok_or_else(|| {
+            WifiOperationError::new(
+                "wifi_change_not_pending",
+                "There is no Wi-Fi connectivity change to restore",
+            )
+        })?;
+        let previous_profile_id = pending.previous_profile_id.clone();
+        self.rollback_change_data(pending)?;
+        if let Some(profile_id) = previous_profile_id {
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            while std::time::Instant::now() < deadline {
+                if self
+                    .active_profile()?
+                    .is_some_and(|active| active.profile_id == profile_id)
+                {
+                    break;
+                }
+                thread::sleep(CHANGE_POLL_INTERVAL);
+            }
+        }
+        self.build_state()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -669,6 +1133,106 @@ struct AccessPointFact {
     ssid: String,
     security: WifiSecurity,
     signal_percent: u8,
+}
+
+fn root_object_path() -> OwnedObjectPath {
+    OwnedObjectPath::try_from("/").expect("root D-Bus object path should be valid")
+}
+
+fn validate_profile_id(profile_id: &str) -> Result<(), WifiOperationError> {
+    if profile_id.trim().is_empty() || profile_id.len() > 80 {
+        return Err(WifiOperationError::new(
+            "wifi_invalid_profile_id",
+            "The saved Wi-Fi network reference is invalid",
+        ));
+    }
+    Ok(())
+}
+
+fn usable_ipv4(address: Ipv4Addr) -> bool {
+    let octets = address.octets();
+    !address.is_unspecified()
+        && !address.is_loopback()
+        && !address.is_multicast()
+        && octets != [255, 255, 255, 255]
+        && octets[0] != 0
+}
+
+fn ipv4_bits(address: Ipv4Addr) -> u32 {
+    u32::from_be_bytes(address.octets())
+}
+
+fn validate_ipv4_config(config: &WifiIpv4Config) -> Result<(), WifiOperationError> {
+    if config.mode == WifiIpv4Mode::Dhcp {
+        if config.address.is_some()
+            || config.prefix_length.is_some()
+            || config.gateway.is_some()
+            || !config.dns_servers.is_empty()
+        {
+            return Err(WifiOperationError::new(
+                "wifi_invalid_ipv4_config",
+                "DHCP does not accept static IPv4 fields",
+            ));
+        }
+        return Ok(());
+    }
+
+    let address = config
+        .address
+        .as_deref()
+        .and_then(|value| value.parse::<Ipv4Addr>().ok())
+        .filter(|address| usable_ipv4(*address))
+        .ok_or_else(|| {
+            WifiOperationError::new(
+                "wifi_invalid_ipv4_address",
+                "Enter a usable static IPv4 address",
+            )
+        })?;
+    let prefix = config
+        .prefix_length
+        .filter(|prefix| (1..=30).contains(prefix))
+        .ok_or_else(|| {
+            WifiOperationError::new(
+                "wifi_invalid_ipv4_prefix",
+                "Use an IPv4 prefix length between 1 and 30",
+            )
+        })?;
+    let gateway = config
+        .gateway
+        .as_deref()
+        .and_then(|value| value.parse::<Ipv4Addr>().ok())
+        .filter(|gateway| usable_ipv4(*gateway))
+        .ok_or_else(|| {
+            WifiOperationError::new("wifi_invalid_ipv4_gateway", "Enter a usable IPv4 gateway")
+        })?;
+    let mask = u32::MAX << (32 - u32::from(prefix));
+    let network = ipv4_bits(address) & mask;
+    let broadcast = network | !mask;
+    if ipv4_bits(address) == network
+        || ipv4_bits(address) == broadcast
+        || ipv4_bits(gateway) == network
+        || ipv4_bits(gateway) == broadcast
+        || (ipv4_bits(gateway) & mask) != network
+    {
+        return Err(WifiOperationError::new(
+            "wifi_invalid_ipv4_subnet",
+            "The static address and gateway must be usable addresses in the same subnet",
+        ));
+    }
+    if !(1..=3).contains(&config.dns_servers.len())
+        || config.dns_servers.iter().any(|value| {
+            value
+                .parse::<Ipv4Addr>()
+                .map(|address| !usable_ipv4(address))
+                .unwrap_or(true)
+        })
+    {
+        return Err(WifiOperationError::new(
+            "wifi_invalid_ipv4_dns",
+            "Enter one to three usable IPv4 DNS servers",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_ssid(ssid: &str) -> Result<(), WifiOperationError> {
@@ -755,18 +1319,45 @@ fn validate_add_request(request: &WifiAddProfileRequest) -> Result<(), WifiOpera
 }
 
 fn validate_update_request(request: &WifiUpdateProfileRequest) -> Result<(), WifiOperationError> {
-    if request.profile_id.trim().is_empty() || request.profile_id.len() > 80 {
-        return Err(WifiOperationError::new(
-            "wifi_invalid_profile_id",
-            "The saved Wi-Fi network reference is invalid",
-        ));
-    }
+    validate_profile_id(&request.profile_id)?;
     if let Some(ssid) = request.ssid.as_deref() {
         validate_ssid(ssid)?;
     }
     if let Some(security) = request.security {
         validate_password(security, request.password.as_deref(), false)?;
     }
+    Ok(())
+}
+
+fn apply_ipv4_settings(
+    settings: &mut NmSettings,
+    config: &WifiIpv4Config,
+) -> Result<(), WifiOperationError> {
+    validate_ipv4_config(config)?;
+    let group = settings.entry("ipv4".to_string()).or_default();
+    for key in ["address-data", "addresses", "gateway", "dns", "dns-data"] {
+        group.remove(key);
+    }
+    if config.mode == WifiIpv4Mode::Dhcp {
+        group.insert("method".to_string(), owned("auto".to_string())?);
+        group.insert("ignore-auto-dns".to_string(), owned(false)?);
+        return Ok(());
+    }
+
+    let address = config.address.clone().unwrap_or_default();
+    let prefix = u32::from(config.prefix_length.unwrap_or_default());
+    let address_data = vec![HashMap::from([
+        ("address".to_string(), owned(address)?),
+        ("prefix".to_string(), owned(prefix)?),
+    ])];
+    group.insert("method".to_string(), owned("manual".to_string())?);
+    group.insert("address-data".to_string(), owned(address_data)?);
+    group.insert(
+        "gateway".to_string(),
+        owned(config.gateway.clone().unwrap_or_default())?,
+    );
+    group.insert("dns-data".to_string(), owned(config.dns_servers.clone())?);
+    group.insert("ignore-auto-dns".to_string(), owned(true)?);
     Ok(())
 }
 
@@ -870,6 +1461,57 @@ fn setting_i32(settings: &NmSettings, group: &str, key: &str) -> Option<i32> {
     i32::try_from(setting_value(settings, group, key)?.clone()).ok()
 }
 
+fn setting_string_array(settings: &NmSettings, group: &str, key: &str) -> Vec<String> {
+    Vec::<String>::try_from(
+        setting_value(settings, group, key)
+            .cloned()
+            .unwrap_or_else(|| {
+                owned(Vec::<String>::new()).expect("empty string array should encode")
+            }),
+    )
+    .unwrap_or_default()
+}
+
+fn setting_dict_array(
+    settings: &NmSettings,
+    group: &str,
+    key: &str,
+) -> Vec<HashMap<String, OwnedValue>> {
+    setting_value(settings, group, key)
+        .cloned()
+        .and_then(|value| Vec::<HashMap<String, OwnedValue>>::try_from(value).ok())
+        .unwrap_or_default()
+}
+
+fn dict_string(values: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
+    String::try_from(values.get(key)?.clone()).ok()
+}
+
+fn dict_u32(values: &HashMap<String, OwnedValue>, key: &str) -> Option<u32> {
+    u32::try_from(values.get(key)?.clone()).ok()
+}
+
+fn profile_ipv4_config(settings: &NmSettings) -> WifiIpv4Config {
+    if setting_string(settings, "ipv4", "method").as_deref() != Some("manual") {
+        return WifiIpv4Config::dhcp();
+    }
+    let address_data = setting_dict_array(settings, "ipv4", "address-data");
+    let first_address = address_data.first();
+    WifiIpv4Config {
+        mode: WifiIpv4Mode::Static,
+        address: first_address.and_then(|entry| dict_string(entry, "address")),
+        prefix_length: first_address
+            .and_then(|entry| dict_u32(entry, "prefix"))
+            .and_then(|value| u8::try_from(value).ok()),
+        gateway: setting_string(settings, "ipv4", "gateway")
+            .filter(|value| !value.trim().is_empty()),
+        dns_servers: setting_string_array(settings, "ipv4", "dns-data")
+            .into_iter()
+            .take(3)
+            .collect(),
+    }
+}
+
 fn setting_ssid(settings: &NmSettings) -> Option<String> {
     let bytes =
         Vec::<u8>::try_from(setting_value(settings, "802-11-wireless", "ssid")?.clone()).ok()?;
@@ -969,6 +1611,7 @@ mod tests {
             ssid: "Family WiFi".to_string(),
             security: WifiSecurity::Wpa2Personal,
             signal_percent: 80,
+            ipv4: None,
         };
 
         let error = ensure_profile_inactive(Some(&active), "active-profile")
@@ -1005,5 +1648,44 @@ mod tests {
             setting_i32(&settings, "connection", "autoconnect-priority"),
             Some(-1)
         );
+    }
+
+    #[test]
+    fn static_ipv4_requires_a_gateway_in_the_same_subnet_and_dns() {
+        let valid = WifiIpv4Config {
+            mode: WifiIpv4Mode::Static,
+            address: Some("192.168.50.40".to_string()),
+            prefix_length: Some(24),
+            gateway: Some("192.168.50.1".to_string()),
+            dns_servers: vec!["1.1.1.1".to_string()],
+        };
+        assert!(validate_ipv4_config(&valid).is_ok());
+        assert!(validate_ipv4_config(&WifiIpv4Config {
+            gateway: Some("192.168.60.1".to_string()),
+            ..valid.clone()
+        })
+        .is_err());
+        assert!(validate_ipv4_config(&WifiIpv4Config {
+            dns_servers: Vec::new(),
+            ..valid
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn ipv4_settings_round_trip_without_hardware_paths_or_secrets() {
+        let mut settings = NmSettings::new();
+        let config = WifiIpv4Config {
+            mode: WifiIpv4Mode::Static,
+            address: Some("10.20.30.40".to_string()),
+            prefix_length: Some(24),
+            gateway: Some("10.20.30.1".to_string()),
+            dns_servers: vec!["9.9.9.9".to_string(), "1.1.1.1".to_string()],
+        };
+        apply_ipv4_settings(&mut settings, &config).unwrap();
+        assert_eq!(profile_ipv4_config(&settings), config);
+
+        apply_ipv4_settings(&mut settings, &WifiIpv4Config::dhcp()).unwrap();
+        assert_eq!(profile_ipv4_config(&settings), WifiIpv4Config::dhcp());
     }
 }

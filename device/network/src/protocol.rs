@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use crate::snapshot::NetworkRuntimeSnapshot;
-use crate::wifi::WifiState;
+use crate::wifi::{WifiChangeOperation, WifiState};
 
 pub use yoyopod_protocol::{EnvelopeKind, ProtocolError, WorkerEnvelope, SUPPORTED_SCHEMA_VERSION};
 
@@ -29,6 +29,27 @@ pub fn wifi_state_result(request_id: Option<String>, state: &WifiState) -> Worke
         request_id,
         json!({
             "state": state,
+        }),
+    )
+}
+
+pub fn wifi_change_candidate_event(
+    command_id: &str,
+    profile_id: &str,
+    operation: WifiChangeOperation,
+    attempt: u8,
+    reported_at: u64,
+) -> WorkerEnvelope {
+    WorkerEnvelope::event(
+        "wifi_change_candidate",
+        json!({
+            "schema_version": 1,
+            "command_id": command_id,
+            "profile_id": profile_id,
+            "operation": operation,
+            "attempt": attempt,
+            "event_id": format!("{command_id}:{attempt}"),
+            "reported_at": reported_at,
         }),
     )
 }

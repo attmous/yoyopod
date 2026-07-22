@@ -24,6 +24,7 @@ pub enum RuntimeEvent {
     VoipSnapshot(Value),
     NetworkSnapshot(Value),
     WifiState(Value),
+    WifiChangeCandidate(Value),
     PowerSnapshot(Value),
     VoiceTranscript(Value),
     VoiceAskResult(Value),
@@ -95,7 +96,7 @@ impl RuntimeEvent {
                 state.resolve_overlay_for(WorkerDomain::Network);
                 state.apply_network_snapshot(snapshot);
             }
-            Self::WifiState(_) => {}
+            Self::WifiState(_) | Self::WifiChangeCandidate(_) => {}
             Self::PowerSnapshot(snapshot) => {
                 state.resolve_overlay_for(WorkerDomain::Power);
                 state.apply_power_snapshot(snapshot);
@@ -238,6 +239,14 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
             json!({
                 "event_type": "wifi_state",
                 "payload": state,
+            }),
+        )],
+        RuntimeEvent::WifiChangeCandidate(candidate) => vec![worker_command(
+            WorkerDomain::Cloud,
+            "cloud.publish_event",
+            json!({
+                "event_type": "wifi_change_candidate",
+                "payload": candidate,
             }),
         )],
         RuntimeEvent::PowerSnapshot(snapshot) => commands_for_power_snapshot(state, snapshot),
@@ -393,6 +402,7 @@ fn network_event_from_message(message_type: &str, payload: Value) -> RuntimeEven
         },
         "network.snapshot" | "network.health" => RuntimeEvent::NetworkSnapshot(payload),
         "wifi_state" => RuntimeEvent::WifiState(payload),
+        "wifi_change_candidate" => RuntimeEvent::WifiChangeCandidate(payload),
         "network.error" => RuntimeEvent::WorkerError {
             domain: WorkerDomain::Network,
             message: worker_error_message(message_type, &payload),
@@ -1070,16 +1080,27 @@ fn commands_for_cloud_command(command: &Value) -> Vec<RuntimeCommand> {
         "pause" => remote_media_control("media.pause", command_id, "pause"),
         "resume" => remote_media_control("media.resume", command_id, "resume"),
         "stop" => remote_media_control("media.stop_playback", command_id, "stop"),
+        "wifi_confirm_change" => vec![worker_command(
+            WorkerDomain::Network,
+            "wifi_confirm_change",
+            command
+                .get("payload")
+                .cloned()
+                .filter(Value::is_object)
+                .unwrap_or_else(empty_payload),
+        )],
         "wifi_refresh"
         | "wifi_scan"
         | "wifi_add_profile"
         | "wifi_update_profile"
-        | "wifi_forget_profile" => command_id
+        | "wifi_forget_profile"
+        | "wifi_activate_profile"
+        | "wifi_update_ipv4" => command_id
             .map(|command_id| {
-                let timeout_ms = if normalized(&command_type) == "wifi_scan" {
-                    15_000
-                } else {
-                    10_000
+                let timeout_ms = match normalized(&command_type).as_str() {
+                    "wifi_scan" => 15_000,
+                    "wifi_activate_profile" | "wifi_update_ipv4" => 105_000,
+                    _ => 10_000,
                 };
                 vec![RuntimeCommand::CorrelatedWorkerCommand {
                     domain: WorkerDomain::Network,
@@ -2028,6 +2049,46 @@ mod tests {
     }
 
     #[test]
+    fn connectivity_changing_wifi_commands_use_the_checkpoint_timeout() {
+        for command_type in ["wifi_activate_profile", "wifi_update_ipv4"] {
+            let commands = commands_for_cloud_command(&json!({
+                "command_id": "command-456",
+                "type": command_type,
+                "payload": {"profile_id": "profile-123"}
+            }));
+            let RuntimeCommand::CorrelatedWorkerCommand {
+                domain,
+                command_id,
+                timeout_ms,
+                ..
+            } = &commands[0]
+            else {
+                panic!("expected correlated Wi-Fi connectivity command");
+            };
+            assert_eq!(*domain, WorkerDomain::Network);
+            assert_eq!(command_id, "command-456");
+            assert_eq!(*timeout_ms, 105_000);
+        }
+    }
+
+    #[test]
+    fn wifi_confirmation_is_internal_and_not_correlated_as_a_new_cloud_command() {
+        let commands = commands_for_cloud_command(&json!({
+            "command_id": "confirmation-123",
+            "type": "wifi_confirm_change",
+            "payload": {"activation_command_id": "activation-456"}
+        }));
+
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected direct network confirmation command");
+        };
+        assert_eq!(*domain, WorkerDomain::Network);
+        assert_eq!(envelope.message_type, "wifi_confirm_change");
+        assert_eq!(envelope.request_id, None);
+        assert_eq!(envelope.payload["activation_command_id"], "activation-456");
+    }
+
+    #[test]
     fn wifi_state_is_forwarded_as_a_sanitized_device_event() {
         let commands = commands_for_event(
             &RuntimeState::default(),
@@ -2045,5 +2106,28 @@ mod tests {
         assert_eq!(*domain, WorkerDomain::Cloud);
         assert_eq!(envelope.message_type, "cloud.publish_event");
         assert_eq!(envelope.payload["event_type"], "wifi_state");
+    }
+
+    #[test]
+    fn wifi_change_candidate_is_forwarded_for_cloud_round_trip_confirmation() {
+        let commands = commands_for_event(
+            &RuntimeState::default(),
+            &RuntimeEvent::WifiChangeCandidate(json!({
+                "schema_version": 1,
+                "command_id": "command-123",
+                "profile_id": "profile-456",
+                "operation": "activate_profile",
+                "attempt": 1,
+                "event_id": "command-123:1"
+            })),
+        );
+
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected candidate cloud publish command");
+        };
+        assert_eq!(*domain, WorkerDomain::Cloud);
+        assert_eq!(envelope.message_type, "cloud.publish_event");
+        assert_eq!(envelope.payload["event_type"], "wifi_change_candidate");
+        assert_eq!(envelope.payload["payload"]["command_id"], "command-123");
     }
 }

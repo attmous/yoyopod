@@ -119,7 +119,7 @@ pub fn run(
     }
 
     // Install a generated rule for the configured service user. It grants only
-    // the two NetworkManager actions required by Phase 1 Wi-Fi controls.
+    // the NetworkManager actions required by Phase 1 Wi-Fi controls.
     let remote_polkit_rule = format!("/tmp/{polkit_rule_name}");
     let scp_status = Command::new("scp")
         .arg(&local_polkit_rule)
@@ -189,7 +189,9 @@ fn render_wifi_polkit_rule(service_user: &str) -> Result<String> {
 polkit.addRule(function(action, subject) {{
     if (subject.user === "{service_user}" &&
         (action.id === "org.freedesktop.NetworkManager.wifi.scan" ||
-         action.id === "org.freedesktop.NetworkManager.settings.modify.system")) {{
+         action.id === "org.freedesktop.NetworkManager.settings.modify.system" ||
+         action.id === "org.freedesktop.NetworkManager.network-control" ||
+         action.id === "org.freedesktop.NetworkManager.checkpoint-rollback")) {{
         return polkit.Result.YES;
     }}
 }});
@@ -446,8 +448,9 @@ mod tests {
         assert!(rule.contains("subject.user === \"raouf\""));
         assert!(rule.contains("org.freedesktop.NetworkManager.wifi.scan"));
         assert!(rule.contains("org.freedesktop.NetworkManager.settings.modify.system"));
-        assert!(!rule.contains("org.freedesktop.NetworkManager.network-control"));
-        assert_eq!(rule.matches("action.id ===").count(), 2);
+        assert!(rule.contains("org.freedesktop.NetworkManager.network-control"));
+        assert!(rule.contains("org.freedesktop.NetworkManager.checkpoint-rollback"));
+        assert_eq!(rule.matches("action.id ===").count(), 4);
     }
 
     #[test]
