@@ -146,6 +146,7 @@ fn create_widget(
         ElementKind::Label => facade.create_label(parent, role)?,
         ElementKind::Image => facade.create_image(parent, role)?,
         ElementKind::Arc => facade.create_arc(parent, role)?,
+        ElementKind::Qr => facade.create_qrcode(parent, role)?,
     };
     registry.bind(node, widget);
     Ok(())

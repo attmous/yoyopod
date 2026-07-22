@@ -48,7 +48,7 @@ pub(crate) fn focused_item(runtime: &UiRuntime) -> Option<FocusDescriptor> {
             focus,
             &["Previous", music_play_pause_label(snapshot), "Next"],
         )),
-        UiScreen::Ask | UiScreen::Loading | UiScreen::Error => None,
+        UiScreen::Ask | UiScreen::Loading | UiScreen::Error | UiScreen::SetupWifi => None,
         UiScreen::Talk | UiScreen::Contacts | UiScreen::SetupContacts => list_or_empty(
             &snapshot.call.contacts,
             focus,

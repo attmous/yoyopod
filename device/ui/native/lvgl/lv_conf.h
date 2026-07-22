@@ -29,5 +29,8 @@
 #define LV_USE_IMAGE 1
 #define LV_USE_FLEX 1
 #define LV_USE_SNAPSHOT 1
+/* Wi‑Fi onboarding QR: lv_qrcode is a canvas subclass, so both are required. */
+#define LV_USE_CANVAS 1
+#define LV_USE_QRCODE 1
 
 #endif

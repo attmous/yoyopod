@@ -1,6 +1,6 @@
-use crate::components::primitives::{container, image, label};
+use crate::components::primitives::{container, image, label, qr};
 use crate::engine::{Element, Key};
-use crate::scene::{roles, SetupAboutModel, SetupCounterModel, SetupVolumeModel};
+use crate::scene::{roles, SetupAboutModel, SetupCounterModel, SetupVolumeModel, WifiSetupModel};
 
 const CORAL: u32 = 0xF37767;
 const CREAM_2: u32 = 0xF7DBC2;
@@ -68,5 +68,50 @@ pub fn setup_about(model: &SetupAboutModel) -> Element {
         label(roles::SETUP_HINT)
             .key(Key::Static("setup_about_hint"))
             .text(format!("Battery {}%", model.battery_percent)),
+    )
+}
+
+pub fn setup_wifi(model: &WifiSetupModel) -> Element {
+    let mut root = container(roles::SETUP_ABOUT).key(Key::Static("setup_wifi"));
+
+    // Once the hotspot is up the worker supplies a Wi‑Fi-join payload; show it as
+    // a QR the phone scans to auto-join. Before that (starting/error) there is no
+    // payload, so the screen shows the status line only.
+    if !model.qr_payload.is_empty() {
+        root = root.child(
+            qr(roles::PAGE)
+                .key(Key::Static("setup_wifi_qr"))
+                .text(&model.qr_payload)
+                .absolute(30, 12, 180, 180),
+        );
+    }
+
+    if !model.ap_ssid.is_empty() {
+        root = root.child(
+            label(roles::SETUP_ABOUT_LABEL)
+                .key(Key::Static("setup_wifi_ssid"))
+                .text(format!("Join {}", model.ap_ssid))
+                .absolute(12, 198, 216, 16),
+        );
+    }
+    if !model.ap_password.is_empty() {
+        root = root.child(
+            label(roles::SETUP_ABOUT_VALUE)
+                .key(Key::Static("setup_wifi_key"))
+                .text(format!("Key {}", model.ap_password))
+                .absolute(12, 218, 216, 16),
+        );
+    }
+
+    let status = if model.status_text.is_empty() {
+        "Preparing Wi‑Fi setup…".to_string()
+    } else {
+        model.status_text.clone()
+    };
+    root.child(
+        label(roles::SETUP_HINT)
+            .key(Key::Static("setup_wifi_status"))
+            .text(status)
+            .absolute(12, 240, 216, 34),
     )
 }

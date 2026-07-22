@@ -32,7 +32,7 @@ pub use list_row::list_row;
 pub use player_hero::player_hero;
 pub use progress_sweep::{progress_sweep, ProgressSweepProps};
 pub use recording_panel::{recording_panel, RecordingPanelProps};
-pub use setup::{setup_about, setup_counter, setup_volume};
+pub use setup::{setup_about, setup_counter, setup_volume, setup_wifi};
 pub use status_bar::{status_bar, StatusBarProps};
 pub use voice_meter::{voice_meter, VoiceMeterProps};
 pub use wheel_header::wheel_header;

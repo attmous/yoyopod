@@ -22,6 +22,7 @@
         (screen: "setup_contacts", backdrop: "solid", stage: "list_with_chrome", fx: [], timelines: ["scene_enter"]),
         (screen: "setup_theme", backdrop: "solid", stage: "list_with_chrome", fx: [], timelines: ["scene_enter"]),
         (screen: "setup_about", backdrop: "solid", stage: "list_with_chrome", fx: [], timelines: ["scene_enter"]),
+        (screen: "setup_wifi", backdrop: "solid", stage: "list_with_chrome", fx: [], timelines: ["scene_enter"]),
         (screen: "loading", backdrop: "solid", stage: "overlay_center", fx: ["spinner"], timelines: ["scene_enter"]),
         (screen: "error", backdrop: "solid", stage: "overlay_center", fx: [], timelines: ["scene_enter"]),
     ],

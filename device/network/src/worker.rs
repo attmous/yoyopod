@@ -8,8 +8,10 @@ use crate::config::NetworkHostConfig;
 use crate::modem::{ModemController, Sim7600ModemController};
 use crate::protocol::{
     health_result, ready_event, snapshot_event, snapshot_result, stopped_event, stopped_result,
-    wifi_change_candidate_event, wifi_state_event, wifi_state_result, EnvelopeKind, WorkerEnvelope,
+    wifi_change_candidate_event, wifi_provisioning_state_event, wifi_state_event, wifi_state_result,
+    EnvelopeKind, WorkerEnvelope,
 };
+use crate::provisioning::{WifiProvisioner, WifiProvisioningState};
 use crate::runtime::{NetworkRuntime, RuntimeCommandError};
 use crate::wifi::{
     NetworkManagerWifiController, UnavailableWifiController, WifiActivateProfileRequest,
@@ -143,6 +145,7 @@ where
     W: Write,
 {
     let mut pending_wifi_change = None;
+    let mut provisioning: Option<WifiProvisioner> = None;
     write_envelope(output, &ready_event(&runtime.snapshot().config_dir))?;
     write_envelope(output, &snapshot_event(runtime.snapshot()))?;
     emit_wifi_state(
@@ -185,6 +188,7 @@ where
                     &mut runtime,
                     wifi.as_mut(),
                     &mut pending_wifi_change,
+                    &mut provisioning,
                     envelope,
                     output,
                 )? {
@@ -192,6 +196,7 @@ where
                     LoopControl::Shutdown => break,
                 }
                 service_pending_wifi_change(output, wifi.as_mut(), &mut pending_wifi_change)?;
+                service_provisioning(output, &mut provisioning)?;
             }
             Ok(Err(error)) => {
                 write_envelope(
@@ -210,6 +215,7 @@ where
                 runtime.tick();
                 emit_pending_snapshots(output, &mut runtime)?;
                 service_pending_wifi_change(output, wifi.as_mut(), &mut pending_wifi_change)?;
+                service_provisioning(output, &mut provisioning)?;
             }
             Err(RecvTimeoutError::Disconnected) => {
                 shutdown_for_implicit_exit(output, &mut runtime, "input_closed")?;
@@ -230,6 +236,7 @@ fn handle_command<C, W>(
     runtime: &mut NetworkRuntime<C>,
     wifi: &mut dyn WifiController,
     pending_wifi_change: &mut Option<PendingWifiChange>,
+    provisioning: &mut Option<WifiProvisioner>,
     envelope: WorkerEnvelope,
     output: &mut W,
 ) -> Result<LoopControl>
@@ -237,6 +244,27 @@ where
     C: ModemController,
     W: Write,
 {
+    // While the hotspot/onboarding flow owns the radio, station-mode Wi‑Fi
+    // commands would fight it; reject them until it stops.
+    if provisioning.is_some()
+        && envelope.message_type.starts_with("wifi_")
+        && !matches!(
+            envelope.message_type.as_str(),
+            "wifi_provisioning_start" | "wifi_provisioning_stop"
+        )
+    {
+        write_envelope(
+            output,
+            &WorkerEnvelope::error(
+                "wifi_error",
+                envelope.request_id,
+                "wifi_provisioning_in_progress",
+                "Wi-Fi setup is in progress on the device",
+            ),
+        )?;
+        return Ok(LoopControl::Continue);
+    }
+
     if pending_wifi_change.is_some()
         && !matches!(
             envelope.message_type.as_str(),
@@ -407,7 +435,25 @@ where
                 handle_wifi_operation(output, Some(pending.request_id), result, wifi)?;
             }
         }
+        "wifi_provisioning_start" => {
+            if provisioning.is_none() {
+                let (worker, initial) = WifiProvisioner::start();
+                *provisioning = Some(worker);
+                emit_provisioning_state(output, &initial)?;
+            }
+        }
+        "wifi_provisioning_stop" => {
+            if let Some(worker) = provisioning.take() {
+                let final_state = worker.stop();
+                emit_provisioning_state(output, &final_state)?;
+            } else {
+                emit_provisioning_state(output, &WifiProvisioningState::idle())?;
+            }
+        }
         "network.shutdown" | "worker.stop" => {
+            if let Some(worker) = provisioning.take() {
+                let _ = worker.stop();
+            }
             runtime.shutdown();
             write_envelope(output, &stopped_result(envelope.request_id, "shutdown"))?;
             emit_pending_snapshots(output, runtime)?;
@@ -550,6 +596,32 @@ fn handle_wifi_operation(
 
 fn emit_wifi_state(output: &mut dyn Write, state: crate::wifi::WifiState) -> Result<()> {
     write_envelope(output, &wifi_state_event(&state))
+}
+
+fn emit_provisioning_state(output: &mut dyn Write, state: &WifiProvisioningState) -> Result<()> {
+    write_envelope(output, &wifi_provisioning_state_event(state))
+}
+
+/// Forward any onboarding status updates to the runtime and, once the flow's
+/// background thread has finished on its own, reap it (its terminal state was
+/// already emitted via `drain`).
+fn service_provisioning(
+    output: &mut dyn Write,
+    provisioning: &mut Option<WifiProvisioner>,
+) -> Result<()> {
+    let mut finished = false;
+    if let Some(worker) = provisioning.as_mut() {
+        for state in worker.drain() {
+            emit_provisioning_state(output, &state)?;
+        }
+        finished = worker.finished();
+    }
+    if finished {
+        if let Some(worker) = provisioning.take() {
+            worker.join();
+        }
+    }
+    Ok(())
 }
 
 fn emit_command_error(

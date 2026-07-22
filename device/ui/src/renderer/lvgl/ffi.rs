@@ -236,6 +236,10 @@ unsafe extern "C" {
     pub fn lv_image_set_src(obj: *mut lv_obj_t, src: *const c_void);
     pub fn lv_image_set_inner_align(obj: *mut lv_obj_t, align: i32);
 
+    pub fn lv_qrcode_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
+    pub fn lv_qrcode_set_size(obj: *mut lv_obj_t, size: i32);
+    pub fn lv_qrcode_update(obj: *mut lv_obj_t, data: *const c_void, data_len: u32) -> i32;
+
     pub fn lv_arc_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_arc_set_range(obj: *mut lv_obj_t, min: i32, max: i32);
     pub fn lv_arc_set_value(obj: *mut lv_obj_t, value: i32);

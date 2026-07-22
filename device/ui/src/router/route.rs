@@ -38,6 +38,8 @@ pub enum IntentTemplate {
     CallToggleMute,
     SettingsVolumeStep,
     SettingsSpeakNamesToggle,
+    SettingsWifiSetupStart,
+    SettingsWifiSetupStop,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -88,6 +88,17 @@ install -m 0644 -o root -g root \
     "${REPO_ROOT}/deploy/systemd/yoyopod-dev.service" \
     "${UNIT_DIR}/yoyopod-dev.service"
 
+# 3b. Captive-portal DNS for on-device Wi‑Fi setup. While the device hosts its
+# onboarding hotspot (NetworkManager ipv4=shared), resolve every name to the
+# portal gateway so a phone auto-opens the setup page. NetworkManager includes
+# dnsmasq-shared.d/* only while a shared connection is active, so this is inert
+# during normal operation.
+install -d -m 0755 -o root -g root /etc/NetworkManager/dnsmasq-shared.d
+cat > "/etc/NetworkManager/dnsmasq-shared.d/010-yoyopod-captive.conf" <<'EOF'
+# Written by bootstrap_pi.sh - YoYoPod Wi-Fi setup captive portal.
+address=/#/10.42.0.1
+EOF
+
 # 4. EnvironmentFiles with the lane roots.
 cat > "/etc/default/yoyopod-prod" <<EOF
 # /etc/default/yoyopod-prod - written by bootstrap_pi.sh

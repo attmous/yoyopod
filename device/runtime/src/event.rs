@@ -25,6 +25,7 @@ pub enum RuntimeEvent {
     NetworkSnapshot(Value),
     WifiState(Value),
     WifiChangeCandidate(Value),
+    WifiProvisioningState(Value),
     PowerSnapshot(Value),
     VoiceTranscript(Value),
     VoiceAskResult(Value),
@@ -97,6 +98,9 @@ impl RuntimeEvent {
                 state.apply_network_snapshot(snapshot);
             }
             Self::WifiState(_) | Self::WifiChangeCandidate(_) => {}
+            Self::WifiProvisioningState(payload) => {
+                state.apply_wifi_provisioning_state(payload)
+            }
             Self::PowerSnapshot(snapshot) => {
                 state.resolve_overlay_for(WorkerDomain::Power);
                 state.apply_power_snapshot(snapshot);
@@ -247,6 +251,14 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
             json!({
                 "event_type": "wifi_change_candidate",
                 "payload": candidate,
+            }),
+        )],
+        RuntimeEvent::WifiProvisioningState(provisioning) => vec![worker_command(
+            WorkerDomain::Cloud,
+            "cloud.publish_event",
+            json!({
+                "event_type": "wifi_provisioning_state",
+                "payload": provisioning,
             }),
         )],
         RuntimeEvent::PowerSnapshot(snapshot) => commands_for_power_snapshot(state, snapshot),
@@ -403,6 +415,7 @@ fn network_event_from_message(message_type: &str, payload: Value) -> RuntimeEven
         "network.snapshot" | "network.health" => RuntimeEvent::NetworkSnapshot(payload),
         "wifi_state" => RuntimeEvent::WifiState(payload),
         "wifi_change_candidate" => RuntimeEvent::WifiChangeCandidate(payload),
+        "wifi_provisioning_state" => RuntimeEvent::WifiProvisioningState(payload),
         "network.error" => RuntimeEvent::WorkerError {
             domain: WorkerDomain::Network,
             message: worker_error_message(message_type, &payload),
@@ -590,6 +603,16 @@ fn commands_for_settings_intent(
                 json!({"volume": next * 10}),
             )]
         }
+        SettingsIntent::WifiSetupStart => vec![worker_command(
+            WorkerDomain::Network,
+            "wifi_provisioning_start",
+            empty_payload(),
+        )],
+        SettingsIntent::WifiSetupStop => vec![worker_command(
+            WorkerDomain::Network,
+            "wifi_provisioning_stop",
+            empty_payload(),
+        )],
         SettingsIntent::CompanionSet(_)
         | SettingsIntent::ThemeSet(_)
         | SettingsIntent::SpeakNamesToggle => Vec::new(),

@@ -138,6 +138,7 @@ static SETUP_CONTACTS: LvImageDsc = LvImageDsc::a8_56(&SETUP_CONTACTS_MAP);
 static SETUP_THEME: LvImageDsc = LvImageDsc::a8_56(&SETUP_THEME_MAP);
 static SETUP_SPEAK: LvImageDsc = LvImageDsc::a8_56(&SETUP_SPEAK_MAP);
 static SETUP_ABOUT: LvImageDsc = LvImageDsc::a8_56(&SETUP_ABOUT_MAP);
+static SETUP_WIFI: LvImageDsc = LvImageDsc::a8_56(&SETUP_WIFI_MAP);
 static SETUP_BLOB: LvImageDsc = LvImageDsc::a8_56(&SETUP_BLOB_MAP);
 static SETUP_OWL: LvImageDsc = LvImageDsc::a8_56(&SETUP_OWL_MAP);
 static SETUP_CAT: LvImageDsc = LvImageDsc::a8_56(&SETUP_CAT_MAP);
@@ -1103,6 +1104,7 @@ pub(crate) fn descriptor_for_key(icon_key: &str) -> Option<&'static LvImageDsc> 
         "setup_theme" => Some(&SETUP_THEME),
         "setup_speak" => Some(&SETUP_SPEAK),
         "setup_about" => Some(&SETUP_ABOUT),
+        "setup_wifi" => Some(&SETUP_WIFI),
         "setup_blob" => Some(&SETUP_BLOB),
         "setup_owl" => Some(&SETUP_OWL),
         "setup_cat" => Some(&SETUP_CAT),
