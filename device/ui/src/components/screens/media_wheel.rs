@@ -13,10 +13,10 @@ pub fn models(items: &[ListItemSnapshot]) -> Vec<WheelItemModel> {
     items
         .iter()
         .map(|item| WheelItemModel {
-            title: item.title.clone(),
+            title: compact_item_title(&item.title),
             subtitle: item.subtitle.clone(),
             variant: WheelItemVariant::Media {
-                initial: title_initial(&item.title),
+                icon_key: media_icon_key(&item.icon_key),
                 plate_rgb: plate_color(&item.id),
             },
         })
@@ -79,12 +79,22 @@ fn compact_context_title(title: &str) -> String {
     suffix.to_uppercase()
 }
 
-fn title_initial(title: &str) -> String {
-    title
-        .chars()
-        .find(|character| character.is_alphanumeric())
-        .map(|character| character.to_uppercase().collect())
-        .unwrap_or_else(|| "?".to_string())
+fn compact_item_title(title: &str) -> String {
+    let title = title.trim();
+    [" - ", " – ", " — "]
+        .into_iter()
+        .find_map(|separator| title.split_once(separator).map(|(prefix, _)| prefix.trim()))
+        .filter(|prefix| !prefix.is_empty())
+        .unwrap_or(title)
+        .to_string()
+}
+
+fn media_icon_key(icon_key: &str) -> String {
+    match icon_key.trim().to_ascii_lowercase().as_str() {
+        "playlist" | "playlists" | "icon_playlists" => "icon_playlists".to_string(),
+        "track" | "listen" | "recent" | "recents" | "" => "music_note".to_string(),
+        _ => icon_key.trim().to_string(),
+    }
 }
 
 fn plate_color(id: &str) -> u32 {
@@ -102,15 +112,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn media_models_have_stable_initials_and_plate_colors() {
+    fn media_models_use_semantic_svg_artwork_and_compact_titles() {
         let item = ListItemSnapshot::new("mix", "morning songs", "12 tracks", "playlist");
         let first = models(std::slice::from_ref(&item));
         let second = models(&[item]);
         assert_eq!(first, second);
-        let WheelItemVariant::Media { initial, .. } = &first[0].variant else {
+        let WheelItemVariant::Media { icon_key, .. } = &first[0].variant else {
             panic!("media wheel must use the media variant");
         };
-        assert_eq!(initial, "M");
+        assert_eq!(icon_key, "icon_playlists");
+
+        let titled =
+            ListItemSnapshot::new("classics", "Open Classics - Holst", "3 tracks", "playlist");
+        assert_eq!(models(&[titled])[0].title, "Open Classics");
+
+        let track = ListItemSnapshot::new("track", "Chaconne", "5:32", "track");
+        let track_models = models(&[track]);
+        let WheelItemVariant::Media { icon_key, .. } = &track_models[0].variant else {
+            panic!("track must use the media variant");
+        };
+        assert_eq!(icon_key, "music_note");
     }
 
     #[test]

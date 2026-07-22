@@ -184,7 +184,7 @@ mod tests {
         assert_eq!(focused.children[2].role, Some(roles::TALK_WHEEL_ITEM));
         assert_eq!(
             focused.children[2].children[0].role,
-            Some(roles::WHEEL_ICON)
+            Some(roles::WHEEL_FOCUS_ICON)
         );
     }
 
