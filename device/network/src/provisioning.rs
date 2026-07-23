@@ -290,8 +290,8 @@ fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
                 "connecting",
                 &format!("Connecting to {}...", request.ssid),
             ));
-            match connect_to_network(&request) {
-                Ok(()) => {
+            match connect_to_network(&request, stop_rx) {
+                ConnectOutcome::Connected => {
                     let _ = status_tx.send(WifiProvisioningState {
                         active: false,
                         phase: "connected".to_string(),
@@ -299,8 +299,13 @@ fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
                         ..WifiProvisioningState::base()
                     });
                 }
-                Err(error) => {
+                ConnectOutcome::Failed(error) => {
                     let _ = status_tx.send(WifiProvisioningState::error(&error));
+                }
+                // User left setup mid-connect: the worker is being torn down, so
+                // go idle rather than surfacing a connect error.
+                ConnectOutcome::Cancelled => {
+                    let _ = status_tx.send(WifiProvisioningState::idle());
                 }
             }
         }
@@ -311,6 +316,14 @@ enum PortalOutcome {
     Stopped,
     TimedOut,
     Connect(ConnectRequest),
+}
+
+/// Result of trying to join the chosen network.
+enum ConnectOutcome {
+    Connected,
+    Failed(String),
+    /// Teardown was requested (user left setup) before the join finished.
+    Cancelled,
 }
 
 #[derive(Debug, Clone)]
@@ -633,80 +646,119 @@ fn scan_networks() -> Vec<PortalNetwork> {
 /// existing profile (preserving its stored key and any static-IP/hidden/
 /// autoconnect settings); every other case creates a fresh autoconnect profile
 /// and activates it directly.
-fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
-    let connection = Connection::system().map_err(|_| "Wi-Fi is unavailable".to_string())?;
+fn connect_to_network(request: &ConnectRequest, stop_rx: &Receiver<()>) -> ConnectOutcome {
+    let connection = match Connection::system() {
+        Ok(connection) => connection,
+        Err(_) => return ConnectOutcome::Failed("Wi-Fi is unavailable".to_string()),
+    };
 
     // "Reconnect to a saved network": a secured network with no new password.
     // Reactivate the profile the device already has rather than building a fresh
     // DHCP one, so its stored key and any custom settings are preserved and no
     // duplicate profile is created for the same SSID.
     if request.security != WifiSecurity::Open && request.password.is_empty() {
-        return activate_saved_network(&connection, &request.ssid);
+        return activate_saved_network(&connection, &request.ssid, stop_rx);
     }
 
-    let (connection_path, active_path) = {
-        let device = wifi_device_path(&connection)?;
-        let settings = build_station_settings(request)?;
-        let settings_proxy = proxy(&connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE)?;
-        let (path, _result): (OwnedObjectPath, HashMap<String, OwnedValue>) = settings_proxy
-            .call(
-                "AddConnection2",
-                &(
-                    settings,
-                    NM_SETTINGS_ADD_TO_DISK,
-                    HashMap::<String, OwnedValue>::new(),
-                ),
-            )
-            .map_err(|_| "could not save the network".to_string())?;
-        let manager = proxy(&connection, NM_PATH, NM_INTERFACE)?;
-        let active: OwnedObjectPath =
-            match manager.call("ActivateConnection", &(path.clone(), device, root_path())) {
-                Ok(active) => active,
-                Err(_) => {
-                    // Activation was rejected synchronously, but AddConnection2
-                    // already wrote the autoconnect profile to disk. Delete it
-                    // before returning so NetworkManager doesn't retry a bad or
-                    // unreachable network on later onboarding attempts.
-                    delete_profile(&connection, &path);
-                    return Err("could not connect to the network".to_string());
-                }
-            };
-        (path, active)
+    let (connection_path, active_path) = match create_station_connection(&connection, request) {
+        Ok(paths) => paths,
+        Err(error) => return ConnectOutcome::Failed(error),
     };
     // ActivateConnection returns as soon as the request is accepted, before the
     // station link is really up - so a wrong password or DHCP failure would
-    // otherwise be reported as success. Wait for the active connection to reach
-    // ACTIVATED with an IPv4 address (or fail/time out) before returning. On
-    // failure, delete the autoconnect profile we just created so NetworkManager
-    // doesn't keep retrying a bad saved network on later onboarding attempts.
-    match wait_for_active(&connection, &active_path, true, CONNECT_TIMEOUT, None) {
-        ActiveWait::Activated => Ok(()),
+    // otherwise be reported as success. Wait for ACTIVATED with an IPv4 address
+    // (or fail / time out / cancel) before returning. `stop_rx` makes this wait
+    // abort promptly when the user leaves setup, instead of blocking the worker
+    // for the full CONNECT_TIMEOUT before it can process teardown.
+    match wait_for_active(
+        &connection,
+        &active_path,
+        true,
+        CONNECT_TIMEOUT,
+        Some(stop_rx),
+    ) {
+        ActiveWait::Activated => ConnectOutcome::Connected,
+        // User left mid-connect: drop the half-created profile and go idle.
+        ActiveWait::Cancelled => {
+            delete_profile(&connection, &connection_path);
+            ConnectOutcome::Cancelled
+        }
         // A station connection that never gets an IPv4 lease in time (or drops)
         // is a real failure - delete the profile so NM stops retrying it.
-        // `Cancelled` cannot occur here (no stop receiver is passed), but folding
-        // it in keeps the match exhaustive and the cleanup identical.
-        ActiveWait::Deactivated | ActiveWait::TimedOut | ActiveWait::Cancelled => {
+        ActiveWait::Deactivated | ActiveWait::TimedOut => {
             delete_profile(&connection, &connection_path);
-            Err("Could not join that network - check the password.".to_string())
+            ConnectOutcome::Failed("Could not join that network - check the password.".to_string())
         }
     }
 }
 
+/// Create the station autoconnect profile and start activating it, returning the
+/// (profile, active-connection) object paths. On a synchronous activation
+/// rejection the just-written profile is deleted before returning the error.
+fn create_station_connection(
+    connection: &Connection,
+    request: &ConnectRequest,
+) -> Result<(OwnedObjectPath, OwnedObjectPath), String> {
+    let device = wifi_device_path(connection)?;
+    let settings = build_station_settings(request)?;
+    let settings_proxy = proxy(connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE)?;
+    let (path, _result): (OwnedObjectPath, HashMap<String, OwnedValue>) = settings_proxy
+        .call(
+            "AddConnection2",
+            &(
+                settings,
+                NM_SETTINGS_ADD_TO_DISK,
+                HashMap::<String, OwnedValue>::new(),
+            ),
+        )
+        .map_err(|_| "could not save the network".to_string())?;
+    let manager = proxy(connection, NM_PATH, NM_INTERFACE)?;
+    let active: OwnedObjectPath =
+        match manager.call("ActivateConnection", &(path.clone(), device, root_path())) {
+            Ok(active) => active,
+            Err(_) => {
+                // Activation was rejected synchronously, but AddConnection2 already
+                // wrote the autoconnect profile to disk. Delete it before returning
+                // so NetworkManager doesn't retry a bad network on later onboarding.
+                delete_profile(connection, &path);
+                return Err("could not connect to the network".to_string());
+            }
+        };
+    Ok((path, active))
+}
+
 /// Reconnect to a network the device already has saved by activating its
 /// existing profile. If no saved profile matches the SSID, a password is
-/// required. The saved profile is never deleted on failure - it is the user's
-/// own configuration, not one created here.
-fn activate_saved_network(connection: &Connection, ssid: &str) -> Result<(), String> {
-    let profile = saved_connection_path(connection, ssid)
-        .ok_or_else(|| "Enter the Wi-Fi password.".to_string())?;
-    let device = wifi_device_path(connection)?;
-    let manager = proxy(connection, NM_PATH, NM_INTERFACE)?;
-    let active: OwnedObjectPath = manager
+/// required. The saved profile is never deleted - it is the user's own
+/// configuration, not one created here.
+fn activate_saved_network(
+    connection: &Connection,
+    ssid: &str,
+    stop_rx: &Receiver<()>,
+) -> ConnectOutcome {
+    let profile = match saved_connection_path(connection, ssid) {
+        Some(profile) => profile,
+        None => return ConnectOutcome::Failed("Enter the Wi-Fi password.".to_string()),
+    };
+    let device = match wifi_device_path(connection) {
+        Ok(device) => device,
+        Err(error) => return ConnectOutcome::Failed(error),
+    };
+    let manager = match proxy(connection, NM_PATH, NM_INTERFACE) {
+        Ok(manager) => manager,
+        Err(error) => return ConnectOutcome::Failed(error),
+    };
+    let active: OwnedObjectPath = match manager
         .call("ActivateConnection", &(profile, device, root_path()))
-        .map_err(|_| "could not connect to the network".to_string())?;
-    match wait_for_active(connection, &active, true, CONNECT_TIMEOUT, None) {
-        ActiveWait::Activated => Ok(()),
-        _ => Err("Could not reconnect to that network.".to_string()),
+    {
+        Ok(active) => active,
+        Err(_) => return ConnectOutcome::Failed("could not connect to the network".to_string()),
+    };
+    match wait_for_active(connection, &active, true, CONNECT_TIMEOUT, Some(stop_rx)) {
+        ActiveWait::Activated => ConnectOutcome::Connected,
+        // Do not delete the user's pre-existing saved profile.
+        ActiveWait::Cancelled => ConnectOutcome::Cancelled,
+        _ => ConnectOutcome::Failed("Could not reconnect to that network.".to_string()),
     }
 }
 
