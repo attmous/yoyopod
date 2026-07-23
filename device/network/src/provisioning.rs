@@ -197,6 +197,22 @@ impl WifiProvisioner {
     }
 }
 
+impl Drop for WifiProvisioner {
+    /// Safety net for every exit path. If the provisioner is dropped without an
+    /// explicit `stop()`/`join()` - e.g. an input error or closed stdin makes the
+    /// network worker return while the hotspot is still up - signal the
+    /// background thread and wait for it to tear the AP down, rather than
+    /// detaching the thread and risking the process exiting with the setup AP
+    /// still holding the radio. Idempotent with `stop()`/`join()`, which both
+    /// take the handle first.
+    fn drop(&mut self) {
+        let _ = self.stop_tx.send(());
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
 /// The onboarding state machine, run on the background thread.
 fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
     let networks = scan_networks();
@@ -416,40 +432,33 @@ fn content_length(request: &tiny_http::Request) -> Option<u64> {
         .and_then(|header| header.value.as_str().parse::<u64>().ok())
 }
 
-/// Look up the saved PSK for an SSID from NetworkManager, if the device already
-/// has a Wi-Fi profile for it. Best-effort — returns None if not saved or the
-/// secret cannot be read.
-fn saved_wifi_secret(ssid: &str) -> Option<String> {
+/// The NetworkManager connection object path for a saved Wi-Fi profile matching
+/// `ssid`, if the device already has one. Best-effort. Used to reactivate an
+/// existing profile (preserving its settings) instead of creating a new one -
+/// the profile's saved key stays inside NetworkManager and is never read out.
+fn saved_connection_path(connection: &Connection, ssid: &str) -> Option<OwnedObjectPath> {
     if ssid.is_empty() {
         return None;
     }
-    let connection = Connection::system().ok()?;
-    let settings_proxy = proxy(&connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE).ok()?;
+    let settings_proxy = proxy(connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE).ok()?;
     let paths: Vec<OwnedObjectPath> = settings_proxy.call("ListConnections", &()).ok()?;
-    for path in paths {
-        let Ok(conn) = proxy(&connection, path.as_str(), NM_CONNECTION_INTERFACE) else {
-            continue;
-        };
-        let Ok(settings) = conn.call::<_, _, NmSettings>("GetSettings", &()) else {
-            continue;
-        };
-        if profile_ssid(&settings).as_deref() != Some(ssid) {
-            continue;
-        }
-        if let Ok(secrets) =
-            conn.call::<_, _, NmSettings>("GetSecrets", &("802-11-wireless-security",))
-        {
-            if let Some(psk) = secrets
-                .get("802-11-wireless-security")
-                .and_then(|group| group.get("psk"))
-                .cloned()
-                .and_then(|value| String::try_from(value).ok())
-            {
-                return Some(psk);
-            }
-        }
-    }
-    None
+    // The `matches` check borrows `path` (the proxy holds its str); keep it in a
+    // helper so that borrow ends before we move `path` into the return value.
+    paths
+        .into_iter()
+        .find(|path| connection_is_for_ssid(connection, path, ssid))
+}
+
+/// Whether the NetworkManager connection profile at `path` is an 802-11-wireless
+/// profile for `ssid`.
+fn connection_is_for_ssid(connection: &Connection, path: &OwnedObjectPath, ssid: &str) -> bool {
+    let Ok(conn) = proxy(connection, path.as_str(), NM_CONNECTION_INTERFACE) else {
+        return false;
+    };
+    let Ok(settings) = conn.call::<_, _, NmSettings>("GetSettings", &()) else {
+        return false;
+    };
+    profile_ssid(&settings).as_deref() == Some(ssid)
 }
 
 /// Read the SSID (as UTF-8) from a NetworkManager 802-11-wireless profile.
@@ -533,16 +542,23 @@ fn scan_networks() -> Vec<PortalNetwork> {
 }
 
 /// Join the selected home network. Unlike the cloud-driven `add_profile`, this
-/// runs with no active station connection (the AP is being torn down), so it
-/// creates an autoconnect profile and activates it directly.
+/// runs with no active station connection (the AP is being torn down).
+///
+/// A saved network submitted with no new password reactivates the device's
+/// existing profile (preserving its stored key and any static-IP/hidden/
+/// autoconnect settings); every other case creates a fresh autoconnect profile
+/// and activates it directly.
 fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
-    // Resolve the credential before touching the radio: for a saved network the
-    // user reconnects without retyping, so reuse the device's stored PSK here
-    // (server-side) rather than ever sending it to the phone. A network the
-    // device does not already know must supply a password.
-    let effective = resolve_credential(request)?;
-    let request = &effective;
     let connection = Connection::system().map_err(|_| "Wi-Fi is unavailable".to_string())?;
+
+    // "Reconnect to a saved network": a secured network with no new password.
+    // Reactivate the profile the device already has rather than building a fresh
+    // DHCP one, so its stored key and any custom settings are preserved and no
+    // duplicate profile is created for the same SSID.
+    if request.security != WifiSecurity::Open && request.password.is_empty() {
+        return activate_saved_network(&connection, &request.ssid);
+    }
+
     let (connection_path, active_path) = {
         let device = wifi_device_path(&connection)?;
         let settings = build_station_settings(request)?;
@@ -591,20 +607,21 @@ fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
     }
 }
 
-/// Fill in the effective credential for a connect request. A secured network
-/// submitted with no password is treated as "reconnect to a saved network":
-/// reuse the stored PSK (looked up server-side) or, if the device has no saved
-/// profile for it, report that a password is required.
-fn resolve_credential(request: &ConnectRequest) -> Result<ConnectRequest, String> {
-    if request.security != WifiSecurity::Open && request.password.is_empty() {
-        let psk = saved_wifi_secret(&request.ssid)
-            .ok_or_else(|| "Enter the Wi-Fi password.".to_string())?;
-        Ok(ConnectRequest {
-            password: psk,
-            ..request.clone()
-        })
-    } else {
-        Ok(request.clone())
+/// Reconnect to a network the device already has saved by activating its
+/// existing profile. If no saved profile matches the SSID, a password is
+/// required. The saved profile is never deleted on failure - it is the user's
+/// own configuration, not one created here.
+fn activate_saved_network(connection: &Connection, ssid: &str) -> Result<(), String> {
+    let profile = saved_connection_path(connection, ssid)
+        .ok_or_else(|| "Enter the Wi-Fi password.".to_string())?;
+    let device = wifi_device_path(connection)?;
+    let manager = proxy(connection, NM_PATH, NM_INTERFACE)?;
+    let active: OwnedObjectPath = manager
+        .call("ActivateConnection", &(profile, device, root_path()))
+        .map_err(|_| "could not connect to the network".to_string())?;
+    match wait_for_active(connection, &active, true, CONNECT_TIMEOUT, None) {
+        ActiveWait::Activated => Ok(()),
+        _ => Err("Could not reconnect to that network.".to_string()),
     }
 }
 
