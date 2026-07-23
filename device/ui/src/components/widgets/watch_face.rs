@@ -30,7 +30,8 @@ pub fn watch_face(model: &WatchFaceModel) -> Element {
         .child(
             label(roles::WATCH_TIME)
                 .key(Key::Static("watch_time"))
-                .text(&model.time),
+                .text(&model.time)
+                .scale_permille(1_200),
         )
         .child(battery_complication(model))
 }
@@ -50,13 +51,15 @@ fn battery_complication(model: &WatchFaceModel) -> Element {
             image(roles::WATCH_BATTERY_ICON)
                 .key(Key::Static("watch_battery_icon"))
                 .icon(battery_icon_key(model.battery_percent))
-                .accent(LIME),
+                .accent(LIME)
+                .scale_permille(1_500),
         )
         .child(
             image(roles::WATCH_CHARGE_ICON)
                 .key(Key::Static("watch_charge_icon"))
                 .icon("status_charge")
                 .accent(LIME)
+                .scale_permille(1_400)
                 .visible(model.power_available && model.charging),
         )
         .child(
@@ -166,6 +169,27 @@ mod tests {
         for role in orbit_roles {
             assert_eq!(count_role(&root, role), 1, "missing orbit role {role}");
         }
+        assert_eq!(
+            find_role(&root, roles::WATCH_TIME).props.scale_permille,
+            Some(1_200)
+        );
+        assert_eq!(
+            find_role(&root, roles::WATCH_BATTERY_ICON)
+                .props
+                .scale_permille,
+            Some(1_500)
+        );
+    }
+
+    fn find_role<'a>(element: &'a Element, role: &'static str) -> &'a Element {
+        if element.role == Some(role) {
+            return element;
+        }
+        element
+            .children
+            .iter()
+            .find_map(|child| (count_role(child, role) > 0).then(|| find_role(child, role)))
+            .unwrap_or_else(|| panic!("missing role {role}"))
     }
 
     fn count_role(element: &Element, role: &'static str) -> usize {

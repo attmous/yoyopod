@@ -688,6 +688,19 @@ mod tests {
     }
 
     #[test]
+    fn watch_battery_complication_is_compact_and_horizontally_balanced() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let card = layout(&layouts, roles::WATCH_BATTERY_CARD);
+        let icon = layout(&layouts, roles::WATCH_BATTERY_ICON);
+        let label = layout(&layouts, roles::WATCH_BATTERY_LABEL);
+
+        assert_eq!((card.x, card.y, card.width, card.height), (76, 164, 88, 40));
+        assert!(icon.x + icon.width < label.x);
+        assert!(label.x + label.width <= card.width);
+        assert!(label.y + label.height <= card.height);
+    }
+
+    #[test]
     fn media_wheel_regions_do_not_overlap() {
         let layouts = parse_layout_asset().expect("layouts.ron should be valid");
         let header = layout(&layouts, roles::MEDIA_WHEEL_HEADER);

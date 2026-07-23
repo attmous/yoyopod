@@ -20,7 +20,7 @@
         (role: "watch_dot_left", fill_rgb: Some(11071594), opacity: Some(255), radius: 6),
         (role: "watch_date", text_rgb: Some(16775402)),
         (role: "watch_time", text_rgb: Some(16775402)),
-        (role: "watch_battery_card", fill_rgb: Some(592660), opacity: Some(255), border_rgb: Some(11071594), border_width: 3, radius: 16),
+        (role: "watch_battery_card", fill_rgb: Some(592660), opacity: Some(255), border_rgb: Some(11071594), border_width: 2, radius: 12),
         (role: "watch_battery_icon", text_rgb: Some(11071594)),
         (role: "watch_charge_icon", text_rgb: Some(11071594)),
         (role: "watch_battery_label", text_rgb: Some(16775402)),
