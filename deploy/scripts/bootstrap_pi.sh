@@ -106,11 +106,13 @@ EOF
 # non-login systemd session, so without them NetworkManager denies AP activation
 # ("Not authorized to share connections via wifi.") and profile changes. This
 # mirrors the rule `yoyopod target deploy` installs for dev, so a prod bootstrap
-# (which runs before any deploy) has the same grants.
-cat > "/etc/polkit-1/rules.d/50-yoyopod-wifi-share.rules" <<'EOF'
+# (which runs before any deploy) has the same grants. Match the actual service
+# user (the units are patched to run as ${INVOKING_USER}), since that user is not
+# necessarily a member of netdev; keep the netdev group as a fallback.
+cat > "/etc/polkit-1/rules.d/50-yoyopod-wifi-share.rules" <<EOF
 // Written by bootstrap_pi.sh - YoYoPod Wi-Fi setup authorization.
 polkit.addRule(function(action, subject) {
-    if (subject.isInGroup("netdev") &&
+    if ((subject.user == "${INVOKING_USER}" || subject.isInGroup("netdev")) &&
         (action.id == "org.freedesktop.NetworkManager.wifi.scan" ||
          action.id == "org.freedesktop.NetworkManager.settings.modify.system" ||
          action.id == "org.freedesktop.NetworkManager.network-control" ||

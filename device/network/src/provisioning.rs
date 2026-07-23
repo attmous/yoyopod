@@ -455,11 +455,23 @@ fn read_connect_worker(mut request: tiny_http::Request, tx: &Sender<ConnectReque
     }
     match parse_connect(&body) {
         Ok(connect) => {
-            let _ = request.respond(json_response(
-                200,
-                &json!({ "status": "connecting", "ssid": connect.ssid }).to_string(),
-            ));
-            let _ = tx.send(connect);
+            let ssid = connect.ssid.clone();
+            // Hand the request to the control loop first; only tell the phone
+            // "connecting" once it is accepted. If the loop already moved on
+            // (this body arrived past CONNECT_BODY_TIMEOUT and the receiver was
+            // dropped), the send fails - so report a retry instead of leaving the
+            // phone on "Connecting..." while the device never acts.
+            if tx.send(connect).is_ok() {
+                let _ = request.respond(json_response(
+                    200,
+                    &json!({ "status": "connecting", "ssid": ssid }).to_string(),
+                ));
+            } else {
+                let _ = request.respond(json_response(
+                    503,
+                    &json!({ "error": "Setup timed out - please try again." }).to_string(),
+                ));
+            }
         }
         Err(message) => {
             let _ = request.respond(json_response(400, &json!({ "error": message }).to_string()));
