@@ -63,6 +63,10 @@ const PORTAL_POLL: Duration = Duration::from_millis(250);
 /// JSON is well under 1 KiB; 8 KiB leaves generous headroom while bounding what a
 /// hotspot client can make the network worker allocate.
 const MAX_CONNECT_BODY: u64 = 8 * 1024;
+/// How long to wait for a `/connect` body to finish arriving before abandoning
+/// the read. A real phone sends the tiny JSON instantly; a client that trickles
+/// or stalls must not hold the setup radio, so give up well within `AP_TIMEOUT`.
+const CONNECT_BODY_TIMEOUT: Duration = Duration::from_secs(5);
 /// If the user has not submitted a network within this window, tear the hotspot
 /// down and let NetworkManager auto-reconnect the previously active profile so
 /// the device returns online on its own.
@@ -366,54 +370,111 @@ fn serve_portal(
             Ok(None) => continue,
             Err(_) => return PortalOutcome::Stopped,
         };
-        if let Some(connect) = handle_request(request, &networks_json) {
-            return PortalOutcome::Connect(connect);
+        if is_connect_post(&request) {
+            // The /connect body is read off the control loop so a client that
+            // stalls mid-body cannot block teardown; the loop keeps polling
+            // stop_rx / AP_TIMEOUT while the body arrives. `None` means the read
+            // failed, was rejected, or stalled - keep serving in that case.
+            if let Some(outcome) = read_connect(request, stop_rx, deadline) {
+                return outcome;
+            }
+        } else {
+            handle_request(request, &networks_json);
         }
     }
 }
 
-/// Handle a single portal request. Returns a connect request when the user
-/// submits credentials (after acknowledging it to the phone).
-fn handle_request(mut request: tiny_http::Request, networks_json: &str) -> Option<ConnectRequest> {
-    let url = request.url().to_string();
-    let path = url.split('?').next().unwrap_or("/");
-    let is_post = *request.method() == Method::Post;
+/// Is this a `POST /connect` (the only request with a body we read)?
+fn is_connect_post(request: &tiny_http::Request) -> bool {
+    *request.method() == Method::Post
+        && request.url().split('?').next().unwrap_or("/") == "/connect"
+}
 
-    if is_post && path == "/connect" {
-        // This endpoint is reachable by any client on the setup hotspot. Reject an
-        // oversized declared length up front, and hard-cap the actual read too, so
-        // a large (or length-lying) body cannot exhaust memory on the Pi Zero.
-        if content_length(&request).is_some_and(|len| len > MAX_CONNECT_BODY) {
-            let _ = request.respond(json_response(
-                413,
-                &json!({ "error": "request too large" }).to_string(),
-            ));
-            return None;
-        }
-        let mut body = String::new();
-        let _ = request
-            .as_reader()
-            .take(MAX_CONNECT_BODY)
-            .read_to_string(&mut body);
-        match parse_connect(&body) {
-            Ok(connect) => {
-                let _ = request.respond(json_response(
-                    200,
-                    &json!({ "status": "connecting", "ssid": connect.ssid }).to_string(),
-                ));
-                return Some(connect);
-            }
-            Err(message) => {
-                let _ =
-                    request.respond(json_response(400, &json!({ "error": message }).to_string()));
-                return None;
+/// Read and parse a `/connect` body without blocking the portal control loop.
+/// The body is read on a worker thread; this polls for the result while still
+/// honoring `stop_rx`, the AP timeout, and a per-read deadline, so a slow or
+/// stalled client cannot wedge the single Wi-Fi radio in AP mode. Returns a
+/// terminal `PortalOutcome`, or `None` to keep serving (parse/read error, or the
+/// read was abandoned because the client stalled).
+fn read_connect(
+    request: tiny_http::Request,
+    stop_rx: &Receiver<()>,
+    deadline: Instant,
+) -> Option<PortalOutcome> {
+    // Reject an oversized declared length up front (reads headers only, so this
+    // is safe on the loop); the worker also hard-caps the actual read.
+    if content_length(&request).is_some_and(|len| len > MAX_CONNECT_BODY) {
+        let _ = request.respond(json_response(
+            413,
+            &json!({ "error": "request too large" }).to_string(),
+        ));
+        return None;
+    }
+
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || read_connect_worker(request, &tx));
+
+    let read_deadline = Instant::now() + CONNECT_BODY_TIMEOUT;
+    loop {
+        match rx.recv_timeout(PORTAL_POLL) {
+            Ok(connect) => return Some(PortalOutcome::Connect(connect)),
+            // Worker finished without a connect (parse error / dead socket, and it
+            // already responded if it could): resume serving.
+            Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                match stop_rx.try_recv() {
+                    Ok(()) | Err(TryRecvError::Disconnected) => {
+                        return Some(PortalOutcome::Stopped)
+                    }
+                    Err(TryRecvError::Empty) => {}
+                }
+                if Instant::now() >= deadline {
+                    return Some(PortalOutcome::TimedOut);
+                }
+                if Instant::now() >= read_deadline {
+                    // Client stalled mid-body: abandon the detached worker (it dies
+                    // when the hotspot is torn down) and keep serving.
+                    return None;
+                }
             }
         }
     }
+}
+
+/// Worker body: read the (size-capped) `/connect` body, and on a valid request
+/// acknowledge it to the phone and hand the parsed result back over `tx`.
+fn read_connect_worker(mut request: tiny_http::Request, tx: &Sender<ConnectRequest>) {
+    let mut body = String::new();
+    if request
+        .as_reader()
+        .take(MAX_CONNECT_BODY)
+        .read_to_string(&mut body)
+        .is_err()
+    {
+        return;
+    }
+    match parse_connect(&body) {
+        Ok(connect) => {
+            let _ = request.respond(json_response(
+                200,
+                &json!({ "status": "connecting", "ssid": connect.ssid }).to_string(),
+            ));
+            let _ = tx.send(connect);
+        }
+        Err(message) => {
+            let _ = request.respond(json_response(400, &json!({ "error": message }).to_string()));
+        }
+    }
+}
+
+/// Handle a portal request that has no body we need to read: the network list,
+/// or the page itself for every other path (including captive-portal probes).
+fn handle_request(request: tiny_http::Request, networks_json: &str) {
+    let path = request.url().split('?').next().unwrap_or("/").to_string();
 
     if path == "/networks" {
         let _ = request.respond(json_response(200, networks_json));
-        return None;
+        return;
     }
 
     // Note: saved Wi-Fi PSKs are deliberately never exposed over the portal. A
@@ -425,7 +486,6 @@ fn handle_request(mut request: tiny_http::Request, networks_json: &str) -> Optio
     // redirecting pops the OS "sign in to network" sheet more reliably (notably
     // on iOS, which sometimes will not follow the redirect).
     let _ = request.respond(html_response(PORTAL_HTML));
-    None
 }
 
 /// The `Content-Length` a client declared for its request body, if any.
