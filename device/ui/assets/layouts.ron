@@ -16,6 +16,7 @@
         // Orbit watch face. Every colored arc uses this exact 204 x 204 square;
         // never derive either axis from the portrait viewport.
         (role: "watch_face", x: 0, y: 0, width: 240, height: 280),
+        (role: "watch_orbit_layer", x: 0, y: 0, width: 240, height: 280),
         (role: "watch_orbit_cyan", x: 18, y: 38, width: 204, height: 204),
         (role: "watch_orbit_orange", x: 18, y: 38, width: 204, height: 204),
         (role: "watch_orbit_violet", x: 18, y: 38, width: 204, height: 204),
@@ -25,7 +26,9 @@
         (role: "watch_dot_bottom", x: 114, y: 236, width: 12, height: 12),
         (role: "watch_dot_left", x: 12, y: 134, width: 12, height: 12),
         (role: "watch_date", x: 32, y: 55, width: 176, height: 20),
-        (role: "watch_time", x: 25, y: 84, width: 190, height: 58),
+        // Three one-pixel-offset copies synthesize a centered bold face from
+        // LVGL's single Montserrat 48 weight.
+        (role: "watch_time", x: 24, y: 84, width: 190, height: 58, repeat_x: Some(1)),
         (role: "watch_battery_card", x: 76, y: 164, width: 88, height: 40),
         (role: "watch_battery_icon", x: 8, y: 10, width: 30, height: 20),
         (role: "watch_charge_icon", x: 18, y: 12, width: 10, height: 14),

@@ -380,6 +380,7 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::STATUS_CHARGE_ICON,
         roles::STATUS_BATTERY_ICON,
         roles::WATCH_FACE,
+        roles::WATCH_ORBIT_LAYER,
         roles::WATCH_ORBIT_CYAN,
         roles::WATCH_ORBIT_ORANGE,
         roles::WATCH_ORBIT_VIOLET,
@@ -655,6 +656,11 @@ mod tests {
     #[test]
     fn watch_orbit_segments_share_one_square_and_cardinal_center() {
         let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let layer = layout(&layouts, roles::WATCH_ORBIT_LAYER);
+        assert_eq!(
+            (layer.x, layer.y, layer.width, layer.height),
+            (0, 0, 240, 280)
+        );
         let orbit_roles = [
             roles::WATCH_ORBIT_CYAN,
             roles::WATCH_ORBIT_ORANGE,
@@ -685,6 +691,10 @@ mod tests {
         assert_eq!(left.y + left.height / 2, 140);
         assert_eq!(right.y + right.height / 2, 140);
         assert_eq!(right.x - left.x, bottom.y - top.y);
+
+        let time = layout(&layouts, roles::WATCH_TIME);
+        assert_eq!(time.repeat_x, Some(1));
+        assert_eq!(time.x + 1, 25);
     }
 
     #[test]

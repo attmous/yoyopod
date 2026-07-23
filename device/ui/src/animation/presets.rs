@@ -1,4 +1,4 @@
-use crate::scene::RegionId;
+use crate::scene::{FxLayerId, RegionId};
 
 use super::{
     ActorRef, AnimatableProp, AnimatableValue, ClockSource, Easing, EventId, Keyframe, LoopMode,
@@ -6,6 +6,7 @@ use super::{
 };
 
 pub const BREATHE_TIMELINE_ID: TimelineId = TimelineId(10);
+pub const WATCH_ORBIT_TIMELINE_ID: TimelineId = TimelineId(11);
 pub const SCENE_ENTER_TIMELINE_ID: TimelineId = TimelineId(1);
 pub const STAGGER_ENTER_TIMELINE_ID: TimelineId = TimelineId(2);
 pub const PULSE_ONE_SHOT_TIMELINE_ID: TimelineId = TimelineId(3);
@@ -19,6 +20,97 @@ pub const WHEEL_ROLL_DURATION_MS: u64 = 180;
 pub const MEDIA_WHEEL_PEEK_OPACITY: u8 = 148;
 pub const CONTACT_WHEEL_PEEK_OPACITY: u8 = 115;
 pub const SETUP_WHEEL_PEEK_OPACITY: u8 = 190;
+
+const WATCH_ORBIT_PERIOD_MS: u32 = 4_800;
+const WATCH_ORBIT_REST_OPACITY: u8 = 144;
+
+pub fn watch_orbit() -> Timeline {
+    Timeline {
+        id: WATCH_ORBIT_TIMELINE_ID,
+        clock: ClockSource::SceneTime,
+        tracks: vec![
+            Track {
+                target: ActorRef::Region(RegionId::Backdrop),
+                property: AnimatableProp::Scale,
+                keyframes: vec![
+                    Keyframe {
+                        at_ms: 0,
+                        value: AnimatableValue::I32(1_000),
+                    },
+                    Keyframe {
+                        at_ms: WATCH_ORBIT_PERIOD_MS / 2,
+                        value: AnimatableValue::I32(1_008),
+                    },
+                    Keyframe {
+                        at_ms: WATCH_ORBIT_PERIOD_MS,
+                        value: AnimatableValue::I32(1_000),
+                    },
+                ],
+                easing: Easing::EaseInOut,
+            },
+            orbit_pulse_track(
+                0,
+                &[
+                    (0, 255),
+                    (1_200, WATCH_ORBIT_REST_OPACITY),
+                    (3_600, WATCH_ORBIT_REST_OPACITY),
+                    (WATCH_ORBIT_PERIOD_MS, 255),
+                ],
+            ),
+            orbit_pulse_track(
+                1,
+                &[
+                    (0, WATCH_ORBIT_REST_OPACITY),
+                    (1_200, 255),
+                    (2_400, WATCH_ORBIT_REST_OPACITY),
+                    (WATCH_ORBIT_PERIOD_MS, WATCH_ORBIT_REST_OPACITY),
+                ],
+            ),
+            orbit_pulse_track(
+                2,
+                &[
+                    (0, WATCH_ORBIT_REST_OPACITY),
+                    (1_200, WATCH_ORBIT_REST_OPACITY),
+                    (2_400, 255),
+                    (3_600, WATCH_ORBIT_REST_OPACITY),
+                    (WATCH_ORBIT_PERIOD_MS, WATCH_ORBIT_REST_OPACITY),
+                ],
+            ),
+            orbit_pulse_track(
+                3,
+                &[
+                    (0, WATCH_ORBIT_REST_OPACITY),
+                    (2_400, WATCH_ORBIT_REST_OPACITY),
+                    (3_600, 255),
+                    (WATCH_ORBIT_PERIOD_MS, WATCH_ORBIT_REST_OPACITY),
+                ],
+            ),
+        ],
+        loop_mode: LoopMode::Loop,
+        on_complete: None,
+        started_ms: 0,
+    }
+}
+
+fn orbit_pulse_track(index: usize, points: &[(u32, u8)]) -> Track {
+    Track {
+        // Orbit pieces consume these tracks through AnimSlot. A private FX
+        // target keeps actor-based sampling from touching unrelated widgets.
+        target: ActorRef::FxNode {
+            layer: FxLayerId(11),
+            index,
+        },
+        property: AnimatableProp::Opacity,
+        keyframes: points
+            .iter()
+            .map(|(at_ms, opacity)| Keyframe {
+                at_ms: *at_ms,
+                value: AnimatableValue::U8(*opacity),
+            })
+            .collect(),
+        easing: Easing::EaseInOut,
+    }
+}
 
 pub fn breathe_focused_item(deck: usize, index: usize) -> Timeline {
     Timeline {
@@ -515,7 +607,50 @@ fn motion_tracks(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::animation::TimelineSampler;
+    use crate::animation::{TimelineRef, TimelineSampler, TrackIndex};
+
+    #[test]
+    fn watch_orbit_pulse_moves_clockwise_and_breathes_uniformly() {
+        let timeline = watch_orbit();
+        assert_eq!(timeline.id, WATCH_ORBIT_TIMELINE_ID);
+        assert_eq!(timeline.clock, ClockSource::SceneTime);
+        assert_eq!(timeline.loop_mode, LoopMode::Loop);
+        assert_eq!(timeline.tracks.len(), 5);
+        assert_eq!(timeline.tracks[0].property, AnimatableProp::Scale);
+        assert!(timeline.tracks[1..]
+            .iter()
+            .all(|track| track.property == AnimatableProp::Opacity));
+
+        let timelines = [timeline];
+        let start = TimelineSampler::new(&timelines, 0, 0);
+        assert_eq!(
+            start.value(ActorRef::Region(RegionId::Backdrop), AnimatableProp::Scale),
+            Some(AnimatableValue::I32(1_000))
+        );
+        assert_eq!(
+            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(1)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
+        );
+        assert_eq!(
+            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(2)),
+            Some((
+                AnimatableProp::Opacity,
+                AnimatableValue::U8(WATCH_ORBIT_REST_OPACITY)
+            ))
+        );
+
+        let right = TimelineSampler::new(&timelines, 1_200, 0);
+        assert_eq!(
+            right.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(2)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
+        );
+
+        let expanded = TimelineSampler::new(&timelines, 2_400, 0);
+        assert_eq!(
+            expanded.value(ActorRef::Region(RegionId::Backdrop), AnimatableProp::Scale),
+            Some(AnimatableValue::I32(1_008))
+        );
+    }
 
     #[test]
     fn companion_breathe_matches_the_mockup_and_resets_with_scene_time() {

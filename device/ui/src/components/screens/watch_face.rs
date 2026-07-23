@@ -1,5 +1,6 @@
 use yoyopod_protocol::ui::{RuntimeSnapshot, UiScreen};
 
+use crate::animation::presets;
 use crate::engine::Key;
 use crate::scene::{
     Backdrop, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, FxLayer, ItemRender, RegionId,
@@ -36,6 +37,6 @@ pub fn scene(snapshot: &RuntimeSnapshot, date: String, time: String) -> Scene {
         cursor: None,
         fx: FxLayer::default(),
         modal: None,
-        timelines: Vec::new(),
+        timelines: vec![presets::watch_orbit()],
     }
 }

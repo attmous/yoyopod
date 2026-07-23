@@ -10,6 +10,7 @@
         (role: "status_charge_icon", text_rgb: Some(1776415)),
         (role: "status_battery_icon", text_rgb: Some(1776415)),
         (role: "watch_face"),
+        (role: "watch_orbit_layer"),
         (role: "watch_orbit_cyan", arc_rgb: Some(3529190), arc_width: 7, arc_rounded: true),
         (role: "watch_orbit_orange", arc_rgb: Some(16751964), arc_width: 7, arc_rounded: true),
         (role: "watch_orbit_violet", arc_rgb: Some(11111423), arc_width: 7, arc_rounded: true),

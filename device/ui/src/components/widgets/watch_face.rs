@@ -1,6 +1,7 @@
+use crate::animation::{presets::WATCH_ORBIT_TIMELINE_ID, ActorRef, TimelineRef, TrackIndex};
 use crate::components::primitives::{container, image, label};
-use crate::engine::{Element, Key};
-use crate::scene::{roles, WatchFaceModel};
+use crate::engine::{AnimSlot, Element, Key};
+use crate::scene::{roles, RegionId, WatchFaceModel};
 use crate::ElementKind;
 
 const LIME: u32 = 0xA8F06A;
@@ -8,20 +9,7 @@ const LIME: u32 = 0xA8F06A;
 pub fn watch_face(model: &WatchFaceModel) -> Element {
     container(roles::WATCH_FACE)
         .key(Key::Static("watch_face"))
-        .child(orbit_segment(roles::WATCH_ORBIT_CYAN, "watch_orbit_cyan"))
-        .child(orbit_segment(
-            roles::WATCH_ORBIT_ORANGE,
-            "watch_orbit_orange",
-        ))
-        .child(orbit_segment(
-            roles::WATCH_ORBIT_VIOLET,
-            "watch_orbit_violet",
-        ))
-        .child(orbit_segment(roles::WATCH_ORBIT_LIME, "watch_orbit_lime"))
-        .child(orbit_dot(roles::WATCH_DOT_TOP, "watch_dot_top"))
-        .child(orbit_dot(roles::WATCH_DOT_RIGHT, "watch_dot_right"))
-        .child(orbit_dot(roles::WATCH_DOT_BOTTOM, "watch_dot_bottom"))
-        .child(orbit_dot(roles::WATCH_DOT_LEFT, "watch_dot_left"))
+        .child(orbit_layer())
         .child(
             label(roles::WATCH_DATE)
                 .key(Key::Static("watch_date"))
@@ -29,19 +17,72 @@ pub fn watch_face(model: &WatchFaceModel) -> Element {
         )
         .child(
             label(roles::WATCH_TIME)
-                .key(Key::Static("watch_time"))
+                .key(Key::Static("watch_time_bold_left"))
+                .text(&model.time)
+                .scale_permille(1_200),
+        )
+        .child(
+            label(roles::WATCH_TIME)
+                .key(Key::Static("watch_time_bold_center"))
+                .text(&model.time)
+                .scale_permille(1_200),
+        )
+        .child(
+            label(roles::WATCH_TIME)
+                .key(Key::Static("watch_time_bold_right"))
                 .text(&model.time)
                 .scale_permille(1_200),
         )
         .child(battery_complication(model))
 }
 
-fn orbit_segment(role: &'static str, key: &'static str) -> Element {
-    Element::new(ElementKind::Arc, Some(role)).key(Key::Static(key))
+fn orbit_layer() -> Element {
+    container(roles::WATCH_ORBIT_LAYER)
+        .key(Key::Static("watch_orbit_layer"))
+        .actor(ActorRef::Region(RegionId::Backdrop))
+        .child(orbit_segment(
+            roles::WATCH_ORBIT_CYAN,
+            "watch_orbit_cyan",
+            1,
+        ))
+        .child(orbit_segment(
+            roles::WATCH_ORBIT_ORANGE,
+            "watch_orbit_orange",
+            2,
+        ))
+        .child(orbit_segment(
+            roles::WATCH_ORBIT_VIOLET,
+            "watch_orbit_violet",
+            3,
+        ))
+        .child(orbit_segment(
+            roles::WATCH_ORBIT_LIME,
+            "watch_orbit_lime",
+            4,
+        ))
+        .child(orbit_dot(roles::WATCH_DOT_TOP, "watch_dot_top", 1))
+        .child(orbit_dot(roles::WATCH_DOT_RIGHT, "watch_dot_right", 2))
+        .child(orbit_dot(roles::WATCH_DOT_BOTTOM, "watch_dot_bottom", 3))
+        .child(orbit_dot(roles::WATCH_DOT_LEFT, "watch_dot_left", 4))
 }
 
-fn orbit_dot(role: &'static str, key: &'static str) -> Element {
-    container(role).key(Key::Static(key))
+fn orbit_segment(role: &'static str, key: &'static str, track: usize) -> Element {
+    Element::new(ElementKind::Arc, Some(role))
+        .key(Key::Static(key))
+        .with_anim(orbit_anim(track))
+}
+
+fn orbit_dot(role: &'static str, key: &'static str, track: usize) -> Element {
+    container(role)
+        .key(Key::Static(key))
+        .with_anim(orbit_anim(track))
+}
+
+fn orbit_anim(track: usize) -> AnimSlot {
+    AnimSlot {
+        timeline: TimelineRef(WATCH_ORBIT_TIMELINE_ID),
+        track: TrackIndex(track),
+    }
 }
 
 fn battery_complication(model: &WatchFaceModel) -> Element {
@@ -169,6 +210,8 @@ mod tests {
         for role in orbit_roles {
             assert_eq!(count_role(&root, role), 1, "missing orbit role {role}");
         }
+        assert_eq!(count_role(&root, roles::WATCH_ORBIT_LAYER), 1);
+        assert_eq!(count_role(&root, roles::WATCH_TIME), 3);
         assert_eq!(
             find_role(&root, roles::WATCH_TIME).props.scale_permille,
             Some(1_200)

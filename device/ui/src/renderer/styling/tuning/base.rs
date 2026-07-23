@@ -121,6 +121,7 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
             }
             roles::WATCH_FACE
+            | roles::WATCH_ORBIT_LAYER
             | roles::WATCH_DOT_TOP
             | roles::WATCH_DOT_RIGHT
             | roles::WATCH_DOT_BOTTOM

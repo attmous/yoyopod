@@ -186,6 +186,7 @@ pub(crate) const STATUS_CHARGE_ICON: &str = "status_charge_icon";
 pub(crate) const STATUS_BATTERY_ICON: &str = "status_battery_icon";
 
 pub(crate) const WATCH_FACE: &str = "watch_face";
+pub(crate) const WATCH_ORBIT_LAYER: &str = "watch_orbit_layer";
 pub(crate) const WATCH_ORBIT_CYAN: &str = "watch_orbit_cyan";
 pub(crate) const WATCH_ORBIT_ORANGE: &str = "watch_orbit_orange";
 pub(crate) const WATCH_ORBIT_VIOLET: &str = "watch_orbit_violet";
