@@ -926,13 +926,30 @@ fn build_ap_settings(credentials: &ApCredentials) -> Result<NmSettings, String> 
     );
     settings.insert(
         "ipv4".to_string(),
-        HashMap::from([("method".to_string(), owned("shared".to_string())?)]),
+        HashMap::from([
+            ("method".to_string(), owned("shared".to_string())?),
+            // Pin the shared subnet. NetworkManager only guarantees *some*
+            // 10.42.x.0/24 when the address is left unspecified, but the portal
+            // bind, the captive DNS snippet, and the QR/portal URL all assume
+            // PORTAL_GATEWAY - so fix the AP address to it explicitly.
+            ("address-data".to_string(), ap_address_data()?),
+        ]),
     );
     settings.insert(
         "ipv6".to_string(),
         HashMap::from([("method".to_string(), owned("ignore".to_string())?)]),
     );
     Ok(settings)
+}
+
+/// The `ipv4.address-data` array (`aa{sv}`) pinning the shared AP host to
+/// `PORTAL_GATEWAY/24`, so the hard-coded bind/DNS/QR address is always correct.
+fn ap_address_data() -> Result<OwnedValue, String> {
+    let entry: HashMap<String, Value<'static>> = HashMap::from([
+        ("address".to_string(), Value::from(PORTAL_GATEWAY)),
+        ("prefix".to_string(), Value::from(24_u32)),
+    ]);
+    owned(vec![entry])
 }
 
 fn build_station_settings(request: &ConnectRequest) -> Result<NmSettings, String> {
