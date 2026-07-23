@@ -69,6 +69,10 @@
 <script>
   var selectedSecurity = "wpa2_personal";
   var selectedSaved = false;
+  // An SSID typed by hand may be a hidden (non-broadcasting) network; picking one
+  // from the scan means it was broadcasting. The device uses this to set the
+  // NetworkManager "hidden" flag so it will probe for a hidden network.
+  var manualEntry = true;
   var ssidInput = document.getElementById("ssid");
   var pwInput = document.getElementById("password");
   var statusEl = document.getElementById("status");
@@ -81,6 +85,7 @@
   ssidInput.addEventListener("input", function () {
     selectedSaved = false;
     selectedSecurity = "wpa2_personal";
+    manualEntry = true;
     pwInput.disabled = false;
     pwInput.placeholder = "Wi-Fi password";
     statusEl.className = "status"; statusEl.textContent = "";
@@ -106,6 +111,7 @@
     ssidInput.value = net.ssid;
     selectedSecurity = net.security || "wpa2_personal";
     selectedSaved = !!net.saved && selectedSecurity !== "open";
+    manualEntry = false; // chosen from the scan, so it was broadcasting
     pwInput.value = "";
     if (selectedSecurity === "open") {
       pwInput.disabled = true;
@@ -171,7 +177,7 @@
     fetch("/connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ssid: ssid, password: pwInput.value, security: selectedSecurity })
+      body: JSON.stringify({ ssid: ssid, password: pwInput.value, security: selectedSecurity, hidden: manualEntry })
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
       .then(function (res) {
         if (res.ok) {

@@ -314,6 +314,11 @@ struct ConnectRequest {
     ssid: String,
     security: WifiSecurity,
     password: String,
+    /// The SSID was typed by hand rather than picked from the pre-AP scan, so it
+    /// may be a non-broadcasting (hidden) network. The profile must then set
+    /// `802-11-wireless.hidden=true` or NetworkManager will not probe for it and
+    /// the connection just times out.
+    hidden: bool,
 }
 
 /// Bind the captive portal to the AP gateway address (see `PORTAL_BIND`). The
@@ -503,10 +508,18 @@ fn parse_connect(body: &str) -> Result<ConnectRequest, String> {
     if security != WifiSecurity::Open && !password.is_empty() && !is_valid_psk(&password) {
         return Err("password must be 8 to 63 characters".to_string());
     }
+    // The portal marks an SSID typed by hand (not chosen from the scan list) as
+    // hidden so its profile is probed for; anything selected from the scan was
+    // broadcasting and is not.
+    let hidden = value
+        .get("hidden")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
     Ok(ConnectRequest {
         ssid,
         security,
         password,
+        hidden,
     })
 }
 
@@ -863,13 +876,15 @@ fn build_station_settings(request: &ConnectRequest) -> Result<NmSettings, String
             ("autoconnect".to_string(), owned(true)?),
         ]),
     );
-    settings.insert(
-        "802-11-wireless".to_string(),
-        HashMap::from([
-            ("ssid".to_string(), owned(request.ssid.as_bytes().to_vec())?),
-            ("mode".to_string(), owned("infrastructure".to_string())?),
-        ]),
-    );
+    let mut wireless = HashMap::from([
+        ("ssid".to_string(), owned(request.ssid.as_bytes().to_vec())?),
+        ("mode".to_string(), owned("infrastructure".to_string())?),
+    ]);
+    if request.hidden {
+        // Non-broadcasting network: tell NetworkManager to actively probe for it.
+        wireless.insert("hidden".to_string(), owned(true)?);
+    }
+    settings.insert("802-11-wireless".to_string(), wireless);
     if request.security != WifiSecurity::Open {
         let key_mgmt = if request.security == WifiSecurity::Wpa3Personal {
             "sae"
@@ -1065,6 +1080,19 @@ mod tests {
         assert!(ok.password.is_empty());
         // A non-empty but invalid password is still rejected up front.
         assert!(parse_connect(r#"{"ssid":"Home","password":"short"}"#).is_err());
+    }
+
+    #[test]
+    fn parse_connect_reads_the_hidden_flag() {
+        let hidden = parse_connect(
+            r#"{"ssid":"Cloaked","security":"wpa2_personal","password":"longenough","hidden":true}"#,
+        )
+        .expect("valid request");
+        assert!(hidden.hidden, "a manually entered SSID is marked hidden");
+        let visible =
+            parse_connect(r#"{"ssid":"Home","security":"wpa2_personal","password":"longenough"}"#)
+                .expect("valid request");
+        assert!(!visible.hidden, "hidden defaults to false when omitted");
     }
 
     #[test]
