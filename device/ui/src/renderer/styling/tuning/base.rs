@@ -123,9 +123,17 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
             roles::WATCH_FACE
             | roles::WATCH_ORBIT_LAYER
             | roles::WATCH_DOT_TOP
+            | roles::WATCH_DOT_030
+            | roles::WATCH_DOT_060
             | roles::WATCH_DOT_RIGHT
+            | roles::WATCH_DOT_120
+            | roles::WATCH_DOT_150
             | roles::WATCH_DOT_BOTTOM
+            | roles::WATCH_DOT_210
+            | roles::WATCH_DOT_240
             | roles::WATCH_DOT_LEFT
+            | roles::WATCH_DOT_300
+            | roles::WATCH_DOT_330
             | roles::WATCH_BATTERY_CARD => {
                 ffi::lv_obj_set_style_pad_left(obj.as_ptr(), 0, SELECTOR);
                 ffi::lv_obj_set_style_pad_right(obj.as_ptr(), 0, SELECTOR);

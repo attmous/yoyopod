@@ -21,75 +21,82 @@ pub const MEDIA_WHEEL_PEEK_OPACITY: u8 = 148;
 pub const CONTACT_WHEEL_PEEK_OPACITY: u8 = 115;
 pub const SETUP_WHEEL_PEEK_OPACITY: u8 = 190;
 
-const WATCH_ORBIT_PERIOD_MS: u32 = 6_400;
-const WATCH_ORBIT_REST_OPACITY: u8 = 192;
+const WATCH_ORBIT_PERIOD_MS: u32 = 6_000;
+const WATCH_ARC_COUNT: usize = 4;
+const WATCH_SPARK_COUNT: usize = 12;
 
 pub fn watch_orbit() -> Timeline {
+    let tracks = (0..WATCH_ARC_COUNT)
+        .map(|index| {
+            stepped_chase_track(FxLayerId(11), index, WATCH_ARC_COUNT, 1_500, 255, 216, 176)
+        })
+        .chain((0..WATCH_SPARK_COUNT).map(|index| {
+            stepped_chase_track(FxLayerId(12), index, WATCH_SPARK_COUNT, 500, 255, 112, 32)
+        }))
+        .collect();
+
     Timeline {
         id: WATCH_ORBIT_TIMELINE_ID,
         clock: ClockSource::SceneTime,
-        tracks: vec![
-            orbit_pulse_track(
-                0,
-                &[
-                    (0, 255),
-                    (1_600, WATCH_ORBIT_REST_OPACITY),
-                    (4_800, WATCH_ORBIT_REST_OPACITY),
-                    (WATCH_ORBIT_PERIOD_MS, 255),
-                ],
-            ),
-            orbit_pulse_track(
-                1,
-                &[
-                    (0, WATCH_ORBIT_REST_OPACITY),
-                    (1_600, 255),
-                    (3_200, WATCH_ORBIT_REST_OPACITY),
-                    (WATCH_ORBIT_PERIOD_MS, WATCH_ORBIT_REST_OPACITY),
-                ],
-            ),
-            orbit_pulse_track(
-                2,
-                &[
-                    (0, WATCH_ORBIT_REST_OPACITY),
-                    (1_600, WATCH_ORBIT_REST_OPACITY),
-                    (3_200, 255),
-                    (4_800, WATCH_ORBIT_REST_OPACITY),
-                    (WATCH_ORBIT_PERIOD_MS, WATCH_ORBIT_REST_OPACITY),
-                ],
-            ),
-            orbit_pulse_track(
-                3,
-                &[
-                    (0, WATCH_ORBIT_REST_OPACITY),
-                    (3_200, WATCH_ORBIT_REST_OPACITY),
-                    (4_800, 255),
-                    (WATCH_ORBIT_PERIOD_MS, WATCH_ORBIT_REST_OPACITY),
-                ],
-            ),
-        ],
+        tracks,
         loop_mode: LoopMode::Loop,
         on_complete: None,
         started_ms: 0,
     }
 }
 
-fn orbit_pulse_track(index: usize, points: &[(u32, u8)]) -> Track {
+fn stepped_chase_track(
+    layer: FxLayerId,
+    index: usize,
+    count: usize,
+    step_ms: u32,
+    head_opacity: u8,
+    trail_opacity: u8,
+    rest_opacity: u8,
+) -> Track {
+    debug_assert!(count > 1);
+    debug_assert_eq!(count as u32 * step_ms, WATCH_ORBIT_PERIOD_MS);
+
+    let opacity_at = |head: usize| {
+        if index == head {
+            head_opacity
+        } else if index == (head + count - 1) % count {
+            trail_opacity
+        } else {
+            rest_opacity
+        }
+    };
+    let mut keyframes = vec![Keyframe {
+        at_ms: 0,
+        value: AnimatableValue::U8(opacity_at(0)),
+    }];
+    for next_head in 1..count {
+        let boundary = next_head as u32 * step_ms;
+        keyframes.push(Keyframe {
+            at_ms: boundary - 1,
+            value: AnimatableValue::U8(opacity_at(next_head - 1)),
+        });
+        keyframes.push(Keyframe {
+            at_ms: boundary,
+            value: AnimatableValue::U8(opacity_at(next_head)),
+        });
+    }
+    keyframes.push(Keyframe {
+        at_ms: WATCH_ORBIT_PERIOD_MS - 1,
+        value: AnimatableValue::U8(opacity_at(count - 1)),
+    });
+    keyframes.push(Keyframe {
+        at_ms: WATCH_ORBIT_PERIOD_MS,
+        value: AnimatableValue::U8(opacity_at(0)),
+    });
+
     Track {
-        // Orbit pieces consume these tracks through AnimSlot. A private FX
-        // target keeps actor-based sampling from touching unrelated widgets.
-        target: ActorRef::FxNode {
-            layer: FxLayerId(11),
-            index,
-        },
+        // Orbit pieces consume these tracks through AnimSlot. Private FX
+        // targets keep actor-based sampling from touching unrelated widgets.
+        target: ActorRef::FxNode { layer, index },
         property: AnimatableProp::Opacity,
-        keyframes: points
-            .iter()
-            .map(|(at_ms, opacity)| Keyframe {
-                at_ms: *at_ms,
-                value: AnimatableValue::U8(*opacity),
-            })
-            .collect(),
-        easing: Easing::EaseInOut,
+        keyframes,
+        easing: Easing::Linear,
     }
 }
 
@@ -591,12 +598,12 @@ mod tests {
     use crate::animation::{TimelineRef, TimelineSampler, TrackIndex};
 
     #[test]
-    fn watch_orbit_pulse_moves_clockwise_at_a_display_safe_cadence() {
+    fn watch_orbit_comet_moves_clockwise_at_a_display_safe_cadence() {
         let timeline = watch_orbit();
         assert_eq!(timeline.id, WATCH_ORBIT_TIMELINE_ID);
         assert_eq!(timeline.clock, ClockSource::SceneTime);
         assert_eq!(timeline.loop_mode, LoopMode::Loop);
-        assert_eq!(timeline.tracks.len(), 4);
+        assert_eq!(timeline.tracks.len(), 16);
         assert!(timeline
             .tracks
             .iter()
@@ -610,21 +617,38 @@ mod tests {
         );
         assert_eq!(
             start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(1)),
-            Some((
-                AnimatableProp::Opacity,
-                AnimatableValue::U8(WATCH_ORBIT_REST_OPACITY)
-            ))
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(176)))
+        );
+        assert_eq!(
+            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(3)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(216)))
+        );
+        assert_eq!(
+            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(4)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
+        );
+        assert_eq!(
+            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(15)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(112)))
         );
 
-        let right = TimelineSampler::new(&timelines, 1_600, 0);
+        let second_spark = TimelineSampler::new(&timelines, 500, 0);
+        assert_eq!(
+            second_spark.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(5)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
+        );
+        assert_eq!(
+            second_spark.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(4)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(112)))
+        );
+
+        let right = TimelineSampler::new(&timelines, 1_500, 0);
         assert_eq!(
             right.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(1)),
             Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
         );
-
-        let bottom = TimelineSampler::new(&timelines, 3_200, 0);
         assert_eq!(
-            bottom.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(2)),
+            right.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(7)),
             Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
         );
     }

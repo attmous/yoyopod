@@ -59,10 +59,18 @@ fn orbit_layer() -> Element {
             "watch_orbit_lime",
             3,
         ))
-        .child(orbit_dot(roles::WATCH_DOT_TOP, "watch_dot_top", 0))
-        .child(orbit_dot(roles::WATCH_DOT_RIGHT, "watch_dot_right", 1))
-        .child(orbit_dot(roles::WATCH_DOT_BOTTOM, "watch_dot_bottom", 2))
-        .child(orbit_dot(roles::WATCH_DOT_LEFT, "watch_dot_left", 3))
+        .child(orbit_dot(roles::WATCH_DOT_TOP, "watch_dot_top", 4))
+        .child(orbit_dot(roles::WATCH_DOT_030, "watch_dot_030", 5))
+        .child(orbit_dot(roles::WATCH_DOT_060, "watch_dot_060", 6))
+        .child(orbit_dot(roles::WATCH_DOT_RIGHT, "watch_dot_right", 7))
+        .child(orbit_dot(roles::WATCH_DOT_120, "watch_dot_120", 8))
+        .child(orbit_dot(roles::WATCH_DOT_150, "watch_dot_150", 9))
+        .child(orbit_dot(roles::WATCH_DOT_BOTTOM, "watch_dot_bottom", 10))
+        .child(orbit_dot(roles::WATCH_DOT_210, "watch_dot_210", 11))
+        .child(orbit_dot(roles::WATCH_DOT_240, "watch_dot_240", 12))
+        .child(orbit_dot(roles::WATCH_DOT_LEFT, "watch_dot_left", 13))
+        .child(orbit_dot(roles::WATCH_DOT_300, "watch_dot_300", 14))
+        .child(orbit_dot(roles::WATCH_DOT_330, "watch_dot_330", 15))
 }
 
 fn orbit_segment(role: &'static str, key: &'static str, track: usize) -> Element {
@@ -208,6 +216,28 @@ mod tests {
         ];
         for role in orbit_roles {
             assert_eq!(count_role(&root, role), 1, "missing orbit role {role}");
+        }
+        let dot_roles = [
+            roles::WATCH_DOT_TOP,
+            roles::WATCH_DOT_030,
+            roles::WATCH_DOT_060,
+            roles::WATCH_DOT_RIGHT,
+            roles::WATCH_DOT_120,
+            roles::WATCH_DOT_150,
+            roles::WATCH_DOT_BOTTOM,
+            roles::WATCH_DOT_210,
+            roles::WATCH_DOT_240,
+            roles::WATCH_DOT_LEFT,
+            roles::WATCH_DOT_300,
+            roles::WATCH_DOT_330,
+        ];
+        for (index, role) in dot_roles.into_iter().enumerate() {
+            let dot = find_role(&root, role);
+            assert_eq!(count_role(&root, role), 1, "missing comet role {role}");
+            assert_eq!(
+                dot.anim.expect("comet dots animate").track,
+                TrackIndex(index + 4)
+            );
         }
         assert_eq!(count_role(&root, roles::WATCH_ORBIT_LAYER), 1);
         assert_eq!(count_role(&root, roles::WATCH_TIME), 3);

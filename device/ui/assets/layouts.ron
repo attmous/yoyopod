@@ -22,9 +22,17 @@
         (role: "watch_orbit_violet", x: 18, y: 38, width: 204, height: 204),
         (role: "watch_orbit_lime", x: 18, y: 38, width: 204, height: 204),
         (role: "watch_dot_top", x: 114, y: 32, width: 12, height: 12),
+        (role: "watch_dot_030", x: 167, y: 48, width: 8, height: 8),
+        (role: "watch_dot_060", x: 204, y: 85, width: 8, height: 8),
         (role: "watch_dot_right", x: 216, y: 134, width: 12, height: 12),
+        (role: "watch_dot_120", x: 204, y: 187, width: 8, height: 8),
+        (role: "watch_dot_150", x: 167, y: 224, width: 8, height: 8),
         (role: "watch_dot_bottom", x: 114, y: 236, width: 12, height: 12),
+        (role: "watch_dot_210", x: 65, y: 224, width: 8, height: 8),
+        (role: "watch_dot_240", x: 28, y: 187, width: 8, height: 8),
         (role: "watch_dot_left", x: 12, y: 134, width: 12, height: 12),
+        (role: "watch_dot_300", x: 28, y: 85, width: 8, height: 8),
+        (role: "watch_dot_330", x: 65, y: 48, width: 8, height: 8),
         (role: "watch_date", x: 32, y: 55, width: 176, height: 20),
         // Three one-pixel-offset copies synthesize a centered bold face from
         // LVGL's single Montserrat 48 weight.

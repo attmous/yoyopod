@@ -386,9 +386,17 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::WATCH_ORBIT_VIOLET,
         roles::WATCH_ORBIT_LIME,
         roles::WATCH_DOT_TOP,
+        roles::WATCH_DOT_030,
+        roles::WATCH_DOT_060,
         roles::WATCH_DOT_RIGHT,
+        roles::WATCH_DOT_120,
+        roles::WATCH_DOT_150,
         roles::WATCH_DOT_BOTTOM,
+        roles::WATCH_DOT_210,
+        roles::WATCH_DOT_240,
         roles::WATCH_DOT_LEFT,
+        roles::WATCH_DOT_300,
+        roles::WATCH_DOT_330,
         roles::WATCH_DATE,
         roles::WATCH_TIME,
         roles::WATCH_BATTERY_CARD,
@@ -691,6 +699,31 @@ mod tests {
         assert_eq!(left.y + left.height / 2, 140);
         assert_eq!(right.y + right.height / 2, 140);
         assert_eq!(right.x - left.x, bottom.y - top.y);
+
+        let dot_roles = [
+            roles::WATCH_DOT_TOP,
+            roles::WATCH_DOT_030,
+            roles::WATCH_DOT_060,
+            roles::WATCH_DOT_RIGHT,
+            roles::WATCH_DOT_120,
+            roles::WATCH_DOT_150,
+            roles::WATCH_DOT_BOTTOM,
+            roles::WATCH_DOT_210,
+            roles::WATCH_DOT_240,
+            roles::WATCH_DOT_LEFT,
+            roles::WATCH_DOT_300,
+            roles::WATCH_DOT_330,
+        ];
+        for role in dot_roles {
+            let dot = layout(&layouts, role);
+            let dx = dot.x + dot.width / 2 - 120;
+            let dy = dot.y + dot.height / 2 - 140;
+            let radius_squared = dx * dx + dy * dy;
+            assert!(
+                (radius_squared - 10_404).abs() <= 64,
+                "{role} must stay on the 102 px circular radius"
+            );
+        }
 
         let time = layout(&layouts, roles::WATCH_TIME);
         assert_eq!(time.repeat_x, Some(1));
