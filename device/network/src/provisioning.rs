@@ -717,6 +717,45 @@ fn delete_profile(connection: &Connection, path: &OwnedObjectPath) {
     }
 }
 
+/// Delete any leftover setup-AP profile (`AP_CONNECTION_ID`) from a previous run.
+/// Call this on network-worker startup: if an earlier run terminated ungracefully
+/// (crash / SIGKILL / power loss) while the hotspot was up, NetworkManager can
+/// keep the "YoYoPod Setup" connection saved and active, leaving the device
+/// broadcasting the onboarding AP and holding the radio. Deleting the profile
+/// also deactivates it. Best-effort; if NM is unreachable there is nothing to do.
+pub fn cleanup_stale_setup_ap() {
+    let Ok(connection) = Connection::system() else {
+        return;
+    };
+    let Ok(settings_proxy) = proxy(&connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE) else {
+        return;
+    };
+    let Ok(paths) = settings_proxy.call::<_, _, Vec<OwnedObjectPath>>("ListConnections", &())
+    else {
+        return;
+    };
+    for path in paths {
+        let Ok(conn) = proxy(&connection, path.as_str(), NM_CONNECTION_INTERFACE) else {
+            continue;
+        };
+        let Ok(settings) = conn.call::<_, _, NmSettings>("GetSettings", &()) else {
+            continue;
+        };
+        if connection_id(&settings).as_deref() == Some(AP_CONNECTION_ID) {
+            let _ = conn.call::<_, _, ()>("Delete", &());
+        }
+    }
+}
+
+/// Read the `connection.id` from a NetworkManager profile.
+fn connection_id(settings: &NmSettings) -> Option<String> {
+    settings
+        .get("connection")
+        .and_then(|group| group.get("id"))
+        .cloned()
+        .and_then(|value| String::try_from(value).ok())
+}
+
 /// Result of watching an active connection come up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActiveWait {
