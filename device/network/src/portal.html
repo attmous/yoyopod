@@ -73,9 +73,20 @@
   var pwInput = document.getElementById("password");
   var statusEl = document.getElementById("status");
 
-  // Editing the network name by hand means this is no longer the saved
-  // selection, so a password is required again.
-  ssidInput.addEventListener("input", function () { selectedSaved = false; });
+  // Editing the network name by hand detaches from any selected row. Reset the
+  // manual-entry state to a normal secured entry: re-enable the password field
+  // and drop any prior open/saved/WPA3 selection, otherwise (e.g. after picking
+  // an open network) /connect would be sent with the stale security and a
+  // disabled password field, leaving no way to enter the required key.
+  ssidInput.addEventListener("input", function () {
+    selectedSaved = false;
+    selectedSecurity = "wpa2_personal";
+    pwInput.disabled = false;
+    pwInput.placeholder = "Wi-Fi password";
+    statusEl.className = "status"; statusEl.textContent = "";
+    var sel = document.querySelector('.net[aria-selected="true"]');
+    if (sel) sel.setAttribute("aria-selected", "false");
+  });
 
   function bars(percent) {
     var n = Math.max(1, Math.min(4, Math.round(percent / 25)));
