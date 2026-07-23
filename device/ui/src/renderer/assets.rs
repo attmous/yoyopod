@@ -379,6 +379,21 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::STATUS_BATTERY_LABEL,
         roles::STATUS_CHARGE_ICON,
         roles::STATUS_BATTERY_ICON,
+        roles::WATCH_FACE,
+        roles::WATCH_ORBIT_CYAN,
+        roles::WATCH_ORBIT_ORANGE,
+        roles::WATCH_ORBIT_VIOLET,
+        roles::WATCH_ORBIT_LIME,
+        roles::WATCH_DOT_TOP,
+        roles::WATCH_DOT_RIGHT,
+        roles::WATCH_DOT_BOTTOM,
+        roles::WATCH_DOT_LEFT,
+        roles::WATCH_DATE,
+        roles::WATCH_TIME,
+        roles::WATCH_BATTERY_CARD,
+        roles::WATCH_BATTERY_ICON,
+        roles::WATCH_CHARGE_ICON,
+        roles::WATCH_BATTERY_LABEL,
         roles::VOICE_METER,
         roles::VOICE_METER_LEVEL,
         roles::RECORDING_PANEL,
@@ -635,6 +650,41 @@ mod tests {
 
         let two_flex_gaps = 2 * 3;
         assert!(label.width + charge.width + battery.width + two_flex_gaps <= right.width);
+    }
+
+    #[test]
+    fn watch_orbit_segments_share_one_square_and_cardinal_center() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let orbit_roles = [
+            roles::WATCH_ORBIT_CYAN,
+            roles::WATCH_ORBIT_ORANGE,
+            roles::WATCH_ORBIT_VIOLET,
+            roles::WATCH_ORBIT_LIME,
+        ];
+        let first = layout(&layouts, orbit_roles[0]);
+        assert_eq!(
+            (first.x, first.y, first.width, first.height),
+            (18, 38, 204, 204)
+        );
+        assert_eq!(first.width, first.height);
+        for role in orbit_roles.into_iter().skip(1) {
+            let segment = layout(&layouts, role);
+            assert_eq!(
+                (segment.x, segment.y, segment.width, segment.height),
+                (first.x, first.y, first.width, first.height),
+                "{role} must not skew"
+            );
+        }
+
+        let top = layout(&layouts, roles::WATCH_DOT_TOP);
+        let right = layout(&layouts, roles::WATCH_DOT_RIGHT);
+        let bottom = layout(&layouts, roles::WATCH_DOT_BOTTOM);
+        let left = layout(&layouts, roles::WATCH_DOT_LEFT);
+        assert_eq!(top.x + top.width / 2, 120);
+        assert_eq!(bottom.x + bottom.width / 2, 120);
+        assert_eq!(left.y + left.height / 2, 140);
+        assert_eq!(right.y + right.height / 2, 140);
+        assert_eq!(right.x - left.x, bottom.y - top.y);
     }
 
     #[test]

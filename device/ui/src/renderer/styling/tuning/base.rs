@@ -8,6 +8,18 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
     const SELECTOR: ffi::LvStyleSelector = 0;
     unsafe {
         match role {
+            roles::WATCH_ORBIT_ORANGE => {
+                configure_watch_orbit(obj, 4, 86);
+            }
+            roles::WATCH_ORBIT_VIOLET => {
+                configure_watch_orbit(obj, 94, 176);
+            }
+            roles::WATCH_ORBIT_LIME => {
+                configure_watch_orbit(obj, 184, 266);
+            }
+            roles::WATCH_ORBIT_CYAN => {
+                configure_watch_orbit(obj, 274, 356);
+            }
             roles::FOOTER_BAR
             | roles::DECK_BAR
             | roles::DECK_WHEEL
@@ -108,6 +120,18 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 ffi::lv_obj_set_style_pad_bottom(obj.as_ptr(), 0, SELECTOR);
                 ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
             }
+            roles::WATCH_FACE
+            | roles::WATCH_DOT_TOP
+            | roles::WATCH_DOT_RIGHT
+            | roles::WATCH_DOT_BOTTOM
+            | roles::WATCH_DOT_LEFT
+            | roles::WATCH_BATTERY_CARD => {
+                ffi::lv_obj_set_style_pad_left(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_pad_right(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_pad_top(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_style_pad_bottom(obj.as_ptr(), 0, SELECTOR);
+                ffi::lv_obj_set_scrollbar_mode(obj.as_ptr(), ffi::LV_SCROLLBAR_MODE_OFF);
+            }
             roles::CALL_AVATAR
             | roles::CALL_AVATAR_SM
             | roles::CALL_ANSWER
@@ -124,4 +148,9 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
         }
     }
     true
+}
+
+unsafe fn configure_watch_orbit(obj: NonNull<ffi::lv_obj_t>, start: i32, end: i32) {
+    ffi::lv_arc_set_rotation(obj.as_ptr(), 270);
+    ffi::lv_arc_set_bg_angles(obj.as_ptr(), start, end);
 }

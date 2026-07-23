@@ -15,6 +15,7 @@ pub mod recording_panel;
 pub mod setup;
 pub mod status_bar;
 pub mod voice_meter;
+pub mod watch_face;
 pub mod wheel_header;
 pub mod wheel_item;
 
@@ -35,5 +36,6 @@ pub use recording_panel::{recording_panel, RecordingPanelProps};
 pub use setup::{setup_about, setup_counter, setup_volume, setup_wifi};
 pub use status_bar::{status_bar, StatusBarProps};
 pub use voice_meter::{voice_meter, VoiceMeterProps};
+pub use watch_face::watch_face;
 pub use wheel_header::wheel_header;
 pub use wheel_item::{wheel_item, WheelItemSlot};

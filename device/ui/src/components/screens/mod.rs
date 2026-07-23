@@ -20,6 +20,7 @@ pub mod setup;
 pub mod talk;
 pub mod talk_contact;
 pub mod voice_note;
+pub mod watch_face;
 
 use yoyopod_protocol::ui::{ListItemSnapshot, RuntimeSnapshot, UiScreen};
 

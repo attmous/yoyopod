@@ -118,7 +118,9 @@ pub(crate) fn apply_accent_raw(
             | roles::STATUS_GPS_ICON
             | roles::STATUS_VOIP_ICON
             | roles::STATUS_CHARGE_ICON
-            | roles::STATUS_BATTERY_ICON => {
+            | roles::STATUS_BATTERY_ICON
+            | roles::WATCH_BATTERY_ICON
+            | roles::WATCH_CHARGE_ICON => {
                 ffi::lv_obj_set_style_text_color(obj.as_ptr(), accent, SELECTOR);
                 ffi::lv_obj_set_style_image_recolor(obj.as_ptr(), accent, SELECTOR);
                 ffi::lv_obj_set_style_image_recolor_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);

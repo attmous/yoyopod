@@ -233,13 +233,24 @@ impl LvglFacade for NativeLvglFacade {
         let style = self.style_for_role(role)?;
         styling::reset_style_raw(obj);
         styling::apply_style_raw(obj, style);
-        styling::apply_arc_indicator_style_raw(obj, style);
+        let is_watch_orbit = matches!(
+            role,
+            roles::WATCH_ORBIT_CYAN
+                | roles::WATCH_ORBIT_ORANGE
+                | roles::WATCH_ORBIT_VIOLET
+                | roles::WATCH_ORBIT_LIME
+        );
+        if !is_watch_orbit {
+            styling::apply_arc_indicator_style_raw(obj, style);
+        }
         Self::apply_layout_raw(obj, layout);
         unsafe {
             ffi::lv_arc_set_range(obj.as_ptr(), 0, 1000);
+            ffi::lv_arc_set_value(obj.as_ptr(), 0);
             ffi::lv_arc_set_bg_angles(obj.as_ptr(), 0, 360);
             ffi::lv_arc_set_rotation(obj.as_ptr(), 270);
         }
+        styling::apply_role_tuning_raw(obj, role);
         Ok(self.register_widget(obj, WidgetKind::Arc, role, Some(parent), layout))
     }
 
