@@ -8,8 +8,8 @@ use crate::config::NetworkHostConfig;
 use crate::modem::{ModemController, Sim7600ModemController};
 use crate::protocol::{
     health_result, ready_event, snapshot_event, snapshot_result, stopped_event, stopped_result,
-    wifi_change_candidate_event, wifi_provisioning_state_event, wifi_state_event, wifi_state_result,
-    EnvelopeKind, WorkerEnvelope,
+    wifi_change_candidate_event, wifi_provisioning_state_event, wifi_state_event,
+    wifi_state_result, EnvelopeKind, WorkerEnvelope,
 };
 use crate::provisioning::{WifiProvisioner, WifiProvisioningState};
 use crate::runtime::{NetworkRuntime, RuntimeCommandError};

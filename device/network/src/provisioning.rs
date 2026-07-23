@@ -170,7 +170,9 @@ impl WifiProvisioner {
 
     /// True once the background thread has finished (connected, failed, or torn down).
     pub fn finished(&self) -> bool {
-        self.handle.as_ref().is_none_or(|handle| handle.is_finished())
+        self.handle
+            .as_ref()
+            .is_none_or(|handle| handle.is_finished())
     }
 
     /// Join a thread that has already finished on its own (its terminal state
@@ -381,8 +383,8 @@ fn handle_request(mut request: tiny_http::Request, networks_json: &str) -> Optio
                 return Some(connect);
             }
             Err(message) => {
-                let _ = request
-                    .respond(json_response(400, &json!({ "error": message }).to_string()));
+                let _ =
+                    request.respond(json_response(400, &json!({ "error": message }).to_string()));
                 return None;
             }
         }
@@ -646,8 +648,11 @@ fn wait_for_active(
                 Err(TryRecvError::Empty) => {}
             }
         }
-        if let Ok(active) = proxy(connection, active_path.as_str(), NM_ACTIVE_CONNECTION_INTERFACE)
-        {
+        if let Ok(active) = proxy(
+            connection,
+            active_path.as_str(),
+            NM_ACTIVE_CONNECTION_INTERFACE,
+        ) {
             let state: u32 = active.get_property("State").unwrap_or(0);
             if state == NM_ACTIVE_STATE_ACTIVATED {
                 if !require_ipv4 {
@@ -680,10 +685,7 @@ impl Hotspot {
     /// Bring up the setup AP. Returns `Ok(Some(hotspot))` once it is up (or still
     /// finishing startup), `Ok(None)` if the user left Wi-Fi setup while it was
     /// activating (nothing is left behind), or `Err` if it could not start.
-    fn start(
-        credentials: &ApCredentials,
-        stop_rx: &Receiver<()>,
-    ) -> Result<Option<Self>, String> {
+    fn start(credentials: &ApCredentials, stop_rx: &Receiver<()>) -> Result<Option<Self>, String> {
         let connection = Connection::system().map_err(|_| "Wi-Fi is unavailable".to_string())?;
         // Scope the D-Bus proxies so their borrow of `connection` ends before it
         // is moved into the returned handle.
@@ -714,9 +716,13 @@ impl Hotspot {
                 &(path.clone(), device, root_path()),
             ) {
                 Err(_) => ActiveWait::Deactivated,
-                Ok(active) => {
-                    wait_for_active(&connection, &active, false, AP_ACTIVATE_TIMEOUT, Some(stop_rx))
-                }
+                Ok(active) => wait_for_active(
+                    &connection,
+                    &active,
+                    false,
+                    AP_ACTIVATE_TIMEOUT,
+                    Some(stop_rx),
+                ),
             };
             match wait {
                 // User left setup mid-startup: tear the half-up AP back down and
@@ -832,7 +838,10 @@ fn build_station_settings(request: &ConnectRequest) -> Result<NmSettings, String
     settings.insert(
         "connection".to_string(),
         HashMap::from([
-            ("id".to_string(), owned(format!("YoYoPod {}", request.ssid))?),
+            (
+                "id".to_string(),
+                owned(format!("YoYoPod {}", request.ssid))?,
+            ),
             ("type".to_string(), owned("802-11-wireless".to_string())?),
             ("autoconnect".to_string(), owned(true)?),
         ]),
@@ -1001,8 +1010,9 @@ mod tests {
 
     #[test]
     fn parse_connect_requires_a_usable_password_for_secured_networks() {
-        let ok = parse_connect(r#"{"ssid":"Home","security":"wpa2_personal","password":"longenough"}"#)
-            .expect("valid request");
+        let ok =
+            parse_connect(r#"{"ssid":"Home","security":"wpa2_personal","password":"longenough"}"#)
+                .expect("valid request");
         assert_eq!(ok.ssid, "Home");
         assert_eq!(ok.security, WifiSecurity::Wpa2Personal);
 

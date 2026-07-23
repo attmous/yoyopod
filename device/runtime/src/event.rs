@@ -98,9 +98,7 @@ impl RuntimeEvent {
                 state.apply_network_snapshot(snapshot);
             }
             Self::WifiState(_) | Self::WifiChangeCandidate(_) => {}
-            Self::WifiProvisioningState(payload) => {
-                state.apply_wifi_provisioning_state(payload)
-            }
+            Self::WifiProvisioningState(payload) => state.apply_wifi_provisioning_state(payload),
             Self::PowerSnapshot(snapshot) => {
                 state.resolve_overlay_for(WorkerDomain::Power);
                 state.apply_power_snapshot(snapshot);
