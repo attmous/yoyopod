@@ -59,6 +59,10 @@ const PORTAL_BIND: &str = "10.42.0.1:80";
 const PORTAL_BIND_TIMEOUT: Duration = Duration::from_secs(10);
 const AP_CONNECTION_ID: &str = "YoYoPod Setup";
 const PORTAL_POLL: Duration = Duration::from_millis(250);
+/// Hard cap on the `/connect` request body. An SSID (<=32) plus a PSK (<=64) in
+/// JSON is well under 1 KiB; 8 KiB leaves generous headroom while bounding what a
+/// hotspot client can make the network worker allocate.
+const MAX_CONNECT_BODY: u64 = 8 * 1024;
 /// If the user has not submitted a network within this window, tear the hotspot
 /// down and let NetworkManager auto-reconnect the previously active profile so
 /// the device returns online on its own.
@@ -353,8 +357,21 @@ fn handle_request(mut request: tiny_http::Request, networks_json: &str) -> Optio
     let is_post = *request.method() == Method::Post;
 
     if is_post && path == "/connect" {
+        // This endpoint is reachable by any client on the setup hotspot. Reject an
+        // oversized declared length up front, and hard-cap the actual read too, so
+        // a large (or length-lying) body cannot exhaust memory on the Pi Zero.
+        if content_length(&request).is_some_and(|len| len > MAX_CONNECT_BODY) {
+            let _ = request.respond(json_response(
+                413,
+                &json!({ "error": "request too large" }).to_string(),
+            ));
+            return None;
+        }
         let mut body = String::new();
-        let _ = request.as_reader().read_to_string(&mut body);
+        let _ = request
+            .as_reader()
+            .take(MAX_CONNECT_BODY)
+            .read_to_string(&mut body);
         match parse_connect(&body) {
             Ok(connect) => {
                 let _ = request.respond(json_response(
@@ -376,18 +393,9 @@ fn handle_request(mut request: tiny_http::Request, networks_json: &str) -> Optio
         return None;
     }
 
-    if path == "/secret" {
-        // Pre-fill the password when the user taps a network the device already
-        // has saved. Only the requested SSID's key is returned, and only over
-        // the WPA2-protected setup hotspot.
-        let ssid = query_param(&url, "ssid");
-        let password = saved_wifi_secret(&ssid).unwrap_or_default();
-        let _ = request.respond(json_response(
-            200,
-            &json!({ "password": password }).to_string(),
-        ));
-        return None;
-    }
+    // Note: saved Wi-Fi PSKs are deliberately never exposed over the portal. A
+    // saved network is reconnected by reusing the device's stored key
+    // server-side (see `connect_to_network`), so no key ever reaches a client.
 
     // Everything else — including every captive-portal probe (captive.apple.com,
     // /generate_204, etc.) — gets the page directly. Serving it rather than
@@ -397,48 +405,13 @@ fn handle_request(mut request: tiny_http::Request, networks_json: &str) -> Optio
     None
 }
 
-/// Extract and percent-decode a query parameter from a request URL.
-fn query_param(url: &str, key: &str) -> String {
-    let Some(query) = url.split('?').nth(1) else {
-        return String::new();
-    };
-    let prefix = format!("{key}=");
-    for pair in query.split('&') {
-        if let Some(value) = pair.strip_prefix(&prefix) {
-            return percent_decode(value);
-        }
-    }
-    String::new()
-}
-
-fn percent_decode(value: &str) -> String {
-    let bytes = value.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'+' => {
-                out.push(b' ');
-                index += 1;
-            }
-            b'%' if index + 2 < bytes.len() => {
-                let hi = (bytes[index + 1] as char).to_digit(16);
-                let lo = (bytes[index + 2] as char).to_digit(16);
-                if let (Some(hi), Some(lo)) = (hi, lo) {
-                    out.push((hi * 16 + lo) as u8);
-                    index += 3;
-                } else {
-                    out.push(bytes[index]);
-                    index += 1;
-                }
-            }
-            byte => {
-                out.push(byte);
-                index += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
+/// The `Content-Length` a client declared for its request body, if any.
+fn content_length(request: &tiny_http::Request) -> Option<u64> {
+    request
+        .headers()
+        .iter()
+        .find(|header| header.field.equiv("Content-Length"))
+        .and_then(|header| header.value.as_str().parse::<u64>().ok())
 }
 
 /// Look up the saved PSK for an SSID from NetworkManager, if the device already
@@ -513,7 +486,10 @@ fn parse_connect(body: &str) -> Result<ConnectRequest, String> {
         }
         _ => WifiSecurity::Wpa2Personal,
     };
-    if security != WifiSecurity::Open && !is_valid_psk(&password) {
+    // An empty password is allowed through here: for a saved network the device
+    // reconnects with its stored PSK (resolved in `connect_to_network`), so the
+    // phone never has to send one. A *non-empty* password must still be valid.
+    if security != WifiSecurity::Open && !password.is_empty() && !is_valid_psk(&password) {
         return Err("password must be 8 to 63 characters".to_string());
     }
     Ok(ConnectRequest {
@@ -558,6 +534,12 @@ fn scan_networks() -> Vec<PortalNetwork> {
 /// runs with no active station connection (the AP is being torn down), so it
 /// creates an autoconnect profile and activates it directly.
 fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
+    // Resolve the credential before touching the radio: for a saved network the
+    // user reconnects without retyping, so reuse the device's stored PSK here
+    // (server-side) rather than ever sending it to the phone. A network the
+    // device does not already know must supply a password.
+    let effective = resolve_credential(request)?;
+    let request = &effective;
     let connection = Connection::system().map_err(|_| "Wi-Fi is unavailable".to_string())?;
     let (connection_path, active_path) = {
         let device = wifi_device_path(&connection)?;
@@ -604,6 +586,23 @@ fn connect_to_network(request: &ConnectRequest) -> Result<(), String> {
             delete_profile(&connection, &connection_path);
             Err("Could not join that network - check the password.".to_string())
         }
+    }
+}
+
+/// Fill in the effective credential for a connect request. A secured network
+/// submitted with no password is treated as "reconnect to a saved network":
+/// reuse the stored PSK (looked up server-side) or, if the device has no saved
+/// profile for it, report that a password is required.
+fn resolve_credential(request: &ConnectRequest) -> Result<ConnectRequest, String> {
+    if request.security != WifiSecurity::Open && request.password.is_empty() {
+        let psk = saved_wifi_secret(&request.ssid)
+            .ok_or_else(|| "Enter the Wi-Fi password.".to_string())?;
+        Ok(ConnectRequest {
+            password: psk,
+            ..request.clone()
+        })
+    } else {
+        Ok(request.clone())
     }
 }
 
@@ -1027,6 +1026,18 @@ mod tests {
         // passphrase, not a valid raw PSK).
         let not_hex = "z".repeat(64);
         assert!(parse_connect(&format!(r#"{{"ssid":"Home","password":"{not_hex}"}}"#)).is_err());
+    }
+
+    #[test]
+    fn parse_connect_defers_empty_password_for_saved_networks() {
+        // An empty password parses OK for a secured network — connect_to_network
+        // resolves it to the device's saved PSK (or errors if not saved), so the
+        // phone never has to receive or resend the key.
+        let ok = parse_connect(r#"{"ssid":"Home","security":"wpa2_personal","password":""}"#)
+            .expect("empty password is deferred, not rejected at parse time");
+        assert!(ok.password.is_empty());
+        // A non-empty but invalid password is still rejected up front.
+        assert!(parse_connect(r#"{"ssid":"Home","password":"short"}"#).is_err());
     }
 
     #[test]

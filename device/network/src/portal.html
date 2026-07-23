@@ -68,9 +68,14 @@
 
 <script>
   var selectedSecurity = "wpa2_personal";
+  var selectedSaved = false;
   var ssidInput = document.getElementById("ssid");
   var pwInput = document.getElementById("password");
   var statusEl = document.getElementById("status");
+
+  // Editing the network name by hand means this is no longer the saved
+  // selection, so a password is required again.
+  ssidInput.addEventListener("input", function () { selectedSaved = false; });
 
   function bars(percent) {
     var n = Math.max(1, Math.min(4, Math.round(percent / 25)));
@@ -89,24 +94,23 @@
     node.setAttribute("aria-selected", "true");
     ssidInput.value = net.ssid;
     selectedSecurity = net.security || "wpa2_personal";
+    selectedSaved = !!net.saved && selectedSecurity !== "open";
+    pwInput.value = "";
     if (selectedSecurity === "open") {
-      pwInput.value = ""; pwInput.disabled = true; statusEl.textContent = "";
+      pwInput.disabled = true;
+      pwInput.placeholder = "No password needed";
+      statusEl.className = "status"; statusEl.textContent = "";
       return;
     }
     pwInput.disabled = false;
-    pwInput.value = "";
     if (net.saved) {
-      // The device already has this network saved — pre-fill its password.
-      statusEl.className = "status"; statusEl.textContent = "Filling saved password…";
-      fetch("/secret?ssid=" + encodeURIComponent(net.ssid))
-        .then(function (r) { return r.json(); })
-        .then(function (j) {
-          if (j && j.password) { pwInput.value = j.password; statusEl.textContent = "Saved password filled in."; }
-          else { statusEl.textContent = ""; pwInput.focus(); }
-        })
-        .catch(function () { statusEl.textContent = ""; pwInput.focus(); });
+      // The device already knows this network and reconnects with its stored
+      // password — no need to retype it, and the key is never sent to the phone.
+      pwInput.placeholder = "Using saved password — leave blank";
+      statusEl.className = "status"; statusEl.textContent = "Saved network — just tap Connect.";
     } else {
-      statusEl.textContent = "";
+      pwInput.placeholder = "Wi-Fi password";
+      statusEl.className = "status"; statusEl.textContent = "";
       pwInput.focus();
     }
   }
@@ -147,6 +151,10 @@
     e.preventDefault();
     var ssid = ssidInput.value.trim();
     if (!ssid) { statusEl.textContent = "Enter a network name."; statusEl.className = "status err"; return; }
+    if (selectedSecurity !== "open" && !selectedSaved && !pwInput.value) {
+      statusEl.className = "status err"; statusEl.textContent = "Enter the Wi-Fi password.";
+      return;
+    }
     document.getElementById("go").disabled = true;
     statusEl.className = "status"; statusEl.textContent = "Sending…";
     fetch("/connect", {
