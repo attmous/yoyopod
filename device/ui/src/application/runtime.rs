@@ -19,6 +19,12 @@ use super::state::{DirtyState, HomeMode, SystemOverlayPreview, UiRuntime};
 use super::{input_router, navigator, snapshot, UiScreen};
 
 const RUNTIME_LINK_ERROR: &str = "Lost runtime link";
+const WATCH_ORBIT_DIRTY_REGION: DirtyRegion = DirtyRegion {
+    x: 10,
+    y: 30,
+    w: 220,
+    h: 220,
+};
 
 #[derive(Debug, Clone)]
 pub struct FrameRequest {
@@ -545,7 +551,9 @@ impl UiRuntime {
             dirty_region: if self.active_screen == UiScreen::Hub
                 && self.home_mode == HomeMode::Ambient
             {
-                None
+                self.dirty
+                    .animation_only()
+                    .then_some(WATCH_ORBIT_DIRTY_REGION)
             } else {
                 self.dirty.render_region(self.active_screen)
             },
@@ -2447,5 +2455,21 @@ mod tests {
 
         let frame = runtime.frame_request(30_100).expect("ambient frame");
         assert_eq!(frame.dirty_region, None);
+    }
+
+    #[test]
+    fn ambient_orbit_animation_flushes_only_its_square_region() {
+        let mut runtime = UiRuntime::default();
+        runtime.advance_home_state(0);
+        runtime.advance_home_state(30_000);
+        runtime.mark_clean();
+        runtime.dirty.animation = true;
+
+        let frame = runtime
+            .frame_request(30_100)
+            .expect("ambient animation frame");
+        assert_eq!(frame.dirty_region, Some(WATCH_ORBIT_DIRTY_REGION));
+        assert_eq!(frame.dirty_region.expect("orbit region").w, 220);
+        assert_eq!(frame.dirty_region.expect("orbit region").h, 220);
     }
 }

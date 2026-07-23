@@ -21,39 +21,20 @@ pub const MEDIA_WHEEL_PEEK_OPACITY: u8 = 148;
 pub const CONTACT_WHEEL_PEEK_OPACITY: u8 = 115;
 pub const SETUP_WHEEL_PEEK_OPACITY: u8 = 190;
 
-const WATCH_ORBIT_PERIOD_MS: u32 = 4_800;
-const WATCH_ORBIT_REST_OPACITY: u8 = 144;
+const WATCH_ORBIT_PERIOD_MS: u32 = 6_400;
+const WATCH_ORBIT_REST_OPACITY: u8 = 192;
 
 pub fn watch_orbit() -> Timeline {
     Timeline {
         id: WATCH_ORBIT_TIMELINE_ID,
         clock: ClockSource::SceneTime,
         tracks: vec![
-            Track {
-                target: ActorRef::Region(RegionId::Backdrop),
-                property: AnimatableProp::Scale,
-                keyframes: vec![
-                    Keyframe {
-                        at_ms: 0,
-                        value: AnimatableValue::I32(1_000),
-                    },
-                    Keyframe {
-                        at_ms: WATCH_ORBIT_PERIOD_MS / 2,
-                        value: AnimatableValue::I32(1_008),
-                    },
-                    Keyframe {
-                        at_ms: WATCH_ORBIT_PERIOD_MS,
-                        value: AnimatableValue::I32(1_000),
-                    },
-                ],
-                easing: Easing::EaseInOut,
-            },
             orbit_pulse_track(
                 0,
                 &[
                     (0, 255),
-                    (1_200, WATCH_ORBIT_REST_OPACITY),
-                    (3_600, WATCH_ORBIT_REST_OPACITY),
+                    (1_600, WATCH_ORBIT_REST_OPACITY),
+                    (4_800, WATCH_ORBIT_REST_OPACITY),
                     (WATCH_ORBIT_PERIOD_MS, 255),
                 ],
             ),
@@ -61,8 +42,8 @@ pub fn watch_orbit() -> Timeline {
                 1,
                 &[
                     (0, WATCH_ORBIT_REST_OPACITY),
-                    (1_200, 255),
-                    (2_400, WATCH_ORBIT_REST_OPACITY),
+                    (1_600, 255),
+                    (3_200, WATCH_ORBIT_REST_OPACITY),
                     (WATCH_ORBIT_PERIOD_MS, WATCH_ORBIT_REST_OPACITY),
                 ],
             ),
@@ -70,9 +51,9 @@ pub fn watch_orbit() -> Timeline {
                 2,
                 &[
                     (0, WATCH_ORBIT_REST_OPACITY),
-                    (1_200, WATCH_ORBIT_REST_OPACITY),
-                    (2_400, 255),
-                    (3_600, WATCH_ORBIT_REST_OPACITY),
+                    (1_600, WATCH_ORBIT_REST_OPACITY),
+                    (3_200, 255),
+                    (4_800, WATCH_ORBIT_REST_OPACITY),
                     (WATCH_ORBIT_PERIOD_MS, WATCH_ORBIT_REST_OPACITY),
                 ],
             ),
@@ -80,8 +61,8 @@ pub fn watch_orbit() -> Timeline {
                 3,
                 &[
                     (0, WATCH_ORBIT_REST_OPACITY),
-                    (2_400, WATCH_ORBIT_REST_OPACITY),
-                    (3_600, 255),
+                    (3_200, WATCH_ORBIT_REST_OPACITY),
+                    (4_800, 255),
                     (WATCH_ORBIT_PERIOD_MS, WATCH_ORBIT_REST_OPACITY),
                 ],
             ),
@@ -610,45 +591,41 @@ mod tests {
     use crate::animation::{TimelineRef, TimelineSampler, TrackIndex};
 
     #[test]
-    fn watch_orbit_pulse_moves_clockwise_and_breathes_uniformly() {
+    fn watch_orbit_pulse_moves_clockwise_at_a_display_safe_cadence() {
         let timeline = watch_orbit();
         assert_eq!(timeline.id, WATCH_ORBIT_TIMELINE_ID);
         assert_eq!(timeline.clock, ClockSource::SceneTime);
         assert_eq!(timeline.loop_mode, LoopMode::Loop);
-        assert_eq!(timeline.tracks.len(), 5);
-        assert_eq!(timeline.tracks[0].property, AnimatableProp::Scale);
-        assert!(timeline.tracks[1..]
+        assert_eq!(timeline.tracks.len(), 4);
+        assert!(timeline
+            .tracks
             .iter()
             .all(|track| track.property == AnimatableProp::Opacity));
 
         let timelines = [timeline];
         let start = TimelineSampler::new(&timelines, 0, 0);
         assert_eq!(
-            start.value(ActorRef::Region(RegionId::Backdrop), AnimatableProp::Scale),
-            Some(AnimatableValue::I32(1_000))
-        );
-        assert_eq!(
-            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(1)),
+            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(0)),
             Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
         );
         assert_eq!(
-            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(2)),
+            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(1)),
             Some((
                 AnimatableProp::Opacity,
                 AnimatableValue::U8(WATCH_ORBIT_REST_OPACITY)
             ))
         );
 
-        let right = TimelineSampler::new(&timelines, 1_200, 0);
+        let right = TimelineSampler::new(&timelines, 1_600, 0);
         assert_eq!(
-            right.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(2)),
+            right.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(1)),
             Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
         );
 
-        let expanded = TimelineSampler::new(&timelines, 2_400, 0);
+        let bottom = TimelineSampler::new(&timelines, 3_200, 0);
         assert_eq!(
-            expanded.value(ActorRef::Region(RegionId::Backdrop), AnimatableProp::Scale),
-            Some(AnimatableValue::I32(1_008))
+            bottom.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(2)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
         );
     }
 
