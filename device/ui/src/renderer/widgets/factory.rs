@@ -58,6 +58,22 @@ pub(crate) fn create_arc_object(
     )
 }
 
+pub(crate) fn create_qrcode_object(
+    parent: NonNull<ffi::lv_obj_t>,
+    role: WidgetRole,
+) -> Result<NonNull<ffi::lv_obj_t>> {
+    let obj = non_null(
+        unsafe { ffi::lv_qrcode_create(parent.as_ptr()) },
+        format!("qrcode for {role}"),
+    )?;
+    // Keep in sync with QR_SIZE in components/widgets/setup.rs. lv_qrcode
+    // defaults to black-on-white, which is what scanners expect.
+    unsafe {
+        ffi::lv_qrcode_set_size(obj.as_ptr(), 132);
+    }
+    Ok(obj)
+}
+
 fn non_null(
     obj: *mut ffi::lv_obj_t,
     context: impl std::fmt::Display,

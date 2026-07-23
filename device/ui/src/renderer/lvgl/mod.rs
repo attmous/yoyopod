@@ -4,7 +4,7 @@ pub(crate) mod icons;
 pub(crate) mod lifecycle;
 pub(crate) mod snapshot;
 
-use std::ffi::CString;
+use std::ffi::{c_void, CString};
 use std::ptr::{self, NonNull};
 use std::time::Instant;
 
@@ -243,6 +243,16 @@ impl LvglFacade for NativeLvglFacade {
         Ok(self.register_widget(obj, WidgetKind::Arc, role, Some(parent), layout))
     }
 
+    fn create_qrcode(&mut self, parent: WidgetId, role: WidgetRole) -> Result<WidgetId> {
+        let parent_obj = self.widget_obj(parent)?;
+        let obj = factory::create_qrcode_object(parent_obj, role)?;
+        let layout = self.next_role_layout(Some(parent), role)?;
+        styling::reset_style_raw(obj);
+        styling::apply_style_raw(obj, self.style_for_role(role)?);
+        Self::apply_layout_raw(obj, layout);
+        Ok(self.register_widget(obj, WidgetKind::Qrcode, role, Some(parent), layout))
+    }
+
     fn reorder_children(&mut self, parent: WidgetId, order: &[WidgetId]) -> Result<()> {
         self.widgets.reorder_children(parent, order)?;
         for (index, child) in order.iter().copied().enumerate() {
@@ -256,6 +266,21 @@ impl LvglFacade for NativeLvglFacade {
 
     fn set_text(&mut self, widget: WidgetId, text: &str) -> Result<()> {
         let node = self.widget_node_mut(widget)?;
+        // A QR widget carries its payload in the same `text` prop as labels, but
+        // it is pushed to lv_qrcode (binary-safe) rather than set as label text.
+        if node.kind == WidgetKind::Qrcode {
+            if !text.is_empty() {
+                let bytes = text.as_bytes();
+                unsafe {
+                    ffi::lv_qrcode_update(
+                        node.obj.as_ptr(),
+                        bytes.as_ptr() as *const c_void,
+                        bytes.len() as u32,
+                    );
+                }
+            }
+            return Ok(());
+        }
         let text = CString::new(text).with_context(|| {
             format!(
                 "LVGL text for widget {} contains an interior NUL byte",

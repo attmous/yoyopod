@@ -111,6 +111,7 @@ pub struct DirtyState {
     pub power: bool,
     pub settings: bool,
     pub network: bool,
+    pub wifi_setup: bool,
     pub overlay: bool,
     pub navigation: bool,
     pub focus: bool,
@@ -129,6 +130,7 @@ impl DirtyState {
             || self.power
             || self.settings
             || self.network
+            || self.wifi_setup
             || self.overlay
             || self.navigation
             || self.focus
@@ -146,6 +148,7 @@ impl DirtyState {
         self.power = true;
         self.settings = true;
         self.network = true;
+        self.wifi_setup = true;
         self.overlay = true;
         self.navigation = true;
         self.focus = true;
@@ -165,6 +168,7 @@ impl DirtyState {
             RuntimeSnapshotDomain::Power => self.power = true,
             RuntimeSnapshotDomain::Settings => self.settings = true,
             RuntimeSnapshotDomain::Network => self.network = true,
+            RuntimeSnapshotDomain::WifiSetup => self.wifi_setup = true,
             RuntimeSnapshotDomain::Overlay => self.overlay = true,
         }
     }
@@ -181,6 +185,7 @@ impl DirtyState {
             || self.call
             || self.voice
             || self.settings
+            || self.wifi_setup
             || self.overlay
         {
             return None;

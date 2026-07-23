@@ -45,6 +45,7 @@ pub const ROUTES: [Route; UiScreen::ALL.len()] = [
     route(UiScreen::SetupContacts),
     route(UiScreen::SetupTheme),
     route(UiScreen::SetupAbout),
+    route(UiScreen::SetupWifi),
     route(UiScreen::Loading),
     route(UiScreen::Error),
 ];
@@ -185,6 +186,8 @@ fn template_intent_kind(template: IntentTemplate) -> IntentKind {
         IntentTemplate::CallToggleMute => ("call", "toggle_mute"),
         IntentTemplate::SettingsVolumeStep => ("settings", "volume_step"),
         IntentTemplate::SettingsSpeakNamesToggle => ("settings", "speak_names_toggle"),
+        IntentTemplate::SettingsWifiSetupStart => ("settings", "wifi_setup_start"),
+        IntentTemplate::SettingsWifiSetupStop => ("settings", "wifi_setup_stop"),
     };
     IntentKind {
         domain: domain.to_string(),
@@ -335,6 +338,10 @@ const SETUP_SELECT: &[SelectionTarget] = &[
     SelectionTarget::PushScreen(UiScreen::SetupContacts),
     SelectionTarget::PushScreen(UiScreen::SetupTheme),
     SelectionTarget::EmitIntent(IntentTemplate::SettingsSpeakNamesToggle),
+    SelectionTarget::PushWithIntent {
+        screen: UiScreen::SetupWifi,
+        intent: IntentTemplate::SettingsWifiSetupStart,
+    },
     SelectionTarget::PushScreen(UiScreen::SetupAbout),
 ];
 const SETUP_VOLUME_SELECT: &[SelectionTarget] = &[SelectionTarget::PopScreen];
@@ -388,6 +395,11 @@ const VOICE_NOTE_BACK: &[BackPolicy] = &[
         pop_screen: true,
     },
 ];
+const SETUP_WIFI_BACK: &[BackPolicy] = &[BackPolicy {
+    when: SnapshotCondition::Always,
+    intent: IntentTemplate::SettingsWifiSetupStop,
+    pop_screen: true,
+}];
 const NO_BACK: &[BackPolicy] = &[];
 
 const fn select_targets(screen: UiScreen) -> &'static [SelectionTarget] {
@@ -411,7 +423,7 @@ const fn select_targets(screen: UiScreen) -> &'static [SelectionTarget] {
         UiScreen::Setup => SETUP_SELECT,
         UiScreen::SetupVolume => SETUP_VOLUME_SELECT,
         UiScreen::SetupCompanion => SETUP_COMPANION_SELECT,
-        UiScreen::SetupContacts | UiScreen::SetupAbout => NO_SELECT,
+        UiScreen::SetupContacts | UiScreen::SetupAbout | UiScreen::SetupWifi => NO_SELECT,
         UiScreen::SetupTheme => SETUP_THEME_SELECT,
         UiScreen::Loading | UiScreen::Error => NO_SELECT,
     }
@@ -428,6 +440,7 @@ const fn passthrough_policies(screen: UiScreen) -> &'static [PassthroughPolicy] 
 const fn back_policies(screen: UiScreen) -> &'static [BackPolicy] {
     match screen {
         UiScreen::VoiceNote => VOICE_NOTE_BACK,
+        UiScreen::SetupWifi => SETUP_WIFI_BACK,
         _ => NO_BACK,
     }
 }
@@ -483,6 +496,12 @@ pub fn static_intent_template(template: IntentTemplate) -> Option<UiIntent> {
         IntentTemplate::SettingsSpeakNamesToggle => Some(UiIntent::Settings(
             yoyopod_protocol::ui::SettingsIntent::SpeakNamesToggle,
         )),
+        IntentTemplate::SettingsWifiSetupStart => Some(UiIntent::Settings(
+            yoyopod_protocol::ui::SettingsIntent::WifiSetupStart,
+        )),
+        IntentTemplate::SettingsWifiSetupStop => Some(UiIntent::Settings(
+            yoyopod_protocol::ui::SettingsIntent::WifiSetupStop,
+        )),
     }
 }
 
@@ -507,9 +526,11 @@ const fn focus_policy(screen: UiScreen) -> FocusPolicy {
         | UiScreen::PlaylistTracks
         | UiScreen::RecentTracks
         | UiScreen::NowPlaying => FocusPolicy::Wrap,
-        UiScreen::Ask | UiScreen::OutgoingCall | UiScreen::Loading | UiScreen::Error => {
-            FocusPolicy::None
-        }
+        UiScreen::SetupWifi
+        | UiScreen::Ask
+        | UiScreen::OutgoingCall
+        | UiScreen::Loading
+        | UiScreen::Error => FocusPolicy::None,
     }
 }
 

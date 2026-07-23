@@ -88,6 +88,42 @@ install -m 0644 -o root -g root \
     "${REPO_ROOT}/deploy/systemd/yoyopod-dev.service" \
     "${UNIT_DIR}/yoyopod-dev.service"
 
+# 3b. Captive-portal DNS for on-device Wi‑Fi setup. While the device hosts its
+# onboarding hotspot (NetworkManager ipv4=shared), resolve every name to the
+# portal gateway so a phone auto-opens the setup page. NetworkManager includes
+# dnsmasq-shared.d/* only while a shared connection is active, so this is inert
+# during normal operation.
+install -d -m 0755 -o root -g root /etc/NetworkManager/dnsmasq-shared.d
+cat > "/etc/NetworkManager/dnsmasq-shared.d/010-yoyopod-captive.conf" <<'EOF'
+# Written by bootstrap_pi.sh - YoYoPod Wi-Fi setup captive portal.
+address=/#/10.42.0.1
+EOF
+
+# 3c. Authorize the network service to run the whole on-device Wi-Fi setup flow:
+# scan, create/delete/activate NetworkManager profiles (AddConnection2, Delete,
+# ActivateConnection), and bring up the "shared" AP hotspot. These polkit actions
+# are only implicitly granted to active local sessions, but the service runs as a
+# non-login systemd session, so without them NetworkManager denies AP activation
+# ("Not authorized to share connections via wifi.") and profile changes. This
+# mirrors the rule `yoyopod target deploy` installs for dev, so a prod bootstrap
+# (which runs before any deploy) has the same grants. Match the actual service
+# user (the units are patched to run as ${INVOKING_USER}), since that user is not
+# necessarily a member of netdev; keep the netdev group as a fallback.
+cat > "/etc/polkit-1/rules.d/50-yoyopod-wifi-share.rules" <<EOF
+// Written by bootstrap_pi.sh - YoYoPod Wi-Fi setup authorization.
+polkit.addRule(function(action, subject) {
+    if ((subject.user == "${INVOKING_USER}" || subject.isInGroup("netdev")) &&
+        (action.id == "org.freedesktop.NetworkManager.wifi.scan" ||
+         action.id == "org.freedesktop.NetworkManager.settings.modify.system" ||
+         action.id == "org.freedesktop.NetworkManager.network-control" ||
+         action.id == "org.freedesktop.NetworkManager.checkpoint-rollback" ||
+         action.id == "org.freedesktop.NetworkManager.wifi.share.protected" ||
+         action.id == "org.freedesktop.NetworkManager.wifi.share.open")) {
+        return polkit.Result.YES;
+    }
+});
+EOF
+
 # 4. EnvironmentFiles with the lane roots.
 cat > "/etc/default/yoyopod-prod" <<EOF
 # /etc/default/yoyopod-prod - written by bootstrap_pi.sh

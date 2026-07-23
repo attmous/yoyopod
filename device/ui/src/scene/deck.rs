@@ -61,6 +61,7 @@ pub enum ItemRender {
     AskSurface(AskSurfaceModel),
     SetupVolume(SetupVolumeModel),
     SetupAbout(SetupAboutModel),
+    WifiSetup(WifiSetupModel),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,6 +123,19 @@ pub struct SetupAboutModel {
     pub battery_percent: i32,
     pub charging: bool,
     pub rows: Vec<(String, String)>,
+}
+
+/// Render model for the on-device Wi‑Fi onboarding screen. `qr_payload` is the
+/// Wi‑Fi-join URI (`WIFI:S:...;`) shown as a QR the phone scans to join the
+/// hotspot; the remaining fields are shown as text/instructions. When
+/// `qr_payload` is empty the screen shows `status_text` only (e.g. "starting").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WifiSetupModel {
+    pub qr_payload: String,
+    pub ap_ssid: String,
+    pub ap_password: String,
+    pub portal_url: String,
+    pub status_text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -450,6 +464,9 @@ fn deck_item_element(
         }
         ItemRender::SetupAbout(model) => {
             crate::components::widgets::setup_about(model).key(item.key.clone())
+        }
+        ItemRender::WifiSetup(model) => {
+            crate::components::widgets::setup_wifi(model).key(item.key.clone())
         }
         ItemRender::Button(button) => Element::new(ElementKind::Container, Some(roles::BUTTON))
             .key(item.key.clone())

@@ -1,0 +1,1302 @@
+//! On-device Wi-Fi onboarding: put the radio into Access Point mode, serve a
+//! captive-portal web page, and connect the device to the home network the user
+//! picks there.
+//!
+//! The device has a single Wi-Fi radio, so it cannot host an AP and scan at the
+//! same time. The flow is therefore: scan + cache nearby networks, bring up a
+//! WPA2 hotspot (NetworkManager `mode=ap`, `ipv4=shared`), run the portal, and -
+//! once the user submits a network - tear the hotspot down and join as a station.
+//!
+//! The whole lifecycle runs on a background thread; status updates flow back to
+//! the worker over a channel and are surfaced to the UI as `wifi_provisioning_state`.
+
+use std::collections::HashMap;
+use std::io::Read;
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use serde::Serialize;
+use serde_json::json;
+use tiny_http::{Header, Method, Response, Server};
+use zbus::blocking::{Connection, Proxy};
+use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
+
+use crate::wifi::{NetworkManagerWifiController, WifiController, WifiSecurity};
+
+const NM_SERVICE: &str = "org.freedesktop.NetworkManager";
+const NM_PATH: &str = "/org/freedesktop/NetworkManager";
+const NM_INTERFACE: &str = "org.freedesktop.NetworkManager";
+const NM_SETTINGS_PATH: &str = "/org/freedesktop/NetworkManager/Settings";
+const NM_SETTINGS_INTERFACE: &str = "org.freedesktop.NetworkManager.Settings";
+const NM_CONNECTION_INTERFACE: &str = "org.freedesktop.NetworkManager.Settings.Connection";
+const NM_DEVICE_INTERFACE: &str = "org.freedesktop.NetworkManager.Device";
+const NM_ACTIVE_CONNECTION_INTERFACE: &str = "org.freedesktop.NetworkManager.Connection.Active";
+const NM_DEVICE_TYPE_WIFI: u32 = 2;
+const NM_SETTINGS_ADD_TO_DISK: u32 = 0x1;
+const NM_ACTIVE_STATE_ACTIVATED: u32 = 2;
+const NM_ACTIVE_STATE_DEACTIVATED: u32 = 4;
+/// How long to wait for the chosen station connection to actually activate
+/// before reporting failure (wrong password, DHCP timeout, etc.).
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const CONNECT_POLL: Duration = Duration::from_millis(500);
+/// How long to wait for the AP to reach ACTIVATED before announcing the portal.
+/// NetworkManager's shared-mode setup (starting dnsmasq for DHCP/DNS) can take
+/// ~25s on the Pi, so keep this generous; a timeout is treated as "still coming
+/// up" rather than a failure (the AP has already begun broadcasting by then).
+const AP_ACTIVATE_TIMEOUT: Duration = Duration::from_secs(40);
+
+/// NetworkManager `ipv4.method=shared` always hands the AP host this address and
+/// runs a DHCP+DNS server for clients, so the portal lives here on port 80.
+const PORTAL_GATEWAY: &str = "10.42.0.1";
+/// Bind the captive portal to the AP gateway address only, never `0.0.0.0`.
+/// While setup runs the device may still be reachable over cellular/PPP or
+/// another interface, and `/secret` (saved Wi-Fi PSKs) and `/connect` must be
+/// exposed solely on the temporary WPA2 setup hotspot, not on every interface.
+const PORTAL_BIND: &str = "10.42.0.1:80";
+/// The shared-mode gateway address can take a moment to appear on the interface
+/// after activation, so retry the bind briefly rather than failing immediately.
+const PORTAL_BIND_TIMEOUT: Duration = Duration::from_secs(10);
+const AP_CONNECTION_ID: &str = "YoYoPod Setup";
+const PORTAL_POLL: Duration = Duration::from_millis(250);
+/// Hard cap on the `/connect` request body. An SSID (<=32) plus a PSK (<=64) in
+/// JSON is well under 1 KiB; 8 KiB leaves generous headroom while bounding what a
+/// hotspot client can make the network worker allocate.
+const MAX_CONNECT_BODY: u64 = 8 * 1024;
+/// How long to wait for a `/connect` body to finish arriving before abandoning
+/// the read. A real phone sends the tiny JSON instantly; a client that trickles
+/// or stalls must not hold the setup radio, so give up well within `AP_TIMEOUT`.
+const CONNECT_BODY_TIMEOUT: Duration = Duration::from_secs(5);
+/// If the user has not submitted a network within this window, tear the hotspot
+/// down and let NetworkManager auto-reconnect the previously active profile so
+/// the device returns online on its own.
+const AP_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Snapshot of the onboarding flow, serialized verbatim into the
+/// `wifi_provisioning_state` event. Field names match the UI's
+/// `WifiSetupRuntimeSnapshot`. The home-network password is never stored here.
+#[derive(Debug, Clone, Serialize)]
+pub struct WifiProvisioningState {
+    pub schema_version: u16,
+    pub active: bool,
+    pub phase: String,
+    pub ap_ssid: String,
+    pub ap_password: String,
+    pub portal_url: String,
+    pub qr_payload: String,
+    pub status_text: String,
+    pub error: String,
+    pub reported_at: u64,
+}
+
+impl WifiProvisioningState {
+    fn base() -> Self {
+        Self {
+            schema_version: 1,
+            active: true,
+            phase: String::new(),
+            ap_ssid: String::new(),
+            ap_password: String::new(),
+            portal_url: String::new(),
+            qr_payload: String::new(),
+            status_text: String::new(),
+            error: String::new(),
+            reported_at: epoch_seconds(),
+        }
+    }
+
+    fn phase(phase: &str, status: &str) -> Self {
+        Self {
+            phase: phase.to_string(),
+            status_text: status.to_string(),
+            ..Self::base()
+        }
+    }
+
+    /// The terminal "not provisioning" state the worker folds in once the flow
+    /// ends, so the UI leaves the setup screen's active state.
+    pub fn idle() -> Self {
+        Self {
+            active: false,
+            phase: "idle".to_string(),
+            ..Self::base()
+        }
+    }
+
+    pub fn error(message: &str) -> Self {
+        Self {
+            active: false,
+            phase: "error".to_string(),
+            error: message.to_string(),
+            status_text: message.to_string(),
+            ..Self::base()
+        }
+    }
+}
+
+/// A nearby network as advertised to the portal page.
+#[derive(Debug, Clone, Serialize)]
+struct PortalNetwork {
+    ssid: String,
+    security: String,
+    signal_percent: u8,
+    saved: bool,
+}
+
+/// Handle the worker keeps while onboarding is active.
+pub struct WifiProvisioner {
+    status_rx: Receiver<WifiProvisioningState>,
+    stop_tx: Sender<()>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl WifiProvisioner {
+    /// Spawn the onboarding worker thread. Returns the handle plus the initial
+    /// state to emit immediately.
+    pub fn start() -> (Self, WifiProvisioningState) {
+        let (status_tx, status_rx) = mpsc::channel();
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let handle = thread::spawn(move || run_flow(&status_tx, &stop_rx));
+        (
+            Self {
+                status_rx,
+                stop_tx,
+                handle: Some(handle),
+            },
+            WifiProvisioningState::phase("starting", "Switching to Wi-Fi pairing mode..."),
+        )
+    }
+
+    /// Drain any status updates produced since the last poll.
+    pub fn drain(&mut self) -> Vec<WifiProvisioningState> {
+        self.status_rx.try_iter().collect()
+    }
+
+    /// True once the background thread has finished (connected, failed, or torn down).
+    pub fn finished(&self) -> bool {
+        self.handle
+            .as_ref()
+            .is_none_or(|handle| handle.is_finished())
+    }
+
+    /// Join a thread that has already finished on its own (its terminal state
+    /// was delivered via `drain`), without emitting anything further.
+    pub fn join(mut self) {
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+
+    /// Signal teardown and wait for the thread to restore station mode.
+    pub fn stop(mut self) -> WifiProvisioningState {
+        let _ = self.stop_tx.send(());
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+        // Flush any final state the thread emitted, else report idle.
+        self.status_rx
+            .try_iter()
+            .last()
+            .unwrap_or_else(WifiProvisioningState::idle)
+    }
+}
+
+impl Drop for WifiProvisioner {
+    /// Safety net for every exit path. If the provisioner is dropped without an
+    /// explicit `stop()`/`join()` - e.g. an input error or closed stdin makes the
+    /// network worker return while the hotspot is still up - signal the
+    /// background thread and wait for it to tear the AP down, rather than
+    /// detaching the thread and risking the process exiting with the setup AP
+    /// still holding the radio. Idempotent with `stop()`/`join()`, which both
+    /// take the handle first.
+    fn drop(&mut self) {
+        let _ = self.stop_tx.send(());
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+/// The onboarding state machine, run on the background thread.
+fn run_flow(status_tx: &Sender<WifiProvisioningState>, stop_rx: &Receiver<()>) {
+    let networks = scan_networks();
+    let _ = status_tx.send(WifiProvisioningState::phase(
+        "starting",
+        "Switching to Wi-Fi pairing mode...",
+    ));
+
+    let credentials = ApCredentials::generate();
+    let hotspot = match Hotspot::start(&credentials, stop_rx) {
+        Ok(Some(hotspot)) => hotspot,
+        // The user left Wi-Fi setup while the AP was still coming up; the
+        // half-started hotspot has already been torn down, so just go idle.
+        Ok(None) => {
+            let _ = status_tx.send(WifiProvisioningState::idle());
+            return;
+        }
+        Err(error) => {
+            let _ = status_tx.send(WifiProvisioningState::error(&error));
+            return;
+        }
+    };
+
+    // Bind the captive portal BEFORE announcing it. If port 80 is unavailable
+    // (the service is missing CAP_NET_BIND_SERVICE, or something else holds the
+    // port) surface an error and tear the hotspot down, rather than leaving a
+    // "ready" hotspot with no page behind it and blocking forever.
+    let server = match bind_portal(stop_rx) {
+        Some(server) => server,
+        None => {
+            hotspot.stop();
+            let _ = status_tx.send(WifiProvisioningState::error(
+                "Wi-Fi setup could not open its setup page. Please try again.",
+            ));
+            return;
+        }
+    };
+
+    let ready = WifiProvisioningState {
+        phase: "portal_ready".to_string(),
+        ap_ssid: credentials.ssid.clone(),
+        ap_password: credentials.password.clone(),
+        portal_url: format!("http://{PORTAL_GATEWAY}/"),
+        qr_payload: credentials.qr_payload(),
+        status_text: "Scan with your phone, then pick your network".to_string(),
+        ..WifiProvisioningState::base()
+    };
+    let _ = status_tx.send(ready);
+
+    let outcome = serve_portal(server, &networks, stop_rx);
+
+    // Whatever happens next, the hotspot must come down so the radio is free.
+    hotspot.stop();
+
+    match outcome {
+        PortalOutcome::Stopped => {
+            let _ = status_tx.send(WifiProvisioningState::idle());
+        }
+        PortalOutcome::TimedOut => {
+            // Hotspot is already down (above); NetworkManager auto-reconnects the
+            // previously active profile. Surface a brief note, then go idle.
+            let _ = status_tx.send(WifiProvisioningState {
+                active: false,
+                phase: "idle".to_string(),
+                status_text: "Wi-Fi setup timed out - reconnected to Wi-Fi.".to_string(),
+                ..WifiProvisioningState::base()
+            });
+        }
+        PortalOutcome::Connect(request) => {
+            let _ = status_tx.send(WifiProvisioningState::phase(
+                "connecting",
+                &format!("Connecting to {}...", request.ssid),
+            ));
+            match connect_to_network(&request, stop_rx) {
+                ConnectOutcome::Connected => {
+                    let _ = status_tx.send(WifiProvisioningState {
+                        active: false,
+                        phase: "connected".to_string(),
+                        status_text: format!("Connected to {}", request.ssid),
+                        ..WifiProvisioningState::base()
+                    });
+                }
+                ConnectOutcome::Failed(error) => {
+                    let _ = status_tx.send(WifiProvisioningState::error(&error));
+                }
+                // User left setup mid-connect: the worker is being torn down, so
+                // go idle rather than surfacing a connect error.
+                ConnectOutcome::Cancelled => {
+                    let _ = status_tx.send(WifiProvisioningState::idle());
+                }
+            }
+        }
+    }
+}
+
+enum PortalOutcome {
+    Stopped,
+    TimedOut,
+    Connect(ConnectRequest),
+}
+
+/// Result of trying to join the chosen network.
+enum ConnectOutcome {
+    Connected,
+    Failed(String),
+    /// Teardown was requested (user left setup) before the join finished.
+    Cancelled,
+}
+
+#[derive(Debug, Clone)]
+struct ConnectRequest {
+    ssid: String,
+    security: WifiSecurity,
+    password: String,
+    /// The SSID was typed by hand rather than picked from the pre-AP scan, so it
+    /// may be a non-broadcasting (hidden) network. The profile must then set
+    /// `802-11-wireless.hidden=true` or NetworkManager will not probe for it and
+    /// the connection just times out.
+    hidden: bool,
+}
+
+/// Bind the captive portal to the AP gateway address (see `PORTAL_BIND`). The
+/// shared-mode address can take a moment to appear on the interface after the AP
+/// activates (especially when we proceed while startup is still finishing), so
+/// retry briefly. Returns `None` if the port never becomes bindable within the
+/// window or teardown is requested first.
+fn bind_portal(stop_rx: &Receiver<()>) -> Option<Server> {
+    let deadline = Instant::now() + PORTAL_BIND_TIMEOUT;
+    loop {
+        if let Ok(server) = Server::http(PORTAL_BIND) {
+            return Some(server);
+        }
+        match stop_rx.try_recv() {
+            Ok(()) | Err(TryRecvError::Disconnected) => return None,
+            Err(TryRecvError::Empty) => {}
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        thread::sleep(PORTAL_POLL);
+    }
+}
+
+/// Run the captive-portal HTTP server until the user submits a network or the
+/// worker asks us to stop.
+fn serve_portal(
+    server: Server,
+    networks: &[PortalNetwork],
+    stop_rx: &Receiver<()>,
+) -> PortalOutcome {
+    let networks_json = serde_json::to_string(networks).unwrap_or_else(|_| "[]".to_string());
+    let deadline = Instant::now() + AP_TIMEOUT;
+
+    loop {
+        match stop_rx.try_recv() {
+            Ok(()) | Err(TryRecvError::Disconnected) => return PortalOutcome::Stopped,
+            Err(TryRecvError::Empty) => {}
+        }
+        if Instant::now() >= deadline {
+            return PortalOutcome::TimedOut;
+        }
+        let request = match server.recv_timeout(PORTAL_POLL) {
+            Ok(Some(request)) => request,
+            Ok(None) => continue,
+            Err(_) => return PortalOutcome::Stopped,
+        };
+        if is_connect_post(&request) {
+            // The /connect body is read off the control loop so a client that
+            // stalls mid-body cannot block teardown; the loop keeps polling
+            // stop_rx / AP_TIMEOUT while the body arrives. `None` means the read
+            // failed, was rejected, or stalled - keep serving in that case.
+            if let Some(outcome) = read_connect(request, stop_rx, deadline) {
+                return outcome;
+            }
+        } else {
+            handle_request(request, &networks_json);
+        }
+    }
+}
+
+/// Is this a `POST /connect` (the only request with a body we read)?
+fn is_connect_post(request: &tiny_http::Request) -> bool {
+    *request.method() == Method::Post
+        && request.url().split('?').next().unwrap_or("/") == "/connect"
+}
+
+/// Read and parse a `/connect` body without blocking the portal control loop.
+/// The body is read on a worker thread; this polls for the result while still
+/// honoring `stop_rx`, the AP timeout, and a per-read deadline, so a slow or
+/// stalled client cannot wedge the single Wi-Fi radio in AP mode. Returns a
+/// terminal `PortalOutcome`, or `None` to keep serving (parse/read error, or the
+/// read was abandoned because the client stalled).
+fn read_connect(
+    request: tiny_http::Request,
+    stop_rx: &Receiver<()>,
+    deadline: Instant,
+) -> Option<PortalOutcome> {
+    // Reject an oversized declared length up front (reads headers only, so this
+    // is safe on the loop); the worker also hard-caps the actual read.
+    if content_length(&request).is_some_and(|len| len > MAX_CONNECT_BODY) {
+        let _ = request.respond(json_response(
+            413,
+            &json!({ "error": "request too large" }).to_string(),
+        ));
+        return None;
+    }
+
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || read_connect_worker(request, &tx));
+
+    let read_deadline = Instant::now() + CONNECT_BODY_TIMEOUT;
+    loop {
+        match rx.recv_timeout(PORTAL_POLL) {
+            Ok(connect) => return Some(PortalOutcome::Connect(connect)),
+            // Worker finished without a connect (parse error / dead socket, and it
+            // already responded if it could): resume serving.
+            Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                match stop_rx.try_recv() {
+                    Ok(()) | Err(TryRecvError::Disconnected) => {
+                        return Some(PortalOutcome::Stopped)
+                    }
+                    Err(TryRecvError::Empty) => {}
+                }
+                if Instant::now() >= deadline {
+                    return Some(PortalOutcome::TimedOut);
+                }
+                if Instant::now() >= read_deadline {
+                    // Client stalled mid-body: abandon the detached worker (it dies
+                    // when the hotspot is torn down) and keep serving.
+                    return None;
+                }
+            }
+        }
+    }
+}
+
+/// Worker body: read the (size-capped) `/connect` body, and on a valid request
+/// acknowledge it to the phone and hand the parsed result back over `tx`.
+fn read_connect_worker(mut request: tiny_http::Request, tx: &Sender<ConnectRequest>) {
+    let mut body = String::new();
+    if request
+        .as_reader()
+        .take(MAX_CONNECT_BODY)
+        .read_to_string(&mut body)
+        .is_err()
+    {
+        return;
+    }
+    match parse_connect(&body) {
+        Ok(connect) => {
+            let ssid = connect.ssid.clone();
+            // Hand the request to the control loop first; only tell the phone
+            // "connecting" once it is accepted. If the loop already moved on
+            // (this body arrived past CONNECT_BODY_TIMEOUT and the receiver was
+            // dropped), the send fails - so report a retry instead of leaving the
+            // phone on "Connecting..." while the device never acts.
+            if tx.send(connect).is_ok() {
+                let _ = request.respond(json_response(
+                    200,
+                    &json!({ "status": "connecting", "ssid": ssid }).to_string(),
+                ));
+            } else {
+                let _ = request.respond(json_response(
+                    503,
+                    &json!({ "error": "Setup timed out - please try again." }).to_string(),
+                ));
+            }
+        }
+        Err(message) => {
+            let _ = request.respond(json_response(400, &json!({ "error": message }).to_string()));
+        }
+    }
+}
+
+/// Handle a portal request that has no body we need to read: the network list,
+/// or the page itself for every other path (including captive-portal probes).
+fn handle_request(request: tiny_http::Request, networks_json: &str) {
+    let path = request.url().split('?').next().unwrap_or("/").to_string();
+
+    if path == "/networks" {
+        let _ = request.respond(json_response(200, networks_json));
+        return;
+    }
+
+    // Note: saved Wi-Fi PSKs are deliberately never exposed over the portal. A
+    // saved network is reconnected by reusing the device's stored key
+    // server-side (see `connect_to_network`), so no key ever reaches a client.
+
+    // Everything else — including every captive-portal probe (captive.apple.com,
+    // /generate_204, etc.) — gets the page directly. Serving it rather than
+    // redirecting pops the OS "sign in to network" sheet more reliably (notably
+    // on iOS, which sometimes will not follow the redirect).
+    let _ = request.respond(html_response(PORTAL_HTML));
+}
+
+/// The `Content-Length` a client declared for its request body, if any.
+fn content_length(request: &tiny_http::Request) -> Option<u64> {
+    request
+        .headers()
+        .iter()
+        .find(|header| header.field.equiv("Content-Length"))
+        .and_then(|header| header.value.as_str().parse::<u64>().ok())
+}
+
+/// The NetworkManager connection object path for a saved Wi-Fi profile matching
+/// `ssid`, if the device already has one. Best-effort. Used to reactivate an
+/// existing profile (preserving its settings) instead of creating a new one -
+/// the profile's saved key stays inside NetworkManager and is never read out.
+fn saved_connection_path(connection: &Connection, ssid: &str) -> Option<OwnedObjectPath> {
+    if ssid.is_empty() {
+        return None;
+    }
+    let settings_proxy = proxy(connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE).ok()?;
+    let paths: Vec<OwnedObjectPath> = settings_proxy.call("ListConnections", &()).ok()?;
+    // The `matches` check borrows `path` (the proxy holds its str); keep it in a
+    // helper so that borrow ends before we move `path` into the return value.
+    paths
+        .into_iter()
+        .find(|path| connection_is_for_ssid(connection, path, ssid))
+}
+
+/// Whether the NetworkManager connection profile at `path` is an 802-11-wireless
+/// profile for `ssid`.
+fn connection_is_for_ssid(connection: &Connection, path: &OwnedObjectPath, ssid: &str) -> bool {
+    let Ok(conn) = proxy(connection, path.as_str(), NM_CONNECTION_INTERFACE) else {
+        return false;
+    };
+    let Ok(settings) = conn.call::<_, _, NmSettings>("GetSettings", &()) else {
+        return false;
+    };
+    profile_ssid(&settings).as_deref() == Some(ssid)
+}
+
+/// Read the SSID (as UTF-8) from a NetworkManager 802-11-wireless profile.
+fn profile_ssid(settings: &NmSettings) -> Option<String> {
+    let bytes = settings
+        .get("802-11-wireless")
+        .and_then(|group| group.get("ssid"))
+        .cloned()
+        .and_then(|value| Vec::<u8>::try_from(value).ok())?;
+    Some(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn parse_connect(body: &str) -> Result<ConnectRequest, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(body).map_err(|_| "invalid request".to_string())?;
+    let ssid = value
+        .get("ssid")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|ssid| !ssid.is_empty() && ssid.len() <= 32)
+        .ok_or_else(|| "enter a network name".to_string())?
+        .to_string();
+    let password = value
+        .get("password")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let security = match value.get("security").and_then(serde_json::Value::as_str) {
+        Some("open") => WifiSecurity::Open,
+        Some("wpa3_personal") => WifiSecurity::Wpa3Personal,
+        // 802.1X/enterprise Wi-Fi needs identity + EAP config the portal can't
+        // collect; downgrading it to WPA-PSK would just fail with a misleading
+        // "wrong password". Reject it clearly instead.
+        Some("enterprise") => {
+            return Err("Enterprise (802.1X) Wi-Fi is not supported on this device.".to_string());
+        }
+        _ => WifiSecurity::Wpa2Personal,
+    };
+    // An empty password is allowed through here: for a saved network the device
+    // reconnects with its stored PSK (resolved in `connect_to_network`), so the
+    // phone never has to send one. A *non-empty* password must still be valid.
+    if security != WifiSecurity::Open && !password.is_empty() && !is_valid_psk(&password) {
+        return Err("password must be 8 to 63 characters".to_string());
+    }
+    // The portal marks an SSID typed by hand (not chosen from the scan list) as
+    // hidden so its profile is probed for; anything selected from the scan was
+    // broadcasting and is not.
+    let hidden = value
+        .get("hidden")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    Ok(ConnectRequest {
+        ssid,
+        security,
+        password,
+        hidden,
+    })
+}
+
+/// A WPA personal credential is either an 8-63 character passphrase or a raw
+/// 64-hex-digit PSK, which NetworkManager also accepts — matching what the
+/// regular Wi-Fi profile path allows, so routers configured with a raw PSK can
+/// still complete on-device onboarding.
+fn is_valid_psk(password: &str) -> bool {
+    let len = password.len();
+    (8..=63).contains(&len) || (len == 64 && password.bytes().all(|byte| byte.is_ascii_hexdigit()))
+}
+
+/// Scan for nearby networks before the AP takes over the radio. Best-effort:
+/// an empty list just means the portal shows manual entry only.
+fn scan_networks() -> Vec<PortalNetwork> {
+    let Ok(mut controller) = NetworkManagerWifiController::connect() else {
+        return Vec::new();
+    };
+    let state = match controller.scan() {
+        Ok(state) => state,
+        Err(_) => return Vec::new(),
+    };
+    state
+        .nearby_networks
+        .into_iter()
+        .map(|network| PortalNetwork {
+            ssid: network.ssid,
+            security: security_slug(network.security).to_string(),
+            signal_percent: network.signal_percent,
+            saved: network.saved,
+        })
+        .collect()
+}
+
+/// Join the selected home network. Unlike the cloud-driven `add_profile`, this
+/// runs with no active station connection (the AP is being torn down).
+///
+/// A saved network submitted with no new password reactivates the device's
+/// existing profile (preserving its stored key and any static-IP/hidden/
+/// autoconnect settings); every other case creates a fresh autoconnect profile
+/// and activates it directly.
+fn connect_to_network(request: &ConnectRequest, stop_rx: &Receiver<()>) -> ConnectOutcome {
+    let connection = match Connection::system() {
+        Ok(connection) => connection,
+        Err(_) => return ConnectOutcome::Failed("Wi-Fi is unavailable".to_string()),
+    };
+
+    // "Reconnect to a saved network": a secured network with no new password.
+    // Reactivate the profile the device already has rather than building a fresh
+    // DHCP one, so its stored key and any custom settings are preserved and no
+    // duplicate profile is created for the same SSID.
+    if request.security != WifiSecurity::Open && request.password.is_empty() {
+        return activate_saved_network(&connection, &request.ssid, stop_rx);
+    }
+
+    let (connection_path, active_path) = match create_station_connection(&connection, request) {
+        Ok(paths) => paths,
+        Err(error) => return ConnectOutcome::Failed(error),
+    };
+    // ActivateConnection returns as soon as the request is accepted, before the
+    // station link is really up - so a wrong password or DHCP failure would
+    // otherwise be reported as success. Wait for ACTIVATED with an IPv4 address
+    // (or fail / time out / cancel) before returning. `stop_rx` makes this wait
+    // abort promptly when the user leaves setup, instead of blocking the worker
+    // for the full CONNECT_TIMEOUT before it can process teardown.
+    match wait_for_active(
+        &connection,
+        &active_path,
+        true,
+        CONNECT_TIMEOUT,
+        Some(stop_rx),
+    ) {
+        ActiveWait::Activated => ConnectOutcome::Connected,
+        // User left mid-connect: drop the half-created profile and go idle.
+        ActiveWait::Cancelled => {
+            delete_profile(&connection, &connection_path);
+            ConnectOutcome::Cancelled
+        }
+        // A station connection that never gets an IPv4 lease in time (or drops)
+        // is a real failure - delete the profile so NM stops retrying it.
+        ActiveWait::Deactivated | ActiveWait::TimedOut => {
+            delete_profile(&connection, &connection_path);
+            ConnectOutcome::Failed("Could not join that network - check the password.".to_string())
+        }
+    }
+}
+
+/// Create the station autoconnect profile and start activating it, returning the
+/// (profile, active-connection) object paths. On a synchronous activation
+/// rejection the just-written profile is deleted before returning the error.
+fn create_station_connection(
+    connection: &Connection,
+    request: &ConnectRequest,
+) -> Result<(OwnedObjectPath, OwnedObjectPath), String> {
+    let device = wifi_device_path(connection)?;
+    let settings = build_station_settings(request)?;
+    let settings_proxy = proxy(connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE)?;
+    let (path, _result): (OwnedObjectPath, HashMap<String, OwnedValue>) = settings_proxy
+        .call(
+            "AddConnection2",
+            &(
+                settings,
+                NM_SETTINGS_ADD_TO_DISK,
+                HashMap::<String, OwnedValue>::new(),
+            ),
+        )
+        .map_err(|_| "could not save the network".to_string())?;
+    let manager = proxy(connection, NM_PATH, NM_INTERFACE)?;
+    let active: OwnedObjectPath =
+        match manager.call("ActivateConnection", &(path.clone(), device, root_path())) {
+            Ok(active) => active,
+            Err(_) => {
+                // Activation was rejected synchronously, but AddConnection2 already
+                // wrote the autoconnect profile to disk. Delete it before returning
+                // so NetworkManager doesn't retry a bad network on later onboarding.
+                delete_profile(connection, &path);
+                return Err("could not connect to the network".to_string());
+            }
+        };
+    Ok((path, active))
+}
+
+/// Reconnect to a network the device already has saved by activating its
+/// existing profile. If no saved profile matches the SSID, a password is
+/// required. The saved profile is never deleted - it is the user's own
+/// configuration, not one created here.
+fn activate_saved_network(
+    connection: &Connection,
+    ssid: &str,
+    stop_rx: &Receiver<()>,
+) -> ConnectOutcome {
+    let profile = match saved_connection_path(connection, ssid) {
+        Some(profile) => profile,
+        None => return ConnectOutcome::Failed("Enter the Wi-Fi password.".to_string()),
+    };
+    let device = match wifi_device_path(connection) {
+        Ok(device) => device,
+        Err(error) => return ConnectOutcome::Failed(error),
+    };
+    let manager = match proxy(connection, NM_PATH, NM_INTERFACE) {
+        Ok(manager) => manager,
+        Err(error) => return ConnectOutcome::Failed(error),
+    };
+    let active: OwnedObjectPath = match manager
+        .call("ActivateConnection", &(profile, device, root_path()))
+    {
+        Ok(active) => active,
+        Err(_) => return ConnectOutcome::Failed("could not connect to the network".to_string()),
+    };
+    match wait_for_active(connection, &active, true, CONNECT_TIMEOUT, Some(stop_rx)) {
+        ActiveWait::Activated => ConnectOutcome::Connected,
+        // Do not delete the user's pre-existing saved profile.
+        ActiveWait::Cancelled => ConnectOutcome::Cancelled,
+        _ => ConnectOutcome::Failed("Could not reconnect to that network.".to_string()),
+    }
+}
+
+/// Delete a NetworkManager connection profile by object path, best-effort.
+fn delete_profile(connection: &Connection, path: &OwnedObjectPath) {
+    if let Ok(profile) = proxy(connection, path.as_str(), NM_CONNECTION_INTERFACE) {
+        let _ = profile.call::<_, _, ()>("Delete", &());
+    }
+}
+
+/// Delete any leftover setup-AP profile (`AP_CONNECTION_ID`) from a previous run.
+/// Call this on network-worker startup: if an earlier run terminated ungracefully
+/// (crash / SIGKILL / power loss) while the hotspot was up, NetworkManager can
+/// keep the "YoYoPod Setup" connection saved and active, leaving the device
+/// broadcasting the onboarding AP and holding the radio. Deleting the profile
+/// also deactivates it. Best-effort; if NM is unreachable there is nothing to do.
+pub fn cleanup_stale_setup_ap() {
+    let Ok(connection) = Connection::system() else {
+        return;
+    };
+    let Ok(settings_proxy) = proxy(&connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE) else {
+        return;
+    };
+    let Ok(paths) = settings_proxy.call::<_, _, Vec<OwnedObjectPath>>("ListConnections", &())
+    else {
+        return;
+    };
+    for path in paths {
+        let Ok(conn) = proxy(&connection, path.as_str(), NM_CONNECTION_INTERFACE) else {
+            continue;
+        };
+        let Ok(settings) = conn.call::<_, _, NmSettings>("GetSettings", &()) else {
+            continue;
+        };
+        if connection_id(&settings).as_deref() == Some(AP_CONNECTION_ID) {
+            let _ = conn.call::<_, _, ()>("Delete", &());
+        }
+    }
+}
+
+/// Read the `connection.id` from a NetworkManager profile.
+fn connection_id(settings: &NmSettings) -> Option<String> {
+    settings
+        .get("connection")
+        .and_then(|group| group.get("id"))
+        .cloned()
+        .and_then(|value| String::try_from(value).ok())
+}
+
+/// Result of watching an active connection come up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActiveWait {
+    /// Reached ACTIVATED (and, if required, has an IPv4 address).
+    Activated,
+    /// Explicitly failed / was torn down (rfkill, driver, wrong password, ...).
+    Deactivated,
+    /// Neither happened before the deadline - still activating.
+    TimedOut,
+    /// Teardown was requested (user left Wi-Fi setup) before activation finished.
+    Cancelled,
+}
+
+/// Poll an active-connection object until it reaches ACTIVATED (optionally with
+/// an IPv4 address), it deactivates, the deadline passes, or - when a stop
+/// receiver is supplied - teardown is requested. Passing `stop_rx` makes a long
+/// activation wait (notably AP startup) abort promptly when the user leaves
+/// Wi-Fi setup, instead of holding the radio for the full timeout.
+fn wait_for_active(
+    connection: &Connection,
+    active_path: &OwnedObjectPath,
+    require_ipv4: bool,
+    timeout: Duration,
+    stop_rx: Option<&Receiver<()>>,
+) -> ActiveWait {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(stop_rx) = stop_rx {
+            match stop_rx.try_recv() {
+                Ok(()) | Err(TryRecvError::Disconnected) => return ActiveWait::Cancelled,
+                Err(TryRecvError::Empty) => {}
+            }
+        }
+        if let Ok(active) = proxy(
+            connection,
+            active_path.as_str(),
+            NM_ACTIVE_CONNECTION_INTERFACE,
+        ) {
+            let state: u32 = active.get_property("State").unwrap_or(0);
+            if state == NM_ACTIVE_STATE_ACTIVATED {
+                if !require_ipv4 {
+                    return ActiveWait::Activated;
+                }
+                let ip4: OwnedObjectPath = active
+                    .get_property("Ip4Config")
+                    .unwrap_or_else(|_| root_path());
+                if ip4.as_str() != "/" {
+                    return ActiveWait::Activated;
+                }
+            } else if state == NM_ACTIVE_STATE_DEACTIVATED {
+                return ActiveWait::Deactivated;
+            }
+        }
+        if Instant::now() >= deadline {
+            return ActiveWait::TimedOut;
+        }
+        thread::sleep(CONNECT_POLL);
+    }
+}
+
+/// A WPA2 hotspot connection managed through its lifetime by NetworkManager.
+struct Hotspot {
+    connection: Connection,
+    path: OwnedObjectPath,
+}
+
+impl Hotspot {
+    /// Bring up the setup AP. Returns `Ok(Some(hotspot))` once it is up (or still
+    /// finishing startup), `Ok(None)` if the user left Wi-Fi setup while it was
+    /// activating (nothing is left behind), or `Err` if it could not start.
+    fn start(credentials: &ApCredentials, stop_rx: &Receiver<()>) -> Result<Option<Self>, String> {
+        let connection = Connection::system().map_err(|_| "Wi-Fi is unavailable".to_string())?;
+        // Scope the D-Bus proxies so their borrow of `connection` ends before it
+        // is moved into the returned handle.
+        let path = {
+            let device = wifi_device_path(&connection)?;
+            let settings = build_ap_settings(credentials)?;
+            let settings_proxy = proxy(&connection, NM_SETTINGS_PATH, NM_SETTINGS_INTERFACE)?;
+            let (path, _result): (OwnedObjectPath, HashMap<String, OwnedValue>) = settings_proxy
+                .call(
+                    "AddConnection2",
+                    &(
+                        settings,
+                        NM_SETTINGS_ADD_TO_DISK,
+                        HashMap::<String, OwnedValue>::new(),
+                    ),
+                )
+                .map_err(|_| "could not create the hotspot".to_string())?;
+            let manager = proxy(&connection, NM_PATH, NM_INTERFACE)?;
+            // ActivateConnection only means the request was accepted; the AP can
+            // still fail asynchronously (rfkill, driver/AP-mode failure,
+            // shared-mode setup). Treat only an explicit DEACTIVATED as a real
+            // failure - a timeout means it's still coming up (NM's dnsmasq setup
+            // is slow) and the radio is already broadcasting, so proceed. Pass
+            // `stop_rx` so leaving Wi-Fi setup during this wait aborts promptly
+            // instead of holding the radio for the full startup timeout.
+            let wait = match manager.call::<_, _, OwnedObjectPath>(
+                "ActivateConnection",
+                &(path.clone(), device, root_path()),
+            ) {
+                Err(_) => ActiveWait::Deactivated,
+                Ok(active) => wait_for_active(
+                    &connection,
+                    &active,
+                    false,
+                    AP_ACTIVATE_TIMEOUT,
+                    Some(stop_rx),
+                ),
+            };
+            match wait {
+                // User left setup mid-startup: tear the half-up AP back down and
+                // report "no hotspot" so the flow returns to idle cleanly.
+                ActiveWait::Cancelled => {
+                    delete_profile(&connection, &path);
+                    return Ok(None);
+                }
+                // Don't leave the AP profile behind if it cannot be brought up
+                // (e.g. a missing polkit "share" grant): delete it before failing
+                // so repeated attempts don't accumulate orphaned "YoYoPod Setup"
+                // connections.
+                ActiveWait::Deactivated => {
+                    delete_profile(&connection, &path);
+                    return Err("could not start the hotspot".to_string());
+                }
+                ActiveWait::Activated | ActiveWait::TimedOut => path,
+            }
+        };
+        Ok(Some(Self { connection, path }))
+    }
+
+    /// Delete the hotspot profile. NetworkManager deactivates it and reconnects
+    /// the saved station profile (autoconnect) so the device returns online.
+    fn stop(self) {
+        if let Ok(proxy) = proxy(
+            &self.connection,
+            self.path.as_str(),
+            NM_CONNECTION_INTERFACE,
+        ) {
+            let _ = proxy.call::<_, _, ()>("Delete", &());
+        }
+    }
+}
+
+/// Randomly generated hotspot identity for one onboarding session.
+struct ApCredentials {
+    ssid: String,
+    password: String,
+}
+
+impl ApCredentials {
+    fn generate() -> Self {
+        let entropy = random_bytes(8);
+        let suffix: String = entropy[..2]
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect();
+        // 8 base32-ish chars (no ambiguous 0/O/1/I) keep the WPA2 key easy to type.
+        const ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+        let password: String = entropy
+            .iter()
+            .map(|byte| ALPHABET[(*byte as usize) % ALPHABET.len()] as char)
+            .collect();
+        Self {
+            ssid: format!("YoYoPod-{suffix}"),
+            password,
+        }
+    }
+
+    /// Standard Wi-Fi-join URI so a phone camera offers to join the hotspot.
+    fn qr_payload(&self) -> String {
+        format!(
+            "WIFI:S:{};T:WPA;P:{};;",
+            escape_qr(&self.ssid),
+            escape_qr(&self.password)
+        )
+    }
+}
+
+fn build_ap_settings(credentials: &ApCredentials) -> Result<NmSettings, String> {
+    let mut settings = NmSettings::new();
+    settings.insert(
+        "connection".to_string(),
+        HashMap::from([
+            ("id".to_string(), owned(AP_CONNECTION_ID.to_string())?),
+            ("type".to_string(), owned("802-11-wireless".to_string())?),
+            ("autoconnect".to_string(), owned(false)?),
+        ]),
+    );
+    settings.insert(
+        "802-11-wireless".to_string(),
+        HashMap::from([
+            (
+                "ssid".to_string(),
+                owned(credentials.ssid.as_bytes().to_vec())?,
+            ),
+            ("mode".to_string(), owned("ap".to_string())?),
+            ("band".to_string(), owned("bg".to_string())?),
+            ("channel".to_string(), owned(6_u32)?),
+        ]),
+    );
+    settings.insert(
+        "802-11-wireless-security".to_string(),
+        HashMap::from([
+            ("key-mgmt".to_string(), owned("wpa-psk".to_string())?),
+            ("psk".to_string(), owned(credentials.password.clone())?),
+        ]),
+    );
+    settings.insert(
+        "ipv4".to_string(),
+        HashMap::from([
+            ("method".to_string(), owned("shared".to_string())?),
+            // Pin the shared subnet. NetworkManager only guarantees *some*
+            // 10.42.x.0/24 when the address is left unspecified, but the portal
+            // bind, the captive DNS snippet, and the QR/portal URL all assume
+            // PORTAL_GATEWAY - so fix the AP address to it explicitly.
+            ("address-data".to_string(), ap_address_data()?),
+        ]),
+    );
+    settings.insert(
+        "ipv6".to_string(),
+        HashMap::from([("method".to_string(), owned("ignore".to_string())?)]),
+    );
+    Ok(settings)
+}
+
+/// The `ipv4.address-data` array (`aa{sv}`) pinning the shared AP host to
+/// `PORTAL_GATEWAY/24`, so the hard-coded bind/DNS/QR address is always correct.
+fn ap_address_data() -> Result<OwnedValue, String> {
+    let entry: HashMap<String, Value<'static>> = HashMap::from([
+        ("address".to_string(), Value::from(PORTAL_GATEWAY)),
+        ("prefix".to_string(), Value::from(24_u32)),
+    ]);
+    owned(vec![entry])
+}
+
+fn build_station_settings(request: &ConnectRequest) -> Result<NmSettings, String> {
+    let mut settings = NmSettings::new();
+    settings.insert(
+        "connection".to_string(),
+        HashMap::from([
+            (
+                "id".to_string(),
+                owned(format!("YoYoPod {}", request.ssid))?,
+            ),
+            ("type".to_string(), owned("802-11-wireless".to_string())?),
+            ("autoconnect".to_string(), owned(true)?),
+        ]),
+    );
+    let mut wireless = HashMap::from([
+        ("ssid".to_string(), owned(request.ssid.as_bytes().to_vec())?),
+        ("mode".to_string(), owned("infrastructure".to_string())?),
+    ]);
+    if request.hidden {
+        // Non-broadcasting network: tell NetworkManager to actively probe for it.
+        wireless.insert("hidden".to_string(), owned(true)?);
+    }
+    settings.insert("802-11-wireless".to_string(), wireless);
+    if request.security != WifiSecurity::Open {
+        let key_mgmt = if request.security == WifiSecurity::Wpa3Personal {
+            "sae"
+        } else {
+            "wpa-psk"
+        };
+        settings.insert(
+            "802-11-wireless-security".to_string(),
+            HashMap::from([
+                ("key-mgmt".to_string(), owned(key_mgmt.to_string())?),
+                ("psk".to_string(), owned(request.password.clone())?),
+            ]),
+        );
+    }
+    settings.insert(
+        "ipv4".to_string(),
+        HashMap::from([("method".to_string(), owned("auto".to_string())?)]),
+    );
+    settings.insert(
+        "ipv6".to_string(),
+        HashMap::from([("method".to_string(), owned("auto".to_string())?)]),
+    );
+    Ok(settings)
+}
+
+type NmSettings = HashMap<String, HashMap<String, OwnedValue>>;
+
+fn wifi_device_path(connection: &Connection) -> Result<OwnedObjectPath, String> {
+    let manager = proxy(connection, NM_PATH, NM_INTERFACE)?;
+    let paths: Vec<OwnedObjectPath> = manager
+        .call("GetDevices", &())
+        .map_err(|_| "Wi-Fi is unavailable".to_string())?;
+    paths
+        .into_iter()
+        .find(|path| {
+            proxy(connection, path.as_str(), NM_DEVICE_INTERFACE)
+                .and_then(|proxy| {
+                    proxy
+                        .get_property::<u32>("DeviceType")
+                        .map_err(|_| String::new())
+                })
+                .is_ok_and(|device_type| device_type == NM_DEVICE_TYPE_WIFI)
+        })
+        .ok_or_else(|| "no Wi-Fi radio found".to_string())
+}
+
+fn proxy<'a>(
+    connection: &'a Connection,
+    path: &'a str,
+    interface: &'a str,
+) -> Result<Proxy<'a>, String> {
+    Proxy::new(connection, NM_SERVICE, path, interface)
+        .map_err(|_| "Wi-Fi is unavailable".to_string())
+}
+
+fn owned<T>(value: T) -> Result<OwnedValue, String>
+where
+    T: Into<Value<'static>>,
+{
+    let value: Value<'static> = value.into();
+    value
+        .try_to_owned()
+        .map_err(|_| "could not encode Wi-Fi settings".to_string())
+}
+
+fn root_path() -> OwnedObjectPath {
+    OwnedObjectPath::try_from("/").expect("root object path is valid")
+}
+
+fn security_slug(security: WifiSecurity) -> &'static str {
+    match security {
+        WifiSecurity::Open => "open",
+        WifiSecurity::Wpa2Personal => "wpa2_personal",
+        WifiSecurity::Wpa3Personal => "wpa3_personal",
+        WifiSecurity::Enterprise => "enterprise",
+    }
+}
+
+/// Escape the characters reserved by the `WIFI:` URI scheme.
+fn escape_qr(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        if matches!(character, '\\' | ';' | ',' | ':' | '"') {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
+}
+
+fn random_bytes(len: usize) -> Vec<u8> {
+    use std::fs::File;
+    let mut buffer = vec![0_u8; len];
+    if File::open("/dev/urandom")
+        .and_then(|mut file| file.read_exact(&mut buffer))
+        .is_ok()
+    {
+        return buffer;
+    }
+    // Fallback: derive from the clock if /dev/urandom is unavailable.
+    let seed = epoch_seconds().wrapping_mul(2_654_435_761);
+    for (index, byte) in buffer.iter_mut().enumerate() {
+        *byte = (seed >> ((index % 8) * 8)) as u8;
+    }
+    buffer
+}
+
+fn epoch_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
+}
+
+fn json_response(status: u16, body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    let header = Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+        .expect("static header is valid");
+    Response::from_string(body.to_string())
+        .with_status_code(status)
+        .with_header(header)
+}
+
+fn html_response(body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    let header = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
+        .expect("static header is valid");
+    Response::from_string(body.to_string()).with_header(header)
+}
+
+const PORTAL_HTML: &str = include_str!("portal.html");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn qr_payload_is_a_wifi_join_uri_with_escaping() {
+        let credentials = ApCredentials {
+            ssid: "YoYoPod-1A2B".to_string(),
+            password: "ABCD2345".to_string(),
+        };
+        assert_eq!(
+            credentials.qr_payload(),
+            "WIFI:S:YoYoPod-1A2B;T:WPA;P:ABCD2345;;"
+        );
+        assert_eq!(escape_qr("a;b:c"), "a\\;b\\:c");
+    }
+
+    #[test]
+    fn generated_credentials_are_typeable_and_unique_enough() {
+        let credentials = ApCredentials::generate();
+        assert!(credentials.ssid.starts_with("YoYoPod-"));
+        assert_eq!(credentials.password.len(), 8);
+        assert!((8..=63).contains(&credentials.password.len()));
+    }
+
+    #[test]
+    fn parse_connect_requires_a_usable_password_for_secured_networks() {
+        let ok =
+            parse_connect(r#"{"ssid":"Home","security":"wpa2_personal","password":"longenough"}"#)
+                .expect("valid request");
+        assert_eq!(ok.ssid, "Home");
+        assert_eq!(ok.security, WifiSecurity::Wpa2Personal);
+
+        assert!(parse_connect(r#"{"ssid":"Home","password":"short"}"#).is_err());
+        assert!(parse_connect(r#"{"ssid":"","password":"longenough"}"#).is_err());
+        assert!(
+            parse_connect(r#"{"ssid":"Open","security":"open","password":""}"#).is_ok(),
+            "open networks need no password"
+        );
+    }
+
+    #[test]
+    fn parse_connect_accepts_a_raw_64_hex_psk() {
+        let psk = "0123456789abcdef".repeat(4); // 64 hex chars
+        let ok = parse_connect(&format!(
+            r#"{{"ssid":"Home","security":"wpa2_personal","password":"{psk}"}}"#
+        ))
+        .expect("a raw 64-hex-digit PSK is a valid WPA credential");
+        assert_eq!(ok.password.len(), 64);
+        // 64 characters that are not all hex are still rejected (too long for a
+        // passphrase, not a valid raw PSK).
+        let not_hex = "z".repeat(64);
+        assert!(parse_connect(&format!(r#"{{"ssid":"Home","password":"{not_hex}"}}"#)).is_err());
+    }
+
+    #[test]
+    fn parse_connect_defers_empty_password_for_saved_networks() {
+        // An empty password parses OK for a secured network — connect_to_network
+        // resolves it to the device's saved PSK (or errors if not saved), so the
+        // phone never has to receive or resend the key.
+        let ok = parse_connect(r#"{"ssid":"Home","security":"wpa2_personal","password":""}"#)
+            .expect("empty password is deferred, not rejected at parse time");
+        assert!(ok.password.is_empty());
+        // A non-empty but invalid password is still rejected up front.
+        assert!(parse_connect(r#"{"ssid":"Home","password":"short"}"#).is_err());
+    }
+
+    #[test]
+    fn parse_connect_reads_the_hidden_flag() {
+        let hidden = parse_connect(
+            r#"{"ssid":"Cloaked","security":"wpa2_personal","password":"longenough","hidden":true}"#,
+        )
+        .expect("valid request");
+        assert!(hidden.hidden, "a manually entered SSID is marked hidden");
+        let visible =
+            parse_connect(r#"{"ssid":"Home","security":"wpa2_personal","password":"longenough"}"#)
+                .expect("valid request");
+        assert!(!visible.hidden, "hidden defaults to false when omitted");
+    }
+
+    #[test]
+    fn parse_connect_rejects_enterprise_networks() {
+        assert!(
+            parse_connect(r#"{"ssid":"Corp","security":"enterprise","password":"whatever12"}"#)
+                .is_err(),
+            "enterprise Wi-Fi must be rejected, not downgraded to WPA-PSK"
+        );
+    }
+
+    #[test]
+    fn is_valid_psk_matches_wpa_personal_rules() {
+        assert!(is_valid_psk("12345678")); // 8-char passphrase
+        assert!(is_valid_psk(&"a".repeat(63))); // max passphrase
+        assert!(!is_valid_psk("short")); // too short
+        assert!(is_valid_psk(&"0f".repeat(32))); // 64 hex digits
+        assert!(!is_valid_psk(&"g".repeat(64))); // 64 non-hex chars
+    }
+
+    #[test]
+    fn security_slugs_match_the_ui_contract() {
+        assert_eq!(security_slug(WifiSecurity::Open), "open");
+        assert_eq!(security_slug(WifiSecurity::Wpa2Personal), "wpa2_personal");
+        assert_eq!(security_slug(WifiSecurity::Wpa3Personal), "wpa3_personal");
+    }
+}

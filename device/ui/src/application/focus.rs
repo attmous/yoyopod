@@ -66,7 +66,7 @@ pub fn focus_count(
         UiScreen::IncomingCall => 2,
         UiScreen::OutgoingCall => 1,
         UiScreen::InCall => 2,
-        UiScreen::Setup => 6,
+        UiScreen::Setup => 7,
         UiScreen::SetupVolume => 1,
         UiScreen::SetupCompanion => 5,
         UiScreen::SetupContacts => snapshot.call.contacts.len(),

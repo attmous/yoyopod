@@ -4,7 +4,7 @@ use crate::engine::Key;
 use crate::scene::{
     Backdrop, ContextLabelModel, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, ItemRender,
     RegionId, Scene, SceneContext, SceneDefaults, SceneId, SetupAboutModel, SetupCounterModel,
-    SetupVolumeModel, WheelItemModel, WheelItemVariant,
+    SetupVolumeModel, WheelItemModel, WheelItemVariant, WifiSetupModel,
 };
 
 const STAGE_CORAL: u32 = 0xFDE2D8;
@@ -24,7 +24,7 @@ pub fn scene(
             setup_root_items(snapshot),
             focus,
             Some(SceneContext::SetupCounter(SetupCounterModel {
-                text: format!("{}/6", focus % 6 + 1),
+                text: format!("{}/7", focus % 7 + 1),
             })),
         ),
         UiScreen::SetupCompanion => wheel_scene(
@@ -61,6 +61,12 @@ pub fn scene(
             defaults,
             "ABOUT",
             ItemRender::SetupAbout(about_model(snapshot)),
+        ),
+        UiScreen::SetupWifi => leaf_scene(
+            screen,
+            defaults,
+            "WI-FI",
+            ItemRender::WifiSetup(wifi_setup_model(snapshot)),
         ),
         _ => unreachable!("setup scene requested for {}", screen.as_str()),
     }
@@ -169,8 +175,49 @@ fn setup_root_items(snapshot: &RuntimeSnapshot) -> Vec<WheelItemModel> {
             CREAM_2,
             false,
         ),
+        setup_item(
+            // `snapshot.network.connected`/`connection_type` describe the cellular
+            // (PPP) link, not Wi-Fi station state, so they can't tell us whether
+            // home Wi-Fi is up. Use neutral copy for this entry point rather than
+            // claiming "Connected" whenever cellular happens to be online.
+            "Wi-Fi",
+            "Set up",
+            "setup_wifi",
+            PERI,
+            false,
+        ),
         setup_item("About", battery, "setup_about", CREAM_2, false),
     ]
+}
+
+fn wifi_setup_model(snapshot: &RuntimeSnapshot) -> WifiSetupModel {
+    let setup = &snapshot.wifi_setup;
+    WifiSetupModel {
+        qr_payload: setup.qr_payload.clone(),
+        ap_ssid: setup.ap_ssid.clone(),
+        ap_password: setup.ap_password.clone(),
+        portal_url: setup.portal_url.clone(),
+        status_text: wifi_status_text(snapshot),
+    }
+}
+
+fn wifi_status_text(snapshot: &RuntimeSnapshot) -> String {
+    let setup = &snapshot.wifi_setup;
+    if !setup.error.is_empty() {
+        return setup.error.clone();
+    }
+    if !setup.status_text.is_empty() {
+        return setup.status_text.clone();
+    }
+    match setup.phase.as_str() {
+        "starting" => "Switching to Wi-Fi pairing mode...".to_string(),
+        "awaiting_join" | "portal_ready" => {
+            "Scan with your phone, then pick your network".to_string()
+        }
+        "connecting" => "Connecting to your network...".to_string(),
+        "connected" => "Connected! You can go back now.".to_string(),
+        _ => "Preparing Wi-Fi setup...".to_string(),
+    }
 }
 
 fn companion_items(snapshot: &RuntimeSnapshot) -> Vec<WheelItemModel> {
@@ -297,11 +344,19 @@ mod tests {
     use crate::scene::defaults_for;
 
     #[test]
-    fn setup_root_is_a_six_item_coral_wheel() {
+    fn setup_root_is_a_seven_item_coral_wheel() {
         let snapshot = RuntimeSnapshot::default();
         let scene = scene(UiScreen::Setup, &snapshot, 0, defaults_for(UiScreen::Setup));
         assert_eq!(scene.backdrop, Backdrop::Solid(STAGE_CORAL));
-        assert_eq!(scene.decks[0].items.len(), 6);
+        assert_eq!(scene.decks[0].items.len(), 7);
+        // Every wheel item must be reachable: the focus count that bounds
+        // navigation has to match the number of rendered items, or trailing
+        // items (like Wi-Fi) become unselectable and get skipped.
+        assert_eq!(
+            crate::application::focus::focus_count(UiScreen::Setup, &snapshot, None, None, 0),
+            scene.decks[0].items.len(),
+            "Setup focus_count must match the number of setup wheel items"
+        );
         assert_eq!(scene.decks[0].recycle_window, Some(3));
         assert_eq!(
             scene
@@ -309,7 +364,7 @@ mod tests {
                 .as_ref()
                 .and_then(SceneContext::setup_counter)
                 .map(|value| value.text.as_str()),
-            Some("1/6")
+            Some("1/7")
         );
     }
 

@@ -4,6 +4,7 @@ pub mod gps;
 pub mod modem;
 pub mod ppp;
 pub mod protocol;
+pub mod provisioning;
 pub mod runtime;
 pub mod snapshot;
 pub mod transport;

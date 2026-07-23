@@ -6,6 +6,9 @@ Conflicts=yoyopod-prod.service
 
 [Service]
 Type=simple
+# The network worker binds :80 for the Wi‑Fi setup captive portal. It runs as a
+# child of the runtime, which inherits this ambient capability across exec.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 EnvironmentFile=-/etc/default/yoyopod-dev
 Environment=HOME=/root
 WorkingDirectory=/

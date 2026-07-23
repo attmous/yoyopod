@@ -25,6 +25,7 @@ pub enum RuntimeEvent {
     NetworkSnapshot(Value),
     WifiState(Value),
     WifiChangeCandidate(Value),
+    WifiProvisioningState(Value),
     PowerSnapshot(Value),
     VoiceTranscript(Value),
     VoiceAskResult(Value),
@@ -97,6 +98,7 @@ impl RuntimeEvent {
                 state.apply_network_snapshot(snapshot);
             }
             Self::WifiState(_) | Self::WifiChangeCandidate(_) => {}
+            Self::WifiProvisioningState(payload) => state.apply_wifi_provisioning_state(payload),
             Self::PowerSnapshot(snapshot) => {
                 state.resolve_overlay_for(WorkerDomain::Power);
                 state.apply_power_snapshot(snapshot);
@@ -108,6 +110,12 @@ impl RuntimeEvent {
             Self::UiScreenChanged { screen } => {
                 if !matches!(screen, UiScreen::Loading | UiScreen::Error) {
                     state.current_screen = *screen;
+                    // Deactivate the onboarding UI state when the user navigates
+                    // away from the Wi-Fi setup screen; the worker command that
+                    // actually stops provisioning is emitted in commands_for_event.
+                    if *screen != UiScreen::SetupWifi && state.wifi_setup.active {
+                        state.wifi_setup = Default::default();
+                    }
                 }
             }
             Self::WorkerError { domain, message } => {
@@ -249,6 +257,30 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
                 "payload": candidate,
             }),
         )],
+        RuntimeEvent::WifiProvisioningState(provisioning) => {
+            // The raw payload carries the hotspot password and the QR (which
+            // embeds it). Never forward those to the cloud/MQTT — publish only
+            // the lifecycle phase/status so the dashboard can still observe it.
+            let field = |key: &str| {
+                provisioning
+                    .get(key)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null)
+            };
+            vec![worker_command(
+                WorkerDomain::Cloud,
+                "cloud.publish_event",
+                json!({
+                    "event_type": "wifi_provisioning_state",
+                    "payload": {
+                        "active": field("active"),
+                        "phase": field("phase"),
+                        "status_text": field("status_text"),
+                        "error": field("error"),
+                    },
+                }),
+            )]
+        }
         RuntimeEvent::PowerSnapshot(snapshot) => commands_for_power_snapshot(state, snapshot),
         RuntimeEvent::VoiceTranscript(snapshot) => with_ask_log(
             commands_for_voice_transcript(state, snapshot),
@@ -287,9 +319,29 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
                 ),
             }]
         }
+        RuntimeEvent::UiScreenChanged { screen } => {
+            // Leaving the Wi-Fi setup screen by ANY path — Back, Home, or the
+            // one-button home-hold (which maps to Home, not Back) — must tear the
+            // onboarding hotspot down so it stops owning the single Wi-Fi radio.
+            // commands_for_event runs on the pre-apply state, so wifi_setup.active
+            // still marks an in-progress session here.
+            if state.wifi_setup.active
+                && !matches!(
+                    screen,
+                    UiScreen::SetupWifi | UiScreen::Loading | UiScreen::Error
+                )
+            {
+                vec![worker_command(
+                    WorkerDomain::Network,
+                    "wifi_provisioning_stop",
+                    empty_payload(),
+                )]
+            } else {
+                Vec::new()
+            }
+        }
         RuntimeEvent::WorkerReady { .. }
         | RuntimeEvent::CloudSnapshot(_)
-        | RuntimeEvent::UiScreenChanged { .. }
         | RuntimeEvent::WorkerError { .. }
         | RuntimeEvent::WorkerExited { .. }
         | RuntimeEvent::Ignored => Vec::new(),
@@ -403,6 +455,7 @@ fn network_event_from_message(message_type: &str, payload: Value) -> RuntimeEven
         "network.snapshot" | "network.health" => RuntimeEvent::NetworkSnapshot(payload),
         "wifi_state" => RuntimeEvent::WifiState(payload),
         "wifi_change_candidate" => RuntimeEvent::WifiChangeCandidate(payload),
+        "wifi_provisioning_state" => RuntimeEvent::WifiProvisioningState(payload),
         "network.error" => RuntimeEvent::WorkerError {
             domain: WorkerDomain::Network,
             message: worker_error_message(message_type, &payload),
@@ -590,6 +643,16 @@ fn commands_for_settings_intent(
                 json!({"volume": next * 10}),
             )]
         }
+        SettingsIntent::WifiSetupStart => vec![worker_command(
+            WorkerDomain::Network,
+            "wifi_provisioning_start",
+            empty_payload(),
+        )],
+        SettingsIntent::WifiSetupStop => vec![worker_command(
+            WorkerDomain::Network,
+            "wifi_provisioning_stop",
+            empty_payload(),
+        )],
         SettingsIntent::CompanionSet(_)
         | SettingsIntent::ThemeSet(_)
         | SettingsIntent::SpeakNamesToggle => Vec::new(),

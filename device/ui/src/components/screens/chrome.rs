@@ -107,6 +107,7 @@ fn title_for_screen(
         UiScreen::SetupContacts => "Contacts".to_string(),
         UiScreen::SetupTheme => "Theme".to_string(),
         UiScreen::SetupAbout => "About".to_string(),
+        UiScreen::SetupWifi => "Wi-Fi".to_string(),
         UiScreen::Loading => "Loading".to_string(),
         UiScreen::Error => "Error".to_string(),
     }
@@ -135,7 +136,8 @@ fn deck_focus_for_screen(screen: UiScreen, home_focus: Option<usize>) -> Option<
         | UiScreen::SetupCompanion
         | UiScreen::SetupContacts
         | UiScreen::SetupTheme
-        | UiScreen::SetupAbout => Some(3),
+        | UiScreen::SetupAbout
+        | UiScreen::SetupWifi => Some(3),
         UiScreen::Loading | UiScreen::Error => None,
     }
 }

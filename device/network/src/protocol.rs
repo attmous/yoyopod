@@ -23,6 +23,15 @@ pub fn wifi_state_event(state: &WifiState) -> WorkerEnvelope {
     )
 }
 
+pub fn wifi_provisioning_state_event(
+    state: &crate::provisioning::WifiProvisioningState,
+) -> WorkerEnvelope {
+    WorkerEnvelope::event(
+        "wifi_provisioning_state",
+        serde_json::to_value(state).expect("Wi-Fi provisioning state should serialize"),
+    )
+}
+
 pub fn wifi_state_result(request_id: Option<String>, state: &WifiState) -> WorkerEnvelope {
     WorkerEnvelope::result(
         "wifi_state",

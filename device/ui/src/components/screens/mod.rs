@@ -94,7 +94,8 @@ pub fn scene_for_screen(
         | UiScreen::SetupCompanion
         | UiScreen::SetupContacts
         | UiScreen::SetupTheme
-        | UiScreen::SetupAbout => setup::scene(screen, snapshot, focus, defaults.clone()),
+        | UiScreen::SetupAbout
+        | UiScreen::SetupWifi => setup::scene(screen, snapshot, focus, defaults.clone()),
         UiScreen::Loading => loading::scene(&loading::props_from(snapshot, defaults.clone())),
         UiScreen::Error => error::scene(&error::props_from(snapshot, defaults.clone())),
     };

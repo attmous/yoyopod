@@ -11,6 +11,9 @@ pub enum ElementKind {
     Image,
     Progress,
     Arc,
+    /// LVGL `lv_qrcode` widget. Its payload string is carried in `props.text`
+    /// and pushed to `lv_qrcode_update` by the renderer.
+    Qr,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

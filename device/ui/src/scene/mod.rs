@@ -18,6 +18,7 @@ pub use deck::{
     DeckItem, DeckItemAnim, DeckKind, EmptyStateModel, FocusPolicy, ItemRender, PageModel,
     PlayerHeroModel, PlayerHeroVariant, RecordingPanelModel, RowModel, SetupAboutModel,
     SetupVolumeModel, WheelBadgeKind, WheelBadgeModel, WheelItemModel, WheelItemVariant,
+    WifiSetupModel,
 };
 pub use defaults::{defaults_for, load_scene_defaults, SceneDefaults, SceneDefaultsCatalog};
 pub use fx::{FxLayer, FxLayerId, GlowBloom, Halo, ParticleField, PulseRing};

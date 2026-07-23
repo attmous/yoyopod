@@ -24,6 +24,8 @@ pub struct RuntimeSnapshot {
     #[serde(default)]
     pub network: NetworkRuntimeSnapshot,
     #[serde(default)]
+    pub wifi_setup: WifiSetupRuntimeSnapshot,
+    #[serde(default)]
     pub overlay: OverlayRuntimeSnapshot,
 }
 
@@ -38,6 +40,7 @@ impl Default for RuntimeSnapshot {
             power: PowerRuntimeSnapshot::default(),
             settings: SettingsRuntimeSnapshot::default(),
             network: NetworkRuntimeSnapshot::default(),
+            wifi_setup: WifiSetupRuntimeSnapshot::default(),
             overlay: OverlayRuntimeSnapshot::default(),
         }
     }
@@ -63,6 +66,7 @@ pub enum RuntimeSnapshotPatch {
     Power(PowerRuntimeSnapshot),
     Settings(SettingsRuntimeSnapshot),
     Network(NetworkRuntimeSnapshot),
+    WifiSetup(WifiSetupRuntimeSnapshot),
     Overlay(OverlayRuntimeSnapshot),
 }
 
@@ -78,6 +82,7 @@ pub enum RuntimeSnapshotDomain {
     Power,
     Settings,
     Network,
+    WifiSetup,
     Overlay,
 }
 
@@ -99,6 +104,7 @@ impl RuntimeSnapshotPatch {
             Self::Power(_) => RuntimeSnapshotDomain::Power,
             Self::Settings(_) => RuntimeSnapshotDomain::Settings,
             Self::Network(_) => RuntimeSnapshotDomain::Network,
+            Self::WifiSetup(_) => RuntimeSnapshotDomain::WifiSetup,
             Self::Overlay(_) => RuntimeSnapshotDomain::Overlay,
         }
     }
@@ -373,6 +379,50 @@ impl Default for NetworkRuntimeSnapshot {
             gps_has_fix: false,
         }
     }
+}
+
+/// Transient state for the on-device Wi‑Fi onboarding flow (AP mode + captive
+/// portal). Populated by the runtime from `wifi_provisioning_state` events sent
+/// by the network worker. The `ap_password` is the *hotspot* password shown to
+/// the user (encoded in the on-screen QR) — never the user's home-network
+/// password, which is never surfaced in a snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WifiSetupRuntimeSnapshot {
+    #[serde(default)]
+    pub active: bool,
+    #[serde(default = "default_wifi_setup_phase")]
+    pub phase: String,
+    #[serde(default)]
+    pub ap_ssid: String,
+    #[serde(default)]
+    pub ap_password: String,
+    #[serde(default)]
+    pub portal_url: String,
+    #[serde(default)]
+    pub qr_payload: String,
+    #[serde(default)]
+    pub status_text: String,
+    #[serde(default)]
+    pub error: String,
+}
+
+impl Default for WifiSetupRuntimeSnapshot {
+    fn default() -> Self {
+        Self {
+            active: false,
+            phase: default_wifi_setup_phase(),
+            ap_ssid: String::new(),
+            ap_password: String::new(),
+            portal_url: String::new(),
+            qr_payload: String::new(),
+            status_text: String::new(),
+            error: String::new(),
+        }
+    }
+}
+
+fn default_wifi_setup_phase() -> String {
+    "idle".to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

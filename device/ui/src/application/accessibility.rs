@@ -48,7 +48,7 @@ pub(crate) fn focused_item(runtime: &UiRuntime) -> Option<FocusDescriptor> {
             focus,
             &["Previous", music_play_pause_label(snapshot), "Next"],
         )),
-        UiScreen::Ask | UiScreen::Loading | UiScreen::Error => None,
+        UiScreen::Ask | UiScreen::Loading | UiScreen::Error | UiScreen::SetupWifi => None,
         UiScreen::Talk | UiScreen::Contacts | UiScreen::SetupContacts => list_or_empty(
             &snapshot.call.contacts,
             focus,
@@ -160,6 +160,10 @@ fn setup_root_item(snapshot: &RuntimeSnapshot, focus: usize) -> Option<FocusDesc
                 "off"
             }
         ),
+        // Order must match `setup_root_items` in the Setup scene: Wi-Fi sits
+        // before About, or focusing the Wi-Fi row announces the wrong label
+        // (and About gets clamped to it).
+        "Wi-Fi".to_string(),
         "About".to_string(),
     ];
     let index = focus.min(labels.len().saturating_sub(1));
@@ -231,5 +235,22 @@ mod tests {
             .voice_notes_by_contact
             .insert(contact.id, vec![VoiceNoteSummarySnapshot::default()]);
         assert_eq!(focused_item(&runtime).unwrap().label, "Delete");
+    }
+
+    #[test]
+    fn setup_root_labels_match_the_rendered_wheel_order() {
+        let snapshot = RuntimeSnapshot::default();
+        // Wi-Fi is index 5 (before About at 6), matching `setup_root_items`.
+        assert_eq!(setup_root_item(&snapshot, 5).unwrap().label, "Wi-Fi");
+        assert_eq!(setup_root_item(&snapshot, 6).unwrap().label, "About");
+        // Every focusable setup row must have a spoken label, or trailing rows
+        // get clamped to the wrong one.
+        let count =
+            crate::application::focus::focus_count(UiScreen::Setup, &snapshot, None, None, 0);
+        assert_eq!(count, 7);
+        assert!(
+            setup_root_item(&snapshot, count - 1).is_some(),
+            "the last setup row must have an accessibility label"
+        );
     }
 }

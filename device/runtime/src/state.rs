@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 use yoyopod_protocol::ui::{
     MusicIntent, PowerIntent, RuntimeSnapshot, RuntimeSnapshotPatch, SystemIntent, UiIntent,
-    UiScreen, VoiceIntent, VoiceRecipientAction,
+    UiScreen, VoiceIntent, VoiceRecipientAction, WifiSetupRuntimeSnapshot,
 };
 
 use crate::voice::{
@@ -654,6 +654,9 @@ pub struct RuntimeState {
     pub power: PowerRuntimeState,
     pub settings: SettingsRuntimeState,
     pub network: NetworkRuntimeState,
+    /// On-device Wi‑Fi onboarding (AP mode + captive portal) state, populated
+    /// from `wifi_provisioning_state` events emitted by the network worker.
+    pub wifi_setup: WifiSetupRuntimeSnapshot,
     pub cloud: CloudRuntimeState,
     pub overlay: OverlayRuntimeState,
     pub ui: WorkerHealth,
@@ -680,6 +683,7 @@ impl Default for RuntimeState {
             power: PowerRuntimeState::default(),
             settings: SettingsRuntimeState::default(),
             network: NetworkRuntimeState::default(),
+            wifi_setup: WifiSetupRuntimeSnapshot::default(),
             cloud: CloudRuntimeState::default(),
             overlay: OverlayRuntimeState::default(),
             ui: WorkerHealth::default(),
@@ -1246,6 +1250,17 @@ impl RuntimeState {
             SettingsIntent::SpeakNamesToggle => {
                 self.settings.speak_names = !self.settings.speak_names;
             }
+            SettingsIntent::WifiSetupStart => {
+                self.wifi_setup = WifiSetupRuntimeSnapshot {
+                    active: true,
+                    phase: "starting".to_string(),
+                    status_text: "Switching to Wi-Fi pairing mode...".to_string(),
+                    ..WifiSetupRuntimeSnapshot::default()
+                };
+            }
+            SettingsIntent::WifiSetupStop => {
+                self.wifi_setup = WifiSetupRuntimeSnapshot::default();
+            }
         }
     }
 
@@ -1620,6 +1635,16 @@ impl RuntimeState {
         }
     }
 
+    /// Fold a `wifi_provisioning_state` event from the network worker into the
+    /// on-device Wi‑Fi onboarding snapshot. The worker owns the provisioning
+    /// lifecycle; unknown/extra fields (schema_version, timestamps) are ignored.
+    /// The home-network password is never part of this payload.
+    pub fn apply_wifi_provisioning_state(&mut self, payload: &Value) {
+        if let Ok(state) = serde_json::from_value::<WifiSetupRuntimeSnapshot>(payload.clone()) {
+            self.wifi_setup = state;
+        }
+    }
+
     pub fn apply_network_snapshot(&mut self, snapshot: &Value) {
         let snapshot = snapshot.get("snapshot").unwrap_or(snapshot);
         let app_state = snapshot.get("app_state").unwrap_or(snapshot);
@@ -1856,6 +1881,8 @@ impl RuntimeState {
                 "signal_strength": self.network.signal_strength,
                 "gps_has_fix": self.network.gps_has_fix,
             },
+            "wifi_setup": serde_json::to_value(&self.wifi_setup)
+                .unwrap_or_else(|_| json!({})),
             "cloud": {
                 "device_id": self.cloud.device_id,
                 "provisioning_state": self.cloud.provisioning_state,
@@ -1917,6 +1944,9 @@ impl RuntimeState {
         }
         if before.network != after.network {
             patches.push(RuntimeSnapshotPatch::Network(after.network.clone()));
+        }
+        if before.wifi_setup != after.wifi_setup {
+            patches.push(RuntimeSnapshotPatch::WifiSetup(after.wifi_setup.clone()));
         }
         if before.overlay != after.overlay {
             patches.push(RuntimeSnapshotPatch::Overlay(after.overlay.clone()));

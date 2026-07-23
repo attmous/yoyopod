@@ -9,6 +9,7 @@ pub use snapshot::{
     MusicRuntimeSnapshot, NetworkRuntimeSnapshot, OverlayRuntimeSnapshot, PowerPageSnapshot,
     PowerRuntimeSnapshot, RuntimeSnapshot, RuntimeSnapshotDomain, RuntimeSnapshotPatch,
     SettingsRuntimeSnapshot, VoiceNoteSummarySnapshot, VoiceRuntimeSnapshot,
+    WifiSetupRuntimeSnapshot,
 };
 
 use crate::{EnvelopeKind, ProtocolError, WorkerEnvelope};
@@ -38,12 +39,13 @@ pub enum UiScreen {
     SetupContacts,
     SetupTheme,
     SetupAbout,
+    SetupWifi,
     Loading,
     Error,
 }
 
 impl UiScreen {
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 25] = [
         Self::Hub,
         Self::Listen,
         Self::Playlists,
@@ -66,6 +68,7 @@ impl UiScreen {
         Self::SetupContacts,
         Self::SetupTheme,
         Self::SetupAbout,
+        Self::SetupWifi,
         Self::Loading,
         Self::Error,
     ];
@@ -94,6 +97,7 @@ impl UiScreen {
             Self::SetupContacts => "setup_contacts",
             Self::SetupTheme => "setup_theme",
             Self::SetupAbout => "setup_about",
+            Self::SetupWifi => "setup_wifi",
             Self::Loading => "loading",
             Self::Error => "error",
         }
@@ -599,6 +603,8 @@ pub enum SettingsIntent {
     CompanionSet(String),
     ThemeSet(String),
     SpeakNamesToggle,
+    WifiSetupStart,
+    WifiSetupStop,
 }
 
 impl SettingsIntent {
@@ -608,6 +614,8 @@ impl SettingsIntent {
             "companion_set" => Ok(Self::CompanionSet(required_string(payload, "value")?)),
             "theme_set" => Ok(Self::ThemeSet(required_string(payload, "value")?)),
             "speak_names_toggle" => Ok(Self::SpeakNamesToggle),
+            "wifi_setup_start" => Ok(Self::WifiSetupStart),
+            "wifi_setup_stop" => Ok(Self::WifiSetupStop),
             other => Err(ProtocolError::InvalidEnvelope(format!(
                 "unknown settings intent action {other}"
             ))),
@@ -620,13 +628,18 @@ impl SettingsIntent {
             Self::CompanionSet(_) => "companion_set",
             Self::ThemeSet(_) => "theme_set",
             Self::SpeakNamesToggle => "speak_names_toggle",
+            Self::WifiSetupStart => "wifi_setup_start",
+            Self::WifiSetupStop => "wifi_setup_stop",
         }
     }
 
     fn payload(&self) -> Value {
         match self {
             Self::CompanionSet(value) | Self::ThemeSet(value) => json!({ "value": value }),
-            Self::VolumeStep | Self::SpeakNamesToggle => empty_payload(),
+            Self::VolumeStep
+            | Self::SpeakNamesToggle
+            | Self::WifiSetupStart
+            | Self::WifiSetupStop => empty_payload(),
         }
     }
 }
