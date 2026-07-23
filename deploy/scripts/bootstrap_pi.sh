@@ -99,17 +99,24 @@ cat > "/etc/NetworkManager/dnsmasq-shared.d/010-yoyopod-captive.conf" <<'EOF'
 address=/#/10.42.0.1
 EOF
 
-# 3c. Authorize the network service to bring up the Wi-Fi setup "shared" AP
-# hotspot. NetworkManager's wifi.share.* polkit actions are only implicitly
-# granted to active local sessions, but the service runs as a non-login systemd
-# session, so without this rule NetworkManager denies AP activation with
-# "Not authorized to share connections via wifi."
+# 3c. Authorize the network service to run the whole on-device Wi-Fi setup flow:
+# scan, create/delete/activate NetworkManager profiles (AddConnection2, Delete,
+# ActivateConnection), and bring up the "shared" AP hotspot. These polkit actions
+# are only implicitly granted to active local sessions, but the service runs as a
+# non-login systemd session, so without them NetworkManager denies AP activation
+# ("Not authorized to share connections via wifi.") and profile changes. This
+# mirrors the rule `yoyopod target deploy` installs for dev, so a prod bootstrap
+# (which runs before any deploy) has the same grants.
 cat > "/etc/polkit-1/rules.d/50-yoyopod-wifi-share.rules" <<'EOF'
-// Written by bootstrap_pi.sh - YoYoPod Wi-Fi setup hotspot authorization.
+// Written by bootstrap_pi.sh - YoYoPod Wi-Fi setup authorization.
 polkit.addRule(function(action, subject) {
-    if ((action.id == "org.freedesktop.NetworkManager.wifi.share.protected" ||
-         action.id == "org.freedesktop.NetworkManager.wifi.share.open") &&
-        subject.isInGroup("netdev")) {
+    if (subject.isInGroup("netdev") &&
+        (action.id == "org.freedesktop.NetworkManager.wifi.scan" ||
+         action.id == "org.freedesktop.NetworkManager.settings.modify.system" ||
+         action.id == "org.freedesktop.NetworkManager.network-control" ||
+         action.id == "org.freedesktop.NetworkManager.checkpoint-rollback" ||
+         action.id == "org.freedesktop.NetworkManager.wifi.share.protected" ||
+         action.id == "org.freedesktop.NetworkManager.wifi.share.open")) {
         return polkit.Result.YES;
     }
 });
