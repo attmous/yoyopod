@@ -380,14 +380,16 @@ impl UiRuntime {
             .retain(|active| active.id != transition.id || active.target != transition.target);
         self.transitions.push(transition);
         self.dirty.animation = true;
-        self.dirty.animation_full_frame = true;
     }
 
     pub fn advance_animations(&mut self, now_ms: u64) -> bool {
         let had_transitions = !self.transitions.is_empty();
         let had_wheel_roll = self.pending_wheel_roll.is_some();
-        self.transitions
-            .retain(|transition| !transition.is_complete(now_ms));
+        for transition in &mut self.transitions {
+            if transition.is_complete(now_ms) {
+                transition.retire_after_frame = true;
+            }
+        }
         let roll_completed = self.pending_wheel_roll.as_ref().is_some_and(|pending| {
             now_ms.saturating_sub(pending.timeline.started_ms)
                 >= animation::presets::WHEEL_ROLL_DURATION_MS
@@ -400,9 +402,6 @@ impl UiRuntime {
         }
         if had_transitions || had_wheel_roll {
             self.dirty.animation = true;
-        }
-        if had_transitions {
-            self.dirty.animation_full_frame = true;
         }
         had_transitions || had_wheel_roll
     }
@@ -584,6 +583,8 @@ impl UiRuntime {
     }
 
     pub fn mark_clean(&mut self) {
+        self.transitions
+            .retain(|transition| !transition.retire_after_frame);
         self.dirty = DirtyState::default();
     }
 
@@ -2517,27 +2518,49 @@ mod tests {
         runtime.mark_clean();
         runtime.start_animation(
             AnimationRequest {
-                id: "ambient-fade".to_string(),
+                id: "ambient-offset".to_string(),
                 target: AnimationTarget::Runtime,
-                property: AnimationProperty::Opacity,
+                property: AnimationProperty::OffsetY,
                 easing: AnimationEasing::EaseInOut,
                 from: 0,
-                to: 255,
+                to: 37,
                 duration_ms: 500,
             },
             30_000,
         );
+        let mut engine = crate::engine::Engine::default();
+        let intermediate_frame = runtime
+            .frame_request(30_250)
+            .expect("ambient transition intermediate frame");
+        let intermediate_mutations = engine.render(&intermediate_frame.scene_graph, 30_250);
+        assert!(intermediate_mutations.iter().any(|mutation| matches!(
+            mutation,
+            crate::engine::Mutation::Update {
+                prop: crate::engine::PropChange::OffsetY(19),
+                ..
+            }
+        )));
         runtime.mark_clean();
 
         assert!(runtime.advance_animations(30_500));
-        assert!(runtime.transitions.is_empty());
+        assert_eq!(runtime.transitions.len(), 1);
+        assert!(runtime.transitions[0].retire_after_frame);
         let frame = runtime
             .frame_request(30_500)
             .expect("ambient transition completion frame");
-        assert_eq!(frame.scene_graph.active.timelines.len(), 1);
+        assert_eq!(frame.scene_graph.active.timelines.len(), 2);
         assert_eq!(frame.dirty_region, None);
+        let mutations = engine.render(&frame.scene_graph, 30_500);
+        assert!(mutations.iter().any(|mutation| matches!(
+            mutation,
+            crate::engine::Mutation::Update {
+                prop: crate::engine::PropChange::OffsetY(37),
+                ..
+            }
+        )));
 
         runtime.mark_clean();
+        assert!(runtime.transitions.is_empty());
         runtime.mark_animation_frame();
         let orbit_frame = runtime
             .frame_request(30_600)

@@ -32,6 +32,7 @@ pub struct Transition {
     pub to: i32,
     pub duration_ms: u64,
     pub started_at_ms: u64,
+    pub retire_after_frame: bool,
 }
 
 impl Transition {
@@ -58,6 +59,7 @@ impl Transition {
             to: request.to,
             duration_ms: request.duration_ms,
             started_at_ms,
+            retire_after_frame: false,
         }
     }
 
