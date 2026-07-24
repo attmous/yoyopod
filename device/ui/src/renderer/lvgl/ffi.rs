@@ -102,7 +102,6 @@ unsafe extern "C" {
     pub static lv_font_montserrat_16: lv_font_t;
     pub static lv_font_montserrat_18: lv_font_t;
     pub static lv_font_montserrat_24: lv_font_t;
-    pub static lv_font_montserrat_40: lv_font_t;
     pub static lv_font_montserrat_48: lv_font_t;
 
     pub fn lv_init();
