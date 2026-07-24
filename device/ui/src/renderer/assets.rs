@@ -690,8 +690,10 @@ mod tests {
                 "{role} must not skew"
             );
         }
+        let stroke_width = theme(&themes, orbit_roles[0]).arc_width;
+        assert_eq!(stroke_width, 9);
         for role in orbit_roles {
-            assert_eq!(theme(&themes, role).arc_width, 9);
+            assert_eq!(theme(&themes, role).arc_width, stroke_width);
         }
 
         let top = layout(&layouts, roles::WATCH_DOT_TOP);
@@ -718,14 +720,18 @@ mod tests {
             roles::WATCH_DOT_300,
             roles::WATCH_DOT_330,
         ];
+        let centerline_radius = (first.width - stroke_width) / 2;
+        assert_eq!(centerline_radius, 105);
         for role in dot_roles {
             let dot = layout(&layouts, role);
+            assert_eq!((dot.width, dot.height), (10, 10));
+            assert_eq!(theme(&themes, role).radius, 5);
             let dx = dot.x + dot.width / 2 - 120;
             let dy = dot.y + dot.height / 2 - 140;
             let radius_squared = dx * dx + dy * dy;
             assert!(
-                (radius_squared - 12_100).abs() <= 64,
-                "{role} must stay on the 110 px circular radius"
+                (radius_squared - centerline_radius * centerline_radius).abs() <= 64,
+                "{role} must stay on the bezel stroke centerline"
             );
         }
 

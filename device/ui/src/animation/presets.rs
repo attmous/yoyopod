@@ -31,7 +31,7 @@ pub fn watch_orbit() -> Timeline {
             stepped_chase_track(FxLayerId(11), index, WATCH_ARC_COUNT, 1_500, 255, 216, 176)
         })
         .chain((0..WATCH_SPARK_COUNT).map(|index| {
-            stepped_chase_track(FxLayerId(12), index, WATCH_SPARK_COUNT, 500, 255, 112, 32)
+            stepped_chase_track(FxLayerId(12), index, WATCH_SPARK_COUNT, 500, 255, 0, 0)
         }))
         .collect();
 
@@ -629,7 +629,7 @@ mod tests {
         );
         assert_eq!(
             start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(15)),
-            Some((AnimatableProp::Opacity, AnimatableValue::U8(112)))
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(0)))
         );
 
         let second_spark = TimelineSampler::new(&timelines, 500, 0);
@@ -639,7 +639,7 @@ mod tests {
         );
         assert_eq!(
             second_spark.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(4)),
-            Some((AnimatableProp::Opacity, AnimatableValue::U8(112)))
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(0)))
         );
 
         let right = TimelineSampler::new(&timelines, 1_500, 0);
@@ -651,6 +651,17 @@ mod tests {
             right.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(7)),
             Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
         );
+
+        for step in 0..WATCH_SPARK_COUNT {
+            let sample = TimelineSampler::new(&timelines, (step * 500) as u64, 0);
+            let visible = (WATCH_ARC_COUNT..WATCH_ARC_COUNT + WATCH_SPARK_COUNT)
+                .filter(|track| {
+                    sample.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(*track))
+                        == Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
+                })
+                .count();
+            assert_eq!(visible, 1, "step {step} must show exactly one marker");
+        }
     }
 
     #[test]
