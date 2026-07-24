@@ -727,7 +727,11 @@ mod tests {
 
         let time = layout(&layouts, roles::WATCH_TIME);
         assert_eq!(time.repeat_x, Some(1));
-        assert_eq!(time.x + 1, 25);
+        assert_eq!(time.x + 1 + time.width / 2, 120);
+        // Montserrat 48 at the watch face's 1.2x scale has its optical ink
+        // center 25 px below the label origin.
+        assert_eq!(time.y + 25, 140);
+        assert!(time.y + 45 <= layout(&layouts, roles::WATCH_BATTERY_CARD).y);
     }
 
     #[test]
