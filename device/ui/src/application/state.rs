@@ -138,6 +138,14 @@ impl DirtyState {
             || self.animation
     }
 
+    pub(crate) fn animation_only(mut self) -> bool {
+        if !self.animation {
+            return false;
+        }
+        self.animation = false;
+        !self.any()
+    }
+
     pub(crate) fn mark_full(&mut self) {
         self.full = true;
         self.app_state = true;

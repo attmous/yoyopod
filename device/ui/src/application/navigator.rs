@@ -55,6 +55,7 @@ pub fn apply_app_state_route(
         runtime.focus_index = initial_focus(*app_state);
         if *app_state == UiScreen::Hub {
             runtime.home_mode = HomeMode::Idle;
+            runtime.last_input_ms = None;
             runtime.selected_playlist = None;
             runtime.selected_contact = None;
             reset_replay_state(runtime);

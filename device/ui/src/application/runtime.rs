@@ -1,4 +1,4 @@
-use time::OffsetDateTime;
+use time::{Month, OffsetDateTime, Weekday};
 use yoyopod_protocol::ui::{
     AnimationRequest, InputAction, RuntimeSnapshot, RuntimeSnapshotPatch, SystemIntent, UiEvent,
     UiFocusChanged, UiIntent,
@@ -19,6 +19,12 @@ use super::state::{DirtyState, HomeMode, SystemOverlayPreview, UiRuntime};
 use super::{input_router, navigator, snapshot, UiScreen};
 
 const RUNTIME_LINK_ERROR: &str = "Lost runtime link";
+const WATCH_ORBIT_DIRTY_REGION: DirtyRegion = DirtyRegion {
+    x: 2,
+    y: 22,
+    w: 236,
+    h: 236,
+};
 
 #[derive(Debug, Clone)]
 pub struct FrameRequest {
@@ -179,9 +185,12 @@ impl UiRuntime {
         }
 
         self.last_input_ms = Some(now_ms);
-        self.home_mode = HomeMode::Idle;
+        self.home_mode = HomeMode::Focused;
+        self.focus_index = 0;
+        self.scene_revision = self.scene_revision.wrapping_add(1);
         self.dirty.input = true;
         self.dirty.focus = true;
+        self.dirty.navigation = true;
         self.refresh_focus_accessibility();
         true
     }
@@ -199,6 +208,10 @@ impl UiRuntime {
             HomeMode::Idle | HomeMode::Focused | HomeMode::Ambient => None,
         };
         if let Some(next) = next {
+            if next == HomeMode::Ambient {
+                self.scene_revision = self.scene_revision.wrapping_add(1);
+                self.dirty.navigation = true;
+            }
             self.home_mode = next;
             self.dirty.focus = true;
             self.refresh_focus_accessibility();
@@ -372,8 +385,11 @@ impl UiRuntime {
     pub fn advance_animations(&mut self, now_ms: u64) -> bool {
         let had_transitions = !self.transitions.is_empty();
         let had_wheel_roll = self.pending_wheel_roll.is_some();
-        self.transitions
-            .retain(|transition| !transition.is_complete(now_ms));
+        for transition in &mut self.transitions {
+            if transition.is_complete(now_ms) {
+                transition.retire_after_frame = true;
+            }
+        }
         let roll_completed = self.pending_wheel_roll.as_ref().is_some_and(|pending| {
             now_ms.saturating_sub(pending.timeline.started_ms)
                 >= animation::presets::WHEEL_ROLL_DURATION_MS
@@ -434,16 +450,24 @@ impl UiRuntime {
 
     pub fn scene_graph(&self, now_ms: u64) -> SceneGraph {
         let (rendered_screen, rendered_focus) = self.rendered_screen_and_focus();
-        let defaults = defaults_for(rendered_screen);
-        let mut active = components::screens::scene_for_screen(
-            rendered_screen,
-            &self.snapshot,
-            rendered_focus,
-            self.selected_playlist.as_ref(),
-            self.selected_contact.as_ref(),
-            self.replay_index,
-            defaults,
-        );
+        let watch_face_visible = self.active_screen == UiScreen::Hub
+            && rendered_screen == UiScreen::Hub
+            && self.home_mode == HomeMode::Ambient;
+        let mut active = if watch_face_visible {
+            let (date, time) = current_watch_face_text();
+            components::screens::watch_face::scene(&self.snapshot, date, time)
+        } else {
+            let defaults = defaults_for(rendered_screen);
+            components::screens::scene_for_screen(
+                rendered_screen,
+                &self.snapshot,
+                rendered_focus,
+                self.selected_playlist.as_ref(),
+                self.selected_contact.as_ref(),
+                self.replay_index,
+                defaults,
+            )
+        };
         active.id = SceneId::with_route_key(rendered_screen, self.route_key(rendered_screen));
         active.id.generation = active.id.generation.wrapping_add(self.scene_revision);
         active.timelines.extend(
@@ -458,27 +482,38 @@ impl UiRuntime {
         {
             active.timelines.push(pending.timeline.clone());
         }
-        let mut chrome = components::screens::chrome::chrome_for_screen(
-            rendered_screen,
-            &self.snapshot,
-            rendered_focus,
-            self.selected_playlist.as_ref(),
-            self.selected_contact.as_ref(),
-            (rendered_screen == UiScreen::Hub && self.home_mode == HomeMode::Focused)
-                .then_some(rendered_focus),
-            rendered_screen != UiScreen::Hub || self.home_mode != HomeMode::Ambient,
-        );
-        if crate::router::is_overlay_screen(self.active_screen) {
-            chrome.status_opacity = 255;
-            chrome.deck.opacity = 140;
-        }
-        if self.status_bar_preview_enabled {
-            chrome.status = status_bar_preview_status(now_ms);
-            chrome.deck.visible = false;
+        let hud = if watch_face_visible {
+            crate::scene::HudScene::new(
+                crate::engine::Element::new(
+                    crate::ElementKind::Container,
+                    Some(crate::scene::roles::HUD),
+                )
+                .key(crate::engine::Key::Static("ambient_hud"))
+                .visible(false),
+            )
         } else {
-            chrome.status.time = current_status_time().1;
-        }
-        let hud = components::screens::chrome::hud_scene(chrome);
+            let mut chrome = components::screens::chrome::chrome_for_screen(
+                rendered_screen,
+                &self.snapshot,
+                rendered_focus,
+                self.selected_playlist.as_ref(),
+                self.selected_contact.as_ref(),
+                (rendered_screen == UiScreen::Hub && self.home_mode == HomeMode::Focused)
+                    .then_some(rendered_focus),
+                true,
+            );
+            if crate::router::is_overlay_screen(self.active_screen) {
+                chrome.status_opacity = 255;
+                chrome.deck.opacity = 140;
+            }
+            if self.status_bar_preview_enabled {
+                chrome.status = status_bar_preview_status(now_ms);
+                chrome.deck.visible = false;
+            } else {
+                chrome.status.time = current_status_time().1;
+            }
+            components::screens::chrome::hud_scene(chrome)
+        };
         let modal_stack = match self.active_screen {
             UiScreen::Loading => vec![crate::scene::Modal::Loading {
                 spinner_step: self.system_overlay.spinner_step,
@@ -514,9 +549,22 @@ impl UiRuntime {
     }
 
     pub fn frame_request(&self, now_ms: u64) -> Option<FrameRequest> {
-        self.dirty.any().then(|| FrameRequest {
-            scene_graph: self.scene_graph(now_ms),
-            dirty_region: self.dirty.render_region(self.active_screen),
+        self.dirty.any().then(|| {
+            let scene_graph = self.scene_graph(now_ms);
+            let orbit_is_only_animation = scene_graph.active.timelines.len() == 1
+                && scene_graph.active.timelines[0].id
+                    == animation::presets::WATCH_ORBIT_TIMELINE_ID;
+            let dirty_region =
+                if self.active_screen == UiScreen::Hub && self.home_mode == HomeMode::Ambient {
+                    (self.dirty.animation_only() && orbit_is_only_animation)
+                        .then_some(WATCH_ORBIT_DIRTY_REGION)
+                } else {
+                    self.dirty.render_region(self.active_screen)
+                };
+            FrameRequest {
+                scene_graph,
+                dirty_region,
+            }
         })
     }
 
@@ -535,6 +583,8 @@ impl UiRuntime {
     }
 
     pub fn mark_clean(&mut self) {
+        self.transitions
+            .retain(|transition| !transition.retire_after_frame);
         self.dirty = DirtyState::default();
     }
 
@@ -922,17 +972,53 @@ const STATUS_BAR_PREVIEW_STAGE_COUNT: u8 = 6;
 const ASK_FAILURE_VISIBLE_MS: u64 = 4_000;
 
 fn current_status_time() -> (i64, String) {
-    let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
+    let now = current_local_datetime();
     (
         now.unix_timestamp() / 60,
         format!("{:02}:{:02}", now.hour(), now.minute()),
     )
 }
 
+fn current_watch_face_text() -> (String, String) {
+    watch_face_text(current_local_datetime())
+}
+
+fn watch_face_text(now: OffsetDateTime) -> (String, String) {
+    let weekday = match now.weekday() {
+        Weekday::Monday => "MON",
+        Weekday::Tuesday => "TUE",
+        Weekday::Wednesday => "WED",
+        Weekday::Thursday => "THU",
+        Weekday::Friday => "FRI",
+        Weekday::Saturday => "SAT",
+        Weekday::Sunday => "SUN",
+    };
+    let month = match now.month() {
+        Month::January => "JAN",
+        Month::February => "FEB",
+        Month::March => "MAR",
+        Month::April => "APR",
+        Month::May => "MAY",
+        Month::June => "JUN",
+        Month::July => "JUL",
+        Month::August => "AUG",
+        Month::September => "SEP",
+        Month::October => "OCT",
+        Month::November => "NOV",
+        Month::December => "DEC",
+    };
+    (
+        format!("{weekday} {:02} {month}", now.day()),
+        format!("{:02}:{:02}", now.hour(), now.minute()),
+    )
+}
+
+fn current_local_datetime() -> OffsetDateTime {
+    OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc())
+}
+
 fn current_local_hour() -> u8 {
-    OffsetDateTime::now_local()
-        .unwrap_or_else(|_| OffsetDateTime::now_utc())
-        .hour()
+    current_local_datetime().hour()
 }
 
 fn status_bar_preview_stage(now_ms: u64) -> u8 {
@@ -1029,9 +1115,10 @@ mod tests {
     use crate::engine::flatten;
     use crate::scene::roles;
     use yoyopod_protocol::ui::{
-        CallIntent, ContactAction, ListItemSnapshot, MusicIntent, OverlayRuntimeSnapshot,
-        PlaylistTrackAction, SettingsIntent, SettingsRuntimeSnapshot, SystemIntent, UiEvent,
-        UiFocusChanged, VoiceIntent, VoiceNoteSummarySnapshot, VoiceRecipientAction,
+        AnimationEasing, AnimationProperty, AnimationTarget, CallIntent, ContactAction,
+        ListItemSnapshot, MusicIntent, OverlayRuntimeSnapshot, PlaylistTrackAction, SettingsIntent,
+        SettingsRuntimeSnapshot, SystemIntent, UiEvent, UiFocusChanged, VoiceIntent,
+        VoiceNoteSummarySnapshot, VoiceRecipientAction,
     };
 
     fn contact(id: &str, title: &str) -> ListItemSnapshot {
@@ -2311,15 +2398,22 @@ mod tests {
         assert_eq!(runtime.home_mode, HomeMode::Ambient);
         let ambient = flatten::flatten(&runtime.scene_graph(30_100));
         assert_eq!(count_visible_role(&ambient, roles::DECK_BAR), 0);
+        assert_eq!(count_visible_role(&ambient, roles::STATUS_BAR), 0);
+        assert_eq!(count_visible_role(&ambient, roles::WATCH_FACE), 1);
 
         runtime.handle_input(InputAction::Advance, 30_200);
-        assert_eq!(runtime.home_mode, HomeMode::Idle);
+        assert_eq!(runtime.home_mode, HomeMode::Focused);
+        assert_eq!(runtime.focus_index, 0);
         let awake = flatten::flatten(&runtime.scene_graph(30_200));
         assert_eq!(count_visible_role(&awake, roles::DECK_BAR), 1);
+        assert_eq!(count_visible_role(&awake, roles::WATCH_FACE), 0);
+
+        runtime.handle_input(InputAction::Advance, 30_300);
+        assert_eq!(runtime.focus_index, 1);
     }
 
     #[test]
-    fn ambient_wake_emits_a_visible_deck_mutation() {
+    fn ambient_transition_and_wake_remount_the_full_screen_scene() {
         let mut runtime = UiRuntime::default();
         let mut engine = crate::engine::Engine::default();
         runtime.advance_home_state(0);
@@ -2327,27 +2421,154 @@ mod tests {
 
         runtime.advance_home_state(30_000);
         let ambient_graph = runtime.scene_graph(30_000);
-        let hidden = engine.render(&ambient_graph, 30_000).to_vec();
-        let deck_node = hidden
-            .iter()
-            .find_map(|mutation| match mutation {
-                crate::engine::Mutation::Update {
-                    node,
-                    prop: crate::engine::PropChange::Visible(false),
-                } => Some(*node),
-                _ => None,
-            })
-            .expect("ambient transition must hide the deck");
+        let ambient = engine.render(&ambient_graph, 30_000).to_vec();
+        assert!(ambient.iter().any(|mutation| matches!(
+            mutation,
+            crate::engine::Mutation::Create {
+                role: Some(role),
+                ..
+            } if *role == roles::WATCH_FACE
+        )));
 
         assert!(runtime.wake_home_from_ambient(30_100));
         let awake_graph = runtime.scene_graph(30_100);
         let awake = engine.render(&awake_graph, 30_100);
         assert!(awake.iter().any(|mutation| matches!(
             mutation,
-            crate::engine::Mutation::Update {
-                node,
-                prop: crate::engine::PropChange::Visible(true),
-            } if *node == deck_node
+            crate::engine::Mutation::Create {
+                role: Some(role),
+                ..
+            } if *role == roles::COMPANION
         )));
+    }
+
+    #[test]
+    fn watch_face_text_uses_uppercase_local_calendar_and_24_hour_time() {
+        let now = time::Date::from_calendar_date(2026, Month::July, 23)
+            .expect("valid date")
+            .with_hms(9, 41, 0)
+            .expect("valid time")
+            .assume_utc();
+
+        assert_eq!(
+            watch_face_text(now),
+            ("THU 23 JUL".to_string(), "09:41".to_string())
+        );
+    }
+
+    #[test]
+    fn ambient_power_updates_request_a_full_frame() {
+        let mut runtime = UiRuntime::default();
+        runtime.advance_home_state(0);
+        runtime.advance_home_state(30_000);
+        runtime.mark_clean();
+        runtime.dirty.power = true;
+
+        let frame = runtime.frame_request(30_100).expect("ambient frame");
+        assert_eq!(frame.dirty_region, None);
+    }
+
+    #[test]
+    fn ambient_orbit_animation_flushes_only_its_square_region() {
+        let mut runtime = UiRuntime::default();
+        runtime.advance_home_state(0);
+        runtime.advance_home_state(30_000);
+        runtime.mark_clean();
+        runtime.dirty.animation = true;
+
+        let frame = runtime
+            .frame_request(30_100)
+            .expect("ambient animation frame");
+        assert_eq!(frame.dirty_region, Some(WATCH_ORBIT_DIRTY_REGION));
+        assert_eq!(frame.dirty_region.expect("orbit region").w, 236);
+        assert_eq!(frame.dirty_region.expect("orbit region").h, 236);
+    }
+
+    #[test]
+    fn ambient_external_animation_requests_a_full_frame() {
+        let mut runtime = UiRuntime::default();
+        runtime.advance_home_state(0);
+        runtime.advance_home_state(30_000);
+        runtime.mark_clean();
+        runtime.start_animation(
+            AnimationRequest {
+                id: "ambient-fade".to_string(),
+                target: AnimationTarget::ActiveScreen,
+                property: AnimationProperty::Opacity,
+                easing: AnimationEasing::EaseInOut,
+                from: 0,
+                to: 255,
+                duration_ms: 500,
+            },
+            30_000,
+        );
+
+        let frame = runtime
+            .frame_request(30_100)
+            .expect("ambient external animation frame");
+        assert_eq!(frame.scene_graph.active.timelines.len(), 2);
+        assert_eq!(frame.dirty_region, None);
+    }
+
+    #[test]
+    fn ambient_external_animation_completion_requests_a_full_frame() {
+        let mut runtime = UiRuntime::default();
+        runtime.advance_home_state(0);
+        runtime.advance_home_state(30_000);
+        runtime.mark_clean();
+        runtime.start_animation(
+            AnimationRequest {
+                id: "ambient-offset".to_string(),
+                target: AnimationTarget::Runtime,
+                property: AnimationProperty::OffsetY,
+                easing: AnimationEasing::EaseInOut,
+                from: 0,
+                to: 37,
+                duration_ms: 500,
+            },
+            30_000,
+        );
+        let mut engine = crate::engine::Engine::default();
+        let intermediate_frame = runtime
+            .frame_request(30_250)
+            .expect("ambient transition intermediate frame");
+        let intermediate_mutations = engine.render(&intermediate_frame.scene_graph, 30_250);
+        assert!(intermediate_mutations.iter().any(|mutation| matches!(
+            mutation,
+            crate::engine::Mutation::Update {
+                prop: crate::engine::PropChange::OffsetY(19),
+                ..
+            }
+        )));
+        runtime.mark_clean();
+
+        assert!(runtime.advance_animations(30_500));
+        assert_eq!(runtime.transitions.len(), 1);
+        assert!(runtime.transitions[0].retire_after_frame);
+        let frame = runtime
+            .frame_request(30_500)
+            .expect("ambient transition completion frame");
+        assert_eq!(frame.scene_graph.active.timelines.len(), 2);
+        assert_eq!(frame.dirty_region, None);
+        let mutations = engine.render(&frame.scene_graph, 30_500);
+        assert!(mutations.iter().any(|mutation| matches!(
+            mutation,
+            crate::engine::Mutation::Update {
+                prop: crate::engine::PropChange::OffsetY(37),
+                ..
+            }
+        )));
+
+        runtime.mark_clean();
+        assert!(runtime.transitions.is_empty());
+        runtime.mark_animation_frame();
+        let orbit_frame = runtime
+            .frame_request(30_600)
+            .expect("post-transition orbit frame");
+        assert_eq!(
+            orbit_frame.dirty_region,
+            Some(WATCH_ORBIT_DIRTY_REGION),
+            "the full-frame override must clear after the completion frame renders"
+        );
     }
 }

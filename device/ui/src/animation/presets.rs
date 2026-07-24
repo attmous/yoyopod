@@ -1,4 +1,4 @@
-use crate::scene::RegionId;
+use crate::scene::{FxLayerId, RegionId};
 
 use super::{
     ActorRef, AnimatableProp, AnimatableValue, ClockSource, Easing, EventId, Keyframe, LoopMode,
@@ -6,6 +6,7 @@ use super::{
 };
 
 pub const BREATHE_TIMELINE_ID: TimelineId = TimelineId(10);
+pub const WATCH_ORBIT_TIMELINE_ID: TimelineId = TimelineId(11);
 pub const SCENE_ENTER_TIMELINE_ID: TimelineId = TimelineId(1);
 pub const STAGGER_ENTER_TIMELINE_ID: TimelineId = TimelineId(2);
 pub const PULSE_ONE_SHOT_TIMELINE_ID: TimelineId = TimelineId(3);
@@ -19,6 +20,85 @@ pub const WHEEL_ROLL_DURATION_MS: u64 = 180;
 pub const MEDIA_WHEEL_PEEK_OPACITY: u8 = 148;
 pub const CONTACT_WHEEL_PEEK_OPACITY: u8 = 115;
 pub const SETUP_WHEEL_PEEK_OPACITY: u8 = 190;
+
+const WATCH_ORBIT_PERIOD_MS: u32 = 6_000;
+const WATCH_ARC_COUNT: usize = 4;
+const WATCH_SPARK_COUNT: usize = 12;
+
+pub fn watch_orbit() -> Timeline {
+    let tracks = (0..WATCH_ARC_COUNT)
+        .map(|index| {
+            stepped_chase_track(FxLayerId(11), index, WATCH_ARC_COUNT, 1_500, 255, 216, 176)
+        })
+        .chain((0..WATCH_SPARK_COUNT).map(|index| {
+            stepped_chase_track(FxLayerId(12), index, WATCH_SPARK_COUNT, 500, 255, 0, 0)
+        }))
+        .collect();
+
+    Timeline {
+        id: WATCH_ORBIT_TIMELINE_ID,
+        clock: ClockSource::SceneTime,
+        tracks,
+        loop_mode: LoopMode::Loop,
+        on_complete: None,
+        started_ms: 0,
+    }
+}
+
+fn stepped_chase_track(
+    layer: FxLayerId,
+    index: usize,
+    count: usize,
+    step_ms: u32,
+    head_opacity: u8,
+    trail_opacity: u8,
+    rest_opacity: u8,
+) -> Track {
+    debug_assert!(count > 1);
+    debug_assert_eq!(count as u32 * step_ms, WATCH_ORBIT_PERIOD_MS);
+
+    let opacity_at = |head: usize| {
+        if index == head {
+            head_opacity
+        } else if index == (head + count - 1) % count {
+            trail_opacity
+        } else {
+            rest_opacity
+        }
+    };
+    let mut keyframes = vec![Keyframe {
+        at_ms: 0,
+        value: AnimatableValue::U8(opacity_at(0)),
+    }];
+    for next_head in 1..count {
+        let boundary = next_head as u32 * step_ms;
+        keyframes.push(Keyframe {
+            at_ms: boundary - 1,
+            value: AnimatableValue::U8(opacity_at(next_head - 1)),
+        });
+        keyframes.push(Keyframe {
+            at_ms: boundary,
+            value: AnimatableValue::U8(opacity_at(next_head)),
+        });
+    }
+    keyframes.push(Keyframe {
+        at_ms: WATCH_ORBIT_PERIOD_MS - 1,
+        value: AnimatableValue::U8(opacity_at(count - 1)),
+    });
+    keyframes.push(Keyframe {
+        at_ms: WATCH_ORBIT_PERIOD_MS,
+        value: AnimatableValue::U8(opacity_at(0)),
+    });
+
+    Track {
+        // Orbit pieces consume these tracks through AnimSlot. Private FX
+        // targets keep actor-based sampling from touching unrelated widgets.
+        target: ActorRef::FxNode { layer, index },
+        property: AnimatableProp::Opacity,
+        keyframes,
+        easing: Easing::Linear,
+    }
+}
 
 pub fn breathe_focused_item(deck: usize, index: usize) -> Timeline {
     Timeline {
@@ -515,7 +595,74 @@ fn motion_tracks(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::animation::TimelineSampler;
+    use crate::animation::{TimelineRef, TimelineSampler, TrackIndex};
+
+    #[test]
+    fn watch_orbit_comet_moves_clockwise_at_a_display_safe_cadence() {
+        let timeline = watch_orbit();
+        assert_eq!(timeline.id, WATCH_ORBIT_TIMELINE_ID);
+        assert_eq!(timeline.clock, ClockSource::SceneTime);
+        assert_eq!(timeline.loop_mode, LoopMode::Loop);
+        assert_eq!(timeline.tracks.len(), 16);
+        assert!(timeline
+            .tracks
+            .iter()
+            .all(|track| track.property == AnimatableProp::Opacity));
+
+        let timelines = [timeline];
+        let start = TimelineSampler::new(&timelines, 0, 0);
+        assert_eq!(
+            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(0)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
+        );
+        assert_eq!(
+            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(1)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(176)))
+        );
+        assert_eq!(
+            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(3)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(216)))
+        );
+        assert_eq!(
+            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(4)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
+        );
+        assert_eq!(
+            start.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(15)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(0)))
+        );
+
+        let second_spark = TimelineSampler::new(&timelines, 500, 0);
+        assert_eq!(
+            second_spark.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(5)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
+        );
+        assert_eq!(
+            second_spark.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(4)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(0)))
+        );
+
+        let right = TimelineSampler::new(&timelines, 1_500, 0);
+        assert_eq!(
+            right.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(1)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
+        );
+        assert_eq!(
+            right.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(7)),
+            Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
+        );
+
+        for step in 0..WATCH_SPARK_COUNT {
+            let sample = TimelineSampler::new(&timelines, (step * 500) as u64, 0);
+            let visible = (WATCH_ARC_COUNT..WATCH_ARC_COUNT + WATCH_SPARK_COUNT)
+                .filter(|track| {
+                    sample.slot_value(TimelineRef(WATCH_ORBIT_TIMELINE_ID), TrackIndex(*track))
+                        == Some((AnimatableProp::Opacity, AnimatableValue::U8(255)))
+                })
+                .count();
+            assert_eq!(visible, 1, "step {step} must show exactly one marker");
+        }
+    }
 
     #[test]
     fn companion_breathe_matches_the_mockup_and_resets_with_scene_time() {

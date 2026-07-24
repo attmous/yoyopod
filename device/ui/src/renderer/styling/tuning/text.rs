@@ -29,13 +29,42 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
             | roles::STATUS_GPS_ICON
             | roles::STATUS_VOIP_ICON
             | roles::STATUS_CHARGE_ICON
-            | roles::STATUS_BATTERY_ICON => {
+            | roles::STATUS_BATTERY_ICON
+            | roles::WATCH_BATTERY_ICON
+            | roles::WATCH_CHARGE_ICON => {
                 ffi::lv_obj_set_style_text_font(
                     obj.as_ptr(),
                     &ffi::lv_font_montserrat_12,
                     SELECTOR,
                 );
                 ffi::lv_image_set_inner_align(obj.as_ptr(), ffi::LV_IMAGE_ALIGN_CENTER);
+            }
+            roles::WATCH_DATE => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_16,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
+            }
+            roles::WATCH_TIME => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_48,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
+            }
+            roles::WATCH_BATTERY_LABEL => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_14,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
             }
             roles::WHEEL_FOCUS_ICON
             | roles::WHEEL_PEEK_ICON

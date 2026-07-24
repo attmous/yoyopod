@@ -379,6 +379,30 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::STATUS_BATTERY_LABEL,
         roles::STATUS_CHARGE_ICON,
         roles::STATUS_BATTERY_ICON,
+        roles::WATCH_FACE,
+        roles::WATCH_ORBIT_LAYER,
+        roles::WATCH_ORBIT_CYAN,
+        roles::WATCH_ORBIT_ORANGE,
+        roles::WATCH_ORBIT_VIOLET,
+        roles::WATCH_ORBIT_LIME,
+        roles::WATCH_DOT_TOP,
+        roles::WATCH_DOT_030,
+        roles::WATCH_DOT_060,
+        roles::WATCH_DOT_RIGHT,
+        roles::WATCH_DOT_120,
+        roles::WATCH_DOT_150,
+        roles::WATCH_DOT_BOTTOM,
+        roles::WATCH_DOT_210,
+        roles::WATCH_DOT_240,
+        roles::WATCH_DOT_LEFT,
+        roles::WATCH_DOT_300,
+        roles::WATCH_DOT_330,
+        roles::WATCH_DATE,
+        roles::WATCH_TIME,
+        roles::WATCH_BATTERY_CARD,
+        roles::WATCH_BATTERY_ICON,
+        roles::WATCH_CHARGE_ICON,
+        roles::WATCH_BATTERY_LABEL,
         roles::VOICE_METER,
         roles::VOICE_METER_LEVEL,
         roles::RECORDING_PANEL,
@@ -635,6 +659,105 @@ mod tests {
 
         let two_flex_gaps = 2 * 3;
         assert!(label.width + charge.width + battery.width + two_flex_gaps <= right.width);
+    }
+
+    #[test]
+    fn watch_orbit_segments_share_one_square_and_cardinal_center() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let themes = parse_theme_asset().expect("theme.ron should be valid");
+        let layer = layout(&layouts, roles::WATCH_ORBIT_LAYER);
+        assert_eq!(
+            (layer.x, layer.y, layer.width, layer.height),
+            (0, 0, 240, 280)
+        );
+        let orbit_roles = [
+            roles::WATCH_ORBIT_CYAN,
+            roles::WATCH_ORBIT_ORANGE,
+            roles::WATCH_ORBIT_VIOLET,
+            roles::WATCH_ORBIT_LIME,
+        ];
+        let first = layout(&layouts, orbit_roles[0]);
+        assert_eq!(
+            (first.x, first.y, first.width, first.height),
+            (10, 30, 220, 220)
+        );
+        assert_eq!(first.width, first.height);
+        for role in orbit_roles.into_iter().skip(1) {
+            let segment = layout(&layouts, role);
+            assert_eq!(
+                (segment.x, segment.y, segment.width, segment.height),
+                (first.x, first.y, first.width, first.height),
+                "{role} must not skew"
+            );
+        }
+        let stroke_width = theme(&themes, orbit_roles[0]).arc_width;
+        assert_eq!(stroke_width, 9);
+        for role in orbit_roles {
+            assert_eq!(theme(&themes, role).arc_width, stroke_width);
+        }
+
+        let top = layout(&layouts, roles::WATCH_DOT_TOP);
+        let right = layout(&layouts, roles::WATCH_DOT_RIGHT);
+        let bottom = layout(&layouts, roles::WATCH_DOT_BOTTOM);
+        let left = layout(&layouts, roles::WATCH_DOT_LEFT);
+        assert_eq!(top.x + top.width / 2, 120);
+        assert_eq!(bottom.x + bottom.width / 2, 120);
+        assert_eq!(left.y + left.height / 2, 140);
+        assert_eq!(right.y + right.height / 2, 140);
+        assert_eq!(right.x - left.x, bottom.y - top.y);
+
+        let dot_roles = [
+            roles::WATCH_DOT_TOP,
+            roles::WATCH_DOT_030,
+            roles::WATCH_DOT_060,
+            roles::WATCH_DOT_RIGHT,
+            roles::WATCH_DOT_120,
+            roles::WATCH_DOT_150,
+            roles::WATCH_DOT_BOTTOM,
+            roles::WATCH_DOT_210,
+            roles::WATCH_DOT_240,
+            roles::WATCH_DOT_LEFT,
+            roles::WATCH_DOT_300,
+            roles::WATCH_DOT_330,
+        ];
+        let centerline_radius = (first.width - stroke_width) / 2;
+        assert_eq!(centerline_radius, 105);
+        for role in dot_roles {
+            let dot = layout(&layouts, role);
+            assert_eq!((dot.width, dot.height), (10, 10));
+            assert_eq!(theme(&themes, role).radius, 5);
+            let dx = dot.x + dot.width / 2 - 120;
+            let dy = dot.y + dot.height / 2 - 140;
+            let radius_squared = dx * dx + dy * dy;
+            assert!(
+                (radius_squared - centerline_radius * centerline_radius).abs() <= 64,
+                "{role} must stay on the bezel stroke centerline"
+            );
+        }
+
+        let date = layout(&layouts, roles::WATCH_DATE);
+        assert_eq!((date.y, date.height), (63, 22));
+
+        let time = layout(&layouts, roles::WATCH_TIME);
+        assert_eq!(time.repeat_x, Some(1));
+        assert_eq!(time.x + 1 + time.width / 2, 120);
+        // Montserrat 48 at the watch face's 1.2x scale has its optical ink
+        // center 25 px below the label origin.
+        assert_eq!(time.y + 25, 140);
+        assert!(time.y + 45 <= layout(&layouts, roles::WATCH_BATTERY_CARD).y);
+    }
+
+    #[test]
+    fn watch_battery_complication_is_compact_and_horizontally_balanced() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let card = layout(&layouts, roles::WATCH_BATTERY_CARD);
+        let icon = layout(&layouts, roles::WATCH_BATTERY_ICON);
+        let label = layout(&layouts, roles::WATCH_BATTERY_LABEL);
+
+        assert_eq!((card.x, card.y, card.width, card.height), (76, 174, 88, 40));
+        assert!(icon.x + icon.width < label.x);
+        assert!(label.x + label.width <= card.width);
+        assert!(label.y + label.height <= card.height);
     }
 
     #[test]
