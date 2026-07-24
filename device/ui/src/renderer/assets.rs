@@ -664,6 +664,7 @@ mod tests {
     #[test]
     fn watch_orbit_segments_share_one_square_and_cardinal_center() {
         let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let themes = parse_theme_asset().expect("theme.ron should be valid");
         let layer = layout(&layouts, roles::WATCH_ORBIT_LAYER);
         assert_eq!(
             (layer.x, layer.y, layer.width, layer.height),
@@ -678,7 +679,7 @@ mod tests {
         let first = layout(&layouts, orbit_roles[0]);
         assert_eq!(
             (first.x, first.y, first.width, first.height),
-            (18, 38, 204, 204)
+            (10, 30, 220, 220)
         );
         assert_eq!(first.width, first.height);
         for role in orbit_roles.into_iter().skip(1) {
@@ -688,6 +689,9 @@ mod tests {
                 (first.x, first.y, first.width, first.height),
                 "{role} must not skew"
             );
+        }
+        for role in orbit_roles {
+            assert_eq!(theme(&themes, role).arc_width, 9);
         }
 
         let top = layout(&layouts, roles::WATCH_DOT_TOP);
@@ -720,10 +724,13 @@ mod tests {
             let dy = dot.y + dot.height / 2 - 140;
             let radius_squared = dx * dx + dy * dy;
             assert!(
-                (radius_squared - 10_404).abs() <= 64,
-                "{role} must stay on the 102 px circular radius"
+                (radius_squared - 12_100).abs() <= 64,
+                "{role} must stay on the 110 px circular radius"
             );
         }
+
+        let date = layout(&layouts, roles::WATCH_DATE);
+        assert_eq!((date.y, date.height), (63, 22));
 
         let time = layout(&layouts, roles::WATCH_TIME);
         assert_eq!(time.repeat_x, Some(1));
@@ -741,7 +748,7 @@ mod tests {
         let icon = layout(&layouts, roles::WATCH_BATTERY_ICON);
         let label = layout(&layouts, roles::WATCH_BATTERY_LABEL);
 
-        assert_eq!((card.x, card.y, card.width, card.height), (76, 164, 88, 40));
+        assert_eq!((card.x, card.y, card.width, card.height), (76, 174, 88, 40));
         assert!(icon.x + icon.width < label.x);
         assert!(label.x + label.width <= card.width);
         assert!(label.y + label.height <= card.height);

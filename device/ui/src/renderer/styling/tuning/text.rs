@@ -43,7 +43,7 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
                 ffi::lv_obj_set_style_text_font(
                     obj.as_ptr(),
-                    &ffi::lv_font_montserrat_14,
+                    &ffi::lv_font_montserrat_16,
                     SELECTOR,
                 );
                 ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);

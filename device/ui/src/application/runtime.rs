@@ -20,10 +20,10 @@ use super::{input_router, navigator, snapshot, UiScreen};
 
 const RUNTIME_LINK_ERROR: &str = "Lost runtime link";
 const WATCH_ORBIT_DIRTY_REGION: DirtyRegion = DirtyRegion {
-    x: 10,
-    y: 30,
-    w: 220,
-    h: 220,
+    x: 2,
+    y: 22,
+    w: 236,
+    h: 236,
 };
 
 #[derive(Debug, Clone)]
@@ -2469,7 +2469,7 @@ mod tests {
             .frame_request(30_100)
             .expect("ambient animation frame");
         assert_eq!(frame.dirty_region, Some(WATCH_ORBIT_DIRTY_REGION));
-        assert_eq!(frame.dirty_region.expect("orbit region").w, 220);
-        assert_eq!(frame.dirty_region.expect("orbit region").h, 220);
+        assert_eq!(frame.dirty_region.expect("orbit region").w, 236);
+        assert_eq!(frame.dirty_region.expect("orbit region").h, 236);
     }
 }
