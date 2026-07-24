@@ -546,17 +546,22 @@ impl UiRuntime {
     }
 
     pub fn frame_request(&self, now_ms: u64) -> Option<FrameRequest> {
-        self.dirty.any().then(|| FrameRequest {
-            scene_graph: self.scene_graph(now_ms),
-            dirty_region: if self.active_screen == UiScreen::Hub
-                && self.home_mode == HomeMode::Ambient
-            {
-                self.dirty
-                    .animation_only()
-                    .then_some(WATCH_ORBIT_DIRTY_REGION)
-            } else {
-                self.dirty.render_region(self.active_screen)
-            },
+        self.dirty.any().then(|| {
+            let scene_graph = self.scene_graph(now_ms);
+            let orbit_is_only_animation = scene_graph.active.timelines.len() == 1
+                && scene_graph.active.timelines[0].id
+                    == animation::presets::WATCH_ORBIT_TIMELINE_ID;
+            let dirty_region =
+                if self.active_screen == UiScreen::Hub && self.home_mode == HomeMode::Ambient {
+                    (self.dirty.animation_only() && orbit_is_only_animation)
+                        .then_some(WATCH_ORBIT_DIRTY_REGION)
+                } else {
+                    self.dirty.render_region(self.active_screen)
+                };
+            FrameRequest {
+                scene_graph,
+                dirty_region,
+            }
         })
     }
 
@@ -1105,9 +1110,10 @@ mod tests {
     use crate::engine::flatten;
     use crate::scene::roles;
     use yoyopod_protocol::ui::{
-        CallIntent, ContactAction, ListItemSnapshot, MusicIntent, OverlayRuntimeSnapshot,
-        PlaylistTrackAction, SettingsIntent, SettingsRuntimeSnapshot, SystemIntent, UiEvent,
-        UiFocusChanged, VoiceIntent, VoiceNoteSummarySnapshot, VoiceRecipientAction,
+        AnimationEasing, AnimationProperty, AnimationTarget, CallIntent, ContactAction,
+        ListItemSnapshot, MusicIntent, OverlayRuntimeSnapshot, PlaylistTrackAction, SettingsIntent,
+        SettingsRuntimeSnapshot, SystemIntent, UiEvent, UiFocusChanged, VoiceIntent,
+        VoiceNoteSummarySnapshot, VoiceRecipientAction,
     };
 
     fn contact(id: &str, title: &str) -> ListItemSnapshot {
@@ -2471,5 +2477,31 @@ mod tests {
         assert_eq!(frame.dirty_region, Some(WATCH_ORBIT_DIRTY_REGION));
         assert_eq!(frame.dirty_region.expect("orbit region").w, 236);
         assert_eq!(frame.dirty_region.expect("orbit region").h, 236);
+    }
+
+    #[test]
+    fn ambient_external_animation_requests_a_full_frame() {
+        let mut runtime = UiRuntime::default();
+        runtime.advance_home_state(0);
+        runtime.advance_home_state(30_000);
+        runtime.mark_clean();
+        runtime.start_animation(
+            AnimationRequest {
+                id: "ambient-fade".to_string(),
+                target: AnimationTarget::ActiveScreen,
+                property: AnimationProperty::Opacity,
+                easing: AnimationEasing::EaseInOut,
+                from: 0,
+                to: 255,
+                duration_ms: 500,
+            },
+            30_000,
+        );
+
+        let frame = runtime
+            .frame_request(30_100)
+            .expect("ambient external animation frame");
+        assert_eq!(frame.scene_graph.active.timelines.len(), 2);
+        assert_eq!(frame.dirty_region, None);
     }
 }
