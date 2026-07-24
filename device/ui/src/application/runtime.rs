@@ -380,6 +380,7 @@ impl UiRuntime {
             .retain(|active| active.id != transition.id || active.target != transition.target);
         self.transitions.push(transition);
         self.dirty.animation = true;
+        self.dirty.animation_full_frame = true;
     }
 
     pub fn advance_animations(&mut self, now_ms: u64) -> bool {
@@ -399,6 +400,9 @@ impl UiRuntime {
         }
         if had_transitions || had_wheel_roll {
             self.dirty.animation = true;
+        }
+        if had_transitions {
+            self.dirty.animation_full_frame = true;
         }
         had_transitions || had_wheel_roll
     }
@@ -2503,5 +2507,45 @@ mod tests {
             .expect("ambient external animation frame");
         assert_eq!(frame.scene_graph.active.timelines.len(), 2);
         assert_eq!(frame.dirty_region, None);
+    }
+
+    #[test]
+    fn ambient_external_animation_completion_requests_a_full_frame() {
+        let mut runtime = UiRuntime::default();
+        runtime.advance_home_state(0);
+        runtime.advance_home_state(30_000);
+        runtime.mark_clean();
+        runtime.start_animation(
+            AnimationRequest {
+                id: "ambient-fade".to_string(),
+                target: AnimationTarget::Runtime,
+                property: AnimationProperty::Opacity,
+                easing: AnimationEasing::EaseInOut,
+                from: 0,
+                to: 255,
+                duration_ms: 500,
+            },
+            30_000,
+        );
+        runtime.mark_clean();
+
+        assert!(runtime.advance_animations(30_500));
+        assert!(runtime.transitions.is_empty());
+        let frame = runtime
+            .frame_request(30_500)
+            .expect("ambient transition completion frame");
+        assert_eq!(frame.scene_graph.active.timelines.len(), 1);
+        assert_eq!(frame.dirty_region, None);
+
+        runtime.mark_clean();
+        runtime.mark_animation_frame();
+        let orbit_frame = runtime
+            .frame_request(30_600)
+            .expect("post-transition orbit frame");
+        assert_eq!(
+            orbit_frame.dirty_region,
+            Some(WATCH_ORBIT_DIRTY_REGION),
+            "the full-frame override must clear after the completion frame renders"
+        );
     }
 }

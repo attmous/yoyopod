@@ -117,6 +117,7 @@ pub struct DirtyState {
     pub focus: bool,
     pub input: bool,
     pub animation: bool,
+    pub animation_full_frame: bool,
 }
 
 impl DirtyState {
@@ -136,6 +137,7 @@ impl DirtyState {
             || self.focus
             || self.input
             || self.animation
+            || self.animation_full_frame
     }
 
     pub(crate) fn animation_only(mut self) -> bool {
@@ -188,6 +190,7 @@ impl DirtyState {
             || self.focus
             || self.input
             || self.animation
+            || self.animation_full_frame
             || self.hub
             || self.music
             || self.call
