@@ -685,20 +685,16 @@ fn system_speech_command(state: &RuntimeState, line: &str) -> Vec<RuntimeCommand
 }
 
 fn commands_for_settings_intent(
-    state: &RuntimeState,
+    _state: &RuntimeState,
     intent: &yoyopod_protocol::ui::SettingsIntent,
 ) -> Vec<RuntimeCommand> {
     use yoyopod_protocol::ui::SettingsIntent;
     match intent {
-        SettingsIntent::VolumeStep => {
-            let level = ((state.media.volume.clamp(0, 100) + 5) / 10).clamp(1, 10);
-            let next = if level >= 10 { 1 } else { level + 1 };
-            vec![worker_command(
-                WorkerDomain::Network,
-                "audio_set_output_level",
-                json!({"level": next * 10}),
-            )]
-        }
+        SettingsIntent::VolumeStep => vec![worker_command(
+            WorkerDomain::Network,
+            "audio_set_output_level",
+            json!({"cycle": true}),
+        )],
         SettingsIntent::WifiSetupStart => vec![worker_command(
             WorkerDomain::Network,
             "wifi_provisioning_start",
@@ -1906,11 +1902,11 @@ mod tests {
         };
         assert_eq!(*domain, WorkerDomain::Network);
         assert_eq!(envelope.message_type, "audio_set_output_level");
-        assert_eq!(envelope.payload["level"], 10);
+        assert_eq!(envelope.payload["cycle"], true);
 
         event.apply(&mut state);
-        assert_eq!(state.media.volume, 10);
-        assert_eq!(state.ui_snapshot().settings.volume_level, 1);
+        assert_eq!(state.media.volume, 100);
+        assert_eq!(state.ui_snapshot().settings.volume_level, 10);
     }
 
     #[test]

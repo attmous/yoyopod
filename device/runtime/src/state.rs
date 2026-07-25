@@ -1246,11 +1246,9 @@ impl RuntimeState {
     fn apply_settings_intent(&mut self, intent: &yoyopod_protocol::ui::SettingsIntent) {
         use yoyopod_protocol::ui::SettingsIntent;
         match intent {
-            SettingsIntent::VolumeStep => {
-                let level = volume_level(self.media.volume);
-                let next = if level >= 10 { 1 } else { level + 1 };
-                self.media.volume = next * 10;
-            }
+            // The network worker owns the configured safety cap and publishes
+            // the applied level immediately after cycling it.
+            SettingsIntent::VolumeStep => {}
             SettingsIntent::CompanionSet(value) => self.settings.companion = value.clone(),
             SettingsIntent::ThemeSet(value) => self.settings.theme = value.clone(),
             SettingsIntent::SpeakNamesToggle => {

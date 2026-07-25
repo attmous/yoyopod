@@ -7,7 +7,7 @@ use anyhow::Result;
 
 use crate::audio::{AppliedAudio, AudioManager, AudioSettings};
 use crate::bluetooth::{
-    BluetoothController, BluetoothOperationError, BluetoothState, BluezBluetoothController,
+    BluetoothController, BluetoothOperationError, BluetoothState, RecoveringBluetoothController,
     UnavailableBluetoothController,
 };
 use crate::config::NetworkHostConfig;
@@ -113,9 +113,7 @@ pub fn run(config_dir: &str) -> Result<()> {
     let wifi: Box<dyn WifiController> = NetworkManagerWifiController::connect()
         .map(|controller| Box::new(controller) as Box<dyn WifiController>)
         .unwrap_or_else(|_| Box::new(UnavailableWifiController));
-    let bluetooth: Box<dyn BluetoothController> = BluezBluetoothController::connect()
-        .map(|controller| Box::new(controller) as Box<dyn BluetoothController>)
-        .unwrap_or_else(|_| Box::new(UnavailableBluetoothController));
+    let bluetooth: Box<dyn BluetoothController> = Box::new(RecoveringBluetoothController::new());
     match NetworkHostConfig::load(config_dir) {
         Ok(config) => run_with_runtime_loop(
             NetworkRuntime::new(
@@ -699,14 +697,24 @@ where
             )?;
         }
         "audio_set_output_level" => {
+            let cycle = envelope
+                .payload
+                .get("cycle")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true);
             let level = envelope
                 .payload
                 .get("level")
                 .and_then(serde_json::Value::as_u64)
                 .filter(|level| *level <= 100)
                 .map(|level| level as u8);
-            match level {
-                Some(level) => match audio.set_output_level(level, bluetooth, bluetooth_state) {
+            let result = if cycle && level.is_none() {
+                Some(audio.step_output_level(bluetooth, bluetooth_state))
+            } else {
+                level.map(|level| audio.set_output_level(level, bluetooth, bluetooth_state))
+            };
+            match result {
+                Some(result) => match result {
                     Ok(applied) => {
                         write_envelope(
                             output,
@@ -721,7 +729,8 @@ where
                     envelope.request_id,
                     crate::audio::AudioOperationError {
                         code: "audio_invalid_settings",
-                        message: "Audio output level must be between 0 and 100".to_string(),
+                        message: "Audio output level must be a 0 to 100 value or a cycle request"
+                            .to_string(),
                     },
                 )?,
             }

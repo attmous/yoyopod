@@ -69,12 +69,10 @@ pub fn run(
         println!("artifact: {artifact_name}");
         println!("local-artifact-dir: {}", local_artifact_dir.display());
         println!("would: ensure CI run for sha is successful, download {tarball_name}");
-        let service_user = if ctx.conn.user.is_empty() {
-            "the SSH-configured remote login user"
-        } else {
-            ctx.conn.user.as_str()
-        };
-        println!("would: install Wi-Fi and BlueZ authorization for service user {service_user}");
+        println!(
+            "would: resolve the effective user of {} and install Wi-Fi and BlueZ authorization",
+            lane.dev_service
+        );
         println!(
             "would: ssh sync + extract + restart + verify on {}",
             ctx.conn.ssh_target()
@@ -103,7 +101,7 @@ pub fn run(
     }
     let polkit_rule_name = format!("yoyopod-wifi-{resolved_sha}.rules");
     let local_polkit_rule = local_artifact_dir.join(&polkit_rule_name);
-    let wifi_service_user = resolve_wifi_service_user(ctx)?;
+    let wifi_service_user = resolve_wifi_service_user(ctx, &lane.dev_service)?;
     std::fs::write(
         &local_polkit_rule,
         render_wifi_polkit_rule(&wifi_service_user)?,
@@ -305,20 +303,30 @@ fn bluetooth_user_authorization_command(service_user: &str) -> String {
     )
 }
 
-fn resolve_wifi_service_user(ctx: &TargetContext) -> Result<String> {
-    if !ctx.conn.user.trim().is_empty() {
-        return Ok(validate_wifi_service_user(&ctx.conn.user)?.to_string());
-    }
-
-    let output = run_remote_capture(&ctx.conn, "id -un", RemoteWorkdir::None)
-        .context("resolve remote service user for Wi-Fi Polkit rule")?;
+fn resolve_wifi_service_user(ctx: &TargetContext, service: &str) -> Result<String> {
+    let command = format!(
+        "systemctl show --property=User --value {}",
+        shell_quote(service)
+    );
+    let output = run_remote_capture(&ctx.conn, &command, RemoteWorkdir::None)
+        .context("resolve effective systemd service user for Wi-Fi and Bluetooth access")?;
     if !output.success() {
         return Err(anyhow!(
-            "could not resolve remote service user for Wi-Fi Polkit rule: {}",
+            "could not resolve effective systemd service user: {}",
             output.stderr.trim()
         ));
     }
-    Ok(validate_wifi_service_user(&output.stdout)?.to_string())
+    normalize_systemd_service_user(&output.stdout)
+}
+
+fn normalize_systemd_service_user(service_user: &str) -> Result<String> {
+    let service_user = service_user.trim();
+    let service_user = if service_user.is_empty() {
+        "root"
+    } else {
+        service_user
+    };
+    Ok(validate_wifi_service_user(service_user)?.to_string())
 }
 
 fn render_wifi_polkit_rule(service_user: &str) -> Result<String> {
@@ -613,6 +621,19 @@ mod tests {
         let command = service_group_lookup_command("yoyopod");
 
         assert_eq!(command, "service_group=$(id -gn yoyopod)");
+    }
+
+    #[test]
+    fn effective_systemd_user_defaults_to_root_and_preserves_named_users() {
+        assert_eq!(
+            normalize_systemd_service_user("\n").expect("root service"),
+            "root"
+        );
+        assert_eq!(
+            normalize_systemd_service_user("yoyopod\n").expect("named service"),
+            "yoyopod"
+        );
+        assert!(normalize_systemd_service_user("bad user").is_err());
     }
 
     #[test]

@@ -185,7 +185,7 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start(
             if echo_cancellation != 0 { TRUE } else { FALSE },
         );
         (api.core_set_mic_gain_db)(state.core, (mic_gain as f32) * 0.3);
-        (api.core_set_playback_gain_db)(state.core, ((output_volume as f32) * 0.12) - 6.0);
+        (api.core_set_playback_gain_db)(state.core, playback_gain_db(output_volume));
         (api.core_set_ring_level)(state.core, output_volume.clamp(0, 100));
         (api.core_set_audio_port_range)(state.core, 7076, 7100);
         (api.core_set_video_port_range)(state.core, 9076, 9100);
@@ -417,14 +417,20 @@ pub unsafe extern "C" fn yoyopod_liblinphone_set_audio_devices(
         );
         set_device(&api, state.core, media_device_id, api.core_set_media_device);
         (api.core_set_mic_gain_db)(state.core, (microphone_gain.clamp(0, 100) as f32) * 0.3);
-        (api.core_set_playback_gain_db)(
-            state.core,
-            ((output_volume.clamp(0, 100) as f32) * 0.12) - 6.0,
-        );
+        (api.core_set_playback_gain_db)(state.core, playback_gain_db(output_volume));
         (api.core_set_ring_level)(state.core, alert_volume.clamp(0, 100));
     }
     error::clear_last_error();
     0
+}
+
+fn playback_gain_db(output_volume: c_int) -> f32 {
+    let fraction = output_volume.clamp(0, 100) as f32 / 100.0;
+    if fraction == 0.0 {
+        -120.0
+    } else {
+        20.0 * fraction.log10()
+    }
 }
 
 #[no_mangle]
@@ -1763,4 +1769,17 @@ fn copy_str_to_c_buffer(value: &str, out: *mut c_char, out_size: u32) -> bool {
         *out.add(count) = 0;
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::playback_gain_db;
+
+    #[test]
+    fn playback_percentages_map_to_real_attenuation() {
+        assert_eq!(playback_gain_db(0), -120.0);
+        assert!((playback_gain_db(10) - -20.0).abs() < 0.01);
+        assert!((playback_gain_db(50) - -6.0206).abs() < 0.01);
+        assert_eq!(playback_gain_db(100), 0.0);
+    }
 }

@@ -294,6 +294,21 @@ impl AudioManager {
         self.resolve(bluetooth, bluetooth_state)
     }
 
+    pub fn step_output_level(
+        &mut self,
+        bluetooth: &dyn BluetoothController,
+        bluetooth_state: &BluetoothState,
+    ) -> Result<AppliedAudio, AudioOperationError> {
+        let max_output = self.desired.levels.max_output.min(100);
+        let current = self.desired.levels.media.min(max_output);
+        let next = if current >= max_output {
+            max_output.min(10)
+        } else {
+            current.saturating_add(10).min(max_output)
+        };
+        self.set_output_level(next, bluetooth, bluetooth_state)
+    }
+
     pub fn current(
         &mut self,
         bluetooth: &dyn BluetoothController,
@@ -1263,6 +1278,34 @@ mod tests {
             serde_json::from_slice(&fs::read(settings_path).expect("settings file"))
                 .expect("stored settings");
         assert_eq!(stored.settings.levels.max_output, 10);
+    }
+
+    #[test]
+    fn local_output_step_wraps_at_the_configured_safety_cap() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let settings_path = directory.path().join("settings.json");
+        let mut manager =
+            AudioManager::open_at(settings_path.clone(), directory.path().join("asoundrc"));
+        let state = BluetoothState::unavailable();
+        let mut settings = AudioSettings::default();
+        settings.levels.max_output = 70;
+        settings.levels.media = 70;
+        settings.levels.communication = 70;
+        settings.levels.alerts = 70;
+        manager
+            .apply(2, settings, &UnavailableBluetoothController, &state)
+            .expect("apply capped settings");
+
+        let wrapped = manager
+            .step_output_level(&UnavailableBluetoothController, &state)
+            .expect("wrap output level");
+        assert_eq!(wrapped.state.applied.levels.media, 10);
+
+        let stepped = manager
+            .step_output_level(&UnavailableBluetoothController, &state)
+            .expect("step output level");
+        assert_eq!(stepped.state.applied.levels.media, 20);
+        assert_eq!(stepped.state.applied.levels.max_output, 70);
     }
 
     #[test]

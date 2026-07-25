@@ -19,6 +19,7 @@ const DEFAULT_REGISTRY_PATH: &str = "/var/lib/yoyopod/bluetooth/accessories.json
 const SCAN_DURATION: Duration = Duration::from_secs(12);
 const SCAN_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 const STATE_REFRESH_INTERVAL: Duration = Duration::from_secs(3);
+const BLUETOOTH_RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BluetoothState {
@@ -167,6 +168,156 @@ impl BluetoothController for UnavailableBluetoothController {
 
     fn tick(&mut self) -> Option<BluetoothState> {
         None
+    }
+}
+
+pub struct RecoveringBluetoothController {
+    controller: Option<BluezBluetoothController>,
+    next_reconnect_at: Instant,
+}
+
+impl RecoveringBluetoothController {
+    pub fn new() -> Self {
+        let mut recovering = Self {
+            controller: None,
+            next_reconnect_at: Instant::now(),
+        };
+        let _ = recovering.reconnect();
+        recovering
+    }
+
+    fn reconnect(&mut self) -> Result<(), BluetoothOperationError> {
+        match BluezBluetoothController::connect() {
+            Ok(controller) => {
+                self.controller = Some(controller);
+                Ok(())
+            }
+            Err(error) => {
+                self.controller = None;
+                self.next_reconnect_at = Instant::now() + BLUETOOTH_RECONNECT_INTERVAL;
+                Err(error)
+            }
+        }
+    }
+
+    fn ensure_controller(
+        &mut self,
+    ) -> Result<&mut BluezBluetoothController, BluetoothOperationError> {
+        if self.controller.is_none() {
+            if Instant::now() < self.next_reconnect_at {
+                return Err(BluetoothOperationError::unavailable());
+            }
+            self.reconnect()?;
+        }
+        self.controller
+            .as_mut()
+            .ok_or_else(BluetoothOperationError::unavailable)
+    }
+
+    fn with_controller<T>(
+        &mut self,
+        operation: impl FnOnce(&mut BluezBluetoothController) -> Result<T, BluetoothOperationError>,
+    ) -> Result<T, BluetoothOperationError> {
+        let result = operation(self.ensure_controller()?);
+        if result
+            .as_ref()
+            .err()
+            .is_some_and(|error| error.code == "bluetooth_unavailable")
+        {
+            self.controller = None;
+            self.next_reconnect_at = Instant::now() + BLUETOOTH_RECONNECT_INTERVAL;
+        }
+        result
+    }
+}
+
+impl Default for RecoveringBluetoothController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BluetoothController for RecoveringBluetoothController {
+    fn refresh(&mut self) -> Result<BluetoothState, BluetoothOperationError> {
+        self.with_controller(|controller| controller.refresh())
+    }
+
+    fn set_radio(&mut self, enabled: bool) -> Result<BluetoothState, BluetoothOperationError> {
+        self.with_controller(|controller| controller.set_radio(enabled))
+    }
+
+    fn start_scan(&mut self) -> Result<BluetoothState, BluetoothOperationError> {
+        self.with_controller(|controller| controller.start_scan())
+    }
+
+    fn stop_scan(&mut self) -> Result<BluetoothState, BluetoothOperationError> {
+        self.with_controller(|controller| controller.stop_scan())
+    }
+
+    fn pair(&mut self, accessory_id: &str) -> Result<BluetoothState, BluetoothOperationError> {
+        self.with_controller(|controller| controller.pair(accessory_id))
+    }
+
+    fn connect(&mut self, accessory_id: &str) -> Result<BluetoothState, BluetoothOperationError> {
+        self.with_controller(|controller| controller.connect(accessory_id))
+    }
+
+    fn disconnect(
+        &mut self,
+        accessory_id: &str,
+    ) -> Result<BluetoothState, BluetoothOperationError> {
+        self.with_controller(|controller| controller.disconnect(accessory_id))
+    }
+
+    fn forget(&mut self, accessory_id: &str) -> Result<BluetoothState, BluetoothOperationError> {
+        self.with_controller(|controller| controller.forget(accessory_id))
+    }
+
+    fn update_accessory(
+        &mut self,
+        accessory_id: &str,
+        alias: Option<&str>,
+        auto_connect: Option<bool>,
+    ) -> Result<BluetoothState, BluetoothOperationError> {
+        self.with_controller(|controller| {
+            controller.update_accessory(accessory_id, alias, auto_connect)
+        })
+    }
+
+    fn raw_address(&self, accessory_id: &str) -> Option<String> {
+        self.controller
+            .as_ref()
+            .and_then(|controller| controller.raw_address(accessory_id))
+    }
+
+    fn tick(&mut self) -> Option<BluetoothState> {
+        if self.controller.is_none() {
+            if Instant::now() < self.next_reconnect_at || self.reconnect().is_err() {
+                return None;
+            }
+            let state = self
+                .controller
+                .as_mut()
+                .and_then(|controller| controller.refresh().ok());
+            if state.is_none() {
+                self.controller = None;
+                self.next_reconnect_at = Instant::now() + BLUETOOTH_RECONNECT_INTERVAL;
+            }
+            return Some(state.unwrap_or_else(BluetoothState::unavailable));
+        }
+
+        let state = self
+            .controller
+            .as_mut()
+            .and_then(|controller| controller.tick());
+        if state
+            .as_ref()
+            .is_some_and(|state| state.status == "unavailable")
+        {
+            self.controller = None;
+            self.next_reconnect_at = Instant::now() + BLUETOOTH_RECONNECT_INTERVAL;
+        }
+        state
     }
 }
 
