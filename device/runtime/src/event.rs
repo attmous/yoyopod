@@ -1239,8 +1239,11 @@ fn commands_for_cloud_command(command: &Value) -> Vec<RuntimeCommand> {
             })
             .unwrap_or_default(),
         "bluetooth_refresh"
+        | "bluetooth_set_power"
         | "bluetooth_set_radio"
+        | "bluetooth_scan"
         | "bluetooth_scan_start"
+        | "bluetooth_stop_scan"
         | "bluetooth_scan_stop"
         | "bluetooth_pair"
         | "bluetooth_connect"
@@ -1252,6 +1255,12 @@ fn commands_for_cloud_command(command: &Value) -> Vec<RuntimeCommand> {
         | "audio_test_input" => command_id
             .map(|command_id| {
                 let command_type = normalized(&command_type);
+                let network_command_type = match command_type.as_str() {
+                    "bluetooth_set_power" => "bluetooth_set_radio",
+                    "bluetooth_scan" => "bluetooth_scan_start",
+                    "bluetooth_stop_scan" => "bluetooth_scan_stop",
+                    other => other,
+                };
                 let timeout_ms = match command_type.as_str() {
                     "bluetooth_pair" => 90_000,
                     "bluetooth_connect" => 30_000,
@@ -1261,7 +1270,7 @@ fn commands_for_cloud_command(command: &Value) -> Vec<RuntimeCommand> {
                 vec![RuntimeCommand::CorrelatedWorkerCommand {
                     domain: WorkerDomain::Network,
                     envelope: WorkerEnvelope::command(
-                        command_type.clone(),
+                        network_command_type,
                         Some(command_id.clone()),
                         command
                             .get("payload")
@@ -2341,14 +2350,15 @@ mod tests {
 
     #[test]
     fn bluetooth_and_audio_cloud_commands_are_correlated_to_network() {
-        for command_type in [
-            "bluetooth_set_radio",
-            "bluetooth_scan_start",
-            "bluetooth_pair",
-            "bluetooth_connect",
-            "audio_apply_settings",
-            "audio_test_output",
-            "audio_test_input",
+        for (command_type, network_command_type) in [
+            ("bluetooth_set_power", "bluetooth_set_radio"),
+            ("bluetooth_scan", "bluetooth_scan_start"),
+            ("bluetooth_stop_scan", "bluetooth_scan_stop"),
+            ("bluetooth_pair", "bluetooth_pair"),
+            ("bluetooth_connect", "bluetooth_connect"),
+            ("audio_apply_settings", "audio_apply_settings"),
+            ("audio_test_output", "audio_test_output"),
+            ("audio_test_input", "audio_test_input"),
         ] {
             let commands = commands_for_event(
                 &RuntimeState::default(),
@@ -2359,13 +2369,19 @@ mod tests {
                 })),
             );
             let RuntimeCommand::CorrelatedWorkerCommand {
-                domain, command_id, ..
+                domain,
+                envelope,
+                command_id,
+                command_type: correlated_command_type,
+                ..
             } = &commands[0]
             else {
                 panic!("expected correlated network command for {command_type}");
             };
             assert_eq!(*domain, WorkerDomain::Network);
+            assert_eq!(envelope.message_type, network_command_type);
             assert_eq!(command_id, "command-123");
+            assert_eq!(correlated_command_type, command_type);
         }
     }
 }
