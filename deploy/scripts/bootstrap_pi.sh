@@ -68,7 +68,16 @@ if ! command -v bluealsa >/dev/null 2>&1 \
         alsa-utils bluez bluez-alsa-utils libasound2-plugin-bluez
 fi
 rfkill unblock bluetooth || true
-systemctl enable --now bluetooth.service bluealsa.service
+install -d -m 0755 "${UNIT_DIR}/bluealsa.service.d"
+install -m 0644 -o root -g root \
+    "${REPO_ROOT}/deploy/systemd/bluealsa-yoyopod.conf" \
+    "${UNIT_DIR}/bluealsa.service.d/20-yoyopod-audio-role.conf"
+systemctl daemon-reload
+systemctl enable --now bluetooth.service
+systemctl disable --now bluealsa-aplay.service
+systemctl enable bluealsa.service
+systemctl restart bluealsa.service
+systemctl is-active --quiet bluetooth.service bluealsa.service
 
 # 1. Create directory skeleton.
 install -d -m 0755 -o root -g root \

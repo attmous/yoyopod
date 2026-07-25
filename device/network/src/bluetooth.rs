@@ -477,7 +477,32 @@ impl BluetoothController for BluezBluetoothController {
                 let _ = self.disconnect(&connected.accessory_id);
             }
         }
-        self.call_device(accessory_id, "Connect")
+        let path = self
+            .device_path(accessory_id)
+            .ok_or_else(BluetoothOperationError::invalid_accessory)?;
+        if device_property::<bool>(&self.connection, &path, "Connected").unwrap_or(false) {
+            return self.refresh_inner();
+        }
+        let uuids =
+            device_property::<Vec<String>>(&self.connection, &path, "UUIDs").unwrap_or_default();
+        let profile = preferred_output_profile(&uuids).ok_or_else(|| BluetoothOperationError {
+            code: "bluetooth_audio_profile_unavailable",
+            message: "The accessory does not offer a compatible playback profile".to_string(),
+        })?;
+        let connect_result = self
+            .device_proxy(&path)?
+            .call::<_, _, ()>("ConnectProfile", &(profile,));
+        if connect_result.is_err()
+            && !device_property::<bool>(&self.connection, &path, "Connected").unwrap_or(false)
+        {
+            return Err(BluetoothOperationError {
+                code: "bluetooth_connection_rejected",
+                message:
+                    "The accessory rejected the audio connection. Put it in pairing mode and try again."
+                        .to_string(),
+            });
+        }
+        self.refresh_inner()
     }
 
     fn disconnect(
@@ -599,6 +624,23 @@ fn capabilities_for(uuids: &[String]) -> BluetoothCapabilities {
     }
 }
 
+fn preferred_output_profile(uuids: &[String]) -> Option<&'static str> {
+    let has = |uuid: &str| {
+        uuids
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(uuid))
+    };
+    if has(AUDIO_SINK_UUID) {
+        Some(AUDIO_SINK_UUID)
+    } else if has(HANDSFREE_UUID) {
+        Some(HANDSFREE_UUID)
+    } else if has(HEADSET_UUID) {
+        Some(HEADSET_UUID)
+    } else {
+        None
+    }
+}
+
 fn accessory_kind(name: &str, capabilities: &BluetoothCapabilities) -> String {
     let normalized = name.to_lowercase();
     if normalized.contains("earbud") || normalized.contains("airpod") || normalized.contains("buds")
@@ -669,6 +711,24 @@ mod tests {
         assert!(capabilities.output);
         assert!(capabilities.stereo);
         assert!(capabilities.microphone);
+    }
+
+    #[test]
+    fn connection_prefers_remote_playback_profile() {
+        assert_eq!(
+            preferred_output_profile(
+                &[HANDSFREE_UUID.to_string(), AUDIO_SINK_UUID.to_uppercase(),]
+            ),
+            Some(AUDIO_SINK_UUID)
+        );
+        assert_eq!(
+            preferred_output_profile(&[HANDSFREE_UUID.to_string()]),
+            Some(HANDSFREE_UUID)
+        );
+        assert_eq!(
+            preferred_output_profile(&["0000180f-0000-1000-8000-00805f9b34fb".to_string()]),
+            None
+        );
     }
 
     #[test]

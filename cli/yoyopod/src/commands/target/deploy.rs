@@ -25,6 +25,10 @@ use super::TargetContext;
 const CI_POLL_INTERVAL_SECS: u64 = 20;
 const CI_POLL_TIMEOUT_MINS: u64 = 30;
 const WIFI_POLKIT_RULE_PATH: &str = "/etc/polkit-1/rules.d/90-yoyopod-wifi.rules";
+const BLUEALSA_DROPIN_DIR: &str = "/etc/systemd/system/bluealsa.service.d";
+const BLUEALSA_DROPIN_PATH: &str =
+    "/etc/systemd/system/bluealsa.service.d/20-yoyopod-audio-role.conf";
+const BLUEALSA_DROPIN_SOURCE: &str = "deploy/systemd/bluealsa-yoyopod.conf";
 
 pub fn run(
     ctx: &TargetContext,
@@ -182,8 +186,10 @@ pub fn run(
 
     // Bluetooth audio lives outside the artifact: BlueZ provides radio/device
     // management and BlueALSA exposes paired profiles through stable ALSA PCM
-    // aliases. Only install packages when missing, then make the private local
-    // registry writable by the service account.
+    // aliases. YoYoPod must be the source/gateway so audio flows out to a
+    // speaker or headset; advertising a sink role reverses that direction.
+    // Install the explicit role drop-in idempotently and restart BlueALSA only
+    // when its configuration changed (or the service is not already active).
     let bluetooth_prereqs_cmd = format!(
         "if ! command -v bluealsa >/dev/null 2>&1 || ! command -v aplay >/dev/null 2>&1 || \
          ! dpkg-query -W libasound2-plugin-bluez >/dev/null 2>&1; then \
@@ -192,9 +198,27 @@ pub fn run(
              alsa-utils bluez bluez-alsa-utils libasound2-plugin-bluez; \
          fi && \
          {{ sudo -n rfkill unblock bluetooth || true; }} && \
-         sudo -n systemctl enable --now bluetooth.service bluealsa.service && \
+         bluealsa_restart=0 && \
+         sudo -n install -d -m 0755 {bluealsa_dropin_dir} && \
+         if ! sudo -n cmp -s {bluealsa_dropin_source} {bluealsa_dropin_path}; then \
+           sudo -n install -o root -g root -m 0644 \
+             {bluealsa_dropin_source} {bluealsa_dropin_path} && \
+           bluealsa_restart=1; \
+         fi && \
+         sudo -n systemctl daemon-reload && \
+         sudo -n systemctl enable --now bluetooth.service && \
+         sudo -n systemctl disable --now bluealsa-aplay.service && \
+         sudo -n systemctl enable bluealsa.service && \
+         if [ \"$bluealsa_restart\" -eq 1 ] || \
+            ! systemctl is-active --quiet bluealsa.service; then \
+           sudo -n systemctl restart bluealsa.service; \
+         fi && \
+         systemctl is-active --quiet bluetooth.service bluealsa.service && \
          sudo -n install -d -m 0750 -o {user} -g {user} \
            /var/lib/yoyopod /var/lib/yoyopod/bluetooth /var/lib/yoyopod/audio",
+        bluealsa_dropin_dir = shell_quote(BLUEALSA_DROPIN_DIR),
+        bluealsa_dropin_source = shell_quote(BLUEALSA_DROPIN_SOURCE),
+        bluealsa_dropin_path = shell_quote(BLUEALSA_DROPIN_PATH),
         user = shell_quote(&wifi_service_user),
     );
     let rc = run_remote(
@@ -552,5 +576,17 @@ mod tests {
     fn wifi_polkit_rule_normalizes_safe_service_user() {
         let rule = render_wifi_polkit_rule("  raouf  ").expect("valid service user");
         assert!(rule.contains("subject.user === \"raouf\""));
+    }
+
+    #[test]
+    fn bluealsa_dropin_is_outbound_only() {
+        let dropin = include_str!("../../../../../deploy/systemd/bluealsa-yoyopod.conf");
+
+        assert!(dropin.contains("-p a2dp-source"));
+        assert!(dropin.contains("-p hfp-ag"));
+        assert!(dropin.contains("-p hsp-ag"));
+        assert!(!dropin.contains("-p a2dp-sink"));
+        assert!(!dropin.contains("-p hfp-hf"));
+        assert!(!dropin.contains("-p hsp-hs"));
     }
 }
