@@ -42,6 +42,8 @@ contract.
   local music, mpv, and remote playback contracts
 - [`design/`](design/README.md) — UI design targets and visual previews
 - [`product/`](product/README.md) — product definition and positioning
+- [`reviews/`](reviews/README.md) — dated project reviews and
+  goal-specific readiness plans
 - [`assets/`](assets/) — images and media used in docs
 
 ## Recommended Reading Paths
