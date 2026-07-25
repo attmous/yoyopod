@@ -57,12 +57,7 @@ struct BluetoothAutoConnectBackoff {
 
 impl BluetoothAutoConnectBackoff {
     fn candidate(&mut self, state: &BluetoothState, now: Instant) -> Option<String> {
-        if !state.radio_enabled
-            || state
-                .accessories
-                .iter()
-                .any(|accessory| accessory.connected)
-        {
+        if !state.radio_enabled {
             self.reset();
             return None;
         }
@@ -71,12 +66,13 @@ impl BluetoothAutoConnectBackoff {
                 accessory.accessory_id == *accessory_id
                     && accessory.paired
                     && accessory.auto_connect
+                    && !accessory.connected
             })
         });
         state
             .accessories
             .iter()
-            .filter(|accessory| accessory.paired && accessory.auto_connect)
+            .filter(|accessory| accessory.paired && accessory.auto_connect && !accessory.connected)
             .find(|accessory| {
                 self.retries
                     .get(&accessory.accessory_id)
@@ -96,6 +92,10 @@ impl BluetoothAutoConnectBackoff {
             .saturating_mul(multiplier)
             .min(BLUETOOTH_AUTO_CONNECT_MAX_BACKOFF);
         retry.retry_at = now.checked_add(delay);
+    }
+
+    fn record_success(&mut self, accessory_id: &str) {
+        self.retries.remove(accessory_id);
     }
 
     fn reset(&mut self) {
@@ -1018,7 +1018,7 @@ fn auto_connect_saved_accessory(
     };
     match bluetooth.connect(&accessory_id) {
         Ok(connected) => {
-            backoff.reset();
+            backoff.record_success(&accessory_id);
             connected
         }
         Err(_) => {
@@ -1381,6 +1381,27 @@ mod tests {
         auto_connect_saved_accessory(&mut bluetooth, multiple, &mut backoff, first_retry_at);
         assert_eq!(backoff.retries["accessory-a"].failed_attempts, 2);
         assert_eq!(backoff.retries["accessory-b"].failed_attempts, 1);
+    }
+
+    #[test]
+    fn connected_auto_connect_accessories_do_not_block_remaining_routes() {
+        let now = Instant::now();
+        let mut state = auto_connect_state("accessory-a");
+        state.accessories[0].connected = true;
+        let mut second = state.accessories[0].clone();
+        second.accessory_id = "accessory-b".to_string();
+        second.name = "Second headset".to_string();
+        second.connected = false;
+        state.accessories.push(second);
+
+        let mut backoff = BluetoothAutoConnectBackoff::default();
+        backoff.record_failure("accessory-a".to_string(), now);
+
+        assert_eq!(
+            backoff.candidate(&state, now),
+            Some("accessory-b".to_string())
+        );
+        assert!(!backoff.retries.contains_key("accessory-a"));
     }
 
     fn run_wifi_command(command: WorkerEnvelope, fail_scan: bool) -> Vec<WorkerEnvelope> {
