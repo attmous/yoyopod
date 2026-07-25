@@ -635,19 +635,6 @@ impl BluetoothController for BluezBluetoothController {
     }
 
     fn connect(&mut self, accessory_id: &str) -> Result<BluetoothState, BluetoothOperationError> {
-        let previously_connected = self
-            .refresh_inner()
-            .map(|state| {
-                state
-                    .accessories
-                    .into_iter()
-                    .filter(|accessory| {
-                        accessory.connected && accessory.accessory_id != accessory_id
-                    })
-                    .map(|accessory| accessory.accessory_id)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
         let path = self
             .device_path(accessory_id)
             .ok_or_else(BluetoothOperationError::invalid_accessory)?;
@@ -668,12 +655,8 @@ impl BluetoothController for BluezBluetoothController {
                         .to_string(),
             });
         }
-        // Keep the active route working until its replacement has accepted the
-        // connection. This also preserves the old accessory when validation or
-        // the BlueZ connection attempt fails.
-        for connected_id in previously_connected {
-            let _ = self.disconnect(&connected_id);
-        }
+        // Keep other accessories connected: media, call playback, and call
+        // capture may intentionally use different selected routes.
         self.refresh_inner()
     }
 
