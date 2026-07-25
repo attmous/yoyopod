@@ -460,19 +460,13 @@ impl AudioManager {
             alert_pcm,
         )?;
 
-        let media_fallback = !self.desired.routes.media_output_id.starts_with("builtin-")
-            && media_accessory.is_none();
-        let communication_output_fallback = !self
-            .desired
-            .routes
-            .communication_output_id
-            .starts_with("builtin-")
+        let media_fallback =
+            self.desired.routes.media_output_id != "builtin-speaker" && media_accessory.is_none();
+        let communication_output_fallback = self.desired.routes.communication_output_id
+            != "builtin-speaker"
             && communication_output_accessory.is_none();
-        let communication_input_fallback = !self
-            .desired
-            .routes
-            .communication_input_id
-            .starts_with("builtin-")
+        let communication_input_fallback = self.desired.routes.communication_input_id
+            != "builtin-microphone"
             && communication_input_accessory.is_none();
         let fallback =
             media_fallback || communication_output_fallback || communication_input_fallback;
@@ -874,6 +868,49 @@ mod tests {
         );
         assert_eq!(applied.state.status, "degraded");
         assert_eq!(applied.state.applied_revision, 2);
+    }
+
+    #[test]
+    fn unknown_builtin_prefixed_routes_fall_back_to_exact_builtin_endpoints() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let mut manager = AudioManager::open_at(
+            directory.path().join("settings.json"),
+            directory.path().join("asoundrc"),
+        );
+        let state = BluetoothState {
+            schema_version: 1,
+            status: "ready".to_string(),
+            radio_enabled: true,
+            scanning: false,
+            accessories: Vec::new(),
+            scanned_at: None,
+            reported_at: 1,
+        };
+        let mut settings = AudioSettings::default();
+        settings.routes.media_output_id = "builtin-old-speaker".to_string();
+        settings.routes.communication_output_id = "builtin-old-speaker".to_string();
+        settings.routes.communication_input_id = "builtin-old-microphone".to_string();
+
+        let applied = manager
+            .apply(2, settings, &UnavailableBluetoothController, &state)
+            .expect("apply");
+
+        assert_eq!(
+            applied.state.applied.routes.media_output_id,
+            "builtin-speaker"
+        );
+        assert_eq!(
+            applied.state.applied.routes.communication_output_id,
+            "builtin-speaker"
+        );
+        assert_eq!(
+            applied.state.applied.routes.communication_input_id,
+            "builtin-microphone"
+        );
+        assert_eq!(applied.route.media_device, "alsa/default");
+        assert_eq!(applied.route.voip_playback_device, "ALSA: wm8960-soundcard");
+        assert_eq!(applied.route.voip_capture_device, "ALSA: wm8960-soundcard");
+        assert_eq!(applied.state.status, "degraded");
     }
 
     #[test]

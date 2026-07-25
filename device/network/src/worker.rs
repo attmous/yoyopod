@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -44,10 +45,14 @@ struct PendingWifiChange {
 }
 
 #[derive(Debug, Default)]
-struct BluetoothAutoConnectBackoff {
-    accessory_id: Option<String>,
+struct BluetoothAutoConnectRetry {
     failed_attempts: u32,
     retry_at: Option<Instant>,
+}
+
+#[derive(Debug, Default)]
+struct BluetoothAutoConnectBackoff {
+    retries: HashMap<String, BluetoothAutoConnectRetry>,
 }
 
 impl BluetoothAutoConnectBackoff {
@@ -61,43 +66,40 @@ impl BluetoothAutoConnectBackoff {
             self.reset();
             return None;
         }
-        let Some(accessory_id) = state
+        self.retries.retain(|accessory_id, _| {
+            state.accessories.iter().any(|accessory| {
+                accessory.accessory_id == *accessory_id
+                    && accessory.paired
+                    && accessory.auto_connect
+            })
+        });
+        state
             .accessories
             .iter()
-            .find(|accessory| accessory.paired && accessory.auto_connect)
+            .filter(|accessory| accessory.paired && accessory.auto_connect)
+            .find(|accessory| {
+                self.retries
+                    .get(&accessory.accessory_id)
+                    .and_then(|retry| retry.retry_at)
+                    .map(|retry_at| now >= retry_at)
+                    .unwrap_or(true)
+            })
             .map(|accessory| accessory.accessory_id.clone())
-        else {
-            self.reset();
-            return None;
-        };
-        if self.accessory_id.as_deref() != Some(accessory_id.as_str()) {
-            self.reset();
-            self.accessory_id = Some(accessory_id.clone());
-        }
-        if self.retry_at.is_some_and(|retry_at| now < retry_at) {
-            return None;
-        }
-        Some(accessory_id)
     }
 
     fn record_failure(&mut self, accessory_id: String, now: Instant) {
-        if self.accessory_id.as_deref() != Some(accessory_id.as_str()) {
-            self.reset();
-            self.accessory_id = Some(accessory_id);
-        }
-        self.failed_attempts = self.failed_attempts.saturating_add(1);
-        let exponent = self.failed_attempts.saturating_sub(1).min(5);
+        let retry = self.retries.entry(accessory_id).or_default();
+        retry.failed_attempts = retry.failed_attempts.saturating_add(1);
+        let exponent = retry.failed_attempts.saturating_sub(1).min(5);
         let multiplier = 1_u32 << exponent;
         let delay = BLUETOOTH_AUTO_CONNECT_MIN_BACKOFF
             .saturating_mul(multiplier)
             .min(BLUETOOTH_AUTO_CONNECT_MAX_BACKOFF);
-        self.retry_at = now.checked_add(delay);
+        retry.retry_at = now.checked_add(delay);
     }
 
     fn reset(&mut self) {
-        self.accessory_id = None;
-        self.failed_attempts = 0;
-        self.retry_at = None;
+        self.retries.clear();
     }
 }
 
@@ -1336,8 +1338,9 @@ mod tests {
             first_attempt_at,
         );
         assert_eq!(retained, state);
-        assert_eq!(backoff.failed_attempts, 1);
-        let first_retry_at = backoff.retry_at.expect("retry deadline");
+        let retry = backoff.retries.get("accessory-a").expect("retry state");
+        assert_eq!(retry.failed_attempts, 1);
+        let first_retry_at = retry.retry_at.expect("retry deadline");
         assert_eq!(
             first_retry_at.duration_since(first_attempt_at),
             BLUETOOTH_AUTO_CONNECT_MIN_BACKOFF
@@ -1349,26 +1352,26 @@ mod tests {
             &mut backoff,
             first_retry_at - Duration::from_millis(1),
         );
-        assert_eq!(backoff.failed_attempts, 1);
+        assert_eq!(backoff.retries["accessory-a"].failed_attempts, 1);
 
         auto_connect_saved_accessory(&mut bluetooth, state, &mut backoff, first_retry_at);
-        assert_eq!(backoff.failed_attempts, 2);
+        assert_eq!(backoff.retries["accessory-a"].failed_attempts, 2);
         assert_eq!(
-            backoff
+            backoff.retries["accessory-a"]
                 .retry_at
                 .expect("second retry deadline")
                 .duration_since(first_retry_at),
             BLUETOOTH_AUTO_CONNECT_MIN_BACKOFF.saturating_mul(2)
         );
 
-        auto_connect_saved_accessory(
-            &mut bluetooth,
-            auto_connect_state("accessory-b"),
-            &mut backoff,
-            first_retry_at,
-        );
-        assert_eq!(backoff.accessory_id.as_deref(), Some("accessory-b"));
-        assert_eq!(backoff.failed_attempts, 1);
+        let mut multiple = auto_connect_state("accessory-a");
+        let mut second = multiple.accessories[0].clone();
+        second.accessory_id = "accessory-b".to_string();
+        second.name = "Second headset".to_string();
+        multiple.accessories.push(second);
+        auto_connect_saved_accessory(&mut bluetooth, multiple, &mut backoff, first_retry_at);
+        assert_eq!(backoff.retries["accessory-a"].failed_attempts, 2);
+        assert_eq!(backoff.retries["accessory-b"].failed_attempts, 1);
     }
 
     fn run_wifi_command(command: WorkerEnvelope, fail_scan: bool) -> Vec<WorkerEnvelope> {
