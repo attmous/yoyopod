@@ -1077,6 +1077,12 @@ impl RuntimeState {
         }
     }
 
+    pub fn apply_audio_route_local(&mut self, route: &Value) {
+        if let Some(volume) = i32_field(route, "media_volume") {
+            self.media.volume = volume.clamp(0, 100);
+        }
+    }
+
     pub fn apply_voip_snapshot(&mut self, snapshot: &Value) {
         if let Some(registered) = snapshot.get("registered").and_then(Value::as_bool) {
             self.call.registered = registered;

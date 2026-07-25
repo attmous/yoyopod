@@ -103,8 +103,8 @@ impl RuntimeEvent {
             Self::WifiState(_)
             | Self::WifiChangeCandidate(_)
             | Self::BluetoothState(_)
-            | Self::AudioState(_)
-            | Self::AudioRouteLocal(_) => {}
+            | Self::AudioState(_) => {}
+            Self::AudioRouteLocal(route) => state.apply_audio_route_local(route),
             Self::WifiProvisioningState(payload) => state.apply_wifi_provisioning_state(payload),
             Self::PowerSnapshot(snapshot) => {
                 state.resolve_overlay_for(WorkerDomain::Power);
@@ -694,9 +694,9 @@ fn commands_for_settings_intent(
             let level = ((state.media.volume.clamp(0, 100) + 5) / 10).clamp(1, 10);
             let next = if level >= 10 { 1 } else { level + 1 };
             vec![worker_command(
-                WorkerDomain::Media,
-                "media.set_volume",
-                json!({"volume": next * 10}),
+                WorkerDomain::Network,
+                "audio_set_output_level",
+                json!({"level": next * 10}),
             )]
         }
         SettingsIntent::WifiSetupStart => vec![worker_command(
@@ -1109,14 +1109,14 @@ fn commands_for_voice_command(
             })
             .unwrap_or_default(),
         VoiceCommandIntent::VolumeUp => vec![worker_command(
-            WorkerDomain::Media,
-            "media.set_volume",
-            json!({"volume": adjusted_volume(state, 10)}),
+            WorkerDomain::Network,
+            "audio_set_output_level",
+            json!({"level": adjusted_volume(state, 10)}),
         )],
         VoiceCommandIntent::VolumeDown => vec![worker_command(
-            WorkerDomain::Media,
-            "media.set_volume",
-            json!({"volume": adjusted_volume(state, -10)}),
+            WorkerDomain::Network,
+            "audio_set_output_level",
+            json!({"level": adjusted_volume(state, -10)}),
         )],
         VoiceCommandIntent::ReadScreen
         | VoiceCommandIntent::MuteMic
@@ -1895,22 +1895,36 @@ mod tests {
     }
 
     #[test]
-    fn setup_volume_step_wraps_and_routes_to_media() {
+    fn setup_volume_step_wraps_and_routes_to_managed_audio() {
         let mut state = RuntimeState::default();
         state.media.volume = 100;
         let event = RuntimeEvent::UiIntent(UiIntent::Settings(SettingsIntent::VolumeStep));
         let commands = commands_for_event(&state, &event);
 
         let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
-            panic!("expected media command");
+            panic!("expected managed audio command");
         };
-        assert_eq!(*domain, WorkerDomain::Media);
-        assert_eq!(envelope.message_type, "media.set_volume");
-        assert_eq!(envelope.payload["volume"], 10);
+        assert_eq!(*domain, WorkerDomain::Network);
+        assert_eq!(envelope.message_type, "audio_set_output_level");
+        assert_eq!(envelope.payload["level"], 10);
 
         event.apply(&mut state);
         assert_eq!(state.media.volume, 10);
         assert_eq!(state.ui_snapshot().settings.volume_level, 1);
+    }
+
+    #[test]
+    fn voice_volume_routes_to_managed_audio() {
+        let mut state = RuntimeState::default();
+        state.media.volume = 90;
+        let commands = commands_for_voice_command(&state, VoiceCommandIntent::VolumeUp, "");
+
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected managed audio command");
+        };
+        assert_eq!(*domain, WorkerDomain::Network);
+        assert_eq!(envelope.message_type, "audio_set_output_level");
+        assert_eq!(envelope.payload["level"], 100);
     }
 
     #[test]
@@ -2346,6 +2360,13 @@ mod tests {
                     if *domain != WorkerDomain::Cloud
             )
         }));
+
+        let mut state = RuntimeState::default();
+        RuntimeEvent::AudioRouteLocal(json!({
+            "media_volume": 100
+        }))
+        .apply(&mut state);
+        assert_eq!(state.media.volume, 100);
     }
 
     #[test]

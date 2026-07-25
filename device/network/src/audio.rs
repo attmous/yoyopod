@@ -32,7 +32,7 @@ impl Default for AudioSettings {
                 communication: 70,
                 alerts: 70,
                 microphone_gain: 60,
-                max_output: 85,
+                max_output: 100,
             },
             alert_policy: "mirror_builtin_and_selected".to_string(),
             fallback_policy: "builtin".to_string(),
@@ -177,6 +177,21 @@ impl AudioManager {
         }
         self.desired_revision = revision;
         self.desired = settings;
+        self.persist()?;
+        self.resolve(bluetooth, bluetooth_state)
+    }
+
+    pub fn set_output_level(
+        &mut self,
+        level: u8,
+        bluetooth: &dyn BluetoothController,
+        bluetooth_state: &BluetoothState,
+    ) -> Result<AppliedAudio, AudioOperationError> {
+        let level = level.min(100);
+        self.desired.levels.media = level;
+        self.desired.levels.communication = level;
+        self.desired.levels.alerts = level.max(20);
+        self.desired.levels.max_output = 100;
         self.persist()?;
         self.resolve(bluetooth, bluetooth_state)
     }
@@ -405,6 +420,8 @@ fn validate_settings(settings: &AudioSettings) -> Result<(), AudioOperationError
     if settings.alert_policy != "mirror_builtin_and_selected"
         || settings.fallback_policy != "builtin"
         || levels.max_output < 20
+        || levels.max_output > 100
+        || levels.microphone_gain > 100
         || levels.alerts < 20
         || levels.media > levels.max_output
         || levels.communication > levels.max_output
@@ -576,6 +593,32 @@ mod tests {
         );
         assert_eq!(applied.state.status, "degraded");
         assert_eq!(applied.state.applied_revision, 2);
+    }
+
+    #[test]
+    fn local_output_level_updates_all_output_domains_and_persists() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let settings_path = directory.path().join("settings.json");
+        let mut manager =
+            AudioManager::open_at(settings_path.clone(), directory.path().join("asoundrc"));
+        let state = BluetoothState::unavailable();
+
+        let applied = manager
+            .set_output_level(100, &UnavailableBluetoothController, &state)
+            .expect("set output level");
+
+        assert_eq!(applied.route.media_volume, 100);
+        assert_eq!(applied.route.communication_volume, 100);
+        assert_eq!(applied.state.applied.levels.media, 100);
+        assert_eq!(applied.state.applied.levels.communication, 100);
+        assert_eq!(applied.state.applied.levels.alerts, 100);
+        assert_eq!(applied.state.applied.levels.max_output, 100);
+
+        let stored: StoredAudioSettings =
+            serde_json::from_slice(&fs::read(settings_path).expect("settings file"))
+                .expect("stored settings");
+        assert_eq!(stored.settings.levels.media, 100);
+        assert_eq!(stored.settings.levels.max_output, 100);
     }
 
     #[allow(dead_code)]

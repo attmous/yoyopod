@@ -625,6 +625,34 @@ where
                 audio,
             )?;
         }
+        "audio_set_output_level" => {
+            let level = envelope
+                .payload
+                .get("level")
+                .and_then(serde_json::Value::as_u64)
+                .filter(|level| *level <= 100)
+                .map(|level| level as u8);
+            match level {
+                Some(level) => match audio.set_output_level(level, bluetooth, bluetooth_state) {
+                    Ok(applied) => {
+                        write_envelope(
+                            output,
+                            &audio_state_result(envelope.request_id, &applied.state),
+                        )?;
+                        emit_applied_audio(output, &applied)?;
+                    }
+                    Err(error) => emit_audio_error(output, envelope.request_id, error)?,
+                },
+                None => emit_audio_error(
+                    output,
+                    envelope.request_id,
+                    crate::audio::AudioOperationError {
+                        code: "audio_invalid_settings",
+                        message: "Audio output level must be between 0 and 100".to_string(),
+                    },
+                )?,
+            }
+        }
         "audio_apply_settings" => {
             let revision = envelope
                 .payload
