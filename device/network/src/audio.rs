@@ -123,7 +123,7 @@ impl AudioOperationError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppliedAudio {
     pub state: AudioState,
     pub route: AudioRouteLocal,
@@ -135,6 +135,7 @@ pub struct AudioManager {
     desired_revision: u64,
     desired: AudioSettings,
     input_meter: Option<AudioInputMeter>,
+    last_resolved: Option<AppliedAudio>,
 }
 
 impl AudioManager {
@@ -159,6 +160,7 @@ impl AudioManager {
             desired_revision: stored.as_ref().map_or(0, |stored| stored.revision),
             desired: stored.map_or_else(AudioSettings::default, |stored| stored.settings),
             input_meter: None,
+            last_resolved: None,
         }
     }
 
@@ -202,6 +204,19 @@ impl AudioManager {
         bluetooth_state: &BluetoothState,
     ) -> Result<AppliedAudio, AudioOperationError> {
         self.resolve(bluetooth, bluetooth_state)
+    }
+
+    pub fn current_if_changed(
+        &mut self,
+        bluetooth: &dyn BluetoothController,
+        bluetooth_state: &BluetoothState,
+    ) -> Result<Option<AppliedAudio>, AudioOperationError> {
+        let previous = self.last_resolved.clone();
+        let applied = self.resolve(bluetooth, bluetooth_state)?;
+        Ok(previous
+            .as_ref()
+            .is_none_or(|previous| !same_audio_application(previous, &applied))
+            .then_some(applied))
     }
 
     pub fn test_output(
@@ -294,31 +309,40 @@ impl AudioManager {
                 accessory.accessory_id == endpoint_id && accessory.paired && accessory.connected
             })
         };
-        let output_address = connected(&self.desired.routes.media_output_id)
-            .or_else(|| connected(&self.desired.routes.communication_output_id))
+        let media_accessory = connected(&self.desired.routes.media_output_id);
+        let communication_output_accessory =
+            connected(&self.desired.routes.communication_output_id)
+                .filter(|accessory| accessory.capabilities.hands_free);
+        let communication_input_accessory = connected(&self.desired.routes.communication_input_id)
+            .filter(|accessory| accessory.capabilities.microphone);
+        let media_address =
+            media_accessory.and_then(|accessory| bluetooth.raw_address(&accessory.accessory_id));
+        let communication_output_address = communication_output_accessory
             .and_then(|accessory| bluetooth.raw_address(&accessory.accessory_id));
-        let input_address = connected(&self.desired.routes.communication_input_id)
+        let communication_input_address = communication_input_accessory
             .and_then(|accessory| bluetooth.raw_address(&accessory.accessory_id));
-        write_asound_config(
-            &self.asound_path,
-            output_address.as_deref(),
-            input_address.as_deref(),
-        )?;
+        let output_address = media_address
+            .as_deref()
+            .or(communication_output_address.as_deref());
+        let input_address = communication_input_address
+            .as_deref()
+            .or(communication_output_address.as_deref());
+        write_asound_config(&self.asound_path, output_address, input_address)?;
 
         let media_fallback = !self.desired.routes.media_output_id.starts_with("builtin-")
-            && output_address.is_none();
+            && media_accessory.is_none();
         let communication_output_fallback = !self
             .desired
             .routes
             .communication_output_id
             .starts_with("builtin-")
-            && connected(&self.desired.routes.communication_output_id).is_none();
+            && communication_output_accessory.is_none();
         let communication_input_fallback = !self
             .desired
             .routes
             .communication_input_id
             .starts_with("builtin-")
-            && input_address.is_none();
+            && communication_input_accessory.is_none();
         let fallback =
             media_fallback || communication_output_fallback || communication_input_fallback;
         let route = AudioRouteLocal {
@@ -374,7 +398,7 @@ impl AudioManager {
             communication_output_fallback,
             communication_input_fallback,
         );
-        Ok(AppliedAudio {
+        let applied = AppliedAudio {
             state: AudioState {
                 schema_version: 1,
                 status: if bluetooth_state.status == "unavailable" {
@@ -396,7 +420,9 @@ impl AudioManager {
                 reported_at: epoch_seconds(),
             },
             route,
-        })
+        };
+        self.last_resolved = Some(applied.clone());
+        Ok(applied)
     }
 
     fn persist(&self) -> Result<(), AudioOperationError> {
@@ -507,8 +533,19 @@ fn write_asound_config(
 pcm.yoyopod_bt_a2dp {{\n  type bluealsa\n  device \"{output}\"\n  profile \"a2dp\"\n}}\n\
 pcm.yoyopod_bt_sco {{\n  type bluealsa\n  device \"{input}\"\n  profile \"sco\"\n}}\n"
     );
+    if fs::read(path).is_ok_and(|existing| existing == config.as_bytes()) {
+        return Ok(());
+    }
     atomic_write(path, config.as_bytes())
         .map_err(|_| AudioOperationError::failed("The local audio route could not be configured"))
+}
+
+fn same_audio_application(left: &AppliedAudio, right: &AppliedAudio) -> bool {
+    let mut left_state = left.state.clone();
+    let mut right_state = right.state.clone();
+    left_state.reported_at = 0;
+    right_state.reported_at = 0;
+    left.route == right.route && left_state == right_state
 }
 
 fn local_alsa_device(device: &str) -> &str {
@@ -593,6 +630,74 @@ mod tests {
         );
         assert_eq!(applied.state.status, "degraded");
         assert_eq!(applied.state.applied_revision, 2);
+    }
+
+    #[test]
+    fn a2dp_only_communication_output_falls_back_to_builtin() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let mut manager = AudioManager::open_at(
+            directory.path().join("settings.json"),
+            directory.path().join("asoundrc"),
+        );
+        let accessory_id = "9b0692e3-a07a-42f0-9fa7-a7704bbcf778".to_string();
+        let state = BluetoothState {
+            schema_version: 1,
+            status: "ready".to_string(),
+            radio_enabled: true,
+            scanning: false,
+            accessories: vec![BluetoothAccessory {
+                accessory_id: accessory_id.clone(),
+                name: "Speaker".to_string(),
+                kind: "speaker".to_string(),
+                paired: true,
+                connected: true,
+                trusted: true,
+                auto_connect: true,
+                capabilities: BluetoothCapabilities {
+                    output: true,
+                    microphone: false,
+                    stereo: true,
+                    hands_free: false,
+                },
+                battery_percent: None,
+                signal_percent: None,
+                last_seen_at: 1,
+            }],
+            scanned_at: None,
+            reported_at: 1,
+        };
+        let mut settings = AudioSettings::default();
+        settings.routes.communication_output_id = accessory_id;
+
+        let applied = manager
+            .apply(2, settings, &UnavailableBluetoothController, &state)
+            .expect("apply");
+
+        assert_eq!(applied.route.voip_playback_device, "ALSA: default");
+        assert_eq!(
+            applied.state.applied.routes.communication_output_id,
+            "builtin-speaker"
+        );
+        assert_eq!(applied.state.status, "degraded");
+    }
+
+    #[test]
+    fn unchanged_periodic_audio_state_is_not_reapplied() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let mut manager = AudioManager::open_at(
+            directory.path().join("settings.json"),
+            directory.path().join("asoundrc"),
+        );
+        let state = BluetoothState::unavailable();
+
+        manager
+            .current(&UnavailableBluetoothController, &state)
+            .expect("initial state");
+        let unchanged = manager
+            .current_if_changed(&UnavailableBluetoothController, &state)
+            .expect("periodic state");
+
+        assert!(unchanged.is_none());
     }
 
     #[test]

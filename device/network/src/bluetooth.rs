@@ -554,7 +554,15 @@ impl BluetoothController for BluezBluetoothController {
     fn tick(&mut self) -> Option<BluetoothState> {
         let now = Instant::now();
         if self.scan_deadline.is_some_and(|deadline| now >= deadline) {
-            return self.stop_scan().ok();
+            return Some(match self.stop_scan() {
+                Ok(state) => state,
+                Err(_) => {
+                    self.scan_deadline = None;
+                    self.scan_refresh_deadline = None;
+                    self.state_refresh_deadline = now + STATE_REFRESH_INTERVAL;
+                    BluetoothState::unavailable()
+                }
+            });
         }
         if self.scan_deadline.is_some()
             && self
@@ -562,10 +570,16 @@ impl BluetoothController for BluezBluetoothController {
                 .is_some_and(|deadline| now >= deadline)
         {
             self.scan_refresh_deadline = Some(now + SCAN_REFRESH_INTERVAL);
-            return self.refresh_inner().ok();
+            return Some(
+                self.refresh_inner()
+                    .unwrap_or_else(|_| BluetoothState::unavailable()),
+            );
         }
         if now >= self.state_refresh_deadline {
-            return self.refresh_inner().ok();
+            return Some(
+                self.refresh_inner()
+                    .unwrap_or_else(|_| BluetoothState::unavailable()),
+            );
         }
         None
     }

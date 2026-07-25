@@ -917,7 +917,7 @@ fn service_bluetooth_and_audio(
     };
     *bluetooth_state = auto_connect_saved_accessory(bluetooth, state);
     emit_bluetooth_state(output, bluetooth_state)?;
-    if let Ok(applied) = audio.current(bluetooth, bluetooth_state) {
+    if let Ok(Some(applied)) = audio.current_if_changed(bluetooth, bluetooth_state) {
         emit_applied_audio(output, &applied)?;
     }
     Ok(())
