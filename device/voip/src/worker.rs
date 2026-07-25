@@ -330,6 +330,12 @@ where
                 .and_then(serde_json::Value::as_u64)
                 .filter(|value| *value <= 100)
                 .map(|value| value as u8);
+            let alert_volume = envelope
+                .payload
+                .get("alert_volume")
+                .and_then(serde_json::Value::as_u64)
+                .filter(|value| *value <= 100)
+                .map(|value| value as u8);
             match (
                 playback,
                 ringer,
@@ -337,6 +343,7 @@ where
                 media,
                 microphone_gain,
                 output_volume,
+                alert_volume,
             ) {
                 (
                     Some(playback),
@@ -345,6 +352,7 @@ where
                     Some(media),
                     Some(microphone_gain),
                     Some(output_volume),
+                    Some(alert_volume),
                 ) => {
                     backend.with_backend(|backend_ref| {
                         host.set_audio_devices(
@@ -355,6 +363,7 @@ where
                             media,
                             microphone_gain,
                             output_volume,
+                            alert_volume,
                         )
                     })?;
                     write_envelope_to(

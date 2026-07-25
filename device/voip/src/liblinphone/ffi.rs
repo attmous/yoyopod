@@ -161,6 +161,7 @@ pub struct LinphoneApi {
     pub core_enable_echo_cancellation: unsafe extern "C" fn(*mut LinphoneCore, c_int),
     pub core_set_mic_gain_db: unsafe extern "C" fn(*mut LinphoneCore, c_float),
     pub core_set_playback_gain_db: unsafe extern "C" fn(*mut LinphoneCore, c_float),
+    pub core_set_ring_level: unsafe extern "C" fn(*mut LinphoneCore, c_int),
     pub core_set_audio_port_range: unsafe extern "C" fn(*mut LinphoneCore, c_int, c_int),
     pub core_set_video_port_range: unsafe extern "C" fn(*mut LinphoneCore, c_int, c_int),
     pub core_create_nat_policy: unsafe extern "C" fn(*mut LinphoneCore) -> *mut LinphoneNatPolicy,
@@ -364,6 +365,9 @@ impl LinphoneApi {
             },
             core_set_playback_gain_db: unsafe {
                 required_symbol(library, c"linphone_core_set_playback_gain_db")?
+            },
+            core_set_ring_level: unsafe {
+                required_symbol(library, c"linphone_core_set_ring_level")?
             },
             core_set_audio_port_range: unsafe {
                 required_symbol(library, c"linphone_core_set_audio_port_range")?

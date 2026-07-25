@@ -33,6 +33,7 @@ pub trait VoipRuntimeBackend {
         _media_device: &str,
         _microphone_gain: u8,
         _output_volume: u8,
+        _alert_volume: u8,
     ) -> Result<(), String> {
         Ok(())
     }
@@ -316,6 +317,7 @@ impl VoipHost {
         media_device: &str,
         microphone_gain: u8,
         output_volume: u8,
+        alert_volume: u8,
     ) -> Result<(), String> {
         backend.set_audio_devices(
             playback_device,
@@ -324,6 +326,7 @@ impl VoipHost {
             media_device,
             microphone_gain,
             output_volume,
+            alert_volume,
         )
     }
 

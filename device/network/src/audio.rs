@@ -163,6 +163,7 @@ pub struct AudioRouteLocal {
     pub voip_capture_device: String,
     pub voip_media_device: String,
     pub communication_volume: u8,
+    pub alert_volume: u8,
     pub microphone_gain: u8,
 }
 
@@ -311,13 +312,7 @@ impl AudioManager {
                 route.voip_playback_device.as_str(),
                 route.communication_volume,
             ),
-            "alerts" => (
-                route.voip_ringer_device.as_str(),
-                self.desired
-                    .levels
-                    .alerts
-                    .min(self.desired.levels.max_output),
-            ),
+            "alerts" => (route.voip_ringer_device.as_str(), route.alert_volume),
             _ => return Err(AudioOperationError::invalid("Unknown audio test target")),
         };
         let sample = [
@@ -418,13 +413,25 @@ impl AudioManager {
             .and_then(|accessory| bluetooth.raw_address(&accessory.accessory_id));
         let communication_input_address = communication_input_accessory
             .and_then(|accessory| bluetooth.raw_address(&accessory.accessory_id));
+        let alert_accessory = communication_output_accessory.or(media_accessory);
+        let alert_pcm = if communication_output_accessory.is_some() || media_uses_sco {
+            "yoyopod_bt_sco"
+        } else {
+            "yoyopod_bt_a2dp"
+        };
         let output_address = media_address
             .as_deref()
             .or(communication_output_address.as_deref());
         let input_address = communication_input_address
             .as_deref()
             .or(communication_output_address.as_deref());
-        write_asound_config(&self.asound_path, output_address, input_address)?;
+        write_asound_config(
+            &self.asound_path,
+            output_address,
+            input_address,
+            local_alsa_device(&self.builtin.voip_ringer),
+            alert_pcm,
+        )?;
 
         let media_fallback = !self.desired.routes.media_output_id.starts_with("builtin-")
             && media_accessory.is_none();
@@ -468,8 +475,12 @@ impl AudioManager {
                 "ALSA: yoyopod_bt_sco"
             }
             .to_string(),
-            // Safety alerts/ringing always retain the built-in route.
-            voip_ringer_device: self.builtin.voip_ringer.clone(),
+            voip_ringer_device: if alert_accessory.is_some() {
+                "ALSA: yoyopod_alert_mirror"
+            } else {
+                self.builtin.voip_ringer.as_str()
+            }
+            .to_string(),
             voip_capture_device: if communication_input_fallback
                 || self.desired.routes.communication_input_id == "builtin-microphone"
             {
@@ -490,6 +501,11 @@ impl AudioManager {
                 .desired
                 .levels
                 .communication
+                .min(self.desired.levels.max_output),
+            alert_volume: self
+                .desired
+                .levels
+                .alerts
                 .min(self.desired.levels.max_output),
             microphone_gain: self.desired.levels.microphone_gain,
         };
@@ -626,20 +642,58 @@ fn write_asound_config(
     path: &Path,
     output_address: Option<&str>,
     input_address: Option<&str>,
+    builtin_ringer: &str,
+    selected_alert_pcm: &str,
 ) -> Result<(), AudioOperationError> {
     let output = output_address.unwrap_or("00:00:00:00:00:00");
     let input = input_address.unwrap_or(output);
+    let builtin_ringer = escape_alsa_string(builtin_ringer);
+    let selected_alert_pcm = escape_alsa_string(selected_alert_pcm);
     let config = format!(
-        "# Managed by YoYoPod. Bluetooth addresses stay on-device.\n\
+        concat!(
+            "# Managed by YoYoPod. Bluetooth addresses stay on-device.\n\
 </usr/share/alsa/alsa.conf>\n\
 pcm.yoyopod_bt_a2dp {{\n  type bluealsa\n  device \"{output}\"\n  profile \"a2dp\"\n}}\n\
-pcm.yoyopod_bt_sco {{\n  type bluealsa\n  device \"{input}\"\n  profile \"sco\"\n}}\n"
+pcm.yoyopod_bt_sco {{\n  type bluealsa\n  device \"{input}\"\n  profile \"sco\"\n}}\n",
+            "pcm.yoyopod_alert_multi {{\n\
+  type multi\n\
+  slaves.builtin.pcm \"plug:{builtin_ringer}\"\n\
+  slaves.builtin.channels 2\n\
+  slaves.selected.pcm \"plug:{selected_alert_pcm}\"\n\
+  slaves.selected.channels 2\n\
+  bindings.0.slave builtin\n\
+  bindings.0.channel 0\n\
+  bindings.1.slave builtin\n\
+  bindings.1.channel 1\n\
+  bindings.2.slave selected\n\
+  bindings.2.channel 0\n\
+  bindings.3.slave selected\n\
+  bindings.3.channel 1\n\
+}}\n\
+pcm.yoyopod_alert_mirror {{\n\
+  type route\n\
+  slave.pcm \"yoyopod_alert_multi\"\n\
+  slave.channels 4\n\
+  ttable.0.0 1\n\
+  ttable.1.1 1\n\
+  ttable.0.2 1\n\
+  ttable.1.3 1\n\
+}}\n"
+        ),
+        output = output,
+        input = input,
+        builtin_ringer = builtin_ringer,
+        selected_alert_pcm = selected_alert_pcm,
     );
     if fs::read(path).is_ok_and(|existing| existing == config.as_bytes()) {
         return Ok(());
     }
     atomic_write(path, config.as_bytes())
         .map_err(|_| AudioOperationError::failed("The local audio route could not be configured"))
+}
+
+fn escape_alsa_string(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 fn same_audio_application(left: &AppliedAudio, right: &AppliedAudio) -> bool {
@@ -866,6 +920,58 @@ mod tests {
     }
 
     #[test]
+    fn hands_free_output_mirrors_alerts_and_applies_the_alert_level() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let asound_path = directory.path().join("asoundrc");
+        let mut manager =
+            AudioManager::open_at(directory.path().join("settings.json"), asound_path.clone());
+        let accessory_id = "9b0692e3-a07a-42f0-9fa7-a7704bbcf779".to_string();
+        let state = BluetoothState {
+            schema_version: 1,
+            status: "ready".to_string(),
+            radio_enabled: true,
+            scanning: false,
+            accessories: vec![BluetoothAccessory {
+                accessory_id: accessory_id.clone(),
+                name: "Hands-free headset".to_string(),
+                kind: "headset".to_string(),
+                paired: true,
+                connected: true,
+                trusted: true,
+                auto_connect: true,
+                capabilities: BluetoothCapabilities {
+                    output: true,
+                    microphone: true,
+                    stereo: false,
+                    hands_free: true,
+                },
+                battery_percent: None,
+                signal_percent: None,
+                last_seen_at: 1,
+            }],
+            scanned_at: None,
+            reported_at: 1,
+        };
+        let mut settings = AudioSettings::default();
+        settings.routes.communication_output_id = accessory_id;
+        settings.levels.alerts = 54;
+
+        let applied = manager
+            .apply(2, settings, &UnavailableBluetoothController, &state)
+            .expect("apply");
+
+        assert_eq!(
+            applied.route.voip_ringer_device,
+            "ALSA: yoyopod_alert_mirror"
+        );
+        assert_eq!(applied.route.alert_volume, 54);
+        let config = fs::read_to_string(asound_path).expect("asound config");
+        assert!(config.contains("pcm.yoyopod_alert_mirror"));
+        assert!(config.contains("plug:wm8960-soundcard"));
+        assert!(config.contains("plug:yoyopod_bt_sco"));
+    }
+
+    #[test]
     fn unchanged_periodic_audio_state_is_not_reapplied() {
         let directory = tempfile::tempdir().expect("tempdir");
         let mut manager = AudioManager::open_at(
@@ -912,6 +1018,7 @@ mod tests {
         assert_eq!(applied.route.voip_ringer_device, "ALSA: custom-ringer");
         assert_eq!(applied.route.voip_capture_device, "ALSA: custom-capture");
         assert_eq!(applied.route.voip_media_device, "ALSA: custom-media");
+        assert_eq!(applied.route.alert_volume, 70);
     }
 
     #[test]
@@ -1021,12 +1128,20 @@ mod tests {
         let directory = tempfile::tempdir().expect("tempdir");
         let path = directory.path().join("asoundrc");
 
-        write_asound_config(&path, Some("00:11:22:33:44:55"), None).expect("write asound config");
+        write_asound_config(
+            &path,
+            Some("00:11:22:33:44:55"),
+            None,
+            "wm8960-soundcard",
+            "yoyopod_bt_a2dp",
+        )
+        .expect("write asound config");
 
         let config = fs::read_to_string(path).expect("asound config");
         assert!(config.contains("</usr/share/alsa/alsa.conf>"));
         assert!(config.contains("pcm.yoyopod_bt_a2dp"));
         assert!(config.contains("pcm.yoyopod_bt_sco"));
+        assert!(config.contains("pcm.yoyopod_alert_mirror"));
     }
 
     #[allow(dead_code)]

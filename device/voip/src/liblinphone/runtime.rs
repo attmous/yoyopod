@@ -186,6 +186,7 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start(
         );
         (api.core_set_mic_gain_db)(state.core, (mic_gain as f32) * 0.3);
         (api.core_set_playback_gain_db)(state.core, ((output_volume as f32) * 0.12) - 6.0);
+        (api.core_set_ring_level)(state.core, output_volume.clamp(0, 100));
         (api.core_set_audio_port_range)(state.core, 7076, 7100);
         (api.core_set_video_port_range)(state.core, 9076, 9100);
         if let Some(set_aggregation) = api.core_set_chat_messages_aggregation_enabled {
@@ -377,6 +378,7 @@ pub unsafe extern "C" fn yoyopod_liblinphone_set_audio_devices(
     media_device_id: *const c_char,
     microphone_gain: c_int,
     output_volume: c_int,
+    alert_volume: c_int,
 ) -> c_int {
     let state = match STATE.lock() {
         Ok(state) => state,
@@ -419,6 +421,7 @@ pub unsafe extern "C" fn yoyopod_liblinphone_set_audio_devices(
             state.core,
             ((output_volume.clamp(0, 100) as f32) * 0.12) - 6.0,
         );
+        (api.core_set_ring_level)(state.core, alert_volume.clamp(0, 100));
     }
     error::clear_last_error();
     0

@@ -166,6 +166,7 @@ impl VoipRuntimeBackend for LiblinphoneBackend {
         media_device: &str,
         microphone_gain: u8,
         output_volume: u8,
+        alert_volume: u8,
     ) -> Result<(), String> {
         let playback = CString::new(playback_device).map_err(|error| error.to_string())?;
         let ringer = CString::new(ringer_device).map_err(|error| error.to_string())?;
@@ -179,6 +180,7 @@ impl VoipRuntimeBackend for LiblinphoneBackend {
                 media.as_ptr(),
                 microphone_gain.into(),
                 output_volume.into(),
+                alert_volume.into(),
             )
         })
         .map_err(|error| error.to_string())

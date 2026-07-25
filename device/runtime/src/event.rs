@@ -2349,6 +2349,7 @@ mod tests {
                 "voip_capture_device": "ALSA: default",
                 "voip_media_device": "ALSA: default",
                 "communication_volume": 65,
+                "alert_volume": 58,
                 "microphone_gain": 55
             })),
         );
