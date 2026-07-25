@@ -199,8 +199,10 @@ pub fn run(
     // speaker or headset; advertising a sink role reverses that direction.
     // Install the explicit role drop-in idempotently and restart BlueALSA only
     // when its configuration changed (or the service is not already active).
+    let service_group_lookup = service_group_lookup_command(&wifi_service_user);
     let bluetooth_prereqs_cmd = format!(
-        "if ! command -v bluealsa >/dev/null 2>&1 || ! command -v aplay >/dev/null 2>&1 || \
+        "{service_group_lookup} && \
+         if ! command -v bluealsa >/dev/null 2>&1 || ! command -v aplay >/dev/null 2>&1 || \
          ! dpkg-query -W libasound2-plugin-bluez >/dev/null 2>&1; then \
            sudo -n apt-get update && \
            sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -223,11 +225,12 @@ pub fn run(
            sudo -n systemctl restart bluealsa.service; \
          fi && \
          systemctl is-active --quiet bluetooth.service bluealsa.service && \
-         sudo -n install -d -m 0750 -o {user} -g {user} \
+         sudo -n install -d -m 0750 -o {user} -g \"$service_group\" \
            /var/lib/yoyopod /var/lib/yoyopod/bluetooth /var/lib/yoyopod/audio",
         bluealsa_dropin_dir = shell_quote(BLUEALSA_DROPIN_DIR),
         bluealsa_dropin_source = shell_quote(BLUEALSA_DROPIN_SOURCE),
         bluealsa_dropin_path = shell_quote(BLUEALSA_DROPIN_PATH),
+        service_group_lookup = service_group_lookup,
         user = shell_quote(&wifi_service_user),
     );
     let rc = run_remote(
@@ -282,6 +285,10 @@ fn validate_wifi_service_user(service_user: &str) -> Result<&str> {
         ));
     }
     Ok(service_user)
+}
+
+fn service_group_lookup_command(service_user: &str) -> String {
+    format!("service_group=$(id -gn {})", shell_quote(service_user))
 }
 
 fn resolve_wifi_service_user(ctx: &TargetContext) -> Result<String> {
@@ -585,6 +592,13 @@ mod tests {
     fn wifi_polkit_rule_normalizes_safe_service_user() {
         let rule = render_wifi_polkit_rule("  raouf  ").expect("valid service user");
         assert!(rule.contains("subject.user === \"raouf\""));
+    }
+
+    #[test]
+    fn service_directory_uses_the_service_users_primary_group() {
+        let command = service_group_lookup_command("yoyopod");
+
+        assert_eq!(command, "service_group=$(id -gn yoyopod)");
     }
 
     #[test]

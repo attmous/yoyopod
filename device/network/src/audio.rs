@@ -15,6 +15,8 @@ const DEFAULT_ASOUND_CONFIG_PATH: &str = "/var/lib/yoyopod/audio/asoundrc";
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BuiltinAudioDevices {
     media: String,
+    local_playback: String,
+    local_capture: String,
     voip_playback: String,
     voip_ringer: String,
     voip_capture: String,
@@ -25,6 +27,8 @@ impl Default for BuiltinAudioDevices {
     fn default() -> Self {
         Self {
             media: "alsa/default".to_string(),
+            local_playback: "default".to_string(),
+            local_capture: "capture".to_string(),
             voip_playback: "ALSA: wm8960-soundcard".to_string(),
             voip_ringer: "ALSA: wm8960-soundcard".to_string(),
             voip_capture: "ALSA: wm8960-soundcard".to_string(),
@@ -46,12 +50,20 @@ impl BuiltinAudioDevices {
                 .or_else(|| yaml_string(&hardware, path))
                 .unwrap_or_else(|| fallback.to_string())
         };
+        let local_playback = configured(
+            &["media_audio", "alsa_device"],
+            "YOYOPOD_ALSA_DEVICE",
+            "default",
+        );
+        let local_capture = configured(
+            &["voice_audio", "capture_device_id"],
+            "YOYOPOD_LOCAL_CAPTURE_DEVICE",
+            "capture",
+        );
         Self {
-            media: mpv_alsa_device(&configured(
-                &["media_audio", "alsa_device"],
-                "YOYOPOD_ALSA_DEVICE",
-                "default",
-            )),
+            media: mpv_alsa_device(&local_playback),
+            local_playback,
+            local_capture,
             voip_playback: configured(
                 &["communication_audio", "playback_device_id"],
                 "YOYOPOD_PLAYBACK_DEVICE",
@@ -309,10 +321,21 @@ impl AudioManager {
         let (device, volume): (&str, u8) = match target {
             "media" => (route.media_device.as_str(), route.media_volume),
             "communication" => (
-                route.voip_playback_device.as_str(),
+                local_pcm_for_route(
+                    &route.voip_playback_device,
+                    &self.builtin.voip_playback,
+                    &self.builtin.local_playback,
+                ),
                 route.communication_volume,
             ),
-            "alerts" => (route.voip_ringer_device.as_str(), route.alert_volume),
+            "alerts" => (
+                local_pcm_for_route(
+                    &route.voip_ringer_device,
+                    &self.builtin.voip_ringer,
+                    &self.builtin.local_playback,
+                ),
+                route.alert_volume,
+            ),
             _ => return Err(AudioOperationError::invalid("Unknown audio test target")),
         };
         let sample = [
@@ -343,7 +366,11 @@ impl AudioManager {
         route: &AudioRouteLocal,
         duration_seconds: u64,
     ) -> Result<AudioInputMeter, AudioOperationError> {
-        let device = local_alsa_device(&route.voip_capture_device);
+        let device = local_pcm_for_route(
+            &route.voip_capture_device,
+            &self.builtin.voip_capture,
+            &self.builtin.local_capture,
+        );
         let duration = duration_seconds.clamp(1, 10).to_string();
         let mut child = Command::new("arecord")
             .args([
@@ -429,7 +456,7 @@ impl AudioManager {
             &self.asound_path,
             output_address,
             input_address,
-            local_alsa_device(&self.builtin.voip_ringer),
+            &self.builtin.local_playback,
             alert_pcm,
         )?;
 
@@ -747,6 +774,18 @@ fn local_alsa_device(device: &str) -> &str {
         .unwrap_or(device)
 }
 
+fn local_pcm_for_route<'a>(
+    route_device: &'a str,
+    builtin_route_device: &str,
+    builtin_local_pcm: &'a str,
+) -> &'a str {
+    if route_device == builtin_route_device {
+        builtin_local_pcm
+    } else {
+        local_alsa_device(route_device)
+    }
+}
+
 fn atomic_json_write(path: &Path, value: &impl Serialize) -> Result<(), std::io::Error> {
     atomic_write(path, &serde_json::to_vec_pretty(value)?)
 }
@@ -967,7 +1006,7 @@ mod tests {
         assert_eq!(applied.route.alert_volume, 54);
         let config = fs::read_to_string(asound_path).expect("asound config");
         assert!(config.contains("pcm.yoyopod_alert_mirror"));
-        assert!(config.contains("plug:wm8960-soundcard"));
+        assert!(config.contains("plug:default"));
         assert!(config.contains("plug:yoyopod_bt_sco"));
     }
 
@@ -995,6 +1034,8 @@ mod tests {
         let directory = tempfile::tempdir().expect("tempdir");
         let builtin = BuiltinAudioDevices {
             media: "alsa/custom-speaker".to_string(),
+            local_playback: "custom-playback-pcm".to_string(),
+            local_capture: "custom-capture-pcm".to_string(),
             voip_playback: "ALSA: custom-playback".to_string(),
             voip_ringer: "ALSA: custom-ringer".to_string(),
             voip_capture: "ALSA: custom-capture".to_string(),
@@ -1019,6 +1060,8 @@ mod tests {
         assert_eq!(applied.route.voip_capture_device, "ALSA: custom-capture");
         assert_eq!(applied.route.voip_media_device, "ALSA: custom-media");
         assert_eq!(applied.route.alert_volume, 70);
+        let config = fs::read_to_string(directory.path().join("asoundrc")).expect("asound config");
+        assert!(config.contains("plug:custom-playback-pcm"));
     }
 
     #[test]
@@ -1029,6 +1072,22 @@ mod tests {
         assert!(args.contains(&"--volume=86".to_string()));
         assert!(args.contains(&"--volume-max=100".to_string()));
         assert_eq!(args.last().map(String::as_str), Some("/tmp/test.wav"));
+    }
+
+    #[test]
+    fn local_operations_use_real_pcm_names_for_builtin_liblinphone_routes() {
+        assert_eq!(
+            local_pcm_for_route(
+                "ALSA: wm8960-soundcard",
+                "ALSA: wm8960-soundcard",
+                "default"
+            ),
+            "default"
+        );
+        assert_eq!(
+            local_pcm_for_route("ALSA: yoyopod_bt_sco", "ALSA: wm8960-soundcard", "default"),
+            "yoyopod_bt_sco"
+        );
     }
 
     #[test]
