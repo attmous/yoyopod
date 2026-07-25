@@ -180,6 +180,33 @@ pub fn run(
         return Ok(rc);
     }
 
+    // Bluetooth audio lives outside the artifact: BlueZ provides radio/device
+    // management and BlueALSA exposes paired profiles through stable ALSA PCM
+    // aliases. Only install packages when missing, then make the private local
+    // registry writable by the service account.
+    let bluetooth_prereqs_cmd = format!(
+        "if ! command -v bluealsa >/dev/null 2>&1 || ! command -v aplay >/dev/null 2>&1 || \
+         ! dpkg-query -W libasound2-plugin-bluez >/dev/null 2>&1; then \
+           sudo -n apt-get update && \
+           sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+             alsa-utils bluez bluez-alsa-utils libasound2-plugin-bluez; \
+         fi && \
+         {{ sudo -n rfkill unblock bluetooth || true; }} && \
+         sudo -n systemctl enable --now bluetooth.service bluealsa.service && \
+         sudo -n install -d -m 0750 -o {user} -g {user} \
+           /var/lib/yoyopod /var/lib/yoyopod/bluetooth /var/lib/yoyopod/audio",
+        user = shell_quote(&wifi_service_user),
+    );
+    let rc = run_remote(
+        &ctx.conn,
+        &bluetooth_prereqs_cmd,
+        false,
+        RemoteWorkdir::Default,
+    )?;
+    if rc != 0 {
+        return Ok(rc);
+    }
+
     // 5) Extract + chmod on Pi.
     let extract_cmd = format!(
         "tar -xzf {tarball} && \

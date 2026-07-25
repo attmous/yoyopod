@@ -40,7 +40,7 @@ async-signal = "=0.2.13"
 proc-macro-crate = "=3.4.0"
 toml_parser = "=1.0.4"
 indexmap = "=2.7.1"
-uuid = "=1.11.0"
+uuid = { version = "=1.11.0", features = ["v4"] }
 yoyopod-protocol = { path = "../protocol" }
 
 [dev-dependencies]

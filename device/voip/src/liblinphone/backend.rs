@@ -158,6 +158,32 @@ impl VoipRuntimeBackend for LiblinphoneBackend {
             .map_err(|error| error.to_string())
     }
 
+    fn set_audio_devices(
+        &mut self,
+        playback_device: &str,
+        ringer_device: &str,
+        capture_device: &str,
+        media_device: &str,
+        microphone_gain: u8,
+        output_volume: u8,
+    ) -> Result<(), String> {
+        let playback = CString::new(playback_device).map_err(|error| error.to_string())?;
+        let ringer = CString::new(ringer_device).map_err(|error| error.to_string())?;
+        let capture = CString::new(capture_device).map_err(|error| error.to_string())?;
+        let media = CString::new(media_device).map_err(|error| error.to_string())?;
+        check(unsafe {
+            runtime::yoyopod_liblinphone_set_audio_devices(
+                playback.as_ptr(),
+                ringer.as_ptr(),
+                capture.as_ptr(),
+                media.as_ptr(),
+                microphone_gain.into(),
+                output_volume.into(),
+            )
+        })
+        .map_err(|error| error.to_string())
+    }
+
     fn send_text_message(&mut self, sip_address: &str, text: &str) -> Result<String, String> {
         let sip_address = CString::new(sip_address).map_err(|error| error.to_string())?;
         let text = CString::new(text).map_err(|error| error.to_string())?;

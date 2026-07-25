@@ -1,7 +1,7 @@
 [Unit]
 Description=YoyoPod dev lane (mutable checkout)
-After=network-online.target sound.target pisugar-server.service
-Wants=network-online.target
+After=network-online.target sound.target bluetooth.service bluealsa.service pisugar-server.service
+Wants=network-online.target bluetooth.service bluealsa.service
 Conflicts=yoyopod-prod.service
 
 [Service]
@@ -10,7 +10,6 @@ Type=simple
 # child of the runtime, which inherits this ambient capability across exec.
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 EnvironmentFile=-/etc/default/yoyopod-dev
-Environment=HOME=/root
 WorkingDirectory=/
 ExecStartPre=/usr/bin/env bash -lc 'HOME="$${HOME:-/root}"; DEV_ROOT="$${YOYOPOD_DEV_ROOT:-/opt/yoyopod-dev}"; STATE_DIR="$${YOYOPOD_STATE_DIR:-$$DEV_ROOT/state}"; install -d -m 700 "$$HOME/.local/share/linphone" "$$HOME/.config/linphone"; install -d -m 755 "$$STATE_DIR"; CHECKOUT="$${YOYOPOD_DEV_CHECKOUT:-$$DEV_ROOT/checkout}"; test -d "$$CHECKOUT/config"; test -x "$$CHECKOUT/device/runtime/build/yoyopod-runtime"; test -x "$$CHECKOUT/device/ui/build/yoyopod-ui-host"'
 ExecStart=/usr/bin/env bash -lc 'DEV_ROOT="$${YOYOPOD_DEV_ROOT:-/opt/yoyopod-dev}"; STATE_DIR="$${YOYOPOD_STATE_DIR:-$$DEV_ROOT/state}"; export YOYOPOD_PID_FILE="$${YOYOPOD_PID_FILE:-$$STATE_DIR/yoyopod.pid}"; CHECKOUT="$${YOYOPOD_DEV_CHECKOUT:-$$DEV_ROOT/checkout}"; cd "$$CHECKOUT"; exec "$$CHECKOUT/device/runtime/build/yoyopod-runtime" --config-dir "$$CHECKOUT/config" --hardware whisplay'

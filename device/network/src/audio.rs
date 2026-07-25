@@ -1,0 +1,585 @@
+use std::fs;
+use std::io::Read;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use serde::{Deserialize, Serialize};
+
+use crate::bluetooth::{BluetoothController, BluetoothState};
+
+const DEFAULT_SETTINGS_PATH: &str = "/var/lib/yoyopod/audio/settings.json";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioSettings {
+    pub routes: AudioRoutes,
+    pub levels: AudioLevels,
+    pub alert_policy: String,
+    pub fallback_policy: String,
+}
+
+impl Default for AudioSettings {
+    fn default() -> Self {
+        Self {
+            routes: AudioRoutes {
+                media_output_id: "builtin-speaker".to_string(),
+                communication_output_id: "builtin-speaker".to_string(),
+                communication_input_id: "builtin-microphone".to_string(),
+            },
+            levels: AudioLevels {
+                media: 65,
+                communication: 70,
+                alerts: 70,
+                microphone_gain: 60,
+                max_output: 85,
+            },
+            alert_policy: "mirror_builtin_and_selected".to_string(),
+            fallback_policy: "builtin".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioRoutes {
+    pub media_output_id: String,
+    pub communication_output_id: String,
+    pub communication_input_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioLevels {
+    pub media: u8,
+    pub communication: u8,
+    pub alerts: u8,
+    pub microphone_gain: u8,
+    pub max_output: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AudioState {
+    pub schema_version: u8,
+    pub status: String,
+    pub applied_revision: u64,
+    pub applied: AudioSettings,
+    pub endpoints: AudioEndpoints,
+    pub fallback_reason: Option<String>,
+    pub input_meter: Option<AudioInputMeter>,
+    pub reported_at: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AudioEndpoints {
+    pub outputs: Vec<AudioEndpoint>,
+    pub inputs: Vec<AudioEndpoint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AudioEndpoint {
+    pub endpoint_id: String,
+    pub name: String,
+    pub kind: String,
+    pub accessory_id: Option<String>,
+    pub available: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AudioInputMeter {
+    pub level_percent: u8,
+    pub expires_at: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AudioRouteLocal {
+    pub media_device: String,
+    pub media_volume: u8,
+    pub voip_playback_device: String,
+    pub voip_ringer_device: String,
+    pub voip_capture_device: String,
+    pub voip_media_device: String,
+    pub communication_volume: u8,
+    pub microphone_gain: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioOperationError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl AudioOperationError {
+    fn invalid(message: impl Into<String>) -> Self {
+        Self {
+            code: "audio_invalid_settings",
+            message: message.into(),
+        }
+    }
+
+    fn failed(message: impl Into<String>) -> Self {
+        Self {
+            code: "audio_operation_failed",
+            message: message.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AppliedAudio {
+    pub state: AudioState,
+    pub route: AudioRouteLocal,
+}
+
+pub struct AudioManager {
+    settings_path: PathBuf,
+    asound_path: PathBuf,
+    desired_revision: u64,
+    desired: AudioSettings,
+    input_meter: Option<AudioInputMeter>,
+}
+
+impl AudioManager {
+    pub fn open() -> Self {
+        let settings_path = std::env::var_os("YOYOPOD_AUDIO_SETTINGS_FILE")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_SETTINGS_PATH));
+        let asound_path = std::env::var_os("YOYOPOD_ASOUND_CONFIG")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".asoundrc")))
+            .unwrap_or_else(|| PathBuf::from("/home/raouf/.asoundrc"));
+        Self::open_at(settings_path, asound_path)
+    }
+
+    fn open_at(settings_path: PathBuf, asound_path: PathBuf) -> Self {
+        let stored = fs::read(&settings_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<StoredAudioSettings>(&bytes).ok());
+        Self {
+            settings_path,
+            asound_path,
+            desired_revision: stored.as_ref().map_or(0, |stored| stored.revision),
+            desired: stored.map_or_else(AudioSettings::default, |stored| stored.settings),
+            input_meter: None,
+        }
+    }
+
+    pub fn apply(
+        &mut self,
+        revision: u64,
+        settings: AudioSettings,
+        bluetooth: &dyn BluetoothController,
+        bluetooth_state: &BluetoothState,
+    ) -> Result<AppliedAudio, AudioOperationError> {
+        validate_settings(&settings)?;
+        if revision < self.desired_revision {
+            return Err(AudioOperationError::invalid(
+                "A newer audio configuration is already active",
+            ));
+        }
+        self.desired_revision = revision;
+        self.desired = settings;
+        self.persist()?;
+        self.resolve(bluetooth, bluetooth_state)
+    }
+
+    pub fn current(
+        &mut self,
+        bluetooth: &dyn BluetoothController,
+        bluetooth_state: &BluetoothState,
+    ) -> Result<AppliedAudio, AudioOperationError> {
+        self.resolve(bluetooth, bluetooth_state)
+    }
+
+    pub fn test_output(
+        &self,
+        target: &str,
+        route: &AudioRouteLocal,
+    ) -> Result<(), AudioOperationError> {
+        let (device, volume): (&str, u8) = match target {
+            "media" => (route.media_device.as_str(), self.desired.levels.media),
+            "communication" => (
+                route.voip_playback_device.as_str(),
+                self.desired.levels.communication,
+            ),
+            "alerts" => ("alsa/default", self.desired.levels.alerts),
+            _ => return Err(AudioOperationError::invalid("Unknown audio test target")),
+        };
+        let sample = [
+            "/usr/share/sounds/alsa/Front_Center.wav",
+            "/usr/share/sounds/freedesktop/stereo/audio-volume-change.oga",
+        ]
+        .into_iter()
+        .find(|path| Path::new(path).exists())
+        .ok_or_else(|| AudioOperationError::failed("No audio test sound is installed"))?;
+        let alsa_device = local_alsa_device(device);
+        let _ = volume;
+        Command::new("aplay")
+            .args(["-q", "-D", alsa_device, sample])
+            .spawn()
+            .map_err(|_| AudioOperationError::failed("The test sound could not be played"))?;
+        Ok(())
+    }
+
+    pub fn test_input(
+        &mut self,
+        route: &AudioRouteLocal,
+        duration_seconds: u64,
+    ) -> Result<AudioInputMeter, AudioOperationError> {
+        let device = local_alsa_device(&route.voip_capture_device);
+        let duration = duration_seconds.clamp(1, 10).to_string();
+        let mut child = Command::new("arecord")
+            .args([
+                "-q", "-D", device, "-d", &duration, "-f", "S16_LE", "-c", "1", "-r", "8000", "-t",
+                "raw",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|_| AudioOperationError::failed("The microphone test could not start"))?;
+        let mut captured = Vec::new();
+        if let Some(mut stdout) = child.stdout.take() {
+            stdout.read_to_end(&mut captured).map_err(|_| {
+                AudioOperationError::failed("The microphone test could not be read")
+            })?;
+        }
+        let status = child
+            .wait()
+            .map_err(|_| AudioOperationError::failed("The microphone test did not finish"))?;
+        if !status.success() {
+            return Err(AudioOperationError::failed(
+                "The selected microphone is not currently available",
+            ));
+        }
+        let peak = captured
+            .chunks_exact(2)
+            .map(|bytes| i16::from_le_bytes([bytes[0], bytes[1]]).unsigned_abs())
+            .max()
+            .unwrap_or(0);
+        let meter = AudioInputMeter {
+            level_percent: ((u32::from(peak) * 100) / u32::from(i16::MAX as u16)).min(100) as u8,
+            expires_at: epoch_seconds() + 15,
+        };
+        self.input_meter = Some(meter.clone());
+        Ok(meter)
+    }
+
+    fn resolve(
+        &mut self,
+        bluetooth: &dyn BluetoothController,
+        bluetooth_state: &BluetoothState,
+    ) -> Result<AppliedAudio, AudioOperationError> {
+        if self
+            .input_meter
+            .as_ref()
+            .is_some_and(|meter| meter.expires_at <= epoch_seconds())
+        {
+            self.input_meter = None;
+        }
+        let connected = |endpoint_id: &str| {
+            bluetooth_state.accessories.iter().find(|accessory| {
+                accessory.accessory_id == endpoint_id && accessory.paired && accessory.connected
+            })
+        };
+        let output_address = connected(&self.desired.routes.media_output_id)
+            .or_else(|| connected(&self.desired.routes.communication_output_id))
+            .and_then(|accessory| bluetooth.raw_address(&accessory.accessory_id));
+        let input_address = connected(&self.desired.routes.communication_input_id)
+            .and_then(|accessory| bluetooth.raw_address(&accessory.accessory_id));
+        write_asound_config(
+            &self.asound_path,
+            output_address.as_deref(),
+            input_address.as_deref(),
+        )?;
+
+        let media_fallback = !self.desired.routes.media_output_id.starts_with("builtin-")
+            && output_address.is_none();
+        let communication_output_fallback = !self
+            .desired
+            .routes
+            .communication_output_id
+            .starts_with("builtin-")
+            && connected(&self.desired.routes.communication_output_id).is_none();
+        let communication_input_fallback = !self
+            .desired
+            .routes
+            .communication_input_id
+            .starts_with("builtin-")
+            && input_address.is_none();
+        let fallback =
+            media_fallback || communication_output_fallback || communication_input_fallback;
+        let route = AudioRouteLocal {
+            media_device: if media_fallback
+                || self.desired.routes.media_output_id == "builtin-speaker"
+            {
+                "alsa/default"
+            } else {
+                "alsa/yoyopod_bt_a2dp"
+            }
+            .to_string(),
+            media_volume: self
+                .desired
+                .levels
+                .media
+                .min(self.desired.levels.max_output),
+            voip_playback_device: if communication_output_fallback
+                || self.desired.routes.communication_output_id == "builtin-speaker"
+            {
+                "ALSA: default"
+            } else {
+                "ALSA: yoyopod_bt_sco"
+            }
+            .to_string(),
+            // Safety alerts/ringing always retain the built-in route.
+            voip_ringer_device: "ALSA: default".to_string(),
+            voip_capture_device: if communication_input_fallback
+                || self.desired.routes.communication_input_id == "builtin-microphone"
+            {
+                "ALSA: default"
+            } else {
+                "ALSA: yoyopod_bt_sco"
+            }
+            .to_string(),
+            voip_media_device: if communication_output_fallback
+                || self.desired.routes.communication_output_id == "builtin-speaker"
+            {
+                "ALSA: default"
+            } else {
+                "ALSA: yoyopod_bt_sco"
+            }
+            .to_string(),
+            communication_volume: self
+                .desired
+                .levels
+                .communication
+                .min(self.desired.levels.max_output),
+            microphone_gain: self.desired.levels.microphone_gain,
+        };
+        let applied = applied_settings(
+            &self.desired,
+            media_fallback,
+            communication_output_fallback,
+            communication_input_fallback,
+        );
+        Ok(AppliedAudio {
+            state: AudioState {
+                schema_version: 1,
+                status: if bluetooth_state.status == "unavailable" {
+                    "degraded"
+                } else if fallback {
+                    "degraded"
+                } else {
+                    "ready"
+                }
+                .to_string(),
+                applied_revision: self.desired_revision,
+                applied,
+                endpoints: endpoints(bluetooth_state),
+                fallback_reason: fallback.then(|| {
+                    "A selected Bluetooth route is disconnected; built-in audio is active"
+                        .to_string()
+                }),
+                input_meter: self.input_meter.clone(),
+                reported_at: epoch_seconds(),
+            },
+            route,
+        })
+    }
+
+    fn persist(&self) -> Result<(), AudioOperationError> {
+        let stored = StoredAudioSettings {
+            revision: self.desired_revision,
+            settings: self.desired.clone(),
+        };
+        atomic_json_write(&self.settings_path, &stored)
+            .map_err(|_| AudioOperationError::failed("Audio settings could not be saved"))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredAudioSettings {
+    revision: u64,
+    settings: AudioSettings,
+}
+
+fn validate_settings(settings: &AudioSettings) -> Result<(), AudioOperationError> {
+    let levels = &settings.levels;
+    if settings.alert_policy != "mirror_builtin_and_selected"
+        || settings.fallback_policy != "builtin"
+        || levels.max_output < 20
+        || levels.alerts < 20
+        || levels.media > levels.max_output
+        || levels.communication > levels.max_output
+        || levels.alerts > levels.max_output
+    {
+        return Err(AudioOperationError::invalid(
+            "Audio settings are outside the supported safe range",
+        ));
+    }
+    Ok(())
+}
+
+fn applied_settings(
+    desired: &AudioSettings,
+    media_fallback: bool,
+    communication_output_fallback: bool,
+    communication_input_fallback: bool,
+) -> AudioSettings {
+    let mut applied = desired.clone();
+    if media_fallback {
+        applied.routes.media_output_id = "builtin-speaker".to_string();
+    }
+    if communication_output_fallback {
+        applied.routes.communication_output_id = "builtin-speaker".to_string();
+    }
+    if communication_input_fallback {
+        applied.routes.communication_input_id = "builtin-microphone".to_string();
+    }
+    applied
+}
+
+fn endpoints(bluetooth: &BluetoothState) -> AudioEndpoints {
+    let mut outputs = vec![AudioEndpoint {
+        endpoint_id: "builtin-speaker".to_string(),
+        name: "YoYoPod speaker".to_string(),
+        kind: "builtin".to_string(),
+        accessory_id: None,
+        available: true,
+    }];
+    let mut inputs = vec![AudioEndpoint {
+        endpoint_id: "builtin-microphone".to_string(),
+        name: "YoYoPod microphone".to_string(),
+        kind: "builtin".to_string(),
+        accessory_id: None,
+        available: true,
+    }];
+    for accessory in bluetooth
+        .accessories
+        .iter()
+        .filter(|accessory| accessory.paired)
+    {
+        if accessory.capabilities.output {
+            outputs.push(AudioEndpoint {
+                endpoint_id: accessory.accessory_id.clone(),
+                name: accessory.name.clone(),
+                kind: "bluetooth".to_string(),
+                accessory_id: Some(accessory.accessory_id.clone()),
+                available: accessory.connected,
+            });
+        }
+        if accessory.capabilities.microphone {
+            inputs.push(AudioEndpoint {
+                endpoint_id: accessory.accessory_id.clone(),
+                name: accessory.name.clone(),
+                kind: "bluetooth".to_string(),
+                accessory_id: Some(accessory.accessory_id.clone()),
+                available: accessory.connected,
+            });
+        }
+    }
+    AudioEndpoints { outputs, inputs }
+}
+
+fn write_asound_config(
+    path: &Path,
+    output_address: Option<&str>,
+    input_address: Option<&str>,
+) -> Result<(), AudioOperationError> {
+    let output = output_address.unwrap_or("00:00:00:00:00:00");
+    let input = input_address.unwrap_or(output);
+    let config = format!(
+        "# Managed by YoYoPod. Bluetooth addresses stay on-device.\n\
+pcm.yoyopod_bt_a2dp {{\n  type bluealsa\n  device \"{output}\"\n  profile \"a2dp\"\n}}\n\
+pcm.yoyopod_bt_sco {{\n  type bluealsa\n  device \"{input}\"\n  profile \"sco\"\n}}\n"
+    );
+    atomic_write(path, config.as_bytes())
+        .map_err(|_| AudioOperationError::failed("The local audio route could not be configured"))
+}
+
+fn local_alsa_device(device: &str) -> &str {
+    device
+        .strip_prefix("alsa/")
+        .or_else(|| device.strip_prefix("ALSA: "))
+        .unwrap_or(device)
+}
+
+fn atomic_json_write(path: &Path, value: &impl Serialize) -> Result<(), std::io::Error> {
+    atomic_write(path, &serde_json::to_vec_pretty(value)?)
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), std::io::Error> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o750))?;
+    }
+    let temporary = path.with_extension("tmp");
+    fs::write(&temporary, bytes)?;
+    fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600))?;
+    fs::rename(temporary, path)
+}
+
+fn epoch_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bluetooth::{
+        BluetoothAccessory, BluetoothCapabilities, BluetoothOperationError,
+        UnavailableBluetoothController,
+    };
+
+    #[test]
+    fn disconnected_selected_accessory_falls_back_without_losing_desired_setting() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let mut manager = AudioManager::open_at(
+            directory.path().join("settings.json"),
+            directory.path().join("asoundrc"),
+        );
+        let state = BluetoothState {
+            schema_version: 1,
+            status: "ready".to_string(),
+            radio_enabled: true,
+            scanning: false,
+            accessories: vec![BluetoothAccessory {
+                accessory_id: "9b0692e3-a07a-42f0-9fa7-a7704bbcf777".to_string(),
+                name: "Headset".to_string(),
+                kind: "headset".to_string(),
+                paired: true,
+                connected: false,
+                trusted: true,
+                auto_connect: true,
+                capabilities: BluetoothCapabilities {
+                    output: true,
+                    microphone: true,
+                    stereo: true,
+                    hands_free: true,
+                },
+                battery_percent: None,
+                signal_percent: None,
+                last_seen_at: 1,
+            }],
+            scanned_at: None,
+            reported_at: 1,
+        };
+        let id = state.accessories[0].accessory_id.clone();
+        let mut settings = AudioSettings::default();
+        settings.routes.media_output_id = id;
+        let applied = manager
+            .apply(2, settings, &UnavailableBluetoothController, &state)
+            .expect("apply");
+        assert_eq!(
+            applied.state.applied.routes.media_output_id,
+            "builtin-speaker"
+        );
+        assert_eq!(applied.state.status, "degraded");
+        assert_eq!(applied.state.applied_revision, 2);
+    }
+
+    #[allow(dead_code)]
+    fn error_type_is_public(error: BluetoothOperationError) -> &'static str {
+        error.code
+    }
+}

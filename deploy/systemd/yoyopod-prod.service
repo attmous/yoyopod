@@ -1,7 +1,7 @@
 [Unit]
 Description=YoyoPod prod lane (slot deploy, OTA-ready)
-After=network-online.target sound.target pisugar-server.service
-Wants=network-online.target
+After=network-online.target sound.target bluetooth.service bluealsa.service pisugar-server.service
+Wants=network-online.target bluetooth.service bluealsa.service
 Conflicts=yoyopod-dev.service
 StartLimitIntervalSec=300
 StartLimitBurst=3

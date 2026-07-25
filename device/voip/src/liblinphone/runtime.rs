@@ -370,6 +370,61 @@ pub unsafe extern "C" fn yoyopod_liblinphone_set_muted(muted: i32) -> c_int {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn yoyopod_liblinphone_set_audio_devices(
+    playback_device_id: *const c_char,
+    ringer_device_id: *const c_char,
+    capture_device_id: *const c_char,
+    media_device_id: *const c_char,
+    microphone_gain: c_int,
+    output_volume: c_int,
+) -> c_int {
+    let state = match STATE.lock() {
+        Ok(state) => state,
+        Err(_) => {
+            error::set_last_error("liblinphone runtime state lock poisoned");
+            return -1;
+        }
+    };
+    if !state.started || state.core.is_null() {
+        // Audio preferences may arrive before SIP startup. The worker's config
+        // still applies them when the backend starts, so this is not an error.
+        return 0;
+    }
+    let Some(api) = state.api.clone() else {
+        error::set_last_error("Liblinphone API is not initialized");
+        return -1;
+    };
+    unsafe {
+        set_device(
+            &api,
+            state.core,
+            playback_device_id,
+            api.core_set_playback_device,
+        );
+        set_device(
+            &api,
+            state.core,
+            ringer_device_id,
+            api.core_set_ringer_device,
+        );
+        set_device(
+            &api,
+            state.core,
+            capture_device_id,
+            api.core_set_capture_device,
+        );
+        set_device(&api, state.core, media_device_id, api.core_set_media_device);
+        (api.core_set_mic_gain_db)(state.core, (microphone_gain.clamp(0, 100) as f32) * 0.3);
+        (api.core_set_playback_gain_db)(
+            state.core,
+            ((output_volume.clamp(0, 100) as f32) * 0.12) - 6.0,
+        );
+    }
+    error::clear_last_error();
+    0
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn yoyopod_liblinphone_send_text_message(
     sip_address: *const c_char,
     text: *const c_char,

@@ -1,4 +1,6 @@
 pub mod at;
+pub mod audio;
+pub mod bluetooth;
 pub mod config;
 pub mod gps;
 pub mod modem;
