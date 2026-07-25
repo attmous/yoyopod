@@ -324,6 +324,7 @@ where
     }
 
     if pending_wifi_change.is_some()
+        && envelope.message_type.starts_with("wifi_")
         && !matches!(
             envelope.message_type.as_str(),
             "wifi_refresh" | "wifi_confirm_change" | "network.shutdown" | "worker.stop"
@@ -1353,6 +1354,40 @@ mod tests {
             envelope.kind == EnvelopeKind::Result
                 && envelope.message_type == "wifi_state"
                 && envelope.request_id.as_deref() == Some(activation_id)
+        }));
+    }
+
+    #[test]
+    fn bluetooth_commands_continue_during_pending_wifi_changes() {
+        let activation_id = "77777777-7777-4777-8777-777777777777";
+        let bluetooth_id = "88888888-8888-4888-8888-888888888888";
+        let envelopes = run_wifi_commands(
+            vec![
+                WorkerEnvelope::command(
+                    "wifi_activate_profile",
+                    Some(activation_id.to_string()),
+                    serde_json::json!({
+                        "profile_id": "22222222-2222-4222-8222-222222222222",
+                        "preference": "preferred",
+                    }),
+                ),
+                WorkerEnvelope::command(
+                    "bluetooth_refresh",
+                    Some(bluetooth_id.to_string()),
+                    serde_json::json!({}),
+                ),
+            ],
+            false,
+        );
+
+        assert!(!envelopes.iter().any(|envelope| {
+            envelope.request_id.as_deref() == Some(bluetooth_id)
+                && envelope.payload["code"] == "wifi_change_in_progress"
+        }));
+        assert!(envelopes.iter().any(|envelope| {
+            envelope.request_id.as_deref() == Some(bluetooth_id)
+                && envelope.kind == EnvelopeKind::Result
+                && envelope.message_type == "bluetooth_state"
         }));
     }
 

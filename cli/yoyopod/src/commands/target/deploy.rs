@@ -169,7 +169,7 @@ pub fn run(
          sudo -n install -d -m 0755 {dropin_dir} && \
          printf '[Service]\\nAmbientCapabilities=CAP_NET_BIND_SERVICE\\n' \
          | sudo -n tee {dropin_file} >/dev/null && \
-         printf '[Service]\\nEnvironment=YOYOPOD_ASOUND_CONFIG=/var/lib/yoyopod/audio/asoundrc\\n' \
+         printf '[Service]\\nEnvironment=YOYOPOD_ASOUND_CONFIG=/var/lib/yoyopod/audio/asoundrc\\nEnvironment=ALSA_CONFIG_PATH=/var/lib/yoyopod/audio/asoundrc\\n' \
          | sudo -n tee {audio_dropin_file} >/dev/null && \
          sudo -n systemctl daemon-reload",
         dns_dir = shell_quote(dns_dir),
@@ -595,11 +595,16 @@ mod tests {
     }
 
     #[test]
-    fn dev_service_uses_the_writable_managed_asound_config() {
-        let service = include_str!("../../../../../deploy/systemd/yoyopod-dev.service");
+    fn services_expose_the_writable_managed_asound_config_to_alsa() {
+        let dev_service = include_str!("../../../../../deploy/systemd/yoyopod-dev.service");
+        let prod_service = include_str!("../../../../../deploy/systemd/yoyopod-prod.service");
 
-        assert!(
-            service.contains("Environment=YOYOPOD_ASOUND_CONFIG=/var/lib/yoyopod/audio/asoundrc")
-        );
+        for service in [dev_service, prod_service] {
+            assert!(service
+                .contains("Environment=YOYOPOD_ASOUND_CONFIG=/var/lib/yoyopod/audio/asoundrc"));
+            assert!(
+                service.contains("Environment=ALSA_CONFIG_PATH=/var/lib/yoyopod/audio/asoundrc")
+            );
+        }
     }
 }

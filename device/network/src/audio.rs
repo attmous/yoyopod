@@ -268,11 +268,11 @@ impl AudioManager {
         bluetooth: &dyn BluetoothController,
         bluetooth_state: &BluetoothState,
     ) -> Result<AppliedAudio, AudioOperationError> {
-        let level = level.min(100);
+        let max_output = self.desired.levels.max_output.clamp(20, 100);
+        let level = level.min(max_output);
         self.desired.levels.media = level;
         self.desired.levels.communication = level;
-        self.desired.levels.alerts = level.max(20);
-        self.desired.levels.max_output = 100;
+        self.desired.levels.alerts = level.max(20).min(max_output);
         self.persist()?;
         self.resolve(bluetooth, bluetooth_state)
     }
@@ -622,6 +622,7 @@ fn write_asound_config(
     let input = input_address.unwrap_or(output);
     let config = format!(
         "# Managed by YoYoPod. Bluetooth addresses stay on-device.\n\
+</usr/share/alsa/alsa.conf>\n\
 pcm.yoyopod_bt_a2dp {{\n  type bluealsa\n  device \"{output}\"\n  profile \"a2dp\"\n}}\n\
 pcm.yoyopod_bt_sco {{\n  type bluealsa\n  device \"{input}\"\n  profile \"sco\"\n}}\n"
     );
@@ -892,6 +893,49 @@ mod tests {
                 .expect("stored settings");
         assert_eq!(stored.settings.levels.media, 100);
         assert_eq!(stored.settings.levels.max_output, 100);
+    }
+
+    #[test]
+    fn local_output_level_preserves_the_configured_safety_cap() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let settings_path = directory.path().join("settings.json");
+        let mut manager =
+            AudioManager::open_at(settings_path.clone(), directory.path().join("asoundrc"));
+        let state = BluetoothState::unavailable();
+        let mut settings = AudioSettings::default();
+        settings.levels.max_output = 70;
+        settings.levels.media = 65;
+        settings.levels.communication = 70;
+        settings.levels.alerts = 70;
+        manager
+            .apply(2, settings, &UnavailableBluetoothController, &state)
+            .expect("apply capped settings");
+
+        let applied = manager
+            .set_output_level(90, &UnavailableBluetoothController, &state)
+            .expect("set capped output level");
+
+        assert_eq!(applied.state.applied.levels.media, 70);
+        assert_eq!(applied.state.applied.levels.communication, 70);
+        assert_eq!(applied.state.applied.levels.alerts, 70);
+        assert_eq!(applied.state.applied.levels.max_output, 70);
+        let stored: StoredAudioSettings =
+            serde_json::from_slice(&fs::read(settings_path).expect("settings file"))
+                .expect("stored settings");
+        assert_eq!(stored.settings.levels.max_output, 70);
+    }
+
+    #[test]
+    fn managed_asound_config_includes_the_system_alsa_configuration() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("asoundrc");
+
+        write_asound_config(&path, Some("00:11:22:33:44:55"), None).expect("write asound config");
+
+        let config = fs::read_to_string(path).expect("asound config");
+        assert!(config.contains("</usr/share/alsa/alsa.conf>"));
+        assert!(config.contains("pcm.yoyopod_bt_a2dp"));
+        assert!(config.contains("pcm.yoyopod_bt_sco"));
     }
 
     #[allow(dead_code)]
