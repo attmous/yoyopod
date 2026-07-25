@@ -167,6 +167,11 @@ pub fn run(
         "sudo -n install -d -m 0755 {dns_dir} && \
          printf 'address=/#/10.42.0.1\\n' | sudo -n tee {dns_file} >/dev/null && \
          sudo -n install -d -m 0755 {dropin_dir} && \
+         sudo -n install -d -m 0755 /var/lib/yoyopod/audio && \
+         if ! sudo -n test -s /var/lib/yoyopod/audio/asoundrc; then \
+           printf '# Managed by YoYoPod.\\n</usr/share/alsa/alsa.conf>\\n' \
+           | sudo -n tee /var/lib/yoyopod/audio/asoundrc >/dev/null; \
+         fi && \
          printf '[Service]\\nAmbientCapabilities=CAP_NET_BIND_SERVICE\\n' \
          | sudo -n tee {dropin_file} >/dev/null && \
          printf '[Service]\\nEnvironment=YOYOPOD_ASOUND_CONFIG=/var/lib/yoyopod/audio/asoundrc\\nEnvironment=ALSA_CONFIG_PATH=/var/lib/yoyopod/audio/asoundrc\\n' \
@@ -605,6 +610,8 @@ mod tests {
             assert!(
                 service.contains("Environment=ALSA_CONFIG_PATH=/var/lib/yoyopod/audio/asoundrc")
             );
+            assert!(service.contains("test -s /var/lib/yoyopod/audio/asoundrc || printf"));
+            assert!(service.contains("</usr/share/alsa/alsa.conf>"));
         }
     }
 }
