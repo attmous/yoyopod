@@ -446,12 +446,12 @@ impl AudioManager {
         } else {
             "yoyopod_bt_a2dp"
         };
-        let output_address = media_address
-            .as_deref()
-            .or(communication_output_address.as_deref());
-        let input_address = communication_input_address
-            .as_deref()
-            .or(communication_output_address.as_deref());
+        let (output_address, input_address) = bluetooth_pcm_addresses(
+            media_address.as_deref(),
+            communication_output_address.as_deref(),
+            communication_input_address.as_deref(),
+            media_uses_sco,
+        );
         write_asound_config(
             &self.asound_path,
             output_address,
@@ -719,6 +719,19 @@ pcm.yoyopod_alert_mirror {{\n\
         .map_err(|_| AudioOperationError::failed("The local audio route could not be configured"))
 }
 
+fn bluetooth_pcm_addresses<'a>(
+    media_address: Option<&'a str>,
+    communication_output_address: Option<&'a str>,
+    communication_input_address: Option<&'a str>,
+    media_uses_sco: bool,
+) -> (Option<&'a str>, Option<&'a str>) {
+    let output = media_address.or(communication_output_address);
+    let input = communication_input_address
+        .or(communication_output_address)
+        .or(if media_uses_sco { media_address } else { None });
+    (output, input)
+}
+
 fn escape_alsa_string(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
@@ -956,6 +969,21 @@ mod tests {
         assert_eq!(applied.route.media_device, "alsa/yoyopod_bt_sco");
         assert_eq!(applied.state.applied.routes.media_output_id, accessory_id);
         assert_eq!(applied.state.status, "ready");
+    }
+
+    #[test]
+    fn media_only_sco_route_uses_the_media_address_for_both_pcms() {
+        let address = "AA:BB:CC:DD:EE:FF";
+        let (output, input) = bluetooth_pcm_addresses(Some(address), None, None, true);
+        assert_eq!(output, Some(address));
+        assert_eq!(input, Some(address));
+
+        let directory = tempfile::tempdir().expect("tempdir");
+        let asound_path = directory.path().join("asoundrc");
+        write_asound_config(&asound_path, output, input, "default", "yoyopod_bt_sco")
+            .expect("asound config");
+        let config = fs::read_to_string(asound_path).expect("read asound config");
+        assert_eq!(config.matches("device \"AA:BB:CC:DD:EE:FF\"").count(), 2);
     }
 
     #[test]

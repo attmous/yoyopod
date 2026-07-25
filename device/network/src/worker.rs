@@ -30,6 +30,8 @@ const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 // wait. Keep the cloud-confirmation phase below the remaining checkpoint time.
 const WIFI_CHANGE_TIMEOUT: Duration = Duration::from_secs(60);
 const WIFI_CANDIDATE_INTERVAL: Duration = Duration::from_secs(5);
+const BLUETOOTH_AUTO_CONNECT_MIN_BACKOFF: Duration = Duration::from_secs(15);
+const BLUETOOTH_AUTO_CONNECT_MAX_BACKOFF: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Debug)]
 struct PendingWifiChange {
@@ -39,6 +41,64 @@ struct PendingWifiChange {
     deadline: Instant,
     next_candidate_at: Instant,
     candidate_attempt: u8,
+}
+
+#[derive(Debug, Default)]
+struct BluetoothAutoConnectBackoff {
+    accessory_id: Option<String>,
+    failed_attempts: u32,
+    retry_at: Option<Instant>,
+}
+
+impl BluetoothAutoConnectBackoff {
+    fn candidate(&mut self, state: &BluetoothState, now: Instant) -> Option<String> {
+        if !state.radio_enabled
+            || state
+                .accessories
+                .iter()
+                .any(|accessory| accessory.connected)
+        {
+            self.reset();
+            return None;
+        }
+        let Some(accessory_id) = state
+            .accessories
+            .iter()
+            .find(|accessory| accessory.paired && accessory.auto_connect)
+            .map(|accessory| accessory.accessory_id.clone())
+        else {
+            self.reset();
+            return None;
+        };
+        if self.accessory_id.as_deref() != Some(accessory_id.as_str()) {
+            self.reset();
+            self.accessory_id = Some(accessory_id.clone());
+        }
+        if self.retry_at.is_some_and(|retry_at| now < retry_at) {
+            return None;
+        }
+        Some(accessory_id)
+    }
+
+    fn record_failure(&mut self, accessory_id: String, now: Instant) {
+        if self.accessory_id.as_deref() != Some(accessory_id.as_str()) {
+            self.reset();
+            self.accessory_id = Some(accessory_id);
+        }
+        self.failed_attempts = self.failed_attempts.saturating_add(1);
+        let exponent = self.failed_attempts.saturating_sub(1).min(5);
+        let multiplier = 1_u32 << exponent;
+        let delay = BLUETOOTH_AUTO_CONNECT_MIN_BACKOFF
+            .saturating_mul(multiplier)
+            .min(BLUETOOTH_AUTO_CONNECT_MAX_BACKOFF);
+        self.retry_at = now.checked_add(delay);
+    }
+
+    fn reset(&mut self) {
+        self.accessory_id = None;
+        self.failed_attempts = 0;
+        self.retry_at = None;
+    }
 }
 
 pub fn run(config_dir: &str) -> Result<()> {
@@ -188,7 +248,13 @@ where
     let mut bluetooth_state = bluetooth
         .refresh()
         .unwrap_or_else(|_| BluetoothState::unavailable());
-    bluetooth_state = auto_connect_saved_accessory(bluetooth.as_mut(), bluetooth_state);
+    let mut bluetooth_auto_connect = BluetoothAutoConnectBackoff::default();
+    bluetooth_state = auto_connect_saved_accessory(
+        bluetooth.as_mut(),
+        bluetooth_state,
+        &mut bluetooth_auto_connect,
+        Instant::now(),
+    );
     emit_bluetooth_state(output, &bluetooth_state)?;
     if let Ok(applied) = audio.current(bluetooth.as_ref(), &bluetooth_state) {
         emit_applied_audio(output, &applied)?;
@@ -244,6 +310,7 @@ where
                     output,
                     bluetooth.as_mut(),
                     &mut bluetooth_state,
+                    &mut bluetooth_auto_connect,
                     &mut audio,
                 )?;
             }
@@ -269,6 +336,7 @@ where
                     output,
                     bluetooth.as_mut(),
                     &mut bluetooth_state,
+                    &mut bluetooth_auto_connect,
                     &mut audio,
                 )?;
             }
@@ -913,12 +981,14 @@ fn service_bluetooth_and_audio(
     output: &mut dyn Write,
     bluetooth: &mut dyn BluetoothController,
     bluetooth_state: &mut BluetoothState,
+    bluetooth_auto_connect: &mut BluetoothAutoConnectBackoff,
     audio: &mut AudioManager,
 ) -> Result<()> {
     let Some(state) = bluetooth.tick() else {
         return Ok(());
     };
-    *bluetooth_state = auto_connect_saved_accessory(bluetooth, state);
+    *bluetooth_state =
+        auto_connect_saved_accessory(bluetooth, state, bluetooth_auto_connect, Instant::now());
     emit_bluetooth_state(output, bluetooth_state)?;
     if let Ok(Some(applied)) = audio.current_if_changed(bluetooth, bluetooth_state) {
         emit_applied_audio(output, &applied)?;
@@ -929,24 +999,22 @@ fn service_bluetooth_and_audio(
 fn auto_connect_saved_accessory(
     bluetooth: &mut dyn BluetoothController,
     state: BluetoothState,
+    backoff: &mut BluetoothAutoConnectBackoff,
+    now: Instant,
 ) -> BluetoothState {
-    if !state.radio_enabled
-        || state
-            .accessories
-            .iter()
-            .any(|accessory| accessory.connected)
-    {
-        return state;
-    }
-    let Some(accessory_id) = state
-        .accessories
-        .iter()
-        .find(|accessory| accessory.paired && accessory.auto_connect)
-        .map(|accessory| accessory.accessory_id.clone())
-    else {
+    let Some(accessory_id) = backoff.candidate(&state, now) else {
         return state;
     };
-    bluetooth.connect(&accessory_id).unwrap_or(state)
+    match bluetooth.connect(&accessory_id) {
+        Ok(connected) => {
+            backoff.reset();
+            connected
+        }
+        Err(_) => {
+            backoff.record_failure(accessory_id, now);
+            state
+        }
+    }
 }
 
 fn emit_bluetooth_state(output: &mut dyn Write, state: &BluetoothState) -> Result<()> {
@@ -1097,6 +1165,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bluetooth::{BluetoothAccessory, BluetoothCapabilities};
     use crate::wifi::{
         WifiActivationPreference, WifiActiveNetwork, WifiNearbyNetwork, WifiSavedProfile,
         WifiSecurity, WifiState, WifiStateStatus,
@@ -1222,6 +1291,84 @@ mod tests {
             scanned_at: Some(1_700_000_000),
             reported_at: 1_700_000_001,
         }
+    }
+
+    fn auto_connect_state(accessory_id: &str) -> BluetoothState {
+        BluetoothState {
+            schema_version: 1,
+            status: "ready".to_string(),
+            radio_enabled: true,
+            scanning: false,
+            accessories: vec![BluetoothAccessory {
+                accessory_id: accessory_id.to_string(),
+                name: "Family headset".to_string(),
+                kind: "headset".to_string(),
+                paired: true,
+                connected: false,
+                trusted: true,
+                auto_connect: true,
+                capabilities: BluetoothCapabilities {
+                    output: true,
+                    microphone: true,
+                    stereo: true,
+                    hands_free: true,
+                },
+                battery_percent: None,
+                signal_percent: None,
+                last_seen_at: 1,
+            }],
+            scanned_at: None,
+            reported_at: 1,
+        }
+    }
+
+    #[test]
+    fn failed_bluetooth_auto_connects_back_off_per_accessory() {
+        let mut bluetooth = UnavailableBluetoothController;
+        let mut backoff = BluetoothAutoConnectBackoff::default();
+        let first_attempt_at = Instant::now();
+        let state = auto_connect_state("accessory-a");
+
+        let retained = auto_connect_saved_accessory(
+            &mut bluetooth,
+            state.clone(),
+            &mut backoff,
+            first_attempt_at,
+        );
+        assert_eq!(retained, state);
+        assert_eq!(backoff.failed_attempts, 1);
+        let first_retry_at = backoff.retry_at.expect("retry deadline");
+        assert_eq!(
+            first_retry_at.duration_since(first_attempt_at),
+            BLUETOOTH_AUTO_CONNECT_MIN_BACKOFF
+        );
+
+        auto_connect_saved_accessory(
+            &mut bluetooth,
+            state.clone(),
+            &mut backoff,
+            first_retry_at - Duration::from_millis(1),
+        );
+        assert_eq!(backoff.failed_attempts, 1);
+
+        auto_connect_saved_accessory(&mut bluetooth, state, &mut backoff, first_retry_at);
+        assert_eq!(backoff.failed_attempts, 2);
+        assert_eq!(
+            backoff
+                .retry_at
+                .expect("second retry deadline")
+                .duration_since(first_retry_at),
+            BLUETOOTH_AUTO_CONNECT_MIN_BACKOFF.saturating_mul(2)
+        );
+
+        auto_connect_saved_accessory(
+            &mut bluetooth,
+            auto_connect_state("accessory-b"),
+            &mut backoff,
+            first_retry_at,
+        );
+        assert_eq!(backoff.accessory_id.as_deref(), Some("accessory-b"));
+        assert_eq!(backoff.failed_attempts, 1);
     }
 
     fn run_wifi_command(command: WorkerEnvelope, fail_scan: bool) -> Vec<WorkerEnvelope> {
