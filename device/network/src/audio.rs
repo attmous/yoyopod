@@ -459,11 +459,11 @@ impl AudioManager {
             .and_then(|accessory| bluetooth.raw_address(&accessory.accessory_id));
         let alert_accessory = communication_output_accessory.or(media_accessory);
         let alert_pcm = if communication_output_accessory.is_some() || media_uses_sco {
-            "yoyopod_bt_sco"
+            "yoyopod_bt_sco_playback"
         } else {
             "yoyopod_bt_a2dp"
         };
-        let (output_address, input_address) = bluetooth_pcm_addresses(
+        let (a2dp_address, sco_playback_address, sco_capture_address) = bluetooth_pcm_addresses(
             media_address.as_deref(),
             communication_output_address.as_deref(),
             communication_input_address.as_deref(),
@@ -471,8 +471,9 @@ impl AudioManager {
         );
         write_asound_config(
             &self.asound_path,
-            output_address,
-            input_address,
+            a2dp_address,
+            sco_playback_address,
+            sco_capture_address,
             &self.builtin.local_playback,
             alert_pcm,
         )?;
@@ -494,7 +495,7 @@ impl AudioManager {
                 self.builtin.media.as_str()
             } else {
                 if media_uses_sco {
-                    "alsa/yoyopod_bt_sco"
+                    "alsa/yoyopod_bt_sco_playback"
                 } else {
                     "alsa/yoyopod_bt_a2dp"
                 }
@@ -510,7 +511,7 @@ impl AudioManager {
             {
                 self.builtin.voip_playback.as_str()
             } else {
-                "ALSA: yoyopod_bt_sco"
+                "ALSA: yoyopod_bt_sco_playback"
             }
             .to_string(),
             voip_ringer_device: if alert_accessory.is_some() {
@@ -524,7 +525,7 @@ impl AudioManager {
             {
                 self.builtin.voip_capture.as_str()
             } else {
-                "ALSA: yoyopod_bt_sco"
+                "ALSA: yoyopod_bt_sco_capture"
             }
             .to_string(),
             voip_media_device: if communication_output_fallback
@@ -532,7 +533,7 @@ impl AudioManager {
             {
                 self.builtin.voip_media.as_str()
             } else {
-                "ALSA: yoyopod_bt_sco"
+                "ALSA: yoyopod_bt_sco_playback"
             }
             .to_string(),
             communication_volume: self
@@ -680,15 +681,19 @@ fn endpoints(bluetooth: &BluetoothState) -> AudioEndpoints {
 
 fn write_asound_config(
     path: &Path,
-    output_address: Option<&str>,
-    input_address: Option<&str>,
+    a2dp_address: Option<&str>,
+    sco_playback_address: Option<&str>,
+    sco_capture_address: Option<&str>,
     builtin_ringer: &str,
     selected_alert_pcm: &str,
 ) -> Result<(), AudioOperationError> {
-    let output = output_address.unwrap_or("00:00:00:00:00:00");
-    let input = input_address.unwrap_or(output);
+    let a2dp = a2dp_address.unwrap_or("00:00:00:00:00:00");
+    let sco_playback = sco_playback_address
+        .or(sco_capture_address)
+        .unwrap_or("00:00:00:00:00:00");
+    let sco_capture = sco_capture_address.unwrap_or(sco_playback);
     let builtin_ringer = escape_alsa_string(builtin_ringer);
-    let selected_alert_is_mono = selected_alert_pcm == "yoyopod_bt_sco";
+    let selected_alert_is_mono = selected_alert_pcm == "yoyopod_bt_sco_playback";
     let selected_alert_pcm = escape_alsa_string(selected_alert_pcm);
     let (selected_channels, selected_bindings, mirror_channels, selected_ttable) =
         if selected_alert_is_mono {
@@ -711,7 +716,8 @@ fn write_asound_config(
             "# Managed by YoYoPod. Bluetooth addresses stay on-device.\n\
 </usr/share/alsa/alsa.conf>\n\
 pcm.yoyopod_bt_a2dp {{\n  type bluealsa\n  device \"{output}\"\n  profile \"a2dp\"\n}}\n\
-pcm.yoyopod_bt_sco {{\n  type bluealsa\n  device \"{input}\"\n  profile \"sco\"\n}}\n",
+pcm.yoyopod_bt_sco_playback {{\n  type bluealsa\n  device \"{sco_playback}\"\n  profile \"sco\"\n}}\n\
+pcm.yoyopod_bt_sco_capture {{\n  type bluealsa\n  device \"{sco_capture}\"\n  profile \"sco\"\n}}\n",
             "pcm.yoyopod_alert_multi {{\n\
   type multi\n\
   slaves.builtin.pcm \"plug:{builtin_ringer}\"\n\
@@ -733,8 +739,9 @@ pcm.yoyopod_alert_mirror {{\n\
 {selected_ttable}\
 }}\n"
         ),
-        output = output,
-        input = input,
+        output = a2dp,
+        sco_playback = sco_playback,
+        sco_capture = sco_capture,
         builtin_ringer = builtin_ringer,
         selected_alert_pcm = selected_alert_pcm,
         selected_channels = selected_channels,
@@ -754,12 +761,13 @@ fn bluetooth_pcm_addresses<'a>(
     communication_output_address: Option<&'a str>,
     communication_input_address: Option<&'a str>,
     media_uses_sco: bool,
-) -> (Option<&'a str>, Option<&'a str>) {
-    let output = media_address.or(communication_output_address);
-    let input = communication_input_address
-        .or(communication_output_address)
-        .or(if media_uses_sco { media_address } else { None });
-    (output, input)
+) -> (Option<&'a str>, Option<&'a str>, Option<&'a str>) {
+    let a2dp = if media_uses_sco { None } else { media_address }.or(communication_output_address);
+    let sco_playback = communication_output_address
+        .or(if media_uses_sco { media_address } else { None })
+        .or(communication_input_address);
+    let sco_capture = communication_input_address.or(sco_playback);
+    (a2dp, sco_playback, sco_capture)
 }
 
 fn escape_alsa_string(value: &str) -> String {
@@ -1039,7 +1047,7 @@ mod tests {
             .apply(2, settings, &UnavailableBluetoothController, &state)
             .expect("apply");
 
-        assert_eq!(applied.route.media_device, "alsa/yoyopod_bt_sco");
+        assert_eq!(applied.route.media_device, "alsa/yoyopod_bt_sco_playback");
         assert_eq!(applied.state.applied.routes.media_output_id, accessory_id);
         assert_eq!(applied.state.status, "ready");
     }
@@ -1047,16 +1055,53 @@ mod tests {
     #[test]
     fn media_only_sco_route_uses_the_media_address_for_both_pcms() {
         let address = "AA:BB:CC:DD:EE:FF";
-        let (output, input) = bluetooth_pcm_addresses(Some(address), None, None, true);
-        assert_eq!(output, Some(address));
-        assert_eq!(input, Some(address));
+        let (a2dp, playback, capture) = bluetooth_pcm_addresses(Some(address), None, None, true);
+        assert_eq!(a2dp, None);
+        assert_eq!(playback, Some(address));
+        assert_eq!(capture, Some(address));
 
         let directory = tempfile::tempdir().expect("tempdir");
         let asound_path = directory.path().join("asoundrc");
-        write_asound_config(&asound_path, output, input, "default", "yoyopod_bt_sco")
-            .expect("asound config");
+        write_asound_config(
+            &asound_path,
+            a2dp,
+            playback,
+            capture,
+            "default",
+            "yoyopod_bt_sco_playback",
+        )
+        .expect("asound config");
         let config = fs::read_to_string(asound_path).expect("read asound config");
         assert_eq!(config.matches("device \"AA:BB:CC:DD:EE:FF\"").count(), 2);
+    }
+
+    #[test]
+    fn split_communication_routes_use_distinct_sco_pcms() {
+        let playback_address = "AA:BB:CC:DD:EE:01";
+        let capture_address = "AA:BB:CC:DD:EE:02";
+        let (a2dp, playback, capture) =
+            bluetooth_pcm_addresses(None, Some(playback_address), Some(capture_address), false);
+        assert_eq!(playback, Some(playback_address));
+        assert_eq!(capture, Some(capture_address));
+
+        let directory = tempfile::tempdir().expect("tempdir");
+        let asound_path = directory.path().join("asoundrc");
+        write_asound_config(
+            &asound_path,
+            a2dp,
+            playback,
+            capture,
+            "default",
+            "yoyopod_bt_sco_playback",
+        )
+        .expect("asound config");
+        let config = fs::read_to_string(asound_path).expect("read asound config");
+        assert!(config.contains(
+            "pcm.yoyopod_bt_sco_playback {\n  type bluealsa\n  device \"AA:BB:CC:DD:EE:01\""
+        ));
+        assert!(config.contains(
+            "pcm.yoyopod_bt_sco_capture {\n  type bluealsa\n  device \"AA:BB:CC:DD:EE:02\""
+        ));
     }
 
     #[test]
@@ -1108,7 +1153,7 @@ mod tests {
         let config = fs::read_to_string(asound_path).expect("asound config");
         assert!(config.contains("pcm.yoyopod_alert_mirror"));
         assert!(config.contains("plug:default"));
-        assert!(config.contains("plug:yoyopod_bt_sco"));
+        assert!(config.contains("plug:yoyopod_bt_sco_playback"));
         assert!(config.contains("slaves.selected.channels 1"));
         assert!(config.contains("slave.channels 3"));
         assert!(config.contains("ttable.0.2 0.5"));
@@ -1191,8 +1236,12 @@ mod tests {
             "default"
         );
         assert_eq!(
-            local_pcm_for_route("ALSA: yoyopod_bt_sco", "ALSA: wm8960-soundcard", "default"),
-            "yoyopod_bt_sco"
+            local_pcm_for_route(
+                "ALSA: yoyopod_bt_sco_playback",
+                "ALSA: wm8960-soundcard",
+                "default"
+            ),
+            "yoyopod_bt_sco_playback"
         );
     }
 
@@ -1353,6 +1402,7 @@ mod tests {
             &path,
             Some("00:11:22:33:44:55"),
             None,
+            None,
             "wm8960-soundcard",
             "yoyopod_bt_a2dp",
         )
@@ -1361,7 +1411,8 @@ mod tests {
         let config = fs::read_to_string(path).expect("asound config");
         assert!(config.contains("</usr/share/alsa/alsa.conf>"));
         assert!(config.contains("pcm.yoyopod_bt_a2dp"));
-        assert!(config.contains("pcm.yoyopod_bt_sco"));
+        assert!(config.contains("pcm.yoyopod_bt_sco_playback"));
+        assert!(config.contains("pcm.yoyopod_bt_sco_capture"));
         assert!(config.contains("pcm.yoyopod_alert_mirror"));
         assert!(config.contains("slaves.selected.channels 2"));
         assert!(config.contains("slave.channels 4"));
