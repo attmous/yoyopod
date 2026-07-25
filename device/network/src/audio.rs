@@ -283,12 +283,12 @@ impl AudioManager {
         bluetooth: &dyn BluetoothController,
         bluetooth_state: &BluetoothState,
     ) -> Result<AppliedAudio, AudioOperationError> {
-        let max_output = self.desired.levels.max_output.clamp(20, 100);
+        let max_output = self.desired.levels.max_output.min(100);
         let level = level.min(max_output);
         let mut desired = self.desired.clone();
         desired.levels.media = level;
         desired.levels.communication = level;
-        desired.levels.alerts = level.max(20).min(max_output);
+        desired.levels.alerts = level;
         self.persist_candidate(self.desired_revision, &desired)?;
         self.desired = desired;
         self.resolve(bluetooth, bluetooth_state)
@@ -589,10 +589,8 @@ fn validate_settings(settings: &AudioSettings) -> Result<(), AudioOperationError
     let levels = &settings.levels;
     if settings.alert_policy != "mirror_builtin_and_selected"
         || settings.fallback_policy != "builtin"
-        || levels.max_output < 20
         || levels.max_output > 100
         || levels.microphone_gain > 100
-        || levels.alerts < 20
         || levels.media > levels.max_output
         || levels.communication > levels.max_output
         || levels.alerts > levels.max_output
@@ -1245,10 +1243,10 @@ mod tests {
             AudioManager::open_at(settings_path.clone(), directory.path().join("asoundrc"));
         let state = BluetoothState::unavailable();
         let mut settings = AudioSettings::default();
-        settings.levels.max_output = 70;
-        settings.levels.media = 65;
-        settings.levels.communication = 70;
-        settings.levels.alerts = 70;
+        settings.levels.max_output = 10;
+        settings.levels.media = 10;
+        settings.levels.communication = 10;
+        settings.levels.alerts = 10;
         manager
             .apply(2, settings, &UnavailableBluetoothController, &state)
             .expect("apply capped settings");
@@ -1257,14 +1255,14 @@ mod tests {
             .set_output_level(90, &UnavailableBluetoothController, &state)
             .expect("set capped output level");
 
-        assert_eq!(applied.state.applied.levels.media, 70);
-        assert_eq!(applied.state.applied.levels.communication, 70);
-        assert_eq!(applied.state.applied.levels.alerts, 70);
-        assert_eq!(applied.state.applied.levels.max_output, 70);
+        assert_eq!(applied.state.applied.levels.media, 10);
+        assert_eq!(applied.state.applied.levels.communication, 10);
+        assert_eq!(applied.state.applied.levels.alerts, 10);
+        assert_eq!(applied.state.applied.levels.max_output, 10);
         let stored: StoredAudioSettings =
             serde_json::from_slice(&fs::read(settings_path).expect("settings file"))
                 .expect("stored settings");
-        assert_eq!(stored.settings.levels.max_output, 70);
+        assert_eq!(stored.settings.levels.max_output, 10);
     }
 
     #[test]
