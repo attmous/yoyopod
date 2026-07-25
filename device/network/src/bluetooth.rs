@@ -17,6 +17,7 @@ const HEADSET_UUID: &str = "00001108-0000-1000-8000-00805f9b34fb";
 const DEFAULT_REGISTRY_PATH: &str = "/var/lib/yoyopod/bluetooth/accessories.json";
 const SCAN_DURATION: Duration = Duration::from_secs(12);
 const SCAN_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+const STATE_REFRESH_INTERVAL: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BluetoothState {
@@ -192,6 +193,7 @@ pub struct BluezBluetoothController {
     registry: AccessoryRegistry,
     scan_deadline: Option<Instant>,
     scan_refresh_deadline: Option<Instant>,
+    state_refresh_deadline: Instant,
     scanned_at: Option<u64>,
 }
 
@@ -217,6 +219,7 @@ impl BluezBluetoothController {
             registry,
             scan_deadline: None,
             scan_refresh_deadline: None,
+            state_refresh_deadline: Instant::now() + STATE_REFRESH_INTERVAL,
             scanned_at: None,
         })
     }
@@ -277,6 +280,7 @@ impl BluezBluetoothController {
     }
 
     fn refresh_inner(&mut self) -> Result<BluetoothState, BluetoothOperationError> {
+        self.state_refresh_deadline = Instant::now() + STATE_REFRESH_INTERVAL;
         let radio_enabled = self
             .adapter_proxy()?
             .get_property::<bool>("Powered")
@@ -480,18 +484,13 @@ impl BluetoothController for BluezBluetoothController {
         let path = self
             .device_path(accessory_id)
             .ok_or_else(BluetoothOperationError::invalid_accessory)?;
-        if device_property::<bool>(&self.connection, &path, "Connected").unwrap_or(false) {
-            return self.refresh_inner();
-        }
         let uuids =
             device_property::<Vec<String>>(&self.connection, &path, "UUIDs").unwrap_or_default();
-        let profile = preferred_output_profile(&uuids).ok_or_else(|| BluetoothOperationError {
+        preferred_output_profile(&uuids).ok_or_else(|| BluetoothOperationError {
             code: "bluetooth_audio_profile_unavailable",
             message: "The accessory does not offer a compatible playback profile".to_string(),
         })?;
-        let connect_result = self
-            .device_proxy(&path)?
-            .call::<_, _, ()>("ConnectProfile", &(profile,));
+        let connect_result = self.device_proxy(&path)?.call::<_, _, ()>("Connect", &());
         if connect_result.is_err()
             && !device_property::<bool>(&self.connection, &path, "Connected").unwrap_or(false)
         {
@@ -563,6 +562,9 @@ impl BluetoothController for BluezBluetoothController {
                 .is_some_and(|deadline| now >= deadline)
         {
             self.scan_refresh_deadline = Some(now + SCAN_REFRESH_INTERVAL);
+            return self.refresh_inner().ok();
+        }
+        if now >= self.state_refresh_deadline {
             return self.refresh_inner().ok();
         }
         None
@@ -735,7 +737,9 @@ mod tests {
     fn scan_window_is_short_and_refreshes_incrementally() {
         assert_eq!(SCAN_DURATION, Duration::from_secs(12));
         assert_eq!(SCAN_REFRESH_INTERVAL, Duration::from_secs(1));
+        assert_eq!(STATE_REFRESH_INTERVAL, Duration::from_secs(3));
         assert!(SCAN_REFRESH_INTERVAL < SCAN_DURATION);
+        assert!(SCAN_DURATION > STATE_REFRESH_INTERVAL);
     }
 
     #[test]
