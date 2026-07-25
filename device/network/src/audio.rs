@@ -10,6 +10,71 @@ use serde::{Deserialize, Serialize};
 use crate::bluetooth::{BluetoothController, BluetoothState};
 
 const DEFAULT_SETTINGS_PATH: &str = "/var/lib/yoyopod/audio/settings.json";
+const DEFAULT_ASOUND_CONFIG_PATH: &str = "/var/lib/yoyopod/audio/asoundrc";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BuiltinAudioDevices {
+    media: String,
+    voip_playback: String,
+    voip_ringer: String,
+    voip_capture: String,
+    voip_media: String,
+}
+
+impl Default for BuiltinAudioDevices {
+    fn default() -> Self {
+        Self {
+            media: "alsa/default".to_string(),
+            voip_playback: "ALSA: wm8960-soundcard".to_string(),
+            voip_ringer: "ALSA: wm8960-soundcard".to_string(),
+            voip_capture: "ALSA: wm8960-soundcard".to_string(),
+            voip_media: "ALSA: wm8960-soundcard".to_string(),
+        }
+    }
+}
+
+impl BuiltinAudioDevices {
+    fn load(config_dir: &Path) -> Self {
+        let hardware = fs::read(config_dir.join("device/hardware.yaml"))
+            .ok()
+            .and_then(|bytes| serde_yaml::from_slice::<serde_yaml::Value>(&bytes).ok())
+            .unwrap_or(serde_yaml::Value::Null);
+        let configured = |path: &[&str], env_name: &str, fallback: &str| {
+            std::env::var(env_name)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| yaml_string(&hardware, path))
+                .unwrap_or_else(|| fallback.to_string())
+        };
+        Self {
+            media: mpv_alsa_device(&configured(
+                &["media_audio", "alsa_device"],
+                "YOYOPOD_ALSA_DEVICE",
+                "default",
+            )),
+            voip_playback: configured(
+                &["communication_audio", "playback_device_id"],
+                "YOYOPOD_PLAYBACK_DEVICE",
+                "ALSA: wm8960-soundcard",
+            ),
+            voip_ringer: configured(
+                &["communication_audio", "ringer_device_id"],
+                "YOYOPOD_RINGER_DEVICE",
+                "ALSA: wm8960-soundcard",
+            ),
+            voip_capture: configured(
+                &["communication_audio", "capture_device_id"],
+                "YOYOPOD_CAPTURE_DEVICE",
+                "ALSA: wm8960-soundcard",
+            ),
+            voip_media: configured(
+                &["communication_audio", "media_device_id"],
+                "YOYOPOD_MEDIA_DEVICE",
+                "ALSA: wm8960-soundcard",
+            ),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioSettings {
@@ -136,21 +201,34 @@ pub struct AudioManager {
     desired: AudioSettings,
     input_meter: Option<AudioInputMeter>,
     last_resolved: Option<AppliedAudio>,
+    builtin: BuiltinAudioDevices,
 }
 
 impl AudioManager {
-    pub fn open() -> Self {
+    pub fn open(config_dir: impl AsRef<Path>) -> Self {
         let settings_path = std::env::var_os("YOYOPOD_AUDIO_SETTINGS_FILE")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(DEFAULT_SETTINGS_PATH));
         let asound_path = std::env::var_os("YOYOPOD_ASOUND_CONFIG")
             .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".asoundrc")))
-            .unwrap_or_else(|| PathBuf::from("/home/raouf/.asoundrc"));
-        Self::open_at(settings_path, asound_path)
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_ASOUND_CONFIG_PATH));
+        Self::open_at_with_builtin(
+            settings_path,
+            asound_path,
+            BuiltinAudioDevices::load(config_dir.as_ref()),
+        )
     }
 
+    #[cfg(test)]
     fn open_at(settings_path: PathBuf, asound_path: PathBuf) -> Self {
+        Self::open_at_with_builtin(settings_path, asound_path, BuiltinAudioDevices::default())
+    }
+
+    fn open_at_with_builtin(
+        settings_path: PathBuf,
+        asound_path: PathBuf,
+        builtin: BuiltinAudioDevices,
+    ) -> Self {
         let stored = fs::read(&settings_path)
             .ok()
             .and_then(|bytes| serde_json::from_slice::<StoredAudioSettings>(&bytes).ok());
@@ -161,6 +239,7 @@ impl AudioManager {
             desired: stored.map_or_else(AudioSettings::default, |stored| stored.settings),
             input_meter: None,
             last_resolved: None,
+            builtin,
         }
     }
 
@@ -225,12 +304,18 @@ impl AudioManager {
         route: &AudioRouteLocal,
     ) -> Result<(), AudioOperationError> {
         let (device, volume): (&str, u8) = match target {
-            "media" => (route.media_device.as_str(), self.desired.levels.media),
+            "media" => (route.media_device.as_str(), route.media_volume),
             "communication" => (
                 route.voip_playback_device.as_str(),
-                self.desired.levels.communication,
+                route.communication_volume,
             ),
-            "alerts" => ("alsa/default", self.desired.levels.alerts),
+            "alerts" => (
+                route.voip_ringer_device.as_str(),
+                self.desired
+                    .levels
+                    .alerts
+                    .min(self.desired.levels.max_output),
+            ),
             _ => return Err(AudioOperationError::invalid("Unknown audio test target")),
         };
         let sample = [
@@ -240,12 +325,19 @@ impl AudioManager {
         .into_iter()
         .find(|path| Path::new(path).exists())
         .ok_or_else(|| AudioOperationError::failed("No audio test sound is installed"))?;
-        let alsa_device = local_alsa_device(device);
-        let _ = volume;
-        Command::new("aplay")
-            .args(["-q", "-D", alsa_device, sample])
-            .spawn()
-            .map_err(|_| AudioOperationError::failed("The test sound could not be played"))?;
+        let audio_device = mpv_alsa_device(device);
+        let status = Command::new("mpv")
+            .args(output_test_args(&audio_device, volume, sample))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|_| AudioOperationError::failed("The test sound could not be started"))?;
+        if !status.success() {
+            return Err(AudioOperationError::failed(
+                "The selected audio output is not currently available",
+            ));
+        }
         Ok(())
     }
 
@@ -349,7 +441,7 @@ impl AudioManager {
             media_device: if media_fallback
                 || self.desired.routes.media_output_id == "builtin-speaker"
             {
-                "alsa/default"
+                self.builtin.media.as_str()
             } else {
                 "alsa/yoyopod_bt_a2dp"
             }
@@ -362,17 +454,17 @@ impl AudioManager {
             voip_playback_device: if communication_output_fallback
                 || self.desired.routes.communication_output_id == "builtin-speaker"
             {
-                "ALSA: default"
+                self.builtin.voip_playback.as_str()
             } else {
                 "ALSA: yoyopod_bt_sco"
             }
             .to_string(),
             // Safety alerts/ringing always retain the built-in route.
-            voip_ringer_device: "ALSA: default".to_string(),
+            voip_ringer_device: self.builtin.voip_ringer.clone(),
             voip_capture_device: if communication_input_fallback
                 || self.desired.routes.communication_input_id == "builtin-microphone"
             {
-                "ALSA: default"
+                self.builtin.voip_capture.as_str()
             } else {
                 "ALSA: yoyopod_bt_sco"
             }
@@ -380,7 +472,7 @@ impl AudioManager {
             voip_media_device: if communication_output_fallback
                 || self.desired.routes.communication_output_id == "builtin-speaker"
             {
-                "ALSA: default"
+                self.builtin.voip_media.as_str()
             } else {
                 "ALSA: yoyopod_bt_sco"
             }
@@ -548,6 +640,42 @@ fn same_audio_application(left: &AppliedAudio, right: &AppliedAudio) -> bool {
     left.route == right.route && left_state == right_state
 }
 
+fn yaml_string(value: &serde_yaml::Value, path: &[&str]) -> Option<String> {
+    let mut current = value;
+    for segment in path {
+        current = current
+            .as_mapping()?
+            .get(serde_yaml::Value::String((*segment).to_string()))?;
+    }
+    current
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn mpv_alsa_device(device: &str) -> String {
+    if device.starts_with("alsa/") {
+        device.to_string()
+    } else {
+        format!("alsa/{}", local_alsa_device(device))
+    }
+}
+
+fn output_test_args(audio_device: &str, volume: u8, sample: &str) -> Vec<String> {
+    vec![
+        "--no-config".to_string(),
+        "--really-quiet".to_string(),
+        "--no-video".to_string(),
+        "--audio-display=no".to_string(),
+        "--ao=alsa".to_string(),
+        format!("--audio-device={audio_device}"),
+        format!("--volume={}", volume.min(100)),
+        "--volume-max=100".to_string(),
+        sample.to_string(),
+    ]
+}
+
 fn local_alsa_device(device: &str) -> &str {
     device
         .strip_prefix("alsa/")
@@ -673,7 +801,7 @@ mod tests {
             .apply(2, settings, &UnavailableBluetoothController, &state)
             .expect("apply");
 
-        assert_eq!(applied.route.voip_playback_device, "ALSA: default");
+        assert_eq!(applied.route.voip_playback_device, "ALSA: wm8960-soundcard");
         assert_eq!(
             applied.state.applied.routes.communication_output_id,
             "builtin-speaker"
@@ -698,6 +826,46 @@ mod tests {
             .expect("periodic state");
 
         assert!(unchanged.is_none());
+    }
+
+    #[test]
+    fn configured_builtin_devices_are_preserved_in_local_routes() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let builtin = BuiltinAudioDevices {
+            media: "alsa/custom-speaker".to_string(),
+            voip_playback: "ALSA: custom-playback".to_string(),
+            voip_ringer: "ALSA: custom-ringer".to_string(),
+            voip_capture: "ALSA: custom-capture".to_string(),
+            voip_media: "ALSA: custom-media".to_string(),
+        };
+        let mut manager = AudioManager::open_at_with_builtin(
+            directory.path().join("settings.json"),
+            directory.path().join("asoundrc"),
+            builtin,
+        );
+
+        let applied = manager
+            .current(
+                &UnavailableBluetoothController,
+                &BluetoothState::unavailable(),
+            )
+            .expect("route");
+
+        assert_eq!(applied.route.media_device, "alsa/custom-speaker");
+        assert_eq!(applied.route.voip_playback_device, "ALSA: custom-playback");
+        assert_eq!(applied.route.voip_ringer_device, "ALSA: custom-ringer");
+        assert_eq!(applied.route.voip_capture_device, "ALSA: custom-capture");
+        assert_eq!(applied.route.voip_media_device, "ALSA: custom-media");
+    }
+
+    #[test]
+    fn output_test_uses_the_selected_device_and_bounded_level() {
+        let args = output_test_args("alsa/yoyopod_bt_a2dp", 86, "/tmp/test.wav");
+
+        assert!(args.contains(&"--audio-device=alsa/yoyopod_bt_a2dp".to_string()));
+        assert!(args.contains(&"--volume=86".to_string()));
+        assert!(args.contains(&"--volume-max=100".to_string()));
+        assert_eq!(args.last().map(String::as_str), Some("/tmp/test.wav"));
     }
 
     #[test]

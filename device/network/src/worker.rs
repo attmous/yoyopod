@@ -66,7 +66,7 @@ pub fn run(config_dir: &str) -> Result<()> {
             DEFAULT_POLL_INTERVAL,
             wifi,
             bluetooth,
-            AudioManager::open(),
+            AudioManager::open(config_dir),
         ),
         Err(error) => run_with_runtime_loop(
             NetworkRuntime::degraded_config(config_dir, error.to_string()),
@@ -75,7 +75,7 @@ pub fn run(config_dir: &str) -> Result<()> {
             DEFAULT_POLL_INTERVAL,
             wifi,
             bluetooth,
-            AudioManager::open(),
+            AudioManager::open(config_dir),
         ),
     }
 }
@@ -127,6 +127,7 @@ where
     R: Read + Send + 'static,
     W: Write,
 {
+    let config_dir = runtime.snapshot().config_dir.clone();
     run_with_runtime_loop(
         runtime,
         reader_channel(input),
@@ -134,7 +135,7 @@ where
         poll_interval,
         Box::new(UnavailableWifiController),
         Box::new(UnavailableBluetoothController),
-        AudioManager::open(),
+        AudioManager::open(&config_dir),
     )
 }
 
@@ -150,6 +151,7 @@ where
     R: Read + Send + 'static,
     W: Write,
 {
+    let config_dir = runtime.snapshot().config_dir.clone();
     run_with_runtime_loop(
         runtime,
         reader_channel(input),
@@ -157,7 +159,7 @@ where
         poll_interval,
         wifi,
         Box::new(UnavailableBluetoothController),
-        AudioManager::open(),
+        AudioManager::open(&config_dir),
     )
 }
 

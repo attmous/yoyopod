@@ -162,17 +162,21 @@ pub fn run(
     let dns_file = "/etc/NetworkManager/dnsmasq-shared.d/010-yoyopod-captive.conf";
     let dropin_dir = format!("/etc/systemd/system/{}.d", lane.dev_service);
     let dropin_file = format!("{dropin_dir}/10-wifi-portal-cap.conf");
+    let audio_dropin_file = format!("{dropin_dir}/20-bluetooth-audio.conf");
     let install_portal_prereqs_cmd = format!(
         "sudo -n install -d -m 0755 {dns_dir} && \
          printf 'address=/#/10.42.0.1\\n' | sudo -n tee {dns_file} >/dev/null && \
          sudo -n install -d -m 0755 {dropin_dir} && \
          printf '[Service]\\nAmbientCapabilities=CAP_NET_BIND_SERVICE\\n' \
          | sudo -n tee {dropin_file} >/dev/null && \
+         printf '[Service]\\nEnvironment=YOYOPOD_ASOUND_CONFIG=/var/lib/yoyopod/audio/asoundrc\\n' \
+         | sudo -n tee {audio_dropin_file} >/dev/null && \
          sudo -n systemctl daemon-reload",
         dns_dir = shell_quote(dns_dir),
         dns_file = shell_quote(dns_file),
         dropin_dir = shell_quote(&dropin_dir),
         dropin_file = shell_quote(&dropin_file),
+        audio_dropin_file = shell_quote(&audio_dropin_file),
     );
     let rc = run_remote(
         &ctx.conn,
@@ -588,5 +592,14 @@ mod tests {
         assert!(!dropin.contains("-p a2dp-sink"));
         assert!(!dropin.contains("-p hfp-hf"));
         assert!(!dropin.contains("-p hsp-hs"));
+    }
+
+    #[test]
+    fn dev_service_uses_the_writable_managed_asound_config() {
+        let service = include_str!("../../../../../deploy/systemd/yoyopod-dev.service");
+
+        assert!(
+            service.contains("Environment=YOYOPOD_ASOUND_CONFIG=/var/lib/yoyopod/audio/asoundrc")
+        );
     }
 }
