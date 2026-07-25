@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -195,6 +196,7 @@ pub struct BluezBluetoothController {
     scan_refresh_deadline: Option<Instant>,
     state_refresh_deadline: Instant,
     scanned_at: Option<u64>,
+    connected_accessories: HashSet<String>,
 }
 
 impl BluezBluetoothController {
@@ -221,6 +223,7 @@ impl BluezBluetoothController {
             scan_refresh_deadline: None,
             state_refresh_deadline: Instant::now() + STATE_REFRESH_INTERVAL,
             scanned_at: None,
+            connected_accessories: HashSet::new(),
         })
     }
 
@@ -293,6 +296,7 @@ impl BluezBluetoothController {
         let objects = managed_objects(&self.connection)?;
         let mut accessories = Vec::new();
         let mut registry_changed = false;
+        let mut connected_accessories = HashSet::new();
 
         for (path, interfaces) in &objects {
             if !interfaces.contains_key("org.bluez.Device1") {
@@ -307,6 +311,9 @@ impl BluezBluetoothController {
             let Some(address) = device_property::<String>(&self.connection, path, "Address") else {
                 continue;
             };
+            let connected =
+                device_property::<bool>(&self.connection, path, "Connected").unwrap_or(false);
+            let rssi = device_property::<i16>(&self.connection, path, "RSSI");
             let entry_index = if let Some(index) = self
                 .registry
                 .accessories
@@ -326,9 +333,15 @@ impl BluezBluetoothController {
                 self.registry.accessories.len() - 1
             };
             let entry = &mut self.registry.accessories[entry_index];
-            if entry.last_seen_at != now {
+            let was_connected = self.connected_accessories.contains(&entry.accessory_id);
+            if should_refresh_last_seen(scanning, rssi.is_some(), connected, was_connected)
+                && entry.last_seen_at != now
+            {
                 entry.last_seen_at = now;
                 registry_changed = true;
+            }
+            if connected {
+                connected_accessories.insert(entry.accessory_id.clone());
             }
             let system_name = device_property::<String>(&self.connection, path, "Alias")
                 .or_else(|| device_property::<String>(&self.connection, path, "Name"))
@@ -338,14 +351,12 @@ impl BluezBluetoothController {
             } else {
                 entry.alias.clone()
             };
-            let rssi = device_property::<i16>(&self.connection, path, "RSSI");
             accessories.push(BluetoothAccessory {
                 accessory_id: entry.accessory_id.clone(),
                 name: clean_name(&name),
                 kind: accessory_kind(&name, &capabilities),
                 paired: device_property::<bool>(&self.connection, path, "Paired").unwrap_or(false),
-                connected: device_property::<bool>(&self.connection, path, "Connected")
-                    .unwrap_or(false),
+                connected,
                 trusted: device_property::<bool>(&self.connection, path, "Trusted")
                     .unwrap_or(false),
                 auto_connect: entry.auto_connect,
@@ -365,6 +376,7 @@ impl BluezBluetoothController {
         if registry_changed {
             self.save_registry()?;
         }
+        self.connected_accessories = connected_accessories;
         Ok(BluetoothState {
             schema_version: 1,
             status: "ready".to_string(),
@@ -691,6 +703,15 @@ fn rssi_percent(rssi: i16) -> u8 {
     (((rssi.clamp(-100, -40) + 100) * 100) / 60) as u8
 }
 
+fn should_refresh_last_seen(
+    scanning: bool,
+    has_rssi: bool,
+    connected: bool,
+    was_connected: bool,
+) -> bool {
+    (scanning && has_rssi) || (connected && !was_connected)
+}
+
 fn load_registry(path: &Path) -> Result<AccessoryRegistry, std::io::Error> {
     let bytes = fs::read(path)?;
     serde_json::from_slice(&bytes)
@@ -754,6 +775,15 @@ mod tests {
         assert_eq!(STATE_REFRESH_INTERVAL, Duration::from_secs(3));
         assert!(SCAN_REFRESH_INTERVAL < SCAN_DURATION);
         assert!(SCAN_DURATION > STATE_REFRESH_INTERVAL);
+    }
+
+    #[test]
+    fn cached_devices_do_not_look_fresh_without_discovery_or_connection() {
+        assert!(!should_refresh_last_seen(false, false, false, false));
+        assert!(!should_refresh_last_seen(false, true, false, false));
+        assert!(!should_refresh_last_seen(false, false, true, true));
+        assert!(should_refresh_last_seen(true, true, false, false));
+        assert!(should_refresh_last_seen(false, false, true, false));
     }
 
     #[test]

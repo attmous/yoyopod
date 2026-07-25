@@ -251,9 +251,11 @@ impl AudioManager {
         bluetooth_state: &BluetoothState,
     ) -> Result<AppliedAudio, AudioOperationError> {
         validate_settings(&settings)?;
-        if revision < self.desired_revision {
+        if revision < self.desired_revision
+            || (revision == self.desired_revision && settings != self.desired)
+        {
             return Err(AudioOperationError::invalid(
-                "A newer audio configuration is already active",
+                "A newer or locally changed audio configuration is already active",
             ));
         }
         self.desired_revision = revision;
@@ -401,7 +403,10 @@ impl AudioManager {
                 accessory.accessory_id == endpoint_id && accessory.paired && accessory.connected
             })
         };
-        let media_accessory = connected(&self.desired.routes.media_output_id);
+        let media_accessory = connected(&self.desired.routes.media_output_id)
+            .filter(|accessory| accessory.capabilities.stereo || accessory.capabilities.hands_free);
+        let media_uses_sco =
+            media_accessory.is_some_and(|accessory| !accessory.capabilities.stereo);
         let communication_output_accessory =
             connected(&self.desired.routes.communication_output_id)
                 .filter(|accessory| accessory.capabilities.hands_free);
@@ -443,7 +448,11 @@ impl AudioManager {
             {
                 self.builtin.media.as_str()
             } else {
-                "alsa/yoyopod_bt_a2dp"
+                if media_uses_sco {
+                    "alsa/yoyopod_bt_sco"
+                } else {
+                    "alsa/yoyopod_bt_a2dp"
+                }
             }
             .to_string(),
             media_volume: self
@@ -811,6 +820,52 @@ mod tests {
     }
 
     #[test]
+    fn hands_free_only_media_output_uses_the_sco_profile() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let mut manager = AudioManager::open_at(
+            directory.path().join("settings.json"),
+            directory.path().join("asoundrc"),
+        );
+        let accessory_id = "9b0692e3-a07a-42f0-9fa7-a7704bbcf777".to_string();
+        let state = BluetoothState {
+            schema_version: 1,
+            status: "ready".to_string(),
+            radio_enabled: true,
+            scanning: false,
+            accessories: vec![BluetoothAccessory {
+                accessory_id: accessory_id.clone(),
+                name: "Hands-free headset".to_string(),
+                kind: "headset".to_string(),
+                paired: true,
+                connected: true,
+                trusted: true,
+                auto_connect: true,
+                capabilities: BluetoothCapabilities {
+                    output: true,
+                    microphone: true,
+                    stereo: false,
+                    hands_free: true,
+                },
+                battery_percent: None,
+                signal_percent: None,
+                last_seen_at: 1,
+            }],
+            scanned_at: None,
+            reported_at: 1,
+        };
+        let mut settings = AudioSettings::default();
+        settings.routes.media_output_id = accessory_id.clone();
+
+        let applied = manager
+            .apply(2, settings, &UnavailableBluetoothController, &state)
+            .expect("apply");
+
+        assert_eq!(applied.route.media_device, "alsa/yoyopod_bt_sco");
+        assert_eq!(applied.state.applied.routes.media_output_id, accessory_id);
+        assert_eq!(applied.state.status, "ready");
+    }
+
+    #[test]
     fn unchanged_periodic_audio_state_is_not_reapplied() {
         let directory = tempfile::tempdir().expect("tempdir");
         let mut manager = AudioManager::open_at(
@@ -923,6 +978,42 @@ mod tests {
             serde_json::from_slice(&fs::read(settings_path).expect("settings file"))
                 .expect("stored settings");
         assert_eq!(stored.settings.levels.max_output, 70);
+    }
+
+    #[test]
+    fn same_revision_replay_cannot_overwrite_a_local_volume_change() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let settings_path = directory.path().join("settings.json");
+        let mut manager =
+            AudioManager::open_at(settings_path.clone(), directory.path().join("asoundrc"));
+        let state = BluetoothState::unavailable();
+        let cloud_settings = AudioSettings::default();
+        manager
+            .apply(
+                2,
+                cloud_settings.clone(),
+                &UnavailableBluetoothController,
+                &state,
+            )
+            .expect("initial cloud settings");
+        manager
+            .set_output_level(55, &UnavailableBluetoothController, &state)
+            .expect("local volume");
+
+        let error = manager
+            .apply(2, cloud_settings, &UnavailableBluetoothController, &state)
+            .expect_err("same revision must not overwrite local volume");
+
+        assert_eq!(error.code, "audio_invalid_settings");
+        let current = manager
+            .current(&UnavailableBluetoothController, &state)
+            .expect("current settings");
+        assert_eq!(current.state.applied.levels.media, 55);
+        let stored: StoredAudioSettings =
+            serde_json::from_slice(&fs::read(settings_path).expect("settings file"))
+                .expect("stored settings");
+        assert_eq!(stored.settings.levels.media, 55);
+        assert_eq!(stored.revision, 2);
     }
 
     #[test]
