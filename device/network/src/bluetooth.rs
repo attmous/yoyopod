@@ -15,7 +15,8 @@ const AUDIO_SINK_UUID: &str = "0000110b-0000-1000-8000-00805f9b34fb";
 const HANDSFREE_UUID: &str = "0000111e-0000-1000-8000-00805f9b34fb";
 const HEADSET_UUID: &str = "00001108-0000-1000-8000-00805f9b34fb";
 const DEFAULT_REGISTRY_PATH: &str = "/var/lib/yoyopod/bluetooth/accessories.json";
-const SCAN_DURATION: Duration = Duration::from_secs(20);
+const SCAN_DURATION: Duration = Duration::from_secs(12);
+const SCAN_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BluetoothState {
@@ -190,6 +191,7 @@ pub struct BluezBluetoothController {
     registry_path: PathBuf,
     registry: AccessoryRegistry,
     scan_deadline: Option<Instant>,
+    scan_refresh_deadline: Option<Instant>,
     scanned_at: Option<u64>,
 }
 
@@ -214,6 +216,7 @@ impl BluezBluetoothController {
             registry_path,
             registry,
             scan_deadline: None,
+            scan_refresh_deadline: None,
             scanned_at: None,
         })
     }
@@ -400,6 +403,7 @@ impl BluetoothController for BluezBluetoothController {
             .map_err(|_| BluetoothOperationError::failed("Bluetooth radio could not be changed"))?;
         if !enabled {
             self.scan_deadline = None;
+            self.scan_refresh_deadline = None;
         }
         self.refresh_inner()
     }
@@ -415,7 +419,9 @@ impl BluetoothController for BluezBluetoothController {
             .call::<_, _, ()>("StartDiscovery", &())
             .map_err(|_| BluetoothOperationError::failed("Bluetooth scan could not be started"))?;
         drop(adapter);
-        self.scan_deadline = Some(Instant::now() + SCAN_DURATION);
+        let now = Instant::now();
+        self.scan_deadline = Some(now + SCAN_DURATION);
+        self.scan_refresh_deadline = Some(now + SCAN_REFRESH_INTERVAL);
         self.refresh_inner()
     }
 
@@ -430,6 +436,7 @@ impl BluetoothController for BluezBluetoothController {
         }
         drop(adapter);
         self.scan_deadline = None;
+        self.scan_refresh_deadline = None;
         self.scanned_at = Some(epoch_seconds());
         self.refresh_inner()
     }
@@ -521,11 +528,17 @@ impl BluetoothController for BluezBluetoothController {
     }
 
     fn tick(&mut self) -> Option<BluetoothState> {
-        if self
-            .scan_deadline
-            .is_some_and(|deadline| Instant::now() >= deadline)
-        {
+        let now = Instant::now();
+        if self.scan_deadline.is_some_and(|deadline| now >= deadline) {
             return self.stop_scan().ok();
+        }
+        if self.scan_deadline.is_some()
+            && self
+                .scan_refresh_deadline
+                .is_some_and(|deadline| now >= deadline)
+        {
+            self.scan_refresh_deadline = Some(now + SCAN_REFRESH_INTERVAL);
+            return self.refresh_inner().ok();
         }
         None
     }
@@ -656,6 +669,13 @@ mod tests {
         assert!(capabilities.output);
         assert!(capabilities.stereo);
         assert!(capabilities.microphone);
+    }
+
+    #[test]
+    fn scan_window_is_short_and_refreshes_incrementally() {
+        assert_eq!(SCAN_DURATION, Duration::from_secs(12));
+        assert_eq!(SCAN_REFRESH_INTERVAL, Duration::from_secs(1));
+        assert!(SCAN_REFRESH_INTERVAL < SCAN_DURATION);
     }
 
     #[test]
