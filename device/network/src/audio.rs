@@ -271,9 +271,9 @@ impl AudioManager {
                 "A newer or locally changed audio configuration is already active",
             ));
         }
+        self.persist_candidate(revision, &settings)?;
         self.desired_revision = revision;
         self.desired = settings;
-        self.persist()?;
         self.resolve(bluetooth, bluetooth_state)
     }
 
@@ -285,10 +285,12 @@ impl AudioManager {
     ) -> Result<AppliedAudio, AudioOperationError> {
         let max_output = self.desired.levels.max_output.clamp(20, 100);
         let level = level.min(max_output);
-        self.desired.levels.media = level;
-        self.desired.levels.communication = level;
-        self.desired.levels.alerts = level.max(20).min(max_output);
-        self.persist()?;
+        let mut desired = self.desired.clone();
+        desired.levels.media = level;
+        desired.levels.communication = level;
+        desired.levels.alerts = level.max(20).min(max_output);
+        self.persist_candidate(self.desired_revision, &desired)?;
+        self.desired = desired;
         self.resolve(bluetooth, bluetooth_state)
     }
 
@@ -563,10 +565,14 @@ impl AudioManager {
         Ok(applied)
     }
 
-    fn persist(&self) -> Result<(), AudioOperationError> {
+    fn persist_candidate(
+        &self,
+        revision: u64,
+        settings: &AudioSettings,
+    ) -> Result<(), AudioOperationError> {
         let stored = StoredAudioSettings {
-            revision: self.desired_revision,
-            settings: self.desired.clone(),
+            revision,
+            settings: settings.clone(),
         };
         atomic_json_write(&self.settings_path, &stored)
             .map_err(|_| AudioOperationError::failed("Audio settings could not be saved"))
@@ -669,7 +675,24 @@ fn write_asound_config(
     let output = output_address.unwrap_or("00:00:00:00:00:00");
     let input = input_address.unwrap_or(output);
     let builtin_ringer = escape_alsa_string(builtin_ringer);
+    let selected_alert_is_mono = selected_alert_pcm == "yoyopod_bt_sco";
     let selected_alert_pcm = escape_alsa_string(selected_alert_pcm);
+    let (selected_channels, selected_bindings, mirror_channels, selected_ttable) =
+        if selected_alert_is_mono {
+            (
+                1,
+                "  bindings.2.slave selected\n  bindings.2.channel 0\n",
+                3,
+                "  ttable.0.2 0.5\n  ttable.1.2 0.5\n",
+            )
+        } else {
+            (
+                2,
+                "  bindings.2.slave selected\n  bindings.2.channel 0\n  bindings.3.slave selected\n  bindings.3.channel 1\n",
+                4,
+                "  ttable.0.2 1\n  ttable.1.3 1\n",
+            )
+        };
     let config = format!(
         concat!(
             "# Managed by YoYoPod. Bluetooth addresses stay on-device.\n\
@@ -681,30 +704,30 @@ pcm.yoyopod_bt_sco {{\n  type bluealsa\n  device \"{input}\"\n  profile \"sco\"\
   slaves.builtin.pcm \"plug:{builtin_ringer}\"\n\
   slaves.builtin.channels 2\n\
   slaves.selected.pcm \"plug:{selected_alert_pcm}\"\n\
-  slaves.selected.channels 2\n\
+  slaves.selected.channels {selected_channels}\n\
   bindings.0.slave builtin\n\
   bindings.0.channel 0\n\
   bindings.1.slave builtin\n\
   bindings.1.channel 1\n\
-  bindings.2.slave selected\n\
-  bindings.2.channel 0\n\
-  bindings.3.slave selected\n\
-  bindings.3.channel 1\n\
+{selected_bindings}\
 }}\n\
 pcm.yoyopod_alert_mirror {{\n\
   type route\n\
   slave.pcm \"yoyopod_alert_multi\"\n\
-  slave.channels 4\n\
+  slave.channels {mirror_channels}\n\
   ttable.0.0 1\n\
   ttable.1.1 1\n\
-  ttable.0.2 1\n\
-  ttable.1.3 1\n\
+{selected_ttable}\
 }}\n"
         ),
         output = output,
         input = input,
         builtin_ringer = builtin_ringer,
         selected_alert_pcm = selected_alert_pcm,
+        selected_channels = selected_channels,
+        selected_bindings = selected_bindings,
+        mirror_channels = mirror_channels,
+        selected_ttable = selected_ttable,
     );
     if fs::read(path).is_ok_and(|existing| existing == config.as_bytes()) {
         return Ok(());
@@ -1073,6 +1096,11 @@ mod tests {
         assert!(config.contains("pcm.yoyopod_alert_mirror"));
         assert!(config.contains("plug:default"));
         assert!(config.contains("plug:yoyopod_bt_sco"));
+        assert!(config.contains("slaves.selected.channels 1"));
+        assert!(config.contains("slave.channels 3"));
+        assert!(config.contains("ttable.0.2 0.5"));
+        assert!(config.contains("ttable.1.2 0.5"));
+        assert!(!config.contains("bindings.3.slave selected"));
     }
 
     #[test]
@@ -1182,6 +1210,34 @@ mod tests {
     }
 
     #[test]
+    fn persistence_failures_preserve_the_active_audio_configuration() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let blocked_parent = directory.path().join("not-a-directory");
+        fs::write(&blocked_parent, b"blocked").expect("block settings directory");
+        let mut manager = AudioManager::open_at(
+            blocked_parent.join("settings.json"),
+            directory.path().join("asoundrc"),
+        );
+        let state = BluetoothState::unavailable();
+        let mut settings = AudioSettings::default();
+        settings.levels.media = 80;
+
+        let apply_error = manager
+            .apply(2, settings, &UnavailableBluetoothController, &state)
+            .expect_err("settings write must fail");
+        assert_eq!(apply_error.code, "audio_operation_failed");
+        assert_eq!(manager.desired_revision, 0);
+        assert_eq!(manager.desired, AudioSettings::default());
+
+        let level_error = manager
+            .set_output_level(90, &UnavailableBluetoothController, &state)
+            .expect_err("volume write must fail");
+        assert_eq!(level_error.code, "audio_operation_failed");
+        assert_eq!(manager.desired_revision, 0);
+        assert_eq!(manager.desired, AudioSettings::default());
+    }
+
+    #[test]
     fn local_output_level_preserves_the_configured_safety_cap() {
         let directory = tempfile::tempdir().expect("tempdir");
         let settings_path = directory.path().join("settings.json");
@@ -1266,6 +1322,9 @@ mod tests {
         assert!(config.contains("pcm.yoyopod_bt_a2dp"));
         assert!(config.contains("pcm.yoyopod_bt_sco"));
         assert!(config.contains("pcm.yoyopod_alert_mirror"));
+        assert!(config.contains("slaves.selected.channels 2"));
+        assert!(config.contains("slave.channels 4"));
+        assert!(config.contains("bindings.3.slave selected"));
     }
 
     #[allow(dead_code)]

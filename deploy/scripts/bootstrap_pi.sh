@@ -67,6 +67,11 @@ if ! command -v bluealsa >/dev/null 2>&1 \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         alsa-utils bluez bluez-alsa-utils libasound2-plugin-bluez
 fi
+if ! getent group bluetooth >/dev/null 2>&1; then
+    groupadd --system bluetooth
+fi
+usermod -a -G bluetooth "${INVOKING_USER}"
+id -nG "${INVOKING_USER}" | tr ' ' '\n' | grep -Fx bluetooth >/dev/null
 rfkill unblock bluetooth || true
 install -d -m 0755 "${UNIT_DIR}/bluealsa.service.d"
 install -m 0644 -o root -g root \

@@ -74,7 +74,7 @@ pub fn run(
         } else {
             ctx.conn.user.as_str()
         };
-        println!("would: install a Wi-Fi-only Polkit rule for service user {service_user}");
+        println!("would: install Wi-Fi and BlueZ authorization for service user {service_user}");
         println!(
             "would: ssh sync + extract + restart + verify on {}",
             ctx.conn.ssh_target()
@@ -200,6 +200,7 @@ pub fn run(
     // Install the explicit role drop-in idempotently and restart BlueALSA only
     // when its configuration changed (or the service is not already active).
     let service_group_lookup = service_group_lookup_command(&wifi_service_user);
+    let bluetooth_user_authorization = bluetooth_user_authorization_command(&wifi_service_user);
     let bluetooth_prereqs_cmd = format!(
         "{service_group_lookup} && \
          if ! command -v bluealsa >/dev/null 2>&1 || ! command -v aplay >/dev/null 2>&1 || \
@@ -208,6 +209,7 @@ pub fn run(
            sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
              alsa-utils bluez bluez-alsa-utils libasound2-plugin-bluez; \
          fi && \
+         {bluetooth_user_authorization} && \
          {{ sudo -n rfkill unblock bluetooth || true; }} && \
          bluealsa_restart=0 && \
          sudo -n install -d -m 0755 {bluealsa_dropin_dir} && \
@@ -230,6 +232,7 @@ pub fn run(
         bluealsa_dropin_dir = shell_quote(BLUEALSA_DROPIN_DIR),
         bluealsa_dropin_source = shell_quote(BLUEALSA_DROPIN_SOURCE),
         bluealsa_dropin_path = shell_quote(BLUEALSA_DROPIN_PATH),
+        bluetooth_user_authorization = bluetooth_user_authorization,
         service_group_lookup = service_group_lookup,
         user = shell_quote(&wifi_service_user),
     );
@@ -289,6 +292,17 @@ fn validate_wifi_service_user(service_user: &str) -> Result<&str> {
 
 fn service_group_lookup_command(service_user: &str) -> String {
     format!("service_group=$(id -gn {})", shell_quote(service_user))
+}
+
+fn bluetooth_user_authorization_command(service_user: &str) -> String {
+    let user = shell_quote(service_user);
+    format!(
+        "if ! getent group bluetooth >/dev/null 2>&1; then \
+           sudo -n groupadd --system bluetooth; \
+         fi && \
+         sudo -n usermod -a -G bluetooth {user} && \
+         id -nG {user} | tr ' ' '\\n' | grep -Fx bluetooth >/dev/null"
+    )
 }
 
 fn resolve_wifi_service_user(ctx: &TargetContext) -> Result<String> {
@@ -599,6 +613,18 @@ mod tests {
         let command = service_group_lookup_command("yoyopod");
 
         assert_eq!(command, "service_group=$(id -gn yoyopod)");
+    }
+
+    #[test]
+    fn bluetooth_runtime_authorization_is_installed_for_the_service_user() {
+        let command = bluetooth_user_authorization_command("yoyopod");
+        let bootstrap = include_str!("../../../../../deploy/scripts/bootstrap_pi.sh");
+
+        assert!(command.contains("groupadd --system bluetooth"));
+        assert!(command.contains("usermod -a -G bluetooth yoyopod"));
+        assert!(command.contains("grep -Fx bluetooth"));
+        assert!(bootstrap.contains("usermod -a -G bluetooth \"${INVOKING_USER}\""));
+        assert!(bootstrap.contains("grep -Fx bluetooth"));
     }
 
     #[test]
