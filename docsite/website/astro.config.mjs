@@ -1,7 +1,10 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { fileURLToPath } from 'node:url';
 
+const websiteRoot = fileURLToPath(new URL('.', import.meta.url));
+const pitchRoot = fileURLToPath(new URL('../../pitch', import.meta.url));
 
 // https://astro.build/config
 export default defineConfig({
@@ -9,9 +12,21 @@ export default defineConfig({
 		'/architecture/system-architecture/': '/runtime/overview/',
 		'/architecture/runtime-event-flow/': '/runtime/loop/',
 	},
+	vite: {
+		server: {
+			fs: {
+				allow: [websiteRoot, pitchRoot],
+			},
+		},
+	},
 	integrations: [
 		starlight({
 			title: 'yoyopod',
+			logo: {
+				src: '../../pitch/src/assets/brand/yoyopod-glyph.svg',
+				alt: '',
+				replacesTitle: false,
+			},
 			description:
 				'A screen-light audio companion for kids — documentation for the runtime, hardware, and UI system.',
 			social: [
