@@ -15,6 +15,7 @@ pub fn apply_runtime_preemption(runtime: &mut UiRuntime) {
     if let Some(screen) =
         runtime_preemption_for_display(&runtime.snapshot, runtime.system_overlay.loading_visible)
     {
+        remove_flashlight_route(runtime);
         if runtime.active_screen != screen {
             if runtime.active_screen == UiScreen::Replay {
                 leave_replay(runtime);
@@ -50,8 +51,10 @@ pub fn apply_app_state_route(
         if runtime.active_screen == UiScreen::Replay {
             leave_replay(runtime);
         }
+        let previous_screen = runtime.active_screen;
         runtime.screen_stack.clear();
         runtime.active_screen = *app_state;
+        reset_transient_screen_if_left(runtime, previous_screen);
         runtime.focus_index = initial_focus(*app_state);
         if *app_state == UiScreen::Hub {
             runtime.home_mode = HomeMode::Idle;
@@ -81,8 +84,12 @@ pub fn advance_focus(runtime: &mut UiRuntime) {
     };
 }
 
-pub fn select_focused(runtime: &mut UiRuntime) {
+pub fn select_focused(runtime: &mut UiRuntime, now_ms: u64) {
     if runtime.active_screen == UiScreen::Hub && runtime.home_mode != HomeMode::Focused {
+        return;
+    }
+    if runtime.active_screen == UiScreen::Stopwatch {
+        runtime.activate_stopwatch_action(now_ms);
         return;
     }
     let route = route_for(runtime.active_screen);
@@ -96,12 +103,25 @@ pub fn go_home(runtime: &mut UiRuntime) {
     if runtime.active_screen == UiScreen::Replay {
         leave_replay(runtime);
     }
+    let previous_screen = runtime.active_screen;
     runtime.screen_stack.clear();
     runtime.active_screen = UiScreen::Hub;
+    reset_transient_screen_if_left(runtime, previous_screen);
     runtime.focus_index = 0;
     runtime.home_mode = HomeMode::Idle;
     runtime.selected_playlist = None;
     runtime.selected_contact = None;
+    reset_replay_state(runtime);
+}
+
+pub fn exit_flashlight(runtime: &mut UiRuntime) {
+    runtime.screen_stack.clear();
+    runtime.active_screen = UiScreen::Hub;
+    runtime.focus_index = 4;
+    runtime.home_mode = HomeMode::Focused;
+    runtime.selected_playlist = None;
+    runtime.selected_contact = None;
+    runtime.clear_flashlight();
     reset_replay_state(runtime);
 }
 
@@ -562,6 +582,7 @@ fn matches_condition(runtime: &UiRuntime, condition: SnapshotCondition) -> bool 
 }
 
 fn push_screen(runtime: &mut UiRuntime, screen: UiScreen) {
+    let previous_screen = runtime.active_screen;
     let selected_id = runtime
         .selected_contact
         .as_ref()
@@ -579,6 +600,7 @@ fn push_screen(runtime: &mut UiRuntime, screen: UiScreen) {
         selected_id,
         screen,
     );
+    reset_transient_screen_if_left(runtime, previous_screen);
     runtime.focus_index = initial_focus(screen);
 }
 
@@ -594,29 +616,38 @@ fn pop_screen_or_hub(runtime: &mut UiRuntime) {
     if runtime.active_screen == UiScreen::Replay {
         leave_replay(runtime);
     }
+    let previous_screen = runtime.active_screen;
     let entry = router::history::pop_or_hub(&mut runtime.screen_stack, &mut runtime.active_screen);
+    reset_transient_screen_if_left(runtime, previous_screen);
     runtime.focus_index = entry.map(|entry| entry.focus_index).unwrap_or(0);
 }
 
 fn pop_until_not_call(runtime: &mut UiRuntime) {
+    let previous_screen = runtime.active_screen;
     let entry = router::history::pop_until(
         &mut runtime.screen_stack,
         &mut runtime.active_screen,
         is_call_screen,
     );
+    reset_transient_screen_if_left(runtime, previous_screen);
     runtime.focus_index = entry.map(|entry| entry.focus_index).unwrap_or(0);
 }
 
 fn pop_until_not_overlay(runtime: &mut UiRuntime) {
+    let previous_screen = runtime.active_screen;
     let entry = router::history::pop_until(
         &mut runtime.screen_stack,
         &mut runtime.active_screen,
         is_overlay_screen,
     );
+    reset_transient_screen_if_left(runtime, previous_screen);
     runtime.focus_index = entry.map(|entry| entry.focus_index).unwrap_or(0);
 }
 
 fn focus_count(runtime: &UiRuntime) -> usize {
+    if runtime.active_screen == UiScreen::Stopwatch {
+        return runtime.stopwatch_action_count();
+    }
     focus::focus_count(
         runtime.active_screen,
         &runtime.snapshot,
@@ -624,4 +655,26 @@ fn focus_count(runtime: &UiRuntime) -> usize {
         runtime.selected_contact.as_ref(),
         runtime.replay_index,
     )
+}
+
+fn reset_transient_screen_if_left(runtime: &mut UiRuntime, previous_screen: UiScreen) {
+    if previous_screen == UiScreen::Stopwatch && runtime.active_screen != UiScreen::Stopwatch {
+        runtime.reset_stopwatch();
+    }
+    if previous_screen == UiScreen::Flashlight && runtime.active_screen != UiScreen::Flashlight {
+        runtime.clear_flashlight();
+    }
+}
+
+fn remove_flashlight_route(runtime: &mut UiRuntime) {
+    let flashlight_was_active = runtime.active_screen == UiScreen::Flashlight;
+    runtime
+        .screen_stack
+        .retain(|entry| entry.screen != UiScreen::Flashlight);
+    if flashlight_was_active {
+        runtime.active_screen = UiScreen::Hub;
+        runtime.focus_index = 4;
+        runtime.home_mode = HomeMode::Focused;
+    }
+    runtime.clear_flashlight();
 }

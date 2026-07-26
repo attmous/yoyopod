@@ -129,6 +129,8 @@ static MICROPHONE: LvImageDsc = LvImageDsc::a8_56(&MICROPHONE_MAP);
 static PLUS: LvImageDsc = LvImageDsc::a8_56(&PLUS_MAP);
 static MUSIC_NOTE: LvImageDsc = LvImageDsc::a8_56(&MUSIC_NOTE_MAP);
 static PLAY: LvImageDsc = LvImageDsc::a8_56(&PLAY_MAP);
+static STOPWATCH: LvImageDsc = LvImageDsc::a8_56(&STOPWATCH_MAP);
+static FLASHLIGHT: LvImageDsc = LvImageDsc::a8_56(&FLASHLIGHT_MAP);
 static ASK_Q: LvImageDsc = LvImageDsc::a8_56(&ASK_Q_MAP);
 static ASK_SPEAKER: LvImageDsc = LvImageDsc::a8_56(&ASK_SPEAKER_MAP);
 static ASK_CLOUD_ZZZ: LvImageDsc = LvImageDsc::a8_56(&ASK_CLOUD_ZZZ_MAP);
@@ -208,6 +210,7 @@ const fn generated_control_icon(kind: u8) -> [u8; 576] {
 static CHECK_SM_MAP: [u8; 576] = generated_control_icon(5);
 static PLAY_SM: LvImageDsc = LvImageDsc::a8_24(&PLAY_SM_MAP);
 static PAUSE_SM: LvImageDsc = LvImageDsc::a8_24(&PAUSE_SM_MAP);
+static RESET_SM: LvImageDsc = LvImageDsc::a8_24(&RESET_SM_MAP);
 static PREV_SM: LvImageDsc = LvImageDsc::a8_24(&PREV_SM_MAP);
 static NEXT_SM: LvImageDsc = LvImageDsc::a8_24(&NEXT_SM_MAP);
 static TRASH_SM: LvImageDsc = LvImageDsc::a8_24(&TRASH_SM_MAP);
@@ -1064,10 +1067,14 @@ static SETUP: LvImageDsc = LvImageDsc::a8_56(&SETUP_MAP);
 static DECK_LISTEN_MAP: [u8; 900] = downsample_56_to_30(&LISTEN_MAP);
 static DECK_TALK_MAP: [u8; 900] = downsample_56_to_30(&TALK_MAP);
 static DECK_ASK_MAP: [u8; 900] = downsample_56_to_30(&ASK_MAP);
+static DECK_STOPWATCH_MAP: [u8; 900] = downsample_56_to_30(&STOPWATCH_MAP);
+static DECK_FLASHLIGHT_MAP: [u8; 900] = downsample_56_to_30(&FLASHLIGHT_MAP);
 static DECK_SETUP_MAP: [u8; 900] = downsample_56_to_30(&SETUP_MAP);
 static DECK_LISTEN: LvImageDsc = LvImageDsc::a8_30(&DECK_LISTEN_MAP);
 static DECK_TALK: LvImageDsc = LvImageDsc::a8_30(&DECK_TALK_MAP);
 static DECK_ASK: LvImageDsc = LvImageDsc::a8_30(&DECK_ASK_MAP);
+static DECK_STOPWATCH: LvImageDsc = LvImageDsc::a8_30(&DECK_STOPWATCH_MAP);
+static DECK_FLASHLIGHT: LvImageDsc = LvImageDsc::a8_30(&DECK_FLASHLIGHT_MAP);
 static DECK_SETUP: LvImageDsc = LvImageDsc::a8_30(&DECK_SETUP_MAP);
 
 pub(crate) fn descriptor_for_key(icon_key: &str) -> Option<&'static LvImageDsc> {
@@ -1075,6 +1082,8 @@ pub(crate) fn descriptor_for_key(icon_key: &str) -> Option<&'static LvImageDsc> 
         "deck_listen" => Some(&DECK_LISTEN),
         "deck_talk" => Some(&DECK_TALK),
         "deck_ask" => Some(&DECK_ASK),
+        "deck_stopwatch" => Some(&DECK_STOPWATCH),
+        "deck_flashlight" => Some(&DECK_FLASHLIGHT),
         "deck_setup" => Some(&DECK_SETUP),
         "icon_playlists" | "playlist" | "playlists" => Some(&PLAYLISTS),
         "icon_recents" | "recent" | "recents" | "clock" | "history" | "retry" => Some(&RECENTS),
@@ -1083,6 +1092,7 @@ pub(crate) fn descriptor_for_key(icon_key: &str) -> Option<&'static LvImageDsc> 
         "icon_plus" | "plus" | "add" => Some(&PLUS),
         "play_sm" => Some(&PLAY_SM),
         "pause_sm" => Some(&PAUSE_SM),
+        "reset_sm" => Some(&RESET_SM),
         "prev_sm" => Some(&PREV_SM),
         "next_sm" => Some(&NEXT_SM),
         "trash_sm" => Some(&TRASH_SM),
@@ -1092,6 +1102,8 @@ pub(crate) fn descriptor_for_key(icon_key: &str) -> Option<&'static LvImageDsc> 
         "check" => Some(&CHECK_SM),
         "music_note" => Some(&MUSIC_NOTE),
         "icon_play" | "play" => Some(&PLAY),
+        "stopwatch" => Some(&STOPWATCH),
+        "flashlight" => Some(&FLASHLIGHT),
         "listen" | "track" => Some(&LISTEN),
         "talk" | "call" | "call_active" | "call_incoming" | "call_outgoing" => Some(&TALK),
         "ask" => Some(&ASK),
@@ -1217,7 +1229,7 @@ mod tests {
         ),
     ];
 
-    const TRANSPORT_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 8] = [
+    const TRANSPORT_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 9] = [
         (
             "play_sm",
             &PLAY_SM_MAP,
@@ -1229,6 +1241,12 @@ mod tests {
             &PAUSE_SM_MAP,
             include_bytes!("../../../assets/icons/listen/pause_sm.svg"),
             PAUSE_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "reset_sm",
+            &RESET_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/reset_sm.svg"),
+            RESET_SM_SOURCE_FNV1A64,
         ),
         (
             "prev_sm",
@@ -1265,6 +1283,21 @@ mod tests {
             &MIC_SM_MAP,
             include_bytes!("../../../assets/icons/listen/mic_sm.svg"),
             MIC_SM_SOURCE_FNV1A64,
+        ),
+    ];
+
+    const TOOL_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 2] = [
+        (
+            "stopwatch",
+            &STOPWATCH_MAP,
+            include_bytes!("../../../assets/icons/listen/stopwatch.svg"),
+            STOPWATCH_SOURCE_FNV1A64,
+        ),
+        (
+            "flashlight",
+            &FLASHLIGHT_MAP,
+            include_bytes!("../../../assets/icons/listen/flashlight.svg"),
+            FLASHLIGHT_SOURCE_FNV1A64,
         ),
     ];
 
@@ -1356,11 +1389,16 @@ mod tests {
             "icon_play",
             "play_sm",
             "pause_sm",
+            "reset_sm",
             "prev_sm",
             "next_sm",
             "answer_sm",
             "close_sm",
             "mic_sm",
+            "stopwatch",
+            "flashlight",
+            "deck_stopwatch",
+            "deck_flashlight",
         ] {
             assert!(descriptor_for_key(key).is_some(), "missing {key}");
         }
@@ -1374,7 +1412,7 @@ mod tests {
     #[test]
     fn companion_sources_match_generated_rgb565a8_sprites() {
         for (key, bytes, source, expected_hash, (width, height)) in COMPANION_SOURCES {
-            assert_eq!(fnv1a64(source), expected_hash, "stale {key} sprite");
+            assert_eq!(source_hash(source), expected_hash, "stale {key} sprite");
             assert_eq!(bytes.len(), (width * height * 3) as usize);
             let descriptor = descriptor_for_key(key).expect("companion descriptor");
             assert_eq!(descriptor.data_size, bytes.len() as u32);
@@ -1390,7 +1428,11 @@ mod tests {
     #[test]
     fn dark_companion_sources_match_their_theme_specific_sprites() {
         for (key, bytes, source, expected_hash, (width, height)) in DARK_COMPANION_SOURCES {
-            assert_eq!(fnv1a64(source), expected_hash, "stale dark {key} sprite");
+            assert_eq!(
+                source_hash(source),
+                expected_hash,
+                "stale dark {key} sprite"
+            );
             assert_eq!(bytes.len(), (width * height * 3) as usize);
             assert_ne!(
                 source_for_key_with_scheme(key, crate::theme::ColorScheme::Dark),
@@ -1403,14 +1445,23 @@ mod tests {
     #[test]
     fn listen_wheel_icon_sources_match_generated_masks() {
         for (name, _, source, expected_hash) in LISTEN_ICON_SOURCES {
-            assert_eq!(fnv1a64(source), expected_hash, "stale {name} A8 mask");
+            assert_eq!(source_hash(source), expected_hash, "stale {name} A8 mask");
         }
     }
 
     #[test]
     fn listen_transport_icon_sources_match_generated_masks() {
         for (name, _, source, expected_hash) in TRANSPORT_ICON_SOURCES {
-            assert_eq!(fnv1a64(source), expected_hash, "stale {name} A8 mask");
+            assert_eq!(source_hash(source), expected_hash, "stale {name} A8 mask");
+        }
+    }
+
+    #[test]
+    fn tool_icon_sources_match_generated_masks() {
+        for (name, mask, source, expected_hash) in TOOL_ICON_SOURCES {
+            assert_eq!(source_hash(source), expected_hash, "stale {name} A8 mask");
+            assert!(mask.iter().any(|value| *value == u8::MAX));
+            assert!(mask.iter().any(|value| *value > 0 && *value < u8::MAX));
         }
     }
 
@@ -1457,5 +1508,16 @@ mod tests {
             hash = hash.wrapping_mul(0x100000001B3);
         }
         hash
+    }
+
+    fn source_hash(bytes: &[u8]) -> u64 {
+        let mut normalized = Vec::with_capacity(bytes.len());
+        for (index, byte) in bytes.iter().copied().enumerate() {
+            if byte == b'\r' && bytes.get(index + 1) == Some(&b'\n') {
+                continue;
+            }
+            normalized.push(byte);
+        }
+        fnv1a64(&normalized)
     }
 }

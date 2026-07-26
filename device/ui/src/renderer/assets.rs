@@ -410,6 +410,8 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::RECORDING_TIMER_DOT,
         roles::RECORDING_TIMER,
         roles::RECORDING_HINT,
+        roles::STOPWATCH_PANEL,
+        roles::STOPWATCH_READOUT,
         roles::ASK_SURFACE,
         roles::ASK_HERO,
         roles::ASK_HERO_ICON,

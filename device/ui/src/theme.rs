@@ -97,6 +97,9 @@ impl ColorScheme {
     }
 
     pub fn resolve_accent(self, role: &'static str, rgb: u32) -> u32 {
+        if role == roles::SCENE_BACKDROP && rgb == 0xFFFFFF {
+            return 0xFFFFFF;
+        }
         if self == Self::Light {
             return rgb;
         }
@@ -298,6 +301,14 @@ mod tests {
         assert_eq!(
             ColorScheme::Dark.resolve_accent(roles::ASK_HERO, SURFACE_0_LIGHT),
             SURFACE_0_LIGHT
+        );
+    }
+
+    #[test]
+    fn flashlight_white_bypasses_dark_theme_substitution() {
+        assert_eq!(
+            ColorScheme::Dark.resolve_accent(roles::SCENE_BACKDROP, 0xFFFFFF),
+            0xFFFFFF
         );
     }
 }

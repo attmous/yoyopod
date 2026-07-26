@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const PREVIEW_CELL_SIZE: u32 = 56;
-const ICONS: [IconSpec; 33] = [
+const ICONS: [IconSpec; 36] = [
     IconSpec::new("playlists", "PLAYLISTS", 56),
     IconSpec::new("recents", "RECENTS", 56),
     IconSpec::new("shuffle", "SHUFFLE", 56),
@@ -16,6 +16,9 @@ const ICONS: [IconSpec; 33] = [
     IconSpec::new("play", "PLAY", 56),
     IconSpec::new("play_sm", "PLAY_SM", 24),
     IconSpec::new("pause_sm", "PAUSE_SM", 24),
+    IconSpec::new("reset_sm", "RESET_SM", 24),
+    IconSpec::new("stopwatch", "STOPWATCH", 56),
+    IconSpec::new("flashlight", "FLASHLIGHT", 56),
     IconSpec::new("prev_sm", "PREV_SM", 24),
     IconSpec::new("next_sm", "NEXT_SM", 24),
     IconSpec::new("trash_sm", "TRASH_SM", 24),
@@ -230,7 +233,7 @@ fn render_icon(source_dir: &Path, spec: IconSpec) -> Result<RenderedIcon, Box<dy
 
     Ok(RenderedIcon {
         spec,
-        source_hash: fnv1a64(&source),
+        source_hash: source_hash(&source),
         alpha,
         pixmap,
     })
@@ -298,7 +301,7 @@ fn render_sprite(source_dir: &Path, spec: SpriteSpec) -> Result<RenderedSprite, 
 
     Ok(RenderedSprite {
         spec,
-        source_hash: fnv1a64(&source),
+        source_hash: source_hash(&source),
         rgb565a8,
     })
 }
@@ -416,4 +419,32 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
         hash = hash.wrapping_mul(0x100000001B3);
     }
     hash
+}
+
+fn source_hash(bytes: &[u8]) -> u64 {
+    let mut normalized = Vec::with_capacity(bytes.len());
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        if byte == b'\r' && bytes.get(index + 1) == Some(&b'\n') {
+            continue;
+        }
+        normalized.push(byte);
+    }
+    fnv1a64(&normalized)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::source_hash;
+
+    #[test]
+    fn source_hash_is_independent_of_line_endings() {
+        assert_eq!(
+            source_hash(b"<svg>\n</svg>\n"),
+            source_hash(b"<svg>\r\n</svg>\r\n")
+        );
+        assert_eq!(
+            source_hash(b"<svg>\n</svg>"),
+            source_hash(b"<svg>\r\n</svg>")
+        );
+    }
 }

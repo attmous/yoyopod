@@ -57,6 +57,8 @@ pub(crate) const RECORDING_CONTEXT: &str = "recording_context";
 pub(crate) const RECORDING_TIMER_DOT: &str = "recording_timer_dot";
 pub(crate) const RECORDING_TIMER: &str = "recording_timer";
 pub(crate) const RECORDING_HINT: &str = "recording_hint";
+pub(crate) const STOPWATCH_PANEL: &str = "stopwatch_panel";
+pub(crate) const STOPWATCH_READOUT: &str = "stopwatch_readout";
 
 pub(crate) const ASK_SURFACE: &str = "ask_surface";
 pub(crate) const ASK_HERO: &str = "ask_hero";

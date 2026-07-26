@@ -356,6 +356,8 @@ where
             context.ui_runtime.advance_status_bar(now_ms);
             context.ui_runtime.advance_animations(now_ms);
             context.ui_runtime.advance_home_state(now_ms);
+            context.ui_runtime.advance_stopwatch(now_ms);
+            context.ui_runtime.advance_flashlight(now_ms);
             context.ui_runtime.advance_ask_state(now_ms);
             context.ui_runtime.advance_system_overlay(now_ms);
             context.ui_runtime.refresh_focus_accessibility();
@@ -593,6 +595,10 @@ fn screen_changed_if_needed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "native-lvgl")]
+    use crate::hardware::mock::MockDisplay;
+    #[cfg(feature = "native-lvgl")]
+    use crate::renderer::framebuffer::rgb565;
 
     #[test]
     fn companion_preview_accepts_only_named_setup_variants() {
@@ -608,6 +614,32 @@ mod tests {
         assert_eq!(parse_theme_preview("light"), Some(ColorScheme::Light));
         assert_eq!(parse_theme_preview("Dark"), Some(ColorScheme::Dark));
         assert_eq!(parse_theme_preview("auto"), None);
+    }
+
+    #[cfg(feature = "native-lvgl")]
+    #[test]
+    fn flashlight_framebuffer_is_pure_white_in_light_and_dark_themes() {
+        for theme in ["Light", "Dark"] {
+            let mut runtime = UiRuntime::default();
+            runtime.snapshot.settings.theme = theme.to_string();
+            runtime.handle_input(yoyopod_protocol::ui::InputAction::Advance, 0);
+            runtime.focus_index = 4;
+            runtime.handle_input(yoyopod_protocol::ui::InputAction::Select, 100);
+
+            let mut display = MockDisplay::new(240, 280);
+            let mut render = RenderState::open(240, 280).expect("LVGL render state");
+            render_if_dirty(&mut runtime, &mut display, &mut render, 101)
+                .expect("flashlight frame");
+
+            assert!(
+                render
+                    .framebuffer
+                    .pixels()
+                    .iter()
+                    .all(|pixel| *pixel == rgb565(255, 255, 255)),
+                "{theme} flashlight framebuffer contains a non-white pixel"
+            );
+        }
     }
 
     #[derive(Default)]
@@ -697,7 +729,15 @@ mod tests {
         let mut output = Vec::new();
         let mut input_events = 0;
 
-        for (started_ms, expected_focus) in [(0, 0), (700, 1), (1_400, 2), (2_100, 3), (2_800, 0)] {
+        for (started_ms, expected_focus) in [
+            (0, 0),
+            (700, 1),
+            (1_400, 2),
+            (2_100, 3),
+            (2_800, 4),
+            (3_500, 5),
+            (4_200, 0),
+        ] {
             deliberate_short_press(
                 &mut button,
                 &mut machine,
@@ -710,13 +750,13 @@ mod tests {
             assert_eq!(runtime.active_screen(), UiScreen::Hub);
         }
 
-        assert_eq!(input_events, 5);
+        assert_eq!(input_events, 7);
         let emitted = String::from_utf8(output)
             .unwrap()
             .lines()
             .map(|line| yoyopod_protocol::WorkerEnvelope::decode(line.as_bytes()).unwrap())
             .collect::<Vec<_>>();
-        assert_eq!(emitted.len(), 5);
+        assert_eq!(emitted.len(), 7);
         assert!(emitted
             .iter()
             .all(|envelope| envelope.message_type == "ui.input"));

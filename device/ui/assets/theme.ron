@@ -181,6 +181,8 @@
         (role: "recording_timer_dot", fill_rgb: Some(15955815), opacity: Some(255), radius: 4),
         (role: "recording_timer", text_rgb: Some(16574162)),
         (role: "recording_hint", text_rgb: Some(16574162)),
+        (role: "stopwatch_panel"),
+        (role: "stopwatch_readout", text_rgb: Some(1776415)),
         (role: "ask_surface"),
         (role: "ask_hero", fill_rgb: Some(16765034), opacity: Some(255), radius: 18),
         (role: "ask_hero_icon", text_rgb: Some(1776415)),

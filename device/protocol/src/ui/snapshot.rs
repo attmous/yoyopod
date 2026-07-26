@@ -549,6 +549,18 @@ fn default_hub_cards() -> Vec<HubCardSnapshot> {
             accent: 0xFFD000,
         },
         HubCardSnapshot {
+            key: "stopwatch".to_string(),
+            title: "Stopwatch".to_string(),
+            subtitle: String::new(),
+            accent: 0x78D5D0,
+        },
+        HubCardSnapshot {
+            key: "flashlight".to_string(),
+            title: "Flashlight".to_string(),
+            subtitle: String::new(),
+            accent: 0xFFB45C,
+        },
+        HubCardSnapshot {
             key: "setup".to_string(),
             title: "Setup".to_string(),
             subtitle: String::new(),

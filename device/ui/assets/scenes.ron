@@ -7,6 +7,8 @@
         (screen: "recent_tracks", backdrop: "solid", stage: "list_with_chrome", fx: [], timelines: ["stagger_enter"]),
         (screen: "now_playing", backdrop: "solid", stage: "now_playing_panel", fx: [], timelines: ["scene_enter"]),
         (screen: "ask", backdrop: "accent_drift", stage: "centered_hero_icon", fx: ["hero_halo"], timelines: ["scene_enter"]),
+        (screen: "stopwatch", backdrop: "solid", stage: "talk_actions_grid", fx: [], timelines: ["scene_enter"]),
+        (screen: "flashlight", backdrop: "solid", stage: "centered_hero_icon", fx: [], timelines: []),
         (screen: "talk", backdrop: "accent_drift", stage: "centered_hero_icon", fx: ["hero_halo"], timelines: ["scene_enter"]),
         (screen: "contacts", backdrop: "solid", stage: "list_with_chrome", fx: [], timelines: ["stagger_enter"]),
         (screen: "call_history", backdrop: "solid", stage: "list_with_chrome", fx: [], timelines: ["stagger_enter"]),

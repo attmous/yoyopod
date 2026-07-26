@@ -4,6 +4,7 @@ pub mod chrome;
 pub mod common;
 pub mod contacts;
 pub mod error;
+pub mod flashlight;
 pub mod hub;
 pub mod in_call;
 pub mod incoming_call;
@@ -17,6 +18,7 @@ pub mod playlists;
 pub mod recent_tracks;
 pub mod replay;
 pub mod setup;
+pub mod stopwatch;
 pub mod talk;
 pub mod talk_contact;
 pub mod voice_note;
@@ -33,6 +35,8 @@ pub fn scene_for_screen(
     selected_playlist: Option<&ListItemSnapshot>,
     selected_contact: Option<&ListItemSnapshot>,
     replay_index: usize,
+    stopwatch_display: String,
+    stopwatch_actions: Vec<crate::scene::ButtonModel>,
     defaults: SceneDefaults,
 ) -> Scene {
     let scene = match screen {
@@ -56,6 +60,10 @@ pub fn scene_for_screen(
             now_playing::scene(&now_playing::props_from(snapshot, focus, defaults.clone()))
         }
         UiScreen::Ask => ask::scene(&ask::props_from(snapshot, focus, defaults.clone())),
+        UiScreen::Stopwatch => {
+            stopwatch::scene(&defaults, stopwatch_display, stopwatch_actions, focus)
+        }
+        UiScreen::Flashlight => flashlight::scene(&defaults),
         UiScreen::Talk => talk::scene(&talk::props_from(snapshot, focus, defaults.clone())),
         UiScreen::Contacts => {
             contacts::scene(&contacts::props_from(snapshot, focus, defaults.clone()))
