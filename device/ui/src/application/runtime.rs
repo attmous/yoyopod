@@ -28,7 +28,7 @@ const WATCH_ORBIT_DIRTY_REGION: DirtyRegion = DirtyRegion {
 };
 const STOPWATCH_TIMER_DIRTY_REGION: DirtyRegion = DirtyRegion {
     x: 12,
-    y: 60,
+    y: 52,
     w: 216,
     h: 58,
 };
@@ -1703,7 +1703,15 @@ mod tests {
         assert!(runtime.frame_request(199).is_none());
         assert!(runtime.advance_stopwatch(200));
         let frame = runtime.frame_request(200).expect("first tenth frame");
-        assert_eq!(frame.dirty_region, Some(STOPWATCH_TIMER_DIRTY_REGION));
+        assert_eq!(
+            frame.dirty_region,
+            Some(DirtyRegion {
+                x: 12,
+                y: 52,
+                w: 216,
+                h: 58,
+            })
+        );
         runtime.mark_clean();
 
         assert!(!runtime.advance_stopwatch(275));
