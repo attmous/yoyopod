@@ -1,14 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="logo-title">
-	<title id="logo-title">YoYoPod logo</title>
-	<!-- Compact device body: intentionally shorter and more tactile than a phone. -->
-	<rect x="7" y="5" width="47" height="54" rx="14" fill="#1B1B1F" stroke="#FCE6D2" stroke-opacity="0.18" stroke-width="1.5"/>
-	<!-- The single physical side button. -->
-	<rect x="54" y="20" width="4" height="15" rx="2" fill="#F37767"/>
-	<!-- Two family nodes connected by one calm audio bridge. -->
-	<rect x="13" y="11" width="35" height="29" rx="8" fill="#FCE6D2"/>
-	<circle cx="19.5" cy="25" r="2.7" fill="#F37767"/>
-	<path d="M22 25c3.3 0 3.3-6 6.5-6s3.3 12 6.6 12 3.3-6 6.4-6" fill="none" stroke="#00B978" stroke-width="2.8" stroke-linecap="round"/>
-	<circle cx="44" cy="25" r="2.7" fill="#05CAE9"/>
-	<!-- A single speaker slot keeps the small-size mark crisp. -->
-	<rect x="23" y="49" width="15" height="3.5" rx="1.75" fill="#FCE6D2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="logo-title logo-description">
+	<title id="logo-title">YoYoPod Family Loop logo</title>
+	<desc id="logo-description">Two people joined by a continuous loop through a central pod.</desc>
+	<!-- Two family members: distinct, equal, and intentionally abstract. -->
+	<circle cx="24" cy="25" r="8" fill="#F37767"/>
+	<circle cx="72" cy="25" r="8" fill="#05CAE9"/>
+	<!-- One unbroken line: family connection, audio signal, and yoyo string. -->
+	<path
+		d="M48 58c-9.5-16.5-32-17.5-32 0s22.5 16.5 32 0 32-17.5 32 0-22.5 16.5-32 0Z"
+		fill="none"
+		stroke="#F8EADC"
+		stroke-width="12"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+	/>
+	<path
+		d="M48 58c-9.5-16.5-32-17.5-32 0s22.5 16.5 32 0 32-17.5 32 0-22.5 16.5-32 0Z"
+		fill="none"
+		stroke="#1B1B1F"
+		stroke-width="8"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+	/>
+	<!-- The pod sits at the shared center instead of belonging to either side. -->
+	<circle cx="48" cy="58" r="10" fill="#F8EADC"/>
+	<circle cx="48" cy="58" r="7" fill="#00B978"/>
+	<circle cx="48" cy="58" r="2.5" fill="#F8EADC"/>
 </svg>
