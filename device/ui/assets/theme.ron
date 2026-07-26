@@ -205,6 +205,7 @@
         (role: "modal_message", text_rgb: Some(9076854)),
     ],
     selected_roles: [
+        (role: "button", fill_rgb: Some(15197687), text_rgb: Some(1776415), opacity: Some(255), radius: 44, outline_rgb: Some(1776415), outline_width: 2, outline_pad: 2),
         (role: "list_row", fill_rgb: Some(10353788), opacity: Some(255), radius: 16),
         (role: "wheel_item", fill_rgb: Some(10353788), opacity: Some(255), radius: 16),
         (role: "talk_wheel_item", fill_rgb: Some(11118309), opacity: Some(255), radius: 16),

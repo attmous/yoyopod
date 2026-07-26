@@ -435,6 +435,7 @@ fn required_theme_roles() -> Vec<&'static str> {
 
 fn required_selected_theme_roles() -> Vec<&'static str> {
     vec![
+        roles::BUTTON,
         roles::CURSOR_DOT,
         roles::LIST_ROW,
         roles::WHEEL_ITEM,

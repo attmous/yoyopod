@@ -159,4 +159,22 @@ mod tests {
             STAGE_LIME_DARK
         );
     }
+
+    #[test]
+    fn focused_stopwatch_action_preserves_button_surface_and_adds_focus_outline() {
+        let assets = load_render_assets().expect("render assets");
+        let light = ThemeResolver::new(&assets, ColorScheme::Light);
+
+        let focused = light
+            .style_for_selected_role(roles::BUTTON, true)
+            .expect("focused stopwatch action style");
+
+        assert_eq!(focused.bg_color, Some(crate::theme::STAGE_PERI_LIGHT));
+        assert_eq!(focused.bg_opa, 255);
+        assert_eq!(focused.text_color, Some(crate::theme::INK_LIGHT));
+        assert_eq!(focused.radius, 44);
+        assert_eq!(focused.outline_color, Some(crate::theme::INK_LIGHT));
+        assert_eq!(focused.outline_width, 2);
+        assert_eq!(focused.outline_pad, 2);
+    }
 }
