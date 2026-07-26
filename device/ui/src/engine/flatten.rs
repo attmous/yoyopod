@@ -1,21 +1,29 @@
 use crate::animation::{presets, ActorRef, TimelineRef, TrackIndex};
+use crate::components::widgets::{
+    context_label as context_label_widget, setup_counter as setup_counter_widget,
+    wheel_header as wheel_header_widget,
+};
 use crate::scene::roles;
 use crate::scene::{
-    Deck, FxLayer, GlowBloom, Halo, HudScene, LayerSlot, Modal, ParticleField, PulseRing, Scene,
-    SceneGraph, LAYER_ORDER,
+    FxLayer, GlowBloom, Halo, HudScene, LayerSlot, Modal, ParticleField, PulseRing, Scene,
+    SceneContext, SceneGraph, LAYER_ORDER,
 };
 use crate::ElementKind;
 
 use super::{AnimSlot, Element, Key};
 
 pub fn flatten(graph: &SceneGraph) -> Element {
+    let active = scene_element_with_content_opacity(
+        &graph.active,
+        (!graph.modal_stack.is_empty()).then_some(SYSTEM_OVERLAY_UNDERLAY_OPACITY),
+    );
     LAYER_ORDER
         .into_iter()
         .filter(|slot| slot.is_graph_overlay())
         .fold(
             Element::new(ElementKind::Container, Some(roles::SCENE_GRAPH))
                 .key(Key::Static("scene_graph"))
-                .child(scene_element(&graph.active)),
+                .child(active),
             |element, slot| match graph_overlay_element(graph, slot) {
                 Some(layer) => element.child(layer),
                 None => element,
@@ -24,6 +32,12 @@ pub fn flatten(graph: &SceneGraph) -> Element {
 }
 
 pub fn scene_element(scene: &Scene) -> Element {
+    scene_element_with_content_opacity(scene, None)
+}
+
+const SYSTEM_OVERLAY_UNDERLAY_OPACITY: u8 = 0;
+
+fn scene_element_with_content_opacity(scene: &Scene, content_opacity: Option<u8>) -> Element {
     let root = Element::new(ElementKind::Container, Some(roles::SCENE_ROOT))
         .key(Key::Scene {
             screen: scene.id.screen.as_str(),
@@ -39,7 +53,17 @@ pub fn scene_element(scene: &Scene) -> Element {
         .filter(|slot| slot.is_scene_owned())
         .fold(root, |element, slot| {
             match scene_layer_element(scene, slot) {
-                Some(layer) => element.child(layer),
+                Some(mut layer) => {
+                    if content_opacity.is_some()
+                        && matches!(
+                            slot,
+                            LayerSlot::Stage | LayerSlot::Decks | LayerSlot::Cursor | LayerSlot::Fx
+                        )
+                    {
+                        layer.props.opacity = content_opacity;
+                    }
+                    element.child(layer)
+                }
                 None => element,
             }
         })
@@ -49,7 +73,7 @@ fn scene_layer_element(scene: &Scene, slot: LayerSlot) -> Option<Element> {
     match slot {
         LayerSlot::Backdrop => Some(scene.backdrop.element()),
         LayerSlot::Stage => Some(stage_element(scene.stage)),
-        LayerSlot::Decks => Some(decks_element(&scene.decks)),
+        LayerSlot::Decks => Some(decks_element(scene)),
         LayerSlot::Cursor => scene.cursor.as_ref().map(|cursor| cursor.element()),
         LayerSlot::Fx => fx_element(&scene.fx),
         LayerSlot::Hud | LayerSlot::Modal => None,
@@ -72,11 +96,22 @@ fn stage_element(_stage: crate::scene::Stage) -> Element {
     Element::new(ElementKind::Container, Some(roles::SCENE_STAGE)).key(Key::Static("stage"))
 }
 
-fn decks_element(decks: &[Deck]) -> Element {
-    decks.iter().enumerate().fold(
-        Element::new(ElementKind::Container, Some(roles::SCENE_DECKS)).key(Key::Static("decks")),
-        |element, (index, deck)| element.child(deck.element(index)),
-    )
+fn decks_element(scene: &Scene) -> Element {
+    let root =
+        Element::new(ElementKind::Container, Some(roles::SCENE_DECKS)).key(Key::Static("decks"));
+    let root = scene
+        .decks
+        .iter()
+        .enumerate()
+        .fold(root, |element, (index, deck)| {
+            element.child(deck.element(index))
+        });
+    match scene.context.as_ref() {
+        Some(SceneContext::WheelHeader(header)) => root.child(wheel_header_widget(header)),
+        Some(SceneContext::Label(label)) => root.child(context_label_widget(label)),
+        Some(SceneContext::SetupCounter(counter)) => root.child(setup_counter_widget(counter)),
+        None => root,
+    }
 }
 
 fn hud_element(hud: &HudScene) -> Element {
@@ -133,7 +168,8 @@ fn pulse_element(index: usize, pulse: &PulseRing) -> Element {
         pulse.target,
     )
     .accent(pulse.color)
-    .with_opacity(96)
+    .scale_permille((pulse.max_radius * 1_000 / 62).clamp(100, 1_000))
+    .with_opacity(if index == 0 { 72 } else { 48 })
 }
 
 fn particle_element(field_index: usize, index: u8, field: &ParticleField) -> Element {

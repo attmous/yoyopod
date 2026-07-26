@@ -1,0 +1,82 @@
+<svg viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Stylized exploded view of the V0 Dawn prototype internals: the canvas display with its Whisplay HAT, a Raspberry Pi Zero 2W, a PiSugar 3 battery board, and a SIM7600 4G and GPS modem, floating in a vertical stack.">
+  <defs>
+    <radialGradient id="internals-glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffe4ad" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#ffe4ad" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- one soft amber glow behind the canvas -->
+  <circle cx="300" cy="82" r="88" fill="url(#internals-glow)"/>
+
+  <!-- exploded-stack alignment lines (dashed Midnight) -->
+  <g stroke="#171528" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="3.5 4.5" stroke-linecap="round">
+    <path d="M270 142 V154"/>
+    <path d="M330 142 V154"/>
+    <path d="M262 209 V227"/>
+    <path d="M338 209 V227"/>
+    <path d="M262 297 V315"/>
+    <path d="M338 297 V315"/>
+    <path d="M262 385 V403"/>
+    <path d="M338 385 V403"/>
+  </g>
+
+  <!-- Layer 1a: the canvas panel (240x280 aspect) -->
+  <rect x="252" y="26" width="96" height="112" rx="12" fill="#fdf8ee"/>
+  <!-- Hub wheel hint on the canvas -->
+  <g fill="none" stroke-width="8" stroke-linecap="round">
+    <path d="M277.4 73.8 A24 24 0 0 1 322.6 73.8" stroke="#f6b02c"/>
+    <path d="M323.6 86.2 A24 24 0 0 1 304.2 105.6" stroke="#ffe4ad"/>
+    <path d="M295.8 105.6 A24 24 0 0 1 276.4 86.2" stroke="#ffe4ad"/>
+  </g>
+  <circle cx="300" cy="82" r="4.5" fill="#f6b02c"/>
+
+  <!-- Layer 1b: Whisplay HAT beneath the canvas -->
+  <rect x="210" y="158" width="180" height="46" rx="9" fill="#232136"/>
+  <!-- codec chip -->
+  <rect x="238" y="174" width="14" height="14" rx="3" fill="#f6b02c"/>
+  <!-- tiny mic dot -->
+  <circle cx="300" cy="181" r="2.2" fill="#f1e8d7"/>
+  <!-- speaker dot-grid -->
+  <g fill="#ffe4ad" fill-opacity="0.9">
+    <circle cx="330" cy="170" r="1.7"/><circle cx="339" cy="170" r="1.7"/><circle cx="348" cy="170" r="1.7"/><circle cx="357" cy="170" r="1.7"/>
+    <circle cx="330" cy="179" r="1.7"/><circle cx="339" cy="179" r="1.7"/><circle cx="348" cy="179" r="1.7"/><circle cx="357" cy="179" r="1.7"/>
+    <circle cx="330" cy="188" r="1.7"/><circle cx="339" cy="188" r="1.7"/><circle cx="348" cy="188" r="1.7"/><circle cx="357" cy="188" r="1.7"/>
+  </g>
+
+  <!-- Layer 2: Raspberry Pi Zero 2W -->
+  <rect x="200" y="232" width="200" height="60" rx="9" fill="#232136"/>
+  <!-- 40-pin header as a thin toothed cream strip -->
+  <line x1="214" y1="243" x2="386" y2="243" stroke="#f1e8d7" stroke-width="7" stroke-dasharray="4.5 2.5"/>
+  <!-- SoC -->
+  <rect x="286" y="254" width="28" height="28" rx="4" fill="#26233d" stroke="#fdf8ee" stroke-opacity="0.15" stroke-width="1"/>
+
+  <!-- Layer 3: PiSugar 3 battery -->
+  <rect x="200" y="320" width="200" height="60" rx="9" fill="#232136"/>
+  <!-- rounded battery pack -->
+  <rect x="242" y="333" width="116" height="34" rx="13" fill="#f1e8d7"/>
+  <!-- pogo-pin dots -->
+  <g fill="#f6b02c">
+    <circle cx="218" cy="333" r="2.4"/>
+    <circle cx="218" cy="346" r="2.4"/>
+    <circle cx="218" cy="359" r="2.4"/>
+    <circle cx="218" cy="372" r="2.4"/>
+  </g>
+
+  <!-- Layer 4: SIM7600 modem -->
+  <rect x="200" y="408" width="200" height="56" rx="12" fill="#232136"/>
+  <!-- shield can -->
+  <rect x="222" y="422" width="90" height="28" rx="5" fill="#26233d" stroke="#fdf8ee" stroke-opacity="0.12" stroke-width="1"/>
+  <!-- antenna squiggle -->
+  <path d="M400 435 h10 c8 0 8 -11 17 -11 s9 11 18 11 s9 -11 18 -11" fill="none" stroke="#f6b02c" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="463" cy="424" r="3" fill="#f6b02c"/>
+
+  <!-- labels -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#a09aa8">
+    <text x="560" y="118">the canvas + Whisplay HAT</text>
+    <text x="560" y="266">Raspberry Pi Zero 2W</text>
+    <text x="560" y="354">PiSugar 3 battery</text>
+    <text x="560" y="440">SIM7600 4G + GPS</text>
+    <text x="380" y="530" text-anchor="middle">V0 &#8220;Dawn&#8221; &#8212; off-the-shelf boards, wired together.</text>
+  </g>
+</svg>

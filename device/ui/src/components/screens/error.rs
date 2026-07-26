@@ -4,13 +4,13 @@ use crate::scene::{Modal, Scene, SceneDefaults};
 
 pub struct ErrorProps {
     pub defaults: SceneDefaults,
-    pub message: String,
+    pub retryable: bool,
 }
 
 pub fn props_from(snapshot: &RuntimeSnapshot, defaults: SceneDefaults) -> ErrorProps {
     ErrorProps {
         defaults,
-        message: snapshot.overlay.error.clone(),
+        retryable: snapshot.overlay.retryable,
     }
 }
 
@@ -19,8 +19,7 @@ pub fn scene(props: &ErrorProps) -> Scene {
         UiScreen::Error,
         &props.defaults,
         Modal::Error {
-            title: "Error".to_string(),
-            message: props.message.clone(),
+            retryable: props.retryable,
         },
     )
 }

@@ -116,3 +116,19 @@ deploy that. The CI-artifact contract requires it.
   of tracked files
 - Default dev project dir on Pi: `/opt/yoyopod-dev/checkout`
 - Default dev state dir on Pi: `/opt/yoyopod-dev/state`
+
+## On-device Wi-Fi onboarding provisioning
+
+`yoyopod target deploy` (and, for a fresh board, `deploy/scripts/bootstrap_pi.sh`)
+install the prerequisites for the Settings → Wi-Fi captive-portal flow:
+
+- a **polkit rule** granting the network-host service user the NetworkManager
+  actions it needs (`wifi.scan`, `settings.modify.system`, `network-control`,
+  `checkpoint-rollback`, `wifi.share.protected`/`open`)
+- **`CAP_NET_BIND_SERVICE`** on the network-host unit so the portal can bind
+  port 80
+- a **dnsmasq captive-DNS snippet** under
+  `/etc/NetworkManager/dnsmasq-shared.d/` (active only while the setup AP is up)
+
+Requires NetworkManager with its shared-mode dnsmasq helper on the Pi. Full
+contract: [`../docs/features/WIFI_ONBOARDING.md`](../docs/features/WIFI_ONBOARDING.md).

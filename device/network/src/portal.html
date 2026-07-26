@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>YoYoPod Wi‑Fi Setup</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f7dbc2; color: #1b1b1f; min-height: 100vh;
+    display: flex; justify-content: center;
+  }
+  .card { width: 100%; max-width: 460px; padding: 28px 22px 40px; }
+  h1 { font-size: 22px; margin: 8px 0 2px; }
+  p.lead { margin: 0 0 20px; color: #6b5c50; font-size: 15px; }
+  .list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+  .net {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 14px 16px; border-radius: 14px; border: 1px solid #e7c9ad;
+    background: #fff7ef; cursor: pointer; font-size: 16px; text-align: left; width: 100%;
+  }
+  .net[aria-selected="true"] { border-color: #f37767; background: #ffe9df; }
+  .net:disabled { opacity: .5; cursor: default; }
+  .net .bars { color: #a08b7c; font-variant-numeric: tabular-nums; font-size: 13px; }
+  .net .lock { color: #a08b7c; font-size: 13px; }
+  form { display: flex; flex-direction: column; gap: 12px; }
+  label { font-size: 13px; color: #6b5c50; }
+  input {
+    width: 100%; padding: 13px 14px; font-size: 16px; border-radius: 12px;
+    border: 1px solid #e7c9ad; background: #fff; color: #1b1b1f;
+  }
+  input::placeholder { color: #a08b7c; }
+  button.go {
+    margin-top: 6px; padding: 15px; font-size: 17px; font-weight: 600; border: 0;
+    border-radius: 14px; background: #f37767; color: #fff;
+  }
+  button.go:disabled { opacity: .55; }
+  .status { margin-top: 16px; font-size: 15px; min-height: 22px; }
+  .status.err { color: #c0392b; }
+  .status.ok { color: #2e7d32; }
+  .muted { color: #a08b7c; font-size: 13px; text-align: center; margin-top: 18px; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <h1>Connect your YoYoPod</h1>
+    <p class="lead">Choose your home Wi‑Fi network and enter the password.</p>
+
+    <div class="list" id="list"><p class="muted">Looking for networks…</p></div>
+
+    <form id="form">
+      <div>
+        <label for="ssid">Network name</label>
+        <input id="ssid" name="ssid" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Your Wi‑Fi name" required>
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="off" placeholder="Wi‑Fi password">
+      </div>
+      <button class="go" id="go" type="submit">Connect</button>
+    </form>
+
+    <div class="status" id="status" role="status" aria-live="polite"></div>
+    <p class="muted">After you tap Connect, the YoYoPod leaves this hotspot to join your network — check its screen.</p>
+  </main>
+
+<script>
+  var selectedSecurity = "wpa2_personal";
+  var selectedSaved = false;
+  // An SSID typed by hand may be a hidden (non-broadcasting) network; picking one
+  // from the scan means it was broadcasting. The device uses this to set the
+  // NetworkManager "hidden" flag so it will probe for a hidden network.
+  var manualEntry = true;
+  var ssidInput = document.getElementById("ssid");
+  var pwInput = document.getElementById("password");
+  var statusEl = document.getElementById("status");
+
+  // Editing the network name by hand detaches from any selected row. Reset the
+  // manual-entry state to a normal secured entry: re-enable the password field
+  // and drop any prior open/saved/WPA3 selection, otherwise (e.g. after picking
+  // an open network) /connect would be sent with the stale security and a
+  // disabled password field, leaving no way to enter the required key.
+  ssidInput.addEventListener("input", function () {
+    selectedSaved = false;
+    selectedSecurity = "wpa2_personal";
+    manualEntry = true;
+    pwInput.disabled = false;
+    pwInput.placeholder = "Wi-Fi password";
+    statusEl.className = "status"; statusEl.textContent = "";
+    var sel = document.querySelector('.net[aria-selected="true"]');
+    if (sel) sel.setAttribute("aria-selected", "false");
+  });
+
+  function bars(percent) {
+    var n = Math.max(1, Math.min(4, Math.round(percent / 25)));
+    return "•".repeat(n);
+  }
+
+  function selectNetwork(node, net) {
+    if ((net.security || "") === "enterprise") {
+      // 802.1X/enterprise Wi-Fi needs credentials this portal can't collect.
+      statusEl.className = "status err";
+      statusEl.textContent = "Enterprise (802.1X) Wi-Fi is not supported.";
+      return;
+    }
+    var all = document.querySelectorAll(".net");
+    for (var i = 0; i < all.length; i++) all[i].setAttribute("aria-selected", "false");
+    node.setAttribute("aria-selected", "true");
+    ssidInput.value = net.ssid;
+    selectedSecurity = net.security || "wpa2_personal";
+    selectedSaved = !!net.saved && selectedSecurity !== "open";
+    manualEntry = false; // chosen from the scan, so it was broadcasting
+    pwInput.value = "";
+    if (selectedSecurity === "open") {
+      pwInput.disabled = true;
+      pwInput.placeholder = "No password needed";
+      statusEl.className = "status"; statusEl.textContent = "";
+      return;
+    }
+    pwInput.disabled = false;
+    if (net.saved) {
+      // The device already knows this network and reconnects with its stored
+      // password — no need to retype it, and the key is never sent to the phone.
+      pwInput.placeholder = "Using saved password — leave blank";
+      statusEl.className = "status"; statusEl.textContent = "Saved network — just tap Connect.";
+    } else {
+      pwInput.placeholder = "Wi-Fi password";
+      statusEl.className = "status"; statusEl.textContent = "";
+      pwInput.focus();
+    }
+  }
+
+  function renderNetworks(nets) {
+    var list = document.getElementById("list");
+    list.innerHTML = "";
+    if (!nets.length) { list.innerHTML = '<p class="muted">No networks found — type yours below.</p>'; return; }
+    nets.forEach(function (net) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "net";
+      if (net.security === "enterprise") {
+        // Enterprise networks can't be joined from here — show them, disabled.
+        b.disabled = true;
+        b.innerHTML = '<span>' + escapeHtml(net.ssid) + '</span>' +
+          '<span class="bars">Unsupported</span>';
+      } else {
+        b.innerHTML = '<span>' + escapeHtml(net.ssid) + '</span>' +
+          '<span class="bars">' + (net.security === "open" ? "" : '<span class="lock">🔒</span> ') +
+          bars(net.signal_percent) + '</span>';
+        b.addEventListener("click", function () { selectNetwork(b, net); });
+      }
+      list.appendChild(b);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  fetch("/networks").then(function (r) { return r.json(); })
+    .then(renderNetworks)
+    .catch(function () { renderNetworks([]); });
+
+  document.getElementById("form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var ssid = ssidInput.value.trim();
+    if (!ssid) { statusEl.textContent = "Enter a network name."; statusEl.className = "status err"; return; }
+    if (selectedSecurity !== "open" && !selectedSaved && !pwInput.value) {
+      statusEl.className = "status err"; statusEl.textContent = "Enter the Wi-Fi password.";
+      return;
+    }
+    document.getElementById("go").disabled = true;
+    statusEl.className = "status"; statusEl.textContent = "Sending…";
+    fetch("/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ssid: ssid, password: pwInput.value, security: selectedSecurity, hidden: manualEntry })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+      .then(function (res) {
+        if (res.ok) {
+          statusEl.className = "status ok";
+          statusEl.textContent = "Connecting… you can close this page and watch your YoYoPod.";
+        } else {
+          statusEl.className = "status err";
+          statusEl.textContent = (res.body && res.body.error) || "Could not connect.";
+          document.getElementById("go").disabled = false;
+        }
+      })
+      .catch(function () {
+        // Tearing down the hotspot drops this connection — that's the success path.
+        statusEl.className = "status ok";
+        statusEl.textContent = "Connecting… you can close this page and watch your YoYoPod.";
+      });
+  });
+</script>
+</body>
+</html>

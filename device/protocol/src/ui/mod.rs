@@ -8,7 +8,8 @@ pub use snapshot::{
     CallRuntimeSnapshot, HubCardSnapshot, HubRuntimeSnapshot, ListItemSnapshot,
     MusicRuntimeSnapshot, NetworkRuntimeSnapshot, OverlayRuntimeSnapshot, PowerPageSnapshot,
     PowerRuntimeSnapshot, RuntimeSnapshot, RuntimeSnapshotDomain, RuntimeSnapshotPatch,
-    VoiceNoteSummarySnapshot, VoiceRuntimeSnapshot,
+    SettingsRuntimeSnapshot, VoiceNoteSummarySnapshot, VoiceRuntimeSnapshot,
+    WifiSetupRuntimeSnapshot,
 };
 
 use crate::{EnvelopeKind, ProtocolError, WorkerEnvelope};
@@ -19,6 +20,7 @@ pub enum UiScreen {
     Hub,
     Listen,
     Playlists,
+    PlaylistTracks,
     RecentTracks,
     NowPlaying,
     Ask,
@@ -26,20 +28,28 @@ pub enum UiScreen {
     Contacts,
     CallHistory,
     TalkContact,
+    Replay,
     VoiceNote,
     IncomingCall,
     OutgoingCall,
     InCall,
-    Power,
+    Setup,
+    SetupVolume,
+    SetupCompanion,
+    SetupContacts,
+    SetupTheme,
+    SetupAbout,
+    SetupWifi,
     Loading,
     Error,
 }
 
 impl UiScreen {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 25] = [
         Self::Hub,
         Self::Listen,
         Self::Playlists,
+        Self::PlaylistTracks,
         Self::RecentTracks,
         Self::NowPlaying,
         Self::Ask,
@@ -47,11 +57,18 @@ impl UiScreen {
         Self::Contacts,
         Self::CallHistory,
         Self::TalkContact,
+        Self::Replay,
         Self::VoiceNote,
         Self::IncomingCall,
         Self::OutgoingCall,
         Self::InCall,
-        Self::Power,
+        Self::Setup,
+        Self::SetupVolume,
+        Self::SetupCompanion,
+        Self::SetupContacts,
+        Self::SetupTheme,
+        Self::SetupAbout,
+        Self::SetupWifi,
         Self::Loading,
         Self::Error,
     ];
@@ -61,6 +78,7 @@ impl UiScreen {
             Self::Hub => "hub",
             Self::Listen => "listen",
             Self::Playlists => "playlists",
+            Self::PlaylistTracks => "playlist_tracks",
             Self::RecentTracks => "recent_tracks",
             Self::NowPlaying => "now_playing",
             Self::Ask => "ask",
@@ -68,11 +86,18 @@ impl UiScreen {
             Self::Contacts => "contacts",
             Self::CallHistory => "call_history",
             Self::TalkContact => "talk_contact",
+            Self::Replay => "replay",
             Self::VoiceNote => "voice_note",
             Self::IncomingCall => "incoming_call",
             Self::OutgoingCall => "outgoing_call",
             Self::InCall => "in_call",
-            Self::Power => "power",
+            Self::Setup => "setup",
+            Self::SetupVolume => "setup_volume",
+            Self::SetupCompanion => "setup_companion",
+            Self::SetupContacts => "setup_contacts",
+            Self::SetupTheme => "setup_theme",
+            Self::SetupAbout => "setup_about",
+            Self::SetupWifi => "setup_wifi",
             Self::Loading => "loading",
             Self::Error => "error",
         }
@@ -385,6 +410,8 @@ pub enum UiEvent {
     Ready(UiReady),
     Input(UiInputEvent),
     Intent(UiIntent),
+    FocusChanged(UiFocusChanged),
+    FocusCleared,
     ScreenChanged(UiScreenChanged),
     Health(UiHealth),
     ScreenshotCaptured(UiScreenshotCaptured),
@@ -414,6 +441,8 @@ impl UiEvent {
             "ui.intent" => Ok(Self::Intent(UiIntent::from_event_payload(
                 &envelope.payload,
             )?)),
+            "ui.focus_changed" => Ok(Self::FocusChanged(decode_payload(envelope.payload)?)),
+            "ui.focus_cleared" => Ok(Self::FocusCleared),
             "ui.screen_changed" => Ok(Self::ScreenChanged(decode_payload(envelope.payload)?)),
             "ui.health" => Ok(Self::Health(decode_payload(envelope.payload)?)),
             "ui.screenshot_captured" => {
@@ -432,11 +461,28 @@ impl UiEvent {
             Self::Ready(ready) => event("ui.ready", ready),
             Self::Input(input) => event("ui.input", input),
             Self::Intent(intent) => WorkerEnvelope::event("ui.intent", intent.to_event_payload()),
+            Self::FocusChanged(changed) => event("ui.focus_changed", changed),
+            Self::FocusCleared => WorkerEnvelope::event("ui.focus_cleared", json!({})),
             Self::ScreenChanged(changed) => event("ui.screen_changed", changed),
             Self::Health(health) => event("ui.health", health),
             Self::ScreenshotCaptured(captured) => event("ui.screenshot_captured", captured),
             Self::Error(error) => event("ui.error", error),
             Self::ShutdownComplete => WorkerEnvelope::event("ui.shutdown_complete", json!({})),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiFocusChanged {
+    pub request_id: String,
+    pub label: String,
+}
+
+impl UiFocusChanged {
+    pub fn new(request_id: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            request_id: request_id.into(),
+            label: label.into(),
         }
     }
 }
@@ -447,7 +493,9 @@ pub enum UiIntent {
     Call(CallIntent),
     Voice(VoiceIntent),
     Power(PowerIntent),
+    Settings(SettingsIntent),
     Navigation(NavigationIntent),
+    System(SystemIntent),
     Runtime(RuntimeIntent),
 }
 
@@ -477,7 +525,12 @@ impl UiIntent {
                 &action,
                 &intent_payload,
             )?)),
+            "settings" => Ok(Self::Settings(SettingsIntent::from_parts(
+                &action,
+                &intent_payload,
+            )?)),
             "navigation" => Ok(Self::Navigation(NavigationIntent::from_parts(&action)?)),
+            "system" => Ok(Self::System(SystemIntent::from_parts(&action)?)),
             "runtime" => Ok(Self::Runtime(RuntimeIntent::from_parts(&action)?)),
             other => Err(ProtocolError::InvalidEnvelope(format!(
                 "unknown UI intent domain {other}"
@@ -491,7 +544,9 @@ impl UiIntent {
             Self::Call(intent) => ("call", intent.action_name(), intent.payload()),
             Self::Voice(intent) => ("voice", intent.action_name(), intent.payload()),
             Self::Power(intent) => ("power", intent.action_name(), intent.payload()),
+            Self::Settings(intent) => ("settings", intent.action_name(), intent.payload()),
             Self::Navigation(intent) => ("navigation", intent.action_name(), empty_payload()),
+            Self::System(intent) => ("system", intent.action_name(), empty_payload()),
             Self::Runtime(intent) => ("runtime", intent.action_name(), empty_payload()),
         };
         json!({
@@ -502,6 +557,93 @@ impl UiIntent {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemIntent {
+    RetryOverlay,
+    DismissOverlay,
+    LoadingTimedOut,
+    AnnounceWait,
+    AnnounceRecoverableError,
+    AnnounceUnrecoverableError,
+    AnnounceRetry,
+}
+
+impl SystemIntent {
+    fn from_parts(action: &str) -> Result<Self, ProtocolError> {
+        match normalized(action).as_str() {
+            "retry_overlay" => Ok(Self::RetryOverlay),
+            "dismiss_overlay" => Ok(Self::DismissOverlay),
+            "loading_timed_out" => Ok(Self::LoadingTimedOut),
+            "announce_wait" => Ok(Self::AnnounceWait),
+            "announce_recoverable_error" => Ok(Self::AnnounceRecoverableError),
+            "announce_unrecoverable_error" => Ok(Self::AnnounceUnrecoverableError),
+            "announce_retry" => Ok(Self::AnnounceRetry),
+            other => Err(ProtocolError::InvalidEnvelope(format!(
+                "unknown system intent action {other}"
+            ))),
+        }
+    }
+
+    fn action_name(self) -> &'static str {
+        match self {
+            Self::RetryOverlay => "retry_overlay",
+            Self::DismissOverlay => "dismiss_overlay",
+            Self::LoadingTimedOut => "loading_timed_out",
+            Self::AnnounceWait => "announce_wait",
+            Self::AnnounceRecoverableError => "announce_recoverable_error",
+            Self::AnnounceUnrecoverableError => "announce_unrecoverable_error",
+            Self::AnnounceRetry => "announce_retry",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SettingsIntent {
+    VolumeStep,
+    CompanionSet(String),
+    ThemeSet(String),
+    SpeakNamesToggle,
+    WifiSetupStart,
+    WifiSetupStop,
+}
+
+impl SettingsIntent {
+    fn from_parts(action: &str, payload: &Value) -> Result<Self, ProtocolError> {
+        match normalized(action).as_str() {
+            "volume_step" => Ok(Self::VolumeStep),
+            "companion_set" => Ok(Self::CompanionSet(required_string(payload, "value")?)),
+            "theme_set" => Ok(Self::ThemeSet(required_string(payload, "value")?)),
+            "speak_names_toggle" => Ok(Self::SpeakNamesToggle),
+            "wifi_setup_start" => Ok(Self::WifiSetupStart),
+            "wifi_setup_stop" => Ok(Self::WifiSetupStop),
+            other => Err(ProtocolError::InvalidEnvelope(format!(
+                "unknown settings intent action {other}"
+            ))),
+        }
+    }
+
+    fn action_name(&self) -> &'static str {
+        match self {
+            Self::VolumeStep => "volume_step",
+            Self::CompanionSet(_) => "companion_set",
+            Self::ThemeSet(_) => "theme_set",
+            Self::SpeakNamesToggle => "speak_names_toggle",
+            Self::WifiSetupStart => "wifi_setup_start",
+            Self::WifiSetupStop => "wifi_setup_stop",
+        }
+    }
+
+    fn payload(&self) -> Value {
+        match self {
+            Self::CompanionSet(value) | Self::ThemeSet(value) => json!({ "value": value }),
+            Self::VolumeStep
+            | Self::SpeakNamesToggle
+            | Self::WifiSetupStart
+            | Self::WifiSetupStop => empty_payload(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MusicIntent {
     PlayPause,
@@ -509,6 +651,7 @@ pub enum MusicIntent {
     PreviousTrack,
     ShuffleAll,
     LoadPlaylist(ListItemAction),
+    PlayPlaylistTrack(PlaylistTrackAction),
     PlayRecentTrack(ListItemAction),
 }
 
@@ -520,6 +663,7 @@ impl MusicIntent {
             "previous" | "previous_track" => Ok(Self::PreviousTrack),
             "shuffle_all" => Ok(Self::ShuffleAll),
             "load_playlist" => Ok(Self::LoadPlaylist(decode_payload(payload.clone())?)),
+            "play_playlist_track" => Ok(Self::PlayPlaylistTrack(decode_payload(payload.clone())?)),
             "play_recent_track" => Ok(Self::PlayRecentTrack(decode_payload(payload.clone())?)),
             other => Err(ProtocolError::InvalidEnvelope(format!(
                 "unknown music intent action {other}"
@@ -534,6 +678,7 @@ impl MusicIntent {
             Self::PreviousTrack => "previous_track",
             Self::ShuffleAll => "shuffle_all",
             Self::LoadPlaylist(_) => "load_playlist",
+            Self::PlayPlaylistTrack(_) => "play_playlist_track",
             Self::PlayRecentTrack(_) => "play_recent_track",
         }
     }
@@ -541,6 +686,7 @@ impl MusicIntent {
     fn payload(&self) -> Value {
         match self {
             Self::LoadPlaylist(action) | Self::PlayRecentTrack(action) => payload(action),
+            Self::PlayPlaylistTrack(action) => payload(action),
             _ => empty_payload(),
         }
     }
@@ -593,13 +739,17 @@ pub enum VoiceIntent {
     AskStop,
     AskCancel,
     CaptureStart(VoiceRecipientAction),
+    CaptureStartAndSend(VoiceRecipientAction),
     CaptureStop,
     CaptureCancel,
     CaptureToggle(Option<VoiceRecipientAction>),
     Send(VoiceRecipientAction),
     Play(Option<VoiceFileAction>),
     PlayLatest(VoiceFileAction),
+    PausePlayback,
+    ResumePlayback,
     StopPlayback,
+    Delete(VoiceFileAction),
     MarkSeen(ContactAction),
     Discard,
 }
@@ -613,13 +763,19 @@ impl VoiceIntent {
             "capture_start" | "start_recording" => {
                 Ok(Self::CaptureStart(decode_payload(payload.clone())?))
             }
+            "capture_start_and_send" | "start_recording_and_send" => {
+                Ok(Self::CaptureStartAndSend(decode_payload(payload.clone())?))
+            }
             "capture_stop" | "stop_recording" => Ok(Self::CaptureStop),
             "capture_cancel" | "cancel_recording" => Ok(Self::CaptureCancel),
             "capture_toggle" => Ok(Self::CaptureToggle(optional_payload(payload)?)),
             "send" | "send_voice_note" => Ok(Self::Send(decode_payload(payload.clone())?)),
             "play" | "play_voice_note" => Ok(Self::Play(optional_payload(payload)?)),
             "play_latest" => Ok(Self::PlayLatest(decode_payload(payload.clone())?)),
+            "pause_playback" => Ok(Self::PausePlayback),
+            "resume_playback" => Ok(Self::ResumePlayback),
             "stop_playback" => Ok(Self::StopPlayback),
+            "delete" | "delete_voice_note" => Ok(Self::Delete(decode_payload(payload.clone())?)),
             "mark_seen" => Ok(Self::MarkSeen(decode_payload(payload.clone())?)),
             "discard" | "again" | "reset" => Ok(Self::Discard),
             other => Err(ProtocolError::InvalidEnvelope(format!(
@@ -634,13 +790,17 @@ impl VoiceIntent {
             Self::AskStop => "ask_stop",
             Self::AskCancel => "ask_cancel",
             Self::CaptureStart(_) => "capture_start",
+            Self::CaptureStartAndSend(_) => "capture_start_and_send",
             Self::CaptureStop => "capture_stop",
             Self::CaptureCancel => "capture_cancel",
             Self::CaptureToggle(_) => "capture_toggle",
             Self::Send(_) => "send",
             Self::Play(_) => "play",
             Self::PlayLatest(_) => "play_latest",
+            Self::PausePlayback => "pause_playback",
+            Self::ResumePlayback => "resume_playback",
             Self::StopPlayback => "stop_playback",
+            Self::Delete(_) => "delete",
             Self::MarkSeen(_) => "mark_seen",
             Self::Discard => "discard",
         }
@@ -648,9 +808,13 @@ impl VoiceIntent {
 
     fn payload(&self) -> Value {
         match self {
-            Self::CaptureStart(action) | Self::Send(action) => payload(action),
+            Self::CaptureStart(action) | Self::CaptureStartAndSend(action) | Self::Send(action) => {
+                payload(action)
+            }
             Self::CaptureToggle(Some(action)) => payload(action),
-            Self::Play(Some(action)) | Self::PlayLatest(action) => payload(action),
+            Self::Play(Some(action)) | Self::PlayLatest(action) | Self::Delete(action) => {
+                payload(action)
+            }
             Self::MarkSeen(action) => payload(action),
             _ => empty_payload(),
         }
@@ -756,6 +920,13 @@ pub struct ListItemAction {
     pub track_uri: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlaylistTrackAction {
+    pub playlist_path: String,
+    pub track_uri: String,
+    pub track_index: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ContactAction {
     #[serde(default)]
@@ -792,6 +963,10 @@ pub struct VoiceFileAction {
     pub uri: String,
     #[serde(default)]
     pub sip_address: String,
+    #[serde(default)]
+    pub message_id: String,
+    #[serde(default)]
+    pub duration_ms: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -968,6 +1143,32 @@ mod tests {
     }
 
     #[test]
+    fn playlist_track_intent_round_trips_with_its_queue_position() {
+        let intent = UiIntent::Music(MusicIntent::PlayPlaylistTrack(PlaylistTrackAction {
+            playlist_path: "/music/Open Classics.m3u".to_string(),
+            track_uri: "/music/02 - March.mp3".to_string(),
+            track_index: 1,
+        }));
+        let envelope = UiEvent::Intent(intent.clone()).into_envelope();
+        let decoded = UiEvent::from_envelope(envelope).unwrap();
+        assert_eq!(decoded, UiEvent::Intent(intent));
+    }
+
+    #[test]
+    fn held_recording_auto_send_intent_round_trips_with_its_recipient() {
+        let intent = UiIntent::Voice(VoiceIntent::CaptureStartAndSend(VoiceRecipientAction {
+            id: "sip:mama@example.test".to_string(),
+            recipient_address: "sip:mama@example.test".to_string(),
+            recipient_name: "Mama".to_string(),
+            ..VoiceRecipientAction::default()
+        }));
+
+        let decoded = UiIntent::from_event_payload(&intent.to_event_payload()).unwrap();
+
+        assert_eq!(decoded, intent);
+    }
+
+    #[test]
     fn every_ui_event_round_trips_through_worker_envelope() {
         let events = vec![
             UiEvent::Ready(UiReady {
@@ -985,6 +1186,8 @@ mod tests {
                 duration_ms: 7,
             }),
             UiEvent::Intent(UiIntent::Runtime(RuntimeIntent::Shutdown)),
+            UiEvent::FocusChanged(UiFocusChanged::new("ui-focus-7", "Mama")),
+            UiEvent::FocusCleared,
             UiEvent::ScreenChanged(UiScreenChanged {
                 screen: UiScreen::Hub,
                 title: "Hub".to_string(),
@@ -1038,7 +1241,9 @@ mod tests {
                 when: "2026-05-12T08:00:00Z".to_string(),
                 repeat_mask: 31,
             })),
+            UiIntent::Settings(SettingsIntent::CompanionSet("Bunny".to_string())),
             UiIntent::Navigation(NavigationIntent::Back),
+            UiIntent::System(SystemIntent::RetryOverlay),
             UiIntent::Runtime(RuntimeIntent::Shutdown),
         ];
 
@@ -1069,16 +1274,16 @@ mod tests {
     #[test]
     fn runtime_snapshot_uses_typed_screen_identity() {
         let snapshot = RuntimeSnapshot {
-            app_state: UiScreen::Power,
+            app_state: UiScreen::Setup,
             ..RuntimeSnapshot::default()
         };
         let payload = serde_json::to_value(&snapshot).unwrap();
-        assert_eq!(payload["app_state"], "power");
+        assert_eq!(payload["app_state"], "setup");
 
         let decoded = RuntimeSnapshot::from_payload(&payload).unwrap();
-        assert_eq!(decoded.app_state, UiScreen::Power);
+        assert_eq!(decoded.app_state, UiScreen::Setup);
         assert!(matches!(
-            RuntimeSnapshot::from_payload(&json!({ "app_state": "setup" })),
+            RuntimeSnapshot::from_payload(&json!({ "app_state": "setup_legacy" })),
             Err(ProtocolError::InvalidEnvelope(_))
         ));
     }

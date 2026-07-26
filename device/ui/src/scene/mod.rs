@@ -14,8 +14,11 @@ pub mod stage;
 pub use backdrop::Backdrop;
 pub use cursor::Cursor;
 pub use deck::{
-    ButtonModel, CallPanelModel, CardModel, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy,
-    ItemRender, PageModel, RowModel, WheelItemModel, WheelItemVariant,
+    AskPhase, AskSurfaceModel, ButtonModel, CallOverlayKind, CallOverlayModel, CardModel, Deck,
+    DeckItem, DeckItemAnim, DeckKind, EmptyStateModel, FocusPolicy, ItemRender, PageModel,
+    PlayerHeroModel, PlayerHeroVariant, RecordingPanelModel, RowModel, SetupAboutModel,
+    SetupVolumeModel, WatchFaceModel, WheelBadgeKind, WheelBadgeModel, WheelItemModel,
+    WheelItemVariant, WifiSetupModel,
 };
 pub use defaults::{defaults_for, load_scene_defaults, SceneDefaults, SceneDefaultsCatalog};
 pub use fx::{FxLayer, FxLayerId, GlowBloom, Halo, ParticleField, PulseRing};
@@ -25,5 +28,7 @@ pub use graph::{
 pub use hud::{HudBattery, HudConnectivity, HudConnectivityKind, HudScene, HudStatus};
 pub use layers::{LayerSlot, LAYER_ORDER};
 pub use modal::Modal;
-pub use scene::{Scene, SceneId};
+pub use scene::{
+    ContextLabelModel, Scene, SceneContext, SceneId, SetupCounterModel, WheelHeaderModel,
+};
 pub use stage::{region_rect, LayoutRect, RegionId, Stage};

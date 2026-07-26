@@ -2,7 +2,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 
 use crate::config::VoipConfig;
-use crate::host::{BackendEvent, MessageRecord, VoipRuntimeBackend};
+use crate::host::{BackendEvent, MessageRecord, VoiceRecordingMetrics, VoipRuntimeBackend};
 
 use super::abi_event::{self, YoyopodLiblinphoneEvent};
 use super::error::LiblinphoneError;
@@ -158,6 +158,34 @@ impl VoipRuntimeBackend for LiblinphoneBackend {
             .map_err(|error| error.to_string())
     }
 
+    fn set_audio_devices(
+        &mut self,
+        playback_device: &str,
+        ringer_device: &str,
+        capture_device: &str,
+        media_device: &str,
+        microphone_gain: u8,
+        output_volume: u8,
+        alert_volume: u8,
+    ) -> Result<(), String> {
+        let playback = CString::new(playback_device).map_err(|error| error.to_string())?;
+        let ringer = CString::new(ringer_device).map_err(|error| error.to_string())?;
+        let capture = CString::new(capture_device).map_err(|error| error.to_string())?;
+        let media = CString::new(media_device).map_err(|error| error.to_string())?;
+        check(unsafe {
+            runtime::yoyopod_liblinphone_set_audio_devices(
+                playback.as_ptr(),
+                ringer.as_ptr(),
+                capture.as_ptr(),
+                media.as_ptr(),
+                microphone_gain.into(),
+                output_volume.into(),
+                alert_volume.into(),
+            )
+        })
+        .map_err(|error| error.to_string())
+    }
+
     fn send_text_message(&mut self, sip_address: &str, text: &str) -> Result<String, String> {
         let sip_address = CString::new(sip_address).map_err(|error| error.to_string())?;
         let text = CString::new(text).map_err(|error| error.to_string())?;
@@ -178,6 +206,22 @@ impl VoipRuntimeBackend for LiblinphoneBackend {
         let file_path = CString::new(file_path).map_err(|error| error.to_string())?;
         check(unsafe { runtime::yoyopod_liblinphone_start_voice_recording(file_path.as_ptr()) })
             .map_err(|error| error.to_string())
+    }
+
+    fn voice_recording_metrics(&mut self) -> Result<VoiceRecordingMetrics, String> {
+        let mut duration_ms = 0;
+        let mut capture_volume = 0.0;
+        check(unsafe {
+            runtime::yoyopod_liblinphone_voice_recording_metrics(
+                &mut duration_ms,
+                &mut capture_volume,
+            )
+        })
+        .map_err(|error| error.to_string())?;
+        Ok(VoiceRecordingMetrics {
+            duration_ms: duration_ms.max(0),
+            capture_level_permille: (capture_volume * 1000.0).round().clamp(0.0, 1000.0) as i32,
+        })
     }
 
     fn stop_voice_recording(&mut self) -> Result<i32, String> {

@@ -78,6 +78,9 @@ Required system packages on the Pi:
 - `i2c-tools`
 - `pisugar-server` running on PiSugar-based targets
 - `ppp` for the modem PPP data path (cellular)
+- `network-manager` (with its shared-mode `dnsmasq` helper) for Wi-Fi controls
+  and the on-device Wi-Fi onboarding AP/captive portal — see
+  [`../features/WIFI_ONBOARDING.md`](../features/WIFI_ONBOARDING.md)
 
 Install on Raspberry Pi OS / Debian-based:
 

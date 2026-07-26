@@ -38,6 +38,7 @@ pub trait MediaRuntime: Send {
     fn set_audio_device(&mut self, device: &str) -> Result<()>;
     fn load_tracks(&mut self, uris: &[String]) -> Result<()>;
     fn load_playlist_file(&mut self, path: &str) -> Result<()>;
+    fn load_playlist_track(&mut self, path: &str, track_index: usize) -> Result<()>;
     fn drain_events(&mut self) -> Result<Vec<MediaRuntimeEvent>>;
     fn current_track(&self) -> Option<Track>;
     fn playback_state(&self) -> PlaybackState;
@@ -101,8 +102,8 @@ impl MediaHost {
         self.commands_processed = self.commands_processed.saturating_add(1);
     }
 
-    pub fn configure(&mut self, config: MediaConfig) {
-        self.library = Some(LocalMusicLibrary::new(&config.music_dir));
+    pub fn configure(&mut self, config: MediaConfig) -> Result<()> {
+        self.library = Some(LocalMusicLibrary::open(&config.music_dir)?);
         self.recent_store = RecentTrackStore::open(&config.recent_tracks_file, 50);
         self.remote_cache = Some(RemotePlaybackCache::new(
             &config.remote_cache_dir,
@@ -111,6 +112,7 @@ impl MediaHost {
         self.remote_media_library = Some(RemoteMediaLibrary::new(&config.music_dir));
         self.config = Some(config);
         self.backend_state = "configured".to_string();
+        Ok(())
     }
 
     pub fn start_backend(&mut self) -> Result<()> {
@@ -224,6 +226,34 @@ impl MediaHost {
         self.runtime_mut()?.load_playlist_file(path)
     }
 
+    pub fn play_playlist_track(
+        &mut self,
+        path: &str,
+        track_uri: &str,
+        track_index: usize,
+    ) -> Result<()> {
+        let library = self
+            .library
+            .as_ref()
+            .ok_or_else(|| anyhow!("media host is not configured"))?;
+        let playlist = library
+            .playlist(path)
+            .ok_or_else(|| anyhow!("playlist is not in the local library"))?;
+        if track_index >= playlist.tracks.len() {
+            return Err(anyhow!(
+                "playlist track index {track_index} is out of range for {} tracks",
+                playlist.tracks.len()
+            ));
+        }
+        if playlist.tracks[track_index].uri != track_uri {
+            return Err(anyhow!(
+                "playlist track selection is stale: index {track_index} no longer maps to {track_uri}"
+            ));
+        }
+        self.ensure_runtime_started()?;
+        self.runtime_mut()?.load_playlist_track(path, track_index)
+    }
+
     pub fn shuffle_all(&mut self) -> Result<()> {
         let library = self
             .library
@@ -289,15 +319,20 @@ impl MediaHost {
     }
 
     pub fn import_remote_media_asset(
-        &self,
+        &mut self,
         request: &MediaImportRequest,
         cached_path: &std::path::Path,
     ) -> Result<std::path::PathBuf> {
-        self.remote_media_library
+        let path = self
+            .remote_media_library
             .as_ref()
             .ok_or_else(|| anyhow!("media host is not configured"))?
             .persist_asset(request, cached_path)
-            .map_err(|error| anyhow!(error))
+            .map_err(|error| anyhow!(error))?;
+        if let Some(library) = self.library.as_mut() {
+            library.refresh()?;
+        }
+        Ok(path)
     }
 
     pub fn health_payload(&self) -> Value {
@@ -324,7 +359,7 @@ impl MediaHost {
             "remote_cache_max_bytes": self.config.as_ref().map(|config| config.remote_cache_max_bytes).unwrap_or(0),
             "playlist_count": self.playlist_count().unwrap_or(0),
             "library_menu": self.menu_items(),
-            "playlists": self.list_playlists(false).unwrap_or_default(),
+            "playlists": self.list_playlists(true).unwrap_or_default(),
             "recent_tracks": self.list_recent_tracks(None).unwrap_or_default(),
             "current_track": self.current_track.as_ref().map(track_json),
             "playback_state": self.playback_state.as_str(),
@@ -790,6 +825,16 @@ impl MediaRuntime for MpvRuntime {
 
     fn load_playlist_file(&mut self, path: &str) -> Result<()> {
         self.command(&[json!("loadlist"), json!(path), json!("replace")])
+    }
+
+    fn load_playlist_track(&mut self, path: &str, track_index: usize) -> Result<()> {
+        self.command(&[json!("loadlist"), json!(path), json!("replace")])?;
+        self.command(&[
+            json!("set_property"),
+            json!("playlist-pos"),
+            json!(track_index),
+        ])?;
+        self.command(&[json!("set_property"), json!("pause"), json!(false)])
     }
 
     fn drain_events(&mut self) -> Result<Vec<MediaRuntimeEvent>> {

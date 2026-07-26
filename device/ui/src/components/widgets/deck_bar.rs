@@ -16,13 +16,15 @@ const ITEMS: [(&str, u32); 4] = [
 pub struct DeckBarProps {
     pub focused_index: Option<usize>,
     pub visible: bool,
+    pub opacity: u8,
 }
 
 pub fn deck_bar(props: &DeckBarProps) -> Element {
     ITEMS.iter().enumerate().fold(
         container(roles::DECK_BAR)
             .key(Key::Static("deck_bar"))
-            .visible(props.visible),
+            .visible(props.visible)
+            .opacity(props.opacity),
         |deck, (index, (icon, color))| {
             let focused = props.focused_index == Some(index);
             deck.child(

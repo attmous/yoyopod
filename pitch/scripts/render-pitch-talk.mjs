@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const requireFromWebsite = createRequire(new URL('../../website/package.json', import.meta.url));
+const requireFromWebsite = createRequire(new URL('../../docsite/website/package.json', import.meta.url));
 const sharp = requireFromWebsite('sharp');
 const pitchAssets = resolve(here, '../src/assets/pitch');
 

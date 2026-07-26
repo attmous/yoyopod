@@ -59,6 +59,7 @@ where
     let (work_tx, work_rx) = mpsc::channel::<WorkCompletion>();
     let input_rx = spawn_input_reader(input);
     let mut active: Option<ActiveRequest> = None;
+    let mut next_generation = 0_u64;
     let mut input_closed = false;
     loop {
         drain_completed(output, &work_rx, &mut active)?;
@@ -104,6 +105,7 @@ where
             Arc::clone(&provider),
             &work_tx,
             &mut active,
+            &mut next_generation,
             envelope,
         )? {
             break;
@@ -145,12 +147,15 @@ where
 
 struct ActiveRequest {
     request_id: Option<String>,
+    generation: u64,
+    kind: RequestKind,
     context: SpeechRequestContext,
     cancel_acknowledged: bool,
 }
 
 struct WorkCompletion {
     request_id: Option<String>,
+    generation: u64,
     context: SpeechRequestContext,
     envelope: WorkerEnvelope,
 }
@@ -159,6 +164,13 @@ struct WorkStart {
     request_id: Option<String>,
     deadline_ms: u64,
     result_type: &'static str,
+    kind: RequestKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RequestKind {
+    General,
+    FocusPrompt,
 }
 
 fn handle_command<W, P>(
@@ -166,6 +178,7 @@ fn handle_command<W, P>(
     provider: Arc<P>,
     work_tx: &mpsc::Sender<WorkCompletion>,
     active: &mut Option<ActiveRequest>,
+    next_generation: &mut u64,
     envelope: WorkerEnvelope,
 ) -> Result<bool>
 where
@@ -200,7 +213,9 @@ where
                     request_id,
                     deadline_ms: envelope.deadline_ms,
                     result_type: "voice.transcribe.result",
+                    kind: RequestKind::General,
                 },
+                next_generation,
                 move |provider, context| provider.transcribe(&context, request),
             )?;
         }
@@ -224,7 +239,47 @@ where
                     request_id,
                     deadline_ms: envelope.deadline_ms,
                     result_type: "voice.speak.result",
+                    kind: RequestKind::General,
                 },
+                next_generation,
+                move |provider, context| provider.speak(&context, request),
+            )?;
+        }
+        "voice.focus_prompt" => {
+            let request = match decode_payload::<SpeakRequest>(envelope.payload) {
+                Ok(request) => request,
+                Err(error) => {
+                    emit(
+                        output,
+                        &voice_error(request_id, "invalid_payload", error.to_string(), false),
+                    )?;
+                    return Ok(false);
+                }
+            };
+            if request_id.as_deref().is_none_or(str::is_empty) {
+                emit(
+                    output,
+                    &voice_error(
+                        request_id,
+                        "invalid_payload",
+                        "voice.focus_prompt requires request_id",
+                        false,
+                    ),
+                )?;
+                return Ok(false);
+            }
+            start_work(
+                output,
+                provider,
+                work_tx,
+                active,
+                WorkStart {
+                    request_id,
+                    deadline_ms: envelope.deadline_ms,
+                    result_type: "voice.focus_prompt.result",
+                    kind: RequestKind::FocusPrompt,
+                },
+                next_generation,
                 move |provider, context| provider.speak(&context, request),
             )?;
         }
@@ -248,11 +303,14 @@ where
                     request_id,
                     deadline_ms: envelope.deadline_ms,
                     result_type: "voice.ask.result",
+                    kind: RequestKind::General,
                 },
+                next_generation,
                 move |provider, context| provider.ask(&context, request),
             )?;
         }
         "voice.cancel" => handle_cancel(output, active, request_id, envelope.payload)?,
+        "voice.cancel_focus_prompt" => handle_focus_prompt_cancel(output, active, request_id)?,
         "voice.shutdown" | "worker.stop" => {
             if let Some(active) = active.as_ref() {
                 active.context.cancel();
@@ -286,6 +344,7 @@ fn start_work<W, P, F, T>(
     work_tx: &mpsc::Sender<WorkCompletion>,
     active: &mut Option<ActiveRequest>,
     spec: WorkStart,
+    next_generation: &mut u64,
     work: F,
 ) -> Result<()>
 where
@@ -294,7 +353,10 @@ where
     F: FnOnce(Arc<P>, SpeechRequestContext) -> Result<T> + Send + 'static,
     T: serde::Serialize,
 {
-    if active.is_some() {
+    if active
+        .as_ref()
+        .is_some_and(|active| active.kind == RequestKind::General)
+    {
         emit(
             output,
             &voice_error(
@@ -306,9 +368,16 @@ where
         )?;
         return Ok(());
     }
+    if let Some(active) = active.as_ref() {
+        active.context.cancel();
+    }
+    *next_generation = next_generation.wrapping_add(1);
+    let generation = *next_generation;
     let context = SpeechRequestContext::new(spec.deadline_ms);
     *active = Some(ActiveRequest {
         request_id: spec.request_id.clone(),
+        generation,
+        kind: spec.kind,
         context: context.clone(),
         cancel_acknowledged: false,
     });
@@ -319,6 +388,7 @@ where
             completion_envelope(spec.result_type, spec.request_id.clone(), result, &context);
         let _ = work_tx.send(WorkCompletion {
             request_id: spec.request_id,
+            generation,
             context,
             envelope,
         });
@@ -371,27 +441,20 @@ fn handle_cancel<W>(
 where
     W: Write,
 {
-    let target_id = payload
+    let requested_target_id = payload
         .get("request_id")
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| request_id.clone());
-    let Some(target_id) = target_id else {
-        emit(
-            output,
-            &voice_error(
-                request_id,
-                "invalid_payload",
-                "voice.cancel requires request_id",
-                false,
-            ),
-        )?;
-        return Ok(());
+    let matched = match requested_target_id.as_deref() {
+        Some(target_id) => {
+            active
+                .as_ref()
+                .and_then(|active| active.request_id.as_deref())
+                == Some(target_id)
+        }
+        None => active.is_some(),
     };
-    let matched = active
-        .as_ref()
-        .and_then(|active| active.request_id.as_deref())
-        == Some(target_id.as_str());
     if matched {
         if let Some(active) = active.as_mut() {
             active.context.cancel();
@@ -402,11 +465,40 @@ where
         output,
         &WorkerEnvelope::result(
             "voice.cancelled",
-            request_id.or_else(|| Some(target_id.clone())),
+            request_id.or_else(|| requested_target_id.clone()),
             json!({
                 "cancelled": matched,
                 "reason": if matched { "cancel_requested" } else { "not_active" },
-                "target_request_id": target_id,
+                "target_request_id": requested_target_id,
+            }),
+        ),
+    )?;
+    Ok(())
+}
+
+fn handle_focus_prompt_cancel<W>(
+    output: &mut W,
+    active: &mut Option<ActiveRequest>,
+    request_id: Option<String>,
+) -> Result<()>
+where
+    W: Write,
+{
+    let matched = active
+        .as_ref()
+        .is_some_and(|active| active.kind == RequestKind::FocusPrompt);
+    if let Some(active) = active.as_mut().filter(|_| matched) {
+        active.context.cancel();
+        active.cancel_acknowledged = true;
+    }
+    emit(
+        output,
+        &WorkerEnvelope::result(
+            "voice.focus_prompt.cancelled",
+            request_id,
+            json!({
+                "cancelled": matched,
+                "reason": if matched { "cancel_requested" } else { "not_active" },
             }),
         ),
     )?;
@@ -437,7 +529,7 @@ where
 {
     let is_active = active
         .as_ref()
-        .map(|active| active.request_id == completion.request_id)
+        .map(|active| active.generation == completion.generation)
         .unwrap_or(false);
     let cancel_already_acknowledged = active
         .as_ref()
@@ -499,4 +591,114 @@ where
     output.write_all(&envelope.encode()?)?;
     output.flush()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn work_start(request_id: &str, kind: RequestKind) -> WorkStart {
+        WorkStart {
+            request_id: Some(request_id.to_string()),
+            deadline_ms: 5_000,
+            result_type: "voice.focus_prompt.result",
+            kind,
+        }
+    }
+
+    #[test]
+    fn newer_focus_prompt_preempts_the_previous_generation() {
+        let provider = Arc::new(MockProvider);
+        let (work_tx, _work_rx) = mpsc::channel();
+        let mut active = None;
+        let mut generation = 0;
+        let mut output = Vec::new();
+
+        start_work(
+            &mut output,
+            Arc::clone(&provider),
+            &work_tx,
+            &mut active,
+            work_start("focus-1", RequestKind::FocusPrompt),
+            &mut generation,
+            |_, _| Ok(json!({"audio_path": "first.wav"})),
+        )
+        .unwrap();
+        let first_context = active.as_ref().unwrap().context.clone();
+
+        start_work(
+            &mut output,
+            provider,
+            &work_tx,
+            &mut active,
+            work_start("focus-2", RequestKind::FocusPrompt),
+            &mut generation,
+            |_, _| Ok(json!({"audio_path": "second.wav"})),
+        )
+        .unwrap();
+
+        assert!(first_context.is_cancelled());
+        assert_eq!(
+            active.as_ref().unwrap().request_id.as_deref(),
+            Some("focus-2")
+        );
+        assert_eq!(active.as_ref().unwrap().generation, 2);
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn focus_prompt_never_interrupts_general_speech_work() {
+        let provider = Arc::new(MockProvider);
+        let (work_tx, _work_rx) = mpsc::channel();
+        let mut active = None;
+        let mut generation = 0;
+        let mut output = Vec::new();
+
+        start_work(
+            &mut output,
+            Arc::clone(&provider),
+            &work_tx,
+            &mut active,
+            work_start("ask", RequestKind::General),
+            &mut generation,
+            |_, _| Ok(json!({"answer": "hello"})),
+        )
+        .unwrap();
+        start_work(
+            &mut output,
+            provider,
+            &work_tx,
+            &mut active,
+            work_start("focus", RequestKind::FocusPrompt),
+            &mut generation,
+            |_, _| Ok(json!({"audio_path": "focus.wav"})),
+        )
+        .unwrap();
+
+        assert_eq!(active.as_ref().unwrap().request_id.as_deref(), Some("ask"));
+        let envelope = WorkerEnvelope::decode(&output).unwrap();
+        assert_eq!(envelope.message_type, "voice.error");
+        assert_eq!(envelope.payload["code"], "busy");
+    }
+
+    #[test]
+    fn cancel_without_request_id_cancels_the_single_active_request() {
+        let context = SpeechRequestContext::new(5_000);
+        let mut active = Some(ActiveRequest {
+            request_id: None,
+            generation: 1,
+            kind: RequestKind::General,
+            context: context.clone(),
+            cancel_acknowledged: false,
+        });
+        let mut output = Vec::new();
+
+        handle_cancel(&mut output, &mut active, None, json!({})).unwrap();
+
+        assert!(context.is_cancelled());
+        assert!(active.as_ref().unwrap().cancel_acknowledged);
+        let envelope = WorkerEnvelope::decode(&output).unwrap();
+        assert_eq!(envelope.message_type, "voice.cancelled");
+        assert_eq!(envelope.payload["cancelled"], true);
+    }
 }

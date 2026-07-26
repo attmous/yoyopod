@@ -35,7 +35,9 @@ Current device code lives under `device/`:
 - `device/harness/`: protocol and host test harnesses
 - `device/cloud/`: cloud MQTT/telemetry host
 - `device/media/`: local music and mpv ownership
-- `device/network/`: SIM7600, PPP, and GPS ownership
+- `device/network/`: SIM7600, PPP, and GPS ownership, plus on-device Wi-Fi
+  onboarding (AP mode + captive portal; see
+  [`../features/WIFI_ONBOARDING.md`](../features/WIFI_ONBOARDING.md))
 - `device/power/`: PiSugar power ownership
 - `device/speech/`: speech host for ASK/voice command work
 - `device/ui/`: Whisplay/LVGL rendering host

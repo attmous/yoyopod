@@ -2,11 +2,11 @@
 
 The five-minute hackathon presentation lives here as a self-contained feature
 area. The documentation site exposes it at `/pitch/` through the small route
-shim in `website/src/pages/pitch/index.astro`.
+shim in `docsite/website/src/pages/pitch/index.astro`.
 
 ## Preview
 
-From `website/`:
+From `docsite/website/`:
 
 ```sh
 npm run dev
@@ -16,7 +16,7 @@ Then open `http://localhost:4321/pitch/`.
 
 ## Build
 
-From `website/`:
+From `docsite/website/`:
 
 ```sh
 npm run build

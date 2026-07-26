@@ -21,6 +21,7 @@
 #define LV_FONT_MONTSERRAT_24 1
 #define LV_FONT_MONTSERRAT_32 1
 #define LV_FONT_MONTSERRAT_40 1
+#define LV_FONT_MONTSERRAT_48 1
 
 #define LV_USE_THEME_DEFAULT 1
 #define LV_USE_LIST 1
@@ -29,5 +30,8 @@
 #define LV_USE_IMAGE 1
 #define LV_USE_FLEX 1
 #define LV_USE_SNAPSHOT 1
+/* Wi‑Fi onboarding QR: lv_qrcode is a canvas subclass, so both are required. */
+#define LV_USE_CANVAS 1
+#define LV_USE_QRCODE 1
 
 #endif

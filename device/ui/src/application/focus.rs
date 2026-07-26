@@ -32,19 +32,73 @@ pub fn clamp(current: usize, count: usize) -> usize {
 pub fn focus_count(
     screen: UiScreen,
     snapshot: &RuntimeSnapshot,
+    selected_playlist: Option<&ListItemSnapshot>,
     selected_contact: Option<&ListItemSnapshot>,
+    replay_index: usize,
 ) -> usize {
     match screen {
         UiScreen::Hub => snapshot.hub.cards.len().max(1),
         UiScreen::Listen => options::listen_items(snapshot).len(),
         UiScreen::Playlists => snapshot.music.playlists.len(),
+        UiScreen::PlaylistTracks => selected_playlist
+            .and_then(|playlist| snapshot.music.playlist_tracks.get(&playlist.id))
+            .map(Vec::len)
+            .unwrap_or(0),
         UiScreen::RecentTracks => snapshot.music.recent_tracks.len(),
-        UiScreen::Talk => options::talk_items().len(),
+        UiScreen::NowPlaying => 3,
+        UiScreen::Talk => snapshot.call.contacts.len(),
         UiScreen::Contacts => snapshot.call.contacts.len(),
         UiScreen::CallHistory => snapshot.call.history.len(),
         UiScreen::TalkContact => options::talk_contact_actions(snapshot, selected_contact).len(),
+        UiScreen::Replay => {
+            let note_count = selected_contact
+                .or_else(|| snapshot.call.contacts.first())
+                .and_then(|contact| snapshot.call.voice_notes_by_contact.get(&contact.id))
+                .map(Vec::len)
+                .unwrap_or(0);
+            if replay_index + 1 < note_count {
+                3
+            } else {
+                2
+            }
+        }
         UiScreen::VoiceNote => options::voice_note_action_count(snapshot),
-        UiScreen::Power => options::power_page_count(snapshot),
+        UiScreen::IncomingCall => 2,
+        UiScreen::OutgoingCall => 1,
+        UiScreen::InCall => 2,
+        UiScreen::Setup => 7,
+        UiScreen::SetupVolume => 1,
+        UiScreen::SetupCompanion => 5,
+        UiScreen::SetupContacts => snapshot.call.contacts.len(),
+        UiScreen::SetupTheme => 3,
+        UiScreen::SetupAbout => 5,
         _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use yoyopod_protocol::ui::VoiceNoteSummarySnapshot;
+
+    #[test]
+    fn replay_removes_next_from_focus_on_the_last_recording() {
+        let contact = ListItemSnapshot::new("mama", "Mama", "", "mono:M");
+        let mut snapshot = RuntimeSnapshot::default();
+        snapshot.call.contacts.push(contact.clone());
+        snapshot.call.voice_notes_by_contact.insert(
+            contact.id.clone(),
+            vec![VoiceNoteSummarySnapshot::default(); 2],
+        );
+
+        assert_eq!(
+            focus_count(UiScreen::Replay, &snapshot, None, Some(&contact), 0),
+            3
+        );
+        assert_eq!(focus_count(UiScreen::Replay, &snapshot, None, None, 0), 3);
+        assert_eq!(
+            focus_count(UiScreen::Replay, &snapshot, None, Some(&contact), 1),
+            2
+        );
     }
 }

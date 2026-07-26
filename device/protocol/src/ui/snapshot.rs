@@ -20,7 +20,11 @@ pub struct RuntimeSnapshot {
     #[serde(default)]
     pub power: PowerRuntimeSnapshot,
     #[serde(default)]
+    pub settings: SettingsRuntimeSnapshot,
+    #[serde(default)]
     pub network: NetworkRuntimeSnapshot,
+    #[serde(default)]
+    pub wifi_setup: WifiSetupRuntimeSnapshot,
     #[serde(default)]
     pub overlay: OverlayRuntimeSnapshot,
 }
@@ -34,7 +38,9 @@ impl Default for RuntimeSnapshot {
             call: CallRuntimeSnapshot::default(),
             voice: VoiceRuntimeSnapshot::default(),
             power: PowerRuntimeSnapshot::default(),
+            settings: SettingsRuntimeSnapshot::default(),
             network: NetworkRuntimeSnapshot::default(),
+            wifi_setup: WifiSetupRuntimeSnapshot::default(),
             overlay: OverlayRuntimeSnapshot::default(),
         }
     }
@@ -58,7 +64,9 @@ pub enum RuntimeSnapshotPatch {
     Call(CallRuntimeSnapshot),
     Voice(VoiceRuntimeSnapshot),
     Power(PowerRuntimeSnapshot),
+    Settings(SettingsRuntimeSnapshot),
     Network(NetworkRuntimeSnapshot),
+    WifiSetup(WifiSetupRuntimeSnapshot),
     Overlay(OverlayRuntimeSnapshot),
 }
 
@@ -72,7 +80,9 @@ pub enum RuntimeSnapshotDomain {
     Call,
     Voice,
     Power,
+    Settings,
     Network,
+    WifiSetup,
     Overlay,
 }
 
@@ -92,7 +102,9 @@ impl RuntimeSnapshotPatch {
             Self::Call(_) => RuntimeSnapshotDomain::Call,
             Self::Voice(_) => RuntimeSnapshotDomain::Voice,
             Self::Power(_) => RuntimeSnapshotDomain::Power,
+            Self::Settings(_) => RuntimeSnapshotDomain::Settings,
             Self::Network(_) => RuntimeSnapshotDomain::Network,
+            Self::WifiSetup(_) => RuntimeSnapshotDomain::WifiSetup,
             Self::Overlay(_) => RuntimeSnapshotDomain::Overlay,
         }
     }
@@ -134,8 +146,14 @@ pub struct MusicRuntimeSnapshot {
     pub artist: String,
     #[serde(default)]
     pub progress_permille: i32,
+    #[serde(default = "default_music_time_text")]
+    pub elapsed_text: String,
+    #[serde(default = "default_music_time_text")]
+    pub total_text: String,
     #[serde(default)]
     pub playlists: Vec<ListItemSnapshot>,
+    #[serde(default)]
+    pub playlist_tracks: BTreeMap<String, Vec<ListItemSnapshot>>,
     #[serde(default)]
     pub recent_tracks: Vec<ListItemSnapshot>,
 }
@@ -148,10 +166,46 @@ impl Default for MusicRuntimeSnapshot {
             title: default_music_title(),
             artist: String::new(),
             progress_permille: 0,
+            elapsed_text: default_music_time_text(),
+            total_text: default_music_time_text(),
             playlists: Vec::new(),
+            playlist_tracks: BTreeMap::new(),
             recent_tracks: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettingsRuntimeSnapshot {
+    #[serde(default = "default_volume_level")]
+    pub volume_level: i32,
+    #[serde(default = "default_companion")]
+    pub companion: String,
+    #[serde(default = "default_theme")]
+    pub theme: String,
+    #[serde(default = "default_speak_names")]
+    pub speak_names: bool,
+    #[serde(default = "default_device_name")]
+    pub device_name: String,
+    #[serde(default = "default_firmware_version")]
+    pub firmware_version: String,
+}
+
+impl Default for SettingsRuntimeSnapshot {
+    fn default() -> Self {
+        Self {
+            volume_level: default_volume_level(),
+            companion: default_companion(),
+            theme: default_theme(),
+            speak_names: default_speak_names(),
+            device_name: default_device_name(),
+            firmware_version: default_firmware_version(),
+        }
+    }
+}
+
+fn default_music_time_text() -> String {
+    "--:--".to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -176,6 +230,8 @@ pub struct CallRuntimeSnapshot {
     pub unread_voice_notes_by_contact: BTreeMap<String, usize>,
     #[serde(default)]
     pub latest_voice_note_by_contact: BTreeMap<String, VoiceNoteSummarySnapshot>,
+    #[serde(default)]
+    pub voice_notes_by_contact: BTreeMap<String, Vec<VoiceNoteSummarySnapshot>>,
 }
 
 impl Default for CallRuntimeSnapshot {
@@ -191,6 +247,7 @@ impl Default for CallRuntimeSnapshot {
             history: Vec::new(),
             unread_voice_notes_by_contact: BTreeMap::new(),
             latest_voice_note_by_contact: BTreeMap::new(),
+            voice_notes_by_contact: BTreeMap::new(),
         }
     }
 }
@@ -222,9 +279,25 @@ pub struct VoiceRuntimeSnapshot {
     #[serde(default = "default_voice_body")]
     pub body: String,
     #[serde(default)]
+    pub ask_unavailable: bool,
+    #[serde(default)]
     pub capture_in_flight: bool,
     #[serde(default)]
     pub ptt_active: bool,
+    #[serde(default)]
+    pub recording_duration_ms: i32,
+    #[serde(default)]
+    pub capture_level_permille: i32,
+    #[serde(default)]
+    pub playback_active: bool,
+    #[serde(default)]
+    pub playback_paused: bool,
+    #[serde(default)]
+    pub playback_file_path: String,
+    #[serde(default)]
+    pub playback_elapsed_ms: i32,
+    #[serde(default)]
+    pub playback_duration_ms: i32,
 }
 
 impl Default for VoiceRuntimeSnapshot {
@@ -233,8 +306,16 @@ impl Default for VoiceRuntimeSnapshot {
             phase: default_voice_phase(),
             headline: default_voice_headline(),
             body: default_voice_body(),
+            ask_unavailable: false,
             capture_in_flight: false,
             ptt_active: false,
+            recording_duration_ms: 0,
+            capture_level_permille: 0,
+            playback_active: false,
+            playback_paused: false,
+            playback_file_path: String::new(),
+            playback_elapsed_ms: 0,
+            playback_duration_ms: 0,
         }
     }
 }
@@ -300,6 +381,50 @@ impl Default for NetworkRuntimeSnapshot {
     }
 }
 
+/// Transient state for the on-device Wi‑Fi onboarding flow (AP mode + captive
+/// portal). Populated by the runtime from `wifi_provisioning_state` events sent
+/// by the network worker. The `ap_password` is the *hotspot* password shown to
+/// the user (encoded in the on-screen QR) — never the user's home-network
+/// password, which is never surfaced in a snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WifiSetupRuntimeSnapshot {
+    #[serde(default)]
+    pub active: bool,
+    #[serde(default = "default_wifi_setup_phase")]
+    pub phase: String,
+    #[serde(default)]
+    pub ap_ssid: String,
+    #[serde(default)]
+    pub ap_password: String,
+    #[serde(default)]
+    pub portal_url: String,
+    #[serde(default)]
+    pub qr_payload: String,
+    #[serde(default)]
+    pub status_text: String,
+    #[serde(default)]
+    pub error: String,
+}
+
+impl Default for WifiSetupRuntimeSnapshot {
+    fn default() -> Self {
+        Self {
+            active: false,
+            phase: default_wifi_setup_phase(),
+            ap_ssid: String::new(),
+            ap_password: String::new(),
+            portal_url: String::new(),
+            qr_payload: String::new(),
+            status_text: String::new(),
+            error: String::new(),
+        }
+    }
+}
+
+fn default_wifi_setup_phase() -> String {
+    "idle".to_string()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct OverlayRuntimeSnapshot {
     #[serde(default)]
@@ -308,6 +433,14 @@ pub struct OverlayRuntimeSnapshot {
     pub error: String,
     #[serde(default)]
     pub message: String,
+    #[serde(default)]
+    pub retryable: bool,
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub retry_count: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -370,6 +503,25 @@ fn default_power_icon() -> String {
 
 fn default_connection_type() -> String {
     "none".to_string()
+}
+
+fn default_volume_level() -> i32 {
+    5
+}
+fn default_companion() -> String {
+    "Bunny".to_string()
+}
+fn default_theme() -> String {
+    "Light".to_string()
+}
+fn default_speak_names() -> bool {
+    true
+}
+fn default_device_name() -> String {
+    "yoyopod".to_string()
+}
+fn default_firmware_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 fn default_hub_accent() -> u32 {

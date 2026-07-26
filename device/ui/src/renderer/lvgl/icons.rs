@@ -3,6 +3,7 @@ use std::ffi::c_void;
 
 const LV_IMAGE_HEADER_MAGIC: u32 = 0x19;
 const LV_COLOR_FORMAT_A8: u32 = 0x0E;
+const LV_COLOR_FORMAT_RGB565A8: u32 = 0x14;
 
 #[repr(C)]
 pub(crate) struct LvImageHeader {
@@ -78,6 +79,20 @@ impl LvImageDsc {
             reserved_2: std::ptr::null(),
         }
     }
+
+    const fn rgb565a8(data: &'static [u8], width: u32, height: u32) -> Self {
+        Self {
+            header: LvImageHeader {
+                magic_cf_flags: LV_IMAGE_HEADER_MAGIC | (LV_COLOR_FORMAT_RGB565A8 << 8),
+                width_height: width | (height << 16),
+                stride_reserved: width * 2,
+            },
+            data_size: data.len() as u32,
+            data: data.as_ptr(),
+            reserved: std::ptr::null(),
+            reserved_2: std::ptr::null(),
+        }
+    }
 }
 
 const fn downsample_56_to_30(source: &[u8; 3136]) -> [u8; 900] {
@@ -105,12 +120,43 @@ const fn abs_i32(value: i32) -> i32 {
 }
 
 include!("generated/listen_icons.rs");
+include!("generated/companion_sprites.rs");
 
 static PLAYLISTS: LvImageDsc = LvImageDsc::a8_56(&PLAYLISTS_MAP);
 static RECENTS: LvImageDsc = LvImageDsc::a8_56(&RECENTS_MAP);
 static SHUFFLE: LvImageDsc = LvImageDsc::a8_56(&SHUFFLE_MAP);
 static MICROPHONE: LvImageDsc = LvImageDsc::a8_56(&MICROPHONE_MAP);
 static PLUS: LvImageDsc = LvImageDsc::a8_56(&PLUS_MAP);
+static MUSIC_NOTE: LvImageDsc = LvImageDsc::a8_56(&MUSIC_NOTE_MAP);
+static PLAY: LvImageDsc = LvImageDsc::a8_56(&PLAY_MAP);
+static ASK_Q: LvImageDsc = LvImageDsc::a8_56(&ASK_Q_MAP);
+static ASK_SPEAKER: LvImageDsc = LvImageDsc::a8_56(&ASK_SPEAKER_MAP);
+static ASK_CLOUD_ZZZ: LvImageDsc = LvImageDsc::a8_56(&ASK_CLOUD_ZZZ_MAP);
+static SETUP_VOLUME: LvImageDsc = LvImageDsc::a8_56(&SETUP_VOLUME_MAP);
+static SETUP_COMPANION: LvImageDsc = LvImageDsc::a8_56(&SETUP_COMPANION_MAP);
+static SETUP_CONTACTS: LvImageDsc = LvImageDsc::a8_56(&SETUP_CONTACTS_MAP);
+static SETUP_THEME: LvImageDsc = LvImageDsc::a8_56(&SETUP_THEME_MAP);
+static SETUP_SPEAK: LvImageDsc = LvImageDsc::a8_56(&SETUP_SPEAK_MAP);
+static SETUP_ABOUT: LvImageDsc = LvImageDsc::a8_56(&SETUP_ABOUT_MAP);
+static SETUP_WIFI: LvImageDsc = LvImageDsc::a8_56(&SETUP_WIFI_MAP);
+static SETUP_BLOB: LvImageDsc = LvImageDsc::a8_56(&SETUP_BLOB_MAP);
+static SETUP_OWL: LvImageDsc = LvImageDsc::a8_56(&SETUP_OWL_MAP);
+static SETUP_CAT: LvImageDsc = LvImageDsc::a8_56(&SETUP_CAT_MAP);
+static SETUP_BUNNY: LvImageDsc = LvImageDsc::a8_56(&SETUP_BUNNY_MAP);
+static SETUP_ROBOT: LvImageDsc = LvImageDsc::a8_56(&SETUP_ROBOT_MAP);
+static SETUP_LIGHT: LvImageDsc = LvImageDsc::a8_56(&SETUP_LIGHT_MAP);
+static SETUP_DARK: LvImageDsc = LvImageDsc::a8_56(&SETUP_DARK_MAP);
+static SETUP_AUTO: LvImageDsc = LvImageDsc::a8_56(&SETUP_AUTO_MAP);
+static COMPANION_BLOB: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_BLOB_MAP, 114, 114);
+static COMPANION_OWL: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_OWL_MAP, 110, 140);
+static COMPANION_CAT: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_CAT_MAP, 140, 140);
+static COMPANION_BUNNY: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_BUNNY_MAP, 120, 160);
+static COMPANION_ROBOT: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_ROBOT_MAP, 110, 150);
+static COMPANION_BLOB_DARK: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_BLOB_DARK_MAP, 114, 114);
+static COMPANION_OWL_DARK: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_OWL_DARK_MAP, 110, 140);
+static COMPANION_CAT_DARK: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_CAT_DARK_MAP, 140, 140);
+static COMPANION_BUNNY_DARK: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_BUNNY_DARK_MAP, 120, 160);
+static COMPANION_ROBOT_DARK: LvImageDsc = LvImageDsc::rgb565a8(&COMPANION_ROBOT_DARK_MAP, 110, 150);
 
 const fn generated_control_icon(kind: u8) -> [u8; 576] {
     let mut map = [0u8; 576];
@@ -159,17 +205,15 @@ const fn generated_control_icon(kind: u8) -> [u8; 576] {
     map
 }
 
-static PLAY_SM_MAP: [u8; 576] = generated_control_icon(0);
-static PAUSE_SM_MAP: [u8; 576] = generated_control_icon(1);
-static PREV_SM_MAP: [u8; 576] = generated_control_icon(2);
-static NEXT_SM_MAP: [u8; 576] = generated_control_icon(3);
-static CLOSE_SM_MAP: [u8; 576] = generated_control_icon(4);
 static CHECK_SM_MAP: [u8; 576] = generated_control_icon(5);
 static PLAY_SM: LvImageDsc = LvImageDsc::a8_24(&PLAY_SM_MAP);
 static PAUSE_SM: LvImageDsc = LvImageDsc::a8_24(&PAUSE_SM_MAP);
 static PREV_SM: LvImageDsc = LvImageDsc::a8_24(&PREV_SM_MAP);
 static NEXT_SM: LvImageDsc = LvImageDsc::a8_24(&NEXT_SM_MAP);
+static TRASH_SM: LvImageDsc = LvImageDsc::a8_24(&TRASH_SM_MAP);
+static ANSWER_SM: LvImageDsc = LvImageDsc::a8_24(&ANSWER_SM_MAP);
 static CLOSE_SM: LvImageDsc = LvImageDsc::a8_24(&CLOSE_SM_MAP);
+static MIC_SM: LvImageDsc = LvImageDsc::a8_24(&MIC_SM_MAP);
 static CHECK_SM: LvImageDsc = LvImageDsc::a8_24(&CHECK_SM_MAP);
 
 const fn cellular_signal_map(level: u8) -> [u8; 196] {
@@ -1041,11 +1085,39 @@ pub(crate) fn descriptor_for_key(icon_key: &str) -> Option<&'static LvImageDsc> 
         "pause_sm" => Some(&PAUSE_SM),
         "prev_sm" => Some(&PREV_SM),
         "next_sm" => Some(&NEXT_SM),
+        "trash_sm" => Some(&TRASH_SM),
+        "answer_sm" => Some(&ANSWER_SM),
         "close_sm" | "close" => Some(&CLOSE_SM),
+        "mic_sm" => Some(&MIC_SM),
         "check" => Some(&CHECK_SM),
-        "listen" | "music_note" | "play" | "track" => Some(&LISTEN),
+        "music_note" => Some(&MUSIC_NOTE),
+        "icon_play" | "play" => Some(&PLAY),
+        "listen" | "track" => Some(&LISTEN),
         "talk" | "call" | "call_active" | "call_incoming" | "call_outgoing" => Some(&TALK),
         "ask" => Some(&ASK),
+        "ask_q" => Some(&ASK_Q),
+        "ask_speaker" => Some(&ASK_SPEAKER),
+        "ask_cloud_zzz" => Some(&ASK_CLOUD_ZZZ),
+        "setup_volume" => Some(&SETUP_VOLUME),
+        "setup_companion" => Some(&SETUP_COMPANION),
+        "setup_contacts" => Some(&SETUP_CONTACTS),
+        "setup_theme" => Some(&SETUP_THEME),
+        "setup_speak" => Some(&SETUP_SPEAK),
+        "setup_about" => Some(&SETUP_ABOUT),
+        "setup_wifi" => Some(&SETUP_WIFI),
+        "setup_blob" => Some(&SETUP_BLOB),
+        "setup_owl" => Some(&SETUP_OWL),
+        "setup_cat" => Some(&SETUP_CAT),
+        "setup_bunny" => Some(&SETUP_BUNNY),
+        "setup_robot" => Some(&SETUP_ROBOT),
+        "setup_light" => Some(&SETUP_LIGHT),
+        "setup_dark" => Some(&SETUP_DARK),
+        "setup_auto" => Some(&SETUP_AUTO),
+        "companion_blob" => Some(&COMPANION_BLOB),
+        "companion_owl" => Some(&COMPANION_OWL),
+        "companion_cat" => Some(&COMPANION_CAT),
+        "companion_bunny" => Some(&COMPANION_BUNNY),
+        "companion_robot" => Some(&COMPANION_ROBOT),
         "setup" | "power" | "battery" | "care" | "settings" => Some(&SETUP),
         "people" | "person" | "contact" | "contacts" => Some(&TALK),
         _ => None,
@@ -1076,11 +1148,31 @@ pub(crate) fn source_for_key(icon_key: &str) -> *const c_void {
     }
 }
 
+pub(crate) fn source_for_key_with_scheme(
+    icon_key: &str,
+    color_scheme: crate::theme::ColorScheme,
+) -> *const c_void {
+    if color_scheme == crate::theme::ColorScheme::Dark {
+        let descriptor = match icon_key {
+            "companion_blob" => Some(&COMPANION_BLOB_DARK),
+            "companion_owl" => Some(&COMPANION_OWL_DARK),
+            "companion_cat" => Some(&COMPANION_CAT_DARK),
+            "companion_bunny" => Some(&COMPANION_BUNNY_DARK),
+            "companion_robot" => Some(&COMPANION_ROBOT_DARK),
+            _ => None,
+        };
+        if let Some(descriptor) = descriptor {
+            return descriptor as *const LvImageDsc as *const c_void;
+        }
+    }
+    source_for_key(icon_key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const LISTEN_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 5] = [
+    const LISTEN_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 7] = [
         (
             "playlists",
             &PLAYLISTS_MAP,
@@ -1111,6 +1203,145 @@ mod tests {
             include_bytes!("../../../assets/icons/listen/plus.svg"),
             PLUS_SOURCE_FNV1A64,
         ),
+        (
+            "music_note",
+            &MUSIC_NOTE_MAP,
+            include_bytes!("../../../assets/icons/listen/music_note.svg"),
+            MUSIC_NOTE_SOURCE_FNV1A64,
+        ),
+        (
+            "play",
+            &PLAY_MAP,
+            include_bytes!("../../../assets/icons/listen/play.svg"),
+            PLAY_SOURCE_FNV1A64,
+        ),
+    ];
+
+    const TRANSPORT_ICON_SOURCES: [(&str, &[u8], &[u8], u64); 8] = [
+        (
+            "play_sm",
+            &PLAY_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/play_sm.svg"),
+            PLAY_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "pause_sm",
+            &PAUSE_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/pause_sm.svg"),
+            PAUSE_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "prev_sm",
+            &PREV_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/prev_sm.svg"),
+            PREV_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "next_sm",
+            &NEXT_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/next_sm.svg"),
+            NEXT_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "trash_sm",
+            &TRASH_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/trash_sm.svg"),
+            TRASH_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "answer_sm",
+            &ANSWER_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/answer_sm.svg"),
+            ANSWER_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "close_sm",
+            &CLOSE_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/close_sm.svg"),
+            CLOSE_SM_SOURCE_FNV1A64,
+        ),
+        (
+            "mic_sm",
+            &MIC_SM_MAP,
+            include_bytes!("../../../assets/icons/listen/mic_sm.svg"),
+            MIC_SM_SOURCE_FNV1A64,
+        ),
+    ];
+
+    const COMPANION_SOURCES: [(&str, &[u8], &[u8], u64, (u32, u32)); 5] = [
+        (
+            "companion_blob",
+            &COMPANION_BLOB_MAP,
+            include_bytes!("../../../assets/icons/companions/blob.svg"),
+            COMPANION_BLOB_SOURCE_FNV1A64,
+            (114, 114),
+        ),
+        (
+            "companion_owl",
+            &COMPANION_OWL_MAP,
+            include_bytes!("../../../assets/icons/companions/owl.svg"),
+            COMPANION_OWL_SOURCE_FNV1A64,
+            (110, 140),
+        ),
+        (
+            "companion_cat",
+            &COMPANION_CAT_MAP,
+            include_bytes!("../../../assets/icons/companions/cat.svg"),
+            COMPANION_CAT_SOURCE_FNV1A64,
+            (140, 140),
+        ),
+        (
+            "companion_bunny",
+            &COMPANION_BUNNY_MAP,
+            include_bytes!("../../../assets/icons/companions/bunny.svg"),
+            COMPANION_BUNNY_SOURCE_FNV1A64,
+            (120, 160),
+        ),
+        (
+            "companion_robot",
+            &COMPANION_ROBOT_MAP,
+            include_bytes!("../../../assets/icons/companions/robot.svg"),
+            COMPANION_ROBOT_SOURCE_FNV1A64,
+            (110, 150),
+        ),
+    ];
+
+    const DARK_COMPANION_SOURCES: [(&str, &[u8], &[u8], u64, (u32, u32)); 5] = [
+        (
+            "companion_blob",
+            &COMPANION_BLOB_DARK_MAP,
+            include_bytes!("../../../assets/icons/companions/dark/blob.svg"),
+            COMPANION_BLOB_DARK_SOURCE_FNV1A64,
+            (114, 114),
+        ),
+        (
+            "companion_owl",
+            &COMPANION_OWL_DARK_MAP,
+            include_bytes!("../../../assets/icons/companions/dark/owl.svg"),
+            COMPANION_OWL_DARK_SOURCE_FNV1A64,
+            (110, 140),
+        ),
+        (
+            "companion_cat",
+            &COMPANION_CAT_DARK_MAP,
+            include_bytes!("../../../assets/icons/companions/dark/cat.svg"),
+            COMPANION_CAT_DARK_SOURCE_FNV1A64,
+            (140, 140),
+        ),
+        (
+            "companion_bunny",
+            &COMPANION_BUNNY_DARK_MAP,
+            include_bytes!("../../../assets/icons/companions/dark/bunny.svg"),
+            COMPANION_BUNNY_DARK_SOURCE_FNV1A64,
+            (120, 160),
+        ),
+        (
+            "companion_robot",
+            &COMPANION_ROBOT_DARK_MAP,
+            include_bytes!("../../../assets/icons/companions/dark/robot.svg"),
+            COMPANION_ROBOT_DARK_SOURCE_FNV1A64,
+            (110, 150),
+        ),
     ];
 
     #[test]
@@ -1121,11 +1352,15 @@ mod tests {
             "icon_shuffle",
             "icon_microphone",
             "icon_plus",
+            "music_note",
+            "icon_play",
             "play_sm",
             "pause_sm",
             "prev_sm",
             "next_sm",
+            "answer_sm",
             "close_sm",
+            "mic_sm",
         ] {
             assert!(descriptor_for_key(key).is_some(), "missing {key}");
         }
@@ -1137,9 +1372,63 @@ mod tests {
     }
 
     #[test]
+    fn companion_sources_match_generated_rgb565a8_sprites() {
+        for (key, bytes, source, expected_hash, (width, height)) in COMPANION_SOURCES {
+            assert_eq!(fnv1a64(source), expected_hash, "stale {key} sprite");
+            assert_eq!(bytes.len(), (width * height * 3) as usize);
+            let descriptor = descriptor_for_key(key).expect("companion descriptor");
+            assert_eq!(descriptor.data_size, bytes.len() as u32);
+            assert_eq!(descriptor.header.width_height, width | (height << 16));
+            assert_eq!(descriptor.header.stride_reserved, width * 2);
+            assert_eq!(
+                (descriptor.header.magic_cf_flags >> 8) & 0xFF,
+                LV_COLOR_FORMAT_RGB565A8
+            );
+        }
+    }
+
+    #[test]
+    fn dark_companion_sources_match_their_theme_specific_sprites() {
+        for (key, bytes, source, expected_hash, (width, height)) in DARK_COMPANION_SOURCES {
+            assert_eq!(fnv1a64(source), expected_hash, "stale dark {key} sprite");
+            assert_eq!(bytes.len(), (width * height * 3) as usize);
+            assert_ne!(
+                source_for_key_with_scheme(key, crate::theme::ColorScheme::Dark),
+                source_for_key_with_scheme(key, crate::theme::ColorScheme::Light),
+                "{key} must switch descriptors with the theme"
+            );
+        }
+    }
+
+    #[test]
     fn listen_wheel_icon_sources_match_generated_masks() {
         for (name, _, source, expected_hash) in LISTEN_ICON_SOURCES {
             assert_eq!(fnv1a64(source), expected_hash, "stale {name} A8 mask");
+        }
+    }
+
+    #[test]
+    fn listen_transport_icon_sources_match_generated_masks() {
+        for (name, _, source, expected_hash) in TRANSPORT_ICON_SOURCES {
+            assert_eq!(fnv1a64(source), expected_hash, "stale {name} A8 mask");
+        }
+    }
+
+    #[test]
+    fn listen_transport_icons_are_antialiased_and_edge_safe() {
+        for (name, mask, _, _) in TRANSPORT_ICON_SOURCES {
+            let antialiased = mask
+                .iter()
+                .filter(|value| **value > 0 && **value < u8::MAX)
+                .count();
+            assert!(antialiased >= 12, "{name} mask lost antialiasing");
+
+            for coordinate in 0..24 {
+                assert_eq!(mask[coordinate], 0, "{name} touches top edge");
+                assert_eq!(mask[23 * 24 + coordinate], 0, "{name} touches bottom edge");
+                assert_eq!(mask[coordinate * 24], 0, "{name} touches left edge");
+                assert_eq!(mask[coordinate * 24 + 23], 0, "{name} touches right edge");
+            }
         }
     }
 

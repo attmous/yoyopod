@@ -94,41 +94,40 @@ impl<B: CloudMqttBackend> CloudHost<B> {
 
     pub fn drain_runtime_events(&mut self) -> Vec<CloudRuntimeEvent> {
         let mut events = Vec::new();
+        let mut snapshot_changed = false;
         for event in self.mqtt.drain_events() {
             match event {
                 MqttRuntimeEvent::Connected => {
                     self.snapshot.mark_connected();
+                    snapshot_changed = true;
                     if let Err(error) = self.flush_pending_publishes() {
                         let message = error.to_string();
                         self.snapshot.mark_degraded(message.clone());
-                        self.persist_status();
                         events.push(CloudRuntimeEvent::Error(message));
                     }
-                    self.persist_status();
-                    events.push(CloudRuntimeEvent::Snapshot(Box::new(self.snapshot.clone())));
                 }
                 MqttRuntimeEvent::Disconnected(reason) => {
                     self.snapshot.mark_disconnected(reason);
-                    self.persist_status();
-                    events.push(CloudRuntimeEvent::Snapshot(Box::new(self.snapshot.clone())));
+                    snapshot_changed = true;
                 }
                 MqttRuntimeEvent::Command(command) => {
                     self.snapshot
                         .mark_command(command_type(&command).unwrap_or_default());
-                    self.persist_status();
+                    snapshot_changed = true;
                     events.push(CloudRuntimeEvent::Command(command));
-                    events.push(CloudRuntimeEvent::Snapshot(Box::new(self.snapshot.clone())));
                 }
                 MqttRuntimeEvent::Error(message) => {
                     self.snapshot.mark_degraded(message.clone());
-                    self.persist_status();
+                    snapshot_changed = true;
                     events.push(CloudRuntimeEvent::Error(message));
-                    events.push(CloudRuntimeEvent::Snapshot(Box::new(self.snapshot.clone())));
                 }
             }
         }
         if self.mqtt.is_connected() && !self.snapshot.mqtt_connected {
             self.snapshot.mark_connected();
+            snapshot_changed = true;
+        }
+        if snapshot_changed {
             self.persist_status();
             events.push(CloudRuntimeEvent::Snapshot(Box::new(self.snapshot.clone())));
         }
@@ -318,4 +317,89 @@ fn command_type(command: &Value) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::mqtt::CloudMqttBackend;
+
+    struct FakeMqttBackend {
+        events: Vec<MqttRuntimeEvent>,
+    }
+
+    impl CloudMqttBackend for FakeMqttBackend {
+        fn start(&mut self, _config: &CloudHostConfig) -> Result<()> {
+            Ok(())
+        }
+
+        fn stop(&mut self) {}
+
+        fn is_connected(&self) -> bool {
+            false
+        }
+
+        fn publish(&mut self, _topic: &str, _payload: &str, _qos: u8) -> Result<bool> {
+            Ok(true)
+        }
+
+        fn drain_events(&mut self) -> Vec<MqttRuntimeEvent> {
+            std::mem::take(&mut self.events)
+        }
+    }
+
+    fn test_config() -> (CloudHostConfig, PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "yoyopod-cloud-host-{}-{}",
+            std::process::id(),
+            current_millis()
+        ));
+        let config = CloudHostConfig {
+            runtime_root: root.to_string_lossy().to_string(),
+            status_file: "status.json".to_string(),
+            ..CloudHostConfig::default()
+        };
+        (config, root)
+    }
+
+    #[test]
+    fn runtime_events_persist_one_coalesced_snapshot_per_drain() {
+        let (config, root) = test_config();
+        let status_path = config.status_path();
+        let backend = FakeMqttBackend {
+            events: vec![
+                MqttRuntimeEvent::Disconnected("offline".to_string()),
+                MqttRuntimeEvent::Command(json!({ "type": "wifi_scan" })),
+                MqttRuntimeEvent::Error("temporary error".to_string()),
+            ],
+        };
+        let mut host = CloudHost::new("config", config, backend);
+
+        let events = host.drain_runtime_events();
+
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, CloudRuntimeEvent::Snapshot(_)))
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, CloudRuntimeEvent::Command(_)))
+                .count(),
+            1
+        );
+        let persisted: CloudStatusSnapshot =
+            serde_json::from_str(&fs::read_to_string(&status_path).unwrap()).unwrap();
+        assert_eq!(persisted.last_command_type, "wifi_scan");
+        assert_eq!(persisted.last_error_summary, "temporary error");
+        assert!(!status_path.with_extension("tmp").exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
 }

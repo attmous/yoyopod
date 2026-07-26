@@ -1,0 +1,64 @@
+<svg viewBox="0 0 760 390" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="yoyocloud's two faces: MQTT with the device on one side, REST plus push with the yoyopod app on the other, with the stores it owns in the middle">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #232136); stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; }
+    .ext { fill: none; stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .hub { fill: var(--sl-color-accent-low, #4a3414); stroke: var(--sl-color-accent, #f6b02c); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f8f4e9); font-size: 14px; font-weight: 700; }
+    .m { fill: var(--sl-color-gray-2, #d3cdc5); font-size: 11px; font-family: ui-monospace, monospace; }
+    .s { fill: var(--sl-color-gray-3, #a09aa8); font-size: 11.5px; }
+    .flow { stroke: var(--sl-color-gray-3, #a09aa8); stroke-width: 2; fill: none; marker-end: url(#cf-arrow); }
+  </style>
+  <defs>
+    <marker id="cf-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a09aa8)"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="30" y="34" style="font-size:17px">yoyocloud’s two faces</text>
+  <text class="s" x="30" y="54">MQTT with the device · REST + push with the yoyopod app — stores in the middle</text>
+
+  <!-- yoyocloud hub -->
+  <rect class="hub" x="305" y="84" width="165" height="160" rx="10"/>
+  <text class="t" x="321" y="108">yoyocloud</text>
+  <text class="s" x="321" y="126">the backend backbone</text>
+  <text class="s" x="321" y="146">· accounts + households</text>
+  <text class="s" x="317" y="162">· authoritative whitelist</text>
+  <text class="s" x="321" y="178">· Help Agent profiles</text>
+  <text class="s" x="321" y="194">· latest location fix</text>
+  <text class="s" x="321" y="210">· voice-note relay</text>
+  <text class="s" x="321" y="226">· push producer</text>
+
+  <!-- the device -->
+  <rect class="box" x="30" y="116" width="155" height="96" rx="10"/>
+  <text class="t" x="46" y="140">The device</text>
+  <text class="s" x="46" y="158">yoyocore cloud worker</text>
+  <text class="s" x="46" y="174">speaks MQTT only</text>
+
+  <!-- the yoyopod app -->
+  <rect class="box" x="575" y="116" width="155" height="96" rx="10"/>
+  <text class="t" x="591" y="140">the yoyopod app</text>
+  <text class="s" x="591" y="158">parent mobile app</text>
+  <text class="s" x="591" y="174">iOS + Android</text>
+
+  <!-- device-side face: MQTT -->
+  <text class="m" x="232" y="124">MQTT</text>
+  <text class="m" x="215" y="138">evt / ack</text>
+  <path class="flow" d="M185,146 L303,146"/>
+  <text class="m" x="235" y="172">cmd</text>
+  <path class="flow" d="M305,182 L187,182"/>
+  <text class="m" x="190" y="200">store-and-forward</text>
+
+  <!-- app-side face: REST + push -->
+  <text class="m" x="509" y="124">push</text>
+  <text class="m" x="480" y="138">notifications</text>
+  <path class="flow" d="M470,146 L573,146"/>
+  <text class="m" x="486" y="172">REST + JSON</text>
+  <path class="flow" d="M575,182 L472,182"/>
+  <text class="m" x="480" y="200">app-initiated</text>
+
+  <!-- caption -->
+  <rect class="ext" x="30" y="284" width="700" height="80" rx="10"/>
+  <text class="t" x="46" y="310">MQTT is device-side only — the two ends never talk directly.</text>
+  <text class="s" x="46" y="328">The app never holds an MQTT connection: it reads yoyocloud’s stores over REST + JSON and is</text>
+  <text class="s" x="46" y="344">woken by push. The device’s only line home is MQTT — publishes queue offline, flush on reconnect.</text>
+</svg>

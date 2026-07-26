@@ -4,7 +4,7 @@ pub(crate) mod icons;
 pub(crate) mod lifecycle;
 pub(crate) mod snapshot;
 
-use std::ffi::CString;
+use std::ffi::{c_void, CString};
 use std::ptr::{self, NonNull};
 use std::time::Instant;
 
@@ -20,6 +20,7 @@ use crate::renderer::widgets::factory;
 use crate::renderer::widgets::registry::{Layout, WidgetKind, WidgetNode, WidgetRegistry};
 use crate::renderer::widgets::{LvglFacade, WidgetId, WidgetRole};
 use crate::scene::roles;
+use crate::theme::ColorScheme;
 
 const DEFAULT_WIDTH: i32 = 240;
 const DEFAULT_HEIGHT: i32 = 280;
@@ -34,6 +35,7 @@ pub struct NativeLvglFacade {
     pub(crate) widgets: WidgetRegistry,
     pub(crate) active_root: Option<WidgetId>,
     pub(crate) render_assets: RenderAssets,
+    pub(crate) color_scheme: ColorScheme,
 }
 
 impl NativeLvglFacade {
@@ -163,7 +165,7 @@ impl NativeLvglFacade {
     }
 
     pub(super) fn style_for_role(&self, role: WidgetRole) -> Result<WidgetStyle> {
-        ThemeResolver::new(&self.render_assets).style_for_role(role)
+        ThemeResolver::new(&self.render_assets, self.color_scheme).style_for_role(role)
     }
 
     pub(super) fn style_for_selected_role(
@@ -171,7 +173,8 @@ impl NativeLvglFacade {
         role: WidgetRole,
         selected: bool,
     ) -> Result<WidgetStyle> {
-        ThemeResolver::new(&self.render_assets).style_for_selected_role(role, selected)
+        ThemeResolver::new(&self.render_assets, self.color_scheme)
+            .style_for_selected_role(role, selected)
     }
 }
 
@@ -223,6 +226,44 @@ impl LvglFacade for NativeLvglFacade {
         Ok(self.register_widget(obj, WidgetKind::Image, role, Some(parent), layout))
     }
 
+    fn create_arc(&mut self, parent: WidgetId, role: WidgetRole) -> Result<WidgetId> {
+        let parent_obj = self.widget_obj(parent)?;
+        let obj = factory::create_arc_object(parent_obj, role)?;
+        let layout = self.next_role_layout(Some(parent), role)?;
+        let style = self.style_for_role(role)?;
+        styling::reset_style_raw(obj);
+        styling::apply_style_raw(obj, style);
+        let is_watch_orbit = matches!(
+            role,
+            roles::WATCH_ORBIT_CYAN
+                | roles::WATCH_ORBIT_ORANGE
+                | roles::WATCH_ORBIT_VIOLET
+                | roles::WATCH_ORBIT_LIME
+        );
+        if !is_watch_orbit {
+            styling::apply_arc_indicator_style_raw(obj, style);
+        }
+        Self::apply_layout_raw(obj, layout);
+        unsafe {
+            ffi::lv_arc_set_range(obj.as_ptr(), 0, 1000);
+            ffi::lv_arc_set_value(obj.as_ptr(), 0);
+            ffi::lv_arc_set_bg_angles(obj.as_ptr(), 0, 360);
+            ffi::lv_arc_set_rotation(obj.as_ptr(), 270);
+        }
+        styling::apply_role_tuning_raw(obj, role);
+        Ok(self.register_widget(obj, WidgetKind::Arc, role, Some(parent), layout))
+    }
+
+    fn create_qrcode(&mut self, parent: WidgetId, role: WidgetRole) -> Result<WidgetId> {
+        let parent_obj = self.widget_obj(parent)?;
+        let obj = factory::create_qrcode_object(parent_obj, role)?;
+        let layout = self.next_role_layout(Some(parent), role)?;
+        styling::reset_style_raw(obj);
+        styling::apply_style_raw(obj, self.style_for_role(role)?);
+        Self::apply_layout_raw(obj, layout);
+        Ok(self.register_widget(obj, WidgetKind::Qrcode, role, Some(parent), layout))
+    }
+
     fn reorder_children(&mut self, parent: WidgetId, order: &[WidgetId]) -> Result<()> {
         self.widgets.reorder_children(parent, order)?;
         for (index, child) in order.iter().copied().enumerate() {
@@ -236,6 +277,21 @@ impl LvglFacade for NativeLvglFacade {
 
     fn set_text(&mut self, widget: WidgetId, text: &str) -> Result<()> {
         let node = self.widget_node_mut(widget)?;
+        // A QR widget carries its payload in the same `text` prop as labels, but
+        // it is pushed to lv_qrcode (binary-safe) rather than set as label text.
+        if node.kind == WidgetKind::Qrcode {
+            if !text.is_empty() {
+                let bytes = text.as_bytes();
+                unsafe {
+                    ffi::lv_qrcode_update(
+                        node.obj.as_ptr(),
+                        bytes.as_ptr() as *const c_void,
+                        bytes.len() as u32,
+                    );
+                }
+            }
+            return Ok(());
+        }
         let text = CString::new(text).with_context(|| {
             format!(
                 "LVGL text for widget {} contains an interior NUL byte",
@@ -244,9 +300,6 @@ impl LvglFacade for NativeLvglFacade {
         })?;
         unsafe {
             ffi::lv_label_set_text(node.obj.as_ptr(), text.as_ptr());
-            if matches!(node.role, roles::CALL_STATE_LABEL | roles::CALL_MUTE_LABEL) {
-                ffi::lv_obj_center(node.obj.as_ptr());
-            }
         }
         Ok(())
     }
@@ -269,9 +322,10 @@ impl LvglFacade for NativeLvglFacade {
     }
 
     fn set_icon(&mut self, widget: WidgetId, icon_key: &str) -> Result<()> {
+        let color_scheme = self.color_scheme;
         let node = self.widget_node_mut(widget)?;
         if node.kind == WidgetKind::Image {
-            let source = icons::source_for_key(icon_key);
+            let source = icons::source_for_key_with_scheme(icon_key, color_scheme);
             unsafe {
                 ffi::lv_image_set_src(node.obj.as_ptr(), source);
             }
@@ -283,6 +337,12 @@ impl LvglFacade for NativeLvglFacade {
     fn set_progress(&mut self, widget: WidgetId, value: i32) -> Result<()> {
         let value = value.clamp(0, 1000);
         let node = self.widget_node_mut(widget)?;
+        if node.kind == WidgetKind::Arc {
+            unsafe {
+                ffi::lv_arc_set_value(node.obj.as_ptr(), value);
+            }
+            return Ok(());
+        }
         if matches!(
             node.role,
             roles::PROGRESS_SWEEP_FILL | roles::VOICE_METER_LEVEL
@@ -404,8 +464,9 @@ impl LvglFacade for NativeLvglFacade {
     }
 
     fn set_accent(&mut self, widget: WidgetId, rgb: u32) -> Result<()> {
+        let color_scheme = self.color_scheme;
         let node = self.widget_node_mut(widget)?;
-        styling::apply_accent_raw(node.obj, node.role, rgb);
+        styling::apply_accent_raw(node.obj, node.role, rgb, color_scheme);
         Ok(())
     }
 

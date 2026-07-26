@@ -11,6 +11,15 @@ pub trait LvglFacade {
 
     fn create_image(&mut self, parent: WidgetId, role: WidgetRole) -> Result<WidgetId>;
 
+    fn create_arc(&mut self, parent: WidgetId, role: WidgetRole) -> Result<WidgetId>;
+
+    /// Create a QR-code widget. Facades without native QR support fall back to a
+    /// plain image (the payload set later via `set_text` is simply ignored),
+    /// which keeps host/mock renderers working without LVGL.
+    fn create_qrcode(&mut self, parent: WidgetId, role: WidgetRole) -> Result<WidgetId> {
+        self.create_image(parent, role)
+    }
+
     fn reorder_children(&mut self, parent: WidgetId, order: &[WidgetId]) -> Result<()>;
 
     fn set_text(&mut self, widget: WidgetId, text: &str) -> Result<()>;
@@ -91,6 +100,14 @@ where
 
     fn create_image(&mut self, parent: WidgetId, role: WidgetRole) -> Result<WidgetId> {
         (**self).create_image(parent, role)
+    }
+
+    fn create_arc(&mut self, parent: WidgetId, role: WidgetRole) -> Result<WidgetId> {
+        (**self).create_arc(parent, role)
+    }
+
+    fn create_qrcode(&mut self, parent: WidgetId, role: WidgetRole) -> Result<WidgetId> {
+        (**self).create_qrcode(parent, role)
     }
 
     fn reorder_children(&mut self, parent: WidgetId, order: &[WidgetId]) -> Result<()> {

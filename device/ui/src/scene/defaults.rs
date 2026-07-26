@@ -161,12 +161,20 @@ impl FxPreset {
                 color: accent,
                 drift_speed_ms: 900,
             }),
-            Self::CallPulse => layer.pulses.push(PulseRing {
-                target: ActorRef::Region(RegionId::HeroIcon),
-                color: accent,
-                duration_ms: 900,
-                max_radius: 56,
-            }),
+            Self::CallPulse => layer.pulses.extend([
+                PulseRing {
+                    target: ActorRef::Region(RegionId::HeroIcon),
+                    color: accent,
+                    duration_ms: 1_600,
+                    max_radius: 62,
+                },
+                PulseRing {
+                    target: ActorRef::Region(RegionId::HeroIcon),
+                    color: accent,
+                    duration_ms: 1_600,
+                    max_radius: 51,
+                },
+            ]),
             Self::Spinner => layer.glows.push(GlowBloom {
                 target: ActorRef::Screen,
                 blur: 3,

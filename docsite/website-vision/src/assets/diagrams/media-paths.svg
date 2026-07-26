@@ -1,0 +1,81 @@
+<svg viewBox="0 0 760 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The Media Engine: the media worker supervises mpv over JSON-IPC playing the local library, with the remote-playback path arriving through yoyocloud">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #232136); stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; }
+    .ext { fill: none; stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .hub { fill: var(--sl-color-accent-low, #4a3414); stroke: var(--sl-color-accent, #f6b02c); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f8f4e9); font-size: 14px; font-weight: 700; }
+    .m { fill: var(--sl-color-gray-2, #d3cdc5); font-size: 11px; font-family: ui-monospace, monospace; }
+    .s { fill: var(--sl-color-gray-3, #a09aa8); font-size: 11.5px; }
+    .flow { stroke: var(--sl-color-gray-3, #a09aa8); stroke-width: 2; fill: none; marker-end: url(#mp-arrow); }
+    .flowd { stroke: var(--sl-color-gray-3, #a09aa8); stroke-width: 2; fill: none; stroke-dasharray: 6 4; marker-end: url(#mp-arrow); }
+  </style>
+  <defs>
+    <marker id="mp-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a09aa8)"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="30" y="34" style="font-size:17px">The Media Engine — local playback, remote start</text>
+  <text class="s" x="30" y="54">the media worker owns mpv and the library; yoyocloud can only press play</text>
+
+  <!-- remote path (dashed) -->
+  <rect class="box" x="30" y="84" width="156" height="62" rx="8"/>
+  <text class="t" x="44" y="107">the yoyopod app</text>
+  <text class="s" x="44" y="124">parent phone app</text>
+
+  <rect class="box" x="244" y="84" width="130" height="62" rx="8"/>
+  <text class="t" x="258" y="107">yoyocloud</text>
+  <text class="s" x="258" y="124">backbone · MQTT</text>
+
+  <rect class="box" x="432" y="84" width="130" height="62" rx="8"/>
+  <text class="t" x="446" y="107">cloud worker</text>
+  <text class="s" x="446" y="124">device MQTT link</text>
+
+  <rect class="box" x="620" y="84" width="110" height="62" rx="8"/>
+  <text class="t" x="634" y="107">runtime</text>
+  <text class="s" x="634" y="124">routes orders</text>
+
+  <path class="flowd" d="M186,115 L242,115"/>
+  <path class="flowd" d="M374,115 L430,115"/>
+  <path class="flowd" d="M562,115 L618,115"/>
+
+  <path class="flowd" d="M675,146 L675,172 L327,172 L327,206"/>
+  <text class="m" x="352" y="189">remote start (bedtime)</text>
+  <text class="m" x="352" y="203">media.* · validated MQTT contract</text>
+
+  <!-- local path (solid) -->
+  <rect class="box" x="30" y="210" width="160" height="100" rx="10"/>
+  <text class="t" x="44" y="233">local library</text>
+  <text class="s" x="44" y="251">music + stories</text>
+  <text class="s" x="44" y="266">on the device —</text>
+  <text class="s" x="44" y="281">works with no internet</text>
+
+  <rect class="hub" x="242" y="210" width="170" height="100" rx="10"/>
+  <text class="t" x="256" y="233">media worker</text>
+  <text class="s" x="256" y="251">work orders in,</text>
+  <text class="s" x="256" y="266">state snapshots out</text>
+  <text class="m" x="256" y="283">yoyopod-media-host</text>
+
+  <rect class="ext" x="458" y="210" width="140" height="100" rx="10"/>
+  <text class="t" x="470" y="233">mpv</text>
+  <text class="s" x="470" y="251">out-of-process ·</text>
+  <text class="s" x="470" y="266">JSON-IPC socket</text>
+  <text class="s" x="470" y="281">app-owned</text>
+
+  <rect class="box" x="650" y="232" width="80" height="56" rx="8"/>
+  <text class="t" x="662" y="253" style="font-size:12.5px">speaker</text>
+
+  <path class="flow" d="M190,260 L240,260"/>
+  <text class="m" x="193" y="250">files</text>
+
+  <path class="flow" d="M412,260 L456,260"/>
+  <text class="m" x="415" y="250">spawns</text>
+
+  <path class="flow" d="M598,260 L648,260"/>
+  <text class="m" x="611" y="250">ALSA</text>
+
+  <!-- caption -->
+  <rect class="ext" x="30" y="350" width="700" height="70" rx="10"/>
+  <text class="t" x="46" y="376">Local-first — the remote path starts playback, the local path plays it.</text>
+  <text class="s" x="46" y="394">A bedtime order from the yoyopod app only presses play — the sound always comes from files already on the device.</text>
+</svg>

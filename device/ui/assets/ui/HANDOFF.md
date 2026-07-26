@@ -39,7 +39,7 @@ files hold the normative pixel/behavior specs.
 |---|---|---|
 | `mockup_input_model.html` | gesture grammar, timing, Home/Ambient state machine | (cross-cutting) |
 | `mockup_home.html` | Home stage, Blob, deck geometry + states | `Hub` |
-| `mockup_listen.html` | **wheel + arc-hero primitives**, Listen flow, FFI additions table (§7), roles (§8) | `Listen`, `Playlists`, `RecentTracks`, `NowPlaying` |
+| `mockup_listen.html` | **wheel + arc-hero primitives**, Listen flow, FFI additions table (§7), roles (§8) | `Listen`, `Playlists`, `PlaylistTracks`, `RecentTracks`, `NowPlaying` |
 | `mockup_listen_dark.html` | dark token swap (theme = tokens only) | same |
 | `mockup_talk.html` | Talk flow, recording, Replay, call overlays | `Talk`, `TalkContact`, `IncomingCall`, `OutgoingCall`, `InCall` (+ new `Replay`; retires `Contacts`, `CallHistory`, `VoiceNote`) |
 | `mockup_ask.html` | Ask flow (4 states + offline) | `Ask` |

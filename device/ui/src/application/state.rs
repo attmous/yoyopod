@@ -1,15 +1,17 @@
-use crate::animation::Transition;
+use crate::animation::{Timeline, Transition};
 use crate::router;
 use crate::router::history::HistoryEntry;
 use crate::DirtyRegion;
 use std::collections::BTreeMap;
 
 use yoyopod_protocol::ui::{
-    ListItemSnapshot, RuntimeSnapshot, RuntimeSnapshotDomain, UiIntent, UiScreen, VoiceFileAction,
-    VoiceNoteSummarySnapshot, VoiceRecipientAction,
+    ListItemSnapshot, RuntimeSnapshot, RuntimeSnapshotDomain, UiEvent, UiIntent, UiScreen,
+    VoiceFileAction, VoiceNoteSummarySnapshot, VoiceRecipientAction,
 };
 
 use super::intents;
+use crate::components::widgets::CompanionVariant;
+use crate::theme::ColorScheme;
 
 #[derive(Debug, Clone)]
 pub struct UiRuntime {
@@ -21,13 +23,74 @@ pub struct UiRuntime {
     pub(crate) last_input_ms: Option<u64>,
     pub(crate) intents: Vec<UiIntent>,
     pub(crate) dirty: DirtyState,
+    pub(crate) selected_playlist: Option<ListItemSnapshot>,
     pub(crate) selected_contact: Option<ListItemSnapshot>,
+    pub(crate) replay_index: usize,
+    pub(crate) replay_auto_advance_armed: bool,
+    pub(crate) replay_pending_delete_message_id: Option<String>,
     pub(crate) transitions: Vec<Transition>,
+    pub(crate) pending_wheel_roll: Option<PendingWheelRoll>,
+    pub(crate) scene_revision: u32,
     pub(crate) full_snapshots: u64,
     pub(crate) patches_per_domain: BTreeMap<RuntimeSnapshotDomain, u64>,
     pub(crate) status_bar_preview_enabled: bool,
     pub(crate) status_bar_preview_stage: Option<u8>,
     pub(crate) status_clock_minute: Option<i64>,
+    pub(crate) system_overlay: SystemOverlayState,
+    pub(crate) system_overlay_preview: Option<SystemOverlayPreview>,
+    pub(crate) companion_preview: Option<CompanionVariant>,
+    pub(crate) theme_preview: Option<ColorScheme>,
+    pub(crate) ask_offline_started_ms: Option<u64>,
+    pub(crate) last_focus_identity: Option<String>,
+    pub(crate) focus_prompt_sequence: u64,
+    pub(crate) accessibility_events: Vec<UiEvent>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemOverlayPreview {
+    Loading,
+    RecoverableError,
+    UnrecoverableError,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SystemOverlayState {
+    pub loading_started_ms: Option<u64>,
+    pub loading_visible: bool,
+    pub loading_announced: bool,
+    pub spinner_step: u8,
+    pub error_started_ms: Option<u64>,
+    pub error_signature: String,
+    pub error_announced: bool,
+    pub unrecoverable_repeat_announced: bool,
+}
+
+impl SystemOverlayState {
+    pub fn reset_loading(&mut self) {
+        self.loading_started_ms = None;
+        self.loading_visible = false;
+        self.loading_announced = false;
+        self.spinner_step = 0;
+    }
+
+    pub fn reset_error(&mut self) {
+        self.error_started_ms = None;
+        self.error_signature.clear();
+        self.error_announced = false;
+        self.unrecoverable_repeat_announced = false;
+    }
+
+    pub fn reset(&mut self) {
+        self.reset_loading();
+        self.reset_error();
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PendingWheelRoll {
+    pub screen: UiScreen,
+    pub target_focus: usize,
+    pub timeline: Timeline,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +109,9 @@ pub struct DirtyState {
     pub call: bool,
     pub voice: bool,
     pub power: bool,
+    pub settings: bool,
     pub network: bool,
+    pub wifi_setup: bool,
     pub overlay: bool,
     pub navigation: bool,
     pub focus: bool,
@@ -63,12 +128,22 @@ impl DirtyState {
             || self.call
             || self.voice
             || self.power
+            || self.settings
             || self.network
+            || self.wifi_setup
             || self.overlay
             || self.navigation
             || self.focus
             || self.input
             || self.animation
+    }
+
+    pub(crate) fn animation_only(mut self) -> bool {
+        if !self.animation {
+            return false;
+        }
+        self.animation = false;
+        !self.any()
     }
 
     pub(crate) fn mark_full(&mut self) {
@@ -79,7 +154,9 @@ impl DirtyState {
         self.call = true;
         self.voice = true;
         self.power = true;
+        self.settings = true;
         self.network = true;
+        self.wifi_setup = true;
         self.overlay = true;
         self.navigation = true;
         self.focus = true;
@@ -97,7 +174,9 @@ impl DirtyState {
             RuntimeSnapshotDomain::Call => self.call = true,
             RuntimeSnapshotDomain::Voice => self.voice = true,
             RuntimeSnapshotDomain::Power => self.power = true,
+            RuntimeSnapshotDomain::Settings => self.settings = true,
             RuntimeSnapshotDomain::Network => self.network = true,
+            RuntimeSnapshotDomain::WifiSetup => self.wifi_setup = true,
             RuntimeSnapshotDomain::Overlay => self.overlay = true,
         }
     }
@@ -113,6 +192,8 @@ impl DirtyState {
             || self.music
             || self.call
             || self.voice
+            || self.settings
+            || self.wifi_setup
             || self.overlay
         {
             return None;
@@ -151,13 +232,27 @@ impl Default for UiRuntime {
                 dirty.mark_full();
                 dirty
             },
+            selected_playlist: None,
             selected_contact: None,
+            replay_index: 0,
+            replay_auto_advance_armed: false,
+            replay_pending_delete_message_id: None,
             transitions: Vec::new(),
+            pending_wheel_roll: None,
+            scene_revision: 0,
             full_snapshots: 0,
             patches_per_domain: BTreeMap::new(),
             status_bar_preview_enabled: false,
             status_bar_preview_stage: None,
             status_clock_minute: None,
+            system_overlay: SystemOverlayState::default(),
+            system_overlay_preview: None,
+            companion_preview: None,
+            theme_preview: None,
+            ask_offline_started_ms: None,
+            last_focus_identity: None,
+            focus_prompt_sequence: 0,
+            accessibility_events: Vec::new(),
         }
     }
 }
@@ -185,16 +280,28 @@ impl UiRuntime {
         intents::voice_recipient_action(contact)
     }
 
-    pub(crate) fn latest_voice_note_payload(&self) -> Option<VoiceFileAction> {
+    pub(crate) fn replay_notes(&self) -> &[VoiceNoteSummarySnapshot] {
+        let Some(contact) = self
+            .selected_contact
+            .as_ref()
+            .or_else(|| self.snapshot.call.contacts.first())
+        else {
+            return &[];
+        };
+        self.snapshot
+            .call
+            .voice_notes_by_contact
+            .get(&contact.id)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn replay_note_payload(&self) -> Option<VoiceFileAction> {
         let contact = self
             .selected_contact
             .as_ref()
             .or_else(|| self.snapshot.call.contacts.first())?;
-        let note = self
-            .snapshot
-            .call
-            .latest_voice_note_by_contact
-            .get(&contact.id)?;
+        let note = self.replay_notes().get(self.replay_index)?;
         voice_file_action(contact, note)
     }
 }

@@ -7,7 +7,8 @@ use yoyopod_protocol::ui::{
     UiError, UiErrorCode, UiEvent, UiHealth, UiScreen, UiScreenChanged, UiScreenshotCaptured,
 };
 
-use crate::application::UiRuntime;
+use crate::application::{SystemOverlayPreview, UiRuntime};
+use crate::components::widgets::CompanionVariant;
 use crate::engine::Engine;
 use crate::hardware::{ButtonDevice, DisplayDevice};
 use crate::input::{ButtonTiming, OneButtonMachine};
@@ -15,6 +16,7 @@ use crate::renderer::{Framebuffer, LvglRenderer, Renderer};
 use crate::router;
 use crate::scene::load_scene_defaults;
 use crate::screenshot::{self, Rgb565Image};
+use crate::theme::ColorScheme;
 use crate::transport::{codec, dispatcher, handshake, inbound, outbound};
 use crate::RenderMode;
 
@@ -29,6 +31,7 @@ pub struct RenderState {
     frames: usize,
     last_active_screen: Option<UiScreen>,
     last_ui_renderer: String,
+    color_scheme: ColorScheme,
 }
 
 impl RenderState {
@@ -45,7 +48,18 @@ impl RenderState {
             frames: 0,
             last_active_screen: None,
             last_ui_renderer: String::new(),
+            color_scheme: ColorScheme::Light,
         })
+    }
+
+    fn set_color_scheme(&mut self, color_scheme: ColorScheme) -> Result<()> {
+        if self.color_scheme == color_scheme {
+            return Ok(());
+        }
+        self.renderer.set_color_scheme(color_scheme)?;
+        self.engine = Engine::default();
+        self.color_scheme = color_scheme;
+        Ok(())
     }
 
     pub fn frames(&self) -> usize {
@@ -89,6 +103,9 @@ where
     let mut input_events = 0usize;
     let mut button_machine = OneButtonMachine::new(ButtonTiming::default());
     let status_bar_preview = status_bar_preview_enabled();
+    let system_overlay_preview = system_overlay_preview();
+    let companion_preview = companion_preview();
+    let theme_preview = theme_preview();
     if status_bar_preview {
         writeln!(
             errors,
@@ -96,6 +113,27 @@ where
         )?;
     }
     let mut ui_runtime = UiRuntime::with_status_bar_preview(status_bar_preview);
+    if let Some(preview) = theme_preview {
+        writeln!(
+            errors,
+            "theme hardware preview enabled via YOYOPOD_UI_THEME_PREVIEW: {preview:?}"
+        )?;
+        ui_runtime.enable_theme_preview(preview);
+    }
+    if let Some(preview) = system_overlay_preview {
+        writeln!(
+            errors,
+            "system-overlay hardware preview enabled via YOYOPOD_UI_SYSTEM_OVERLAY_PREVIEW: {preview:?}"
+        )?;
+        ui_runtime.enable_system_overlay_preview(preview);
+    } else if let Some(preview) = companion_preview {
+        writeln!(
+            errors,
+            "companion hardware preview enabled via YOYOPOD_UI_COMPANION_PREVIEW: {}",
+            preview.name()
+        )?;
+        ui_runtime.enable_companion_preview(preview);
+    }
     let mut render_state = RenderState::open(display.width(), display.height())?;
     let mut shutdown_complete_emitted = false;
     let mut watchdog = RuntimeWatchdog::new();
@@ -155,7 +193,9 @@ where
 
         let outcome = dispatcher::dispatch_command(command);
         if matches!(outcome.event, dispatcher::AppEvent::Tick) {
-            watchdog.note_tick();
+            if watchdog.note_tick() {
+                ui_runtime.mark_runtime_connected();
+            }
         }
         let mut context = AppEventContext {
             output,
@@ -206,9 +246,11 @@ impl RuntimeWatchdog {
         self.last_manager_message = Instant::now();
     }
 
-    fn note_tick(&mut self) {
+    fn note_tick(&mut self) -> bool {
+        let recovered = self.runtime_stalled_emitted;
         self.last_tick = Instant::now();
         self.runtime_stalled_emitted = false;
+        recovered
     }
 
     fn manager_timed_out(&self) -> bool {
@@ -236,6 +278,7 @@ where
     }
     watchdog.runtime_stalled_emitted = true;
     ui_runtime.mark_runtime_stalled();
+    outbound::emit_accessibility_events(output, ui_runtime.take_accessibility_events())?;
     outbound::emit_event(
         output,
         UiEvent::Error(UiError::new(
@@ -279,9 +322,23 @@ where
         }
         dispatcher::AppEvent::RuntimeSnapshot(snapshot) => {
             context.ui_runtime.apply_snapshot(snapshot);
+            context
+                .ui_runtime
+                .note_system_overlay_snapshot_received(outbound::monotonic_millis());
+            outbound::emit_accessibility_events(
+                context.output,
+                context.ui_runtime.take_accessibility_events(),
+            )?;
         }
         dispatcher::AppEvent::RuntimePatch(patch) => {
             context.ui_runtime.apply_patch(patch);
+            context
+                .ui_runtime
+                .note_system_overlay_snapshot_received(outbound::monotonic_millis());
+            outbound::emit_accessibility_events(
+                context.output,
+                context.ui_runtime.take_accessibility_events(),
+            )?;
         }
         dispatcher::AppEvent::InputAction(action) => {
             *context.input_events += 1;
@@ -289,12 +346,19 @@ where
             outbound::emit_input_action(context.output, action, "command", now_ms, 0)?;
             context.ui_runtime.handle_input(action, now_ms);
             outbound::emit_intents(context.output, context.ui_runtime.take_intents())?;
+            outbound::emit_accessibility_events(
+                context.output,
+                context.ui_runtime.take_accessibility_events(),
+            )?;
         }
         dispatcher::AppEvent::Tick => {
             let now_ms = outbound::monotonic_millis();
             context.ui_runtime.advance_status_bar(now_ms);
             context.ui_runtime.advance_animations(now_ms);
             context.ui_runtime.advance_home_state(now_ms);
+            context.ui_runtime.advance_ask_state(now_ms);
+            context.ui_runtime.advance_system_overlay(now_ms);
+            context.ui_runtime.refresh_focus_accessibility();
             if context.render_state.engine.animation_frame_dirty(now_ms) {
                 context.ui_runtime.mark_animation_frame();
             }
@@ -307,6 +371,10 @@ where
                 now_ms,
             )?;
             outbound::emit_intents(context.output, context.ui_runtime.take_intents())?;
+            outbound::emit_accessibility_events(
+                context.output,
+                context.ui_runtime.take_accessibility_events(),
+            )?;
         }
         dispatcher::AppEvent::PollInput => {
             let now_ms = outbound::monotonic_millis();
@@ -319,6 +387,10 @@ where
                 now_ms,
             )?;
             outbound::emit_intents(context.output, context.ui_runtime.take_intents())?;
+            outbound::emit_accessibility_events(
+                context.output,
+                context.ui_runtime.take_accessibility_events(),
+            )?;
         }
         dispatcher::AppEvent::Health => {
             outbound::emit_event(
@@ -372,6 +444,49 @@ fn status_bar_preview_enabled() -> bool {
         })
 }
 
+fn system_overlay_preview() -> Option<SystemOverlayPreview> {
+    let value = std::env::var("YOYOPOD_UI_SYSTEM_OVERLAY_PREVIEW").ok()?;
+    match value.trim().to_ascii_lowercase().as_str() {
+        "loading" => Some(SystemOverlayPreview::Loading),
+        "recoverable" | "recoverable_error" | "error" => {
+            Some(SystemOverlayPreview::RecoverableError)
+        }
+        "unrecoverable" | "unrecoverable_error" | "fatal" => {
+            Some(SystemOverlayPreview::UnrecoverableError)
+        }
+        _ => None,
+    }
+}
+
+fn companion_preview() -> Option<CompanionVariant> {
+    let value = std::env::var("YOYOPOD_UI_COMPANION_PREVIEW").ok()?;
+    parse_companion_preview(&value)
+}
+
+fn theme_preview() -> Option<ColorScheme> {
+    let value = std::env::var("YOYOPOD_UI_THEME_PREVIEW").ok()?;
+    parse_theme_preview(&value)
+}
+
+fn parse_theme_preview(value: &str) -> Option<ColorScheme> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "light" => Some(ColorScheme::Light),
+        "dark" => Some(ColorScheme::Dark),
+        _ => None,
+    }
+}
+
+fn parse_companion_preview(value: &str) -> Option<CompanionVariant> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "blob" => Some(CompanionVariant::Blob),
+        "owl" => Some(CompanionVariant::Owl),
+        "cat" => Some(CompanionVariant::Cat),
+        "bunny" => Some(CompanionVariant::Bunny),
+        "robot" => Some(CompanionVariant::Robot),
+        _ => None,
+    }
+}
+
 fn handle_button_input<W, B>(
     output: &mut W,
     button: &mut B,
@@ -420,6 +535,7 @@ where
     let Some(frame) = ui_runtime.frame_request(now_ms) else {
         return Ok(None);
     };
+    render.set_color_scheme(frame.scene_graph.color_scheme)?;
     let outcome = render.engine.tick(
         &frame.scene_graph,
         frame.dirty_region,
@@ -477,6 +593,22 @@ fn screen_changed_if_needed(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn companion_preview_accepts_only_named_setup_variants() {
+        assert_eq!(
+            parse_companion_preview("Bunny"),
+            Some(CompanionVariant::Bunny)
+        );
+        assert_eq!(parse_companion_preview("unsupported"), None);
+    }
+
+    #[test]
+    fn theme_preview_accepts_only_resolved_color_schemes() {
+        assert_eq!(parse_theme_preview("light"), Some(ColorScheme::Light));
+        assert_eq!(parse_theme_preview("Dark"), Some(ColorScheme::Dark));
+        assert_eq!(parse_theme_preview("auto"), None);
+    }
 
     #[derive(Default)]
     struct TestButton {
@@ -588,5 +720,149 @@ mod tests {
         assert!(emitted
             .iter()
             .all(|envelope| envelope.message_type == "ui.input"));
+    }
+
+    #[test]
+    fn runtime_watchdog_reports_recovery_only_after_a_stall() {
+        let mut watchdog = RuntimeWatchdog::new();
+        assert!(!watchdog.note_tick());
+
+        watchdog.runtime_stalled_emitted = true;
+        assert!(watchdog.note_tick());
+        assert!(!watchdog.note_tick());
+    }
+
+    #[test]
+    fn physical_hold_on_focused_record_emits_ptt_press_and_release() {
+        let mama = yoyopod_protocol::ui::ListItemSnapshot::new(
+            "sip:mama@example.test",
+            "Mama",
+            "",
+            "mono:M",
+        );
+        let mut button = TestButton::default();
+        let mut machine = OneButtonMachine::new(ButtonTiming::default());
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![mama.clone()];
+        runtime.selected_contact = Some(mama);
+        runtime.active_screen = UiScreen::TalkContact;
+        runtime.focus_index = 1;
+        let mut output = Vec::new();
+        let mut input_events = 0;
+
+        sample_button(
+            &mut button,
+            &mut machine,
+            &mut runtime,
+            &mut output,
+            &mut input_events,
+            true,
+            0,
+        );
+        sample_button(
+            &mut button,
+            &mut machine,
+            &mut runtime,
+            &mut output,
+            &mut input_events,
+            true,
+            50,
+        );
+        sample_button(
+            &mut button,
+            &mut machine,
+            &mut runtime,
+            &mut output,
+            &mut input_events,
+            true,
+            400,
+        );
+        assert!(matches!(
+            runtime.take_intents().as_slice(),
+            [yoyopod_protocol::ui::UiIntent::Voice(
+                yoyopod_protocol::ui::VoiceIntent::CaptureStartAndSend(_)
+            )]
+        ));
+
+        runtime.snapshot.voice.phase = "recording".to_string();
+        runtime.snapshot.voice.capture_in_flight = true;
+        runtime.snapshot.voice.ptt_active = true;
+        sample_button(
+            &mut button,
+            &mut machine,
+            &mut runtime,
+            &mut output,
+            &mut input_events,
+            false,
+            1_000,
+        );
+        sample_button(
+            &mut button,
+            &mut machine,
+            &mut runtime,
+            &mut output,
+            &mut input_events,
+            false,
+            1_050,
+        );
+        assert_eq!(
+            runtime.take_intents(),
+            vec![yoyopod_protocol::ui::UiIntent::Voice(
+                yoyopod_protocol::ui::VoiceIntent::CaptureStop,
+            )]
+        );
+        assert_eq!(input_events, 2);
+    }
+
+    #[test]
+    fn physical_hold_on_ask_emits_start_then_stop_without_navigating_home() {
+        let mut button = TestButton::default();
+        let mut machine = OneButtonMachine::new(ButtonTiming::default());
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::Ask;
+        runtime.snapshot.network.connected = true;
+        let mut output = Vec::new();
+        let mut input_events = 0;
+
+        for (pressed, now_ms) in [(true, 0), (true, 50), (true, 400)] {
+            sample_button(
+                &mut button,
+                &mut machine,
+                &mut runtime,
+                &mut output,
+                &mut input_events,
+                pressed,
+                now_ms,
+            );
+        }
+        assert_eq!(
+            runtime.take_intents(),
+            vec![yoyopod_protocol::ui::UiIntent::Voice(
+                yoyopod_protocol::ui::VoiceIntent::AskStart,
+            )]
+        );
+
+        runtime.snapshot.voice.phase = "listening".to_string();
+        runtime.snapshot.voice.capture_in_flight = true;
+        runtime.snapshot.voice.ptt_active = true;
+        for (pressed, now_ms) in [(false, 1_000), (false, 1_050)] {
+            sample_button(
+                &mut button,
+                &mut machine,
+                &mut runtime,
+                &mut output,
+                &mut input_events,
+                pressed,
+                now_ms,
+            );
+        }
+        assert_eq!(
+            runtime.take_intents(),
+            vec![yoyopod_protocol::ui::UiIntent::Voice(
+                yoyopod_protocol::ui::VoiceIntent::AskStop,
+            )]
+        );
+        assert_eq!(runtime.active_screen(), UiScreen::Ask);
+        assert_eq!(input_events, 2);
     }
 }

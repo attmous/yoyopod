@@ -17,13 +17,18 @@ use crate::deploy_config::{resolve_lane, RawConfig};
 use crate::local::{run_local, run_local_capture};
 use crate::quoting::shell_quote;
 use crate::repo::current_repo_root;
-use crate::ssh::{run_remote, RemoteWorkdir};
+use crate::ssh::{run_remote, run_remote_capture, RemoteWorkdir};
 
 use super::ops;
 use super::TargetContext;
 
 const CI_POLL_INTERVAL_SECS: u64 = 20;
 const CI_POLL_TIMEOUT_MINS: u64 = 30;
+const WIFI_POLKIT_RULE_PATH: &str = "/etc/polkit-1/rules.d/90-yoyopod-wifi.rules";
+const BLUEALSA_DROPIN_DIR: &str = "/etc/systemd/system/bluealsa.service.d";
+const BLUEALSA_DROPIN_PATH: &str =
+    "/etc/systemd/system/bluealsa.service.d/20-yoyopod-audio-role.conf";
+const BLUEALSA_DROPIN_SOURCE: &str = "deploy/systemd/bluealsa-yoyopod.conf";
 
 pub fn run(
     ctx: &TargetContext,
@@ -65,6 +70,10 @@ pub fn run(
         println!("local-artifact-dir: {}", local_artifact_dir.display());
         println!("would: ensure CI run for sha is successful, download {tarball_name}");
         println!(
+            "would: resolve the effective user of {} and install Wi-Fi and BlueZ authorization",
+            lane.dev_service
+        );
+        println!(
             "would: ssh sync + extract + restart + verify on {}",
             ctx.conn.ssh_target()
         );
@@ -90,6 +99,14 @@ pub fn run(
             local_tarball.display()
         ));
     }
+    let polkit_rule_name = format!("yoyopod-wifi-{resolved_sha}.rules");
+    let local_polkit_rule = local_artifact_dir.join(&polkit_rule_name);
+    let wifi_service_user = resolve_wifi_service_user(ctx, &lane.dev_service)?;
+    std::fs::write(
+        &local_polkit_rule,
+        render_wifi_polkit_rule(&wifi_service_user)?,
+    )
+    .with_context(|| format!("write {}", local_polkit_rule.display()))?;
 
     // 3) Pi-side: git fetch + checkout + reset to SHA + clean.
     let pi_cmd = build_pi_sync(&branch, &resolved_sha, args.clean_native);
@@ -107,6 +124,124 @@ pub fn run(
         .context("spawn scp for artifact upload")?;
     if !scp_status.success() {
         return Ok(scp_status.code().unwrap_or(1));
+    }
+
+    // Install a generated rule for the configured service user. It grants only
+    // the NetworkManager actions required by Phase 1 Wi-Fi controls.
+    let remote_polkit_rule = format!("/tmp/{polkit_rule_name}");
+    let scp_status = Command::new("scp")
+        .arg(&local_polkit_rule)
+        .arg(format!("{}:{}", ctx.conn.ssh_target(), remote_polkit_rule))
+        .status()
+        .context("spawn scp for Wi-Fi Polkit rule upload")?;
+    if !scp_status.success() {
+        return Ok(scp_status.code().unwrap_or(1));
+    }
+    let install_polkit_cmd = format!(
+        "sudo -n install -o root -g root -m 0644 {source} {destination} && rm -f {source}",
+        source = shell_quote(&remote_polkit_rule),
+        destination = shell_quote(WIFI_POLKIT_RULE_PATH),
+    );
+    let rc = run_remote(
+        &ctx.conn,
+        &install_polkit_cmd,
+        false,
+        RemoteWorkdir::Default,
+    )?;
+    if rc != 0 {
+        return Ok(rc);
+    }
+
+    // Install the AP-mode Wi-Fi setup host prerequisites that live outside the
+    // synced checkout: a NetworkManager shared-DNS rule (so a joined phone
+    // auto-opens the captive portal) and a CAP_NET_BIND_SERVICE drop-in (so the
+    // network worker can bind :80 for it). Both are idempotent.
+    let dns_dir = "/etc/NetworkManager/dnsmasq-shared.d";
+    let dns_file = "/etc/NetworkManager/dnsmasq-shared.d/010-yoyopod-captive.conf";
+    let dropin_dir = format!("/etc/systemd/system/{}.d", lane.dev_service);
+    let dropin_file = format!("{dropin_dir}/10-wifi-portal-cap.conf");
+    let audio_dropin_file = format!("{dropin_dir}/20-bluetooth-audio.conf");
+    let install_portal_prereqs_cmd = format!(
+        "sudo -n install -d -m 0755 {dns_dir} && \
+         printf 'address=/#/10.42.0.1\\n' | sudo -n tee {dns_file} >/dev/null && \
+         sudo -n install -d -m 0755 {dropin_dir} && \
+         sudo -n install -d -m 0755 /var/lib/yoyopod/audio && \
+         if ! sudo -n test -s /var/lib/yoyopod/audio/asoundrc; then \
+           printf '# Managed by YoYoPod.\\n</usr/share/alsa/alsa.conf>\\n' \
+           | sudo -n tee /var/lib/yoyopod/audio/asoundrc >/dev/null; \
+         fi && \
+         printf '[Service]\\nAmbientCapabilities=CAP_NET_BIND_SERVICE\\n' \
+         | sudo -n tee {dropin_file} >/dev/null && \
+         printf '[Service]\\nEnvironment=YOYOPOD_ASOUND_CONFIG=/var/lib/yoyopod/audio/asoundrc\\nEnvironment=ALSA_CONFIG_PATH=/var/lib/yoyopod/audio/asoundrc\\n' \
+         | sudo -n tee {audio_dropin_file} >/dev/null && \
+         sudo -n systemctl daemon-reload",
+        dns_dir = shell_quote(dns_dir),
+        dns_file = shell_quote(dns_file),
+        dropin_dir = shell_quote(&dropin_dir),
+        dropin_file = shell_quote(&dropin_file),
+        audio_dropin_file = shell_quote(&audio_dropin_file),
+    );
+    let rc = run_remote(
+        &ctx.conn,
+        &install_portal_prereqs_cmd,
+        false,
+        RemoteWorkdir::Default,
+    )?;
+    if rc != 0 {
+        return Ok(rc);
+    }
+
+    // Bluetooth audio lives outside the artifact: BlueZ provides radio/device
+    // management and BlueALSA exposes paired profiles through stable ALSA PCM
+    // aliases. YoYoPod must be the source/gateway so audio flows out to a
+    // speaker or headset; advertising a sink role reverses that direction.
+    // Install the explicit role drop-in idempotently and restart BlueALSA only
+    // when its configuration changed (or the service is not already active).
+    let service_group_lookup = service_group_lookup_command(&wifi_service_user);
+    let bluetooth_user_authorization = bluetooth_user_authorization_command(&wifi_service_user);
+    let bluetooth_prereqs_cmd = format!(
+        "{service_group_lookup} && \
+         if ! command -v bluealsa >/dev/null 2>&1 || ! command -v aplay >/dev/null 2>&1 || \
+         ! dpkg-query -W libasound2-plugin-bluez >/dev/null 2>&1; then \
+           sudo -n apt-get update && \
+           sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+             alsa-utils bluez bluez-alsa-utils libasound2-plugin-bluez; \
+         fi && \
+         {bluetooth_user_authorization} && \
+         {{ sudo -n rfkill unblock bluetooth || true; }} && \
+         bluealsa_restart=0 && \
+         sudo -n install -d -m 0755 {bluealsa_dropin_dir} && \
+         if ! sudo -n cmp -s {bluealsa_dropin_source} {bluealsa_dropin_path}; then \
+           sudo -n install -o root -g root -m 0644 \
+             {bluealsa_dropin_source} {bluealsa_dropin_path} && \
+           bluealsa_restart=1; \
+         fi && \
+         sudo -n systemctl daemon-reload && \
+         sudo -n systemctl enable --now bluetooth.service && \
+         sudo -n systemctl disable --now bluealsa-aplay.service && \
+         sudo -n systemctl enable bluealsa.service && \
+         if [ \"$bluealsa_restart\" -eq 1 ] || \
+            ! systemctl is-active --quiet bluealsa.service; then \
+           sudo -n systemctl restart bluealsa.service; \
+         fi && \
+         systemctl is-active --quiet bluetooth.service bluealsa.service && \
+         sudo -n install -d -m 0750 -o {user} -g \"$service_group\" \
+           /var/lib/yoyopod /var/lib/yoyopod/bluetooth /var/lib/yoyopod/audio",
+        bluealsa_dropin_dir = shell_quote(BLUEALSA_DROPIN_DIR),
+        bluealsa_dropin_source = shell_quote(BLUEALSA_DROPIN_SOURCE),
+        bluealsa_dropin_path = shell_quote(BLUEALSA_DROPIN_PATH),
+        bluetooth_user_authorization = bluetooth_user_authorization,
+        service_group_lookup = service_group_lookup,
+        user = shell_quote(&wifi_service_user),
+    );
+    let rc = run_remote(
+        &ctx.conn,
+        &bluetooth_prereqs_cmd,
+        false,
+        RemoteWorkdir::Default,
+    )?;
+    if rc != 0 {
+        return Ok(rc);
     }
 
     // 5) Extract + chmod on Pi.
@@ -137,6 +272,80 @@ pub fn run(
         ctx.conn.ssh_target()
     );
     Ok(0)
+}
+
+fn validate_wifi_service_user(service_user: &str) -> Result<&str> {
+    let service_user = service_user.trim();
+    if service_user.is_empty()
+        || !service_user
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    {
+        return Err(anyhow!(
+            "configured service user contains characters that cannot be rendered safely"
+        ));
+    }
+    Ok(service_user)
+}
+
+fn service_group_lookup_command(service_user: &str) -> String {
+    format!("service_group=$(id -gn {})", shell_quote(service_user))
+}
+
+fn bluetooth_user_authorization_command(service_user: &str) -> String {
+    let user = shell_quote(service_user);
+    format!(
+        "if ! getent group bluetooth >/dev/null 2>&1; then \
+           sudo -n groupadd --system bluetooth; \
+         fi && \
+         sudo -n usermod -a -G bluetooth {user} && \
+         id -nG {user} | tr ' ' '\\n' | grep -Fx bluetooth >/dev/null"
+    )
+}
+
+fn resolve_wifi_service_user(ctx: &TargetContext, service: &str) -> Result<String> {
+    let command = format!(
+        "systemctl show --property=User --value {}",
+        shell_quote(service)
+    );
+    let output = run_remote_capture(&ctx.conn, &command, RemoteWorkdir::None)
+        .context("resolve effective systemd service user for Wi-Fi and Bluetooth access")?;
+    if !output.success() {
+        return Err(anyhow!(
+            "could not resolve effective systemd service user: {}",
+            output.stderr.trim()
+        ));
+    }
+    normalize_systemd_service_user(&output.stdout)
+}
+
+fn normalize_systemd_service_user(service_user: &str) -> Result<String> {
+    let service_user = service_user.trim();
+    let service_user = if service_user.is_empty() {
+        "root"
+    } else {
+        service_user
+    };
+    Ok(validate_wifi_service_user(service_user)?.to_string())
+}
+
+fn render_wifi_polkit_rule(service_user: &str) -> Result<String> {
+    let service_user = validate_wifi_service_user(service_user)?;
+    Ok(format!(
+        r#"// Generated by `yoyopod target deploy`; changes are replaced on deploy.
+polkit.addRule(function(action, subject) {{
+    if (subject.user === "{service_user}" &&
+        (action.id === "org.freedesktop.NetworkManager.wifi.scan" ||
+         action.id === "org.freedesktop.NetworkManager.settings.modify.system" ||
+         action.id === "org.freedesktop.NetworkManager.network-control" ||
+         action.id === "org.freedesktop.NetworkManager.checkpoint-rollback" ||
+         action.id === "org.freedesktop.NetworkManager.wifi.share.protected" ||
+         action.id === "org.freedesktop.NetworkManager.wifi.share.open")) {{
+        return polkit.Result.YES;
+    }}
+}});
+"#
+    ))
 }
 
 pub(super) fn require_local_clean_tree() -> Result<()> {
@@ -379,5 +588,91 @@ mod tests {
     fn clean_native_appends_lvgl_rm() {
         let s = build_pi_sync("main", "", true);
         assert!(s.contains("rm -rf device/ui/native/lvgl/build"));
+    }
+
+    #[test]
+    fn wifi_polkit_rule_grants_only_required_actions_to_service_user() {
+        let rule = render_wifi_polkit_rule("raouf").expect("valid service user");
+
+        assert!(rule.contains("subject.user === \"raouf\""));
+        assert!(rule.contains("org.freedesktop.NetworkManager.wifi.scan"));
+        assert!(rule.contains("org.freedesktop.NetworkManager.settings.modify.system"));
+        assert!(rule.contains("org.freedesktop.NetworkManager.network-control"));
+        assert!(rule.contains("org.freedesktop.NetworkManager.checkpoint-rollback"));
+        // AP-mode Wi-Fi setup also needs the shared-connection (hotspot) actions.
+        assert!(rule.contains("org.freedesktop.NetworkManager.wifi.share.protected"));
+        assert!(rule.contains("org.freedesktop.NetworkManager.wifi.share.open"));
+        assert_eq!(rule.matches("action.id ===").count(), 6);
+    }
+
+    #[test]
+    fn wifi_polkit_rule_rejects_unsafe_service_user() {
+        assert!(render_wifi_polkit_rule("raouf\" || true").is_err());
+    }
+
+    #[test]
+    fn wifi_polkit_rule_normalizes_safe_service_user() {
+        let rule = render_wifi_polkit_rule("  raouf  ").expect("valid service user");
+        assert!(rule.contains("subject.user === \"raouf\""));
+    }
+
+    #[test]
+    fn service_directory_uses_the_service_users_primary_group() {
+        let command = service_group_lookup_command("yoyopod");
+
+        assert_eq!(command, "service_group=$(id -gn yoyopod)");
+    }
+
+    #[test]
+    fn effective_systemd_user_defaults_to_root_and_preserves_named_users() {
+        assert_eq!(
+            normalize_systemd_service_user("\n").expect("root service"),
+            "root"
+        );
+        assert_eq!(
+            normalize_systemd_service_user("yoyopod\n").expect("named service"),
+            "yoyopod"
+        );
+        assert!(normalize_systemd_service_user("bad user").is_err());
+    }
+
+    #[test]
+    fn bluetooth_runtime_authorization_is_installed_for_the_service_user() {
+        let command = bluetooth_user_authorization_command("yoyopod");
+        let bootstrap = include_str!("../../../../../deploy/scripts/bootstrap_pi.sh");
+
+        assert!(command.contains("groupadd --system bluetooth"));
+        assert!(command.contains("usermod -a -G bluetooth yoyopod"));
+        assert!(command.contains("grep -Fx bluetooth"));
+        assert!(bootstrap.contains("usermod -a -G bluetooth \"${INVOKING_USER}\""));
+        assert!(bootstrap.contains("grep -Fx bluetooth"));
+    }
+
+    #[test]
+    fn bluealsa_dropin_is_outbound_only() {
+        let dropin = include_str!("../../../../../deploy/systemd/bluealsa-yoyopod.conf");
+
+        assert!(dropin.contains("-p a2dp-source"));
+        assert!(dropin.contains("-p hfp-ag"));
+        assert!(dropin.contains("-p hsp-ag"));
+        assert!(!dropin.contains("-p a2dp-sink"));
+        assert!(!dropin.contains("-p hfp-hf"));
+        assert!(!dropin.contains("-p hsp-hs"));
+    }
+
+    #[test]
+    fn services_expose_the_writable_managed_asound_config_to_alsa() {
+        let dev_service = include_str!("../../../../../deploy/systemd/yoyopod-dev.service");
+        let prod_service = include_str!("../../../../../deploy/systemd/yoyopod-prod.service");
+
+        for service in [dev_service, prod_service] {
+            assert!(service
+                .contains("Environment=YOYOPOD_ASOUND_CONFIG=/var/lib/yoyopod/audio/asoundrc"));
+            assert!(
+                service.contains("Environment=ALSA_CONFIG_PATH=/var/lib/yoyopod/audio/asoundrc")
+            );
+            assert!(service.contains("test -s /var/lib/yoyopod/audio/asoundrc || printf"));
+            assert!(service.contains("</usr/share/alsa/alsa.conf>"));
+        }
     }
 }

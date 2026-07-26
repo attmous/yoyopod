@@ -10,6 +10,10 @@ pub enum ElementKind {
     Label,
     Image,
     Progress,
+    Arc,
+    /// LVGL `lv_qrcode` widget. Its payload string is carried in `props.text`
+    /// and pushed to `lv_qrcode_update` by the renderer.
+    Qr,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -106,6 +110,11 @@ impl Element {
 
     pub fn region(mut self, region: RegionId) -> Self {
         self.layout = Layout::Region(region);
+        self
+    }
+
+    pub fn absolute(mut self, x: i32, y: i32, w: i32, h: i32) -> Self {
+        self.layout = Layout::Absolute { x, y, w, h };
         self
     }
 

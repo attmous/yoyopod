@@ -1,6 +1,7 @@
 use super::ffi::{
     self, LinphoneAccount, LinphoneAddress, LinphoneApi, LinphoneCall, LinphoneChatMessage,
-    LinphoneChatRoom, LinphoneContent, LinphoneCore, LinphoneEventLog, LinphoneRecorderParams,
+    LinphoneChatRoom, LinphoneContent, LinphoneCore, LinphoneEventLog, LinphoneRecorderFileFormat,
+    LinphoneRecorderParams,
 };
 use super::{abi_event as event, runtime_error as error, state};
 use once_cell::sync::Lazy;
@@ -14,7 +15,6 @@ pub use super::abi_event::YoyopodLiblinphoneEvent;
 const FALSE: c_int = 0;
 const TRUE: c_int = 1;
 const LINPHONE_REASON_DECLINED: c_int = 4;
-const LINPHONE_RECORDER_FILE_FORMAT_WAV: c_int = 0;
 
 static VERSION: &[u8] = b"yoyopod-voip-host-liblinphone/0.1.0\0";
 static STATE: Lazy<std::sync::Mutex<state::ShimState>> =
@@ -118,8 +118,9 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start(
 
     let sip_server_value = unsafe { ptr_to_string(sip_server) };
     let sip_identity_value = unsafe { ptr_to_string(sip_identity) };
-    if sip_server_value.is_empty() || sip_identity_value.is_empty() {
-        error::set_last_error("missing SIP identity or SIP server for Liblinphone startup");
+    let has_sip_account = !sip_identity_value.is_empty();
+    if has_sip_account && sip_server_value.is_empty() {
+        error::set_last_error("missing SIP server for configured Liblinphone identity");
         return -1;
     }
     let api = match state.api.clone() {
@@ -184,7 +185,8 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start(
             if echo_cancellation != 0 { TRUE } else { FALSE },
         );
         (api.core_set_mic_gain_db)(state.core, (mic_gain as f32) * 0.3);
-        (api.core_set_playback_gain_db)(state.core, ((output_volume as f32) * 0.12) - 6.0);
+        (api.core_set_playback_gain_db)(state.core, playback_gain_db(output_volume));
+        (api.core_set_ring_level)(state.core, output_volume.clamp(0, 100));
         (api.core_set_audio_port_range)(state.core, 7076, 7100);
         (api.core_set_video_port_range)(state.core, 9076, 9100);
         if let Some(set_aggregation) = api.core_set_chat_messages_aggregation_enabled {
@@ -213,24 +215,26 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start(
         return -1;
     }
 
-    let account_result = configure_account(
-        &mut state,
-        &api,
-        AccountConfig {
-            sip_server: sip_server_value,
-            sip_username: unsafe { ptr_to_string(sip_username) },
-            sip_password: unsafe { ptr_to_string(sip_password) },
-            sip_password_ha1: unsafe { ptr_to_string(sip_password_ha1) },
-            sip_identity: sip_identity_value,
-            transport: unsafe { ptr_to_string(transport) },
-            conference_factory_uri: unsafe { ptr_to_string(conference_factory_uri) },
-            file_transfer_server_url: unsafe { ptr_to_string(file_transfer_server_url) },
-            lime_server_url: unsafe { ptr_to_string(lime_server_url) },
-        },
-    );
-    if account_result != 0 {
-        stop_locked(&mut state);
-        return -1;
+    if has_sip_account {
+        let account_result = configure_account(
+            &mut state,
+            &api,
+            AccountConfig {
+                sip_server: sip_server_value,
+                sip_username: unsafe { ptr_to_string(sip_username) },
+                sip_password: unsafe { ptr_to_string(sip_password) },
+                sip_password_ha1: unsafe { ptr_to_string(sip_password_ha1) },
+                sip_identity: sip_identity_value,
+                transport: unsafe { ptr_to_string(transport) },
+                conference_factory_uri: unsafe { ptr_to_string(conference_factory_uri) },
+                file_transfer_server_url: unsafe { ptr_to_string(file_transfer_server_url) },
+                lime_server_url: unsafe { ptr_to_string(lime_server_url) },
+            },
+        );
+        if account_result != 0 {
+            stop_locked(&mut state);
+            return -1;
+        }
     }
 
     if unsafe { (api.core_start)(state.core) } != 0 {
@@ -367,6 +371,69 @@ pub unsafe extern "C" fn yoyopod_liblinphone_set_muted(muted: i32) -> c_int {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn yoyopod_liblinphone_set_audio_devices(
+    playback_device_id: *const c_char,
+    ringer_device_id: *const c_char,
+    capture_device_id: *const c_char,
+    media_device_id: *const c_char,
+    microphone_gain: c_int,
+    output_volume: c_int,
+    alert_volume: c_int,
+) -> c_int {
+    let state = match STATE.lock() {
+        Ok(state) => state,
+        Err(_) => {
+            error::set_last_error("liblinphone runtime state lock poisoned");
+            return -1;
+        }
+    };
+    if !state.started || state.core.is_null() {
+        // Audio preferences may arrive before SIP startup. The worker's config
+        // still applies them when the backend starts, so this is not an error.
+        return 0;
+    }
+    let Some(api) = state.api.clone() else {
+        error::set_last_error("Liblinphone API is not initialized");
+        return -1;
+    };
+    unsafe {
+        set_device(
+            &api,
+            state.core,
+            playback_device_id,
+            api.core_set_playback_device,
+        );
+        set_device(
+            &api,
+            state.core,
+            ringer_device_id,
+            api.core_set_ringer_device,
+        );
+        set_device(
+            &api,
+            state.core,
+            capture_device_id,
+            api.core_set_capture_device,
+        );
+        set_device(&api, state.core, media_device_id, api.core_set_media_device);
+        (api.core_set_mic_gain_db)(state.core, (microphone_gain.clamp(0, 100) as f32) * 0.3);
+        (api.core_set_playback_gain_db)(state.core, playback_gain_db(output_volume));
+        (api.core_set_ring_level)(state.core, alert_volume.clamp(0, 100));
+    }
+    error::clear_last_error();
+    0
+}
+
+fn playback_gain_db(output_volume: c_int) -> f32 {
+    let fraction = output_volume.clamp(0, 100) as f32 / 100.0;
+    if fraction == 0.0 {
+        -120.0
+    } else {
+        20.0 * fraction.log10()
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn yoyopod_liblinphone_send_text_message(
     sip_address: *const c_char,
     text: *const c_char,
@@ -476,6 +543,44 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start_voice_recording(
         return -1;
     }
     state.recorder_running = true;
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn yoyopod_liblinphone_voice_recording_metrics(
+    duration_ms_out: *mut i32,
+    capture_volume_out: *mut f32,
+) -> c_int {
+    let state = match STATE.lock() {
+        Ok(state) => state,
+        Err(_) => {
+            error::set_last_error("liblinphone runtime state lock poisoned");
+            return -1;
+        }
+    };
+    if !state.started || state.current_recorder.is_null() || !state.recorder_running {
+        error::set_last_error("No active Liblinphone voice-note recording is running");
+        return -1;
+    }
+    let api = state.api.as_ref().expect("initialized state has API");
+    let duration_ms = api
+        .recorder_get_duration
+        .map_or(0, |function| unsafe { function(state.current_recorder) })
+        .max(0);
+    let capture_volume = api.recorder_get_capture_volume.map_or(0.0, |function| {
+        let value = unsafe { function(state.current_recorder) };
+        if value.is_finite() {
+            value.clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    });
+    if !duration_ms_out.is_null() {
+        unsafe { *duration_ms_out = duration_ms };
+    }
+    if !capture_volume_out.is_null() {
+        unsafe { *capture_volume_out = capture_volume };
+    }
     0
 }
 
@@ -983,7 +1088,7 @@ unsafe fn create_recorder_params(
         return Err("failed to create Liblinphone recorder params".to_string());
     }
     if let Some(set_format) = api.recorder_params_set_file_format {
-        unsafe { set_format(params, LINPHONE_RECORDER_FILE_FORMAT_WAV) };
+        unsafe { set_format(params, LinphoneRecorderFileFormat::WAV) };
     }
     Ok(params)
 }
@@ -1664,4 +1769,17 @@ fn copy_str_to_c_buffer(value: &str, out: *mut c_char, out_size: u32) -> bool {
         *out.add(count) = 0;
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::playback_gain_db;
+
+    #[test]
+    fn playback_percentages_map_to_real_attenuation() {
+        assert_eq!(playback_gain_db(0), -120.0);
+        assert!((playback_gain_db(10) - -20.0).abs() < 0.01);
+        assert!((playback_gain_db(50) - -6.0206).abs() < 0.01);
+        assert_eq!(playback_gain_db(100), 0.0);
+    }
 }

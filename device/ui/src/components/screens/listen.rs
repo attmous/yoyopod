@@ -35,11 +35,7 @@ pub fn props_from(
 }
 
 pub fn items(_snapshot: &RuntimeSnapshot) -> Vec<ListItemSnapshot> {
-    vec![
-        ListItemSnapshot::new("playlists", "Playlists", "", "icon_playlists"),
-        ListItemSnapshot::new("recent_tracks", "Recents", "", "icon_recents"),
-        ListItemSnapshot::new("shuffle", "Shuffle all", "", "icon_shuffle"),
-    ]
+    crate::application::options::listen_items(_snapshot)
 }
 
 pub fn scene(props: &ListenProps) -> Scene {
@@ -68,6 +64,7 @@ pub fn scene(props: &ListenProps) -> Scene {
         id: SceneId::new(UiScreen::Listen),
         backdrop: Backdrop::Solid(LISTEN_STAGE_LIME),
         stage: props.defaults.stage,
+        context: None,
         decks: vec![deck],
         cursor: None,
         fx: Default::default(),

@@ -22,10 +22,13 @@ pub enum Persistence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntentTemplate {
     MusicShuffleAll,
+    MusicPreviousTrack,
     MusicPlayPause,
+    MusicNextTrack,
     VoiceAskStart,
     VoiceAskStop,
-    VoiceCaptureStartRecipient,
+    VoiceAskCancel,
+    VoiceCaptureStartAndSendRecipient,
     VoiceCaptureStop,
     VoiceCaptureCancel,
     VoiceDiscard,
@@ -33,11 +36,22 @@ pub enum IntentTemplate {
     CallReject,
     CallHangup,
     CallToggleMute,
+    SettingsVolumeStep,
+    SettingsSpeakNamesToggle,
+    SettingsWifiSetupStart,
+    SettingsWifiSetupStop,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdvanceTarget {
+    Focus,
+    EmitIntent(IntentTemplate),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListKind {
     Playlists,
+    PlaylistTracks,
     RecentTracks,
     Contacts,
     CallHistory,
@@ -45,8 +59,12 @@ pub enum ListKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DynamicActionKind {
+    Ask,
     TalkContact,
+    Replay,
     VoiceNote,
+    SetupCompanion,
+    SetupTheme,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,16 +82,17 @@ pub enum SelectionTarget {
         kind: DynamicActionKind,
     },
     AdvanceFocus,
+    PopScreen,
     Noop,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapshotCondition {
     Always,
-    VoiceReady,
     VoiceRecording,
     VoiceReviewOrFailedOrSent,
-    VoiceReadyOrRecording,
+    TalkContactRecordAvailable,
+    TalkContactRecordHeldOrPending,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,6 +118,7 @@ pub struct Route {
     pub nav_policy: NavigationPolicy,
     pub persistence: Persistence,
     pub select: &'static [SelectionTarget],
+    pub advance: AdvanceTarget,
     pub back: &'static [BackPolicy],
     pub passthrough: &'static [PassthroughPolicy],
     pub on_enter: Option<TimelineRef>,

@@ -16,7 +16,9 @@ pub fn apply_patch(current: &mut RuntimeSnapshot, patch: RuntimeSnapshotPatch) -
         RuntimeSnapshotPatch::Call(call) => domains::call::apply(current, call),
         RuntimeSnapshotPatch::Voice(voice) => domains::voice::apply(current, voice),
         RuntimeSnapshotPatch::Power(power) => domains::power::apply(current, power),
+        RuntimeSnapshotPatch::Settings(settings) => current.settings = settings,
         RuntimeSnapshotPatch::Network(network) => domains::network::apply(current, network),
+        RuntimeSnapshotPatch::WifiSetup(wifi_setup) => current.wifi_setup = wifi_setup,
         RuntimeSnapshotPatch::Overlay(overlay) => domains::overlay::apply(current, overlay),
     }
 

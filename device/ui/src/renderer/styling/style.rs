@@ -26,6 +26,11 @@ pub struct WidgetStyle {
     pub border_width: i32,
     pub radius: i32,
     pub outline_width: i32,
+    pub outline_color: Option<u32>,
+    pub outline_pad: i32,
+    pub arc_color: Option<u32>,
+    pub arc_width: i32,
+    pub arc_rounded: bool,
     pub shadow_width: i32,
 }
 
@@ -39,6 +44,11 @@ impl WidgetStyle {
             border_width: 0,
             radius: 0,
             outline_width: 0,
+            outline_color: None,
+            outline_pad: 0,
+            arc_color: None,
+            arc_width: 0,
+            arc_rounded: false,
             shadow_width: 0,
         }
     }

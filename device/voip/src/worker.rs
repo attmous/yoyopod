@@ -213,7 +213,7 @@ where
                 &WorkerEnvelope::result(
                     "voip.register",
                     envelope.request_id,
-                    json!({"registered": true}),
+                    host.health_payload(),
                 ),
             )?;
             write_lifecycle_events(host, output)?;
@@ -305,6 +305,88 @@ where
                 ),
             )?;
             write_session_snapshot(host, output)?;
+        }
+        "voip.set_audio_devices" => {
+            let string = |key: &str| {
+                envelope
+                    .payload
+                    .get(key)
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+            };
+            let playback = string("voip_playback_device");
+            let ringer = string("voip_ringer_device");
+            let capture = string("voip_capture_device");
+            let media = string("voip_media_device");
+            let microphone_gain = envelope
+                .payload
+                .get("microphone_gain")
+                .and_then(serde_json::Value::as_u64)
+                .filter(|value| *value <= 100)
+                .map(|value| value as u8);
+            let output_volume = envelope
+                .payload
+                .get("communication_volume")
+                .and_then(serde_json::Value::as_u64)
+                .filter(|value| *value <= 100)
+                .map(|value| value as u8);
+            let alert_volume = envelope
+                .payload
+                .get("alert_volume")
+                .and_then(serde_json::Value::as_u64)
+                .filter(|value| *value <= 100)
+                .map(|value| value as u8);
+            match (
+                playback,
+                ringer,
+                capture,
+                media,
+                microphone_gain,
+                output_volume,
+                alert_volume,
+            ) {
+                (
+                    Some(playback),
+                    Some(ringer),
+                    Some(capture),
+                    Some(media),
+                    Some(microphone_gain),
+                    Some(output_volume),
+                    Some(alert_volume),
+                ) => {
+                    backend.with_backend(|backend_ref| {
+                        host.set_audio_devices(
+                            backend_ref,
+                            playback,
+                            ringer,
+                            capture,
+                            media,
+                            microphone_gain,
+                            output_volume,
+                            alert_volume,
+                        )
+                    })?;
+                    write_envelope_to(
+                        output,
+                        &WorkerEnvelope::result(
+                            "voip.set_audio_devices",
+                            envelope.request_id,
+                            json!({"applied": true}),
+                        ),
+                    )?;
+                }
+                _ => {
+                    write_envelope_to(
+                        output,
+                        &WorkerEnvelope::error(
+                            "voip.error",
+                            envelope.request_id,
+                            "invalid_command",
+                            "voip.set_audio_devices requires complete safe audio routing settings",
+                        ),
+                    )?;
+                }
+            }
         }
         "voip.send_text_message" => {
             let uri = envelope.payload["uri"].as_str().unwrap_or("").trim();
@@ -481,6 +563,7 @@ where
         }
         "voip.play_voice_note" => {
             let file_path = envelope.payload["file_path"].as_str().unwrap_or("").trim();
+            let duration_ms = envelope.payload["duration_ms"].as_i64().unwrap_or_default() as i32;
             if file_path.is_empty() {
                 write_envelope_to(
                     output,
@@ -492,7 +575,7 @@ where
                     ),
                 )?;
             } else {
-                host.play_voice_note(file_path)
+                host.play_voice_note(file_path, duration_ms)
                     .map_err(|error| anyhow!(error))?;
                 write_envelope_to(
                     output,
@@ -505,6 +588,60 @@ where
                 write_session_snapshot(host, output)?;
             }
         }
+        "voip.play_focus_prompt" => {
+            let file_path = envelope.payload["file_path"].as_str().unwrap_or("").trim();
+            let duration_ms = envelope.payload["duration_ms"].as_i64().unwrap_or_default() as i32;
+            if file_path.is_empty() {
+                write_envelope_to(
+                    output,
+                    &WorkerEnvelope::error(
+                        "voip.error",
+                        envelope.request_id,
+                        "invalid_command",
+                        "voip.play_focus_prompt requires file_path",
+                    ),
+                )?;
+            } else {
+                let playing = host
+                    .play_focus_prompt(file_path, duration_ms)
+                    .map_err(|error| anyhow!(error))?;
+                write_envelope_to(
+                    output,
+                    &WorkerEnvelope::result(
+                        "voip.play_focus_prompt",
+                        envelope.request_id,
+                        json!({"playing": playing}),
+                    ),
+                )?;
+                write_session_snapshot(host, output)?;
+            }
+        }
+        "voip.pause_voice_note_playback" => {
+            host.pause_voice_note_playback()
+                .map_err(|error| anyhow!(error))?;
+            write_envelope_to(
+                output,
+                &WorkerEnvelope::result(
+                    "voip.pause_voice_note_playback",
+                    envelope.request_id,
+                    json!({"paused": true}),
+                ),
+            )?;
+            write_session_snapshot(host, output)?;
+        }
+        "voip.resume_voice_note_playback" => {
+            host.resume_voice_note_playback()
+                .map_err(|error| anyhow!(error))?;
+            write_envelope_to(
+                output,
+                &WorkerEnvelope::result(
+                    "voip.resume_voice_note_playback",
+                    envelope.request_id,
+                    json!({"playing": true}),
+                ),
+            )?;
+            write_session_snapshot(host, output)?;
+        }
         "voip.stop_voice_note_playback" => {
             host.stop_voice_note_playback();
             write_envelope_to(
@@ -516,6 +653,47 @@ where
                 ),
             )?;
             write_session_snapshot(host, output)?;
+        }
+        "voip.stop_focus_prompt_playback" => {
+            let stopped = host.stop_focus_prompt_playback();
+            write_envelope_to(
+                output,
+                &WorkerEnvelope::result(
+                    "voip.stop_focus_prompt_playback",
+                    envelope.request_id,
+                    json!({"stopped": stopped}),
+                ),
+            )?;
+            if stopped {
+                write_session_snapshot(host, output)?;
+            }
+        }
+        "voip.delete_voice_note" => {
+            let message_id = envelope.payload["message_id"].as_str().unwrap_or("").trim();
+            if message_id.is_empty() {
+                write_envelope_to(
+                    output,
+                    &WorkerEnvelope::error(
+                        "voip.error",
+                        envelope.request_id,
+                        "invalid_command",
+                        "voip.delete_voice_note requires message_id",
+                    ),
+                )?;
+            } else {
+                let deleted = host
+                    .delete_voice_note(message_id)
+                    .map_err(|error| anyhow!(error))?;
+                write_envelope_to(
+                    output,
+                    &WorkerEnvelope::result(
+                        "voip.delete_voice_note",
+                        envelope.request_id,
+                        json!({"deleted": deleted, "message_id": message_id}),
+                    ),
+                )?;
+                write_session_snapshot(host, output)?;
+            }
         }
         "voip.shutdown" | "worker.stop" => {
             backend.unregister(host);
@@ -552,10 +730,19 @@ where
     S: WorkerBackendState,
     W: Write + ?Sized,
 {
+    let playback_changed = host.refresh_voice_note_playback();
     if backend.is_running() {
         let events = backend.with_backend(|backend_ref| host.poll_backend_events(backend_ref))?;
+        let metrics_changed = backend
+            .with_backend(|backend_ref| host.refresh_voice_recording_metrics(backend_ref))?;
         let lifecycle_events = host.take_lifecycle_events();
+        let has_events = !events.is_empty() || !lifecycle_events.is_empty();
         emit_backend_events(events, lifecycle_events, host, output)?;
+        if (metrics_changed || playback_changed) && !has_events {
+            write_session_snapshot(host, output)?;
+        }
+    } else if playback_changed {
+        write_session_snapshot(host, output)?;
     }
     Ok(())
 }

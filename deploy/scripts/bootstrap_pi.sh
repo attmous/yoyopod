@@ -57,6 +57,33 @@ INVOKING_GROUP="$(id -gn "${INVOKING_USER}")"
 
 echo "bootstrap: user=${INVOKING_USER} group=${INVOKING_GROUP} prod_root=${ROOT} dev_root=${DEV_ROOT}"
 
+# Bluetooth audio is a runtime capability, not a build dependency. Keep these
+# packages on the Pi and configure BlueALSA as the bridge used by the stable
+# ALSA aliases managed by the network worker.
+if ! command -v bluealsa >/dev/null 2>&1 \
+    || ! command -v aplay >/dev/null 2>&1 \
+    || ! dpkg-query -W libasound2-plugin-bluez >/dev/null 2>&1; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        alsa-utils bluez bluez-alsa-utils libasound2-plugin-bluez
+fi
+if ! getent group bluetooth >/dev/null 2>&1; then
+    groupadd --system bluetooth
+fi
+usermod -a -G bluetooth "${INVOKING_USER}"
+id -nG "${INVOKING_USER}" | tr ' ' '\n' | grep -Fx bluetooth >/dev/null
+rfkill unblock bluetooth || true
+install -d -m 0755 "${UNIT_DIR}/bluealsa.service.d"
+install -m 0644 -o root -g root \
+    "${REPO_ROOT}/deploy/systemd/bluealsa-yoyopod.conf" \
+    "${UNIT_DIR}/bluealsa.service.d/20-yoyopod-audio-role.conf"
+systemctl daemon-reload
+systemctl enable --now bluetooth.service
+systemctl disable --now bluealsa-aplay.service
+systemctl enable bluealsa.service
+systemctl restart bluealsa.service
+systemctl is-active --quiet bluetooth.service bluealsa.service
+
 # 1. Create directory skeleton.
 install -d -m 0755 -o root -g root \
     "${ROOT}" "${ROOT}/bin" "${DEV_ROOT}" "${DEV_ROOT}/bin"
@@ -65,6 +92,8 @@ install -d -m 0755 -o "${INVOKING_USER}" -g "${INVOKING_GROUP}" \
 install -d -m 0755 -o "${INVOKING_USER}" -g "${INVOKING_GROUP}" \
     "${DEV_ROOT}/checkout" "${DEV_ROOT}/venv" "${DEV_ROOT}/state" \
     "${DEV_ROOT}/logs" "${DEV_ROOT}/tmp"
+install -d -m 0750 -o "${INVOKING_USER}" -g "${INVOKING_GROUP}" \
+    /var/lib/yoyopod /var/lib/yoyopod/bluetooth /var/lib/yoyopod/audio
 
 # 2. Install rollback helper (owned by root, invoked by systemd).
 install -m 0755 -o root -g root \
@@ -88,6 +117,42 @@ install -m 0644 -o root -g root \
     "${REPO_ROOT}/deploy/systemd/yoyopod-dev.service" \
     "${UNIT_DIR}/yoyopod-dev.service"
 
+# 3b. Captive-portal DNS for on-device Wi‑Fi setup. While the device hosts its
+# onboarding hotspot (NetworkManager ipv4=shared), resolve every name to the
+# portal gateway so a phone auto-opens the setup page. NetworkManager includes
+# dnsmasq-shared.d/* only while a shared connection is active, so this is inert
+# during normal operation.
+install -d -m 0755 -o root -g root /etc/NetworkManager/dnsmasq-shared.d
+cat > "/etc/NetworkManager/dnsmasq-shared.d/010-yoyopod-captive.conf" <<'EOF'
+# Written by bootstrap_pi.sh - YoYoPod Wi-Fi setup captive portal.
+address=/#/10.42.0.1
+EOF
+
+# 3c. Authorize the network service to run the whole on-device Wi-Fi setup flow:
+# scan, create/delete/activate NetworkManager profiles (AddConnection2, Delete,
+# ActivateConnection), and bring up the "shared" AP hotspot. These polkit actions
+# are only implicitly granted to active local sessions, but the service runs as a
+# non-login systemd session, so without them NetworkManager denies AP activation
+# ("Not authorized to share connections via wifi.") and profile changes. This
+# mirrors the rule `yoyopod target deploy` installs for dev, so a prod bootstrap
+# (which runs before any deploy) has the same grants. Match the actual service
+# user (the units are patched to run as ${INVOKING_USER}), since that user is not
+# necessarily a member of netdev; keep the netdev group as a fallback.
+cat > "/etc/polkit-1/rules.d/50-yoyopod-wifi-share.rules" <<EOF
+// Written by bootstrap_pi.sh - YoYoPod Wi-Fi setup authorization.
+polkit.addRule(function(action, subject) {
+    if ((subject.user == "${INVOKING_USER}" || subject.isInGroup("netdev")) &&
+        (action.id == "org.freedesktop.NetworkManager.wifi.scan" ||
+         action.id == "org.freedesktop.NetworkManager.settings.modify.system" ||
+         action.id == "org.freedesktop.NetworkManager.network-control" ||
+         action.id == "org.freedesktop.NetworkManager.checkpoint-rollback" ||
+         action.id == "org.freedesktop.NetworkManager.wifi.share.protected" ||
+         action.id == "org.freedesktop.NetworkManager.wifi.share.open")) {
+        return polkit.Result.YES;
+    }
+});
+EOF
+
 # 4. EnvironmentFiles with the lane roots.
 cat > "/etc/default/yoyopod-prod" <<EOF
 # /etc/default/yoyopod-prod - written by bootstrap_pi.sh
@@ -95,6 +160,7 @@ YOYOPOD_ROOT=${ROOT}
 YOYOPOD_STATE_DIR=${ROOT}/state
 YOYOPOD_PID_FILE=${ROOT}/state/yoyopod.pid
 YOYOPOD_SERVICE_NAME=yoyopod-prod.service
+HOME=/home/${INVOKING_USER}
 EOF
 
 cat > "/etc/default/yoyopod-dev" <<EOF
@@ -104,6 +170,7 @@ YOYOPOD_DEV_CHECKOUT=${DEV_ROOT}/checkout
 YOYOPOD_DEV_VENV=${DEV_ROOT}/venv
 YOYOPOD_STATE_DIR=${DEV_ROOT}/state
 YOYOPOD_PID_FILE=${DEV_ROOT}/state/yoyopod.pid
+HOME=/home/${INVOKING_USER}
 EOF
 
 # Patch User=/Group= into the unit (only if not already present).

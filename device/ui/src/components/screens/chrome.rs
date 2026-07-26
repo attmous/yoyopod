@@ -10,6 +10,7 @@ use crate::ElementKind;
 pub struct ScreenChrome {
     pub title: String,
     pub status: HudStatus,
+    pub status_opacity: u8,
     pub deck: DeckBarProps,
 }
 
@@ -17,16 +18,41 @@ pub fn chrome_for_screen(
     screen: UiScreen,
     snapshot: &RuntimeSnapshot,
     focus_index: usize,
+    selected_playlist: Option<&ListItemSnapshot>,
     selected_contact: Option<&ListItemSnapshot>,
     home_focus: Option<usize>,
     deck_visible: bool,
 ) -> ScreenChrome {
+    let capture_dimmed = (screen == UiScreen::TalkContact || screen == UiScreen::Ask)
+        && (snapshot.voice.ptt_active
+            || snapshot.voice.capture_in_flight
+            || matches!(
+                snapshot.voice.phase.trim().to_ascii_lowercase().as_str(),
+                "recording" | "listening"
+            ));
     ScreenChrome {
-        title: title_for_screen(screen, snapshot, focus_index, selected_contact),
+        title: title_for_screen(
+            screen,
+            snapshot,
+            focus_index,
+            selected_playlist,
+            selected_contact,
+        ),
         status: status_from_snapshot(snapshot),
+        status_opacity: if capture_dimmed { 140 } else { 255 },
         deck: DeckBarProps {
             focused_index: deck_focus_for_screen(screen, home_focus),
             visible: deck_visible,
+            opacity: if matches!(
+                screen,
+                UiScreen::IncomingCall | UiScreen::OutgoingCall | UiScreen::InCall
+            ) {
+                140
+            } else if capture_dimmed {
+                140
+            } else {
+                255
+            },
         },
     }
 }
@@ -37,6 +63,7 @@ pub fn hud_scene(chrome: ScreenChrome) -> HudScene {
             .key(Key::Static("hud"))
             .child(status_bar(&StatusBarProps {
                 status: chrome.status,
+                opacity: chrome.status_opacity,
             }))
             .child(deck_bar(&chrome.deck)),
     )
@@ -46,6 +73,7 @@ fn title_for_screen(
     screen: UiScreen,
     snapshot: &RuntimeSnapshot,
     focus_index: usize,
+    selected_playlist: Option<&ListItemSnapshot>,
     selected_contact: Option<&ListItemSnapshot>,
 ) -> String {
     match screen {
@@ -58,6 +86,9 @@ fn title_for_screen(
             .unwrap_or_else(|| "Listen".to_string()),
         UiScreen::Listen => "Listen".to_string(),
         UiScreen::Playlists => "Playlists".to_string(),
+        UiScreen::PlaylistTracks => selected_playlist
+            .map(|playlist| playlist.title.clone())
+            .unwrap_or_else(|| "Playlist".to_string()),
         UiScreen::RecentTracks => "Recent".to_string(),
         UiScreen::NowPlaying => snapshot.music.title.clone(),
         UiScreen::Ask => snapshot.voice.headline.clone(),
@@ -65,11 +96,18 @@ fn title_for_screen(
         UiScreen::Contacts => "More People".to_string(),
         UiScreen::CallHistory => "Recents".to_string(),
         UiScreen::TalkContact => talk_contact_title(snapshot, focus_index, selected_contact),
+        UiScreen::Replay => "Replay".to_string(),
         UiScreen::VoiceNote => voice_note_title(snapshot, focus_index),
         UiScreen::IncomingCall | UiScreen::OutgoingCall | UiScreen::InCall => {
             call_peer_name(snapshot)
         }
-        UiScreen::Power => power_title(snapshot, focus_index),
+        UiScreen::Setup => "Setup".to_string(),
+        UiScreen::SetupVolume => "Volume".to_string(),
+        UiScreen::SetupCompanion => "Companion".to_string(),
+        UiScreen::SetupContacts => "Contacts".to_string(),
+        UiScreen::SetupTheme => "Theme".to_string(),
+        UiScreen::SetupAbout => "About".to_string(),
+        UiScreen::SetupWifi => "Wi-Fi".to_string(),
         UiScreen::Loading => "Loading".to_string(),
         UiScreen::Error => "Error".to_string(),
     }
@@ -78,19 +116,28 @@ fn title_for_screen(
 fn deck_focus_for_screen(screen: UiScreen, home_focus: Option<usize>) -> Option<usize> {
     match screen {
         UiScreen::Hub => home_focus,
-        UiScreen::Listen | UiScreen::Playlists | UiScreen::RecentTracks | UiScreen::NowPlaying => {
-            Some(0)
-        }
+        UiScreen::Listen
+        | UiScreen::Playlists
+        | UiScreen::PlaylistTracks
+        | UiScreen::RecentTracks
+        | UiScreen::NowPlaying => Some(0),
         UiScreen::Talk
         | UiScreen::Contacts
         | UiScreen::CallHistory
         | UiScreen::TalkContact
+        | UiScreen::Replay
         | UiScreen::VoiceNote
         | UiScreen::IncomingCall
         | UiScreen::OutgoingCall
         | UiScreen::InCall => Some(1),
         UiScreen::Ask => Some(2),
-        UiScreen::Power => Some(3),
+        UiScreen::Setup
+        | UiScreen::SetupVolume
+        | UiScreen::SetupCompanion
+        | UiScreen::SetupContacts
+        | UiScreen::SetupTheme
+        | UiScreen::SetupAbout
+        | UiScreen::SetupWifi => Some(3),
         UiScreen::Loading | UiScreen::Error => None,
     }
 }
@@ -127,31 +174,16 @@ fn connectivity_kind(value: &str) -> HudConnectivityKind {
 }
 
 fn talk_contact_title(
-    snapshot: &RuntimeSnapshot,
+    _snapshot: &RuntimeSnapshot,
     focus_index: usize,
-    selected_contact: Option<&ListItemSnapshot>,
+    _selected_contact: Option<&ListItemSnapshot>,
 ) -> String {
-    let has_latest_note = talk_contact_has_latest_note(
-        snapshot,
-        selected_contact.or_else(|| snapshot.call.contacts.first()),
-    );
     match focus_index {
         0 => "Call",
-        1 => "Voice Note",
-        2 if has_latest_note => "Play Note",
-        _ if has_latest_note => "Play Note",
-        _ => "Voice Note",
+        1 => "Hold to record",
+        _ => "Replay",
     }
     .to_string()
-}
-
-fn talk_contact_has_latest_note(
-    snapshot: &RuntimeSnapshot,
-    selected_contact: Option<&ListItemSnapshot>,
-) -> bool {
-    selected_contact
-        .and_then(|contact| snapshot.call.latest_voice_note_by_contact.get(&contact.id))
-        .is_some_and(|note| !note.local_file_path.trim().is_empty())
 }
 
 fn voice_note_title(snapshot: &RuntimeSnapshot, focus_index: usize) -> String {
@@ -187,21 +219,5 @@ fn call_peer_name(snapshot: &RuntimeSnapshot) -> String {
         "Unknown".to_string()
     } else {
         snapshot.call.peer_name.clone()
-    }
-}
-
-fn power_title(snapshot: &RuntimeSnapshot, focus_index: usize) -> String {
-    if !snapshot.power.pages.is_empty() {
-        let page = &snapshot.power.pages[focus_index % snapshot.power.pages.len()];
-        if page.title.trim().is_empty() {
-            "Setup".to_string()
-        } else {
-            page.title.clone()
-        }
-    } else if !snapshot.power.rows.is_empty() {
-        "Power".to_string()
-    } else {
-        const DEFAULT_PAGES: [&str; 4] = ["Power", "Time", "Care", "Voice"];
-        DEFAULT_PAGES[focus_index % DEFAULT_PAGES.len()].to_string()
     }
 }

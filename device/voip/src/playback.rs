@@ -1,10 +1,35 @@
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::time::Instant;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PlaybackPurpose {
+    #[default]
+    None,
+    VoiceNote,
+    FocusPrompt,
+}
+
+impl PlaybackPurpose {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::VoiceNote => "voice_note",
+            Self::FocusPrompt => "focus_prompt",
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct VoiceNotePlayback {
     current: Option<Child>,
     current_file_path: String,
+    duration_ms: i32,
+    elapsed_before_run_ms: u64,
+    run_started_at: Option<Instant>,
+    paused: bool,
+    published_bucket: u64,
+    purpose: PlaybackPurpose,
 }
 
 impl std::fmt::Debug for VoiceNotePlayback {
@@ -12,7 +37,9 @@ impl std::fmt::Debug for VoiceNotePlayback {
         formatter
             .debug_struct("VoiceNotePlayback")
             .field("playing", &self.is_playing())
+            .field("paused", &self.is_paused())
             .field("current_file_path", &self.current_file_path)
+            .field("purpose", &self.purpose)
             .finish()
     }
 }
@@ -34,10 +61,30 @@ impl VoiceNotePlayback {
         ]
     }
 
-    pub fn play(&mut self, file_path: &str) -> Result<(), String> {
+    pub fn play(&mut self, file_path: &str, duration_ms: i32) -> Result<(), String> {
+        self.play_for(file_path, duration_ms, PlaybackPurpose::VoiceNote)
+            .map(|_| ())
+    }
+
+    pub fn play_focus_prompt(&mut self, file_path: &str, duration_ms: i32) -> Result<bool, String> {
+        self.play_for(file_path, duration_ms, PlaybackPurpose::FocusPrompt)
+    }
+
+    fn play_for(
+        &mut self,
+        file_path: &str,
+        duration_ms: i32,
+        purpose: PlaybackPurpose,
+    ) -> Result<bool, String> {
         let file_path = file_path.trim();
         if file_path.is_empty() {
             return Err("voice-note playback requires file_path".to_string());
+        }
+        if purpose == PlaybackPurpose::FocusPrompt
+            && self.current.is_some()
+            && self.purpose == PlaybackPurpose::VoiceNote
+        {
+            return Ok(false);
         }
         self.stop();
         let command = Self::command_for(file_path);
@@ -49,7 +96,65 @@ impl VoiceNotePlayback {
             .map_err(|error| format!("failed to start voice-note playback: {error}"))?;
         self.current = Some(child);
         self.current_file_path = file_path.to_string();
+        self.duration_ms = duration_ms.max(0);
+        self.elapsed_before_run_ms = 0;
+        self.run_started_at = Some(Instant::now());
+        self.paused = false;
+        self.published_bucket = 0;
+        self.purpose = purpose;
+        Ok(true)
+    }
+
+    pub fn pause(&mut self) -> Result<(), String> {
+        if self.current.is_none() || self.paused {
+            return Ok(());
+        }
+        let pid = self
+            .current
+            .as_ref()
+            .map(std::process::Child::id)
+            .unwrap_or(0);
+        pause_process(pid)?;
+        self.elapsed_before_run_ms = self.elapsed_ms() as u64;
+        self.run_started_at = None;
+        self.paused = true;
         Ok(())
+    }
+
+    pub fn resume(&mut self) -> Result<(), String> {
+        if self.current.is_none() || !self.paused {
+            return Ok(());
+        }
+        let pid = self
+            .current
+            .as_ref()
+            .map(std::process::Child::id)
+            .unwrap_or(0);
+        resume_process(pid)?;
+        self.run_started_at = Some(Instant::now());
+        self.paused = false;
+        Ok(())
+    }
+
+    pub fn refresh(&mut self) -> bool {
+        let Some(child) = self.current.as_mut() else {
+            return false;
+        };
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                self.reset();
+                true
+            }
+            Ok(None) => {
+                let bucket = (self.elapsed_ms() as u64) / 100;
+                if bucket == self.published_bucket {
+                    return false;
+                }
+                self.published_bucket = bucket;
+                true
+            }
+            Err(_) => false,
+        }
     }
 
     pub fn stop(&mut self) {
@@ -57,17 +162,60 @@ impl VoiceNotePlayback {
             let _ = child.kill();
             let _ = child.wait();
         }
-        self.current_file_path.clear();
+        self.reset();
+    }
+
+    pub fn stop_focus_prompt(&mut self) -> bool {
+        if self.purpose != PlaybackPurpose::FocusPrompt {
+            return false;
+        }
+        self.stop();
+        true
     }
 
     pub fn is_playing(&self) -> bool {
-        self.current.is_some()
+        self.current.is_some() && !self.paused
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.current.is_some() && self.paused
+    }
+
+    pub fn elapsed_ms(&self) -> i32 {
+        let running_ms = self
+            .run_started_at
+            .map(|started| started.elapsed().as_millis() as u64)
+            .unwrap_or_default();
+        let elapsed = self.elapsed_before_run_ms.saturating_add(running_ms);
+        elapsed.min(self.duration_ms.max(0) as u64) as i32
+    }
+
+    fn reset(&mut self) {
+        self.current = None;
+        self.current_file_path.clear();
+        self.duration_ms = 0;
+        self.elapsed_before_run_ms = 0;
+        self.run_started_at = None;
+        self.paused = false;
+        self.published_bucket = 0;
+        self.purpose = PlaybackPurpose::None;
     }
 
     pub fn payload(&self) -> serde_json::Value {
+        let elapsed_ms = self.elapsed_ms();
+        let progress_permille = if self.duration_ms > 0 {
+            (i64::from(elapsed_ms) * 1_000 / i64::from(self.duration_ms)).clamp(0, 1_000) as i32
+        } else {
+            0
+        };
         serde_json::json!({
             "playing": self.is_playing(),
+            "paused": self.is_paused(),
             "file_path": self.current_file_path,
+            "elapsed_ms": elapsed_ms,
+            "duration_ms": self.duration_ms,
+            "progress_permille": progress_permille,
+            "purpose": self.purpose.as_str(),
         })
     }
 }
@@ -83,4 +231,63 @@ fn is_wav(file_path: &str) -> bool {
         .extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| extension.eq_ignore_ascii_case("wav"))
+}
+
+#[cfg(unix)]
+fn pause_process(pid: u32) -> Result<(), String> {
+    let result = unsafe { libc::kill(pid as libc::pid_t, libc::SIGSTOP) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "failed to pause voice-note playback: {}",
+            std::io::Error::last_os_error()
+        ))
+    }
+}
+
+#[cfg(not(unix))]
+fn pause_process(_pid: u32) -> Result<(), String> {
+    Err("voice-note pause is only supported on the device runtime".to_string())
+}
+
+#[cfg(unix)]
+fn resume_process(pid: u32) -> Result<(), String> {
+    let result = unsafe { libc::kill(pid as libc::pid_t, libc::SIGCONT) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "failed to resume voice-note playback: {}",
+            std::io::Error::last_os_error()
+        ))
+    }
+}
+
+#[cfg(not(unix))]
+fn resume_process(_pid: u32) -> Result<(), String> {
+    Err("voice-note resume is only supported on the device runtime".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn focus_stop_cannot_stop_voice_note_playback() {
+        let mut playback = VoiceNotePlayback::default();
+        playback.purpose = PlaybackPurpose::VoiceNote;
+
+        assert!(!playback.stop_focus_prompt());
+        assert_eq!(playback.purpose, PlaybackPurpose::VoiceNote);
+    }
+
+    #[test]
+    fn focus_stop_resets_only_the_prompt_owner() {
+        let mut playback = VoiceNotePlayback::default();
+        playback.purpose = PlaybackPurpose::FocusPrompt;
+
+        assert!(playback.stop_focus_prompt());
+        assert_eq!(playback.payload()["purpose"], "none");
+    }
 }

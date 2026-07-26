@@ -3,8 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 use yoyopod_protocol::ui::{
     CallIntent, ContactAction, InputAction, ListItemAction, MusicIntent, PowerIntent,
-    RuntimeIntent, UiCommand, UiEvent, UiInputEvent, UiIntent, UiScreen, UiScreenshotCaptured,
-    VoiceFileAction, VoiceIntent, VoiceRecipientAction,
+    RuntimeIntent, SystemIntent, UiCommand, UiEvent, UiFocusChanged, UiInputEvent, UiIntent,
+    UiScreen, UiScreenshotCaptured, VoiceFileAction, VoiceIntent, VoiceRecipientAction,
 };
 
 use crate::protocol::{EnvelopeKind, WorkerEnvelope};
@@ -23,12 +23,24 @@ pub enum RuntimeEvent {
     MediaSnapshot(Value),
     VoipSnapshot(Value),
     NetworkSnapshot(Value),
+    WifiState(Value),
+    WifiChangeCandidate(Value),
+    WifiProvisioningState(Value),
+    BluetoothState(Value),
+    AudioState(Value),
+    AudioRouteLocal(Value),
     PowerSnapshot(Value),
     VoiceTranscript(Value),
     VoiceAskResult(Value),
     VoiceSpeakResult(Value),
+    VoiceFocusPromptResult {
+        request_id: Option<String>,
+        payload: Value,
+    },
     UiInput(UiInputEvent),
     UiIntent(UiIntent),
+    UiFocusChanged(UiFocusChanged),
+    UiFocusCleared,
     UiScreenChanged {
         screen: UiScreen,
     },
@@ -52,11 +64,12 @@ pub enum RuntimeCommand {
         domain: WorkerDomain,
         envelope: WorkerEnvelope,
     },
-    WorkerCommandWithAck {
+    CorrelatedWorkerCommand {
         domain: WorkerDomain,
         envelope: WorkerEnvelope,
-        success_ack: WorkerEnvelope,
-        failure_ack: WorkerEnvelope,
+        command_id: String,
+        command_type: String,
+        timeout_ms: u64,
     },
     AppendAppLog {
         line: String,
@@ -69,26 +82,69 @@ impl RuntimeEvent {
         match self {
             Self::WorkerReady { domain } => {
                 state.mark_worker(*domain, WorkerState::Running, "ready");
+                if *domain == WorkerDomain::Voice {
+                    state.mark_ask_available();
+                }
             }
             Self::CloudSnapshot(snapshot) => state.apply_cloud_snapshot(snapshot),
             Self::CloudCommand(_) => {}
-            Self::MediaSnapshot(snapshot) => state.apply_media_snapshot(snapshot),
-            Self::VoipSnapshot(snapshot) => state.apply_voip_snapshot(snapshot),
-            Self::NetworkSnapshot(snapshot) => state.apply_network_snapshot(snapshot),
-            Self::PowerSnapshot(snapshot) => state.apply_power_snapshot(snapshot),
+            Self::MediaSnapshot(snapshot) => {
+                state.resolve_overlay_for(WorkerDomain::Media);
+                state.apply_media_snapshot(snapshot);
+            }
+            Self::VoipSnapshot(snapshot) => {
+                state.resolve_overlay_for(WorkerDomain::Voip);
+                state.apply_voip_snapshot(snapshot);
+            }
+            Self::NetworkSnapshot(snapshot) => {
+                state.resolve_overlay_for(WorkerDomain::Network);
+                state.apply_network_snapshot(snapshot);
+            }
+            Self::WifiState(_)
+            | Self::WifiChangeCandidate(_)
+            | Self::BluetoothState(_)
+            | Self::AudioState(_) => {}
+            Self::AudioRouteLocal(route) => state.apply_audio_route_local(route),
+            Self::WifiProvisioningState(payload) => state.apply_wifi_provisioning_state(payload),
+            Self::PowerSnapshot(snapshot) => {
+                state.resolve_overlay_for(WorkerDomain::Power);
+                state.apply_power_snapshot(snapshot);
+            }
             Self::VoiceTranscript(snapshot) => state.apply_voice_transcript(snapshot),
             Self::VoiceAskResult(snapshot) => state.apply_voice_ask_result(snapshot),
-            Self::VoiceSpeakResult(_) => {}
+            Self::VoiceSpeakResult(_) => state.mark_ask_available(),
+            Self::VoiceFocusPromptResult { .. } => {}
             Self::UiScreenChanged { screen } => {
-                state.current_screen = *screen;
+                if !matches!(screen, UiScreen::Loading | UiScreen::Error) {
+                    state.current_screen = *screen;
+                    // Deactivate the onboarding UI state when the user navigates
+                    // away from the Wi-Fi setup screen; the worker command that
+                    // actually stops provisioning is emitted in commands_for_event.
+                    if *screen != UiScreen::SetupWifi && state.wifi_setup.active {
+                        state.wifi_setup = Default::default();
+                    }
+                }
             }
             Self::WorkerError { domain, message } => {
                 state.mark_worker(*domain, WorkerState::Degraded, message.clone());
+                if *domain == WorkerDomain::Voice {
+                    state.mark_ask_unavailable();
+                }
+                state.fail_overlay_for(*domain);
             }
             Self::WorkerExited { domain, reason } => {
                 state.mark_worker(*domain, WorkerState::Stopped, reason.clone());
+                if *domain == WorkerDomain::Voice {
+                    state.mark_ask_unavailable();
+                }
             }
             Self::UiIntent(intent) => state.apply_ui_intent(intent),
+            Self::UiFocusChanged(changed) => {
+                state.focus_prompt_request_id = Some(changed.request_id.clone());
+            }
+            Self::UiFocusCleared => {
+                state.focus_prompt_request_id = None;
+            }
             Self::UiInput(_) | Self::UiScreenshotCaptured(_) | Self::Shutdown | Self::Ignored => {}
         }
     }
@@ -105,11 +161,20 @@ pub fn runtime_event_from_worker(
     let WorkerEnvelope {
         kind,
         message_type,
+        request_id,
         payload,
         ..
     } = envelope;
 
     match kind {
+        EnvelopeKind::Error
+            if matches!(
+                message_type.as_str(),
+                "wifi_error" | "bluetooth_error" | "audio_error"
+            ) =>
+        {
+            Some(RuntimeEvent::Ignored)
+        }
         EnvelopeKind::Error => Some(RuntimeEvent::WorkerError {
             domain,
             message: worker_error_message(&message_type, &payload),
@@ -128,7 +193,7 @@ pub fn runtime_event_from_worker(
             Some(RuntimeEvent::PowerSnapshot(payload))
         }
         EnvelopeKind::Result if domain == WorkerDomain::Voice => {
-            Some(voice_event_from_message(&message_type, payload))
+            Some(voice_event_from_message(&message_type, request_id, payload))
         }
         EnvelopeKind::Command | EnvelopeKind::Result | EnvelopeKind::Heartbeat => {
             Some(RuntimeEvent::Ignored)
@@ -160,6 +225,8 @@ fn runtime_event_from_ui_envelope(envelope: WorkerEnvelope) -> RuntimeEvent {
                 RuntimeEvent::UiIntent(intent)
             }
         }
+        Ok(UiEvent::FocusChanged(changed)) => RuntimeEvent::UiFocusChanged(changed),
+        Ok(UiEvent::FocusCleared) => RuntimeEvent::UiFocusCleared,
         Ok(UiEvent::ScreenChanged(changed)) => RuntimeEvent::UiScreenChanged {
             screen: changed.screen,
         },
@@ -188,21 +255,157 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         RuntimeEvent::MediaSnapshot(snapshot) => commands_for_media_snapshot(snapshot),
         RuntimeEvent::VoipSnapshot(snapshot) => commands_for_voip_snapshot(state, snapshot),
         RuntimeEvent::NetworkSnapshot(snapshot) => commands_for_network_snapshot(snapshot),
+        RuntimeEvent::WifiState(state) => vec![worker_command(
+            WorkerDomain::Cloud,
+            "cloud.publish_event",
+            json!({
+                "event_type": "wifi_state",
+                "payload": state,
+            }),
+        )],
+        RuntimeEvent::WifiChangeCandidate(candidate) => vec![worker_command(
+            WorkerDomain::Cloud,
+            "cloud.publish_event",
+            json!({
+                "event_type": "wifi_change_candidate",
+                "payload": candidate,
+            }),
+        )],
+        RuntimeEvent::BluetoothState(bluetooth) => vec![worker_command(
+            WorkerDomain::Cloud,
+            "cloud.publish_event",
+            json!({
+                "event_type": "bluetooth_state",
+                "payload": bluetooth,
+            }),
+        )],
+        RuntimeEvent::AudioState(audio) => vec![worker_command(
+            WorkerDomain::Cloud,
+            "cloud.publish_event",
+            json!({
+                "event_type": "audio_state",
+                "payload": audio,
+            }),
+        )],
+        RuntimeEvent::AudioRouteLocal(route) => {
+            let mut commands = Vec::new();
+            if let Some(device) = route.get("media_device").and_then(Value::as_str) {
+                commands.push(worker_command(
+                    WorkerDomain::Media,
+                    "media.set_audio_device",
+                    json!({ "device": device }),
+                ));
+            }
+            if let Some(volume) = route.get("media_volume").and_then(Value::as_u64) {
+                commands.push(worker_command(
+                    WorkerDomain::Media,
+                    "media.set_volume",
+                    json!({ "volume": volume }),
+                ));
+            }
+            commands.push(worker_command(
+                WorkerDomain::Voip,
+                "voip.set_audio_devices",
+                route.clone(),
+            ));
+            commands
+        }
+        RuntimeEvent::WifiProvisioningState(provisioning) => {
+            // The raw payload carries the hotspot password and the QR (which
+            // embeds it). Never forward those to the cloud/MQTT — publish only
+            // the lifecycle phase/status so the dashboard can still observe it.
+            let field = |key: &str| {
+                provisioning
+                    .get(key)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null)
+            };
+            vec![worker_command(
+                WorkerDomain::Cloud,
+                "cloud.publish_event",
+                json!({
+                    "event_type": "wifi_provisioning_state",
+                    "payload": {
+                        "active": field("active"),
+                        "phase": field("phase"),
+                        "status_text": field("status_text"),
+                        "error": field("error"),
+                    },
+                }),
+            )]
+        }
         RuntimeEvent::PowerSnapshot(snapshot) => commands_for_power_snapshot(state, snapshot),
-        RuntimeEvent::VoiceTranscript(snapshot) => commands_for_voice_transcript(state, snapshot),
-        RuntimeEvent::VoiceAskResult(snapshot) => commands_for_voice_ask_result(state, snapshot),
-        RuntimeEvent::VoiceSpeakResult(snapshot) => commands_for_voice_speak_result(snapshot),
+        RuntimeEvent::VoiceTranscript(snapshot) => with_ask_log(
+            commands_for_voice_transcript(state, snapshot),
+            "transcript_received",
+        ),
+        RuntimeEvent::VoiceAskResult(snapshot) => with_ask_log(
+            commands_for_voice_ask_result(state, snapshot),
+            "answer_received",
+        ),
+        RuntimeEvent::VoiceSpeakResult(snapshot) => {
+            with_ask_log(commands_for_voice_speak_result(snapshot), "audio_ready")
+        }
+        RuntimeEvent::VoiceFocusPromptResult {
+            request_id,
+            payload,
+        } => commands_for_voice_focus_prompt_result(state, request_id.as_deref(), payload),
+        RuntimeEvent::UiFocusChanged(changed) => commands_for_ui_focus_changed(state, changed),
+        RuntimeEvent::UiFocusCleared => cancel_focus_prompt_commands(),
         RuntimeEvent::UiScreenshotCaptured(captured) => vec![RuntimeCommand::AppendAppLog {
             line: screenshot_log_line(captured),
         }],
         RuntimeEvent::Shutdown => vec![RuntimeCommand::Shutdown],
+        RuntimeEvent::WorkerError {
+            domain: WorkerDomain::Voice,
+            ..
+        } => with_ask_log(Vec::new(), "failed"),
+        RuntimeEvent::WorkerError { domain, .. }
+            if state.overlay.pending_domain == Some(*domain) =>
+        {
+            vec![RuntimeCommand::AppendAppLog {
+                line: format!(
+                    "System overlay error code=worker_{}_error source={} retry_count={}",
+                    domain.as_str(),
+                    state.overlay.source,
+                    state.overlay.retry_count
+                ),
+            }]
+        }
+        RuntimeEvent::UiScreenChanged { screen } => {
+            // Leaving the Wi-Fi setup screen by ANY path — Back, Home, or the
+            // one-button home-hold (which maps to Home, not Back) — must tear the
+            // onboarding hotspot down so it stops owning the single Wi-Fi radio.
+            // commands_for_event runs on the pre-apply state, so wifi_setup.active
+            // still marks an in-progress session here.
+            if state.wifi_setup.active
+                && !matches!(
+                    screen,
+                    UiScreen::SetupWifi | UiScreen::Loading | UiScreen::Error
+                )
+            {
+                vec![worker_command(
+                    WorkerDomain::Network,
+                    "wifi_provisioning_stop",
+                    empty_payload(),
+                )]
+            } else {
+                Vec::new()
+            }
+        }
         RuntimeEvent::WorkerReady { .. }
         | RuntimeEvent::CloudSnapshot(_)
-        | RuntimeEvent::UiScreenChanged { .. }
         | RuntimeEvent::WorkerError { .. }
         | RuntimeEvent::WorkerExited { .. }
         | RuntimeEvent::Ignored => Vec::new(),
     }
+}
+
+fn with_ask_log(mut commands: Vec<RuntimeCommand>, stage: &str) -> Vec<RuntimeCommand> {
+    commands.push(RuntimeCommand::AppendAppLog {
+        line: format!("Ask pipeline stage={stage}"),
+    });
+    commands
 }
 
 /// App log line for a UI screenshot capture result. The success wording is a
@@ -246,7 +449,7 @@ fn runtime_event_from_message(
         WorkerDomain::Voip => voip_event_from_message(message_type, payload),
         WorkerDomain::Network => network_event_from_message(message_type, payload),
         WorkerDomain::Power => power_event_from_message(message_type, payload),
-        WorkerDomain::Voice => voice_event_from_message(message_type, payload),
+        WorkerDomain::Voice => voice_event_from_message(message_type, None, payload),
     }
 }
 
@@ -303,6 +506,12 @@ fn network_event_from_message(message_type: &str, payload: Value) -> RuntimeEven
             domain: WorkerDomain::Network,
         },
         "network.snapshot" | "network.health" => RuntimeEvent::NetworkSnapshot(payload),
+        "wifi_state" => RuntimeEvent::WifiState(payload),
+        "wifi_change_candidate" => RuntimeEvent::WifiChangeCandidate(payload),
+        "wifi_provisioning_state" => RuntimeEvent::WifiProvisioningState(payload),
+        "bluetooth_state" => RuntimeEvent::BluetoothState(payload),
+        "audio_state" => RuntimeEvent::AudioState(payload),
+        "audio_route_local" => RuntimeEvent::AudioRouteLocal(payload),
         "network.error" => RuntimeEvent::WorkerError {
             domain: WorkerDomain::Network,
             message: worker_error_message(message_type, &payload),
@@ -325,7 +534,11 @@ fn power_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent 
     }
 }
 
-fn voice_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent {
+fn voice_event_from_message(
+    message_type: &str,
+    request_id: Option<String>,
+    payload: Value,
+) -> RuntimeEvent {
     match message_type {
         "voice.ready" => RuntimeEvent::WorkerReady {
             domain: WorkerDomain::Voice,
@@ -349,6 +562,10 @@ fn voice_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent 
         "voice.transcribe.result" | "voice.transcript" => RuntimeEvent::VoiceTranscript(payload),
         "voice.ask.result" => RuntimeEvent::VoiceAskResult(payload),
         "voice.speak.result" => RuntimeEvent::VoiceSpeakResult(payload),
+        "voice.focus_prompt.result" => RuntimeEvent::VoiceFocusPromptResult {
+            request_id,
+            payload,
+        },
         "voice.error" => RuntimeEvent::WorkerError {
             domain: WorkerDomain::Voice,
             message: worker_error_message(message_type, &payload),
@@ -357,14 +574,140 @@ fn voice_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent 
     }
 }
 
+fn commands_for_ui_focus_changed(
+    state: &RuntimeState,
+    changed: &UiFocusChanged,
+) -> Vec<RuntimeCommand> {
+    if !state.settings.speak_names
+        || changed.request_id.trim().is_empty()
+        || changed.label.trim().is_empty()
+    {
+        return Vec::new();
+    }
+    let mut envelope = WorkerEnvelope::command(
+        "voice.focus_prompt",
+        Some(changed.request_id.clone()),
+        state.voice.speak_payload(&changed.label),
+    );
+    envelope.deadline_ms = state.voice.speech_settings.request_timeout_ms;
+    vec![
+        worker_command(
+            WorkerDomain::Voip,
+            "voip.stop_focus_prompt_playback",
+            empty_payload(),
+        ),
+        RuntimeCommand::WorkerCommand {
+            domain: WorkerDomain::Voice,
+            envelope,
+        },
+        RuntimeCommand::AppendAppLog {
+            line: format!(
+                "UI focus prompt request_id={} label={:?}",
+                changed.request_id, changed.label
+            ),
+        },
+    ]
+}
+
+fn cancel_focus_prompt_commands() -> Vec<RuntimeCommand> {
+    vec![
+        worker_command(
+            WorkerDomain::Voice,
+            "voice.cancel_focus_prompt",
+            empty_payload(),
+        ),
+        worker_command(
+            WorkerDomain::Voip,
+            "voip.stop_focus_prompt_playback",
+            empty_payload(),
+        ),
+        RuntimeCommand::AppendAppLog {
+            line: "UI focus prompt cleared".to_string(),
+        },
+    ]
+}
+
 fn commands_for_ui_intent(state: &RuntimeState, intent: &UiIntent) -> Vec<RuntimeCommand> {
     match intent {
         UiIntent::Music(intent) => commands_for_music_intent(state, intent),
         UiIntent::Call(intent) => commands_for_call_intent(state, intent),
         UiIntent::Voice(intent) => commands_for_voice_intent(state, intent),
         UiIntent::Power(intent) => commands_for_power_intent(intent),
+        UiIntent::Settings(intent) => commands_for_settings_intent(state, intent),
         UiIntent::Navigation(_) => Vec::new(),
+        UiIntent::System(intent) => commands_for_system_intent(state, *intent),
         UiIntent::Runtime(RuntimeIntent::Shutdown) => vec![RuntimeCommand::Shutdown],
+    }
+}
+
+fn commands_for_system_intent(state: &RuntimeState, intent: SystemIntent) -> Vec<RuntimeCommand> {
+    match intent {
+        SystemIntent::RetryOverlay => state
+            .overlay
+            .retry_intent
+            .as_ref()
+            .map(|intent| commands_for_ui_intent(state, intent))
+            .unwrap_or_default(),
+        SystemIntent::DismissOverlay => match state.overlay.pending_domain {
+            Some(WorkerDomain::Media) => vec![worker_command(
+                WorkerDomain::Media,
+                "media.stop",
+                empty_payload(),
+            )],
+            _ => Vec::new(),
+        },
+        SystemIntent::LoadingTimedOut => vec![RuntimeCommand::AppendAppLog {
+            line: format!(
+                "System overlay error code=operation_timeout source={} retry_count={}",
+                state.overlay.source, state.overlay.retry_count
+            ),
+        }],
+        SystemIntent::AnnounceWait => system_speech_command(state, "One moment…"),
+        SystemIntent::AnnounceRecoverableError => {
+            system_speech_command(state, "Oops, something went wrong. Let's try again!")
+        }
+        SystemIntent::AnnounceUnrecoverableError => system_speech_command(
+            state,
+            "That's not working right now. Ask a grown-up to help!",
+        ),
+        SystemIntent::AnnounceRetry => system_speech_command(state, "Okay — trying again!"),
+    }
+}
+
+fn system_speech_command(state: &RuntimeState, line: &str) -> Vec<RuntimeCommand> {
+    let mut envelope =
+        WorkerEnvelope::command("voice.speak", None, state.voice.speak_payload(line));
+    envelope.deadline_ms = state.voice.speech_settings.request_timeout_ms;
+    vec![RuntimeCommand::WorkerCommand {
+        domain: WorkerDomain::Voice,
+        envelope,
+    }]
+}
+
+fn commands_for_settings_intent(
+    _state: &RuntimeState,
+    intent: &yoyopod_protocol::ui::SettingsIntent,
+) -> Vec<RuntimeCommand> {
+    use yoyopod_protocol::ui::SettingsIntent;
+    match intent {
+        SettingsIntent::VolumeStep => vec![worker_command(
+            WorkerDomain::Network,
+            "audio_set_output_level",
+            json!({"cycle": true}),
+        )],
+        SettingsIntent::WifiSetupStart => vec![worker_command(
+            WorkerDomain::Network,
+            "wifi_provisioning_start",
+            empty_payload(),
+        )],
+        SettingsIntent::WifiSetupStop => vec![worker_command(
+            WorkerDomain::Network,
+            "wifi_provisioning_stop",
+            empty_payload(),
+        )],
+        SettingsIntent::CompanionSet(_)
+        | SettingsIntent::ThemeSet(_)
+        | SettingsIntent::SpeakNamesToggle => Vec::new(),
     }
 }
 
@@ -406,6 +749,21 @@ fn commands_for_music_intent(state: &RuntimeState, intent: &MusicIntent) -> Vec<
                 )]
             })
             .unwrap_or_default(),
+        MusicIntent::PlayPlaylistTrack(action) => {
+            if action.playlist_path.trim().is_empty() {
+                Vec::new()
+            } else {
+                vec![worker_command(
+                    WorkerDomain::Media,
+                    "media.play_playlist_track",
+                    json!({
+                        "path": action.playlist_path,
+                        "track_uri": action.track_uri,
+                        "track_index": action.track_index,
+                    }),
+                )]
+            }
+        }
         MusicIntent::PlayRecentTrack(action) => list_item_track_uri(action)
             .map(|track_uri| {
                 vec![worker_command(
@@ -456,23 +814,28 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
     match intent {
         VoiceIntent::AskStart => {
             let file_path = state.voice.ask_recording_file_path();
-            vec![worker_command(
+            let mut commands = if state.voice.playback_active
+                || state.voice.playback_paused
+                || matches!(state.voice.phase.as_str(), "thinking" | "reply" | "answering")
+            {
+                cancel_active_ask_commands()
+            } else {
+                Vec::new()
+            };
+            commands.push(worker_command(
                 WorkerDomain::Voip,
                 "voip.start_voice_note_recording",
                 json!({ "file_path": file_path }),
-            )]
+            ));
+            commands
         }
         VoiceIntent::AskStop => vec![worker_command(
             WorkerDomain::Voip,
             "voip.stop_voice_note_recording",
             empty_payload(),
         )],
-        VoiceIntent::AskCancel => vec![worker_command(
-            WorkerDomain::Voip,
-            "voip.cancel_voice_note_recording",
-            empty_payload(),
-        )],
-        VoiceIntent::CaptureStart(_) => {
+        VoiceIntent::AskCancel => cancel_active_ask_commands(),
+        VoiceIntent::CaptureStart(_) | VoiceIntent::CaptureStartAndSend(_) => {
             let file_path = state.voice.recording_file_path();
             vec![worker_command(
                 WorkerDomain::Voip,
@@ -531,7 +894,10 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
                 vec![worker_command(
                     WorkerDomain::Voip,
                     "voip.play_voice_note",
-                    json!({ "file_path": file_path }),
+                    json!({
+                        "file_path": file_path,
+                        "duration_ms": action.as_ref().map(|value| value.duration_ms).unwrap_or_default(),
+                    }),
                 )]
             })
             .unwrap_or_default(),
@@ -542,7 +908,10 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             let mut commands = vec![worker_command(
                 WorkerDomain::Voip,
                 "voip.play_voice_note",
-                json!({ "file_path": file_path }),
+                json!({
+                    "file_path": file_path,
+                    "duration_ms": action.duration_ms.max(0),
+                }),
             )];
             if let Some(uri) = voice_file_uri(action) {
                 commands.push(worker_command(
@@ -553,11 +922,30 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             }
             commands
         }
+        VoiceIntent::PausePlayback => vec![worker_command(
+            WorkerDomain::Voip,
+            "voip.pause_voice_note_playback",
+            empty_payload(),
+        )],
+        VoiceIntent::ResumePlayback => vec![worker_command(
+            WorkerDomain::Voip,
+            "voip.resume_voice_note_playback",
+            empty_payload(),
+        )],
         VoiceIntent::StopPlayback => vec![worker_command(
             WorkerDomain::Voip,
             "voip.stop_voice_note_playback",
             empty_payload(),
         )],
+        VoiceIntent::Delete(action) => non_empty_string(&action.message_id)
+            .map(|message_id| {
+                vec![worker_command(
+                    WorkerDomain::Voip,
+                    "voip.delete_voice_note",
+                    json!({ "message_id": message_id }),
+                )]
+            })
+            .unwrap_or_default(),
         VoiceIntent::MarkSeen(action) => contact_uri(action)
             .map(|uri| {
                 vec![worker_command(
@@ -569,6 +957,22 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             .unwrap_or_default(),
         VoiceIntent::Discard => Vec::new(),
     }
+}
+
+fn cancel_active_ask_commands() -> Vec<RuntimeCommand> {
+    vec![
+        worker_command(WorkerDomain::Voice, "voice.cancel", empty_payload()),
+        worker_command(
+            WorkerDomain::Voip,
+            "voip.cancel_voice_note_recording",
+            empty_payload(),
+        ),
+        worker_command(
+            WorkerDomain::Voip,
+            "voip.stop_voice_note_playback",
+            empty_payload(),
+        ),
+    ]
 }
 
 fn commands_for_voice_transcript(state: &RuntimeState, payload: &Value) -> Vec<RuntimeCommand> {
@@ -656,6 +1060,29 @@ fn commands_for_voice_speak_result(payload: &Value) -> Vec<RuntimeCommand> {
         .unwrap_or_default()
 }
 
+fn commands_for_voice_focus_prompt_result(
+    state: &RuntimeState,
+    request_id: Option<&str>,
+    payload: &Value,
+) -> Vec<RuntimeCommand> {
+    if request_id.is_none() || state.focus_prompt_request_id.as_deref() != request_id {
+        return Vec::new();
+    }
+    let Some(file_path) = string_field(payload, "audio_path") else {
+        return Vec::new();
+    };
+    vec![
+        worker_command(
+            WorkerDomain::Voip,
+            "voip.play_focus_prompt",
+            json!({ "file_path": file_path }),
+        ),
+        RuntimeCommand::AppendAppLog {
+            line: "UI focus prompt audio ready".to_string(),
+        },
+    ]
+}
+
 fn commands_for_voice_command(
     state: &RuntimeState,
     intent: VoiceCommandIntent,
@@ -678,14 +1105,14 @@ fn commands_for_voice_command(
             })
             .unwrap_or_default(),
         VoiceCommandIntent::VolumeUp => vec![worker_command(
-            WorkerDomain::Media,
-            "media.set_volume",
-            json!({"volume": adjusted_volume(state, 10)}),
+            WorkerDomain::Network,
+            "audio_set_output_level",
+            json!({"level": adjusted_volume(state, 10)}),
         )],
         VoiceCommandIntent::VolumeDown => vec![worker_command(
-            WorkerDomain::Media,
-            "media.set_volume",
-            json!({"volume": adjusted_volume(state, -10)}),
+            WorkerDomain::Network,
+            "audio_set_output_level",
+            json!({"level": adjusted_volume(state, -10)}),
         )],
         VoiceCommandIntent::ReadScreen
         | VoiceCommandIntent::MuteMic
@@ -768,6 +1195,91 @@ fn commands_for_cloud_command(command: &Value) -> Vec<RuntimeCommand> {
         "pause" => remote_media_control("media.pause", command_id, "pause"),
         "resume" => remote_media_control("media.resume", command_id, "resume"),
         "stop" => remote_media_control("media.stop_playback", command_id, "stop"),
+        "wifi_confirm_change" => vec![worker_command(
+            WorkerDomain::Network,
+            "wifi_confirm_change",
+            command
+                .get("payload")
+                .cloned()
+                .filter(Value::is_object)
+                .unwrap_or_else(empty_payload),
+        )],
+        "wifi_refresh"
+        | "wifi_scan"
+        | "wifi_add_profile"
+        | "wifi_update_profile"
+        | "wifi_forget_profile"
+        | "wifi_activate_profile"
+        | "wifi_update_ipv4" => command_id
+            .map(|command_id| {
+                let timeout_ms = match normalized(&command_type).as_str() {
+                    "wifi_scan" => 15_000,
+                    "wifi_activate_profile" | "wifi_update_ipv4" => 105_000,
+                    _ => 10_000,
+                };
+                vec![RuntimeCommand::CorrelatedWorkerCommand {
+                    domain: WorkerDomain::Network,
+                    envelope: WorkerEnvelope::command(
+                        normalized(&command_type),
+                        Some(command_id.clone()),
+                        command
+                            .get("payload")
+                            .cloned()
+                            .filter(Value::is_object)
+                            .unwrap_or_else(empty_payload),
+                    ),
+                    command_id,
+                    command_type: normalized(&command_type),
+                    timeout_ms,
+                }]
+            })
+            .unwrap_or_default(),
+        "bluetooth_refresh"
+        | "bluetooth_set_power"
+        | "bluetooth_set_radio"
+        | "bluetooth_scan"
+        | "bluetooth_scan_start"
+        | "bluetooth_stop_scan"
+        | "bluetooth_scan_stop"
+        | "bluetooth_pair"
+        | "bluetooth_connect"
+        | "bluetooth_disconnect"
+        | "bluetooth_update_accessory"
+        | "bluetooth_forget"
+        | "audio_apply_settings"
+        | "audio_test_output"
+        | "audio_test_input" => command_id
+            .map(|command_id| {
+                let command_type = normalized(&command_type);
+                let network_command_type = match command_type.as_str() {
+                    "bluetooth_set_power" => "bluetooth_set_radio",
+                    "bluetooth_scan" => "bluetooth_scan_start",
+                    "bluetooth_stop_scan" => "bluetooth_scan_stop",
+                    other => other,
+                };
+                let timeout_ms = match command_type.as_str() {
+                    "bluetooth_pair" => 90_000,
+                    "bluetooth_connect" => 30_000,
+                    "audio_test_input" => 20_000,
+                    _ => 15_000,
+                };
+                vec![RuntimeCommand::CorrelatedWorkerCommand {
+                    domain: WorkerDomain::Network,
+                    envelope: WorkerEnvelope::command(
+                        network_command_type,
+                        Some(command_id.clone()),
+                        command
+                            .get("payload")
+                            .cloned()
+                            .filter(Value::is_object)
+                            .unwrap_or_else(empty_payload),
+                    ),
+                    command_id,
+                    command_type,
+                    timeout_ms,
+                }]
+            })
+            .unwrap_or_default(),
         "fetch_config" => Vec::new(),
         "play_track" | "store_media" => command_id
             .map(|command_id| {
@@ -817,31 +1329,16 @@ fn remote_media_control(
         }];
     };
 
-    vec![RuntimeCommand::WorkerCommandWithAck {
+    vec![RuntimeCommand::CorrelatedWorkerCommand {
         domain: WorkerDomain::Media,
-        envelope: media_command,
-        success_ack: WorkerEnvelope::command(
-            "cloud.ack",
-            None,
-            json!({
-                "command_id": command_id,
-                "ok": true,
-                "payload": {"command": command_type}
-            }),
+        envelope: WorkerEnvelope::command(
+            media_command.message_type,
+            Some(command_id.clone()),
+            media_command.payload,
         ),
-        failure_ack: WorkerEnvelope::command(
-            "cloud.ack",
-            None,
-            json!({
-                "command_id": command_id,
-                "ok": false,
-                "reason": "media_dispatch_failed",
-                "payload": {
-                    "command": command_type,
-                    "media_command": media_message_type
-                }
-            }),
-        ),
+        command_id,
+        command_type: command_type.to_string(),
+        timeout_ms: 8_000,
     }]
 }
 
@@ -877,6 +1374,9 @@ fn commands_for_voip_snapshot(state: &RuntimeState, snapshot: &Value) -> Vec<Run
             "ts": current_epoch_seconds(),
         }),
     ));
+    if let Some(command) = auto_send_voice_note_command(state, snapshot) {
+        commands.push(command);
+    }
     if !is_music_playing(state) {
         if let Some(command) = ask_capture_transcribe_command(state, snapshot) {
             commands.push(command);
@@ -901,6 +1401,41 @@ fn commands_for_voip_snapshot(state: &RuntimeState, snapshot: &Value) -> Vec<Run
     }
 
     commands
+}
+
+fn auto_send_voice_note_command(state: &RuntimeState, snapshot: &Value) -> Option<RuntimeCommand> {
+    if !state.voice.auto_send_after_capture {
+        return None;
+    }
+    let recipient = state.voice.pending_voice_recipient.as_ref()?;
+    let uri = voice_recipient_uri(recipient)?;
+    let voice_note = snapshot.get("voice_note")?;
+    let raw_state = string_field(voice_note, "state").unwrap_or_default();
+    if !matches!(normalized(&raw_state).as_str(), "recorded" | "review") {
+        return None;
+    }
+    let file_path =
+        string_field(voice_note, "file_path").filter(|value| !value.trim().is_empty())?;
+    let duration_ms = voice_note
+        .get("duration_ms")
+        .and_then(Value::as_i64)
+        .and_then(|value| i32::try_from(value).ok())
+        .unwrap_or_default()
+        .max(0);
+    let mime_type = string_field(voice_note, "mime_type")
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "audio/wav".to_string());
+    Some(worker_command(
+        WorkerDomain::Voip,
+        "voip.send_voice_note",
+        json!({
+            "uri": uri,
+            "file_path": file_path,
+            "duration_ms": duration_ms,
+            "mime_type": mime_type,
+            "client_id": new_voice_note_client_id(),
+        }),
+    ))
 }
 
 fn ask_capture_transcribe_command(
@@ -1206,7 +1741,88 @@ fn empty_payload() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use yoyopod_protocol::ui::{ListItemAction, MusicIntent, UiEvent};
+    use yoyopod_protocol::ui::{
+        ListItemAction, MusicIntent, PlaylistTrackAction, SettingsIntent, SystemIntent, UiEvent,
+        UiFocusChanged,
+    };
+
+    #[test]
+    fn focus_change_routes_through_cancellable_prompt_pipeline() {
+        let changed = UiFocusChanged::new("ui-focus-3", "Mama");
+        let envelope = UiEvent::FocusChanged(changed.clone()).into_envelope();
+        let event = runtime_event_from_worker(WorkerDomain::Ui, envelope).unwrap();
+        assert_eq!(event, RuntimeEvent::UiFocusChanged(changed));
+
+        let commands = commands_for_event(&RuntimeState::default(), &event);
+        assert_eq!(commands.len(), 3);
+        assert!(matches!(
+            &commands[0],
+            RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voip, envelope }
+                if envelope.message_type == "voip.stop_focus_prompt_playback"
+        ));
+        assert!(matches!(
+            &commands[1],
+            RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voice, envelope }
+                if envelope.message_type == "voice.focus_prompt"
+                    && envelope.request_id.as_deref() == Some("ui-focus-3")
+                    && envelope.payload["text"] == "Mama"
+        ));
+        assert!(matches!(
+            &commands[2],
+            RuntimeCommand::AppendAppLog { line }
+                if line.contains("request_id=ui-focus-3") && line.contains("Mama")
+        ));
+    }
+
+    #[test]
+    fn focus_prompt_audio_uses_its_isolated_voip_channel() {
+        let event = runtime_event_from_worker(
+            WorkerDomain::Voice,
+            WorkerEnvelope::result(
+                "voice.focus_prompt.result",
+                Some("ui-focus-3".to_string()),
+                json!({"audio_path": "/tmp/focus.wav"}),
+            ),
+        )
+        .unwrap();
+        let mut state = RuntimeState::default();
+        state.focus_prompt_request_id = Some("ui-focus-3".to_string());
+        let commands = commands_for_event(&state, &event);
+
+        assert!(matches!(
+            &commands[0],
+            RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voip, envelope }
+                if envelope.message_type == "voip.play_focus_prompt"
+                    && envelope.payload["file_path"] == "/tmp/focus.wav"
+        ));
+
+        state.focus_prompt_request_id = Some("ui-focus-4".to_string());
+        assert!(commands_for_event(&state, &event).is_empty());
+    }
+
+    #[test]
+    fn focus_clear_cancels_only_focus_prompt_work_and_playback() {
+        let event =
+            runtime_event_from_worker(WorkerDomain::Ui, UiEvent::FocusCleared.into_envelope())
+                .unwrap();
+        let commands = commands_for_event(&RuntimeState::default(), &event);
+        let message_types = commands
+            .iter()
+            .filter_map(|command| match command {
+                RuntimeCommand::WorkerCommand { envelope, .. } => {
+                    Some(envelope.message_type.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            message_types,
+            vec![
+                "voice.cancel_focus_prompt",
+                "voip.stop_focus_prompt_playback"
+            ]
+        );
+    }
 
     #[test]
     fn typed_music_intent_routes_to_media_command() {
@@ -1228,6 +1844,178 @@ mod tests {
         assert_eq!(*domain, WorkerDomain::Media);
         assert_eq!(envelope.message_type, "media.load_playlist");
         assert_eq!(envelope.payload["path"], "favorites.m3u");
+    }
+
+    #[test]
+    fn asynchronous_intent_drives_loading_failure_retry_and_resolution() {
+        let intent = UiIntent::Music(MusicIntent::LoadPlaylist(ListItemAction {
+            id: "favorites.m3u".to_string(),
+            title: "Favorites".to_string(),
+            ..ListItemAction::default()
+        }));
+        let mut state = RuntimeState::default();
+        RuntimeEvent::UiIntent(intent.clone()).apply(&mut state);
+        assert!(state.overlay.loading);
+        assert_eq!(state.overlay.source, "music.load_playlist");
+
+        let failure = RuntimeEvent::WorkerError {
+            domain: WorkerDomain::Media,
+            message: "raw decoder internals".to_string(),
+        };
+        let diagnostics = commands_for_event(&state, &failure);
+        assert!(matches!(
+            diagnostics.as_slice(),
+            [RuntimeCommand::AppendAppLog { line }]
+                if line.contains("code=worker_media_error")
+                    && line.contains("source=music.load_playlist")
+                    && !line.contains("decoder")
+        ));
+        failure.apply(&mut state);
+        assert!(!state.overlay.loading);
+        assert!(state.overlay.retryable);
+        assert_eq!(state.overlay.error, "worker_media_error");
+
+        let retry = RuntimeEvent::UiIntent(UiIntent::System(SystemIntent::RetryOverlay));
+        let retry_commands = commands_for_event(&state, &retry);
+        assert!(matches!(
+            retry_commands.as_slice(),
+            [RuntimeCommand::WorkerCommand { domain: WorkerDomain::Media, envelope }]
+                if envelope.message_type == "media.load_playlist"
+        ));
+        retry.apply(&mut state);
+        assert!(state.overlay.loading);
+        assert_eq!(state.overlay.retry_count, 1);
+
+        RuntimeEvent::MediaSnapshot(json!({"connected": true})).apply(&mut state);
+        assert_eq!(state.overlay, crate::state::OverlayRuntimeState::default());
+    }
+
+    #[test]
+    fn setup_volume_step_wraps_and_routes_to_managed_audio() {
+        let mut state = RuntimeState::default();
+        state.media.volume = 100;
+        let event = RuntimeEvent::UiIntent(UiIntent::Settings(SettingsIntent::VolumeStep));
+        let commands = commands_for_event(&state, &event);
+
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected managed audio command");
+        };
+        assert_eq!(*domain, WorkerDomain::Network);
+        assert_eq!(envelope.message_type, "audio_set_output_level");
+        assert_eq!(envelope.payload["cycle"], true);
+
+        event.apply(&mut state);
+        assert_eq!(state.media.volume, 100);
+        assert_eq!(state.ui_snapshot().settings.volume_level, 10);
+    }
+
+    #[test]
+    fn voice_volume_routes_to_managed_audio() {
+        let mut state = RuntimeState::default();
+        state.media.volume = 90;
+        let commands = commands_for_voice_command(&state, VoiceCommandIntent::VolumeUp, "");
+
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected managed audio command");
+        };
+        assert_eq!(*domain, WorkerDomain::Network);
+        assert_eq!(envelope.message_type, "audio_set_output_level");
+        assert_eq!(envelope.payload["level"], 100);
+    }
+
+    #[test]
+    fn ask_cancel_stops_recording_speech_work_and_playback() {
+        let commands = commands_for_voice_intent(&RuntimeState::default(), &VoiceIntent::AskCancel);
+        let message_types = commands
+            .iter()
+            .filter_map(|command| match command {
+                RuntimeCommand::WorkerCommand { envelope, .. } => {
+                    Some(envelope.message_type.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            message_types,
+            vec![
+                "voice.cancel",
+                "voip.cancel_voice_note_recording",
+                "voip.stop_voice_note_playback"
+            ]
+        );
+    }
+
+    #[test]
+    fn ask_barge_in_cancels_the_old_answer_before_recording() {
+        let mut state = RuntimeState::default();
+        state.voice.phase = "reply".to_string();
+        state.voice.playback_active = true;
+        let commands = commands_for_voice_intent(&state, &VoiceIntent::AskStart);
+        let message_types = commands
+            .iter()
+            .filter_map(|command| match command {
+                RuntimeCommand::WorkerCommand { envelope, .. } => {
+                    Some(envelope.message_type.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            message_types.last(),
+            Some(&"voip.start_voice_note_recording")
+        );
+        assert!(message_types.contains(&"voice.cancel"));
+        assert!(message_types.contains(&"voip.stop_voice_note_playback"));
+    }
+
+    #[test]
+    fn voice_failure_is_the_explicit_ask_offline_signal_and_is_safe_to_log() {
+        let mut state = RuntimeState::default();
+        state.network.connected = false;
+        let failure = RuntimeEvent::WorkerError {
+            domain: WorkerDomain::Voice,
+            message: "provider rejected secret request details".to_string(),
+        };
+
+        let diagnostics = commands_for_event(&state, &failure);
+        assert_eq!(
+            diagnostics,
+            vec![RuntimeCommand::AppendAppLog {
+                line: "Ask pipeline stage=failed".to_string(),
+            }]
+        );
+        assert!(!format!("{diagnostics:?}").contains("secret"));
+
+        failure.apply(&mut state);
+        assert!(state.voice.ask_unavailable);
+        assert!(state.ui_snapshot().voice.ask_unavailable);
+        assert_eq!(state.voice.phase, "offline");
+
+        RuntimeEvent::UiIntent(UiIntent::Voice(VoiceIntent::AskStart)).apply(&mut state);
+        assert!(!state.voice.ask_unavailable);
+        assert_eq!(state.voice.phase, "listening");
+    }
+
+    #[test]
+    fn voice_pipeline_results_emit_stage_diagnostics_without_user_content() {
+        let state = RuntimeState::default();
+        let event = RuntimeEvent::VoiceAskResult(json!({"answer": "private answer"}));
+
+        let diagnostics = commands_for_event(&state, &event);
+
+        assert!(diagnostics.iter().any(|command| matches!(
+            command,
+            RuntimeCommand::AppendAppLog { line } if line == "Ask pipeline stage=answer_received"
+        )));
+        let log_text = diagnostics
+            .iter()
+            .filter_map(|command| match command {
+                RuntimeCommand::AppendAppLog { line } => Some(line.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!log_text.contains("private answer"));
     }
 
     #[test]
@@ -1255,6 +2043,48 @@ mod tests {
         let event = runtime_event_from_worker(WorkerDomain::Ui, envelope).unwrap();
 
         assert_eq!(event, RuntimeEvent::UiInput(input));
+    }
+
+    #[test]
+    fn local_ui_overlays_do_not_replace_the_runtime_app_route() {
+        let mut state = RuntimeState::default();
+        state.current_screen = UiScreen::Talk;
+
+        RuntimeEvent::UiScreenChanged {
+            screen: UiScreen::Error,
+        }
+        .apply(&mut state);
+        RuntimeEvent::UiScreenChanged {
+            screen: UiScreen::Loading,
+        }
+        .apply(&mut state);
+        assert_eq!(state.current_screen, UiScreen::Talk);
+
+        RuntimeEvent::UiScreenChanged {
+            screen: UiScreen::Hub,
+        }
+        .apply(&mut state);
+        assert_eq!(state.current_screen, UiScreen::Hub);
+    }
+
+    #[test]
+    fn playlist_track_intent_preserves_playlist_and_focus_index() {
+        let intent = UiIntent::Music(MusicIntent::PlayPlaylistTrack(PlaylistTrackAction {
+            playlist_path: "/music/Open Classics.m3u".to_string(),
+            track_uri: "/music/02 - March.mp3".to_string(),
+            track_index: 1,
+        }));
+        let commands = commands_for_ui_intent(&RuntimeState::default(), &intent);
+
+        assert_eq!(commands.len(), 1);
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected worker command");
+        };
+        assert_eq!(*domain, WorkerDomain::Media);
+        assert_eq!(envelope.message_type, "media.play_playlist_track");
+        assert_eq!(envelope.payload["path"], "/music/Open Classics.m3u");
+        assert_eq!(envelope.payload["track_uri"], "/music/02 - March.mp3");
+        assert_eq!(envelope.payload["track_index"], 1);
     }
 
     #[test]
@@ -1287,5 +2117,289 @@ mod tests {
         };
         assert_eq!(domain, WorkerDomain::Ui);
         assert!(message.contains("unknown UI event type ui.nope"));
+    }
+
+    #[test]
+    fn held_recording_snapshot_auto_sends_once_to_the_captured_recipient() {
+        let mut state = RuntimeState::default();
+        state.apply_ui_intent(&UiIntent::Voice(VoiceIntent::CaptureStartAndSend(
+            VoiceRecipientAction {
+                id: "sip:mama@example.test".to_string(),
+                recipient_address: "sip:mama@example.test".to_string(),
+                recipient_name: "Mama".to_string(),
+                file_path: String::new(),
+            },
+        )));
+        let snapshot = json!({
+            "call_state": "idle",
+            "voice_note": {
+                "state": "recorded",
+                "file_path": "/tmp/mama-note.wav",
+                "duration_ms": 2_340,
+                "mime_type": "audio/wav",
+            }
+        });
+        let event = RuntimeEvent::VoipSnapshot(snapshot);
+
+        let commands = commands_for_event(&state, &event);
+        let sends = commands
+            .iter()
+            .filter_map(|command| match command {
+                RuntimeCommand::WorkerCommand { domain, envelope }
+                    if *domain == WorkerDomain::Voip
+                        && envelope.message_type == "voip.send_voice_note" =>
+                {
+                    Some(envelope)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(sends.len(), 1);
+        assert_eq!(sends[0].payload["uri"], "sip:mama@example.test");
+        assert_eq!(sends[0].payload["file_path"], "/tmp/mama-note.wav");
+        assert_eq!(sends[0].payload["duration_ms"], 2_340);
+
+        event.apply(&mut state);
+        assert!(!state.voice.auto_send_after_capture);
+        assert!(state.voice.pending_voice_recipient.is_none());
+        assert!(!commands_for_event(&state, &event).iter().any(|command| {
+            matches!(
+                command,
+                RuntimeCommand::WorkerCommand { domain, envelope }
+                    if *domain == WorkerDomain::Voip
+                        && envelope.message_type == "voip.send_voice_note"
+            )
+        }));
+    }
+
+    #[test]
+    fn live_liblinphone_metrics_reach_the_shared_ui_snapshot() {
+        let mut state = RuntimeState::default();
+        RuntimeEvent::VoipSnapshot(json!({
+            "voice_note": {
+                "state": "recording",
+                "file_path": "/tmp/live.wav",
+                "duration_ms": 7_420,
+                "capture_level_permille": 618,
+                "mime_type": "audio/wav",
+            }
+        }))
+        .apply(&mut state);
+
+        let snapshot = state.ui_snapshot();
+        assert!(snapshot.voice.ptt_active);
+        assert_eq!(snapshot.voice.recording_duration_ms, 7_420);
+        assert_eq!(snapshot.voice.capture_level_permille, 618);
+    }
+
+    #[test]
+    fn wifi_cloud_commands_are_correlated_to_the_network_worker() {
+        let commands = commands_for_cloud_command(&json!({
+            "commandId": "command-123",
+            "command": "wifi_add_profile",
+            "payload": {
+                "ssid": "Family WiFi",
+                "security": "wpa2_personal",
+                "password": "never-log-this",
+                "hidden": false
+            }
+        }));
+
+        assert_eq!(commands.len(), 1);
+        let RuntimeCommand::CorrelatedWorkerCommand {
+            domain,
+            envelope,
+            command_id,
+            command_type,
+            ..
+        } = &commands[0]
+        else {
+            panic!("expected correlated Wi-Fi worker command");
+        };
+        assert_eq!(*domain, WorkerDomain::Network);
+        assert_eq!(command_id, "command-123");
+        assert_eq!(command_type, "wifi_add_profile");
+        assert_eq!(envelope.message_type, "wifi_add_profile");
+        assert_eq!(envelope.payload["password"], "never-log-this");
+    }
+
+    #[test]
+    fn connectivity_changing_wifi_commands_use_the_checkpoint_timeout() {
+        for command_type in ["wifi_activate_profile", "wifi_update_ipv4"] {
+            let commands = commands_for_cloud_command(&json!({
+                "command_id": "command-456",
+                "type": command_type,
+                "payload": {"profile_id": "profile-123"}
+            }));
+            let RuntimeCommand::CorrelatedWorkerCommand {
+                domain,
+                command_id,
+                timeout_ms,
+                ..
+            } = &commands[0]
+            else {
+                panic!("expected correlated Wi-Fi connectivity command");
+            };
+            assert_eq!(*domain, WorkerDomain::Network);
+            assert_eq!(command_id, "command-456");
+            assert_eq!(*timeout_ms, 105_000);
+        }
+    }
+
+    #[test]
+    fn wifi_confirmation_is_internal_and_not_correlated_as_a_new_cloud_command() {
+        let commands = commands_for_cloud_command(&json!({
+            "command_id": "confirmation-123",
+            "type": "wifi_confirm_change",
+            "payload": {"activation_command_id": "activation-456"}
+        }));
+
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected direct network confirmation command");
+        };
+        assert_eq!(*domain, WorkerDomain::Network);
+        assert_eq!(envelope.message_type, "wifi_confirm_change");
+        assert_eq!(envelope.request_id, None);
+        assert_eq!(envelope.payload["activation_command_id"], "activation-456");
+    }
+
+    #[test]
+    fn wifi_state_is_forwarded_as_a_sanitized_device_event() {
+        let commands = commands_for_event(
+            &RuntimeState::default(),
+            &RuntimeEvent::WifiState(json!({
+                "schema_version": 1,
+                "status": "ready",
+                "saved_profiles": [],
+                "nearby_networks": []
+            })),
+        );
+
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected cloud publish command");
+        };
+        assert_eq!(*domain, WorkerDomain::Cloud);
+        assert_eq!(envelope.message_type, "cloud.publish_event");
+        assert_eq!(envelope.payload["event_type"], "wifi_state");
+    }
+
+    #[test]
+    fn wifi_change_candidate_is_forwarded_for_cloud_round_trip_confirmation() {
+        let commands = commands_for_event(
+            &RuntimeState::default(),
+            &RuntimeEvent::WifiChangeCandidate(json!({
+                "schema_version": 1,
+                "command_id": "command-123",
+                "profile_id": "profile-456",
+                "operation": "activate_profile",
+                "attempt": 1,
+                "event_id": "command-123:1"
+            })),
+        );
+
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected candidate cloud publish command");
+        };
+        assert_eq!(*domain, WorkerDomain::Cloud);
+        assert_eq!(envelope.message_type, "cloud.publish_event");
+        assert_eq!(envelope.payload["event_type"], "wifi_change_candidate");
+        assert_eq!(envelope.payload["payload"]["command_id"], "command-123");
+    }
+
+    #[test]
+    fn bluetooth_and_audio_state_are_forwarded_without_local_route_details() {
+        for (event, expected_type) in [
+            (
+                RuntimeEvent::BluetoothState(json!({
+                    "schema_version": 1,
+                    "status": "ready",
+                    "accessories": []
+                })),
+                "bluetooth_state",
+            ),
+            (
+                RuntimeEvent::AudioState(json!({
+                    "schema_version": 1,
+                    "status": "ready",
+                    "applied_revision": 2
+                })),
+                "audio_state",
+            ),
+        ] {
+            let commands = commands_for_event(&RuntimeState::default(), &event);
+            let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+                panic!("expected cloud publish command");
+            };
+            assert_eq!(*domain, WorkerDomain::Cloud);
+            assert_eq!(envelope.message_type, "cloud.publish_event");
+            assert_eq!(envelope.payload["event_type"], expected_type);
+        }
+
+        let route_commands = commands_for_event(
+            &RuntimeState::default(),
+            &RuntimeEvent::AudioRouteLocal(json!({
+                "media_device": "alsa/default",
+                "media_volume": 60,
+                "voip_playback_device": "ALSA: default",
+                "voip_ringer_device": "ALSA: default",
+                "voip_capture_device": "ALSA: default",
+                "voip_media_device": "ALSA: default",
+                "communication_volume": 65,
+                "alert_volume": 58,
+                "microphone_gain": 55
+            })),
+        );
+        assert_eq!(route_commands.len(), 3);
+        assert!(route_commands.iter().all(|command| {
+            matches!(
+                command,
+                RuntimeCommand::WorkerCommand { domain, .. }
+                    if *domain != WorkerDomain::Cloud
+            )
+        }));
+
+        let mut state = RuntimeState::default();
+        RuntimeEvent::AudioRouteLocal(json!({
+            "media_volume": 100
+        }))
+        .apply(&mut state);
+        assert_eq!(state.media.volume, 100);
+    }
+
+    #[test]
+    fn bluetooth_and_audio_cloud_commands_are_correlated_to_network() {
+        for (command_type, network_command_type) in [
+            ("bluetooth_set_power", "bluetooth_set_radio"),
+            ("bluetooth_scan", "bluetooth_scan_start"),
+            ("bluetooth_stop_scan", "bluetooth_scan_stop"),
+            ("bluetooth_pair", "bluetooth_pair"),
+            ("bluetooth_connect", "bluetooth_connect"),
+            ("audio_apply_settings", "audio_apply_settings"),
+            ("audio_test_output", "audio_test_output"),
+            ("audio_test_input", "audio_test_input"),
+        ] {
+            let commands = commands_for_event(
+                &RuntimeState::default(),
+                &RuntimeEvent::CloudCommand(json!({
+                    "command": command_type,
+                    "commandId": "command-123",
+                    "payload": {}
+                })),
+            );
+            let RuntimeCommand::CorrelatedWorkerCommand {
+                domain,
+                envelope,
+                command_id,
+                command_type: correlated_command_type,
+                ..
+            } = &commands[0]
+            else {
+                panic!("expected correlated network command for {command_type}");
+            };
+            assert_eq!(*domain, WorkerDomain::Network);
+            assert_eq!(envelope.message_type, network_command_type);
+            assert_eq!(command_id, "command-123");
+            assert_eq!(correlated_command_type, command_type);
+        }
     }
 }

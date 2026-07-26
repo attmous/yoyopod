@@ -20,6 +20,8 @@ pub(crate) enum WidgetKind {
     Container,
     Label,
     Image,
+    Arc,
+    Qrcode,
 }
 
 #[derive(Debug)]

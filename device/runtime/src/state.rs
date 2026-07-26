@@ -4,7 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 use yoyopod_protocol::ui::{
-    RuntimeSnapshot, RuntimeSnapshotPatch, UiIntent, UiScreen, VoiceIntent,
+    MusicIntent, PowerIntent, RuntimeSnapshot, RuntimeSnapshotPatch, SystemIntent, UiIntent,
+    UiScreen, VoiceIntent, VoiceRecipientAction, WifiSetupRuntimeSnapshot,
 };
 
 use crate::voice::{
@@ -169,8 +170,11 @@ pub struct MediaState {
     pub title: String,
     pub artist: String,
     pub progress_permille: i32,
+    pub position_ms: i64,
+    pub length_ms: i64,
     pub volume: i32,
     pub playlists: Vec<ListItem>,
+    pub playlist_tracks: BTreeMap<String, Vec<ListItem>>,
     pub recent_tracks: Vec<ListItem>,
 }
 
@@ -182,8 +186,11 @@ impl Default for MediaState {
             title: "Nothing Playing".to_string(),
             artist: String::new(),
             progress_permille: 0,
+            position_ms: 0,
+            length_ms: 0,
             volume: 50,
             playlists: Vec::new(),
+            playlist_tracks: BTreeMap::new(),
             recent_tracks: Vec::new(),
         }
     }
@@ -202,6 +209,7 @@ pub struct CallRuntimeState {
     pub history: Vec<ListItem>,
     pub unread_voice_notes_by_contact: BTreeMap<String, usize>,
     pub latest_voice_note_by_contact: BTreeMap<String, VoiceNoteSummary>,
+    pub voice_notes_by_contact: BTreeMap<String, Vec<VoiceNoteSummary>>,
 }
 
 impl Default for CallRuntimeState {
@@ -218,6 +226,7 @@ impl Default for CallRuntimeState {
             history: Vec::new(),
             unread_voice_notes_by_contact: BTreeMap::new(),
             latest_voice_note_by_contact: BTreeMap::new(),
+            voice_notes_by_contact: BTreeMap::new(),
         }
     }
 }
@@ -270,13 +279,18 @@ pub struct VoiceRuntimeState {
     pub phase: String,
     pub headline: String,
     pub body: String,
+    pub ask_unavailable: bool,
     pub status_text: String,
     pub file_path: String,
     pub duration_ms: i32,
+    pub capture_level_permille: i32,
     pub mime_type: String,
     pub message_id: String,
     pub playback_active: bool,
+    pub playback_paused: bool,
     pub playback_file_path: String,
+    pub playback_elapsed_ms: i32,
+    pub playback_duration_ms: i32,
     pub voice_note_store_dir: String,
     pub last_transcript: String,
     pub command_settings: VoiceCommandSettings,
@@ -287,6 +301,8 @@ pub struct VoiceRuntimeState {
     pub pending_ask_question: String,
     pub ask_history: Vec<VoiceAskTurn>,
     pub pending_call_confirmation: Option<VoiceCallConfirmation>,
+    pub pending_voice_recipient: Option<VoiceRecipientAction>,
+    pub auto_send_after_capture: bool,
 }
 
 impl Default for VoiceRuntimeState {
@@ -295,13 +311,18 @@ impl Default for VoiceRuntimeState {
             phase: "idle".to_string(),
             headline: "Ask".to_string(),
             body: "Ask me anything...".to_string(),
+            ask_unavailable: false,
             status_text: String::new(),
             file_path: String::new(),
             duration_ms: 0,
+            capture_level_permille: 0,
             mime_type: "audio/wav".to_string(),
             message_id: String::new(),
             playback_active: false,
+            playback_paused: false,
             playback_file_path: String::new(),
+            playback_elapsed_ms: 0,
+            playback_duration_ms: 0,
             voice_note_store_dir: "data/communication/voice_notes".to_string(),
             last_transcript: String::new(),
             command_settings: VoiceCommandSettings::default(),
@@ -312,6 +333,8 @@ impl Default for VoiceRuntimeState {
             pending_ask_question: String::new(),
             ask_history: Vec::new(),
             pending_call_confirmation: None,
+            pending_voice_recipient: None,
+            auto_send_after_capture: false,
         }
     }
 }
@@ -424,6 +447,24 @@ impl VoiceRuntimeState {
         self.headline = headline.into();
         self.body = body.into();
         self.status_text.clear();
+    }
+
+    fn mark_ask_available(&mut self) {
+        self.ask_unavailable = false;
+    }
+
+    fn mark_ask_unavailable(&mut self) {
+        self.ask_unavailable = true;
+        self.ask_capture_active = false;
+        self.ask_transcribe_requested = false;
+        self.pending_ask_question.clear();
+        self.playback_active = false;
+        self.playback_paused = false;
+        self.set_interaction(
+            "offline",
+            "Ask unavailable",
+            "I can't think right now - try again soon.",
+        );
     }
 }
 
@@ -590,15 +631,34 @@ impl SetupRow {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct OverlayRuntimeState {
+    pub loading: bool,
+    pub error: String,
+    pub message: String,
+    pub retryable: bool,
+    pub code: String,
+    pub source: String,
+    pub retry_count: u8,
+    pub pending_domain: Option<WorkerDomain>,
+    pub retry_intent: Option<UiIntent>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeState {
     pub current_screen: UiScreen,
+    pub focus_prompt_request_id: Option<String>,
     pub media: MediaState,
     pub call: CallRuntimeState,
     pub voice: VoiceRuntimeState,
     pub power: PowerRuntimeState,
+    pub settings: SettingsRuntimeState,
     pub network: NetworkRuntimeState,
+    /// On-device Wi‑Fi onboarding (AP mode + captive portal) state, populated
+    /// from `wifi_provisioning_state` events emitted by the network worker.
+    pub wifi_setup: WifiSetupRuntimeSnapshot,
     pub cloud: CloudRuntimeState,
+    pub overlay: OverlayRuntimeState,
     pub ui: WorkerHealth,
     pub cloud_worker: WorkerHealth,
     pub media_worker: WorkerHealth,
@@ -616,12 +676,16 @@ impl Default for RuntimeState {
     fn default() -> Self {
         Self {
             current_screen: UiScreen::Hub,
+            focus_prompt_request_id: None,
             media: MediaState::default(),
             call: CallRuntimeState::default(),
             voice: VoiceRuntimeState::default(),
             power: PowerRuntimeState::default(),
+            settings: SettingsRuntimeState::default(),
             network: NetworkRuntimeState::default(),
+            wifi_setup: WifiSetupRuntimeSnapshot::default(),
             cloud: CloudRuntimeState::default(),
+            overlay: OverlayRuntimeState::default(),
             ui: WorkerHealth::default(),
             cloud_worker: WorkerHealth::default(),
             media_worker: WorkerHealth::default(),
@@ -632,6 +696,23 @@ impl Default for RuntimeState {
             loop_iterations: 0,
             last_loop_duration_ms: 0,
             app_log_file: "logs/yoyopod.log".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsRuntimeState {
+    pub companion: String,
+    pub theme: String,
+    pub speak_names: bool,
+}
+
+impl Default for SettingsRuntimeState {
+    fn default() -> Self {
+        Self {
+            companion: "Bunny".to_string(),
+            theme: "Light".to_string(),
+            speak_names: true,
         }
     }
 }
@@ -657,6 +738,31 @@ impl RuntimeState {
         let health = self.worker_health_mut(domain);
         health.state = state;
         health.last_reason = reason.into();
+    }
+
+    pub fn mark_ask_available(&mut self) {
+        self.voice.mark_ask_available();
+    }
+
+    pub fn mark_ask_unavailable(&mut self) {
+        self.voice.mark_ask_unavailable();
+    }
+
+    pub fn resolve_overlay_for(&mut self, domain: WorkerDomain) {
+        if self.overlay.pending_domain == Some(domain) {
+            self.overlay = OverlayRuntimeState::default();
+        }
+    }
+
+    pub fn fail_overlay_for(&mut self, domain: WorkerDomain) {
+        if self.overlay.pending_domain != Some(domain) {
+            return;
+        }
+        self.overlay.loading = false;
+        self.overlay.error = format!("worker_{}_error", domain.as_str());
+        self.overlay.code = self.overlay.error.clone();
+        self.overlay.retryable = !matches!(domain, WorkerDomain::Ui | WorkerDomain::Power);
+        self.overlay.message.clear();
     }
 
     pub fn seed_contacts(&mut self, contacts: Vec<ListItem>) {
@@ -919,6 +1025,9 @@ impl RuntimeState {
         {
             self.media.volume = volume.clamp(0, 100);
         }
+        if let Some(position_ms) = i64_field(snapshot, "time_position_ms") {
+            self.media.position_ms = position_ms.max(0);
+        }
         let explicit_progress_permille = i32_field(snapshot, "progress_permille")
             .filter(|progress_permille| (0..=1000).contains(progress_permille));
         if let Some(progress_permille) = explicit_progress_permille {
@@ -929,6 +1038,7 @@ impl RuntimeState {
                 .or_else(|| string_field(track, "title"))
                 .unwrap_or_else(|| "Nothing Playing".to_string());
             self.media.artist = first_artist(track).unwrap_or_default();
+            self.media.length_ms = i64_field(track, "length_ms").unwrap_or(0).max(0);
             if let Some(progress_permille) = derived_progress_permille(snapshot, track) {
                 self.media.progress_permille = progress_permille;
             } else if explicit_progress_permille.is_none() {
@@ -936,6 +1046,24 @@ impl RuntimeState {
             }
         }
         if let Some(playlists) = snapshot.get("playlists").and_then(Value::as_array) {
+            self.media.playlist_tracks = playlists
+                .iter()
+                .filter_map(|playlist| {
+                    let playlist_id =
+                        string_field(playlist, "uri").or_else(|| string_field(playlist, "id"))?;
+                    let tracks = playlist
+                        .get("tracks")
+                        .and_then(Value::as_array)
+                        .map(|tracks| {
+                            tracks
+                                .iter()
+                                .filter_map(|track| ListItem::from_snapshot(track, "track"))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    Some((playlist_id, tracks))
+                })
+                .collect();
             self.media.playlists = playlists
                 .iter()
                 .filter_map(|item| ListItem::from_snapshot(item, "playlist"))
@@ -946,6 +1074,12 @@ impl RuntimeState {
                 .iter()
                 .filter_map(|item| ListItem::from_snapshot(item, "track"))
                 .collect();
+        }
+    }
+
+    pub fn apply_audio_route_local(&mut self, route: &Value) {
+        if let Some(volume) = i32_field(route, "media_volume") {
+            self.media.volume = volume.clamp(0, 100);
         }
     }
 
@@ -1007,6 +1141,26 @@ impl RuntimeState {
                 })
                 .collect();
         }
+        if let Some(queues) = snapshot
+            .get("voice_notes_by_contact")
+            .and_then(Value::as_object)
+        {
+            self.call.voice_notes_by_contact = queues
+                .iter()
+                .map(|(key, value)| {
+                    let notes = value
+                        .as_array()
+                        .map(|items| {
+                            items
+                                .iter()
+                                .filter_map(voice_note_summary_from_value)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    (key.clone(), notes)
+                })
+                .collect();
+        }
         if let Some(voice_note) = snapshot.get("voice_note") {
             if self.voice.ask_capture_active {
                 self.apply_ask_capture_snapshot(voice_note);
@@ -1020,16 +1174,108 @@ impl RuntimeState {
     }
 
     pub fn apply_ui_intent(&mut self, intent: &UiIntent) {
-        if let UiIntent::Voice(intent) = intent {
-            self.apply_voice_intent(intent);
+        match intent {
+            UiIntent::Voice(intent) => self.apply_voice_intent(intent),
+            UiIntent::Settings(intent) => self.apply_settings_intent(intent),
+            UiIntent::System(intent) => self.apply_system_intent(*intent),
+            _ => {}
+        }
+        if !matches!(intent, UiIntent::System(_)) {
+            self.begin_overlay_operation(intent);
+        }
+    }
+
+    fn begin_overlay_operation(&mut self, intent: &UiIntent) {
+        let Some(domain) = overlay_domain_for_intent(intent) else {
+            return;
+        };
+        let payload = intent.to_event_payload();
+        let source_domain = payload
+            .get("domain")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let source_action = payload
+            .get("action")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        self.overlay = OverlayRuntimeState {
+            loading: true,
+            error: String::new(),
+            message: "One moment…".to_string(),
+            retryable: true,
+            code: String::new(),
+            source: format!("{source_domain}.{source_action}"),
+            retry_count: 0,
+            pending_domain: Some(domain),
+            retry_intent: Some(intent.clone()),
+        };
+    }
+
+    fn apply_system_intent(&mut self, intent: SystemIntent) {
+        match intent {
+            SystemIntent::RetryOverlay => {
+                let Some(retry_intent) = self.overlay.retry_intent.clone() else {
+                    self.overlay = OverlayRuntimeState::default();
+                    return;
+                };
+                self.overlay.loading = true;
+                self.overlay.error.clear();
+                self.overlay.message = "One moment…".to_string();
+                self.overlay.code.clear();
+                self.overlay.retry_count = self.overlay.retry_count.saturating_add(1);
+                self.overlay.pending_domain = overlay_domain_for_intent(&retry_intent);
+            }
+            SystemIntent::DismissOverlay => {
+                self.overlay = OverlayRuntimeState::default();
+            }
+            SystemIntent::LoadingTimedOut if self.overlay.loading => {
+                self.overlay.loading = false;
+                self.overlay.error = "operation_timeout".to_string();
+                self.overlay.code = "operation_timeout".to_string();
+                self.overlay.retryable = self.overlay.retry_intent.is_some();
+                self.overlay.message.clear();
+            }
+            SystemIntent::LoadingTimedOut
+            | SystemIntent::AnnounceWait
+            | SystemIntent::AnnounceRecoverableError
+            | SystemIntent::AnnounceUnrecoverableError
+            | SystemIntent::AnnounceRetry => {}
+        }
+    }
+
+    fn apply_settings_intent(&mut self, intent: &yoyopod_protocol::ui::SettingsIntent) {
+        use yoyopod_protocol::ui::SettingsIntent;
+        match intent {
+            // The network worker owns the configured safety cap and publishes
+            // the applied level immediately after cycling it.
+            SettingsIntent::VolumeStep => {}
+            SettingsIntent::CompanionSet(value) => self.settings.companion = value.clone(),
+            SettingsIntent::ThemeSet(value) => self.settings.theme = value.clone(),
+            SettingsIntent::SpeakNamesToggle => {
+                self.settings.speak_names = !self.settings.speak_names;
+            }
+            SettingsIntent::WifiSetupStart => {
+                self.wifi_setup = WifiSetupRuntimeSnapshot {
+                    active: true,
+                    phase: "starting".to_string(),
+                    status_text: "Switching to Wi-Fi pairing mode...".to_string(),
+                    ..WifiSetupRuntimeSnapshot::default()
+                };
+            }
+            SettingsIntent::WifiSetupStop => {
+                self.wifi_setup = WifiSetupRuntimeSnapshot::default();
+            }
         }
     }
 
     fn apply_voice_intent(&mut self, intent: &VoiceIntent) {
         match intent {
             VoiceIntent::AskStart => {
+                self.voice.mark_ask_available();
                 self.voice.ask_capture_active = true;
                 self.voice.ask_transcribe_requested = false;
+                self.voice.playback_active = false;
+                self.voice.playback_paused = false;
                 self.voice.set_interaction(
                     "listening",
                     "Listening",
@@ -1042,15 +1288,26 @@ impl RuntimeState {
                     .set_interaction("thinking", "Thinking", "Just a moment...");
             }
             VoiceIntent::AskCancel => {
+                self.voice.mark_ask_available();
                 self.voice.ask_capture_active = false;
                 self.voice.ask_transcribe_requested = false;
                 self.voice.pending_ask_question.clear();
+                self.voice.playback_active = false;
+                self.voice.playback_paused = false;
+                self.voice.playback_file_path.clear();
+                self.voice.playback_elapsed_ms = 0;
+                self.voice.playback_duration_ms = 0;
                 self.voice
                     .set_interaction("idle", "Ask", "Ask me anything...");
             }
-            VoiceIntent::CaptureStart(action) => {
+            VoiceIntent::CaptureStart(action) | VoiceIntent::CaptureStartAndSend(action) => {
                 self.voice.phase = "recording".to_string();
                 self.voice.status_text = "Recording...".to_string();
+                self.voice.duration_ms = 0;
+                self.voice.capture_level_permille = 0;
+                self.voice.pending_voice_recipient = Some(action.clone());
+                self.voice.auto_send_after_capture =
+                    matches!(intent, VoiceIntent::CaptureStartAndSend(_));
                 if !action.file_path.trim().is_empty() {
                     self.voice.file_path = action.file_path.clone();
                 }
@@ -1067,32 +1324,49 @@ impl RuntimeState {
             }
             VoiceIntent::Play(action) => {
                 self.voice.playback_active = true;
+                self.voice.playback_paused = false;
                 self.voice.status_text = "Playing preview".to_string();
                 if let Some(action) = action {
                     if !action.file_path.trim().is_empty() {
                         self.voice.playback_file_path = action.file_path.clone();
                     }
+                    self.voice.playback_duration_ms = action.duration_ms.max(0);
                 }
             }
             VoiceIntent::PlayLatest(action) => {
                 self.voice.playback_active = true;
+                self.voice.playback_paused = false;
                 self.voice.status_text = "Playing preview".to_string();
                 if !action.file_path.trim().is_empty() {
                     self.voice.playback_file_path = action.file_path.clone();
                 }
+                self.voice.playback_duration_ms = action.duration_ms.max(0);
+            }
+            VoiceIntent::PausePlayback => {
+                self.voice.playback_active = false;
+                self.voice.playback_paused = true;
+            }
+            VoiceIntent::ResumePlayback => {
+                self.voice.playback_active = true;
+                self.voice.playback_paused = false;
             }
             VoiceIntent::StopPlayback => {
                 self.voice.playback_active = false;
+                self.voice.playback_paused = false;
                 self.voice.playback_file_path.clear();
+                self.voice.playback_elapsed_ms = 0;
+                self.voice.playback_duration_ms = 0;
             }
             VoiceIntent::Discard => self.voice.reset_draft(),
             VoiceIntent::CaptureCancel
             | VoiceIntent::CaptureToggle(_)
+            | VoiceIntent::Delete(_)
             | VoiceIntent::MarkSeen(_) => {}
         }
     }
 
     pub fn apply_voice_transcript(&mut self, payload: &Value) {
+        self.voice.mark_ask_available();
         self.voice.ask_capture_active = false;
         self.voice.ask_transcribe_requested = false;
         let transcript = string_field(payload, "text")
@@ -1179,6 +1453,7 @@ impl RuntimeState {
     }
 
     pub fn apply_voice_ask_result(&mut self, payload: &Value) {
+        self.voice.mark_ask_available();
         self.voice.ask_capture_active = false;
         self.voice.ask_transcribe_requested = false;
         let answer_from_payload = string_field(payload, "answer");
@@ -1251,6 +1526,9 @@ impl RuntimeState {
         if let Some(duration_ms) = i32_field(voice_note, "duration_ms") {
             self.voice.duration_ms = duration_ms.max(0);
         }
+        if let Some(capture_level_permille) = i32_field(voice_note, "capture_level_permille") {
+            self.voice.capture_level_permille = capture_level_permille.clamp(0, 1000);
+        }
         match normalized(&raw_state).as_str() {
             "recording" => {
                 if self.voice.phase != "thinking" {
@@ -1307,26 +1585,67 @@ impl RuntimeState {
         if let Some(duration_ms) = i32_field(voice_note, "duration_ms") {
             self.voice.duration_ms = duration_ms.max(0);
         }
+        if let Some(capture_level_permille) = i32_field(voice_note, "capture_level_permille") {
+            self.voice.capture_level_permille = capture_level_permille.clamp(0, 1000);
+        }
         if let Some(mime_type) = string_field(voice_note, "mime_type") {
             self.voice.mime_type = mime_type;
         }
         if let Some(message_id) = string_field(voice_note, "message_id") {
             self.voice.message_id = message_id;
         }
+        if phase != "recording" {
+            self.voice.capture_level_permille = 0;
+        }
+        if phase == "review" && self.voice.auto_send_after_capture {
+            // commands_for_voip_snapshot consumes this pending send before the
+            // snapshot is applied. Clearing it here makes repeated recorded
+            // snapshots idempotent.
+            self.voice.auto_send_after_capture = false;
+            self.voice.pending_voice_recipient = None;
+        }
     }
 
     fn apply_voice_note_playback_snapshot(&mut self, playback: &Value) {
+        if playback.get("purpose").and_then(Value::as_str) == Some("focus_prompt") {
+            return;
+        }
+        let was_playing = self.voice.playback_active;
         if let Some(playing) = playback.get("playing").and_then(Value::as_bool) {
             self.voice.playback_active = playing;
             if playing {
                 self.voice.status_text = "Playing preview".to_string();
             }
         }
+        if let Some(paused) = playback.get("paused").and_then(Value::as_bool) {
+            self.voice.playback_paused = paused;
+        }
         if let Some(file_path) = string_field(playback, "file_path") {
             self.voice.playback_file_path = file_path;
         }
-        if !self.voice.playback_active {
+        if let Some(elapsed_ms) = i32_field(playback, "elapsed_ms") {
+            self.voice.playback_elapsed_ms = elapsed_ms.max(0);
+        }
+        if let Some(duration_ms) = i32_field(playback, "duration_ms") {
+            self.voice.playback_duration_ms = duration_ms.max(0);
+        }
+        if !self.voice.playback_active && !self.voice.playback_paused {
             self.voice.playback_file_path.clear();
+            self.voice.playback_elapsed_ms = 0;
+            self.voice.playback_duration_ms = 0;
+            if was_playing && self.current_screen == UiScreen::Ask && self.voice.phase == "reply" {
+                self.voice.set_interaction("idle", "Ask", "Ask me another!");
+            }
+        }
+    }
+
+    /// Fold a `wifi_provisioning_state` event from the network worker into the
+    /// on-device Wi‑Fi onboarding snapshot. The worker owns the provisioning
+    /// lifecycle; unknown/extra fields (schema_version, timestamps) are ignored.
+    /// The home-network password is never part of this payload.
+    pub fn apply_wifi_provisioning_state(&mut self, payload: &Value) {
+        if let Ok(state) = serde_json::from_value::<WifiSetupRuntimeSnapshot>(payload.clone()) {
+            self.wifi_setup = state;
         }
     }
 
@@ -1509,8 +1828,11 @@ impl RuntimeState {
                 "title": self.media.title,
                 "artist": self.media.artist,
                 "progress_permille": self.media.progress_permille,
+                "elapsed_text": media_time_text(self.media.position_ms, self.media.length_ms),
+                "total_text": media_time_text(self.media.length_ms, self.media.length_ms),
                 "volume": self.media.volume,
                 "playlists": list_payload(&self.media.playlists),
+                "playlist_tracks": list_map_payload(&self.media.playlist_tracks),
                 "recent_tracks": list_payload(&self.media.recent_tracks),
             },
             "call": {
@@ -1524,13 +1846,22 @@ impl RuntimeState {
                 "history": list_payload(&self.call.history),
                 "unread_voice_notes_by_contact": self.call.unread_voice_notes_by_contact,
                 "latest_voice_note_by_contact": voice_note_summary_payload(&self.call.latest_voice_note_by_contact),
+                "voice_notes_by_contact": voice_note_queue_payload(&self.call.voice_notes_by_contact),
             },
             "voice": {
                 "phase": self.voice.phase,
                 "headline": self.voice.headline,
                 "body": voice_body_text(&self.voice),
+                "ask_unavailable": self.voice.ask_unavailable,
                 "capture_in_flight": self.voice.ask_capture_active || self.voice.phase == "recording",
                 "ptt_active": self.voice.phase == "recording",
+                "recording_duration_ms": self.voice.duration_ms,
+                "capture_level_permille": self.voice.capture_level_permille,
+                "playback_active": self.voice.playback_active,
+                "playback_paused": self.voice.playback_paused,
+                "playback_file_path": self.voice.playback_file_path,
+                "playback_elapsed_ms": self.voice.playback_elapsed_ms,
+                "playback_duration_ms": self.voice.playback_duration_ms,
             },
             "power": {
                 "battery_percent": self.power.battery_percent,
@@ -1539,6 +1870,14 @@ impl RuntimeState {
                 "rows": self.power_rows(),
                 "pages": self.setup_pages(),
             },
+            "settings": {
+                "volume_level": volume_level(self.media.volume),
+                "companion": self.settings.companion,
+                "theme": self.settings.theme,
+                "speak_names": self.settings.speak_names,
+                "device_name": self.cloud.device_id,
+                "firmware_version": env!("CARGO_PKG_VERSION"),
+            },
             "network": {
                 "enabled": self.network.enabled,
                 "connected": self.network.connected,
@@ -1546,6 +1885,8 @@ impl RuntimeState {
                 "signal_strength": self.network.signal_strength,
                 "gps_has_fix": self.network.gps_has_fix,
             },
+            "wifi_setup": serde_json::to_value(&self.wifi_setup)
+                .unwrap_or_else(|_| json!({})),
             "cloud": {
                 "device_id": self.cloud.device_id,
                 "provisioning_state": self.cloud.provisioning_state,
@@ -1554,9 +1895,13 @@ impl RuntimeState {
                 "last_error_summary": self.cloud.last_error_summary,
             },
             "overlay": {
-                "loading": false,
-                "error": "",
-                "message": "",
+                "loading": self.overlay.loading,
+                "error": self.overlay.error,
+                "message": self.overlay.message,
+                "retryable": self.overlay.retryable,
+                "code": self.overlay.code,
+                "source": self.overlay.source,
+                "retry_count": self.overlay.retry_count,
             },
             "workers": {
                 WorkerDomain::Ui.as_str(): worker_payload(&self.ui),
@@ -1598,8 +1943,14 @@ impl RuntimeState {
         if before.power != after.power {
             patches.push(RuntimeSnapshotPatch::Power(after.power.clone()));
         }
+        if before.settings != after.settings {
+            patches.push(RuntimeSnapshotPatch::Settings(after.settings.clone()));
+        }
         if before.network != after.network {
             patches.push(RuntimeSnapshotPatch::Network(after.network.clone()));
+        }
+        if before.wifi_setup != after.wifi_setup {
+            patches.push(RuntimeSnapshotPatch::WifiSetup(after.wifi_setup.clone()));
         }
         if before.overlay != after.overlay {
             patches.push(RuntimeSnapshotPatch::Overlay(after.overlay.clone()));
@@ -1899,6 +2250,10 @@ impl RuntimeState {
     }
 }
 
+fn volume_level(volume: i32) -> i32 {
+    ((volume.clamp(0, 100) + 5) / 10).clamp(1, 10)
+}
+
 fn string_field(value: &Value, key: &str) -> Option<String> {
     value.get(key).and_then(Value::as_str).map(str::to_string)
 }
@@ -1955,7 +2310,7 @@ fn playlist_track_count_subtitle(value: &Value, icon_key: &str) -> Option<String
     }
 
     let track_count = value.get("track_count")?.as_u64()?;
-    let suffix = if track_count == 1 { "track" } else { "tracks" };
+    let suffix = if track_count == 1 { "song" } else { "songs" };
     Some(format!("{track_count} {suffix}"))
 }
 
@@ -1968,6 +2323,14 @@ fn derived_progress_permille(snapshot: &Value, track: &Value) -> Option<i32> {
 
     let permille = ((position_ms as i128) * 1000 / (length_ms as i128)).clamp(0, 1000);
     i32::try_from(permille).ok()
+}
+
+fn media_time_text(value_ms: i64, known_length_ms: i64) -> String {
+    if known_length_ms <= 0 {
+        return "--:--".to_string();
+    }
+    let total_seconds = value_ms.max(0) / 1000;
+    format!("{}:{:02}", total_seconds / 60, total_seconds % 60)
 }
 
 fn call_duration_text(snapshot: &Value, call_state: CallState) -> Option<String> {
@@ -2035,6 +2398,13 @@ fn format_duration_text(total_seconds: u64) -> String {
 
 fn list_payload(items: &[ListItem]) -> Vec<Value> {
     items.iter().map(ListItem::to_payload).collect()
+}
+
+fn list_map_payload(items: &BTreeMap<String, Vec<ListItem>>) -> BTreeMap<String, Vec<Value>> {
+    items
+        .iter()
+        .map(|(key, values)| (key.clone(), list_payload(values)))
+        .collect()
 }
 
 fn setup_page(title: &str, icon_key: &str, rows: Vec<SetupRow>) -> Value {
@@ -2133,6 +2503,20 @@ fn voice_note_summary_payload(summaries: &BTreeMap<String, VoiceNoteSummary>) ->
     )
 }
 
+fn voice_note_queue_payload(queues: &BTreeMap<String, Vec<VoiceNoteSummary>>) -> Value {
+    Value::Object(
+        queues
+            .iter()
+            .map(|(key, notes)| {
+                (
+                    key.clone(),
+                    Value::Array(notes.iter().map(VoiceNoteSummary::to_payload).collect()),
+                )
+            })
+            .collect(),
+    )
+}
+
 fn voice_status_text(phase: &str) -> String {
     match phase {
         "recording" => "Recording...".to_string(),
@@ -2170,7 +2554,7 @@ fn screen_for_voice_route(route_name: &str) -> Option<UiScreen> {
     match normalized(route_name).as_str() {
         "open_talk" => Some(UiScreen::Talk),
         "open_listen" => Some(UiScreen::Listen),
-        "open_setup" => Some(UiScreen::Power),
+        "open_setup" => Some(UiScreen::Setup),
         "go_home" => Some(UiScreen::Hub),
         _ => None,
     }
@@ -2369,6 +2753,33 @@ fn seconds_to_u64_ceiling(seconds: f64) -> u64 {
 
 fn normalized(value: &str) -> String {
     value.trim().to_ascii_lowercase()
+}
+
+fn overlay_domain_for_intent(intent: &UiIntent) -> Option<WorkerDomain> {
+    match intent {
+        UiIntent::Music(
+            MusicIntent::PlayPause
+            | MusicIntent::NextTrack
+            | MusicIntent::PreviousTrack
+            | MusicIntent::ShuffleAll
+            | MusicIntent::LoadPlaylist(_)
+            | MusicIntent::PlayPlaylistTrack(_)
+            | MusicIntent::PlayRecentTrack(_),
+        ) => Some(WorkerDomain::Media),
+        UiIntent::Power(
+            PowerIntent::Refresh
+            | PowerIntent::SyncTimeToRtc
+            | PowerIntent::SyncTimeFromRtc
+            | PowerIntent::SetRtcAlarm(_)
+            | PowerIntent::DisableRtcAlarm,
+        ) => Some(WorkerDomain::Power),
+        UiIntent::Call(_)
+        | UiIntent::Voice(_)
+        | UiIntent::Settings(_)
+        | UiIntent::Navigation(_)
+        | UiIntent::System(_)
+        | UiIntent::Runtime(_) => None,
+    }
 }
 
 fn worker_payload(worker: &WorkerHealth) -> Value {

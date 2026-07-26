@@ -1,7 +1,10 @@
 use crate::animation::{presets, ActorRef, Timeline, TimelineRef, TrackIndex};
 use crate::components::widgets::{
-    call_panel as call_panel_widget, card as card_widget, list_row as list_row_widget,
-    wheel_item as wheel_item_widget, CallPanelProps,
+    call_overlay as call_overlay_widget, card as card_widget, companion as companion_widget,
+    empty_state as empty_state_widget, list_row as list_row_widget,
+    player_hero as player_hero_widget, recording_panel as recording_panel_widget,
+    watch_face as watch_face_widget, wheel_item as wheel_item_widget, CompanionModel,
+    RecordingPanelProps, WheelItemSlot,
 };
 use crate::engine::{AnimSlot, Element, Key};
 use crate::scene::roles;
@@ -46,13 +49,21 @@ pub struct DeckItem {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ItemRender {
-    Companion,
+    Companion(CompanionModel),
     Card(CardModel),
     Row(RowModel),
     Wheel(WheelItemModel),
     Page(PageModel),
+    PlayerHero(PlayerHeroModel),
     Button(ButtonModel),
-    CallPanel(CallPanelModel),
+    CallOverlay(CallOverlayModel),
+    EmptyState(EmptyStateModel),
+    RecordingPanel(RecordingPanelModel),
+    AskSurface(AskSurfaceModel),
+    SetupVolume(SetupVolumeModel),
+    SetupAbout(SetupAboutModel),
+    WifiSetup(WifiSetupModel),
+    WatchFace(WatchFaceModel),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,8 +92,73 @@ pub struct WheelItemModel {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WheelItemVariant {
-    Icon { icon_key: String },
-    Media { initial: String, plate_rgb: u32 },
+    Icon {
+        icon_key: String,
+    },
+    Media {
+        icon_key: String,
+        plate_rgb: u32,
+    },
+    Contact {
+        initial: String,
+        avatar_rgb: u32,
+        badge: Option<WheelBadgeModel>,
+    },
+    Action {
+        icon_key: String,
+        badge: Option<WheelBadgeModel>,
+    },
+    Setup {
+        icon_key: String,
+        plate_rgb: u32,
+        round: bool,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetupVolumeModel {
+    pub level: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetupAboutModel {
+    pub battery_percent: i32,
+    pub charging: bool,
+    pub rows: Vec<(String, String)>,
+}
+
+/// Render model for the on-device Wi‑Fi onboarding screen. `qr_payload` is the
+/// Wi‑Fi-join URI (`WIFI:S:...;`) shown as a QR the phone scans to join the
+/// hotspot; the remaining fields are shown as text/instructions. When
+/// `qr_payload` is empty the screen shows `status_text` only (e.g. "starting").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WifiSetupModel {
+    pub qr_payload: String,
+    pub ap_ssid: String,
+    pub ap_password: String,
+    pub portal_url: String,
+    pub status_text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WatchFaceModel {
+    pub date: String,
+    pub time: String,
+    pub battery_percent: i32,
+    pub charging: bool,
+    pub power_available: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WheelBadgeModel {
+    pub label: String,
+    pub kind: WheelBadgeKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WheelBadgeKind {
+    Count,
+    Stuck,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,16 +168,82 @@ pub struct PageModel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayerHeroModel {
+    pub context: String,
+    pub title: String,
+    pub subtitle: String,
+    pub elapsed: String,
+    pub total: String,
+    pub progress_permille: i32,
+    pub playing: bool,
+    pub focus_index: usize,
+    pub accent: u32,
+    pub variant: PlayerHeroVariant,
+    pub left_icon_key: String,
+    pub right_icon_key: String,
+    pub right_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlayerHeroVariant {
+    Music { icon_key: String, fill_rgb: u32 },
+    VoiceReplay,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ButtonModel {
     pub title: String,
     pub icon_key: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CallPanelModel {
-    pub title: String,
+pub struct CallOverlayModel {
+    pub kind: CallOverlayKind,
     pub state: String,
+    pub name: String,
+    pub initial: String,
+    pub avatar_rgb: u32,
+    pub duration: String,
     pub muted: bool,
+    pub focus_index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallOverlayKind {
+    Incoming,
+    Outgoing,
+    Active,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmptyStateModel {
+    pub icon_key: String,
+    pub message: String,
+    pub accent: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordingPanelModel {
+    pub context: String,
+    pub duration_ms: i32,
+    pub level_permille: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AskPhase {
+    Idle,
+    Listening,
+    Thinking,
+    Answering,
+    Offline,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AskSurfaceModel {
+    pub phase: AskPhase,
+    pub hint: String,
+    pub level_permille: i32,
+    pub progress_permille: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,19 +268,42 @@ impl Deck {
                     .key(Key::Static("deck_region"))
                     .region(self.region),
             );
-        let short_wheel_offset = if self.kind == DeckKind::Wheel && self.items.len() < 3 {
+        let short_wheel_offset = if self.kind == DeckKind::Wheel
+            && !self.has_semantic_wheel_items()
+            && self.items.len() < 3
+        {
             80
         } else {
             0
         };
         let focused_item_index = self.normalized_focus_index();
+        let focused_visible_index = self.focused_visible_index();
         for (visible_index, (item_index, item)) in self.visible_items().enumerate() {
+            let selected = Some(item_index) == focused_item_index;
+            let semantic_slot = matches!(
+                &item.render,
+                ItemRender::Wheel(WheelItemModel {
+                    variant: WheelItemVariant::Media { .. } | WheelItemVariant::Setup { .. },
+                    ..
+                })
+            );
+            let wheel_slot = if !semantic_slot {
+                WheelItemSlot::Standard
+            } else if selected {
+                WheelItemSlot::Focused
+            } else if visible_index < focused_visible_index {
+                WheelItemSlot::Previous
+            } else {
+                WheelItemSlot::Next
+            };
             let mut item_element = deck_item_element(
                 item,
-                Some(item_index) == focused_item_index,
+                selected,
                 self.item_anim,
                 index,
                 visible_index,
+                item_index,
+                wheel_slot,
             );
             if short_wheel_offset != 0 {
                 item_element = item_element.offset_y(short_wheel_offset);
@@ -146,6 +311,18 @@ impl Deck {
             element = element.child(item_element);
         }
         element
+    }
+
+    fn has_semantic_wheel_items(&self) -> bool {
+        self.items.iter().any(|item| {
+            matches!(
+                item.render,
+                ItemRender::Wheel(WheelItemModel {
+                    variant: WheelItemVariant::Media { .. } | WheelItemVariant::Setup { .. },
+                    ..
+                })
+            )
+        })
     }
 
     fn visible_items(&self) -> impl Iterator<Item = (usize, &DeckItem)> {
@@ -244,27 +421,65 @@ fn deck_item_element(
     item_anim: DeckItemAnim,
     deck_index: usize,
     visible_index: usize,
+    item_index: usize,
+    wheel_slot: WheelItemSlot,
 ) -> Element {
     let is_wheel = matches!(item.render, ItemRender::Wheel(_));
     let element = match &item.render {
-        ItemRender::Companion => companion_element().key(item.key.clone()),
+        ItemRender::Companion(model) => companion_widget(model).key(item.key.clone()),
         ItemRender::Card(card) => card_widget(card).key(item.key.clone()),
         ItemRender::Row(row) => list_row_widget(row, selected, item.key.clone()),
-        ItemRender::Wheel(model) => wheel_item_widget(
-            model,
-            selected,
-            Key::String(format!("wheel-slot:{visible_index}")),
-        ),
+        ItemRender::Wheel(model) => {
+            let key = match (&model.variant, wheel_slot) {
+                (WheelItemVariant::Icon { .. }, WheelItemSlot::Standard) => {
+                    Key::String(format!("wheel-slot:{visible_index}"))
+                }
+                (WheelItemVariant::Contact { .. }, WheelItemSlot::Standard) => Key::String(
+                    format!("contact-wheel-slot:{visible_index}:item:{item_index}"),
+                ),
+                (WheelItemVariant::Action { .. }, WheelItemSlot::Standard) => Key::String(format!(
+                    "action-wheel-slot:{visible_index}:item:{item_index}"
+                )),
+                (WheelItemVariant::Setup { .. }, _) => Key::String(format!(
+                    "setup-wheel-slot:{visible_index}:item:{item_index}"
+                )),
+                (WheelItemVariant::Media { .. }, _) => {
+                    // Media roots are refreshed after a committed roll so LVGL
+                    // cannot retain the outgoing slot's transform or opacity.
+                    Key::String(format!(
+                        "media-wheel-slot:{visible_index}:item:{item_index}"
+                    ))
+                }
+                _ => unreachable!("wheel variant received an invalid semantic slot"),
+            };
+            wheel_item_widget(model, selected, wheel_slot, key)
+        }
         ItemRender::Page(page) => Element::new(ElementKind::Container, Some(roles::PAGE))
             .key(item.key.clone())
             .child(Element::new(ElementKind::Label, Some(roles::PAGE_TITLE)).text(&page.title))
             .child(Element::new(ElementKind::Label, Some(roles::PAGE_BODY)).text(&page.body)),
-        ItemRender::CallPanel(call) => call_panel_widget(&CallPanelProps {
-            title: call.title.clone(),
-            state: call.state.clone(),
-            muted: call.muted,
+        ItemRender::PlayerHero(model) => player_hero_widget(model).key(item.key.clone()),
+        ItemRender::CallOverlay(call) => call_overlay_widget(call).key(item.key.clone()),
+        ItemRender::EmptyState(model) => empty_state_widget(model).key(item.key.clone()),
+        ItemRender::RecordingPanel(model) => recording_panel_widget(&RecordingPanelProps {
+            context: model.context.clone(),
+            duration_ms: model.duration_ms,
+            level_permille: model.level_permille,
         })
         .key(item.key.clone()),
+        ItemRender::AskSurface(model) => {
+            crate::components::widgets::ask_surface(model).key(item.key.clone())
+        }
+        ItemRender::SetupVolume(model) => {
+            crate::components::widgets::setup_volume(model).key(item.key.clone())
+        }
+        ItemRender::SetupAbout(model) => {
+            crate::components::widgets::setup_about(model).key(item.key.clone())
+        }
+        ItemRender::WifiSetup(model) => {
+            crate::components::widgets::setup_wifi(model).key(item.key.clone())
+        }
+        ItemRender::WatchFace(model) => watch_face_widget(model).key(item.key.clone()),
         ItemRender::Button(button) => Element::new(ElementKind::Container, Some(roles::BUTTON))
             .key(item.key.clone())
             .child(
@@ -301,29 +516,6 @@ fn deck_item_element(
         }
         DeckItemAnim::None => element,
     }
-}
-
-fn companion_element() -> Element {
-    let eye = |key: &'static str| {
-        Element::new(ElementKind::Container, Some(roles::COMPANION_EYE))
-            .key(Key::Static(key))
-            .child(
-                Element::new(ElementKind::Container, Some(roles::COMPANION_CATCHLIGHT))
-                    .key(Key::String(format!("{key}:catchlight"))),
-            )
-    };
-
-    Element::new(ElementKind::Container, Some(roles::COMPANION))
-        .child(
-            Element::new(ElementKind::Container, Some(roles::COMPANION_BODY))
-                .key(Key::Static("companion_body")),
-        )
-        .child(eye("companion_eye_left"))
-        .child(eye("companion_eye_right"))
-        .child(
-            Element::new(ElementKind::Container, Some(roles::COMPANION_MOUTH))
-                .key(Key::Static("companion_mouth")),
-        )
 }
 
 const fn deck_role(kind: DeckKind) -> &'static str {
@@ -363,6 +555,57 @@ mod tests {
                 from_permille: 700,
                 to_permille: 1000,
             },
+            swap_anim: None,
+            recycle_window: Some(3),
+        }
+    }
+
+    fn media_wheel(item_count: usize, focus_index: usize) -> Deck {
+        Deck {
+            kind: DeckKind::Wheel,
+            region: RegionId::Auto,
+            items: (0..item_count)
+                .map(|index| DeckItem {
+                    key: Key::Indexed(index),
+                    render: ItemRender::Wheel(WheelItemModel {
+                        title: format!("Track {index}"),
+                        subtitle: format!("{index}:00"),
+                        variant: WheelItemVariant::Media {
+                            icon_key: "music_note".to_string(),
+                            plate_rgb: 0xE5443B,
+                        },
+                    }),
+                })
+                .collect(),
+            focus_index,
+            focus_policy: FocusPolicy::Wrap,
+            item_anim: DeckItemAnim::None,
+            swap_anim: None,
+            recycle_window: Some(3),
+        }
+    }
+
+    fn setup_wheel(item_count: usize, focus_index: usize) -> Deck {
+        Deck {
+            kind: DeckKind::Wheel,
+            region: RegionId::Auto,
+            items: (0..item_count)
+                .map(|index| DeckItem {
+                    key: Key::Indexed(index),
+                    render: ItemRender::Wheel(WheelItemModel {
+                        title: format!("Setting {index}"),
+                        subtitle: format!("Value {index}"),
+                        variant: WheelItemVariant::Setup {
+                            icon_key: "setup_theme".to_string(),
+                            plate_rgb: 0xF7DBC2,
+                            round: false,
+                        },
+                    }),
+                })
+                .collect(),
+            focus_index,
+            focus_policy: FocusPolicy::Wrap,
+            item_anim: DeckItemAnim::None,
             swap_anim: None,
             recycle_window: Some(3),
         }
@@ -416,5 +659,87 @@ mod tests {
         assert_eq!(first_items[2].key, next_items[2].key);
         assert_eq!(next_items[1].props.scale_permille, Some(1000));
         assert_eq!(next_items[1].props.opacity, Some(255));
+    }
+
+    #[test]
+    fn media_wheel_uses_asymmetric_semantic_slots() {
+        let element = media_wheel(3, 0).element(0);
+        let items = &element.children[1..];
+
+        assert_eq!(items[0].role, Some(roles::MEDIA_WHEEL_PREVIOUS));
+        assert_eq!(items[1].role, Some(roles::MEDIA_WHEEL_FOCUS));
+        assert_eq!(items[2].role, Some(roles::MEDIA_WHEEL_NEXT));
+        assert_eq!(
+            items[0].props.opacity,
+            Some(crate::animation::presets::MEDIA_WHEEL_PEEK_OPACITY)
+        );
+        assert_eq!(items[1].props.selected, Some(true));
+        assert_eq!(
+            items[2].props.opacity,
+            Some(crate::animation::presets::MEDIA_WHEEL_PEEK_OPACITY)
+        );
+        assert!(items.iter().all(|item| item.props.offset_y.is_none()));
+        assert!(items.iter().all(|item| item.props.scale_permille.is_none()));
+    }
+
+    #[test]
+    fn short_media_wheels_keep_focus_and_next_in_their_named_slots() {
+        let two = media_wheel(2, 0).element(0);
+        let items = &two.children[1..];
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].role, Some(roles::MEDIA_WHEEL_FOCUS));
+        assert_eq!(items[1].role, Some(roles::MEDIA_WHEEL_NEXT));
+        assert!(items.iter().all(|item| item.props.offset_y.is_none()));
+
+        let one = media_wheel(1, 0).element(0);
+        let items = &one.children[1..];
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].role, Some(roles::MEDIA_WHEEL_FOCUS));
+        assert!(items[0].props.offset_y.is_none());
+    }
+
+    #[test]
+    fn media_wheel_refreshes_slot_roots_after_the_roll_commits() {
+        let first = media_wheel(3, 0).element(0);
+        let next = media_wheel(3, 1).element(0);
+
+        for (first, next) in first.children[1..].iter().zip(&next.children[1..]) {
+            assert_ne!(first.key, next.key);
+            assert_eq!(first.role, next.role);
+        }
+    }
+
+    #[test]
+    fn setup_wheel_uses_bounded_semantic_slots_without_outer_scaling() {
+        let element = setup_wheel(3, 0).element(0);
+        let items = &element.children[1..];
+
+        assert_eq!(items[0].role, Some(roles::SETUP_WHEEL_PREVIOUS));
+        assert_eq!(items[1].role, Some(roles::SETUP_WHEEL_ITEM));
+        assert_eq!(items[2].role, Some(roles::SETUP_WHEEL_NEXT));
+        assert_eq!(
+            items[0].props.opacity,
+            Some(crate::animation::presets::SETUP_WHEEL_PEEK_OPACITY)
+        );
+        assert_eq!(items[1].props.selected, Some(true));
+        assert_eq!(
+            items[1].children[0].children[0].props.scale_permille,
+            Some(900)
+        );
+        assert_eq!(
+            items[2].props.opacity,
+            Some(crate::animation::presets::SETUP_WHEEL_PEEK_OPACITY)
+        );
+        assert!(items.iter().all(|item| item.props.offset_y.is_none()));
+        assert!(items.iter().all(|item| item.props.scale_permille.is_none()));
+    }
+
+    #[test]
+    fn short_setup_wheels_do_not_receive_the_generic_vertical_offset() {
+        let two = setup_wheel(2, 0).element(0);
+        let items = &two.children[1..];
+        assert_eq!(items[0].role, Some(roles::SETUP_WHEEL_ITEM));
+        assert_eq!(items[1].role, Some(roles::SETUP_WHEEL_NEXT));
+        assert!(items.iter().all(|item| item.props.offset_y.is_none()));
     }
 }

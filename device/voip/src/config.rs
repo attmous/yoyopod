@@ -52,9 +52,7 @@ pub struct VoipConfig {
 pub enum ConfigError {
     #[error("invalid voip config payload: {0}")]
     InvalidPayload(#[from] serde_json::Error),
-    #[error("sip_identity is required for Rust VoIP host registration")]
-    MissingSipIdentity,
-    #[error("sip_server is required for Rust VoIP host registration")]
+    #[error("sip_server is required when a SIP identity is configured")]
     MissingSipServer,
 }
 
@@ -66,13 +64,14 @@ impl VoipConfig {
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.sip_server.trim().is_empty() {
+        if self.has_sip_account() && self.sip_server.trim().is_empty() {
             return Err(ConfigError::MissingSipServer);
         }
-        if self.sip_identity.trim().is_empty() {
-            return Err(ConfigError::MissingSipIdentity);
-        }
         Ok(())
+    }
+
+    pub fn has_sip_account(&self) -> bool {
+        !self.sip_identity.trim().is_empty()
     }
 }
 
@@ -98,4 +97,31 @@ fn default_mic_gain() -> i32 {
 
 fn default_output_volume() -> i32 {
     100
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn local_first_config_does_not_require_a_sip_identity() {
+        let config = VoipConfig::from_payload(&json!({
+            "voice_note_store_dir": "data/communication/voice_notes"
+        }))
+        .expect("local recording config should be valid without SIP credentials");
+
+        assert!(!config.has_sip_account());
+    }
+
+    #[test]
+    fn configured_sip_identity_still_requires_a_server() {
+        let error = VoipConfig::from_payload(&json!({
+            "sip_identity": "sip:yoyopod@example.test",
+            "sip_server": ""
+        }))
+        .expect_err("SIP registration cannot proceed without its server");
+
+        assert!(matches!(error, ConfigError::MissingSipServer));
+    }
 }

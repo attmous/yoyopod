@@ -1,5 +1,7 @@
 use yoyopod_protocol::ui::UiScreen;
 
+use crate::theme::ColorScheme;
+
 use super::{HudScene, Modal, Scene};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -33,6 +35,7 @@ pub enum SceneCacheEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SceneGraph {
+    pub color_scheme: ColorScheme,
     pub hud: HudScene,
     pub active: Scene,
     pub history: Vec<ScenePushFrame>,
