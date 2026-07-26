@@ -10,7 +10,7 @@ use crate::components::widgets::CompanionVariant;
 use crate::router::history::HistoryEntry;
 use crate::scene::{
     defaults_for, ButtonModel, GlobalClock, HudBattery, HudConnectivity, HudConnectivityKind,
-    HudStatus, SceneGraph, SceneId,
+    HudStatus, SceneGraph, SceneId, StopwatchVisualPhase,
 };
 use crate::theme::ColorScheme;
 use crate::DirtyRegion;
@@ -533,6 +533,11 @@ impl UiRuntime {
                 self.selected_contact.as_ref(),
                 self.replay_index,
                 self.stopwatch.display_text(now_ms),
+                match self.stopwatch.phase {
+                    super::state::StopwatchPhase::Idle => StopwatchVisualPhase::Ready,
+                    super::state::StopwatchPhase::Running => StopwatchVisualPhase::Running,
+                    super::state::StopwatchPhase::Paused => StopwatchVisualPhase::Paused,
+                },
                 (0..self.stopwatch.action_count())
                     .map(|index| ButtonModel {
                         title: self.stopwatch.action_label(index).to_string(),

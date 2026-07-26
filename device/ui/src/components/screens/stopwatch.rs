@@ -3,7 +3,7 @@ use yoyopod_protocol::ui::UiScreen;
 use crate::engine::Key;
 use crate::scene::{
     Backdrop, ButtonModel, Cursor, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, ItemRender,
-    RegionId, Scene, SceneDefaults, SceneId, StopwatchModel,
+    RegionId, Scene, SceneDefaults, SceneId, StopwatchModel, StopwatchVisualPhase,
 };
 
 pub(crate) const STOPWATCH_STAGE_PERI: u32 = 0xE7E5F7;
@@ -11,6 +11,7 @@ pub(crate) const STOPWATCH_STAGE_PERI: u32 = 0xE7E5F7;
 pub fn scene(
     defaults: &SceneDefaults,
     display: String,
+    phase: StopwatchVisualPhase,
     actions: Vec<ButtonModel>,
     focus_index: usize,
 ) -> Scene {
@@ -27,6 +28,7 @@ pub fn scene(
                 key: Key::Static("stopwatch"),
                 render: ItemRender::Stopwatch(StopwatchModel {
                     display,
+                    phase,
                     actions,
                     focus_index,
                 }),

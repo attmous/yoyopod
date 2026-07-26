@@ -17,7 +17,8 @@ pub fn stopwatch(model: &StopwatchModel) -> Element {
                 label(roles::STOPWATCH_READOUT)
                     .key(Key::Static("stopwatch_readout"))
                     .text(&model.display),
-            ),
+            )
+            .child(stopwatch_phase(model)),
         |panel, (index, action)| {
             panel.child(
                 container(roles::BUTTON)
@@ -34,15 +35,74 @@ pub fn stopwatch(model: &StopwatchModel) -> Element {
     )
 }
 
+fn stopwatch_phase(model: &StopwatchModel) -> Element {
+    let phase = container(roles::STOPWATCH_PHASE)
+        .key(Key::Static("stopwatch_phase"))
+        .child(
+            label(roles::STOPWATCH_PHASE_LABEL)
+                .key(Key::Static("stopwatch_phase_label"))
+                .text(model.phase.label()),
+        );
+
+    if model.phase == crate::scene::StopwatchVisualPhase::Running {
+        phase.child(container(roles::STOPWATCH_PHASE_DOT).key(Key::Static("stopwatch_phase_dot")))
+    } else {
+        phase
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scene::ButtonModel;
+    use crate::scene::{ButtonModel, StopwatchVisualPhase};
+
+    fn descendants_with_role<'a>(element: &'a Element, role: &str) -> Vec<&'a Element> {
+        let mut found = Vec::new();
+        if element.role == Some(role) {
+            found.push(element);
+        }
+        for child in &element.children {
+            found.extend(descendants_with_role(child, role));
+        }
+        found
+    }
+
+    #[test]
+    fn phase_label_and_live_dot_follow_the_explicit_visual_phase() {
+        for (phase, expected_label, expected_dot_count) in [
+            (StopwatchVisualPhase::Ready, "Ready", 0),
+            (StopwatchVisualPhase::Running, "Running", 1),
+            (StopwatchVisualPhase::Paused, "Paused", 0),
+        ] {
+            let element = stopwatch(&StopwatchModel {
+                display: "00:12.3".to_string(),
+                phase,
+                actions: vec![ButtonModel {
+                    title: "Pause".to_string(),
+                    icon_key: "pause_sm".to_string(),
+                }],
+                focus_index: 0,
+            });
+
+            assert_eq!(
+                descendants_with_role(&element, roles::STOPWATCH_PHASE_LABEL)[0]
+                    .props
+                    .text
+                    .as_deref(),
+                Some(expected_label)
+            );
+            assert_eq!(
+                descendants_with_role(&element, roles::STOPWATCH_PHASE_DOT).len(),
+                expected_dot_count
+            );
+        }
+    }
 
     #[test]
     fn paused_stopwatch_centers_readout_and_exposes_two_actions() {
         let element = stopwatch(&StopwatchModel {
             display: "00:12.3".to_string(),
+            phase: StopwatchVisualPhase::Paused,
             actions: vec![
                 ButtonModel {
                     title: "Resume".to_string(),

@@ -26,7 +26,7 @@ pub mod watch_face;
 
 use yoyopod_protocol::ui::{ListItemSnapshot, RuntimeSnapshot, UiScreen};
 
-use crate::scene::{Scene, SceneDefaults};
+use crate::scene::{Scene, SceneDefaults, StopwatchVisualPhase};
 
 pub fn scene_for_screen(
     screen: UiScreen,
@@ -36,6 +36,7 @@ pub fn scene_for_screen(
     selected_contact: Option<&ListItemSnapshot>,
     replay_index: usize,
     stopwatch_display: String,
+    stopwatch_phase: StopwatchVisualPhase,
     stopwatch_actions: Vec<crate::scene::ButtonModel>,
     defaults: SceneDefaults,
 ) -> Scene {
@@ -60,9 +61,13 @@ pub fn scene_for_screen(
             now_playing::scene(&now_playing::props_from(snapshot, focus, defaults.clone()))
         }
         UiScreen::Ask => ask::scene(&ask::props_from(snapshot, focus, defaults.clone())),
-        UiScreen::Stopwatch => {
-            stopwatch::scene(&defaults, stopwatch_display, stopwatch_actions, focus)
-        }
+        UiScreen::Stopwatch => stopwatch::scene(
+            &defaults,
+            stopwatch_display,
+            stopwatch_phase,
+            stopwatch_actions,
+            focus,
+        ),
         UiScreen::Flashlight => flashlight::scene(&defaults),
         UiScreen::Talk => talk::scene(&talk::props_from(snapshot, focus, defaults.clone())),
         UiScreen::Contacts => {

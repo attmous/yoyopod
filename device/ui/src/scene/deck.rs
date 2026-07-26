@@ -200,8 +200,26 @@ pub struct ButtonModel {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StopwatchModel {
     pub display: String,
+    pub phase: StopwatchVisualPhase,
     pub actions: Vec<ButtonModel>,
     pub focus_index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StopwatchVisualPhase {
+    Ready,
+    Running,
+    Paused,
+}
+
+impl StopwatchVisualPhase {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Ready => "Ready",
+            Self::Running => "Running",
+            Self::Paused => "Paused",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

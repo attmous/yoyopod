@@ -59,6 +59,9 @@ pub(crate) const RECORDING_TIMER: &str = "recording_timer";
 pub(crate) const RECORDING_HINT: &str = "recording_hint";
 pub(crate) const STOPWATCH_PANEL: &str = "stopwatch_panel";
 pub(crate) const STOPWATCH_READOUT: &str = "stopwatch_readout";
+pub(crate) const STOPWATCH_PHASE: &str = "stopwatch_phase";
+pub(crate) const STOPWATCH_PHASE_DOT: &str = "stopwatch_phase_dot";
+pub(crate) const STOPWATCH_PHASE_LABEL: &str = "stopwatch_phase_label";
 
 pub(crate) const ASK_SURFACE: &str = "ask_surface";
 pub(crate) const ASK_HERO: &str = "ask_hero";
