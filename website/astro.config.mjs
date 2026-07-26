@@ -13,6 +13,11 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'yoyopod',
+			logo: {
+				src: './src/assets/brand/yoyopod-glyph.svg',
+				alt: '',
+				replacesTitle: false,
+			},
 			description:
 				'A screen-light audio companion for kids — documentation for the runtime, hardware, and UI system.',
 			social: [

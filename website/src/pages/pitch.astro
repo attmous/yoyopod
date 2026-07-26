@@ -1,0 +1,793 @@
+---
+import deviceHome from '../assets/pitch/device-home.png';
+import deviceHomeListenFocus from '../assets/pitch/device-home-listen-focus.png';
+import deviceListen from '../assets/pitch/device-listen.png';
+import deviceNowPlaying from '../assets/pitch/device-ui/device-now-playing-pr453.png';
+import deviceTalk from '../assets/pitch/device-ui/device-talk-family.png';
+import prototypeHardware from '../assets/pitch/prototype-hardware-current.jpeg';
+import productVision from '../assets/pitch/yoyopod-product-vision-v4.png';
+import yoyopodGlyph from '../assets/brand/yoyopod-glyph.svg';
+import mamaAvatar from '../assets/pitch/avatars/mama.png';
+import yousefAvatar from '../assets/pitch/avatars/yousef.png';
+import '../styles/pitch.css';
+
+const slides = [
+	{ id: 'dilemma', label: 'The dilemma' },
+	{ id: 'reveal', label: 'Meet yoyopod' },
+	{ id: 'family', label: 'Two sides, one family' },
+	{ id: 'media', label: 'Media' },
+	{ id: 'communication', label: 'Communication' },
+	{ id: 'locating', label: 'Locating' },
+	{ id: 'trust', label: 'Privacy and security' },
+	{ id: 'live', label: 'Live prototype' },
+	{ id: 'hardware', label: 'Prototype hardware' },
+	{ id: 'close', label: 'Closing vision' },
+];
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<meta
+			name="description"
+			content="yoyopod — a parent-managed connected companion for kids before the smartphone years."
+		/>
+		<title>yoyopod — Two Sides, One Family</title>
+	</head>
+	<body>
+		<a class="skip-link" href="#pitch-stage">Skip presentation controls</a>
+
+		<main id="pitch-stage" class="pitch" aria-label="yoyopod hackathon pitch">
+			<div class="ambient ambient-one" aria-hidden="true"></div>
+			<div class="ambient ambient-two" aria-hidden="true"></div>
+
+			<header class="pitch-header" aria-label="Presentation status">
+				<a class="wordmark" href="#dilemma" aria-label="yoyopod, first slide">
+					<span class="wordmark-mark" aria-hidden="true"><img src={yoyopodGlyph.src} alt="" /></span>
+					<span>yoyopod</span>
+				</a>
+				<div class="pitch-status">
+					<span id="slide-label">The dilemma</span>
+					<span class="status-separator" aria-hidden="true"></span>
+					<span><span id="slide-number">01</span> / {String(slides.length).padStart(2, '0')}</span>
+				</div>
+				<div class="pitch-actions">
+					<div class="recorder-controls">
+						<button class="record-button" type="button" aria-label="Start microphone recording">
+							<span class="record-dot" aria-hidden="true"></span>
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<rect x="8" y="3" width="8" height="12" rx="4" />
+								<path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
+							</svg>
+							<span id="record-button-text">Record</span>
+						</button>
+						<a class="recording-download" href="#" download hidden aria-label="Download the latest pitch recording">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 21h14" /></svg>
+							<span>Download</span>
+						</a>
+						<span class="recording-feedback" id="recording-feedback" role="status" aria-live="polite"></span>
+					</div>
+					<button class="icon-button fullscreen-button" type="button" aria-label="Enter fullscreen">
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+						</svg>
+					</button>
+				</div>
+			</header>
+
+			<div class="slides" aria-live="polite">
+				<section class="slide slide-dilemma is-active" id="dilemma" data-label="The dilemma" aria-hidden="false">
+					<div class="dilemma-copy">
+						<p class="eyebrow" data-reveal>Before the smartphone years</p>
+						<h1 data-reveal style="--delay: 80ms">
+							Independence shouldn’t<br />require a smartphone.
+						</h1>
+					</div>
+
+					<div class="dilemma-scenes" data-reveal style="--delay: 180ms">
+						<article class="dilemma-side kid-side">
+							<div class="scene-orbit kid-orbit" aria-hidden="true">
+								<span class="orbit-dot dot-one"></span><span class="orbit-dot dot-two"></span>
+								<svg viewBox="0 0 120 120"><path d="M32 92c12-25 20-36 34-36s23 14 26 36M60 51a18 18 0 1 0 0-36 18 18 0 0 0 0 36Z" /></svg>
+							</div>
+							<div>
+								<p class="side-label">What kids ask</p>
+								<p class="scene-quote">“Can I go on my own?”</p>
+								<p class="scene-answer">Freedom to explore.</p>
+							</div>
+						</article>
+
+						<div class="dilemma-bridge" aria-hidden="true">
+							<span></span><span></span><span></span>
+						</div>
+
+						<article class="dilemma-side parent-side">
+							<div class="scene-orbit parent-orbit" aria-hidden="true">
+								<span class="signal-ring ring-one"></span><span class="signal-ring ring-two"></span>
+								<svg viewBox="0 0 120 120"><path d="M32 92c12-25 20-36 34-36s23 14 26 36M60 51a18 18 0 1 0 0-36 18 18 0 0 0 0 36Z" /></svg>
+							</div>
+							<div>
+								<p class="side-label">What parents ask</p>
+								<p class="scene-quote">“Will I know you’re okay?”</p>
+								<p class="scene-answer">Reassurance when it matters.</p>
+							</div>
+						</article>
+					</div>
+				</section>
+
+				<section class="slide slide-reveal" id="reveal" data-label="Meet yoyopod" aria-hidden="true">
+					<div class="reveal-copy">
+						<p class="eyebrow" data-reveal>Meet <span class="brand-lower">yoyopod</span></p>
+						<h2 data-reveal style="--delay: 70ms">The first device<br />before a smartphone.</h2>
+						<p class="lead" data-reveal style="--delay: 140ms">
+							Music, family communication and location awareness—inside a focused device built for kids.
+						</p>
+						<div class="proof-row" data-reveal style="--delay: 210ms">
+							<span class="proof-chip"><span class="proof-dot"></span>Working Rust prototype</span>
+							<span class="proof-chip">240 × 280 calm display</span>
+						</div>
+					</div>
+
+					<div class="product-vision-stage" data-reveal style="--delay: 100ms">
+						<div class="product-vision-frame">
+							<img
+								src={productVision.src}
+								width="1672"
+								height="940"
+								alt="Illustrative yoyopod product vision showing a refined blue device with a portrait display, one side button, and a rear view"
+							/>
+							<span class="vision-badge">Industrial design vision</span>
+						</div>
+						<div class="product-vision-caption">
+							<strong>What it could become</strong>
+							<span>Illustrative concept · not final hardware</span>
+						</div>
+					</div>
+				</section>
+
+				<section class="slide slide-family" id="family" data-label="Two sides, one family" aria-hidden="true">
+					<div class="slide-heading centered">
+						<p class="eyebrow" data-reveal>The product experience</p>
+						<h2 data-reveal style="--delay: 70ms">Two sides. One family.</h2>
+					</div>
+
+					<div class="family-pair">
+						<article class="family-side family-kid" data-reveal style="--delay: 130ms">
+							<div class="audience-label">
+								<img class="audience-avatar" src={yousefAvatar.src} alt="" />
+								<span>For Yousef</span><small>Age 10</small>
+							</div>
+							<div class="device-shell device-shell-small">
+								<img src={deviceHome.src} width="240" height="280" alt="Current yoyopod Home screen with the Blob companion and four-slot deck" />
+								<span class="device-button" aria-hidden="true"></span>
+							</div>
+							<div class="family-message">
+								<strong>A calm companion</strong>
+								<span>One button. A few things that matter.</span>
+							</div>
+						</article>
+
+						<div class="family-link" aria-label="A secure family connection" data-reveal style="--delay: 220ms">
+							<div class="link-wave" aria-hidden="true"><span></span><span></span><span></span></div>
+							<span class="link-label">Family<br />connection</span>
+						</div>
+
+						<article class="family-side family-parent" data-reveal style="--delay: 170ms">
+							<div class="audience-label">
+								<img class="audience-avatar" src={mamaAvatar.src} alt="" />
+								<span>For Mama</span><small>Parent app</small>
+							</div>
+							<div class="phone-shell">
+								<div class="phone-screen parent-home">
+									<div class="phone-status"><span>9:41</span><span class="phone-island"></span><span>5G&nbsp; 92%</span></div>
+									<div class="concept-badge">Vision prototype</div>
+									<div class="parent-greeting"><small>Good afternoon</small><strong>Yousef is connected</strong></div>
+									<div class="child-status-card">
+										<img class="child-avatar" src={yousefAvatar.src} alt="" />
+										<div><strong>Yousef’s yoyopod</strong><span>At school · 74% battery</span></div>
+										<span class="online-dot" aria-label="Online"></span>
+									</div>
+									<div class="parent-actions"><span>Location</span><span>Contacts</span><span>Media</span></div>
+								</div>
+							</div>
+							<div class="family-message">
+								<strong>Reassurance, not surveillance</strong>
+								<span>Contacts, media and location in one place.</span>
+							</div>
+						</article>
+					</div>
+				</section>
+
+				<section class="slide use-case slide-media" id="media" data-label="Media" aria-hidden="true">
+					<div class="use-case-copy">
+						<p class="eyebrow" data-reveal>01 · Media</p>
+						<h2 data-reveal style="--delay: 60ms">Their soundtrack.<br />Without the scroll.</h2>
+						<p class="lead" data-reveal style="--delay: 120ms">
+							Favorite music stays on the device, ready to play even when the network is not.
+						</p>
+						<div class="principle" data-reveal style="--delay: 180ms">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13M9 9l11-2M6 21c-2 0-4-1-4-3s2-3 4-3 3 1 3 3-1 3-3 3Zm11-2c-2 0-4-1-4-3s2-3 4-3 3 1 3 3-1 3-3 3Z" /></svg>
+							<span><strong>Local-first media</strong><small>Less waiting. Less data. More listening.</small></span>
+						</div>
+					</div>
+
+					<div class="paired-demo" data-reveal style="--delay: 100ms">
+						<div class="pair-caption pair-caption-kid"><span class="caption-identity"><img src={yousefAvatar.src} alt="" /><span>Yousef’s device</span></span><small>Working prototype</small></div>
+						<div class="device-shell device-shell-use-case">
+							<img src={deviceListen.src} width="240" height="280" alt="Current yoyopod Listen wheel with Playlists focused" />
+							<span class="device-button" aria-hidden="true"></span>
+						</div>
+						<div class="transfer-path media-path" aria-hidden="true"><span></span><span></span><span></span></div>
+						<div class="phone-shell phone-use-case">
+							<div class="phone-screen media-app">
+								<div class="phone-status"><span>9:41</span><span class="phone-island"></span><span>5G&nbsp; 92%</span></div>
+								<div class="concept-badge">Vision prototype</div>
+								<div class="app-title"><small>Yousef’s yoyopod</small><strong>Media library</strong></div>
+								<div class="album-art"><span>♫</span></div>
+								<div class="track-row"><div><strong>Moonlight Mix</strong><small>12 tracks · ready offline</small></div><span class="synced-mark">✓</span></div>
+								<div class="sync-row"><span>Approved library</span><strong>Synced</strong></div>
+							</div>
+						</div>
+						<div class="pair-caption pair-caption-parent"><span class="caption-identity"><img src={mamaAvatar.src} alt="" /><span>Mama’s app</span></span><small>Vision prototype</small></div>
+					</div>
+				</section>
+
+				<section class="slide use-case slide-communication" id="communication" data-label="Communication" aria-hidden="true">
+					<div class="use-case-copy">
+						<p class="eyebrow" data-reveal>02 · Communication</p>
+						<h2 data-reveal style="--delay: 60ms">The people they need.<br />No one else.</h2>
+						<p class="lead" data-reveal style="--delay: 120ms">
+							Calls and voice messages begin with people the family has approved.
+						</p>
+						<div class="principle cyan-principle" data-reveal style="--delay: 180ms">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2.1Z" /></svg>
+							<span><strong>Approved contacts</strong><small>Connection without an open inbox.</small></span>
+						</div>
+					</div>
+
+					<div class="paired-demo communication-demo" data-reveal style="--delay: 100ms">
+						<div class="pair-caption pair-caption-kid"><span class="caption-identity"><img src={yousefAvatar.src} alt="" /><span>Yousef’s device</span></span><small>Current UI vision</small></div>
+						<div class="device-shell device-shell-use-case talk-device">
+							<img src={deviceTalk.src} width="480" height="560" alt="yoyopod Talk contact wheel with illustrated Mama and Papa portraits and Mama focused" />
+							<span class="device-button" aria-hidden="true"></span>
+						</div>
+						<div class="voice-path" aria-hidden="true">
+							<span></span><span></span><span></span><span></span><span></span>
+						</div>
+						<div class="phone-shell phone-use-case">
+							<div class="phone-screen message-app">
+								<div class="phone-status"><span>16:18</span><span class="phone-island"></span><span>5G&nbsp; 86%</span></div>
+								<div class="concept-badge">Vision prototype</div>
+								<div class="message-header"><span class="back-arrow">‹</span><img class="mini-avatar" src={yousefAvatar.src} alt="" /><div><strong>Yousef</strong><small>yoyopod · connected</small></div></div>
+								<div class="message-space">
+									<div class="voice-message"><button type="button" aria-label="Play example voice message">▶</button><span class="waveform"></span><strong>0:12</strong></div>
+									<small>Plans changed · 16:17</small>
+								</div>
+								<div class="approved-strip"><span class="shield-mini">✓</span><span><strong>Approved contact</strong><small>Managed by the family</small></span></div>
+							</div>
+						</div>
+						<div class="pair-caption pair-caption-parent"><span class="caption-identity"><img src={mamaAvatar.src} alt="" /><span>Mama’s app</span></span><small>Vision prototype</small></div>
+					</div>
+				</section>
+
+				<section class="slide use-case slide-locating" id="locating" data-label="Locating" aria-hidden="true">
+					<div class="use-case-copy">
+						<p class="eyebrow" data-reveal>03 · Locating</p>
+						<h2 data-reveal style="--delay: 60ms">Peace of mind,<br />when it matters.</h2>
+						<p class="lead" data-reveal style="--delay: 120ms">
+							Yousef carries one simple device. Mama can check its latest available location, connectivity and battery.
+						</p>
+						<div class="location-note" data-reveal style="--delay: 180ms">
+							<span class="location-pin-small" aria-hidden="true"></span>
+							<span><strong>Latest available location</strong><small>Not a promise of continuous real-time tracking.</small></span>
+						</div>
+					</div>
+
+					<div class="locating-scene" data-reveal style="--delay: 100ms">
+						<div class="kid-on-the-go">
+							<div class="backpack" aria-hidden="true"><span class="backpack-pocket"></span><span class="backpack-strap"></span></div>
+							<div class="pocket-device">
+								<div class="pocket-screen"><span class="pin-icon"></span><strong>Connected</strong><small>4G · GPS ready</small></div>
+							</div>
+							<p><strong>Nothing to manage.</strong><span>Just carry it.</span></p>
+						</div>
+						<div class="location-connection" aria-hidden="true"><span></span></div>
+						<div class="phone-shell location-phone">
+							<div class="phone-screen map-app">
+								<div class="phone-status"><span>16:42</span><span class="phone-island"></span><span>5G&nbsp; 86%</span></div>
+								<div class="concept-badge">Vision prototype</div>
+								<div class="map-heading"><div><small>Yousef’s yoyopod</small><strong>At the sports field</strong></div><span class="battery-pill">74%</span></div>
+								<div class="schematic-map" role="img" aria-label="Illustrative neighborhood map showing Yousef at the sports field">
+									<span class="map-road road-a"></span><span class="map-road road-b"></span><span class="map-road road-c"></span>
+									<span class="map-block block-a"></span><span class="map-block block-b"></span><span class="map-block block-c"></span>
+									<span class="map-park">Sports<br />field</span>
+									<span class="map-pin"><img src={yousefAvatar.src} alt="" /></span>
+									<small>Illustrative map</small>
+								</div>
+								<div class="location-footer"><span class="online-dot"></span><span><strong>Updated 1 min ago</strong><small>4G connected · GPS available</small></span></div>
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<section class="slide slide-trust" id="trust" data-label="Privacy and security" aria-hidden="true">
+					<div class="slide-heading centered trust-heading">
+						<p class="eyebrow" data-reveal>04 · Trust by design</p>
+						<h2 data-reveal style="--delay: 60ms">Designed around less, not more.</h2>
+					</div>
+
+					<div class="trust-pair">
+						<article class="trust-column privacy-column" data-reveal style="--delay: 130ms">
+							<div class="trust-icon privacy-icon" aria-hidden="true">
+								<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="M9 12l2 2 4-5" /></svg>
+							</div>
+							<div class="trust-title"><span>Privacy</span><small>Product design</small></div>
+							<ul>
+								<li><span class="check">✓</span><span>No social feed or open app ecosystem</span></li>
+								<li><span class="check">✓</span><span>Local-first music and audio</span></li>
+								<li><span class="check">✓</span><span>A focused purpose instead of endless collection</span></li>
+							</ul>
+						</article>
+
+						<div class="trust-seam" aria-hidden="true"><span></span><strong>Trust</strong><span></span></div>
+
+						<article class="trust-column security-column" data-reveal style="--delay: 180ms">
+							<div class="trust-icon security-icon" aria-hidden="true">
+								<svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="3" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" /></svg>
+							</div>
+							<div class="trust-title"><span>Security</span><small>Prototype architecture</small></div>
+							<ul>
+								<li><span class="check">✓</span><span>Parent-managed approved contacts</span></li>
+								<li><span class="check">✓</span><span>TLS cloud transport and SRTP call media</span></li>
+								<li><span class="check">✓</span><span>Device and SIP secrets kept outside tracked config</span></li>
+							</ul>
+						</article>
+					</div>
+
+					<p class="trust-footnote" data-reveal style="--delay: 250ms">
+						Specific claims, not magic words: encrypted in transit—not presented as end-to-end encryption.
+					</p>
+				</section>
+
+				<section class="slide slide-live" id="live" data-label="Live prototype" aria-hidden="true">
+					<div class="live-copy">
+						<p class="eyebrow" data-reveal>Live prototype</p>
+						<h2 data-reveal style="--delay: 60ms">One button.<br />One track.<br />No unlock ritual.</h2>
+						<p class="lead" data-reveal style="--delay: 120ms">Let’s use the real thing.</p>
+					</div>
+
+					<div class="demo-cue" data-reveal style="--delay: 120ms">
+						<div class="demo-device-wrap">
+							<div class="device-shell demo-device">
+								<img src={deviceHomeListenFocus.src} width="240" height="280" alt="Current yoyopod Home screen with Listen focused, ready for the live demonstration" />
+								<span class="device-button demo-button" aria-hidden="true"></span>
+							</div>
+							<span class="demo-ready"><span></span>Device ready</span>
+						</div>
+						<ol class="demo-steps">
+							<li><span>1</span><div><strong>Tap</strong><small>Move to Listen</small></div></li>
+							<li><span>2</span><div><strong>Double tap</strong><small>Open the music library</small></div></li>
+							<li><span>3</span><div><strong>Start a track</strong><small>Local-first playback</small></div></li>
+						</ol>
+						<button class="fallback-button" type="button" aria-expanded="false" aria-controls="demo-fallback">
+							<span>Need the fallback?</span><strong>Show current UI tour</strong>
+						</button>
+					</div>
+
+					<div class="demo-fallback" id="demo-fallback" aria-hidden="true">
+						<button class="fallback-close" type="button" aria-label="Close prototype fallback">×</button>
+						<div class="fallback-copy"><span>Live-demo fallback</span><strong>Home. Listen. Play.</strong></div>
+						<div class="device-shell fallback-device">
+							<div class="device-ui-sequence device-ui-sequence-fallback" role="img" aria-label="Current yoyopod interface moving from Home to Listen and Now Playing">
+								<img src={deviceHomeListenFocus.src} width="240" height="280" alt="" />
+								<img src={deviceListen.src} width="240" height="280" alt="" />
+								<img src={deviceNowPlaying.src} width="240" height="280" alt="" />
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<section class="slide slide-hardware" id="hardware" data-label="Prototype hardware" aria-hidden="true">
+					<div class="hardware-copy">
+						<p class="eyebrow" data-reveal>Working hardware</p>
+						<h2 data-reveal style="--delay: 60ms">Inside today’s<br />prototype.</h2>
+						<p class="lead" data-reveal style="--delay: 120ms">
+							Off-the-shelf parts let us prove the complete experience now—before investing in custom hardware.
+						</p>
+						<div class="hardware-proof" data-reveal style="--delay: 180ms">
+							<span class="hardware-proof-dot" aria-hidden="true"></span>
+							<span><strong>Assembled and running</strong><small>Current validation stack · not the final product BOM</small></span>
+						</div>
+					</div>
+
+					<div class="hardware-visual" data-reveal style="--delay: 100ms">
+						<figure class="prototype-photo">
+							<img
+								src={prototypeHardware.src}
+								width="1200"
+								height="1600"
+								alt="The current blue 3D-printed yoyopod prototype held in one hand"
+							/>
+							<figcaption><strong>Current handheld build</strong><span>3D-printed enclosure</span></figcaption>
+						</figure>
+
+						<div class="hardware-stack" aria-label="Three core prototype components and the cellular and GPS integration path">
+							<span class="stack-rail" aria-hidden="true"></span>
+
+							<article class="hardware-card compute-card">
+								<div class="hardware-icon" aria-hidden="true">
+									<svg viewBox="0 0 32 32"><rect x="7" y="7" width="18" height="18" rx="3" /><path d="M11 2v5m5-5v5m5-5v5M11 25v5m5-5v5m5-5v5M2 11h5m-5 5h5m-5 5h5m18-10h5m-5 5h5m-5 5h5" /><rect x="12" y="12" width="8" height="8" rx="1" /></svg>
+								</div>
+								<div><span>Compute</span><strong>Raspberry Pi Zero 2 W</strong><small>Rust runtime and device workers</small></div>
+							</article>
+
+							<article class="hardware-card interface-card">
+								<div class="hardware-icon" aria-hidden="true">
+									<svg viewBox="0 0 32 32"><rect x="7" y="3" width="18" height="26" rx="4" /><rect x="10" y="7" width="12" height="14" rx="2" /><path d="M12 25h8M27 12h3v8h-3" /></svg>
+								</div>
+								<div><span>Interface + audio</span><strong>PiSugar Whisplay HAT</strong><small>240 × 280 display · mic · speaker · one button</small></div>
+							</article>
+
+							<article class="hardware-card power-card">
+								<div class="hardware-icon" aria-hidden="true">
+									<svg viewBox="0 0 32 32"><rect x="5" y="8" width="22" height="16" rx="4" /><path d="M27 13h3v6h-3M16 11l-4 6h4l-1 4 5-7h-4v-3Z" /></svg>
+								</div>
+								<div><span>Power</span><strong>PiSugar 3</strong><small>Battery · RTC · watchdog · safe shutdown</small></div>
+							</article>
+
+							<article class="hardware-card network-card">
+								<div class="hardware-icon" aria-hidden="true">
+									<svg viewBox="0 0 32 32"><path d="M6 25h20M9 21h2v4H9zm6-5h2v9h-2zm6-6h2v15h-2z" /><path d="M6 7c6-5 14-5 20 0M10 11c4-3 8-3 12 0" /></svg>
+								</div>
+								<div><span>Connectivity + location <em>When connected</em></span><strong>SIM7600 development module</strong><small>4G data · GPS awareness</small></div>
+							</article>
+						</div>
+					</div>
+				</section>
+
+				<section class="slide slide-close" id="close" data-label="Closing vision" aria-hidden="true">
+					<div class="closing-orbit orbit-left" aria-hidden="true"></div>
+					<div class="closing-orbit orbit-right" aria-hidden="true"></div>
+
+					<div class="closing-products" data-reveal style="--delay: 120ms">
+						<div class="closing-device">
+							<div class="device-shell device-shell-close">
+								<img src={deviceHome.src} width="240" height="280" alt="Working yoyopod device prototype with the current Home interface" />
+							</div>
+							<span>Working device prototype</span>
+						</div>
+						<div class="closing-phone">
+							<div class="phone-shell phone-close">
+								<div class="phone-screen parent-home">
+									<div class="phone-status"><span>9:41</span><span class="phone-island"></span><span>5G&nbsp; 92%</span></div>
+									<div class="concept-badge">Vision prototype</div>
+									<div class="parent-greeting"><small>Good afternoon</small><strong>Yousef is connected</strong></div>
+									<div class="child-status-card">
+										<img class="child-avatar" src={yousefAvatar.src} alt="" /><div><strong>Yousef’s yoyopod</strong><span>At school · 74% battery</span></div><span class="online-dot"></span>
+									</div>
+									<div class="parent-actions"><span>Location</span><span>Contacts</span><span>Media</span></div>
+								</div>
+							</div>
+							<span>Companion app vision</span>
+						</div>
+					</div>
+
+					<div class="closing-copy">
+						<div class="closing-brand" data-reveal>
+							<img src={yoyopodGlyph.src} alt="" />
+							<span>yoyopod</span>
+						</div>
+						<h2 data-reveal style="--delay: 70ms">
+							<span>For kids, freedom.</span>
+							<span>For parents, peace of mind.</span>
+						</h2>
+						<p data-reveal style="--delay: 140ms">Before the smartphone.</p>
+					</div>
+				</section>
+			</div>
+
+			<footer class="pitch-controls" aria-label="Presentation controls">
+				<button class="nav-button prev-button" type="button" aria-label="Previous slide">
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+				</button>
+				<nav class="slide-dots" aria-label="Go to slide">
+					{slides.map((slide, index) => (
+						<button
+							type="button"
+							class:list={['slide-dot', { 'is-current': index === 0 }]}
+							data-slide-index={index}
+							aria-label={`Go to slide ${index + 1}: ${slide.label}`}
+							aria-current={index === 0 ? 'step' : undefined}
+						></button>
+					))}
+				</nav>
+				<div class="progress-track" aria-hidden="true"><span id="progress-fill"></span></div>
+				<button class="nav-button next-button" type="button" aria-label="Next slide">
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+				</button>
+			</footer>
+
+			<p class="keyboard-hint" aria-hidden="true"><kbd>←</kbd><kbd>→</kbd> Navigate <span></span><kbd>Space</kbd> Next</p>
+		</main>
+
+		<script>
+			const stage = document.querySelector<HTMLElement>('.pitch');
+			const slideElements = Array.from(document.querySelectorAll<HTMLElement>('.slide'));
+			const dots = Array.from(document.querySelectorAll<HTMLButtonElement>('.slide-dot'));
+			const previousButton = document.querySelector<HTMLButtonElement>('.prev-button');
+			const nextButton = document.querySelector<HTMLButtonElement>('.next-button');
+			const fullscreenButton = document.querySelector<HTMLButtonElement>('.fullscreen-button');
+			const recordButton = document.querySelector<HTMLButtonElement>('.record-button');
+			const recordButtonText = document.querySelector<HTMLElement>('#record-button-text');
+			const recordingDownload = document.querySelector<HTMLAnchorElement>('.recording-download');
+			const recordingFeedback = document.querySelector<HTMLElement>('#recording-feedback');
+			const slideLabel = document.querySelector<HTMLElement>('#slide-label');
+			const slideNumber = document.querySelector<HTMLElement>('#slide-number');
+			const progressFill = document.querySelector<HTMLElement>('#progress-fill');
+			const fallbackButton = document.querySelector<HTMLButtonElement>('.fallback-button');
+			const fallbackClose = document.querySelector<HTMLButtonElement>('.fallback-close');
+			const fallback = document.querySelector<HTMLElement>('#demo-fallback');
+
+			let currentIndex = 0;
+			let mediaRecorder: MediaRecorder | null = null;
+			let microphoneStream: MediaStream | null = null;
+			let recordingChunks: Blob[] = [];
+			let recordingStartedAt = 0;
+			let recordingTimer: number | undefined;
+			let lastRecordingUrl: string | null = null;
+
+			function indexFromHash() {
+				const id = window.location.hash.slice(1);
+				const index = slideElements.findIndex((slide) => slide.id === id);
+				return index >= 0 ? index : 0;
+			}
+
+			function setSlide(index: number, updateHash = true) {
+				const boundedIndex = Math.max(0, Math.min(index, slideElements.length - 1));
+				currentIndex = boundedIndex;
+
+				slideElements.forEach((slide, slideIndex) => {
+					const isActive = slideIndex === currentIndex;
+					slide.classList.toggle('is-active', isActive);
+					slide.classList.toggle('is-before', slideIndex < currentIndex);
+					slide.setAttribute('aria-hidden', String(!isActive));
+				});
+
+				dots.forEach((dot, dotIndex) => {
+					const isCurrent = dotIndex === currentIndex;
+					dot.classList.toggle('is-current', isCurrent);
+					if (isCurrent) dot.setAttribute('aria-current', 'step');
+					else dot.removeAttribute('aria-current');
+				});
+
+				const currentSlide = slideElements[currentIndex];
+				const label = currentSlide?.dataset.label ?? '';
+				if (slideLabel) slideLabel.textContent = label;
+				if (slideNumber) slideNumber.textContent = String(currentIndex + 1).padStart(2, '0');
+				if (progressFill) progressFill.style.width = `${((currentIndex + 1) / slideElements.length) * 100}%`;
+				if (previousButton) previousButton.disabled = currentIndex === 0;
+				if (nextButton) nextButton.disabled = currentIndex === slideElements.length - 1;
+
+				closeFallback(false);
+
+				if (updateHash && currentSlide) {
+					history.replaceState(null, '', `#${currentSlide.id}`);
+				}
+			}
+
+			function closeFallback(returnFocus = true) {
+				if (!fallback || !fallbackButton) return;
+				fallback.classList.remove('is-visible');
+				fallback.setAttribute('aria-hidden', 'true');
+				fallbackButton.setAttribute('aria-expanded', 'false');
+				if (returnFocus) fallbackButton.focus();
+			}
+
+			function openFallback() {
+				if (!fallback || !fallbackButton) return;
+				fallback.classList.add('is-visible');
+				fallback.setAttribute('aria-hidden', 'false');
+				fallbackButton.setAttribute('aria-expanded', 'true');
+				fallbackClose?.focus();
+			}
+
+			function formatRecordingTime(milliseconds: number) {
+				const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+				const minutes = Math.floor(totalSeconds / 60);
+				const seconds = totalSeconds % 60;
+				return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+			}
+
+			function updateRecordingTimer() {
+				if (!recordButtonText || !recordingStartedAt) return;
+				recordButtonText.textContent = `Stop ${formatRecordingTime(Date.now() - recordingStartedAt)}`;
+			}
+
+			function stopMicrophoneStream() {
+				microphoneStream?.getTracks().forEach((track) => track.stop());
+				microphoneStream = null;
+			}
+
+			function recordingExtension(mimeType: string) {
+				if (mimeType.includes('mp4')) return 'm4a';
+				if (mimeType.includes('ogg')) return 'ogg';
+				return 'webm';
+			}
+
+			function preferredRecordingType() {
+				if (typeof MediaRecorder === 'undefined') return '';
+				return [
+					'audio/webm;codecs=opus',
+					'audio/mp4;codecs=mp4a.40.2',
+					'audio/mp4',
+					'audio/webm',
+				].find((type) => MediaRecorder.isTypeSupported(type)) ?? '';
+			}
+
+			function finishRecording(mimeType: string) {
+				if (recordingTimer !== undefined) window.clearInterval(recordingTimer);
+				recordingTimer = undefined;
+				recordingStartedAt = 0;
+				stopMicrophoneStream();
+
+				const finalType = mimeType || 'audio/webm';
+				const recording = new Blob(recordingChunks, { type: finalType });
+				recordingChunks = [];
+				mediaRecorder = null;
+
+				if (recording.size > 0 && recordingDownload) {
+					if (lastRecordingUrl) URL.revokeObjectURL(lastRecordingUrl);
+					lastRecordingUrl = URL.createObjectURL(recording);
+					const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+					recordingDownload.href = lastRecordingUrl;
+					recordingDownload.download = `yoyopod-pitch-${timestamp}.${recordingExtension(finalType)}`;
+					recordingDownload.hidden = false;
+					recordingDownload.click();
+				}
+
+				recordButton?.classList.remove('is-recording');
+				if (recordButton) {
+					recordButton.disabled = false;
+					recordButton.setAttribute('aria-label', 'Start a new microphone recording');
+				}
+				if (recordButtonText) recordButtonText.textContent = 'Record again';
+				if (recordingFeedback) recordingFeedback.textContent = 'Saved to Downloads';
+			}
+
+			async function startRecording() {
+				if (!recordButton || !recordButtonText || !recordingFeedback) return;
+
+				if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+					recordingFeedback.textContent = 'Microphone recording is unavailable in this browser';
+					return;
+				}
+
+				recordButton.disabled = true;
+				recordButtonText.textContent = 'Allow mic…';
+				recordingFeedback.textContent = 'Waiting for microphone permission';
+
+				try {
+					microphoneStream = await navigator.mediaDevices.getUserMedia({
+						audio: {
+							echoCancellation: true,
+							noiseSuppression: true,
+							autoGainControl: true,
+						},
+					});
+
+					const mimeType = preferredRecordingType();
+					mediaRecorder = new MediaRecorder(
+						microphoneStream,
+						mimeType ? { mimeType, audioBitsPerSecond: 128_000 } : { audioBitsPerSecond: 128_000 },
+					);
+					recordingChunks = [];
+					mediaRecorder.addEventListener('dataavailable', (event: BlobEvent) => {
+						if (event.data.size > 0) recordingChunks.push(event.data);
+					});
+					mediaRecorder.addEventListener('stop', () => finishRecording(mediaRecorder?.mimeType || mimeType), { once: true });
+					mediaRecorder.addEventListener('error', () => {
+						if (recordingFeedback) recordingFeedback.textContent = 'Recording stopped unexpectedly';
+					});
+
+					recordingStartedAt = Date.now();
+					mediaRecorder.start(1000);
+					recordButton.disabled = false;
+					recordButton.classList.add('is-recording');
+					recordButton.setAttribute('aria-label', 'Stop and save microphone recording');
+					recordingDownload?.setAttribute('hidden', '');
+					recordingFeedback.textContent = 'Recording locally';
+					updateRecordingTimer();
+					recordingTimer = window.setInterval(updateRecordingTimer, 500);
+				} catch {
+					stopMicrophoneStream();
+					mediaRecorder = null;
+					recordButton.disabled = false;
+					recordButtonText.textContent = 'Record';
+					recordingFeedback.textContent = 'Microphone access was blocked—allow it and try again';
+				}
+			}
+
+			function stopRecording() {
+				if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+				if (recordingTimer !== undefined) window.clearInterval(recordingTimer);
+				recordingTimer = undefined;
+				if (recordButton) recordButton.disabled = true;
+				if (recordButtonText) recordButtonText.textContent = 'Saving…';
+				if (recordingFeedback) recordingFeedback.textContent = 'Saving recording';
+				mediaRecorder.stop();
+			}
+
+			previousButton?.addEventListener('click', () => setSlide(currentIndex - 1));
+			nextButton?.addEventListener('click', () => setSlide(currentIndex + 1));
+			dots.forEach((dot) => dot.addEventListener('click', () => setSlide(Number(dot.dataset.slideIndex))));
+			fallbackButton?.addEventListener('click', openFallback);
+			fallbackClose?.addEventListener('click', () => closeFallback());
+			recordButton?.addEventListener('click', () => {
+				if (mediaRecorder?.state === 'recording') stopRecording();
+				else void startRecording();
+			});
+
+			fullscreenButton?.addEventListener('click', async () => {
+				try {
+					if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+					else await document.exitFullscreen();
+				} catch {
+					// Fullscreen can be unavailable in embedded or restricted browser contexts.
+				}
+			});
+
+			document.addEventListener('fullscreenchange', () => {
+				if (!fullscreenButton) return;
+				fullscreenButton.setAttribute('aria-label', document.fullscreenElement ? 'Exit fullscreen' : 'Enter fullscreen');
+			});
+
+			document.addEventListener('keydown', (event) => {
+				const target = event.target as HTMLElement | null;
+				const isInteractive = target?.matches('button, a, input, select, textarea');
+
+				if (event.key === 'Escape' && fallback?.classList.contains('is-visible')) {
+					event.preventDefault();
+					closeFallback();
+					return;
+				}
+
+				if (isInteractive && event.key === ' ') return;
+
+				switch (event.key) {
+					case 'ArrowRight':
+					case 'PageDown':
+					case ' ':
+						event.preventDefault();
+						setSlide(currentIndex + 1);
+						break;
+					case 'ArrowLeft':
+					case 'PageUp':
+						event.preventDefault();
+						setSlide(currentIndex - 1);
+						break;
+					case 'Home':
+						event.preventDefault();
+						setSlide(0);
+						break;
+					case 'End':
+						event.preventDefault();
+						setSlide(slideElements.length - 1);
+						break;
+				}
+			});
+
+			window.addEventListener('hashchange', () => setSlide(indexFromHash(), false));
+			window.addEventListener('beforeunload', (event) => {
+				if (mediaRecorder?.state === 'recording') {
+					event.preventDefault();
+					event.returnValue = '';
+				}
+			});
+
+			if (stage && slideElements.length > 0) setSlide(indexFromHash(), false);
+		</script>
+	</body>
+</html>
