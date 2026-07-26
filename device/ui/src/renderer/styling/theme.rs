@@ -83,7 +83,10 @@ mod tests {
     use super::*;
     use crate::renderer::assets::load_render_assets;
     use crate::scene::roles;
-    use crate::theme::{INK_300_DARK, INK_DARK, INK_ON_ACCENT, INK_SOFT_LIGHT, STAGE_LIME_DARK};
+    use crate::theme::{
+        INK_300_DARK, INK_DARK, INK_LIGHT, INK_ON_ACCENT, INK_SOFT_LIGHT, STAGE_LIME_DARK,
+        SURFACE_0_DARK, SURFACE_0_LIGHT,
+    };
 
     #[test]
     fn dark_role_resolution_is_semantic_and_selected_content_stays_legible() {
@@ -161,20 +164,54 @@ mod tests {
     }
 
     #[test]
-    fn focused_stopwatch_action_preserves_button_surface_and_adds_focus_outline() {
+    fn focused_stopwatch_actions_preserve_semantic_surfaces_in_both_themes() {
         let assets = load_render_assets().expect("render assets");
         let light = ThemeResolver::new(&assets, ColorScheme::Light);
+        let dark = ThemeResolver::new(&assets, ColorScheme::Dark);
 
-        let focused = light
-            .style_for_selected_role(roles::BUTTON, true)
-            .expect("focused stopwatch action style");
+        for (role, expected_fill) in [
+            (roles::STOPWATCH_ACTION_PRIMARY, 0x78D5D0),
+            (roles::STOPWATCH_ACTION_PAUSE, 0xFFB45C),
+            (roles::STOPWATCH_ACTION_RESET, 0xFDE2D8),
+        ] {
+            let focused_light = light
+                .style_for_selected_role(role, true)
+                .expect("focused light Stopwatch action");
+            let focused_dark = dark
+                .style_for_selected_role(role, true)
+                .expect("focused dark Stopwatch action");
 
-        assert_eq!(focused.bg_color, Some(crate::theme::STAGE_PERI_LIGHT));
-        assert_eq!(focused.bg_opa, 255);
-        assert_eq!(focused.text_color, Some(crate::theme::INK_LIGHT));
-        assert_eq!(focused.radius, 44);
-        assert_eq!(focused.outline_color, Some(crate::theme::INK_LIGHT));
-        assert_eq!(focused.outline_width, 2);
-        assert_eq!(focused.outline_pad, 2);
+            for focused in [focused_light, focused_dark] {
+                assert_eq!(focused.bg_color, Some(expected_fill));
+                assert_eq!(focused.bg_opa, 255);
+                assert_eq!(focused.radius, 18);
+                assert_eq!(focused.outline_width, 2);
+                assert_eq!(focused.outline_pad, 2);
+            }
+            assert_eq!(focused_light.outline_color, Some(INK_LIGHT));
+            assert_eq!(focused_dark.outline_color, Some(INK_DARK));
+        }
+
+        assert_eq!(
+            light
+                .style_for_role(roles::STOPWATCH_CONTROL_TRAY)
+                .expect("light tray")
+                .bg_color,
+            Some(SURFACE_0_LIGHT)
+        );
+        assert_eq!(
+            dark.style_for_role(roles::STOPWATCH_CONTROL_TRAY)
+                .expect("dark tray")
+                .bg_color,
+            Some(SURFACE_0_DARK)
+        );
+        for role in [roles::STOPWATCH_ACTION_ICON, roles::STOPWATCH_ACTION_LABEL] {
+            assert_eq!(
+                dark.style_for_role(role)
+                    .expect("dark Stopwatch action foreground")
+                    .text_color,
+                Some(INK_ON_ACCENT)
+            );
+        }
     }
 }

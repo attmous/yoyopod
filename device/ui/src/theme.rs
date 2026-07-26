@@ -66,6 +66,17 @@ impl ColorScheme {
             return rgb;
         }
 
+        if color_use == ColorUse::Fill
+            && matches!(
+                role,
+                roles::STOPWATCH_ACTION_PRIMARY
+                    | roles::STOPWATCH_ACTION_PAUSE
+                    | roles::STOPWATCH_ACTION_RESET
+            )
+        {
+            return rgb;
+        }
+
         if rgb == INK_LIGHT {
             if color_use == ColorUse::Fill && role == roles::SYS_SCRIM {
                 return INK_ON_ACCENT;
@@ -168,6 +179,8 @@ fn foreground_policy(role: &'static str) -> ForegroundPolicy {
             | roles::CALL_BUTTON_ICON
             | roles::SYS_BADGE
             | roles::ASK_HERO_ICON
+            | roles::STOPWATCH_ACTION_ICON
+            | roles::STOPWATCH_ACTION_LABEL
     );
     let secondary_on_accent = matches!(
         role,

@@ -412,6 +412,15 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::RECORDING_HINT,
         roles::STOPWATCH_PANEL,
         roles::STOPWATCH_READOUT,
+        roles::STOPWATCH_PHASE,
+        roles::STOPWATCH_PHASE_DOT,
+        roles::STOPWATCH_PHASE_LABEL,
+        roles::STOPWATCH_CONTROL_TRAY,
+        roles::STOPWATCH_ACTION_PRIMARY,
+        roles::STOPWATCH_ACTION_PAUSE,
+        roles::STOPWATCH_ACTION_RESET,
+        roles::STOPWATCH_ACTION_ICON,
+        roles::STOPWATCH_ACTION_LABEL,
         roles::ASK_SURFACE,
         roles::ASK_HERO,
         roles::ASK_HERO_ICON,
@@ -436,6 +445,9 @@ fn required_theme_roles() -> Vec<&'static str> {
 fn required_selected_theme_roles() -> Vec<&'static str> {
     vec![
         roles::BUTTON,
+        roles::STOPWATCH_ACTION_PRIMARY,
+        roles::STOPWATCH_ACTION_PAUSE,
+        roles::STOPWATCH_ACTION_RESET,
         roles::CURSOR_DOT,
         roles::LIST_ROW,
         roles::WHEEL_ITEM,
@@ -561,6 +573,99 @@ mod tests {
             roles::RECORDING_HINT,
         ] {
             assert_eq!(theme(&asset, role).text_rgb, Some(0xFCE6D2));
+        }
+    }
+
+    #[test]
+    fn stopwatch_soft_control_tray_matches_the_approved_geometry_and_palette() {
+        let layouts = parse_layout_asset().expect("layouts.ron should be valid");
+        let themes = parse_theme_asset().expect("theme.ron should be valid");
+
+        let panel = layout(&layouts, roles::STOPWATCH_PANEL);
+        assert_eq!(
+            (panel.x, panel.y, panel.width, panel.height),
+            (0, 24, 240, 204)
+        );
+        let readout = layout(&layouts, roles::STOPWATCH_READOUT);
+        assert_eq!(
+            (readout.x, readout.y, readout.width, readout.height),
+            (12, 28, 216, 58)
+        );
+        let phase = layout(&layouts, roles::STOPWATCH_PHASE);
+        assert_eq!(
+            (phase.x, phase.y, phase.width, phase.height),
+            (76, 84, 88, 22)
+        );
+        let tray = layout(&layouts, roles::STOPWATCH_CONTROL_TRAY);
+        assert_eq!(
+            (tray.x, tray.y, tray.width, tray.height),
+            (18, 118, 204, 72)
+        );
+        let primary = layout(&layouts, roles::STOPWATCH_ACTION_PRIMARY);
+        let pause = layout(&layouts, roles::STOPWATCH_ACTION_PAUSE);
+        let reset = layout(&layouts, roles::STOPWATCH_ACTION_RESET);
+        assert_eq!(
+            (primary.x, primary.y, primary.width, primary.height),
+            (39, 7, 126, 58)
+        );
+        assert_eq!(
+            (pause.x, pause.y, pause.width, pause.height),
+            (39, 7, 126, 58)
+        );
+        assert_eq!(
+            (reset.x, reset.y, reset.width, reset.height),
+            (106, 7, 92, 58)
+        );
+
+        for (relative_y, height) in [
+            (readout.y, readout.height),
+            (phase.y, phase.height),
+            (tray.y, tray.height),
+            (tray.y + primary.y, primary.height),
+            (tray.y + pause.y, pause.height),
+            (tray.y + reset.y, reset.height),
+        ] {
+            let screen_y = panel.y + relative_y;
+            assert!(screen_y >= 24);
+            assert!(screen_y + height <= 228);
+        }
+
+        let tray_theme = theme(&themes, roles::STOPWATCH_CONTROL_TRAY);
+        assert_eq!(tray_theme.fill_rgb, Some(0xFCE6D2));
+        assert_eq!(tray_theme.opacity, Some(112));
+        assert_eq!(tray_theme.radius, 24);
+        assert_eq!(
+            theme(&themes, roles::STOPWATCH_ACTION_PRIMARY).fill_rgb,
+            Some(0x78D5D0)
+        );
+        assert_eq!(
+            theme(&themes, roles::STOPWATCH_ACTION_PAUSE).fill_rgb,
+            Some(0xFFB45C)
+        );
+        assert_eq!(
+            theme(&themes, roles::STOPWATCH_ACTION_RESET).fill_rgb,
+            Some(0xFDE2D8)
+        );
+        assert_eq!(
+            theme(&themes, roles::STOPWATCH_PHASE_DOT).fill_rgb,
+            Some(0xF37B67)
+        );
+
+        for (role, fill_rgb) in [
+            (roles::STOPWATCH_ACTION_PRIMARY, 0x78D5D0),
+            (roles::STOPWATCH_ACTION_PAUSE, 0xFFB45C),
+            (roles::STOPWATCH_ACTION_RESET, 0xFDE2D8),
+        ] {
+            let base = theme(&themes, role);
+            let focused = selected_theme(&themes, role);
+            assert_eq!(base.radius, 18);
+            assert_eq!(focused.fill_rgb, Some(fill_rgb));
+            assert_eq!(focused.opacity, Some(255));
+            assert_eq!(focused.radius, 18);
+            assert_eq!(focused.text_rgb, Some(0x1B1B1F));
+            assert_eq!(focused.outline_rgb, Some(0x1B1B1F));
+            assert_eq!(focused.outline_width, 2);
+            assert_eq!(focused.outline_pad, 2);
         }
     }
 
