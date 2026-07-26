@@ -1,0 +1,32 @@
+<svg viewBox="0 0 480 470" width="480" height="470" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="480" height="470" fill="#ffffff"></rect>
+<text x="20" y="32" font-family="Caveat, cursive" fill="#666" font-size="17">front face is UP · looking down through the device</text>
+<rect x="40" y="70" width="288" height="88" rx="24" fill="#e2e0da" stroke="#222" stroke-width="2.5"></rect>
+<rect x="50" y="80" width="268" height="68" rx="14" fill="#fff" stroke="#222" stroke-width="1.1"></rect>
+<rect x="64" y="80" width="148" height="10" fill="#dce8f2" stroke="#222" stroke-width="2"></rect>
+<rect x="54" y="96" width="150" height="28" fill="#eee" stroke="#222" stroke-width="1.2"></rect>
+<rect x="212" y="96" width="70" height="28" fill="#f7f7f4" stroke="#222" stroke-width="1.2"></rect>
+<rect x="54" y="128" width="200" height="18" fill="#ffd23f" opacity=".45" stroke="#222" stroke-width="1.2"></rect>
+<circle cx="314" cy="114" r="28" fill="none" stroke="#999" stroke-width="1.4" stroke-dasharray="4 3"></circle>
+<path d="M328 100 a30 30 0 0 1 0 28 z" fill="#eee" stroke="#222" stroke-width="1.8"></path>
+<line x1="30" y1="70" x2="30" y2="80" stroke="#999" stroke-width="1" fill="none"></line><line x1="24" y1="70" x2="36" y2="70" stroke="#999" stroke-width="1" fill="none"></line><line x1="24" y1="80" x2="36" y2="80" stroke="#999" stroke-width="1" fill="none"></line>
+<text x="20" y="60" font-family="Caveat, cursive" fill="#666" font-size="13">2.5 mm</text>
+<line x1="352" y1="70" x2="352" y2="158" stroke="#999" stroke-width="1" fill="none"></line><line x1="346" y1="70" x2="358" y2="70" stroke="#999" stroke-width="1" fill="none"></line><line x1="346" y1="158" x2="358" y2="158" stroke="#999" stroke-width="1" fill="none"></line>
+<text x="366" y="118" font-family="Caveat, cursive" fill="#666" font-size="13" text-anchor="middle" transform="rotate(90 366 118)">22 mm</text>
+<rect x="40" y="196" width="14" height="10" fill="#dce8f2" stroke="#222" stroke-width="2"></rect>
+<text x="62" y="206" font-family="Caveat, cursive" fill="#666" font-size="15">display module 2.5 mm, sits against the flush window</text>
+<rect x="40" y="222" width="14" height="10" fill="#eee" stroke="#222" stroke-width="1.2"></rect>
+<text x="62" y="232" font-family="Caveat, cursive" fill="#666" font-size="15">Pi Zero 2W — 7.0 mm with connector clearance</text>
+<rect x="40" y="248" width="14" height="10" fill="#f7f7f4" stroke="#222" stroke-width="1.2"></rect>
+<text x="62" y="258" font-family="Caveat, cursive" fill="#666" font-size="15">PiSugar 3 — beside the Pi, same layer (not stacked)</text>
+<rect x="40" y="274" width="14" height="10" fill="#ffd23f" opacity=".45" stroke="#222" stroke-width="1.2"></rect>
+<text x="62" y="284" font-family="Caveat, cursive" fill="#666" font-size="15">battery 6.0 mm — 2500 mAh flat cell</text>
+<circle cx="47" cy="305" r="6" fill="none" stroke="#999" stroke-width="1.4" stroke-dasharray="3 2"></circle>
+<text x="62" y="310" font-family="Caveat, cursive" fill="#666" font-size="15">scroll wheel Ø14 in a right-wall pocket, sealed liner</text>
+<rect x="40" y="326" width="14" height="10" fill="#e2e0da" stroke="#222" stroke-width="1.2"></rect>
+<text x="62" y="336" font-family="Caveat, cursive" fill="#666" font-size="15">shell ring — 2.5 mm uniform wall, PC/ABS</text>
+<line x1="20" y1="360" x2="460" y2="360" stroke="#999" stroke-width="1" fill="none" stroke-dasharray="3 4"></line>
+<text x="20" y="390" font-family="Caveat, cursive" fill="#666" font-size="15">depth ledger: 2.5 wall + 2.5 display + 0.5 gap + 7.0 Pi/PiSugar layer</text>
+<text x="20" y="412" font-family="Caveat, cursive" fill="#666" font-size="15">+ 1.0 gap + 6.0 battery + 2.5 wall = 22.0 mm — closes exactly</text>
+<text x="20" y="440" font-family="Caveat, cursive" fill="#666" font-size="15">uniform 2.5 mm avoids sink marks; core-out the screw bosses;</text>
+<text x="20" y="460" font-family="Caveat, cursive" fill="#666" font-size="15">speaker box molded into the rail-side wall, ≥ 5 cm³</text>
+</svg>

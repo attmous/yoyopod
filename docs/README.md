@@ -37,7 +37,9 @@ contract.
   capability docs (release pipeline, slot deploy, OTA, hardware
   validation, profiling) — return as rebuild rounds land
 - [`hardware/`](hardware/README.md) — audio and power module
-  integration notes for Pi Zero 2W + Whisplay + PiSugar
+  integration notes for Pi Zero 2W + Whisplay + PiSugar, plus
+  [`hardware/enclosure/`](hardware/enclosure/README.md) shell
+  wireframes
 - [`features/`](features/README.md) — cloud provisioning, cloud voice,
   local music, mpv, and remote playback contracts
 - [`design/`](design/README.md) — UI design targets and visual previews
