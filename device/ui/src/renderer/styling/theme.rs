@@ -205,13 +205,15 @@ mod tests {
                 .bg_color,
             Some(SURFACE_0_DARK)
         );
-        for role in [roles::STOPWATCH_ACTION_ICON, roles::STOPWATCH_ACTION_LABEL] {
-            assert_eq!(
-                dark.style_for_role(role)
-                    .expect("dark Stopwatch action foreground")
-                    .text_color,
-                Some(INK_ON_ACCENT)
-            );
-        }
+        assert_eq!(
+            dark.style_for_role(roles::STOPWATCH_ACTION_LABEL)
+                .expect("dark Stopwatch action label")
+                .text_color,
+            Some(INK_ON_ACCENT)
+        );
+        assert_eq!(
+            ColorScheme::Dark.resolve_accent(roles::STOPWATCH_ACTION_ICON, INK_LIGHT),
+            INK_ON_ACCENT
+        );
     }
 }

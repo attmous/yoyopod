@@ -74,7 +74,8 @@ pub(crate) fn apply_accent_raw(
             | roles::HERO_PREV
             | roles::HERO_PLAY_ICON
             | roles::HERO_NEXT
-            | roles::ASK_HERO_ICON => {
+            | roles::ASK_HERO_ICON
+            | roles::STOPWATCH_ACTION_ICON => {
                 ffi::lv_obj_set_style_image_recolor(obj.as_ptr(), accent, SELECTOR);
                 ffi::lv_obj_set_style_image_recolor_opa(obj.as_ptr(), theme::OPA_COVER, SELECTOR);
             }

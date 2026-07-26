@@ -3,6 +3,8 @@ use crate::engine::{Element, Key};
 use crate::scene::{roles, ButtonModel, StopwatchModel, StopwatchVisualPhase};
 use crate::ElementKind;
 
+const INK: u32 = 0x1B1B1F;
+
 pub fn stopwatch(model: &StopwatchModel) -> Element {
     container(roles::STOPWATCH_PANEL)
         .key(Key::Static("stopwatch_panel"))
@@ -73,7 +75,8 @@ fn stopwatch_action(
         .child(
             Element::new(ElementKind::Image, Some(roles::STOPWATCH_ACTION_ICON))
                 .absolute((width - 24) / 2, 7, 24, 24)
-                .icon(&action.icon_key),
+                .icon(&action.icon_key)
+                .accent(INK),
         )
         .child(
             label(roles::STOPWATCH_ACTION_LABEL)
@@ -110,7 +113,7 @@ fn stopwatch_focus_dots(model: &StopwatchModel) -> Element {
         |dots, index| {
             dots.child(
                 container(roles::CURSOR_DOT)
-                    .key(Key::String(format!("stopwatch_focus_dot:{index}")))
+                    .key(Key::Indexed(index))
                     .absolute(index as i32 * 10, 2, 4, 4)
                     .selected(index == model.focus_index),
             )
@@ -122,6 +125,7 @@ fn stopwatch_focus_dots(model: &StopwatchModel) -> Element {
 mod tests {
     use super::*;
     use crate::engine::Layout;
+    use crate::renderer::assets::{load_render_assets, RenderAssets};
     use crate::scene::{ButtonModel, StopwatchVisualPhase};
 
     fn descendants_with_role<'a>(element: &'a Element, role: &str) -> Vec<&'a Element> {
@@ -133,6 +137,71 @@ mod tests {
             found.extend(descendants_with_role(child, role));
         }
         found
+    }
+
+    fn assert_tree_inside_stage(
+        element: &Element,
+        assets: &RenderAssets,
+        parent_x: i32,
+        parent_y: i32,
+    ) {
+        let role = element
+            .role
+            .expect("Stopwatch elements have semantic roles");
+        let (x, y, width, height) = match element.layout {
+            Layout::Absolute { x, y, w, h } => (x, y, w, h),
+            Layout::Region(crate::scene::RegionId::Auto) => {
+                let layout = assets
+                    .layout_role(role)
+                    .unwrap_or_else(|| panic!("missing layout for Stopwatch role {role}"));
+                (layout.x, layout.y, layout.width, layout.height)
+            }
+            Layout::Region(region) => {
+                panic!("Stopwatch role {role} unexpectedly uses shared region {region:?}")
+            }
+        };
+        let screen_x = parent_x + x;
+        let screen_y = parent_y + y;
+
+        assert!(width > 0, "{role} has non-positive width {width}");
+        assert!(height > 0, "{role} has non-positive height {height}");
+        assert!(screen_x >= 0, "{role} starts left of the display");
+        assert!(screen_x + width <= 240, "{role} extends beyond the display");
+        assert!(screen_y >= 24, "{role} overlaps the top bar");
+        assert!(screen_y + height <= 228, "{role} overlaps the bottom deck");
+
+        for child in &element.children {
+            assert_tree_inside_stage(child, assets, screen_x, screen_y);
+        }
+    }
+
+    fn model_for_phase(phase: StopwatchVisualPhase) -> StopwatchModel {
+        let actions = match phase {
+            StopwatchVisualPhase::Ready => vec![ButtonModel {
+                title: "Start".to_string(),
+                icon_key: "play_sm".to_string(),
+            }],
+            StopwatchVisualPhase::Running => vec![ButtonModel {
+                title: "Pause".to_string(),
+                icon_key: "pause_sm".to_string(),
+            }],
+            StopwatchVisualPhase::Paused => vec![
+                ButtonModel {
+                    title: "Resume".to_string(),
+                    icon_key: "play_sm".to_string(),
+                },
+                ButtonModel {
+                    title: "Reset".to_string(),
+                    icon_key: "reset_sm".to_string(),
+                },
+            ],
+        };
+        StopwatchModel {
+            display: "00:12.3".to_string(),
+            phase,
+            actions,
+            focus_index: usize::from(phase == StopwatchVisualPhase::Paused),
+        }
     }
 
     #[test]
@@ -211,6 +280,12 @@ mod tests {
                     .as_deref(),
                 Some(title)
             );
+            assert_eq!(
+                descendants_with_role(actions[0], roles::STOPWATCH_ACTION_ICON)[0]
+                    .props
+                    .accent,
+                Some(0x1B1B1F)
+            );
             assert_eq!(descendants_with_role(&element, roles::CURSOR_DOT).len(), 1);
         }
     }
@@ -273,5 +348,18 @@ mod tests {
         assert_eq!(dots.len(), 2);
         assert_eq!(dots[0].props.selected, Some(false));
         assert_eq!(dots[1].props.selected, Some(true));
+    }
+
+    #[test]
+    fn every_stopwatch_state_stays_inside_the_mutable_stage() {
+        let assets = load_render_assets().expect("render assets");
+
+        for phase in [
+            StopwatchVisualPhase::Ready,
+            StopwatchVisualPhase::Running,
+            StopwatchVisualPhase::Paused,
+        ] {
+            assert_tree_inside_stage(&stopwatch(&model_for_phase(phase)), &assets, 0, 0);
+        }
     }
 }
