@@ -2,7 +2,7 @@ use yoyopod_protocol::ui::UiScreen;
 
 use crate::engine::Key;
 use crate::scene::{
-    Backdrop, ButtonModel, Cursor, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, ItemRender,
+    Backdrop, ButtonModel, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, ItemRender,
     RegionId, Scene, SceneDefaults, SceneId, StopwatchModel, StopwatchVisualPhase,
 };
 
@@ -15,7 +15,6 @@ pub fn scene(
     actions: Vec<ButtonModel>,
     focus_index: usize,
 ) -> Scene {
-    let action_count = actions.len();
     Scene {
         id: SceneId::new(UiScreen::Stopwatch),
         backdrop: Backdrop::Solid(STOPWATCH_STAGE_PERI),
@@ -39,10 +38,7 @@ pub fn scene(
             swap_anim: None,
             recycle_window: Some(1),
         }],
-        cursor: Some(Cursor::UnderlineDots {
-            count: action_count,
-            focus: focus_index,
-        }),
+        cursor: None,
         fx: Default::default(),
         modal: None,
         timelines: Vec::new(),
