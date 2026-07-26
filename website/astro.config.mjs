@@ -1,8 +1,11 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { fileURLToPath } from 'node:url';
 
 const stub = { text: 'Stub', variant: 'caution' };
+const websiteRoot = fileURLToPath(new URL('.', import.meta.url));
+const pitchRoot = fileURLToPath(new URL('../pitch', import.meta.url));
 
 // https://astro.build/config
 export default defineConfig({
@@ -10,11 +13,18 @@ export default defineConfig({
 		'/architecture/system-architecture/': '/runtime/overview/',
 		'/architecture/runtime-event-flow/': '/runtime/loop/',
 	},
+	vite: {
+		server: {
+			fs: {
+				allow: [websiteRoot, pitchRoot],
+			},
+		},
+	},
 	integrations: [
 		starlight({
 			title: 'yoyopod',
 			logo: {
-				src: './src/assets/brand/yoyopod-glyph.svg',
+				src: '../pitch/src/assets/brand/yoyopod-glyph.svg',
 				alt: '',
 				replacesTitle: false,
 			},

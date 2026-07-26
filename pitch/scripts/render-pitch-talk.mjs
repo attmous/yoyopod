@@ -1,9 +1,11 @@
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import sharp from 'sharp';
 
 const here = dirname(fileURLToPath(import.meta.url));
+const requireFromWebsite = createRequire(new URL('../../website/package.json', import.meta.url));
+const sharp = requireFromWebsite('sharp');
 const pitchAssets = resolve(here, '../src/assets/pitch');
 
 const asDataUrl = async (relativePath) => {
