@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -843,8 +843,10 @@ fn atomic_json_write(path: &Path, value: &impl Serialize) -> Result<(), std::io:
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), std::io::Error> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o750))?;
+        let mut builder = fs::DirBuilder::new();
+        builder.recursive(true);
+        builder.mode(0o750);
+        builder.create(parent)?;
     }
     let temporary = path.with_extension("tmp");
     fs::write(&temporary, bytes)?;
@@ -1417,6 +1419,24 @@ mod tests {
         assert!(config.contains("slaves.selected.channels 2"));
         assert!(config.contains("slave.channels 4"));
         assert!(config.contains("bindings.3.slave selected"));
+    }
+
+    #[test]
+    fn atomic_writes_preserve_existing_parent_directory_permissions() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let shared_parent = directory.path().join("shared");
+        fs::create_dir(&shared_parent).expect("shared directory");
+        fs::set_permissions(&shared_parent, fs::Permissions::from_mode(0o1777))
+            .expect("shared permissions");
+
+        atomic_write(&shared_parent.join("settings.json"), b"{}").expect("atomic write");
+
+        let parent_mode = fs::metadata(&shared_parent)
+            .expect("shared metadata")
+            .permissions()
+            .mode()
+            & 0o7777;
+        assert_eq!(parent_mode, 0o1777);
     }
 
     #[allow(dead_code)]
