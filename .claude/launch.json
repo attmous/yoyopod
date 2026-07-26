@@ -4,8 +4,14 @@
     {
       "name": "docs",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "website", "run", "dev"],
+      "runtimeArgs": ["--prefix", "docsite/website", "run", "dev"],
       "port": 4321
+    },
+    {
+      "name": "docs-vision",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "docsite/website-vision", "run", "dev"],
+      "port": 4322
     }
   ]
 }

@@ -1,0 +1,74 @@
+/*
+ * yoyopod brand kit — "Sunrise & Midnight".
+ * This palette is the startup's kit, not just a docs theme:
+ *   - Marigold amber  = the primary. Morning light, independence, the walk
+ *     to school. Warm and optimistic without being toy-ish.
+ *   - Midnight indigo = the base. Calm evenings, bedtime stories, the
+ *     screen that stays quiet.
+ *   - Warm paper      = the neutrals. Analog, screen-light, book-like.
+ * Documented for humans at /company/brand-kit/.
+ * (The as-built docs site in website/ keeps its coral device-token theme.)
+ */
+
+/* Dark mode — paper text on midnight indigo (Starlight default scope is :root) */
+:root {
+	--sl-color-accent-low: #4a3414;
+	--sl-color-accent: #f6b02c;
+	--sl-color-accent-high: #ffe4ad;
+	--sl-color-white: #f8f4e9;
+	--sl-color-gray-1: #efe9dd;
+	--sl-color-gray-2: #d3cdc5;
+	--sl-color-gray-3: #a09aa8;
+	--sl-color-gray-4: #6e6a86;
+	--sl-color-gray-5: #363351;
+	--sl-color-gray-6: #232136;
+	--sl-color-black: #171528;
+}
+
+/* Light mode — indigo ink on warm paper */
+:root[data-theme='light'] {
+	--sl-color-accent-low: #fbe4b5;
+	--sl-color-accent: #9a6206;
+	--sl-color-accent-high: #5c3900;
+	--sl-color-white: #26233d;
+	--sl-color-gray-1: #38344f;
+	--sl-color-gray-2: #4c4862;
+	--sl-color-gray-3: #857e74;
+	--sl-color-gray-4: #b3a78f;
+	--sl-color-gray-5: #e3d7c2;
+	--sl-color-gray-6: #f1e8d7;
+	--sl-color-gray-7: #f8f1e2;
+	--sl-color-black: #fdf8ee;
+}
+
+/* Slightly rounder, friendlier chrome — matches the device UI's fills + radius look. */
+:root {
+	--sl-border-radius: 12px;
+}
+
+/* Hero title weight, matching the bold m3-style landing feel */
+[data-has-hero] .hero h1 {
+	font-weight: 800;
+	letter-spacing: -0.02em;
+}
+
+/* Theme-aware inline SVG diagrams */
+.diagram {
+	width: 100%;
+	height: auto;
+	display: block;
+	margin: 1.5rem 0;
+}
+.diagram text {
+	font-family: var(--sl-font-system);
+}
+
+/* Brand-kit swatches (used on /company/brand-kit/) */
+.swatch {
+	display: inline-block;
+	width: 1.1em;
+	height: 1.1em;
+	border-radius: 4px;
+	vertical-align: -0.2em;
+	border: 1px solid var(--sl-color-gray-4);
+}

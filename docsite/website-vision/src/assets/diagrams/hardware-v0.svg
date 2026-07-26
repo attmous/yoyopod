@@ -1,0 +1,98 @@
+<svg viewBox="0 0 760 620" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="V0 Dawn hardware block diagram: a Raspberry Pi Zero 2W wired to the off-the-shelf Whisplay HAT (display, button, audio), the PiSugar 3 battery HAT, and a SIM7600-family USB modem">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #232136); stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; }
+    .ext { fill: none; stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .hub { fill: var(--sl-color-accent-low, #4a3414); stroke: var(--sl-color-accent, #f6b02c); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f8f4e9); font-size: 14px; font-weight: 700; }
+    .m { fill: var(--sl-color-gray-2, #d3cdc5); font-size: 11px; font-family: ui-monospace, monospace; }
+    .s { fill: var(--sl-color-gray-3, #a09aa8); font-size: 11.5px; }
+    .flow { stroke: var(--sl-color-gray-3, #a09aa8); stroke-width: 2; fill: none; marker-end: url(#hwv0-arrow); }
+  </style>
+  <defs>
+    <marker id="hwv0-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a09aa8)"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="30" y="34" style="font-size:17px">V0 “Dawn” — the off-the-shelf prototype rig</text>
+  <text class="s" x="30" y="54">available boards and kits, wired together — nothing custom yet</text>
+
+  <!-- Whisplay HAT -->
+  <rect class="box" x="30" y="80" width="300" height="230" rx="10"/>
+  <text class="t" x="46" y="104">Whisplay HAT</text>
+  <text class="s" x="46" y="121">display · button · audio — one HAT</text>
+
+  <rect class="box" x="44" y="134" width="128" height="72" rx="8"/>
+  <text class="t" x="54" y="155" style="font-size:12.5px">ST7789 panel</text>
+  <text class="m" x="54" y="172">240×280 RGB565</text>
+  <text class="m" x="54" y="186">backlight GPIO 22</text>
+
+  <rect class="box" x="184" y="134" width="132" height="72" rx="8"/>
+  <text class="t" x="194" y="155" style="font-size:12.5px">WM8960 codec</text>
+  <text class="m" x="194" y="172">I²S · card 0</text>
+  <text class="m" x="194" y="186">wm8960-soundcard</text>
+
+  <rect class="box" x="44" y="220" width="128" height="56" rx="8"/>
+  <text class="t" x="54" y="241" style="font-size:12.5px">Side button</text>
+  <text class="m" x="54" y="258">→ GPIO 17</text>
+
+  <rect class="box" x="184" y="220" width="132" height="56" rx="8"/>
+  <text class="t" x="194" y="241" style="font-size:12.5px">Speaker + mic</text>
+  <text class="s" x="194" y="258">both on the HAT</text>
+
+  <!-- Raspberry Pi Zero 2W -->
+  <rect class="hub" x="460" y="80" width="270" height="160" rx="10"/>
+  <text class="t" x="476" y="104">Raspberry Pi Zero 2W</text>
+  <text class="s" x="476" y="121">the compute · 40-pin header</text>
+  <text class="s" x="476" y="137">runs yoyoOS + yoyocore</text>
+
+  <rect class="ext" x="476" y="152" width="118" height="68" rx="8"/>
+  <text class="t" x="486" y="173" style="font-size:12.5px">microSD</text>
+  <text class="s" x="486" y="190">boots yoyoOS —</text>
+  <text class="s" x="486" y="203">unpublished spec</text>
+
+  <rect class="ext" x="604" y="152" width="112" height="68" rx="8"/>
+  <text class="t" x="614" y="173" style="font-size:12.5px">WiFi · BT</text>
+  <text class="s" x="614" y="190">on-chip, unused</text>
+  <text class="s" x="614" y="203">in documented path</text>
+
+  <!-- Whisplay <-> Pi links -->
+  <path class="flow" d="M330,150 L460,126"/>
+  <text class="m" x="338" y="112">SPI0/CS0 · 100 MHz</text>
+  <text class="m" x="338" y="126">DC 27 · RST 4</text>
+
+  <path class="flow" d="M330,240 L460,180"/>
+  <text class="m" x="352" y="196">GPIO 17</text>
+
+  <path class="flow" d="M330,286 L460,224"/>
+  <text class="m" x="340" y="252">I²S → card 0</text>
+  <text class="m" x="352" y="266">wm8960</text>
+
+  <!-- PiSugar 3 -->
+  <rect class="box" x="30" y="360" width="300" height="120" rx="10"/>
+  <text class="t" x="46" y="386">PiSugar 3</text>
+  <text class="s" x="46" y="404">battery + charging · RTC @ 0x68</text>
+  <text class="s" x="46" y="420">hardware watchdog @ 0x57 · regs 0x06/0x07</text>
+  <text class="s" x="46" y="436">pogo pins pressed to the header underside</text>
+
+  <path class="flow" d="M330,400 L500,240"/>
+  <text class="m" x="356" y="322">I²C-1 · 0x57 / 0x68</text>
+  <text class="m" x="356" y="336">+ power over pogo pins</text>
+
+  <!-- SIM7600 -->
+  <rect class="box" x="460" y="360" width="270" height="120" rx="10"/>
+  <text class="t" x="476" y="386">SIM7600-family</text>
+  <text class="s" x="476" y="404">4G modem · GPS from the modem itself</text>
+  <text class="s" x="476" y="420">SIM: physical vs eSIM — TBD</text>
+  <text class="s" x="476" y="436">antenna design — TBD</text>
+
+  <path class="flow" d="M600,240 L600,358"/>
+  <text class="m" x="610" y="296">USB · AT ttyUSB2</text>
+  <text class="m" x="610" y="310">PPP ttyUSB3</text>
+
+  <!-- caption -->
+  <rect class="ext" x="30" y="520" width="700" height="80" rx="10"/>
+  <text class="t" x="46" y="546">Every block is an off-the-shelf market part</text>
+  <text class="s" x="46" y="564">— chosen for availability and stacked on the 40-pin header to realize the kid’s device fast.</text>
+  <text class="s" x="46" y="582">V1 “Daylight” replaces this stack with one designed PCB: components picked per the product design.</text>
+</svg>

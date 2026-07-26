@@ -1,0 +1,85 @@
+<svg viewBox="0 0 760 630" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The yoyocore runtime: systemd supervises one supervisor process, which runs each engine as a worker child over NDJSON stdio pipes">
+  <style>
+    .box { fill: var(--sl-color-gray-6, #232136); stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; }
+    .ext { fill: none; stroke: var(--sl-color-gray-4, #6e6a86); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .hub { fill: var(--sl-color-accent-low, #4a3414); stroke: var(--sl-color-accent, #f6b02c); stroke-width: 1.5; }
+    .t { fill: var(--sl-color-white, #f8f4e9); font-size: 14px; font-weight: 700; }
+    .m { fill: var(--sl-color-gray-2, #d3cdc5); font-size: 11px; font-family: ui-monospace, monospace; }
+    .s { fill: var(--sl-color-gray-3, #a09aa8); font-size: 11.5px; }
+    .flow { stroke: var(--sl-color-gray-3, #a09aa8); stroke-width: 2; fill: none; marker-end: url(#rteng-arrow); }
+  </style>
+  <defs>
+    <marker id="rteng-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--sl-color-gray-3, #a09aa8)"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="30" y="34" style="font-size:17px">The yoyocore runtime — one supervisor, seven workers</text>
+  <text class="s" x="30" y="54">systemd on top · every engine runs as a worker child · NDJSON over stdio pipes</text>
+
+  <!-- systemd -->
+  <rect class="ext" x="210" y="74" width="340" height="58" rx="10"/>
+  <text class="t" x="226" y="98">systemd</text>
+  <text class="s" x="226" y="116">Restart=on-failure · restarts everything wholesale</text>
+
+  <path class="flow" d="M380,132 L380,170"/>
+  <text class="m" x="390" y="155">supervises</text>
+
+  <!-- yoyopod-runtime -->
+  <rect class="hub" x="70" y="174" width="620" height="78" rx="10"/>
+  <text class="t" x="86" y="198">yoyopod-runtime — one supervisor</text>
+  <text class="s" x="86" y="216">spawns every engine as a worker child process</text>
+  <text class="s" x="86" y="232">NDJSON over stdio pipes · ~50 Hz loop · one state ledger</text>
+
+  <!-- fan-out: runtime to the seven workers -->
+  <path class="flow" d="M110,252 L110,308"/>
+  <path class="flow" d="M290,252 L290,308"/>
+  <path class="flow" d="M470,252 L470,308"/>
+  <path class="flow" d="M650,252 L650,308"/>
+  <path class="flow" d="M200,252 L200,416"/>
+  <path class="flow" d="M380,252 L380,416"/>
+  <path class="flow" d="M560,252 L560,416"/>
+
+  <!-- row A: the engine workers -->
+  <rect class="hub" x="30" y="310" width="160" height="76" rx="8"/>
+  <text class="t" x="40" y="331" style="font-size:12.5px">UI Engine</text>
+  <text class="s" x="40" y="348">the one fatal child</text>
+  <text class="m" x="40" y="364">no ready 5 s → abort</text>
+
+  <rect class="box" x="210" y="310" width="160" height="76" rx="8"/>
+  <text class="t" x="220" y="331" style="font-size:12.5px">Media Engine</text>
+  <text class="s" x="220" y="348">playback → mpv</text>
+  <text class="m" x="220" y="364">3 s → degrade</text>
+
+  <rect class="box" x="390" y="310" width="160" height="76" rx="8"/>
+  <text class="t" x="400" y="331" style="font-size:12.5px">VoIP Engine</text>
+  <text class="s" x="400" y="348">calls → liblinphone</text>
+  <text class="m" x="400" y="364">3 s → degrade</text>
+
+  <rect class="box" x="570" y="310" width="160" height="76" rx="8"/>
+  <text class="t" x="580" y="331" style="font-size:12.5px">Speech Engine</text>
+  <text class="s" x="580" y="348">→ cloud STT/TTS</text>
+  <text class="m" x="580" y="364">3 s → degrade</text>
+
+  <!-- row B: the plumbing workers -->
+  <rect class="box" x="120" y="418" width="160" height="76" rx="8"/>
+  <text class="t" x="130" y="439" style="font-size:12.5px">network</text>
+  <text class="s" x="130" y="456">cellular modem + pppd</text>
+  <text class="m" x="130" y="472">3 s → degrade</text>
+
+  <rect class="box" x="300" y="418" width="160" height="76" rx="8"/>
+  <text class="t" x="310" y="439" style="font-size:12.5px">cloud</text>
+  <text class="s" x="310" y="456">MQTT — the line home</text>
+  <text class="m" x="310" y="472">3 s → degrade</text>
+
+  <rect class="box" x="480" y="418" width="160" height="76" rx="8"/>
+  <text class="t" x="490" y="439" style="font-size:12.5px">power</text>
+  <text class="s" x="490" y="456">PiSugar + watchdog</text>
+  <text class="m" x="490" y="472">3 s → degrade</text>
+
+  <!-- caption -->
+  <rect class="ext" x="30" y="524" width="700" height="78" rx="10"/>
+  <text class="t" x="46" y="550">Engine names the capability; worker names its process.</text>
+  <text class="s" x="46" y="568">Cross-domain behavior — a call pausing music, low battery ending the show — is runtime code.</text>
+  <text class="s" x="46" y="584">Workers never talk to each other; the process tree is the architecture.</text>
+</svg>
