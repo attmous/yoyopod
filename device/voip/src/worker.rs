@@ -306,6 +306,88 @@ where
             )?;
             write_session_snapshot(host, output)?;
         }
+        "voip.set_audio_devices" => {
+            let string = |key: &str| {
+                envelope
+                    .payload
+                    .get(key)
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+            };
+            let playback = string("voip_playback_device");
+            let ringer = string("voip_ringer_device");
+            let capture = string("voip_capture_device");
+            let media = string("voip_media_device");
+            let microphone_gain = envelope
+                .payload
+                .get("microphone_gain")
+                .and_then(serde_json::Value::as_u64)
+                .filter(|value| *value <= 100)
+                .map(|value| value as u8);
+            let output_volume = envelope
+                .payload
+                .get("communication_volume")
+                .and_then(serde_json::Value::as_u64)
+                .filter(|value| *value <= 100)
+                .map(|value| value as u8);
+            let alert_volume = envelope
+                .payload
+                .get("alert_volume")
+                .and_then(serde_json::Value::as_u64)
+                .filter(|value| *value <= 100)
+                .map(|value| value as u8);
+            match (
+                playback,
+                ringer,
+                capture,
+                media,
+                microphone_gain,
+                output_volume,
+                alert_volume,
+            ) {
+                (
+                    Some(playback),
+                    Some(ringer),
+                    Some(capture),
+                    Some(media),
+                    Some(microphone_gain),
+                    Some(output_volume),
+                    Some(alert_volume),
+                ) => {
+                    backend.with_backend(|backend_ref| {
+                        host.set_audio_devices(
+                            backend_ref,
+                            playback,
+                            ringer,
+                            capture,
+                            media,
+                            microphone_gain,
+                            output_volume,
+                            alert_volume,
+                        )
+                    })?;
+                    write_envelope_to(
+                        output,
+                        &WorkerEnvelope::result(
+                            "voip.set_audio_devices",
+                            envelope.request_id,
+                            json!({"applied": true}),
+                        ),
+                    )?;
+                }
+                _ => {
+                    write_envelope_to(
+                        output,
+                        &WorkerEnvelope::error(
+                            "voip.error",
+                            envelope.request_id,
+                            "invalid_command",
+                            "voip.set_audio_devices requires complete safe audio routing settings",
+                        ),
+                    )?;
+                }
+            }
+        }
         "voip.send_text_message" => {
             let uri = envelope.payload["uri"].as_str().unwrap_or("").trim();
             let text = envelope.payload["text"].as_str().unwrap_or("");

@@ -1,15 +1,22 @@
+use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 
+use crate::audio::{AppliedAudio, AudioManager, AudioSettings};
+use crate::bluetooth::{
+    BluetoothController, BluetoothOperationError, BluetoothState, RecoveringBluetoothController,
+    UnavailableBluetoothController,
+};
 use crate::config::NetworkHostConfig;
 use crate::modem::{ModemController, Sim7600ModemController};
 use crate::protocol::{
-    health_result, ready_event, snapshot_event, snapshot_result, stopped_event, stopped_result,
-    wifi_change_candidate_event, wifi_provisioning_state_event, wifi_state_event,
-    wifi_state_result, EnvelopeKind, WorkerEnvelope,
+    audio_route_local_event, audio_state_event, audio_state_result, bluetooth_state_event,
+    bluetooth_state_result, health_result, ready_event, snapshot_event, snapshot_result,
+    stopped_event, stopped_result, wifi_change_candidate_event, wifi_provisioning_state_event,
+    wifi_state_event, wifi_state_result, EnvelopeKind, WorkerEnvelope,
 };
 use crate::provisioning::{WifiProvisioner, WifiProvisioningState};
 use crate::runtime::{NetworkRuntime, RuntimeCommandError};
@@ -24,6 +31,8 @@ const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 // wait. Keep the cloud-confirmation phase below the remaining checkpoint time.
 const WIFI_CHANGE_TIMEOUT: Duration = Duration::from_secs(60);
 const WIFI_CANDIDATE_INTERVAL: Duration = Duration::from_secs(5);
+const BLUETOOTH_AUTO_CONNECT_MIN_BACKOFF: Duration = Duration::from_secs(15);
+const BLUETOOTH_AUTO_CONNECT_MAX_BACKOFF: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Debug)]
 struct PendingWifiChange {
@@ -33,6 +42,65 @@ struct PendingWifiChange {
     deadline: Instant,
     next_candidate_at: Instant,
     candidate_attempt: u8,
+}
+
+#[derive(Debug, Default)]
+struct BluetoothAutoConnectRetry {
+    failed_attempts: u32,
+    retry_at: Option<Instant>,
+}
+
+#[derive(Debug, Default)]
+struct BluetoothAutoConnectBackoff {
+    retries: HashMap<String, BluetoothAutoConnectRetry>,
+}
+
+impl BluetoothAutoConnectBackoff {
+    fn candidate(&mut self, state: &BluetoothState, now: Instant) -> Option<String> {
+        if !state.radio_enabled {
+            self.reset();
+            return None;
+        }
+        self.retries.retain(|accessory_id, _| {
+            state.accessories.iter().any(|accessory| {
+                accessory.accessory_id == *accessory_id
+                    && accessory.paired
+                    && accessory.auto_connect
+                    && !accessory.connected
+            })
+        });
+        state
+            .accessories
+            .iter()
+            .filter(|accessory| accessory.paired && accessory.auto_connect && !accessory.connected)
+            .find(|accessory| {
+                self.retries
+                    .get(&accessory.accessory_id)
+                    .and_then(|retry| retry.retry_at)
+                    .map(|retry_at| now >= retry_at)
+                    .unwrap_or(true)
+            })
+            .map(|accessory| accessory.accessory_id.clone())
+    }
+
+    fn record_failure(&mut self, accessory_id: String, now: Instant) {
+        let retry = self.retries.entry(accessory_id).or_default();
+        retry.failed_attempts = retry.failed_attempts.saturating_add(1);
+        let exponent = retry.failed_attempts.saturating_sub(1).min(5);
+        let multiplier = 1_u32 << exponent;
+        let delay = BLUETOOTH_AUTO_CONNECT_MIN_BACKOFF
+            .saturating_mul(multiplier)
+            .min(BLUETOOTH_AUTO_CONNECT_MAX_BACKOFF);
+        retry.retry_at = now.checked_add(delay);
+    }
+
+    fn record_success(&mut self, accessory_id: &str) {
+        self.retries.remove(accessory_id);
+    }
+
+    fn reset(&mut self) {
+        self.retries.clear();
+    }
 }
 
 pub fn run(config_dir: &str) -> Result<()> {
@@ -45,6 +113,7 @@ pub fn run(config_dir: &str) -> Result<()> {
     let wifi: Box<dyn WifiController> = NetworkManagerWifiController::connect()
         .map(|controller| Box::new(controller) as Box<dyn WifiController>)
         .unwrap_or_else(|_| Box::new(UnavailableWifiController));
+    let bluetooth: Box<dyn BluetoothController> = Box::new(RecoveringBluetoothController::new());
     match NetworkHostConfig::load(config_dir) {
         Ok(config) => run_with_runtime_loop(
             NetworkRuntime::new(
@@ -56,6 +125,8 @@ pub fn run(config_dir: &str) -> Result<()> {
             &mut stdout,
             DEFAULT_POLL_INTERVAL,
             wifi,
+            bluetooth,
+            AudioManager::open(config_dir),
         ),
         Err(error) => run_with_runtime_loop(
             NetworkRuntime::degraded_config(config_dir, error.to_string()),
@@ -63,6 +134,8 @@ pub fn run(config_dir: &str) -> Result<()> {
             &mut stdout,
             DEFAULT_POLL_INTERVAL,
             wifi,
+            bluetooth,
+            AudioManager::open(config_dir),
         ),
     }
 }
@@ -114,12 +187,15 @@ where
     R: Read + Send + 'static,
     W: Write,
 {
+    let config_dir = runtime.snapshot().config_dir.clone();
     run_with_runtime_loop(
         runtime,
         reader_channel(input),
         output,
         poll_interval,
         Box::new(UnavailableWifiController),
+        Box::new(UnavailableBluetoothController),
+        AudioManager::open(&config_dir),
     )
 }
 
@@ -135,7 +211,16 @@ where
     R: Read + Send + 'static,
     W: Write,
 {
-    run_with_runtime_loop(runtime, reader_channel(input), output, poll_interval, wifi)
+    let config_dir = runtime.snapshot().config_dir.clone();
+    run_with_runtime_loop(
+        runtime,
+        reader_channel(input),
+        output,
+        poll_interval,
+        wifi,
+        Box::new(UnavailableBluetoothController),
+        AudioManager::open(&config_dir),
+    )
 }
 
 fn run_with_runtime_loop<C, W>(
@@ -144,6 +229,8 @@ fn run_with_runtime_loop<C, W>(
     output: &mut W,
     poll_interval: Duration,
     mut wifi: Box<dyn WifiController>,
+    mut bluetooth: Box<dyn BluetoothController>,
+    mut audio: AudioManager,
 ) -> Result<()>
 where
     C: ModemController,
@@ -158,6 +245,20 @@ where
         wifi.refresh()
             .unwrap_or_else(|_| crate::wifi::WifiState::unavailable()),
     )?;
+    let mut bluetooth_state = bluetooth
+        .refresh()
+        .unwrap_or_else(|_| BluetoothState::unavailable());
+    let mut bluetooth_auto_connect = BluetoothAutoConnectBackoff::default();
+    bluetooth_state = auto_connect_saved_accessory(
+        bluetooth.as_mut(),
+        bluetooth_state,
+        &mut bluetooth_auto_connect,
+        Instant::now(),
+    );
+    emit_bluetooth_state(output, &bluetooth_state)?;
+    if let Ok(applied) = audio.current(bluetooth.as_ref(), &bluetooth_state) {
+        emit_applied_audio(output, &applied)?;
+    }
     if should_boot_runtime(runtime.snapshot()) {
         runtime.start();
     }
@@ -194,6 +295,9 @@ where
                     wifi.as_mut(),
                     &mut pending_wifi_change,
                     &mut provisioning,
+                    bluetooth.as_mut(),
+                    &mut bluetooth_state,
+                    &mut audio,
                     envelope,
                     output,
                 )? {
@@ -202,6 +306,13 @@ where
                 }
                 service_pending_wifi_change(output, wifi.as_mut(), &mut pending_wifi_change)?;
                 service_provisioning(output, &mut provisioning)?;
+                service_bluetooth_and_audio(
+                    output,
+                    bluetooth.as_mut(),
+                    &mut bluetooth_state,
+                    &mut bluetooth_auto_connect,
+                    &mut audio,
+                )?;
             }
             Ok(Err(error)) => {
                 write_envelope(
@@ -221,6 +332,13 @@ where
                 emit_pending_snapshots(output, &mut runtime)?;
                 service_pending_wifi_change(output, wifi.as_mut(), &mut pending_wifi_change)?;
                 service_provisioning(output, &mut provisioning)?;
+                service_bluetooth_and_audio(
+                    output,
+                    bluetooth.as_mut(),
+                    &mut bluetooth_state,
+                    &mut bluetooth_auto_connect,
+                    &mut audio,
+                )?;
             }
             Err(RecvTimeoutError::Disconnected) => {
                 shutdown_for_implicit_exit(output, &mut runtime, "input_closed")?;
@@ -242,6 +360,9 @@ fn handle_command<C, W>(
     wifi: &mut dyn WifiController,
     pending_wifi_change: &mut Option<PendingWifiChange>,
     provisioning: &mut Option<WifiProvisioner>,
+    bluetooth: &mut dyn BluetoothController,
+    bluetooth_state: &mut BluetoothState,
+    audio: &mut AudioManager,
     envelope: WorkerEnvelope,
     output: &mut W,
 ) -> Result<LoopControl>
@@ -271,6 +392,7 @@ where
     }
 
     if pending_wifi_change.is_some()
+        && envelope.message_type.starts_with("wifi_")
         && !matches!(
             envelope.message_type.as_str(),
             "wifi_refresh" | "wifi_confirm_change" | "network.shutdown" | "worker.stop"
@@ -464,6 +586,233 @@ where
                 emit_provisioning_state(output, &WifiProvisioningState::idle())?;
             }
         }
+        "bluetooth_refresh" => {
+            handle_bluetooth_operation(
+                output,
+                envelope.request_id,
+                bluetooth.refresh(),
+                bluetooth,
+                bluetooth_state,
+                audio,
+            )?;
+        }
+        "bluetooth_set_radio" => {
+            let enabled = envelope
+                .payload
+                .get("enabled")
+                .and_then(serde_json::Value::as_bool)
+                .ok_or_else(|| BluetoothOperationError {
+                    code: "bluetooth_invalid_request",
+                    message: "Bluetooth power setting is invalid".to_string(),
+                });
+            let result = enabled.and_then(|enabled| bluetooth.set_radio(enabled));
+            handle_bluetooth_operation(
+                output,
+                envelope.request_id,
+                result,
+                bluetooth,
+                bluetooth_state,
+                audio,
+            )?;
+        }
+        "bluetooth_scan_start" => {
+            let result = bluetooth.start_scan();
+            handle_bluetooth_operation(
+                output,
+                envelope.request_id,
+                result,
+                bluetooth,
+                bluetooth_state,
+                audio,
+            )?;
+        }
+        "bluetooth_scan_stop" => {
+            let result = bluetooth.stop_scan();
+            handle_bluetooth_operation(
+                output,
+                envelope.request_id,
+                result,
+                bluetooth,
+                bluetooth_state,
+                audio,
+            )?;
+        }
+        "bluetooth_pair" | "bluetooth_connect" | "bluetooth_disconnect" | "bluetooth_forget" => {
+            let accessory_id = envelope
+                .payload
+                .get("accessory_id")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_owned)
+                .ok_or_else(|| BluetoothOperationError {
+                    code: "bluetooth_invalid_request",
+                    message: "Bluetooth accessory reference is invalid".to_string(),
+                });
+            let result =
+                accessory_id.and_then(|accessory_id| match envelope.message_type.as_str() {
+                    "bluetooth_pair" => bluetooth.pair(&accessory_id),
+                    "bluetooth_connect" => bluetooth.connect(&accessory_id),
+                    "bluetooth_disconnect" => bluetooth.disconnect(&accessory_id),
+                    _ => bluetooth.forget(&accessory_id),
+                });
+            handle_bluetooth_operation(
+                output,
+                envelope.request_id,
+                result,
+                bluetooth,
+                bluetooth_state,
+                audio,
+            )?;
+        }
+        "bluetooth_update_accessory" => {
+            let accessory_id = envelope
+                .payload
+                .get("accessory_id")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_owned)
+                .ok_or_else(|| BluetoothOperationError {
+                    code: "bluetooth_invalid_request",
+                    message: "Bluetooth accessory reference is invalid".to_string(),
+                });
+            let alias = envelope
+                .payload
+                .get("alias")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
+            let auto_connect = envelope
+                .payload
+                .get("auto_connect")
+                .and_then(serde_json::Value::as_bool);
+            let result = accessory_id.and_then(|accessory_id| {
+                bluetooth.update_accessory(&accessory_id, alias.as_deref(), auto_connect)
+            });
+            handle_bluetooth_operation(
+                output,
+                envelope.request_id,
+                result,
+                bluetooth,
+                bluetooth_state,
+                audio,
+            )?;
+        }
+        "audio_set_output_level" => {
+            let cycle = envelope
+                .payload
+                .get("cycle")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true);
+            let level = envelope
+                .payload
+                .get("level")
+                .and_then(serde_json::Value::as_u64)
+                .filter(|level| *level <= 100)
+                .map(|level| level as u8);
+            let result = if cycle && level.is_none() {
+                Some(audio.step_output_level(bluetooth, bluetooth_state))
+            } else {
+                level.map(|level| audio.set_output_level(level, bluetooth, bluetooth_state))
+            };
+            match result {
+                Some(result) => match result {
+                    Ok(applied) => {
+                        write_envelope(
+                            output,
+                            &audio_state_result(envelope.request_id, &applied.state),
+                        )?;
+                        emit_applied_audio(output, &applied)?;
+                    }
+                    Err(error) => emit_audio_error(output, envelope.request_id, error)?,
+                },
+                None => emit_audio_error(
+                    output,
+                    envelope.request_id,
+                    crate::audio::AudioOperationError {
+                        code: "audio_invalid_settings",
+                        message: "Audio output level must be a 0 to 100 value or a cycle request"
+                            .to_string(),
+                    },
+                )?,
+            }
+        }
+        "audio_apply_settings" => {
+            let revision = envelope
+                .payload
+                .get("revision")
+                .and_then(serde_json::Value::as_u64);
+            let settings = envelope
+                .payload
+                .get("settings")
+                .cloned()
+                .and_then(|value| serde_json::from_value::<AudioSettings>(value).ok());
+            match revision.zip(settings) {
+                Some((revision, settings)) => {
+                    match audio.apply(revision, settings, bluetooth, bluetooth_state) {
+                        Ok(applied) => {
+                            write_envelope(
+                                output,
+                                &audio_state_result(envelope.request_id, &applied.state),
+                            )?;
+                            emit_applied_audio(output, &applied)?;
+                        }
+                        Err(error) => emit_audio_error(output, envelope.request_id, error)?,
+                    }
+                }
+                None => emit_audio_error(
+                    output,
+                    envelope.request_id,
+                    crate::audio::AudioOperationError {
+                        code: "audio_invalid_settings",
+                        message: "Audio settings payload is invalid".to_string(),
+                    },
+                )?,
+            }
+        }
+        "audio_test_output" => {
+            let target = envelope
+                .payload
+                .get("target")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            match audio
+                .current(bluetooth, bluetooth_state)
+                .and_then(|applied| {
+                    audio.test_output(target, &applied.route)?;
+                    Ok(applied)
+                }) {
+                Ok(applied) => {
+                    write_envelope(
+                        output,
+                        &audio_state_result(envelope.request_id, &applied.state),
+                    )?;
+                    emit_applied_audio(output, &applied)?;
+                }
+                Err(error) => emit_audio_error(output, envelope.request_id, error)?,
+            }
+        }
+        "audio_test_input" => {
+            let duration = envelope
+                .payload
+                .get("duration_seconds")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(10);
+            let result = audio
+                .current(bluetooth, bluetooth_state)
+                .and_then(|applied| {
+                    audio.test_input(&applied.route, duration)?;
+                    audio.current(bluetooth, bluetooth_state)
+                });
+            match result {
+                Ok(applied) => {
+                    write_envelope(
+                        output,
+                        &audio_state_result(envelope.request_id, &applied.state),
+                    )?;
+                    emit_applied_audio(output, &applied)?;
+                }
+                Err(error) => emit_audio_error(output, envelope.request_id, error)?,
+            }
+        }
         "network.shutdown" | "worker.stop" => {
             if let Some(worker) = provisioning.take() {
                 let _ = worker.stop();
@@ -612,6 +961,93 @@ fn emit_wifi_state(output: &mut dyn Write, state: crate::wifi::WifiState) -> Res
     write_envelope(output, &wifi_state_event(&state))
 }
 
+fn handle_bluetooth_operation(
+    output: &mut dyn Write,
+    request_id: Option<String>,
+    result: Result<BluetoothState, BluetoothOperationError>,
+    bluetooth: &dyn BluetoothController,
+    bluetooth_state: &mut BluetoothState,
+    audio: &mut AudioManager,
+) -> Result<()> {
+    match result {
+        Ok(state) => {
+            *bluetooth_state = state;
+            write_envelope(output, &bluetooth_state_result(request_id, bluetooth_state))?;
+            emit_bluetooth_state(output, bluetooth_state)?;
+            if let Ok(applied) = audio.current(bluetooth, bluetooth_state) {
+                emit_applied_audio(output, &applied)?;
+            }
+        }
+        Err(error) => {
+            write_envelope(
+                output,
+                &WorkerEnvelope::error("bluetooth_error", request_id, error.code, error.message),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn service_bluetooth_and_audio(
+    output: &mut dyn Write,
+    bluetooth: &mut dyn BluetoothController,
+    bluetooth_state: &mut BluetoothState,
+    bluetooth_auto_connect: &mut BluetoothAutoConnectBackoff,
+    audio: &mut AudioManager,
+) -> Result<()> {
+    let Some(state) = bluetooth.tick() else {
+        return Ok(());
+    };
+    *bluetooth_state =
+        auto_connect_saved_accessory(bluetooth, state, bluetooth_auto_connect, Instant::now());
+    emit_bluetooth_state(output, bluetooth_state)?;
+    if let Ok(Some(applied)) = audio.current_if_changed(bluetooth, bluetooth_state) {
+        emit_applied_audio(output, &applied)?;
+    }
+    Ok(())
+}
+
+fn auto_connect_saved_accessory(
+    bluetooth: &mut dyn BluetoothController,
+    state: BluetoothState,
+    backoff: &mut BluetoothAutoConnectBackoff,
+    now: Instant,
+) -> BluetoothState {
+    let Some(accessory_id) = backoff.candidate(&state, now) else {
+        return state;
+    };
+    match bluetooth.connect(&accessory_id) {
+        Ok(connected) => {
+            backoff.record_success(&accessory_id);
+            connected
+        }
+        Err(_) => {
+            backoff.record_failure(accessory_id, now);
+            state
+        }
+    }
+}
+
+fn emit_bluetooth_state(output: &mut dyn Write, state: &BluetoothState) -> Result<()> {
+    write_envelope(output, &bluetooth_state_event(state))
+}
+
+fn emit_applied_audio(output: &mut dyn Write, applied: &AppliedAudio) -> Result<()> {
+    write_envelope(output, &audio_state_event(&applied.state))?;
+    write_envelope(output, &audio_route_local_event(&applied.route))
+}
+
+fn emit_audio_error(
+    output: &mut dyn Write,
+    request_id: Option<String>,
+    error: crate::audio::AudioOperationError,
+) -> Result<()> {
+    write_envelope(
+        output,
+        &WorkerEnvelope::error("audio_error", request_id, error.code, error.message),
+    )
+}
+
 fn emit_provisioning_state(output: &mut dyn Write, state: &WifiProvisioningState) -> Result<()> {
     write_envelope(output, &wifi_provisioning_state_event(state))
 }
@@ -740,6 +1176,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bluetooth::{BluetoothAccessory, BluetoothCapabilities};
     use crate::wifi::{
         WifiActivationPreference, WifiActiveNetwork, WifiNearbyNetwork, WifiSavedProfile,
         WifiSecurity, WifiState, WifiStateStatus,
@@ -865,6 +1302,106 @@ mod tests {
             scanned_at: Some(1_700_000_000),
             reported_at: 1_700_000_001,
         }
+    }
+
+    fn auto_connect_state(accessory_id: &str) -> BluetoothState {
+        BluetoothState {
+            schema_version: 1,
+            status: "ready".to_string(),
+            radio_enabled: true,
+            scanning: false,
+            accessories: vec![BluetoothAccessory {
+                accessory_id: accessory_id.to_string(),
+                name: "Family headset".to_string(),
+                kind: "headset".to_string(),
+                paired: true,
+                connected: false,
+                trusted: true,
+                auto_connect: true,
+                capabilities: BluetoothCapabilities {
+                    output: true,
+                    microphone: true,
+                    stereo: true,
+                    hands_free: true,
+                },
+                battery_percent: None,
+                signal_percent: None,
+                last_seen_at: 1,
+            }],
+            scanned_at: None,
+            reported_at: 1,
+        }
+    }
+
+    #[test]
+    fn failed_bluetooth_auto_connects_back_off_per_accessory() {
+        let mut bluetooth = UnavailableBluetoothController;
+        let mut backoff = BluetoothAutoConnectBackoff::default();
+        let first_attempt_at = Instant::now();
+        let state = auto_connect_state("accessory-a");
+
+        let retained = auto_connect_saved_accessory(
+            &mut bluetooth,
+            state.clone(),
+            &mut backoff,
+            first_attempt_at,
+        );
+        assert_eq!(retained, state);
+        let retry = backoff.retries.get("accessory-a").expect("retry state");
+        assert_eq!(retry.failed_attempts, 1);
+        let first_retry_at = retry.retry_at.expect("retry deadline");
+        assert_eq!(
+            first_retry_at.duration_since(first_attempt_at),
+            BLUETOOTH_AUTO_CONNECT_MIN_BACKOFF
+        );
+
+        auto_connect_saved_accessory(
+            &mut bluetooth,
+            state.clone(),
+            &mut backoff,
+            first_retry_at - Duration::from_millis(1),
+        );
+        assert_eq!(backoff.retries["accessory-a"].failed_attempts, 1);
+
+        auto_connect_saved_accessory(&mut bluetooth, state, &mut backoff, first_retry_at);
+        assert_eq!(backoff.retries["accessory-a"].failed_attempts, 2);
+        assert_eq!(
+            backoff.retries["accessory-a"]
+                .retry_at
+                .expect("second retry deadline")
+                .duration_since(first_retry_at),
+            BLUETOOTH_AUTO_CONNECT_MIN_BACKOFF.saturating_mul(2)
+        );
+
+        let mut multiple = auto_connect_state("accessory-a");
+        let mut second = multiple.accessories[0].clone();
+        second.accessory_id = "accessory-b".to_string();
+        second.name = "Second headset".to_string();
+        multiple.accessories.push(second);
+        auto_connect_saved_accessory(&mut bluetooth, multiple, &mut backoff, first_retry_at);
+        assert_eq!(backoff.retries["accessory-a"].failed_attempts, 2);
+        assert_eq!(backoff.retries["accessory-b"].failed_attempts, 1);
+    }
+
+    #[test]
+    fn connected_auto_connect_accessories_do_not_block_remaining_routes() {
+        let now = Instant::now();
+        let mut state = auto_connect_state("accessory-a");
+        state.accessories[0].connected = true;
+        let mut second = state.accessories[0].clone();
+        second.accessory_id = "accessory-b".to_string();
+        second.name = "Second headset".to_string();
+        second.connected = false;
+        state.accessories.push(second);
+
+        let mut backoff = BluetoothAutoConnectBackoff::default();
+        backoff.record_failure("accessory-a".to_string(), now);
+
+        assert_eq!(
+            backoff.candidate(&state, now),
+            Some("accessory-b".to_string())
+        );
+        assert!(!backoff.retries.contains_key("accessory-a"));
     }
 
     fn run_wifi_command(command: WorkerEnvelope, fail_scan: bool) -> Vec<WorkerEnvelope> {
@@ -997,6 +1534,40 @@ mod tests {
             envelope.kind == EnvelopeKind::Result
                 && envelope.message_type == "wifi_state"
                 && envelope.request_id.as_deref() == Some(activation_id)
+        }));
+    }
+
+    #[test]
+    fn bluetooth_commands_continue_during_pending_wifi_changes() {
+        let activation_id = "77777777-7777-4777-8777-777777777777";
+        let bluetooth_id = "88888888-8888-4888-8888-888888888888";
+        let envelopes = run_wifi_commands(
+            vec![
+                WorkerEnvelope::command(
+                    "wifi_activate_profile",
+                    Some(activation_id.to_string()),
+                    serde_json::json!({
+                        "profile_id": "22222222-2222-4222-8222-222222222222",
+                        "preference": "preferred",
+                    }),
+                ),
+                WorkerEnvelope::command(
+                    "bluetooth_refresh",
+                    Some(bluetooth_id.to_string()),
+                    serde_json::json!({}),
+                ),
+            ],
+            false,
+        );
+
+        assert!(!envelopes.iter().any(|envelope| {
+            envelope.request_id.as_deref() == Some(bluetooth_id)
+                && envelope.payload["code"] == "wifi_change_in_progress"
+        }));
+        assert!(envelopes.iter().any(|envelope| {
+            envelope.request_id.as_deref() == Some(bluetooth_id)
+                && envelope.kind == EnvelopeKind::Result
+                && envelope.message_type == "bluetooth_state"
         }));
     }
 

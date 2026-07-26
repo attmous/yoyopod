@@ -49,10 +49,10 @@ pub fn build_startup_verification(pi: &PiPaths, attempts: u32) -> String {
         "test -d \"/proc/$pid\"".to_string(),
         format!(
             "for _ in $(seq 1 {attempts}); do \
-             if test -f {log} && grep -F {marker} {log} | tail -n 1 | grep -F \"pid=$pid\" >/dev/null; \
+             if test -f {log} && grep -aF {marker} {log} | tail -n 1 | grep -aF \"pid=$pid\" >/dev/null; \
              then break; fi; sleep 1; done"
         ),
-        format!("grep -F {marker} {log} | tail -n 1 | grep -F \"pid=$pid\""),
+        format!("grep -aF {marker} {log} | tail -n 1 | grep -aF \"pid=$pid\""),
     ]
     .join(" && ")
 }
@@ -90,4 +90,18 @@ pub fn build_restart(pi: &PiPaths, lane: &LanePaths) -> String {
          sudo systemctl start {dev_service} || exit $?"
     );
     [managed_restart, build_startup_verification(pi, 20)].join(" && ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_startup_verification;
+    use crate::paths::PiPaths;
+
+    #[test]
+    fn startup_verification_treats_runtime_logs_as_text() {
+        let command = build_startup_verification(&PiPaths::default(), 3);
+
+        assert_eq!(command.matches("grep -aF").count(), 4);
+        assert!(!command.contains("grep -F"));
+    }
 }

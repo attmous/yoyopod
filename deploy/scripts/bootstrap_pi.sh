@@ -57,6 +57,33 @@ INVOKING_GROUP="$(id -gn "${INVOKING_USER}")"
 
 echo "bootstrap: user=${INVOKING_USER} group=${INVOKING_GROUP} prod_root=${ROOT} dev_root=${DEV_ROOT}"
 
+# Bluetooth audio is a runtime capability, not a build dependency. Keep these
+# packages on the Pi and configure BlueALSA as the bridge used by the stable
+# ALSA aliases managed by the network worker.
+if ! command -v bluealsa >/dev/null 2>&1 \
+    || ! command -v aplay >/dev/null 2>&1 \
+    || ! dpkg-query -W libasound2-plugin-bluez >/dev/null 2>&1; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        alsa-utils bluez bluez-alsa-utils libasound2-plugin-bluez
+fi
+if ! getent group bluetooth >/dev/null 2>&1; then
+    groupadd --system bluetooth
+fi
+usermod -a -G bluetooth "${INVOKING_USER}"
+id -nG "${INVOKING_USER}" | tr ' ' '\n' | grep -Fx bluetooth >/dev/null
+rfkill unblock bluetooth || true
+install -d -m 0755 "${UNIT_DIR}/bluealsa.service.d"
+install -m 0644 -o root -g root \
+    "${REPO_ROOT}/deploy/systemd/bluealsa-yoyopod.conf" \
+    "${UNIT_DIR}/bluealsa.service.d/20-yoyopod-audio-role.conf"
+systemctl daemon-reload
+systemctl enable --now bluetooth.service
+systemctl disable --now bluealsa-aplay.service
+systemctl enable bluealsa.service
+systemctl restart bluealsa.service
+systemctl is-active --quiet bluetooth.service bluealsa.service
+
 # 1. Create directory skeleton.
 install -d -m 0755 -o root -g root \
     "${ROOT}" "${ROOT}/bin" "${DEV_ROOT}" "${DEV_ROOT}/bin"
@@ -65,6 +92,8 @@ install -d -m 0755 -o "${INVOKING_USER}" -g "${INVOKING_GROUP}" \
 install -d -m 0755 -o "${INVOKING_USER}" -g "${INVOKING_GROUP}" \
     "${DEV_ROOT}/checkout" "${DEV_ROOT}/venv" "${DEV_ROOT}/state" \
     "${DEV_ROOT}/logs" "${DEV_ROOT}/tmp"
+install -d -m 0750 -o "${INVOKING_USER}" -g "${INVOKING_GROUP}" \
+    /var/lib/yoyopod /var/lib/yoyopod/bluetooth /var/lib/yoyopod/audio
 
 # 2. Install rollback helper (owned by root, invoked by systemd).
 install -m 0755 -o root -g root \
@@ -131,6 +160,7 @@ YOYOPOD_ROOT=${ROOT}
 YOYOPOD_STATE_DIR=${ROOT}/state
 YOYOPOD_PID_FILE=${ROOT}/state/yoyopod.pid
 YOYOPOD_SERVICE_NAME=yoyopod-prod.service
+HOME=/home/${INVOKING_USER}
 EOF
 
 cat > "/etc/default/yoyopod-dev" <<EOF
@@ -140,6 +170,7 @@ YOYOPOD_DEV_CHECKOUT=${DEV_ROOT}/checkout
 YOYOPOD_DEV_VENV=${DEV_ROOT}/venv
 YOYOPOD_STATE_DIR=${DEV_ROOT}/state
 YOYOPOD_PID_FILE=${DEV_ROOT}/state/yoyopod.pid
+HOME=/home/${INVOKING_USER}
 EOF
 
 # Patch User=/Group= into the unit (only if not already present).

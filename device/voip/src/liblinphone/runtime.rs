@@ -185,7 +185,8 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start(
             if echo_cancellation != 0 { TRUE } else { FALSE },
         );
         (api.core_set_mic_gain_db)(state.core, (mic_gain as f32) * 0.3);
-        (api.core_set_playback_gain_db)(state.core, ((output_volume as f32) * 0.12) - 6.0);
+        (api.core_set_playback_gain_db)(state.core, playback_gain_db(output_volume));
+        (api.core_set_ring_level)(state.core, output_volume.clamp(0, 100));
         (api.core_set_audio_port_range)(state.core, 7076, 7100);
         (api.core_set_video_port_range)(state.core, 9076, 9100);
         if let Some(set_aggregation) = api.core_set_chat_messages_aggregation_enabled {
@@ -367,6 +368,69 @@ pub unsafe extern "C" fn yoyopod_liblinphone_set_muted(muted: i32) -> c_int {
         (api.call_set_microphone_muted)(call, if muted != 0 { TRUE } else { FALSE });
         0
     })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn yoyopod_liblinphone_set_audio_devices(
+    playback_device_id: *const c_char,
+    ringer_device_id: *const c_char,
+    capture_device_id: *const c_char,
+    media_device_id: *const c_char,
+    microphone_gain: c_int,
+    output_volume: c_int,
+    alert_volume: c_int,
+) -> c_int {
+    let state = match STATE.lock() {
+        Ok(state) => state,
+        Err(_) => {
+            error::set_last_error("liblinphone runtime state lock poisoned");
+            return -1;
+        }
+    };
+    if !state.started || state.core.is_null() {
+        // Audio preferences may arrive before SIP startup. The worker's config
+        // still applies them when the backend starts, so this is not an error.
+        return 0;
+    }
+    let Some(api) = state.api.clone() else {
+        error::set_last_error("Liblinphone API is not initialized");
+        return -1;
+    };
+    unsafe {
+        set_device(
+            &api,
+            state.core,
+            playback_device_id,
+            api.core_set_playback_device,
+        );
+        set_device(
+            &api,
+            state.core,
+            ringer_device_id,
+            api.core_set_ringer_device,
+        );
+        set_device(
+            &api,
+            state.core,
+            capture_device_id,
+            api.core_set_capture_device,
+        );
+        set_device(&api, state.core, media_device_id, api.core_set_media_device);
+        (api.core_set_mic_gain_db)(state.core, (microphone_gain.clamp(0, 100) as f32) * 0.3);
+        (api.core_set_playback_gain_db)(state.core, playback_gain_db(output_volume));
+        (api.core_set_ring_level)(state.core, alert_volume.clamp(0, 100));
+    }
+    error::clear_last_error();
+    0
+}
+
+fn playback_gain_db(output_volume: c_int) -> f32 {
+    let fraction = output_volume.clamp(0, 100) as f32 / 100.0;
+    if fraction == 0.0 {
+        -120.0
+    } else {
+        20.0 * fraction.log10()
+    }
 }
 
 #[no_mangle]
@@ -1705,4 +1769,17 @@ fn copy_str_to_c_buffer(value: &str, out: *mut c_char, out_size: u32) -> bool {
         *out.add(count) = 0;
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::playback_gain_db;
+
+    #[test]
+    fn playback_percentages_map_to_real_attenuation() {
+        assert_eq!(playback_gain_db(0), -120.0);
+        assert!((playback_gain_db(10) - -20.0).abs() < 0.01);
+        assert!((playback_gain_db(50) - -6.0206).abs() < 0.01);
+        assert_eq!(playback_gain_db(100), 0.0);
+    }
 }

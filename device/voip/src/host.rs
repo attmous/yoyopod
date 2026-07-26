@@ -25,6 +25,18 @@ pub trait VoipRuntimeBackend {
     fn reject_call(&mut self) -> Result<(), String>;
     fn hangup(&mut self) -> Result<(), String>;
     fn set_muted(&mut self, muted: bool) -> Result<(), String>;
+    fn set_audio_devices(
+        &mut self,
+        _playback_device: &str,
+        _ringer_device: &str,
+        _capture_device: &str,
+        _media_device: &str,
+        _microphone_gain: u8,
+        _output_volume: u8,
+        _alert_volume: u8,
+    ) -> Result<(), String> {
+        Ok(())
+    }
     fn send_text_message(&mut self, sip_address: &str, text: &str) -> Result<String, String>;
     fn start_voice_recording(&mut self, file_path: &str) -> Result<(), String>;
     fn voice_recording_metrics(&mut self) -> Result<VoiceRecordingMetrics, String>;
@@ -294,6 +306,28 @@ impl VoipHost {
         backend.set_muted(muted)?;
         self.call.set_muted(muted);
         Ok(())
+    }
+
+    pub fn set_audio_devices<B: VoipRuntimeBackend + ?Sized>(
+        &mut self,
+        backend: &mut B,
+        playback_device: &str,
+        ringer_device: &str,
+        capture_device: &str,
+        media_device: &str,
+        microphone_gain: u8,
+        output_volume: u8,
+        alert_volume: u8,
+    ) -> Result<(), String> {
+        backend.set_audio_devices(
+            playback_device,
+            ringer_device,
+            capture_device,
+            media_device,
+            microphone_gain,
+            output_volume,
+            alert_volume,
+        )
     }
 
     pub fn send_text_message<B: VoipRuntimeBackend + ?Sized>(

@@ -2,6 +2,10 @@ use serde_json::json;
 
 use crate::snapshot::NetworkRuntimeSnapshot;
 use crate::wifi::{WifiChangeOperation, WifiState};
+use crate::{
+    audio::{AudioRouteLocal, AudioState},
+    bluetooth::BluetoothState,
+};
 
 pub use yoyopod_protocol::{EnvelopeKind, ProtocolError, WorkerEnvelope, SUPPORTED_SCHEMA_VERSION};
 
@@ -39,6 +43,38 @@ pub fn wifi_state_result(request_id: Option<String>, state: &WifiState) -> Worke
         json!({
             "state": state,
         }),
+    )
+}
+
+pub fn bluetooth_state_event(state: &BluetoothState) -> WorkerEnvelope {
+    WorkerEnvelope::event(
+        "bluetooth_state",
+        serde_json::to_value(state).expect("Bluetooth state should serialize"),
+    )
+}
+
+pub fn bluetooth_state_result(
+    request_id: Option<String>,
+    state: &BluetoothState,
+) -> WorkerEnvelope {
+    WorkerEnvelope::result("bluetooth_state", request_id, json!({ "state": state }))
+}
+
+pub fn audio_state_event(state: &AudioState) -> WorkerEnvelope {
+    WorkerEnvelope::event(
+        "audio_state",
+        serde_json::to_value(state).expect("audio state should serialize"),
+    )
+}
+
+pub fn audio_state_result(request_id: Option<String>, state: &AudioState) -> WorkerEnvelope {
+    WorkerEnvelope::result("audio_state", request_id, json!({ "state": state }))
+}
+
+pub fn audio_route_local_event(route: &AudioRouteLocal) -> WorkerEnvelope {
+    WorkerEnvelope::event(
+        "audio_route_local",
+        serde_json::to_value(route).expect("local audio route should serialize"),
     )
 }
 

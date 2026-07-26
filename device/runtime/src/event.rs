@@ -26,6 +26,9 @@ pub enum RuntimeEvent {
     WifiState(Value),
     WifiChangeCandidate(Value),
     WifiProvisioningState(Value),
+    BluetoothState(Value),
+    AudioState(Value),
+    AudioRouteLocal(Value),
     PowerSnapshot(Value),
     VoiceTranscript(Value),
     VoiceAskResult(Value),
@@ -97,7 +100,11 @@ impl RuntimeEvent {
                 state.resolve_overlay_for(WorkerDomain::Network);
                 state.apply_network_snapshot(snapshot);
             }
-            Self::WifiState(_) | Self::WifiChangeCandidate(_) => {}
+            Self::WifiState(_)
+            | Self::WifiChangeCandidate(_)
+            | Self::BluetoothState(_)
+            | Self::AudioState(_) => {}
+            Self::AudioRouteLocal(route) => state.apply_audio_route_local(route),
             Self::WifiProvisioningState(payload) => state.apply_wifi_provisioning_state(payload),
             Self::PowerSnapshot(snapshot) => {
                 state.resolve_overlay_for(WorkerDomain::Power);
@@ -160,7 +167,14 @@ pub fn runtime_event_from_worker(
     } = envelope;
 
     match kind {
-        EnvelopeKind::Error if message_type == "wifi_error" => Some(RuntimeEvent::Ignored),
+        EnvelopeKind::Error
+            if matches!(
+                message_type.as_str(),
+                "wifi_error" | "bluetooth_error" | "audio_error"
+            ) =>
+        {
+            Some(RuntimeEvent::Ignored)
+        }
         EnvelopeKind::Error => Some(RuntimeEvent::WorkerError {
             domain,
             message: worker_error_message(&message_type, &payload),
@@ -257,6 +271,45 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
                 "payload": candidate,
             }),
         )],
+        RuntimeEvent::BluetoothState(bluetooth) => vec![worker_command(
+            WorkerDomain::Cloud,
+            "cloud.publish_event",
+            json!({
+                "event_type": "bluetooth_state",
+                "payload": bluetooth,
+            }),
+        )],
+        RuntimeEvent::AudioState(audio) => vec![worker_command(
+            WorkerDomain::Cloud,
+            "cloud.publish_event",
+            json!({
+                "event_type": "audio_state",
+                "payload": audio,
+            }),
+        )],
+        RuntimeEvent::AudioRouteLocal(route) => {
+            let mut commands = Vec::new();
+            if let Some(device) = route.get("media_device").and_then(Value::as_str) {
+                commands.push(worker_command(
+                    WorkerDomain::Media,
+                    "media.set_audio_device",
+                    json!({ "device": device }),
+                ));
+            }
+            if let Some(volume) = route.get("media_volume").and_then(Value::as_u64) {
+                commands.push(worker_command(
+                    WorkerDomain::Media,
+                    "media.set_volume",
+                    json!({ "volume": volume }),
+                ));
+            }
+            commands.push(worker_command(
+                WorkerDomain::Voip,
+                "voip.set_audio_devices",
+                route.clone(),
+            ));
+            commands
+        }
         RuntimeEvent::WifiProvisioningState(provisioning) => {
             // The raw payload carries the hotspot password and the QR (which
             // embeds it). Never forward those to the cloud/MQTT — publish only
@@ -456,6 +509,9 @@ fn network_event_from_message(message_type: &str, payload: Value) -> RuntimeEven
         "wifi_state" => RuntimeEvent::WifiState(payload),
         "wifi_change_candidate" => RuntimeEvent::WifiChangeCandidate(payload),
         "wifi_provisioning_state" => RuntimeEvent::WifiProvisioningState(payload),
+        "bluetooth_state" => RuntimeEvent::BluetoothState(payload),
+        "audio_state" => RuntimeEvent::AudioState(payload),
+        "audio_route_local" => RuntimeEvent::AudioRouteLocal(payload),
         "network.error" => RuntimeEvent::WorkerError {
             domain: WorkerDomain::Network,
             message: worker_error_message(message_type, &payload),
@@ -629,20 +685,16 @@ fn system_speech_command(state: &RuntimeState, line: &str) -> Vec<RuntimeCommand
 }
 
 fn commands_for_settings_intent(
-    state: &RuntimeState,
+    _state: &RuntimeState,
     intent: &yoyopod_protocol::ui::SettingsIntent,
 ) -> Vec<RuntimeCommand> {
     use yoyopod_protocol::ui::SettingsIntent;
     match intent {
-        SettingsIntent::VolumeStep => {
-            let level = ((state.media.volume.clamp(0, 100) + 5) / 10).clamp(1, 10);
-            let next = if level >= 10 { 1 } else { level + 1 };
-            vec![worker_command(
-                WorkerDomain::Media,
-                "media.set_volume",
-                json!({"volume": next * 10}),
-            )]
-        }
+        SettingsIntent::VolumeStep => vec![worker_command(
+            WorkerDomain::Network,
+            "audio_set_output_level",
+            json!({"cycle": true}),
+        )],
         SettingsIntent::WifiSetupStart => vec![worker_command(
             WorkerDomain::Network,
             "wifi_provisioning_start",
@@ -1053,14 +1105,14 @@ fn commands_for_voice_command(
             })
             .unwrap_or_default(),
         VoiceCommandIntent::VolumeUp => vec![worker_command(
-            WorkerDomain::Media,
-            "media.set_volume",
-            json!({"volume": adjusted_volume(state, 10)}),
+            WorkerDomain::Network,
+            "audio_set_output_level",
+            json!({"level": adjusted_volume(state, 10)}),
         )],
         VoiceCommandIntent::VolumeDown => vec![worker_command(
-            WorkerDomain::Media,
-            "media.set_volume",
-            json!({"volume": adjusted_volume(state, -10)}),
+            WorkerDomain::Network,
+            "audio_set_output_level",
+            json!({"level": adjusted_volume(state, -10)}),
         )],
         VoiceCommandIntent::ReadScreen
         | VoiceCommandIntent::MuteMic
@@ -1178,6 +1230,52 @@ fn commands_for_cloud_command(command: &Value) -> Vec<RuntimeCommand> {
                     ),
                     command_id,
                     command_type: normalized(&command_type),
+                    timeout_ms,
+                }]
+            })
+            .unwrap_or_default(),
+        "bluetooth_refresh"
+        | "bluetooth_set_power"
+        | "bluetooth_set_radio"
+        | "bluetooth_scan"
+        | "bluetooth_scan_start"
+        | "bluetooth_stop_scan"
+        | "bluetooth_scan_stop"
+        | "bluetooth_pair"
+        | "bluetooth_connect"
+        | "bluetooth_disconnect"
+        | "bluetooth_update_accessory"
+        | "bluetooth_forget"
+        | "audio_apply_settings"
+        | "audio_test_output"
+        | "audio_test_input" => command_id
+            .map(|command_id| {
+                let command_type = normalized(&command_type);
+                let network_command_type = match command_type.as_str() {
+                    "bluetooth_set_power" => "bluetooth_set_radio",
+                    "bluetooth_scan" => "bluetooth_scan_start",
+                    "bluetooth_stop_scan" => "bluetooth_scan_stop",
+                    other => other,
+                };
+                let timeout_ms = match command_type.as_str() {
+                    "bluetooth_pair" => 90_000,
+                    "bluetooth_connect" => 30_000,
+                    "audio_test_input" => 20_000,
+                    _ => 15_000,
+                };
+                vec![RuntimeCommand::CorrelatedWorkerCommand {
+                    domain: WorkerDomain::Network,
+                    envelope: WorkerEnvelope::command(
+                        network_command_type,
+                        Some(command_id.clone()),
+                        command
+                            .get("payload")
+                            .cloned()
+                            .filter(Value::is_object)
+                            .unwrap_or_else(empty_payload),
+                    ),
+                    command_id,
+                    command_type,
                     timeout_ms,
                 }]
             })
@@ -1793,22 +1891,36 @@ mod tests {
     }
 
     #[test]
-    fn setup_volume_step_wraps_and_routes_to_media() {
+    fn setup_volume_step_wraps_and_routes_to_managed_audio() {
         let mut state = RuntimeState::default();
         state.media.volume = 100;
         let event = RuntimeEvent::UiIntent(UiIntent::Settings(SettingsIntent::VolumeStep));
         let commands = commands_for_event(&state, &event);
 
         let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
-            panic!("expected media command");
+            panic!("expected managed audio command");
         };
-        assert_eq!(*domain, WorkerDomain::Media);
-        assert_eq!(envelope.message_type, "media.set_volume");
-        assert_eq!(envelope.payload["volume"], 10);
+        assert_eq!(*domain, WorkerDomain::Network);
+        assert_eq!(envelope.message_type, "audio_set_output_level");
+        assert_eq!(envelope.payload["cycle"], true);
 
         event.apply(&mut state);
-        assert_eq!(state.media.volume, 10);
-        assert_eq!(state.ui_snapshot().settings.volume_level, 1);
+        assert_eq!(state.media.volume, 100);
+        assert_eq!(state.ui_snapshot().settings.volume_level, 10);
+    }
+
+    #[test]
+    fn voice_volume_routes_to_managed_audio() {
+        let mut state = RuntimeState::default();
+        state.media.volume = 90;
+        let commands = commands_for_voice_command(&state, VoiceCommandIntent::VolumeUp, "");
+
+        let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+            panic!("expected managed audio command");
+        };
+        assert_eq!(*domain, WorkerDomain::Network);
+        assert_eq!(envelope.message_type, "audio_set_output_level");
+        assert_eq!(envelope.payload["level"], 100);
     }
 
     #[test]
@@ -2192,5 +2304,102 @@ mod tests {
         assert_eq!(envelope.message_type, "cloud.publish_event");
         assert_eq!(envelope.payload["event_type"], "wifi_change_candidate");
         assert_eq!(envelope.payload["payload"]["command_id"], "command-123");
+    }
+
+    #[test]
+    fn bluetooth_and_audio_state_are_forwarded_without_local_route_details() {
+        for (event, expected_type) in [
+            (
+                RuntimeEvent::BluetoothState(json!({
+                    "schema_version": 1,
+                    "status": "ready",
+                    "accessories": []
+                })),
+                "bluetooth_state",
+            ),
+            (
+                RuntimeEvent::AudioState(json!({
+                    "schema_version": 1,
+                    "status": "ready",
+                    "applied_revision": 2
+                })),
+                "audio_state",
+            ),
+        ] {
+            let commands = commands_for_event(&RuntimeState::default(), &event);
+            let RuntimeCommand::WorkerCommand { domain, envelope } = &commands[0] else {
+                panic!("expected cloud publish command");
+            };
+            assert_eq!(*domain, WorkerDomain::Cloud);
+            assert_eq!(envelope.message_type, "cloud.publish_event");
+            assert_eq!(envelope.payload["event_type"], expected_type);
+        }
+
+        let route_commands = commands_for_event(
+            &RuntimeState::default(),
+            &RuntimeEvent::AudioRouteLocal(json!({
+                "media_device": "alsa/default",
+                "media_volume": 60,
+                "voip_playback_device": "ALSA: default",
+                "voip_ringer_device": "ALSA: default",
+                "voip_capture_device": "ALSA: default",
+                "voip_media_device": "ALSA: default",
+                "communication_volume": 65,
+                "alert_volume": 58,
+                "microphone_gain": 55
+            })),
+        );
+        assert_eq!(route_commands.len(), 3);
+        assert!(route_commands.iter().all(|command| {
+            matches!(
+                command,
+                RuntimeCommand::WorkerCommand { domain, .. }
+                    if *domain != WorkerDomain::Cloud
+            )
+        }));
+
+        let mut state = RuntimeState::default();
+        RuntimeEvent::AudioRouteLocal(json!({
+            "media_volume": 100
+        }))
+        .apply(&mut state);
+        assert_eq!(state.media.volume, 100);
+    }
+
+    #[test]
+    fn bluetooth_and_audio_cloud_commands_are_correlated_to_network() {
+        for (command_type, network_command_type) in [
+            ("bluetooth_set_power", "bluetooth_set_radio"),
+            ("bluetooth_scan", "bluetooth_scan_start"),
+            ("bluetooth_stop_scan", "bluetooth_scan_stop"),
+            ("bluetooth_pair", "bluetooth_pair"),
+            ("bluetooth_connect", "bluetooth_connect"),
+            ("audio_apply_settings", "audio_apply_settings"),
+            ("audio_test_output", "audio_test_output"),
+            ("audio_test_input", "audio_test_input"),
+        ] {
+            let commands = commands_for_event(
+                &RuntimeState::default(),
+                &RuntimeEvent::CloudCommand(json!({
+                    "command": command_type,
+                    "commandId": "command-123",
+                    "payload": {}
+                })),
+            );
+            let RuntimeCommand::CorrelatedWorkerCommand {
+                domain,
+                envelope,
+                command_id,
+                command_type: correlated_command_type,
+                ..
+            } = &commands[0]
+            else {
+                panic!("expected correlated network command for {command_type}");
+            };
+            assert_eq!(*domain, WorkerDomain::Network);
+            assert_eq!(envelope.message_type, network_command_type);
+            assert_eq!(command_id, "command-123");
+            assert_eq!(correlated_command_type, command_type);
+        }
     }
 }
