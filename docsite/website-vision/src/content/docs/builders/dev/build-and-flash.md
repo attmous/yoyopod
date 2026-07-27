@@ -92,9 +92,9 @@ hardware (see [Hardware Roadmap](/builders/hardware/roadmap/)).
 
 ## Open questions
 
-- TODO: How much of the Pi-prototype deploy path survives the prototype-to-product transition?
-- TODO: Known contract gaps — voice-provider credential provisioning and board/modem-specific device permissions — where do they get owned?
-- TODO: Does the bringup flow ever become portable beyond the Debian-based Pi path?
+- How much of the Pi-prototype deploy path survives the prototype-to-product transition?
+- Known contract gaps — voice-provider credential provisioning and board/modem-specific device permissions — where do they get owned?
+- Does the bringup flow ever become portable beyond the Debian-based Pi path?
 
 :::note[Sources]
 Condensed from

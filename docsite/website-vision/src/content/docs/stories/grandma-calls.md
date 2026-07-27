@@ -5,10 +5,10 @@ description: "The whitelist in action: only family gets through."
 
 *Emil, 7, gets his daily call from Grandma — and a stranger's number never rings.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## The moment
@@ -102,7 +102,7 @@ without ever touching it. She thinks of it as calling Emil. She is
 right. That is the whole design. More evenings like this one live at
 [Stories](/stories/).
 
-## Open questions
+## Still being decided
 
 - **Refused-call visibility:** adopt silent-drop as the complete story — nothing shown to Emil *and* nothing logged for parents — or give parents a quiet record of refused attempts in the app, and accept that the record itself invites worry?
 - **How Grandma gets on the list:** adopt parent-entered contacts as the only path (a parent types Grandma's number into the app), or add an invite flow Grandma confirms from her own phone, trading simplicity for verified numbers?

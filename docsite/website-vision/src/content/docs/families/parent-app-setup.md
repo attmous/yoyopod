@@ -5,10 +5,10 @@ description: Connect your phone to the device and take the controls.
 
 *Pair the parent app with the device and complete the family's first configuration.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## What you'll need
@@ -135,7 +135,7 @@ code the canvas is showing. If home is a dead zone, do the pairing
 step anywhere with a bar of signal — a café, the car park — and finish the
 rest at home; everything after the bind tolerates being offline.
 
-## Open questions
+## Still being decided
 
 - **Passkey recovery — adopt a second registered device, a printed
   recovery code in the box, or both?** Recovery is the real front door to

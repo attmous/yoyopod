@@ -1,0 +1,56 @@
+---
+import { DOCS_URL, GITHUB_URL } from '../consts';
+import Wordmark from './Wordmark.astro';
+import ThemeToggle from './ThemeToggle.astro';
+---
+
+<header class="site-header">
+	<div class="header-row">
+		<a class="home-link" href="/"><Wordmark class="brand" /></a>
+		<nav aria-label="Main">
+			<a href={DOCS_URL}>Docs</a>
+			<a href={GITHUB_URL}>GitHub</a>
+			<ThemeToggle />
+		</nav>
+	</div>
+</header>
+
+<style>
+	.site-header {
+		padding: 30px clamp(1.5rem, 4vw, 56px);
+	}
+
+	.header-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+
+	.home-link {
+		text-decoration: none;
+	}
+
+	.brand {
+		font-size: 24px;
+	}
+
+	nav {
+		display: flex;
+		align-items: center;
+		gap: 1.4rem;
+	}
+
+	nav a {
+		text-decoration: none;
+		font-weight: 600;
+		font-size: 0.95rem;
+		color: var(--ink-75);
+	}
+
+	nav a:hover,
+	nav a:focus-visible {
+		color: var(--cyan);
+	}
+</style>

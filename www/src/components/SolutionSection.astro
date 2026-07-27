@@ -1,0 +1,58 @@
+<section id="solution" class="section solution">
+	<div class="container">
+		<div class="narrow centered">
+			<span class="eyebrow">The answer</span>
+			<p class="lede">
+				yoyopod gives kids a focused device for communication, audio, and mobility, while giving
+				parents the confidence to stay connected.
+			</p>
+		</div>
+		<div class="trust-strip">
+			<p class="trust-intro">What parents actually need is simple:</p>
+			<div class="trust-questions">
+				<div class="card">Can I reach my child?</div>
+				<div class="card">Can they reach me?</div>
+				<div class="card">Can I see where they are?</div>
+			</div>
+			<p class="trust-outro">yoyopod is built around those questions first.</p>
+		</div>
+	</div>
+</section>
+
+<style>
+	.solution {
+		padding-top: 0;
+	}
+
+	.trust-strip {
+		margin-top: 3rem;
+		text-align: center;
+	}
+
+	.trust-intro,
+	.trust-outro {
+		font-weight: 700;
+	}
+
+	.trust-questions {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 1rem;
+		margin-block: 1.25rem;
+	}
+
+	.trust-questions .card {
+		font-size: 1.1rem;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 5rem;
+	}
+
+	@media (max-width: 720px) {
+		.trust-questions {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

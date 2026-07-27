@@ -5,10 +5,10 @@ description: The vision parking lot — bounded by what yoyopod is not.
 
 *Ideas compatible with the principles, parked until the V1 pillars are solid.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## How ideas earn a place here
@@ -80,9 +80,8 @@ The full argued stance lives at
 parking lot, and nothing ever leaves it, in a way that contradicts that
 page.
 
-## Open questions
+## Still being decided
 
-- **Adopt concrete "solid" criteria for the V1 pillars?** Define measurable bars — real households, weeks of daily use, support-load thresholds — that must be met before anything here unparks, so "solid" is a checklist and not a mood.
-- **Adopt single-owner sign-off for this page?** One person (the founder) admits ideas, unparks them, and approves any change to the rejected list — or decide a different arbiter now, before the first hard call arrives.
-- **Adopt a hardware gate for parked ideas?** Decide whether an idea must run on the current board to stay parked, or whether hardware-dependent ideas may wait here flagged as gated on a future revision.
-- **Adopt a family-request intake?** Parents will ask for features; decide whether their requests formally feed this parking lot — and how to say no in the product's voice when they fail the test.
+- **What makes the V1 pillars "solid"?** Measurable bars — real households, weeks of daily use, support-load thresholds — that must be met before anything here moves forward, so "solid" is a checklist and not a mood.
+- **Do parked ideas need to run on today's hardware?** Whether an idea must work on the current board to earn a place here, or whether hardware-dependent ideas may wait, flagged as gated on a future revision.
+- **How do family requests feed this list?** Parents will ask for features; whether those requests formally feed this page — and how to say no in the product's voice when they fail the test — is still open.

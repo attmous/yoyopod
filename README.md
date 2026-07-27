@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>yoyopod is a tiny Pi-powered music player and phone for kids aged 7-13.</strong>
+  <strong>yoyopod is a tiny Pi-powered music player and phone for kids ages 7-14.</strong>
 </p>
 
 <p align="center">

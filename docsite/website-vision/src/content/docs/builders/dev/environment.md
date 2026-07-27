@@ -76,8 +76,8 @@ them.
 
 ## Open questions
 
-- TODO: What is the officially supported host OS matrix for contributors (Windows, macOS, Linux)?
-- TODO: Which toolchain versions do we pin, and where is the single source of truth for them?
+- What is the officially supported host OS matrix for contributors (Windows, macOS, Linux)?
+- Which toolchain versions do we pin, and where is the single source of truth for them?
 
 :::note[Sources]
 Condensed from

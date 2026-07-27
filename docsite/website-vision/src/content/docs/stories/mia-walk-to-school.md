@@ -5,10 +5,10 @@ description: First solo walk — location on the parent's phone, one check-in ca
 
 *Mia's first solo walk to school, and what her mother Aylin sees from the kitchen.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## The moment
@@ -97,7 +97,7 @@ one scene: safer independence for kids, and peace of mind for the people
 who love them. More mornings like this one live at
 [Stories](/stories/).
 
-## Open questions
+## Still being decided
 
 - **The between-fixes view:** adopt the single dot with an honest *updated X minutes ago* line — deliberately no trail, no breadcrumb history — or show a short route trail and accept that it reads more like tracking?
 - **Who initiates:** adopt child-initiated calls only for V1 (the yoyopod app's five jobs deliberately do not include a dialer), or let a parent ring the device from the app and accept the scope growth?

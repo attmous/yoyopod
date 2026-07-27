@@ -5,10 +5,10 @@ description: Screen-light, parent-managed, local-first — the rules features mu
 
 *The principles every feature decision must pass, stated as testable rules.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## The principles
@@ -32,7 +32,7 @@ companion". Freezing that wording is an open question below.
 
 ## How we apply them
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 Every feature proposal answers the principles before any design work
 starts — not as a mood check but as a short list of questions, each
@@ -107,7 +107,7 @@ sharpest truth: it is the first device before a smartphone.
 The fuller refusal list lives as a first-class page:
 [What yoyopod Is Not](/company/what-we-are-not/).
 
-## Open questions
+## Still being decided
 
 - **Adopt the testable-question wording** above as the frozen canonical
   form of each principle, quoted identically on every page — or keep

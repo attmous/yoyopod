@@ -69,12 +69,6 @@ as-built engineering docs live in the main docs site (`docsite/website/` in the
 repository). The rules that keep us honest are written down as
 [Product Principles](/company/principles/).
 
-## Open questions
-
-- TODO: resolve the age-range discrepancy — product docs say kids 7-14, the README says 7-13
-- TODO: how much personal founder story goes on this page vs. staying anonymous as "fathers in Stuttgart" (TBD)
-- TODO: does the mission page state a company legal entity / founding date, or keep it product-only (TBD)
-
 :::note[Sources]
 Condensed from
 [`docs/product/PRODUCT_DEFINITION.md`](https://github.com/attmous/yoyopod/blob/main/docs/product/PRODUCT_DEFINITION.md)

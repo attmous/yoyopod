@@ -5,10 +5,10 @@ description: Local-first music and stories — playlists, shuffle, now playing.
 
 *The listening experience: the library, the wheel, and now playing.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## What it is
@@ -60,7 +60,7 @@ snapshots. Details that protect the kid experience:
 
 ## In the parent app
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 Content loading is one of the yoyopod app's five V1 “Daylight” jobs, and it
 works the way a parent would hope: pick something, and it shows up on the
@@ -110,7 +110,7 @@ skip it, or turn it off with the button, because the device is theirs.
   v5 UI contract; the arc hero ships first as a simpler progress-bar
   fallback.
 
-## Open questions
+## Still being decided
 
 - **Adopt a storage budget with a visible gauge?** The app showing "how
   much room is left" implies a decided cap and a decided behavior at the

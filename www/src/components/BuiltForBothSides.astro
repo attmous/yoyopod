@@ -1,0 +1,55 @@
+<section id="families" class="section">
+	<div class="container">
+		<div class="positioning centered narrow">
+			<p>For kids, yoyopod feels like freedom.</p>
+			<p>For parents, it feels like reassurance.</p>
+			<p>For both, it’s a better step before the smartphone years.</p>
+		</div>
+		<div class="sides">
+			<div class="card">
+				<h3>For kids</h3>
+				<ul class="checklist">
+					<li>Feels grown-up</li>
+					<li>Easy to carry</li>
+					<li>Simple to use</li>
+					<li>Fun for music and audio</li>
+				</ul>
+			</div>
+			<div class="card">
+				<h3>For parents</h3>
+				<ul class="checklist">
+					<li>Approved contacts only</li>
+					<li>Live location visibility</li>
+					<li>Less distraction than a phone</li>
+					<li>More confidence when kids are out on their own</li>
+				</ul>
+			</div>
+		</div>
+	</div>
+</section>
+
+<style>
+	.positioning p {
+		font-size: clamp(1.25rem, 2.6vw, 1.6rem);
+		font-weight: 900;
+		letter-spacing: -0.03em;
+		margin-bottom: 0.3em;
+	}
+
+	.sides {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 1.25rem;
+		margin-top: 2.5rem;
+	}
+
+	.sides .checklist {
+		margin-bottom: 0;
+	}
+
+	@media (max-width: 720px) {
+		.sides {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

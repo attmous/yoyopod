@@ -1,0 +1,336 @@
+---
+import { DOCS_URL, GITHUB_URL, NOTIFY_ENABLED, NOTIFY_ENDPOINT } from '../consts';
+import Wordmark from './Wordmark.astro';
+import DeviceTeaser from './DeviceTeaser.astro';
+import ThemeToggle from './ThemeToggle.astro';
+---
+
+<section id="top" class="hero">
+	<div class="topbar">
+		<Wordmark class="brand" />
+		<span class="topbar-right">
+			<ThemeToggle />
+			<span class="launch-label">Available soon</span>
+		</span>
+	</div>
+	<div class="center">
+		<div class="copy">
+			<h1>Something small is coming.</h1>
+			<p class="lede">
+				A first device for kids, built for talking to family instead of staring at screens. Kids
+				get real independence. Parents get peace of mind.
+			</p>
+			{
+				NOTIFY_ENABLED ? (
+					<form class="notify" method="post" action={NOTIFY_ENDPOINT}>
+						<div class="notify-row">
+							<input
+								type="email"
+								name="email"
+								required
+								placeholder="parent@email.com"
+								aria-label="Your email address"
+							/>
+							<button type="submit">Notify me</button>
+						</div>
+					</form>
+				) : (
+					<div class="notify notify-paused" aria-label="Email notifications are not available yet">
+						<div class="notify-row">
+							<input
+								type="email"
+								disabled
+								placeholder="Email updates open soon"
+								aria-label="Email notifications are not available yet"
+							/>
+							<button type="button" disabled>Coming soon</button>
+						</div>
+					</div>
+				)
+			}
+			<div class="links-row">
+				<a class="btn-ghost" href={DOCS_URL}>Read the docs →</a>
+				<a class="btn-icon" href={GITHUB_URL} aria-label="yoyopod source on GitHub" title="GitHub">
+					<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+						<path
+							d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"
+						></path>
+					</svg>
+				</a>
+			</div>
+			<ul class="checklist">
+				<li>Stay in touch without giving them a phone</li>
+				<li>No feed, no ads, no strangers. Only people you approve</li>
+				<li>Music and stories they choose, you curate</li>
+				<li>Peace of mind: reachable, and on the map when it matters</li>
+			</ul>
+		</div>
+		<DeviceTeaser />
+	</div>
+	<div class="bottombar">
+		<div class="finish-dots" role="img" aria-label="Four finishes: Cloud·Sky, Mint·Forest, Bubblegum, Tangerine">
+			<span class="finish-cloud" title="Cloud·Sky"></span>
+			<span class="finish-mint" title="Mint·Forest"></span>
+			<span class="finish-bubblegum" title="Bubblegum"></span>
+			<span class="finish-tangerine" title="Tangerine"></span>
+		</div>
+		<nav aria-label="Footer">
+			<a href={GITHUB_URL}>GitHub</a>
+			<a href="/imprint">Imprint</a>
+			<a href="/privacy">Privacy</a>
+		</nav>
+		<span class="copyright">© 2026 <Wordmark bouncing class="mark-sm" /></span>
+	</div>
+</section>
+
+<script>
+	const form = document.querySelector<HTMLFormElement>('.notify');
+	const button = form?.querySelector('button');
+	const input = form?.querySelector('input');
+
+	form?.addEventListener('submit', async (e) => {
+		e.preventDefault();
+		if (!form.reportValidity() || !button || !input) return;
+		button.disabled = true;
+		button.textContent = '…';
+		try {
+			const res = await fetch(form.action, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ email: input.value }),
+			});
+			if (!res.ok) throw new Error(String(res.status));
+			button.textContent = "You're on the list ✓";
+			button.classList.add('is-joined');
+			input.disabled = true;
+		} catch {
+			button.textContent = 'Try again';
+			button.disabled = false;
+		}
+	});
+</script>
+
+<style>
+	.hero {
+		min-height: 100svh;
+		display: flex;
+		flex-direction: column;
+		background: radial-gradient(1100px 700px at 72% 40%, var(--bg-glow), var(--bg) 65%);
+		overflow: hidden;
+	}
+
+	.topbar,
+	.bottombar {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 1.5rem;
+		padding: 30px clamp(1.5rem, 4vw, 56px);
+	}
+
+	.brand {
+		font-size: 24px;
+	}
+
+	.topbar-right {
+		display: flex;
+		align-items: center;
+		gap: 1.1rem;
+	}
+
+	.launch-label {
+		font-size: 13px;
+		font-weight: 700;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		color: var(--ink-50);
+		white-space: nowrap;
+	}
+
+	.center {
+		flex: 1;
+		display: grid;
+		grid-template-columns: 1.1fr 0.9fr;
+		align-items: center;
+		gap: 20px;
+		max-width: 1360px;
+		width: 100%;
+		margin: 0 auto;
+		padding: 1rem clamp(1.5rem, 4vw, 56px);
+	}
+
+	.copy {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 28px;
+	}
+
+	.copy .lede {
+		max-width: 46ch;
+		margin: 0;
+	}
+
+	.notify {
+		width: 100%;
+		max-width: 520px;
+	}
+
+	.notify-row {
+		display: flex;
+		gap: 12px;
+	}
+
+	.notify input {
+		flex: 1;
+		min-width: 0;
+		background: var(--ink-07);
+		border: 1.5px solid var(--ink-22);
+		border-radius: var(--radius-pill);
+		padding: 16px 24px;
+		font-size: 16px;
+		font-weight: 600;
+		color: var(--ink);
+		outline: none;
+		font-family: var(--font-sans);
+	}
+
+	.notify input::placeholder {
+		color: var(--ink-40);
+	}
+
+	.notify input:focus-visible {
+		border-color: var(--cyan);
+	}
+
+	.notify button {
+		background: var(--cyan);
+		color: var(--cyan-ink);
+		border: none;
+		border-radius: var(--radius-pill);
+		padding: 16px 30px;
+		font-size: 16px;
+		font-weight: 800;
+		cursor: pointer;
+		font-family: var(--font-sans);
+		white-space: nowrap;
+		transition: background 0.3s, opacity 0.15s;
+	}
+
+	.notify button:hover:not(:disabled) {
+		opacity: 0.92;
+	}
+
+	.notify button:disabled {
+		cursor: default;
+	}
+
+	.notify-paused input {
+		cursor: not-allowed;
+	}
+
+	.notify-paused button {
+		background: var(--ink-22);
+		color: var(--ink-50);
+	}
+
+	.notify button.is-joined {
+		background: var(--joined);
+		color: var(--cream);
+	}
+
+	.links-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.btn-icon {
+		display: grid;
+		place-items: center;
+		width: 47px;
+		height: 47px;
+		border-radius: 50%;
+		border: 1.5px solid var(--ink-30);
+		color: var(--ink);
+		transition: border-color 120ms ease, color 120ms ease;
+	}
+
+	.btn-icon:hover,
+	.btn-icon:focus-visible {
+		border-color: var(--cyan);
+		color: var(--cyan);
+	}
+
+	.checklist {
+		margin: 0;
+		font-size: 1.03rem;
+	}
+
+	.bottombar nav {
+		display: flex;
+		gap: 1.4rem;
+	}
+
+	.bottombar nav a,
+	.copyright {
+		text-decoration: none;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ink-50);
+	}
+
+	.bottombar nav a:hover,
+	.bottombar nav a:focus-visible {
+		color: var(--cyan);
+	}
+
+	.copyright :global(.wordmark) {
+		color: inherit;
+		font-weight: 600;
+		letter-spacing: normal;
+	}
+
+	/* Keep the teaser a true single screen on shorter desktop windows. */
+	@media (min-width: 901px) and (max-height: 880px) {
+		.copy {
+			gap: 20px;
+		}
+
+		.copy h1 {
+			font-size: clamp(2.75rem, 6vw, 4.5rem);
+		}
+
+		.topbar,
+		.bottombar {
+			padding-block: 18px;
+		}
+
+		.center :global(.teaser) {
+			height: 470px;
+			transform: scale(0.88);
+			transform-origin: center;
+		}
+	}
+
+	@media (max-width: 900px) {
+		.center {
+			grid-template-columns: 1fr;
+			gap: 0;
+			padding-block: 0.5rem 1.5rem;
+		}
+
+		.copy {
+			gap: 22px;
+		}
+
+		.notify-row {
+			flex-direction: column;
+		}
+
+		.bottombar {
+			flex-wrap: wrap;
+			gap: 0.75rem 1.5rem;
+		}
+	}
+</style>

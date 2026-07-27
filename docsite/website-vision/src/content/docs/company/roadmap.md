@@ -7,6 +7,10 @@ description: "The rounds: where V1 stands and what comes after."
 
 ## Where V1 stands
 
+Across the four product pillars: music and audio work on today's
+prototype; whitelist calling is being validated; location and the parent
+app are designed but not yet built.
+
 The roadmap is kept as the project's **honesty doc**: what is broken
 today, what works, and when it gets fixed. Its current subject is the
 **Rust CLI rebuild** — the old Python operator CLI (~21k lines) was
@@ -70,12 +74,6 @@ ordering and status flags, not dates.
 On the hardware side, "later" is **V1 “Daylight”** — the designed PCB that
 replaces today's V0 “Dawn” off-the-shelf rig once its exit criteria are
 defined; see [From Prototype to Product](/builders/hardware/roadmap/).
-
-## Open questions
-
-- TODO: confirm the current staged status of calling and the real status of the location pillar
-- TODO: decide whether this public page shows timeframes at all, or only ordering
-- TODO: define the exit criteria that let us call V0 “Dawn” done and commit to the V1 “Daylight” board
 
 :::note[Sources]
 Condensed from

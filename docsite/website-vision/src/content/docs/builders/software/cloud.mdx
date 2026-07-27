@@ -7,10 +7,10 @@ import CloudTwoFaces from '../../../../assets/diagrams/cloud-two-faces.svg';
 
 *How a device gets an identity, a SIM, and a safe line home — the device's side of **yoyocloud**, the backend backbone.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## Overview
@@ -42,7 +42,7 @@ failure.
 
 ### Parent-facing backend surface
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 Today yoyocloud has one face: it talks MQTT with devices. In the target
 design it grows a second face — the surface the yoyopod app consumes —
@@ -144,7 +144,7 @@ Location reporting stays live-ish by design, never real-time.
 - Cloud voice degrades gracefully: a missing or invalid API key leaves local controls working, with the Ask screen's offline state as the visible result. Automated on-device voice validation is paused until a Round-2 follow-up.
 - Target: provisioning documented end to end, factory through family setup, plus the parent-facing backend surface above — entirely future work.
 
-*Proposed — the ideal design, not yet adopted.* The build-vs-adopt
+*Design direction — not built yet.* The build-vs-adopt
 question the Overview leaves open deserves a written-out answer. Three
 realistic shapes for yoyocloud:
 
