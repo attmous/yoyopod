@@ -1916,6 +1916,7 @@ mod tests {
         call.apply_patch(RuntimeSnapshotPatch::Call(incoming));
         assert_eq!(call.active_screen, UiScreen::Hub);
         assert_eq!(call.focus_index, 4);
+        assert!(call.screen_stack.is_empty());
 
         let mut error = flashlight_runtime();
         error.apply_patch(RuntimeSnapshotPatch::Overlay(OverlayRuntimeSnapshot {
@@ -1934,6 +1935,7 @@ mod tests {
         ));
         assert_eq!(error.active_screen, UiScreen::Hub);
         assert_eq!(error.focus_index, 4);
+        assert!(error.screen_stack.is_empty());
     }
 
     #[test]

@@ -672,6 +672,7 @@ fn remove_flashlight_route(runtime: &mut UiRuntime) {
         .screen_stack
         .retain(|entry| entry.screen != UiScreen::Flashlight);
     if flashlight_was_active {
+        runtime.screen_stack.clear();
         runtime.active_screen = UiScreen::Hub;
         runtime.focus_index = 4;
         runtime.home_mode = HomeMode::Focused;
