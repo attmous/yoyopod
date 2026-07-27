@@ -85,21 +85,7 @@ The V2 design study (not shipped hardware): 72 x 78 x 22 mm, a glowing push-to-t
 
 ## How it's built
 
-The system has two sides and a backbone: the device, the parent's phone, and yoyocloud between them.
-
-```mermaid
-flowchart LR
-    subgraph device["the device"]
-        direction TB
-        core["yoyocore<br/>Rust runtime + workers"]
-        engines["UI · Media · VoIP · Speech"]
-        os["yoyoOS<br/>Linux image"]
-        core --- engines
-        core --- os
-    end
-    device <-- "MQTT over 4G" --> cloud["yoyocloud<br/>backend backbone"]
-    cloud <---> app["the yoyopod app<br/>parent app, iOS + Android"]
-```
+![Two sides and a backbone: yoyocore on yoyoOS in the device, yoyocloud in the middle, the yoyopod app on the parent's phone](docs/assets/readme/system-architecture.svg)
 
 | Component | What it is | Today |
 | --- | --- | --- |
