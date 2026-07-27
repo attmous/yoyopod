@@ -24,6 +24,11 @@ if [[ "$(id -un)" != "${EXPECTED_USER}" ]]; then
     echo "install-release.sh must run as ${EXPECTED_USER}" >&2
     exit 1
 fi
+# Privilege transitions from root commonly inherit /root as the working
+# directory. Enter a world-readable directory before GNU find/tar attempt to
+# save and restore cwd.
+cd /
+
 if [[ ! "${RELEASE_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{7,79}$ ]]; then
     echo "invalid release id: ${RELEASE_ID}" >&2
     exit 1
