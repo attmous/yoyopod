@@ -11,8 +11,15 @@ and its finishes, read
 ## The Mark
 
 The mark *is* the wordmark: `yoyopod`, set in Figtree ExtraBlack (900),
-lowercase, letter-spacing −2% em. There is no icon, no monogram, and no
-glyph modification — the word on its own is the whole identity.
+lowercase, natural spacing — with one deliberate modification. The `p`
+sits 1/14 em below the baseline. That is the yo-yo caught mid-bounce,
+and it is the whole idea; there is no icon, no monogram, and no other
+glyph change.
+
+The drop is always exactly 1/14 em — 4 px at a 56 px setting, 14.3 px
+at 200 px. More reads as a typesetting error, less is invisible. It is
+already baked into every file here, so use the files rather than
+re-deriving it.
 
 Lowercase is not optional. `Yoyopod` and `YoyoPod` are wrong
 everywhere, including prose.
@@ -40,27 +47,33 @@ them.
 [`logo/svg/`](logo/svg/) — vector, one file per colour:
 `yoyopod-navy.svg`, `-cream`, `-white`, `-black`.
 
-[`logo/png/`](logo/png/) — transparent background, 2048 px and 1024 px
-wide (heights 678 px and 338 px). Same four colours, plus
+[`logo/png/`](logo/png/) — transparent background, widths 2048, 1024,
+512, and 256 px. Same four colours, plus
 `yoyopod-cream-on-navy-2048.png`, a ready-made reversed lockup on a
 solid navy field.
 
 Reach for the SVG when the medium takes vector and PNG everywhere
 else.
 
-**SVG caveat:** the SVGs are live text (`<text font-family="Figtree">`),
-not outlined paths, and the font is *not* embedded. They render
-correctly only where Figtree 900 is installed; anywhere else the
-renderer silently substitutes another face and the mark is wrong. For
-handoff to anyone outside the repo, send PNG, or outline the text
-first. Converting these to outlined paths is worth doing and has not
-been done.
+**SVG caveat:** the SVGs are live text — one `<text
+font-family="Figtree">` element per glyph, at hardcoded x positions —
+not outlined paths, and the font is *not* embedded despite what the
+upstream export note claims. They render correctly only where Figtree
+900 is installed. Anywhere else the renderer substitutes another face
+and, because the per-glyph positions were computed against Figtree's
+metrics, the letters land at the wrong spacing as well as in the wrong
+typeface. For handoff to anyone outside the repo, send PNG, or outline
+the text first. Converting these to outlined paths is worth doing and
+has not been done.
 
 ## Rules
 
-- Clear space: 0.3× wordmark height on all sides — already baked into
-  every file, so do not crop into it
-- Minimum size: 80 px on screen, 20 mm in print
+- The `p` drop is always 1/14 em — never deeper, never shallower
+- Clear space: 0.3 em on all sides — already baked into every file, so
+  do not crop into it
+- Minimum size: 80 px on screen, 20 mm in print. Below that the drop
+  stops reading; set the name in plain type instead of shrinking the
+  mark further
 - Never add outlines, shadows, or gradients
 - Never recolour individual letters
 - Never set it in title case or all caps
