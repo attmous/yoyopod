@@ -21,8 +21,6 @@ The dev server runs on port 4323 (4321 = docsite/website, 4322 = docsite/website
   yoyopod as "AI for kids", "a communication platform", "a smart wearable", or
   "an educational device" (see the blunt positioning note in that doc).
 - The age range is 7–14.
-- Every device image must carry a caption noting it shows the V2 design study,
-  not shipped hardware (`docs/product/README.md`).
 
 ## Documentation
 

@@ -14,7 +14,3 @@ export const NOTIFY_ENABLED = false;
 export const SITE_TITLE = 'yoyopod: the first device before a smartphone';
 export const SITE_DESCRIPTION =
 	'yoyopod is a parent-managed companion device for kids ages 7–14, built for safe communication, live location, and everyday audio without the distraction, complexity, or screen addiction of a smartphone.';
-
-// docs/product/README.md: renders and specs track the V2 design study,
-// not shipped hardware — every device image must carry this caption.
-export const DESIGN_STUDY_CAPTION = 'Shown: V2 design study — not final hardware.';

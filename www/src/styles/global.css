@@ -245,9 +245,7 @@ input::placeholder {
 	color: var(--cyan);
 }
 
-/* Caption required under every device image (V2 design study, not
-   shipped hardware — docs/product/README.md). */
-.design-study-note {
+.media-note {
 	font-size: 0.85rem;
 	color: var(--ink-50);
 	margin-top: 0.75rem;
