@@ -79,9 +79,9 @@ What that means in the software:
 
 ## Where it's going
 
-![The V2 enclosure design study in four finishes](docs/assets/readme/finishes-banner.png)
+![The V2 enclosure design study, front views drawn flat in four finishes](docs/assets/readme/finishes-banner.png)
 
-<sub>The V2 enclosure study in its four finishes: Cloud·Sky, Mint·Forest, Bubblegum, and Tangerine. This is an industrial design study, not shipped hardware; today's prototype is a 3D-printed shell around off-the-shelf boards.</sub>
+<sub>The V2 enclosure study drawn flat, front view in all four finishes: Cloud·Sky, Mint·Forest, Bubblegum, and Tangerine. An industrial design study, not shipped hardware; today's prototype is a 3D-printed shell around off-the-shelf boards.</sub>
 
 The target device keeps the same soul with purpose-built hardware: 72 x 78 x 22 mm, a glowing push-to-talk pill, a detented scroll wheel, a repairable four-screw shell. The study is documented end to end, from [orthographic drawings](docs/hardware/enclosure/) to [3D models](docs/hardware/enclosure/v2/model/) to a [24-second concept video](docs/product/PRODUCT_VIDEO.mp4) and the [customer one-pager](docs/product/ONE_PAGER.pdf).
 
