@@ -36,7 +36,7 @@ No feed, no ads, no strangers.
 <tr>
 <td width="340" align="center">
   <img src="docs/assets/readme/ui-hub-device.png" alt="The yoyopod home screen with its bunny companion, captured from the running prototype" width="280"><br>
-  <sub>Captured from the running prototype via <code>yoyopod target screenshot</code></sub>
+  <sub>Captured from the running prototype</sub>
 </td>
 <td>
 
@@ -63,11 +63,7 @@ The table above is the product summary; the detailed engineering ledger of what 
 | :---: | :---: | :---: | :---: |
 | ![The home screen with the bunny companion and the nav bar, light theme](docs/assets/readme/ui-hub-light.png) | ![Now Playing with progress ring and transport, light theme](docs/assets/readme/ui-now-playing-light.png) | ![The Talk contact wheel with an unread voice note badge, light theme](docs/assets/readme/ui-talk-light.png) | ![Ask: hold the side button and ask me anything, light theme](docs/assets/readme/ui-ask-light.png) |
 
-| Home, dark | Setup, dark | Stopwatch, dark | Watch face |
-| :---: | :---: | :---: | :---: |
-| ![The home screen in the dark theme](docs/assets/readme/ui-hub-dark.png) | ![The Setup wheel in the dark theme](docs/assets/readme/ui-setup-dark.png) | ![The running stopwatch in the dark theme](docs/assets/readme/ui-stopwatch-dark.png) | ![The ambient watch face](docs/assets/readme/ui-watchface.png) |
-
-<sub>Every kid picks a companion for the home screen (this one chose the bunny). The UI ships light and dark themes, a nav bar, and an ambient watch face; screens here are rendered by the same UI engine that runs on the device, driven headless in this repo's mock harness. The interaction model is deliberate: a wheel of screens, one side button, and gestures a seven-year-old can learn in a minute (tap = next, double-tap = open, hold = talk or back).</sub>
+<sub>One button: tap = next, double-tap = open, hold = talk or back.</sub>
 
 ## Why it exists
 
@@ -83,11 +79,9 @@ What that means in the software:
 
 ## Where it's going
 
-![The V2 enclosure design study, front views drawn flat in four finishes](docs/assets/readme/finishes-banner.png)
+![The V2 enclosure design study in Mint·Forest: top, front, side, back, and bottom views](docs/assets/readme/enclosure-mint-ortho.png)
 
-<sub>The V2 enclosure study drawn flat, front view in all four finishes: Cloud·Sky, Mint·Forest, Bubblegum, and Tangerine. An industrial design study, not shipped hardware; today's prototype is a 3D-printed shell around off-the-shelf boards.</sub>
-
-The target device keeps the same soul with purpose-built hardware: 72 x 78 x 22 mm, a glowing push-to-talk pill, a detented scroll wheel, a repairable four-screw shell. The study is documented end to end, from [orthographic drawings](docs/hardware/enclosure/) to [3D models](docs/hardware/enclosure/v2/model/) to a [24-second concept video](docs/product/PRODUCT_VIDEO.mp4) and the [customer one-pager](docs/product/ONE_PAGER.pdf).
+The V2 design study (not shipped hardware): 72 x 78 x 22 mm, a glowing push-to-talk pill, a detented scroll wheel, a repairable four-screw shell, four finishes. Documented end to end, from [orthographic drawings](docs/hardware/enclosure/) to [3D models](docs/hardware/enclosure/v2/model/) to a [24-second concept video](docs/product/PRODUCT_VIDEO.mp4) and the [customer one-pager](docs/product/ONE_PAGER.pdf).
 
 ## How it's built
 
