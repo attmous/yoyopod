@@ -19,41 +19,63 @@ No feed, no ads, no strangers.
 </p>
 
 <p align="center">
-<img alt="Raspberry Pi Zero 2W" src="https://img.shields.io/badge/Raspberry%20Pi-Zero%202W-C51A4A?logo=raspberrypi&logoColor=white">
-<img alt="Rust" src="https://img.shields.io/badge/Rust-runtime%20%2B%20workers-B7410E?logo=rust&logoColor=white">
-<img alt="LVGL UI" src="https://img.shields.io/badge/LVGL-UI%20stack-343A40">
-<img alt="Liblinphone" src="https://img.shields.io/badge/liblinphone-calls%20%26%20voice%20notes-1B6EF3">
-<img alt="mpv" src="https://img.shields.io/badge/mpv-music%20playback-5C4B8A">
+<img alt="Hardware: Raspberry Pi Zero 2W" src="https://img.shields.io/badge/hardware-Raspberry%20Pi%20Zero%202W-C51A4A?logo=raspberrypi&logoColor=white">
+<img alt="Runtime: Rust" src="https://img.shields.io/badge/runtime-Rust-B7410E?logo=rust&logoColor=white">
+<img alt="UI: LVGL" src="https://img.shields.io/badge/UI-LVGL-343A40">
+<img alt="Calls: liblinphone" src="https://img.shields.io/badge/calls-liblinphone-1B6EF3">
+<img alt="Playback: mpv" src="https://img.shields.io/badge/playback-mpv-5C4B8A">
+<img alt="Cloud link: MQTT" src="https://img.shields.io/badge/cloud%20link-MQTT-3C5280">
+<img alt="Power: PiSugar 3" src="https://img.shields.io/badge/power-PiSugar%203-159957">
+</p>
+
+<p align="center">
+<img alt="Website: Astro" src="https://img.shields.io/badge/website-Astro-FF5D01?logo=astro&logoColor=white">
+<img alt="Docs: Starlight" src="https://img.shields.io/badge/docs-Starlight-BC52EE">
+<img alt="Waitlist: Node.js" src="https://img.shields.io/badge/waitlist-Node.js-5FA04E?logo=nodedotjs&logoColor=white">
+<img alt="CI: GitHub Actions" src="https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white">
 </p>
 
 </div>
 
 ---
 
-## The working prototype
+## The vision
+
+Childhood deserves a device of its own. Parents want their kids to have independence, communication, and safety; they should not have to hand over distraction, social media, and addictive screens to get it. yoyopod is the category between the toy and the smartphone: a complete family system where kids carry a focused device for calls, voice notes, and their own music, and parents hold the contact list, the content, and the map. Kids get real independence. Parents get peace of mind.
+
+The timing is ours to take: schools across Europe are pushing phones out of classrooms, parents are organizing to delay the first smartphone, and no one has built the device families actually want to hand a kid instead.
+
+Five convictions shape everything we build:
+
+- **Contact-first communication.** No dial pad, no open address book. The only people a kid can call are the people a parent chose.
+- **Local-first listening.** Music and stories live on the device and play with zero connectivity. The cloud is an import path, not a dependency.
+- **A screen that stays calm.** Song titles and names, not videos. Every session ends on purpose: the call finishes, the story finishes, the kid goes back out the door.
+- **Small, finite tools instead of apps.** A watch face, a stopwatch, a flashlight. Useful, bounded, done.
+- **No camera, no browser, no app store.** Absences built into the device, not settings.
+
+## The build
 
 <table>
 <tr>
 <td width="340" align="center">
-  <img src="docs/assets/readme/ui-hub-device.png" alt="The yoyopod home screen with its bunny companion, captured from the running prototype" width="280"><br>
-  <sub>Captured from the running prototype</sub>
+  <img src="docs/assets/readme/ui-hub-device.png" alt="The yoyopod home screen with its bunny companion, on the device" width="280">
 </td>
 <td>
 
-yoyopod is built hardware-first. The prototype in this repository runs today on a Raspberry Pi Zero 2W with a 240x280 screen, a speaker, a microphone, and one physical side button. What works, works on real hardware; the table below says plainly what does not yet. No emulated demos, no fabricated UI.
+yoyopod is built hardware-first: the software in this repository powers the device end to end, from the LVGL screen and the one-button interaction model to playback, calls, and power management, on a Raspberry Pi Zero 2W with a 240x280 display, speaker, and microphone.
 
-Where every part of the product stands right now:
+The build advances pillar by pillar:
 
 | Area | Status |
 | --- | --- |
-| **Listen** (local music, playlists, podcasts) | working on today's hardware |
-| **Talk** (whitelist calls and voice notes) | built, being validated on hardware |
-| **Pocket tools** (watch face, stopwatch, flashlight) | working on today's hardware |
-| **Ask** (push-to-talk questions, answer disclosed as AI) | early prototype |
-| **Locate** (live-ish location for parents) | designed, not wired end to end |
-| **Parent app** | designed, not built yet |
+| **Listen** (local music, playlists, podcasts) | running on the device today |
+| **Talk** (whitelist calls and voice notes) | built, hardware validation next |
+| **Pocket tools** (watch face, stopwatch, flashlight) | running on the device today |
+| **Ask** (push-to-talk questions, answer disclosed as AI) | prototyped |
+| **Locate** (live-ish location for parents) | designed, engineering next |
+| **Parent app** | designed, next up |
 
-The table above is the product summary; the detailed engineering ledger of what is broken in the build and deploy path today lives in [docs/ROADMAP.md](docs/ROADMAP.md).
+The engineering build is tracked in the open in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 </td>
 </tr>
@@ -65,23 +87,11 @@ The table above is the product summary; the detailed engineering ledger of what 
 
 <sub>One button: tap = next, double-tap = open, hold = talk or back.</sub>
 
-## Why it exists
-
-Parents want their kids to have independence, communication, and safety. They don't want to hand over distraction, social media, and addictive screens to get it. yoyopod gives a kid a focused device for family calls, voice notes, and their own music, while parents keep the contact list and settings in their hands. Kids get real independence. Parents get peace of mind. And the moment is real: schools across Europe are pushing phones out of classrooms while more parents organize to delay the first smartphone, yet there is no good first device to hand a kid instead.
-
-What that means in the software:
-
-- **Contact-first communication.** No dial pad, no open address book. The only people the device can call are the contacts a parent provisions; screening of incoming calls is part of the Talk validation work in flight now.
-- **Local-first listening.** Music and stories live on the device and play with zero connectivity. The cloud is an import path, not a dependency.
-- **A screen that stays calm.** Song titles and names, not videos. Every session ends on purpose: the call finishes, the story finishes, the kid goes back out the door.
-- **Small, finite tools instead of apps.** The newest additions to the on-device UI are a watch face, a stopwatch with a soft control tray, and a flashlight. That is the shape of the roadmap: useful, bounded, done.
-- **No camera, no browser, no app store.** Absences built into the device, not settings.
-
 ## Where it's going
 
 ![The V2 enclosure design study in Mint·Forest: top, front, side, back, and bottom views](docs/assets/readme/enclosure-mint-ortho.png)
 
-The V2 design study (not shipped hardware): 72 x 78 x 22 mm, a glowing push-to-talk pill, a detented scroll wheel, a repairable four-screw shell, four finishes. Documented end to end, from [orthographic drawings](docs/hardware/enclosure/) to [3D models](docs/hardware/enclosure/v2/model/) to a [24-second concept video](docs/product/PRODUCT_VIDEO.mp4) and the [customer one-pager](docs/product/ONE_PAGER.pdf).
+The V2 industrial design study: 72 x 78 x 22 mm, a glowing push-to-talk pill, a detented scroll wheel, a repairable four-screw shell, four finishes. Documented end to end, from [orthographic drawings](docs/hardware/enclosure/) to [3D models](docs/hardware/enclosure/v2/model/) to a [24-second concept video](docs/product/PRODUCT_VIDEO.mp4) and the [customer one-pager](docs/product/ONE_PAGER.pdf).
 
 ## How it's built
 
@@ -90,9 +100,9 @@ The V2 design study (not shipped hardware): 72 x 78 x 22 mm, a glowing push-to-t
 | Component | What it is | Today |
 | --- | --- | --- |
 | **yoyoOS** | the Linux image the device boots | Raspberry Pi OS Lite; a minimal custom image is the target |
-| **yoyocore** | the Rust application on top: one runtime supervising single-purpose worker processes, surfaced as four peer engines (UI, Media, VoIP, Speech) | real, runs the prototype |
-| **yoyocloud** | the backend backbone: MQTT, provisioning, telemetry routing | device-side link and provisioning exist; the backbone itself is a build-or-adopt decision, still open |
-| **the yoyopod app** | the parent mobile app, iOS + Android | designed, not built yet |
+| **yoyocore** | the Rust application on top: one runtime supervising single-purpose worker processes, surfaced as four peer engines (UI, Media, VoIP, Speech) | runs the device today |
+| **yoyocloud** | the backend backbone: MQTT, provisioning, telemetry routing | device-side link and provisioning built; build-or-adopt decision for the backbone in progress |
+| **the yoyopod app** | the parent mobile app, iOS + Android | designed, next up |
 
 Inside yoyocore every message is one newline-framed JSON envelope with a strict schema stamp, and the process tree is the architecture: if one engine fails, the others keep running. The kid's music does not stop because a modem hiccupped.
 
@@ -133,11 +143,11 @@ yoyopod target mode activate dev
 yoyopod target deploy --branch <branch>
 ```
 
-`target deploy` pushes the branch, finds the matching CI artifact, syncs the Pi, installs binaries, restarts the service, and verifies startup. Deeper flows: [Contributor Workflow](docs/operations/CONTRIBUTOR_WORKFLOW.md), [Development Guide](docs/operations/DEVELOPMENT_GUIDE.md), [Pi Dev Workflow](docs/operations/PI_DEV_WORKFLOW.md), and [Dev/Prod Lanes](docs/operations/DEV_PROD_LANES.md). When docs disagree, trust current code and the most recently merged PRs.
+`target deploy` pushes the branch, finds the matching CI artifact, syncs the Pi, installs binaries, restarts the service, and verifies startup. Deeper flows: [Contributor Workflow](docs/operations/CONTRIBUTOR_WORKFLOW.md), [Development Guide](docs/operations/DEVELOPMENT_GUIDE.md), [Pi Dev Workflow](docs/operations/PI_DEV_WORKFLOW.md), and [Dev/Prod Lanes](docs/operations/DEV_PROD_LANES.md). Code is the source of truth.
 
 ## Built in the open
 
-yoyopod is being built by software-engineer fathers in Baden-Württemberg, Germany, and tested at their own dinner tables. The whole build is public: the [roadmap](docs/ROADMAP.md) states plainly what works and what is broken, the [docs site](https://docs.yoyopod.com) separates today's reality from the target design, and every device ships with a right to its own source.
+yoyopod is built by software-engineer fathers in Baden-Württemberg, Germany, and proven at their own dinner tables. The whole build is public: the [roadmap](docs/ROADMAP.md) tracks the engineering build in the open, the [docs site](https://docs.yoyopod.com) lays out both today's system and the full product vision, and every device ships with a right to its own source.
 
 Want to follow along or help? [Join the waitlist](https://yoyopod.com), open an [issue](https://github.com/attmous/yoyopod/issues), or start with the [contributor workflow](docs/operations/CONTRIBUTOR_WORKFLOW.md).
 
