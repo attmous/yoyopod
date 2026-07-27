@@ -93,6 +93,10 @@ server {
 HTML deliberately gets no long cache header — only `/_astro/` assets are
 immutable.
 
+The privacy page promises access logs are deleted after 14 days — make
+logrotate keep that promise (`/etc/logrotate.d/nginx`: `daily` + `rotate 14`,
+which is close to the Debian/Ubuntu default of `rotate 14`).
+
 ## Waitlist collector
 
 The teaser page's "Notify me" form posts to `/api/notify` (configurable in
