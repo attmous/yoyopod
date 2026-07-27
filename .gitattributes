@@ -4,6 +4,7 @@
 CMakeLists.txt text eol=lf
 *.sh text eol=lf
 *.service text eol=lf
+deploy/web/*.conf text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 *.obj text eol=lf

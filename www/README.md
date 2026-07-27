@@ -2,14 +2,14 @@
 
 The public teaser page served at `https://yoyopod.com`. A standalone static
 Astro site: deliberately a single coming-soon screen ("Something small is
-coming.") that collects parent emails for an ordering-availability
-notification and links to the docs site. The full product story stays
-unpublished until ordering opens.
+coming.") with a parked ordering-availability signup and a link to the docs
+site. The full product story stays unpublished until ordering opens.
 
-The waitlist form posts to `NOTIFY_ENDPOINT` (`src/consts.ts`, default
-`/api/notify`), served by the tiny self-hosted collector in
-`server/notify-collector.mjs` — install per `docs/operations/WEB_DEPLOY.md`
-§ Waitlist collector, or point the constant at a hosted form service instead.
+`NOTIFY_ENABLED` is deliberately `false`: no email is collected until the
+contact mailbox, hosting AVV, and retention procedure are ready. When enabled,
+the form posts to `NOTIFY_ENDPOINT` (`src/consts.ts`, default `/api/notify`),
+served by the tiny self-hosted collector in `server/notify-collector.mjs`. See
+`docs/operations/WEB_DEPLOY.md` for the legal and infrastructure gates.
 
 **Parked sections:** the below-fold components in `src/components/`
 (ProblemSection, SolutionSection, ValueProps, ColorwayShowcase, HowItWorks,
@@ -68,6 +68,8 @@ hardware**.
   processing agreement (AVV), and keep nginx logrotate at 14 days (see
   `docs/operations/WEB_DEPLOY.md`).
 - Both legal pages are bilingual: German first, English below.
+- Keep `NOTIFY_ENABLED` false and the nginx endpoint closed until the mailbox
+  works, the AVV is accepted, and the retention procedure is verified.
 - `src/consts.ts` holds the configurable URLs (`DOCS_URL`, `GITHUB_URL`).
 
 ## Ideas parked for v2
@@ -77,4 +79,3 @@ hardware**.
   the page light. Use a lazy single GLB with the PNG render as poster.
 - Re-render the colorway PNGs at 2× (source renders are 342×464 and go soft
   above ~300 CSS px on high-DPI screens).
-- Waitlist/email capture once a form backend is chosen.

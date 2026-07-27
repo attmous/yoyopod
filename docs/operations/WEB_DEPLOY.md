@@ -1,181 +1,200 @@
 # WEB_DEPLOY — publishing yoyopod.com and docs.yoyopod.com
 
-How the two public web properties get built locally and uploaded to the VPS.
+The two public properties are static Astro builds deployed together as one
+immutable release:
 
-| Property | Source | Serves |
+| Property | Source | Release path |
 | --- | --- | --- |
-| `https://yoyopod.com` | `www/` | marketing landing page |
-| `https://docs.yoyopod.com` | `docsite/website-vision/` | public docs (vision site) |
+| `https://yoyopod.com` | `www/` | `root/` |
+| `https://docs.yoyopod.com` | `docsite/website-vision/` | `docs/` |
 
-Both are fully static Astro builds — no server-side code, no forms, no
-databases. Deployment is: build locally, upload the files, done.
+Production lives below `/opt/yoyopod-web`. Each deploy extracts into a new
+`releases/<release-id>/` directory and atomically switches the `current`
+symlink. It never runs `rsync --delete` against a directory nginx is serving.
+If post-switch checks fail, the installer restores the prior release.
 
-## Prerequisites
+## Current launch gate
 
-- **Node 22 LTS** on the build machine (Astro 7 requires `^20.19.0 || >=22.12.0`).
-- SSH access to the VPS.
-- DNS A/AAAA records for `yoyopod.com`, `www.yoyopod.com`, and
-  `docs.yoyopod.com` pointing at the VPS.
+Email collection is intentionally off:
 
-## Build
+- `www/src/consts.ts` has `NOTIFY_ENABLED = false`;
+- the production nginx block returns `404` for `/api/notify`;
+- `yoyopod-notify.service` is installed but not enabled.
 
-From the repo root:
+Do not enable collection until the published contact mailbox works, Hetzner's
+data processing agreement (AVV) is in place, the retention terms are final,
+and the deployment has been reviewed for GDPR/DDG compliance.
+
+## Build locally
+
+Node 22 LTS is required for the Astro builds.
 
 ```bash
 node scripts/build_web.mjs
 ```
 
-Outputs land in `.artifacts/web/root/` (landing page) and
-`.artifacts/web/docs/` (docs site). Pass `--no-install` to skip the `npm ci`
-step on repeat builds.
+The combined output is staged under:
 
-## Upload — bash (Linux / WSL / Git Bash), preferred
-
-```bash
-rsync -avz --delete .artifacts/web/root/ deploy@VPS:/var/www/yoyopod.com/
-rsync -avz --delete .artifacts/web/docs/ deploy@VPS:/var/www/docs.yoyopod.com/
+```text
+.artifacts/web/
+├── root/   # yoyopod.com
+└── docs/   # docs.yoyopod.com
 ```
 
-## Upload — PowerShell (Windows OpenSSH)
+Use `--no-install` only when both dependency trees are already current.
 
-`scp` on Windows has a verbatim-path quirk: `cd` into the artifact directory
-first and use **relative paths**, plus the `-O` legacy-protocol flag. `scp`
-cannot delete removed files, so stage on the server and swap with rsync
-server-side:
+## First-time VPS bootstrap
+
+The bootstrap is the only operation that changes nginx or systemd. It:
+
+- creates the non-login `yoyopod-web-deploy` release owner;
+- creates `/opt/yoyopod-web/releases`;
+- installs only the YoYoPod nginx server blocks;
+- installs the disabled waitlist service;
+- grants the deploy user permission to restart only that service;
+- installs a root-owned release installer and forced SSH command;
+- runs `nginx -t` before reloading nginx.
+
+Generate a dedicated CI key outside the repository:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/yoyopod_web_ci_ed25519 \
+  -C github-actions-yoyopod-web
+```
+
+Upload `deploy/web/` plus the public key to a temporary directory, then run:
+
+```bash
+sudo bash deploy/web/bootstrap-vps.sh yoyopod_web_ci_ed25519.pub
+```
+
+Do not reuse a broad VPS root key in GitHub Actions. Bootstrap installs the
+dedicated public key in root's `authorized_keys` with OpenSSH `restrict` and a
+forced command. The key cannot obtain a shell, use forwarding, run SCP/SFTP, or
+choose a program. It can only:
+
+- stream a size-bounded YoYoPod archive into `/opt/yoyopod-web/incoming`;
+- ask the fixed, root-owned installer to deploy that archive as the non-login
+  release owner;
+- report the installed installer hash and deployed commit.
+
+This prevents the Actions credential from reading or modifying neighboring
+sites even though they share the VPS.
+
+## Manual deployment from Windows
+
+From a clean committed worktree:
 
 ```powershell
-cd .artifacts\web
-ssh deploy@VPS "rm -rf ~/web-upload && mkdir -p ~/web-upload"
-scp -O -r root docs deploy@VPS:web-upload/
-ssh deploy@VPS "sudo rsync -a --delete ~/web-upload/root/ /var/www/yoyopod.com/ && sudo rsync -a --delete ~/web-upload/docs/ /var/www/docs.yoyopod.com/"
+powershell.exe -NoProfile -File scripts/deploy_web.ps1 -SshTarget vps-root
 ```
 
-## nginx
+The script builds both sites, writes the exact Git commit into the release,
+creates one archive, uploads the archive and installer, and runs the installer
+as `yoyopod-web-deploy`. To validate packaging without uploading:
 
-Two flat server blocks (certbot adds the 443 halves):
-
-```nginx
-server {
-    server_name yoyopod.com www.yoyopod.com;
-    root /var/www/yoyopod.com;
-    index index.html;
-
-    location / { try_files $uri $uri/ =404; }
-
-    # Astro asset filenames are content-hashed -> safe to cache forever.
-    location /_astro/ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    gzip on;
-    gzip_types text/html text/css application/javascript image/svg+xml application/json;
-}
-
-server {
-    server_name docs.yoyopod.com;
-    root /var/www/docs.yoyopod.com;
-    index index.html;
-
-    location / { try_files $uri $uri/ =404; }
-    error_page 404 /404.html;   # Starlight ships a 404.html
-
-    location /_astro/ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    gzip on;
-    gzip_types text/html text/css application/javascript image/svg+xml application/json;
-}
+```powershell
+powershell.exe -NoProfile -File scripts/deploy_web.ps1 -DryRun
 ```
 
-HTML deliberately gets no long cache header — only `/_astro/` assets are
-immutable.
+## GitHub Actions deployment
 
-The privacy page promises access logs are deleted after 14 days — make
-logrotate keep that promise (`/etc/logrotate.d/nginx`: `daily` + `rotate 14`,
-which is close to the Debian/Ubuntu default of `rotate 14`).
+`.github/workflows/web-deploy.yml` is manual-only (`workflow_dispatch`). It:
 
-## Waitlist collector
+1. resolves a full commit SHA;
+2. proves the commit is reachable from `origin/main`;
+3. builds both sites with Node 22;
+4. packages the collector and revision with the static output;
+5. streams the archive through the forced-command key;
+6. atomically installs and health-checks the release.
 
-The teaser page's "Notify me" form posts to `/api/notify` (configurable in
-`www/src/consts.ts`). A dependency-free collector ships at
-`www/server/notify-collector.mjs` — it appends `{email, ts}` JSON lines to
-`/var/lib/yoyopod-waitlist/emails.jsonl`.
+Configure the `production` GitHub environment with a deployment-branch policy
+limited to `main` and these environment secrets:
 
-Install on the VPS:
+| Secret | Value |
+| --- | --- |
+| `WEB_VPS_HOST` | VPS hostname or IP |
+| `WEB_VPS_SSH_PRIVATE_KEY` | dedicated private key |
+| `WEB_VPS_KNOWN_HOSTS` | pinned OpenSSH known-hosts line for the VPS |
+
+Deploy the current `main` head from the Actions UI, or deploy an older exact
+commit that is still reachable from `main`:
 
 ```bash
-sudo mkdir -p /opt/yoyopod-web /var/lib/yoyopod-waitlist
-sudo cp notify-collector.mjs /opt/yoyopod-web/
-sudo tee /etc/systemd/system/yoyopod-notify.service > /dev/null <<'EOF'
-[Unit]
-Description=yoyopod waitlist collector
-After=network.target
-
-[Service]
-ExecStart=/usr/bin/node /opt/yoyopod-web/notify-collector.mjs
-Environment=PORT=8787
-Environment=DATA_FILE=/var/lib/yoyopod-waitlist/emails.jsonl
-DynamicUser=yes
-StateDirectory=yoyopod-waitlist
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-EOF
-sudo systemctl enable --now yoyopod-notify
+gh workflow run web-deploy.yml --ref main -f sha=<full-main-commit-sha>
 ```
 
-Add to the `yoyopod.com` nginx server block (with a light rate limit; the
-`limit_req_zone` line goes in the `http {}` context):
+The workflow uses a non-cancelling `web-production` concurrency group, so two
+production releases cannot switch the symlink at the same time.
 
-```nginx
-# http {} context:
-limit_req_zone $binary_remote_addr zone=notify:1m rate=6r/m;
+## nginx and TLS
 
-# yoyopod.com server block:
-location /api/notify {
-    limit_req zone=notify burst=3 nodelay;
-    proxy_pass http://127.0.0.1:8787;
-    proxy_set_header X-Forwarded-For $remote_addr;
-}
+The tracked HTTP configuration is `deploy/web/yoyopod.nginx.conf`. It serves:
+
+```text
+/opt/yoyopod-web/current/root
+/opt/yoyopod-web/current/docs
 ```
 
-Check it: `curl -s -X POST https://yoyopod.com/api/notify -H 'Content-Type: application/json' -d '{"email":"test@example.com"}'` → `{"ok":true}`, then remove the test line from the data file.
+Only content-hashed `/_astro/` assets receive immutable one-year caching.
+HTML does not.
 
-Privacy: the file stores email + timestamp only, for a one-time availability
-notification (stated next to the form and on `/privacy`). Honor erasure
-requests by deleting the matching line. Prefer a hosted form service instead?
-Point `NOTIFY_ENDPOINT` in `www/src/consts.ts` at its URL and skip this
-section.
-
-## TLS
-
-One certificate with SANs, one renewal:
+Before DNS changes, verify the VPS origin directly:
 
 ```bash
-sudo certbot --nginx -d yoyopod.com -d www.yoyopod.com -d docs.yoyopod.com
+curl --resolve yoyopod.com:80:<vps-ip> http://yoyopod.com/
+curl --resolve docs.yoyopod.com:80:<vps-ip> http://docs.yoyopod.com/
 ```
 
-Re-run with the extended `-d` list if a name is added later. Recommended:
-add a `www.yoyopod.com -> yoyopod.com` 301 in the certbot-generated block.
-
-## Verify after deploy
+After the apex, `www`, and `docs` records point at the VPS, issue TLS:
 
 ```bash
-curl -sI https://yoyopod.com/ | head -1                     # 200
-curl -sI https://yoyopod.com/imprint/ | head -1             # 200
-curl -sI https://docs.yoyopod.com/ | head -1                # 200
-curl -sI https://docs.yoyopod.com/nope/ | head -1           # 404
-curl -sI https://docs.yoyopod.com/sitemap-index.xml | head -1
-curl -sI "https://yoyopod.com$(curl -s https://yoyopod.com/ | grep -o '/_astro/[^\"]*\.css' | head -1)" | grep -i cache-control
+sudo certbot --nginx \
+  -d yoyopod.com \
+  -d www.yoyopod.com \
+  -d docs.yoyopod.com
 ```
 
-## Related
+Do not request the certificate before public DNS reaches this server.
 
-- `www/README.md` — landing page dev commands and asset provenance.
-- `docsite/website-vision/README.md` — docs site conventions.
-- `.github/workflows/web.yml` — PR build check for both sites (build only,
-  never deploys).
+## Verification
+
+The remote installer checks all of these before accepting a release:
+
+- `yoyopod.com/` → `200`;
+- `yoyopod.com/imprint/` → `200`;
+- `docs.yoyopod.com/` → `200`;
+- a missing docs route → `404`;
+- `yoyopod.com/api/notify` → `404` while collection is disabled.
+
+The privacy page promises access logs are deleted after 14 days. Keep
+`/etc/logrotate.d/nginx` configured with `daily` and `rotate 14`; verify this
+before every public cutover.
+
+After DNS and TLS cutover, also verify:
+
+```bash
+curl -fsSI https://yoyopod.com/
+curl -fsSI https://docs.yoyopod.com/
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  https://docs.yoyopod.com/this-page-does-not-exist/
+```
+
+Re-check every pre-existing virtual host after nginx bootstrap and TLS changes.
+Routine atomic releases do not reload nginx and therefore do not touch those
+sites.
+
+## Enabling email signup later
+
+Treat this as a separate reviewed launch:
+
+1. confirm `privacy@yoyopod.com` works and accept Hetzner's AVV;
+2. set `NOTIFY_ENABLED = true`;
+3. change the exact `/api/notify` nginx location to the rate-limited loopback
+   proxy for `127.0.0.1:8787`;
+4. enable and start `yoyopod-notify.service`;
+5. run one test signup, verify the JSONL file, and remove the test record;
+6. verify erasure and backup procedures before accepting real addresses.
+
+The collector source is `www/server/notify-collector.mjs`; every release
+already packages it at `/opt/yoyopod-web/current/notify-collector.mjs`.

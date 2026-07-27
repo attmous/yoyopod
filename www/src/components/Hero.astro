@@ -1,5 +1,5 @@
 ---
-import { DOCS_URL, GITHUB_URL, NOTIFY_ENDPOINT } from '../consts';
+import { DOCS_URL, GITHUB_URL, NOTIFY_ENABLED, NOTIFY_ENDPOINT } from '../consts';
 import Wordmark from './Wordmark.astro';
 import DeviceTeaser from './DeviceTeaser.astro';
 import ThemeToggle from './ThemeToggle.astro';
@@ -20,18 +20,34 @@ import ThemeToggle from './ThemeToggle.astro';
 				A first device for kids, built for talking to family instead of staring at screens. Kids
 				get real independence. Parents get peace of mind.
 			</p>
-			<form class="notify" method="post" action={NOTIFY_ENDPOINT}>
-				<div class="notify-row">
-					<input
-						type="email"
-						name="email"
-						required
-						placeholder="parent@email.com"
-						aria-label="Your email address"
-					/>
-					<button type="submit">Notify me</button>
-				</div>
-			</form>
+			{
+				NOTIFY_ENABLED ? (
+					<form class="notify" method="post" action={NOTIFY_ENDPOINT}>
+						<div class="notify-row">
+							<input
+								type="email"
+								name="email"
+								required
+								placeholder="parent@email.com"
+								aria-label="Your email address"
+							/>
+							<button type="submit">Notify me</button>
+						</div>
+					</form>
+				) : (
+					<div class="notify notify-paused" aria-label="Email notifications are not available yet">
+						<div class="notify-row">
+							<input
+								type="email"
+								disabled
+								placeholder="Email updates open soon"
+								aria-label="Email notifications are not available yet"
+							/>
+							<button type="button" disabled>Coming soon</button>
+						</div>
+					</div>
+				)
+			}
 			<div class="links-row">
 				<a class="btn-ghost" href={DOCS_URL}>Read the docs →</a>
 				<a class="btn-icon" href={GITHUB_URL} aria-label="yoyopod source on GitHub" title="GitHub">
@@ -207,6 +223,15 @@ import ThemeToggle from './ThemeToggle.astro';
 
 	.notify button:disabled {
 		cursor: default;
+	}
+
+	.notify-paused input {
+		cursor: not-allowed;
+	}
+
+	.notify-paused button {
+		background: var(--ink-22);
+		color: var(--ink-50);
 	}
 
 	.notify button.is-joined {

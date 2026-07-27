@@ -1,0 +1,155 @@
+name: Deploy web
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full commit SHA on main (blank deploys the current main head)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://yoyopod.com
+
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve an exact commit on main
+        id: target
+        env:
+          REQUESTED_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "Production deploys must be dispatched from the main branch workflow" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin main
+
+          target="${REQUESTED_SHA:-origin/main}"
+          resolved="$(git rev-parse "${target}^{commit}")"
+          if ! [[ "${resolved}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Could not resolve a full commit SHA" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "${resolved}" origin/main; then
+            echo "${resolved} is not reachable from origin/main" >&2
+            exit 1
+          fi
+
+          git checkout --detach "${resolved}"
+          echo "sha=${resolved}" >> "${GITHUB_OUTPUT}"
+          echo "short_sha=${resolved:0:12}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            www/package-lock.json
+            docsite/website-vision/package-lock.json
+
+      - name: Build both public sites
+        run: node scripts/build_web.mjs
+
+      - name: Package the exact release
+        id: release
+        env:
+          COMMIT_SHA: ${{ steps.target.outputs.sha }}
+          SHORT_SHA: ${{ steps.target.outputs.short_sha }}
+        run: |
+          set -euo pipefail
+          release_id="$(date -u +%Y%m%dT%H%M%SZ)-${SHORT_SHA}-${GITHUB_RUN_ID}"
+          archive_name="yoyopod-web-${release_id}.tar.gz"
+
+          cp www/server/notify-collector.mjs .artifacts/web/notify-collector.mjs
+          printf '%s' "${COMMIT_SHA}" > .artifacts/web/REVISION
+          tar -C .artifacts/web -czf ".artifacts/web/${archive_name}" \
+            root docs notify-collector.mjs REVISION
+
+          echo "release_id=${release_id}" >> "${GITHUB_OUTPUT}"
+          echo "archive_name=${archive_name}" >> "${GITHUB_OUTPUT}"
+
+      - name: Configure pinned SSH host identity
+        env:
+          WEB_VPS_SSH_PRIVATE_KEY: ${{ secrets.WEB_VPS_SSH_PRIVATE_KEY }}
+          WEB_VPS_KNOWN_HOSTS: ${{ secrets.WEB_VPS_KNOWN_HOSTS }}
+          WEB_VPS_HOST: ${{ secrets.WEB_VPS_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "${WEB_VPS_HOST}"
+          test -n "${WEB_VPS_SSH_PRIVATE_KEY}"
+          test -n "${WEB_VPS_KNOWN_HOSTS}"
+
+          install -d -m 0700 "${HOME}/.ssh"
+          printf '%s\n' "${WEB_VPS_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/yoyopod-web"
+          printf '%s\n' "${WEB_VPS_KNOWN_HOSTS}" > "${HOME}/.ssh/yoyopod-web-known-hosts"
+          chmod 0600 "${HOME}/.ssh/yoyopod-web" "${HOME}/.ssh/yoyopod-web-known-hosts"
+          ssh-keygen -y -f "${HOME}/.ssh/yoyopod-web" >/dev/null
+
+      - name: Upload and atomically deploy
+        env:
+          COMMIT_SHA: ${{ steps.target.outputs.sha }}
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+          ARCHIVE_NAME: ${{ steps.release.outputs.archive_name }}
+          WEB_VPS_HOST: ${{ secrets.WEB_VPS_HOST }}
+        run: |
+          set -euo pipefail
+
+          remote="root@${WEB_VPS_HOST}"
+          ssh_options=(
+            -T
+            -i "${HOME}/.ssh/yoyopod-web"
+            -o "UserKnownHostsFile=${HOME}/.ssh/yoyopod-web-known-hosts"
+            -o StrictHostKeyChecking=yes
+            -o IdentitiesOnly=yes
+          )
+
+          local_installer_sha="$(sha256sum deploy/web/install-release.sh | awk '{ print $1 }')"
+          remote_installer_sha="$(
+            ssh "${ssh_options[@]}" "${remote}" installer-sha256
+          )"
+          if [[ "${local_installer_sha}" != "${remote_installer_sha}" ]]; then
+            echo "The VPS installer is stale; rerun deploy/web/bootstrap-vps.sh before deploying" >&2
+            exit 1
+          fi
+
+          ssh "${ssh_options[@]}" "${remote}" \
+            "upload ${RELEASE_ID} ${COMMIT_SHA}" \
+            < ".artifacts/web/${ARCHIVE_NAME}"
+          ssh "${ssh_options[@]}" "${remote}" \
+            "deploy ${RELEASE_ID} ${COMMIT_SHA}"
+
+          deployed_sha="$(ssh "${ssh_options[@]}" "${remote}" status)"
+          if [[ "${deployed_sha}" != "${COMMIT_SHA}" ]]; then
+            echo "VPS reported ${deployed_sha}, expected ${COMMIT_SHA}" >&2
+            exit 1
+          fi
+
+      - name: Record deployment
+        env:
+          COMMIT_SHA: ${{ steps.target.outputs.sha }}
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+        run: |
+          {
+            echo "### Web production deployment"
+            echo
+            echo "- Commit: \`${COMMIT_SHA}\`"
+            echo "- Release: \`${RELEASE_ID}\`"
+            echo "- Sites: \`yoyopod.com\`, \`docs.yoyopod.com\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

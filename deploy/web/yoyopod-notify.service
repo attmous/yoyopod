@@ -1,0 +1,33 @@
+[Unit]
+Description=yoyopod waitlist collector
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/opt/yoyopod-web/current/notify-collector.mjs
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /opt/yoyopod-web/current/notify-collector.mjs
+Environment=PORT=8787
+Environment=DATA_FILE=/var/lib/yoyopod-waitlist/emails.jsonl
+DynamicUser=yes
+StateDirectory=yoyopod-waitlist
+UMask=0077
+Restart=on-failure
+RestartSec=3s
+
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=multi-user.target

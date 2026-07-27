@@ -5,7 +5,11 @@ on:
     paths:
       - 'www/**'
       - 'docsite/website-vision/**'
+      - 'deploy/web/**'
+      - 'scripts/build_web.mjs'
+      - 'scripts/deploy_web.ps1'
       - '.github/workflows/web.yml'
+      - '.github/workflows/web-deploy.yml'
 
 jobs:
   build:
@@ -24,3 +28,16 @@ jobs:
         working-directory: ${{ matrix.dir }}
       - run: npm run build
         working-directory: ${{ matrix.dir }}
+
+  deploy-tooling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check deploy shell syntax
+        run: bash -n deploy/web/bootstrap-vps.sh deploy/web/install-release.sh deploy/web/ssh-command.sh
+      - name: Check PowerShell deploy syntax
+        shell: pwsh
+        run: |
+          $null = [scriptblock]::Create(
+            (Get-Content -Raw scripts/deploy_web.ps1)
+          )

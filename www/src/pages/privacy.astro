@@ -17,12 +17,17 @@ import Footer from '../components/Footer.astro';
 				<h2>Das Wichtigste in Kürze</h2>
 				<p>
 					Diese Website setzt keine Cookies und nutzt keine Analyse-, Tracking- oder
-					Werbedienste. Die einzigen personenbezogenen Daten, die sie verarbeitet, sind eine
-					E-Mail-Adresse, die Sie uns freiwillig geben. Alle Daten werden innerhalb der EU
-					verarbeitet.
+					Werbedienste. Die E-Mail-Anmeldung ist derzeit deaktiviert; über ein Formular werden
+					keine personenbezogenen Daten erhoben. Der Webserver verarbeitet die unten
+					beschriebenen Zugriffsdaten innerhalb der EU.
 				</p>
 
-				<h2>Warteliste (E-Mail-Adressen)</h2>
+				<h2>E-Mail-Benachrichtigung (derzeit deaktiviert)</h2>
+				<p>
+					Die Anmeldung bleibt geschlossen, bis das Kontaktpostfach funktioniert, der
+					Auftragsverarbeitungsvertrag mit dem Hosting-Anbieter abgeschlossen und das
+					Löschverfahren geprüft ist. Nach der Freischaltung gelten folgende Bedingungen:
+				</p>
 				<dl>
 					<dt>Was wir speichern</dt>
 					<dd>Ihre E-Mail-Adresse und den Zeitpunkt der Anmeldung. Sonst nichts.</dd>
@@ -89,12 +94,17 @@ import Footer from '../components/Footer.astro';
 
 				<h2>The short version</h2>
 				<p>
-					This site sets no cookies and runs no analytics, tracking, or ads. The only personal
-					data it ever touches is an email address you choose to give us. Everything is
-					processed within the EU.
+					This site sets no cookies and runs no analytics, tracking, or ads. Email signup is
+					currently disabled, so no personal data is collected through a form. The web server
+					processes the access data described below within the EU.
 				</p>
 
-				<h2>Waitlist emails</h2>
+				<h2>Email updates (currently disabled)</h2>
+				<p>
+					Signup remains closed until the contact mailbox works, the data processing agreement
+					with the hosting provider is in place, and the deletion procedure is verified. Once
+					enabled, the following terms apply:
+				</p>
 				<dl>
 					<dt>What we store</dt>
 					<dd>Your email address and the signup time. Nothing else.</dd>
@@ -153,6 +163,11 @@ import Footer from '../components/Footer.astro';
 </BaseLayout>
 
 <style>
+	.legal h1 {
+		font-size: clamp(2rem, 8.5vw, 2.75rem);
+		overflow-wrap: anywhere;
+	}
+
 	.legal h2 {
 		font-size: 1.3rem;
 		margin-top: 2.25rem;

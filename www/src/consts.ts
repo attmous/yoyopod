@@ -7,6 +7,9 @@ export const AGE_RANGE = '7–14';
 // collector (docs/operations/WEB_DEPLOY.md § Waitlist collector); swap in a
 // hosted form endpoint (Formspree etc.) here if preferred.
 export const NOTIFY_ENDPOINT = '/api/notify';
+// Keep collection closed until the contact mailbox, hosting AVV, and retention
+// procedure are ready. The production nginx config also returns 404 here.
+export const NOTIFY_ENABLED = false;
 
 export const SITE_TITLE = 'yoyopod: the first device before a smartphone';
 export const SITE_DESCRIPTION =
