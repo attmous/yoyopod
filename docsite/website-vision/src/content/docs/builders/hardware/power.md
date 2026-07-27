@@ -70,10 +70,10 @@ calm — warn early, shut down cleanly, never corrupt state.
 
 ## Open questions
 
-- TODO: What battery-life number do we commit to publicly, and under which usage profile is it measured?
-- TODO: Which charging connector does the product use, and is charging-dock hardware in or out of scope?
-- TODO: At what battery threshold should the device notify the parent app before it shuts down?
-- TODO: Is the battery user-replaceable or service-only, and what does that mean for the enclosure?
+- What battery-life number do we commit to publicly, and under which usage profile is it measured?
+- Which charging connector does the product use, and is charging-dock hardware in or out of scope?
+- At what battery threshold should the device notify the parent app before it shuts down?
+- Is the battery user-replaceable or service-only, and what does that mean for the enclosure?
 
 :::note[Sources]
 Condensed from

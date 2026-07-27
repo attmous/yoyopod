@@ -1,9 +1,9 @@
 ---
 title: yoyopod vision
-description: The target-state documentation for yoyopod — the first device before a smartphone. Structure first, content later.
+description: What yoyopod is today and the product it is becoming — the first device before a smartphone, for families, builders, and the curious.
 template: splash
 hero:
-  tagline: The first device before a smartphone. This site is the documentation yoyopod will have when the product is complete — as-built truth where it exists, and the full proposed ideal design everywhere else.
+  tagline: The first device before a smartphone. What yoyopod is today, and the product it is becoming — for families, for builders, and for anyone curious about the why.
   image:
     file: ../../assets/art/device-art.svg
     alt: The yoyopod device — a small handheld with one glowing canvas showing the Hub wheel and one side button.
@@ -20,6 +20,10 @@ hero:
       variant: minimal
     - text: ▶ yoyopod in 30 seconds
       link: /start/promo/
+      variant: minimal
+    - text: yoyopod.com
+      link: https://yoyopod.com
+      icon: external
       variant: minimal
 ---
 
@@ -52,18 +56,17 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 		roadmap. [About the company](/company/).
 	</Card>
 	<Card title="About This Site" icon="information">
-		Why this site is all stubs, how it relates to the as-built engineering
-		docs, and how a stub becomes a page.
+		What this site covers, how it relates to the engineering docs, and how
+		to read the *Vision* pages.
 		[How this site works](/start/about-this-site/).
 	</Card>
 </CardGrid>
 
-:::note[This is the vision site]
-Every page is one of two things: as-built truth condensed from real
-documentation (with a *Sources* note), or the full **Proposed** ideal
-design — tagged in the sidebar and written for adopt/adapt/drop decisions.
-The badges are the decision map. See
-[About This Site](/start/about-this-site/) for the legend. The as-built
-engineering documentation lives in the main docs site (`docsite/website/` in the
-repository, coral accent).
+:::note[How to read this site]
+Pages marked **Vision** in the sidebar describe the target experience yoyopod
+is designed to deliver; unmarked pages are condensed from as-built
+documentation and end with a *Sources* note. See
+[About This Site](/start/about-this-site/) for details. The full engineering
+documentation lives in the
+[yoyopod repository](https://github.com/attmous/yoyopod).
 :::

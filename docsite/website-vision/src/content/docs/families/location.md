@@ -5,10 +5,10 @@ description: Live-ish location for peace of mind — what it is and isn't.
 
 *What parents see on the map, how fresh it is, and what a check-in means.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## What you'll need
@@ -96,7 +96,7 @@ phone's notification settings for the yoyopod app first — the check-in
 itself still lands on the map even when the notification is muted, so
 open the app and look before assuming it was never sent.
 
-## Open questions
+## Still being decided
 
 - Adopt the every-few-minutes cadence as a fixed design — battery and honesty both prefer it — or make the cadence a parent-visible setting?
 - Adopt roll-to-Locate-and-hold as the check-in gesture, or hold check-ins back until the one-button grammar is validated with real kids?

@@ -5,10 +5,10 @@ description: Tap, double-tap, hold — the whole interface.
 
 *Teach a kid (and a parent) the entire interaction model in five minutes.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## What you'll need
@@ -47,7 +47,7 @@ settled by watching real kids use real devices — not by guessing.
 
 ## Tips
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 Teach it as a game, not a lesson. "Get to a story before I count to ten."
 "Call Grandma without me pointing at anything." Three gestures is a game a
@@ -82,7 +82,7 @@ screens that listen.
 
 ## Troubleshooting
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **Pressing the button does nothing.** Check power before anything else. A
 sleeping device wakes on a press; a dead one doesn't. If the canvas stays
@@ -102,7 +102,7 @@ let go, like a walkie-talkie. Letting go halfway cuts the message off, and
 a too-brief hold sends nothing at all. The fix is one phrase, said once:
 "hold it until you're done talking, then let go."
 
-## Open questions
+## Still being decided
 
 - **Adopt hold-jumps-straight-home, or keep today's one-screen-at-a-time
   back?** Straight-home makes "hold means home" true everywhere and makes

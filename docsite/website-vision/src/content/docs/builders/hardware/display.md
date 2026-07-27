@@ -64,10 +64,10 @@ resolution, and touch.
 
 ## Open questions
 
-- TODO: Does the product device get a touch layer, or does one button remain the entire input story?
-- TODO: What resolution and panel technology does the product board target, and does 240x280 stay the design canvas?
-- TODO: How much of the button-gesture grammar (tap, double-tap, hold) is frozen before more kid testing?
-- TODO: Is there a hardware brightness/ambient-light story, or does the backlight stay on/off only?
+- Does the product device get a touch layer, or does one button remain the entire input story?
+- What resolution and panel technology does the product board target, and does 240x280 stay the design canvas?
+- How much of the button-gesture grammar (tap, double-tap, hold) is frozen before more kid testing?
+- Is there a hardware brightness/ambient-light story, or does the backlight stay on/off only?
 
 :::note[Sources]
 Condensed from the as-built docs site (`docsite/website/` in the repository): the

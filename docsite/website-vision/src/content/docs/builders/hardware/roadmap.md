@@ -5,10 +5,10 @@ description: "Hardware V0 “Dawn” today — off-the-shelf boards wired togeth
 
 *The honest hardware trajectory: V0 “Dawn” today, V1 “Daylight” ahead.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## Overview
@@ -34,7 +34,7 @@ port would rebuild assumptions that no longer hold.
 
 ## Key components
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 V0 “Dawn” chose components for one criterion: **available today**. V1
 “Daylight” gets to choose properly, and the same four questions are asked
@@ -94,7 +94,7 @@ which is exactly why DVT validates the product, not just the PCB.
 
 ## Interfaces & contracts
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The software bet that makes the V0 → V1 swap survivable is already
 placed: every hardware subsystem sits behind exactly one worker process

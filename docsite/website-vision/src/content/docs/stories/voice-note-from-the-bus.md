@@ -5,10 +5,10 @@ description: Hold the side button, speak, done — messaging without a screen.
 
 *Lina, 11, sends a voice note from the school bus with one held button.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## The moment
@@ -45,7 +45,7 @@ Lina changed her plans and told her mother herself. That is the independence pil
 
 For her mother, the payoff is just as concrete: she hears Lina — the voice, the mood, the bus in the background — instead of parsing a text bubble for tone. And the scene on the bus makes the whole design philosophy visible in fifteen seconds: one held button, a few honest words, and the device is back in the pocket while the ride goes on. More on how families use this every day is at [Talking](/families/talking/).
 
-## Open questions
+## Still being decided
 
 - **Recipient flow.** Adopt contact-first as the only way to send — turn the wheel to a person, then hold — or add a default recipient so a hold from anywhere fires off a note to one chosen grown-up? One-gesture speed, against the risk of notes landing with the wrong person.
 - **Release-to-send.** Adopt release-to-send as the entire gesture — one motion, and mistakes are cheap among family — or add a replay-and-confirm step before a note leaves the device?

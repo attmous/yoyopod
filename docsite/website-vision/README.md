@@ -1,18 +1,17 @@
 # yoyopod vision docs
 
-The **target-state** documentation site for yoyopod: the structure a complete
-hardware + software product would ship with — families, user stories,
-applications, builders, company. Every page except the landing and section
-indexes is a **structured stub** (headings + bullet outlines + open
-questions): the information architecture is decided, the content is not
-written yet.
+The public docs site for yoyopod, served at `https://docs.yoyopod.com`: what
+the product is today and the experience it is being built toward — for
+families, builders, and anyone curious about the why. Fully drafted across
+families, user stories, applications, builders, and company sections.
 
 This is deliberately a second site. The as-built engineering documentation
 lives in [`docsite/website/`](../website/) and remains the source of truth for what
-is actually implemented today. This site wears the startup's brand kit —
-"Sunrise & Midnight": marigold amber on midnight indigo and warm paper,
-documented at `/company/brand-kit/`. The as-built site keeps its coral
-device-token theme, so the two are visually unmistakable.
+is actually implemented today; when the two disagree, the as-built site wins.
+This site wears the startup's brand kit — "Sunrise & Midnight": marigold amber
+on midnight indigo and warm paper, documented at `/company/brand-kit/`. The
+as-built site keeps its coral device-token theme, so the two are visually
+unmistakable.
 
 ## Commands
 
@@ -31,7 +30,7 @@ Run from this directory:
 - `src/content/docs/stories/` — persona-driven user stories (kids 7–14 and
   their parents), grounded in the V1 pillars.
 - `src/content/docs/apps/` — the applications: Listen, Talk, Locate, the
-  parent app, Setup, and the future parking lot.
+  parent app, Setup, and what comes next.
 - `src/content/docs/builders/` — hardware platform, software platform, and
   the developer guide.
 - `src/content/docs/company/` — mission, principles, anti-positioning,
@@ -40,19 +39,18 @@ Run from this directory:
 
 ## Content status convention
 
-The ideal structure is fixed; real content is condensed into it wherever
-the repository has it. Three states, mirrored by sidebar badges in
-`astro.config.mjs`:
+Two states, mirrored by sidebar badges in `astro.config.mjs`:
 
-- **Filled** (no badge) — condensed from as-built docs; ends with a
+- **As-built** (no badge) — condensed from as-built docs; ends with a
   `:::note[Sources]` aside.
-- **Partial** (`Partial` badge) — real sections plus inline
-  "*Placeholder — no as-built content yet.*" markers.
-- **Placeholder** (`Placeholder` badge) — `:::caution[Placeholder]` aside;
-  the outline is the target structure. The badge map is the gap list.
-- **Proposed** (`Proposed` badge) — `:::tip[Proposed — the ideal design]`
-  aside; the full target design written for an adopt/adapt/drop decision,
-  with inline "*Proposed — the ideal design, not yet adopted.*" markers on
-  hybrid pages. Not implemented.
+- **Vision** (`Vision` badge) — `:::note[The vision]` aside; describes the
+  target experience yoyopod is designed to deliver, with inline
+  "*Design direction — not built yet.*" markers on hybrid pages. Not a
+  description of today's prototype.
 
 The H2 skeleton must survive every state transition.
+
+## Deployment
+
+Built and uploaded manually to the VPS alongside the `website/` landing page —
+see [`docs/operations/WEB_DEPLOY.md`](../../docs/operations/WEB_DEPLOY.md).

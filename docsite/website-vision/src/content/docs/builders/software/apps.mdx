@@ -7,16 +7,15 @@ import PairingFlow from '../../../../assets/diagrams/pairing-flow.svg';
 
 *The planned apps/ and packages/ layer: the yoyopod app and the contracts it shares with the device.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything marked *Proposed* is neither implemented
-nor committed; the one as-built fact is that nothing in this layer exists
-yet.
+:::note[The vision]
+This page describes the app platform yoyopod is designed to grow into — nothing
+in this layer is built yet. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## Overview
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The App Platform is the buyer's half of the product. Kids hold the device; parents hold their phone. Everything a parent configures, approves, or reviews happens in **the yoyopod app**, which ships on **iOS and Android** from day one — a household with one iPhone parent and one Android parent is the normal case, not the edge case.
 
@@ -37,7 +36,7 @@ Anything beyond these five is V2 material and should be resisted until V1 ships.
 
 ## Key components
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **The yoyopod app.** A single app for the whole household, organized around the device rather than around features: a parent opens the app, sees their child's yoyopod, and everything — whitelist, location, content, Help Agents — hangs off that device view. Multiple parents share one household account with equal rights in V1; role differentiation (owner vs. viewer) is a V2 question. The setup walkthrough is the family-facing companion at [Setup](/apps/setup/).
 
@@ -59,7 +58,7 @@ Anything beyond these five is V2 material and should be resisted until V1 ships.
 
 ## Interfaces & contracts
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **One rule above all: the app talks only to yoyocloud.** Never to devices directly — not over the local network, not over Bluetooth, not during setup. Every app↔device interaction is two hops through the backbone. This costs a little latency and buys a lot: one authentication story, one audit point, one protocol to version, and no device-side listener for a phone to find.
 
@@ -79,7 +78,7 @@ Anything beyond these five is V2 material and should be resisted until V1 ships.
 
 **Today: nothing in this layer exists.** `apps/` and `packages/` are planned directories, not present ones. There is no parent app, no shared-contract package, and no app↔yoyocloud protocol in use. Today's device and cloud sides are documented in the as-built engineering docs (`docsite/website/` in the repository).
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The target is one parent app and one shared-contract layer with zero drift between them — and the framework choice should be sized honestly to a two-engineer team that also owns a Rust device stack and a cloud backbone:
 
@@ -94,7 +93,7 @@ The target is one parent app and one shared-contract layer with zero drift betwe
 
 ## Open questions
 
-*Proposed — the key adopt/drop decisions.*
+*The key design decisions still open.*
 
 - **Adopt or drop the cloud-only rule for the app?** Committing to "the app never talks to the device directly" simplifies security and versioning forever, but forecloses local-network setup tricks — decide now, because the pairing design depends on it.
 - **Adopt JSON Schema as the single contract source, or choose protobuf before any code exists?** Switching schema technology after both sides generate code from it is the most expensive migration on this page.

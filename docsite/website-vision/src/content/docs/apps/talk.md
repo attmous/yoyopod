@@ -5,10 +5,10 @@ description: Contact-first calling and quick voice messages, whitelist only.
 
 *The talking experience: contacts first, whitelist always, one button to speak.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## What it is
@@ -24,7 +24,7 @@ The family-facing view of talking lives at [Talking](/families/talking/).
 
 ## Key flows
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **Call a favorite.** From the Hub wheel into Talk, and the canvas shows the
 contact wheel: the people this family approved, each one a face and a name,
@@ -80,7 +80,7 @@ messaging, call history, and voice-note record and playback.
 
 ## In the parent app
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **The whitelist lives in the app.** Adding, removing, and naming contacts
 is one of the yoyopod app's five V1 jobs, and the app is the only place the
@@ -123,7 +123,7 @@ grandma. Parents shape *who* can be reached; they do not listen in.
   contract, folding the separate contacts and call-history screens away.
 - Whitelist management waits on the parent app (future work).
 
-## Open questions
+## Still being decided
 
 - **Adopt the cancel gesture.** Hold to record and release to send is
   settled; what is not is how a kid takes a note back — a brief undo moment

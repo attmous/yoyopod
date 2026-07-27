@@ -7,10 +7,10 @@ import ModemFsm from '../../../../assets/diagrams/modem-fsm.svg';
 
 *The 4G modem, SIM provisioning, and GPS — the hardware behind Locate and Talk.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## Overview
@@ -40,7 +40,7 @@ an IP link, and link health monitoring.
 
 ### SIM and antenna
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The family experience is decided before the component is: **the SIM
 arrives provisioned in the box**. A yoyopod ships with its line already
@@ -104,7 +104,7 @@ doesn't flood the runtime.
 
 ### From GPS fix to a location feature
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The pipeline from silicon to a parent's phone is short on purpose, and
 every stage of it repeats the same promise: **live-ish, never real-time**.

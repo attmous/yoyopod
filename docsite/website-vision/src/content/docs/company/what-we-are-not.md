@@ -5,10 +5,10 @@ description: Not a smartphone replacement, not a toy, not screen-first — and n
 
 *The anti-positioning list as a first-class page: the refusals are the strategy.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## What we are not
@@ -18,7 +18,7 @@ The anti-positioning list, verbatim from the positioning doc:
 > Not a smartphone replacement · not a toy · not a screen-first device ·
 > not another addictive kids gadget. *"It's a simpler first step."*
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **Not a smartphone replacement.** The temptation arrives politely, one
 parent request at a time: just a browser, just a messenger, just one
@@ -62,7 +62,7 @@ The do-not-say list, verbatim:
 > dilutes the sharpest truth: **it is the first device before a
 > smartphone.**
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **"AI for kids."** The label that raises money fastest and trust
 slowest. yoyopod uses AI narrowly and always disclosed: a spoken
@@ -110,17 +110,13 @@ This page is the fuller version of the refusal list cross-referenced
 from [Product Principles](/company/principles/), and the fence around
 what may ever appear on the [Roadmap](/company/roadmap/).
 
-## Open questions
+## Still being decided
 
-- **Adopt the short argued paragraphs** on this page as the public tone
-  of the refusal list — or publish dry one-liners and keep the
-  arguments internal.
-- **Adopt the "play is half the point" framing** of the not-a-toy
-  refusal — or rework the phrasing until it can never be read as
+- **The "play is half the point" framing** of the not-a-toy refusal —
+  keep it, or rework the phrasing until it can never be read as
   dismissive of play.
-- **Decide whether the list is closed:** whether it may grow at all,
-  and whether changing it requires the same sign-off as changing the
-  hero headline it exists to protect.
+- **Whether the list is closed** — whether the refusals may grow at
+  all, or stay exactly these four for good.
 
 :::note[Sources]
 Condensed from

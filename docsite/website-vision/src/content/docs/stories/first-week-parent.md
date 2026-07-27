@@ -5,10 +5,10 @@ description: Setup, settings, and the moment the worry gets quieter.
 
 *Aylin's first week with yoyopod: from skeptical unboxing to a quieter school run.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## The moment
@@ -57,7 +57,7 @@ The arc being sold is honest: not "total control," but worry getting quieter. No
 
 One week from box to a solo walk is the benchmark the whole product should be measured against. Every flow in this story either shortens that week or has to justify itself.
 
-## Open questions
+## Still being decided
 
 - **A setup-time budget.** Adopt a hard day-one target — box to first loaded playlist in under twenty minutes — and design and measure against it, or let setup time float? The Sunday scene above is only a promise if it becomes a budget.
 - **The flip moment.** Which beat does onboarding bet on to turn a skeptic — the honest *saved / active on device* labels, the found Help Agent, or the first live-ish glance with its timestamp? The first week can be sequenced to lead with whichever one is chosen.
