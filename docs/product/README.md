@@ -10,8 +10,10 @@ Product-definition artefacts for yoyopod V1.
   one-pager (V2 - 2026): hero render, four finishes, spec strip
 - [`PRODUCT_VIDEO.mp4`](PRODUCT_VIDEO.mp4) - 24 s product video,
   1920x1080, H.264, silent (no audio track)
+- [`YC_FALL_2026_DEMO_VIDEO_PLAN.md`](YC_FALL_2026_DEMO_VIDEO_PLAN.md) -
+  six-shot, 70-second founder-led demo script and generation-model handoff
 
-Both are built on the V2 enclosure renders in
+The one-pager and silent product video are built on the V2 enclosure renders in
 [`../hardware/enclosure/`](../hardware/enclosure/README.md). Specs
 quoted on the one-pager - 2.4" 240x280 non-touch, glowing PTT +
 click-wheel, O28 speaker, 2500 mAh, 4G + GPS, PC/ABS 2.5 mm walls, no
