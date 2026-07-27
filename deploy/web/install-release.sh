@@ -230,6 +230,23 @@ assert_status() {
     fi
 }
 
+assert_status_eventually() {
+    local host="$1"
+    local path="$2"
+    local expected="$3"
+    local attempts="$4"
+    local attempt
+    for (( attempt = 1; attempt <= attempts; attempt += 1 )); do
+        if assert_status "${host}" "${path}" "${expected}"; then
+            return 0
+        fi
+        if (( attempt < attempts )); then
+            sleep 1
+        fi
+    done
+    return 1
+}
+
 # Certbot edits this vhost in place. Once certificate directives are present,
 # probe the local HTTPS listener directly with correct SNI and certificate
 # validation; otherwise use the initial HTTP listener. Public DNS is never
@@ -256,7 +273,11 @@ if grep -qE \
     "${NGINX_CONFIG}"; then
     notify_expected="405"
 fi
-assert_status "yoyopod.com" "/api/notify" "${notify_expected}"
+if [[ "${notify_expected}" == "405" ]]; then
+    assert_status_eventually "yoyopod.com" "/api/notify" "405" "15"
+else
+    assert_status "yoyopod.com" "/api/notify" "404"
+fi
 
 if [[ "$(readlink -f "${CURRENT_LINK}" 2>/dev/null || true)" != "${release_dir}" ]]; then
     echo "current release changed during deployment verification" >&2

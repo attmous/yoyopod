@@ -183,6 +183,8 @@ The remote installer checks all of these before accepting a release:
 - a missing docs route → `404`;
 - `yoyopod.com/api/notify` → `404` while collection is disabled, or a safe
   `GET` → `405` when the live nginx loopback proxy is deliberately enabled.
+  The enabled-mode probe retries for up to 15 seconds while Node binds its
+  loopback port.
 
 Before TLS, checks address the local HTTP vhost directly. Once Certbot
 certificate directives exist, they address the local HTTPS vhost with SNI and
