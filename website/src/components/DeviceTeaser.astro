@@ -53,7 +53,7 @@
 		width: 216px;
 		height: 232px;
 		border-radius: 46px;
-		border: 3px solid rgba(240, 238, 233, 0.55);
+		border: 3px solid rgba(var(--ink-rgb), 0.55);
 	}
 
 	.screen {
@@ -63,8 +63,8 @@
 		width: 102px;
 		height: 118px;
 		border-radius: 12px;
-		border: 2.5px solid rgba(240, 238, 233, 0.42);
-		background: var(--cream-07);
+		border: 2.5px solid rgba(var(--ink-rgb), 0.42);
+		background: var(--ink-07);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -88,7 +88,7 @@
 
 	.signal i {
 		width: 2.5px;
-		background: var(--cream-50);
+		background: var(--ink-50);
 	}
 
 	.signal i:nth-child(1) {
@@ -108,7 +108,7 @@
 		width: 14px;
 		height: 7px;
 		border-radius: 2px;
-		border: 1.5px solid var(--cream-50);
+		border: 1.5px solid var(--ink-50);
 	}
 
 	.battery i {
@@ -117,7 +117,7 @@
 		top: 1px;
 		bottom: 1px;
 		width: 8px;
-		background: rgba(240, 238, 233, 0.6);
+		background: rgba(var(--ink-rgb), 0.6);
 	}
 
 	.face {
@@ -125,7 +125,7 @@
 		width: 60px;
 		height: 60px;
 		border-radius: 50%;
-		border: 3px solid rgba(240, 238, 233, 0.9);
+		border: 3px solid rgba(var(--ink-rgb), 0.9);
 		animation: csBob 2.8s ease-in-out infinite;
 	}
 
@@ -135,7 +135,7 @@
 		width: 6px;
 		height: 9px;
 		border-radius: 3px;
-		background: var(--cream);
+		background: var(--ink);
 		animation: csBlink 4.2s ease-in-out infinite;
 	}
 
@@ -155,7 +155,7 @@
 		width: 14px;
 		height: 7px;
 		border: 3px solid transparent;
-		border-bottom-color: var(--cream);
+		border-bottom-color: var(--ink);
 		border-radius: 0 0 14px 14px;
 	}
 
@@ -191,7 +191,7 @@
 		width: 7px;
 		height: 7px;
 		border-radius: 50%;
-		background: rgba(240, 238, 233, 0.42);
+		background: rgba(var(--ink-rgb), 0.42);
 	}
 
 	.mic {
@@ -207,7 +207,7 @@
 		width: 10px;
 		height: 48px;
 		border-radius: 0 6px 6px 0;
-		background: rgba(240, 238, 233, 0.55);
+		background: rgba(var(--ink-rgb), 0.55);
 		animation: csPress 3.4s ease-in-out infinite;
 	}
 
@@ -218,10 +218,10 @@
 		width: 12px;
 		height: 34px;
 		border-radius: 8px;
-		background-color: rgba(240, 238, 233, 0.35);
+		background-color: rgba(var(--ink-rgb), 0.35);
 		background-image: repeating-linear-gradient(
 			180deg,
-			rgba(43, 40, 54, 0.65) 0 2px,
+			var(--wheel-rib) 0 2px,
 			transparent 2px 6px
 		);
 		background-size: 100% 12px;
@@ -231,7 +231,7 @@
 	.dot {
 		position: absolute;
 		border-radius: 50%;
-		background: var(--cream-30);
+		background: var(--ink-30);
 	}
 
 	.d1 {
@@ -246,7 +246,7 @@
 		top: 47%;
 		width: 6px;
 		height: 6px;
-		background: rgba(240, 238, 233, 0.25);
+		background: rgba(var(--ink-rgb), 0.25);
 	}
 
 	.d3 {
@@ -261,7 +261,7 @@
 		top: 38%;
 		width: 6px;
 		height: 6px;
-		background: rgba(240, 238, 233, 0.25);
+		background: rgba(var(--ink-rgb), 0.25);
 	}
 
 	.chip {

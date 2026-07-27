@@ -1,6 +1,7 @@
 ---
 import { DOCS_URL, GITHUB_URL } from '../consts';
 import Wordmark from './Wordmark.astro';
+import ThemeToggle from './ThemeToggle.astro';
 ---
 
 <header class="site-header">
@@ -9,6 +10,7 @@ import Wordmark from './Wordmark.astro';
 		<nav aria-label="Main">
 			<a href={DOCS_URL}>Docs</a>
 			<a href={GITHUB_URL}>GitHub</a>
+			<ThemeToggle />
 		</nav>
 	</div>
 </header>
@@ -36,6 +38,7 @@ import Wordmark from './Wordmark.astro';
 
 	nav {
 		display: flex;
+		align-items: center;
 		gap: 1.4rem;
 	}
 
@@ -43,7 +46,7 @@ import Wordmark from './Wordmark.astro';
 		text-decoration: none;
 		font-weight: 600;
 		font-size: 0.95rem;
-		color: var(--cream-75);
+		color: var(--ink-75);
 	}
 
 	nav a:hover,
