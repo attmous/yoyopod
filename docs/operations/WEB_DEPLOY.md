@@ -86,6 +86,8 @@ choose a program. It can only:
 
 This prevents the Actions credential from reading or modifying neighboring
 sites even though they share the VPS.
+The forced command caps compressed uploads at 128 MiB; before extraction, the
+installer also caps a release at 256 MiB expanded and 10,000 entries.
 Incoming archives abandoned for more than 60 minutes are pruned on the next
 upload. The installer also holds `/opt/yoyopod-web/.deploy.lock` across the
 entire atomic switch, health check, rollback, and metadata update, so manual

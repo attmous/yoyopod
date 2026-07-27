@@ -9,6 +9,8 @@ DEPLOYED_SHA_FILE="${APP_ROOT}/DEPLOYED_SHA"
 EXPECTED_USER="yoyopod-web-deploy"
 NGINX_CONFIG="/etc/nginx/sites-available/yoyopod"
 MAX_RELEASE_HISTORY=5
+MAX_RELEASE_BYTES=$((256 * 1024 * 1024))
+MAX_RELEASE_ENTRIES=10000
 
 usage() {
     echo "usage: install-release.sh ARCHIVE RELEASE_ID COMMIT_SHA" >&2
@@ -84,13 +86,48 @@ while IFS= read -r archive_entry; do
     fi
 done < <(tar -tzf "${ARCHIVE}")
 
+archive_verbose_listing="$(
+    LC_ALL=C tar --numeric-owner -tvzf "${ARCHIVE}"
+)"
 while IFS= read -r archive_listing; do
     entry_type="${archive_listing:0:1}"
     if [[ "${entry_type}" != "-" && "${entry_type}" != "d" ]]; then
         echo "release archives may contain only regular files and directories" >&2
         exit 1
     fi
-done < <(LC_ALL=C tar -tvzf "${ARCHIVE}")
+done <<< "${archive_verbose_listing}"
+
+read -r archive_entry_count archive_expanded_bytes < <(
+    awk '
+        {
+            if ($3 !~ /^[0-9]+$/) {
+                invalid = 1
+            }
+            entries += 1
+            bytes += $3
+        }
+        END {
+            if (invalid) {
+                print "invalid invalid"
+            } else {
+                printf "%.0f %.0f\n", entries, bytes
+            }
+        }
+    ' <<< "${archive_verbose_listing}"
+)
+if [[ ! "${archive_entry_count}" =~ ^[0-9]+$ ||
+      ! "${archive_expanded_bytes}" =~ ^[0-9]+$ ]]; then
+    echo "could not determine release archive size" >&2
+    exit 1
+fi
+if (( archive_entry_count > MAX_RELEASE_ENTRIES )); then
+    echo "release has ${archive_entry_count} entries; limit is ${MAX_RELEASE_ENTRIES}" >&2
+    exit 1
+fi
+if (( archive_expanded_bytes > MAX_RELEASE_BYTES )); then
+    echo "release expands to ${archive_expanded_bytes} bytes; limit is ${MAX_RELEASE_BYTES}" >&2
+    exit 1
+fi
 
 cleanup_uninstalled_release() {
     local status="$?"
