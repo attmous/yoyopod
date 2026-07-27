@@ -8,7 +8,7 @@ export const AGE_RANGE = '7–14';
 // hosted form endpoint (Formspree etc.) here if preferred.
 export const NOTIFY_ENDPOINT = '/api/notify';
 
-export const SITE_TITLE = 'yoyopod — the first device before a smartphone';
+export const SITE_TITLE = 'yoyopod: the first device before a smartphone';
 export const SITE_DESCRIPTION =
 	'yoyopod is a parent-managed companion device for kids ages 7–14, built for safe communication, live location, and everyday audio without the distraction, complexity, or screen addiction of a smartphone.';
 
