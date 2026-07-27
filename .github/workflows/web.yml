@@ -1,0 +1,26 @@
+name: Web
+
+on:
+  pull_request:
+    paths:
+      - 'website/**'
+      - 'docsite/website-vision/**'
+      - '.github/workflows/web.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: [website, docsite/website-vision]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: '${{ matrix.dir }}/package-lock.json'
+      - run: npm ci
+        working-directory: ${{ matrix.dir }}
+      - run: npm run build
+        working-directory: ${{ matrix.dir }}
