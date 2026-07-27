@@ -78,9 +78,9 @@ parent app and SDK packages once they exist.
 
 ## Open questions
 
-- TODO: How do we test 4G and GPS behavior repeatably — field procedure, lab setup, or simulation?
-- TODO: How are battery drain and long-running soak stability measured, and against what thresholds?
-- TODO: What is the minimal on-device checklist a *release* must pass, once prod slot publishing (Round 3) exists?
+- How do we test 4G and GPS behavior repeatably — field procedure, lab setup, or simulation?
+- How are battery drain and long-running soak stability measured, and against what thresholds?
+- What is the minimal on-device checklist a *release* must pass, once prod slot publishing (Round 3) exists?
 
 :::note[Sources]
 Condensed from

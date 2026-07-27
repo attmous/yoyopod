@@ -1,0 +1,82 @@
+---
+import { DOCS_URL, GITHUB_URL } from '../consts';
+import Wordmark from './Wordmark.astro';
+---
+
+<footer class="site-footer">
+	<div class="footer-row">
+		<div class="finish-dots" role="img" aria-label="Four finishes: Cloud·Sky, Mint·Forest, Bubblegum, Tangerine">
+			<span class="finish-cloud" title="Cloud·Sky"></span>
+			<span class="finish-mint" title="Mint·Forest"></span>
+			<span class="finish-bubblegum" title="Bubblegum"></span>
+			<span class="finish-tangerine" title="Tangerine"></span>
+		</div>
+		<nav aria-label="Footer">
+			<a href={DOCS_URL}>Documentation</a>
+			<a href={GITHUB_URL}>GitHub</a>
+			<a href="/imprint">Imprint</a>
+			<a href="/privacy">Privacy</a>
+		</nav>
+	</div>
+	<div class="footer-legal">
+		<p>
+			Free software under <a href={`${GITHUB_URL}/blob/main/LICENSE`}>AGPL-3.0-or-later</a>. Built
+			by software-engineer fathers in Baden-Württemberg, Germany.
+		</p>
+		<p class="copyright">© 2026 <Wordmark bouncing /></p>
+	</div>
+</footer>
+
+<style>
+	.site-footer {
+		padding: 30px clamp(1.5rem, 4vw, 56px) 40px;
+		font-size: 0.95rem;
+	}
+
+	.footer-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 1.5rem;
+		flex-wrap: wrap;
+	}
+
+	nav {
+		display: flex;
+		gap: 1.4rem;
+		flex-wrap: wrap;
+	}
+
+	nav a {
+		text-decoration: none;
+		font-weight: 600;
+	}
+
+	nav a:hover,
+	nav a:focus-visible {
+		text-decoration: underline;
+	}
+
+	.footer-legal {
+		margin-top: 1.75rem;
+		color: var(--ink-50);
+	}
+
+	.footer-legal a {
+		color: inherit;
+	}
+
+	.footer-legal p {
+		margin-bottom: 0.3em;
+	}
+
+	.copyright {
+		font-weight: 600;
+	}
+
+	.copyright :global(.wordmark) {
+		color: inherit;
+		font-weight: 600;
+		letter-spacing: normal;
+	}
+</style>

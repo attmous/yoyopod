@@ -5,15 +5,15 @@ description: Hold the button, ask a question, hear an answer — a voice compani
 
 *The Ask experience — push-to-talk questions with spoken answers, disclosed as an AI-generated voice.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## What it is
 
-Ask is the question-and-answer side of the companion. The child holds the button, asks something out loud — *"why is the sky blue?"* — lets go, and hears an answer spoken back. There is no feed to scroll, no follow-up bait, nothing on the canvas to linger over: one question, one answer, and the child can ask again or walk away. *Proposed:* the next step keeps exactly that shape and widens who answers — the Ask root screen becomes the **Ask wheel**, a wheel of parent-created **Help Agents** with the familiar companion voice as the default entry (see *Key flows* below).
+Ask is the question-and-answer side of the companion. The child holds the button, asks something out loud — *"why is the sky blue?"* — lets go, and hears an answer spoken back. There is no feed to scroll, no follow-up bait, nothing on the canvas to linger over: one question, one answer, and the child can ask again or walk away. *Design direction:* the next step keeps exactly that shape and widens who answers — the Ask root screen becomes the **Ask wheel**, a wheel of parent-created **Help Agents** with the familiar companion voice as the default entry (see *Key flows* below).
 
 The answer is spoken in an AI-generated voice, and that fact is not hidden: with cloud voice enabled, yoyopod is an AI-voice device and must be treated — and disclosed — as one. That disclosure obligation is stated in the repository's own runbook, and it travels with the feature everywhere Ask appears.
 
@@ -21,7 +21,7 @@ Positioning stays inside the refusals at [what we are not](/company/what-we-are-
 
 ## Key flows
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **The Ask wheel.** The child opens Ask and finds a wheel of Help Agents on the canvas. The yoyopod companion voice sits first on the wheel — it is always there, and for a fresh device it is the only entry. Around it appear the specialists a parent has summoned: "Math Helper", "Animal Expert", "Story Friend" — each one a name and a face on the wheel, nothing more. The child spins through them, lands on one, and the familiar loop takes over: hold the button, ask out loud, let go, hear the answer spoken back. Asking again stays with the same helper — the short conversational memory of a few turns lives inside that helper, so a follow-up about narwhals goes to the Animal Expert who just answered, not to a blank slate. Pressing Home leaves the conversation and returns to the wheel; the next visit starts fresh.
 
@@ -43,7 +43,7 @@ The worker is optional and degrades gracefully. If it is disabled, or the cloud 
 
 ## In the parent app
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **Creating and configuring Help Agents.** The parent app is where helpers are born and shaped. Each Help Agent is those four choices — topic area, tone, boundaries, name — and each can be edited, paused, or removed at any time; changes reach the wheel on the next sync. The companion voice is the one entry parents do not manage: it is the default, always first on the wheel, and the way to remove it is to turn Ask off entirely. Boundaries deserve the most care in the app's design: they are stated in plain parent language ("no scary animal facts", "don't discuss weight or dieting"), and they are enforced in yoyocloud alongside the age-appropriate content policy — a boundary is a rule the service applies, not a polite request the helper might forget.
 
@@ -74,7 +74,7 @@ Ask exists and runs on the device today: the Ask screen is a current route, and 
 
 Validation is staged, not finished. The repository defines a manual smoke test (ask a question from the Ask screen, confirm the spoken answer, ask a follow-up, back out, confirm no stale answer, confirm quick commands still work), and automated on-device voice validation is explicitly paused pending a follow-up round. Nothing on this page should be read as "fully validated" until that flag is lifted.
 
-## Open questions
+## Still being decided
 
 - **Adopt or drop the Ask wheel.** Does Ask stay a single companion voice, or become the wheel of parent-created Help Agents described above? This is the page's central decision; everything else follows from it.
 - **Transcript model.** Adopt full transcripts with 30-day parent-controlled retention (the recommendation), or choose the summaries-only middle ground and accept that parents cannot verify what was said?

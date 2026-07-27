@@ -1,0 +1,412 @@
+/* yoyopod.com — global styles.
+   Design source: the locked coming-soon design ("yoyopod web pack" mockup —
+   v2 hardware, bounce-p logo, four finishes, dark + light/paper themes) plus
+   the brand logo pack rules in docs/brand/README.md.
+
+   Theming: brand constants below never change; the theme layer swaps the
+   ink/background pair. Dark = cream ink on navy; light = navy ink on paper.
+   The active theme is [data-theme] on <html>, set pre-paint in BaseLayout. */
+
+@import '@fontsource-variable/figtree';
+
+:root {
+	/* brand constants (both themes) */
+	--navy: #2b2836;
+	--navy-glow: #3a3648;
+	--cream: #f0eee9;
+	--cyan: #05cae9;
+	--cyan-ink: #0b3a44;
+	--joined: #0a7d91;
+
+	--chip-blue: #8fcbe4;
+	--chip-mint: #8fd0ad;
+	--chip-pink: #f2a9c7;
+	--chip-orange: #f5a56a;
+
+	--radius-card: 18px;
+	--radius-pill: 99px;
+	--font-sans: 'Figtree Variable', 'Figtree', system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+	/* theme layer — dark is the default */
+	--bg: var(--navy);
+	--bg-glow: var(--navy-glow);
+	--ink: var(--cream);
+	--ink-rgb: 240, 238, 233;
+	--link-hover: var(--cyan);
+	--wheel-rib: rgba(43, 40, 54, 0.65);
+	color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+	--bg: var(--cream);
+	--bg-glow: #ffffff;
+	--ink: var(--navy);
+	--ink-rgb: 43, 40, 54;
+	--link-hover: var(--joined);
+	--wheel-rib: rgba(240, 238, 233, 0.9);
+	color-scheme: light;
+}
+
+:root {
+	/* derived ink tints (alpha steps straight from the mockups) */
+	--ink-90: rgba(var(--ink-rgb), 0.9);
+	--ink-75: rgba(var(--ink-rgb), 0.75);
+	--ink-65: rgba(var(--ink-rgb), 0.65);
+	--ink-55: rgba(var(--ink-rgb), 0.55);
+	--ink-50: rgba(var(--ink-rgb), 0.5);
+	--ink-42: rgba(var(--ink-rgb), 0.42);
+	--ink-40: rgba(var(--ink-rgb), 0.4);
+	--ink-30: rgba(var(--ink-rgb), 0.3);
+	--ink-22: rgba(var(--ink-rgb), 0.22);
+	--ink-07: rgba(var(--ink-rgb), 0.07);
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html {
+	scroll-behavior: smooth;
+}
+
+body {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: 1.0625rem;
+	line-height: 1.55;
+	background: var(--bg);
+	color: var(--ink);
+	-webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+	font-weight: 900;
+	line-height: 1.05;
+	margin: 0 0 0.5em;
+	text-wrap: balance;
+}
+
+h1 {
+	font-size: clamp(2.75rem, 7.2vw, 5.75rem);
+	line-height: 0.98;
+	letter-spacing: -0.038em;
+}
+
+h2 {
+	font-size: clamp(1.8rem, 4vw, 2.75rem);
+	letter-spacing: -0.03em;
+}
+
+h3 {
+	font-size: 1.2rem;
+	letter-spacing: -0.01em;
+}
+
+p {
+	margin: 0 0 1em;
+}
+
+a {
+	color: var(--ink);
+}
+
+a:hover,
+a:focus-visible {
+	color: var(--link-hover);
+}
+
+img,
+video {
+	max-width: 100%;
+	height: auto;
+}
+
+input::placeholder {
+	color: var(--ink-40);
+}
+
+/* --- the bounce-p wordmark (docs/brand/README.md: p drops 1/14 em) ------ */
+
+.wordmark {
+	font-weight: 900;
+	letter-spacing: -0.02em;
+	color: var(--ink);
+	text-decoration: none;
+}
+
+.wordmark .p {
+	display: inline-block;
+	transform: translateY(0.07em);
+}
+
+.wordmark.is-bouncing .p {
+	animation: csDrop 2.6s ease-in-out infinite;
+}
+
+/* --- layout primitives -------------------------------------------------- */
+
+.container {
+	max-width: 1080px;
+	margin-inline: auto;
+	padding-inline: 1.5rem;
+}
+
+.section {
+	padding-block: clamp(3.5rem, 8vw, 5.5rem);
+}
+
+.narrow {
+	max-width: 640px;
+}
+
+.centered {
+	margin-inline: auto;
+	text-align: center;
+}
+
+/* --- shared pieces ------------------------------------------------------ */
+
+.eyebrow {
+	display: block;
+	font-size: 0.8125rem;
+	font-weight: 700;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--ink-50);
+	margin-bottom: 1rem;
+}
+
+.lede {
+	font-size: 1.25rem;
+	font-weight: 500;
+	color: var(--ink-65);
+}
+
+.card {
+	background: var(--ink-07);
+	border: 1.5px solid var(--ink-22);
+	border-radius: var(--radius-card);
+	padding: 1.5rem;
+}
+
+/* Static availability badge — an announcement, deliberately NOT styled as
+   an action (cyan fills are reserved for real actions). */
+.pill-static {
+	display: inline-block;
+	background: var(--ink-07);
+	border: 1.5px solid var(--ink-22);
+	color: var(--ink);
+	font-weight: 700;
+	border-radius: var(--radius-pill);
+	padding: 0.75em 1.5em;
+}
+
+.btn-ghost {
+	display: inline-block;
+	border: 1.5px solid var(--ink-30);
+	border-radius: var(--radius-pill);
+	padding: 0.7em 1.4em;
+	font-weight: 700;
+	font-size: 0.95rem;
+	color: var(--ink);
+	text-decoration: none;
+	transition: border-color 120ms ease, color 120ms ease;
+}
+
+.btn-ghost:hover,
+.btn-ghost:focus-visible {
+	border-color: var(--cyan);
+	color: var(--cyan);
+}
+
+/* ✦ feature bullets, straight from the teaser design */
+.checklist {
+	list-style: none;
+	padding: 0;
+	margin: 0 0 1.5rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.85rem;
+	font-weight: 600;
+	color: var(--ink-75);
+}
+
+.checklist li {
+	position: relative;
+	padding-left: 1.7em;
+}
+
+.checklist li::before {
+	content: '✦';
+	position: absolute;
+	left: 0;
+	color: var(--cyan);
+}
+
+/* Caption required under every device image (V2 design study, not
+   shipped hardware — docs/product/README.md). */
+.design-study-note {
+	font-size: 0.85rem;
+	color: var(--ink-50);
+	margin-top: 0.75rem;
+}
+
+/* The four device finish dots, exactly as the locked mockup's bottom bar:
+   flat pastel fills (Cloud·Sky, Mint·Forest, Bubblegum, Tangerine). */
+.finish-dots {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+}
+
+.finish-dots span {
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+}
+
+.finish-cloud {
+	background: var(--chip-blue);
+}
+
+.finish-mint {
+	background: var(--chip-mint);
+}
+
+.finish-bubblegum {
+	background: var(--chip-pink);
+}
+
+.finish-tangerine {
+	background: var(--chip-orange);
+}
+
+/* --- theme toggle -------------------------------------------------------- */
+
+.theme-toggle {
+	display: grid;
+	place-items: center;
+	width: 34px;
+	height: 34px;
+	border-radius: 50%;
+	border: 1.5px solid var(--ink-22);
+	background: transparent;
+	color: var(--ink-75);
+	font-size: 15px;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0;
+	transition: border-color 120ms ease, color 120ms ease;
+}
+
+.theme-toggle:hover,
+.theme-toggle:focus-visible {
+	border-color: var(--cyan);
+	color: var(--cyan);
+}
+
+.theme-toggle .sun {
+	display: none;
+}
+
+:root[data-theme='light'] .theme-toggle .sun {
+	display: block;
+}
+
+:root[data-theme='light'] .theme-toggle .moon {
+	display: none;
+}
+
+/* --- teaser animations (from the locked mockup) ------------------------- */
+
+@keyframes csFloat {
+	0%,
+	100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-16px);
+	}
+}
+
+@keyframes csDrop {
+	0%,
+	100% {
+		transform: translateY(0.07em);
+	}
+	45% {
+		transform: translateY(0.17em);
+	}
+	70% {
+		transform: translateY(0.05em);
+	}
+}
+
+@keyframes csBlink {
+	0%,
+	90%,
+	100% {
+		transform: scaleY(1);
+	}
+	94% {
+		transform: scaleY(0.12);
+	}
+}
+
+@keyframes csBob {
+	0%,
+	100% {
+		transform: translateY(0) rotate(-3deg);
+	}
+	50% {
+		transform: translateY(-4px) rotate(3deg);
+	}
+}
+
+@keyframes csSpin {
+	0% {
+		background-position: 0 0;
+	}
+	70% {
+		background-position: 0 36px;
+	}
+	92% {
+		background-position: 0 36px;
+	}
+	100% {
+		background-position: 0 48px;
+	}
+}
+
+@keyframes csPress {
+	0%,
+	70%,
+	100% {
+		width: 10px;
+	}
+	78%,
+	90% {
+		width: 4px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation: none !important;
+		transition: none !important;
+	}
+
+	html {
+		scroll-behavior: auto;
+	}
+}
+
+@media (max-width: 720px) {
+	.lede {
+		font-size: 1.1rem;
+	}
+}

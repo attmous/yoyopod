@@ -5,10 +5,10 @@ description: Contacts, content, and time — what parents decide from the app.
 
 *Every control a parent holds, in one place.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## What parents control
@@ -41,7 +41,7 @@ A kid decides what plays next from the library you loaded, calls anyone on the w
 
 There is no menu on the canvas where a kid can add a contact, delete the library, or switch anything important off. Nothing they press can undo a decision you made — which means you never have to hover, and they never have to be careful.
 
-## Open questions
+## Still being decided
 
 - **Adopt or drop quiet hours for V1 “Daylight”** — scheduled windows when the device goes calm for school or sleep. If adopted: one device-wide schedule in parental controls, or a per-feature switch (Ask sleeps, calls stay)?
 - **Adopt or drop a parent-set volume ceiling** — kids control volume freely today's design; is a hard upper limit a V1 control or a later refinement?

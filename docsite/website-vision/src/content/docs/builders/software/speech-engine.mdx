@@ -7,10 +7,10 @@ import AskRoundTrip from '../../../../assets/diagrams/ask-round-trip.svg';
 
 *The platform capability behind Ask — hold the button, speak, hear an answer.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## Overview
@@ -50,19 +50,19 @@ The target keeps the same shape — push-to-talk in, spoken answer out — with 
 
 ### Model strategy
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 Today the engine is OpenAI-backed through a single environment key, and the model names are tunables, not an abstraction — swapping providers means rewriting the worker's cloud path. The proposed target puts a thin provider abstraction inside the engine's cloud path so STT, TTS, and the Ask model can each be chosen independently, per cost and per safety. The gate for any swap is not price alone: every candidate model must first pass a kid-appropriateness test set — a fixed battery of child-voiced questions, boundary probes, and tone checks (contents TBD) — before it can serve a single family. The abstraction is deliberately boring: same `voice.*` wire contract, same one-in-flight discipline, different HTTP shapes behind it. The device never learns which provider answered; that decision lives in configuration, where [yoyocloud](/builders/software/cloud/) can steer it.
 
 ### Wake word and hands-free interaction
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
-The proposed decision is explicit, and it closes this placeholder permanently: **no always-listening, ever.** No wake word, no hands-free capture, no "hey yoyopod" — not as a roadmap item, not as an experiment, not in any version. Push-to-talk is not a stopgap awaiting a better microphone strategy; it is the design. The [held button](/families/using-the-button/) is the only key that opens the microphone, and the [privacy promise](/families/privacy/) to families depends on that sentence staying true without asterisks. The recommendation is to record this as a permanent commitment in [principles](/company/principles/) rather than leaving it an open slot that every future planning meeting has to re-litigate.
+The design decision is explicit and permanent: **no always-listening, ever.** No wake word, no hands-free capture, no "hey yoyopod" — not as a roadmap item, not as an experiment, not in any version. Push-to-talk is not a stopgap awaiting a better microphone strategy; it is the design. The [held button](/families/using-the-button/) is the only key that opens the microphone, and the [privacy promise](/families/privacy/) to families depends on that sentence staying true without asterisks. The recommendation is to record this as a permanent commitment in [principles](/company/principles/) rather than leaving it an open slot that every future planning meeting has to re-litigate.
 
 ### The Help Agent registry
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The Ask root screen becomes the **Ask wheel**: a wheel of **Help Agents**. The default entry is the yoyopod companion voice; parents add specialists. The kid spins the wheel, picks a helper, holds the button, and asks — curiosity-driven answers, spoken back. This section is the engine-side home of that idea; the family-facing story lives on the [Ask page](/apps/ask/) and in the [yoyopod app](/apps/parent-app/).
 
@@ -84,7 +84,7 @@ One positioning guard, stated here because engineers write marketing copy by acc
 
 ### The safety layer
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The safety design rests on one principle: a prompt is a suggestion; a policy check is a gate. Every safety property below is enforced in [yoyocloud](/builders/software/cloud/), not merely written into an agent's system context.
 
@@ -105,7 +105,7 @@ The safety design rests on one principle: a prompt is a suggestion; a policy che
 ## Open questions
 
 - **Adopt or drop the Ask wheel and Help Agent registry** as the Ask root screen — the single largest product decision on this page, and it commits the yoyopod app, yoyocloud, and the UI Engine simultaneously.
-- **Adopt the permanent "no always-listening, ever" commitment** and record it in [principles](/company/principles/), closing the wake-word placeholder for good — or keep it an open slot.
+- **Adopt the permanent "no always-listening, ever" commitment** and record it in [principles](/company/principles/), closing the wake-word question for good — or keep it open.
 - **Adopt the 30-day parent-controlled transcript default**, or choose one of the other retention stances before any transcript is ever stored.
 - **Adopt provider abstraction plus the kid-appropriateness test set** as the precondition for any model change — or accept single-provider dependence as a deliberate simplification.
 - **Unify or declare permanent the speech/`voice.*` naming split** — either rename the crate to match the wire, or write the trap into the docs as canon and stop revisiting it.

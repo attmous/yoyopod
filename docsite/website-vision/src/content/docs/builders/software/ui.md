@@ -50,8 +50,8 @@ reading to complete.
 
 ## Open questions
 
-- TODO: does a product-board display change the panel contract (resolution, color depth, refresh)?
-- TODO: are the on-device screens fixed for V1, or could Setup fold into the Hub wheel?
+- Does a product-board display change the panel contract (resolution, color depth, refresh)?
+- Are the on-device screens fixed for V1, or could Setup fold into the Hub wheel?
 
 :::note[Sources]
 Condensed from the as-built docs site (`docsite/website/` in the repository): the UI System Guide's overview, LVGL layer, and custom-framework pages.

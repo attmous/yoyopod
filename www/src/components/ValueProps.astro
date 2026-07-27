@@ -1,0 +1,79 @@
+---
+const props = [
+	{
+		title: 'Safe communication',
+		body: 'Calls and voice messages with approved contacts only, so kids stay reachable without the chaos of an open phone.',
+	},
+	{
+		title: 'Live location for peace of mind',
+		body: 'See your child’s live-ish location when they’re out in the world, without handing them a full smartphone.',
+	},
+	{
+		title: 'Built for independence, not distraction',
+		body: 'A tiny screen, simple controls, and a focused experience help kids feel grown-up without pulling them into endless apps and notifications.',
+	},
+	{
+		title: 'Music and audio they actually enjoy',
+		body: 'At home, yoyopod is a simple everyday audio companion for music, stories, and listening.',
+	},
+	{
+		title: 'Parent-managed from a mobile app',
+		body: 'Contacts, settings, and device controls stay in the parent’s hands, where they belong.',
+	},
+];
+---
+
+<section id="value-props" class="section value-props">
+	<div class="container">
+		<h2 class="centered narrow">What yoyopod does</h2>
+		<div class="props-grid">
+			{
+				props.map((p, i) => (
+					<div class="card">
+						<span class:list={['prop-dot', `dot-${i % 4}`]} />
+						<h3>{p.title}</h3>
+						<p>{p.body}</p>
+					</div>
+				))
+			}
+		</div>
+	</div>
+</section>
+
+<style>
+	.props-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+		gap: 1.25rem;
+		margin-top: 2rem;
+	}
+
+	.card p {
+		margin-bottom: 0;
+		color: var(--cream-75);
+	}
+
+	.prop-dot {
+		display: block;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		margin-bottom: 0.9rem;
+	}
+
+	.dot-0 {
+		background: var(--chip-blue);
+	}
+
+	.dot-1 {
+		background: var(--chip-mint);
+	}
+
+	.dot-2 {
+		background: var(--chip-pink);
+	}
+
+	.dot-3 {
+		background: var(--chip-orange);
+	}
+</style>

@@ -5,10 +5,10 @@ description: Whitelist calls and quick voice messages to approved contacts.
 
 *How a kid calls family and sends voice notes — and why only the whitelist gets through.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## What you'll need
@@ -36,7 +36,7 @@ An honest status check, so this page doesn't promise more than exists:
 
 ## Steps
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **Calling someone.** From the home wheel, roll to [Talk](/apps/talk/)
 and double-press in. Talk is a small wheel of people — every contact a
@@ -65,7 +65,7 @@ it again as many times as a good message deserves.
 
 ## Tips
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The whitelist works in both directions, and that is the whole point: a
 stranger does not reach a busy signal or a voicemail — they simply have
@@ -84,7 +84,7 @@ which is exactly why kids end up sending more of them.
 
 ## Troubleshooting
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **A call won't connect.** A live call needs coverage right now — check
 the bars on the device first. If coverage is fine, check the whitelist
@@ -108,7 +108,7 @@ device, keep hands away from the microphone opening, and step somewhere
 quieter — the speaker and microphone are built for a kitchen table, not
 a school fair.
 
-## Open questions
+## Still being decided
 
 - Adopt parent-set quiet hours — windows when incoming calls wait as missed instead of ringing — or ring always in V1 “Daylight”?
 - Adopt plain phone numbers as whitelisted contacts, so a grandparent needs no app at all, or keep V1 “Daylight” to the yoyopod app and other yoyopods?

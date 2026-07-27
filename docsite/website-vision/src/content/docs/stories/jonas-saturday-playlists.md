@@ -5,10 +5,10 @@ description: A morning of music that works with no internet at all.
 
 *Jonas and a Saturday morning of music, offline in the garden.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## The moment
@@ -93,7 +93,7 @@ morning, and maybe ninety seconds of it spent looking at the canvas.
 The rest was music, pallet wood, and birds. More Saturdays like this
 one live at [Stories](/stories/).
 
-## Open questions
+## Still being decided
 
 - **Loading paths:** adopt the yoyopod app as the only way music gets onto the device in V1 — one path, one mental model — or add a desktop/USB transfer path alongside it for big libraries and accept two stories to support?
 - **On-device curation:** adopt parent-curated-only (Jonas plays what is there; arranging it is a parent job in the app), or give him a small on-device gesture — a favorite, a reorder — and accept the extra surface on the canvas?

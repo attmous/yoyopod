@@ -5,10 +5,10 @@ description: A parent starts tonight's story from the kitchen.
 
 *Ben, 7, is in bed; his dad starts the story from the parent app downstairs.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## The moment
@@ -45,7 +45,7 @@ For Ben, the richest media moment of his day involves zero looking — no tablet
 
 For Tobias, it is presence at bedtime even on the nights he is stuck downstairs. He picked the story, he pressed play, and tomorrow at breakfast he will be asked what happens next — which is the kind of app notification worth having.
 
-## Open questions
+## Still being decided
 
 - **Scope.** Remote story-start is, strictly, a sixth job for an app scoped to five — pairing, whitelist, location, content loading, the Help Agent builder. Adopt it into V1 because it rides on machinery the device side already defines, or hold it for V2 and let first-year families start stories with the button?
 - **Who wins.** Adopt "the button in the room wins" — Ben's press pauses or stops the story regardless of what the app ordered — or give the app the last word? A bedtime remote that overrides the child in the room is a very different product from one that defers.

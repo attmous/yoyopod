@@ -1,0 +1,376 @@
+---
+// The animated line-art device from the locked coming-soon design: a
+// wireframe yoyopod with a bobbing companion face, blinking eyes, a
+// pressing talk button, a spinning wheel, and floating pastel chips for
+// music, messages, location, and family. Pure CSS — deliberately a sketch,
+// not a hardware render.
+import { DESIGN_STUDY_CAPTION } from '../consts';
+---
+
+<figure class="device-study">
+	<div class="teaser" aria-hidden="true">
+		<div class="device">
+			<div class="screen">
+				<div class="statusbar">
+					<span class="signal"><i></i><i></i><i></i></span>
+					<span class="battery"><i></i></span>
+				</div>
+				<div class="face">
+					<span class="eye eye-l"></span>
+					<span class="eye eye-r"></span>
+					<span class="smile"></span>
+					<span class="cheek cheek-l"></span>
+					<span class="cheek cheek-r"></span>
+				</div>
+			</div>
+			<div class="speaker">
+				{Array.from({ length: 30 }).map(() => <span />)}
+			</div>
+			<span class="mic"></span>
+			<span class="ptt"></span>
+			<span class="wheel"></span>
+		</div>
+		<span class="dot d1"></span>
+		<span class="dot d2"></span>
+		<span class="dot d3"></span>
+		<span class="dot d4"></span>
+		<div class="chip chip-music">♪</div>
+		<div class="chip chip-message"><span class="bubble"></span></div>
+		<div class="chip chip-pin"><span class="pin"></span></div>
+		<div class="chip chip-heart">♥</div>
+	</div>
+	<figcaption class="design-study-note">{DESIGN_STUDY_CAPTION}</figcaption>
+</figure>
+
+<style>
+	.device-study {
+		width: min(100%, 520px);
+		margin: 0;
+		text-align: center;
+	}
+
+	.teaser {
+		position: relative;
+		width: 100%;
+		height: 560px;
+	}
+
+	.device {
+		position: absolute;
+		left: 50%;
+		bottom: 3%;
+		margin-left: -108px;
+		width: 216px;
+		height: 232px;
+		border-radius: 46px;
+		border: 3px solid rgba(var(--ink-rgb), 0.55);
+	}
+
+	.screen {
+		position: absolute;
+		left: 24px;
+		top: 32px;
+		width: 102px;
+		height: 118px;
+		border-radius: 12px;
+		border: 2.5px solid rgba(var(--ink-rgb), 0.42);
+		background: var(--ink-07);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.statusbar {
+		position: absolute;
+		top: 7px;
+		left: 9px;
+		right: 9px;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.signal {
+		display: flex;
+		gap: 2px;
+		align-items: flex-end;
+	}
+
+	.signal i {
+		width: 2.5px;
+		background: var(--ink-50);
+	}
+
+	.signal i:nth-child(1) {
+		height: 4px;
+	}
+
+	.signal i:nth-child(2) {
+		height: 6px;
+	}
+
+	.signal i:nth-child(3) {
+		height: 8px;
+	}
+
+	.battery {
+		position: relative;
+		width: 14px;
+		height: 7px;
+		border-radius: 2px;
+		border: 1.5px solid var(--ink-50);
+	}
+
+	.battery i {
+		position: absolute;
+		left: 1px;
+		top: 1px;
+		bottom: 1px;
+		width: 8px;
+		background: rgba(var(--ink-rgb), 0.6);
+	}
+
+	.face {
+		position: relative;
+		width: 60px;
+		height: 60px;
+		border-radius: 50%;
+		border: 3px solid rgba(var(--ink-rgb), 0.9);
+		animation: csBob 2.8s ease-in-out infinite;
+	}
+
+	.eye {
+		position: absolute;
+		top: 18px;
+		width: 6px;
+		height: 9px;
+		border-radius: 3px;
+		background: var(--ink);
+		animation: csBlink 4.2s ease-in-out infinite;
+	}
+
+	.eye-l {
+		left: 14px;
+	}
+
+	.eye-r {
+		right: 14px;
+	}
+
+	.smile {
+		position: absolute;
+		left: 50%;
+		top: 32px;
+		margin-left: -7px;
+		width: 14px;
+		height: 7px;
+		border: 3px solid transparent;
+		border-bottom-color: var(--ink);
+		border-radius: 0 0 14px 14px;
+	}
+
+	.cheek {
+		position: absolute;
+		top: 29px;
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--chip-pink);
+		opacity: 0.55;
+	}
+
+	.cheek-l {
+		left: 5px;
+	}
+
+	.cheek-r {
+		right: 5px;
+	}
+
+	.speaker {
+		position: absolute;
+		right: 26px;
+		top: 28px;
+		display: grid;
+		grid-template-columns: repeat(3, 7px);
+		gap: 12px 10px;
+	}
+
+	.speaker span,
+	.mic {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: rgba(var(--ink-rgb), 0.42);
+	}
+
+	.mic {
+		position: absolute;
+		left: 24px;
+		bottom: 26px;
+	}
+
+	.ptt {
+		position: absolute;
+		left: calc(100% + 2px);
+		top: 42px;
+		width: 10px;
+		height: 48px;
+		border-radius: 0 6px 6px 0;
+		background: rgba(var(--ink-rgb), 0.55);
+		animation: csPress 3.4s ease-in-out infinite;
+	}
+
+	.wheel {
+		position: absolute;
+		right: -12px;
+		top: 104px;
+		width: 12px;
+		height: 34px;
+		border-radius: 8px;
+		background-color: rgba(var(--ink-rgb), 0.35);
+		background-image: repeating-linear-gradient(
+			180deg,
+			var(--wheel-rib) 0 2px,
+			transparent 2px 6px
+		);
+		background-size: 100% 12px;
+		animation: csSpin 3.4s linear infinite;
+	}
+
+	.dot {
+		position: absolute;
+		border-radius: 50%;
+		background: var(--ink-30);
+	}
+
+	.d1 {
+		left: 31%;
+		top: 54%;
+		width: 8px;
+		height: 8px;
+	}
+
+	.d2 {
+		left: 50%;
+		top: 47%;
+		width: 6px;
+		height: 6px;
+		background: rgba(var(--ink-rgb), 0.25);
+	}
+
+	.d3 {
+		left: 63%;
+		top: 41%;
+		width: 8px;
+		height: 8px;
+	}
+
+	.d4 {
+		left: 45%;
+		top: 38%;
+		width: 6px;
+		height: 6px;
+		background: rgba(var(--ink-rgb), 0.25);
+	}
+
+	.chip {
+		position: absolute;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 18px;
+		width: 62px;
+		height: 62px;
+		color: var(--navy);
+		font-size: 28px;
+		font-weight: 900;
+		box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
+	}
+
+	.chip-music {
+		left: 15%;
+		top: 40%;
+		background: var(--chip-blue);
+		transform: rotate(-8deg);
+		animation: csFloat 6.5s ease-in-out -3.5s infinite;
+	}
+
+	.chip-message {
+		left: 34%;
+		top: 25%;
+		background: var(--chip-pink);
+		transform: rotate(6deg);
+		animation: csFloat 6s ease-in-out -1s infinite;
+	}
+
+	.bubble {
+		position: relative;
+		width: 24px;
+		height: 18px;
+		border-radius: 6px;
+		background: var(--navy);
+	}
+
+	.bubble::after {
+		content: '';
+		position: absolute;
+		left: 3px;
+		bottom: -5px;
+		border: 5px solid transparent;
+		border-top-color: var(--navy);
+		border-left-color: var(--navy);
+	}
+
+	.chip-pin {
+		left: 58%;
+		top: 27%;
+		background: var(--chip-mint);
+		transform: rotate(-5deg);
+		animation: csFloat 7s ease-in-out -5s infinite;
+	}
+
+	.pin {
+		position: relative;
+		width: 22px;
+		height: 22px;
+		border-radius: 50% 50% 50% 0;
+		background: var(--navy);
+		transform: rotate(-45deg);
+	}
+
+	.pin::after {
+		content: '';
+		position: absolute;
+		left: 7px;
+		top: 7px;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--chip-mint);
+	}
+
+	.chip-heart {
+		left: 68%;
+		top: 46%;
+		width: 54px;
+		height: 54px;
+		border-radius: 16px;
+		background: var(--chip-orange);
+		font-size: 24px;
+		transform: rotate(9deg);
+		animation: csFloat 5.5s ease-in-out -2s infinite;
+	}
+
+	@media (max-width: 900px) {
+		.teaser {
+			height: 420px;
+			margin-inline: auto;
+		}
+
+		.device {
+			transform: scale(0.85);
+			transform-origin: bottom center;
+		}
+	}
+</style>

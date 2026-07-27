@@ -5,10 +5,10 @@ description: Quick answers when something doesn't work.
 
 *The questions every family asks, grouped for scanning.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## Setup & pairing
@@ -82,9 +82,9 @@ Restart when the device itself misbehaves: a frozen screen, silent audio, a butt
 **How do I report a bug or suggest something?**
 From the yoyopod app, in the proposed design — a short form that carries the technical details for you. Suggestions are genuinely wanted, especially in the prototype era: families notice things builders can't.
 
-## Open questions
+## Still being decided
 
 - **Adopt or trim the launch support channels** — email plus in-app reporting is the proposal; decide whether both exist at launch or email carries the first months alone.
-- **Adopt this page as the single troubleshooting home**, or push fix-it answers onto each topic page ([Listening](/families/listening/), [Location](/families/location/), [Care](/families/care/)) with this page linking out — decide before pilot families arrive.
+- **Whether this page is the single troubleshooting home**, or fix-it answers live on each topic page ([Listening](/families/listening/), [Location](/families/location/), [Care](/families/care/)) with this page linking out.
 - **Adopt the "no battery number until measured" stance publicly**, or publish a target figure with a prototype disclaimer and accept the risk of being held to it.
-- **Replace the guessed questions with real ones** — once pilot families exist, their actual top questions should reshape this page, and someone must own that review.
+- **Replace the guessed questions with real ones** — once pilot families exist, their actual top questions should reshape this page.

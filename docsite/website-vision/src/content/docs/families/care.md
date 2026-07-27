@@ -5,15 +5,15 @@ description: Battery life, charging, cleaning, and keeping it healthy.
 
 *Keep the device charged, clean, updated, and out of the washing machine.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## What you'll need
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 Very little, and all of it ordinary: the charging cable from the box, a
 regular charging spot at home — the same shelf every evening, so
@@ -54,7 +54,7 @@ for both.
 
 ## Tips
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **Cleaning.** A soft, dry cloth handles almost everything, the canvas
 included. For sticky days — jam happens — a barely damp cloth, water
@@ -84,7 +84,7 @@ forgotten evening (see Steps above).
 
 ## Troubleshooting
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **The battery drains faster than usual.** The hungriest days are call
 days and low-coverage days — with weak bars, the device works harder to
@@ -112,7 +112,7 @@ probably an update installing itself. If a new version ever truly
 misbehaves, the device returns to the previous one on its own — and if
 it looks like that has not happened, contact us.
 
-## Open questions
+## Still being decided
 
 - Adopt fully automatic background updates with automatic roll-back as the only mode, or add an optional "install tonight?" approval in the yoyopod app?
 - Publish concrete battery-life numbers per usage pattern, or keep the public promise qualitative until production hardware settles?

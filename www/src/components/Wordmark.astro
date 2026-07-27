@@ -1,0 +1,14 @@
+---
+// The bounce-p wordmark: lowercase "yoyopod", Figtree 900, with the p
+// dropped 0.07em below the baseline (docs/brand/README.md). Rendered as
+// live text so it always uses the site's bundled Figtree.
+interface Props {
+	bouncing?: boolean;
+	class?: string;
+}
+const { bouncing = false, class: className } = Astro.props;
+---
+
+<span class:list={['wordmark', { 'is-bouncing': bouncing }, className]}
+	>yoyo<span class="p">p</span>od</span
+>

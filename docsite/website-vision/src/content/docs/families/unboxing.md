@@ -5,10 +5,10 @@ description: What's in the box and the first ten minutes.
 
 *Get from sealed box to a powered-on, ready-to-pair device.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## What you'll need
@@ -106,7 +106,7 @@ unclaimed device is trivial to swap, a configured one slightly less so.
 Use the support contact on the quick-start card (or the retailer you
 bought from) and start the setup story with the replacement.
 
-## Open questions
+## Still being decided
 
 - **Cable-only, or charger brick in the box?** Cable-only is cheaper and
   greener and most homes have USB power; a brick guarantees the

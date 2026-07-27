@@ -1,0 +1,33 @@
+---
+// Light/dark switch. The active theme lives in [data-theme] on <html>
+// (set pre-paint in BaseLayout) and persists in localStorage.
+---
+
+<button class="theme-toggle" type="button" aria-label="Switch between dark and light theme">
+	<span class="moon" aria-hidden="true">☾</span>
+	<span class="sun" aria-hidden="true">☀</span>
+</button>
+
+<script>
+	const THEME_COLORS: Record<string, string> = { dark: '#2b2836', light: '#f0eee9' };
+
+	// Sync the browser-chrome color with the pre-paint theme choice.
+	const initial = document.documentElement.dataset.theme;
+	if (initial && THEME_COLORS[initial]) {
+		document
+			.querySelector('meta[name="theme-color"]')
+			?.setAttribute('content', THEME_COLORS[initial]);
+	}
+
+	document.querySelectorAll('.theme-toggle').forEach((btn) => {
+		btn.addEventListener('click', () => {
+			const root = document.documentElement;
+			const next = root.dataset.theme === 'light' ? 'dark' : 'light';
+			root.dataset.theme = next;
+			localStorage.setItem('yoyopod-theme', next);
+			document
+				.querySelector('meta[name="theme-color"]')
+				?.setAttribute('content', THEME_COLORS[next]);
+		});
+	});
+</script>

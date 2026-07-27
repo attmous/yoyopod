@@ -7,16 +7,15 @@ import UpdateTrust from '../../../../assets/diagrams/update-trust.svg';
 
 *The security posture a parent-managed kids device must be able to defend.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything marked *Proposed* is neither implemented
-nor committed; the as-built facts it builds on are cited in the Sources
-note at the bottom.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## Overview
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 yoyopod's security model starts from an uncomfortable framing: this is a device carried by a kid, managed by a parent, and reachable over 4G. Every design decision on this page answers one question — *what does that combination have to defend against?* The answer is not "everything"; it is a short, specific list: strangers reaching the child, the device being lost or resold, the cloud being breached, an update being tampered with, and anyone — including us — hearing more of a child's voice than the parent agreed to.
 
@@ -26,7 +25,7 @@ Where data must exist, the rule is minimization by design. This is a European pr
 
 ## Key components
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 <UpdateTrust class="diagram" />
 
@@ -68,7 +67,7 @@ Passkeys as the default, with a carefully designed recovery path (a second regis
 
 ## Interfaces & contracts
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **Transport.** The proposed posture makes the MQTT line home TLS-only — no plaintext listener in any environment (the as-built worker still accepts plain `tcp` as a development convenience; the proposal retires it). With mTLS adopted, the same handshake that encrypts the channel also authenticates both ends: the device proves itself to yoyocloud, and yoyocloud proves itself to the device, which closes off impersonation of the cloud on hostile networks.
 

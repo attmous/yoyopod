@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "docsite/website-vision", "run", "dev"],
       "port": 4322
+    },
+    {
+      "name": "www",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "www", "run", "dev"],
+      "port": 4323
     }
   ]
 }

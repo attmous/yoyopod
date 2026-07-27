@@ -5,15 +5,15 @@ description: "The companion mobile app: contacts, content, controls."
 
 *The parent's side of yoyopod: everything managed from one phone app.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## What it is
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **The yoyopod app** is one phone app for everything a parent does:
 contacts, content, controls, and reassurance. It ships on **iOS and
@@ -44,7 +44,7 @@ calm, legible, and finished in minutes rather than evenings.
 
 ## Key flows
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **Pairing a new device.** The device shows a short code on its canvas;
 the parent types it into the app or scans it; yoyocloud checks that
@@ -85,7 +85,7 @@ shorten that or turn it off entirely.
 
 ## On the device
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The kid never sees the app — they see its effects, and the effects are
 small good news. A new name appears on Talk's contact wheel: Grandma
@@ -111,7 +111,7 @@ live on the device itself.
 
 ## In the parent app
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The app is organized around the device, not around features. A parent
 opens it and sees their child's yoyopod, front and center: battery,
@@ -153,7 +153,7 @@ app lands on a cloud link that already works.
   richer backend command types are configured or backend-supported but
   not fully built — the intended surface, not the current one.
 
-## Open questions
+## Still being decided
 
 - **Adopt both stores at launch?** iOS and Android on day one is the design intent, because mixed-platform households are the norm — confirm it, or consciously stage one platform first and accept excluding half of most couples.
 - **Adopt the five-job V1 scope as a hard cap?** Pairing, whitelist, live-ish location, content loading, Help Agent builder — every addition delays the date a real family can use the device.

@@ -5,10 +5,10 @@ description: Live-ish location awareness for peace of mind.
 
 *The location experience — deliberately "live-ish", deliberately not surveillance.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## What it is
@@ -117,7 +117,7 @@ exist yet. The retention policy above is a proposal awaiting a
 decision, not a shipped setting. Everything on this page describes the
 target experience those pieces are being built toward.
 
-## Open questions
+## Still being decided
 
 - **Adopt a concrete cadence?** Pick the fix interval that earns "live-ish" — frequent enough for the glance check, sparse enough to protect a full day of battery — and write it down as a number, not a vibe.
 - **Adopt kid-initiated check-in as the only check-in for V1?** The hold-the-button *I'm here* is simple and honest; arrival-triggered automatic check-ins are more convenient but edge toward surveillance — decide which ships, or whether both do.

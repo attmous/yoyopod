@@ -5,10 +5,10 @@ description: First boot to paired-and-ready.
 
 *The on-device onboarding that binds a new device to a family.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## What it is
@@ -22,7 +22,7 @@ connected, ready for a kid.
 
 ## Key flows
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **First boot.** Charge it, press the button, and the canvas wakes with a
 greeting and one job: getting this device into the family. There is no
@@ -68,7 +68,7 @@ real:
 
 ## In the parent app
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The mirrored half of pairing is a short, warm walkthrough in the yoyopod
 app — the family-facing version lives at
@@ -103,7 +103,7 @@ the app can do lives at [Parent App](/apps/parent-app/).
 - The parent-app half of pairing is future work, and the final pairing
   mechanism is not locked.
 
-## Open questions
+## Still being decided
 
 - **Adopt canvas-code pairing as final.** A short code shown on the canvas,
   entered or scanned in the app, verified by yoyocloud — it needs no

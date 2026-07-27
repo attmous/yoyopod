@@ -5,15 +5,15 @@ description: Local-first music and stories, playlists, and the now-playing flow.
 
 *Everyday listening: what plays, how kids choose it, and how parents load it.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## What you'll need
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 Not much: a paired device, and [the yoyopod app](/apps/parent-app/) on a
 parent's phone. Loading content is one of the app's core jobs — a parent
@@ -55,7 +55,7 @@ describes is where things are headed, not where they are.
 
 ## Tips
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 Build the library together: the kid picks, the parent loads. The best
 libraries on these devices are small and loved, not large and ignored —
@@ -74,7 +74,7 @@ ferry-proof, middle-of-nowhere-proof listening.
 
 ## Troubleshooting
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 **"Nothing to play."** The device starts empty and stays empty until a
 parent loads it — an empty library is a to-do in the yoyopod app, not a
@@ -95,7 +95,7 @@ when it is low and switches itself off safely when it is nearly empty
 from the app — worth a minute of practice together, so the kid can fix
 it alone the first time it happens on a bus.
 
-## Open questions
+## Still being decided
 
 - Adopt the yoyopod app as the only way content reaches the device, or also ship a small starter set of music and stories in the box so the first hour is never silent?
 - Adopt parent-only curation — kids choose what plays, parents choose what is loaded — or give kids on-device favoriting and reordering?

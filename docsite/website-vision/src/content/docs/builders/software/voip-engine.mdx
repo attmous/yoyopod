@@ -7,10 +7,10 @@ import WhitelistLayers from '../../../../assets/diagrams/whitelist-layers.svg';
 
 *The platform capability behind Talk — calls that only family can place or receive.*
 
-:::tip[Proposed — the ideal design]
-This page mixes as-built fact (covered by the Sources note) with the target
-design, written out in full so it can be adopted, adapted, or dropped.
-Everything marked *Proposed* is neither implemented nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. Facts covered by the *Sources* note at the
+bottom are as-built today; everything else is design direction.
 :::
 
 ## Overview
@@ -27,7 +27,7 @@ Whitelist calls and voice messages are pillar one of V1 “Daylight”: approved
 
 ### Whitelist enforcement
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The whitelist is the load-bearing wall of the Talk promise, so the ideal design treats it the way load-bearing walls are treated: one authoritative copy, mirrored where it is needed, enforced in more than one place, and fail-closed everywhere.
 
@@ -56,7 +56,7 @@ If the SIP infrastructure ends up self-hosted (see [Today vs. target](#today-vs-
 
 ### Voice notes
 
-*Proposed — the ideal design, not yet adopted.*
+*Design direction — not built yet.*
 
 The worker already exposes a wire-level voice-note surface (record/send/playback commands and an idle → recording → recorded → sending session FSM), so the question is not whether the device can capture a voice note — it is how a note travels. Two transports were considered:
 
@@ -85,9 +85,9 @@ The boundary with the [Speech Engine](/builders/software/speech-engine/) follows
 
 Today, the worker is real: in-process liblinphone, the SIP lifecycle, call control, and the messaging store (a 200-entry persistent JSON store with per-contact unread summaries) all exist as described above. What is honestly incomplete is end-to-end validation on hardware: the staged on-device validation stages for VoIP and cloud voice (`yoyopod-on-pi validate {voip, cloud-voice}`) are stubs that exit with an error, flagged in the as-built roadmap as a Round-2 follow-up of the staged CLI rebuild. Until that lands, call validation on a real device is a manual affair.
 
-The target is the full Talk promise: calls and voice messages that only family can place or receive, with whitelist enforcement architected end to end (the placeholder above) and validated automatically on hardware. [The yoyocore Runtime](/builders/software/runtime/) covers how workers like this one are supervised along the way.
+The target is the full Talk promise: calls and voice messages that only family can place or receive, with whitelist enforcement architected end to end (the design above) and validated automatically on hardware. [The yoyocore Runtime](/builders/software/runtime/) covers how workers like this one are supervised along the way.
 
-*Proposed — the ideal design, not yet adopted.* The target also requires deciding what the voip worker registers *against* — the SIP infrastructure decision. Nothing is committed today; the realistic options are:
+*Design direction — not built yet.* The target also requires deciding what the voip worker registers *against* — the SIP infrastructure decision. Nothing is committed today; the realistic options are:
 
 | Option | What it buys | What it costs |
 | --- | --- | --- |

@@ -20,6 +20,8 @@ temporarily paused, read [`../ROADMAP.md`](../ROADMAP.md) first.
   systemd services, and lane activation
 - [`PI_DEV_WORKFLOW.md`](PI_DEV_WORKFLOW.md) - day-to-day
   dev-machine-to-Pi loop via `yoyopod target …`
+- [`WEB_DEPLOY.md`](WEB_DEPLOY.md) - building and publishing yoyopod.com
+  (landing page) and docs.yoyopod.com (vision docs) to the VPS
 
 ## Paused / in transition
 

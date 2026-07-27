@@ -63,10 +63,10 @@ and the headphone question.
 
 ## Open questions
 
-- TODO: What loudness ceiling do we commit to for kids' hearing, and is it enforced in hardware or software?
-- TODO: Does the product device offer any wired or wireless headphone path, or speaker-only?
-- TODO: What echo/noise handling does push-to-talk need for a child talking outdoors near traffic?
-- TODO: Who arbitrates the speaker when a call and music playback collide, and is that a hardware or runtime contract?
+- What loudness ceiling do we commit to for kids' hearing, and is it enforced in hardware or software?
+- Does the product device offer any wired or wireless headphone path, or speaker-only?
+- What echo/noise handling does push-to-talk need for a child talking outdoors near traffic?
+- Who arbitrates the speaker when a call and music playback collide, and is that a hardware or runtime contract?
 
 :::note[Sources]
 Condensed from

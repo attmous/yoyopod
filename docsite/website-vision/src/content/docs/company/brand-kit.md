@@ -54,13 +54,18 @@ paper is for everything else.**
 - The promo: [yoyopod in 30 Seconds](/start/promo/) — five looping scenes
   animated in the kit's colors (`src/styles/promo.css`).
 
-## Open questions
+## Deliberately still open
 
-- TODO: logo and wordmark — does the yoyo/orbit motif render in Marigold on
-  Midnight, and is there a single-color variant
-- TODO: typography — pick the brand type pairing (this site currently uses
-  the system font stack)
-- TODO: accessibility pass — freeze the contrast-checked pairings table
-  (amber-on-midnight and deep-marigold-on-paper are verified; tints are not)
-- TODO: decide if/when the device UI itself migrates from its coral
-  flat-light tokens to the kit
+A brand kit that pretends to be finished would break the honesty rule, so
+these decisions are named rather than hidden:
+
+- **Logo and wordmark** — whether the yoyo/orbit motif renders in Marigold on
+  Midnight, and whether a single-color variant exists. The lowercase
+  `yoyopod` type mark (Figtree, heavy weight) is settled.
+- **Typography pairing** — the brand type pairing beyond the wordmark; this
+  site currently uses the system font stack.
+- **Accessibility pass** — amber-on-midnight and deep-marigold-on-paper are
+  contrast-verified; the tint pairings are not yet frozen.
+- **Device UI migration** — if and when the on-device UI moves from its coral
+  flat-light tokens to the kit; it keeps its own tokens on purpose until that
+  is a deliberate decision.

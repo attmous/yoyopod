@@ -5,10 +5,10 @@ description: What data exists, where it lives, and who can see it.
 
 *The plain-language privacy promise a parent can actually read.*
 
-:::tip[Proposed — the ideal design]
-This page is the target design, written out in full so it can be adopted,
-adapted, or dropped. Everything on it is proposed — neither implemented
-nor committed.
+:::note[The vision]
+This page describes the experience yoyopod is designed to deliver, not what
+today's prototype already does. What's real right now is documented in the
+[engineering docs](https://github.com/attmous/yoyopod).
 :::
 
 ## Our promises
@@ -56,7 +56,7 @@ Here is the complete inventory, in parent words:
 - **No camera, no browser, no app store.** Whole categories of risk removed in hardware — and hardware can't be updated into existing.
 - **No pretending.** The AI voice is disclosed as AI. The map is called live-ish because it is. If a plain-language page like this one ever leaves you unsure what a setting does, that's our bug, and we mean that literally.
 
-## Open questions
+## Still being decided
 
 - **Publish the numbers, or keep them policy?** Committing publicly to EU hosting, the 30-day transcript default, and a concrete location-retention window builds trust — and binds us. Decide whether these become printed promises or internal standards.
 - **Voice notes in transit** — adopt a fixed maximum queue-and-delete window for undelivered notes, and decide whether delivered notes leave any trace on our side at all.
