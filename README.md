@@ -85,7 +85,30 @@ The V2 design study (not shipped hardware): 72 x 78 x 22 mm, a glowing push-to-t
 
 ## How it's built
 
-A Rust workspace where one runtime supervises seven single-purpose worker processes over a shared protocol crate. If one engine fails, the others keep running; the kid's music does not stop because a modem hiccupped.
+The system has two sides and a backbone: the device, the parent's phone, and yoyocloud between them.
+
+```mermaid
+flowchart LR
+    subgraph device["the device"]
+        direction TB
+        core["yoyocore<br/>Rust runtime + workers"]
+        engines["UI · Media · VoIP · Speech"]
+        os["yoyoOS<br/>Linux image"]
+        core --- engines
+        core --- os
+    end
+    device <-- "MQTT over 4G" --> cloud["yoyocloud<br/>backend backbone"]
+    cloud <---> app["the yoyopod app<br/>parent app, iOS + Android"]
+```
+
+| Component | What it is | Today |
+| --- | --- | --- |
+| **yoyoOS** | the Linux image the device boots | Raspberry Pi OS Lite; a minimal custom image is the target |
+| **yoyocore** | the Rust application on top: one runtime supervising single-purpose worker processes, surfaced as four peer engines (UI, Media, VoIP, Speech) | real, runs the prototype |
+| **yoyocloud** | the backend backbone: MQTT, provisioning, telemetry routing | device-side link and provisioning exist; the backbone itself is a build-or-adopt decision, still open |
+| **the yoyopod app** | the parent mobile app, iOS + Android | designed, not built yet |
+
+Inside yoyocore every message is one newline-framed JSON envelope with a strict schema stamp, and the process tree is the architecture: if one engine fails, the others keep running. The kid's music does not stop because a modem hiccupped.
 
 | Directory | What lives there |
 | --- | --- |
