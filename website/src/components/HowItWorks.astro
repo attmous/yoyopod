@@ -1,0 +1,95 @@
+---
+import tangerine from '../assets/device/render-tangerine.png';
+
+const steps = [
+	'Parents set up approved contacts and device settings in the mobile app.',
+	'Kids carry yoyopod as their simple, everyday companion for listening, calling, and getting around independently.',
+	'Parents can reach them, hear from them, and check their location when it matters.',
+];
+---
+
+<section id="how-it-works" class="section">
+	<div class="container">
+		<h2 class="centered narrow">How it works</h2>
+		<ol class="steps">
+			{
+				steps.map((step, i) => (
+					<li class="card">
+						<span class="step-number">{i + 1}</span>
+						<p>{step}</p>
+					</li>
+				))
+			}
+		</ol>
+		<div class="video-block">
+			<!-- preload="none": the 6.9 MB tour downloads only when played. -->
+			<video controls preload="none" poster={tangerine.src} width="960">
+				<source src="/media/yoyopod-tour.mp4" type="video/mp4" />
+			</video>
+			<p class="design-study-note">24-second silent tour of the V2 design study.</p>
+		</div>
+	</div>
+</section>
+
+<style>
+	.steps {
+		list-style: none;
+		counter-reset: step;
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 1.25rem;
+		padding: 0;
+		margin: 2rem 0 0;
+	}
+
+	.steps .card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.steps p {
+		margin: 0;
+		color: var(--cream-75);
+	}
+
+	.step-number {
+		display: grid;
+		place-items: center;
+		width: 2.2rem;
+		height: 2.2rem;
+		border-radius: 50%;
+		color: var(--navy);
+		font-weight: 900;
+	}
+
+	.steps li:nth-child(1) .step-number {
+		background: var(--chip-blue);
+	}
+
+	.steps li:nth-child(2) .step-number {
+		background: var(--chip-mint);
+	}
+
+	.steps li:nth-child(3) .step-number {
+		background: var(--chip-pink);
+	}
+
+	.video-block {
+		margin-top: 3rem;
+		text-align: center;
+	}
+
+	video {
+		width: min(960px, 100%);
+		border-radius: var(--radius-card);
+		background: #201d2b;
+		aspect-ratio: 16 / 9;
+	}
+
+	@media (max-width: 720px) {
+		.steps {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

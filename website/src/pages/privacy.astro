@@ -1,0 +1,111 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+---
+
+<BaseLayout title="Privacy — yoyopod" description="Privacy notice (Datenschutzerklärung) for yoyopod.com.">
+	<Header />
+	<main class="section legal">
+		<div class="container narrow">
+			<h1>Privacy</h1>
+			<div class="card placeholder">
+				<p>
+					<strong>Placeholder — complete before public launch.</strong> The controller details
+					below must be filled in to satisfy the GDPR (DSGVO) before this site goes live.
+				</p>
+			</div>
+
+			<h2>The short version</h2>
+			<p>
+				This site sets no cookies and runs no analytics, tracking, or ads. The only personal data
+				it ever touches is an email address you choose to give us.
+			</p>
+
+			<h2>Waitlist emails</h2>
+			<dl>
+				<dt>What we store</dt>
+				<dd>Your email address and the signup time. Nothing else.</dd>
+				<dt>Why</dt>
+				<dd>One purpose only: telling you when yoyopod can be ordered.</dd>
+				<dt>Who sees it</dt>
+				<dd>Only us. The address is never shared, sold, or used for anything else.</dd>
+				<dt>How long</dt>
+				<dd>
+					Until the availability notification is sent, then it is deleted — or earlier, any time
+					you ask via the contact below.
+				</dd>
+			</dl>
+
+			<h2>Server logs</h2>
+			<p>
+				The web server keeps standard access logs (IP address, time, requested page) for
+				operating and securing the service.
+			</p>
+
+			<h2>Your rights</h2>
+			<p>
+				Under the GDPR you can ask what we store about you, have it corrected, or have it
+				deleted. One email to the address below is enough.
+			</p>
+
+			<h2>Contact</h2>
+			<dl>
+				<dt>Controller</dt>
+				<dd>[name and address of the site operator]</dd>
+				<dt>Contact</dt>
+				<dd>[email address]</dd>
+			</dl>
+		</div>
+	</main>
+	<Footer />
+</BaseLayout>
+
+<style>
+	.legal h2 {
+		font-size: 1.3rem;
+		margin-top: 2.25rem;
+	}
+
+	.legal p,
+	.legal dd {
+		color: var(--cream-75);
+	}
+
+	.placeholder {
+		border: 2px dashed var(--cyan);
+		margin-bottom: 2rem;
+	}
+
+	.placeholder p {
+		margin-bottom: 0;
+		color: var(--cream);
+	}
+
+	dl {
+		margin: 0;
+		display: grid;
+		grid-template-columns: max-content 1fr;
+		gap: 0.6rem 1.5rem;
+	}
+
+	dt {
+		font-weight: 700;
+		color: var(--cream);
+	}
+
+	dd {
+		margin: 0;
+	}
+
+	@media (max-width: 600px) {
+		dl {
+			grid-template-columns: 1fr;
+			gap: 0.15rem;
+		}
+
+		dd {
+			margin-bottom: 0.75rem;
+		}
+	}
+</style>

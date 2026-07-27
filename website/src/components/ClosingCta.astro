@@ -1,0 +1,27 @@
+---
+import { DOCS_URL, GITHUB_URL } from '../consts';
+---
+
+<section id="stay-tuned" class="section closing">
+	<div class="container narrow centered">
+		<h2>Something small is coming.</h2>
+		<p class="lede">yoyopod is in active development. Ordering opens soon — stay tuned.</p>
+		<span class="pill-static">Available soon for ordering</span>
+		<p class="follow">
+			Until then, follow the build: read the <a href={DOCS_URL}>yoyopod docs</a> or watch the
+			source on <a href={GITHUB_URL}>GitHub</a>.
+		</p>
+	</div>
+</section>
+
+<style>
+	.closing {
+		background: radial-gradient(900px 500px at 50% 20%, var(--navy-glow), var(--navy) 70%);
+	}
+
+	.follow {
+		margin-top: 2rem;
+		margin-bottom: 0;
+		color: var(--cream-65);
+	}
+</style>

@@ -1,0 +1,19 @@
+{
+  "name": "website",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev --port 4323",
+    "start": "astro dev --port 4323",
+    "build": "astro build",
+    "preview": "astro preview --port 4323",
+    "og": "node scripts/generate-og.mjs",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.6.0",
+    "@fontsource-variable/figtree": "^5.2.0",
+    "astro": "7.1.0",
+    "sharp": "0.34.5"
+  }
+}

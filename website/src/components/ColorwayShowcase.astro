@@ -1,0 +1,130 @@
+---
+import { Image } from 'astro:assets';
+import { DESIGN_STUDY_CAPTION } from '../consts';
+import cloudSky from '../assets/device/render-cloud-sky.png';
+import mintForest from '../assets/device/render-mint-forest.png';
+import bubblegum from '../assets/device/render-bubblegum.png';
+import tangerine from '../assets/device/render-tangerine.png';
+
+// Shell and accent hexes per docs/hardware/enclosure/README.md.
+const finishes = [
+	{ id: 'cloud-sky', label: 'Cloud·Sky', shell: '#e9edf2', accent: '#05cae9', img: cloudSky },
+	{ id: 'mint-forest', label: 'Mint·Forest', shell: '#c9e6d4', accent: '#1f7d5d', img: mintForest },
+	{ id: 'bubblegum', label: 'Bubblegum', shell: '#f9c9da', accent: '#e8437f', img: bubblegum },
+	{ id: 'tangerine', label: 'Tangerine', shell: '#ffd2a8', accent: '#f26b1d', img: tangerine },
+];
+---
+
+<section id="colorways" class="section colorways">
+	<div class="container centered">
+		<h2>Four finishes.</h2>
+		<div class="stage">
+			{
+				finishes.map((f, i) => (
+					<Image
+						src={f.img}
+						alt={`yoyopod device in the ${f.label} finish`}
+						width={342}
+						densities={[1]}
+						loading={i === 0 ? 'eager' : 'lazy'}
+						class:list={['colorway-img', { 'is-active': i === 0 }]}
+						data-finish={f.id}
+					/>
+				))
+			}
+		</div>
+		<p class="finish-label" data-finish-label>{finishes[0].label}</p>
+		<div class="swatches" role="group" aria-label="Choose a finish">
+			{
+				finishes.map((f, i) => (
+					<button
+						type="button"
+						class="swatch"
+						data-finish={f.id}
+						data-label={f.label}
+						aria-pressed={i === 0 ? 'true' : 'false'}
+						title={f.label}
+						style={`--shell: ${f.shell}; --accent: ${f.accent};`}
+					>
+						<span class="visually-hidden">{f.label}</span>
+					</button>
+				))
+			}
+		</div>
+		<p class="design-study-note">{DESIGN_STUDY_CAPTION}</p>
+	</div>
+</section>
+
+<script>
+	const images = document.querySelectorAll<HTMLElement>('.colorway-img');
+	const swatches = document.querySelectorAll<HTMLButtonElement>('.swatch');
+	const label = document.querySelector('[data-finish-label]');
+
+	swatches.forEach((btn) => {
+		btn.addEventListener('click', () => {
+			const finish = btn.dataset.finish;
+			images.forEach((img) => img.classList.toggle('is-active', img.dataset.finish === finish));
+			swatches.forEach((s) => s.setAttribute('aria-pressed', String(s === btn)));
+			if (label && btn.dataset.label) label.textContent = btn.dataset.label;
+		});
+	});
+</script>
+
+<style>
+	.stage {
+		display: grid;
+		place-items: center;
+		min-height: 380px;
+	}
+
+	/* The renders carry their own warm-paper backdrop — frame them as cards. */
+	.stage :global(.colorway-img) {
+		grid-area: 1 / 1;
+		width: min(280px, 70vw);
+		height: auto;
+		display: none;
+		border-radius: var(--radius-card);
+		border: 1.5px solid var(--cream-22);
+		box-shadow: 0 24px 48px rgb(0 0 0 / 0.4);
+	}
+
+	.stage :global(.colorway-img.is-active) {
+		display: block;
+	}
+
+	.finish-label {
+		font-weight: 700;
+		margin-top: 1rem;
+	}
+
+	.swatches {
+		display: flex;
+		gap: 0.9rem;
+		justify-content: center;
+		margin-top: 0.5rem;
+	}
+
+	.swatch {
+		width: 2.4rem;
+		height: 2.4rem;
+		border-radius: 50%;
+		background: var(--shell);
+		border: 3px solid var(--accent);
+		cursor: pointer;
+		padding: 0;
+	}
+
+	.swatch[aria-pressed='true'] {
+		outline: 3px solid var(--cream);
+		outline-offset: 2px;
+	}
+
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+	}
+</style>
