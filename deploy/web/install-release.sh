@@ -173,6 +173,7 @@ assert_status() {
             --write-out '%{http_code}' \
             --connect-timeout 3 \
             --max-time 15 \
+            --noproxy '*' \
             --resolve "${host}:${origin_port}:127.0.0.1" \
             "${origin_scheme}://${host}${path}"
     )"
