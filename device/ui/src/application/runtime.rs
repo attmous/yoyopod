@@ -175,7 +175,9 @@ impl UiRuntime {
         };
         match input_router::route(action, &route_state) {
             input_router::AppCommand::AdvanceFocus => {
-                if !self.begin_wheel_roll(now_ms) {
+                if self.active_screen == UiScreen::Stopwatch && self.stopwatch_action_count() == 1 {
+                    self.activate_stopwatch_action(now_ms);
+                } else if !self.begin_wheel_roll(now_ms) {
                     navigator::advance_focus(self);
                 }
             }
@@ -1652,6 +1654,23 @@ mod tests {
         assert!(contains_text(&paused, "00:01.2"));
         assert!(contains_text(&paused, "Resume"));
         assert!(contains_text(&paused, "Reset"));
+    }
+
+    #[test]
+    fn stopwatch_single_tap_activates_the_only_ready_and_running_action() {
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::Stopwatch,
+            ..UiRuntime::default()
+        };
+
+        runtime.handle_input(InputAction::Advance, 100);
+        assert_eq!(runtime.stopwatch_action_label(0), "Pause");
+        assert_eq!(runtime.stopwatch.display_text(1_100), "00:01.0");
+
+        runtime.handle_input(InputAction::Advance, 1_100);
+        assert_eq!(runtime.stopwatch_action_label(0), "Resume");
+        assert_eq!(runtime.stopwatch_action_label(1), "Reset");
+        assert_eq!(runtime.stopwatch.display_text(9_000), "00:01.0");
     }
 
     #[test]

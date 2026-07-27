@@ -7,7 +7,7 @@ Status: Approved and implemented
 
 Refine the Stopwatch screen so its controls feel playful and attractive while remaining unmistakably part of YoYoPod. The approved direction is **Soft Control Tray**: a quiet translucent tray groups the actions, phase-aware colors make each state obvious, and the timer remains the dominant element.
 
-This is a visual refinement only. Stopwatch timing, input behavior, navigation, persistence, and process architecture do not change.
+This began as a visual refinement. Stopwatch timing, navigation, persistence, and process architecture remain unchanged; physical-device feedback adds one targeted input correction so a single tap activates the sole Start or Pause action.
 
 ## Locked Device Chrome
 
@@ -101,8 +101,9 @@ Existing behavior remains authoritative:
 - Ready exposes Start.
 - Running exposes Pause.
 - Paused exposes Resume and Reset.
+- A single tap activates Start or Pause when it is the only visible action.
 - Single tap changes the focused paused action.
-- Double tap activates the focused action.
+- Double tap activates the focused paused action.
 - Reset is available only while paused.
 - Stopwatch resets whenever navigation leaves the screen, including Home, Back, incoming-call preemption, or system-error preemption.
 - Stopwatch state never persists or runs off-screen.
@@ -142,7 +143,7 @@ The generic LVGL scene renderer remains responsible for creating and styling obj
 
 - Required layout and theme role validation must reject missing Stopwatch assets at startup.
 - Required selected-theme coverage must include all three Stopwatch action roles, preventing another focus-time worker crash.
-- The widget clamps focus through the existing runtime behavior; no new input branch is introduced.
+- The targeted Stopwatch input branch activates only when exactly one action is visible; the two-action Paused focus path and every other screen retain the existing behavior.
 - Light and dark theme tests must verify legible tray, labels, action fills, and focus outlines.
 
 ## Testing
