@@ -109,9 +109,10 @@ powershell.exe -NoProfile -File scripts/deploy_web.ps1 -DryRun
 
 1. resolves a full commit SHA;
 2. proves the commit is reachable from `origin/main`;
-3. builds both sites with Node 22;
+3. checks out and builds both sites from that exact content commit with Node 22;
 4. packages the collector and revision with the static output;
-5. streams the archive through the forced-command key;
+5. uses the current `main` deployment tooling to stream the archive through
+   the forced-command key;
 6. atomically installs and health-checks the release.
 
 Configure the `production` GitHub environment with a deployment-branch policy
@@ -132,6 +133,8 @@ gh workflow run web-deploy.yml --ref main -f sha=<full-main-commit-sha>
 
 The workflow uses a non-cancelling `web-production` concurrency group, so two
 production releases cannot switch the symlink at the same time.
+Historical rollback changes only the site content and bundled collector; the
+workflow and pinned VPS installer always come from the current `main` head.
 
 ## nginx and TLS
 
@@ -173,6 +176,10 @@ The remote installer checks all of these before accepting a release:
 - a missing docs route → `404`;
 - `yoyopod.com/api/notify` → `404` while collection is disabled, or a safe
   `GET` → `405` when the built page exposes the deliberately enabled form.
+
+Before TLS, checks address the local HTTP vhost directly. Once Certbot
+certificate directives exist, they address the local HTTPS vhost with SNI and
+certificate validation. The checks never follow public DNS.
 
 The privacy page promises access logs are deleted after 14 days. Keep
 `/etc/logrotate.d/nginx` configured with `daily` and `rotate 14`; verify this

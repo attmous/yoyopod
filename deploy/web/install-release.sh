@@ -7,6 +7,7 @@ CURRENT_LINK="${APP_ROOT}/current"
 PREVIOUS_LINK="${APP_ROOT}/previous"
 DEPLOYED_SHA_FILE="${APP_ROOT}/DEPLOYED_SHA"
 EXPECTED_USER="yoyopod-web-deploy"
+NGINX_CONFIG="/etc/nginx/sites-available/yoyopod"
 
 usage() {
     echo "usage: install-release.sh ARCHIVE RELEASE_ID COMMIT_SHA" >&2
@@ -167,14 +168,26 @@ assert_status() {
             --write-out '%{http_code}' \
             --connect-timeout 3 \
             --max-time 15 \
-            --header "Host: ${host}" \
-            "http://127.0.0.1${path}"
+            --resolve "${host}:${origin_port}:127.0.0.1" \
+            "${origin_scheme}://${host}${path}"
     )"
     if [[ "${actual}" != "${expected}" ]]; then
         echo "${host}${path}: expected HTTP ${expected}, received ${actual}" >&2
         return 1
     fi
 }
+
+# Certbot edits this vhost in place. Once certificate directives are present,
+# probe the local HTTPS listener directly with correct SNI and certificate
+# validation; otherwise use the initial HTTP listener. Public DNS is never
+# involved in either path.
+origin_scheme="http"
+origin_port="80"
+if [[ -r "${NGINX_CONFIG}" ]] &&
+   grep -qiE '^[[:space:]]*ssl_certificate[[:space:]]' "${NGINX_CONFIG}"; then
+    origin_scheme="https"
+    origin_port="443"
+fi
 
 assert_status "yoyopod.com" "/" "200"
 assert_status "yoyopod.com" "/imprint/" "200"

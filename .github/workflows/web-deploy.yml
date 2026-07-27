@@ -51,9 +51,14 @@ jobs:
             exit 1
           fi
 
-          git checkout --detach "${resolved}"
           echo "sha=${resolved}" >> "${GITHUB_OUTPUT}"
           echo "short_sha=${resolved:0:12}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check out exact site content
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          path: .deploy-source
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -61,11 +66,12 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: |
-            www/package-lock.json
-            docsite/website-vision/package-lock.json
+            .deploy-source/www/package-lock.json
+            .deploy-source/docsite/website-vision/package-lock.json
 
       - name: Build both public sites
         run: node scripts/build_web.mjs
+        working-directory: .deploy-source
 
       - name: Package the exact release
         id: release
@@ -76,10 +82,12 @@ jobs:
           set -euo pipefail
           release_id="$(date -u +%Y%m%dT%H%M%SZ)-${SHORT_SHA}-${GITHUB_RUN_ID}"
           archive_name="yoyopod-web-${release_id}.tar.gz"
+          artifact_root=".deploy-source/.artifacts/web"
 
-          cp www/server/notify-collector.mjs .artifacts/web/notify-collector.mjs
-          printf '%s' "${COMMIT_SHA}" > .artifacts/web/REVISION
-          tar -C .artifacts/web -czf ".artifacts/web/${archive_name}" \
+          cp .deploy-source/www/server/notify-collector.mjs \
+            "${artifact_root}/notify-collector.mjs"
+          printf '%s' "${COMMIT_SHA}" > "${artifact_root}/REVISION"
+          tar -C "${artifact_root}" -czf "${RUNNER_TEMP}/${archive_name}" \
             root docs notify-collector.mjs REVISION
 
           echo "release_id=${release_id}" >> "${GITHUB_OUTPUT}"
@@ -131,7 +139,7 @@ jobs:
 
           ssh "${ssh_options[@]}" "${remote}" \
             "upload ${RELEASE_ID} ${COMMIT_SHA}" \
-            < ".artifacts/web/${ARCHIVE_NAME}"
+            < "${RUNNER_TEMP}/${ARCHIVE_NAME}"
           ssh "${ssh_options[@]}" "${remote}" \
             "deploy ${RELEASE_ID} ${COMMIT_SHA}"
 
