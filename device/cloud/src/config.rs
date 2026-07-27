@@ -22,6 +22,7 @@ pub struct CloudHostConfig {
     pub config_poll_interval_seconds: u64,
     pub claim_retry_seconds: u64,
     pub cache_file: String,
+    pub location_outbox_file: String,
     pub status_file: String,
     pub mqtt_broker_host: String,
     pub mqtt_broker_port: u16,
@@ -50,6 +51,7 @@ impl Default for CloudHostConfig {
             config_poll_interval_seconds: 300,
             claim_retry_seconds: 60,
             cache_file: "data/cloud/config_cache.json".to_string(),
+            location_outbox_file: "data/cloud/location_outbox.json".to_string(),
             status_file: "data/cloud/status.json".to_string(),
             mqtt_broker_host: "yoyopod.moraouf.net".to_string(),
             mqtt_broker_port: 1883,
@@ -118,6 +120,14 @@ impl CloudHostConfig {
         resolve_runtime_path(&self.runtime_root, &self.status_file)
     }
 
+    pub fn cache_path(&self) -> PathBuf {
+        resolve_runtime_path(&self.runtime_root, &self.cache_file)
+    }
+
+    pub fn location_outbox_path(&self) -> PathBuf {
+        resolve_runtime_path(&self.runtime_root, &self.location_outbox_file)
+    }
+
     pub fn device_event_topic(&self) -> String {
         format!("yoyopod/{}/evt", self.device_id.trim())
     }
@@ -164,6 +174,11 @@ fn apply_backend_mapping(config: &mut CloudHostConfig, backend: &Mapping) {
     config.claim_retry_seconds =
         u64_key(backend, "claim_retry_seconds", config.claim_retry_seconds);
     config.cache_file = string_key(backend, "cache_file", &config.cache_file);
+    config.location_outbox_file = string_key(
+        backend,
+        "location_outbox_file",
+        &config.location_outbox_file,
+    );
     config.status_file = string_key(backend, "status_file", &config.status_file);
     config.mqtt_broker_host = string_key(backend, "mqtt_broker_host", &config.mqtt_broker_host);
     config.mqtt_broker_port = u16_key(backend, "mqtt_broker_port", config.mqtt_broker_port);
@@ -194,6 +209,9 @@ fn apply_env_overrides(config: &mut CloudHostConfig) -> Result<()> {
     }
     if let Some(value) = env_string("YOYOPOD_CLOUD_CACHE_FILE") {
         config.cache_file = value;
+    }
+    if let Some(value) = env_string("YOYOPOD_CLOUD_LOCATION_OUTBOX_FILE") {
+        config.location_outbox_file = value;
     }
     if let Some(value) = env_string("YOYOPOD_CLOUD_STATUS_FILE") {
         config.status_file = value;

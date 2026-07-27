@@ -117,6 +117,15 @@ install -m 0644 -o root -g root \
     "${REPO_ROOT}/deploy/systemd/yoyopod-dev.service" \
     "${UNIT_DIR}/yoyopod-dev.service"
 
+# Reserve the dedicated SIM7600 for the direct AT/PPP worker without disabling
+# ModemManager globally.
+install -d -m 0755 -o root -g root /etc/udev/rules.d
+install -m 0644 -o root -g root \
+    "${REPO_ROOT}/deploy/udev/77-yoyopod-sim7600.rules" \
+    /etc/udev/rules.d/77-yoyopod-sim7600.rules
+udevadm control --reload-rules
+udevadm trigger --subsystem-match=tty
+
 # 3b. Captive-portal DNS for on-device Wi‑Fi setup. While the device hosts its
 # onboarding hotspot (NetworkManager ipv4=shared), resolve every name to the
 # portal gateway so a phone auto-opens the setup page. NetworkManager includes

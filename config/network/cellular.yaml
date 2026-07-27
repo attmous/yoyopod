@@ -5,6 +5,8 @@ network:
   serial_port: /dev/ttyUSB2
   ppp_port: /dev/ttyUSB3
   baud_rate: 115200
+  # Provision the carrier APN in /etc/default/yoyopod-* as
+  # YOYOPOD_MODEM_APN. Do not commit a subscriber-specific override.
   apn: ""
   gps_enabled: true
   ppp_timeout: 30

@@ -9,8 +9,8 @@ use crate::config::CloudHostConfig;
 use crate::host::{CloudHost, CloudRuntimeEvent};
 use crate::mqtt::{CloudMqttBackend, RumqttBackend};
 use crate::protocol::{
-    ready_event, snapshot_event, snapshot_result, stopped_event, stopped_result, EnvelopeKind,
-    WorkerEnvelope,
+    config_event, ready_event, snapshot_event, snapshot_result, stopped_event, stopped_result,
+    EnvelopeKind, WorkerEnvelope,
 };
 
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -181,6 +181,33 @@ fn handle_command<B: CloudMqttBackend>(
     envelope: WorkerEnvelope,
 ) -> Result<LoopControl> {
     let request_id = envelope.request_id.clone();
+    if envelope.message_type == "cloud.fetch_config" {
+        return match host.fetch_config_now() {
+            Ok(Some(config)) => Ok(LoopControl::Continue(vec![
+                config_event(config),
+                WorkerEnvelope::result("cloud.config", request_id, json!({"refreshed": true})),
+                snapshot_event(host.snapshot()),
+            ])),
+            Ok(None) => Ok(LoopControl::Continue(vec![
+                WorkerEnvelope::error(
+                    "cloud.error",
+                    request_id,
+                    "config_unavailable",
+                    "Cloud configuration is unavailable",
+                ),
+                snapshot_event(host.snapshot()),
+            ])),
+            Err(_) => Ok(LoopControl::Continue(vec![
+                WorkerEnvelope::error(
+                    "cloud.error",
+                    request_id,
+                    "config_refresh_failed",
+                    "Cloud configuration refresh failed",
+                ),
+                snapshot_event(host.snapshot()),
+            ])),
+        };
+    }
     let result = match envelope.message_type.as_str() {
         "cloud.health" => snapshot_result(request_id, host.snapshot()),
         "cloud.publish_heartbeat" => {
@@ -295,6 +322,7 @@ fn emit_runtime_events<W: Write, B: CloudMqttBackend>(
             CloudRuntimeEvent::Snapshot(snapshot) => {
                 emit(output, &snapshot_event(snapshot.as_ref()))?
             }
+            CloudRuntimeEvent::Config(config) => emit(output, &config_event(config))?,
             CloudRuntimeEvent::Command(command) => emit(
                 output,
                 &WorkerEnvelope::event(

@@ -1,13 +1,20 @@
 use std::collections::VecDeque;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use serde_json::Value;
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
+use uuid::Uuid;
 
 use crate::config::NetworkHostConfig;
+use crate::gps::GpsFix;
 use crate::modem::{
     ModemController, ModemError, ModemRegistration, NoopModemController, PppHealth, PppLink,
 };
 use crate::snapshot::{
     GpsSnapshot, NetworkLifecycleState, NetworkRuntimeSnapshot, PppSnapshot, SignalSnapshot,
 };
+use crate::tracking::{LocationFixEvent, LocationSettings, TrackingEngine};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RecoveryPolicy {
@@ -67,7 +74,9 @@ pub struct NetworkRuntime<C> {
     live_fact_poll_interval_ms: u64,
     last_live_fact_poll_at_ms: Option<u64>,
     pending_snapshots: VecDeque<NetworkRuntimeSnapshot>,
+    pending_location_events: VecDeque<LocationFixEvent>,
     last_published_snapshot: Option<NetworkRuntimeSnapshot>,
+    tracking: TrackingEngine,
 }
 
 impl<C> NetworkRuntime<C>
@@ -117,7 +126,9 @@ where
             live_fact_poll_interval_ms: live_fact_poll_interval_ms.max(1),
             last_live_fact_poll_at_ms: None,
             pending_snapshots: VecDeque::new(),
+            pending_location_events: VecDeque::new(),
             last_published_snapshot: None,
+            tracking: TrackingEngine::default(),
         }
     }
 
@@ -127,6 +138,10 @@ where
 
     pub fn drain_snapshot_events(&mut self) -> Vec<NetworkRuntimeSnapshot> {
         self.pending_snapshots.drain(..).collect()
+    }
+
+    pub fn drain_location_events(&mut self) -> Vec<LocationFixEvent> {
+        self.pending_location_events.drain(..).collect()
     }
 
     pub fn start(&mut self) -> &NetworkRuntimeSnapshot {
@@ -168,6 +183,7 @@ where
             let _ = self.poll_ppp_health(now_ms, false);
             let _ = self.refresh_live_facts_if_due(now_ms, false);
         }
+        self.sample_location_if_due(now_ms);
 
         if self.snapshot.retryable
             && self
@@ -215,44 +231,54 @@ where
             return Ok(&self.snapshot);
         }
 
-        let now_ms = now_ms();
-        match self.controller.query_gps() {
-            Ok(Some(fix)) => {
-                self.snapshot.gps = GpsSnapshot {
-                    has_fix: true,
-                    lat: Some(fix.lat),
-                    lng: Some(fix.lng),
-                    altitude: Some(fix.altitude),
-                    speed: Some(fix.speed),
-                    timestamp: fix.timestamp,
-                    last_query_result: "fix".to_string(),
-                };
-                self.touch(now_ms);
-                self.publish_snapshot();
-                Ok(&self.snapshot)
-            }
-            Ok(None) => {
-                self.snapshot.gps = GpsSnapshot {
-                    has_fix: false,
-                    lat: None,
-                    lng: None,
-                    altitude: None,
-                    speed: None,
-                    timestamp: None,
-                    last_query_result: "no_fix".to_string(),
-                };
-                self.touch(now_ms);
-                self.publish_snapshot();
-                Ok(&self.snapshot)
-            }
-            Err(error) => {
-                let error_for_event = RuntimeCommandError::from_modem_error(error.clone());
-                self.snapshot.gps.last_query_result = "error".to_string();
-                self.snapshot.error_code = error.code;
-                self.snapshot.error_message = error.message;
-                self.touch(now_ms);
-                self.publish_snapshot();
-                Err(error_for_event)
+        self.read_gps_fix_at(now_ms())?;
+        Ok(&self.snapshot)
+    }
+
+    pub fn apply_location_settings_command(
+        &mut self,
+        payload: &Value,
+    ) -> Result<LocationSettings, RuntimeCommandError> {
+        let settings =
+            LocationSettings::from_cloud_config(payload).map_err(|code| RuntimeCommandError {
+                code: code.to_string(),
+                message: "Location tracking settings are invalid".to_string(),
+            })?;
+        self.tracking.apply_settings(settings);
+        Ok(settings)
+    }
+
+    pub fn request_location_command(
+        &mut self,
+        command_id: String,
+        timeout: Duration,
+    ) -> Result<LocationFixEvent, RuntimeCommandError> {
+        if !self.config.gps_enabled {
+            return Err(RuntimeCommandError {
+                code: "gps_disabled".to_string(),
+                message: "GNSS is disabled".to_string(),
+            });
+        }
+        let started = Instant::now();
+        loop {
+            match self.read_gps_fix_at(now_ms())? {
+                Some(fix) => {
+                    return Ok(LocationFixEvent::from_gps(
+                        &fix,
+                        Uuid::new_v4().to_string(),
+                        "on_demand",
+                        Some(command_id),
+                        current_rfc3339(),
+                    ));
+                }
+                None if started.elapsed() >= timeout => {
+                    return Err(RuntimeCommandError {
+                        code: "gps_fix_timeout".to_string(),
+                        message: "No valid GNSS fix was acquired before the request timed out"
+                            .to_string(),
+                    });
+                }
+                None => std::thread::sleep(Duration::from_secs(1)),
             }
         }
     }
@@ -606,7 +632,77 @@ impl NetworkRuntime<NoopModemController> {
             live_fact_poll_interval_ms: DEFAULT_LIVE_FACT_POLL_INTERVAL_MS,
             last_live_fact_poll_at_ms: None,
             pending_snapshots: VecDeque::new(),
+            pending_location_events: VecDeque::new(),
             last_published_snapshot: None,
+            tracking: TrackingEngine::default(),
+        }
+    }
+}
+
+impl<C> NetworkRuntime<C>
+where
+    C: ModemController,
+{
+    fn read_gps_fix_at(&mut self, now_ms: u64) -> Result<Option<GpsFix>, RuntimeCommandError> {
+        match self.controller.query_gps() {
+            Ok(Some(fix)) => {
+                self.snapshot.gps = GpsSnapshot {
+                    has_fix: true,
+                    lat: Some(fix.lat),
+                    lng: Some(fix.lng),
+                    altitude: Some(fix.altitude),
+                    speed: Some(fix.speed),
+                    timestamp: fix.timestamp.clone(),
+                    last_query_result: "fix".to_string(),
+                };
+                self.touch(now_ms);
+                self.publish_snapshot();
+                Ok(Some(fix))
+            }
+            Ok(None) => {
+                self.snapshot.gps = GpsSnapshot {
+                    has_fix: false,
+                    lat: None,
+                    lng: None,
+                    altitude: None,
+                    speed: None,
+                    timestamp: None,
+                    last_query_result: "no_fix".to_string(),
+                };
+                self.touch(now_ms);
+                self.publish_snapshot();
+                Ok(None)
+            }
+            Err(error) => {
+                let error_for_event = RuntimeCommandError::from_modem_error(error.clone());
+                self.snapshot.gps.last_query_result = "error".to_string();
+                self.snapshot.error_code = error.code;
+                self.snapshot.error_message = error.message;
+                self.touch(now_ms);
+                self.publish_snapshot();
+                Err(error_for_event)
+            }
+        }
+    }
+
+    fn sample_location_if_due(&mut self, now_ms: u64) {
+        if !self.tracking.sample_due(now_ms) || !self.config.gps_enabled {
+            return;
+        }
+        match self.read_gps_fix_at(now_ms) {
+            Ok(Some(fix)) => {
+                if self.tracking.observe(&fix, now_ms) {
+                    self.pending_location_events
+                        .push_back(LocationFixEvent::from_gps(
+                            &fix,
+                            Uuid::new_v4().to_string(),
+                            "periodic",
+                            None,
+                            current_rfc3339(),
+                        ));
+                }
+            }
+            Ok(None) | Err(_) => self.tracking.record_no_fix(now_ms),
         }
     }
 }
@@ -643,4 +739,10 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0)
+}
+
+fn current_rfc3339() -> String {
+    OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
 }
