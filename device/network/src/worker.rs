@@ -14,9 +14,10 @@ use crate::config::NetworkHostConfig;
 use crate::modem::{ModemController, Sim7600ModemController};
 use crate::protocol::{
     audio_route_local_event, audio_state_event, audio_state_result, bluetooth_state_event,
-    bluetooth_state_result, health_result, ready_event, snapshot_event, snapshot_result,
-    stopped_event, stopped_result, wifi_change_candidate_event, wifi_provisioning_state_event,
-    wifi_state_event, wifi_state_result, EnvelopeKind, WorkerEnvelope,
+    bluetooth_state_result, health_result, location_fix_event, location_result, ready_event,
+    snapshot_event, snapshot_result, stopped_event, stopped_result, wifi_change_candidate_event,
+    wifi_provisioning_state_event, wifi_state_event, wifi_state_result, EnvelopeKind,
+    WorkerEnvelope,
 };
 use crate::provisioning::{WifiProvisioner, WifiProvisioningState};
 use crate::runtime::{NetworkRuntime, RuntimeCommandError};
@@ -433,6 +434,47 @@ where
             match runtime.query_gps_command() {
                 Ok(snapshot) => {
                     write_envelope(output, &snapshot_result(envelope.request_id, snapshot))?;
+                }
+                Err(error) => emit_command_error(output, envelope.request_id, error)?,
+            }
+            emit_pending_snapshots(output, runtime)?;
+        }
+        "network.apply_location_settings" => {
+            let settings_payload = envelope
+                .payload
+                .get("location_settings")
+                .unwrap_or(&envelope.payload);
+            match runtime.apply_location_settings_command(settings_payload) {
+                Ok(settings) => {
+                    write_envelope(
+                        output,
+                        &WorkerEnvelope::result(
+                            "network.location_settings",
+                            envelope.request_id,
+                            serde_json::to_value(settings)?,
+                        ),
+                    )?;
+                }
+                Err(error) => emit_command_error(output, envelope.request_id, error)?,
+            }
+        }
+        "network.request_location" => {
+            let Some(command_id) = envelope.request_id.clone() else {
+                write_envelope(
+                    output,
+                    &WorkerEnvelope::error(
+                        "network.error",
+                        None,
+                        "missing_command_id",
+                        "Location request is missing its correlation reference",
+                    ),
+                )?;
+                return Ok(LoopControl::Continue);
+            };
+            match runtime.request_location_command(command_id, Duration::from_secs(90)) {
+                Ok(fix) => {
+                    write_envelope(output, &location_fix_event(&fix))?;
+                    write_envelope(output, &location_result(envelope.request_id, &fix))?;
                 }
                 Err(error) => emit_command_error(output, envelope.request_id, error)?,
             }
@@ -1115,6 +1157,9 @@ where
 {
     for snapshot in runtime.drain_snapshot_events() {
         write_envelope(output, &snapshot_event(&snapshot))?;
+    }
+    for fix in runtime.drain_location_events() {
+        write_envelope(output, &location_fix_event(&fix))?;
     }
     Ok(())
 }

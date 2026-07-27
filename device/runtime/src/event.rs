@@ -19,10 +19,12 @@ pub enum RuntimeEvent {
         domain: WorkerDomain,
     },
     CloudSnapshot(Value),
+    CloudConfig(Value),
     CloudCommand(Value),
     MediaSnapshot(Value),
     VoipSnapshot(Value),
     NetworkSnapshot(Value),
+    LocationFix(Value),
     WifiState(Value),
     WifiChangeCandidate(Value),
     WifiProvisioningState(Value),
@@ -87,6 +89,7 @@ impl RuntimeEvent {
                 }
             }
             Self::CloudSnapshot(snapshot) => state.apply_cloud_snapshot(snapshot),
+            Self::CloudConfig(_) => {}
             Self::CloudCommand(_) => {}
             Self::MediaSnapshot(snapshot) => {
                 state.resolve_overlay_for(WorkerDomain::Media);
@@ -100,6 +103,7 @@ impl RuntimeEvent {
                 state.resolve_overlay_for(WorkerDomain::Network);
                 state.apply_network_snapshot(snapshot);
             }
+            Self::LocationFix(_) => {}
             Self::WifiState(_)
             | Self::WifiChangeCandidate(_)
             | Self::BluetoothState(_)
@@ -252,9 +256,22 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         RuntimeEvent::UiIntent(intent) => commands_for_ui_intent(state, intent),
         RuntimeEvent::UiInput(payload) => commands_for_ui_input(state, payload),
         RuntimeEvent::CloudCommand(command) => commands_for_cloud_command(command),
+        RuntimeEvent::CloudConfig(config) => vec![worker_command(
+            WorkerDomain::Network,
+            "network.apply_location_settings",
+            config.clone(),
+        )],
         RuntimeEvent::MediaSnapshot(snapshot) => commands_for_media_snapshot(snapshot),
         RuntimeEvent::VoipSnapshot(snapshot) => commands_for_voip_snapshot(state, snapshot),
         RuntimeEvent::NetworkSnapshot(snapshot) => commands_for_network_snapshot(snapshot),
+        RuntimeEvent::LocationFix(fix) => vec![worker_command(
+            WorkerDomain::Cloud,
+            "cloud.publish_event",
+            json!({
+                "event_type": "location",
+                "payload": fix,
+            }),
+        )],
         RuntimeEvent::WifiState(state) => vec![worker_command(
             WorkerDomain::Cloud,
             "cloud.publish_event",
@@ -459,6 +476,11 @@ fn cloud_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent 
             domain: WorkerDomain::Cloud,
         },
         "cloud.snapshot" | "cloud.health" => RuntimeEvent::CloudSnapshot(payload),
+        "cloud.config" => payload
+            .get("config")
+            .cloned()
+            .map(RuntimeEvent::CloudConfig)
+            .unwrap_or(RuntimeEvent::Ignored),
         "cloud.command" => payload
             .get("command")
             .cloned()
@@ -506,6 +528,7 @@ fn network_event_from_message(message_type: &str, payload: Value) -> RuntimeEven
             domain: WorkerDomain::Network,
         },
         "network.snapshot" | "network.health" => RuntimeEvent::NetworkSnapshot(payload),
+        "network.location" => RuntimeEvent::LocationFix(payload),
         "wifi_state" => RuntimeEvent::WifiState(payload),
         "wifi_change_candidate" => RuntimeEvent::WifiChangeCandidate(payload),
         "wifi_provisioning_state" => RuntimeEvent::WifiProvisioningState(payload),
@@ -1280,7 +1303,81 @@ fn commands_for_cloud_command(command: &Value) -> Vec<RuntimeCommand> {
                 }]
             })
             .unwrap_or_default(),
-        "fetch_config" => Vec::new(),
+        "request_location" => command_id
+            .map(|command_id| {
+                vec![RuntimeCommand::CorrelatedWorkerCommand {
+                    domain: WorkerDomain::Network,
+                    envelope: WorkerEnvelope::command(
+                        "network.request_location",
+                        Some(command_id.clone()),
+                        empty_payload(),
+                    ),
+                    command_id,
+                    command_type: "request_location".to_string(),
+                    timeout_ms: 95_000,
+                }]
+            })
+            .unwrap_or_default(),
+        "set_config" => {
+            let payload = command
+                .get("payload")
+                .cloned()
+                .filter(Value::is_object)
+                .unwrap_or_else(empty_payload);
+            let refresh =
+                worker_command(WorkerDomain::Cloud, "cloud.fetch_config", empty_payload());
+            let Some(command_id) = command_id else {
+                return vec![refresh];
+            };
+            let Some(location_settings) = payload.get("location_settings").cloned() else {
+                return vec![RuntimeCommand::CorrelatedWorkerCommand {
+                    domain: WorkerDomain::Cloud,
+                    envelope: WorkerEnvelope::command(
+                        "cloud.fetch_config",
+                        Some(command_id.clone()),
+                        empty_payload(),
+                    ),
+                    command_id,
+                    command_type: "set_config".to_string(),
+                    timeout_ms: 10_000,
+                }];
+            };
+            vec![
+                refresh,
+                RuntimeCommand::CorrelatedWorkerCommand {
+                    domain: WorkerDomain::Network,
+                    envelope: WorkerEnvelope::command(
+                        "network.apply_location_settings",
+                        Some(command_id.clone()),
+                        location_settings,
+                    ),
+                    command_id,
+                    command_type: "set_config".to_string(),
+                    timeout_ms: 10_000,
+                },
+            ]
+        }
+        "fetch_config" => command_id
+            .map(|command_id| {
+                vec![RuntimeCommand::CorrelatedWorkerCommand {
+                    domain: WorkerDomain::Cloud,
+                    envelope: WorkerEnvelope::command(
+                        "cloud.fetch_config",
+                        Some(command_id.clone()),
+                        empty_payload(),
+                    ),
+                    command_id,
+                    command_type: "fetch_config".to_string(),
+                    timeout_ms: 10_000,
+                }]
+            })
+            .unwrap_or_else(|| {
+                vec![worker_command(
+                    WorkerDomain::Cloud,
+                    "cloud.fetch_config",
+                    empty_payload(),
+                )]
+            }),
         "play_track" | "store_media" => command_id
             .map(|command_id| {
                 vec![worker_command(
@@ -1486,12 +1583,6 @@ fn commands_for_network_snapshot(snapshot: &Value) -> Vec<RuntimeCommand> {
         })
         .unwrap_or(0)
         .clamp(0, 4);
-    let gps_has_fix = app_state
-        .get("gps_has_fix")
-        .or_else(|| snapshot.get("gps_has_fix"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-
     let mut commands = vec![
         cloud_telemetry_command(
             "network.ppp_up",
@@ -1512,15 +1603,6 @@ fn commands_for_network_snapshot(snapshot: &Value) -> Vec<RuntimeCommand> {
                 "attrs": {
                     "connection_type": connection_type.clone(),
                 },
-                "ts": current_epoch_seconds(),
-            }),
-        ),
-        cloud_telemetry_command(
-            "location.fix",
-            json!({
-                "entity": "location.fix",
-                "value": gps_has_fix,
-                "attrs": snapshot.get("gps").cloned().unwrap_or_else(empty_payload),
                 "ts": current_epoch_seconds(),
             }),
         ),

@@ -1,6 +1,7 @@
 use serde_json::json;
 
 use crate::snapshot::NetworkRuntimeSnapshot;
+use crate::tracking::LocationFixEvent;
 use crate::wifi::{WifiChangeOperation, WifiState};
 use crate::{
     audio::{AudioRouteLocal, AudioState},
@@ -17,6 +18,21 @@ pub fn snapshot_event(snapshot: &NetworkRuntimeSnapshot) -> WorkerEnvelope {
     WorkerEnvelope::event(
         "network.snapshot",
         serde_json::to_value(snapshot).expect("network snapshot should serialize"),
+    )
+}
+
+pub fn location_fix_event(fix: &LocationFixEvent) -> WorkerEnvelope {
+    WorkerEnvelope::event(
+        "network.location",
+        serde_json::to_value(fix).expect("location fix should serialize"),
+    )
+}
+
+pub fn location_result(request_id: Option<String>, fix: &LocationFixEvent) -> WorkerEnvelope {
+    WorkerEnvelope::result(
+        "network.location",
+        request_id,
+        json!({ "fix_id": fix.fix_id }),
     )
 }
 

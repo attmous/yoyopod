@@ -1,0 +1,3 @@
+# Reserve only the YoYoPod SIM7600G-H USB modem for the direct AT/PPP worker.
+# This leaves ModemManager enabled for every other modem on the host.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1e0e", ATTRS{idProduct}=="9001", ENV{ID_MM_DEVICE_IGNORE}="1", ENV{ID_MM_PORT_IGNORE}="1"

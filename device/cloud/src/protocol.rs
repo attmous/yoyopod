@@ -29,6 +29,10 @@ pub fn snapshot_event(snapshot: &CloudStatusSnapshot) -> WorkerEnvelope {
     )
 }
 
+pub fn config_event(config: serde_json::Value) -> WorkerEnvelope {
+    WorkerEnvelope::event("cloud.config", json!({ "config": config }))
+}
+
 pub fn snapshot_result(
     request_id: Option<String>,
     snapshot: &CloudStatusSnapshot,

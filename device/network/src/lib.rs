@@ -9,6 +9,7 @@ pub mod protocol;
 pub mod provisioning;
 pub mod runtime;
 pub mod snapshot;
+pub mod tracking;
 pub mod transport;
 pub mod wifi;
 pub mod worker;
