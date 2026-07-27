@@ -6,7 +6,7 @@ families, builders, and anyone curious about the why. Fully drafted across
 families, user stories, applications, builders, and company sections.
 
 This is deliberately a second site. The as-built engineering documentation
-lives in [`docsite/website/`](../www/) and remains the source of truth for what
+lives in [`docsite/website/`](../website/) and remains the source of truth for what
 is actually implemented today; when the two disagree, the as-built site wins.
 This site wears the startup's brand kit — "Sunrise & Midnight": marigold amber
 on midnight indigo and warm paper, documented at `/company/brand-kit/`. The

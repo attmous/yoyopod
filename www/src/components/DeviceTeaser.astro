@@ -4,44 +4,54 @@
 // pressing talk button, a spinning wheel, and floating pastel chips for
 // music, messages, location, and family. Pure CSS — deliberately a sketch,
 // not a hardware render.
+import { DESIGN_STUDY_CAPTION } from '../consts';
 ---
 
-<div class="teaser" aria-hidden="true">
-	<div class="device">
-		<div class="screen">
-			<div class="statusbar">
-				<span class="signal"><i></i><i></i><i></i></span>
-				<span class="battery"><i></i></span>
+<figure class="device-study">
+	<div class="teaser" aria-hidden="true">
+		<div class="device">
+			<div class="screen">
+				<div class="statusbar">
+					<span class="signal"><i></i><i></i><i></i></span>
+					<span class="battery"><i></i></span>
+				</div>
+				<div class="face">
+					<span class="eye eye-l"></span>
+					<span class="eye eye-r"></span>
+					<span class="smile"></span>
+					<span class="cheek cheek-l"></span>
+					<span class="cheek cheek-r"></span>
+				</div>
 			</div>
-			<div class="face">
-				<span class="eye eye-l"></span>
-				<span class="eye eye-r"></span>
-				<span class="smile"></span>
-				<span class="cheek cheek-l"></span>
-				<span class="cheek cheek-r"></span>
+			<div class="speaker">
+				{Array.from({ length: 30 }).map(() => <span />)}
 			</div>
+			<span class="mic"></span>
+			<span class="ptt"></span>
+			<span class="wheel"></span>
 		</div>
-		<div class="speaker">
-			{Array.from({ length: 30 }).map(() => <span />)}
-		</div>
-		<span class="mic"></span>
-		<span class="ptt"></span>
-		<span class="wheel"></span>
+		<span class="dot d1"></span>
+		<span class="dot d2"></span>
+		<span class="dot d3"></span>
+		<span class="dot d4"></span>
+		<div class="chip chip-music">♪</div>
+		<div class="chip chip-message"><span class="bubble"></span></div>
+		<div class="chip chip-pin"><span class="pin"></span></div>
+		<div class="chip chip-heart">♥</div>
 	</div>
-	<span class="dot d1"></span>
-	<span class="dot d2"></span>
-	<span class="dot d3"></span>
-	<span class="dot d4"></span>
-	<div class="chip chip-music">♪</div>
-	<div class="chip chip-message"><span class="bubble"></span></div>
-	<div class="chip chip-pin"><span class="pin"></span></div>
-	<div class="chip chip-heart">♥</div>
-</div>
+	<figcaption class="design-study-note">{DESIGN_STUDY_CAPTION}</figcaption>
+</figure>
 
 <style>
+	.device-study {
+		width: min(100%, 520px);
+		margin: 0;
+		text-align: center;
+	}
+
 	.teaser {
 		position: relative;
-		width: min(100%, 520px);
+		width: 100%;
 		height: 560px;
 	}
 
