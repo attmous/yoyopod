@@ -1,0 +1,4 @@
+interface:
+  display_name: "YoYoPod PR Review Loop"
+  short_description: "Close Codex review findings before PR handoff"
+  default_prompt: "Use $yoyopod-pr-review to push a PR, triage every Codex finding, and continue until approval."
