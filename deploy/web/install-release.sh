@@ -131,11 +131,11 @@ fi
 
 cleanup_uninstalled_release() {
     local status="$?"
-    trap - ERR
+    trap - EXIT
     rm -rf -- "${release_dir}"
     exit "${status}"
 }
-trap cleanup_uninstalled_release ERR
+trap cleanup_uninstalled_release EXIT
 
 mkdir -m 0755 "${release_dir}"
 tar \
@@ -164,7 +164,7 @@ fi
 
 find "${release_dir}" -type d -exec chmod 0755 {} +
 find "${release_dir}" -type f -exec chmod 0644 {} +
-trap - ERR
+trap - EXIT
 
 old_target="$(readlink -f "${CURRENT_LINK}" 2>/dev/null || true)"
 switched=0
