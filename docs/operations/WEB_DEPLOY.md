@@ -55,6 +55,12 @@ The bootstrap is the only operation that changes nginx or systemd. It:
 - installs a root-owned release installer and forced SSH command;
 - runs `nginx -t` before reloading nginx.
 
+On later runs, bootstrap detects Certbot-managed TLS directives in the live
+YoYoPod vhost and preserves that file while still updating the installer,
+forced command, service, and key restrictions. Reconcile any future changes
+to the tracked HTTP template into the TLS-managed file explicitly, then run
+`nginx -t` before reloading.
+
 Generate a dedicated CI key outside the repository:
 
 ```bash
@@ -165,7 +171,8 @@ The remote installer checks all of these before accepting a release:
 - `yoyopod.com/imprint/` → `200`;
 - `docs.yoyopod.com/` → `200`;
 - a missing docs route → `404`;
-- `yoyopod.com/api/notify` → `404` while collection is disabled.
+- `yoyopod.com/api/notify` → `404` while collection is disabled, or a safe
+  `GET` → `405` when the built page exposes the deliberately enabled form.
 
 The privacy page promises access logs are deleted after 14 days. Keep
 `/etc/logrotate.d/nginx` configured with `daily` and `rotate 14`; verify this

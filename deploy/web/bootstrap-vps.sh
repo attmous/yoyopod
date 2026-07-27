@@ -34,13 +34,26 @@ if [[ ! -f "${SCRIPT_DIR}/yoyopod.nginx.conf" ||
     exit 1
 fi
 
-# Refuse to shadow a site configured elsewhere. Re-running this bootstrap is
-# allowed, so the destination file itself is excluded from the search.
+# Refuse to shadow a site configured through any effective nginx include.
+# `nginx -T` expands the actual configuration, including conf.d and custom
+# include trees. Re-running this bootstrap is allowed, so its own enabled
+# server file is excluded.
+nginx_dump="$(nginx -T 2>/dev/null)"
 mapfile -t conflicting_configs < <(
-    grep -RIlE 'server_name[^;]*(yoyopod\.com|docs\.yoyopod\.com)' \
-        /etc/nginx/sites-enabled /etc/nginx/sites-available 2>/dev/null |
-        grep -Fv -- "${NGINX_AVAILABLE}" |
-        grep -Fv -- "${NGINX_ENABLED}" |
+    printf '%s\n' "${nginx_dump}" |
+        awk '
+            $1 == "#" && $2 == "configuration" && $3 == "file" {
+                file = $4
+                sub(/:$/, "", file)
+                next
+            }
+            /^[[:space:]]*server_name[[:space:]]/ &&
+                /(yoyopod\.com|docs\.yoyopod\.com)/ {
+                print file
+            }
+        ' |
+        grep -Fvx -- "${NGINX_AVAILABLE}" |
+        grep -Fvx -- "${NGINX_ENABLED}" |
         sort -u || true
 )
 if (( ${#conflicting_configs[@]} > 0 )); then
@@ -104,7 +117,16 @@ if [[ -n "${PUBLIC_KEY_FILE}" ]]; then
     fi
 fi
 
-install -m 0644 "${SCRIPT_DIR}/yoyopod.nginx.conf" "${NGINX_AVAILABLE}"
+# Certbot's nginx plugin edits the live vhost in place. Preserve that file on
+# later bootstrap runs so installing a newer release handler cannot remove
+# HTTPS listeners or certificate directives.
+if [[ -f "${NGINX_AVAILABLE}" ]] &&
+   grep -qiE 'managed by Certbot|^[[:space:]]*ssl_certificate(_key)?[[:space:]]' \
+       "${NGINX_AVAILABLE}"; then
+    echo "preserving TLS-managed nginx config: ${NGINX_AVAILABLE}"
+else
+    install -m 0644 "${SCRIPT_DIR}/yoyopod.nginx.conf" "${NGINX_AVAILABLE}"
+fi
 ln -sfn "${NGINX_AVAILABLE}" "${NGINX_ENABLED}"
 install -m 0644 "${SCRIPT_DIR}/yoyopod-notify.service" "${SERVICE_PATH}"
 

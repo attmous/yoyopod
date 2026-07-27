@@ -180,7 +180,16 @@ assert_status "yoyopod.com" "/" "200"
 assert_status "yoyopod.com" "/imprint/" "200"
 assert_status "docs.yoyopod.com" "/" "200"
 assert_status "docs.yoyopod.com" "/this-page-does-not-exist/" "404"
-assert_status "yoyopod.com" "/api/notify" "404"
+
+# The built page is the source of truth for whether signup is exposed. Closed
+# releases must see nginx's 404. Once the form is deliberately enabled, a safe
+# GET reaches the collector and must return its method-not-allowed response;
+# no test address is submitted.
+if grep -Fq 'action="/api/notify"' "${release_dir}/root/index.html"; then
+    assert_status "yoyopod.com" "/api/notify" "405"
+else
+    assert_status "yoyopod.com" "/api/notify" "404"
+fi
 
 if [[ -n "${old_target}" && "${old_target}" == "${RELEASES_DIR}/"* && -d "${old_target}" ]]; then
     previous_tmp="${APP_ROOT}/.previous-${RELEASE_ID}-$$"
