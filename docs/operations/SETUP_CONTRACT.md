@@ -1,6 +1,6 @@
 # Setup and System Dependency Contract
 
-This document defines the baseline setup contract for YoYoPod Core. As
+This document defines the baseline setup contract for yoyopod Core. As
 of 2026-05-13, automated setup commands (`yoyopod setup …`,
 `yoyopod target setup …`) were deleted in Round 0 of the CLI rebuild;
 see [`../ROADMAP.md`](../ROADMAP.md). Until the

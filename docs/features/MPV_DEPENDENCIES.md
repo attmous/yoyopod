@@ -6,7 +6,7 @@
 
 ## Overview
 
-YoYoPod uses an app-managed mpv process as a local-only music backend.
+yoyopod uses an app-managed mpv process as a local-only music backend.
 
 This means:
 
@@ -16,7 +16,7 @@ This means:
 
 It does not mean Spotify or Amazon Music support in the current product.
 
-## Runtime Role In YoYoPod
+## Runtime Role In yoyopod
 
 mpv currently provides:
 
@@ -80,12 +80,12 @@ Expected checks:
 - mpv starts cleanly under app control
 - local playlists are visible
 - local tracks play through the configured ALSA device
-- YoYoPod can reach mpv over the configured IPC socket
+- yoyopod can reach mpv over the configured IPC socket
 
 ## Current Product Guidance
 
 - Keep mpv as the local playback engine
-- keep the YoYoPod product local-first
+- keep the yoyopod product local-first
 - do not treat streaming providers as active product sources unless that becomes a separate approved project decision
 
 ## References

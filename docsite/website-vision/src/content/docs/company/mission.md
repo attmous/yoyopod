@@ -49,7 +49,7 @@ reachability** and **trustworthy location**. Everything else is
 secondary — including everything the answer refuses to be
 ([What yoyopod Is Not](/company/what-we-are-not/)).
 
-> For kids, YoYoPod feels like freedom.
+> For kids, yoyopod feels like freedom.
 > For parents, it feels like reassurance.
 > For both, it's a better step before the smartphone years.
 

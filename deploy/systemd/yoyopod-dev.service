@@ -1,5 +1,5 @@
 [Unit]
-Description=YoyoPod dev lane (mutable checkout)
+Description=yoyopod dev lane (mutable checkout)
 After=network-online.target sound.target bluetooth.service bluealsa.service pisugar-server.service
 Wants=network-online.target bluetooth.service bluealsa.service
 Conflicts=yoyopod-prod.service
@@ -13,7 +13,7 @@ EnvironmentFile=-/etc/default/yoyopod-dev
 Environment=YOYOPOD_ASOUND_CONFIG=/var/lib/yoyopod/audio/asoundrc
 Environment=ALSA_CONFIG_PATH=/var/lib/yoyopod/audio/asoundrc
 WorkingDirectory=/
-ExecStartPre=/usr/bin/env bash -lc 'install -d -m 0755 /var/lib/yoyopod/audio; test -s /var/lib/yoyopod/audio/asoundrc || printf "# Managed by YoYoPod.\n</usr/share/alsa/alsa.conf>\n" > /var/lib/yoyopod/audio/asoundrc'
+ExecStartPre=/usr/bin/env bash -lc 'install -d -m 0755 /var/lib/yoyopod/audio; test -s /var/lib/yoyopod/audio/asoundrc || printf "# Managed by yoyopod.\n</usr/share/alsa/alsa.conf>\n" > /var/lib/yoyopod/audio/asoundrc'
 ExecStartPre=/usr/bin/env bash -lc 'HOME="$${HOME:-/root}"; DEV_ROOT="$${YOYOPOD_DEV_ROOT:-/opt/yoyopod-dev}"; STATE_DIR="$${YOYOPOD_STATE_DIR:-$$DEV_ROOT/state}"; install -d -m 700 "$$HOME/.local/share/linphone" "$$HOME/.config/linphone"; install -d -m 755 "$$STATE_DIR"; CHECKOUT="$${YOYOPOD_DEV_CHECKOUT:-$$DEV_ROOT/checkout}"; test -d "$$CHECKOUT/config"; test -x "$$CHECKOUT/device/runtime/build/yoyopod-runtime"; test -x "$$CHECKOUT/device/ui/build/yoyopod-ui-host"'
 ExecStart=/usr/bin/env bash -lc 'DEV_ROOT="$${YOYOPOD_DEV_ROOT:-/opt/yoyopod-dev}"; STATE_DIR="$${YOYOPOD_STATE_DIR:-$$DEV_ROOT/state}"; export YOYOPOD_PID_FILE="$${YOYOPOD_PID_FILE:-$$STATE_DIR/yoyopod.pid}"; CHECKOUT="$${YOYOPOD_DEV_CHECKOUT:-$$DEV_ROOT/checkout}"; cd "$$CHECKOUT"; exec "$$CHECKOUT/device/runtime/build/yoyopod-runtime" --config-dir "$$CHECKOUT/config" --hardware whisplay'
 Restart=on-failure

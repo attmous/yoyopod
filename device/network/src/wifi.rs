@@ -227,7 +227,7 @@ impl WifiOperationError {
     fn unavailable() -> Self {
         Self::new(
             "wifi_unavailable",
-            "Wi-Fi management is not available on this YoYoPod",
+            "Wi-Fi management is not available on this yoyopod",
         )
     }
 
@@ -958,7 +958,7 @@ impl WifiController for NetworkManagerWifiController {
             settings
                 .entry("connection".to_string())
                 .or_default()
-                .insert("id".to_string(), owned(format!("YoYoPod {ssid}"))?);
+                .insert("id".to_string(), owned(format!("yoyopod {ssid}"))?);
             settings
                 .entry("802-11-wireless".to_string())
                 .or_default()
@@ -1392,7 +1392,7 @@ fn build_profile_settings(
         HashMap::from([
             (
                 "id".to_string(),
-                owned(format!("YoYoPod {}", request.ssid))?,
+                owned(format!("yoyopod {}", request.ssid))?,
             ),
             ("type".to_string(), owned("802-11-wireless".to_string())?),
             ("autoconnect".to_string(), owned(autoconnect)?),

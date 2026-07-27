@@ -1,6 +1,6 @@
 ---
 name: yoyopod-restart
-description: Restart the active YoYoPod dev lane service on Raspberry Pi
+description: Restart the active yoyopod dev lane service on Raspberry Pi
 disable-model-invocation: true
 allowed-tools:
   - Read

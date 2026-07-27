@@ -3,7 +3,7 @@ use clap::Parser;
 
 #[derive(Debug, Parser)]
 #[command(name = "yoyopod-media-host")]
-#[command(about = "YoYoPod Rust media host")]
+#[command(about = "yoyopod Rust media host")]
 struct Args {}
 
 fn main() -> Result<()> {

@@ -35,7 +35,7 @@ impl RemoteAssetDownloader for HttpRemoteAssetDownloader {
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
-        let request = ureq::get(media_url).set("User-Agent", "YoYoPod/remote-playback-cache");
+        let request = ureq::get(media_url).set("User-Agent", "yoyopod/remote-playback-cache");
         let response = request.call().map_err(|error| error.to_string())?;
         let mut reader = response.into_reader();
         let mut handle = fs::File::create(target_path).map_err(|error| error.to_string())?;

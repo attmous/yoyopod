@@ -42,8 +42,8 @@ and `yoyopod target ...` CLI on the same path. Do not use `/tmp/yoyopod.pid`;
 ## Startup/Shutdown Markers
 
 ```
-===== YoYoPod starting (version=X, pid=Y) =====
-===== YoYoPod shutting down (pid=Y) =====
+===== yoyopod starting (version=X, pid=Y) =====
+===== yoyopod shutting down (pid=Y) =====
 ```
 
 Used by deploy commands to verify the app started successfully.

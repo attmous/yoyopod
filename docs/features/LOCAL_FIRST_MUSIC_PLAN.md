@@ -4,7 +4,7 @@
 
 ## Decision
 
-YoYoPod's `Listen` experience is now local-first and local-only.
+yoyopod's `Listen` experience is now local-first and local-only.
 
 The product no longer treats Spotify, Amazon Music, or other providers as active `Listen` sources. `Listen` now means on-device music managed through an app-owned mpv backend and filesystem library.
 
@@ -20,10 +20,10 @@ The `Listen` root mode opens a small local library menu:
 
 ## Backend Contract
 
-YoYoPod now uses an app-managed mpv backend plus filesystem scanning:
+yoyopod now uses an app-managed mpv backend plus filesystem scanning:
 
 - local playlists are discovered from `.m3u` files under `audio.music_dir`
-- recent tracks are stored by YoYoPod from mpv track-change events
+- recent tracks are stored by yoyopod from mpv track-change events
 - shuffle builds a queue from filesystem track paths
 - metadata falls back to local tag reads when mpv metadata is sparse
 

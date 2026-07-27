@@ -1,4 +1,4 @@
-# YoYoPod Remote Playback On Device
+# yoyopod Remote Playback On Device
 
 This document describes the current device-side playback and media-import behavior for `yoyo-py`.
 

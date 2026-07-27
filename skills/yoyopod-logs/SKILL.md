@@ -1,6 +1,6 @@
 ---
 name: yoyopod-logs
-description: Tail YoYoPod runtime/service logs from Raspberry Pi
+description: Tail yoyopod runtime/service logs from Raspberry Pi
 disable-model-invocation: true
 allowed-tools:
   - Read

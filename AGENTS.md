@@ -1,4 +1,4 @@
-# YoYoPod - Agent Instructions
+# yoyopod - Agent Instructions
 
 Last Updated: 2026-05-13
 Target Hardware: Raspberry Pi Zero 2W

@@ -57,7 +57,7 @@ const PORTAL_BIND: &str = "10.42.0.1:80";
 /// The shared-mode gateway address can take a moment to appear on the interface
 /// after activation, so retry the bind briefly rather than failing immediately.
 const PORTAL_BIND_TIMEOUT: Duration = Duration::from_secs(10);
-const AP_CONNECTION_ID: &str = "YoYoPod Setup";
+const AP_CONNECTION_ID: &str = "yoyopod Setup";
 const PORTAL_POLL: Duration = Duration::from_millis(250);
 /// Hard cap on the `/connect` request body. An SSID (<=32) plus a PSK (<=64) in
 /// JSON is well under 1 KiB; 8 KiB leaves generous headroom while bounding what a
@@ -772,7 +772,7 @@ fn delete_profile(connection: &Connection, path: &OwnedObjectPath) {
 /// Delete any leftover setup-AP profile (`AP_CONNECTION_ID`) from a previous run.
 /// Call this on network-worker startup: if an earlier run terminated ungracefully
 /// (crash / SIGKILL / power loss) while the hotspot was up, NetworkManager can
-/// keep the "YoYoPod Setup" connection saved and active, leaving the device
+/// keep the "yoyopod Setup" connection saved and active, leaving the device
 /// broadcasting the onboarding AP and holding the radio. Deleting the profile
 /// also deactivates it. Best-effort; if NM is unreachable there is nothing to do.
 pub fn cleanup_stale_setup_ap() {
@@ -926,7 +926,7 @@ impl Hotspot {
                 }
                 // Don't leave the AP profile behind if it cannot be brought up
                 // (e.g. a missing polkit "share" grant): delete it before failing
-                // so repeated attempts don't accumulate orphaned "YoYoPod Setup"
+                // so repeated attempts don't accumulate orphaned "yoyopod Setup"
                 // connections.
                 ActiveWait::Deactivated => {
                     delete_profile(&connection, &path);
@@ -971,7 +971,7 @@ impl ApCredentials {
             .map(|byte| ALPHABET[(*byte as usize) % ALPHABET.len()] as char)
             .collect();
         Self {
-            ssid: format!("YoYoPod-{suffix}"),
+            ssid: format!("yoyopod-{suffix}"),
             password,
         }
     }
@@ -1050,7 +1050,7 @@ fn build_station_settings(request: &ConnectRequest) -> Result<NmSettings, String
         HashMap::from([
             (
                 "id".to_string(),
-                owned(format!("YoYoPod {}", request.ssid))?,
+                owned(format!("yoyopod {}", request.ssid))?,
             ),
             ("type".to_string(), owned("802-11-wireless".to_string())?),
             ("autoconnect".to_string(), owned(true)?),
@@ -1202,12 +1202,12 @@ mod tests {
     #[test]
     fn qr_payload_is_a_wifi_join_uri_with_escaping() {
         let credentials = ApCredentials {
-            ssid: "YoYoPod-1A2B".to_string(),
+            ssid: "yoyopod-1A2B".to_string(),
             password: "ABCD2345".to_string(),
         };
         assert_eq!(
             credentials.qr_payload(),
-            "WIFI:S:YoYoPod-1A2B;T:WPA;P:ABCD2345;;"
+            "WIFI:S:yoyopod-1A2B;T:WPA;P:ABCD2345;;"
         );
         assert_eq!(escape_qr("a;b:c"), "a\\;b\\:c");
     }
@@ -1215,7 +1215,7 @@ mod tests {
     #[test]
     fn generated_credentials_are_typeable_and_unique_enough() {
         let credentials = ApCredentials::generate();
-        assert!(credentials.ssid.starts_with("YoYoPod-"));
+        assert!(credentials.ssid.starts_with("yoyopod-"));
         assert_eq!(credentials.password.len(), 8);
         assert!((8..=63).contains(&credentials.password.len()));
     }

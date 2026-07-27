@@ -1,6 +1,6 @@
 # Review issue templates
 
-Four YAML issue forms for the YoYoPod codebase review workflow:
+Four YAML issue forms for the yoyopod codebase review workflow:
 
 | Template | Lens |
 |---|---|

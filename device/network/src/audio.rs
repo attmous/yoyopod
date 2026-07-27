@@ -640,14 +640,14 @@ fn applied_settings(
 fn endpoints(bluetooth: &BluetoothState) -> AudioEndpoints {
     let mut outputs = vec![AudioEndpoint {
         endpoint_id: "builtin-speaker".to_string(),
-        name: "YoYoPod speaker".to_string(),
+        name: "yoyopod speaker".to_string(),
         kind: "builtin".to_string(),
         accessory_id: None,
         available: true,
     }];
     let mut inputs = vec![AudioEndpoint {
         endpoint_id: "builtin-microphone".to_string(),
-        name: "YoYoPod microphone".to_string(),
+        name: "yoyopod microphone".to_string(),
         kind: "builtin".to_string(),
         accessory_id: None,
         available: true,
@@ -713,7 +713,7 @@ fn write_asound_config(
         };
     let config = format!(
         concat!(
-            "# Managed by YoYoPod. Bluetooth addresses stay on-device.\n\
+            "# Managed by yoyopod. Bluetooth addresses stay on-device.\n\
 </usr/share/alsa/alsa.conf>\n\
 pcm.yoyopod_bt_a2dp {{\n  type bluealsa\n  device \"{output}\"\n  profile \"a2dp\"\n}}\n\
 pcm.yoyopod_bt_sco_playback {{\n  type bluealsa\n  device \"{sco_playback}\"\n  profile \"sco\"\n}}\n\

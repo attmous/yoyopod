@@ -1,4 +1,4 @@
-# YoyoPod Device UI — Mockups & Design Specs
+# yoyopod Device UI — Mockups & Design Specs
 
 Static HTML design specs for the 240 × 280 Whisplay panel UI. Nothing in this
 folder is compiled into the device binary — these are the canonical design

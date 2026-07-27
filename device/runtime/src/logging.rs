@@ -6,11 +6,11 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 pub fn startup_marker(version: &str, pid: u32) -> String {
-    format!("===== YoYoPod starting (version={version}, pid={pid}) =====")
+    format!("===== yoyopod starting (version={version}, pid={pid}) =====")
 }
 
 pub fn shutdown_marker(pid: u32) -> String {
-    format!("===== YoYoPod shutting down (pid={pid}) =====")
+    format!("===== yoyopod shutting down (pid={pid}) =====")
 }
 
 pub fn log_info(message: impl AsRef<str>) {

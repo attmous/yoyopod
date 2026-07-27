@@ -1,4 +1,4 @@
-# YoYoPod Documentation
+# yoyopod Documentation
 
 This page is the entry point for repo documentation.
 

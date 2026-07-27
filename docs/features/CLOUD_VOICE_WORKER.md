@@ -37,7 +37,7 @@ YOYOPOD_CLOUD_ASK_MAX_RESPONSE_CHARS=480
 
 For the prod lane, use `/etc/default/yoyopod-prod` instead.
 
-OpenAI requires disclosure that TTS output is AI-generated. YoYoPod should be
+OpenAI requires disclosure that TTS output is AI-generated. yoyopod should be
 treated as an AI voice device whenever cloud TTS is enabled.
 
 The file is group-readable because the remote dev workflow sources lane

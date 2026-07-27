@@ -11,7 +11,7 @@ calling:
     sip_username: ""
     sip_identity: ""
     transport: "tcp"
-    display_name: "YoYoPod"
+    display_name: "yoyopod"
   network:
     stun_server: "stun.linphone.org"
     enable_ice: true

@@ -1,6 +1,6 @@
 # Enclosure Wireframes
 
-Industrial-design wireframes for the YoYoPod handheld shell — flat
+Industrial-design wireframes for the yoyopod handheld shell — flat
 orthographic views (top, front, right, back, bottom) plus a depth
 section. These are design directions, not a released mechanical
 contract: no CAD, no tooling drawings, no tolerance sign-off.

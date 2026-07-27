@@ -1,5 +1,5 @@
 [Unit]
-Description=YoyoPod prod rollback after repeated slot failures
+Description=yoyopod prod rollback after repeated slot failures
 StartLimitIntervalSec=3600
 StartLimitBurst=2
 

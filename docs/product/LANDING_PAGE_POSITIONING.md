@@ -14,7 +14,7 @@ Best choice:
 The first device before a smartphone
 
 ## Subheadline
-YoYoPod is a parent-managed companion device for kids ages 7–14, built for safe communication, live location, and everyday audio without the distraction, complexity, or screen addiction of a smartphone.
+yoyopod is a parent-managed companion device for kids ages 7–14, built for safe communication, live location, and everyday audio without the distraction, complexity, or screen addiction of a smartphone.
 
 ## Primary CTA ideas
 - Join the waitlist
@@ -44,13 +44,13 @@ See your child’s live-ish location when they’re out in the world, without ha
 A tiny screen, simple controls, and a focused experience help kids feel grown-up without pulling them into endless apps and notifications.
 
 4. Music and audio they actually enjoy
-At home, YoYoPod is a simple everyday audio companion for music, stories, and listening.
+At home, yoyopod is a simple everyday audio companion for music, stories, and listening.
 
 5. Parent-managed from a mobile app
 Contacts, settings, and device controls stay in the parent’s hands, where they belong.
 
 ## Three-line positioning block
-For kids, YoYoPod feels like freedom.
+For kids, yoyopod feels like freedom.
 For parents, it feels like reassurance.
 For both, it’s a better step before the smartphone years.
 
@@ -59,7 +59,7 @@ Step 1
 Parents set up approved contacts and device settings in the mobile app.
 
 Step 2
-Kids carry YoYoPod as their simple, everyday companion for listening, calling, and getting around independently.
+Kids carry yoyopod as their simple, everyday companion for listening, calling, and getting around independently.
 
 Step 3
 Parents can reach them, hear from them, and check their location when it matters.
@@ -67,7 +67,7 @@ Parents can reach them, hear from them, and check their location when it matters
 ## Why not just give them a phone?
 Because most kids don’t need the internet in their pocket before they need independence.
 
-YoYoPod is built for the stage before a smartphone:
+yoyopod is built for the stage before a smartphone:
 - communication without app overload
 - location without social media
 - independence without endless distraction
@@ -79,7 +79,7 @@ What parents actually need is simple:
 - Can they reach me?
 - Can I see where they are?
 
-YoYoPod is built around those questions first.
+yoyopod is built around those questions first.
 
 ## Kid/parent dual-sided section
 For kids:
@@ -95,7 +95,7 @@ For parents:
 - More confidence when kids are out on their own
 
 ## Anti-positioning
-YoYoPod is not:
+yoyopod is not:
 - a smartphone replacement
 - a toy
 - a screen-first device
@@ -109,7 +109,7 @@ Headline:
 The first device before a smartphone
 
 Subheadline:
-YoYoPod is a parent-managed companion device for kids ages 7–14, built for safe communication, live location, and everyday audio without the distraction, complexity, or screen addiction of a smartphone.
+yoyopod is a parent-managed companion device for kids ages 7–14, built for safe communication, live location, and everyday audio without the distraction, complexity, or screen addiction of a smartphone.
 
 CTA:
 Join the waitlist
@@ -122,7 +122,7 @@ Parents want their kids to have independence, communication, and safety.
 They don’t want to hand over distraction, social media, and addictive screens to get it.
 
 3. Solution section
-YoYoPod gives kids a focused device for communication, audio, and mobility, while giving parents the confidence to stay connected.
+yoyopod gives kids a focused device for communication, audio, and mobility, while giving parents the confidence to stay connected.
 
 4. Value props
 - Safe communication
@@ -149,7 +149,7 @@ Headline:
 The first device before a smartphone
 
 Subheadline:
-YoYoPod helps kids stay connected, independent, and easy to reach with simple calling, voice messages, live location, and everyday audio — all under parent control.
+yoyopod helps kids stay connected, independent, and easy to reach with simple calling, voice messages, live location, and everyday audio — all under parent control.
 
 CTA:
 Join the waitlist
@@ -165,7 +165,7 @@ Headline:
 Give them independence. Not a smartphone.
 
 Subheadline:
-YoYoPod is a simple connected device for kids ages 7–14 that gives families safe communication, location visibility, and peace of mind before the smartphone years.
+yoyopod is a simple connected device for kids ages 7–14 that gives families safe communication, location visibility, and peace of mind before the smartphone years.
 
 CTA:
 Join the waitlist

@@ -106,7 +106,7 @@ impl BluetoothAutoConnectBackoff {
 pub fn run(config_dir: &str) -> Result<()> {
     let mut stdout = io::stdout().lock();
     // A previous run that died ungracefully (crash / SIGKILL / power loss) while
-    // the setup hotspot was up can leave the "YoYoPod Setup" AP profile behind in
+    // the setup hotspot was up can leave the "yoyopod Setup" AP profile behind in
     // NetworkManager, keeping the device broadcasting and holding the radio. Clear
     // any such stale profile on startup, before the runtime loop begins.
     crate::provisioning::cleanup_stale_setup_ap();

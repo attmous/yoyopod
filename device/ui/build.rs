@@ -16,7 +16,7 @@ fn main() {
         manifest_dir
             .join("native/lvgl")
             .canonicalize()
-            .expect("canonicalize YoYoPod LVGL build directory"),
+            .expect("canonicalize yoyopod LVGL build directory"),
     );
     let lvgl_source_dir = env::var("YOYOPOD_LVGL_SOURCE_DIR")
         .or_else(|_| env::var("LVGL_SOURCE_DIR"))

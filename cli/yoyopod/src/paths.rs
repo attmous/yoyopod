@@ -27,7 +27,7 @@ impl Default for PiPaths {
             error_log_file: "logs/yoyopod_errors.log".to_string(),
             pid_file: "/opt/yoyopod-dev/state/yoyopod.pid".to_string(),
             screenshot_path: "/tmp/yoyopod_screenshot.png".to_string(),
-            startup_marker: "YoYoPod Rust runtime starting".to_string(),
+            startup_marker: "yoyopod Rust runtime starting".to_string(),
             kill_processes: vec!["yoyopod-runtime".to_string()],
             rsync_exclude: vec![
                 ".git/".to_string(),

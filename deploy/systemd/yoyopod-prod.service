@@ -1,5 +1,5 @@
 [Unit]
-Description=YoyoPod prod lane (slot deploy, OTA-ready)
+Description=yoyopod prod lane (slot deploy, OTA-ready)
 After=network-online.target sound.target bluetooth.service bluealsa.service pisugar-server.service
 Wants=network-online.target bluetooth.service bluealsa.service
 Conflicts=yoyopod-dev.service
@@ -17,7 +17,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=YOYOPOD_ASOUND_CONFIG=/var/lib/yoyopod/audio/asoundrc
 Environment=ALSA_CONFIG_PATH=/var/lib/yoyopod/audio/asoundrc
 WorkingDirectory=/
-ExecStartPre=/usr/bin/env bash -lc 'install -d -m 0755 /var/lib/yoyopod/audio; test -s /var/lib/yoyopod/audio/asoundrc || printf "# Managed by YoYoPod.\n</usr/share/alsa/alsa.conf>\n" > /var/lib/yoyopod/audio/asoundrc'
+ExecStartPre=/usr/bin/env bash -lc 'install -d -m 0755 /var/lib/yoyopod/audio; test -s /var/lib/yoyopod/audio/asoundrc || printf "# Managed by yoyopod.\n</usr/share/alsa/alsa.conf>\n" > /var/lib/yoyopod/audio/asoundrc'
 ExecStart=/usr/bin/env bash -lc 'exec "$${YOYOPOD_ROOT:-/opt/yoyopod-prod}/current/bin/launch"'
 Restart=on-failure
 RestartSec=5

@@ -3,7 +3,7 @@ use clap::Parser;
 
 #[derive(Debug, Parser)]
 #[command(name = "yoyopod-network-host")]
-#[command(about = "YoYoPod Rust Network Host")]
+#[command(about = "yoyopod Rust Network Host")]
 struct Args {
     #[arg(long, default_value = "config")]
     config_dir: String,

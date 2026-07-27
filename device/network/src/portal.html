@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>YoYoPod Wi‑Fi Setup</title>
+<title>yoyopod Wi‑Fi Setup</title>
 <style>
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
@@ -45,7 +45,7 @@
 </head>
 <body>
   <main class="card">
-    <h1>Connect your YoYoPod</h1>
+    <h1>Connect your yoyopod</h1>
     <p class="lead">Choose your home Wi‑Fi network and enter the password.</p>
 
     <div class="list" id="list"><p class="muted">Looking for networks…</p></div>
@@ -63,7 +63,7 @@
     </form>
 
     <div class="status" id="status" role="status" aria-live="polite"></div>
-    <p class="muted">After you tap Connect, the YoYoPod leaves this hotspot to join your network — check its screen.</p>
+    <p class="muted">After you tap Connect, the yoyopod leaves this hotspot to join your network — check its screen.</p>
   </main>
 
 <script>
@@ -182,7 +182,7 @@
       .then(function (res) {
         if (res.ok) {
           statusEl.className = "status ok";
-          statusEl.textContent = "Connecting… you can close this page and watch your YoYoPod.";
+          statusEl.textContent = "Connecting… you can close this page and watch your yoyopod.";
         } else {
           statusEl.className = "status err";
           statusEl.textContent = (res.body && res.body.error) || "Could not connect.";
@@ -192,7 +192,7 @@
       .catch(function () {
         // Tearing down the hotspot drops this connection — that's the success path.
         statusEl.className = "status ok";
-        statusEl.textContent = "Connecting… you can close this page and watch your YoYoPod.";
+        statusEl.textContent = "Connecting… you can close this page and watch your yoyopod.";
       });
   });
 </script>

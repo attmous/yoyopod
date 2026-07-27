@@ -4,7 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "YoYoPod operator CLI: dev-machine to Pi orchestration."
+description = "yoyopod operator CLI: dev-machine to Pi orchestration."
 
 [[bin]]
 name = "yoyopod"

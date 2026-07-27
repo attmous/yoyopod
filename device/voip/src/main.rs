@@ -7,7 +7,7 @@ fn main() -> Result<()> {
 
     #[derive(Debug, Parser)]
     #[command(name = "yoyopod-voip-host")]
-    #[command(about = "YoYoPod Rust VoIP host")]
+    #[command(about = "yoyopod Rust VoIP host")]
     struct Args {}
 
     let _args = Args::parse();

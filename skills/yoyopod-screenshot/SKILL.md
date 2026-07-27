@@ -1,6 +1,6 @@
 ---
 name: yoyopod-screenshot
-description: Capture a screenshot of the active YoYoPod display from Raspberry Pi
+description: Capture a screenshot of the active yoyopod display from Raspberry Pi
 disable-model-invocation: true
 allowed-tools:
   - Read
