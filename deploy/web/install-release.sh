@@ -8,6 +8,7 @@ PREVIOUS_LINK="${APP_ROOT}/previous"
 DEPLOYED_SHA_FILE="${APP_ROOT}/DEPLOYED_SHA"
 EXPECTED_USER="yoyopod-web-deploy"
 NGINX_CONFIG="/etc/nginx/sites-available/yoyopod"
+MAX_RELEASE_HISTORY=5
 
 usage() {
     echo "usage: install-release.sh ARCHIVE RELEASE_ID COMMIT_SHA" >&2
@@ -209,15 +210,14 @@ assert_status "yoyopod.com" "/imprint/" "200"
 assert_status "docs.yoyopod.com" "/" "200"
 assert_status "docs.yoyopod.com" "/this-page-does-not-exist/" "404"
 
-# The built page is the source of truth for whether signup is exposed. Closed
-# releases must see nginx's 404. Once the form is deliberately enabled, a safe
-# GET reaches the collector and must return its method-not-allowed response;
-# no test address is submitted.
-if grep -Fq 'action="/api/notify"' "${release_dir}/root/index.html"; then
-    assert_status "yoyopod.com" "/api/notify" "405"
-else
-    assert_status "yoyopod.com" "/api/notify" "404"
+# The active nginx mode is independent of release history. A closed endpoint
+# must return 404. Once the reviewed loopback proxy is enabled, a safe GET
+# must reach the collector's method-not-allowed response; no address is sent.
+notify_expected="404"
+if grep -qF 'proxy_pass http://127.0.0.1:8787' "${NGINX_CONFIG}"; then
+    notify_expected="405"
 fi
+assert_status "yoyopod.com" "/api/notify" "${notify_expected}"
 
 if [[ "$(readlink -f "${CURRENT_LINK}" 2>/dev/null || true)" != "${release_dir}" ]]; then
     echo "current release changed during deployment verification" >&2
@@ -229,6 +229,36 @@ if [[ -n "${old_target}" && "${old_target}" == "${RELEASES_DIR}/"* && -d "${old_
     ln -s "releases/$(basename -- "${old_target}")" "${previous_tmp}"
     mv -Tf "${previous_tmp}" "${PREVIOUS_LINK}"
 fi
+
+# Keep a bounded rollback history. Current and previous are protected
+# explicitly even if an operator has changed their ordering or timestamps.
+declare -A keep_releases=()
+for protected_link in "${CURRENT_LINK}" "${PREVIOUS_LINK}"; do
+    protected_target="$(readlink -f "${protected_link}" 2>/dev/null || true)"
+    if [[ "${protected_target}" == "${RELEASES_DIR}/"* && -d "${protected_target}" ]]; then
+        keep_releases["$(basename -- "${protected_target}")"]=1
+    fi
+done
+
+mapfile -t release_names < <(
+    find "${RELEASES_DIR}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' |
+        sort -r
+)
+for release_name in "${release_names[@]}"; do
+    [[ "${release_name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{7,79}$ ]] || continue
+    if [[ -n "${keep_releases[${release_name}]+present}" ]]; then
+        continue
+    fi
+    if (( ${#keep_releases[@]} < MAX_RELEASE_HISTORY )); then
+        keep_releases["${release_name}"]=1
+    fi
+done
+for release_name in "${release_names[@]}"; do
+    [[ "${release_name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{7,79}$ ]] || continue
+    if [[ -z "${keep_releases[${release_name}]+present}" ]]; then
+        rm -rf --one-file-system -- "${RELEASES_DIR}/${release_name}"
+    fi
+done
 
 sha_tmp="${APP_ROOT}/.DEPLOYED_SHA-${RELEASE_ID}-$$"
 printf '%s\n' "${COMMIT_SHA}" > "${sha_tmp}"

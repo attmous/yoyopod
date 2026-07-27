@@ -89,7 +89,8 @@ sites even though they share the VPS.
 Incoming archives abandoned for more than 60 minutes are pruned on the next
 upload. The installer also holds `/opt/yoyopod-web/.deploy.lock` across the
 entire atomic switch, health check, rollback, and metadata update, so manual
-and Actions deployments cannot overlap.
+and Actions deployments cannot overlap. It retains five immutable releases,
+always protecting both `current` and `previous`.
 
 ## Manual deployment from Windows
 
@@ -179,7 +180,7 @@ The remote installer checks all of these before accepting a release:
 - `docs.yoyopod.com/` → `200`;
 - a missing docs route → `404`;
 - `yoyopod.com/api/notify` → `404` while collection is disabled, or a safe
-  `GET` → `405` when the built page exposes the deliberately enabled form.
+  `GET` → `405` when the live nginx loopback proxy is deliberately enabled.
 
 Before TLS, checks address the local HTTP vhost directly. Once Certbot
 certificate directives exist, they address the local HTTPS vhost with SNI and
