@@ -31,8 +31,9 @@ Read these rules first
 - `rules/logging.md`
 - `rules/deploy.md`
 
-Canonical deploy/debug skills (NOTE: many call deleted yoyopod_cli
+Canonical workflow/deploy/debug skills (NOTE: many call deleted yoyopod_cli
 commands during the rebuild — see ROADMAP.md)
+- `skills/yoyopod-pr-review/SKILL.md`
 - `skills/yoyopod-deploy/SKILL.md`
 - `skills/yoyopod-sync/SKILL.md`
 - `skills/yoyopod-logs/SKILL.md`

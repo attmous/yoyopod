@@ -66,6 +66,17 @@ impl ColorScheme {
             return rgb;
         }
 
+        if color_use == ColorUse::Fill
+            && matches!(
+                role,
+                roles::STOPWATCH_ACTION_PRIMARY
+                    | roles::STOPWATCH_ACTION_PAUSE
+                    | roles::STOPWATCH_ACTION_RESET
+            )
+        {
+            return rgb;
+        }
+
         if rgb == INK_LIGHT {
             if color_use == ColorUse::Fill && role == roles::SYS_SCRIM {
                 return INK_ON_ACCENT;
@@ -97,6 +108,9 @@ impl ColorScheme {
     }
 
     pub fn resolve_accent(self, role: &'static str, rgb: u32) -> u32 {
+        if role == roles::SCENE_BACKDROP && rgb == 0xFFFFFF {
+            return 0xFFFFFF;
+        }
         if self == Self::Light {
             return rgb;
         }
@@ -165,6 +179,8 @@ fn foreground_policy(role: &'static str) -> ForegroundPolicy {
             | roles::CALL_BUTTON_ICON
             | roles::SYS_BADGE
             | roles::ASK_HERO_ICON
+            | roles::STOPWATCH_ACTION_ICON
+            | roles::STOPWATCH_ACTION_LABEL
     );
     let secondary_on_accent = matches!(
         role,
@@ -298,6 +314,14 @@ mod tests {
         assert_eq!(
             ColorScheme::Dark.resolve_accent(roles::ASK_HERO, SURFACE_0_LIGHT),
             SURFACE_0_LIGHT
+        );
+    }
+
+    #[test]
+    fn flashlight_white_bypasses_dark_theme_substitution() {
+        assert_eq!(
+            ColorScheme::Dark.resolve_accent(roles::SCENE_BACKDROP, 0xFFFFFF),
+            0xFFFFFF
         );
     }
 }

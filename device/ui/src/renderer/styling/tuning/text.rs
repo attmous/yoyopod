@@ -57,6 +57,24 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
                 );
                 ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
             }
+            roles::STOPWATCH_READOUT => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_40,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
+            }
+            roles::STOPWATCH_PHASE_LABEL | roles::STOPWATCH_ACTION_LABEL => {
+                ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
+                ffi::lv_obj_set_style_text_font(
+                    obj.as_ptr(),
+                    &ffi::lv_font_montserrat_12,
+                    SELECTOR,
+                );
+                ffi::lv_obj_set_style_text_align(obj.as_ptr(), ffi::LV_TEXT_ALIGN_CENTER, SELECTOR);
+            }
             roles::WATCH_BATTERY_LABEL => {
                 ffi::lv_label_set_long_mode(obj.as_ptr(), ffi::LV_LABEL_LONG_MODE_CLIP);
                 ffi::lv_obj_set_style_text_font(
@@ -85,7 +103,8 @@ pub(crate) fn apply(obj: NonNull<ffi::lv_obj_t>, role: &'static str) -> bool {
             | roles::HERO_NEXT
             | roles::REPLAY_DELETE_ICON
             | roles::REPLAY_PLAY_ICON
-            | roles::REPLAY_NEXT_ICON => {
+            | roles::REPLAY_NEXT_ICON
+            | roles::STOPWATCH_ACTION_ICON => {
                 ffi::lv_image_set_inner_align(obj.as_ptr(), ffi::LV_IMAGE_ALIGN_CENTER);
             }
             roles::CONTEXT_LABEL

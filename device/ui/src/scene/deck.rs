@@ -3,8 +3,8 @@ use crate::components::widgets::{
     call_overlay as call_overlay_widget, card as card_widget, companion as companion_widget,
     empty_state as empty_state_widget, list_row as list_row_widget,
     player_hero as player_hero_widget, recording_panel as recording_panel_widget,
-    watch_face as watch_face_widget, wheel_item as wheel_item_widget, CompanionModel,
-    RecordingPanelProps, WheelItemSlot,
+    stopwatch as stopwatch_widget, watch_face as watch_face_widget,
+    wheel_item as wheel_item_widget, CompanionModel, RecordingPanelProps, WheelItemSlot,
 };
 use crate::engine::{AnimSlot, Element, Key};
 use crate::scene::roles;
@@ -64,6 +64,7 @@ pub enum ItemRender {
     SetupAbout(SetupAboutModel),
     WifiSetup(WifiSetupModel),
     WatchFace(WatchFaceModel),
+    Stopwatch(StopwatchModel),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,6 +195,31 @@ pub enum PlayerHeroVariant {
 pub struct ButtonModel {
     pub title: String,
     pub icon_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StopwatchModel {
+    pub display: String,
+    pub phase: StopwatchVisualPhase,
+    pub actions: Vec<ButtonModel>,
+    pub focus_index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StopwatchVisualPhase {
+    Ready,
+    Running,
+    Paused,
+}
+
+impl StopwatchVisualPhase {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Ready => "Ready",
+            Self::Running => "Running",
+            Self::Paused => "Paused",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -480,6 +506,7 @@ fn deck_item_element(
             crate::components::widgets::setup_wifi(model).key(item.key.clone())
         }
         ItemRender::WatchFace(model) => watch_face_widget(model).key(item.key.clone()),
+        ItemRender::Stopwatch(model) => stopwatch_widget(model).key(item.key.clone()),
         ItemRender::Button(button) => Element::new(ElementKind::Container, Some(roles::BUTTON))
             .key(item.key.clone())
             .child(

@@ -24,6 +24,8 @@ pub enum UiScreen {
     RecentTracks,
     NowPlaying,
     Ask,
+    Stopwatch,
+    Flashlight,
     Talk,
     Contacts,
     CallHistory,
@@ -45,7 +47,7 @@ pub enum UiScreen {
 }
 
 impl UiScreen {
-    pub const ALL: [Self; 25] = [
+    pub const ALL: [Self; 27] = [
         Self::Hub,
         Self::Listen,
         Self::Playlists,
@@ -53,6 +55,8 @@ impl UiScreen {
         Self::RecentTracks,
         Self::NowPlaying,
         Self::Ask,
+        Self::Stopwatch,
+        Self::Flashlight,
         Self::Talk,
         Self::Contacts,
         Self::CallHistory,
@@ -82,6 +86,8 @@ impl UiScreen {
             Self::RecentTracks => "recent_tracks",
             Self::NowPlaying => "now_playing",
             Self::Ask => "ask",
+            Self::Stopwatch => "stopwatch",
+            Self::Flashlight => "flashlight",
             Self::Talk => "talk",
             Self::Contacts => "contacts",
             Self::CallHistory => "call_history",
@@ -298,7 +304,7 @@ pub struct DisplayInfo {
     pub height: usize,
 }
 
-pub const UI_SCHEMA_VERSION: u16 = 3;
+pub const UI_SCHEMA_VERSION: u16 = 4;
 
 fn default_ui_schema_version() -> u16 {
     UI_SCHEMA_VERSION
@@ -1089,6 +1095,31 @@ fn default_repeat_mask() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn schema_and_default_hub_expose_six_destinations() {
+        assert_eq!(UI_SCHEMA_VERSION, 4);
+        assert_eq!(
+            HubRuntimeSnapshot::default()
+                .cards
+                .iter()
+                .map(|card| card.key.as_str())
+                .collect::<Vec<_>>(),
+            vec!["listen", "talk", "ask", "stopwatch", "flashlight", "setup",]
+        );
+        assert_eq!(
+            serde_json::from_str::<UiScreen>("\"stopwatch\"")
+                .expect("stopwatch screen must deserialize")
+                .as_str(),
+            "stopwatch"
+        );
+        assert_eq!(
+            serde_json::from_str::<UiScreen>("\"flashlight\"")
+                .expect("flashlight screen must deserialize")
+                .as_str(),
+            "flashlight"
+        );
+    }
 
     #[test]
     fn command_round_trip_decodes_typed_input_action() {

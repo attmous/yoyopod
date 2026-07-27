@@ -57,6 +57,17 @@ pub(crate) const RECORDING_CONTEXT: &str = "recording_context";
 pub(crate) const RECORDING_TIMER_DOT: &str = "recording_timer_dot";
 pub(crate) const RECORDING_TIMER: &str = "recording_timer";
 pub(crate) const RECORDING_HINT: &str = "recording_hint";
+pub(crate) const STOPWATCH_PANEL: &str = "stopwatch_panel";
+pub(crate) const STOPWATCH_READOUT: &str = "stopwatch_readout";
+pub(crate) const STOPWATCH_PHASE: &str = "stopwatch_phase";
+pub(crate) const STOPWATCH_PHASE_DOT: &str = "stopwatch_phase_dot";
+pub(crate) const STOPWATCH_PHASE_LABEL: &str = "stopwatch_phase_label";
+pub(crate) const STOPWATCH_CONTROL_TRAY: &str = "stopwatch_control_tray";
+pub(crate) const STOPWATCH_ACTION_PRIMARY: &str = "stopwatch_action_primary";
+pub(crate) const STOPWATCH_ACTION_PAUSE: &str = "stopwatch_action_pause";
+pub(crate) const STOPWATCH_ACTION_RESET: &str = "stopwatch_action_reset";
+pub(crate) const STOPWATCH_ACTION_ICON: &str = "stopwatch_action_icon";
+pub(crate) const STOPWATCH_ACTION_LABEL: &str = "stopwatch_action_label";
 
 pub(crate) const ASK_SURFACE: &str = "ask_surface";
 pub(crate) const ASK_HERO: &str = "ask_hero";

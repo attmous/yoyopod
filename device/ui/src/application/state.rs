@@ -41,6 +41,8 @@ pub struct UiRuntime {
     pub(crate) companion_preview: Option<CompanionVariant>,
     pub(crate) theme_preview: Option<ColorScheme>,
     pub(crate) ask_offline_started_ms: Option<u64>,
+    pub(crate) stopwatch: StopwatchState,
+    pub(crate) flashlight_started_ms: Option<u64>,
     pub(crate) last_focus_identity: Option<String>,
     pub(crate) focus_prompt_sequence: u64,
     pub(crate) accessibility_events: Vec<UiEvent>,
@@ -101,6 +103,136 @@ pub(crate) enum HomeMode {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum StopwatchPhase {
+    #[default]
+    Idle,
+    Running,
+    Paused,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct StopwatchDisplayKey {
+    hour_mode: bool,
+    units: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct StopwatchState {
+    pub phase: StopwatchPhase,
+    accumulated_ms: u64,
+    started_at_ms: Option<u64>,
+    displayed: StopwatchDisplayKey,
+}
+
+impl StopwatchState {
+    pub fn elapsed_ms(&self, now_ms: u64) -> u64 {
+        self.accumulated_ms.saturating_add(
+            self.started_at_ms
+                .map(|started_at_ms| now_ms.saturating_sub(started_at_ms))
+                .unwrap_or(0),
+        )
+    }
+
+    pub fn display_text(&self, now_ms: u64) -> String {
+        format_stopwatch_duration(self.elapsed_ms(now_ms))
+    }
+
+    pub const fn action_count(&self) -> usize {
+        if matches!(self.phase, StopwatchPhase::Paused) {
+            2
+        } else {
+            1
+        }
+    }
+
+    pub const fn action_label(&self, focus_index: usize) -> &'static str {
+        match (self.phase, focus_index) {
+            (StopwatchPhase::Idle, _) => "Start",
+            (StopwatchPhase::Running, _) => "Pause",
+            (StopwatchPhase::Paused, 0) => "Resume",
+            (StopwatchPhase::Paused, _) => "Reset",
+        }
+    }
+
+    pub const fn action_icon(&self, focus_index: usize) -> &'static str {
+        match (self.phase, focus_index) {
+            (StopwatchPhase::Running, _) => "pause_sm",
+            (StopwatchPhase::Paused, index) if index > 0 => "reset_sm",
+            _ => "play_sm",
+        }
+    }
+
+    pub fn activate(&mut self, focus_index: usize, now_ms: u64) {
+        match (self.phase, focus_index) {
+            (StopwatchPhase::Idle, _) => {
+                self.phase = StopwatchPhase::Running;
+                self.started_at_ms = Some(now_ms);
+            }
+            (StopwatchPhase::Running, _) => {
+                self.accumulated_ms = self.elapsed_ms(now_ms);
+                self.started_at_ms = None;
+                self.phase = StopwatchPhase::Paused;
+                self.displayed = display_key(self.accumulated_ms);
+            }
+            (StopwatchPhase::Paused, 0) => {
+                self.phase = StopwatchPhase::Running;
+                self.started_at_ms = Some(now_ms);
+            }
+            (StopwatchPhase::Paused, _) => self.reset(),
+        }
+    }
+
+    pub fn advance_display(&mut self, now_ms: u64) -> bool {
+        if self.phase != StopwatchPhase::Running {
+            return false;
+        }
+        let displayed = display_key(self.elapsed_ms(now_ms));
+        if displayed == self.displayed {
+            return false;
+        }
+        self.displayed = displayed;
+        true
+    }
+
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+fn display_key(elapsed_ms: u64) -> StopwatchDisplayKey {
+    if elapsed_ms < 3_600_000 {
+        StopwatchDisplayKey {
+            hour_mode: false,
+            units: elapsed_ms / 100,
+        }
+    } else {
+        StopwatchDisplayKey {
+            hour_mode: true,
+            units: elapsed_ms / 1_000,
+        }
+    }
+}
+
+pub(crate) fn format_stopwatch_duration(elapsed_ms: u64) -> String {
+    let total_seconds = elapsed_ms / 1_000;
+    if elapsed_ms < 3_600_000 {
+        format!(
+            "{:02}:{:02}.{}",
+            total_seconds / 60,
+            total_seconds % 60,
+            (elapsed_ms / 100) % 10
+        )
+    } else {
+        format!(
+            "{:02}:{:02}:{:02}",
+            total_seconds / 3_600,
+            (total_seconds / 60) % 60,
+            total_seconds % 60
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DirtyState {
     pub full: bool,
     pub app_state: bool,
@@ -117,6 +249,7 @@ pub struct DirtyState {
     pub focus: bool,
     pub input: bool,
     pub animation: bool,
+    pub stopwatch: bool,
 }
 
 impl DirtyState {
@@ -136,6 +269,7 @@ impl DirtyState {
             || self.focus
             || self.input
             || self.animation
+            || self.stopwatch
     }
 
     pub(crate) fn animation_only(mut self) -> bool {
@@ -160,6 +294,7 @@ impl DirtyState {
         self.overlay = true;
         self.navigation = true;
         self.focus = true;
+        self.stopwatch = true;
     }
 
     pub(crate) fn mark_patch_domain(&mut self, domain: RuntimeSnapshotDomain) {
@@ -250,6 +385,8 @@ impl Default for UiRuntime {
             companion_preview: None,
             theme_preview: None,
             ask_offline_started_ms: None,
+            stopwatch: StopwatchState::default(),
+            flashlight_started_ms: None,
             last_focus_identity: None,
             focus_prompt_sequence: 0,
             accessibility_events: Vec::new(),

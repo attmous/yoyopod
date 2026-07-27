@@ -30,6 +30,8 @@ pub const ROUTES: [Route; UiScreen::ALL.len()] = [
     route(UiScreen::RecentTracks),
     route(UiScreen::NowPlaying),
     route(UiScreen::Ask),
+    route(UiScreen::Stopwatch),
+    route(UiScreen::Flashlight),
     route(UiScreen::Talk),
     route(UiScreen::Contacts),
     route(UiScreen::CallHistory),
@@ -280,6 +282,8 @@ const HUB_SELECT: &[SelectionTarget] = &[
     SelectionTarget::PushScreen(UiScreen::Listen),
     SelectionTarget::PushScreen(UiScreen::Talk),
     SelectionTarget::PushScreen(UiScreen::Ask),
+    SelectionTarget::PushScreen(UiScreen::Stopwatch),
+    SelectionTarget::PushScreen(UiScreen::Flashlight),
     SelectionTarget::PushScreen(UiScreen::Setup),
 ];
 const LISTEN_SELECT: &[SelectionTarget] = &[
@@ -412,6 +416,7 @@ const fn select_targets(screen: UiScreen) -> &'static [SelectionTarget] {
         UiScreen::RecentTracks => RECENT_TRACKS_SELECT,
         UiScreen::NowPlaying => NOW_PLAYING_SELECT,
         UiScreen::Ask => ASK_SELECT,
+        UiScreen::Stopwatch | UiScreen::Flashlight => NO_SELECT,
         UiScreen::VoiceNote => VOICE_NOTE_SELECT,
         UiScreen::Contacts => CONTACTS_SELECT,
         UiScreen::TalkContact => TALK_CONTACT_SELECT,
@@ -513,6 +518,7 @@ const fn focus_policy(screen: UiScreen) -> FocusPolicy {
         | UiScreen::TalkContact
         | UiScreen::Replay
         | UiScreen::VoiceNote
+        | UiScreen::Stopwatch
         | UiScreen::IncomingCall
         | UiScreen::InCall
         | UiScreen::Setup
@@ -528,6 +534,7 @@ const fn focus_policy(screen: UiScreen) -> FocusPolicy {
         | UiScreen::NowPlaying => FocusPolicy::Wrap,
         UiScreen::SetupWifi
         | UiScreen::Ask
+        | UiScreen::Flashlight
         | UiScreen::OutgoingCall
         | UiScreen::Loading
         | UiScreen::Error => FocusPolicy::None,
@@ -557,5 +564,18 @@ const fn persistence(screen: UiScreen) -> Persistence {
         UiScreen::NowPlaying => Persistence::KeepAlive,
         UiScreen::Loading | UiScreen::Error => Persistence::Singleton,
         _ => Persistence::Ephemeral,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_screen_has_a_registered_route_and_hub_has_six_destinations() {
+        validate_routes().expect("all screens must have exactly one route");
+        assert_eq!(UiScreen::ALL.len(), 27);
+        assert_eq!(route_for(UiScreen::Hub).select.len(), 6);
+        assert_eq!(screen_capabilities().len(), UiScreen::ALL.len());
     }
 }

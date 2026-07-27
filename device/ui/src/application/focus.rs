@@ -46,6 +46,8 @@ pub fn focus_count(
             .unwrap_or(0),
         UiScreen::RecentTracks => snapshot.music.recent_tracks.len(),
         UiScreen::NowPlaying => 3,
+        UiScreen::Stopwatch => 1,
+        UiScreen::Flashlight => 0,
         UiScreen::Talk => snapshot.call.contacts.len(),
         UiScreen::Contacts => snapshot.call.contacts.len(),
         UiScreen::CallHistory => snapshot.call.history.len(),

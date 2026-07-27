@@ -9,8 +9,8 @@ use crate::components;
 use crate::components::widgets::CompanionVariant;
 use crate::router::history::HistoryEntry;
 use crate::scene::{
-    defaults_for, GlobalClock, HudBattery, HudConnectivity, HudConnectivityKind, HudStatus,
-    SceneGraph, SceneId,
+    defaults_for, ButtonModel, GlobalClock, HudBattery, HudConnectivity, HudConnectivityKind,
+    HudStatus, SceneGraph, SceneId, StopwatchVisualPhase,
 };
 use crate::theme::ColorScheme;
 use crate::DirtyRegion;
@@ -19,11 +19,18 @@ use super::state::{DirtyState, HomeMode, SystemOverlayPreview, UiRuntime};
 use super::{input_router, navigator, snapshot, UiScreen};
 
 const RUNTIME_LINK_ERROR: &str = "Lost runtime link";
+const FLASHLIGHT_TIMEOUT_MS: u64 = 300_000;
 const WATCH_ORBIT_DIRTY_REGION: DirtyRegion = DirtyRegion {
     x: 2,
     y: 22,
     w: 236,
     h: 236,
+};
+const STOPWATCH_TIMER_DIRTY_REGION: DirtyRegion = DirtyRegion {
+    x: 12,
+    y: 52,
+    w: 216,
+    h: 58,
 };
 
 #[derive(Debug, Clone)]
@@ -118,6 +125,14 @@ impl UiRuntime {
             return;
         }
         self.last_input_ms = Some(now_ms);
+        if self.active_screen == UiScreen::Flashlight {
+            navigator::exit_flashlight(self);
+            self.dirty.input = true;
+            self.dirty.navigation = true;
+            self.dirty.focus = true;
+            self.refresh_focus_accessibility();
+            return;
+        }
         if crate::router::is_overlay_screen(self.active_screen) {
             match action {
                 InputAction::Home => {
@@ -160,15 +175,20 @@ impl UiRuntime {
         };
         match input_router::route(action, &route_state) {
             input_router::AppCommand::AdvanceFocus => {
-                if !self.begin_wheel_roll(now_ms) {
+                if self.active_screen == UiScreen::Stopwatch && self.stopwatch_action_count() == 1 {
+                    self.activate_stopwatch_action(now_ms);
+                } else if !self.begin_wheel_roll(now_ms) {
                     navigator::advance_focus(self);
                 }
             }
-            input_router::AppCommand::SelectFocused => navigator::select_focused(self),
+            input_router::AppCommand::SelectFocused => navigator::select_focused(self, now_ms),
             input_router::AppCommand::GoHome => navigator::go_home(self),
             input_router::AppCommand::GoBack => navigator::go_back_or_emit(self),
             input_router::AppCommand::PttPress => navigator::handle_ptt_press(self),
             input_router::AppCommand::PttRelease => navigator::handle_ptt_release(self),
+        }
+        if previous_screen != UiScreen::Flashlight && self.active_screen == UiScreen::Flashlight {
+            self.flashlight_started_ms = Some(now_ms);
         }
         if self.active_screen != previous_screen {
             self.pending_wheel_roll = None;
@@ -216,6 +236,55 @@ impl UiRuntime {
             self.dirty.focus = true;
             self.refresh_focus_accessibility();
         }
+    }
+
+    pub fn advance_stopwatch(&mut self, now_ms: u64) -> bool {
+        if self.active_screen != UiScreen::Stopwatch {
+            return false;
+        }
+        let changed = self.stopwatch.advance_display(now_ms);
+        if changed {
+            self.dirty.stopwatch = true;
+        }
+        changed
+    }
+
+    pub fn advance_flashlight(&mut self, now_ms: u64) -> bool {
+        if self.active_screen != UiScreen::Flashlight {
+            return false;
+        }
+        let started_ms = *self.flashlight_started_ms.get_or_insert(now_ms);
+        if now_ms.saturating_sub(started_ms) < FLASHLIGHT_TIMEOUT_MS {
+            return false;
+        }
+        navigator::exit_flashlight(self);
+        self.last_input_ms = Some(now_ms);
+        self.dirty.navigation = true;
+        self.dirty.focus = true;
+        true
+    }
+
+    pub(crate) fn clear_flashlight(&mut self) {
+        self.flashlight_started_ms = None;
+    }
+
+    pub(crate) fn activate_stopwatch_action(&mut self, now_ms: u64) {
+        self.stopwatch.activate(self.focus_index, now_ms);
+        self.focus_index = self
+            .focus_index
+            .min(self.stopwatch.action_count().saturating_sub(1));
+    }
+
+    pub(crate) fn reset_stopwatch(&mut self) {
+        self.stopwatch.reset();
+    }
+
+    pub(crate) fn stopwatch_action_count(&self) -> usize {
+        self.stopwatch.action_count()
+    }
+
+    pub(crate) fn stopwatch_action_label(&self, focus_index: usize) -> &'static str {
+        self.stopwatch.action_label(focus_index)
     }
 
     pub fn advance_ask_state(&mut self, now_ms: u64) -> bool {
@@ -465,6 +534,18 @@ impl UiRuntime {
                 self.selected_playlist.as_ref(),
                 self.selected_contact.as_ref(),
                 self.replay_index,
+                self.stopwatch.display_text(now_ms),
+                match self.stopwatch.phase {
+                    super::state::StopwatchPhase::Idle => StopwatchVisualPhase::Ready,
+                    super::state::StopwatchPhase::Running => StopwatchVisualPhase::Running,
+                    super::state::StopwatchPhase::Paused => StopwatchVisualPhase::Paused,
+                },
+                (0..self.stopwatch.action_count())
+                    .map(|index| ButtonModel {
+                        title: self.stopwatch.action_label(index).to_string(),
+                        icon_key: self.stopwatch.action_icon(index).to_string(),
+                    })
+                    .collect(),
                 defaults,
             )
         };
@@ -482,7 +563,7 @@ impl UiRuntime {
         {
             active.timelines.push(pending.timeline.clone());
         }
-        let hud = if watch_face_visible {
+        let hud = if watch_face_visible || rendered_screen == UiScreen::Flashlight {
             crate::scene::HudScene::new(
                 crate::engine::Element::new(
                     crate::ElementKind::Container,
@@ -558,6 +639,16 @@ impl UiRuntime {
                 if self.active_screen == UiScreen::Hub && self.home_mode == HomeMode::Ambient {
                     (self.dirty.animation_only() && orbit_is_only_animation)
                         .then_some(WATCH_ORBIT_DIRTY_REGION)
+                } else if self.active_screen == UiScreen::Stopwatch && self.dirty.stopwatch {
+                    let mut remaining = self.dirty;
+                    remaining.stopwatch = false;
+                    if !remaining.any() {
+                        Some(STOPWATCH_TIMER_DIRTY_REGION)
+                    } else {
+                        remaining
+                            .render_region(self.active_screen)
+                            .map(|region| region.union(STOPWATCH_TIMER_DIRTY_REGION))
+                    }
                 } else {
                     self.dirty.render_region(self.active_screen)
                 };
@@ -1151,6 +1242,14 @@ mod tests {
             .find_map(|child| find_role(child, role))
     }
 
+    fn contains_text(element: &crate::engine::Element, expected: &str) -> bool {
+        element.props.text.as_deref() == Some(expected)
+            || element
+                .children
+                .iter()
+                .any(|child| contains_text(child, expected))
+    }
+
     #[test]
     fn focused_home_card_emits_one_spoken_label_per_focus_change() {
         let mut runtime = UiRuntime::default();
@@ -1524,20 +1623,326 @@ mod tests {
     #[test]
     fn home_focus_wraps_and_select_opens_category() {
         let mut runtime = UiRuntime::default();
-        for now_ms in [100, 200, 300, 400, 500] {
+        for now_ms in [100, 200, 300, 400, 500, 600, 700] {
             runtime.handle_input(InputAction::Advance, now_ms);
         }
         assert_eq!(runtime.focus_index, 0);
 
-        runtime.handle_input(InputAction::Select, 600);
+        runtime.handle_input(InputAction::Select, 800);
         assert_eq!(runtime.active_screen, UiScreen::Listen);
+    }
+
+    #[test]
+    fn stopwatch_exposes_live_actions_and_a_monotonic_readout() {
+        let mut runtime = UiRuntime::default();
+        runtime.home_mode = HomeMode::Focused;
+        runtime.focus_index = 3;
+        runtime.handle_input(InputAction::Select, 0);
+        assert_eq!(runtime.active_screen, UiScreen::Stopwatch);
+
+        let idle = flatten::flatten(&runtime.scene_graph(0));
+        assert!(contains_text(&idle, "00:00.0"));
+        assert!(contains_text(&idle, "Start"));
+
+        runtime.handle_input(InputAction::Select, 100);
+        let running = flatten::flatten(&runtime.scene_graph(1_350));
+        assert!(contains_text(&running, "00:01.2"));
+        assert!(contains_text(&running, "Pause"));
+
+        runtime.handle_input(InputAction::Select, 1_350);
+        let paused = flatten::flatten(&runtime.scene_graph(2_000));
+        assert!(contains_text(&paused, "00:01.2"));
+        assert!(contains_text(&paused, "Resume"));
+        assert!(contains_text(&paused, "Reset"));
+    }
+
+    #[test]
+    fn stopwatch_single_tap_activates_the_only_ready_and_running_action() {
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::Stopwatch,
+            ..UiRuntime::default()
+        };
+
+        runtime.handle_input(InputAction::Advance, 100);
+        assert_eq!(runtime.stopwatch_action_label(0), "Pause");
+        assert_eq!(runtime.stopwatch.display_text(1_100), "00:01.0");
+
+        runtime.handle_input(InputAction::Advance, 1_100);
+        assert_eq!(runtime.stopwatch_action_label(0), "Resume");
+        assert_eq!(runtime.stopwatch_action_label(1), "Reset");
+        assert_eq!(runtime.stopwatch.display_text(9_000), "00:01.0");
+    }
+
+    #[test]
+    fn stopwatch_pause_resume_and_reset_preserve_elapsed_time_without_tick_drift() {
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::Stopwatch,
+            ..UiRuntime::default()
+        };
+
+        runtime.handle_input(InputAction::Select, 100);
+        runtime.handle_input(InputAction::Select, 975);
+        assert_eq!(runtime.stopwatch.display_text(1_200), "00:00.8");
+
+        runtime.handle_input(InputAction::Select, 1_200);
+        assert_eq!(runtime.stopwatch.display_text(1_550), "00:01.2");
+        runtime.handle_input(InputAction::Select, 1_550);
+        assert_eq!(runtime.stopwatch.display_text(5_000), "00:01.2");
+
+        runtime.handle_input(InputAction::Advance, 5_100);
+        assert_eq!(runtime.focus_index, 1);
+        runtime.handle_input(InputAction::Select, 5_200);
+        assert_eq!(runtime.stopwatch.display_text(9_000), "00:00.0");
+        assert_eq!(runtime.stopwatch_action_label(0), "Start");
+        assert_eq!(runtime.focus_index, 0);
+    }
+
+    #[test]
+    fn stopwatch_format_switches_to_hours_at_exactly_one_hour() {
+        use crate::application::state::format_stopwatch_duration;
+
+        assert_eq!(format_stopwatch_duration(0), "00:00.0");
+        assert_eq!(format_stopwatch_duration(61_234), "01:01.2");
+        assert_eq!(format_stopwatch_duration(3_599_999), "59:59.9");
+        assert_eq!(format_stopwatch_duration(3_600_000), "01:00:00");
+        assert_eq!(format_stopwatch_duration(90_061_000), "25:01:01");
+    }
+
+    #[test]
+    fn stopwatch_requests_only_timer_region_when_visible_text_changes() {
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::Stopwatch,
+            ..UiRuntime::default()
+        };
+        runtime.mark_clean();
+        runtime.handle_input(InputAction::Select, 100);
+        runtime.mark_clean();
+
+        assert!(!runtime.advance_stopwatch(199));
+        assert!(runtime.frame_request(199).is_none());
+        assert!(runtime.advance_stopwatch(200));
+        let frame = runtime.frame_request(200).expect("first tenth frame");
+        assert_eq!(
+            frame.dirty_region,
+            Some(DirtyRegion {
+                x: 12,
+                y: 52,
+                w: 216,
+                h: 58,
+            })
+        );
+        runtime.mark_clean();
+
+        assert!(!runtime.advance_stopwatch(275));
+        assert!(runtime.frame_request(275).is_none());
+        assert!(runtime.advance_stopwatch(300));
+        runtime.mark_clean();
+
+        assert!(runtime.advance_stopwatch(3_600_100));
+        runtime.mark_clean();
+        assert!(!runtime.advance_stopwatch(3_600_199));
+        assert!(runtime.advance_stopwatch(3_601_100));
+    }
+
+    #[test]
+    fn stopwatch_resets_on_home_back_call_and_error_preemption() {
+        fn running_runtime() -> UiRuntime {
+            let mut runtime = UiRuntime {
+                active_screen: UiScreen::Stopwatch,
+                ..UiRuntime::default()
+            };
+            runtime.handle_input(InputAction::Select, 100);
+            assert_eq!(runtime.stopwatch.display_text(1_100), "00:01.0");
+            runtime
+        }
+
+        let mut home = running_runtime();
+        home.handle_input(InputAction::Home, 1_200);
+        assert_eq!(home.active_screen, UiScreen::Hub);
+        assert_eq!(home.stopwatch.display_text(9_000), "00:00.0");
+
+        let mut back = UiRuntime::default();
+        back.home_mode = HomeMode::Focused;
+        back.focus_index = 3;
+        back.handle_input(InputAction::Select, 0);
+        back.handle_input(InputAction::Select, 100);
+        back.handle_input(InputAction::Back, 1_200);
+        assert_eq!(back.active_screen, UiScreen::Hub);
+        assert_eq!(back.stopwatch.display_text(9_000), "00:00.0");
+
+        let mut call = running_runtime();
+        let mut call_snapshot = call.snapshot.call.clone();
+        call_snapshot.state = "incoming".to_string();
+        call.apply_patch(RuntimeSnapshotPatch::Call(call_snapshot));
+        assert_eq!(call.active_screen, UiScreen::IncomingCall);
+        assert_eq!(call.stopwatch.display_text(9_000), "00:00.0");
+
+        let mut error = running_runtime();
+        error.apply_patch(RuntimeSnapshotPatch::Overlay(OverlayRuntimeSnapshot {
+            error: "worker_error".to_string(),
+            code: "worker_error".to_string(),
+            source: "runtime".to_string(),
+            ..OverlayRuntimeSnapshot::default()
+        }));
+        assert_eq!(error.active_screen, UiScreen::Error);
+        assert_eq!(error.stopwatch.display_text(9_000), "00:00.0");
+    }
+
+    #[test]
+    fn stopwatch_accessibility_labels_follow_the_visible_actions() {
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::Stopwatch,
+            ..UiRuntime::default()
+        };
+        runtime.refresh_focus_accessibility();
+        assert_eq!(
+            runtime.take_accessibility_events(),
+            vec![UiEvent::FocusChanged(UiFocusChanged::new(
+                "ui-focus-1",
+                "Start"
+            ))]
+        );
+
+        runtime.handle_input(InputAction::Select, 100);
+        assert_eq!(
+            runtime.take_accessibility_events(),
+            vec![UiEvent::FocusChanged(UiFocusChanged::new(
+                "ui-focus-2",
+                "Pause"
+            ))]
+        );
+        runtime.handle_input(InputAction::Select, 200);
+        assert_eq!(
+            runtime.take_accessibility_events(),
+            vec![UiEvent::FocusChanged(UiFocusChanged::new(
+                "ui-focus-3",
+                "Resume"
+            ))]
+        );
+        runtime.handle_input(InputAction::Advance, 300);
+        assert_eq!(
+            runtime.take_accessibility_events(),
+            vec![UiEvent::FocusChanged(UiFocusChanged::new(
+                "ui-focus-4",
+                "Reset"
+            ))]
+        );
+    }
+
+    #[test]
+    fn flashlight_scene_is_unconditional_white_and_hides_all_chrome() {
+        let mut runtime = UiRuntime::default();
+        runtime.home_mode = HomeMode::Focused;
+        runtime.focus_index = 4;
+        runtime.handle_input(InputAction::Select, 0);
+        assert_eq!(runtime.active_screen, UiScreen::Flashlight);
+
+        for theme in ["Light", "Dark"] {
+            runtime.snapshot.settings.theme = theme.to_string();
+            let graph = runtime.scene_graph(1);
+            assert_eq!(
+                graph.active.backdrop,
+                crate::scene::Backdrop::Solid(0xFFFFFF)
+            );
+            let flattened = flatten::flatten(&graph);
+            assert_eq!(count_visible_role(&flattened, roles::STATUS_BAR), 0);
+            assert_eq!(count_visible_role(&flattened, roles::DECK_BAR), 0);
+        }
+    }
+
+    #[test]
+    fn every_resolved_input_exits_flashlight_with_its_home_icon_focused() {
+        for action in [
+            InputAction::Advance,
+            InputAction::Select,
+            InputAction::Home,
+            InputAction::Back,
+            InputAction::PttPress,
+            InputAction::PttRelease,
+        ] {
+            let mut runtime = UiRuntime::default();
+            runtime.home_mode = HomeMode::Focused;
+            runtime.focus_index = 4;
+            runtime.handle_input(InputAction::Select, 100);
+            assert_eq!(runtime.active_screen, UiScreen::Flashlight);
+
+            runtime.handle_input(action, 200);
+            assert_eq!(runtime.active_screen, UiScreen::Hub, "{action:?}");
+            assert_eq!(runtime.home_mode, HomeMode::Focused, "{action:?}");
+            assert_eq!(runtime.focus_index, 4, "{action:?}");
+            assert!(runtime.screen_stack.is_empty(), "{action:?}");
+        }
+    }
+
+    #[test]
+    fn flashlight_exits_at_exactly_five_minutes() {
+        let mut runtime = UiRuntime::default();
+        runtime.home_mode = HomeMode::Focused;
+        runtime.focus_index = 4;
+        runtime.handle_input(InputAction::Select, 100);
+
+        assert!(!runtime.advance_flashlight(300_099));
+        assert_eq!(runtime.active_screen, UiScreen::Flashlight);
+        assert!(runtime.advance_flashlight(300_100));
+        assert_eq!(runtime.active_screen, UiScreen::Hub);
+        assert_eq!(runtime.focus_index, 4);
+        assert_eq!(runtime.home_mode, HomeMode::Focused);
+
+        runtime.advance_home_state(300_120);
+        assert_eq!(runtime.home_mode, HomeMode::Focused);
+        assert_eq!(runtime.focus_index, 4);
+    }
+
+    #[test]
+    fn flashlight_is_pruned_before_call_and_error_preemption() {
+        fn flashlight_runtime() -> UiRuntime {
+            let mut runtime = UiRuntime::default();
+            runtime.home_mode = HomeMode::Focused;
+            runtime.focus_index = 4;
+            runtime.handle_input(InputAction::Select, 100);
+            runtime
+        }
+
+        let mut call = flashlight_runtime();
+        let mut incoming = call.snapshot.call.clone();
+        incoming.state = "incoming".to_string();
+        call.apply_patch(RuntimeSnapshotPatch::Call(incoming.clone()));
+        assert_eq!(call.active_screen, UiScreen::IncomingCall);
+        assert!(call
+            .screen_stack
+            .iter()
+            .all(|entry| entry.screen != UiScreen::Flashlight));
+        incoming.state = "idle".to_string();
+        call.apply_patch(RuntimeSnapshotPatch::Call(incoming));
+        assert_eq!(call.active_screen, UiScreen::Hub);
+        assert_eq!(call.focus_index, 4);
+        assert!(call.screen_stack.is_empty());
+
+        let mut error = flashlight_runtime();
+        error.apply_patch(RuntimeSnapshotPatch::Overlay(OverlayRuntimeSnapshot {
+            error: "worker_error".to_string(),
+            code: "worker_error".to_string(),
+            source: "runtime".to_string(),
+            ..OverlayRuntimeSnapshot::default()
+        }));
+        assert_eq!(error.active_screen, UiScreen::Error);
+        assert!(error
+            .screen_stack
+            .iter()
+            .all(|entry| entry.screen != UiScreen::Flashlight));
+        error.apply_patch(RuntimeSnapshotPatch::Overlay(
+            OverlayRuntimeSnapshot::default(),
+        ));
+        assert_eq!(error.active_screen, UiScreen::Hub);
+        assert_eq!(error.focus_index, 4);
+        assert!(error.screen_stack.is_empty());
     }
 
     #[test]
     fn setup_root_rolls_opens_volume_and_volume_steps_then_pops() {
         let mut runtime = UiRuntime::default();
         runtime.home_mode = HomeMode::Focused;
-        runtime.focus_index = 3;
+        runtime.focus_index = 5;
         runtime.handle_input(InputAction::Select, 100);
         assert_eq!(runtime.active_screen, UiScreen::Setup);
 

@@ -92,6 +92,8 @@ fn title_for_screen(
         UiScreen::RecentTracks => "Recent".to_string(),
         UiScreen::NowPlaying => snapshot.music.title.clone(),
         UiScreen::Ask => snapshot.voice.headline.clone(),
+        UiScreen::Stopwatch => "Stopwatch".to_string(),
+        UiScreen::Flashlight => "Flashlight".to_string(),
         UiScreen::Talk => "Talk".to_string(),
         UiScreen::Contacts => "More People".to_string(),
         UiScreen::CallHistory => "Recents".to_string(),
@@ -131,13 +133,15 @@ fn deck_focus_for_screen(screen: UiScreen, home_focus: Option<usize>) -> Option<
         | UiScreen::OutgoingCall
         | UiScreen::InCall => Some(1),
         UiScreen::Ask => Some(2),
+        UiScreen::Stopwatch => Some(3),
+        UiScreen::Flashlight => Some(4),
         UiScreen::Setup
         | UiScreen::SetupVolume
         | UiScreen::SetupCompanion
         | UiScreen::SetupContacts
         | UiScreen::SetupTheme
         | UiScreen::SetupAbout
-        | UiScreen::SetupWifi => Some(3),
+        | UiScreen::SetupWifi => Some(5),
         UiScreen::Loading | UiScreen::Error => None,
     }
 }

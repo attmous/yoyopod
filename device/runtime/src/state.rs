@@ -1980,6 +1980,18 @@ impl RuntimeState {
                 "accent": 0xFFD000,
             }),
             json!({
+                "key": "stopwatch",
+                "title": "Stopwatch",
+                "subtitle": "",
+                "accent": 0x78D5D0,
+            }),
+            json!({
+                "key": "flashlight",
+                "title": "Flashlight",
+                "subtitle": "",
+                "accent": 0xFFB45C,
+            }),
+            json!({
                 "key": "setup",
                 "title": "Setup",
                 "subtitle": "",
