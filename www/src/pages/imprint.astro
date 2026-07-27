@@ -4,27 +4,39 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 ---
 
-<BaseLayout title="Imprint | yoyopod" description="Legal notice (Impressum) for yoyopod.com.">
+<BaseLayout title="Impressum | yoyopod" description="Impressum / legal notice for yoyopod.com.">
 	<Header />
 	<main class="section legal">
 		<div class="container narrow">
-			<h1>Imprint</h1>
-			<div class="card placeholder">
-				<p>
-					<strong>Placeholder: complete before public launch.</strong> This page must carry the
-					operator details required by § 5 DDG (Angaben gemäß § 5 DDG).
-				</p>
+			<div lang="de">
+				<h1>Impressum</h1>
+				<p class="ddg">Angaben gemäß § 5 DDG</p>
+
+				<dl>
+					<dt>Name</dt>
+					<dd>Moustafa Attia</dd>
+					<dt>Anschrift</dt>
+					<dd>Hermannstraße 6, 73033 Göppingen, Deutschland</dd>
+					<dt>Kontakt</dt>
+					<dd><a href="mailto:privacy@yoyopod.com">privacy@yoyopod.com</a></dd>
+				</dl>
 			</div>
 
-			<h2>Operator</h2>
-			<dl>
-				<dt>Name</dt>
-				<dd>[name]</dd>
-				<dt>Address</dt>
-				<dd>[street, postal code, city, Germany]</dd>
-				<dt>Contact</dt>
-				<dd>[email address]</dd>
-			</dl>
+			<hr class="lang-sep" />
+
+			<div lang="en">
+				<h2>Imprint (English)</h2>
+				<p class="ddg">Information in accordance with § 5 DDG (German Digital Services Act)</p>
+
+				<dl>
+					<dt>Name</dt>
+					<dd>Moustafa Attia</dd>
+					<dt>Address</dt>
+					<dd>Hermannstraße 6, 73033 Göppingen, Germany</dd>
+					<dt>Contact</dt>
+					<dd><a href="mailto:privacy@yoyopod.com">privacy@yoyopod.com</a></dd>
+				</dl>
+			</div>
 		</div>
 	</main>
 	<Footer />
@@ -33,20 +45,22 @@ import Footer from '../components/Footer.astro';
 <style>
 	.legal h2 {
 		font-size: 1.3rem;
-		margin-top: 2.25rem;
+		margin-top: 0;
 	}
 
 	.legal dd {
 		color: var(--ink-75);
 	}
 
-	.placeholder {
-		border: 2px dashed var(--cyan);
-		margin-bottom: 2rem;
+	.ddg {
+		color: var(--ink-50);
+		font-size: 0.9rem;
 	}
 
-	.placeholder p {
-		margin-bottom: 0;
+	.lang-sep {
+		border: none;
+		border-top: 1.5px solid var(--ink-22);
+		margin-block: 2.5rem;
 	}
 
 	dl {

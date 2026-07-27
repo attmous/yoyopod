@@ -63,8 +63,11 @@ hardware**.
 
 ## Before public launch
 
-- Fill in the operator details on `/imprint` (§ 5 DDG) and `/privacy` (DSGVO)
-  — both pages ship as clearly marked placeholders.
+- `/imprint` (§ 5 DDG) and `/privacy` (DSGVO) are filled in. Remaining
+  chores: create the `privacy@yoyopod.com` mailbox, accept Hetzner's data
+  processing agreement (AVV), and keep nginx logrotate at 14 days (see
+  `docs/operations/WEB_DEPLOY.md`).
+- Both legal pages are bilingual: German first, English below.
 - `src/consts.ts` holds the configurable URLs (`DOCS_URL`, `GITHUB_URL`).
 
 ## Ideas parked for v2
