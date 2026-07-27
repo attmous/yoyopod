@@ -1,10 +1,10 @@
-# YoYoPod Product Definition
+# yoyopod Product Definition
 
-YoYoPod is a parent-managed first independent device for kids ages 7–14, built for the gap before a smartphone. It gives children a focused sense of independence through simple communication, music, and mobility, while giving parents peace of mind through reliable calling and live location visibility, without the distraction, complexity, and screen addiction of a full smartphone.
+yoyopod is a parent-managed first independent device for kids ages 7–14, built for the gap before a smartphone. It gives children a focused sense of independence through simple communication, music, and mobility, while giving parents peace of mind through reliable calling and live location visibility, without the distraction, complexity, and screen addiction of a full smartphone.
 
 Short version:
 
-YoYoPod is the first device before a smartphone: a simple, walkie-talkie-like companion for kids that enables safe communication, music, and location sharing under parent control.
+yoyopod is the first device before a smartphone: a simple, walkie-talkie-like companion for kids that enables safe communication, music, and location sharing under parent control.
 
 Positioning line:
 

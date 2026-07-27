@@ -1,11 +1,11 @@
-# YoYoPod
+# yoyopod
 
 <p align="center">
-  <img src="docs/assets/readme/yoyopod-device-tour.gif" alt="YoYoPod running on the current prototype hardware" width="320">
+  <img src="docs/assets/readme/yoyopod-device-tour.gif" alt="yoyopod running on the current prototype hardware" width="320">
 </p>
 
 <p align="center">
-  <strong>YoYoPod is a tiny Pi-powered music player and phone for kids aged 7-13.</strong>
+  <strong>yoyopod is a tiny Pi-powered music player and phone for kids aged 7-13.</strong>
 </p>
 
 <p align="center">
@@ -21,11 +21,11 @@
   <img alt="PiSugar" src="https://img.shields.io/badge/PiSugar-power%20integration-159957">
 </p>
 
-YoYoPod is being built by software-engineer fathers in Stuttgart, Germany. The idea is simple: give kids a dedicated little device for music, voice messages, and staying in touch, without throwing them into the chaos of a general-purpose phone.
+yoyopod is being built by software-engineer fathers in Stuttgart, Germany. The idea is simple: give kids a dedicated little device for music, voice messages, and staying in touch, without throwing them into the chaos of a general-purpose phone.
 
 The current prototype runs on a Raspberry Pi Zero 2W and uses the Whisplay HAT because it gives us a great bundle for fast iteration: screen, side push-to-talk button, microphone, and speaker. That is our prototype path, not a permanent promise about the final hardware. The long-term device may ship with its own display and driver.
 
-## What YoYoPod Can Do
+## What yoyopod Can Do
 
 - `Music playback` - local-first music, playlists, recent tracks, shuffle, and a simple now-playing flow.
 - `Calls and voice messages` - family-friendly calling, quick voice notes, and a contact-first Talk experience.
@@ -37,15 +37,15 @@ The current prototype runs on a Raspberry Pi Zero 2W and uses the Whisplay HAT b
 
 | Hub | Listen |
 | --- | --- |
-| ![YoYoPod hub screen](docs/assets/readme/hub.png) | ![YoYoPod listen screen](docs/assets/readme/listen.png) |
+| ![yoyopod hub screen](docs/assets/readme/hub.png) | ![yoyopod listen screen](docs/assets/readme/listen.png) |
 
 | Talk | Setup |
 | --- | --- |
-| ![YoYoPod talk screen](docs/assets/readme/talk.png) | ![YoYoPod setup screen](docs/assets/readme/setup.png) |
+| ![yoyopod talk screen](docs/assets/readme/talk.png) | ![yoyopod setup screen](docs/assets/readme/setup.png) |
 
 ## The Software Stack
 
-This repository contains the software that runs the current YoYoPod prototype:
+This repository contains the software that runs the current yoyopod prototype:
 
 - `device/runtime/` - Rust runtime for config, worker supervision, app state, event routing, and UI snapshots.
 - `device/{ui,media,voip,network,cloud,power,speech}/` - Rust domain sidecar hosts for UI, media, VoIP, network, cloud, power, and speech/Ask.
@@ -144,14 +144,14 @@ When docs disagree, trust current code and the most recently merged PRs. The [`d
 
 ## License
 
-YoYoPod is licensed under the **GNU Affero General Public License v3.0 or later** (AGPLv3+). See [LICENSE](LICENSE) for the full text.
+yoyopod is licensed under the **GNU Affero General Public License v3.0 or later** (AGPLv3+). See [LICENSE](LICENSE) for the full text.
 
-The project's own source could be permissively licensed in isolation, but YoYoPod's VoIP backend links [liblinphone](https://gitlab.linphone.org/BC/public/liblinphone), which is itself AGPLv3 (with a paid commercial-license alternative from Belledonne Communications). Distributed binaries that include the liblinphone link therefore fall under AGPLv3 as a combined work.
+The project's own source could be permissively licensed in isolation, but yoyopod's VoIP backend links [liblinphone](https://gitlab.linphone.org/BC/public/liblinphone), which is itself AGPLv3 (with a paid commercial-license alternative from Belledonne Communications). Distributed binaries that include the liblinphone link therefore fall under AGPLv3 as a combined work.
 
 In practical terms:
 
 - The full source is published in this repository.
-- Anyone receiving a YoYoPod device or firmware artifact is entitled to the corresponding source under the same license.
+- Anyone receiving a yoyopod device or firmware artifact is entitled to the corresponding source under the same license.
 - Modifications and derivative works must remain AGPLv3 and must publish their source.
 
-Section 13 of the AGPL ("network use") triggers source-disclosure for software that interacts with users remotely over a network. YoYoPod's typical use (a local user holding the device) does not trigger that clause; a hypothetical future cloud companion that exposes liblinphone functionality remotely would.
+Section 13 of the AGPL ("network use") triggers source-disclosure for software that interacts with users remotely over a network. yoyopod's typical use (a local user holding the device) does not trigger that clause; a hypothetical future cloud companion that exposes liblinphone functionality remotely would.

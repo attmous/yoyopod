@@ -1,6 +1,6 @@
 # Raspberry Pi Dev Workflow
 
-This guide covers the normal dev-machine-to-board loop for YoYoPod.
+This guide covers the normal dev-machine-to-board loop for yoyopod.
 
 For fresh-board bootstrap, lane structure, and rollback, read:
 

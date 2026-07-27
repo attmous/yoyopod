@@ -1,6 +1,6 @@
 # Design Docs
 
-UI design targets and visual references for YoYoPod on Whisplay
+UI design targets and visual references for yoyopod on Whisplay
 (240x280 portrait, single side button).
 
 - [`previews/`](previews/) - static HTML visual references for each

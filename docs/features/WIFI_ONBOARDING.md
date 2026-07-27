@@ -1,6 +1,6 @@
 # On-Device Wi-Fi Onboarding
 
-Connect a YoYoPod to home Wi-Fi with no companion app and no keyboard: on the
+Connect a yoyopod to home Wi-Fi with no companion app and no keyboard: on the
 device pick **Settings → Wi-Fi**, and it turns its own radio into a temporary
 Access Point, shows a QR code, and serves a captive-portal web page where a
 phone selects the network and enters the password.

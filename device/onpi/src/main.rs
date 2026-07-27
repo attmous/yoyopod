@@ -18,7 +18,7 @@ mod ui_host;
 #[derive(Debug, Parser)]
 #[command(
     name = "yoyopod-on-pi",
-    about = "YoYoPod on-Pi companion: staged hardware validation.",
+    about = "yoyopod on-Pi companion: staged hardware validation.",
     version
 )]
 struct Cli {

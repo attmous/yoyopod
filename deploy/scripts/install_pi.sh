@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # deploy/scripts/install_pi.sh
 #
-# Curl-friendly Raspberry Pi installer for the YoYoPod dev/prod lane layout.
+# Curl-friendly Raspberry Pi installer for the yoyopod dev/prod lane layout.
 #
 # Canonical fresh-board command:
 #   curl -fsSL https://raw.githubusercontent.com/moustafattia/yoyopod-core/main/deploy/scripts/install_pi.sh | sudo -E bash -s --
@@ -19,7 +19,7 @@ SOURCE_URL="${YOYOPOD_INSTALL_SOURCE_URL:-https://codeload.github.com/${REPO}/ta
 
 usage() {
     cat <<EOF
-YoYoPod Pi installer
+yoyopod Pi installer
 
 Usage:
   curl -fsSL https://raw.githubusercontent.com/moustafattia/yoyopod-core/main/deploy/scripts/install_pi.sh | sudo -E bash -s -- [bootstrap args]
@@ -67,7 +67,7 @@ archive="${workdir}/source.tar.gz"
 source_dir="${workdir}/source"
 mkdir -p "${source_dir}"
 
-echo "install-pi: downloading YoYoPod source from ${SOURCE_URL}"
+echo "install-pi: downloading yoyopod source from ${SOURCE_URL}"
 curl -fsSL "${SOURCE_URL}" -o "${archive}"
 
 echo "install-pi: extracting installer payload"

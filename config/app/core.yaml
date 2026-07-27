@@ -2,7 +2,7 @@
 # Board overlays follow this same relative path under config/boards/<board>/.
 
 app:
-  name: "YoYoPod"
+  name: "yoyopod"
   version: "1.0.0"
 
 ui:

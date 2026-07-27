@@ -1,6 +1,6 @@
 # Repo Work Areas
 
-YoYoPod is now Rust-first for the device runtime. Use this map when deciding
+yoyopod is now Rust-first for the device runtime. Use this map when deciding
 where a change belongs.
 
 ## Primary Runtime

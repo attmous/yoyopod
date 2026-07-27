@@ -38,7 +38,7 @@ upstream LVGL itself, built from the pinned 9.5.0 source using
 
 ## lv_conf.h
 
-Minimal config enabling only what YoYoPod uses:
+Minimal config enabling only what yoyopod uses:
 - `LV_COLOR_DEPTH 16` (RGB565)
 - `LV_USE_SNAPSHOT 1` (for screenshot readback)
 - Montserrat fonts 12-40

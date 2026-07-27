@@ -61,7 +61,7 @@ impl CheckResult {
 /// Print the compact summary table for one validation stage.
 pub fn print_summary(stage: &str, results: &[CheckResult]) {
     println!();
-    println!("YoYoPod target validation summary: {stage}");
+    println!("yoyopod target validation summary: {stage}");
     println!("{}", "=".repeat(48));
     for result in results {
         println!("[{}] {}: {}", result.status, result.name, result.details);

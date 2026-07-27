@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>YoyoPod — System Overlays · Loading + Error · Implementation Spec</title>
+<title>yoyopod — System Overlays · Loading + Error · Implementation Spec</title>
 <style>
   :root {
     --panel-w: 240px;
@@ -215,7 +215,7 @@
 </head>
 <body>
 
-<h1>YoyoPod — System Overlays · Loading + Error · Implementation Spec</h1>
+<h1>yoyopod — System Overlays · Loading + Error · Implementation Spec</h1>
 <p class="muted">The last two runtime routes with no design: <code>UiScreen::Loading</code> and <code>UiScreen::Error</code>. Both are <b>overlays</b> (<code>NavigationPolicy::Overlay</code>, <code>Persistence::Singleton</code>) — they float over whatever screen was active, never replace it, and there is exactly one instance of each. Small and friendly: a kid aged 3–7 sees a gentle pause or a butter "oops", never a hang and never a stack trace. Voice speaks everything important — pre-readers complete both flows without decoding a word. Frames below sit over a plain cream stage for clarity; frame 2 shows real overlay semantics with a dimmed wheel behind. Flat system: no UI borders, no drop shadows — fills + radius only. Input model lives in <code>mockup_input_model.html</code>.</p>
 
 <!-- ============================================================ -->

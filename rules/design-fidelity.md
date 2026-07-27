@@ -20,7 +20,7 @@ match the design as closely as possible on actual hardware.
 
 - Prefer standard Figma Design links with `node-id=...`. A Figma Make link is acceptable only as a loose concept preview.
 - Extract one runtime screen at a time. Do not try to reproduce an entire board as a single device screen.
-- Map each Figma frame onto the existing YoYoPod information architecture and routes before changing code.
+- Map each Figma frame onto the existing yoyopod information architecture and routes before changing code.
 - Reuse the current navigation model. Do not introduce a second navigation system just because the Figma board is organized differently.
 - If the Figma hint text conflicts with the real one-button behavior, keep the real behavior and update the copy to match the hardware interaction.
 
@@ -59,7 +59,7 @@ match the design as closely as possible on actual hardware.
   - status chips
   - footer or hint bars
   - page dots
-- Normalize those primitives into YoYoPod theme helpers instead of duplicating one-off measurements in every screen.
+- Normalize those primitives into yoyopod theme helpers instead of duplicating one-off measurements in every screen.
 - Use the Figma design language, but compress it aggressively for `240x280`.
 - Prefer one strong focal element per screen. Avoid dashboard-style compositions on Whisplay.
 

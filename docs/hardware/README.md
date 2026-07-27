@@ -1,7 +1,7 @@
 # Hardware Docs
 
 Device-specific runtime dependencies and audio/power behaviour for
-YoYoPod, plus enclosure design directions.
+yoyopod, plus enclosure design directions.
 
 - [`AUDIO_STACK.md`](AUDIO_STACK.md) - ALSA routing, WM8960 headroom,
   and mpv output behaviour

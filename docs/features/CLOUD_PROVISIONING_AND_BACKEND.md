@@ -1,6 +1,6 @@
 # Cloud Provisioning, Backend Connection, And MQTT Telemetry
 
-This document is the device/runtime-side reference for how YoYoPod talks to the
+This document is the device/runtime-side reference for how yoyopod talks to the
 backend.
 
 It covers:
@@ -93,7 +93,7 @@ Host events include:
 
 ## MQTT Topics
 
-The backend topic contract still uses the YoYoPod device namespace:
+The backend topic contract still uses the yoyopod device namespace:
 
 - publish device events to `yoyopod/{device_id}/evt`
 - subscribe for backend commands on `yoyopod/{device_id}/cmd`

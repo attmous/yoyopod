@@ -167,7 +167,7 @@ pub fn run(
          sudo -n install -d -m 0755 {dropin_dir} && \
          sudo -n install -d -m 0755 /var/lib/yoyopod/audio && \
          if ! sudo -n test -s /var/lib/yoyopod/audio/asoundrc; then \
-           printf '# Managed by YoYoPod.\\n</usr/share/alsa/alsa.conf>\\n' \
+           printf '# Managed by yoyopod.\\n</usr/share/alsa/alsa.conf>\\n' \
            | sudo -n tee /var/lib/yoyopod/audio/asoundrc >/dev/null; \
          fi && \
          printf '[Service]\\nAmbientCapabilities=CAP_NET_BIND_SERVICE\\n' \
@@ -193,7 +193,7 @@ pub fn run(
 
     // Bluetooth audio lives outside the artifact: BlueZ provides radio/device
     // management and BlueALSA exposes paired profiles through stable ALSA PCM
-    // aliases. YoYoPod must be the source/gateway so audio flows out to a
+    // aliases. yoyopod must be the source/gateway so audio flows out to a
     // speaker or headset; advertising a sink role reverses that direction.
     // Install the explicit role drop-in idempotently and restart BlueALSA only
     // when its configuration changed (or the service is not already active).

@@ -1,6 +1,6 @@
 # Operations Docs
 
-Setup, deploy, and daily-workflow operations for YoYoPod on the Pi.
+Setup, deploy, and daily-workflow operations for yoyopod on the Pi.
 
 For the current state of the operator CLI and which capabilities are
 temporarily paused, read [`../ROADMAP.md`](../ROADMAP.md) first.

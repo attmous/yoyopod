@@ -1,4 +1,4 @@
-# YoyoPod Device UI — Implementation Handoff
+# yoyopod Device UI — Implementation Handoff
 
 For the agent (or human) implementing this design in `device/ui/`. The mockups
 in this folder are **final** as of 2026-07-15. This document is the entry

@@ -11,14 +11,14 @@ anything public about yoyopod, start here.
 | Element | Decision |
 | --- | --- |
 | Hero headline | **"The first device before a smartphone"** |
-| Subheadline | "YoYoPod is a parent-managed companion device for kids ages 7–14, built for safe communication, live location, and everyday audio without the distraction, complexity, or screen addiction of a smartphone." |
+| Subheadline | "yoyopod is a parent-managed companion device for kids ages 7–14, built for safe communication, live location, and everyday audio without the distraction, complexity, or screen addiction of a smartphone." |
 | Primary CTA | "Join the waitlist" |
 | Secondary CTA | "See how it works" |
 | Emotional alternative | "Give them independence. Not a smartphone." |
 
 The three-line positioning block:
 
-> For kids, YoYoPod feels like freedom.
+> For kids, yoyopod feels like freedom.
 > For parents, it feels like reassurance.
 > For both, it's a better step before the smartphone years.
 
@@ -38,7 +38,7 @@ Built around three questions, in this order:
 
 > Can I reach my child? · Can they reach me? · Can I see where they are?
 >
-> YoYoPod is built around those questions first.
+> yoyopod is built around those questions first.
 
 And the contrast list: *communication without app overload · location
 without social media · independence without endless distraction ·

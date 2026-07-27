@@ -1,6 +1,6 @@
 # Contributor Workflow
 
-This guide is the shortest path from fresh checkout to a credible YoYoPod contribution.
+This guide is the shortest path from fresh checkout to a credible yoyopod contribution.
 
 It is not a full architecture document and it is not a board bringup manual.
 
@@ -132,7 +132,7 @@ in the PR instead of pretending CI covered more than it did.
 
 ## What a good PR looks like here
 
-A good YoYoPod PR:
+A good yoyopod PR:
 
 - stays within one coherent problem slice
 - updates docs when the contract changes

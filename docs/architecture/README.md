@@ -1,7 +1,7 @@
 # Architecture Docs
 
 Runtime topology, package/config ownership, event flow, and the
-cross-cutting structural contracts that define how YoYoPod is composed.
+cross-cutting structural contracts that define how yoyopod is composed.
 
 - [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md) - current runtime
   shape: the Rust runtime, the worker hosts, and the operator CLI

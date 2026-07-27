@@ -5,7 +5,7 @@ use clap::{Args, Parser, Subcommand};
 #[derive(Debug, Parser)]
 #[command(
     name = "yoyopod",
-    about = "YoYoPod operator CLI: dev-machine to Pi orchestration.",
+    about = "yoyopod operator CLI: dev-machine to Pi orchestration.",
     version
 )]
 pub struct Cli {
@@ -54,7 +54,7 @@ pub struct TargetArgs {
 pub enum TargetCommand {
     /// Show repo SHA, processes, and log tail on the Pi.
     Status,
-    /// Restart the YoYoPod dev runtime service on the Pi.
+    /// Restart the yoyopod dev runtime service on the Pi.
     Restart,
     /// Tail yoyopod logs on the Pi.
     Logs(LogsArgs),

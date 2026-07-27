@@ -79,7 +79,7 @@ impl BluetoothOperationError {
     fn unavailable() -> Self {
         Self {
             code: "bluetooth_unavailable",
-            message: "Bluetooth is not available on this YoYoPod".to_string(),
+            message: "Bluetooth is not available on this yoyopod".to_string(),
         }
     }
 

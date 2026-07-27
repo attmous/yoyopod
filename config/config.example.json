@@ -1,8 +1,8 @@
 {
   "device": {
-    "name": "YoYoPod-001",
+    "name": "yoyopod-001",
     "device_id": "",
-    "model": "YoYoPod Connect"
+    "model": "yoyopod Connect"
   },
   "display": {
     "width": 320,

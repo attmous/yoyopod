@@ -1,4 +1,4 @@
-# Raspberry Pi deploy contract for YoYoPod.
+# Raspberry Pi deploy contract for yoyopod.
 # This is the shared source of truth for `yoyopod target` (Rust CLI) and the Pi skills.
 # Dev lane checkouts live under /opt/yoyopod-dev; prod slots live under /opt/yoyopod-prod.
 # Machine-specific connection overrides belong in deploy/pi-deploy.local.yaml.
@@ -22,7 +22,7 @@ kill_processes:
 log_file: logs/yoyopod.log
 error_log_file: logs/yoyopod_errors.log
 pid_file: /opt/yoyopod-dev/state/yoyopod.pid
-startup_marker: "YoYoPod starting"
+startup_marker: "yoyopod starting"
 screenshot_path: /tmp/yoyopod_screenshot.png
 rsync_exclude:
   - .git/

@@ -1,4 +1,4 @@
-# YoYoPod Roadmap
+# yoyopod Roadmap
 
 This is the project's living roadmap. It tracks the rounds of the Rust
 CLI rebuild — what's done, what's paused, when each gap closes.

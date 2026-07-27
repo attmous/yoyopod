@@ -1,6 +1,6 @@
 # Project Overview
 
-YoYoPod is an iPod-inspired Raspberry Pi application combining SIP
+yoyopod is an iPod-inspired Raspberry Pi application combining SIP
 calling and mpv-based local music playback behind a small-screen,
 button-driven UI.
 

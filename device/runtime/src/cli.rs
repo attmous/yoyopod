@@ -24,7 +24,7 @@ const SCREENSHOT_FILE: &str = "/tmp/yoyopod_screenshot.png";
 
 #[derive(Debug, Clone, Parser)]
 #[command(name = "yoyopod-runtime")]
-#[command(about = "YoYoPod Rust top-level runtime host")]
+#[command(about = "yoyopod Rust top-level runtime host")]
 pub struct Args {
     #[arg(long, default_value = "config")]
     pub config_dir: PathBuf,

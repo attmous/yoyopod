@@ -124,7 +124,7 @@ install -m 0644 -o root -g root \
 # during normal operation.
 install -d -m 0755 -o root -g root /etc/NetworkManager/dnsmasq-shared.d
 cat > "/etc/NetworkManager/dnsmasq-shared.d/010-yoyopod-captive.conf" <<'EOF'
-# Written by bootstrap_pi.sh - YoYoPod Wi-Fi setup captive portal.
+# Written by bootstrap_pi.sh - yoyopod Wi-Fi setup captive portal.
 address=/#/10.42.0.1
 EOF
 
@@ -139,7 +139,7 @@ EOF
 # user (the units are patched to run as ${INVOKING_USER}), since that user is not
 # necessarily a member of netdev; keep the netdev group as a fallback.
 cat > "/etc/polkit-1/rules.d/50-yoyopod-wifi-share.rules" <<EOF
-// Written by bootstrap_pi.sh - YoYoPod Wi-Fi setup authorization.
+// Written by bootstrap_pi.sh - yoyopod Wi-Fi setup authorization.
 polkit.addRule(function(action, subject) {
     if ((subject.user == "${INVOKING_USER}" || subject.isInGroup("netdev")) &&
         (action.id == "org.freedesktop.NetworkManager.wifi.scan" ||

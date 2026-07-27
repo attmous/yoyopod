@@ -1,9 +1,9 @@
-# YoYoPod System Architecture
+# yoyopod System Architecture
 
 **Last updated:** 2026-05-06
 **Status:** Current implementation
 
-YoYoPod is now Rust-first. The supported app runtime is the Rust
+yoyopod is now Rust-first. The supported app runtime is the Rust
 `yoyopod-runtime` binary in `device/runtime`; Python is operations tooling only.
 
 ## Runtime Owner

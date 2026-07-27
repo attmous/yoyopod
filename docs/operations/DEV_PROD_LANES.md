@@ -1,6 +1,6 @@
 # Dev and Prod Lane Contract
 
-YoYoPod boards can keep two deployment lanes installed at the same time:
+yoyopod boards can keep two deployment lanes installed at the same time:
 
 - **Dev lane**: mutable checkout for fast hardware testing from a PR branch.
 - **Prod lane**: immutable slot/OTA runtime for packaged releases.
