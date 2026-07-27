@@ -20,7 +20,7 @@ tiny_http = "0.12"
 # libudev-backed enumeration disabled so host checks and ARM64 builds stay lean.
 serialport = { version = "4.7", default-features = false }
 thiserror = "2.0"
-time = { version = "=0.3.36", features = ["formatting"] }
+time = { version = "=0.3.54", features = ["formatting"] }
 zbus = { version = "=5.12.0", features = ["blocking-api"] }
 # zbus 5.12 declares a semver-compatible macro range, but newer macro releases
 # target newer zbus internals or Rust toolchains. Pin its companion crates to
