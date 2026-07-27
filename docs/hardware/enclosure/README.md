@@ -51,6 +51,8 @@ stacked, and a larger 2500 mAh cell.
 - [`v2/yoyopod-v2-section.svg`](v2/yoyopod-v2-section.svg) (+ `.png`)
   — depth section looking down through the device, front face up,
   with the layer-by-layer ledger
+- [`v2/colorways/`](v2/colorways/) — the four finishes
+- [`v2/model/`](v2/model/) — the 3D model
 
 The v2 depth ledger, as drawn:
 
@@ -64,6 +66,50 @@ The v2 depth ledger, as drawn:
 | battery — 2500 mAh flat cell | 6.0 mm |
 | back wall | 2.5 mm |
 | **total** | **22.0 mm** |
+
+## Finishes
+
+Four colourways, all on v2 geometry. The shell and accent hexes below
+are decoded from the model materials and match the ortho drawings
+exactly.
+
+| Finish | Shell | Accent / light-pipe |
+| --- | --- | --- |
+| Cloud·Sky | `#e9edf2` | `#05cae9` |
+| Mint·Forest | `#c9e6d4` | `#1f7d5d` |
+| Bubblegum | `#f9c9da` | `#e8437f` |
+| Tangerine | `#ffd2a8` | `#f26b1d` |
+
+Shared across all four: glass `#13161f`, dark trim `#3a3742`, rubber
+`#2b2a32`.
+
+[`v2/colorways/`](v2/colorways/) holds, per finish, a recoloured
+unannotated ortho (`yoyopod-ortho-<finish>.svg` + `.png`, same 850×655
+geometry as the v2 clean ortho) and a small three-quarter product
+render (`render-<finish>.png`).
+
+## 3D Model
+
+[`v2/model/`](v2/model/) is the v2 shell as geometry — 33 904
+vertices, 12 440 faces, 78 material groups, split into `shell`,
+`glass`, `dark`, `lightpipe`, `accent`, and `rubber`.
+
+- `yoyopod-v2-<finish>.glb` — self-contained, materials embedded, one
+  per finish. GitHub previews these in the browser; start here.
+- `yoyopod-v2.obj` — shared geometry, identical for all four finishes,
+  so it is stored once
+- `yoyopod-v2-<finish>.mtl` — the per-finish material set
+
+The OBJ carries `mtllib yoyopod-v2.mtl`, so `yoyopod-v2.mtl` is
+present as the default and is a copy of the Cloud·Sky set — the OBJ
+loads with a finish applied out of the box. To load a different
+finish, either copy that finish's `.mtl` over `yoyopod-v2.mtl` or edit
+the `mtllib` line on line 1. Nothing else in the OBJ changes between
+finishes.
+
+The model is a design study exported from a browser-based stage, not
+parametric CAD: it is watertight enough to look at and to render, but
+it is not a manufacturing model and has no feature history.
 
 ## Shared Notes
 
@@ -87,4 +133,13 @@ speaker box (≥ 5 cm³) into the rail-side wall.
 ## Source Format
 
 Every drawing is hand-authored SVG at a fixed viewBox — the SVG is the
-editable source, the PNG is a convenience render. Edit the SVG.
+editable source, the PNG is a convenience render. Edit the SVG. The
+`render-*.png` files under `v2/colorways/` are the exception: they
+come out of the 3D stage, so re-render them from the model rather than
+editing them.
+
+## See Also
+
+[`../../product/ONE_PAGER.pdf`](../../product/ONE_PAGER.pdf) is the
+customer-facing one-pager built on these v2 renders — same device,
+positioning copy instead of dimensions.
