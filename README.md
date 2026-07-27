@@ -55,13 +55,6 @@ Five convictions shape everything we build:
 
 ## The build
 
-<table>
-<tr>
-<td width="340" align="center">
-  <img src="docs/assets/readme/ui-hub-device.png" alt="The yoyopod home screen with its bunny companion, on the device" width="280">
-</td>
-<td>
-
 yoyopod is built hardware-first: the software in this repository powers the device end to end, from the LVGL screen and the one-button interaction model to playback, calls, and power management, on a Raspberry Pi Zero 2W with a 240x280 display, speaker, and microphone.
 
 The build advances pillar by pillar:
@@ -76,10 +69,6 @@ The build advances pillar by pillar:
 | **Parent app** | designed, next up |
 
 The engineering build is tracked in the open in [docs/ROADMAP.md](docs/ROADMAP.md).
-
-</td>
-</tr>
-</table>
 
 | Home | Now Playing | Talk | Ask |
 | :---: | :---: | :---: | :---: |
