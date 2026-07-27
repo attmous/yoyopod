@@ -6,6 +6,9 @@ UI design targets and visual references for yoyopod on Whisplay
 - [`previews/`](previews/) - static HTML visual references for each
   screen / interaction
 
+For the wordmark and brand colours, see
+[`../brand/README.md`](../brand/README.md).
+
 For implementation constraints, read:
 
 - [`../../rules/design-fidelity.md`](../../rules/design-fidelity.md)

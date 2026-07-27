@@ -43,6 +43,8 @@ contract.
 - [`features/`](features/README.md) — cloud provisioning, cloud voice,
   local music, mpv, and remote playback contracts
 - [`design/`](design/README.md) — UI design targets and visual previews
+- [`brand/`](brand/README.md) — the yoyopod wordmark, its colour set,
+  and placement rules
 - [`product/`](product/README.md) — product definition and positioning
 - [`assets/`](assets/) — images and media used in docs
 
