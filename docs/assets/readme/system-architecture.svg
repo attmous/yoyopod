@@ -1,11 +1,10 @@
-<svg viewBox="0 0 760 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The yoyopod software sides: on the device, yoyocore (the Rust application) runs on yoyoOS (the Linux image); yoyocloud, the backend backbone, links the device to the parent mobile app on iOS and Android over MQTT">
+<svg viewBox="0 0 760 350" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The yoyopod software sides: on the device, yoyocore (the Rust application) runs on yoyoOS (the Linux image); yoyocloud, the backend backbone, links the device to the parent mobile app on iOS and Android over MQTT">
   <!-- README copy of docsite/website-vision/src/assets/diagrams/software-sides.svg
        with fixed colors and a solid card background so it reads identically on
        GitHub light and dark themes. -->
   <style>
     .bg { fill: #1a1826; }
     .box { fill: #232136; stroke: #6e6a86; stroke-width: 1.5; }
-    .ext { fill: none; stroke: #6e6a86; stroke-width: 1.5; stroke-dasharray: 6 4; }
     .hub { fill: #4a3414; stroke: #f6b02c; stroke-width: 1.5; }
     .t { fill: #f8f4e9; font-size: 14px; font-weight: 700; font-family: system-ui, sans-serif; }
     .m { fill: #d3cdc5; font-size: 11px; font-family: ui-monospace, monospace; }
@@ -18,7 +17,7 @@
     </marker>
   </defs>
 
-  <rect class="bg" x="0" y="0" width="760" height="450" rx="16"/>
+  <rect class="bg" x="0" y="0" width="760" height="350" rx="16"/>
 
   <text class="t" x="30" y="34" style="font-size:17px">Two sides and a backbone</text>
   <text class="s" x="30" y="54">the device software, the parent app, and yoyocloud routing between them</text>
@@ -68,9 +67,4 @@
   <path class="flow" d="M570,200 L512,200"/>
   <text class="m" x="512" y="218">commands</text>
 
-  <!-- caption -->
-  <rect class="ext" x="30" y="350" width="700" height="80" rx="10"/>
-  <text class="t" x="46" y="376">The parent app never talks to the device directly.</text>
-  <text class="s" x="46" y="394">The device publishes location and telemetry to yoyocloud over MQTT; yoyocloud routes them to the</text>
-  <text class="s" x="46" y="410">parent app, and parent commands (like remote playback) travel back down the same road.</text>
 </svg>
