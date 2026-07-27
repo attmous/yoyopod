@@ -35,8 +35,8 @@ No feed, no ads, no strangers.
 <table>
 <tr>
 <td width="340" align="center">
-  <img src="docs/assets/readme/yoyopod-device-tour.gif" alt="yoyopod UI running on the current prototype hardware" width="300"><br>
-  <sub>The UI running on real prototype hardware</sub>
+  <img src="docs/assets/readme/ui-hub-device.png" alt="The yoyopod home screen with its bunny companion, captured from the running prototype" width="280"><br>
+  <sub>Captured from the running prototype via <code>yoyopod target screenshot</code></sub>
 </td>
 <td>
 
@@ -59,11 +59,15 @@ The table above is the product summary; the detailed engineering ledger of what 
 </tr>
 </table>
 
-| Hub | Listen | Talk | Setup |
+| Home | Now Playing | Talk | Ask |
 | :---: | :---: | :---: | :---: |
-| ![yoyopod hub screen](docs/assets/readme/hub.png) | ![yoyopod listen screen](docs/assets/readme/listen.png) | ![yoyopod talk screen](docs/assets/readme/talk.png) | ![yoyopod setup screen](docs/assets/readme/setup.png) |
+| ![The home screen with the bunny companion and the nav bar, light theme](docs/assets/readme/ui-hub-light.png) | ![Now Playing with progress ring and transport, light theme](docs/assets/readme/ui-now-playing-light.png) | ![The Talk contact wheel with an unread voice note badge, light theme](docs/assets/readme/ui-talk-light.png) | ![Ask: hold the side button and ask me anything, light theme](docs/assets/readme/ui-ask-light.png) |
 
-<sub>Captured from the running prototype UI. The interaction model is deliberate: a wheel of screens, one side button, and gestures a seven-year-old can learn in a minute (tap = next, double-tap = open, hold = talk or back).</sub>
+| Home, dark | Setup, dark | Stopwatch, dark | Watch face |
+| :---: | :---: | :---: | :---: |
+| ![The home screen in the dark theme](docs/assets/readme/ui-hub-dark.png) | ![The Setup wheel in the dark theme](docs/assets/readme/ui-setup-dark.png) | ![The running stopwatch in the dark theme](docs/assets/readme/ui-stopwatch-dark.png) | ![The ambient watch face](docs/assets/readme/ui-watchface.png) |
+
+<sub>Every kid picks a companion for the home screen (this one chose the bunny). The UI ships light and dark themes, a nav bar, and an ambient watch face; screens here are rendered by the same UI engine that runs on the device, driven headless in this repo's mock harness. The interaction model is deliberate: a wheel of screens, one side button, and gestures a seven-year-old can learn in a minute (tap = next, double-tap = open, hold = talk or back).</sub>
 
 ## Why it exists
 
