@@ -1,146 +1,138 @@
-# yoyopod
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo/png/yoyopod-cream-1024.png">
+  <img src="docs/brand/logo/png/yoyopod-navy-1024.png" alt="yoyopod" width="320">
+</picture>
+
+### The first device before a smartphone
+
+A parent-managed music player and phone for kids ages 7-14.<br>
+Family calls, voice notes, music and podcasts, and a small screen that stays calm.<br>
+No feed, no ads, no strangers.
+
+[**Join the waitlist**](https://yoyopod.com) · [**Docs**](https://docs.yoyopod.com) · [**One-pager**](docs/product/ONE_PAGER.pdf) · [**Roadmap**](docs/ROADMAP.md)
 
 <p align="center">
-  <img src="docs/assets/readme/yoyopod-device-tour.gif" alt="yoyopod running on the current prototype hardware" width="320">
+<img alt="CI" src="https://github.com/attmous/yoyopod/actions/workflows/ci.yml/badge.svg">
+<img alt="License: AGPLv3+" src="https://img.shields.io/badge/license-AGPLv3%2B-2b2836">
 </p>
 
 <p align="center">
-  <strong>yoyopod is a tiny Pi-powered music player and phone for kids aged 7-13.</strong>
+<img alt="Raspberry Pi Zero 2W" src="https://img.shields.io/badge/Raspberry%20Pi-Zero%202W-C51A4A?logo=raspberrypi&logoColor=white">
+<img alt="Rust" src="https://img.shields.io/badge/Rust-runtime%20%2B%20workers-B7410E?logo=rust&logoColor=white">
+<img alt="LVGL UI" src="https://img.shields.io/badge/LVGL-UI%20stack-343A40">
+<img alt="Liblinphone" src="https://img.shields.io/badge/liblinphone-calls%20%26%20voice%20notes-1B6EF3">
+<img alt="mpv" src="https://img.shields.io/badge/mpv-music%20playback-5C4B8A">
 </p>
 
-<p align="center">
-  Built for favorite songs, voice messages, family calls, and a small screen that stays calm.
-</p>
+</div>
 
-<p align="center">
-  <img alt="Raspberry Pi Zero 2W" src="https://img.shields.io/badge/Raspberry%20Pi-Zero%202W-C51A4A?logo=raspberrypi&logoColor=white">
-  <img alt="LVGL UI" src="https://img.shields.io/badge/LVGL-UI%20stack-343A40">
-  <img alt="Liblinphone" src="https://img.shields.io/badge/Liblinphone-calls%20%26%20voice%20messages-1B6EF3">
-  <img alt="mpv" src="https://img.shields.io/badge/mpv-music%20playback-5C4B8A">
-  <img alt="Whisplay" src="https://img.shields.io/badge/Whisplay-current%20prototype%20HAT-E67E22">
-  <img alt="PiSugar" src="https://img.shields.io/badge/PiSugar-power%20integration-159957">
-</p>
+---
 
-yoyopod is being built by software-engineer fathers in Stuttgart, Germany. The idea is simple: give kids a dedicated little device for music, voice messages, and staying in touch, without throwing them into the chaos of a general-purpose phone.
+## The working prototype
 
-The current prototype runs on a Raspberry Pi Zero 2W and uses the Whisplay HAT because it gives us a great bundle for fast iteration: screen, side push-to-talk button, microphone, and speaker. That is our prototype path, not a permanent promise about the final hardware. The long-term device may ship with its own display and driver.
+<table>
+<tr>
+<td width="340" align="center">
+  <img src="docs/assets/readme/yoyopod-device-tour.gif" alt="yoyopod UI running on the current prototype hardware" width="300"><br>
+  <sub>The UI running on real prototype hardware</sub>
+</td>
+<td>
 
-## What yoyopod Can Do
+yoyopod is built hardware-first. The prototype in this repository runs today on a Raspberry Pi Zero 2W with a 240x280 screen, a speaker, a microphone, and one physical side button. What works, works on real hardware; the table below says plainly what does not yet. No emulated demos, no fabricated UI.
 
-- `Music playback` - local-first music, playlists, recent tracks, shuffle, and a simple now-playing flow.
-- `Calls and voice messages` - family-friendly calling, quick voice notes, and a contact-first Talk experience.
-- `Location and connectivity` - 4G modem support, GPS/location awareness, and device-level network handling.
-- `Device care` - battery/power integration, watchdogs, runtime diagnostics, and Pi validation tooling.
-- `A physical interaction model` - small-screen navigation plus a side push-to-talk button instead of a UI built around tapping glass all day.
+Where every part of the product stands right now:
 
-## Inside The Current Prototype
-
-| Hub | Listen |
+| Area | Status |
 | --- | --- |
-| ![yoyopod hub screen](docs/assets/readme/hub.png) | ![yoyopod listen screen](docs/assets/readme/listen.png) |
+| **Listen** (local music, playlists, podcasts) | working on today's hardware |
+| **Talk** (whitelist calls and voice notes) | built, being validated on hardware |
+| **Pocket tools** (watch face, stopwatch, flashlight) | working on today's hardware |
+| **Ask** (push-to-talk questions, answer disclosed as AI) | early prototype |
+| **Locate** (live-ish location for parents) | designed, not wired end to end |
+| **Parent app** | designed, not built yet |
 
-| Talk | Setup |
+The table above is the product summary; the detailed engineering ledger of what is broken in the build and deploy path today lives in [docs/ROADMAP.md](docs/ROADMAP.md).
+
+</td>
+</tr>
+</table>
+
+| Hub | Listen | Talk | Setup |
+| :---: | :---: | :---: | :---: |
+| ![yoyopod hub screen](docs/assets/readme/hub.png) | ![yoyopod listen screen](docs/assets/readme/listen.png) | ![yoyopod talk screen](docs/assets/readme/talk.png) | ![yoyopod setup screen](docs/assets/readme/setup.png) |
+
+<sub>Captured from the running prototype UI. The interaction model is deliberate: a wheel of screens, one side button, and gestures a seven-year-old can learn in a minute (tap = next, double-tap = open, hold = talk or back).</sub>
+
+## Why it exists
+
+Parents want their kids to have independence, communication, and safety. They don't want to hand over distraction, social media, and addictive screens to get it. yoyopod gives a kid a focused device for family calls, voice notes, and their own music, while parents keep the contact list and settings in their hands. Kids get real independence. Parents get peace of mind. And the moment is real: schools across Europe are pushing phones out of classrooms while more parents organize to delay the first smartphone, yet there is no good first device to hand a kid instead.
+
+What that means in the software:
+
+- **Contact-first communication.** No dial pad, no open address book. The only people the device can call are the contacts a parent provisions; screening of incoming calls is part of the Talk validation work in flight now.
+- **Local-first listening.** Music and stories live on the device and play with zero connectivity. The cloud is an import path, not a dependency.
+- **A screen that stays calm.** Song titles and names, not videos. Every session ends on purpose: the call finishes, the story finishes, the kid goes back out the door.
+- **Small, finite tools instead of apps.** The newest additions to the on-device UI are a watch face, a stopwatch with a soft control tray, and a flashlight. That is the shape of the roadmap: useful, bounded, done.
+- **No camera, no browser, no app store.** Absences built into the device, not settings.
+
+## Where it's going
+
+![The V2 enclosure design study in four finishes](docs/assets/readme/finishes-banner.png)
+
+<sub>The V2 enclosure study in its four finishes: Cloud·Sky, Mint·Forest, Bubblegum, and Tangerine. This is an industrial design study, not shipped hardware; today's prototype is a 3D-printed shell around off-the-shelf boards.</sub>
+
+The target device keeps the same soul with purpose-built hardware: 72 x 78 x 22 mm, a glowing push-to-talk pill, a detented scroll wheel, a repairable four-screw shell. The study is documented end to end, from [orthographic drawings](docs/hardware/enclosure/) to [3D models](docs/hardware/enclosure/v2/model/) to a [24-second concept video](docs/product/PRODUCT_VIDEO.mp4) and the [customer one-pager](docs/product/ONE_PAGER.pdf).
+
+## How it's built
+
+A Rust workspace where one runtime supervises seven single-purpose worker processes over a shared protocol crate. If one engine fails, the others keep running; the kid's music does not stop because a modem hiccupped.
+
+| Directory | What lives there |
 | --- | --- |
-| ![yoyopod talk screen](docs/assets/readme/talk.png) | ![yoyopod setup screen](docs/assets/readme/setup.png) |
+| [`device/`](device/) | the Rust runtime plus UI, media, VoIP, network, cloud, power, and speech workers |
+| [`cli/`](cli/) | the `yoyopod` operator CLI for dev-machine to Pi orchestration |
+| [`docs/`](docs/README.md) | canonical documentation: product, architecture, hardware, operations |
+| [`docsite/`](docsite/) | the rendered documentation sites |
+| [`pitch/`](pitch/) | the product pitch deck |
+| [`deploy/`](deploy/) | Pi install scripts and systemd units |
+| [`apps/`](apps/) | reserved for the future parent web and mobile apps |
 
-## The Software Stack
+For the architecture view, start with [WORK_AREAS.md](docs/architecture/WORK_AREAS.md) and [SYSTEM_ARCHITECTURE.md](docs/architecture/SYSTEM_ARCHITECTURE.md).
 
-This repository contains the software that runs the current yoyopod prototype:
+## Run it yourself
 
-- `device/runtime/` - Rust runtime for config, worker supervision, app state, event routing, and UI snapshots.
-- `device/{ui,media,voip,network,cloud,power,speech}/` - Rust domain sidecar hosts for UI, media, VoIP, network, cloud, power, and speech/Ask.
-- `cli/` - Rust operator CLI for dev-machine to Pi orchestration. Under
-  active rebuild (the Python CLI was retired 2026-05-13); see
-  [docs/ROADMAP.md](docs/ROADMAP.md).
-- `apps/` - future web and mobile applications.
-- `packages/` - future shared contracts, SDKs, and app packages.
-
-New runtime work should start in `device/`. New operator tooling work
-goes in `cli/`. If you want the architecture view instead of the product
-view, start with
-[docs/architecture/WORK_AREAS.md](docs/architecture/WORK_AREAS.md) and
-[docs/architecture/SYSTEM_ARCHITECTURE.md](docs/architecture/SYSTEM_ARCHITECTURE.md).
-
-## Bring Up The Prototype
-
-This repo is Raspberry Pi hardware-first. To work on the real device path, plan around:
-
-- Raspberry Pi Zero 2W
-- current Whisplay-based prototype hardware
-- the modem path if you want to validate 4G/GPS behavior
-
-### Local Developer Setup
+This repo is Raspberry Pi hardware-first: plan around a Pi Zero 2W, the current Whisplay-based prototype HAT, and optionally the SIM7600 modem path for 4G/GPS work.
 
 ```bash
 # Build the Rust operator CLI (single binary `yoyopod`):
 cargo build --manifest-path cli/Cargo.toml --release
-# Optional: install to ~/.cargo/bin/yoyopod
-cargo install --path cli/yoyopod
 
-# Build the Rust runtime locally (or use CI artifacts; see Hardware Validation):
+# Build the Rust runtime locally (or use CI artifacts):
 cargo build --manifest-path device/Cargo.toml --release -p yoyopod-runtime
 ```
 
-Setup tooling (`yoyopod setup host`, `yoyopod setup verify-host`) is on
-the rebuild roadmap. See
-[docs/ROADMAP.md](docs/ROADMAP.md).
-
-### Fresh Raspberry Pi Install
-
-On the Pi, install the supported dev/prod lane structure with the curl installer:
+On a fresh Pi, install the dev/prod lane structure:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/moustafattia/yoyopod-core/main/deploy/scripts/install_pi.sh | sudo -E bash -s --
+curl -fsSL https://raw.githubusercontent.com/attmous/yoyopod/main/deploy/scripts/install_pi.sh | sudo -E bash -s --
 ```
 
-For a first prod slot install from a published artifact:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/moustafattia/yoyopod-core/main/deploy/scripts/install_pi.sh | sudo -E bash -s -- --release-url=<artifact-url>
-```
-
-Note: new prod slot artifacts are blocked until Round 3 of the CLI
-rebuild reintroduces the slot builder. Reinstalling a previously-shipped
-artifact still works.
-
-### Hardware Validation
-
-For PR hardware testing, use the Rust CLI's deploy command from your dev machine:
+Then deploy a branch to the device in one step from your dev machine:
 
 ```bash
 yoyopod target mode activate dev
-yoyopod target deploy --branch <branch>     # also accepts --sha <commit>
+yoyopod target deploy --branch <branch>
 ```
 
-`target deploy` pushes the current branch, finds the matching CI
-artifact, syncs the Pi, installs binaries, restarts the service, and
-verifies startup in one step.
+`target deploy` pushes the branch, finds the matching CI artifact, syncs the Pi, installs binaries, restarts the service, and verifies startup. Deeper flows: [Contributor Workflow](docs/operations/CONTRIBUTOR_WORKFLOW.md), [Development Guide](docs/operations/DEVELOPMENT_GUIDE.md), [Pi Dev Workflow](docs/operations/PI_DEV_WORKFLOW.md), and [Dev/Prod Lanes](docs/operations/DEV_PROD_LANES.md). When docs disagree, trust current code and the most recently merged PRs.
 
-Automated on-Pi validation (`yoyopod target validate`) returns in Round 2
-of the CLI rebuild. For now, validate manually after deploy via
-`journalctl -u yoyopod-dev.service -f` and hardware inspection.
+## Built in the open
 
-For deeper deploy, lane, and troubleshooting flows, read [CLI Rebuild
-Rounds](docs/ROADMAP.md), [Dev/Prod
-Lanes](docs/operations/DEV_PROD_LANES.md), [Slot
-Deploy](docs/operations/archive/SLOT_DEPLOY.md), and [Pi Dev
-Workflow](docs/operations/PI_DEV_WORKFLOW.md).
+yoyopod is being built by software-engineer fathers in Baden-Württemberg, Germany, and tested at their own dinner tables. The whole build is public: the [roadmap](docs/ROADMAP.md) states plainly what works and what is broken, the [docs site](https://docs.yoyopod.com) separates today's reality from the target design, and every device ships with a right to its own source.
 
-## Read More
-
-- [Documentation Guide](docs/README.md)
-- [Contributor Workflow](docs/operations/CONTRIBUTOR_WORKFLOW.md)
-- [Development Guide](docs/operations/DEVELOPMENT_GUIDE.md)
-- [Release Process](docs/operations/archive/RELEASE_PROCESS.md)
-- [Slot Deploy](docs/operations/archive/SLOT_DEPLOY.md)
-- [Pi Dev Workflow](docs/operations/PI_DEV_WORKFLOW.md)
-- [Pi Smoke Validation](docs/operations/archive/RPI_SMOKE_VALIDATION.md)
-- [System Architecture](docs/architecture/SYSTEM_ARCHITECTURE.md)
-- [Power Module](docs/hardware/POWER_MODULE.md)
-- [Design Docs](docs/design/README.md)
-- [Feature Docs](docs/features/README.md)
-
-When docs disagree, trust current code and the most recently merged PRs. The [`docs/ROADMAP.md`](docs/ROADMAP.md) tracks the current rebuild rounds; paused capability docs live under [`docs/operations/archive/`](docs/operations/archive/README.md).
+Want to follow along or help? [Join the waitlist](https://yoyopod.com), open an [issue](https://github.com/attmous/yoyopod/issues), or start with the [contributor workflow](docs/operations/CONTRIBUTOR_WORKFLOW.md).
 
 ## License
 

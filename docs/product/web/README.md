@@ -57,7 +57,6 @@ of this export:
 
 | Claim on the page | What the repo says |
 | --- | --- |
-| `docs.html`: "kids aged 5–10" | ages 7–14 in [`../PRODUCT_DEFINITION.md`](../PRODUCT_DEFINITION.md) and [`../LANDING_PAGE_POSITIONING.md`](../LANDING_PAGE_POSITIONING.md); 7–13 in the repo [`README.md`](../../../README.md) |
 | `docs.html`: "the single source of truth for the v2 hardware" | V2 is a design study — see [`../../hardware/enclosure/README.md`](../../hardware/enclosure/README.md). No CAD, no tooling, no tolerance sign-off |
 | `docs.html`: "PTT + rocker" | "glowing PTT + click-wheel" elsewhere in [`../README.md`](../README.md) |
 

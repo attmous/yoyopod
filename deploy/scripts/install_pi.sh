@@ -4,7 +4,7 @@
 # Curl-friendly Raspberry Pi installer for the yoyopod dev/prod lane layout.
 #
 # Canonical fresh-board command:
-#   curl -fsSL https://raw.githubusercontent.com/moustafattia/yoyopod-core/main/deploy/scripts/install_pi.sh | sudo -E bash -s --
+#   curl -fsSL https://raw.githubusercontent.com/attmous/yoyopod/main/deploy/scripts/install_pi.sh | sudo -E bash -s --
 #
 # Useful environment overrides:
 #   YOYOPOD_INSTALL_REF=<git-ref>
@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-REPO="${YOYOPOD_INSTALL_REPO:-moustafattia/yoyopod-core}"
+REPO="${YOYOPOD_INSTALL_REPO:-attmous/yoyopod}"
 REF="${YOYOPOD_INSTALL_REF:-main}"
 SOURCE_URL="${YOYOPOD_INSTALL_SOURCE_URL:-https://codeload.github.com/${REPO}/tar.gz/${REF}}"
 
@@ -22,16 +22,16 @@ usage() {
 yoyopod Pi installer
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/moustafattia/yoyopod-core/main/deploy/scripts/install_pi.sh | sudo -E bash -s -- [bootstrap args]
+  curl -fsSL https://raw.githubusercontent.com/attmous/yoyopod/main/deploy/scripts/install_pi.sh | sudo -E bash -s -- [bootstrap args]
 
 Examples:
-  curl -fsSL https://raw.githubusercontent.com/moustafattia/yoyopod-core/main/deploy/scripts/install_pi.sh | sudo -E bash -s --
-  curl -fsSL https://raw.githubusercontent.com/moustafattia/yoyopod-core/main/deploy/scripts/install_pi.sh | sudo -E bash -s -- --release-url=<artifact-url>
-  curl -fsSL https://raw.githubusercontent.com/moustafattia/yoyopod-core/main/deploy/scripts/install_pi.sh | sudo -E bash -s -- --migrate --release-url=<artifact-url>
+  curl -fsSL https://raw.githubusercontent.com/attmous/yoyopod/main/deploy/scripts/install_pi.sh | sudo -E bash -s --
+  curl -fsSL https://raw.githubusercontent.com/attmous/yoyopod/main/deploy/scripts/install_pi.sh | sudo -E bash -s -- --release-url=<artifact-url>
+  curl -fsSL https://raw.githubusercontent.com/attmous/yoyopod/main/deploy/scripts/install_pi.sh | sudo -E bash -s -- --migrate --release-url=<artifact-url>
 
 Environment:
   YOYOPOD_INSTALL_REF         Git ref to install from; default: main
-  YOYOPOD_INSTALL_REPO        GitHub owner/repo; default: moustafattia/yoyopod-core
+  YOYOPOD_INSTALL_REPO        GitHub owner/repo; default: attmous/yoyopod
   YOYOPOD_INSTALL_SOURCE_URL  Full source tarball URL; overrides repo/ref
 EOF
 }
