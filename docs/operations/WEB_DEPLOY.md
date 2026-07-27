@@ -4,7 +4,7 @@ How the two public web properties get built locally and uploaded to the VPS.
 
 | Property | Source | Serves |
 | --- | --- | --- |
-| `https://yoyopod.com` | `website/` | marketing landing page |
+| `https://yoyopod.com` | `www/` | marketing landing page |
 | `https://docs.yoyopod.com` | `docsite/website-vision/` | public docs (vision site) |
 
 Both are fully static Astro builds — no server-side code, no forms, no
@@ -96,8 +96,8 @@ immutable.
 ## Waitlist collector
 
 The teaser page's "Notify me" form posts to `/api/notify` (configurable in
-`website/src/consts.ts`). A dependency-free collector ships at
-`website/server/notify-collector.mjs` — it appends `{email, ts}` JSON lines to
+`www/src/consts.ts`). A dependency-free collector ships at
+`www/server/notify-collector.mjs` — it appends `{email, ts}` JSON lines to
 `/var/lib/yoyopod-waitlist/emails.jsonl`.
 
 Install on the VPS:
@@ -144,7 +144,7 @@ Check it: `curl -s -X POST https://yoyopod.com/api/notify -H 'Content-Type: appl
 Privacy: the file stores email + timestamp only, for a one-time availability
 notification (stated next to the form and on `/privacy`). Honor erasure
 requests by deleting the matching line. Prefer a hosted form service instead?
-Point `NOTIFY_ENDPOINT` in `website/src/consts.ts` at its URL and skip this
+Point `NOTIFY_ENDPOINT` in `www/src/consts.ts` at its URL and skip this
 section.
 
 ## TLS
@@ -171,7 +171,7 @@ curl -sI "https://yoyopod.com$(curl -s https://yoyopod.com/ | grep -o '/_astro/[
 
 ## Related
 
-- `website/README.md` — landing page dev commands and asset provenance.
+- `www/README.md` — landing page dev commands and asset provenance.
 - `docsite/website-vision/README.md` — docs site conventions.
 - `.github/workflows/web.yml` — PR build check for both sites (build only,
   never deploys).

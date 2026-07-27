@@ -1,4 +1,4 @@
-# website — the yoyopod.com landing page
+# www — the yoyopod.com landing page
 
 The public teaser page served at `https://yoyopod.com`. A standalone static
 Astro site: deliberately a single coming-soon screen ("Something small is

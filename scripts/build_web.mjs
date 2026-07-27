@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Builds both public web properties and stages them for VPS upload:
-//   website/                -> .artifacts/web/root/  (yoyopod.com)
+//   www/                -> .artifacts/web/root/  (yoyopod.com)
 //   docsite/website-vision/ -> .artifacts/web/docs/  (docs.yoyopod.com)
 // Usage: node scripts/build_web.mjs [--no-install]
 // See docs/operations/WEB_DEPLOY.md for the full deploy runbook.
@@ -13,7 +13,7 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const skipInstall = process.argv.includes('--no-install');
 
 const SITES = [
-	{ dir: 'website', target: 'root' },
+	{ dir: 'www', target: 'root' },
 	{ dir: 'docsite/website-vision', target: 'docs' },
 ];
 

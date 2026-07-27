@@ -6,7 +6,7 @@ families, builders, and anyone curious about the why. Fully drafted across
 families, user stories, applications, builders, and company sections.
 
 This is deliberately a second site. The as-built engineering documentation
-lives in [`docsite/website/`](../website/) and remains the source of truth for what
+lives in [`docsite/website/`](../www/) and remains the source of truth for what
 is actually implemented today; when the two disagree, the as-built site wins.
 This site wears the startup's brand kit — "Sunrise & Midnight": marigold amber
 on midnight indigo and warm paper, documented at `/company/brand-kit/`. The
@@ -52,5 +52,5 @@ The H2 skeleton must survive every state transition.
 
 ## Deployment
 
-Built and uploaded manually to the VPS alongside the `website/` landing page —
+Built and uploaded manually to the VPS alongside the `www/` landing page —
 see [`docs/operations/WEB_DEPLOY.md`](../../docs/operations/WEB_DEPLOY.md).

@@ -3,7 +3,7 @@ name: Web
 on:
   pull_request:
     paths:
-      - 'website/**'
+      - 'www/**'
       - 'docsite/website-vision/**'
       - '.github/workflows/web.yml'
 
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        dir: [website, docsite/website-vision]
+        dir: [www, docsite/website-vision]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
