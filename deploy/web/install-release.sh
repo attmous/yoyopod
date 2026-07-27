@@ -46,6 +46,15 @@ if [[ ! -d "${RELEASES_DIR}" || ! -w "${RELEASES_DIR}" ]]; then
     exit 1
 fi
 
+# Serialize every installer, including the manual PowerShell path and GitHub
+# Actions. The workflow concurrency group alone cannot protect the VPS from a
+# manual deploy that overlaps a CI run.
+exec 9> "${APP_ROOT}/.deploy.lock"
+if ! flock --wait 300 9; then
+    echo "timed out waiting for the web deployment lock" >&2
+    exit 1
+fi
+
 release_dir="${RELEASES_DIR}/${RELEASE_ID}"
 if [[ -e "${release_dir}" ]]; then
     echo "release already exists: ${release_dir}" >&2
@@ -208,6 +217,11 @@ if grep -Fq 'action="/api/notify"' "${release_dir}/root/index.html"; then
     assert_status "yoyopod.com" "/api/notify" "405"
 else
     assert_status "yoyopod.com" "/api/notify" "404"
+fi
+
+if [[ "$(readlink -f "${CURRENT_LINK}" 2>/dev/null || true)" != "${release_dir}" ]]; then
+    echo "current release changed during deployment verification" >&2
+    false
 fi
 
 if [[ -n "${old_target}" && "${old_target}" == "${RELEASES_DIR}/"* && -d "${old_target}" ]]; then

@@ -19,7 +19,7 @@ SSH_COMMAND_PATH="/usr/local/sbin/yoyopod-web-ssh-command"
 ROOT_AUTHORIZED_KEYS="/root/.ssh/authorized_keys"
 PUBLIC_KEY_FILE="${1:-}"
 
-for command_name in curl nginx node runuser sha256sum sudo systemctl tar useradd usermod visudo; do
+for command_name in curl flock nginx node runuser sha256sum sudo systemctl tar useradd usermod visudo; do
     if ! command -v "${command_name}" >/dev/null 2>&1; then
         echo "required command is missing: ${command_name}" >&2
         exit 1

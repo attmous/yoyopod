@@ -86,6 +86,10 @@ choose a program. It can only:
 
 This prevents the Actions credential from reading or modifying neighboring
 sites even though they share the VPS.
+Incoming archives abandoned for more than 60 minutes are pruned on the next
+upload. The installer also holds `/opt/yoyopod-web/.deploy.lock` across the
+entire atomic switch, health check, rollback, and metadata update, so manual
+and Actions deployments cannot overlap.
 
 ## Manual deployment from Windows
 

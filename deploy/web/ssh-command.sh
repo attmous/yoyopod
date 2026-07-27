@@ -7,6 +7,7 @@ INSTALLER_PATH="/usr/local/lib/yoyopod-web/install-release.sh"
 DEPLOY_USER="yoyopod-web-deploy"
 MAX_INCOMING_FILES=8
 MAX_ARCHIVE_KIB=131072
+STALE_ARCHIVE_MINUTES=60
 
 if [[ "${EUID}" -ne 0 ]]; then
     echo "forced deploy command must run as root" >&2
@@ -49,6 +50,15 @@ case "${action:-}" in
             exit 2
         }
         reject_extra_arguments
+
+        # A canceled workflow can disconnect after upload but before deploy.
+        # Expire both finalized and interrupted uploads so those failures can
+        # never permanently exhaust the bounded incoming queue.
+        find "${INCOMING_DIR}" \
+            -mindepth 1 -maxdepth 1 -type f \
+            \( -name 'yoyopod-web-*.tar.gz' -o -name '*.upload-*' \) \
+            -mmin "+${STALE_ARCHIVE_MINUTES}" \
+            -delete
 
         incoming_count="$(
             find "${INCOMING_DIR}" -mindepth 1 -maxdepth 1 -type f | wc -l
