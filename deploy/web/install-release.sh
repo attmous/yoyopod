@@ -214,7 +214,9 @@ assert_status "docs.yoyopod.com" "/this-page-does-not-exist/" "404"
 # must return 404. Once the reviewed loopback proxy is enabled, a safe GET
 # must reach the collector's method-not-allowed response; no address is sent.
 notify_expected="404"
-if grep -qF 'proxy_pass http://127.0.0.1:8787' "${NGINX_CONFIG}"; then
+if grep -qE \
+    '^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:8787/?;' \
+    "${NGINX_CONFIG}"; then
     notify_expected="405"
 fi
 assert_status "yoyopod.com" "/api/notify" "${notify_expected}"
