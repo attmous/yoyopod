@@ -1,5 +1,6 @@
 pub mod config;
 pub mod config_sync;
+pub mod contacts;
 pub mod host;
 pub mod mqtt;
 pub mod outbox;

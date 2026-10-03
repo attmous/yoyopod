@@ -89,7 +89,11 @@ impl RuntimeEvent {
                 }
             }
             Self::CloudSnapshot(snapshot) => state.apply_cloud_snapshot(snapshot),
-            Self::CloudConfig(_) => {}
+            Self::CloudConfig(config) => {
+                if let Some(contacts) = crate::config::cloud_contact_items(config) {
+                    state.seed_contacts(contacts);
+                }
+            }
             Self::CloudCommand(_) => {}
             Self::MediaSnapshot(snapshot) => {
                 state.resolve_overlay_for(WorkerDomain::Media);

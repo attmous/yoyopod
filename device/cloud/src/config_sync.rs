@@ -55,7 +55,10 @@ impl CloudConfigSync {
         self.next_poll_at = now.saturating_add(self.config.config_poll_interval_seconds.max(1));
 
         let value = self.fetch_authenticated_config()?;
-        let value = validate_device_config(value)?;
+        let mut value = validate_device_config(value)?;
+        if let Some(contacts) = crate::contacts::persist_contacts(&self.config, &value)? {
+            value["contacts"]["entries"] = json!(contacts);
+        }
         persist_private_json(&self.config.cache_path(), &value)?;
         Ok(Some(value))
     }
@@ -125,6 +128,7 @@ impl CloudConfigSync {
 }
 
 pub fn validate_device_config(value: Value) -> Result<Value> {
+    crate::contacts::validate_contacts(&value)?;
     let object = value
         .as_object()
         .ok_or_else(|| anyhow!("cloud config must be an object"))?;

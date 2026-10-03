@@ -787,7 +787,7 @@ fn load_people_contacts(
     Ok(contact_configs_from_value(&payload))
 }
 
-fn contact_configs_from_value(value: &Value) -> Vec<ContactRuntimeConfig> {
+pub(crate) fn contact_configs_from_value(value: &Value) -> Vec<ContactRuntimeConfig> {
     let Some(contacts) = value.get("contacts").and_then(Value::as_array) else {
         return Vec::new();
     };
@@ -799,6 +799,27 @@ fn contact_configs_from_value(value: &Value) -> Vec<ContactRuntimeConfig> {
         contacts.into_iter().partition(|contact| contact.favorite);
     favorites.extend(others);
     favorites
+}
+
+pub(crate) fn cloud_contact_items(config: &Value) -> Option<Vec<crate::state::ListItem>> {
+    let entries = config.pointer("/contacts/entries")?.as_array()?;
+    let contacts = entries
+        .iter()
+        .map(|entry| {
+            let mut entry = entry.clone();
+            entry["favorite"] = json!(entry
+                .get("is_primary")
+                .and_then(Value::as_bool)
+                .unwrap_or(false));
+            entry
+        })
+        .collect::<Vec<_>>();
+    Some(
+        PeopleRuntimeConfig {
+            contacts: contact_configs_from_value(&json!({"contacts": contacts})),
+        }
+        .to_contact_items(),
+    )
 }
 
 fn contact_config_from_value(value: &Value) -> Option<ContactRuntimeConfig> {

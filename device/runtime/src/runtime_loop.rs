@@ -539,6 +539,39 @@ mod tests {
     }
 
     #[test]
+    fn cloud_contacts_replace_live_call_targets_and_deleted_contacts() {
+        let mut runtime = RuntimeLoop::new(RuntimeState::default());
+        let contact = json!({"id": "contact-one", "name": "Nana", "sip_address": "sip:nana@example.com",
+            "can_call": true, "can_receive": true, "is_primary": true, "aliases": ["grandma"]});
+        let mut io = FakeLoopIo {
+            messages: vec![(
+                WorkerDomain::Cloud,
+                WorkerEnvelope::event(
+                    "cloud.config",
+                    json!({"config": {"config_version": 1, "contacts": {"entries": [contact]}}}),
+                ),
+            )],
+            ..FakeLoopIo::default()
+        };
+        runtime.run_once(&mut io);
+        assert_eq!(runtime.state.call.contacts[0].title, "Nana");
+        assert_eq!(runtime.state.call.contacts[0].id, "sip:nana@example.com");
+        assert_eq!(runtime.state.call.contacts[0].aliases, vec!["grandma"]);
+        assert!(io.sent.iter().any(|(domain, envelope)| {
+            *domain == WorkerDomain::Ui && ui_runtime_patch_command(envelope.clone()).is_some()
+        }));
+        io.messages.push((
+            WorkerDomain::Cloud,
+            WorkerEnvelope::event(
+                "cloud.config",
+                json!({"config": {"config_version": 2, "contacts": {"entries": []}}}),
+            ),
+        ));
+        runtime.run_once(&mut io);
+        assert!(runtime.state.call.contacts.is_empty());
+    }
+
+    #[test]
     fn cloud_command_is_acked_only_after_worker_result() {
         let mut io = FakeLoopIo {
             messages: vec![(
