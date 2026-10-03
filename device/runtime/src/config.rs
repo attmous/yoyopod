@@ -96,6 +96,8 @@ pub struct PeopleRuntimeConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContactRuntimeConfig {
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub display_name: String,
     pub sip_address: String,
@@ -606,11 +608,16 @@ impl PeopleRuntimeConfig {
         self.contacts
             .iter()
             .map(|contact| crate::state::ListItem {
-                id: contact.sip_address.clone(),
+                id: if contact.sip_address.is_empty() {
+                    contact.id.clone()
+                } else {
+                    contact.sip_address.clone()
+                },
                 title: contact.display_name.clone(),
                 subtitle: String::new(),
                 icon_key: format!("mono:{}", talk_monogram(&contact.display_name)),
                 aliases: contact.aliases.clone(),
+                communication_unavailable: contact.sip_address.is_empty(),
             })
             .collect()
     }
@@ -833,11 +840,11 @@ fn contact_config_from_value(value: &Value) -> Option<ContactRuntimeConfig> {
     if !can_call {
         return None;
     }
-    let sip_address = string_field(value, "sip_address")?;
-    if sip_address.trim().is_empty() {
-        return None;
-    }
-    let name = string_field(value, "name").unwrap_or_else(|| sip_address.clone());
+    let sip_address = string_field(value, "sip_address").unwrap_or_default();
+    let id = string_field(value, "id")
+        .or_else(|| string_field(value, "sip_address"))
+        .or_else(|| string_field(value, "phone_number"))?;
+    let name = string_field(value, "name").unwrap_or_else(|| id.clone());
     let notes = string_field(value, "notes").unwrap_or_default();
     let display_name = if notes.trim().is_empty() {
         name.clone()
@@ -845,6 +852,7 @@ fn contact_config_from_value(value: &Value) -> Option<ContactRuntimeConfig> {
         notes.trim().to_string()
     };
     Some(ContactRuntimeConfig {
+        id,
         name,
         display_name,
         sip_address,

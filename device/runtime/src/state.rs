@@ -123,6 +123,7 @@ pub struct ListItem {
     pub subtitle: String,
     pub icon_key: String,
     pub aliases: Vec<String>,
+    pub communication_unavailable: bool,
 }
 
 impl ListItem {
@@ -149,6 +150,10 @@ impl ListItem {
             subtitle,
             icon_key,
             aliases: string_array_field(value, "aliases"),
+            communication_unavailable: value
+                .get("communication_unavailable")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         })
     }
 
@@ -159,6 +164,7 @@ impl ListItem {
             "subtitle": self.subtitle,
             "icon_key": self.icon_key,
             "aliases": self.aliases,
+            "communication_unavailable": self.communication_unavailable,
         })
     }
 }
@@ -2393,6 +2399,7 @@ fn recent_call_history_item(value: &Value, contacts: &[ListItem]) -> Option<List
         subtitle,
         icon_key: icon_key.to_string(),
         aliases: Vec::new(),
+        communication_unavailable: false,
     })
 }
 
@@ -2644,6 +2651,10 @@ fn voice_command_outcome(
             body: "Starting local music.".to_string(),
         }),
         VoiceCommandIntent::CallContact => match find_contact(state, contact_name) {
+            Some(contact) if contact.communication_unavailable => Some(VoiceCommandOutcome {
+                headline: "Calling needs setup".to_string(),
+                body: "Ask a grown-up to set up calling.".to_string(),
+            }),
             Some(contact) => Some(VoiceCommandOutcome {
                 headline: "Calling".to_string(),
                 body: format!("Calling {}.", contact.title),

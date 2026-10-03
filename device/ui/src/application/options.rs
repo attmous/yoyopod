@@ -17,7 +17,12 @@ pub fn talk_contact_actions(
     snapshot: &RuntimeSnapshot,
     selected_contact: Option<&ListItemSnapshot>,
 ) -> Vec<TalkContactAction> {
-    let _ = (snapshot, selected_contact);
+    if selected_contact
+        .or_else(|| snapshot.call.contacts.first())
+        .is_some_and(|contact| contact.communication_unavailable)
+    {
+        return Vec::new();
+    }
     vec![
         TalkContactAction { kind: "call" },
         TalkContactAction { kind: "record" },

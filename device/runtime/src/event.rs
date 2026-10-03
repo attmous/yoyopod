@@ -826,6 +826,13 @@ fn commands_for_call_intent(state: &RuntimeState, intent: &CallIntent) -> Vec<Ru
             json!({ "muted": !state.call.muted }),
         )],
         CallIntent::Start(action) => contact_uri(action)
+            .filter(|uri| {
+                !state
+                    .call
+                    .contacts
+                    .iter()
+                    .any(|contact| contact.id == *uri && contact.communication_unavailable)
+            })
             .map(|uri| {
                 vec![worker_command(
                     WorkerDomain::Voip,
@@ -1123,6 +1130,7 @@ fn commands_for_voice_command(
         )],
         VoiceCommandIntent::CallContact => state
             .contact_for_voice_label(contact_name)
+            .filter(|contact| !contact.communication_unavailable)
             .map(|contact| {
                 vec![worker_command(
                     WorkerDomain::Voip,
@@ -2189,6 +2197,29 @@ mod tests {
             &commands[0],
             RuntimeCommand::AppendAppLog { line }
                 if line == "UI input action=advance method=single_tap duration_ms=0"
+        ));
+    }
+
+    #[test]
+    fn phone_contacts_cannot_be_dialed_from_ui_or_voice_commands() {
+        let mut state = RuntimeState::default();
+        RuntimeEvent::CloudConfig(json!({"contacts": {"entries": [
+            {"id": "mama-id", "name": "Mama", "sip_address": null, "can_call": true},
+            {"id": "dad-id", "name": "Dad", "sip_address": "sip:dad@example.test", "can_call": true}
+        ]}}))
+        .apply(&mut state);
+        let action = ContactAction {
+            id: "mama-id".to_string(),
+            ..ContactAction::default()
+        };
+        assert!(commands_for_call_intent(&state, &CallIntent::Start(action)).is_empty());
+        assert!(
+            commands_for_voice_command(&state, VoiceCommandIntent::CallContact, "Mama").is_empty()
+        );
+        assert!(matches!(
+            commands_for_voice_command(&state, VoiceCommandIntent::CallContact, "Dad").as_slice(),
+            [RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voip, envelope }]
+                if envelope.message_type == "voip.dial" && envelope.payload["uri"] == "sip:dad@example.test"
         ));
     }
 

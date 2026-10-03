@@ -539,6 +539,36 @@ mod tests {
     }
 
     #[test]
+    fn cloud_phone_contacts_remain_browsable_without_becoming_call_targets() {
+        let mut runtime = RuntimeLoop::new(RuntimeState::default());
+        let mut io = FakeLoopIo {
+            messages: vec![(
+                WorkerDomain::Cloud,
+                WorkerEnvelope::event(
+                    "cloud.config",
+                    json!({"config": {"contacts": {"entries": [
+                        {"id": "dad", "name": "Dad", "sip_address": "sip:dad@example.test", "can_call": true},
+                        {"id": "mama", "name": "Mama", "phone_number": "+4912345678", "sip_address": null, "can_call": true},
+                        {"id": "mahmoud", "name": "Mahmoud", "phone_number": "+4912345679", "sip_address": "  ", "can_call": true},
+                        {"id": "blocked", "name": "Blocked", "sip_address": "sip:blocked@example.test", "can_call": false}
+                    ]}}}),
+                ),
+            )],
+            ..FakeLoopIo::default()
+        };
+        runtime.run_once(&mut io);
+        let contacts = &runtime.state.ui_snapshot().call.contacts;
+        assert_eq!(contacts.len(), 3);
+        assert!(!contacts[0].communication_unavailable);
+        assert_eq!(contacts[0].id, "sip:dad@example.test");
+        assert_eq!(contacts[1].id, "mama");
+        assert_eq!(contacts[1].title, "Mama");
+        assert!(contacts[1].communication_unavailable);
+        assert_eq!(contacts[2].id, "mahmoud");
+        assert!(contacts[2].communication_unavailable);
+    }
+
+    #[test]
     fn cloud_contacts_replace_live_call_targets_and_deleted_contacts() {
         let mut runtime = RuntimeLoop::new(RuntimeState::default());
         let contact = json!({"id": "contact-one", "name": "Nana", "sip_address": "sip:nana@example.com",

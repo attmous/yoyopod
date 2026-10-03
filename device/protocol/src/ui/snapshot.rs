@@ -451,6 +451,9 @@ pub struct ListItemSnapshot {
     pub subtitle: String,
     #[serde(default)]
     pub icon_key: String,
+    /// Contacts without a configured communication destination remain browsable.
+    #[serde(default)]
+    pub communication_unavailable: bool,
 }
 
 impl ListItemSnapshot {
@@ -465,6 +468,7 @@ impl ListItemSnapshot {
             title: title.into(),
             subtitle: subtitle.into(),
             icon_key: icon_key.into(),
+            communication_unavailable: false,
         }
     }
 }

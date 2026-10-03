@@ -2,9 +2,9 @@ use yoyopod_protocol::ui::{ListItemSnapshot, RuntimeSnapshot, UiScreen};
 
 use crate::engine::Key;
 use crate::scene::{
-    Backdrop, ContextLabelModel, Deck, DeckItem, DeckItemAnim, DeckKind, FocusPolicy, ItemRender,
-    RecordingPanelModel, RegionId, Scene, SceneContext, SceneDefaults, SceneId, WheelBadgeKind,
-    WheelBadgeModel, WheelItemModel, WheelItemVariant,
+    Backdrop, ContextLabelModel, Deck, DeckItem, DeckItemAnim, DeckKind, EmptyStateModel,
+    FocusPolicy, ItemRender, RecordingPanelModel, RegionId, Scene, SceneContext, SceneDefaults,
+    SceneId, WheelBadgeKind, WheelBadgeModel, WheelItemModel, WheelItemVariant,
 };
 
 const TALK_STAGE_PERI: u32 = 0xE7E5F7;
@@ -47,17 +47,37 @@ pub fn scene(props: &TalkContactProps) -> Scene {
     if props.recording {
         return recording_scene(props);
     }
+    let unavailable = props.actions.is_empty();
     Scene {
         id: SceneId::new(UiScreen::TalkContact),
         backdrop: Backdrop::Solid(TALK_STAGE_PERI),
         stage: props.defaults.stage,
         context: Some(SceneContext::Label(ContextLabelModel::new(&props.context))),
         decks: vec![Deck {
-            kind: DeckKind::Wheel,
+            kind: if unavailable {
+                DeckKind::Grid
+            } else {
+                DeckKind::Wheel
+            },
             region: RegionId::Auto,
-            items: props.actions.clone(),
+            items: if unavailable {
+                vec![DeckItem {
+                    key: Key::Static("contact_needs_setup"),
+                    render: ItemRender::EmptyState(EmptyStateModel {
+                        icon_key: "call".to_string(),
+                        message: "Ask a grown-up\nto set up calling.".to_string(),
+                        accent: 0xA9A6E5,
+                    }),
+                }]
+            } else {
+                props.actions.clone()
+            },
             focus_index: props.focus,
-            focus_policy: FocusPolicy::Wrap,
+            focus_policy: if unavailable {
+                FocusPolicy::None
+            } else {
+                FocusPolicy::Wrap
+            },
             item_anim: DeckItemAnim::ScaleOnFocus {
                 from_permille: 700,
                 to_permille: 1_000,
@@ -106,6 +126,9 @@ fn actions(
     snapshot: &RuntimeSnapshot,
     selected_contact: Option<&ListItemSnapshot>,
 ) -> Vec<DeckItem> {
+    if selected_contact.is_some_and(|contact| contact.communication_unavailable) {
+        return Vec::new();
+    }
     let unread = selected_contact
         .and_then(|contact| snapshot.call.unread_voice_notes_by_contact.get(&contact.id))
         .copied()
@@ -155,6 +178,24 @@ mod tests {
 
     fn contact() -> ListItemSnapshot {
         ListItemSnapshot::new("sip:mama@example.test", "Mama", "", "mono:M")
+    }
+
+    #[test]
+    fn phone_contact_displays_setup_hint_without_communication_actions() {
+        let mut mama = contact();
+        mama.communication_unavailable = true;
+        let mut snapshot = RuntimeSnapshot::default();
+        snapshot.call.contacts = vec![mama.clone()];
+        let scene = scene(&props_from(
+            &snapshot,
+            0,
+            Some(&mama),
+            defaults_for(UiScreen::TalkContact),
+        ));
+        assert_eq!(scene.decks[0].focus_policy, FocusPolicy::None);
+        assert_eq!(scene.decks[0].items.len(), 1);
+        assert!(matches!(&scene.decks[0].items[0].render,
+            ItemRender::EmptyState(model) if model.message == "Ask a grown-up\nto set up calling."));
     }
 
     #[test]

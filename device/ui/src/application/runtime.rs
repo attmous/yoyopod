@@ -2033,6 +2033,55 @@ mod tests {
     }
 
     #[test]
+    fn talk_browses_phone_contacts_and_blocks_unconfigured_communication() {
+        let dad = contact("sip:dad@example.test", "Dad");
+        let mut mama = contact("mama-id", "Mama");
+        mama.communication_unavailable = true;
+        let mut mahmoud = contact("mahmoud-id", "Mahmoud");
+        mahmoud.communication_unavailable = true;
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![dad.clone(), mama.clone(), mahmoud];
+        runtime.active_screen = UiScreen::Talk;
+
+        runtime.handle_input(InputAction::Advance, 100);
+        runtime.advance_animations(280);
+        assert_eq!(runtime.focus_index, 1);
+        runtime.handle_input(InputAction::Select, 300);
+        assert_eq!(runtime.active_screen, UiScreen::TalkContact);
+        assert_eq!(runtime.selected_contact, Some(mama));
+        assert_eq!(
+            super::super::accessibility::focused_item(&runtime)
+                .unwrap()
+                .label,
+            "Ask a grown-up to set up calling."
+        );
+        assert!(!runtime.wants_ptt_passthrough());
+        assert!(runtime.voice_note_recipient_payload().is_none());
+        runtime.handle_input(InputAction::Select, 400);
+        runtime.handle_input(InputAction::PttPress, 500);
+        runtime.handle_input(InputAction::PttRelease, 600);
+        assert!(runtime.take_intents().is_empty());
+
+        runtime.handle_input(InputAction::Back, 700);
+        assert_eq!(runtime.active_screen, UiScreen::Talk);
+        assert_eq!(runtime.focus_index, 1);
+        runtime.handle_input(InputAction::Advance, 800);
+        runtime.advance_animations(980);
+        assert_eq!(runtime.focus_index, 2);
+        runtime.handle_input(InputAction::Advance, 1_000);
+        runtime.advance_animations(1_180);
+        assert_eq!(runtime.focus_index, 0);
+        runtime.handle_input(InputAction::Select, 1_200);
+        runtime.handle_input(InputAction::Select, 1_300);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Call(CallIntent::Start(intents::contact_action(
+                &dad
+            )))]
+        );
+    }
+
+    #[test]
     fn home_opens_talk_and_talk_selects_the_focused_contact_directly() {
         let mama = contact("sip:mama@example.test", "Mama");
         let papa = contact("sip:papa@example.test", "Papa");

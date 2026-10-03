@@ -34,7 +34,7 @@ pub fn contact_action(item: &ListItemSnapshot) -> ContactAction {
 }
 
 pub fn voice_recipient_action(contact: &ListItemSnapshot) -> Option<VoiceRecipientAction> {
-    if contact.id.trim().is_empty() {
+    if contact.communication_unavailable || contact.id.trim().is_empty() {
         return None;
     }
     Some(VoiceRecipientAction {
