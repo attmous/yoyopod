@@ -367,6 +367,9 @@ fn go_back_from_call_screen(runtime: &mut UiRuntime) {
 }
 
 fn emit_call_start(runtime: &mut UiRuntime, item: &ListItemSnapshot) {
+    if !item.can_call {
+        return;
+    }
     runtime
         .intents
         .push(UiIntent::Call(CallIntent::Start(intents::contact_action(

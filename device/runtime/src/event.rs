@@ -783,7 +783,9 @@ fn commands_for_settings_intent(
             "wifi_provisioning_stop",
             empty_payload(),
         )],
-        SettingsIntent::CompanionSet(_)
+        SettingsIntent::DeviceModeSet(_)
+        | SettingsIntent::ContactPrioritySet(_)
+        | SettingsIntent::CompanionSet(_)
         | SettingsIntent::ThemeSet(_)
         | SettingsIntent::SpeakNamesToggle => Vec::new(),
     }

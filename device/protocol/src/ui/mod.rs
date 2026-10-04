@@ -1,3 +1,4 @@
+use crate::call::{ContactPrioritySet, DeviceMode};
 mod snapshot;
 
 use serde::{Deserialize, Serialize};
@@ -608,6 +609,8 @@ impl SystemIntent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsIntent {
+    DeviceModeSet(DeviceMode),
+    ContactPrioritySet(ContactPrioritySet),
     VolumeStep,
     CompanionSet(String),
     ThemeSet(String),
@@ -619,6 +622,12 @@ pub enum SettingsIntent {
 impl SettingsIntent {
     fn from_parts(action: &str, payload: &Value) -> Result<Self, ProtocolError> {
         match normalized(action).as_str() {
+            "device_mode_set" => Ok(Self::DeviceModeSet(decode_payload(
+                payload.get("value").cloned().unwrap_or(Value::Null),
+            )?)),
+            "contact_priority_set" => {
+                Ok(Self::ContactPrioritySet(decode_payload(payload.clone())?))
+            }
             "volume_step" => Ok(Self::VolumeStep),
             "companion_set" => Ok(Self::CompanionSet(required_string(payload, "value")?)),
             "theme_set" => Ok(Self::ThemeSet(required_string(payload, "value")?)),
@@ -633,6 +642,8 @@ impl SettingsIntent {
 
     fn action_name(&self) -> &'static str {
         match self {
+            Self::DeviceModeSet(_) => "device_mode_set",
+            Self::ContactPrioritySet(_) => "contact_priority_set",
             Self::VolumeStep => "volume_step",
             Self::CompanionSet(_) => "companion_set",
             Self::ThemeSet(_) => "theme_set",
@@ -644,6 +655,8 @@ impl SettingsIntent {
 
     fn payload(&self) -> Value {
         match self {
+            Self::DeviceModeSet(value) => json!({ "value": value }),
+            Self::ContactPrioritySet(value) => payload(value),
             Self::CompanionSet(value) | Self::ThemeSet(value) => json!({ "value": value }),
             Self::VolumeStep
             | Self::SpeakNamesToggle

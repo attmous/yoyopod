@@ -558,7 +558,15 @@ mod tests {
         };
         runtime.run_once(&mut io);
         let contacts = &runtime.state.ui_snapshot().call.contacts;
-        assert_eq!(contacts.len(), 3);
+        assert_eq!(contacts.len(), 4);
+        assert!(!contacts[3].can_call);
+        assert!(runtime
+            .state
+            .approved_call_target(
+                "sip:blocked@example.test",
+                yoyopod_protocol::ui::CallMethod::Sip
+            )
+            .is_none());
         assert!(!contacts[0].communication_unavailable);
         assert_eq!(contacts[0].id, "sip:dad@example.test");
         assert_eq!(contacts[1].id, "mama");

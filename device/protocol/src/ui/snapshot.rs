@@ -1,3 +1,4 @@
+use crate::call::{CallPhase, DeviceMode, SessionKey};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -177,6 +178,8 @@ impl Default for MusicRuntimeSnapshot {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SettingsRuntimeSnapshot {
+    #[serde(default)]
+    pub device_mode: DeviceMode,
     #[serde(default = "default_volume_level")]
     pub volume_level: i32,
     #[serde(default = "default_companion")]
@@ -194,6 +197,7 @@ pub struct SettingsRuntimeSnapshot {
 impl Default for SettingsRuntimeSnapshot {
     fn default() -> Self {
         Self {
+            device_mode: DeviceMode::default(),
             volume_level: default_volume_level(),
             companion: default_companion(),
             theme: default_theme(),
@@ -210,6 +214,14 @@ fn default_music_time_text() -> String {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CallRuntimeSnapshot {
+    #[serde(default)]
+    pub session: Option<SessionKey>,
+    #[serde(default)]
+    pub session_phase: Option<CallPhase>,
+    #[serde(default)]
+    pub accept_enabled: bool,
+    #[serde(default)]
+    pub alert_audible: bool,
     #[serde(default)]
     pub sip_available: bool,
     #[serde(default)]
@@ -243,6 +255,10 @@ pub struct CallRuntimeSnapshot {
 impl Default for CallRuntimeSnapshot {
     fn default() -> Self {
         Self {
+            session: None,
+            session_phase: None,
+            accept_enabled: false,
+            alert_audible: false,
             sip_available: false,
             gsm_available: false,
             gsm_unavailable_reason: String::new(),
@@ -472,6 +488,10 @@ pub struct ListItemSnapshot {
     pub phone_number: String,
     #[serde(default = "default_contact_can_receive")]
     pub can_receive: bool,
+    #[serde(default)]
+    pub priority: bool,
+    #[serde(default = "default_contact_can_receive")]
+    pub can_call: bool,
 }
 
 impl ListItemSnapshot {
@@ -491,6 +511,8 @@ impl ListItemSnapshot {
             sip_address: String::new(),
             phone_number: String::new(),
             can_receive: true,
+            priority: false,
+            can_call: true,
         }
     }
 

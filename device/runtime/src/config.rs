@@ -105,6 +105,10 @@ pub struct ContactRuntimeConfig {
     pub phone_number: String,
     #[serde(default = "default_contact_can_receive")]
     pub can_receive: bool,
+    #[serde(default)]
+    pub priority: bool,
+    #[serde(default = "default_contact_can_receive")]
+    pub can_call: bool,
     pub favorite: bool,
     pub aliases: Vec<String>,
 }
@@ -627,6 +631,8 @@ impl PeopleRuntimeConfig {
                 sip_address: contact.sip_address.clone(),
                 phone_number: contact.phone_number.clone(),
                 can_receive: contact.can_receive,
+                priority: contact.priority,
+                can_call: contact.can_call,
             })
             .collect()
     }
@@ -846,9 +852,6 @@ fn contact_config_from_value(value: &Value) -> Option<ContactRuntimeConfig> {
         .get("can_call")
         .and_then(Value::as_bool)
         .unwrap_or(true);
-    if !can_call {
-        return None;
-    }
     let sip_address = string_field(value, "sip_address").unwrap_or_default();
     let id = string_field(value, "id")
         .or_else(|| string_field(value, "sip_address"))
@@ -870,6 +873,11 @@ fn contact_config_from_value(value: &Value) -> Option<ContactRuntimeConfig> {
             .get("can_receive")
             .and_then(Value::as_bool)
             .unwrap_or(true),
+        can_call,
+        priority: value
+            .get("priority")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
         favorite: value
             .get("favorite")
             .and_then(Value::as_bool)
@@ -1137,5 +1145,45 @@ fn talk_monogram(text: &str) -> String {
         "T".to_string()
     } else {
         result
+    }
+}
+
+#[cfg(test)]
+mod call_permission_tests {
+    use super::*;
+    #[test]
+    fn favorite_and_primary_flags_do_not_grant_contact_priority() {
+        let contacts = contact_configs_from_value(&json!({"contacts":[
+            {"id":"dad","favorite":true,"is_primary":true},
+            {"id":"mama","priority":true}
+        ]}));
+        assert!(!contacts[0].priority);
+        assert!(contacts[0].can_call);
+        assert!(contacts[1].priority);
+        let mut state = crate::state::RuntimeState::default();
+        state.seed_contacts(PeopleRuntimeConfig { contacts }.to_contact_items());
+        assert!(!state.ui_snapshot().call.contacts[0].priority);
+        assert!(state.ui_snapshot().call.contacts[1].priority);
+    }
+
+    #[test]
+    fn saved_contact_without_call_permission_remains_available_for_matching() {
+        let people = PeopleRuntimeConfig {
+            contacts: contact_configs_from_value(
+                &json!({"contacts":[{"id":"dad","name":"Dad","sip_address":"sip:dad@example.test","can_call":false,"can_receive":false}]}),
+            ),
+        };
+        let items = people.to_contact_items();
+        assert_eq!(items.len(), 1);
+        assert!(!items[0].can_call);
+        assert!(!items[0].can_receive);
+        let mut state = crate::state::RuntimeState::default();
+        state.call.contacts = items;
+        assert!(state
+            .approved_call_target(
+                "sip:dad@example.test",
+                yoyopod_protocol::ui::CallMethod::Sip
+            )
+            .is_none());
     }
 }

@@ -128,6 +128,8 @@ pub struct ListItem {
     pub sip_address: String,
     pub phone_number: String,
     pub can_receive: bool,
+    pub priority: bool,
+    pub can_call: bool,
 }
 
 impl ListItem {
@@ -176,6 +178,14 @@ impl ListItem {
                 .unwrap_or(false),
             sip_address: string_field(value, "sip_address").unwrap_or_default(),
             phone_number: string_field(value, "phone_number").unwrap_or_default(),
+            priority: value
+                .get("priority")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            can_call: value
+                .get("can_call")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
             can_receive: value
                 .get("can_receive")
                 .and_then(Value::as_bool)
@@ -195,6 +205,8 @@ impl ListItem {
             "sip_address": self.sip_address,
             "phone_number": self.phone_number,
             "can_receive": self.can_receive,
+            "can_call": self.can_call,
+            "priority": self.priority,
         })
     }
 }
@@ -831,7 +843,8 @@ impl RuntimeState {
             recipient.recipient_address.trim()
         };
         self.call.contacts.iter().any(|contact| {
-            contact.can_receive
+            contact.can_call
+                && contact.can_receive
                 && (contact.id == recipient.id
                     || (!contact.contact_id.is_empty() && contact.contact_id == recipient.id))
                 && contact.sip_target() == Some(uri)
@@ -1299,11 +1312,9 @@ impl RuntimeState {
         id: &str,
         method: yoyopod_protocol::ui::CallMethod,
     ) -> Option<&str> {
-        let contact = self
-            .call
-            .contacts
-            .iter()
-            .find(|contact| contact.id == id && !contact.communication_unavailable)?;
+        let contact = self.call.contacts.iter().find(|contact| {
+            contact.id == id && contact.can_call && !contact.communication_unavailable
+        })?;
         match method {
             yoyopod_protocol::ui::CallMethod::Sip => contact.sip_target(),
             yoyopod_protocol::ui::CallMethod::Gsm => {
@@ -1429,6 +1440,8 @@ impl RuntimeState {
     fn apply_settings_intent(&mut self, intent: &yoyopod_protocol::ui::SettingsIntent) {
         use yoyopod_protocol::ui::SettingsIntent;
         match intent {
+            // Session preferences are inactive until the call manager is integrated.
+            SettingsIntent::DeviceModeSet(_) | SettingsIntent::ContactPrioritySet(_) => {}
             // The network worker owns the configured safety cap and publishes
             // the applied level immediately after cycling it.
             SettingsIntent::VolumeStep => {}
@@ -2598,6 +2611,8 @@ fn recent_call_history_item(value: &Value, contacts: &[ListItem]) -> Option<List
         sip_address: peer_sip_address,
         phone_number: String::new(),
         can_receive: true,
+        priority: false,
+        can_call: true,
     })
 }
 

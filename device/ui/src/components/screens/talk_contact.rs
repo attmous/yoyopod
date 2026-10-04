@@ -156,7 +156,10 @@ pub(crate) fn actions(
     {
         items.truncate(1);
     }
-    if selected_contact.is_some_and(|contact| !contact.can_receive) {
+    if selected_contact.is_some_and(|contact| !contact.can_call) {
+        items.retain(|item| item.key != Key::Static("call"));
+    }
+    if selected_contact.is_some_and(|contact| !contact.can_call || !contact.can_receive) {
         items.retain(|item| item.key != Key::Static("record"));
     }
     items
@@ -247,6 +250,17 @@ mod tests {
         assert_eq!(
             items.iter().map(|item| &item.key).collect::<Vec<_>>(),
             vec![&Key::Static("call"), &Key::Static("replay")]
+        );
+    }
+
+    #[test]
+    fn call_permission_revocation_keeps_replay_without_outbound_actions() {
+        let mut mama = contact();
+        mama.can_call = false;
+        let items = actions(&RuntimeSnapshot::default(), Some(&mama));
+        assert_eq!(
+            items.iter().map(|item| &item.key).collect::<Vec<_>>(),
+            vec![&Key::Static("replay")]
         );
     }
 

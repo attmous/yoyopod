@@ -23,10 +23,16 @@ pub fn talk_contact_actions(
     {
         return Vec::new();
     }
-    let mut actions = vec![TalkContactAction { kind: "call" }];
+    let mut actions = Vec::new();
+    if selected_contact
+        .or_else(|| snapshot.call.contacts.first())
+        .is_none_or(|contact| contact.can_call)
+    {
+        actions.push(TalkContactAction { kind: "call" });
+    }
     if let Some(contact) = selected_contact.or_else(|| snapshot.call.contacts.first()) {
         if contact.sip_target().is_some() {
-            if contact.can_receive {
+            if contact.can_call && contact.can_receive {
                 actions.push(TalkContactAction { kind: "record" });
             }
             actions.push(TalkContactAction { kind: "replay" });
@@ -40,6 +46,9 @@ pub fn call_method_disabled_reason<'a>(
     contact: &ListItemSnapshot,
     method: yoyopod_protocol::ui::CallMethod,
 ) -> Option<&'a str> {
+    if !contact.can_call {
+        return Some("Not allowed");
+    }
     match method {
         yoyopod_protocol::ui::CallMethod::Sip if contact.sip_target().is_none() => {
             Some("Not set up")
@@ -81,4 +90,36 @@ fn voice_note_phase(snapshot: &RuntimeSnapshot) -> String {
         return phase;
     }
     "ready".to_string()
+}
+
+#[cfg(test)]
+mod call_permission_tests {
+    use super::*;
+    #[test]
+    fn revoked_contact_cannot_offer_or_start_outbound_calls() {
+        let mut contact = ListItemSnapshot::new("sip:dad@example.test", "Dad", "", "");
+        contact.can_call = false;
+        let mut snapshot = RuntimeSnapshot::default();
+        snapshot.call.sip_available = true;
+        snapshot.call.gsm_available = true;
+        assert_eq!(
+            talk_contact_actions(&snapshot, Some(&contact))
+                .iter()
+                .map(|action| action.kind)
+                .collect::<Vec<_>>(),
+            vec!["replay"]
+        );
+        assert!(call_method_disabled_reason(
+            &snapshot,
+            &contact,
+            yoyopod_protocol::ui::CallMethod::Sip
+        )
+        .is_some());
+        assert!(call_method_disabled_reason(
+            &snapshot,
+            &contact,
+            yoyopod_protocol::ui::CallMethod::Gsm
+        )
+        .is_some());
+    }
 }
