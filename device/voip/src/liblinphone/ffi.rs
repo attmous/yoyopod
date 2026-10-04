@@ -148,6 +148,9 @@ pub struct LinphoneApi {
         unsafe extern "C" fn(*mut LinphoneCoreCbs, CoreMessageReceivedCb),
     pub core_cbs_set_message_received_unable_decrypt:
         Option<unsafe extern "C" fn(*mut LinphoneCoreCbs, CoreMessageUnableDecryptCb)>,
+    pub core_remove_callbacks: unsafe extern "C" fn(*mut LinphoneCore, *const LinphoneCoreCbs),
+    pub account_remove_callbacks:
+        unsafe extern "C" fn(*mut LinphoneAccount, *mut LinphoneAccountCbs),
     pub core_add_callbacks: unsafe extern "C" fn(*mut LinphoneCore, *mut LinphoneCoreCbs),
     pub core_start: unsafe extern "C" fn(*mut LinphoneCore) -> c_int,
     pub core_stop: unsafe extern "C" fn(*mut LinphoneCore),
@@ -161,6 +164,11 @@ pub struct LinphoneApi {
     pub core_enable_echo_cancellation: unsafe extern "C" fn(*mut LinphoneCore, c_int),
     pub core_set_mic_gain_db: unsafe extern "C" fn(*mut LinphoneCore, c_float),
     pub core_set_playback_gain_db: unsafe extern "C" fn(*mut LinphoneCore, c_float),
+    pub core_set_ring: unsafe extern "C" fn(*mut LinphoneCore, *const c_char),
+    pub core_enable_native_ringing: unsafe extern "C" fn(*mut LinphoneCore, c_int),
+    pub core_enable_call_tone_indications: Option<unsafe extern "C" fn(*mut LinphoneCore, c_int)>,
+    pub core_get_config: unsafe extern "C" fn(*mut LinphoneCore) -> *mut c_void,
+    pub config_set_int: unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char, c_int),
     pub core_set_ring_level: unsafe extern "C" fn(*mut LinphoneCore, c_int),
     pub core_set_audio_port_range: unsafe extern "C" fn(*mut LinphoneCore, c_int, c_int),
     pub core_set_video_port_range: unsafe extern "C" fn(*mut LinphoneCore, c_int, c_int),
@@ -228,6 +236,8 @@ pub struct LinphoneApi {
     pub auth_info_unref: unsafe extern "C" fn(*mut LinphoneAuthInfo),
     pub call_params_unref: unsafe extern "C" fn(*mut LinphoneCallParams),
     pub call_get_remote_address: unsafe extern "C" fn(*mut LinphoneCall) -> *const LinphoneAddress,
+    pub call_ref: unsafe extern "C" fn(*mut LinphoneCall) -> *mut LinphoneCall,
+    pub call_unref: unsafe extern "C" fn(*mut LinphoneCall),
     pub call_accept: unsafe extern "C" fn(*mut LinphoneCall) -> c_int,
     pub call_decline: unsafe extern "C" fn(*mut LinphoneCall, c_int) -> c_int,
     pub call_terminate: unsafe extern "C" fn(*mut LinphoneCall) -> c_int,
@@ -337,6 +347,12 @@ impl LinphoneApi {
                     c"linphone_core_cbs_set_message_received_unable_decrypt",
                 )
             },
+            core_remove_callbacks: unsafe {
+                required_symbol(library, c"linphone_core_remove_callbacks")?
+            },
+            account_remove_callbacks: unsafe {
+                required_symbol(library, c"linphone_account_remove_callbacks")?
+            },
             core_add_callbacks: unsafe {
                 required_symbol(library, c"linphone_core_add_callbacks")?
             },
@@ -366,6 +382,15 @@ impl LinphoneApi {
             core_set_playback_gain_db: unsafe {
                 required_symbol(library, c"linphone_core_set_playback_gain_db")?
             },
+            core_set_ring: unsafe { required_symbol(library, c"linphone_core_set_ring")? },
+            core_enable_native_ringing: unsafe {
+                required_symbol(library, c"linphone_core_enable_native_ringing")?
+            },
+            core_enable_call_tone_indications: unsafe {
+                optional_symbol(library, c"linphone_core_enable_call_tone_indications")
+            },
+            core_get_config: unsafe { required_symbol(library, c"linphone_core_get_config")? },
+            config_set_int: unsafe { required_symbol(library, c"linphone_config_set_int")? },
             core_set_ring_level: unsafe {
                 required_symbol(library, c"linphone_core_set_ring_level")?
             },
@@ -496,6 +521,8 @@ impl LinphoneApi {
             call_get_remote_address: unsafe {
                 required_symbol(library, c"linphone_call_get_remote_address")?
             },
+            call_ref: unsafe { required_symbol(library, c"linphone_call_ref")? },
+            call_unref: unsafe { required_symbol(library, c"linphone_call_unref")? },
             call_accept: unsafe { required_symbol(library, c"linphone_call_accept")? },
             call_decline: unsafe { required_symbol(library, c"linphone_call_decline")? },
             call_terminate: unsafe { required_symbol(library, c"linphone_call_terminate")? },

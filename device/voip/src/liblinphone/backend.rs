@@ -10,6 +10,7 @@ use super::runtime;
 
 pub struct LiblinphoneBackend {
     next_outgoing_call_id: u64,
+    worker_generation: u64,
 }
 
 pub struct StartAudioSettings {
@@ -28,7 +29,17 @@ impl LiblinphoneBackend {
     pub fn new() -> Self {
         Self {
             next_outgoing_call_id: 1,
+            worker_generation: 0,
         }
+    }
+
+    fn validate_key(&self, key: &yoyopod_protocol::call::SessionKey) -> Result<(), String> {
+        if key.transport != yoyopod_protocol::call::CallTransport::Sip
+            || key.generation != self.worker_generation
+        {
+            return Err("stale or incorrect SIP session generation".into());
+        }
+        Ok(())
     }
 
     fn init(&self) -> Result<(), LiblinphoneError> {
@@ -112,6 +123,9 @@ impl StartAudioSettings {
 }
 
 impl VoipRuntimeBackend for LiblinphoneBackend {
+    fn set_worker_generation(&mut self, generation: u64) {
+        self.worker_generation = generation;
+    }
     fn start(&mut self, config: &VoipConfig) -> Result<(), String> {
         self.init().map_err(|error| error.to_string())?;
         self.start_runtime(config)
@@ -131,12 +145,27 @@ impl VoipRuntimeBackend for LiblinphoneBackend {
     }
 
     fn make_call(&mut self, sip_address: &str) -> Result<String, String> {
-        let sip_address = CString::new(sip_address).map_err(|error| error.to_string())?;
-        check(unsafe { runtime::yoyopod_liblinphone_make_call(sip_address.as_ptr()) })
-            .map_err(|error| error.to_string())?;
-        let call_id = format!("outgoing-{}", self.next_outgoing_call_id);
+        let call_id = format!("sip-outgoing-{}", self.next_outgoing_call_id);
         self.next_outgoing_call_id += 1;
+        runtime::make_named_call(&call_id, sip_address)?;
         Ok(call_id)
+    }
+
+    fn apply_call(&mut self, command: &yoyopod_protocol::call::CallCommand) -> Result<(), String> {
+        self.validate_key(&command.key)?;
+        runtime::apply_session_call(command)
+    }
+
+    fn make_session_call(
+        &mut self,
+        key: &yoyopod_protocol::call::SessionKey,
+        address: &str,
+    ) -> Result<(), String> {
+        self.validate_key(key)?;
+        if key.call_id.starts_with("sip-incoming-") {
+            return Err("reserved incoming ID namespace".into());
+        }
+        runtime::make_named_call(&key.call_id, address)
     }
 
     fn answer_call(&mut self) -> Result<(), String> {
@@ -271,13 +300,13 @@ pub fn native_event_to_backend_event(event: &YoyopodLiblinphoneEvent) -> Option<
             reason: c_string(&event.reason),
         }),
         abi_event::EVENT_CALL_STATE => Some(BackendEvent::CallStateChanged {
-            call_id: c_string(&event.peer_sip_address),
+            call_id: c_string(&event.call_id),
             state: crate::events::CallState::from_native(event.call_state)
                 .as_protocol()
                 .to_string(),
         }),
         abi_event::EVENT_INCOMING_CALL => Some(BackendEvent::IncomingCall {
-            call_id: c_string(&event.peer_sip_address),
+            call_id: c_string(&event.call_id),
             from_uri: c_string(&event.peer_sip_address),
         }),
         abi_event::EVENT_BACKEND_STOPPED => Some(BackendEvent::BackendStopped {

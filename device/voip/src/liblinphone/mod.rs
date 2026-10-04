@@ -16,3 +16,5 @@ mod state;
 #[cfg(feature = "native-liblinphone")]
 pub use backend::LiblinphoneBackend;
 pub use events::{EventQueue, LiblinphoneEvent};
+#[cfg(any(feature = "native-liblinphone", test))]
+pub(crate) mod call_registry;

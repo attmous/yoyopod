@@ -182,7 +182,9 @@ where
     match envelope.message_type.as_str() {
         "voip.configure" => {
             let config = VoipConfig::from_payload(&envelope.payload)?;
+            backend.unregister(host);
             host.configure(config);
+            host.set_worker_generation(envelope.payload["worker_generation"].as_u64().unwrap_or(0));
             write_envelope_to(
                 output,
                 &WorkerEnvelope::result(
@@ -231,6 +233,36 @@ where
             )?;
             write_lifecycle_events(host, output)?;
             write_session_snapshot(host, output)?;
+        }
+        "call.action" => {
+            let command: yoyopod_protocol::call::CallCommand =
+                serde_json::from_value(envelope.payload.clone())?;
+            backend.with_backend(|backend_ref| host.apply_call(backend_ref, &command))?;
+            write_envelope_to(
+                output,
+                &WorkerEnvelope::result(
+                    "call.action",
+                    envelope.request_id,
+                    json!({"accepted": true}),
+                ),
+            )?;
+        }
+        "call.dial" => {
+            let key: yoyopod_protocol::call::SessionKey =
+                serde_json::from_value(envelope.payload["key"].clone())?;
+            let address = envelope.payload["address"]
+                .as_str()
+                .filter(|v| !v.trim().is_empty())
+                .ok_or_else(|| anyhow!("call.dial requires address"))?;
+            backend.with_backend(|backend_ref| host.dial_session(backend_ref, &key, address))?;
+            write_envelope_to(
+                output,
+                &WorkerEnvelope::result(
+                    "call.dial",
+                    envelope.request_id,
+                    json!({"accepted": true}),
+                ),
+            )?;
         }
         "voip.dial" => {
             let uri = envelope.payload["uri"].as_str().unwrap_or("").trim();
@@ -803,6 +835,8 @@ fn session_snapshot_envelope(host: &VoipHost) -> WorkerEnvelope {
 
 pub fn backend_event_envelope(event: host::BackendEvent) -> WorkerEnvelope {
     match event {
+        host::BackendEvent::Offer(offer) => WorkerEnvelope::event("call.offer", json!(offer)),
+        host::BackendEvent::Update(update) => WorkerEnvelope::event("call.update", json!(update)),
         host::BackendEvent::RegistrationChanged { state, reason } => WorkerEnvelope::event(
             "voip.registration_changed",
             json!({"state": state, "reason": reason}),

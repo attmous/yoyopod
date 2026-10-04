@@ -158,6 +158,9 @@ impl CallSession {
     }
 
     pub fn apply_call_state(&mut self, call_id: &str, state: &str) {
+        if self.active_call_id.as_deref() != Some(call_id) {
+            return;
+        }
         self.state = state.to_string();
         if is_terminal_call_state(state) {
             if self.matches_active_session(call_id) {

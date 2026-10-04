@@ -10,16 +10,28 @@ use crate::playback::VoiceNotePlayback;
 use crate::runtime_snapshot::RuntimeSnapshot;
 use crate::voice_notes::VoiceNoteSession;
 use serde_json::json;
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::ErrorKind;
+use yoyopod_protocol::call::{
+    CallAction, CallCommand, CallDirection, CallOffer, CallPhase, CallTransport, CallUpdate,
+    SessionKey,
+};
 
 pub use crate::lifecycle::LifecycleEvent;
 pub use crate::messages::MessageRecord;
 
 pub trait VoipRuntimeBackend {
+    fn set_worker_generation(&mut self, _generation: u64) {}
     fn start(&mut self, config: &VoipConfig) -> Result<(), String>;
     fn stop(&mut self);
     fn iterate(&mut self) -> Result<Vec<BackendEvent>, String>;
+    fn apply_call(&mut self, _command: &CallCommand) -> Result<(), String> {
+        Err("session call control unavailable".into())
+    }
+    fn make_session_call(&mut self, _key: &SessionKey, _address: &str) -> Result<(), String> {
+        Err("session dialing unavailable".into())
+    }
     fn make_call(&mut self, sip_address: &str) -> Result<String, String>;
     fn answer_call(&mut self) -> Result<(), String>;
     fn reject_call(&mut self) -> Result<(), String>;
@@ -61,6 +73,8 @@ const MAX_VOICE_NOTE_DURATION_MS: i32 = 60_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackendEvent {
+    Offer(CallOffer),
+    Update(CallUpdate),
     RegistrationChanged {
         state: String,
         reason: String,
@@ -99,6 +113,8 @@ pub enum BackendEvent {
 #[derive(Debug)]
 pub struct VoipHost {
     config: Option<VoipConfig>,
+    worker_generation: u64,
+    sessions: BTreeMap<String, CallUpdate>,
     backend_started: bool,
     registered: bool,
     registration_state: String,
@@ -116,6 +132,8 @@ impl Default for VoipHost {
     fn default() -> Self {
         Self {
             config: None,
+            worker_generation: 0,
+            sessions: BTreeMap::new(),
             backend_started: false,
             registered: false,
             registration_state: "none".to_string(),
@@ -133,6 +151,7 @@ impl Default for VoipHost {
 
 impl VoipHost {
     pub fn configure(&mut self, config: VoipConfig) {
+        self.sessions.clear();
         self.message_store = MessageStore::open(&config.message_store_dir, 200);
         self.config = Some(config);
         self.backend_started = false;
@@ -145,6 +164,67 @@ impl VoipHost {
         self.voice_note.reset();
         self.last_message = None;
         self.outbound_message_ids.clear();
+    }
+
+    pub fn set_worker_generation(&mut self, generation: u64) {
+        self.worker_generation = generation;
+        self.sessions.clear();
+    }
+
+    pub fn apply_call<B: VoipRuntimeBackend + ?Sized>(
+        &mut self,
+        backend: &mut B,
+        command: &CallCommand,
+    ) -> Result<(), String> {
+        if command.key.transport != CallTransport::Sip
+            || command.key.generation != self.worker_generation
+        {
+            return Err("stale or incorrect call transport generation".into());
+        }
+        let session = self
+            .sessions
+            .get(&command.key.call_id)
+            .ok_or("unknown call ID")?;
+        if session.phase == CallPhase::Ended {
+            return Err("call already ended".into());
+        }
+        backend.apply_call(command)?;
+        if let CallAction::SetMute(muted) = command.action {
+            if let Some(session) = self.sessions.get_mut(&command.key.call_id) {
+                session.muted = muted;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn dial_session<B: VoipRuntimeBackend + ?Sized>(
+        &mut self,
+        backend: &mut B,
+        key: &SessionKey,
+        address: &str,
+    ) -> Result<(), String> {
+        if key.transport != CallTransport::Sip
+            || key.generation != self.worker_generation
+            || key.call_id.trim().is_empty()
+            || key.call_id.starts_with("sip-incoming-")
+            || self.sessions.contains_key(&key.call_id)
+        {
+            return Err("invalid, duplicate or stale outgoing session key".into());
+        }
+        backend.make_session_call(key, address)?;
+        self.sessions.insert(
+            key.call_id.clone(),
+            CallUpdate {
+                key: key.clone(),
+                direction: CallDirection::Outgoing,
+                phase: CallPhase::Outgoing,
+                address: address.into(),
+                duration_seconds: 0,
+                muted: false,
+                sequence: 0,
+            },
+        );
+        Ok(())
     }
 
     pub fn mark_registered(&mut self, registered: bool) {
@@ -222,6 +302,7 @@ impl VoipHost {
             },
             false,
         );
+        backend.set_worker_generation(self.worker_generation);
         if let Err(error) = backend.start(&config) {
             self.backend_started = false;
             self.registered = false;
@@ -253,6 +334,7 @@ impl VoipHost {
 
     pub fn unregister<B: VoipRuntimeBackend + ?Sized>(&mut self, backend: &mut B) {
         backend.stop();
+        self.sessions.clear();
         self.backend_started = false;
         self.registered = false;
         self.registration_state = "none".to_string();
@@ -270,6 +352,22 @@ impl VoipHost {
     ) -> Result<(), String> {
         let call_id = backend.make_call(sip_address)?;
         self.call.start_outgoing(&call_id, sip_address);
+        self.sessions.insert(
+            call_id.clone(),
+            CallUpdate {
+                key: SessionKey {
+                    transport: CallTransport::Sip,
+                    generation: self.worker_generation,
+                    call_id,
+                },
+                direction: CallDirection::Outgoing,
+                phase: CallPhase::Outgoing,
+                address: sip_address.into(),
+                duration_seconds: 0,
+                muted: false,
+                sequence: 0,
+            },
+        );
         Ok(())
     }
 
@@ -541,7 +639,7 @@ impl VoipHost {
         let events: Vec<BackendEvent> = backend
             .iterate()?
             .into_iter()
-            .map(|event| self.translate_backend_event(event))
+            .filter_map(|event| self.translate_backend_event(event))
             .collect();
         for event in &events {
             self.apply_backend_event(event);
@@ -563,10 +661,13 @@ impl VoipHost {
                     self.registered = false;
                 }
             }
-            BackendEvent::IncomingCall { call_id, from_uri } => {
-                self.call.incoming(call_id, from_uri);
-            }
+            BackendEvent::Offer(_)
+            | BackendEvent::Update(_)
+            | BackendEvent::IncomingCall { .. } => {}
             BackendEvent::CallStateChanged { call_id, state } => {
+                if self.call.active_call_id() != Some(call_id.as_str()) {
+                    return;
+                }
                 if matches!(
                     state.as_str(),
                     "incoming"
@@ -652,8 +753,59 @@ impl VoipHost {
         }
     }
 
-    fn translate_backend_event(&mut self, event: BackendEvent) -> BackendEvent {
-        match event {
+    fn translate_backend_event(&mut self, event: BackendEvent) -> Option<BackendEvent> {
+        Some(match event {
+            BackendEvent::IncomingCall { call_id, from_uri } => {
+                if self.sessions.contains_key(&call_id) {
+                    return None;
+                }
+                let key = SessionKey {
+                    transport: CallTransport::Sip,
+                    generation: self.worker_generation,
+                    call_id: call_id.clone(),
+                };
+                self.sessions.entry(call_id).or_insert(CallUpdate {
+                    key: key.clone(),
+                    direction: CallDirection::Incoming,
+                    phase: CallPhase::Ringing,
+                    address: from_uri.clone(),
+                    duration_seconds: 0,
+                    muted: false,
+                    sequence: 0,
+                });
+                BackendEvent::Offer(CallOffer {
+                    key,
+                    address: from_uri,
+                })
+            }
+            BackendEvent::CallStateChanged { call_id, state } => {
+                if self.call.active_call_id() == Some(call_id.as_str()) {
+                    self.call.apply_call_state(&call_id, &state);
+                    self.record_finished_call_history();
+                }
+                if let Some(session) = self.sessions.get_mut(&call_id) {
+                    if session.phase == CallPhase::Ended {
+                        return None;
+                    }
+                    {
+                        session.phase = match state.as_str() {
+                            "incoming" => CallPhase::Ringing,
+                            "connected" | "streams_running" | "paused" | "paused_by_remote"
+                            | "updated_by_remote" => CallPhase::Active,
+                            "idle" | "end" | "error" | "released" => CallPhase::Ended,
+                            _ => CallPhase::Outgoing,
+                        };
+                        session.sequence = session
+                            .sequence
+                            .checked_add(1)
+                            .expect("call sequence exhausted");
+                    }
+                    BackendEvent::Update(session.clone())
+                } else {
+                    return None;
+                }
+            }
+
             BackendEvent::MessageReceived { mut message } => {
                 message.message_id = self.translate_message_id(&message.message_id, false);
                 let message = normalize_message_record(message);
@@ -687,7 +839,7 @@ impl VoipHost {
                 reason,
             },
             other => other,
-        }
+        })
     }
 
     fn translate_message_id(&mut self, backend_id: &str, terminal: bool) -> String {
@@ -714,6 +866,8 @@ mod recording_tests {
     struct LocalRecordingBackend {
         started: bool,
         recording: bool,
+        events: Vec<BackendEvent>,
+        commands: Vec<CallCommand>,
     }
 
     impl VoipRuntimeBackend for LocalRecordingBackend {
@@ -731,7 +885,12 @@ mod recording_tests {
         }
 
         fn iterate(&mut self) -> Result<Vec<BackendEvent>, String> {
-            Ok(Vec::new())
+            Ok(std::mem::take(&mut self.events))
+        }
+
+        fn apply_call(&mut self, command: &CallCommand) -> Result<(), String> {
+            self.commands.push(command.clone());
+            Ok(())
         }
 
         fn make_call(&mut self, _sip_address: &str) -> Result<String, String> {
@@ -797,6 +956,164 @@ mod recording_tests {
         }
     }
 
+    fn incoming(id: &str) -> BackendEvent {
+        BackendEvent::IncomingCall {
+            call_id: id.into(),
+            from_uri: "sip:same@example.test".into(),
+        }
+    }
+    fn state(id: &str, value: &str) -> BackendEvent {
+        BackendEvent::CallStateChanged {
+            call_id: id.into(),
+            state: value.into(),
+        }
+    }
+    fn command(id: &str, generation: u64, action: CallAction) -> CallCommand {
+        CallCommand {
+            key: SessionKey {
+                transport: CallTransport::Sip,
+                generation,
+                call_id: id.into(),
+            },
+            action,
+        }
+    }
+
+    #[test]
+    fn incoming_offers_and_secondary_terminal_never_replace_foreground() {
+        let mut host = VoipHost::default();
+        host.set_worker_generation(7);
+        host.call.start_outgoing("a", "sip:primary@example.test");
+        host.call.apply_call_state("a", "connected");
+        let mut backend = LocalRecordingBackend::default();
+        backend.events = vec![incoming("b"), state("b", "incoming"), state("b", "end")];
+        let events = host.poll_backend_events(&mut backend).unwrap();
+        assert_eq!(host.call.active_call_id(), Some("a"));
+        assert_eq!(host.call.state(), "connected");
+        assert!(
+            matches!(&events[0], BackendEvent::Offer(offer) if offer.key.call_id == "b" && offer.key.generation == 7)
+        );
+        assert!(
+            matches!(&events[2], BackendEvent::Update(update) if update.phase == CallPhase::Ended && update.sequence == 2)
+        );
+        let envelope = crate::worker::backend_event_envelope(events[0].clone());
+        assert_eq!(envelope.message_type, "call.offer");
+    }
+
+    #[test]
+    fn targeted_actions_are_fenced_and_do_not_answer_the_other_call() {
+        use yoyopod_protocol::call::RejectReason;
+        let mut host = VoipHost::default();
+        host.set_worker_generation(7);
+        let mut backend = LocalRecordingBackend::default();
+        backend.events = vec![incoming("a"), incoming("b")];
+        host.poll_backend_events(&mut backend).unwrap();
+        assert_eq!(host.call.active_call_id(), None);
+        for cmd in [
+            command("a", 7, CallAction::Answer),
+            command("b", 7, CallAction::Reject(RejectReason::Busy)),
+            command("a", 7, CallAction::Hangup),
+        ] {
+            host.apply_call(&mut backend, &cmd).unwrap();
+        }
+        assert_eq!(
+            backend
+                .commands
+                .iter()
+                .map(|c| c.key.call_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b", "a"]
+        );
+        assert!(host
+            .apply_call(&mut backend, &command("a", 6, CallAction::Answer))
+            .is_err());
+        assert!(host
+            .apply_call(&mut backend, &command("unknown", 7, CallAction::Hangup))
+            .is_err());
+        backend.events = vec![state("a", "end")];
+        host.poll_backend_events(&mut backend).unwrap();
+        assert!(host
+            .apply_call(&mut backend, &command("a", 7, CallAction::Answer))
+            .is_err());
+        assert_eq!(backend.commands.len(), 3);
+    }
+
+    #[test]
+    fn worker_dispatches_targeted_commands_and_reports_stale_requests() {
+        use yoyopod_protocol::call::RejectReason;
+        let mut host = VoipHost::default();
+        let mut backend = LocalRecordingBackend {
+            events: vec![incoming("a"), incoming("b")],
+            ..Default::default()
+        };
+        let mut commands = vec![
+            crate::protocol::WorkerEnvelope::command(
+                "voip.configure",
+                Some("configure".into()),
+                json!({"sip_identity":"", "message_store_dir":"", "worker_generation":7}),
+            ),
+            crate::protocol::WorkerEnvelope::command(
+                "voip.register",
+                Some("register".into()),
+                json!({}),
+            ),
+        ];
+        for (index, cmd) in [
+            command("a", 7, CallAction::Answer),
+            command("b", 7, CallAction::Reject(RejectReason::Busy)),
+            command("a", 7, CallAction::Hangup),
+            command("a", 6, CallAction::Answer),
+            command("missing", 7, CallAction::Answer),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            commands.push(crate::protocol::WorkerEnvelope::command(
+                "call.action",
+                Some(format!("action-{index}")),
+                json!(cmd),
+            ));
+        }
+        let input = commands
+            .into_iter()
+            .map(|c| serde_json::to_string(&c).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut output = Vec::new();
+        crate::worker::run_worker(
+            std::io::Cursor::new(input),
+            &mut output,
+            &mut Vec::new(),
+            &mut host,
+            &mut backend,
+        )
+        .unwrap();
+        assert_eq!(backend.commands.len(), 3);
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("call.offer"));
+        assert!(output.contains("stale or incorrect call transport generation"));
+        assert!(output.contains("unknown call ID"));
+    }
+    #[test]
+    fn duplicate_offer_or_late_update_cannot_revive_an_ended_session() {
+        let mut host = VoipHost::default();
+        let mut backend = LocalRecordingBackend::default();
+        backend.events = vec![
+            incoming("b"),
+            state("b", "end"),
+            incoming("b"),
+            state("b", "connected"),
+        ];
+        let events = host.poll_backend_events(&mut backend).unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, BackendEvent::Offer(_)))
+                .count(),
+            1
+        );
+        assert_eq!(host.sessions["b"].phase, CallPhase::Ended);
+    }
     #[test]
     fn held_recording_has_a_hard_sixty_second_limit() {
         assert!(!voice_recording_limit_reached(59_999));

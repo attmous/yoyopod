@@ -14,7 +14,9 @@ pub use super::abi_event::YoyopodLiblinphoneEvent;
 
 const FALSE: c_int = 0;
 const TRUE: c_int = 1;
-const LINPHONE_REASON_DECLINED: c_int = 4;
+// Ubuntu Noble Liblinphone 5.2.0 types.h: LinphoneReasonDeclined=3, Busy=6.
+const LINPHONE_REASON_DECLINED: c_int = 3;
+const LINPHONE_REASON_BUSY: c_int = 6;
 
 static VERSION: &[u8] = b"yoyopod-voip-host-liblinphone/0.1.0\0";
 static STATE: Lazy<std::sync::Mutex<state::ShimState>> =
@@ -186,7 +188,7 @@ pub unsafe extern "C" fn yoyopod_liblinphone_start(
         );
         (api.core_set_mic_gain_db)(state.core, (mic_gain as f32) * 0.3);
         (api.core_set_playback_gain_db)(state.core, playback_gain_db(output_volume));
-        (api.core_set_ring_level)(state.core, output_volume.clamp(0, 100));
+        suppress_native_alerts(&api, state.core);
         (api.core_set_audio_port_range)(state.core, 7076, 7100);
         (api.core_set_video_port_range)(state.core, 9076, 9100);
         if let Some(set_aggregation) = api.core_set_chat_messages_aggregation_enabled {
@@ -333,7 +335,23 @@ pub unsafe extern "C" fn yoyopod_liblinphone_make_call(sip_address: *const c_cha
         return -1;
     }
     if let Ok(mut state) = STATE.lock() {
-        state.current_call = call;
+        // Outgoing callbacks can run synchronously inside invite. Register only
+        // if the callback has not already retained this call.
+        if !state.calls.iter().any(|(_, handle)| handle.ptr == call) {
+            if let Some(id) = state.pending_outgoing_id.take() {
+                let handle = unsafe {
+                    super::call_registry::NativeCallHandle::retain(call, api.clone(), false)
+                };
+                let _ = state.calls.insert(id, handle);
+            }
+        }
+        if state
+            .calls
+            .iter()
+            .any(|(_, h)| h.ptr == call && !h.terminal)
+        {
+            state.current_call = call;
+        }
     }
     0
 }
@@ -378,7 +396,7 @@ pub unsafe extern "C" fn yoyopod_liblinphone_set_audio_devices(
     media_device_id: *const c_char,
     microphone_gain: c_int,
     output_volume: c_int,
-    alert_volume: c_int,
+    _alert_volume: c_int,
 ) -> c_int {
     let state = match STATE.lock() {
         Ok(state) => state,
@@ -418,7 +436,7 @@ pub unsafe extern "C" fn yoyopod_liblinphone_set_audio_devices(
         set_device(&api, state.core, media_device_id, api.core_set_media_device);
         (api.core_set_mic_gain_db)(state.core, (microphone_gain.clamp(0, 100) as f32) * 0.3);
         (api.core_set_playback_gain_db)(state.core, playback_gain_db(output_volume));
-        (api.core_set_ring_level)(state.core, alert_volume.clamp(0, 100));
+        suppress_native_alerts(&api, state.core);
     }
     error::clear_last_error();
     0
@@ -1012,11 +1030,21 @@ fn stop_locked(state: &mut state::ShimState) {
         }
     };
     unsafe {
+        // Stopping may synchronously emit call/registration callbacks. Detach
+        // them before entering core_stop while this state lock is held.
+        if !state.account.is_null() && !state.account_cbs.is_null() {
+            (api.account_remove_callbacks)(state.account, state.account_cbs);
+        }
         if !state.core.is_null() {
+            if !state.core_cbs.is_null() {
+                (api.core_remove_callbacks)(state.core, state.core_cbs);
+            }
             (api.core_stop)(state.core);
         }
     }
     cleanup_recorder(state);
+    state.calls = Default::default();
+    state.current_call = ptr::null_mut();
     unsafe {
         if !state.account_cbs.is_null() {
             (api.account_cbs_unref)(state.account_cbs);
@@ -1118,17 +1146,32 @@ fn with_current_call(
     missing_message: &str,
     function: impl FnOnce(&LinphoneApi, *mut LinphoneCall) -> c_int,
 ) -> c_int {
-    let (api, call) = match STATE.lock() {
+    let (api, retained) = match STATE.lock() {
         Ok(state) if state.started && !state.current_call.is_null() => {
+            let Some((_, handle)) = state
+                .calls
+                .iter()
+                .find(|(_, h)| h.ptr == state.current_call && !h.terminal)
+            else {
+                error::set_last_error(missing_message);
+                return -1;
+            };
             let api = state.api.clone().expect("started state has API");
-            (api, state.current_call)
+            let retained = unsafe {
+                super::call_registry::NativeCallHandle::retain(
+                    handle.ptr,
+                    api.clone(),
+                    handle.incoming,
+                )
+            };
+            (api, retained)
         }
         _ => {
             error::set_last_error(missing_message);
             return -1;
         }
     };
-    let status = function(&api, call);
+    let status = function(&api, retained.ptr);
     if status == 0 {
         0
     } else {
@@ -1251,7 +1294,7 @@ unsafe extern "C" fn on_registration_state_changed(
 }
 
 unsafe extern "C" fn on_call_state_changed(
-    _core: *mut LinphoneCore,
+    core: *mut LinphoneCore,
     call: *mut LinphoneCall,
     call_state: c_int,
     message: *const c_char,
@@ -1262,38 +1305,90 @@ unsafe extern "C" fn on_call_state_changed(
     let Some(api) = state.api.clone() else {
         return;
     };
-    state.current_call = call;
+    if call.is_null() || core != state.core {
+        return;
+    }
     let mapped = map_call_state(&api, call_state);
+    let existing_id = state
+        .calls
+        .iter()
+        .find(|(_, h)| h.ptr == call)
+        .map(|(id, _)| id.clone());
+    let id = match existing_id {
+        Some(id) => id,
+        None => {
+            // Never resurrect a released/unknown pointer on a late terminal callback.
+            if matches!(
+                mapped,
+                event::CALL_END | event::CALL_ERROR | event::CALL_RELEASED
+            ) {
+                return;
+            }
+            let pending = if mapped == event::CALL_INCOMING {
+                None
+            } else {
+                state.pending_outgoing_id.take()
+            };
+            let id = if let Some(id) = pending {
+                id
+            } else {
+                state.call_counter = state
+                    .call_counter
+                    .checked_add(1)
+                    .expect("call ID exhausted");
+                format!("sip-incoming-{}", state.call_counter)
+            };
+            let handle = unsafe {
+                super::call_registry::NativeCallHandle::retain(
+                    call,
+                    api.clone(),
+                    mapped == event::CALL_INCOMING,
+                )
+            };
+            if state.calls.insert(id.clone(), handle).is_err() {
+                return;
+            }
+            id
+        }
+    };
+    if matches!(mapped, event::CALL_CONNECTED | event::CALL_STREAMS_RUNNING) {
+        if let Some(handle) = state.calls.get_mut(&id) {
+            handle.connected = true;
+        }
+    }
+    if matches!(
+        mapped,
+        event::CALL_END | event::CALL_ERROR | event::CALL_RELEASED
+    ) {
+        if let Some(handle) = state.calls.get_mut(&id) {
+            handle.terminal = true;
+        }
+    }
     let mut event = YoyopodLiblinphoneEvent {
         event_type: event::EVENT_CALL_STATE,
         call_state: mapped,
         ..Default::default()
     };
-    if !call.is_null() {
-        let address = unsafe { (api.call_get_remote_address)(call) };
-        copy_str_to_fixed(
-            &build_address_uri(&api, address),
-            &mut event.peer_sip_address,
-        );
-    }
+    // IDs are validated before registration; this copy cannot truncate.
+    copy_str_to_fixed(&id, &mut event.call_id);
+    let address = unsafe { (api.call_get_remote_address)(call) };
+    copy_str_to_fixed(
+        &build_address_uri(&api, address),
+        &mut event.peer_sip_address,
+    );
     copy_str_to_fixed(&unsafe { ptr_to_string(message) }, &mut event.reason);
-    state.queue.push(event);
     if mapped == event::CALL_INCOMING {
-        let mut incoming = YoyopodLiblinphoneEvent {
-            event_type: event::EVENT_INCOMING_CALL,
-            ..Default::default()
-        };
-        copy_str_to_fixed(
-            &c_array_to_string(&event.peer_sip_address),
-            &mut incoming.peer_sip_address,
-        );
+        let mut incoming = event;
+        incoming.event_type = event::EVENT_INCOMING_CALL;
         state.queue.push(incoming);
     }
-    if matches!(
-        mapped,
-        event::CALL_RELEASED | event::CALL_END | event::CALL_ERROR
-    ) {
-        state.current_call = ptr::null_mut();
+    state.queue.push(event);
+    // Release only at Released, after End/Error; pointer stays retained for cleanup.
+    if mapped == event::CALL_RELEASED {
+        if state.current_call == call {
+            state.current_call = ptr::null_mut();
+        }
+        state.calls.remove(&id);
     }
 }
 
@@ -1781,5 +1876,95 @@ mod tests {
         assert!((playback_gain_db(10) - -20.0).abs() < 0.01);
         assert!((playback_gain_db(50) - -6.0206).abs() < 0.01);
         assert_eq!(playback_gain_db(100), 0.0);
+    }
+}
+
+// Must precede core start/iteration, and be reapplied after audio routing changes.
+unsafe fn suppress_native_alerts(api: &LinphoneApi, core: *mut LinphoneCore) {
+    unsafe {
+        (api.core_set_ring)(core, ptr::null());
+        (api.core_enable_native_ringing)(core, FALSE);
+        (api.core_set_ring_level)(core, 0);
+        // Liblinphone 5.2.0 coreapi/misc.c checks [sound] tone_indications
+        // before ToneManager plays its call-waiting/error indications.
+        let config = (api.core_get_config)(core);
+        (api.config_set_int)(config, c"sound".as_ptr(), c"tone_indications".as_ptr(), 0);
+        if let Some(disable) = api.core_enable_call_tone_indications {
+            disable(core, FALSE);
+        }
+    }
+}
+
+pub fn make_named_call(id: &str, address: &str) -> Result<(), String> {
+    if id.is_empty() || id.len() >= 256 || id.contains('\0') {
+        return Err("call ID exceeds native ABI or is empty".into());
+    }
+    let address = CString::new(address).map_err(|e| e.to_string())?;
+    {
+        let mut state = STATE.lock().map_err(|e| e.to_string())?;
+        if state.calls.get(id).is_some() || state.pending_outgoing_id.is_some() {
+            return Err("duplicate/pending call ID".into());
+        }
+        state.pending_outgoing_id = Some(id.into());
+    }
+    let result = unsafe { yoyopod_liblinphone_make_call(address.as_ptr()) };
+    STATE.lock().map_err(|e| e.to_string())?.pending_outgoing_id = None;
+    if result == 0 {
+        Ok(())
+    } else {
+        Err("Liblinphone could not start session call".into())
+    }
+}
+
+pub fn apply_session_call(command: &yoyopod_protocol::call::CallCommand) -> Result<(), String> {
+    use yoyopod_protocol::call::{CallAction, RejectReason};
+    // Copy a retained pointer, then unlock: native operations can synchronously
+    // reenter the callback. The host thread is the sole caller of native APIs.
+    let (api, retained, incoming, connected) = {
+        let state = STATE.lock().map_err(|e| e.to_string())?;
+        let handle = state
+            .calls
+            .get(&command.key.call_id)
+            .ok_or("unknown call ID")?;
+        if handle.terminal {
+            return Err("call already ended".into());
+        }
+        (
+            state.api.clone().ok_or("backend unavailable")?,
+            unsafe {
+                super::call_registry::NativeCallHandle::retain(
+                    handle.ptr,
+                    state.api.clone().ok_or("backend unavailable")?,
+                    handle.incoming,
+                )
+            },
+            handle.incoming,
+            handle.connected,
+        )
+    };
+    let call = retained.ptr;
+    let result = unsafe {
+        match &command.action {
+            CallAction::Answer if incoming && !connected => (api.call_accept)(call),
+            CallAction::Answer => return Err("call is not an incoming offer".into()),
+            CallAction::Reject(reason) if incoming && !connected => (api.call_decline)(
+                call,
+                if *reason == RejectReason::Busy {
+                    LINPHONE_REASON_BUSY
+                } else {
+                    LINPHONE_REASON_DECLINED
+                },
+            ),
+            CallAction::Reject(_) | CallAction::Hangup => (api.call_terminate)(call),
+            CallAction::SetMute(muted) => {
+                (api.call_set_microphone_muted)(call, i32::from(*muted));
+                0
+            }
+        }
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err("native session action failed".into())
     }
 }

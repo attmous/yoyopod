@@ -18,6 +18,9 @@ pub struct ShimState {
     pub core_cbs: *mut LinphoneCoreCbs,
     pub message_cbs: *mut LinphoneChatMessageCbs,
     pub chat_room_cbs: *mut LinphoneChatRoomCbs,
+    pub calls: super::call_registry::SessionRegistry<super::call_registry::NativeCallHandle>,
+    pub call_counter: u64,
+    pub pending_outgoing_id: Option<String>,
     pub current_call: *mut LinphoneCall,
     pub current_recorder: *mut LinphoneRecorder,
     pub recorder_running: bool,
@@ -41,7 +44,9 @@ impl ShimState {
         let api = self.api.clone();
         let factory = self.factory;
         let initialized = self.initialized;
+        let call_counter = self.call_counter;
         *self = Self {
+            call_counter,
             initialized,
             api,
             factory,
@@ -50,4 +55,6 @@ impl ShimState {
     }
 }
 
+// The mutex provides static storage only: all Liblinphone operations and
+// callbacks (including retained handle drops) run on the VoIP host thread.
 unsafe impl Send for ShimState {}
