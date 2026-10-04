@@ -1140,13 +1140,6 @@ impl MediaRuntime for MpvRuntime {
         self.prepare_explicit_playback()?;
         self.requested_playback = PlaybackState::Playing;
         if let Some((paths, index, position)) = self.suspended.clone() {
-            self.start()?;
-            if let Some(volume) = self.selected_volume {
-                self.command(&[json!("set_property"), json!("volume"), json!(volume)])?;
-            }
-            if let Some(output) = self.selected_output.clone() {
-                self.command(&[json!("set_property"), json!("audio-device"), json!(output)])?;
-            }
             self.command(&[json!("set_property"), json!("pause"), json!(true)])?;
             for (i, path) in paths.iter().enumerate() {
                 self.command(&[

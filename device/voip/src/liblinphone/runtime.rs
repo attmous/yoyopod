@@ -1108,14 +1108,20 @@ pub(super) fn finalize_voice_recording_for_call() -> Result<i32, String> {
     let duration = api
         .recorder_get_duration
         .map_or(0, |duration| unsafe { duration(recorder) });
-    let close_failed = api
-        .recorder_close
-        .is_none_or(|close| unsafe { close(recorder) } != 0);
+    // Liblinphone 5.2 close returns void. File usability is checked by the host
+    // after close/unref; there is no native close status to consume.
+    let close_missing = match api.recorder_close {
+        Some(close) => {
+            unsafe { close(recorder) };
+            false
+        }
+        None => true,
+    };
     unsafe { unref(recorder) };
     state.current_recorder = ptr::null_mut();
     state.recorder_running = false;
     state.current_recording_path.clear();
-    if pause_failed || close_failed {
+    if pause_failed || close_missing {
         Err("failed to close interrupted recording; capture released".into())
     } else {
         Ok(duration)
@@ -1936,7 +1942,9 @@ mod tests {
         }
         assert_eq!(
             declared_type(|api| api.recorder_close),
-            std::any::type_name::<unsafe extern "C" fn(*mut crate::liblinphone::ffi::LinphoneRecorder)>(),
+            std::any::type_name::<
+                unsafe extern "C" fn(*mut crate::liblinphone::ffi::LinphoneRecorder),
+            >(),
             "Liblinphone5.2 close returns void, not status"
         );
     }
