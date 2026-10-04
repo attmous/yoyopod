@@ -376,6 +376,36 @@ mod tests {
     use super::*;
     use yoyopod_protocol::ui::RuntimeSnapshotPatch;
 
+    fn assert_no_local_call_interruption(sent: &[(WorkerDomain, WorkerEnvelope)]) {
+        for (domain, envelope) in sent {
+            assert!(!matches!(envelope.message_type.as_str(),
+                "media.pause" | "media.interrupt_for_call" | "media.ringtone_start" |
+                "voip.interrupt_for_call" | "voice.cancel" | "voice.cancel_focus_prompt" |
+                "ui.set_backlight"));
+            if *domain == WorkerDomain::Ui {
+                assert_ne!(envelope.payload.pointer("/call/state").and_then(Value::as_str), Some("incoming"));
+            }
+        }
+    }
+
+    #[test]
+    fn managed_unknown_offers_reject_without_local_interruption() {
+        for (domain, transport) in [(WorkerDomain::Voip, "sip"), (WorkerDomain::Network, "gsm")] {
+            let mut runtime = RuntimeLoop::new(RuntimeState::default());
+            let mut io = FakeLoopIo::default();
+            io.messages.push((domain, WorkerEnvelope::event("call.offer", json!({
+                "key":{"transport":transport,"generation":1,"call_id":"unknown"},
+                "address":"withheld"
+            }))));
+            runtime.run_once(&mut io);
+            assert_no_local_call_interruption(&io.sent);
+            assert!(io.sent.iter().any(|(sent_domain, envelope)| *sent_domain == domain &&
+                envelope.message_type == "call.action" &&
+                envelope.payload["action"]["reject"] == "unapproved"),
+                "raw unknown offer requires an isolated rejection");
+        }
+    }
+
     fn ui_runtime_patch_command(envelope: WorkerEnvelope) -> Option<UiCommand> {
         let Ok(command) = UiCommand::from_envelope(envelope) else {
             return None;
@@ -389,6 +419,8 @@ mod tests {
         protocol_errors: Vec<(WorkerDomain, WorkerProtocolError)>,
         sent: Vec<(WorkerDomain, WorkerEnvelope)>,
         app_log: Vec<(String, String)>,
+        recovered: Vec<WorkerDomain>,
+        fail_send: Vec<String>,
     }
 
     impl LoopIo for FakeLoopIo {
@@ -401,8 +433,9 @@ mod tests {
         }
 
         fn send_worker_envelope(&mut self, domain: WorkerDomain, envelope: WorkerEnvelope) -> bool {
+            let ok = !self.fail_send.contains(&envelope.message_type);
             self.sent.push((domain, envelope));
-            true
+            ok
         }
 
         fn write_power_shutdown_state(
