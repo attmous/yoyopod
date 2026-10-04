@@ -470,6 +470,8 @@ pub struct ListItemSnapshot {
     pub sip_address: String,
     #[serde(default)]
     pub phone_number: String,
+    #[serde(default = "default_contact_can_receive")]
+    pub can_receive: bool,
 }
 
 impl ListItemSnapshot {
@@ -488,6 +490,7 @@ impl ListItemSnapshot {
             communication_unavailable: false,
             sip_address: String::new(),
             phone_number: String::new(),
+            can_receive: true,
         }
     }
 
@@ -506,6 +509,10 @@ impl ListItemSnapshot {
             None
         }
     }
+}
+
+fn default_contact_can_receive() -> bool {
+    true
 }
 
 fn default_app_state() -> UiScreen {

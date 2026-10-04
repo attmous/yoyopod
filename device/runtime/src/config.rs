@@ -103,6 +103,8 @@ pub struct ContactRuntimeConfig {
     pub sip_address: String,
     #[serde(default)]
     pub phone_number: String,
+    #[serde(default = "default_contact_can_receive")]
+    pub can_receive: bool,
     pub favorite: bool,
     pub aliases: Vec<String>,
 }
@@ -624,6 +626,7 @@ impl PeopleRuntimeConfig {
                     && contact.phone_number.is_empty(),
                 sip_address: contact.sip_address.clone(),
                 phone_number: contact.phone_number.clone(),
+                can_receive: contact.can_receive,
             })
             .collect()
     }
@@ -863,12 +866,20 @@ fn contact_config_from_value(value: &Value) -> Option<ContactRuntimeConfig> {
         display_name,
         sip_address,
         phone_number: string_field(value, "phone_number").unwrap_or_default(),
+        can_receive: value
+            .get("can_receive")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
         favorite: value
             .get("favorite")
             .and_then(Value::as_bool)
             .unwrap_or(false),
         aliases: string_array_field(value, "aliases"),
     })
+}
+
+fn default_contact_can_receive() -> bool {
+    true
 }
 
 fn at_path<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {

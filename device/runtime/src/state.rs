@@ -127,6 +127,7 @@ pub struct ListItem {
     pub communication_unavailable: bool,
     pub sip_address: String,
     pub phone_number: String,
+    pub can_receive: bool,
 }
 
 impl ListItem {
@@ -175,6 +176,10 @@ impl ListItem {
                 .unwrap_or(false),
             sip_address: string_field(value, "sip_address").unwrap_or_default(),
             phone_number: string_field(value, "phone_number").unwrap_or_default(),
+            can_receive: value
+                .get("can_receive")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
         })
     }
 
@@ -189,6 +194,7 @@ impl ListItem {
             "communication_unavailable": self.communication_unavailable,
             "sip_address": self.sip_address,
             "phone_number": self.phone_number,
+            "can_receive": self.can_receive,
         })
     }
 }
@@ -825,8 +831,9 @@ impl RuntimeState {
             recipient.recipient_address.trim()
         };
         self.call.contacts.iter().any(|contact| {
-            (contact.id == recipient.id
-                || (!contact.contact_id.is_empty() && contact.contact_id == recipient.id))
+            contact.can_receive
+                && (contact.id == recipient.id
+                    || (!contact.contact_id.is_empty() && contact.contact_id == recipient.id))
                 && contact.sip_target() == Some(uri)
         })
     }
@@ -2577,6 +2584,7 @@ fn recent_call_history_item(value: &Value, contacts: &[ListItem]) -> Option<List
         communication_unavailable: false,
         sip_address: peer_sip_address,
         phone_number: String::new(),
+        can_receive: true,
     })
 }
 

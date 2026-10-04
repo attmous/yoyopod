@@ -35,6 +35,9 @@ pub fn contact_action(item: &ListItemSnapshot) -> ContactAction {
 }
 
 pub fn voice_recipient_action(contact: &ListItemSnapshot) -> Option<VoiceRecipientAction> {
+    if !contact.can_receive {
+        return None;
+    }
     let target = contact.sip_target()?;
     Some(VoiceRecipientAction {
         id: if contact.contact_id.is_empty() {
@@ -78,5 +81,8 @@ mod tests {
         let action = voice_recipient_action(&contact).unwrap();
         assert_eq!(action.id, "approved-mama");
         assert_eq!(action.recipient_address, "sip:mama@example.test");
+        contact.can_receive = false;
+        assert!(voice_recipient_action(&contact).is_none());
+        assert_eq!(contact.sip_target(), Some("sip:mama@example.test"));
     }
 }

@@ -2552,6 +2552,7 @@ mod tests {
         for entries in [
             json!([]),
             json!([{"id":"mama", "name":"Mama", "sip_address":"sip:mama@example.test", "can_call":false}]),
+            json!([{"id":"mama", "name":"Mama", "sip_address":"sip:mama@example.test", "can_call":true, "can_receive":false}]),
             json!([{"id":"mama", "name":"Mama", "sip_address":"sip:new@example.test", "can_call":true}]),
             json!([{"id":"stranger", "name":"Other", "sip_address":"sip:mama@example.test", "can_call":true}]),
         ] {
@@ -2576,6 +2577,13 @@ mod tests {
             update.apply(&mut state);
             assert!(state.voice.pending_voice_recipient.is_none());
             assert!(!state.voice.auto_send_after_capture);
+            let explicit = UiIntent::Voice(VoiceIntent::Send(VoiceRecipientAction {
+                id: "mama".into(),
+                recipient_address: "sip:mama@example.test".into(),
+                file_path: "/tmp/revoked.wav".into(),
+                ..VoiceRecipientAction::default()
+            }));
+            assert!(commands_for_event(&state, &RuntimeEvent::UiIntent(explicit)).is_empty());
             let recorded = RuntimeEvent::VoipSnapshot(json!({"voice_note":{
                 "state":"recorded", "file_path":"/tmp/revoked.wav"
             }}));

@@ -156,6 +156,9 @@ pub(crate) fn actions(
     {
         items.truncate(1);
     }
+    if selected_contact.is_some_and(|contact| !contact.can_receive) {
+        items.retain(|item| item.key != Key::Static("record"));
+    }
     items
 }
 
@@ -233,6 +236,17 @@ mod tests {
         assert_eq!(
             focused.children[2].children[0].role,
             Some(roles::WHEEL_FOCUS_ICON)
+        );
+    }
+
+    #[test]
+    fn receive_permission_revocation_keeps_calls_and_replay_without_recording() {
+        let mut mama = contact();
+        mama.can_receive = false;
+        let items = actions(&RuntimeSnapshot::default(), Some(&mama));
+        assert_eq!(
+            items.iter().map(|item| &item.key).collect::<Vec<_>>(),
+            vec![&Key::Static("call"), &Key::Static("replay")]
         );
     }
 
