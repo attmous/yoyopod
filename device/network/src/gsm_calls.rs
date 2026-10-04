@@ -16,6 +16,7 @@ pub struct GsmCallRegistry {
 }
 
 impl GsmCallRegistry {
+    pub fn observe_audio(&mut self, _key: &SessionKey, _duration_seconds: u64, _muted: bool) -> Option<CallUpdate> { None }
     pub fn new(generation: u64) -> Self {
         Self {
             generation,
@@ -120,6 +121,28 @@ impl GsmCallRegistry {
 mod tests {
     use super::*;
     use yoyopod_protocol::call::CallTransport;
+
+    #[test]
+    fn gsm_outgoing_key_cannot_be_reused_after_removal() {
+        let mut registry = GsmCallRegistry::new(9);
+        let key = outgoing(9);
+        registry.register_outgoing(&key, "/call/1").unwrap();
+        registry.remove(&key);
+        assert!(registry.register_outgoing(&key, "/call/2").is_err(), "late command could target replacement session");
+    }
+
+    #[test]
+    fn gsm_owned_mute_and_duration_are_sequenced_without_reoffering() {
+        let mut registry = GsmCallRegistry::new(9);
+        let events = registry.observe("/call/1", CallDirection::Incoming, CallPhase::Ringing, "+49123456789");
+        let key = offer(&events).key.clone();
+        let update = registry.observe_audio(&key, 3, true).expect("audio metadata update");
+        assert_eq!(update.duration_seconds, 3); assert!(update.muted); assert_eq!(update.sequence, 2);
+        assert!(registry.observe_audio(&key, 3, true).is_none());
+        let active = registry.observe("/call/1", CallDirection::Incoming, CallPhase::Active, "+49123456789");
+        let CallManagerWireEvent::Update(active) = &active[0] else { panic!("update") };
+        assert_eq!(active.duration_seconds, 3); assert!(active.muted); assert_eq!(active.sequence, 3);
+    }
 
     #[test]
     fn gsm_waiting_offer_can_be_rejected_without_admitting_a_second_call() {
