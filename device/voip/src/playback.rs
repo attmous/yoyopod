@@ -86,7 +86,7 @@ impl VoiceNotePlayback {
         {
             return Ok(false);
         }
-        self.stop();
+        self.stop_checked()?;
         let command = Self::command_for(file_path);
         let child = yoyopod_protocol::process::bound_command_with_lease(
             &command,

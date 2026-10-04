@@ -1997,6 +1997,36 @@ fn empty_payload() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn call_invalidation_clears_auto_send_and_rejects_all_retired_voice_results() {
+        let mut state = RuntimeState::default();
+        state.voice.auto_send_after_capture = true;
+        state.voice.ask_capture_active = true;
+        state.voice.pending_ask_question = "old".into();
+        let epoch = state.voice.invalidate_for_call();
+        assert_eq!(epoch, 1);
+        assert!(!state.voice.auto_send_after_capture);
+        assert!(!state.voice.ask_capture_active);
+        assert!(state.voice.pending_ask_question.is_empty());
+        for event in [
+            RuntimeEvent::VoiceTranscript(
+                json!({"text":"play music","voice_activity_generation":0}),
+            ),
+            RuntimeEvent::VoiceAskResult(json!({"answer":"late","voice_activity_generation":0})),
+            RuntimeEvent::VoiceSpeakResult(
+                json!({"audio_path":"late.wav","voice_activity_generation":0}),
+            ),
+            RuntimeEvent::VoiceFocusPromptResult {
+                request_id: Some("old".into()),
+                payload: json!({"audio_path":"late.wav","voice_activity_generation":0}),
+            },
+        ] {
+            assert!(commands_for_event(&state, &event).is_empty());
+            event.apply(&mut state);
+            assert_eq!(state.voice.activity_generation, epoch);
+            assert!(!state.voice.auto_send_after_capture);
+        }
+    }
     use yoyopod_protocol::ui::{
         ListItemAction, MusicIntent, PlaylistTrackAction, SettingsIntent, SystemIntent, UiEvent,
         UiFocusChanged,
@@ -2956,7 +2986,7 @@ mod tests {
                 "microphone_gain": 55
             })),
         );
-        assert_eq!(route_commands.len(), 3);
+        assert_eq!(route_commands.len(), 4);
         assert!(route_commands.iter().all(|command| {
             matches!(
                 command,

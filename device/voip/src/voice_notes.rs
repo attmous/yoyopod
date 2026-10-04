@@ -1,5 +1,44 @@
 use serde_json::json;
 
+/// Check closed RIFF/WAVE chunks without reading the captured audio into RAM.
+pub fn usable_wav(path: &str) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let Ok(metadata) = file.metadata() else {
+        return false;
+    };
+    let mut header = [0u8; 12];
+    if file.read_exact(&mut header).is_err() || &header[..4] != b"RIFF" || &header[8..] != b"WAVE" {
+        return false;
+    }
+    let mut offset = 12u64;
+    let mut format = false;
+    while offset.saturating_add(8) <= metadata.len() {
+        let mut chunk = [0u8; 8];
+        if file.read_exact(&mut chunk).is_err() {
+            return false;
+        }
+        let length = u32::from_le_bytes(chunk[4..].try_into().expect("four bytes")) as u64;
+        offset += 8;
+        if offset.saturating_add(length) > metadata.len() {
+            return false;
+        }
+        if &chunk[..4] == b"fmt " {
+            format = length >= 16;
+        }
+        if &chunk[..4] == b"data" {
+            return format && length >= 2;
+        }
+        offset = offset.saturating_add(length + length % 2);
+        if file.seek(SeekFrom::Start(offset)).is_err() {
+            return false;
+        }
+    }
+    false
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VoiceNoteSession {
     state: String,

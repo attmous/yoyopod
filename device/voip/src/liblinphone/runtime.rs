@@ -1093,17 +1093,33 @@ pub(super) fn finalize_voice_recording_for_call() -> Result<i32, String> {
     let mut state = STATE
         .lock()
         .map_err(|_| "liblinphone runtime state lock poisoned".to_string())?;
-    let duration = if state.current_recorder.is_null() {
-        0
+    if state.current_recorder.is_null() {
+        return Ok(0);
+    }
+    let api = state.api.clone().ok_or("recorder API unavailable")?;
+    let unref = api
+        .recorder_unref
+        .ok_or("recorder release API unavailable")?;
+    let recorder = state.current_recorder;
+    let pause_failed = state.recorder_running
+        && api
+            .recorder_pause
+            .is_none_or(|pause| unsafe { pause(recorder) } != 0);
+    let duration = api
+        .recorder_get_duration
+        .map_or(0, |duration| unsafe { duration(recorder) });
+    let close_failed = api
+        .recorder_close
+        .is_none_or(|close| unsafe { close(recorder) } != 0);
+    unsafe { unref(recorder) };
+    state.current_recorder = ptr::null_mut();
+    state.recorder_running = false;
+    state.current_recording_path.clear();
+    if pause_failed || close_failed {
+        Err("failed to close interrupted recording; capture released".into())
     } else {
-        state
-            .api
-            .as_ref()
-            .and_then(|api| api.recorder_get_duration)
-            .map_or(0, |duration| unsafe { duration(state.current_recorder) })
-    };
-    cleanup_recorder(&mut state);
-    Ok(duration)
+        Ok(duration)
+    }
 }
 
 fn cleanup_recorder(state: &mut state::ShimState) {

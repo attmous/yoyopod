@@ -685,7 +685,8 @@ fn dnd_ordinary_ringing_terminates_busy() {
         vec![
             CallEffect::StopRingtone(RingtoneRequest {
                 key: key("a"),
-                operation_generation: 0
+                operation_generation: 0,
+                lease_ms: 0,
             }),
             busy(key("a")),
             CallEffect::Publish
@@ -930,7 +931,8 @@ fn silent_stops_and_normal_restarts_pending_ordinary_alert() {
         vec![
             CallEffect::StopRingtone(RingtoneRequest {
                 key: key("a"),
-                operation_generation: 0
+                operation_generation: 0,
+                lease_ms: 0,
             }),
             CallEffect::Publish
         ]
@@ -953,7 +955,8 @@ fn silent_stops_and_normal_restarts_pending_ordinary_alert() {
         vec![
             CallEffect::StartRingtone(RingtoneRequest {
                 key: key("a"),
-                operation_generation: 0
+                operation_generation: 0,
+                lease_ms: 0,
             }),
             CallEffect::Publish
         ]

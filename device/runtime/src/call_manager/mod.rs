@@ -170,7 +170,7 @@ impl CallManager {
                 effects.push(CallEffect::StopRingtone(RingtoneRequest {
                     key: s.key.clone(),
                     operation_generation: 0,
-            lease_ms: 0,
+                    lease_ms: 0,
                 }));
             }
             self.audible = false;
@@ -234,7 +234,7 @@ impl CallManager {
                     effects.push(CallEffect::StartRingtone(RingtoneRequest {
                         key,
                         operation_generation: 0,
-            lease_ms: 0,
+                        lease_ms: 0,
                     }));
                 }
             }
@@ -310,7 +310,7 @@ impl CallManager {
                             effects.push(CallEffect::StartRingtone(RingtoneRequest {
                                 key,
                                 operation_generation: 0,
-            lease_ms: 0,
+                                lease_ms: 0,
                             }));
                         }
                     } else {
@@ -472,7 +472,7 @@ impl CallManager {
                     effects.push(CallEffect::StartRingtone(RingtoneRequest {
                         key: self.session().unwrap().clone(),
                         operation_generation: 0,
-            lease_ms: 0,
+                        lease_ms: 0,
                     }));
                 }
                 effects.push(CallEffect::Publish);

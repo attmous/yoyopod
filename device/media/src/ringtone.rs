@@ -39,7 +39,9 @@ impl RingtonePlayer {
         if request.operation_generation <= self.retired_generation {
             return Err("retired ringtone operation".into());
         }
-        if self.session.as_ref().is_some_and(|s| s.key == request.key && s.operation_generation == request.operation_generation) {
+        if self.session.as_ref().is_some_and(|s| {
+            s.key == request.key && s.operation_generation == request.operation_generation
+        }) {
             return Ok(());
         }
         if self
@@ -77,12 +79,22 @@ impl RingtonePlayer {
     }
     pub fn stop(&mut self, request: &RingtoneRequest) -> Result<(), String> {
         self.retired_generation = self.retired_generation.max(request.operation_generation);
-        if self.session.as_ref().is_some_and(|s| s.key == request.key && s.operation_generation == request.operation_generation) {
+        if self.session.as_ref().is_some_and(|s| {
+            s.key == request.key && s.operation_generation == request.operation_generation
+        }) {
             self.shutdown()?;
         }
         Ok(())
     }
     pub fn tick(&mut self, now_ms: u64) -> Result<(), String> {
+        if self
+            .process
+            .as_ref()
+            .is_some_and(|process| !process.is_alive())
+        {
+            self.shutdown()?;
+            return Err("ringtone helper exited before lease expiry".into());
+        }
         if self.session.is_some() && now_ms >= self.lease_deadline_ms {
             self.shutdown()?;
         }
@@ -232,5 +244,19 @@ mod tests {
             .unwrap();
         player.tick(300).unwrap();
         assert!(log.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn route_update_preserves_lease_and_cannot_restart_stopped_alert() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut player = RingtonePlayer::with_spawner(Box::new(FakeSpawner(log.clone())));
+        player.start(&request(1), "alsa/old", 40, 100, 300).unwrap();
+        player.set_output("alsa/new", 30, 200).unwrap();
+        assert_eq!(log.lock().unwrap()[1], "kill+wait");
+        assert!(log.lock().unwrap()[2].contains("alsa/new"));
+        player.tick(400).unwrap();
+        assert_eq!(log.lock().unwrap()[3], "kill+wait");
+        player.set_output("alsa/third", 100, 500).unwrap();
+        assert_eq!(log.lock().unwrap().len(), 4);
     }
 }

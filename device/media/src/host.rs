@@ -32,7 +32,7 @@ mod interruption_tests {
             true
         }
     }
-    struct Ipc;
+    struct Ipc(Arc<Mutex<Vec<Vec<Value>>>>);
     impl MpvIpcTransport for Ipc {
         fn connect(&mut self) -> Result<()> {
             Ok(())
@@ -42,11 +42,13 @@ mod interruption_tests {
         }
         fn disconnect(&mut self) {}
         fn send_command(&mut self, args: &[Value], _: Duration) -> Result<Value> {
+            self.0.lock().unwrap().push(args.to_vec());
             let data = match args.get(1).and_then(Value::as_str) {
                 Some("playlist") => {
                     json!([{"filename":"a.mp3","current":true},{"filename":"b.mp3"}])
                 }
                 Some("time-pos") => json!(12.0),
+                Some("path") => json!("a.mp3"),
                 _ => Value::Null,
             };
             Ok(json!({"error":"success","data":data}))
@@ -61,9 +63,10 @@ mod interruption_tests {
     #[test]
     fn call_suspension_releases_process_preserving_music_selection() {
         let log = Arc::new(Mutex::new(Vec::new()));
+        let commands = Arc::new(Mutex::new(Vec::new()));
         let mut runtime = MpvRuntime::with_clients(
             Box::new(Process(log.clone())),
-            Box::new(Ipc),
+            Box::new(Ipc(commands.clone())),
             Default::default(),
         );
         let track = Track {
@@ -87,6 +90,39 @@ mod interruption_tests {
         assert_eq!(runtime.playback_state(), PlaybackState::Paused);
         runtime.drain_events().unwrap();
         assert_eq!(*log.lock().unwrap(), vec!["kill+wait"]);
+        assert_eq!(
+            runtime.suspended.as_ref().unwrap().0,
+            vec!["a.mp3", "b.mp3"]
+        );
+        commands.lock().unwrap().clear();
+        runtime.set_audio_device("alsa/reconnected").unwrap();
+        runtime.set_volume(42).unwrap();
+        assert!(
+            commands.lock().unwrap().is_empty(),
+            "route update cannot reopen suspended audio"
+        );
+        runtime.play().unwrap();
+        assert_eq!(*log.lock().unwrap(), vec!["kill+wait", "spawn"]);
+        assert!(!commands.lock().unwrap().contains(&vec![
+            json!("set_property"),
+            json!("pause"),
+            json!(false)
+        ]));
+        runtime.handle_raw_event(json!({"event":"file-loaded"}));
+        let cmds = commands.lock().unwrap();
+        let seek = cmds
+            .iter()
+            .position(|c| c.first() == Some(&json!("seek")))
+            .unwrap();
+        let unpause = cmds
+            .iter()
+            .position(|c| *c == vec![json!("set_property"), json!("pause"), json!(false)])
+            .unwrap();
+        assert!(
+            seek < unpause,
+            "seek retained position before releasing pause"
+        );
+        assert_eq!(runtime.time_position_ms(), 12_000);
     }
 }
 
@@ -188,6 +224,7 @@ impl MediaHost {
     }
 
     pub fn configure(&mut self, config: MediaConfig) -> Result<()> {
+        self.alert_output = format!("alsa/{}", config.alsa_device);
         self.library = Some(LocalMusicLibrary::open(&config.music_dir)?);
         self.recent_store = RecentTrackStore::open(&config.recent_tracks_file, 50);
         self.remote_cache = Some(RemotePlaybackCache::new(
@@ -598,8 +635,10 @@ impl Default for MpvRuntimeStartupPolicy {
 }
 
 pub struct MpvRuntime {
+    selected_volume: Option<i32>,
+    selected_output: Option<String>,
     suspended: Option<(Vec<String>, usize, i64)>,
-    resume_position: Option<i64>,
+    resume_position: Option<(String, i64)>,
     process: Box<dyn MpvProcessController>,
     ipc: Box<dyn MpvIpcTransport>,
     startup: MpvRuntimeStartupPolicy,
@@ -614,6 +653,14 @@ pub struct MpvRuntime {
 }
 
 impl MpvRuntime {
+    fn prepare_explicit_load(&mut self) -> Result<()> {
+        if self.suspended.is_some() {
+            self.start()?;
+            self.suspended = None;
+            self.resume_position = None;
+        }
+        Ok(())
+    }
     pub fn new(config: MediaConfig) -> Self {
         let socket_path = config.mpv_socket.clone();
         Self::with_clients(
@@ -631,6 +678,8 @@ impl MpvRuntime {
         Self {
             suspended: None,
             resume_position: None,
+            selected_volume: None,
+            selected_output: None,
             process,
             ipc,
             startup,
@@ -728,24 +777,43 @@ impl MpvRuntime {
         let Some(event) = MpvEvent::from_value(raw) else {
             return events;
         };
+        if let Some((path, position)) = self.resume_position.clone() {
+            if !matches!(event, MpvEvent::FileLoaded)
+                || self
+                    .get_property("path")
+                    .ok()
+                    .flatten()
+                    .and_then(|v| v.as_str().map(str::to_owned))
+                    .as_deref()
+                    != Some(path.as_str())
+            {
+                return events;
+            }
+            if self
+                .command(&[
+                    json!("seek"),
+                    json!(position as f64 / 1000.0),
+                    json!("absolute+exact"),
+                ])
+                .is_err()
+                || self
+                    .command(&[json!("set_property"), json!("pause"), json!(false)])
+                    .is_err()
+            {
+                return events;
+            }
+            self.resume_position = None;
+            let _ = self.prime_track_cache();
+            self.cached_time_position_ms = position;
+            self.playback_state = PlaybackState::Playing;
+            return vec![
+                MediaRuntimeEvent::TrackChanged(self.current_track.clone()),
+                MediaRuntimeEvent::PlaybackStateChanged(PlaybackState::Playing),
+                MediaRuntimeEvent::TimePositionChanged(position),
+            ];
+        }
         match event {
             MpvEvent::FileLoaded => {
-                if let Some(position) = self.resume_position.take() {
-                    if self
-                        .command(&[
-                            json!("seek"),
-                            json!(position as f64 / 1000.0),
-                            json!("absolute+exact"),
-                        ])
-                        .is_err()
-                        || self
-                            .command(&[json!("set_property"), json!("pause"), json!(false)])
-                            .is_err()
-                    {
-                        self.resume_position = Some(position);
-                        return events;
-                    }
-                }
                 self.cached_time_position_ms = 0;
                 if self.cached_path.is_none() {
                     let _ = self.prime_track_cache();
@@ -939,6 +1007,12 @@ impl MediaRuntime for MpvRuntime {
     fn play(&mut self) -> Result<()> {
         if let Some((paths, index, position)) = self.suspended.clone() {
             self.start()?;
+            if let Some(volume) = self.selected_volume {
+                self.command(&[json!("set_property"), json!("volume"), json!(volume)])?;
+            }
+            if let Some(output) = self.selected_output.clone() {
+                self.command(&[json!("set_property"), json!("audio-device"), json!(output)])?;
+            }
             self.command(&[json!("set_property"), json!("pause"), json!(true)])?;
             for (i, path) in paths.iter().enumerate() {
                 self.command(&[
@@ -949,7 +1023,7 @@ impl MediaRuntime for MpvRuntime {
             }
             if !paths.is_empty() {
                 self.command(&[json!("set_property"), json!("playlist-pos"), json!(index)])?;
-                self.resume_position = Some(position);
+                self.resume_position = Some((paths[index].clone(), position));
                 self.suspended = None;
                 return Ok(());
             }
@@ -959,22 +1033,47 @@ impl MediaRuntime for MpvRuntime {
     }
 
     fn pause(&mut self) -> Result<()> {
+        if self.suspended.is_some() {
+            return Ok(());
+        }
         self.command(&[json!("set_property"), json!("pause"), json!(true)])
     }
 
     fn stop_playback(&mut self) -> Result<()> {
+        if self.suspended.is_some() {
+            self.suspended = None;
+            self.clear_track_cache();
+            self.playback_state = PlaybackState::Stopped;
+            return Ok(());
+        }
         self.command(&[json!("stop")])
     }
 
     fn next_track(&mut self) -> Result<()> {
+        if let Some((paths, index, position)) = self.suspended.as_mut() {
+            if !paths.is_empty() {
+                *index = (*index + 1).min(paths.len() - 1);
+            }
+            *position = 0;
+            return self.play();
+        }
         self.command(&[json!("playlist-next")])
     }
 
     fn previous_track(&mut self) -> Result<()> {
+        if let Some((_, index, position)) = self.suspended.as_mut() {
+            *index = index.saturating_sub(1);
+            *position = 0;
+            return self.play();
+        }
         self.command(&[json!("playlist-prev")])
     }
 
     fn set_volume(&mut self, volume: i32) -> Result<()> {
+        self.selected_volume = Some(volume.clamp(0, 100));
+        if self.suspended.is_some() {
+            return Ok(());
+        }
         self.command(&[
             json!("set_property"),
             json!("volume"),
@@ -983,16 +1082,24 @@ impl MediaRuntime for MpvRuntime {
     }
 
     fn get_volume(&mut self) -> Result<Option<i32>> {
+        if self.suspended.is_some() {
+            return Ok(self.selected_volume);
+        }
         Ok(self
             .get_property("volume")?
             .and_then(|value| value.as_i64().map(|value| value as i32)))
     }
 
     fn set_audio_device(&mut self, device: &str) -> Result<()> {
+        self.selected_output = Some(device.to_string());
+        if self.suspended.is_some() {
+            return Ok(());
+        }
         self.command(&[json!("set_property"), json!("audio-device"), json!(device)])
     }
 
     fn load_tracks(&mut self, uris: &[String]) -> Result<()> {
+        self.prepare_explicit_load()?;
         let Some((first, rest)) = uris.split_first() else {
             return Err(anyhow!("load_tracks requires at least one uri"));
         };
@@ -1004,10 +1111,12 @@ impl MediaRuntime for MpvRuntime {
     }
 
     fn load_playlist_file(&mut self, path: &str) -> Result<()> {
+        self.prepare_explicit_load()?;
         self.command(&[json!("loadlist"), json!(path), json!("replace")])
     }
 
     fn load_playlist_track(&mut self, path: &str, track_index: usize) -> Result<()> {
+        self.prepare_explicit_load()?;
         self.command(&[json!("loadlist"), json!(path), json!("replace")])?;
         self.command(&[
             json!("set_property"),

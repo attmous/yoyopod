@@ -459,8 +459,7 @@ where
         .get("target_request_id")
         .or_else(|| payload.get("request_id"))
         .and_then(Value::as_str)
-        .map(str::to_string)
-        .or_else(|| request_id.clone());
+        .map(str::to_string);
     let matched = match requested_target_id.as_deref() {
         Some(target_id) => {
             active

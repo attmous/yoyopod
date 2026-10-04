@@ -122,6 +122,7 @@ pub enum BackendEvent {
 
 #[derive(Debug)]
 pub struct VoipHost {
+    interrupted_draft: Option<String>,
     audio_fence: yoyopod_protocol::audio::AudioCallFence,
     config: Option<VoipConfig>,
     worker_generation: u64,
@@ -142,6 +143,7 @@ pub struct VoipHost {
 impl Default for VoipHost {
     fn default() -> Self {
         Self {
+            interrupted_draft: None,
             audio_fence: Default::default(),
             config: None,
             worker_generation: 0,
@@ -176,6 +178,11 @@ impl VoipHost {
             .as_str()
             .unwrap_or_default()
             .to_string();
+        if !self.voice_note.is_recording()
+            && self.interrupted_draft.as_deref() == Some(path.as_str())
+        {
+            return Ok(Some(path));
+        }
         let duration = match backend.finalize_voice_recording_for_call() {
             Ok(duration) => duration,
             Err(error) => {
@@ -183,12 +190,13 @@ impl VoipHost {
                 return Err(error);
             }
         };
-        if duration <= 0 || fs::metadata(&path).map(|m| m.len() <= 44).unwrap_or(true) {
+        if duration <= 0 || !crate::voice_notes::usable_wav(&path) {
             let _ = fs::remove_file(path);
             self.voice_note.reset();
             return Ok(None);
         }
         self.voice_note.finish_recording(duration);
+        self.interrupted_draft = Some(path.clone());
         Ok(Some(path))
     }
     pub fn release_call(&mut self, request: &yoyopod_protocol::call::InterruptForCall) -> bool {
@@ -912,6 +920,58 @@ fn voice_recording_limit_reached(duration_ms: i32) -> bool {
 #[cfg(test)]
 mod recording_tests {
     use super::*;
+    fn sample_wav() -> Vec<u8> {
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend(38u32.to_le_bytes());
+        bytes.extend(b"WAVEfmt ");
+        bytes.extend(16u32.to_le_bytes());
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(16_000u32.to_le_bytes());
+        bytes.extend(32_000u32.to_le_bytes());
+        bytes.extend(2u16.to_le_bytes());
+        bytes.extend(16u16.to_le_bytes());
+        bytes.extend(b"data");
+        bytes.extend(2u32.to_le_bytes());
+        bytes.extend(1i16.to_le_bytes());
+        bytes
+    }
+    #[test]
+    fn call_interruption_discards_empty_or_invalid_capture_and_releases_failed_save() {
+        for (case, zero, fail) in [
+            ("empty", true, false),
+            ("invalid", false, false),
+            ("failure", false, true),
+        ] {
+            let mut host = VoipHost::default();
+            let mut backend = LocalRecordingBackend {
+                started: true,
+                zero_duration: zero,
+                fail_stop: fail,
+                ..Default::default()
+            };
+            let path =
+                std::env::temp_dir().join(format!("call-draft-{case}-{}.wav", std::process::id()));
+            std::fs::write(&path, [1u8; 100]).unwrap();
+            host.start_voice_recording(&mut backend, path.to_str().unwrap())
+                .unwrap();
+            let request = yoyopod_protocol::call::InterruptForCall {
+                key: command("a", 1, CallAction::Answer).key,
+                activity_generation: 1,
+                voice_activity_generation: 3,
+            };
+            let result = host.interrupt_for_call(&mut backend, &request);
+            assert!(!backend.recording, "even failed saves release capture");
+            assert_eq!(backend.sends, 0);
+            if fail {
+                assert!(result.is_err());
+                let _ = std::fs::remove_file(path);
+            } else {
+                assert_eq!(result.unwrap(), None, "no usable WAV draft for {case}");
+                assert!(!path.exists());
+            }
+        }
+    }
 
     #[test]
     fn call_interruption_closes_capture_and_returns_unsent_draft() {
@@ -921,7 +981,7 @@ mod recording_tests {
             ..Default::default()
         };
         let path = std::env::temp_dir().join(format!("call-draft-{}.wav", std::process::id()));
-        std::fs::write(&path, [1u8; 100]).unwrap();
+        std::fs::write(&path, sample_wav()).unwrap();
         host.start_voice_recording(&mut backend, path.to_str().unwrap())
             .unwrap();
         let request = yoyopod_protocol::call::InterruptForCall {
@@ -937,11 +997,19 @@ mod recording_tests {
         assert_eq!(draft.as_deref(), path.to_str());
         assert_eq!(host.voice_note.payload()["state"], "recorded");
         assert_eq!(host.voice_note.payload()["message_id"], "");
+        assert_eq!(backend.sends, 0);
+        assert_eq!(
+            host.interrupt_for_call(&mut backend, &request).unwrap(),
+            draft
+        );
         std::fs::remove_file(path).unwrap();
     }
 
     #[derive(Default)]
     struct LocalRecordingBackend {
+        fail_stop: bool,
+        zero_duration: bool,
+        sends: usize,
         started: bool,
         recording: bool,
         events: Vec<BackendEvent>,
@@ -1014,8 +1082,11 @@ mod recording_tests {
         }
 
         fn stop_voice_recording(&mut self) -> Result<i32, String> {
+            if self.fail_stop {
+                return Err("save failed".into());
+            }
             self.recording = false;
-            Ok(420)
+            Ok(if self.zero_duration { 0 } else { 420 })
         }
 
         fn cancel_voice_recording(&mut self) -> Result<(), String> {
@@ -1030,6 +1101,7 @@ mod recording_tests {
             _duration_ms: i32,
             _mime_type: &str,
         ) -> Result<String, String> {
+            self.sends += 1;
             Err("SIP unavailable".to_string())
         }
     }
