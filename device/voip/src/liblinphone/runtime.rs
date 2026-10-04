@@ -1335,7 +1335,7 @@ unsafe extern "C" fn on_call_state_changed(
     if call.is_null() || core != state.core {
         return;
     }
-    let mapped = map_call_state(&api, call_state);
+    let mapped = map_call_state(call_state);
     let existing_id = state
         .calls
         .iter()
@@ -1378,19 +1378,17 @@ unsafe extern "C" fn on_call_state_changed(
             id
         }
     };
-    if matches!(mapped, event::CALL_CONNECTED | event::CALL_STREAMS_RUNNING) {
-        if let Some(handle) = state.calls.get_mut(&id) {
-            handle.connected = true;
-        }
-    }
-    if matches!(
+    // Keep a removed Released handle alive until this callback has finished
+    // reading the native address and publishing its final event.
+    let _released = update_call_lifecycle(
+        &mut state.calls,
+        &id,
         mapped,
-        event::CALL_END | event::CALL_ERROR | event::CALL_RELEASED
-    ) {
-        if let Some(handle) = state.calls.get_mut(&id) {
-            handle.terminal = true;
-        }
-    }
+        |handle, connected, terminal| {
+            handle.connected |= connected;
+            handle.terminal |= terminal;
+        },
+    );
     let mut event = YoyopodLiblinphoneEvent {
         event_type: event::EVENT_CALL_STATE,
         call_state: mapped,
@@ -1415,7 +1413,6 @@ unsafe extern "C" fn on_call_state_changed(
         if state.current_call == call {
             state.current_call = ptr::null_mut();
         }
-        state.calls.remove(&id);
     }
 }
 
@@ -1767,55 +1764,56 @@ fn map_registration_state(api: &LinphoneApi, state: c_int) -> c_int {
     }
 }
 
-fn map_call_state(api: &LinphoneApi, state: c_int) -> c_int {
-    let state_text = api
-        .call_state_to_string
-        .map(|function| unsafe { cstr_to_string(function(state)) })
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if state_text.contains("incoming") {
-        event::CALL_INCOMING
-    } else if state_text.contains("outgoinginit") {
-        event::CALL_OUTGOING_INIT
-    } else if state_text.contains("outgoingprogress") {
-        event::CALL_OUTGOING_PROGRESS
-    } else if state_text.contains("outgoingringing") {
-        event::CALL_OUTGOING_RINGING
-    } else if state_text.contains("outgoingearlymedia") {
-        event::CALL_OUTGOING_EARLY_MEDIA
-    } else if state_text.contains("streamsrunning") {
-        event::CALL_STREAMS_RUNNING
-    } else if state_text.contains("connected") {
-        event::CALL_CONNECTED
-    } else if state_text.contains("pausedbyremote") {
-        event::CALL_PAUSED_BY_REMOTE
-    } else if state_text.contains("paused") {
-        event::CALL_PAUSED
-    } else if state_text.contains("updat") {
-        event::CALL_UPDATED_BY_REMOTE
-    } else if state_text.contains("released") {
-        event::CALL_RELEASED
-    } else if state_text.contains("error") {
-        event::CALL_ERROR
-    } else if state_text.contains("end") {
-        event::CALL_END
+// Pinned Ubuntu Noble Liblinphone 5.2.0 enums/call-enums.h. Native values
+// are NOT the shim ABI values; never fall back from a text name to ABI numbers.
+fn map_call_state(state: c_int) -> c_int {
+    match state {
+        0 => event::CALL_IDLE, // Initial state; host preserves its prior phase.
+        1 | 2 => event::CALL_INCOMING, // IncomingReceived / PushIncomingReceived
+        3 => event::CALL_OUTGOING_INIT,
+        4 => event::CALL_OUTGOING_PROGRESS,
+        5 => event::CALL_OUTGOING_RINGING,
+        6 => event::CALL_OUTGOING_EARLY_MEDIA,
+        7 => event::CALL_CONNECTED,
+        8 => event::CALL_STREAMS_RUNNING,
+        9 => event::CALL_TRANSITIONAL, // Pausing
+        10 => event::CALL_PAUSED,
+        11 | 12 => event::CALL_TRANSITIONAL, // Resuming / Referred remain live.
+        13 => event::CALL_ERROR,
+        14 => event::CALL_END,
+        15 => event::CALL_PAUSED_BY_REMOTE,
+        16 => event::CALL_UPDATED_BY_REMOTE,
+        17 | 18 => event::CALL_TRANSITIONAL, // IncomingEarlyMedia / Updating
+        19 => event::CALL_RELEASED,
+        20 => event::CALL_EARLY_UPDATED_BY_REMOTE,
+        21 => event::CALL_EARLY_UPDATING,
+        // An unfamiliar live callback must stay targetable for cleanup.
+        _ => event::CALL_TRANSITIONAL,
+    }
+}
+
+// The callback's lifecycle operation is generic so regression tests can exercise
+// registry retention/release without fabricating native pointers or an FFI API.
+fn update_call_lifecycle<H>(
+    calls: &mut super::call_registry::SessionRegistry<H>,
+    id: &str,
+    mapped: c_int,
+    update: impl FnOnce(&mut H, bool, bool),
+) -> Option<H> {
+    if let Some(handle) = calls.get_mut(id) {
+        update(
+            handle,
+            matches!(mapped, event::CALL_CONNECTED | event::CALL_STREAMS_RUNNING),
+            matches!(
+                mapped,
+                event::CALL_END | event::CALL_ERROR | event::CALL_RELEASED
+            ),
+        );
+    }
+    if mapped == event::CALL_RELEASED {
+        calls.remove(id)
     } else {
-        match state {
-            1 => event::CALL_INCOMING,
-            2 => event::CALL_OUTGOING_INIT,
-            3 => event::CALL_OUTGOING_PROGRESS,
-            4 => event::CALL_OUTGOING_RINGING,
-            5 => event::CALL_OUTGOING_EARLY_MEDIA,
-            6 => event::CALL_CONNECTED,
-            7 => event::CALL_STREAMS_RUNNING,
-            8 => event::CALL_PAUSED,
-            9 => event::CALL_PAUSED_BY_REMOTE,
-            10 => event::CALL_UPDATED_BY_REMOTE,
-            11 => event::CALL_RELEASED,
-            12 => event::CALL_ERROR,
-            13 => event::CALL_END,
-            _ => event::CALL_IDLE,
-        }
+        None
     }
 }
 
@@ -2002,6 +2000,95 @@ pub fn apply_session_call(command: &yoyopod_protocol::call::CallCommand) -> Resu
 #[cfg(test)]
 mod shutdown_tests {
     use super::*;
+
+    #[test]
+    fn pinned_native_mapping_only_marks_real_terminal_states() {
+        for native in 0..=22 {
+            let mapped = map_call_state(native);
+            assert_eq!(
+                matches!(
+                    mapped,
+                    event::CALL_ERROR | event::CALL_END | event::CALL_RELEASED
+                ),
+                matches!(native, 13 | 14 | 19),
+                "native state {native}"
+            );
+        }
+        assert_eq!(map_call_state(3), event::CALL_OUTGOING_INIT);
+        assert_eq!(map_call_state(7), event::CALL_CONNECTED);
+        assert_eq!(map_call_state(8), event::CALL_STREAMS_RUNNING);
+        assert_eq!(map_call_state(20), event::CALL_EARLY_UPDATED_BY_REMOTE);
+        assert_eq!(map_call_state(21), event::CALL_EARLY_UPDATING);
+        assert_eq!(map_call_state(999), event::CALL_TRANSITIONAL);
+        for (native, protocol) in [
+            (11, "transitional"),
+            (12, "transitional"),
+            (20, "early_updated_by_remote"),
+            (21, "early_updating"),
+        ] {
+            assert_eq!(
+                crate::events::CallState::from_native(map_call_state(native)).as_protocol(),
+                protocol
+            );
+        }
+    }
+
+    #[test]
+    fn resuming_referred_and_early_callbacks_retain_targets_until_real_release() {
+        let mut calls = super::super::call_registry::SessionRegistry::new();
+        // (confirmed connected, terminal); same callback lifecycle operation as
+        // NativeCallHandle, without constructing fake native pointers.
+        calls.insert("primary".into(), (true, false)).unwrap();
+        calls.insert("secondary".into(), (false, false)).unwrap();
+        for native in [11, 12, 17, 18, 20, 21, 999] {
+            let removed = update_call_lifecycle(
+                &mut calls,
+                "primary",
+                map_call_state(native),
+                |h, connected, terminal| {
+                    h.0 |= connected;
+                    h.1 |= terminal;
+                },
+            );
+            assert!(removed.is_none(), "native {native} released a live target");
+            assert_eq!(calls.get("primary"), Some(&(true, false)));
+        }
+        for native in [20, 21] {
+            update_call_lifecycle(
+                &mut calls,
+                "secondary",
+                map_call_state(native),
+                |h, connected, terminal| {
+                    h.0 |= connected;
+                    h.1 |= terminal;
+                },
+            );
+            assert_eq!(calls.get("secondary"), Some(&(false, false)));
+        }
+        let ended = update_call_lifecycle(
+            &mut calls,
+            "secondary",
+            map_call_state(14),
+            |h, connected, terminal| {
+                h.0 |= connected;
+                h.1 |= terminal;
+            },
+        );
+        assert!(ended.is_none());
+        assert_eq!(calls.get("secondary"), Some(&(false, true)));
+        let released = update_call_lifecycle(
+            &mut calls,
+            "secondary",
+            map_call_state(19),
+            |h, connected, terminal| {
+                h.0 |= connected;
+                h.1 |= terminal;
+            },
+        );
+        assert_eq!(released, Some((false, true)));
+        assert!(calls.get("secondary").is_none());
+        assert_eq!(calls.get("primary"), Some(&(true, false)));
+    }
 
     #[test]
     fn teardown_callbacks_return_before_locking_state_or_reading_native_handles() {

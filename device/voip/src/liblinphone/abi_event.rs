@@ -33,6 +33,10 @@ pub const CALL_UPDATED_BY_REMOTE: i32 = 10;
 pub const CALL_RELEASED: i32 = 11;
 pub const CALL_ERROR: i32 = 12;
 pub const CALL_END: i32 = 13;
+// Internal shim states, distinct from the pinned Liblinphone enum values.
+pub const CALL_TRANSITIONAL: i32 = 14;
+pub const CALL_EARLY_UPDATED_BY_REMOTE: i32 = 15;
+pub const CALL_EARLY_UPDATING: i32 = 16;
 
 pub const MESSAGE_KIND_TEXT: i32 = 1;
 pub const MESSAGE_KIND_VOICE_NOTE: i32 = 2;

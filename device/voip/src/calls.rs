@@ -158,6 +158,18 @@ impl CallSession {
     }
 
     pub fn apply_call_state(&mut self, call_id: &str, state: &str) {
+        if matches!(
+            state,
+            "idle"
+                | "transitional"
+                | "early_updated_by_remote"
+                | "early_updating"
+                | "paused"
+                | "paused_by_remote"
+                | "updated_by_remote"
+        ) {
+            return;
+        }
         if self.active_call_id.as_deref() != Some(call_id) {
             return;
         }

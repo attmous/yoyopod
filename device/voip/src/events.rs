@@ -22,6 +22,9 @@ pub enum CallState {
     Paused,
     PausedByRemote,
     UpdatedByRemote,
+    Transitional,
+    EarlyUpdatedByRemote,
+    EarlyUpdating,
     Released,
     Error,
     End,
@@ -86,7 +89,10 @@ impl CallState {
             11 => Self::Released,
             12 => Self::Error,
             13 => Self::End,
-            _ => Self::Idle,
+            0 => Self::Idle,
+            15 => Self::EarlyUpdatedByRemote,
+            16 => Self::EarlyUpdating,
+            _ => Self::Transitional,
         }
     }
 
@@ -103,6 +109,9 @@ impl CallState {
             Self::Paused => "paused",
             Self::PausedByRemote => "paused_by_remote",
             Self::UpdatedByRemote => "updated_by_remote",
+            Self::Transitional => "transitional",
+            Self::EarlyUpdatedByRemote => "early_updated_by_remote",
+            Self::EarlyUpdating => "early_updating",
             Self::Released => "released",
             Self::Error => "error",
             Self::End => "end",
@@ -110,7 +119,7 @@ impl CallState {
     }
 
     pub fn is_terminal(self) -> bool {
-        matches!(self, Self::Idle | Self::Released | Self::Error | Self::End)
+        matches!(self, Self::Released | Self::Error | Self::End)
     }
 }
 

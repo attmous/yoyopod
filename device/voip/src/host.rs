@@ -790,10 +790,13 @@ impl VoipHost {
                     {
                         session.phase = match state.as_str() {
                             "incoming" => CallPhase::Ringing,
-                            "connected" | "streams_running" | "paused" | "paused_by_remote"
-                            | "updated_by_remote" => CallPhase::Active,
-                            "idle" | "end" | "error" | "released" => CallPhase::Ended,
-                            _ => CallPhase::Outgoing,
+                            "connected" | "streams_running" => CallPhase::Active,
+                            "end" | "error" | "released" => CallPhase::Ended,
+                            "outgoing_init"
+                            | "outgoing_progress"
+                            | "outgoing_ringing"
+                            | "outgoing_early_media" => CallPhase::Outgoing,
+                            _ => session.phase.clone(),
                         };
                         session.sequence = session
                             .sequence
@@ -1094,6 +1097,29 @@ mod recording_tests {
         assert!(output.contains("stale or incorrect call transport generation"));
         assert!(output.contains("unknown call ID"));
     }
+    #[test]
+    fn early_updates_and_unknown_live_states_preserve_offer_phase_before_answer() {
+        let mut host = VoipHost::default();
+        let mut backend = LocalRecordingBackend::default();
+        backend.events = vec![
+            incoming("offer"),
+            state("offer", "incoming"),
+            state("offer", "early_updated_by_remote"),
+            state("offer", "early_updating"),
+            state("offer", "transitional"),
+        ];
+        let events = host.poll_backend_events(&mut backend).unwrap();
+        for event in events.into_iter().skip(1) {
+            assert!(
+                matches!(event, BackendEvent::Update(update) if update.phase == CallPhase::Ringing)
+            );
+        }
+        assert_eq!(host.call.active_call_id(), None);
+        assert!(backend.commands.is_empty());
+        host.apply_call(&mut backend, &command("offer", 0, CallAction::Hangup))
+            .unwrap();
+    }
+
     #[test]
     fn duplicate_offer_or_late_update_cannot_revive_an_ended_session() {
         let mut host = VoipHost::default();

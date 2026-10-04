@@ -312,7 +312,6 @@ pub struct LinphoneApi {
     pub recorder_unref: Option<unsafe extern "C" fn(*mut LinphoneRecorder)>,
     pub core_get_version: unsafe extern "C" fn() -> *const c_char,
     pub registration_state_to_string: Option<unsafe extern "C" fn(c_int) -> *const c_char>,
-    pub call_state_to_string: Option<unsafe extern "C" fn(c_int) -> *const c_char>,
 }
 
 impl LinphoneApi {
@@ -658,9 +657,6 @@ impl LinphoneApi {
             core_get_version: unsafe { required_symbol(library, c"linphone_core_get_version")? },
             registration_state_to_string: unsafe {
                 optional_symbol(library, c"linphone_registration_state_to_string")
-            },
-            call_state_to_string: unsafe {
-                optional_symbol(library, c"linphone_call_state_to_string")
             },
         }))
     }
