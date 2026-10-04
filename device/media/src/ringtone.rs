@@ -87,6 +87,9 @@ impl RingtonePlayer {
         Ok(())
     }
     pub fn tick(&mut self, now_ms: u64) -> Result<(), String> {
+        if self.session.is_some() && now_ms >= self.lease_deadline_ms {
+            return self.shutdown();
+        }
         if self
             .process
             .as_ref()
@@ -94,9 +97,6 @@ impl RingtonePlayer {
         {
             self.shutdown()?;
             return Err("ringtone helper exited before lease expiry".into());
-        }
-        if self.session.is_some() && now_ms >= self.lease_deadline_ms {
-            self.shutdown()?;
         }
         Ok(())
     }
