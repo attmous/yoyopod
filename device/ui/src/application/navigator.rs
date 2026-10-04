@@ -619,12 +619,22 @@ fn matches_condition(runtime: &UiRuntime, condition: SnapshotCondition) -> bool 
         ),
         SnapshotCondition::TalkContactRecordAvailable => {
             runtime.active_screen == UiScreen::TalkContact
-                && runtime.focus_index == 1
+                && options::talk_contact_actions(
+                    &runtime.snapshot,
+                    runtime.selected_contact.as_ref(),
+                )
+                .get(runtime.focus_index)
+                .is_some_and(|action| action.kind == "record")
                 && !matches!(runtime.voice_note_phase().as_str(), "recording" | "sending")
         }
         SnapshotCondition::TalkContactRecordHeldOrPending => {
             runtime.active_screen == UiScreen::TalkContact
-                && runtime.focus_index == 1
+                && options::talk_contact_actions(
+                    &runtime.snapshot,
+                    runtime.selected_contact.as_ref(),
+                )
+                .get(runtime.focus_index)
+                .is_some_and(|action| action.kind == "record")
                 && runtime.voice_note_phase() != "sending"
         }
     }

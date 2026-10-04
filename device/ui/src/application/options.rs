@@ -24,15 +24,13 @@ pub fn talk_contact_actions(
         return Vec::new();
     }
     let mut actions = vec![TalkContactAction { kind: "call" }];
-    if selected_contact
-        .or_else(|| snapshot.call.contacts.first())
-        .and_then(ListItemSnapshot::sip_target)
-        .is_some()
-    {
-        actions.extend([
-            TalkContactAction { kind: "record" },
-            TalkContactAction { kind: "replay" },
-        ]);
+    if let Some(contact) = selected_contact.or_else(|| snapshot.call.contacts.first()) {
+        if contact.sip_target().is_some() {
+            if contact.can_receive {
+                actions.push(TalkContactAction { kind: "record" });
+            }
+            actions.push(TalkContactAction { kind: "replay" });
+        }
     }
     actions
 }

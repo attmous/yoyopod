@@ -2815,6 +2815,47 @@ mod tests {
     }
 
     #[test]
+    fn receive_permission_patch_removes_recording_from_navigation_and_keeps_replay() {
+        let mut mama = contact("sip:mama@example.test", "Mama");
+        let note = replay_note("note-1", "/tmp/one.wav", 7_000);
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![mama.clone()];
+        runtime
+            .snapshot
+            .call
+            .voice_notes_by_contact
+            .insert(mama.id.clone(), vec![note.clone()]);
+        runtime.selected_contact = Some(mama.clone());
+        runtime.active_screen = UiScreen::TalkContact;
+        runtime.focus_index = 1;
+        mama.can_receive = false;
+        let mut call = runtime.snapshot.call.clone();
+        call.contacts = vec![mama.clone()];
+        runtime.apply_patch(RuntimeSnapshotPatch::Call(call));
+        assert_eq!(
+            runtime.wheel_item_ids(UiScreen::TalkContact).unwrap(),
+            vec!["call", "replay"]
+        );
+        assert_eq!(
+            super::super::accessibility::focused_item(&runtime)
+                .unwrap()
+                .label,
+            "Replay"
+        );
+        runtime.handle_input(InputAction::PttPress, 100);
+        runtime.handle_input(InputAction::PttRelease, 200);
+        assert!(runtime.take_intents().is_empty());
+        runtime.handle_input(InputAction::Select, 300);
+        assert_eq!(runtime.active_screen, UiScreen::Replay);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Voice(VoiceIntent::PlayLatest(
+                intents::voice_file_action(&mama, &note).unwrap()
+            ))]
+        );
+    }
+
+    #[test]
     fn replay_delete_waits_for_store_confirmation_then_plays_the_next_note() {
         let mama = contact("sip:mama@example.test", "Mama");
         let first = replay_note("note-1", "/tmp/one.wav", 7_000);

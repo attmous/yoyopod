@@ -64,14 +64,24 @@ pub(crate) fn focused_item(runtime: &UiRuntime) -> Option<FocusDescriptor> {
         ),
         UiScreen::CallHistory => list_or_empty(&snapshot.call.history, focus, "No recent calls"),
         UiScreen::TalkContact => {
-            if options::talk_contact_actions(snapshot, runtime.selected_contact.as_ref()).is_empty()
-            {
+            let actions =
+                options::talk_contact_actions(snapshot, runtime.selected_contact.as_ref());
+            if actions.is_empty() {
                 Some(FocusDescriptor::new(
                     "contact_needs_setup",
                     "Ask a grown-up to set up calling.",
                 ))
             } else {
-                Some(static_item(focus, &["Call", "Hold to record", "Replay"]))
+                let labels = actions
+                    .iter()
+                    .map(|action| match action.kind {
+                        "call" => "Call",
+                        "record" => "Hold to record",
+                        "replay" => "Replay",
+                        _ => "",
+                    })
+                    .collect::<Vec<_>>();
+                Some(static_item(focus, &labels))
             }
         }
         UiScreen::Replay => {
