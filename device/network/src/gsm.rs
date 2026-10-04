@@ -111,6 +111,7 @@ pub enum GsmEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GsmReconciliation {
     pub generation: u64,
+    pub native_owner: Option<String>,
     pub native_calls_quiescent: bool,
     pub audio_released: bool,
 }
@@ -995,6 +996,7 @@ impl GsmBackend for ModemManagerVoice {
     fn reconciliation(&self) -> Option<GsmReconciliation> {
         Some(GsmReconciliation {
             generation: self.generation?,
+            native_owner: self.service_owner.clone(),
             native_calls_quiescent: !self.service_invalidated
                 && self.service_owner.is_some()
                 && self.isolated

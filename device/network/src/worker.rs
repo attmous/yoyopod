@@ -1593,6 +1593,7 @@ mod tests {
     impl crate::gsm::GsmBackend for RecordingGsmBackend {
         fn reconciliation(&self) -> Option<crate::gsm::GsmReconciliation> {
             Some(crate::gsm::GsmReconciliation {
+                native_owner: Some(":test.1".into()),
                 generation: 7,
                 native_calls_quiescent: true,
                 audio_released: true,
