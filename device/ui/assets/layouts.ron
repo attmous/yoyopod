@@ -72,6 +72,8 @@
         (role: "call_method_icon", x: 64, y: 4, width: 48, height: 48),
         (role: "call_method_title", x: 8, y: 53, width: 160, height: 22),
         (role: "call_method_reason", x: 8, y: 76, width: 160, height: 16),
+        (role: "call_method_peek_icon", x: 64, y: 4, width: 48, height: 48),
+        (role: "call_method_peek_title", x: 8, y: 53, width: 160, height: 22),
         (role: "wheel_avatar", x: 60, y: 8, width: 56, height: 56),
         (role: "wheel_avatar_initial", x: 0, y: 14, width: 56, height: 28),
         (role: "wheel_badge", x: 148, y: 6, width: 22, height: 22),

@@ -75,6 +75,8 @@
         (role: "call_method_icon", text_rgb: Some(1776415)),
         (role: "call_method_title", text_rgb: Some(1776415)),
         (role: "call_method_reason", text_rgb: Some(3816000)),
+        (role: "call_method_peek_icon", text_rgb: Some(1776415)),
+        (role: "call_method_peek_title", text_rgb: Some(1776415)),
         (role: "wheel_avatar", opacity: Some(255), radius: 28),
         (role: "wheel_avatar_initial", text_rgb: Some(1776415)),
         (role: "wheel_badge", opacity: Some(255), radius: 11),

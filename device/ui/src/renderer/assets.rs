@@ -284,6 +284,8 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::CALL_METHOD_ICON,
         roles::CALL_METHOD_TITLE,
         roles::CALL_METHOD_REASON,
+        roles::CALL_METHOD_PEEK_ICON,
+        roles::CALL_METHOD_PEEK_TITLE,
         roles::WHEEL_AVATAR,
         roles::WHEEL_AVATAR_INITIAL,
         roles::WHEEL_BADGE,

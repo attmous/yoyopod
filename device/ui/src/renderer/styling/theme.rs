@@ -126,6 +126,7 @@ mod tests {
         }
         for role in [
             roles::WHEEL_PEEK_LABEL,
+            roles::CALL_METHOD_PEEK_TITLE,
             roles::LIST_ROW_IDLE_TITLE,
             roles::MEDIA_WHEEL_PEEK_TITLE,
         ] {

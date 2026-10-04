@@ -98,10 +98,18 @@ pub fn wheel_item(
             let mut root = container(roles::TALK_WHEEL_ITEM)
                 .key(key)
                 .selected(selected);
-            if model.subtitle.is_empty() || !selected {
+            if model.subtitle.is_empty() {
                 root = root
                     .child(image(foreground.icon).icon(icon_key).accent(INK))
                     .child(label(foreground.label).text(&model.title));
+            } else if !selected {
+                root = root
+                    .child(
+                        image(roles::CALL_METHOD_PEEK_ICON)
+                            .icon(icon_key)
+                            .accent(INK),
+                    )
+                    .child(label(roles::CALL_METHOD_PEEK_TITLE).text(&model.title));
             } else {
                 root = root
                     .child(image(roles::CALL_METHOD_ICON).icon(icon_key).accent(INK))

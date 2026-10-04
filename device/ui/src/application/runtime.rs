@@ -2612,7 +2612,7 @@ mod tests {
             let element = flatten::flatten(&runtime.scene_graph(510));
             assert!(contains_text(&element, "SIM locked"));
             assert!(
-                find_role(&element, roles::WHEEL_PEEK_LABEL).is_some(),
+                find_role(&element, roles::CALL_METHOD_PEEK_TITLE).is_some(),
                 "the unfocused method needs the stage foreground in both themes"
             );
         }
