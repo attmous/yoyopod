@@ -1437,6 +1437,57 @@ mod tests {
     }
 
     #[test]
+    fn gsm_native_owner_fact_precedes_session_events_and_survives_invalidation() {
+        let bus = PrivateBus::start();
+        let owner = bus.connection();
+        let client = bus.connection();
+        let mut backend = old_native_backend(client, &owner);
+        let expected = owner.unique_name().unwrap().as_str().to_owned();
+        let fact = serde_json::to_value(backend.reconciliation().unwrap()).unwrap();
+        assert_eq!(
+            fact["native_owner"], expected,
+            "cleanup proof lacks native owner"
+        );
+        backend.invalidate_service_owner();
+        let invalid = serde_json::to_value(backend.reconciliation().unwrap()).unwrap();
+        assert_eq!(invalid["native_owner"], expected);
+        assert_eq!(invalid["native_calls_quiescent"], false);
+        struct SnapshotBackend(ModemManagerVoice);
+        impl GsmBackend for SnapshotBackend {
+            fn refresh(&mut self) -> Result<GsmCallState> {
+                Ok(GsmCallState::default())
+            }
+            fn reconciliation(&self) -> Option<GsmReconciliation> {
+                self.0.reconciliation()
+            }
+            fn drain_call_events(&mut self) -> Vec<CallManagerWireEvent> {
+                self.0.drain_call_events()
+            }
+            fn dial(&mut self, _: &str) -> Result<()> {
+                Ok(())
+            }
+            fn hangup(&mut self) -> Result<()> {
+                Ok(())
+            }
+            fn mute(&mut self, _: bool) -> Result<()> {
+                Ok(())
+            }
+        }
+        let worker = GsmWorker::with_backend(SnapshotBackend(backend));
+        assert!(
+            matches!(
+                worker.events.recv_timeout(Duration::from_secs(3)).unwrap(),
+                GsmEvent::Reconciled(_)
+            ),
+            "session event preceded native owner fact"
+        );
+        assert!(matches!(
+            worker.events.recv_timeout(Duration::from_secs(3)).unwrap(),
+            GsmEvent::Call(_)
+        ));
+    }
+
+    #[test]
     fn gsm_terminal_cleanup_keeps_release_fact_when_object_deletion_fails() {
         use yoyopod_protocol::call::{CallDirection, CallTransport};
         let key = SessionKey {
