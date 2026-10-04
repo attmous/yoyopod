@@ -1484,6 +1484,9 @@ impl RuntimeState {
                     .set_interaction("idle", "Ask", "Ask me anything...");
             }
             VoiceIntent::CaptureStart(action) | VoiceIntent::CaptureStartAndSend(action) => {
+                if !self.is_approved_voice_recipient(action) {
+                    return;
+                }
                 self.voice.phase = "recording".to_string();
                 self.voice.status_text = "Recording...".to_string();
                 self.voice.duration_ms = 0;
@@ -1499,6 +1502,13 @@ impl RuntimeState {
                 if self.voice.phase == "recording" {
                     self.voice.phase = "review".to_string();
                     self.voice.status_text = "Ready to send".to_string();
+                }
+            }
+            VoiceIntent::CaptureToggle(action) => {
+                if self.voice.phase == "recording" {
+                    self.apply_voice_intent(&VoiceIntent::CaptureStop);
+                } else if let Some(action) = action {
+                    self.apply_voice_intent(&VoiceIntent::CaptureStart(action.clone()));
                 }
             }
             VoiceIntent::Send(action) => {
@@ -1547,10 +1557,7 @@ impl RuntimeState {
                 self.voice.playback_duration_ms = 0;
             }
             VoiceIntent::Discard => self.voice.reset_draft(),
-            VoiceIntent::CaptureCancel
-            | VoiceIntent::CaptureToggle(_)
-            | VoiceIntent::Delete(_)
-            | VoiceIntent::MarkSeen(_) => {}
+            VoiceIntent::CaptureCancel | VoiceIntent::Delete(_) | VoiceIntent::MarkSeen(_) => {}
         }
     }
 

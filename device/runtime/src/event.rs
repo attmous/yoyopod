@@ -940,7 +940,10 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             empty_payload(),
         )],
         VoiceIntent::AskCancel => cancel_active_ask_commands(),
-        VoiceIntent::CaptureStart(_) | VoiceIntent::CaptureStartAndSend(_) => {
+        VoiceIntent::CaptureStart(action) | VoiceIntent::CaptureStartAndSend(action) => {
+            if !state.is_approved_voice_recipient(action) {
+                return Vec::new();
+            }
             let file_path = state.voice.recording_file_path();
             vec![worker_command(
                 WorkerDomain::Voip,
@@ -958,14 +961,16 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             "voip.cancel_voice_note_recording",
             empty_payload(),
         )],
-        VoiceIntent::CaptureToggle(_) => {
+        VoiceIntent::CaptureToggle(action) => {
             if state.voice.phase == "recording" {
                 commands_for_voice_intent(state, &VoiceIntent::CaptureStop)
-            } else {
+            } else if let Some(action) = action {
                 commands_for_voice_intent(
                     state,
-                    &VoiceIntent::CaptureStart(VoiceRecipientAction::default()),
+                    &VoiceIntent::CaptureStart(action.clone()),
                 )
+            } else {
+                Vec::new()
             }
         }
         VoiceIntent::Send(action) => {
@@ -2626,6 +2631,51 @@ mod tests {
             assert_eq!(state.voice.phase, "review");
             assert_eq!(state.voice.status_text, "Ready to send");
             assert_eq!(state.voice.file_path, "/tmp/review.wav");
+        }
+    }
+
+    #[test]
+    fn stale_capture_intents_after_revocation_do_not_record_or_change_the_draft() {
+        for entries in [
+            json!([]),
+            json!([{"id":"mama", "name":"Mama", "sip_address":"sip:mama@example.test", "can_call":false}]),
+            json!([{"id":"mama", "name":"Mama", "sip_address":"sip:mama@example.test", "can_call":true, "can_receive":false}]),
+            json!([{"id":"mama", "name":"Mama", "sip_address":"sip:new@example.test", "can_call":true}]),
+        ] {
+            let mut state = RuntimeState::default();
+            RuntimeEvent::CloudConfig(json!({"contacts":{"entries":[{
+                "id":"mama", "name":"Mama", "sip_address":"sip:mama@example.test", "can_call":true
+            }]}}))
+            .apply(&mut state);
+            state.voice.phase = "review".into();
+            state.voice.file_path = "/tmp/existing.wav".into();
+            let action = VoiceRecipientAction {
+                id: "mama".into(),
+                recipient_address: "sip:mama@example.test".into(),
+                ..VoiceRecipientAction::default()
+            };
+            for intent in [
+                VoiceIntent::CaptureStart(action.clone()),
+                VoiceIntent::CaptureStartAndSend(action.clone()),
+                VoiceIntent::CaptureToggle(Some(action.clone())),
+            ] {
+                let event = RuntimeEvent::UiIntent(UiIntent::Voice(intent));
+                let mut approved = state.clone();
+                assert!(commands_for_event(&approved, &event).iter().any(|command| matches!(command,
+                    RuntimeCommand::WorkerCommand {envelope, ..} if envelope.message_type == "voip.start_voice_note_recording")));
+                event.apply(&mut approved);
+                assert_eq!(approved.voice.phase, "recording");
+
+                let mut revoked = state.clone();
+                RuntimeEvent::CloudConfig(json!({"contacts":{"entries":entries}}))
+                    .apply(&mut revoked);
+                assert!(commands_for_event(&revoked, &event).is_empty());
+                event.apply(&mut revoked);
+                assert_eq!(revoked.voice.phase, "review");
+                assert_eq!(revoked.voice.file_path, "/tmp/existing.wav");
+                assert!(revoked.voice.pending_voice_recipient.is_none());
+                assert!(!revoked.voice.auto_send_after_capture);
+            }
         }
     }
 
