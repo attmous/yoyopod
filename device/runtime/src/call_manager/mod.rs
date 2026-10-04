@@ -1,0 +1,521 @@
+//! Pure call ownership, admission, and lifecycle policy. Effects are executed by runtime.
+pub mod identity;
+mod policy;
+#[cfg(test)]
+mod tests;
+pub use yoyopod_protocol::call::*;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContactIdentity {
+    pub contact_id: String,
+    pub name: String,
+    pub sip_address: String,
+    pub phone_number: String,
+    pub priority: bool,
+}
+pub struct CallContext {
+    pub contacts: Vec<ContactIdentity>,
+    pub shutdown: bool,
+}
+pub enum CallManagerEvent {
+    RingtoneStarted {
+        key: SessionKey,
+        ok: bool,
+    },
+    RingtoneStopped {
+        key: SessionKey,
+        ok: bool,
+    },
+    Offer(CallOffer),
+    Update(CallUpdate),
+    RequestOutgoing {
+        key: SessionKey,
+        contact_id: String,
+        address: String,
+    },
+    UserAction(CallCommand),
+    AudioPrepared {
+        key: SessionKey,
+        ok: bool,
+    },
+    CommandFinished {
+        key: SessionKey,
+        request_id: String,
+        ok: bool,
+    },
+    CleanupConfirmed(SessionKey),
+    WorkerExited {
+        transport: CallTransport,
+        generation: u64,
+    },
+    SetMode(DeviceMode),
+    Tick,
+    Shutdown,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CallEffect {
+    Transport(CallCommand),
+    Dial {
+        key: SessionKey,
+        address: String,
+    },
+    PrepareAudio(InterruptForCall),
+    StartRingtone(RingtoneRequest),
+    StopRingtone(RingtoneRequest),
+    WakeDisplay(SessionKey),
+    Publish,
+    RestoreUi(SessionKey),
+    RecoverTransport {
+        transport: CallTransport,
+        generation: u64,
+    },
+}
+struct Owned {
+    key: SessionKey,
+    phase: CallPhase,
+    incoming: bool,
+    address: String,
+    deadline: u64,
+    ring_deadline: u64,
+    queued_answer: bool,
+    pending: bool,
+    acknowledgements: Vec<String>,
+}
+pub struct CallManager {
+    mode: DeviceMode,
+    operation_timeout_ms: u64,
+    ring_duration_ms: u64,
+    owned: Option<Owned>,
+    terminal: Vec<SessionKey>,
+    sequences: Vec<(SessionKey, u64)>,
+    generations: Vec<(CallTransport, u64)>,
+    audible: bool,
+    activity_generation: u64,
+    shutdown: bool,
+    ring_start_pending: bool,
+    ring_stop_pending: bool,
+    answer_after_stop: bool,
+    ringtone_deadline: u64,
+}
+impl CallManager {
+    pub fn new(mode: DeviceMode, operation_timeout_ms: u64, ring_duration_ms: u64) -> Self {
+        Self {
+            mode,
+            operation_timeout_ms,
+            ring_duration_ms,
+            owned: None,
+            terminal: vec![],
+            sequences: vec![],
+            generations: vec![],
+            audible: false,
+            activity_generation: 0,
+            shutdown: false,
+            ring_start_pending: false,
+            ring_stop_pending: false,
+            answer_after_stop: false,
+            ringtone_deadline: 0,
+        }
+    }
+    pub fn session(&self) -> Option<&SessionKey> {
+        self.owned.as_ref().map(|s| &s.key)
+    }
+    pub fn phase(&self) -> Option<CallPhase> {
+        self.owned.as_ref().map(|s| s.phase.clone())
+    }
+    pub fn mode(&self) -> DeviceMode {
+        self.mode.clone()
+    }
+    pub fn alert_audible(&self) -> bool {
+        self.audible
+    }
+    fn current_generation(&mut self, key: &SessionKey) -> bool {
+        if key.call_id.trim().is_empty() {
+            return false;
+        }
+        if let Some((_, generation)) = self
+            .generations
+            .iter_mut()
+            .find(|(t, _)| *t == key.transport)
+        {
+            if key.generation < *generation {
+                return false;
+            }
+            *generation = key.generation;
+        } else {
+            self.generations
+                .push((key.transport.clone(), key.generation));
+        }
+        self.terminal
+            .retain(|k| k.transport != key.transport || k.generation >= key.generation);
+        self.sequences
+            .retain(|(k, _)| k.transport != key.transport || k.generation >= key.generation);
+        true
+    }
+    fn reject(&mut self, key: SessionKey, reason: RejectReason) -> Vec<CallEffect> {
+        self.terminal.push(key.clone());
+        vec![CallEffect::Transport(CallCommand {
+            key,
+            action: CallAction::Reject(reason),
+        })]
+    }
+    fn stop_ring(&mut self, effects: &mut Vec<CallEffect>) {
+        if self.audible {
+            if let Some(s) = &self.owned {
+                effects.push(CallEffect::StopRingtone(RingtoneRequest {
+                    key: s.key.clone(),
+                }));
+            }
+            self.audible = false;
+            self.ring_stop_pending = true;
+        }
+    }
+    fn ending(&mut self, now: u64, action: Option<CallAction>, effects: &mut Vec<CallEffect>) {
+        self.stop_ring(effects);
+        if let Some(s) = &mut self.owned {
+            if matches!(s.phase, CallPhase::Ending | CallPhase::Ended) {
+                return;
+            }
+            s.phase = CallPhase::Ending;
+            s.deadline = now.saturating_add(self.operation_timeout_ms);
+            s.pending = action.is_some();
+            self.terminal.push(s.key.clone());
+            if let Some(action) = action {
+                effects.push(CallEffect::Transport(CallCommand {
+                    key: s.key.clone(),
+                    action,
+                }));
+            }
+            effects.push(CallEffect::Publish);
+        }
+    }
+    /// `now_ms` must be monotonic. Runtime correlates opaque command request IDs
+    /// before forwarding acknowledgements and confirms cleanup only after all
+    /// audio and transport resources have been reconciled.
+    pub fn handle(
+        &mut self,
+        event: CallManagerEvent,
+        context: &CallContext,
+        now_ms: u64,
+    ) -> Vec<CallEffect> {
+        let mut effects = vec![];
+        match event {
+            CallManagerEvent::RingtoneStarted { key, ok } => {
+                if self.session() != Some(&key) || !self.ring_start_pending {
+                    return effects;
+                }
+                self.ring_start_pending = false;
+                if !ok {
+                    self.ending(now_ms, Some(CallAction::Hangup), &mut effects);
+                }
+            }
+            CallManagerEvent::RingtoneStopped { key, ok } => {
+                if self.session() != Some(&key) || !self.ring_stop_pending {
+                    return effects;
+                }
+                self.ring_stop_pending = false;
+                self.ring_start_pending = false;
+                if !ok {
+                    self.answer_after_stop = false;
+                    self.ending(now_ms, Some(CallAction::Hangup), &mut effects);
+                } else if self.answer_after_stop && self.phase() == Some(CallPhase::Answering) {
+                    self.answer_after_stop = false;
+                    self.dispatch_answer(&mut effects);
+                } else if self.phase() == Some(CallPhase::Ringing) && policy::audible(&self.mode) {
+                    self.audible = true;
+                    self.ring_start_pending = true;
+                    effects.push(CallEffect::StartRingtone(RingtoneRequest { key }));
+                }
+            }
+
+            CallManagerEvent::Offer(offer) => {
+                if !self.current_generation(&offer.key)
+                    || self.terminal.contains(&offer.key)
+                    || self.session() == Some(&offer.key)
+                {
+                    return effects;
+                }
+                let contact = identity::match_contact(
+                    offer.key.transport.clone(),
+                    &offer.address,
+                    &context.contacts,
+                );
+                let approved = contact.is_some_and(|c| policy::admits(&self.mode, c));
+                if !approved || context.shutdown || self.shutdown {
+                    return self.reject(offer.key, RejectReason::Unapproved);
+                }
+                if self.owned.is_some() {
+                    return self.reject(offer.key, RejectReason::Busy);
+                }
+                self.admit(offer.key, offer.address, true, now_ms, &mut effects);
+            }
+            CallManagerEvent::RequestOutgoing {
+                key,
+                contact_id,
+                address,
+            } => {
+                if !self.current_generation(&key)
+                    || self.terminal.contains(&key)
+                    || self.session() == Some(&key)
+                {
+                    return effects;
+                }
+                let approved =
+                    identity::match_contact(key.transport.clone(), &address, &context.contacts)
+                        .is_some_and(|c| c.contact_id == contact_id);
+                if !approved || context.shutdown || self.shutdown {
+                    return self.reject(key, RejectReason::Unapproved);
+                }
+                if self.owned.is_some() {
+                    return self.reject(key, RejectReason::Busy);
+                }
+                self.admit(key, address, false, now_ms, &mut effects);
+            }
+            CallManagerEvent::AudioPrepared { key, ok } => {
+                if self.session() != Some(&key) || self.phase() != Some(CallPhase::Preparing) {
+                    return effects;
+                }
+                if !ok {
+                    self.ending(now_ms, Some(CallAction::Hangup), &mut effects);
+                } else {
+                    let s = self.owned.as_mut().unwrap();
+                    if s.incoming {
+                        s.phase = CallPhase::Ringing;
+                        if s.queued_answer {
+                            self.answer(now_ms, &mut effects);
+                        } else if policy::audible(&self.mode) {
+                            self.audible = true;
+                            self.ring_start_pending = true;
+                            effects.push(CallEffect::StartRingtone(RingtoneRequest { key }));
+                        }
+                    } else {
+                        s.phase = CallPhase::Outgoing;
+                        s.pending = true;
+                        s.deadline = now_ms.saturating_add(self.operation_timeout_ms);
+                        effects.push(CallEffect::Dial {
+                            key,
+                            address: s.address.clone(),
+                        });
+                    }
+                    effects.push(CallEffect::Publish);
+                }
+            }
+            CallManagerEvent::UserAction(command) => {
+                if self.session() != Some(&command.key) {
+                    return effects;
+                }
+                match command.action {
+                    CallAction::Answer if self.phase() == Some(CallPhase::Preparing) => {
+                        self.owned.as_mut().unwrap().queued_answer = true;
+                    }
+                    CallAction::Answer if self.phase() == Some(CallPhase::Ringing) => {
+                        self.answer(now_ms, &mut effects)
+                    }
+                    CallAction::Reject(reason) => {
+                        self.ending(now_ms, Some(CallAction::Reject(reason)), &mut effects)
+                    }
+                    CallAction::Hangup => {
+                        self.ending(now_ms, Some(CallAction::Hangup), &mut effects)
+                    }
+                    CallAction::SetMute(_) if self.phase() == Some(CallPhase::Active) => {
+                        effects.push(CallEffect::Transport(command))
+                    }
+                    _ => {}
+                }
+            }
+            CallManagerEvent::Update(update) => {
+                if !self.current_generation(&update.key) {
+                    return effects;
+                }
+                if let Some((_, sequence)) =
+                    self.sequences.iter_mut().find(|(k, _)| *k == update.key)
+                {
+                    if update.sequence <= *sequence {
+                        return effects;
+                    }
+                    *sequence = update.sequence;
+                } else {
+                    self.sequences.push((update.key.clone(), update.sequence));
+                }
+                if self.session() != Some(&update.key) {
+                    return effects;
+                }
+                if update.phase == CallPhase::Ended {
+                    self.ending(now_ms, None, &mut effects);
+                } else if update.phase == CallPhase::Active
+                    && matches!(
+                        self.phase(),
+                        Some(CallPhase::Answering | CallPhase::Outgoing)
+                    )
+                {
+                    self.stop_ring(&mut effects);
+                    let s = self.owned.as_mut().unwrap();
+                    s.phase = CallPhase::Active;
+                    s.pending = false;
+                    effects.push(CallEffect::Publish);
+                }
+            }
+            CallManagerEvent::CommandFinished {
+                key,
+                request_id,
+                ok,
+            } => {
+                if let Some(s) = &mut self.owned {
+                    if s.key != key || !s.pending || s.acknowledgements.contains(&request_id) {
+                        return effects;
+                    }
+                    s.acknowledgements.push(request_id);
+                    s.pending = false;
+                    if !ok {
+                        self.ending(now_ms, Some(CallAction::Hangup), &mut effects);
+                    }
+                }
+            }
+            CallManagerEvent::CleanupConfirmed(key) => {
+                if self.session() == Some(&key)
+                    && self.phase() == Some(CallPhase::Ending)
+                    && !self.ring_stop_pending
+                {
+                    self.stop_ring(&mut effects);
+                    self.owned = None;
+                    self.ring_start_pending = false;
+                    self.ring_stop_pending = false;
+                    self.answer_after_stop = false;
+                    effects.push(CallEffect::RestoreUi(key));
+                    effects.push(CallEffect::Publish);
+                }
+            }
+            CallManagerEvent::WorkerExited {
+                transport,
+                generation,
+            } => {
+                if self
+                    .owned
+                    .as_ref()
+                    .is_some_and(|s| s.key.transport == transport && s.key.generation == generation)
+                {
+                    self.ending(now_ms, None, &mut effects);
+                }
+                if let Some((_, latest)) =
+                    self.generations.iter_mut().find(|(t, _)| *t == transport)
+                {
+                    *latest = (*latest).max(generation.saturating_add(1));
+                } else {
+                    self.generations
+                        .push((transport.clone(), generation.saturating_add(1)));
+                }
+                self.terminal
+                    .retain(|k| k.transport != transport || k.generation > generation);
+                self.sequences
+                    .retain(|(k, _)| k.transport != transport || k.generation > generation);
+            }
+            CallManagerEvent::SetMode(mode) => {
+                self.mode = mode;
+                if !policy::audible(&self.mode) {
+                    self.stop_ring(&mut effects);
+                } else if self.phase() == Some(CallPhase::Ringing)
+                    && !self.audible
+                    && !self.ring_stop_pending
+                {
+                    self.audible = true;
+                    self.ring_start_pending = true;
+                    effects.push(CallEffect::StartRingtone(RingtoneRequest {
+                        key: self.session().unwrap().clone(),
+                    }));
+                }
+                effects.push(CallEffect::Publish);
+            }
+            CallManagerEvent::Tick => {
+                if let Some(s) = &self.owned {
+                    let phase = s.phase.clone();
+                    let key = s.key.clone();
+                    if phase == CallPhase::Ending && now_ms >= s.deadline {
+                        effects.push(CallEffect::RecoverTransport {
+                            transport: key.transport,
+                            generation: key.generation,
+                        });
+                        self.owned.as_mut().unwrap().deadline =
+                            now_ms.saturating_add(self.operation_timeout_ms);
+                    } else if (self.ring_start_pending || self.ring_stop_pending)
+                        && now_ms >= self.ringtone_deadline
+                    {
+                        self.ending(now_ms, Some(CallAction::Hangup), &mut effects);
+                    } else if s.incoming
+                        && matches!(phase, CallPhase::Preparing | CallPhase::Ringing)
+                        && now_ms >= s.ring_deadline
+                    {
+                        self.ending(
+                            now_ms,
+                            Some(CallAction::Reject(RejectReason::Timeout)),
+                            &mut effects,
+                        );
+                    } else if matches!(
+                        phase,
+                        CallPhase::Preparing | CallPhase::Answering | CallPhase::Outgoing
+                    ) && now_ms >= s.deadline
+                    {
+                        self.ending(now_ms, Some(CallAction::Hangup), &mut effects);
+                    }
+                }
+            }
+            CallManagerEvent::Shutdown => {
+                self.shutdown = true;
+                self.ending(now_ms, Some(CallAction::Hangup), &mut effects);
+            }
+        }
+        if effects.iter().any(|effect| {
+            matches!(
+                effect,
+                CallEffect::StartRingtone(_) | CallEffect::StopRingtone(_)
+            )
+        }) {
+            self.ringtone_deadline = now_ms.saturating_add(self.operation_timeout_ms);
+        }
+        effects
+    }
+    fn admit(
+        &mut self,
+        key: SessionKey,
+        address: String,
+        incoming: bool,
+        now: u64,
+        effects: &mut Vec<CallEffect>,
+    ) {
+        self.activity_generation = self.activity_generation.saturating_add(1);
+        self.owned = Some(Owned {
+            key: key.clone(),
+            phase: CallPhase::Preparing,
+            incoming,
+            address,
+            deadline: now.saturating_add(self.operation_timeout_ms),
+            ring_deadline: now.saturating_add(self.ring_duration_ms),
+            queued_answer: false,
+            pending: false,
+            acknowledgements: vec![],
+        });
+        effects.push(CallEffect::WakeDisplay(key.clone()));
+        effects.push(CallEffect::Publish);
+        effects.push(CallEffect::PrepareAudio(InterruptForCall {
+            key,
+            activity_generation: self.activity_generation,
+        }));
+    }
+    fn answer(&mut self, now: u64, effects: &mut Vec<CallEffect>) {
+        self.stop_ring(effects);
+        let s = self.owned.as_mut().unwrap();
+        s.phase = CallPhase::Answering;
+        s.pending = true;
+        s.deadline = now.saturating_add(self.operation_timeout_ms);
+        self.answer_after_stop = self.ring_stop_pending;
+        if !self.answer_after_stop {
+            self.dispatch_answer(effects);
+        }
+        effects.push(CallEffect::Publish);
+    }
+    fn dispatch_answer(&mut self, effects: &mut Vec<CallEffect>) {
+        let s = self.owned.as_ref().unwrap();
+        effects.push(CallEffect::Transport(CallCommand {
+            key: s.key.clone(),
+            action: CallAction::Answer,
+        }));
+    }
+}
