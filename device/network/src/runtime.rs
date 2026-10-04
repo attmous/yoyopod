@@ -77,6 +77,7 @@ pub struct NetworkRuntime<C> {
     pending_location_events: VecDeque<LocationFixEvent>,
     last_published_snapshot: Option<NetworkRuntimeSnapshot>,
     tracking: TrackingEngine,
+    voice_suspended: bool,
 }
 
 impl<C> NetworkRuntime<C>
@@ -129,11 +130,66 @@ where
             pending_location_events: VecDeque::new(),
             last_published_snapshot: None,
             tracking: TrackingEngine::default(),
+            voice_suspended: false,
         }
     }
 
     pub fn snapshot(&self) -> &NetworkRuntimeSnapshot {
         &self.snapshot
+    }
+
+    pub fn voice_suspended(&self) -> bool {
+        self.voice_suspended
+    }
+
+    /// Quiesce cellular data before handing the shared AT interface to voice.
+    /// PPP can drop during dialing; its recovery must never reset that call.
+    pub fn suspend_for_voice_command(&mut self) -> Result<(), RuntimeCommandError> {
+        if self.voice_suspended {
+            return Err(Self::voice_busy_error());
+        }
+        self.controller
+            .suspend_for_voice()
+            .map_err(RuntimeCommandError::from_modem_error)?;
+        self.voice_suspended = true;
+        self.clear_ppp();
+        self.snapshot.state = if self.snapshot.registered {
+            NetworkLifecycleState::Registered
+        } else if self.config.enabled {
+            NetworkLifecycleState::Ready
+        } else {
+            NetworkLifecycleState::Off
+        };
+        self.snapshot.retryable = false;
+        self.snapshot.recovering = false;
+        self.snapshot.next_retry_at_ms = None;
+        self.touch(now_ms());
+        self.publish_snapshot();
+        Ok(())
+    }
+
+    pub fn resume_after_voice(&mut self) {
+        if self.voice_suspended {
+            self.voice_suspended = false;
+            if self.config.enabled {
+                self.start();
+            }
+        }
+    }
+
+    fn voice_busy_error() -> RuntimeCommandError {
+        RuntimeCommandError {
+            code: "gsm_call_in_progress".into(),
+            message: "The modem is in use for a GSM call".into(),
+        }
+    }
+
+    fn require_data_access(&self) -> Result<(), RuntimeCommandError> {
+        if self.voice_suspended {
+            Err(Self::voice_busy_error())
+        } else {
+            Ok(())
+        }
     }
 
     pub fn drain_snapshot_events(&mut self) -> Vec<NetworkRuntimeSnapshot> {
@@ -149,6 +205,10 @@ where
     }
 
     pub fn start_at(&mut self, now_ms: u64) -> &NetworkRuntimeSnapshot {
+        if self.voice_suspended {
+            self.touch(now_ms);
+            return &self.snapshot;
+        }
         let reconnect_attempts = self.snapshot.reconnect_attempts;
         let gps = self.snapshot.gps.clone();
 
@@ -179,6 +239,10 @@ where
     }
 
     pub fn tick_at(&mut self, now_ms: u64) -> &NetworkRuntimeSnapshot {
+        if self.voice_suspended {
+            self.touch(now_ms);
+            return &self.snapshot;
+        }
         if self.snapshot.state == NetworkLifecycleState::Online {
             let _ = self.poll_ppp_health(now_ms, false);
             let _ = self.refresh_live_facts_if_due(now_ms, false);
@@ -205,6 +269,7 @@ where
     }
 
     pub fn health_command(&mut self) -> Result<&NetworkRuntimeSnapshot, RuntimeCommandError> {
+        self.require_data_access()?;
         let now_ms = now_ms();
         match self.poll_ppp_health(now_ms, true) {
             Some(error) => Err(error),
@@ -224,6 +289,7 @@ where
     }
 
     pub fn query_gps_command(&mut self) -> Result<&NetworkRuntimeSnapshot, RuntimeCommandError> {
+        self.require_data_access()?;
         if !self.config.gps_enabled {
             self.snapshot.gps.last_query_result = "disabled".to_string();
             self.touch(now_ms());
@@ -253,6 +319,7 @@ where
         command_id: String,
         timeout: Duration,
     ) -> Result<LocationFixEvent, RuntimeCommandError> {
+        self.require_data_access()?;
         if !self.config.gps_enabled {
             return Err(RuntimeCommandError {
                 code: "gps_disabled".to_string(),
@@ -289,6 +356,7 @@ where
     }
 
     pub fn reset_modem_command(&mut self) -> Result<&NetworkRuntimeSnapshot, RuntimeCommandError> {
+        self.require_data_access()?;
         let now_ms = now_ms();
         match self.run_recovery(now_ms) {
             Ok(()) => Ok(&self.snapshot),
@@ -301,6 +369,7 @@ where
     }
 
     pub fn shutdown_at(&mut self, now_ms: u64) -> &NetworkRuntimeSnapshot {
+        self.voice_suspended = false;
         if self.snapshot.ppp.up {
             self.snapshot.state = NetworkLifecycleState::PppStopping;
             self.touch(now_ms);
@@ -635,6 +704,7 @@ impl NetworkRuntime<NoopModemController> {
             pending_location_events: VecDeque::new(),
             last_published_snapshot: None,
             tracking: TrackingEngine::default(),
+            voice_suspended: false,
         }
     }
 }
@@ -745,4 +815,150 @@ fn current_rfc3339() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct RecordingController {
+        calls: Vec<&'static str>,
+        fail_suspend: bool,
+    }
+
+    impl ModemController for RecordingController {
+        fn open(&mut self) -> Result<(), ModemError> {
+            self.calls.push("open");
+            Ok(())
+        }
+        fn close(&mut self) -> Result<(), ModemError> {
+            self.calls.push("close/ATH");
+            Ok(())
+        }
+        fn probe(&mut self) -> Result<bool, ModemError> {
+            self.calls.push("probe");
+            Ok(true)
+        }
+        fn initialize(&mut self, _: bool) -> Result<ModemRegistration, ModemError> {
+            self.calls.push("initialize");
+            Ok(ModemRegistration {
+                sim_ready: true,
+                registered: true,
+                carrier: "Test".into(),
+                network_type: "LTE".into(),
+                signal_csq: Some(26),
+            })
+        }
+        fn refresh_facts(&mut self) -> Result<ModemRegistration, ModemError> {
+            self.calls.push("facts");
+            self.initialize(false)
+        }
+        fn start_ppp(&mut self, _: Option<&str>, _: u64) -> Result<PppLink, ModemError> {
+            self.calls.push("start_ppp");
+            Ok(PppLink {
+                interface: "ppp0".into(),
+                pid: Some(123),
+                default_route_owned: false,
+            })
+        }
+        fn stop_ppp(&mut self) -> Result<(), ModemError> {
+            self.calls.push("stop_ppp");
+            Ok(())
+        }
+        fn ppp_health(&mut self) -> Result<PppHealth, ModemError> {
+            self.calls.push("ppp_health");
+            Ok(PppHealth::ProcessExited)
+        }
+        fn query_gps(&mut self) -> Result<Option<GpsFix>, ModemError> {
+            self.calls.push("gps");
+            Ok(None)
+        }
+        fn reset(&mut self) -> Result<(), ModemError> {
+            self.calls.push("reset/CFUN");
+            Ok(())
+        }
+        fn suspend_for_voice(&mut self) -> Result<(), ModemError> {
+            self.calls.push("suspend/release_AT");
+            if self.fail_suspend {
+                Err(ModemError::retryable("stop_failed", "PPP did not stop"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn voice_pause_blocks_pending_recovery_and_all_modem_io_until_resume() {
+        let config = NetworkHostConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let mut runtime = NetworkRuntime::new("config", config, RecordingController::default());
+        runtime.start_at(1_000);
+        runtime.tick_at(1_100); // Lost PPP schedules recovery, as during a real call.
+        assert!(runtime.snapshot.retryable);
+        runtime.controller.calls.clear();
+
+        runtime.suspend_for_voice_command().unwrap();
+        assert!(!runtime.snapshot.ppp.up);
+        assert!(!runtime.snapshot.retryable);
+        assert!(runtime.snapshot.next_retry_at_ms.is_none());
+        assert_eq!(runtime.snapshot.state, NetworkLifecycleState::Registered);
+        for time in [2_100, 61_100, 120_000] {
+            runtime.tick_at(time);
+        }
+        runtime.start_at(130_000);
+        assert!(runtime.health_command().is_err());
+        assert!(runtime.query_gps_command().is_err());
+        assert!(runtime
+            .request_location_command("test".into(), Duration::ZERO)
+            .is_err());
+        assert!(runtime.reset_modem_command().is_err());
+        assert!(runtime.suspend_for_voice_command().is_err()); // Repeated dial.
+        assert_eq!(runtime.controller.calls, ["suspend/release_AT"]);
+
+        runtime.resume_after_voice();
+        assert!(!runtime.voice_suspended());
+        assert!(runtime.snapshot.ppp.up);
+        assert_eq!(runtime.snapshot.state, NetworkLifecycleState::Online);
+        assert_eq!(
+            runtime.controller.calls,
+            [
+                "suspend/release_AT",
+                "open",
+                "probe",
+                "initialize",
+                "start_ppp"
+            ]
+        );
+        runtime.resume_after_voice();
+        assert_eq!(runtime.controller.calls.len(), 5); // Restore data once.
+    }
+
+    #[test]
+    fn voice_resume_preserves_disabled_cellular_policy() {
+        let mut runtime = NetworkRuntime::new(
+            "config",
+            NetworkHostConfig::default(),
+            RecordingController::default(),
+        );
+        runtime.suspend_for_voice_command().unwrap();
+        runtime.tick_at(60_000);
+        runtime.resume_after_voice();
+        assert!(!runtime.voice_suspended());
+        assert_eq!(runtime.snapshot.state, NetworkLifecycleState::Off);
+        assert_eq!(runtime.controller.calls, ["suspend/release_AT"]);
+    }
+
+    #[test]
+    fn failed_voice_handoff_does_not_acquire_the_modem() {
+        let controller = RecordingController {
+            fail_suspend: true,
+            ..Default::default()
+        };
+        let mut runtime = NetworkRuntime::new("config", NetworkHostConfig::default(), controller);
+        assert!(runtime.suspend_for_voice_command().is_err());
+        assert!(!runtime.voice_suspended());
+    }
 }

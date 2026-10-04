@@ -73,6 +73,7 @@ impl GsmWorker {
             let mut previous = None;
             loop {
                 let command = receive_commands.recv_timeout(Duration::from_millis(500));
+                let dial_attempt = matches!(&command, Ok(GsmCommand::Dial(_)));
                 let result = match command {
                     Ok(GsmCommand::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => {
                         let _ = backend.hangup();
@@ -117,7 +118,7 @@ impl GsmWorker {
                         state.state = "error".to_string();
                     }
                 }
-                if previous.as_ref() != Some(&state) {
+                if dial_attempt || previous.as_ref() != Some(&state) {
                     if send_states.send(state.clone()).is_err() {
                         break;
                     }
@@ -518,6 +519,10 @@ mod tests {
             });
             worker.send(GsmCommand::Dial(number.into())).unwrap();
             assert_eq!(next_state(&worker).state, "error");
+            // A retry with the same failure must still acknowledge the dial,
+            // allowing the data runtime to release its pending voice pause.
+            worker.send(GsmCommand::Dial(number.into())).unwrap();
+            assert_eq!(next_state(&worker).state, "error");
             drop(worker);
             let calls = calls.lock().unwrap();
             assert!(calls.iter().any(|call| call == "hangup"));
@@ -526,7 +531,7 @@ mod tests {
                     .iter()
                     .filter(|call| call.starts_with("dial:"))
                     .count(),
-                usize::from(!number.contains(';'))
+                2 * usize::from(!number.contains(';'))
             );
         }
     }

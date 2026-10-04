@@ -11,7 +11,7 @@ use crate::bluetooth::{
     UnavailableBluetoothController,
 };
 use crate::config::NetworkHostConfig;
-use crate::gsm::{GsmCommand, GsmWorker};
+use crate::gsm::{normalize_phone_number, GsmCommand, GsmWorker};
 use crate::modem::{ModemController, Sim7600ModemController};
 use crate::protocol::{
     audio_route_local_event, audio_state_event, audio_state_result, bluetooth_state_event,
@@ -245,6 +245,7 @@ where
 {
     let mut pending_wifi_change = None;
     let mut provisioning: Option<WifiProvisioner> = None;
+    let mut gsm_dial_pending = false;
     write_envelope(output, &ready_event(&runtime.snapshot().config_dir))?;
     write_envelope(output, &snapshot_event(runtime.snapshot()))?;
     emit_wifi_state(
@@ -304,7 +305,21 @@ where
                             .get("number")
                             .and_then(serde_json::Value::as_str)
                             .ok_or_else(|| anyhow::anyhow!("Missing GSM number"))
-                            .and_then(|number| gsm.send(GsmCommand::Dial(number.to_string()))),
+                            .and_then(|number| {
+                                let number = normalize_phone_number(number)?;
+                                runtime
+                                    .suspend_for_voice_command()
+                                    .map_err(|error| anyhow::anyhow!(error.message))?;
+                                eprintln!("Cellular data suspended for GSM call");
+                                gsm_dial_pending = true;
+                                let result = gsm.send(GsmCommand::Dial(number));
+                                if result.is_err() {
+                                    gsm_dial_pending = false;
+                                    runtime.resume_after_voice();
+                                }
+                                emit_pending_snapshots(output, &mut runtime)?;
+                                result
+                            }),
                         (Some(gsm), "gsm.hangup") => gsm.send(GsmCommand::Hangup),
                         (Some(gsm), "gsm.set_mute") => envelope
                             .payload
@@ -314,7 +329,13 @@ where
                             .and_then(|muted| gsm.send(GsmCommand::Mute(muted))),
                         _ => Err(anyhow::anyhow!("GSM call command unavailable")),
                     };
-                    if result.is_err() {
+                    if let Err(error) = result {
+                        eprintln!("GSM command rejected: {error:#}");
+                        if runtime.voice_suspended() {
+                            // A rejected second dial or mute must not hide the
+                            // existing call or release its modem ownership.
+                            continue;
+                        }
                         write_envelope(
                             output,
                             &WorkerEnvelope::event(
@@ -368,10 +389,15 @@ where
             Err(RecvTimeoutError::Timeout) => {
                 if let Some(gsm) = gsm.as_ref() {
                     for state in gsm.drain() {
+                        let finished = gsm_session_finished(&mut gsm_dial_pending, &state.state);
                         write_envelope(
                             output,
                             &WorkerEnvelope::event("gsm.call_state", serde_json::to_value(state)?),
                         )?;
+                        if finished && runtime.voice_suspended() {
+                            eprintln!("GSM call ended; resuming cellular data");
+                            runtime.resume_after_voice();
+                        }
                     }
                 }
                 runtime.tick();
@@ -394,6 +420,24 @@ where
     }
 
     Ok(())
+}
+
+/// Ignore availability snapshots queued before a pending dial. The GSM worker
+/// acknowledges each attempt with outgoing/active/error before idle can resume
+/// packet data, so stale idle events cannot restart recovery during dialing.
+fn gsm_session_finished(dial_pending: &mut bool, state: &str) -> bool {
+    match state {
+        "outgoing" | "active" => {
+            *dial_pending = false;
+            false
+        }
+        "error" => {
+            *dial_pending = false;
+            true
+        }
+        "idle" => !*dial_pending,
+        _ => false,
+    }
 }
 
 enum LoopControl {
@@ -1272,6 +1316,22 @@ mod tests {
         WifiSecurity, WifiState, WifiStateStatus,
     };
     use std::io::Cursor;
+
+    #[test]
+    fn stale_idle_does_not_resume_data_before_dial_acknowledgement() {
+        let mut pending = true;
+        assert!(!gsm_session_finished(&mut pending, "idle"));
+        assert!(pending);
+        assert!(!gsm_session_finished(&mut pending, "outgoing"));
+        assert!(!pending);
+        assert!(!gsm_session_finished(&mut pending, "active"));
+        assert!(gsm_session_finished(&mut pending, "idle"));
+
+        pending = true;
+        assert!(gsm_session_finished(&mut pending, "error"));
+        assert!(!pending);
+        assert!(gsm_session_finished(&mut pending, "idle"));
+    }
 
     struct FakeWifiController {
         state: WifiState,

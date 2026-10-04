@@ -122,7 +122,10 @@ Current approved-contacts behaviour:
 - GSM requires ModemManager voice support on the SIM7600, an unlocked SIM,
   cellular voice registration, and the modem's USB PCM audio interface.
   The network worker controls calls over D-Bus and bridges USB PCM to the named
-  ALSA `capture`/`playback` routes. Deployment grants only voice and device-control
+  ALSA `capture`/`playback` routes. Before dialing it stops PPP and releases the AT command port;
+  data recovery, modem resets, and GNSS queries stay paused until voice ends.
+  Wi-Fi continues running, and cellular data resumes after hang-up or dial failure.
+  Deployment grants only voice and device-control
   ModemManager actions to the runtime service user.
   ModemManager's secondary PIN2/PUK2 restrictions do not block ordinary voice;
   primary SIM/carrier locks, missing registration, and emergency-only service do.

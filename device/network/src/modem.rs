@@ -71,12 +71,18 @@ pub trait ModemController {
     fn ppp_health(&mut self) -> Result<PppHealth, ModemError>;
     fn query_gps(&mut self) -> Result<Option<GpsFix>, ModemError>;
     fn reset(&mut self) -> Result<(), ModemError>;
+    /// Release packet data and the AT port without hanging up a voice call.
+    fn suspend_for_voice(&mut self) -> Result<(), ModemError>;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoopModemController;
 
 impl ModemController for NoopModemController {
+    fn suspend_for_voice(&mut self) -> Result<(), ModemError> {
+        Ok(())
+    }
+
     fn open(&mut self) -> Result<(), ModemError> {
         Ok(())
     }
@@ -163,6 +169,12 @@ impl Sim7600ModemController {
 }
 
 impl ModemController for Sim7600ModemController {
+    fn suspend_for_voice(&mut self) -> Result<(), ModemError> {
+        let result = self.stop_ppp();
+        self.transport.close();
+        result
+    }
+
     fn open(&mut self) -> Result<(), ModemError> {
         if self.transport.is_open() {
             return Ok(());
