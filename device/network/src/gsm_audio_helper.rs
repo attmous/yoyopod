@@ -21,9 +21,9 @@ mod tests {
         command.stdout(Stdio::null()).stderr(Stdio::null());
         command
     }
-    fn wait_for(mut ready: impl FnMut() -> bool) {
+    fn wait_for(mut ready: impl FnMut() -> bool) -> bool {
         let deadline = Instant::now() + Duration::from_secs(5);
-        while !ready() { assert!(Instant::now() < deadline, "helper readiness timeout"); thread::sleep(Duration::from_millis(20)); }
+        while !ready() { if Instant::now() >= deadline { return false; } thread::sleep(Duration::from_millis(20)); } true
     }
     fn locked(path: &Path) -> bool {
         !Command::new("/usr/bin/flock").arg("-n").arg(path).arg("/bin/true").status().unwrap().success()
@@ -37,9 +37,9 @@ mod tests {
         let mut parent = Reap(fixture("gsm_audio_helper::tests::gsm_worker_fixture")
             .env("GSM_HELPER_TEST_DIR", dir.path()).spawn().unwrap());
         let capture = dir.path().join("capture"); let playback = dir.path().join("playback");
-        wait_for(|| capture.exists() && playback.exists() && locked(&capture) && locked(&playback));
+        assert!(wait_for(|| capture.exists() && playback.exists() && locked(&capture) && locked(&playback)), "fixture failed to acquire both endpoints");
         parent.0.kill().unwrap(); parent.0.wait().unwrap();
-        wait_for(|| !locked(&capture) && !locked(&playback));
+        assert!(wait_for(|| !locked(&capture) && !locked(&playback)), "orphaned audio helpers retained endpoint locks after worker SIGKILL");
     }
 
     #[test]
@@ -47,7 +47,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap(); let path = dir.path().join("endpoint");
         let mut child = Reap(fixture("gsm_audio_helper::tests::gsm_relay_fixture")
             .env("GSM_HELPER_TEST_PARENT", "0").env("GSM_HELPER_TEST_PATH", &path).spawn().unwrap());
-        wait_for(|| child.0.try_wait().unwrap().is_some());
+        assert!(wait_for(|| child.0.try_wait().unwrap().is_some()), "stale parent helper executed relay instead of refusing");
         assert!(!path.exists(), "stale helper acquired endpoint");
     }
 
@@ -76,3 +76,4 @@ mod tests {
         exec_parent_bound(parent, &mut command).unwrap();
     }
 }
+
