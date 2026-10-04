@@ -432,6 +432,7 @@ impl Drop for ModemSignals {
 struct ModemManagerVoice {
     initial_scan: bool,
     service_owner: Option<String>,
+    service_bus_id: Option<String>,
     service_invalidated: bool,
     terminating: std::collections::HashSet<String>,
     connection: Option<Connection>,
@@ -473,7 +474,9 @@ impl ModemManagerVoice {
         // A registry and every piece of native evidence belong to this captured
         // unique connection for their entire lifetime. Never rebind on rediscovery.
         if self.service_owner.is_none() {
+            let bus_id = Self::bus_id(&connection)?;
             self.service_owner = Some(Self::current_service_owner(&connection)?);
+            self.service_bus_id = Some(bus_id);
         }
         self.verify_service_owner()?;
         let native_owner = self.bound_owner()?.to_owned();
@@ -617,6 +620,15 @@ impl ModemManagerVoice {
             bail!("{}", self.cached.unavailable_reason);
         }
         Ok(())
+    }
+    fn bus_id(connection: &Connection) -> Result<String> {
+        Ok(Proxy::new(
+            connection,
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+        )?
+        .call("GetId", &())?)
     }
     fn current_service_owner(connection: &Connection) -> Result<String> {
         Ok(Proxy::new(
@@ -997,9 +1009,14 @@ impl GsmBackend for ModemManagerVoice {
     fn reconciliation(&self) -> Option<GsmReconciliation> {
         Some(GsmReconciliation {
             generation: self.generation?,
-            native_owner: self.service_owner.clone(),
+            native_owner: self
+                .service_bus_id
+                .as_ref()
+                .zip(self.service_owner.as_ref())
+                .map(|(bus, owner)| format!("{bus}/{owner}")),
             native_calls_quiescent: !self.service_invalidated
                 && self.service_owner.is_some()
+                && self.service_bus_id.is_some()
                 && self.isolated
                 && self.modem.is_some()
                 && self.registry.as_ref()?.tracked().is_empty()
@@ -1313,6 +1330,8 @@ mod tests {
         backend.configure(7, None).unwrap();
         backend.connection = Some(bus.connection());
         backend.service_owner = Some(old.unique_name().unwrap().to_string());
+        backend.service_bus_id =
+            Some(ModemManagerVoice::bus_id(backend.connection.as_ref().unwrap()).unwrap());
         backend.isolated = true;
         backend.modem = Some(OwnedObjectPath::try_from("/modem/0").unwrap());
         let key = SessionKey {
