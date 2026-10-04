@@ -172,9 +172,39 @@ where
         if self.voice_suspended {
             self.voice_suspended = false;
             if self.config.enabled {
-                self.start();
+                let now_ms = now_ms();
+                if let Err(error) = self.resume_data_at(now_ms) {
+                    self.schedule_retry(now_ms, error, NetworkLifecycleState::Degraded);
+                }
             }
         }
+    }
+
+    fn resume_data_at(&mut self, now_ms: u64) -> Result<(), ModemError> {
+        // Voice only released our AT handle and PPP process. Radio/GNSS are
+        // still running; initialize() would enable GNSS again and can turn
+        // an already-enabled response into a whole-modem recovery/reset.
+        self.snapshot.state = NetworkLifecycleState::Ready;
+        self.touch(now_ms);
+        self.publish_snapshot();
+        self.controller.open()?;
+        let registration = self.controller.refresh_facts()?;
+        if !registration.sim_ready || !registration.registered {
+            self.apply_fact_fields(registration);
+            return Err(ModemError::retryable(
+                "network_not_registered",
+                "Cellular service is not ready after the GSM call",
+            ));
+        }
+        self.apply_registration(now_ms, registration);
+        self.snapshot.state = NetworkLifecycleState::PppStarting;
+        self.touch(now_ms);
+        self.publish_snapshot();
+        let link = self
+            .controller
+            .start_ppp(normalized_apn(&self.config.apn), self.config.ppp_timeout)?;
+        self.apply_online(now_ms, link);
+        Ok(())
     }
 
     fn voice_busy_error() -> RuntimeCommandError {
@@ -628,6 +658,7 @@ where
         error: ModemError,
         fallback_state: NetworkLifecycleState,
     ) {
+        eprintln!("Cellular data recovery scheduled: {}", error.code);
         self.snapshot.state = fallback_state;
         self.snapshot.recovering = false;
         self.snapshot.retryable = error.retryable;
@@ -825,6 +856,7 @@ mod tests {
     struct RecordingController {
         calls: Vec<&'static str>,
         fail_suspend: bool,
+        unregistered: bool,
     }
 
     impl ModemController for RecordingController {
@@ -844,7 +876,7 @@ mod tests {
             self.calls.push("initialize");
             Ok(ModemRegistration {
                 sim_ready: true,
-                registered: true,
+                registered: !self.unregistered,
                 carrier: "Test".into(),
                 network_type: "LTE".into(),
                 signal_csq: Some(26),
@@ -852,7 +884,13 @@ mod tests {
         }
         fn refresh_facts(&mut self) -> Result<ModemRegistration, ModemError> {
             self.calls.push("facts");
-            self.initialize(false)
+            Ok(ModemRegistration {
+                sim_ready: true,
+                registered: !self.unregistered,
+                carrier: "Test".into(),
+                network_type: "LTE".into(),
+                signal_csq: Some(26),
+            })
         }
         fn start_ppp(&mut self, _: Option<&str>, _: u64) -> Result<PppLink, ModemError> {
             self.calls.push("start_ppp");
@@ -924,16 +962,10 @@ mod tests {
         assert_eq!(runtime.snapshot.state, NetworkLifecycleState::Online);
         assert_eq!(
             runtime.controller.calls,
-            [
-                "suspend/release_AT",
-                "open",
-                "probe",
-                "initialize",
-                "start_ppp"
-            ]
+            ["suspend/release_AT", "open", "facts", "start_ppp"]
         );
         runtime.resume_after_voice();
-        assert_eq!(runtime.controller.calls.len(), 5); // Restore data once.
+        assert_eq!(runtime.controller.calls.len(), 4); // Restore data once.
     }
 
     #[test]
@@ -960,5 +992,25 @@ mod tests {
         let mut runtime = NetworkRuntime::new("config", NetworkHostConfig::default(), controller);
         assert!(runtime.suspend_for_voice_command().is_err());
         assert!(!runtime.voice_suspended());
+    }
+
+    #[test]
+    fn lost_registration_after_voice_schedules_data_retry_without_starting_ppp() {
+        let config = NetworkHostConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let mut runtime = NetworkRuntime::new("config", config, RecordingController::default());
+        runtime.start_at(1_000);
+        runtime.suspend_for_voice_command().unwrap();
+        runtime.controller.calls.clear();
+        runtime.controller.unregistered = true;
+        runtime.resume_after_voice();
+        assert!(!runtime.voice_suspended());
+        assert!(!runtime.snapshot.ppp.up);
+        assert!(!runtime.snapshot.registered);
+        assert!(runtime.snapshot.retryable);
+        assert_eq!(runtime.snapshot.error_code, "network_not_registered");
+        assert_eq!(runtime.controller.calls, ["open", "facts"]);
     }
 }

@@ -125,6 +125,8 @@ Current approved-contacts behaviour:
   ALSA `capture`/`playback` routes. Before dialing it stops PPP and releases the AT command port;
   data recovery, modem resets, and GNSS queries stay paused until voice ends.
   Wi-Fi continues running, and cellular data resumes after hang-up or dial failure.
+  Normal data resumption reopens the AT port and checks registration without
+  enabling the already-running radio/GNSS again. Data faults log their recovery code.
   Deployment grants only voice and device-control
   ModemManager actions to the runtime service user.
   ModemManager's secondary PIN2/PUK2 restrictions do not block ordinary voice;
