@@ -255,11 +255,10 @@ impl GsmWorker {
                     Err(mpsc::RecvTimeoutError::Timeout) => Ok(()),
                 };
                 let mut refresh_ok = true;
+                let mut call_events = Vec::new();
                 let mut state = match backend.refresh_observation() {
                     Ok(observation) => {
-                        for event in observation.calls {
-                            let _ = send_events.send(GsmEvent::Call(event));
-                        }
+                        call_events.extend(observation.calls);
                         observation.availability
                     }
                     Err(error) => {
@@ -271,9 +270,7 @@ impl GsmWorker {
                         }
                     }
                 };
-                for event in backend.drain_call_events() {
-                    let _ = send_events.send(GsmEvent::Call(event));
-                }
+                call_events.extend(backend.drain_call_events());
                 if let Some(mut reconciled) = backend.reconciliation() {
                     if !refresh_ok {
                         reconciled.native_calls_quiescent = false;
@@ -282,6 +279,10 @@ impl GsmWorker {
                         let _ = send_events.send(GsmEvent::Reconciled(reconciled.clone()));
                         previous_reconciliation = Some(reconciled);
                     }
+                }
+                // Publish generation-to-native-owner evidence before session facts.
+                for event in call_events {
+                    let _ = send_events.send(GsmEvent::Call(event));
                 }
                 if let Err(error) = result {
                     eprintln!("GSM call command failed: {error:#}");
