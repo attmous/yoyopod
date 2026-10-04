@@ -53,6 +53,16 @@ pub trait VoipRuntimeBackend {
     fn start_voice_recording(&mut self, file_path: &str) -> Result<(), String>;
     fn voice_recording_metrics(&mut self) -> Result<VoiceRecordingMetrics, String>;
     fn stop_voice_recording(&mut self) -> Result<i32, String>;
+    /// Close capture and release its native owner without deleting a saved WAV.
+    fn finalize_voice_recording_for_call(&mut self) -> Result<i32, String> {
+        match self.stop_voice_recording() {
+            Ok(duration) => Ok(duration),
+            Err(error) => {
+                self.cancel_voice_recording()?;
+                Err(error)
+            }
+        }
+    }
     fn cancel_voice_recording(&mut self) -> Result<(), String>;
     fn send_voice_note(
         &mut self,
@@ -112,6 +122,7 @@ pub enum BackendEvent {
 
 #[derive(Debug)]
 pub struct VoipHost {
+    audio_fence: yoyopod_protocol::audio::AudioCallFence,
     config: Option<VoipConfig>,
     worker_generation: u64,
     sessions: BTreeMap<String, CallUpdate>,
@@ -131,6 +142,7 @@ pub struct VoipHost {
 impl Default for VoipHost {
     fn default() -> Self {
         Self {
+            audio_fence: Default::default(),
             config: None,
             worker_generation: 0,
             sessions: BTreeMap::new(),
@@ -150,6 +162,42 @@ impl Default for VoipHost {
 }
 
 impl VoipHost {
+    pub fn interrupt_for_call<B: VoipRuntimeBackend + ?Sized>(
+        &mut self,
+        backend: &mut B,
+        request: &yoyopod_protocol::call::InterruptForCall,
+    ) -> Result<Option<String>, String> {
+        self.audio_fence.interrupt(request)?;
+        self.voice_note_playback.stop_checked()?;
+        if !self.voice_note.is_recording() && self.voice_note.recorded_duration_ms().is_none() {
+            return Ok(None);
+        }
+        let path = self.voice_note.payload()["file_path"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        let duration = match backend.finalize_voice_recording_for_call() {
+            Ok(duration) => duration,
+            Err(error) => {
+                self.voice_note.reset();
+                return Err(error);
+            }
+        };
+        if duration <= 0 || fs::metadata(&path).map(|m| m.len() <= 44).unwrap_or(true) {
+            let _ = fs::remove_file(path);
+            self.voice_note.reset();
+            return Ok(None);
+        }
+        self.voice_note.finish_recording(duration);
+        Ok(Some(path))
+    }
+    pub fn release_call(&mut self, request: &yoyopod_protocol::call::InterruptForCall) -> bool {
+        self.audio_fence.release(request)
+    }
+    pub fn permit_audio_start(&self, payload: &serde_json::Value) -> Result<(), String> {
+        self.audio_fence
+            .permit_start(serde_json::from_value(payload.clone()).ok())
+    }
     pub fn configure(&mut self, config: VoipConfig) {
         self.sessions.clear();
         self.message_store = MessageStore::open(&config.message_store_dir, 200);
@@ -864,6 +912,33 @@ fn voice_recording_limit_reached(duration_ms: i32) -> bool {
 #[cfg(test)]
 mod recording_tests {
     use super::*;
+
+    #[test]
+    fn call_interruption_closes_capture_and_returns_unsent_draft() {
+        let mut host = VoipHost::default();
+        let mut backend = LocalRecordingBackend {
+            started: true,
+            ..Default::default()
+        };
+        let path = std::env::temp_dir().join(format!("call-draft-{}.wav", std::process::id()));
+        std::fs::write(&path, [1u8; 100]).unwrap();
+        host.start_voice_recording(&mut backend, path.to_str().unwrap())
+            .unwrap();
+        let request = yoyopod_protocol::call::InterruptForCall {
+            key: command("a", 1, CallAction::Answer).key,
+            activity_generation: 1,
+            voice_activity_generation: 3,
+        };
+        let draft = host.interrupt_for_call(&mut backend, &request).unwrap();
+        assert!(
+            !backend.recording,
+            "capture must be released before readiness"
+        );
+        assert_eq!(draft.as_deref(), path.to_str());
+        assert_eq!(host.voice_note.payload()["state"], "recorded");
+        assert_eq!(host.voice_note.payload()["message_id"], "");
+        std::fs::remove_file(path).unwrap();
+    }
 
     #[derive(Default)]
     struct LocalRecordingBackend {

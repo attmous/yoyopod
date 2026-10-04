@@ -683,7 +683,10 @@ fn dnd_ordinary_ringing_terminates_busy() {
     assert_eq!(
         e,
         vec![
-            CallEffect::StopRingtone(RingtoneRequest { key: key("a") }),
+            CallEffect::StopRingtone(RingtoneRequest {
+                key: key("a"),
+                operation_generation: 0
+            }),
             busy(key("a")),
             CallEffect::Publish
         ]
@@ -925,7 +928,10 @@ fn silent_stops_and_normal_restarts_pending_ordinary_alert() {
     assert_eq!(
         e,
         vec![
-            CallEffect::StopRingtone(RingtoneRequest { key: key("a") }),
+            CallEffect::StopRingtone(RingtoneRequest {
+                key: key("a"),
+                operation_generation: 0
+            }),
             CallEffect::Publish
         ]
     );
@@ -945,7 +951,10 @@ fn silent_stops_and_normal_restarts_pending_ordinary_alert() {
     assert_eq!(
         e,
         vec![
-            CallEffect::StartRingtone(RingtoneRequest { key: key("a") }),
+            CallEffect::StartRingtone(RingtoneRequest {
+                key: key("a"),
+                operation_generation: 0
+            }),
             CallEffect::Publish
         ]
     );

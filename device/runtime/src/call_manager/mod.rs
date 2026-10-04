@@ -169,6 +169,8 @@ impl CallManager {
             if let Some(s) = &self.owned {
                 effects.push(CallEffect::StopRingtone(RingtoneRequest {
                     key: s.key.clone(),
+                    operation_generation: 0,
+            lease_ms: 0,
                 }));
             }
             self.audible = false;
@@ -229,7 +231,11 @@ impl CallManager {
                 } else if self.phase() == Some(CallPhase::Ringing) && policy::audible(&self.mode) {
                     self.audible = true;
                     self.ring_start_pending = true;
-                    effects.push(CallEffect::StartRingtone(RingtoneRequest { key }));
+                    effects.push(CallEffect::StartRingtone(RingtoneRequest {
+                        key,
+                        operation_generation: 0,
+            lease_ms: 0,
+                    }));
                 }
             }
 
@@ -301,7 +307,11 @@ impl CallManager {
                         } else if policy::audible(&self.mode) {
                             self.audible = true;
                             self.ring_start_pending = true;
-                            effects.push(CallEffect::StartRingtone(RingtoneRequest { key }));
+                            effects.push(CallEffect::StartRingtone(RingtoneRequest {
+                                key,
+                                operation_generation: 0,
+            lease_ms: 0,
+                            }));
                         }
                     } else {
                         s.phase = CallPhase::Outgoing;
@@ -461,6 +471,8 @@ impl CallManager {
                     self.ring_start_pending = true;
                     effects.push(CallEffect::StartRingtone(RingtoneRequest {
                         key: self.session().unwrap().clone(),
+                        operation_generation: 0,
+            lease_ms: 0,
                     }));
                 }
                 effects.push(CallEffect::Publish);
@@ -541,6 +553,7 @@ impl CallManager {
         effects.push(CallEffect::PrepareAudio(InterruptForCall {
             key,
             activity_generation: self.activity_generation,
+            voice_activity_generation: 0,
         }));
     }
     fn answer(&mut self, now: u64, effects: &mut Vec<CallEffect>) {

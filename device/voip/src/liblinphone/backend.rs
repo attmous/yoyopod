@@ -265,6 +265,10 @@ impl VoipRuntimeBackend for LiblinphoneBackend {
             .map_err(|error| error.to_string())
     }
 
+    fn finalize_voice_recording_for_call(&mut self) -> Result<i32, String> {
+        runtime::finalize_voice_recording_for_call()
+    }
+
     fn send_voice_note(
         &mut self,
         sip_address: &str,

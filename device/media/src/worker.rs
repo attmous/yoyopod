@@ -149,7 +149,7 @@ where
 }
 
 fn next_loop_timeout(host: &MediaHost) -> Duration {
-    if host.has_active_runtime() {
+    if host.has_active_runtime() || host.ringtone.active() {
         Duration::from_millis(250)
     } else {
         Duration::from_secs(60)
@@ -205,8 +205,83 @@ fn runtime_event_envelopes(
 pub fn handle_command(envelope: WorkerEnvelope, host: &mut MediaHost) -> Result<CommandOutcome> {
     host.record_command();
 
+    if matches!(
+        envelope.message_type.as_str(),
+        "media.start"
+            | "media.play"
+            | "media.resume"
+            | "media.next_track"
+            | "media.previous_track"
+            | "media.load_tracks"
+            | "media.load_playlist"
+            | "media.play_playlist_track"
+            | "media.shuffle_all"
+            | "media.play_recent_track"
+    ) {
+        host.audio_fence
+            .permit_start(serde_json::from_value(envelope.payload.clone()).ok())
+            .map_err(anyhow::Error::msg)?;
+    }
+
     let request_id = envelope.request_id.clone();
     match envelope.message_type.as_str() {
+        "media.interrupt_for_call" | "media.release_call" => {
+            let request = serde_json::from_value(envelope.payload)?;
+            let released = if envelope.message_type == "media.interrupt_for_call" {
+                host.interrupt_for_call(&request)?;
+                true
+            } else {
+                host.audio_fence.release(&request)
+            };
+            Ok(CommandOutcome::continue_with(vec![
+                WorkerEnvelope::result(
+                    envelope.message_type,
+                    request_id,
+                    json!({"key":request.key,"activity_generation":request.activity_generation,"audio_released":released}),
+                ),
+                WorkerEnvelope::event("media.snapshot", host.snapshot_payload()),
+            ]))
+        }
+        "media.ringtone_start" | "media.ringtone_stop" => {
+            let request = serde_json::from_value(envelope.payload)?;
+            if envelope.message_type == "media.ringtone_start" {
+                host.ringtone
+                    .start(
+                        &request,
+                        &host.alert_output,
+                        host.alert_volume,
+                        now_ms(),
+                        request.lease_ms,
+                    )
+                    .map_err(anyhow::Error::msg)?;
+            } else {
+                host.ringtone.stop(&request).map_err(anyhow::Error::msg)?;
+            }
+            Ok(CommandOutcome::continue_with(vec![WorkerEnvelope::result(
+                envelope.message_type,
+                request_id,
+                json!({"key":request.key,"operation_generation":request.operation_generation,"ok":true}),
+            )]))
+        }
+        "media.set_alert_output" => {
+            let output = envelope.payload["media_device"]
+                .as_str()
+                .unwrap_or("alsa/default");
+            let volume = envelope.payload["alert_volume"]
+                .as_u64()
+                .unwrap_or(host.alert_volume as u64)
+                .min(100) as u8;
+            host.ringtone
+                .set_output(output, volume, now_ms())
+                .map_err(anyhow::Error::msg)?;
+            host.alert_output = output.to_string();
+            host.alert_volume = volume;
+            Ok(CommandOutcome::continue_with(vec![WorkerEnvelope::result(
+                envelope.message_type,
+                request_id,
+                json!({"ok":true}),
+            )]))
+        }
         "media.configure" => {
             let config = MediaConfig::from_payload(&envelope.payload)?;
             host.configure(config)?;
@@ -493,6 +568,14 @@ pub fn handle_command(envelope: WorkerEnvelope, host: &mut MediaHost) -> Result<
             format!("unsupported command {}", envelope.message_type),
         )])),
     }
+}
+
+pub(crate) fn now_ms() -> u64 {
+    static EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    EPOCH
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_millis() as u64
 }
 
 fn emit<W: Write>(output: &mut W, envelope: &WorkerEnvelope) -> Result<()> {

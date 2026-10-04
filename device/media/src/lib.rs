@@ -9,4 +9,5 @@ pub mod protocol;
 pub mod recents;
 pub mod remote_cache;
 pub mod remote_media;
+pub mod ringtone;
 pub mod worker;

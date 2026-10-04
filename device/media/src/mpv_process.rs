@@ -1,7 +1,7 @@
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 
 use crate::config::MediaConfig;
 
@@ -13,9 +13,16 @@ pub trait ProcessHandle: Send {
 
 pub trait ProcessSpawner: Send + Sync {
     fn spawn(&self, command: &[String]) -> io::Result<Box<dyn ProcessHandle>>;
+    fn spawn_leased(
+        &self,
+        command: &[String],
+        _lease_ms: u64,
+    ) -> io::Result<Box<dyn ProcessHandle>> {
+        self.spawn(command)
+    }
 }
 
-struct StdProcessSpawner;
+pub(crate) struct StdProcessSpawner;
 
 struct StdProcessHandle {
     id: u32,
@@ -42,27 +49,40 @@ impl ProcessHandle for StdProcessHandle {
         if child.try_wait()?.is_none() {
             child.kill()?;
         }
-        let _ = child.wait();
+        child.wait()?;
         Ok(())
     }
 }
 
 impl ProcessSpawner for StdProcessSpawner {
+    fn spawn_leased(
+        &self,
+        command: &[String],
+        lease_ms: u64,
+    ) -> io::Result<Box<dyn ProcessHandle>> {
+        spawn_bound(command, Some(lease_ms))
+    }
     fn spawn(&self, command: &[String]) -> io::Result<Box<dyn ProcessHandle>> {
-        let mut args = command.iter();
-        let program = args.next().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidInput, "mpv command must not be empty")
-        })?;
-        let mut child = Command::new(program);
-        child.args(args);
-        child.stdout(Stdio::null());
-        child.stderr(Stdio::null());
-        let child = child.spawn()?;
-        let id = child.id();
-        Ok(Box::new(StdProcessHandle {
-            id,
-            child: std::sync::Mutex::new(child),
-        }))
+        spawn_bound(command, None)
+    }
+}
+
+fn spawn_bound(command: &[String], lease: Option<u64>) -> io::Result<Box<dyn ProcessHandle>> {
+    let mut child = yoyopod_protocol::process::bound_command_with_lease(command, lease)?;
+    child.stdin(Stdio::null());
+    child.stdout(Stdio::null());
+    child.stderr(Stdio::null());
+    let child = child.spawn()?;
+    let id = child.id();
+    Ok(Box::new(StdProcessHandle {
+        id,
+        child: std::sync::Mutex::new(child),
+    }))
+}
+
+impl Drop for StdProcessHandle {
+    fn drop(&mut self) {
+        let _ = self.kill();
     }
 }
 
@@ -112,9 +132,10 @@ impl MpvProcess {
     }
 
     pub fn stop(&mut self) -> io::Result<()> {
-        if let Some(mut process) = self.process.take() {
+        if let Some(process) = self.process.as_mut() {
             process.kill()?;
         }
+        self.process = None;
         self.clean_stale_socket();
         Ok(())
     }

@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -88,12 +88,16 @@ impl VoiceNotePlayback {
         }
         self.stop();
         let command = Self::command_for(file_path);
-        let child = Command::new(&command[0])
-            .args(&command[1..])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|error| format!("failed to start voice-note playback: {error}"))?;
+        let child = yoyopod_protocol::process::bound_command_with_lease(
+            &command,
+            Some(duration_ms.max(60_000) as u64 + 8_000),
+        )
+        .map_err(|error| error.to_string())?
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("failed to start voice-note playback: {error}"))?;
         self.current = Some(child);
         self.current_file_path = file_path.to_string();
         self.duration_ms = duration_ms.max(0);
@@ -158,11 +162,18 @@ impl VoiceNotePlayback {
     }
 
     pub fn stop(&mut self) {
-        if let Some(mut child) = self.current.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+        let _ = self.stop_checked();
+    }
+
+    pub fn stop_checked(&mut self) -> Result<(), String> {
+        if let Some(child) = self.current.as_mut() {
+            if child.try_wait().map_err(|e| e.to_string())?.is_none() {
+                child.kill().map_err(|e| e.to_string())?;
+            }
+            child.wait().map_err(|e| e.to_string())?;
         }
         self.reset();
+        Ok(())
     }
 
     pub fn stop_focus_prompt(&mut self) -> bool {

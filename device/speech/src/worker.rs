@@ -161,6 +161,7 @@ struct WorkCompletion {
 }
 
 struct WorkStart {
+    voice_activity_generation: u64,
     request_id: Option<String>,
     deadline_ms: u64,
     result_type: &'static str,
@@ -186,6 +187,9 @@ where
     P: SpeechProvider + 'static,
 {
     let request_id = envelope.request_id.clone();
+    let voice_activity_generation = envelope.payload["voice_activity_generation"]
+        .as_u64()
+        .unwrap_or(0);
     match envelope.message_type.as_str() {
         "voice.health" => emit_result(
             output,
@@ -210,6 +214,7 @@ where
                 work_tx,
                 active,
                 WorkStart {
+                    voice_activity_generation,
                     request_id,
                     deadline_ms: envelope.deadline_ms,
                     result_type: "voice.transcribe.result",
@@ -236,6 +241,7 @@ where
                 work_tx,
                 active,
                 WorkStart {
+                    voice_activity_generation,
                     request_id,
                     deadline_ms: envelope.deadline_ms,
                     result_type: "voice.speak.result",
@@ -274,6 +280,7 @@ where
                 work_tx,
                 active,
                 WorkStart {
+                    voice_activity_generation,
                     request_id,
                     deadline_ms: envelope.deadline_ms,
                     result_type: "voice.focus_prompt.result",
@@ -300,6 +307,7 @@ where
                 work_tx,
                 active,
                 WorkStart {
+                    voice_activity_generation,
                     request_id,
                     deadline_ms: envelope.deadline_ms,
                     result_type: "voice.ask.result",
@@ -384,8 +392,14 @@ where
     let work_tx = work_tx.clone();
     std::thread::spawn(move || {
         let result = work(Arc::clone(&provider), context.clone());
-        let envelope =
+        let mut envelope =
             completion_envelope(spec.result_type, spec.request_id.clone(), result, &context);
+        if let Some(payload) = envelope.payload.as_object_mut() {
+            payload.insert(
+                "voice_activity_generation".into(),
+                json!(spec.voice_activity_generation),
+            );
+        }
         let _ = work_tx.send(WorkCompletion {
             request_id: spec.request_id,
             generation,
@@ -442,7 +456,8 @@ where
     W: Write,
 {
     let requested_target_id = payload
-        .get("request_id")
+        .get("target_request_id")
+        .or_else(|| payload.get("request_id"))
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| request_id.clone());
@@ -531,6 +546,11 @@ where
         .as_ref()
         .map(|active| active.generation == completion.generation)
         .unwrap_or(false);
+    // Retired work must not issue output, even if the HTTP provider finished
+    // before it observed cancellation.
+    if !is_active {
+        return Ok(());
+    }
     let cancel_already_acknowledged = active
         .as_ref()
         .is_some_and(|active| is_active && active.cancel_acknowledged);
@@ -595,10 +615,81 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn correlated_call_cancel_suppresses_late_audio_and_stale_generations() {
+        for kind in [RequestKind::General, RequestKind::FocusPrompt] {
+            let context = SpeechRequestContext::new(5_000);
+            let mut active = Some(ActiveRequest {
+                request_id: Some("old".into()),
+                generation: 1,
+                kind,
+                context: context.clone(),
+                cancel_acknowledged: false,
+            });
+            let mut output = Vec::new();
+            handle_cancel(
+                &mut output,
+                &mut active,
+                Some("cancel-operation".into()),
+                json!({"target_request_id":"old"}),
+            )
+            .unwrap();
+            assert!(
+                context.is_cancelled(),
+                "correlated cancel must target the activity, not its own operation ID"
+            );
+            output.clear();
+            for message_type in [
+                "voice.ask.completed",
+                "voice.stt.completed",
+                "voice.tts.completed",
+                "voice.focus_prompt.completed",
+            ] {
+                emit_completion(
+                    &mut output,
+                    WorkCompletion {
+                        request_id: Some("old".into()),
+                        generation: 1,
+                        context: context.clone(),
+                        envelope: WorkerEnvelope::result(
+                            message_type,
+                            Some("old".into()),
+                            json!({"audio_path":"late.wav"}),
+                        ),
+                    },
+                    &mut active,
+                )
+                .unwrap();
+            }
+            assert!(output.is_empty(), "retired completions must emit no output");
+        }
+        let mut active = None;
+        let mut output = Vec::new();
+        emit_completion(
+            &mut output,
+            WorkCompletion {
+                request_id: Some("retired".into()),
+                generation: 1,
+                context: SpeechRequestContext::new(5_000),
+                envelope: WorkerEnvelope::result(
+                    "voice.tts.completed",
+                    Some("retired".into()),
+                    json!({"audio_path":"late.wav"}),
+                ),
+            },
+            &mut active,
+        )
+        .unwrap();
+        assert!(
+            output.is_empty(),
+            "generation retirement suppresses even uncancelled completion"
+        );
+    }
     use super::*;
 
     fn work_start(request_id: &str, kind: RequestKind) -> WorkStart {
         WorkStart {
+            voice_activity_generation: 0,
             request_id: Some(request_id.to_string()),
             deadline_ms: 5_000,
             result_type: "voice.focus_prompt.result",

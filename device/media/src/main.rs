@@ -7,6 +7,7 @@ use clap::Parser;
 struct Args {}
 
 fn main() -> Result<()> {
+    yoyopod_protocol::process::dispatch_audio_helper(&["mpv"])?;
     let _args = Args::parse();
     yoyopod_media::worker::run()
 }

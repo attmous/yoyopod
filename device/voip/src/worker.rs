@@ -179,7 +179,43 @@ where
     S: WorkerBackendState,
     W: Write + ?Sized,
 {
+    if matches!(
+        envelope.message_type.as_str(),
+        "voip.start_voice_note_recording"
+            | "voip.play_voice_note"
+            | "voip.play_focus_prompt"
+            | "voip.resume_voice_note_playback"
+            | "voip.send_voice_note"
+    ) {
+        host.permit_audio_start(&envelope.payload)
+            .map_err(anyhow::Error::msg)?;
+    }
     match envelope.message_type.as_str() {
+        "voip.interrupt_for_call" => {
+            let request = serde_json::from_value(envelope.payload)?;
+            let draft = backend.with_backend(|b| host.interrupt_for_call(b, &request))?;
+            write_envelope_to(
+                output,
+                &WorkerEnvelope::result(
+                    "voip.interrupt_for_call",
+                    envelope.request_id,
+                    json!({"key":request.key,"activity_generation":request.activity_generation,"audio_released":true,"draft_path":draft}),
+                ),
+            )?;
+            write_session_snapshot(host, output)?;
+        }
+        "voip.release_call" => {
+            let request = serde_json::from_value(envelope.payload)?;
+            let released = host.release_call(&request);
+            write_envelope_to(
+                output,
+                &WorkerEnvelope::result(
+                    "voip.release_call",
+                    envelope.request_id,
+                    json!({"key":request.key,"activity_generation":request.activity_generation,"released":released}),
+                ),
+            )?;
+        }
         "voip.configure" => {
             let config = VoipConfig::from_payload(&envelope.payload)?;
             backend.unregister(host);

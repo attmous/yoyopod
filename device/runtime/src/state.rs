@@ -334,6 +334,8 @@ impl VoiceNoteSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VoiceRuntimeState {
+    pub activity_generation: u64,
+    pub interrupted_draft_path: Option<String>,
     pub phase: String,
     pub headline: String,
     pub body: String,
@@ -366,6 +368,8 @@ pub struct VoiceRuntimeState {
 impl Default for VoiceRuntimeState {
     fn default() -> Self {
         Self {
+            activity_generation: 0,
+            interrupted_draft_path: None,
             phase: "idle".to_string(),
             headline: "Ask".to_string(),
             body: "Ask me anything...".to_string(),
@@ -398,6 +402,26 @@ impl Default for VoiceRuntimeState {
 }
 
 impl VoiceRuntimeState {
+    /// Call admission invokes this before sending any stop/save command.
+    pub fn invalidate_for_call(&mut self) -> u64 {
+        self.activity_generation = self.activity_generation.saturating_add(1);
+        self.auto_send_after_capture = false;
+        self.pending_voice_recipient = None;
+        self.pending_call_confirmation = None;
+        self.pending_ask_question.clear();
+        self.ask_capture_active = false;
+        self.ask_transcribe_requested = false;
+        self.message_id.clear();
+        self.activity_generation
+    }
+    pub fn accepts_activity(&self, payload: &Value) -> bool {
+        payload
+            .get("voice_activity_generation")
+            .and_then(Value::as_u64)
+            .map_or(self.activity_generation == 0, |g| {
+                g == self.activity_generation
+            })
+    }
     pub fn recording_file_path(&self) -> String {
         let filename = format!(
             "yoyopod-voice-note-{}-{}.wav",
@@ -485,6 +509,8 @@ impl VoiceRuntimeState {
         let pending_ask_question = self.pending_ask_question.clone();
         let ask_history = self.ask_history.clone();
         *self = Self {
+            activity_generation: self.activity_generation,
+            interrupted_draft_path: self.interrupted_draft_path.clone(),
             voice_note_store_dir: store_dir,
             command_settings,
             capture_settings,

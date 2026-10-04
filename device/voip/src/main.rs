@@ -2,6 +2,7 @@ use anyhow::Result;
 
 #[cfg(feature = "native-liblinphone")]
 fn main() -> Result<()> {
+    yoyopod_protocol::process::dispatch_audio_helper(&["aplay", "ffplay"])?;
     use clap::Parser;
     use yoyopod_voip::{host::VoipHost, liblinphone::LiblinphoneBackend, worker};
 

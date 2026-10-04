@@ -14,6 +14,82 @@ use crate::recents::{RecentTrackEntry, RecentTrackStore};
 use crate::remote_cache::{CachedPlaybackAsset, RemotePlaybackCache};
 use crate::remote_media::{MediaImportRequest, RemoteMediaLibrary};
 
+#[cfg(test)]
+mod interruption_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    struct Process(Arc<Mutex<Vec<String>>>);
+    impl MpvProcessController for Process {
+        fn spawn(&mut self) -> std::io::Result<()> {
+            self.0.lock().unwrap().push("spawn".into());
+            Ok(())
+        }
+        fn stop(&mut self) -> std::io::Result<()> {
+            self.0.lock().unwrap().push("kill+wait".into());
+            Ok(())
+        }
+        fn is_alive(&self) -> bool {
+            true
+        }
+    }
+    struct Ipc;
+    impl MpvIpcTransport for Ipc {
+        fn connect(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn connected(&self) -> bool {
+            true
+        }
+        fn disconnect(&mut self) {}
+        fn send_command(&mut self, args: &[Value], _: Duration) -> Result<Value> {
+            let data = match args.get(1).and_then(Value::as_str) {
+                Some("playlist") => {
+                    json!([{"filename":"a.mp3","current":true},{"filename":"b.mp3"}])
+                }
+                Some("time-pos") => json!(12.0),
+                _ => Value::Null,
+            };
+            Ok(json!({"error":"success","data":data}))
+        }
+        fn observe_property(&mut self, _: &str, _: i64) -> Result<()> {
+            Ok(())
+        }
+        fn drain_events(&mut self) -> Result<Vec<Value>> {
+            Ok(vec![])
+        }
+    }
+    #[test]
+    fn call_suspension_releases_process_preserving_music_selection() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut runtime = MpvRuntime::with_clients(
+            Box::new(Process(log.clone())),
+            Box::new(Ipc),
+            Default::default(),
+        );
+        let track = Track {
+            uri: "a.mp3".into(),
+            name: "A".into(),
+            ..Default::default()
+        };
+        runtime.current_track = Some(track.clone());
+        runtime.cached_path = Some(track.uri.clone());
+        runtime.cached_time_position_ms = 12_000;
+        runtime.playback_state = PlaybackState::Playing;
+        runtime.connected = true;
+        runtime.suspend_for_call().unwrap();
+        assert_eq!(
+            *log.lock().unwrap(),
+            vec!["kill+wait"],
+            "pause must physically release ALSA owner"
+        );
+        assert_eq!(runtime.current_track(), Some(track));
+        assert_eq!(runtime.time_position_ms(), 12_000);
+        assert_eq!(runtime.playback_state(), PlaybackState::Paused);
+        runtime.drain_events().unwrap();
+        assert_eq!(*log.lock().unwrap(), vec!["kill+wait"]);
+    }
+}
+
 pub use crate::models::{PlaybackState, Track};
 
 const OBSERVE_MEDIA_TITLE: i64 = 1;
@@ -30,6 +106,7 @@ pub trait MediaRuntime: Send {
     fn is_connected(&self) -> bool;
     fn play(&mut self) -> Result<()>;
     fn pause(&mut self) -> Result<()>;
+    fn suspend_for_call(&mut self) -> Result<()>;
     fn stop_playback(&mut self) -> Result<()>;
     fn next_track(&mut self) -> Result<()>;
     fn previous_track(&mut self) -> Result<()>;
@@ -58,6 +135,10 @@ impl MediaRuntimeFactory for MpvRuntimeFactory {
 }
 
 pub struct MediaHost {
+    pub(crate) alert_output: String,
+    pub(crate) alert_volume: u8,
+    pub(crate) audio_fence: yoyopod_protocol::audio::AudioCallFence,
+    pub(crate) ringtone: crate::ringtone::RingtonePlayer,
     config: Option<MediaConfig>,
     commands_processed: u64,
     factory: Box<dyn MediaRuntimeFactory>,
@@ -82,6 +163,10 @@ impl Default for MediaHost {
 impl MediaHost {
     pub fn with_factory(factory: Box<dyn MediaRuntimeFactory>) -> Self {
         Self {
+            alert_output: "alsa/default".into(),
+            alert_volume: 100,
+            audio_fence: Default::default(),
+            ringtone: Default::default(),
             config: None,
             commands_processed: 0,
             factory,
@@ -139,6 +224,7 @@ impl MediaHost {
     }
 
     pub fn stop_backend(&mut self) -> Result<()> {
+        self.ringtone.shutdown().map_err(anyhow::Error::msg)?;
         if let Some(mut runtime) = self.runtime.take() {
             runtime.stop()?;
         }
@@ -155,6 +241,9 @@ impl MediaHost {
     }
 
     pub fn drain_runtime_events(&mut self) -> Result<Vec<MediaRuntimeEvent>> {
+        self.ringtone
+            .tick(crate::worker::now_ms())
+            .map_err(anyhow::Error::msg)?;
         let Some(runtime) = self.runtime.as_mut() else {
             return Ok(Vec::new());
         };
@@ -172,6 +261,23 @@ impl MediaHost {
     pub fn play(&mut self) -> Result<()> {
         self.ensure_runtime_started()?;
         self.runtime_mut()?.play()
+    }
+
+    pub fn interrupt_for_call(
+        &mut self,
+        request: &yoyopod_protocol::call::InterruptForCall,
+    ) -> Result<()> {
+        self.audio_fence
+            .interrupt(request)
+            .map_err(anyhow::Error::msg)?;
+        if let Some(runtime) = self.runtime.as_mut() {
+            runtime.suspend_for_call()?;
+            self.current_track = runtime.current_track();
+            self.playback_state = runtime.playback_state();
+            self.time_position_ms = runtime.time_position_ms();
+            self.connected = false;
+        }
+        Ok(())
     }
 
     pub fn pause(&mut self) -> Result<()> {
@@ -492,6 +598,8 @@ impl Default for MpvRuntimeStartupPolicy {
 }
 
 pub struct MpvRuntime {
+    suspended: Option<(Vec<String>, usize, i64)>,
+    resume_position: Option<i64>,
     process: Box<dyn MpvProcessController>,
     ipc: Box<dyn MpvIpcTransport>,
     startup: MpvRuntimeStartupPolicy,
@@ -521,6 +629,8 @@ impl MpvRuntime {
         startup: MpvRuntimeStartupPolicy,
     ) -> Self {
         Self {
+            suspended: None,
+            resume_position: None,
             process,
             ipc,
             startup,
@@ -620,6 +730,22 @@ impl MpvRuntime {
         };
         match event {
             MpvEvent::FileLoaded => {
+                if let Some(position) = self.resume_position.take() {
+                    if self
+                        .command(&[
+                            json!("seek"),
+                            json!(position as f64 / 1000.0),
+                            json!("absolute+exact"),
+                        ])
+                        .is_err()
+                        || self
+                            .command(&[json!("set_property"), json!("pause"), json!(false)])
+                            .is_err()
+                    {
+                        self.resume_position = Some(position);
+                        return events;
+                    }
+                }
                 self.cached_time_position_ms = 0;
                 if self.cached_path.is_none() {
                     let _ = self.prime_track_cache();
@@ -736,6 +862,42 @@ impl MpvRuntime {
 }
 
 impl MediaRuntime for MpvRuntime {
+    fn suspend_for_call(&mut self) -> Result<()> {
+        if self.suspended.is_some() {
+            return Ok(());
+        }
+        let playlist = self.get_property("playlist");
+        let position = self.get_property("time-pos");
+        // Always attempt physical release, including a failed IPC snapshot.
+        self.ipc.disconnect();
+        self.process.stop()?;
+        self.connected = false;
+        let playlist = playlist?.unwrap_or_else(|| json!([]));
+        let items = playlist
+            .as_array()
+            .ok_or_else(|| anyhow!("invalid mpv playlist"))?;
+        let index = items
+            .iter()
+            .position(|v| v["current"].as_bool() == Some(true))
+            .unwrap_or(0);
+        let mut paths: Vec<String> = items
+            .iter()
+            .filter_map(|v| v["filename"].as_str().map(str::to_owned))
+            .collect();
+        if paths.is_empty() {
+            if let Some(path) = self.cached_path.clone() {
+                paths.push(path);
+            }
+        }
+        if let Some(seconds) = position?.and_then(|v| v.as_f64()) {
+            self.cached_time_position_ms = (seconds * 1000.0) as i64;
+        }
+        self.suspended = Some((paths, index, self.cached_time_position_ms));
+        if self.playback_state == PlaybackState::Playing {
+            self.playback_state = PlaybackState::Paused;
+        }
+        Ok(())
+    }
     fn start(&mut self) -> Result<()> {
         if self.connected {
             return Ok(());
@@ -775,6 +937,24 @@ impl MediaRuntime for MpvRuntime {
     }
 
     fn play(&mut self) -> Result<()> {
+        if let Some((paths, index, position)) = self.suspended.clone() {
+            self.start()?;
+            self.command(&[json!("set_property"), json!("pause"), json!(true)])?;
+            for (i, path) in paths.iter().enumerate() {
+                self.command(&[
+                    json!("loadfile"),
+                    json!(path),
+                    json!(if i == 0 { "replace" } else { "append" }),
+                ])?;
+            }
+            if !paths.is_empty() {
+                self.command(&[json!("set_property"), json!("playlist-pos"), json!(index)])?;
+                self.resume_position = Some(position);
+                self.suspended = None;
+                return Ok(());
+            }
+            self.suspended = None;
+        }
         self.command(&[json!("set_property"), json!("pause"), json!(false)])
     }
 
@@ -838,6 +1018,9 @@ impl MediaRuntime for MpvRuntime {
     }
 
     fn drain_events(&mut self) -> Result<Vec<MediaRuntimeEvent>> {
+        if self.suspended.is_some() {
+            return Ok(Vec::new());
+        }
         let mut events = Vec::new();
         for raw in self.ipc.drain_events()? {
             events.extend(self.handle_raw_event(raw));

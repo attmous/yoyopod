@@ -1089,6 +1089,23 @@ fn stop_locked(state: &mut state::ShimState) {
     state.reset_runtime();
 }
 
+pub(super) fn finalize_voice_recording_for_call() -> Result<i32, String> {
+    let mut state = STATE
+        .lock()
+        .map_err(|_| "liblinphone runtime state lock poisoned".to_string())?;
+    let duration = if state.current_recorder.is_null() {
+        0
+    } else {
+        state
+            .api
+            .as_ref()
+            .and_then(|api| api.recorder_get_duration)
+            .map_or(0, |duration| unsafe { duration(state.current_recorder) })
+    };
+    cleanup_recorder(&mut state);
+    Ok(duration)
+}
+
 fn cleanup_recorder(state: &mut state::ShimState) {
     let Some(api) = state.api.clone() else {
         state.current_recorder = ptr::null_mut();

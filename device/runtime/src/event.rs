@@ -82,7 +82,22 @@ pub enum RuntimeCommand {
 }
 
 impl RuntimeEvent {
+    fn voice_payload(&self) -> Option<&Value> {
+        match self {
+            Self::VoiceTranscript(p)
+            | Self::VoiceAskResult(p)
+            | Self::VoiceSpeakResult(p)
+            | Self::VoiceFocusPromptResult { payload: p, .. } => Some(p),
+            _ => None,
+        }
+    }
     pub fn apply(&self, state: &mut RuntimeState) {
+        if self
+            .voice_payload()
+            .is_some_and(|p| !state.voice.accepts_activity(p))
+        {
+            return;
+        }
         match self {
             Self::WorkerReady { domain } => {
                 state.mark_worker(*domain, WorkerState::Running, "ready");
@@ -280,7 +295,13 @@ fn runtime_event_from_ui_envelope(envelope: WorkerEnvelope) -> RuntimeEvent {
 }
 
 pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<RuntimeCommand> {
-    match event {
+    if event
+        .voice_payload()
+        .is_some_and(|p| !state.voice.accepts_activity(p))
+    {
+        return Vec::new();
+    }
+    let mut commands = match event {
         RuntimeEvent::UiIntent(intent) => commands_for_ui_intent(state, intent),
         RuntimeEvent::UiInput(payload) => commands_for_ui_input(state, payload),
         RuntimeEvent::ContactsUpdated(_) => Vec::new(),
@@ -363,6 +384,11 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         )],
         RuntimeEvent::AudioRouteLocal(route) => {
             let mut commands = Vec::new();
+            commands.push(worker_command(
+                WorkerDomain::Media,
+                "media.set_alert_output",
+                route.clone(),
+            ));
             if let Some(device) = route.get("media_device").and_then(Value::as_str) {
                 commands.push(worker_command(
                     WorkerDomain::Media,
@@ -473,7 +499,21 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         | RuntimeEvent::WorkerError { .. }
         | RuntimeEvent::WorkerExited { .. }
         | RuntimeEvent::Ignored => Vec::new(),
+    };
+    for command in &mut commands {
+        if let RuntimeCommand::WorkerCommand { envelope, .. }
+        | RuntimeCommand::CorrelatedWorkerCommand { envelope, .. } = command
+        {
+            if yoyopod_protocol::audio::is_audio_start(&envelope.message_type) {
+                if let Some(payload) = envelope.payload.as_object_mut() {
+                    payload
+                        .entry("voice_activity_generation")
+                        .or_insert(json!(state.voice.activity_generation));
+                }
+            }
+        }
     }
+    commands
 }
 
 fn with_ask_log(mut commands: Vec<RuntimeCommand>, stage: &str) -> Vec<RuntimeCommand> {

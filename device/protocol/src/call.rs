@@ -96,11 +96,17 @@ pub struct CallCommand {
 pub struct InterruptForCall {
     pub key: SessionKey,
     pub activity_generation: u64,
+    #[serde(default)]
+    pub voice_activity_generation: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RingtoneRequest {
     pub key: SessionKey,
+    #[serde(default)]
+    pub operation_generation: u64,
+    #[serde(default)]
+    pub lease_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

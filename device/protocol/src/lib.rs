@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
 
+pub mod audio;
 pub mod call;
 pub mod process;
 pub mod ui;
