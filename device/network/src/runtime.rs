@@ -787,7 +787,7 @@ where
     }
 
     fn sample_location_if_due(&mut self, now_ms: u64) {
-        if !self.tracking.sample_due(now_ms) || !self.config.gps_enabled {
+        if !self.config.enabled || !self.tracking.sample_due(now_ms) || !self.config.gps_enabled {
             return;
         }
         match self.read_gps_fix_at(now_ms) {
@@ -924,6 +924,23 @@ mod tests {
                 Ok(())
             }
         }
+    }
+
+    #[test]
+    fn disabled_cellular_runtime_does_not_query_gnss_on_worker_ticks() {
+        let config = NetworkHostConfig {
+            enabled: false,
+            gps_enabled: true,
+            ..Default::default()
+        };
+        let mut runtime = NetworkRuntime::new("config", config, RecordingController::default());
+        runtime.start_at(1_000);
+        for time in [1_100, 31_100, 61_100] {
+            runtime.tick_at(time);
+        }
+        assert!(runtime.controller.calls.is_empty());
+        assert!(runtime.snapshot.error_code.is_empty());
+        assert!(runtime.drain_location_events().is_empty());
     }
 
     #[test]
