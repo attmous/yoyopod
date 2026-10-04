@@ -37,7 +37,11 @@ pub fn contact_action(item: &ListItemSnapshot) -> ContactAction {
 pub fn voice_recipient_action(contact: &ListItemSnapshot) -> Option<VoiceRecipientAction> {
     let target = contact.sip_target()?;
     Some(VoiceRecipientAction {
-        id: contact.id.clone(),
+        id: if contact.contact_id.is_empty() {
+            contact.id.clone()
+        } else {
+            contact.contact_id.clone()
+        },
         recipient_address: target.to_string(),
         recipient_name: contact.title.clone(),
         file_path: String::new(),
@@ -60,4 +64,19 @@ pub fn voice_file_action(
         message_id: note.message_id.clone(),
         duration_ms: note.duration_ms.max(0),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn voice_recipient_retains_stable_cloud_identity_and_the_captured_address() {
+        let mut contact = ListItemSnapshot::new("sip:mama@example.test", "Mama", "", "");
+        contact.contact_id = "approved-mama".into();
+        contact.sip_address = "sip:mama@example.test".into();
+        let action = voice_recipient_action(&contact).unwrap();
+        assert_eq!(action.id, "approved-mama");
+        assert_eq!(action.recipient_address, "sip:mama@example.test");
+    }
 }

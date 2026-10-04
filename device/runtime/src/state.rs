@@ -807,6 +807,28 @@ impl RuntimeState {
 
     pub fn seed_contacts(&mut self, contacts: Vec<ListItem>) {
         self.call.contacts = contacts;
+        if self
+            .voice
+            .pending_voice_recipient
+            .as_ref()
+            .is_some_and(|recipient| !self.is_approved_voice_recipient(recipient))
+        {
+            self.voice.pending_voice_recipient = None;
+            self.voice.auto_send_after_capture = false;
+        }
+    }
+
+    pub fn is_approved_voice_recipient(&self, recipient: &VoiceRecipientAction) -> bool {
+        let uri = if recipient.recipient_address.trim().is_empty() {
+            recipient.id.trim()
+        } else {
+            recipient.recipient_address.trim()
+        };
+        self.call.contacts.iter().any(|contact| {
+            (contact.id == recipient.id
+                || (!contact.contact_id.is_empty() && contact.contact_id == recipient.id))
+                && contact.sip_target() == Some(uri)
+        })
     }
 
     pub fn configure_voice_note_store_dir(&mut self, voice_note_store_dir: impl Into<String>) {

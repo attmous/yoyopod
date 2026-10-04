@@ -267,11 +267,25 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         RuntimeEvent::UiIntent(intent) => commands_for_ui_intent(state, intent),
         RuntimeEvent::UiInput(payload) => commands_for_ui_input(state, payload),
         RuntimeEvent::CloudCommand(command) => commands_for_cloud_command(command),
-        RuntimeEvent::CloudConfig(config) => vec![worker_command(
-            WorkerDomain::Network,
-            "network.apply_location_settings",
-            config.clone(),
-        )],
+        RuntimeEvent::CloudConfig(config) => {
+            let mut commands = vec![worker_command(
+                WorkerDomain::Network,
+                "network.apply_location_settings",
+                config.clone(),
+            )];
+            if state.voice.pending_voice_recipient.is_some() {
+                let mut updated = state.clone();
+                event.apply(&mut updated);
+                if updated.voice.pending_voice_recipient.is_none() {
+                    commands.push(worker_command(
+                        WorkerDomain::Voip,
+                        "voip.cancel_voice_note_recording",
+                        empty_payload(),
+                    ));
+                }
+            }
+            commands
+        }
         RuntimeEvent::MediaSnapshot(snapshot) => commands_for_media_snapshot(snapshot),
         RuntimeEvent::VoipSnapshot(snapshot) => commands_for_voip_snapshot(state, snapshot),
         RuntimeEvent::GsmCallSnapshot(snapshot)
@@ -955,6 +969,9 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             }
         }
         VoiceIntent::Send(action) => {
+            if !state.is_approved_voice_recipient(action) {
+                return Vec::new();
+            }
             let uri = voice_recipient_uri(action);
             let file_path = non_empty_string(&action.file_path)
                 .or_else(|| non_empty_string(&state.voice.file_path));
@@ -1589,6 +1606,9 @@ fn auto_send_voice_note_command(state: &RuntimeState, snapshot: &Value) -> Optio
         return None;
     }
     let recipient = state.voice.pending_voice_recipient.as_ref()?;
+    if !state.is_approved_voice_recipient(recipient) {
+        return None;
+    }
     let uri = voice_recipient_uri(recipient)?;
     let voice_note = snapshot.get("voice_note")?;
     let raw_state = string_field(voice_note, "state").unwrap_or_default();
@@ -2473,6 +2493,10 @@ mod tests {
     #[test]
     fn held_recording_snapshot_auto_sends_once_to_the_captured_recipient() {
         let mut state = RuntimeState::default();
+        RuntimeEvent::CloudConfig(json!({"contacts": {"entries": [{
+            "id": "mama", "name": "Mama", "sip_address": "sip:mama@example.test", "can_call": true
+        }]}}))
+        .apply(&mut state);
         state.apply_ui_intent(&UiIntent::Voice(VoiceIntent::CaptureStartAndSend(
             VoiceRecipientAction {
                 id: "sip:mama@example.test".to_string(),
@@ -2521,6 +2545,43 @@ mod tests {
                         && envelope.message_type == "voip.send_voice_note"
             )
         }));
+    }
+
+    #[test]
+    fn cloud_policy_changes_cancel_a_held_recording_for_a_revoked_or_changed_recipient() {
+        for entries in [
+            json!([]),
+            json!([{"id":"mama", "name":"Mama", "sip_address":"sip:mama@example.test", "can_call":false}]),
+            json!([{"id":"mama", "name":"Mama", "sip_address":"sip:new@example.test", "can_call":true}]),
+            json!([{"id":"stranger", "name":"Other", "sip_address":"sip:mama@example.test", "can_call":true}]),
+        ] {
+            let mut state = RuntimeState::default();
+            RuntimeEvent::CloudConfig(json!({"contacts":{"entries":[{
+                "id":"mama", "name":"Mama", "sip_address":"sip:mama@example.test", "can_call":true
+            }]}}))
+            .apply(&mut state);
+            state.apply_ui_intent(&UiIntent::Voice(VoiceIntent::CaptureStartAndSend(
+                VoiceRecipientAction {
+                    id: "mama".into(),
+                    recipient_address: "sip:mama@example.test".into(),
+                    ..VoiceRecipientAction::default()
+                },
+            )));
+            let update = RuntimeEvent::CloudConfig(json!({"contacts":{"entries":entries}}));
+            assert!(commands_for_event(&state, &update)
+                .iter()
+                .any(|command| matches!(command,
+                RuntimeCommand::WorkerCommand {domain: WorkerDomain::Voip, envelope}
+                if envelope.message_type == "voip.cancel_voice_note_recording")));
+            update.apply(&mut state);
+            assert!(state.voice.pending_voice_recipient.is_none());
+            assert!(!state.voice.auto_send_after_capture);
+            let recorded = RuntimeEvent::VoipSnapshot(json!({"voice_note":{
+                "state":"recorded", "file_path":"/tmp/revoked.wav"
+            }}));
+            assert!(!commands_for_event(&state, &recorded).iter().any(|command| matches!(command,
+                RuntimeCommand::WorkerCommand {envelope, ..} if envelope.message_type == "voip.send_voice_note")));
+        }
     }
 
     #[test]

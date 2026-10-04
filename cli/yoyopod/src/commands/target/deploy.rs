@@ -115,6 +115,17 @@ pub fn run(
         return Ok(rc);
     }
 
+    // Upgrade the host's previous whole-modem exclusion as well as the checkout.
+    let rc = run_remote(
+        &ctx.conn,
+        &modem_manager_prerequisites_command(),
+        false,
+        RemoteWorkdir::Default,
+    )?;
+    if rc != 0 {
+        return Ok(rc);
+    }
+
     // 4) scp tarball to /tmp on the Pi.
     let remote_tarball = format!("/tmp/{tarball_name}");
     let scp_status = Command::new("scp")
@@ -327,6 +338,27 @@ fn normalize_systemd_service_user(service_user: &str) -> Result<String> {
         service_user
     };
     Ok(validate_wifi_service_user(service_user)?.to_string())
+}
+
+fn modem_manager_prerequisites_command() -> String {
+    "if ! command -v mmcli >/dev/null 2>&1; then \
+       sudo -n apt-get update && \
+       sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends modemmanager; \
+     fi && \
+     modem_rule_changed=0 && \
+     sudo -n install -d -m 0755 /etc/udev/rules.d && \
+     if ! sudo -n cmp -s deploy/udev/77-yoyopod-sim7600.rules /etc/udev/rules.d/77-yoyopod-sim7600.rules; then \
+       sudo -n install -o root -g root -m 0644 deploy/udev/77-yoyopod-sim7600.rules /etc/udev/rules.d/77-yoyopod-sim7600.rules && \
+       sudo -n udevadm control --reload-rules && \
+       sudo -n udevadm trigger --subsystem-match=tty && \
+       sudo -n udevadm trigger --subsystem-match=usbmisc && \
+       sudo -n udevadm settle && \
+       modem_rule_changed=1; \
+     fi && \
+     sudo -n systemctl enable ModemManager.service && \
+     if [ \"$modem_rule_changed\" -eq 1 ] || ! systemctl is-active --quiet ModemManager.service; then \
+       sudo -n systemctl restart ModemManager.service; \
+     fi && systemctl is-active --quiet ModemManager.service".to_string()
 }
 
 fn render_wifi_polkit_rule(service_user: &str) -> Result<String> {
@@ -612,6 +644,21 @@ mod tests {
     #[test]
     fn wifi_polkit_rule_rejects_unsafe_service_user() {
         assert!(render_wifi_polkit_rule("raouf\" || true").is_err());
+    }
+
+    #[test]
+    fn sim7600_rule_reserves_serial_ports_without_excluding_the_qmi_modem() {
+        let rule = include_str!("../../../../../deploy/udev/77-yoyopod-sim7600.rules");
+        assert!(!rule.contains("ID_MM_DEVICE_IGNORE}=\"1\""));
+        assert!(rule.contains("ID_MM_DEVICE_IGNORE}=\"0\""));
+        assert!(rule.contains("SUBSYSTEM==\"tty\""));
+        assert!(rule.contains("ID_MM_PORT_IGNORE}=\"1\""));
+        assert!(rule.contains("SUBSYSTEM==\"usbmisc\""));
+        assert!(rule.contains("ID_MM_CANDIDATE}=\"1\""));
+        let command = modem_manager_prerequisites_command();
+        assert!(command.contains("/etc/udev/rules.d/77-yoyopod-sim7600.rules"));
+        assert!(command.contains("udevadm settle"));
+        assert!(command.contains("systemctl restart ModemManager.service"));
     }
 
     #[test]
