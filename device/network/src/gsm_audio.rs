@@ -1,4 +1,4 @@
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{
@@ -6,7 +6,7 @@ use std::sync::{
     Arc,
 };
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 
@@ -20,7 +20,43 @@ pub struct UsbPcmAudio {
     muted: Arc<AtomicBool>,
     recording: Child,
     playback: Child,
-    threads: Vec<JoinHandle<()>>,
+    threads: Vec<JoinHandle<Result<()>>>,
+}
+
+/// Serial writes can be short or briefly time out while USB queues drain.
+/// Keep the unwritten suffix so retrying neither loses nor repeats PCM bytes.
+fn write_pcm(
+    output: &mut impl Write,
+    samples: &[u8],
+    stop: &AtomicBool,
+    stall_timeout: Duration,
+) -> io::Result<()> {
+    let mut remaining = samples;
+    let mut last_progress = Instant::now();
+    while !remaining.is_empty() && !stop.load(Ordering::Relaxed) {
+        match output.write(remaining) {
+            Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
+            Ok(count) => {
+                remaining = &remaining[count..];
+                last_progress = Instant::now();
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::Interrupted
+                        | io::ErrorKind::TimedOut
+                        | io::ErrorKind::WouldBlock
+                ) =>
+            {
+                if last_progress.elapsed() >= stall_timeout {
+                    return Err(error);
+                }
+                thread::sleep(Duration::from_millis(2));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
 }
 
 fn interface_port(interface: &str) -> Option<String> {
@@ -81,7 +117,7 @@ impl UsbPcmAudio {
                 "1",
             ])
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::inherit())
             .spawn()
             .context("Open call microphone")?;
         let mut playback = match Command::new("/usr/bin/aplay")
@@ -101,7 +137,7 @@ impl UsbPcmAudio {
                 "1",
             ])
             .stdin(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::inherit())
             .spawn()
         {
             Ok(child) => child,
@@ -130,19 +166,29 @@ impl UsbPcmAudio {
         let capture_thread = thread::spawn(move || {
             let mut samples = [0_u8; 320];
             while !capture_stop.load(Ordering::Relaxed) {
-                let Ok(count) = capture.read(&mut samples) else {
-                    break;
+                let count = match capture.read(&mut samples) {
+                    Ok(count) => count,
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(error) => return Err(error).context("Read GSM microphone samples"),
                 };
                 if count == 0 {
-                    break;
+                    if capture_stop.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    bail!("GSM microphone stream ended");
                 }
                 if capture_muted.load(Ordering::Relaxed) {
                     samples[..count].fill(0);
                 }
-                if transmitter.write_all(&samples[..count]).is_err() {
-                    break;
-                }
+                write_pcm(
+                    &mut transmitter,
+                    &samples[..count],
+                    &capture_stop,
+                    Duration::from_secs(2),
+                )
+                .context("Write GSM microphone samples to USB")?;
             }
+            Ok(())
         });
         let playback_stop = stop.clone();
         let playback_thread = thread::spawn(move || {
@@ -151,14 +197,21 @@ impl UsbPcmAudio {
                 match receiver.read(&mut samples) {
                     Ok(0) => {}
                     Ok(count) => {
-                        if output.write_all(&samples[..count]).is_err() {
-                            break;
-                        }
+                        output
+                            .write_all(&samples[..count])
+                            .context("Write GSM speaker samples")?;
                     }
-                    Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {}
-                    Err(_) => break,
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            io::ErrorKind::TimedOut
+                                | io::ErrorKind::Interrupted
+                                | io::ErrorKind::WouldBlock
+                        ) => {}
+                    Err(error) => return Err(error).context("Read GSM speaker samples from USB"),
                 }
             }
+            Ok(())
         });
         Ok(Self {
             stop,
@@ -174,9 +227,105 @@ impl UsbPcmAudio {
     }
 
     pub fn healthy(&mut self) -> Result<bool> {
-        Ok(self.recording.try_wait()?.is_none()
-            && self.playback.try_wait()?.is_none()
-            && self.threads.iter().all(|thread| !thread.is_finished()))
+        if let Some(status) = self.recording.try_wait()? {
+            bail!("GSM microphone process exited: {status}");
+        }
+        if let Some(status) = self.playback.try_wait()? {
+            bail!("GSM speaker process exited: {status}");
+        }
+        if let Some(index) = self.threads.iter().position(|thread| thread.is_finished()) {
+            self.threads
+                .swap_remove(index)
+                .join()
+                .map_err(|_| anyhow::anyhow!("GSM audio bridge thread panicked"))??;
+            return Ok(false);
+        }
+        Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+
+    struct InterruptedUsb {
+        steps: VecDeque<io::Result<usize>>,
+        written: Vec<u8>,
+    }
+
+    impl Write for InterruptedUsb {
+        fn write(&mut self, samples: &[u8]) -> io::Result<usize> {
+            let count = self.steps.pop_front().unwrap_or(Ok(samples.len()))?;
+            self.written.extend_from_slice(&samples[..count]);
+            Ok(count)
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn pcm_survives_usb_timeouts_and_short_writes_without_repeating_samples() {
+        let samples = [1, 2, 3, 4, 5, 6];
+        let mut usb = InterruptedUsb {
+            steps: VecDeque::from([
+                Ok(1),
+                Err(io::ErrorKind::TimedOut.into()),
+                Err(io::ErrorKind::Interrupted.into()),
+                Ok(2),
+                Err(io::ErrorKind::WouldBlock.into()),
+            ]),
+            written: Vec::new(),
+        };
+        write_pcm(
+            &mut usb,
+            &samples,
+            &AtomicBool::new(false),
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        assert_eq!(usb.written, samples);
+    }
+
+    #[test]
+    fn pcm_does_not_retry_disconnected_usb_or_stall_forever() {
+        for kind in [io::ErrorKind::BrokenPipe, io::ErrorKind::TimedOut] {
+            let mut usb = InterruptedUsb {
+                steps: VecDeque::from([Err(kind.into()), Ok(2)]),
+                written: Vec::new(),
+            };
+            let error =
+                write_pcm(&mut usb, &[1, 2], &AtomicBool::new(false), Duration::ZERO).unwrap_err();
+            assert_eq!(error.kind(), kind);
+            assert!(usb.written.is_empty());
+            assert_eq!(usb.steps.len(), 1);
+        }
+    }
+
+    #[test]
+    fn stopping_pcm_cancels_pending_microphone_output() {
+        struct StopDuringWrite {
+            stop: Arc<AtomicBool>,
+            writes: usize,
+        }
+        impl Write for StopDuringWrite {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                self.writes += 1;
+                self.stop.store(true, Ordering::Relaxed);
+                Err(io::ErrorKind::TimedOut.into())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let stop = Arc::new(AtomicBool::new(false));
+        let mut output = StopDuringWrite {
+            stop: stop.clone(),
+            writes: 0,
+        };
+        write_pcm(&mut output, &[1, 2], &stop, Duration::from_secs(1)).unwrap();
+        assert_eq!(output.writes, 1);
     }
 }
 

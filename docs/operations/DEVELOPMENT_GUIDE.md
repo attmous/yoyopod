@@ -126,6 +126,9 @@ Current approved-contacts behaviour:
   ModemManager actions to the runtime service user.
   ModemManager's secondary PIN2/PUK2 restrictions do not block ordinary voice;
   primary SIM/carrier locks, missing registration, and emergency-only service do.
+  Brief USB audio write stalls are retried with the remaining PCM bytes for up to
+  two seconds without progress. Microphone/speaker subprocess exits and bridge
+  failures retain their diagnostic cause in the network service journal.
 - backend config sync replaces the device's approved contact directory live and
   persists it atomically. An open contact view follows address/name edits by
   stable contact ID and closes when that contact is removed.

@@ -102,7 +102,7 @@ impl GsmWorker {
                 let mut state = match backend.refresh() {
                     Ok(state) => state,
                     Err(error) => {
-                        eprintln!("GSM state refresh failed: {error}");
+                        eprintln!("GSM state refresh failed: {error:#}");
                         let _ = backend.hangup();
                         GsmCallState {
                             state: "error".into(),
@@ -111,7 +111,7 @@ impl GsmWorker {
                     }
                 };
                 if let Err(error) = result {
-                    eprintln!("GSM call command failed: {error}");
+                    eprintln!("GSM call command failed: {error:#}");
                     if !matches!(state.state.as_str(), "outgoing" | "active") {
                         let _ = backend.hangup();
                         state.state = "error".to_string();
