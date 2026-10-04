@@ -390,13 +390,11 @@ struct ModemSignals {
     thread: Option<JoinHandle<()>>,
 }
 impl ModemSignals {
-    fn start() -> Result<Self> {
-        let connection = Builder::system()?
-            .method_timeout(Duration::from_secs(5))
-            .build()?;
+    fn start(connection: &Connection, owner: &str) -> Result<Self> {
+        let connection = connection.clone();
         let rule = zbus::MatchRule::builder()
             .msg_type(zbus::message::Type::Signal)
-            .sender(DESTINATION)?
+            .sender(owner.to_owned())?
             .path_namespace("/org/freedesktop/ModemManager1")?
             .build();
         let mut stream =
@@ -432,6 +430,7 @@ impl Drop for ModemSignals {
 struct ModemManagerVoice {
     initial_scan: bool,
     service_owner: Option<String>,
+    service_invalidated: bool,
     terminating: std::collections::HashSet<String>,
     connection: Option<Connection>,
     modem: Option<OwnedObjectPath>,
@@ -469,20 +468,26 @@ impl ModemManagerVoice {
 
     fn discover(&mut self) -> Result<()> {
         let connection = self.connection()?.clone();
-        self.service_owner = Some(Self::current_service_owner(&connection)?);
+        // A registry and every piece of native evidence belong to this captured
+        // unique connection for their entire lifetime. Never rebind on rediscovery.
+        if self.service_owner.is_none() {
+            self.service_owner = Some(Self::current_service_owner(&connection)?);
+        }
+        self.verify_service_owner()?;
+        let native_owner = self.bound_owner()?.to_owned();
         if self.signals.is_none() {
-            self.signals = Some(ModemSignals::start()?);
+            self.signals = Some(ModemSignals::start(&connection, &native_owner)?);
         }
         let manager = Proxy::new(
             &connection,
-            DESTINATION,
+            native_owner.as_str(),
             "/org/freedesktop/ModemManager1",
             "org.freedesktop.DBus.ObjectManager",
         )?;
         let objects: ManagedObjects = manager.call("GetManagedObjects", &())?;
         let version: String = Proxy::new(
             &connection,
-            DESTINATION,
+            native_owner.as_str(),
             "/org/freedesktop/ModemManager1",
             DESTINATION,
         )?
@@ -505,9 +510,15 @@ impl ModemManagerVoice {
             if !model.contains("SIM7600") {
                 continue;
             }
-            let proxy = Proxy::new(&connection, DESTINATION, path.as_str(), MODEM_INTERFACE)?;
+            let proxy = Proxy::new(
+                &connection,
+                native_owner.as_str(),
+                path.as_str(),
+                MODEM_INTERFACE,
+            )?;
             let ports: Vec<(String, u32)> = proxy.get_property("Ports")?;
             drop(proxy);
+            self.verify_service_owner()?;
             self.isolated = isolated_voice_backend(
                 &version,
                 model,
@@ -542,6 +553,7 @@ impl ModemManagerVoice {
             self.initial_scan = false;
             break;
         }
+        self.verify_service_owner()?;
         self.next_discovery = Some(Instant::now() + Duration::from_secs(3));
         Ok(())
     }
@@ -549,10 +561,60 @@ impl ModemManagerVoice {
     fn proxy_for(&self, path: &str) -> Result<Proxy<'_>> {
         Ok(Proxy::new(
             self.connection.as_ref().context("No modem connection")?,
-            DESTINATION,
+            self.bound_owner()?.to_owned(),
             path.to_owned(),
             CALL_INTERFACE,
         )?)
+    }
+    fn bound_owner(&self) -> Result<&str> {
+        anyhow::ensure!(
+            !self.service_invalidated,
+            "ModemManager owner lost; native call reconciliation required"
+        );
+        let owner = self
+            .service_owner
+            .as_deref()
+            .context("No validated ModemManager owner")?;
+        zbus::names::UniqueName::try_from(owner)
+            .context("ModemManager destination is not a unique owner")?;
+        Ok(owner)
+    }
+
+    fn invalidate_service_owner(&mut self) {
+        self.service_invalidated = true;
+        self.isolated = false;
+        self.cached.available = false;
+        self.cached.unavailable_reason =
+            "ModemManager owner lost; native call reconciliation required".into();
+        // Stop local PCM, but keep the keyed data reservation and every native
+        // path. Replacement-service facts cannot resolve these sessions.
+        self.audio.take();
+        self.prepared_audio.take();
+        self.pending_events.clear();
+        if let Some(registry) = self.registry.as_mut() {
+            for (path, key) in registry.tracked() {
+                self.cleanup.failed(&path);
+                if let Some(old) = registry.latest(&key).cloned() {
+                    self.pending_events.extend(registry.observe(
+                        &path,
+                        old.direction,
+                        CallPhase::Ending,
+                        &old.address,
+                    ));
+                }
+            }
+        }
+    }
+
+    fn verify_service_owner(&mut self) -> Result<()> {
+        let expected = self.bound_owner()?.to_owned();
+        let current =
+            Self::current_service_owner(self.connection.as_ref().context("No modem connection")?);
+        if current.as_deref().ok() != Some(expected.as_str()) {
+            self.invalidate_service_owner();
+            bail!("{}", self.cached.unavailable_reason);
+        }
+        Ok(())
     }
     fn current_service_owner(connection: &Connection) -> Result<String> {
         Ok(Proxy::new(
@@ -574,7 +636,8 @@ impl ModemManagerVoice {
             .map(str::to_owned)
             .context("Unknown or stale GSM session")
     }
-    fn ensure_control(&self) -> Result<()> {
+    fn ensure_control(&mut self) -> Result<()> {
+        self.verify_service_owner()?;
         anyhow::ensure!(
             self.isolated,
             "Isolated GSM control unsupported; refusing unsafe modem fallback"
@@ -583,21 +646,26 @@ impl ModemManagerVoice {
     }
 
     fn reconcile_paths(&mut self) -> Result<()> {
+        self.verify_service_owner()?;
         let Some(modem) = self.modem.as_ref() else {
             return Ok(());
         };
         let voice = Proxy::new(
             self.connection.as_ref().context("No modem connection")?,
-            DESTINATION,
+            self.bound_owner()?.to_owned(),
             modem.as_str(),
             VOICE_INTERFACE,
         )?;
         let paths: Vec<OwnedObjectPath> = voice.get_property("Calls")?;
         drop(voice);
+        // A response belongs to the bound unique owner, but owner loss during
+        // the request still invalidates quiescence before registry mutation.
+        self.verify_service_owner()?;
         let old = self.registry()?.tracked();
         for path in &paths {
             self.observe_path(path.as_str())?;
         }
+        self.verify_service_owner()?;
         for (path, key) in old {
             if !paths.iter().any(|candidate| candidate.as_str() == path) {
                 self.object_deleted(&path, &key);
@@ -662,13 +730,30 @@ impl ModemManagerVoice {
         if !self.isolated {
             return Ok(());
         }
-        let connection = self.connection.as_ref().context("No modem connection")?;
-        let modem = self.modem.as_ref().context("No modem")?;
-        let proxy = Proxy::new(connection, DESTINATION, modem.as_str(), MODEM_INTERFACE)?;
+        self.verify_service_owner()?;
+        let connection = self
+            .connection
+            .as_ref()
+            .context("No modem connection")?
+            .clone();
+        let modem = self.modem.as_ref().context("No modem")?.clone();
+        let native_owner = self.bound_owner()?.to_owned();
+        let proxy = Proxy::new(
+            &connection,
+            native_owner.as_str(),
+            modem.as_str(),
+            MODEM_INTERFACE,
+        )?;
         let state: i32 = proxy.get_property("State")?;
         let lock: u32 = proxy.get_property("UnlockRequired")?;
-        let voice = Proxy::new(connection, DESTINATION, modem.as_str(), VOICE_INTERFACE)?;
+        let voice = Proxy::new(
+            &connection,
+            native_owner.as_str(),
+            modem.as_str(),
+            VOICE_INTERFACE,
+        )?;
         let emergency: bool = voice.get_property("EmergencyOnly")?;
+        self.verify_service_owner()?;
         let reason = voice_service_unavailable_reason(state, lock, true, emergency);
         self.cached.available = reason.is_none();
         self.cached.unavailable_reason = reason.unwrap_or_default().into();
@@ -689,6 +774,7 @@ impl ModemManagerVoice {
             self.audio_deadline = None;
         }
         let result = self.proxy_for(&path)?.call::<_, _, ()>("Hangup", &());
+        self.verify_service_owner()?;
         match result {
             Ok(()) => {
                 self.cleanup.confirmed(&path);
@@ -708,6 +794,7 @@ impl ModemManagerVoice {
         let native_direction: i32 = proxy.get_property("Direction")?;
         let number: String = proxy.get_property("Number")?;
         drop(proxy);
+        self.verify_service_owner()?;
         let direction = match native_direction {
             1 => CallDirection::Incoming,
             2 => CallDirection::Outgoing,
@@ -769,8 +856,14 @@ impl ModemManagerVoice {
             let connection = self.connection.as_ref().context("No connection")?.clone();
             let modem = self.modem.as_ref().context("No modem")?.clone();
             let object = OwnedObjectPath::try_from(path.to_owned())?;
+            let native_owner = self.bound_owner()?.to_owned();
             return self.finish_terminal(&key, events, || {
-                let voice = Proxy::new(&connection, DESTINATION, modem.as_str(), VOICE_INTERFACE)?;
+                let voice = Proxy::new(
+                    &connection,
+                    native_owner.as_str(),
+                    modem.as_str(),
+                    VOICE_INTERFACE,
+                )?;
                 let _: () = voice.call("DeleteCall", &(object,))?;
                 Ok(())
             });
@@ -902,7 +995,9 @@ impl GsmBackend for ModemManagerVoice {
     fn reconciliation(&self) -> Option<GsmReconciliation> {
         Some(GsmReconciliation {
             generation: self.generation?,
-            native_calls_quiescent: self.isolated
+            native_calls_quiescent: !self.service_invalidated
+                && self.service_owner.is_some()
+                && self.isolated
                 && self.modem.is_some()
                 && self.registry.as_ref()?.tracked().is_empty()
                 && self.uncertain_create.is_none()
@@ -917,7 +1012,8 @@ impl GsmBackend for ModemManagerVoice {
         );
         if let Some(current) = self.generation {
             anyhow::ensure!(
-                generation > current
+                !self.service_invalidated
+                    && generation > current
                     && self.registry()?.tracked().is_empty()
                     && self.owner.is_none(),
                 "GSM generation change requires resolved sessions"
@@ -953,15 +1049,7 @@ impl GsmBackend for ModemManagerVoice {
         if self.modem.is_none() {
             return Ok(self.cached.clone());
         }
-        let current_owner =
-            Self::current_service_owner(self.connection.as_ref().context("No connection")?)?;
-        if self.service_owner.as_ref() != Some(&current_owner) {
-            self.isolated = false;
-            self.cached.available = false;
-            self.cached.unavailable_reason =
-                "ModemManager restarted; native call reconciliation required".into();
-            bail!("{}", self.cached.unavailable_reason);
-        }
+        self.verify_service_owner()?;
         let messages: Vec<_> = self
             .signals
             .as_ref()
@@ -970,6 +1058,9 @@ impl GsmBackend for ModemManagerVoice {
         let mut reconcile = false;
         for message in messages {
             let header = message.header();
+            if header.sender().map(|sender| sender.as_str()) != self.service_owner.as_deref() {
+                continue;
+            }
             match header.member().map(|member| member.as_str()) {
                 Some("CallAdded" | "CallDeleted") => {
                     reconcile = true;
@@ -1024,7 +1115,13 @@ impl GsmBackend for ModemManagerVoice {
         let prepared = UsbPcmAudio::prepare(self.sample_rate(None)?)?;
         let connection = self.connection.as_ref().context("No modem")?.clone();
         let modem = self.modem.as_ref().context("No modem")?.clone();
-        let voice = Proxy::new(&connection, DESTINATION, modem.as_str(), VOICE_INTERFACE)?;
+        let native_owner = self.bound_owner()?.to_owned();
+        let voice = Proxy::new(
+            &connection,
+            native_owner.as_str(),
+            modem.as_str(),
+            VOICE_INTERFACE,
+        )?;
         self.owner = Some(key.clone());
         self.prepared_audio = Some(prepared);
         let properties = HashMap::from([("number", Value::from(number))]);
@@ -1032,6 +1129,7 @@ impl GsmBackend for ModemManagerVoice {
             Ok(path) => path,
             Err(error) => {
                 self.uncertain_create = Some(key.clone());
+                self.verify_service_owner()?;
                 return Err(error.into());
             }
         };
@@ -1039,6 +1137,7 @@ impl GsmBackend for ModemManagerVoice {
             .as_mut()
             .context("Not configured")?
             .register_outgoing(key, path.as_str())?;
+        self.verify_service_owner()?;
         let events = self.registry.as_mut().expect("configured").observe(
             path.as_str(),
             yoyopod_protocol::call::CallDirection::Outgoing,
@@ -1050,6 +1149,7 @@ impl GsmBackend for ModemManagerVoice {
         let start_result = self
             .proxy_for(path.as_str())?
             .call::<_, _, ()>("Start", &());
+        self.verify_service_owner()?;
         if let Err(error) = start_result {
             self.cleanup.failed(path.as_str());
             return Err(error.into());
@@ -1094,6 +1194,7 @@ impl GsmBackend for ModemManagerVoice {
                 }
                 self.audio_deadline = Some(Instant::now() + Duration::from_secs(8));
                 let accept_result = self.proxy_for(&path)?.call::<_, _, ()>("Accept", &());
+                self.verify_service_owner()?;
                 if let Err(error) = accept_result {
                     self.cleanup.failed(&path);
                     return Err(error.into());
