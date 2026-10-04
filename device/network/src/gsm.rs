@@ -8,7 +8,8 @@ use serde::Serialize;
 use zbus::blocking::{connection::Builder, Connection, Proxy};
 use zbus::fdo::ManagedObjects;
 use zvariant::{OwnedObjectPath, Value};
-use yoyopod_protocol::call::CallPhase;
+use yoyopod_protocol::call::{CallPhase, CallCommand, SessionKey};
+use crate::gsm_calls::CallManagerWireEvent;
 
 use crate::gsm_audio::UsbPcmAudio;
 
@@ -47,10 +48,20 @@ impl Default for GsmCallState {
 }
 
 pub enum GsmCommand {
+    Configure { request_id: String, generation: u64 },
+    Action { request_id: String, command: CallCommand },
+    DialSession { request_id: String, key: SessionKey, number: String },
     Dial(String),
     Hangup,
     Mute(bool),
     Stop,
+}
+
+#[derive(Debug)]
+pub enum GsmEvent {
+    Call(CallManagerWireEvent),
+    Completed { request_id: String, key: SessionKey, error: Option<String> },
+    Configured { request_id: String, generation: u64, error: Option<String> },
 }
 
 /// ModemManager owns modem discovery and call control; the network worker never
@@ -60,11 +71,16 @@ pub trait GsmBackend: Send + 'static {
     fn dial(&mut self, number: &str) -> Result<()>;
     fn hangup(&mut self) -> Result<()>;
     fn mute(&mut self, muted: bool) -> Result<()>;
+    fn configure(&mut self, _generation: u64) -> Result<()> { Ok(()) }
+    fn apply_call(&mut self, _command: &CallCommand) -> Result<()> { bail!("Session control unavailable") }
+    fn dial_session(&mut self, _key: &SessionKey, _number: &str) -> Result<()> { bail!("Session dialing unavailable") }
+    fn drain_call_events(&mut self) -> Vec<CallManagerWireEvent> { Vec::new() }
 }
 
 pub struct GsmWorker {
     commands: Sender<GsmCommand>,
     states: Receiver<GsmCallState>,
+    events: Receiver<GsmEvent>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -76,6 +92,7 @@ impl GsmWorker {
     pub fn with_backend(mut backend: impl GsmBackend) -> Self {
         let (commands, receive_commands) = mpsc::channel();
         let (send_states, states) = mpsc::channel();
+        let (_send_events, events) = mpsc::channel();
         let thread = thread::spawn(move || {
             let mut previous = None;
             loop {
@@ -105,6 +122,7 @@ impl GsmWorker {
                     }
                     Ok(GsmCommand::Hangup) => backend.hangup(),
                     Ok(GsmCommand::Mute(muted)) => backend.mute(muted),
+                    Ok(_) => Err(anyhow::anyhow!("Typed session command unavailable")),
                     Err(mpsc::RecvTimeoutError::Timeout) => Ok(()),
                 };
                 let mut state = match backend.refresh() {
@@ -136,6 +154,7 @@ impl GsmWorker {
         Self {
             commands,
             states,
+            events,
             thread: Some(thread),
         }
     }
@@ -149,6 +168,7 @@ impl GsmWorker {
     pub fn drain(&self) -> Vec<GsmCallState> {
         self.states.try_iter().collect()
     }
+    pub fn drain_events(&self) -> Vec<GsmEvent> { self.events.try_iter().collect() }
 }
 
 impl Drop for GsmWorker {
@@ -414,6 +434,53 @@ impl GsmBackend for ModemManagerVoice {
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn gsm_targeted_result_waits_for_backend_execution_and_busy_preserves_owner_audio() {
+        use crate::gsm_calls::GsmCallRegistry;
+        use yoyopod_protocol::call::{CallAction, CallDirection, RejectReason};
+        struct SessionBackend {
+            registry: GsmCallRegistry,
+            release: Receiver<()>,
+            started: Sender<()>,
+            targeted: Arc<Mutex<Vec<String>>>,
+            owner_path: String,
+        }
+        impl GsmBackend for SessionBackend {
+            fn refresh(&mut self) -> Result<GsmCallState> { Ok(GsmCallState { state: "active".into(), available: true, ..Default::default() }) }
+            fn dial(&mut self, _: &str) -> Result<()> { bail!("unused") }
+            fn hangup(&mut self) -> Result<()> { Ok(()) }
+            fn mute(&mut self, _: bool) -> Result<()> { Ok(()) }
+            fn apply_call(&mut self, command: &CallCommand) -> Result<()> {
+                let path = self.registry.path_for(&command.key).context("Unknown session")?.to_string();
+                self.started.send(())?;
+                self.release.recv_timeout(Duration::from_secs(3))?;
+                self.targeted.lock().unwrap().push(path.clone());
+                // The modem boundary rejects B, leaving A's PCM ownership intact.
+                anyhow::ensure!(path != self.owner_path, "owner audio would be stopped");
+                Ok(())
+            }
+        }
+        let mut registry = GsmCallRegistry::new(7);
+        registry.observe("/call/A", CallDirection::Outgoing, CallPhase::Active, "+49123456789");
+        let b = registry.observe("/call/B", CallDirection::Incoming, CallPhase::Ringing, "+49123456789");
+        let CallManagerWireEvent::Offer(b) = &b[0] else { panic!("offer") };
+        let key = b.key.clone();
+        let (release_tx, release) = mpsc::channel(); let (started, started_rx) = mpsc::channel();
+        let targeted = Arc::new(Mutex::new(Vec::new()));
+        let worker = GsmWorker::with_backend(SessionBackend { registry, release, started, targeted: targeted.clone(), owner_path: "/call/A".into() });
+        worker.send(GsmCommand::Action { request_id: "reject-B".into(), command: CallCommand { key: key.clone(), action: CallAction::Reject(RejectReason::Busy) } }).unwrap();
+        started_rx.recv_timeout(Duration::from_secs(2)).expect("backend executes typed action");
+        assert!(worker.drain_events().is_empty(), "enqueue is not completion");
+        release_tx.send(()).unwrap();
+        match worker.events.recv_timeout(Duration::from_secs(2)).unwrap() {
+            GsmEvent::Completed { request_id, key: completed_key, error } => {
+                assert_eq!(request_id, "reject-B"); assert_eq!(completed_key, key); assert!(error.is_none());
+            }
+            other => panic!("unexpected event {other:?}"),
+        }
+        assert_eq!(*targeted.lock().unwrap(), ["/call/B"]);
+    }
 
     #[test]
     fn gsm_isolation_requires_pinned_qmi_control_port_and_simtech_backend() {
