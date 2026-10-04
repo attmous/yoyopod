@@ -42,7 +42,9 @@ impl GsmCallRegistry {
                     generation: self.generation,
                     call_id: format!("gsm-{}", self.next_id),
                 };
-                if direction == CallDirection::Incoming && phase == CallPhase::Ringing {
+                if direction == CallDirection::Incoming
+                    && matches!(phase, CallPhase::Ringing | CallPhase::Waiting)
+                {
                     events.push(CallManagerWireEvent::Offer(CallOffer {
                         key: key.clone(),
                         address: number.into(),
@@ -122,7 +124,12 @@ mod tests {
     #[test]
     fn gsm_waiting_offer_can_be_rejected_without_admitting_a_second_call() {
         let mut registry = GsmCallRegistry::new(7);
-        let events = registry.observe("/call/B", CallDirection::Incoming, CallPhase::Waiting, "+49123456789");
+        let events = registry.observe(
+            "/call/B",
+            CallDirection::Incoming,
+            CallPhase::Waiting,
+            "+49123456789",
+        );
         assert_eq!(offer(&events).key, update(&events).key);
         assert_eq!(update(&events).phase, CallPhase::Waiting);
     }

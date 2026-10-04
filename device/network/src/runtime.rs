@@ -96,6 +96,7 @@ pub struct NetworkRuntime<C> {
     tracking: TrackingEngine,
     voice_suspended: bool,
     voice_session: Option<SessionKey>,
+    voice_reconciliation_pending: bool,
 }
 
 impl<C> NetworkRuntime<C>
@@ -153,6 +154,7 @@ where
             tracking: TrackingEngine::default(),
             voice_suspended: false,
             voice_session: None,
+            voice_reconciliation_pending: false,
         }
     }
 
@@ -164,9 +166,13 @@ where
         self.voice_suspended
     }
 
-    pub fn require_voice_reconciliation(&mut self) {}
+    pub fn require_voice_reconciliation(&mut self) {
+        self.voice_reconciliation_pending = true;
+    }
 
-    pub fn confirm_voice_reconciliation(&mut self) {}
+    pub fn confirm_voice_reconciliation(&mut self) {
+        self.voice_reconciliation_pending = false;
+    }
 
     pub fn suspend_for_voice_session(
         &mut self,
@@ -186,7 +192,7 @@ where
     /// Quiesce cellular data before handing the shared AT interface to voice.
     /// PPP can drop during dialing; its recovery must never reset that call.
     pub fn suspend_for_voice_command(&mut self) -> Result<(), RuntimeCommandError> {
-        if self.voice_suspended {
+        if self.voice_suspended || self.voice_reconciliation_pending {
             return Err(Self::voice_busy_error());
         }
         self.controller
@@ -211,10 +217,10 @@ where
     }
 
     pub fn resume_after_voice(&mut self) {
-        if self.voice_suspended {
+        if self.voice_suspended || self.voice_reconciliation_pending {
             self.voice_suspended = false;
             self.voice_session = None;
-            if self.config.enabled {
+            if self.config.enabled && !self.voice_reconciliation_pending {
                 let now_ms = now_ms();
                 if let Err(error) = self.resume_data_at(now_ms) {
                     self.schedule_retry(now_ms, error, NetworkLifecycleState::Degraded);
@@ -258,7 +264,7 @@ where
     }
 
     fn require_data_access(&self) -> Result<(), RuntimeCommandError> {
-        if self.voice_suspended {
+        if self.voice_suspended || self.voice_reconciliation_pending {
             Err(Self::voice_busy_error())
         } else {
             Ok(())
@@ -282,7 +288,7 @@ where
     }
 
     pub fn start_at(&mut self, now_ms: u64) -> &NetworkRuntimeSnapshot {
-        if self.voice_suspended {
+        if self.voice_suspended || self.voice_reconciliation_pending {
             self.touch(now_ms);
             return &self.snapshot;
         }
@@ -316,7 +322,7 @@ where
     }
 
     pub fn tick_at(&mut self, now_ms: u64) -> &NetworkRuntimeSnapshot {
-        if self.voice_suspended {
+        if self.voice_suspended || self.voice_reconciliation_pending {
             self.touch(now_ms);
             return &self.snapshot;
         }
@@ -465,6 +471,7 @@ where
         self.pending_location_requests = pending;
         if self.pending_location_requests.is_empty()
             || self.voice_suspended
+            || self.voice_reconciliation_pending
             || self.last_location_request_poll.is_some_and(|last| {
                 now.saturating_duration_since(last) < LOCATION_REQUEST_POLL_INTERVAL
             })
@@ -539,7 +546,9 @@ where
             self.clear_ppp();
         }
 
-        let _ = self.controller.close();
+        // ModemManager owns voice termination, including unknown incoming calls.
+        // Releasing data must never issue unqualified ATH.
+        let _ = self.controller.suspend_for_voice();
         let reconnect_attempts = self.snapshot.reconnect_attempts;
         let gps = self.snapshot.gps.clone();
         self.snapshot =
@@ -871,6 +880,7 @@ impl NetworkRuntime<NoopModemController> {
             tracking: TrackingEngine::default(),
             voice_suspended: false,
             voice_session: None,
+            voice_reconciliation_pending: false,
         }
     }
 }
@@ -989,19 +999,35 @@ mod tests {
 
     #[test]
     fn gsm_restart_blocks_all_data_io_until_native_reconciliation() {
-        let mut runtime = NetworkRuntime::new("config", NetworkHostConfig { enabled: true, ..Default::default() }, RecordingController::default());
+        let mut runtime = NetworkRuntime::new(
+            "config",
+            NetworkHostConfig {
+                enabled: true,
+                ..Default::default()
+            },
+            RecordingController::default(),
+        );
         runtime.require_voice_reconciliation();
-        runtime.start_at(1000); runtime.tick_at(2000);
-        assert!(runtime.controller.calls.is_empty(), "restart touched AT before native call reconciliation");
+        runtime.start_at(1000);
+        runtime.tick_at(2000);
+        assert!(
+            runtime.controller.calls.is_empty(),
+            "restart touched AT before native call reconciliation"
+        );
         assert!(runtime.health_command().is_err());
         assert!(runtime.reset_modem_command().is_err());
-        runtime.confirm_voice_reconciliation(); runtime.start_at(3000);
+        runtime.confirm_voice_reconciliation();
+        runtime.start_at(3000);
         assert!(!runtime.controller.calls.is_empty());
     }
 
     #[test]
     fn gsm_shutdown_releases_control_without_global_ath() {
-        let mut runtime = NetworkRuntime::new("config", NetworkHostConfig::default(), RecordingController::default());
+        let mut runtime = NetworkRuntime::new(
+            "config",
+            NetworkHostConfig::default(),
+            RecordingController::default(),
+        );
         runtime.shutdown_at(1000);
         assert_eq!(runtime.controller.calls, ["suspend/release_AT"]);
     }

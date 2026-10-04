@@ -251,6 +251,10 @@ where
     let mut provisioning: Option<WifiProvisioner> = None;
     let mut gsm_generation = None;
     let mut gsm_sessions = Vec::new();
+    let mut gsm_startup_reconciled = gsm.is_none();
+    if gsm.is_some() {
+        runtime.require_voice_reconciliation();
+    }
     write_envelope(output, &ready_event(&runtime.snapshot().config_dir))?;
     write_envelope(output, &snapshot_event(runtime.snapshot()))?;
     emit_wifi_state(
@@ -272,7 +276,7 @@ where
     if let Ok(applied) = audio.current(bluetooth.as_ref(), &bluetooth_state) {
         emit_applied_audio(output, &applied)?;
     }
-    if should_boot_runtime(runtime.snapshot()) {
+    if gsm_startup_reconciled && should_boot_runtime(runtime.snapshot()) {
         runtime.start();
     }
     emit_startup_snapshots(output, &mut runtime)?;
@@ -285,6 +289,7 @@ where
                 gsm,
                 &mut gsm_generation,
                 &mut gsm_sessions,
+                &mut gsm_startup_reconciled,
             )?;
         }
         match input_rx.recv_timeout(poll_interval) {
@@ -535,9 +540,24 @@ fn drain_gsm_events<C: ModemController, W: Write>(
     gsm: &GsmWorker,
     generation: &mut Option<u64>,
     sessions: &mut Vec<CallUpdate>,
+    startup_reconciled: &mut bool,
 ) -> Result<()> {
     for event in gsm.drain_events() {
         match event {
+            GsmEvent::Reconciled(reconciled) if Some(reconciled.generation) == *generation => {
+                if !*startup_reconciled
+                    && reconciled.native_calls_quiescent
+                    && reconciled.audio_released
+                {
+                    *startup_reconciled = true;
+                    runtime.confirm_voice_reconciliation();
+                    runtime.start();
+                }
+                write_envelope(
+                    output,
+                    &WorkerEnvelope::event("call.reconciled", serde_json::to_value(reconciled)?),
+                )?;
+            }
             GsmEvent::Configured {
                 request_id,
                 generation: configured,
@@ -1590,6 +1610,22 @@ mod tests {
     struct RecordingGsmBackend(Arc<Mutex<Vec<String>>>);
 
     impl crate::gsm::GsmBackend for RecordingGsmBackend {
+        fn reconciliation(&self) -> Option<crate::gsm::GsmReconciliation> {
+            Some(crate::gsm::GsmReconciliation {
+                generation: 7,
+                native_calls_quiescent: true,
+                audio_released: true,
+            })
+        }
+        fn dial_session(&mut self, _: &SessionKey, number: &str) -> Result<()> {
+            self.dial(number)
+        }
+        fn apply_call(&mut self, command: &CallCommand) -> Result<()> {
+            match command.action {
+                CallAction::SetMute(muted) => self.mute(muted),
+                _ => self.hangup(),
+            }
+        }
         fn refresh(&mut self) -> Result<crate::gsm::GsmCallState> {
             Ok(crate::gsm::GsmCallState {
                 available: true,
@@ -1617,32 +1653,73 @@ mod tests {
         let gps_queries = modem.gps_queries.clone();
         let calls = Arc::new(Mutex::new(Vec::new()));
         let (tx, rx) = mpsc::channel();
-        for (message_type, id, payload) in [
-            (
-                "network.request_location",
-                "location",
-                serde_json::json!({}),
-            ),
-            ("wifi_refresh", "wifi", serde_json::json!({})),
-            (
-                "gsm.dial",
-                "dial",
-                serde_json::json!({"number": "+49123456789"}),
-            ),
-            ("gsm.set_mute", "mute", serde_json::json!({"muted": true})),
-            ("gsm.hangup", "hangup", serde_json::json!({})),
-            ("worker.stop", "stop", serde_json::json!({})),
-        ] {
+        let (configured_tx, configured_rx) = mpsc::channel();
+        struct ConfigureOutput {
+            bytes: Vec<u8>,
+            configured: Option<mpsc::Sender<()>>,
+        }
+        impl Write for ConfigureOutput {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                self.bytes.extend_from_slice(bytes);
+                if String::from_utf8_lossy(&self.bytes).contains("network.configured") {
+                    if let Some(sender) = self.configured.take() {
+                        let _ = sender.send(());
+                    }
+                }
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let sender = std::thread::spawn(move || {
             tx.send(Ok(String::from_utf8(
-                WorkerEnvelope::command(message_type, Some(id.into()), payload)
-                    .encode()
-                    .unwrap(),
+                WorkerEnvelope::command(
+                    "network.configure",
+                    Some("configure".into()),
+                    serde_json::json!({"worker_generation":7}),
+                )
+                .encode()
+                .unwrap(),
             )
             .unwrap()))
                 .unwrap();
-        }
-        drop(tx);
-        let mut output = Vec::new();
+            configured_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+            let key = serde_json::json!({"transport":"gsm","generation":7,"call_id":"test-dial"});
+            for (message_type, id, payload) in [
+                (
+                    "network.request_location",
+                    "location",
+                    serde_json::json!({}),
+                ),
+                ("wifi_refresh", "wifi", serde_json::json!({})),
+                (
+                    "gsm.dial",
+                    "dial",
+                    serde_json::json!({"key":key,"number": "+49123456789"}),
+                ),
+                (
+                    "gsm.set_mute",
+                    "mute",
+                    serde_json::json!({"key":key,"muted": true}),
+                ),
+                ("gsm.hangup", "hangup", serde_json::json!({"key":key})),
+                ("worker.stop", "stop", serde_json::json!({})),
+            ] {
+                tx.send(Ok(String::from_utf8(
+                    WorkerEnvelope::command(message_type, Some(id.into()), payload)
+                        .encode()
+                        .unwrap(),
+                )
+                .unwrap()))
+                    .unwrap();
+            }
+            drop(tx);
+        });
+        let mut output = ConfigureOutput {
+            bytes: Vec::new(),
+            configured: Some(configured_tx),
+        };
         run_with_runtime_loop(
             NetworkRuntime::new(
                 config_dir.path().display().to_string(),
@@ -1666,7 +1743,8 @@ mod tests {
             Some(GsmWorker::with_backend(RecordingGsmBackend(calls.clone()))),
         )
         .unwrap();
-        let envelopes: Vec<_> = String::from_utf8(output)
+        sender.join().unwrap();
+        let envelopes: Vec<_> = String::from_utf8(output.bytes)
             .unwrap()
             .lines()
             .map(|line| WorkerEnvelope::decode(line.as_bytes()).unwrap())

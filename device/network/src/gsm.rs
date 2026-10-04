@@ -93,6 +93,7 @@ pub enum GsmCommand {
 #[derive(Debug)]
 pub enum GsmEvent {
     Call(CallManagerWireEvent),
+    Reconciled(GsmReconciliation),
     Completed {
         request_id: String,
         key: SessionKey,
@@ -106,9 +107,19 @@ pub enum GsmEvent {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GsmReconciliation {
+    pub generation: u64,
+    pub native_calls_quiescent: bool,
+    pub audio_released: bool,
+}
+
 /// ModemManager owns modem discovery and call control; the network worker never
 /// competes with its QMI control channel or hard-codes a transient modem index.
 pub trait GsmBackend: Send + 'static {
+    fn reconciliation(&self) -> Option<GsmReconciliation> {
+        None
+    }
     fn refresh(&mut self) -> Result<GsmCallState>;
     fn dial(&mut self, number: &str) -> Result<()>;
     fn hangup(&mut self) -> Result<()>;
@@ -148,6 +159,7 @@ impl GsmWorker {
         let (send_events, events) = mpsc::channel();
         let thread = thread::spawn(move || {
             let mut previous = None;
+            let mut previous_reconciliation = None;
             loop {
                 let command = receive_commands.recv_timeout(Duration::from_millis(500));
                 let dial_attempt = matches!(&command, Ok(GsmCommand::Dial(_)));
@@ -228,9 +240,11 @@ impl GsmWorker {
                     }
                     Err(mpsc::RecvTimeoutError::Timeout) => Ok(()),
                 };
+                let mut refresh_ok = true;
                 let mut state = match backend.refresh() {
                     Ok(state) => state,
                     Err(error) => {
+                        refresh_ok = false;
                         eprintln!("GSM state refresh failed: {error:#}");
                         GsmCallState {
                             state: "error".into(),
@@ -240,6 +254,15 @@ impl GsmWorker {
                 };
                 for event in backend.drain_call_events() {
                     let _ = send_events.send(GsmEvent::Call(event));
+                }
+                if let Some(mut reconciled) = backend.reconciliation() {
+                    if !refresh_ok {
+                        reconciled.native_calls_quiescent = false;
+                    }
+                    if previous_reconciliation.as_ref() != Some(&reconciled) {
+                        let _ = send_events.send(GsmEvent::Reconciled(reconciled.clone()));
+                        previous_reconciliation = Some(reconciled);
+                    }
                 }
                 if let Err(error) = result {
                     eprintln!("GSM call command failed: {error:#}");
@@ -327,7 +350,11 @@ struct CleanupEvidence {
     uncertain: std::collections::HashSet<String>,
 }
 impl CleanupEvidence {
-    fn observe_initial(&mut self, _path: &str, _phase: &CallPhase) {}
+    fn observe_initial(&mut self, path: &str, phase: &CallPhase) {
+        if *phase == CallPhase::Ended {
+            self.failed(path);
+        }
+    }
     fn failed(&mut self, path: &str) {
         self.uncertain.insert(path.into());
     }
@@ -385,6 +412,9 @@ impl Drop for ModemSignals {
 
 #[derive(Default)]
 struct ModemManagerVoice {
+    initial_scan: bool,
+    service_owner: Option<String>,
+    terminating: std::collections::HashSet<String>,
     connection: Option<Connection>,
     modem: Option<OwnedObjectPath>,
     signals: Option<ModemSignals>,
@@ -421,6 +451,7 @@ impl ModemManagerVoice {
 
     fn discover(&mut self) -> Result<()> {
         let connection = self.connection()?.clone();
+        self.service_owner = Some(Self::current_service_owner(&connection)?);
         if self.signals.is_none() {
             self.signals = Some(ModemSignals::start()?);
         }
@@ -490,6 +521,7 @@ impl ModemManagerVoice {
             // Discovery enumerates once. The Voice Calls property and signals are
             // used afterwards; no repeated global managed-object enumeration.
             self.reconcile_paths()?;
+            self.initial_scan = false;
             break;
         }
         self.next_discovery = Some(Instant::now() + Duration::from_secs(3));
@@ -503,6 +535,15 @@ impl ModemManagerVoice {
             path.to_owned(),
             CALL_INTERFACE,
         )?)
+    }
+    fn current_service_owner(connection: &Connection) -> Result<String> {
+        Ok(Proxy::new(
+            connection,
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+        )?
+        .call("GetNameOwner", &(DESTINATION,))?)
     }
     fn registry(&self) -> Result<&crate::gsm_calls::GsmCallRegistry> {
         self.registry
@@ -548,6 +589,7 @@ impl ModemManagerVoice {
     }
 
     fn object_deleted(&mut self, path: &str, key: &SessionKey) {
+        self.terminating.remove(path);
         if let Some(old) = self.registry.as_ref().and_then(|r| r.latest(key)).cloned() {
             self.cleanup.confirmed(path);
             let events = self.registry.as_mut().expect("configured").observe(
@@ -583,6 +625,12 @@ impl ModemManagerVoice {
     fn targeted_hangup(&mut self, key: &SessionKey) -> Result<()> {
         self.ensure_control()?;
         let path = self.path_for(key)?;
+        self.terminating.insert(path.clone());
+        if self.owner.as_ref() == Some(key) {
+            self.audio.take();
+            self.prepared_audio.take();
+            self.audio_deadline = None;
+        }
         let result = self.proxy_for(&path)?.call::<_, _, ()>("Hangup", &());
         match result {
             Ok(()) => {
@@ -609,6 +657,9 @@ impl ModemManagerVoice {
             _ => bail!("Unknown GSM call direction"),
         };
         let mut phase = modem_call_phase(state);
+        if self.initial_scan {
+            self.cleanup.observe_initial(path, &phase);
+        }
         if phase == CallPhase::Ended && !self.cleanup.terminal_is_trusted(path) {
             phase = CallPhase::Ending;
         }
@@ -624,6 +675,7 @@ impl ModemManagerVoice {
                 }
             }
         }
+        let observed_phase = phase.clone();
         let events = self.registry.as_mut().context("Not configured")?.observe(
             path,
             direction.clone(),
@@ -637,6 +689,25 @@ impl ModemManagerVoice {
             .find(|(p, _)| p == path)
             .context("Untracked call")?
             .1;
+        if !self.cleanup.terminal_is_trusted(path) {
+            if state != 7 {
+                let _ = self.targeted_hangup(&key);
+            }
+            phase = CallPhase::Ending;
+        } else if self.terminating.contains(path) && phase != CallPhase::Ended {
+            phase = CallPhase::Ending;
+        }
+        // Re-project a cleanup-pending native Active as Ending, never as audio readiness.
+        let events = if phase != observed_phase {
+            self.registry.as_mut().expect("configured").observe(
+                path,
+                direction.clone(),
+                phase.clone(),
+                &number,
+            )
+        } else {
+            events
+        };
         // Fresh discovery of a pre-existing active/held/outgoing call is never
         // offered for admission. Reconcile it through isolated termination.
         if self.owner.as_ref() != Some(&key)
@@ -775,6 +846,17 @@ impl ModemManagerVoice {
 }
 
 impl GsmBackend for ModemManagerVoice {
+    fn reconciliation(&self) -> Option<GsmReconciliation> {
+        Some(GsmReconciliation {
+            generation: self.generation?,
+            native_calls_quiescent: self.isolated
+                && self.modem.is_some()
+                && self.registry.as_ref()?.tracked().is_empty()
+                && self.uncertain_create.is_none()
+                && self.cleanup.uncertain.is_empty(),
+            audio_released: self.audio.is_none() && self.prepared_audio.is_none(),
+        })
+    }
     fn configure(&mut self, generation: u64, pcm_sample_rate_hz: Option<u32>) -> Result<()> {
         anyhow::ensure!(
             pcm_sample_rate_hz.is_none_or(|rate| matches!(rate, 8000 | 16000)),
@@ -791,6 +873,7 @@ impl GsmBackend for ModemManagerVoice {
         self.generation = Some(generation);
         self.pcm_sample_rate_hz = pcm_sample_rate_hz;
         self.registry = Some(crate::gsm_calls::GsmCallRegistry::new(generation));
+        self.initial_scan = true;
         self.modem = None;
         self.next_discovery = None;
         Ok(())
@@ -816,6 +899,15 @@ impl GsmBackend for ModemManagerVoice {
         }
         if self.modem.is_none() {
             return Ok(self.cached.clone());
+        }
+        let current_owner =
+            Self::current_service_owner(self.connection.as_ref().context("No connection")?)?;
+        if self.service_owner.as_ref() != Some(&current_owner) {
+            self.isolated = false;
+            self.cached.available = false;
+            self.cached.unavailable_reason =
+                "ModemManager restarted; native call reconciliation required".into();
+            bail!("{}", self.cached.unavailable_reason);
         }
         let messages: Vec<_> = self
             .signals
@@ -864,6 +956,10 @@ impl GsmBackend for ModemManagerVoice {
             "Unknown or stale GSM generation"
         );
         anyhow::ensure!(self.owner.is_none(), "GSM voice already owned");
+        anyhow::ensure!(
+            self.registry()?.tracked().is_empty() && self.cleanup.uncertain.is_empty(),
+            "GSM native reconciliation required before dialing"
+        );
         self.ensure_control()?;
         anyhow::ensure!(self.cached.available, "{}", self.cached.unavailable_reason);
         // Reserve PCM without microphone/playback before starting the native call.
@@ -912,6 +1008,15 @@ impl GsmBackend for ModemManagerVoice {
         match command.action {
             CallAction::Answer => {
                 anyhow::ensure!(self.owner.is_none(), "GSM voice already owned");
+                anyhow::ensure!(
+                    self.cleanup.uncertain.is_empty()
+                        && self
+                            .registry()?
+                            .tracked()
+                            .iter()
+                            .all(|(_, key)| key == &command.key),
+                    "GSM native reconciliation required before answering"
+                );
                 let update = self
                     .registry()?
                     .latest(&command.key)
@@ -989,7 +1094,10 @@ mod tests {
         assert!(!evidence.terminal_is_trusted("/call/A"));
         let mut restarted = CleanupEvidence::default();
         restarted.observe_initial("/call/A", &CallPhase::Ended);
-        assert!(!restarted.terminal_is_trusted("/call/A"), "restart forgot that native termination was unproven");
+        assert!(
+            !restarted.terminal_is_trusted("/call/A"),
+            "restart forgot that native termination was unproven"
+        );
         restarted.confirmed("/call/A");
         assert!(restarted.terminal_is_trusted("/call/A"));
     }

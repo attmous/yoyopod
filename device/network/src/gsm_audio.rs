@@ -100,6 +100,7 @@ impl UsbPcmAudio {
 
     /// Prepare USB only. Never opens microphone/speaker or sends modem AT commands.
     pub fn prepare(sample_rate: u32) -> Result<PreparedUsbPcm> {
+        anyhow::ensure!(Self::available(), "GSM USB PCM or ALSA tools unavailable");
         anyhow::ensure!(
             matches!(sample_rate, 8000 | 16000),
             "Explicit GSM PCM format required"
