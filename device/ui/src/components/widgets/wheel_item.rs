@@ -98,7 +98,7 @@ pub fn wheel_item(
             let mut root = container(roles::TALK_WHEEL_ITEM)
                 .key(key)
                 .selected(selected);
-            if model.subtitle.is_empty() {
+            if model.subtitle.is_empty() || !selected {
                 root = root
                     .child(image(foreground.icon).icon(icon_key).accent(INK))
                     .child(label(foreground.label).text(&model.title));

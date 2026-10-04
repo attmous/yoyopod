@@ -2611,6 +2611,10 @@ mod tests {
             runtime.enable_theme_preview(scheme);
             let element = flatten::flatten(&runtime.scene_graph(510));
             assert!(contains_text(&element, "SIM locked"));
+            assert!(
+                find_role(&element, roles::WHEEL_PEEK_LABEL).is_some(),
+                "the unfocused method needs the stage foreground in both themes"
+            );
         }
         let mut call = runtime.snapshot.call.clone();
         call.gsm_available = true;
