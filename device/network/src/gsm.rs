@@ -166,6 +166,25 @@ pub fn normalize_phone_number(number: &str) -> Result<String> {
     Ok(number)
 }
 
+fn voice_service_unavailable_reason(
+    state: i32,
+    unlock_required: u32,
+    voice_available: bool,
+    emergency_only: bool,
+) -> Option<&'static str> {
+    // MMModemLock: NONE = 1, SIM_PIN2 = 3, SIM_PUK2 = 5. ModemManager
+    // considers PIN2/PUK2 restrictions operational without unlocking them.
+    if !matches!(unlock_required, 1 | 3 | 5) {
+        Some("SIM locked")
+    } else if !voice_available {
+        Some("No voice service")
+    } else if state < 8 || emergency_only {
+        Some("No mobile service")
+    } else {
+        None
+    }
+}
+
 #[derive(Default)]
 struct ModemManagerVoice {
     connection: Option<Connection>,
@@ -219,31 +238,33 @@ impl ModemManagerVoice {
                 .get("State")
                 .and_then(|v| i32::try_from(v).ok())
                 .unwrap_or(0);
-            let locked = modem
+            let unlock_required = modem
                 .get("UnlockRequired")
                 .and_then(|v| u32::try_from(v).ok())
-                .is_some_and(|lock| lock > 1);
+                .unwrap_or(0);
             let voice = interfaces.get(VOICE_INTERFACE);
             let emergency_only = voice
                 .and_then(|v| v.get("EmergencyOnly"))
                 .and_then(|v| bool::try_from(v).ok())
                 .unwrap_or(true);
-            if !locked && matches!(state, 3 | 4) {
+            if matches!(unlock_required, 1 | 3 | 5) && matches!(state, 3 | 4) {
                 let modem_proxy =
                     Proxy::new(&connection, DESTINATION, path.as_str(), MODEM_INTERFACE)?;
                 let _: () = modem_proxy.call("Enable", &(true,))?;
             }
-            let reason = if locked {
-                "SIM locked"
-            } else if voice.is_none() {
-                "No voice service"
-            } else if state < 8 || emergency_only {
-                "No mobile service"
-            } else if !UsbPcmAudio::available() {
-                "Audio unavailable"
-            } else {
-                ""
-            };
+            let reason = voice_service_unavailable_reason(
+                state,
+                unlock_required,
+                voice.is_some(),
+                emergency_only,
+            )
+            .unwrap_or_else(|| {
+                if UsbPcmAudio::available() {
+                    ""
+                } else {
+                    "Audio unavailable"
+                }
+            });
             self.cached.available = reason.is_empty();
             self.cached.unavailable_reason = reason.into();
             self.modem = Some(path);
@@ -385,6 +406,43 @@ impl GsmBackend for ModemManagerVoice {
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn registered_voice_remains_usable_after_primary_pin_unlock_with_pin2_restrictions() {
+        // The SIM7600 on the Pi reports REGISTERED (8), SIM_PIN2 (3),
+        // and EmergencyOnly=false immediately after a successful SendPin.
+        assert_eq!(voice_service_unavailable_reason(8, 3, true, false), None);
+        // A blocked secondary PIN still leaves ordinary voice operational.
+        assert_eq!(voice_service_unavailable_reason(8, 5, true, false), None);
+        assert_eq!(voice_service_unavailable_reason(8, 1, true, false), None);
+    }
+
+    #[test]
+    fn secondary_pin_restrictions_do_not_bypass_voice_registration_requirements() {
+        assert_eq!(
+            voice_service_unavailable_reason(7, 3, true, false),
+            Some("No mobile service")
+        );
+        assert_eq!(
+            voice_service_unavailable_reason(8, 3, true, true),
+            Some("No mobile service")
+        );
+        assert_eq!(
+            voice_service_unavailable_reason(8, 5, false, false),
+            Some("No voice service")
+        );
+    }
+
+    #[test]
+    fn primary_pin_puk_and_carrier_locks_still_block_voice() {
+        for lock in [0, 2, 4, 6, 8, 16] {
+            assert_eq!(
+                voice_service_unavailable_reason(8, lock, true, false),
+                Some("SIM locked"),
+                "MMModemLock {lock}"
+            );
+        }
+    }
 
     struct FakeBackend {
         state: GsmCallState,

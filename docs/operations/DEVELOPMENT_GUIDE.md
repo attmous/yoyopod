@@ -124,6 +124,8 @@ Current approved-contacts behaviour:
   The network worker controls calls over D-Bus and bridges USB PCM to the named
   ALSA `capture`/`playback` routes. Deployment grants only voice and device-control
   ModemManager actions to the runtime service user.
+  ModemManager's secondary PIN2/PUK2 restrictions do not block ordinary voice;
+  primary SIM/carrier locks, missing registration, and emergency-only service do.
 - backend config sync replaces the device's approved contact directory live and
   persists it atomically. An open contact view follows address/name edits by
   stable contact ID and closes when that contact is removed.
