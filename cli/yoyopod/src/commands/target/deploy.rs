@@ -638,6 +638,9 @@ mod tests {
         assert!(rule.contains("org.freedesktop.NetworkManager.wifi.share.open"));
         assert!(rule.contains("org.freedesktop.ModemManager1.Voice"));
         assert!(rule.contains("org.freedesktop.ModemManager1.Device.Control"));
+        let bootstrap = include_str!("../../../../../deploy/scripts/bootstrap_pi.sh");
+        assert!(bootstrap.contains("org.freedesktop.ModemManager1.Voice"));
+        assert!(bootstrap.contains("org.freedesktop.ModemManager1.Device.Control"));
         assert_eq!(rule.matches("action.id ===").count(), 8);
     }
 

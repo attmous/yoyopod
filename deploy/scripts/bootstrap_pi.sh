@@ -173,6 +173,11 @@ polkit.addRule(function(action, subject) {
          action.id == "org.freedesktop.NetworkManager.wifi.share.open")) {
         return polkit.Result.YES;
     }
+    if (subject.user == "${INVOKING_USER}" &&
+        (action.id == "org.freedesktop.ModemManager1.Voice" ||
+         action.id == "org.freedesktop.ModemManager1.Device.Control")) {
+        return polkit.Result.YES;
+    }
 });
 EOF
 
