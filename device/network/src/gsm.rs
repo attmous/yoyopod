@@ -640,6 +640,22 @@ impl ModemManagerVoice {
         }
     }
 
+    fn finish_terminal(
+        &mut self,
+        key: &SessionKey,
+        events: Vec<CallManagerWireEvent>,
+        delete: impl FnOnce() -> Result<()>,
+    ) -> Result<()> {
+        self.release_audio(key);
+        delete()?;
+        self.registry
+            .as_mut()
+            .context("Not configured")?
+            .remove(key);
+        self.pending_events.extend(events);
+        Ok(())
+    }
+
     fn targeted_hangup(&mut self, key: &SessionKey) -> Result<()> {
         self.ensure_control()?;
         let path = self.path_for(key)?;
@@ -726,6 +742,16 @@ impl ModemManagerVoice {
         } else {
             events
         };
+        if phase == CallPhase::Ended && self.cleanup.terminal_is_trusted(path) {
+            let connection = self.connection.as_ref().context("No connection")?.clone();
+            let modem = self.modem.as_ref().context("No modem")?.clone();
+            let object = OwnedObjectPath::try_from(path.to_owned())?;
+            return self.finish_terminal(&key, events, || {
+                let voice = Proxy::new(&connection, DESTINATION, modem.as_str(), VOICE_INTERFACE)?;
+                let _: () = voice.call("DeleteCall", &(object,))?;
+                Ok(())
+            });
+        }
         // Fresh discovery of a pre-existing active/held/outgoing call is never
         // offered for admission. Reconcile it through isolated termination.
         if self.owner.as_ref() != Some(&key)
@@ -770,32 +796,8 @@ impl ModemManagerVoice {
                     }
                     .into();
                 }
-                CallPhase::Ended => {
-                    self.release_audio(&key);
-                    let modem = self.modem.as_ref().context("No modem")?;
-                    let voice = Proxy::new(
-                        self.connection.as_ref().context("No connection")?,
-                        DESTINATION,
-                        modem.as_str(),
-                        VOICE_INTERFACE,
-                    )?;
-                    let object = OwnedObjectPath::try_from(path.to_owned())?;
-                    let _: () = voice.call("DeleteCall", &(object,))?;
-                    self.registry.as_mut().expect("configured").remove(&key);
-                }
                 _ => {}
             }
-        } else if phase == CallPhase::Ended && self.cleanup.terminal_is_trusted(path) {
-            let modem = self.modem.as_ref().context("No modem")?;
-            let voice = Proxy::new(
-                self.connection.as_ref().context("No connection")?,
-                DESTINATION,
-                modem.as_str(),
-                VOICE_INTERFACE,
-            )?;
-            let object = OwnedObjectPath::try_from(path.to_owned())?;
-            let _: () = voice.call("DeleteCall", &(object,))?;
-            self.registry.as_mut().expect("configured").remove(&key);
         }
         self.pending_events.extend(events);
         if self.owner.as_ref() == Some(&key) && self.audio.is_some() {
@@ -1118,6 +1120,37 @@ impl GsmBackend for ModemManagerVoice {
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn gsm_terminal_cleanup_keeps_release_fact_when_object_deletion_fails() {
+        use yoyopod_protocol::call::{CallDirection, CallTransport};
+        let key = SessionKey {
+            transport: CallTransport::Gsm,
+            generation: 7,
+            call_id: "A".into(),
+        };
+        let mut backend = ModemManagerVoice::default();
+        backend.configure(7, None).unwrap();
+        backend
+            .registry
+            .as_mut()
+            .unwrap()
+            .register_outgoing(&key, "/call/A")
+            .unwrap();
+        backend.owner = Some(key.clone());
+        let events = backend.registry.as_mut().unwrap().observe(
+            "/call/A",
+            CallDirection::Outgoing,
+            CallPhase::Ended,
+            "+49123456789",
+        );
+        assert!(backend
+            .finish_terminal(&key, events, || anyhow::bail!("D-Bus DeleteCall failed"))
+            .is_err());
+        assert!(!backend.owns_voice(&key));
+        assert!(backend.pending_events.iter().any(|event| matches!(event, CallManagerWireEvent::Update(update) if update.phase == CallPhase::Ended && update.key == key)), "terminal fact was lost before data lease could release");
+        assert_eq!(backend.registry().unwrap().path_for(&key), Some("/call/A"));
+    }
 
     #[test]
     fn gsm_synthetic_terminal_after_failed_hangup_and_restart_is_not_cleanup_proof() {
