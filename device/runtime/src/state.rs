@@ -1501,7 +1501,13 @@ impl RuntimeState {
                     self.voice.status_text = "Ready to send".to_string();
                 }
             }
-            VoiceIntent::Send(_) => {
+            VoiceIntent::Send(action) => {
+                if !self.is_approved_voice_recipient(action)
+                    || (action.file_path.trim().is_empty()
+                        && self.voice.file_path.trim().is_empty())
+                {
+                    return;
+                }
                 self.voice.phase = "sending".to_string();
                 self.voice.status_text = "Sending...".to_string();
             }

@@ -2593,6 +2593,43 @@ mod tests {
     }
 
     #[test]
+    fn a_queued_send_after_contact_revocation_preserves_the_recording_review_state() {
+        for entries in [
+            json!([]),
+            json!([{"id":"mama", "name":"Mama", "sip_address":"sip:mama@example.test", "can_call":false}]),
+            json!([{"id":"mama", "name":"Mama", "sip_address":"sip:mama@example.test", "can_call":true, "can_receive":false}]),
+            json!([{"id":"mama", "name":"Mama", "sip_address":"sip:new@example.test", "can_call":true}]),
+        ] {
+            let mut state = RuntimeState::default();
+            RuntimeEvent::CloudConfig(json!({"contacts":{"entries":[{
+                "id":"mama", "name":"Mama", "sip_address":"sip:mama@example.test", "can_call":true
+            }]}}))
+            .apply(&mut state);
+            state.voice.phase = "review".into();
+            state.voice.status_text = "Ready to send".into();
+            state.voice.file_path = "/tmp/review.wav".into();
+            let send =
+                RuntimeEvent::UiIntent(UiIntent::Voice(VoiceIntent::Send(VoiceRecipientAction {
+                    id: "mama".into(),
+                    recipient_address: "sip:mama@example.test".into(),
+                    ..VoiceRecipientAction::default()
+                })));
+            let mut approved = state.clone();
+            assert!(commands_for_event(&approved, &send).iter().any(|command| matches!(command,
+                RuntimeCommand::WorkerCommand {envelope, ..} if envelope.message_type == "voip.send_voice_note")));
+            send.apply(&mut approved);
+            assert_eq!(approved.voice.phase, "sending");
+
+            RuntimeEvent::CloudConfig(json!({"contacts":{"entries":entries}})).apply(&mut state);
+            assert!(commands_for_event(&state, &send).is_empty());
+            send.apply(&mut state);
+            assert_eq!(state.voice.phase, "review");
+            assert_eq!(state.voice.status_text, "Ready to send");
+            assert_eq!(state.voice.file_path, "/tmp/review.wav");
+        }
+    }
+
+    #[test]
     fn live_liblinphone_metrics_reach_the_shared_ui_snapshot() {
         let mut state = RuntimeState::default();
         RuntimeEvent::VoipSnapshot(json!({
