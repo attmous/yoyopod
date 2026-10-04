@@ -1936,7 +1936,7 @@ mod tests {
         }
         assert_eq!(
             declared_type(|api| api.recorder_close),
-            std::any::type_name::<unsafe extern "C" fn(*mut super::LinphoneRecorder)>(),
+            std::any::type_name::<unsafe extern "C" fn(*mut crate::liblinphone::ffi::LinphoneRecorder)>(),
             "Liblinphone5.2 close returns void, not status"
         );
     }
