@@ -31,6 +31,8 @@ pub enum CallPhase {
     Answering,
     Outgoing,
     Active,
+    Waiting,
+    Held,
     Ending,
     Ended,
 }

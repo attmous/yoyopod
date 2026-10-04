@@ -8,6 +8,7 @@ use serde::Serialize;
 use zbus::blocking::{connection::Builder, Connection, Proxy};
 use zbus::fdo::ManagedObjects;
 use zvariant::{OwnedObjectPath, Value};
+use yoyopod_protocol::call::CallPhase;
 
 use crate::gsm_audio::UsbPcmAudio;
 
@@ -15,6 +16,12 @@ const DESTINATION: &str = "org.freedesktop.ModemManager1";
 const MODEM_INTERFACE: &str = "org.freedesktop.ModemManager1.Modem";
 const VOICE_INTERFACE: &str = "org.freedesktop.ModemManager1.Modem.Voice";
 const CALL_INTERFACE: &str = "org.freedesktop.ModemManager1.Call";
+
+// Test-first capability scaffold: unknown backends are never trusted.
+fn isolated_voice_backend(_version: &str, _model: &str, _plugin: &str,
+    _primary: &str, _ports: &[(String, u32)]) -> bool { false }
+
+fn modem_call_phase(_state: i32) -> CallPhase { CallPhase::Preparing }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GsmCallState {
@@ -407,6 +414,30 @@ impl GsmBackend for ModemManagerVoice {
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn gsm_isolation_requires_pinned_qmi_control_port_and_simtech_backend() {
+        let ports = vec![("cdc-wdm0".into(), 6), ("ttyUSB2".into(), 3)];
+        assert!(isolated_voice_backend("1.24.0", "SIM7600", "simtech", "cdc-wdm0", &ports));
+        for (version, model, plugin, primary) in [
+            ("1.24.0", "SIM7600", "simtech", "ttyUSB2"),
+            ("1.24.0", "SIM7600", "generic", "cdc-wdm0"),
+            ("1.24.0", "Unknown", "simtech", "cdc-wdm0"),
+            ("1.22.0", "SIM7600", "simtech", "cdc-wdm0"),
+        ] {
+            assert!(!isolated_voice_backend(version, model, plugin, primary, &ports));
+        }
+        assert!(!isolated_voice_backend("1.24.0", "SIM7600", "simtech", "cdc-wdm0", &[]));
+    }
+
+    #[test]
+    fn gsm_waiting_and_held_are_not_active_audio_states() {
+        assert_eq!(modem_call_phase(3), CallPhase::Ringing);
+        assert_eq!(modem_call_phase(4), CallPhase::Active);
+        assert_eq!(modem_call_phase(5), CallPhase::Held);
+        assert_eq!(modem_call_phase(6), CallPhase::Waiting);
+        assert_eq!(modem_call_phase(7), CallPhase::Ended);
+    }
 
     #[test]
     fn registered_voice_remains_usable_after_primary_pin_unlock_with_pin2_restrictions() {

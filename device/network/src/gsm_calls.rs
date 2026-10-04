@@ -1,5 +1,5 @@
 //! Logical GSM session identities are independent of modem object paths and numbers.
-use yoyopod_protocol::call::{CallDirection, CallOffer, CallPhase, CallUpdate, SessionKey};
+use yoyopod_protocol::call::{CallDirection, CallOffer, CallPhase, CallTransport, CallUpdate, SessionKey};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallManagerWireEvent {
@@ -7,16 +7,56 @@ pub enum CallManagerWireEvent {
     Update(CallUpdate),
 }
 
-// Test-first scaffold: implemented after the isolated Linux RED run.
-pub struct GsmCallRegistry;
+pub struct GsmCallRegistry {
+    generation: u64,
+    next_id: u64,
+    calls: Vec<(String, SessionKey, Option<CallUpdate>)>,
+}
 
 impl GsmCallRegistry {
-    pub fn new(_generation: u64) -> Self { Self }
-    pub fn observe(&mut self, _object_path: &str, _direction: CallDirection,
-        _phase: CallPhase, _number: &str) -> Vec<CallManagerWireEvent> { Vec::new() }
-    pub fn path_for(&self, _key: &SessionKey) -> Option<&str> { None }
-    pub fn remove(&mut self, _key: &SessionKey) -> Option<String> { None }
-    pub fn register_outgoing(&mut self, _key: &SessionKey, _path: &str) -> anyhow::Result<()> { Ok(()) }
+    pub fn new(generation: u64) -> Self { Self { generation, next_id: 0, calls: Vec::new() } }
+    pub fn observe(&mut self, object_path: &str, direction: CallDirection,
+        phase: CallPhase, number: &str) -> Vec<CallManagerWireEvent> {
+        let mut events = Vec::new();
+        let index = self.calls.iter().position(|(path, _, _)| path == object_path).unwrap_or_else(|| {
+            self.next_id += 1;
+            let key = SessionKey { transport: CallTransport::Gsm, generation: self.generation,
+                call_id: format!("gsm-{}", self.next_id) };
+            if direction == CallDirection::Incoming && phase == CallPhase::Ringing {
+                events.push(CallManagerWireEvent::Offer(CallOffer { key: key.clone(), address: number.into() }));
+            }
+            self.calls.push((object_path.into(), key, None));
+            self.calls.len() - 1
+        });
+        let (_, key, previous) = &mut self.calls[index];
+        if previous.as_ref().is_some_and(|old| old.direction == direction && old.phase == phase && old.address == number) {
+            return events;
+        }
+        let update = CallUpdate { key: key.clone(), direction, phase, address: number.into(),
+            sequence: previous.as_ref().map_or(1, |old| old.sequence + 1), duration_seconds: 0, muted: false };
+        *previous = Some(update.clone());
+        events.push(CallManagerWireEvent::Update(update));
+        events
+    }
+    pub fn path_for(&self, key: &SessionKey) -> Option<&str> {
+        self.calls.iter().find(|(_, candidate, _)| candidate == key).map(|(path, _, _)| path.as_str())
+    }
+    pub fn remove(&mut self, key: &SessionKey) -> Option<String> {
+        let index = self.calls.iter().position(|(_, candidate, _)| candidate == key)?;
+        Some(self.calls.remove(index).0)
+    }
+    pub fn register_outgoing(&mut self, key: &SessionKey, path: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(key.transport == CallTransport::Gsm && key.generation == self.generation && !key.call_id.trim().is_empty(), "Invalid GSM session generation");
+        anyhow::ensure!(!self.calls.iter().any(|(candidate, existing, _)| candidate == path || existing == key), "GSM session already registered");
+        self.calls.push((path.into(), key.clone(), None));
+        Ok(())
+    }
+    pub fn tracked(&self) -> Vec<(String, SessionKey)> {
+        self.calls.iter().map(|(path, key, _)| (path.clone(), key.clone())).collect()
+    }
+    pub fn latest(&self, key: &SessionKey) -> Option<&CallUpdate> {
+        self.calls.iter().find(|(_, candidate, _)| candidate == key).and_then(|(_, _, update)| update.as_ref())
+    }
 }
 
 #[cfg(test)]
