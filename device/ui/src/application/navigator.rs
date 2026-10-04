@@ -155,6 +155,37 @@ pub fn clamp_focus(runtime: &mut UiRuntime) {
     runtime.focus_index = focus::clamp(runtime.focus_index, count);
 }
 
+pub fn reconcile_selected_contact(runtime: &mut UiRuntime) {
+    let Some(selected) = runtime.selected_contact.as_ref() else {
+        return;
+    };
+    let current = runtime.snapshot.call.contacts.iter().find(|contact| {
+        if !selected.contact_id.is_empty() {
+            contact.contact_id == selected.contact_id
+        } else {
+            contact.id == selected.id
+        }
+    });
+    runtime.selected_contact = current.cloned();
+    if runtime.selected_contact.is_none()
+        && matches!(
+            runtime.active_screen,
+            UiScreen::TalkContact | UiScreen::CallMethod | UiScreen::Replay
+        )
+    {
+        if runtime.active_screen == UiScreen::Replay {
+            leave_replay(runtime);
+        }
+        while runtime.active_screen != UiScreen::Talk && !runtime.screen_stack.is_empty() {
+            pop_screen_or_hub(runtime);
+        }
+        if runtime.active_screen != UiScreen::Talk {
+            runtime.active_screen = UiScreen::Talk;
+        }
+        runtime.focus_index = 0;
+    }
+}
+
 fn apply_selection_target(runtime: &mut UiRuntime, target: SelectionTarget) {
     match target {
         SelectionTarget::PushScreen(screen) => push_screen(runtime, screen),
@@ -257,6 +288,7 @@ fn select_dynamic_action(runtime: &mut UiRuntime, kind: DynamicActionKind) {
     match kind {
         DynamicActionKind::Ask => select_ask_action(runtime),
         DynamicActionKind::TalkContact => select_talk_contact_action(runtime),
+        DynamicActionKind::CallMethod => select_call_method(runtime),
         DynamicActionKind::Replay => select_replay_action(runtime),
         DynamicActionKind::VoiceNote => select_voice_note(runtime),
         DynamicActionKind::SetupCompanion => select_setup_companion(runtime),
@@ -350,9 +382,7 @@ fn select_talk_contact_action(runtime: &mut UiRuntime) {
     };
     match action.kind {
         "call" => {
-            if let Some(item) = runtime.selected_contact.clone() {
-                emit_call_start(runtime, &item);
-            }
+            push_screen(runtime, UiScreen::CallMethod);
         }
         // Recording is owned by the physical-button hold passthrough while
         // this action is focused; selecting the tile does not change routes.
@@ -366,6 +396,25 @@ fn select_talk_contact_action(runtime: &mut UiRuntime) {
         }
         _ => {}
     }
+}
+
+fn select_call_method(runtime: &mut UiRuntime) {
+    let Some(contact) = runtime.selected_contact.as_ref() else {
+        return;
+    };
+    let method = if runtime.focus_index == 0 {
+        yoyopod_protocol::ui::CallMethod::Sip
+    } else {
+        yoyopod_protocol::ui::CallMethod::Gsm
+    };
+    if options::call_method_disabled_reason(&runtime.snapshot, contact, method).is_some() {
+        return;
+    }
+    let mut action = intents::contact_action(contact);
+    action.method = method;
+    runtime
+        .intents
+        .push(UiIntent::Call(CallIntent::Start(action)));
 }
 
 fn select_replay_action(runtime: &mut UiRuntime) {
@@ -570,12 +619,22 @@ fn matches_condition(runtime: &UiRuntime, condition: SnapshotCondition) -> bool 
         ),
         SnapshotCondition::TalkContactRecordAvailable => {
             runtime.active_screen == UiScreen::TalkContact
-                && runtime.focus_index == 1
+                && options::talk_contact_actions(
+                    &runtime.snapshot,
+                    runtime.selected_contact.as_ref(),
+                )
+                .get(runtime.focus_index)
+                .is_some_and(|action| action.kind == "record")
                 && !matches!(runtime.voice_note_phase().as_str(), "recording" | "sending")
         }
         SnapshotCondition::TalkContactRecordHeldOrPending => {
             runtime.active_screen == UiScreen::TalkContact
-                && runtime.focus_index == 1
+                && options::talk_contact_actions(
+                    &runtime.snapshot,
+                    runtime.selected_contact.as_ref(),
+                )
+                .get(runtime.focus_index)
+                .is_some_and(|action| action.kind == "record")
                 && runtime.voice_note_phase() != "sending"
         }
     }

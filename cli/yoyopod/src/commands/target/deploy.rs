@@ -115,6 +115,17 @@ pub fn run(
         return Ok(rc);
     }
 
+    // Upgrade the host's previous whole-modem exclusion as well as the checkout.
+    let rc = run_remote(
+        &ctx.conn,
+        &modem_manager_prerequisites_command(),
+        false,
+        RemoteWorkdir::Default,
+    )?;
+    if rc != 0 {
+        return Ok(rc);
+    }
+
     // 4) scp tarball to /tmp on the Pi.
     let remote_tarball = format!("/tmp/{tarball_name}");
     let scp_status = Command::new("scp")
@@ -127,7 +138,7 @@ pub fn run(
     }
 
     // Install a generated rule for the configured service user. It grants only
-    // the NetworkManager actions required by Phase 1 Wi-Fi controls.
+    // the NetworkManager and ModemManager actions required by device controls.
     let remote_polkit_rule = format!("/tmp/{polkit_rule_name}");
     let scp_status = Command::new("scp")
         .arg(&local_polkit_rule)
@@ -329,6 +340,27 @@ fn normalize_systemd_service_user(service_user: &str) -> Result<String> {
     Ok(validate_wifi_service_user(service_user)?.to_string())
 }
 
+fn modem_manager_prerequisites_command() -> String {
+    "if ! command -v mmcli >/dev/null 2>&1; then \
+       sudo -n apt-get update && \
+       sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends modemmanager; \
+     fi && \
+     modem_rule_changed=0 && \
+     sudo -n install -d -m 0755 /etc/udev/rules.d && \
+     if ! sudo -n cmp -s deploy/udev/77-yoyopod-sim7600.rules /etc/udev/rules.d/77-yoyopod-sim7600.rules; then \
+       sudo -n install -o root -g root -m 0644 deploy/udev/77-yoyopod-sim7600.rules /etc/udev/rules.d/77-yoyopod-sim7600.rules && \
+       sudo -n udevadm control --reload-rules && \
+       sudo -n udevadm trigger --subsystem-match=tty && \
+       sudo -n udevadm trigger --subsystem-match=usbmisc && \
+       sudo -n udevadm settle && \
+       modem_rule_changed=1; \
+     fi && \
+     sudo -n systemctl enable ModemManager.service && \
+     if [ \"$modem_rule_changed\" -eq 1 ] || ! systemctl is-active --quiet ModemManager.service; then \
+       sudo -n systemctl restart ModemManager.service; \
+     fi && systemctl is-active --quiet ModemManager.service".to_string()
+}
+
 fn render_wifi_polkit_rule(service_user: &str) -> Result<String> {
     let service_user = validate_wifi_service_user(service_user)?;
     Ok(format!(
@@ -340,7 +372,9 @@ polkit.addRule(function(action, subject) {{
          action.id === "org.freedesktop.NetworkManager.network-control" ||
          action.id === "org.freedesktop.NetworkManager.checkpoint-rollback" ||
          action.id === "org.freedesktop.NetworkManager.wifi.share.protected" ||
-         action.id === "org.freedesktop.NetworkManager.wifi.share.open")) {{
+         action.id === "org.freedesktop.NetworkManager.wifi.share.open" ||
+         action.id === "org.freedesktop.ModemManager1.Voice" ||
+         action.id === "org.freedesktop.ModemManager1.Device.Control")) {{
         return polkit.Result.YES;
     }}
 }});
@@ -602,12 +636,32 @@ mod tests {
         // AP-mode Wi-Fi setup also needs the shared-connection (hotspot) actions.
         assert!(rule.contains("org.freedesktop.NetworkManager.wifi.share.protected"));
         assert!(rule.contains("org.freedesktop.NetworkManager.wifi.share.open"));
-        assert_eq!(rule.matches("action.id ===").count(), 6);
+        assert!(rule.contains("org.freedesktop.ModemManager1.Voice"));
+        assert!(rule.contains("org.freedesktop.ModemManager1.Device.Control"));
+        let bootstrap = include_str!("../../../../../deploy/scripts/bootstrap_pi.sh");
+        assert!(bootstrap.contains("org.freedesktop.ModemManager1.Voice"));
+        assert!(bootstrap.contains("org.freedesktop.ModemManager1.Device.Control"));
+        assert_eq!(rule.matches("action.id ===").count(), 8);
     }
 
     #[test]
     fn wifi_polkit_rule_rejects_unsafe_service_user() {
         assert!(render_wifi_polkit_rule("raouf\" || true").is_err());
+    }
+
+    #[test]
+    fn sim7600_rule_reserves_serial_ports_without_excluding_the_qmi_modem() {
+        let rule = include_str!("../../../../../deploy/udev/77-yoyopod-sim7600.rules");
+        assert!(!rule.contains("ID_MM_DEVICE_IGNORE}=\"1\""));
+        assert!(rule.contains("ID_MM_DEVICE_IGNORE}=\"0\""));
+        assert!(rule.contains("SUBSYSTEM==\"tty\""));
+        assert!(rule.contains("ID_MM_PORT_IGNORE}=\"1\""));
+        assert!(rule.contains("SUBSYSTEM==\"usbmisc\""));
+        assert!(rule.contains("ID_MM_CANDIDATE}=\"1\""));
+        let command = modem_manager_prerequisites_command();
+        assert!(command.contains("/etc/udev/rules.d/77-yoyopod-sim7600.rules"));
+        assert!(command.contains("udevadm settle"));
+        assert!(command.contains("systemctl restart ModemManager.service"));
     }
 
     #[test]

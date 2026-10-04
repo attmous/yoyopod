@@ -95,11 +95,27 @@ pub fn wheel_item(
         }
         WheelItemVariant::Action { icon_key, badge } => {
             assert_eq!(slot, WheelItemSlot::Standard);
-            let root = container(roles::TALK_WHEEL_ITEM)
+            let mut root = container(roles::TALK_WHEEL_ITEM)
                 .key(key)
-                .selected(selected)
-                .child(image(foreground.icon).icon(icon_key).accent(INK))
-                .child(label(foreground.label).text(&model.title));
+                .selected(selected);
+            if model.subtitle.is_empty() {
+                root = root
+                    .child(image(foreground.icon).icon(icon_key).accent(INK))
+                    .child(label(foreground.label).text(&model.title));
+            } else if !selected {
+                root = root
+                    .child(
+                        image(roles::CALL_METHOD_PEEK_ICON)
+                            .icon(icon_key)
+                            .accent(INK),
+                    )
+                    .child(label(roles::CALL_METHOD_PEEK_TITLE).text(&model.title));
+            } else {
+                root = root
+                    .child(image(roles::CALL_METHOD_ICON).icon(icon_key).accent(INK))
+                    .child(label(roles::CALL_METHOD_TITLE).text(&model.title))
+                    .child(label(roles::CALL_METHOD_REASON).text(&model.subtitle));
+            }
             match badge {
                 Some(badge) => root.child(
                     container(roles::WHEEL_BADGE)

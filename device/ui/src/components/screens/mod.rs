@@ -1,5 +1,6 @@
 pub mod ask;
 pub mod call_history;
+pub mod call_method;
 pub mod chrome;
 pub mod common;
 pub mod contacts;
@@ -82,6 +83,9 @@ pub fn scene_for_screen(
             selected_contact,
             defaults.clone(),
         )),
+        UiScreen::CallMethod => {
+            call_method::scene(snapshot, selected_contact, focus, defaults.clone())
+        }
         UiScreen::Replay => replay::scene(&replay::props_from(
             snapshot,
             focus,

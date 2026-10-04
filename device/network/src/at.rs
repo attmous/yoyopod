@@ -154,7 +154,15 @@ where
     }
 
     pub fn enable_gps(&mut self) -> Result<bool, TransportError> {
-        Ok(self.send("AT+CGPS=1")?.contains("OK"))
+        if gps_session_active(&self.send("AT+CGPS?")?) {
+            return Ok(true);
+        }
+        if response_ok(&self.send("AT+CGPS=1")?) {
+            return Ok(true);
+        }
+        // Another modem client can start GNSS between query and enable. Only
+        // accept a rejected enable when a successful query confirms it is on.
+        Ok(gps_session_active(&self.send("AT+CGPS?")?))
     }
 
     pub fn disable_gps(&mut self) -> Result<(), TransportError> {
@@ -192,6 +200,17 @@ where
     }
 }
 
+fn response_ok(response: &str) -> bool {
+    response.lines().any(|line| line.trim() == "OK")
+}
+
+fn gps_session_active(response: &str) -> bool {
+    response_ok(response)
+        && find_prefixed_line(response, "+CGPS:")
+            .and_then(|value| value.split(',').next())
+            .is_some_and(|value| value.trim() == "1")
+}
+
 fn find_prefixed_line<'a>(response: &'a str, prefix: &str) -> Option<&'a str> {
     response
         .lines()
@@ -206,5 +225,73 @@ fn access_technology_name(code: &str) -> &'static str {
         "2" => ACCESS_TECH_3G,
         "7" => ACCESS_TECH_4G,
         _ => ACCESS_TECH_UNKNOWN,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+
+    struct ScriptedTransport(VecDeque<(&'static str, &'static str)>);
+
+    impl LineTransport for ScriptedTransport {
+        fn send_command(
+            &mut self,
+            command: &str,
+            _: Option<Duration>,
+        ) -> Result<String, TransportError> {
+            let (expected, response) = self.0.pop_front().expect("unexpected modem command");
+            assert_eq!(command, expected);
+            Ok(response.into())
+        }
+    }
+
+    fn gps_result(script: Vec<(&'static str, &'static str)>) -> bool {
+        let mut at = AtCommandSet::new(ScriptedTransport(script.into()));
+        let result = at.enable_gps().unwrap();
+        assert!(at.into_inner().0.is_empty());
+        result
+    }
+
+    #[test]
+    fn already_running_gps_is_not_enabled_again() {
+        for response in ["+CGPS:1\nOK", "+CGPS: 1,1\nOK"] {
+            assert!(gps_result(vec![("AT+CGPS?", response)]));
+        }
+    }
+
+    #[test]
+    fn stopped_gps_starts_normally() {
+        assert!(gps_result(vec![
+            ("AT+CGPS?", "+CGPS: 0,1\nOK"),
+            ("AT+CGPS=1", "OK"),
+        ]));
+    }
+
+    #[test]
+    fn concurrent_gps_start_is_confirmed_after_rejected_enable() {
+        assert!(gps_result(vec![
+            ("AT+CGPS?", "+CGPS: 0,1\nOK"),
+            ("AT+CGPS=1", "ERROR"),
+            ("AT+CGPS?", "+CGPS: 1,1\nOK"),
+        ]));
+    }
+
+    #[test]
+    fn real_gps_failure_is_not_hidden_by_incomplete_or_invalid_status() {
+        for response in [
+            "+CGPS: 0,1\nOK",
+            "+CGPS: 10,1\nOK",
+            "+CGPS: 1,1\nERROR",
+            "OK",
+            "ERROR",
+        ] {
+            assert!(!gps_result(vec![
+                ("AT+CGPS?", "+CGPS: 0,1\nOK"),
+                ("AT+CGPS=1", "ERROR"),
+                ("AT+CGPS?", response),
+            ]));
+        }
     }
 }

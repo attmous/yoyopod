@@ -158,6 +158,8 @@ fn foreground_policy(role: &'static str) -> ForegroundPolicy {
         roles::DECK_GLYPH
             | roles::WHEEL_FOCUS_ICON
             | roles::WHEEL_FOCUS_LABEL
+            | roles::CALL_METHOD_ICON
+            | roles::CALL_METHOD_TITLE
             | roles::WHEEL_AVATAR_INITIAL
             | roles::WHEEL_BADGE_LABEL
             | roles::EMPTY_PLUS_ICON
@@ -184,7 +186,10 @@ fn foreground_policy(role: &'static str) -> ForegroundPolicy {
     );
     let secondary_on_accent = matches!(
         role,
-        roles::LIST_ROW_FOCUS_SUBTITLE | roles::MEDIA_WHEEL_FOCUS_SUB | roles::SETUP_TILE_SUB
+        roles::LIST_ROW_FOCUS_SUBTITLE
+            | roles::MEDIA_WHEEL_FOCUS_SUB
+            | roles::SETUP_TILE_SUB
+            | roles::CALL_METHOD_REASON
     );
     ForegroundPolicy {
         primary_on_accent,

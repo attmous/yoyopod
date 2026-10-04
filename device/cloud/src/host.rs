@@ -4,7 +4,9 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
 use crate::config::CloudHostConfig;
+use crate::config_sync::CloudConfigSync;
 use crate::mqtt::{CloudMqttBackend, MqttRuntimeEvent};
+use crate::outbox::LocationOutbox;
 use crate::snapshot::{current_epoch_seconds, current_millis, persist_status, CloudStatusSnapshot};
 
 const MAX_PENDING_PUBLISHES: usize = 32;
@@ -19,6 +21,9 @@ pub struct CloudHost<B: CloudMqttBackend> {
     last_telemetry_payloads: BTreeMap<String, Value>,
     last_connectivity_type: Option<String>,
     next_battery_report_at_ms: u64,
+    config_sync: CloudConfigSync,
+    pending_configs: VecDeque<Value>,
+    location_outbox: LocationOutbox,
 }
 
 struct PendingPublish {
@@ -30,6 +35,16 @@ struct PendingPublish {
 impl<B: CloudMqttBackend> CloudHost<B> {
     pub fn new(config_dir: impl Into<String>, config: CloudHostConfig, mqtt: B) -> Self {
         let snapshot = CloudStatusSnapshot::from_config(&config);
+        let config_sync = CloudConfigSync::new(config.clone());
+        let pending_configs = config_sync
+            .load_cached()
+            .ok()
+            .flatten()
+            .into_iter()
+            .collect();
+        let outbox_path = config.location_outbox_path();
+        let location_outbox = LocationOutbox::open(outbox_path.clone())
+            .unwrap_or_else(|_| LocationOutbox::empty(outbox_path));
         Self {
             config_dir: config_dir.into(),
             config,
@@ -40,6 +55,9 @@ impl<B: CloudMqttBackend> CloudHost<B> {
             last_telemetry_payloads: BTreeMap::new(),
             last_connectivity_type: None,
             next_battery_report_at_ms: 0,
+            config_sync,
+            pending_configs,
+            location_outbox,
         }
     }
 
@@ -76,6 +94,9 @@ impl<B: CloudMqttBackend> CloudHost<B> {
         }
 
         self.snapshot.mark_connecting();
+        if let Ok(Some(config)) = self.config_sync.poll(true) {
+            self.pending_configs.push_back(config);
+        }
         self.mqtt.start(&self.config).inspect_err(|error| {
             self.snapshot.mark_degraded(error.to_string());
             self.persist_status();
@@ -100,7 +121,13 @@ impl<B: CloudMqttBackend> CloudHost<B> {
                 MqttRuntimeEvent::Connected => {
                     self.snapshot.mark_connected();
                     snapshot_changed = true;
+                    self.location_outbox.begin_connection();
                     if let Err(error) = self.flush_pending_publishes() {
+                        let message = error.to_string();
+                        self.snapshot.mark_degraded(message.clone());
+                        events.push(CloudRuntimeEvent::Error(message));
+                    }
+                    if let Err(error) = self.flush_location_outbox() {
                         let message = error.to_string();
                         self.snapshot.mark_degraded(message.clone());
                         events.push(CloudRuntimeEvent::Error(message));
@@ -111,6 +138,14 @@ impl<B: CloudMqttBackend> CloudHost<B> {
                     snapshot_changed = true;
                 }
                 MqttRuntimeEvent::Command(command) => {
+                    if let Some(fix_id) = location_ack_fix_id(&command) {
+                        if let Err(error) = self.location_outbox.acknowledge(&fix_id) {
+                            let message = error.to_string();
+                            self.snapshot.mark_degraded(message.clone());
+                            events.push(CloudRuntimeEvent::Error(message));
+                        }
+                        continue;
+                    }
                     self.snapshot
                         .mark_command(command_type(&command).unwrap_or_default());
                     snapshot_changed = true;
@@ -123,6 +158,17 @@ impl<B: CloudMqttBackend> CloudHost<B> {
                 }
             }
         }
+        match self.config_sync.poll(false) {
+            Ok(Some(config)) => self.pending_configs.push_back(config),
+            Ok(None) => {}
+            Err(_) => {
+                self.snapshot.mark_degraded("cloud config refresh failed");
+                snapshot_changed = true;
+            }
+        }
+        while let Some(config) = self.pending_configs.pop_front() {
+            events.push(CloudRuntimeEvent::Config(config));
+        }
         if self.mqtt.is_connected() && !self.snapshot.mqtt_connected {
             self.snapshot.mark_connected();
             snapshot_changed = true;
@@ -132,6 +178,10 @@ impl<B: CloudMqttBackend> CloudHost<B> {
             events.push(CloudRuntimeEvent::Snapshot(Box::new(self.snapshot.clone())));
         }
         events
+    }
+
+    pub fn fetch_config_now(&mut self) -> Result<Option<Value>> {
+        self.config_sync.poll(true)
     }
 
     pub fn health_payload(&self) -> Value {
@@ -196,11 +246,27 @@ impl<B: CloudMqttBackend> CloudHost<B> {
 
     pub fn publish_device_event(&mut self, event_type: &str, payload: Value) -> Result<bool> {
         let topic = self.config.device_event_topic();
+        let location_fix_id = (event_type == "location")
+            .then(|| {
+                payload
+                    .get("fixId")
+                    .or_else(|| payload.get("fix_id"))
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+            })
+            .flatten();
         let message = json!({
             "type": event_type,
             "payload": payload,
             "ts": current_epoch_seconds(),
         });
+        if let Some(fix_id) = location_fix_id {
+            self.location_outbox.enqueue(fix_id, message)?;
+            self.flush_location_outbox()?;
+            return Ok(true);
+        }
         self.publish_or_queue(&topic, serde_json::to_string(&message)?, 1)
             .with_context(|| format!("publish cloud event {event_type}"))
     }
@@ -300,11 +366,26 @@ impl<B: CloudMqttBackend> CloudHost<B> {
         }
         Ok(())
     }
+
+    fn flush_location_outbox(&mut self) -> Result<()> {
+        if !(self.snapshot.mqtt_connected || self.mqtt.is_connected()) {
+            return Ok(());
+        }
+        let topic = self.config.device_event_topic();
+        for (fix_id, payload) in self.location_outbox.pending_messages()? {
+            match self.mqtt.publish(&topic, &payload, 1)? {
+                true => self.location_outbox.mark_sent(&fix_id),
+                false => break,
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CloudRuntimeEvent {
     Snapshot(Box<CloudStatusSnapshot>),
+    Config(Value),
     Command(Value),
     Error(String),
 }
@@ -317,6 +398,28 @@ fn command_type(command: &Value) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+fn location_ack_fix_id(command: &Value) -> Option<String> {
+    let is_ack = command
+        .get("messageType")
+        .or_else(|| command.get("message_type"))
+        .and_then(Value::as_str)
+        == Some("device.event.ack")
+        || command.get("type").and_then(Value::as_str) == Some("location_ack");
+    is_ack
+        .then(|| {
+            command
+                .get("fixId")
+                .or_else(|| command.get("fix_id"))
+                .or_else(|| command.get("payload").and_then(|value| value.get("fixId")))
+                .or_else(|| command.get("payload").and_then(|value| value.get("fix_id")))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        })
+        .flatten()
 }
 
 #[cfg(test)]

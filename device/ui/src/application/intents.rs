@@ -30,16 +30,22 @@ pub fn contact_action(item: &ListItemSnapshot) -> ContactAction {
         name: item.title.clone(),
         sip_address: String::new(),
         uri: String::new(),
+        method: yoyopod_protocol::ui::CallMethod::Sip,
     }
 }
 
 pub fn voice_recipient_action(contact: &ListItemSnapshot) -> Option<VoiceRecipientAction> {
-    if contact.id.trim().is_empty() {
+    if !contact.can_receive {
         return None;
     }
+    let target = contact.sip_target()?;
     Some(VoiceRecipientAction {
-        id: contact.id.clone(),
-        recipient_address: contact.id.clone(),
+        id: if contact.contact_id.is_empty() {
+            contact.id.clone()
+        } else {
+            contact.contact_id.clone()
+        },
+        recipient_address: target.to_string(),
         recipient_name: contact.title.clone(),
         file_path: String::new(),
     })
@@ -61,4 +67,22 @@ pub fn voice_file_action(
         message_id: note.message_id.clone(),
         duration_ms: note.duration_ms.max(0),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn voice_recipient_retains_stable_cloud_identity_and_the_captured_address() {
+        let mut contact = ListItemSnapshot::new("sip:mama@example.test", "Mama", "", "");
+        contact.contact_id = "approved-mama".into();
+        contact.sip_address = "sip:mama@example.test".into();
+        let action = voice_recipient_action(&contact).unwrap();
+        assert_eq!(action.id, "approved-mama");
+        assert_eq!(action.recipient_address, "sip:mama@example.test");
+        contact.can_receive = false;
+        assert!(voice_recipient_action(&contact).is_none());
+        assert_eq!(contact.sip_target(), Some("sip:mama@example.test"));
+    }
 }

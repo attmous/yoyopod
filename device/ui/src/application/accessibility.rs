@@ -63,7 +63,27 @@ pub(crate) fn focused_item(runtime: &UiRuntime) -> Option<FocusDescriptor> {
             "No contacts yet. Ask a grown-up!",
         ),
         UiScreen::CallHistory => list_or_empty(&snapshot.call.history, focus, "No recent calls"),
-        UiScreen::TalkContact => Some(static_item(focus, &["Call", "Hold to record", "Replay"])),
+        UiScreen::TalkContact => {
+            let actions =
+                options::talk_contact_actions(snapshot, runtime.selected_contact.as_ref());
+            if actions.is_empty() {
+                Some(FocusDescriptor::new(
+                    "contact_needs_setup",
+                    "Ask a grown-up to set up calling.",
+                ))
+            } else {
+                let labels = actions
+                    .iter()
+                    .map(|action| match action.kind {
+                        "call" => "Call",
+                        "record" => "Hold to record",
+                        "replay" => "Replay",
+                        _ => "",
+                    })
+                    .collect::<Vec<_>>();
+                Some(static_item(focus, &labels))
+            }
+        }
         UiScreen::Replay => {
             if runtime.replay_notes().is_empty() {
                 Some(FocusDescriptor::new("empty", "No recordings"))
@@ -71,6 +91,23 @@ pub(crate) fn focused_item(runtime: &UiRuntime) -> Option<FocusDescriptor> {
                 let labels = ["Delete", voice_play_pause_label(snapshot), "Next"];
                 Some(static_item(focus, &labels))
             }
+        }
+        UiScreen::CallMethod => {
+            let method = if focus == 0 {
+                yoyopod_protocol::ui::CallMethod::Sip
+            } else {
+                yoyopod_protocol::ui::CallMethod::Gsm
+            };
+            let label = if focus == 0 { "SIP" } else { "GSM" };
+            let reason = runtime.selected_contact.as_ref().and_then(|contact| {
+                options::call_method_disabled_reason(snapshot, contact, method)
+            });
+            Some(FocusDescriptor::new(
+                label,
+                reason
+                    .map(|reason| format!("{label}, {reason}"))
+                    .unwrap_or_else(|| label.to_string()),
+            ))
         }
         UiScreen::VoiceNote => voice_note_item(runtime),
         UiScreen::IncomingCall => Some(static_item(focus, &["Answer call", "Reject call"])),

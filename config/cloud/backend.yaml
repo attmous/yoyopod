@@ -8,6 +8,7 @@ backend:
   config_poll_interval_seconds: 300
   claim_retry_seconds: 60
   cache_file: "data/cloud/config_cache.json"
+  location_outbox_file: "data/cloud/location_outbox.json"
   status_file: "data/cloud/status.json"
   mqtt_broker_host: "mqtt-yoyopod.moraouf.net"
   mqtt_broker_port: 443

@@ -117,6 +117,29 @@ install -m 0644 -o root -g root \
     "${REPO_ROOT}/deploy/systemd/yoyopod-dev.service" \
     "${UNIT_DIR}/yoyopod-dev.service"
 
+# Reserve the SIM7600 serial ports for direct AT/PPP while keeping its QMI
+# control port available to ModemManager for registration and voice calls.
+install -d -m 0755 -o root -g root /etc/udev/rules.d
+MODEM_RULE_CHANGED=0
+if ! cmp -s "${REPO_ROOT}/deploy/udev/77-yoyopod-sim7600.rules" /etc/udev/rules.d/77-yoyopod-sim7600.rules; then
+    MODEM_RULE_CHANGED=1
+fi
+install -m 0644 -o root -g root \
+    "${REPO_ROOT}/deploy/udev/77-yoyopod-sim7600.rules" \
+    /etc/udev/rules.d/77-yoyopod-sim7600.rules
+udevadm control --reload-rules
+udevadm trigger --subsystem-match=tty
+udevadm trigger --subsystem-match=usbmisc
+udevadm settle
+if ! command -v mmcli >/dev/null 2>&1; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends modemmanager
+fi
+systemctl enable ModemManager.service
+if [ "${MODEM_RULE_CHANGED}" -eq 1 ] || ! systemctl is-active --quiet ModemManager.service; then
+    systemctl restart ModemManager.service
+fi
+
 # 3b. Captive-portal DNS for on-device Wi‑Fi setup. While the device hosts its
 # onboarding hotspot (NetworkManager ipv4=shared), resolve every name to the
 # portal gateway so a phone auto-opens the setup page. NetworkManager includes
@@ -148,6 +171,11 @@ polkit.addRule(function(action, subject) {
          action.id == "org.freedesktop.NetworkManager.checkpoint-rollback" ||
          action.id == "org.freedesktop.NetworkManager.wifi.share.protected" ||
          action.id == "org.freedesktop.NetworkManager.wifi.share.open")) {
+        return polkit.Result.YES;
+    }
+    if (subject.user == "${INVOKING_USER}" &&
+        (action.id == "org.freedesktop.ModemManager1.Voice" ||
+         action.id == "org.freedesktop.ModemManager1.Device.Control")) {
         return polkit.Result.YES;
     }
 });

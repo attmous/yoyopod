@@ -539,6 +539,72 @@ mod tests {
     }
 
     #[test]
+    fn cloud_phone_contacts_preserve_gsm_targets_without_becoming_sip_targets() {
+        let mut runtime = RuntimeLoop::new(RuntimeState::default());
+        let mut io = FakeLoopIo {
+            messages: vec![(
+                WorkerDomain::Cloud,
+                WorkerEnvelope::event(
+                    "cloud.config",
+                    json!({"config": {"contacts": {"entries": [
+                        {"id": "dad", "name": "Dad", "sip_address": "sip:dad@example.test", "can_call": true},
+                        {"id": "mama", "name": "Mama", "phone_number": "+4912345678", "sip_address": null, "can_call": true},
+                        {"id": "mahmoud", "name": "Mahmoud", "phone_number": "+4912345679", "sip_address": "  ", "can_call": true},
+                        {"id": "blocked", "name": "Blocked", "sip_address": "sip:blocked@example.test", "can_call": false}
+                    ]}}}),
+                ),
+            )],
+            ..FakeLoopIo::default()
+        };
+        runtime.run_once(&mut io);
+        let contacts = &runtime.state.ui_snapshot().call.contacts;
+        assert_eq!(contacts.len(), 3);
+        assert!(!contacts[0].communication_unavailable);
+        assert_eq!(contacts[0].id, "sip:dad@example.test");
+        assert_eq!(contacts[1].id, "mama");
+        assert_eq!(contacts[1].title, "Mama");
+        assert!(!contacts[1].communication_unavailable);
+        assert!(contacts[1].sip_target().is_none());
+        assert_eq!(contacts[1].phone_number, "+4912345678");
+        assert_eq!(contacts[2].id, "mahmoud");
+        assert!(!contacts[2].communication_unavailable);
+        assert!(contacts[2].sip_target().is_none());
+    }
+
+    #[test]
+    fn cloud_contacts_replace_live_call_targets_and_deleted_contacts() {
+        let mut runtime = RuntimeLoop::new(RuntimeState::default());
+        let contact = json!({"id": "contact-one", "name": "Nana", "sip_address": "sip:nana@example.com",
+            "can_call": true, "can_receive": true, "is_primary": true, "aliases": ["grandma"]});
+        let mut io = FakeLoopIo {
+            messages: vec![(
+                WorkerDomain::Cloud,
+                WorkerEnvelope::event(
+                    "cloud.config",
+                    json!({"config": {"config_version": 1, "contacts": {"entries": [contact]}}}),
+                ),
+            )],
+            ..FakeLoopIo::default()
+        };
+        runtime.run_once(&mut io);
+        assert_eq!(runtime.state.call.contacts[0].title, "Nana");
+        assert_eq!(runtime.state.call.contacts[0].id, "sip:nana@example.com");
+        assert_eq!(runtime.state.call.contacts[0].aliases, vec!["grandma"]);
+        assert!(io.sent.iter().any(|(domain, envelope)| {
+            *domain == WorkerDomain::Ui && ui_runtime_patch_command(envelope.clone()).is_some()
+        }));
+        io.messages.push((
+            WorkerDomain::Cloud,
+            WorkerEnvelope::event(
+                "cloud.config",
+                json!({"config": {"config_version": 2, "contacts": {"entries": []}}}),
+            ),
+        ));
+        runtime.run_once(&mut io);
+        assert!(runtime.state.call.contacts.is_empty());
+    }
+
+    #[test]
     fn cloud_command_is_acked_only_after_worker_result() {
         let mut io = FakeLoopIo {
             messages: vec![(
@@ -633,6 +699,146 @@ mod tests {
         assert!(!serde_json::to_string(ack)
             .expect("ACK should serialize")
             .contains("sensitive device detail"));
+    }
+
+    #[test]
+    fn location_command_failures_nack_without_degrading_the_network_worker() {
+        for code in [
+            "gps_fix_timeout",
+            "gsm_call_in_progress",
+            "gps_disabled",
+            "network_disabled",
+        ] {
+            let mut state = RuntimeState::default();
+            state.mark_worker(WorkerDomain::Network, WorkerState::Running, "ready");
+            let mut runtime = RuntimeLoop::new(state);
+            let mut io = FakeLoopIo::default();
+            runtime.dispatch_command(
+                &mut io,
+                RuntimeCommand::CorrelatedWorkerCommand {
+                    domain: WorkerDomain::Network,
+                    envelope: WorkerEnvelope::command("network.request_location", None, json!({})),
+                    command_id: "location-1".into(),
+                    command_type: "request_location".into(),
+                    timeout_ms: 95_000,
+                },
+            );
+            io.sent.clear();
+            io.messages.push((
+                WorkerDomain::Network,
+                WorkerEnvelope::error(
+                    "network.error",
+                    Some("location-1".into()),
+                    code,
+                    "No location available",
+                ),
+            ));
+            runtime.run_once(&mut io);
+            assert_eq!(
+                runtime.state().network_worker.state,
+                WorkerState::Running,
+                "command failure {code} must not degrade the worker"
+            );
+            assert_eq!(runtime.state().network_worker.last_reason, "ready");
+            let acks: Vec<_> = io
+                .sent
+                .iter()
+                .filter(|(domain, envelope)| {
+                    *domain == WorkerDomain::Cloud && envelope.message_type == "cloud.ack"
+                })
+                .collect();
+            assert_eq!(acks.len(), 1);
+            assert_eq!(acks[0].1.payload["command_id"], "location-1");
+            assert_eq!(acks[0].1.payload["ok"], false);
+            assert_eq!(acks[0].1.payload["reason"], code);
+            assert!(runtime.pending_worker_commands.is_empty());
+        }
+    }
+
+    #[test]
+    fn late_location_error_preserves_health_without_duplicate_nack() {
+        let mut state = RuntimeState::default();
+        state.mark_worker(WorkerDomain::Network, WorkerState::Running, "ready");
+        let mut runtime = RuntimeLoop::new(state);
+        let mut io = FakeLoopIo::default();
+        runtime.dispatch_command(
+            &mut io,
+            RuntimeCommand::CorrelatedWorkerCommand {
+                domain: WorkerDomain::Network,
+                envelope: WorkerEnvelope::command("network.request_location", None, json!({})),
+                command_id: "late-location".into(),
+                command_type: "request_location".into(),
+                timeout_ms: 0,
+            },
+        );
+        runtime.run_once(&mut io);
+        assert!(runtime.pending_worker_commands.is_empty());
+        io.sent.clear();
+        io.messages.push((
+            WorkerDomain::Network,
+            WorkerEnvelope::error(
+                "network.error",
+                Some("late-location".into()),
+                "gps_fix_timeout",
+                "No fix",
+            ),
+        ));
+        runtime.run_once(&mut io);
+        assert_eq!(runtime.state().network_worker.state, WorkerState::Running);
+        assert!(!io
+            .sent
+            .iter()
+            .any(|(domain, envelope)| *domain == WorkerDomain::Cloud
+                && envelope.message_type == "cloud.ack"));
+
+        // A real worker fault without command correlation still degrades it.
+        io.messages.push((
+            WorkerDomain::Network,
+            WorkerEnvelope::error(
+                "network.error",
+                None,
+                "input_read_failed",
+                "Worker input failed",
+            ),
+        ));
+        runtime.run_once(&mut io);
+        assert_eq!(runtime.state().network_worker.state, WorkerState::Degraded);
+        assert_eq!(
+            runtime.state().network_worker.last_reason,
+            "Worker input failed"
+        );
+    }
+
+    #[test]
+    fn protocol_fault_is_not_hidden_by_a_correlated_location_error() {
+        let mut state = RuntimeState::default();
+        state.mark_worker(WorkerDomain::Network, WorkerState::Running, "ready");
+        let mut runtime = RuntimeLoop::new(state);
+        let mut io = FakeLoopIo::default();
+        io.protocol_errors.push((
+            WorkerDomain::Network,
+            WorkerProtocolError {
+                raw_line: "broken envelope".into(),
+                message: "invalid JSON".into(),
+            },
+        ));
+        io.messages.push((
+            WorkerDomain::Network,
+            WorkerEnvelope::error(
+                "network.error",
+                Some("location".into()),
+                "gps_fix_timeout",
+                "No fix",
+            ),
+        ));
+        runtime.run_once(&mut io);
+        assert_eq!(runtime.state().network_worker.state, WorkerState::Degraded);
+        assert_eq!(runtime.state().network_worker.protocol_errors, 1);
+        assert!(runtime
+            .state()
+            .network_worker
+            .last_reason
+            .contains("protocol error"));
     }
 
     #[test]

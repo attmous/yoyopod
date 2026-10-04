@@ -96,9 +96,15 @@ pub struct PeopleRuntimeConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContactRuntimeConfig {
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub display_name: String,
     pub sip_address: String,
+    #[serde(default)]
+    pub phone_number: String,
+    #[serde(default = "default_contact_can_receive")]
+    pub can_receive: bool,
     pub favorite: bool,
     pub aliases: Vec<String>,
 }
@@ -606,11 +612,21 @@ impl PeopleRuntimeConfig {
         self.contacts
             .iter()
             .map(|contact| crate::state::ListItem {
-                id: contact.sip_address.clone(),
+                contact_id: contact.id.clone(),
+                id: if contact.sip_address.is_empty() {
+                    contact.id.clone()
+                } else {
+                    contact.sip_address.clone()
+                },
                 title: contact.display_name.clone(),
                 subtitle: String::new(),
                 icon_key: format!("mono:{}", talk_monogram(&contact.display_name)),
                 aliases: contact.aliases.clone(),
+                communication_unavailable: contact.sip_address.is_empty()
+                    && contact.phone_number.is_empty(),
+                sip_address: contact.sip_address.clone(),
+                phone_number: contact.phone_number.clone(),
+                can_receive: contact.can_receive,
             })
             .collect()
     }
@@ -787,7 +803,7 @@ fn load_people_contacts(
     Ok(contact_configs_from_value(&payload))
 }
 
-fn contact_configs_from_value(value: &Value) -> Vec<ContactRuntimeConfig> {
+pub(crate) fn contact_configs_from_value(value: &Value) -> Vec<ContactRuntimeConfig> {
     let Some(contacts) = value.get("contacts").and_then(Value::as_array) else {
         return Vec::new();
     };
@@ -801,6 +817,27 @@ fn contact_configs_from_value(value: &Value) -> Vec<ContactRuntimeConfig> {
     favorites
 }
 
+pub(crate) fn cloud_contact_items(config: &Value) -> Option<Vec<crate::state::ListItem>> {
+    let entries = config.pointer("/contacts/entries")?.as_array()?;
+    let contacts = entries
+        .iter()
+        .map(|entry| {
+            let mut entry = entry.clone();
+            entry["favorite"] = json!(entry
+                .get("is_primary")
+                .and_then(Value::as_bool)
+                .unwrap_or(false));
+            entry
+        })
+        .collect::<Vec<_>>();
+    Some(
+        PeopleRuntimeConfig {
+            contacts: contact_configs_from_value(&json!({"contacts": contacts})),
+        }
+        .to_contact_items(),
+    )
+}
+
 fn contact_config_from_value(value: &Value) -> Option<ContactRuntimeConfig> {
     if !value.is_object() {
         return None;
@@ -812,11 +849,11 @@ fn contact_config_from_value(value: &Value) -> Option<ContactRuntimeConfig> {
     if !can_call {
         return None;
     }
-    let sip_address = string_field(value, "sip_address")?;
-    if sip_address.trim().is_empty() {
-        return None;
-    }
-    let name = string_field(value, "name").unwrap_or_else(|| sip_address.clone());
+    let sip_address = string_field(value, "sip_address").unwrap_or_default();
+    let id = string_field(value, "id")
+        .or_else(|| string_field(value, "sip_address"))
+        .or_else(|| string_field(value, "phone_number"))?;
+    let name = string_field(value, "name").unwrap_or_else(|| id.clone());
     let notes = string_field(value, "notes").unwrap_or_default();
     let display_name = if notes.trim().is_empty() {
         name.clone()
@@ -824,15 +861,25 @@ fn contact_config_from_value(value: &Value) -> Option<ContactRuntimeConfig> {
         notes.trim().to_string()
     };
     Some(ContactRuntimeConfig {
+        id,
         name,
         display_name,
         sip_address,
+        phone_number: string_field(value, "phone_number").unwrap_or_default(),
+        can_receive: value
+            .get("can_receive")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
         favorite: value
             .get("favorite")
             .and_then(Value::as_bool)
             .unwrap_or(false),
         aliases: string_array_field(value, "aliases"),
     })
+}
+
+fn default_contact_can_receive() -> bool {
+    true
 }
 
 fn at_path<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {

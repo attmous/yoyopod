@@ -1,0 +1,4 @@
+# The network worker owns the SIM7600 serial AT/GNSS and PPP ports.
+# ModemManager discovers its cdc-wdm QMI port for registration and voice calls.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1e0e", ATTRS{idProduct}=="9001", ENV{ID_MM_DEVICE_IGNORE}="0", ENV{ID_MM_PORT_IGNORE}="1"
+SUBSYSTEM=="usbmisc", KERNEL=="cdc-wdm*", ATTRS{idVendor}=="1e0e", ATTRS{idProduct}=="9001", ENV{ID_MM_DEVICE_IGNORE}="0", ENV{ID_MM_PORT_IGNORE}="0", ENV{ID_MM_CANDIDATE}="1"
