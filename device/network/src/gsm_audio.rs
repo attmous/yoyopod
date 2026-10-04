@@ -232,6 +232,19 @@ impl UsbPcmAudio {
     }
 }
 
+impl Drop for UsbPcmAudio {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        let _ = self.recording.kill();
+        let _ = self.recording.wait();
+        let _ = self.playback.kill();
+        let _ = self.playback.wait();
+        for thread in self.threads.drain(..) {
+            let _ = thread.join();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,18 +327,5 @@ mod tests {
         };
         write_pcm(&mut output, &[1, 2], &stop, Duration::from_secs(1)).unwrap();
         assert_eq!(output.writes, 1);
-    }
-}
-
-impl Drop for UsbPcmAudio {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-        let _ = self.recording.kill();
-        let _ = self.recording.wait();
-        let _ = self.playback.kill();
-        let _ = self.playback.wait();
-        for thread in self.threads.drain(..) {
-            let _ = thread.join();
-        }
     }
 }

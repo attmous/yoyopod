@@ -647,12 +647,35 @@ impl ModemManagerVoice {
         delete: impl FnOnce() -> Result<()>,
     ) -> Result<()> {
         self.release_audio(key);
+        // Native terminal proof and joined audio cleanup precede bookkeeping.
+        // DeleteCall failure must not discard the data-lease release fact.
+        self.pending_events.extend(events);
         delete()?;
         self.registry
             .as_mut()
             .context("Not configured")?
             .remove(key);
-        self.pending_events.extend(events);
+        Ok(())
+    }
+
+    fn refresh_availability(&mut self) -> Result<()> {
+        if !self.isolated {
+            return Ok(());
+        }
+        let connection = self.connection.as_ref().context("No modem connection")?;
+        let modem = self.modem.as_ref().context("No modem")?;
+        let proxy = Proxy::new(connection, DESTINATION, modem.as_str(), MODEM_INTERFACE)?;
+        let state: i32 = proxy.get_property("State")?;
+        let lock: u32 = proxy.get_property("UnlockRequired")?;
+        let voice = Proxy::new(connection, DESTINATION, modem.as_str(), VOICE_INTERFACE)?;
+        let emergency: bool = voice.get_property("EmergencyOnly")?;
+        let reason = voice_service_unavailable_reason(state, lock, true, emergency);
+        self.cached.available = reason.is_none();
+        self.cached.unavailable_reason = reason.unwrap_or_default().into();
+        if !self.cleanup.uncertain.is_empty() || self.uncertain_create.is_some() {
+            self.cached.available = false;
+            self.cached.unavailable_reason = "GSM native call reconciliation required".into();
+        }
         Ok(())
     }
 
@@ -970,6 +993,7 @@ impl GsmBackend for ModemManagerVoice {
         // this is not global D-Bus enumeration. Tracked properties poll at 500ms.
         if reconcile || self.next_recovery.is_none_or(|next| Instant::now() >= next) {
             self.reconcile_paths()?;
+            self.refresh_availability()?;
             self.next_recovery = Some(Instant::now() + Duration::from_secs(3));
         } else {
             for (path, _) in self.registry()?.tracked() {
