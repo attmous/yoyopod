@@ -23,11 +23,42 @@ pub fn talk_contact_actions(
     {
         return Vec::new();
     }
-    vec![
-        TalkContactAction { kind: "call" },
-        TalkContactAction { kind: "record" },
-        TalkContactAction { kind: "replay" },
-    ]
+    let mut actions = vec![TalkContactAction { kind: "call" }];
+    if selected_contact
+        .or_else(|| snapshot.call.contacts.first())
+        .and_then(ListItemSnapshot::sip_target)
+        .is_some()
+    {
+        actions.extend([
+            TalkContactAction { kind: "record" },
+            TalkContactAction { kind: "replay" },
+        ]);
+    }
+    actions
+}
+
+pub fn call_method_disabled_reason<'a>(
+    snapshot: &'a RuntimeSnapshot,
+    contact: &ListItemSnapshot,
+    method: yoyopod_protocol::ui::CallMethod,
+) -> Option<&'a str> {
+    match method {
+        yoyopod_protocol::ui::CallMethod::Sip if contact.sip_target().is_none() => {
+            Some("Not set up")
+        }
+        yoyopod_protocol::ui::CallMethod::Sip if !snapshot.call.registered => Some("Offline"),
+        yoyopod_protocol::ui::CallMethod::Gsm if contact.phone_number.trim().is_empty() => {
+            Some("No phone number")
+        }
+        yoyopod_protocol::ui::CallMethod::Gsm if !snapshot.call.gsm_available => {
+            Some(if snapshot.call.gsm_unavailable_reason.is_empty() {
+                "Unavailable"
+            } else {
+                &snapshot.call.gsm_unavailable_reason
+            })
+        }
+        _ => None,
+    }
 }
 
 pub fn voice_note_action_count(snapshot: &RuntimeSnapshot) -> usize {

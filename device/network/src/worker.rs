@@ -11,6 +11,7 @@ use crate::bluetooth::{
     UnavailableBluetoothController,
 };
 use crate::config::NetworkHostConfig;
+use crate::gsm::{GsmCommand, GsmWorker};
 use crate::modem::{ModemController, Sim7600ModemController};
 use crate::protocol::{
     audio_route_local_event, audio_state_event, audio_state_result, bluetooth_state_event,
@@ -128,6 +129,7 @@ pub fn run(config_dir: &str) -> Result<()> {
             wifi,
             bluetooth,
             AudioManager::open(config_dir),
+            Some(GsmWorker::start()),
         ),
         Err(error) => run_with_runtime_loop(
             NetworkRuntime::degraded_config(config_dir, error.to_string()),
@@ -137,6 +139,7 @@ pub fn run(config_dir: &str) -> Result<()> {
             wifi,
             bluetooth,
             AudioManager::open(config_dir),
+            Some(GsmWorker::start()),
         ),
     }
 }
@@ -197,6 +200,7 @@ where
         Box::new(UnavailableWifiController),
         Box::new(UnavailableBluetoothController),
         AudioManager::open(&config_dir),
+        None,
     )
 }
 
@@ -221,6 +225,7 @@ where
         wifi,
         Box::new(UnavailableBluetoothController),
         AudioManager::open(&config_dir),
+        None,
     )
 }
 
@@ -232,6 +237,7 @@ fn run_with_runtime_loop<C, W>(
     mut wifi: Box<dyn WifiController>,
     mut bluetooth: Box<dyn BluetoothController>,
     mut audio: AudioManager,
+    gsm: Option<GsmWorker>,
 ) -> Result<()>
 where
     C: ModemController,
@@ -291,6 +297,37 @@ where
                     continue;
                 }
 
+                if envelope.message_type.starts_with("gsm.") {
+                    let result = match (gsm.as_ref(), envelope.message_type.as_str()) {
+                        (Some(gsm), "gsm.dial") => envelope
+                            .payload
+                            .get("number")
+                            .and_then(serde_json::Value::as_str)
+                            .ok_or_else(|| anyhow::anyhow!("Missing GSM number"))
+                            .and_then(|number| gsm.send(GsmCommand::Dial(number.to_string()))),
+                        (Some(gsm), "gsm.hangup") => gsm.send(GsmCommand::Hangup),
+                        (Some(gsm), "gsm.set_mute") => envelope
+                            .payload
+                            .get("muted")
+                            .and_then(serde_json::Value::as_bool)
+                            .ok_or_else(|| anyhow::anyhow!("Missing mute state"))
+                            .and_then(|muted| gsm.send(GsmCommand::Mute(muted))),
+                        _ => Err(anyhow::anyhow!("GSM call command unavailable")),
+                    };
+                    if result.is_err() {
+                        write_envelope(
+                            output,
+                            &WorkerEnvelope::event(
+                                "gsm.call_state",
+                                serde_json::json!({
+                                    "available":false, "unavailable_reason":"Unavailable", "state":"error"
+                                }),
+                            ),
+                        )?;
+                    }
+                    continue;
+                }
+
                 match handle_command(
                     &mut runtime,
                     wifi.as_mut(),
@@ -329,6 +366,14 @@ where
                 return Err(error.into());
             }
             Err(RecvTimeoutError::Timeout) => {
+                if let Some(gsm) = gsm.as_ref() {
+                    for state in gsm.drain() {
+                        write_envelope(
+                            output,
+                            &WorkerEnvelope::event("gsm.call_state", serde_json::to_value(state)?),
+                        )?;
+                    }
+                }
                 runtime.tick();
                 emit_pending_snapshots(output, &mut runtime)?;
                 service_pending_wifi_change(output, wifi.as_mut(), &mut pending_wifi_change)?;

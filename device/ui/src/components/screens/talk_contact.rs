@@ -122,7 +122,7 @@ fn recording_scene(props: &TalkContactProps) -> Scene {
     }
 }
 
-fn actions(
+pub(crate) fn actions(
     snapshot: &RuntimeSnapshot,
     selected_contact: Option<&ListItemSnapshot>,
 ) -> Vec<DeckItem> {
@@ -133,7 +133,7 @@ fn actions(
         .and_then(|contact| snapshot.call.unread_voice_notes_by_contact.get(&contact.id))
         .copied()
         .unwrap_or(0);
-    vec![
+    let mut items = vec![
         action("call", "Call", "call", None),
         action("record", "Hold to record", "mic", None),
         action(
@@ -149,7 +149,14 @@ fn actions(
                 kind: WheelBadgeKind::Count,
             }),
         ),
-    ]
+    ];
+    if selected_contact
+        .and_then(ListItemSnapshot::sip_target)
+        .is_none()
+    {
+        items.truncate(1);
+    }
+    items
 }
 
 fn action(

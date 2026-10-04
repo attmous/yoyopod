@@ -116,11 +116,23 @@ from `config/people/contacts.seed.yaml`. Mutable media history lives in
 Current approved-contacts behaviour:
 
 - contacts may include both `sip_address` and `phone_number`
-- the runtime prefers SIP for calling while GSM remains disabled
-- backend config sync can replace the cloud-managed subset while
-  preserving local-only contacts
+- Talk → contact → Call opens a SIP/GSM method wheel. SIP uses the approved
+  `sip_address`; GSM uses the approved `phone_number`. Voice notes still use SIP.
+- unavailable methods remain visible with a short reason (such as “SIM locked”)
+- GSM requires ModemManager voice support on the SIM7600, an unlocked SIM,
+  cellular voice registration, and the modem's USB PCM audio interface.
+  The network worker controls calls over D-Bus and bridges USB PCM to the named
+  ALSA `capture`/`playback` routes. Deployment grants only voice and device-control
+  ModemManager actions to the runtime service user.
+- backend config sync replaces the device's approved contact directory live and
+  persists it atomically. An open contact view follows address/name edits by
+  stable contact ID and closes when that contact is removed.
 - a claimed device may upload prestored local contacts once when
   backend authority is still empty for that household
+
+Call-control contract: [ModemManager Voice](https://raw.githubusercontent.com/linux-mobile-broadband/ModemManager/main/introspection/org.freedesktop.ModemManager1.Modem.Voice.xml)
+and [Call](https://raw.githubusercontent.com/linux-mobile-broadband/ModemManager/main/introspection/org.freedesktop.ModemManager1.Call.xml).
+PCM contract: [SIMCom USB Audio Application Note](https://simcom.ee/documents/SIM7X00/SIM7100_SIM7500_SIM7600%20Series_USB%20AUDIO_Application%20Note_V1.03.pdf).
 
 ## Running
 

@@ -119,14 +119,32 @@ impl CallState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListItem {
     pub id: String,
+    pub contact_id: String,
     pub title: String,
     pub subtitle: String,
     pub icon_key: String,
     pub aliases: Vec<String>,
     pub communication_unavailable: bool,
+    pub sip_address: String,
+    pub phone_number: String,
 }
 
 impl ListItem {
+    pub fn sip_target(&self) -> Option<&str> {
+        if self.communication_unavailable {
+            return None;
+        }
+        if !self.sip_address.is_empty() {
+            Some(&self.sip_address)
+        } else if self.id.starts_with("sip:")
+            || self.id.starts_with("sips:")
+            || self.phone_number.is_empty()
+        {
+            Some(self.id.as_str()).filter(|id| !id.is_empty())
+        } else {
+            None
+        }
+    }
     fn from_snapshot(value: &Value, icon_key: &'static str) -> Option<Self> {
         if !value.is_object() {
             return None;
@@ -146,6 +164,7 @@ impl ListItem {
 
         Some(Self {
             id,
+            contact_id: string_field(value, "contact_id").unwrap_or_default(),
             title,
             subtitle,
             icon_key,
@@ -154,17 +173,22 @@ impl ListItem {
                 .get("communication_unavailable")
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
+            sip_address: string_field(value, "sip_address").unwrap_or_default(),
+            phone_number: string_field(value, "phone_number").unwrap_or_default(),
         })
     }
 
     fn to_payload(&self) -> Value {
         json!({
             "id": self.id,
+            "contact_id": self.contact_id,
             "title": self.title,
             "subtitle": self.subtitle,
             "icon_key": self.icon_key,
             "aliases": self.aliases,
             "communication_unavailable": self.communication_unavailable,
+            "sip_address": self.sip_address,
+            "phone_number": self.phone_number,
         })
     }
 }
@@ -204,6 +228,10 @@ impl Default for MediaState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallRuntimeState {
+    pub method: yoyopod_protocol::ui::CallMethod,
+    pub gsm_available: bool,
+    pub gsm_unavailable_reason: String,
+    pub gsm_start_pending: bool,
     pub registered: bool,
     pub registration_state: String,
     pub state: CallState,
@@ -221,6 +249,10 @@ pub struct CallRuntimeState {
 impl Default for CallRuntimeState {
     fn default() -> Self {
         Self {
+            method: yoyopod_protocol::ui::CallMethod::Sip,
+            gsm_available: false,
+            gsm_unavailable_reason: String::new(),
+            gsm_start_pending: false,
             registered: false,
             registration_state: "none".to_string(),
             state: CallState::Idle,
@@ -1096,19 +1128,22 @@ impl RuntimeState {
         if let Some(registration_state) = string_field(snapshot, "registration_state") {
             self.call.registration_state = registration_state;
         }
-        if let Some(call_state) = snapshot.get("call_state") {
-            self.call.state = call_state
-                .as_str()
-                .map(CallState::from_worker_state)
-                .unwrap_or(CallState::Idle);
-        }
-        if let Some(active_call_peer) = string_field(snapshot, "active_call_peer") {
-            self.call.peer_address = active_call_peer.clone();
-            self.call.peer_name = active_call_peer;
-        }
-        self.call.duration_text = call_duration_text(snapshot, self.call.state).unwrap_or_default();
-        if let Some(muted) = snapshot.get("muted").and_then(Value::as_bool) {
-            self.call.muted = muted;
+        if self.call.method != yoyopod_protocol::ui::CallMethod::Gsm {
+            if let Some(call_state) = snapshot.get("call_state") {
+                self.call.state = call_state
+                    .as_str()
+                    .map(CallState::from_worker_state)
+                    .unwrap_or(CallState::Idle);
+            }
+            if let Some(active_call_peer) = string_field(snapshot, "active_call_peer") {
+                self.call.peer_address = active_call_peer.clone();
+                self.call.peer_name = active_call_peer;
+            }
+            self.call.duration_text =
+                call_duration_text(snapshot, self.call.state).unwrap_or_default();
+            if let Some(muted) = snapshot.get("muted").and_then(Value::as_bool) {
+                self.call.muted = muted;
+            }
         }
         if let Some(contacts) = snapshot.get("contacts").and_then(Value::as_array) {
             self.call.contacts = contacts
@@ -1180,6 +1215,35 @@ impl RuntimeState {
     }
 
     pub fn apply_ui_intent(&mut self, intent: &UiIntent) {
+        if let UiIntent::Call(yoyopod_protocol::ui::CallIntent::Start(action)) = intent {
+            let Some(target) = self
+                .approved_call_target(&action.id, action.method)
+                .map(str::to_owned)
+            else {
+                return;
+            };
+            if !matches!(self.call.state, CallState::Idle | CallState::Error) {
+                return;
+            }
+            if action.method == yoyopod_protocol::ui::CallMethod::Gsm && !self.call.gsm_available {
+                return;
+            }
+            self.call.method = action.method;
+            if action.method == yoyopod_protocol::ui::CallMethod::Gsm {
+                self.call.gsm_start_pending = true;
+                self.call.state = CallState::Outgoing;
+                self.call.peer_address = target;
+                self.call.peer_name = self
+                    .call
+                    .contacts
+                    .iter()
+                    .find(|contact| contact.id == action.id)
+                    .map(|contact| contact.title.clone())
+                    .unwrap_or_default();
+                self.call.duration_text.clear();
+                self.call.muted = false;
+            }
+        }
         match intent {
             UiIntent::Voice(intent) => self.apply_voice_intent(intent),
             UiIntent::Settings(intent) => self.apply_settings_intent(intent),
@@ -1188,6 +1252,74 @@ impl RuntimeState {
         }
         if !matches!(intent, UiIntent::System(_)) {
             self.begin_overlay_operation(intent);
+        }
+    }
+
+    pub fn approved_call_target(
+        &self,
+        id: &str,
+        method: yoyopod_protocol::ui::CallMethod,
+    ) -> Option<&str> {
+        let contact = self
+            .call
+            .contacts
+            .iter()
+            .find(|contact| contact.id == id && !contact.communication_unavailable)?;
+        match method {
+            yoyopod_protocol::ui::CallMethod::Sip => contact.sip_target(),
+            yoyopod_protocol::ui::CallMethod::Gsm => {
+                Some(contact.phone_number.as_str()).filter(|number| !number.is_empty())
+            }
+        }
+    }
+
+    pub fn apply_gsm_call_snapshot(&mut self, snapshot: &Value) {
+        self.call.gsm_available = snapshot
+            .get("available")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        self.call.gsm_unavailable_reason =
+            string_field(snapshot, "unavailable_reason").unwrap_or_default();
+        let status = string_field(snapshot, "state").unwrap_or_else(|| "idle".to_string());
+        if self.call.method != yoyopod_protocol::ui::CallMethod::Gsm {
+            return;
+        }
+        // Ignore an idle discovery event queued before this dial. The worker
+        // publishes outgoing or error for every dial before its next poll.
+        if self.call.gsm_start_pending && status == "idle" {
+            return;
+        }
+        self.call.gsm_start_pending = false;
+        if status == "error" {
+            self.overlay = OverlayRuntimeState {
+                error: "gsm_call_failed".to_string(),
+                code: "gsm_call_failed".to_string(),
+                source: "call.start".to_string(),
+                ..OverlayRuntimeState::default()
+            };
+        } else if self.overlay.loading {
+            self.resolve_overlay_for(WorkerDomain::Network);
+        }
+        self.call.state = CallState::from_worker_state(&status);
+        self.call.peer_address = string_field(snapshot, "peer_number").unwrap_or_default();
+        self.call.peer_name = self
+            .call
+            .contacts
+            .iter()
+            .find(|contact| contact.phone_number == self.call.peer_address)
+            .map(|contact| contact.title.clone())
+            .unwrap_or_else(|| self.call.peer_address.clone());
+        self.call.muted = snapshot
+            .get("muted")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        self.call.duration_text = snapshot
+            .get("duration_seconds")
+            .and_then(Value::as_u64)
+            .map(format_duration_text)
+            .unwrap_or_default();
+        if status == "idle" {
+            self.call.method = yoyopod_protocol::ui::CallMethod::Sip;
         }
     }
 
@@ -1842,6 +1974,8 @@ impl RuntimeState {
                 "recent_tracks": list_payload(&self.media.recent_tracks),
             },
             "call": {
+                "gsm_available": self.call.gsm_available,
+                "gsm_unavailable_reason": self.call.gsm_unavailable_reason,
                 "state": self.call.state.as_str(),
                 "registered": self.call.registered,
                 "peer_name": self.call.peer_name,
@@ -2395,11 +2529,14 @@ fn recent_call_history_item(value: &Value, contacts: &[ListItem]) -> Option<List
 
     Some(ListItem {
         id: peer_sip_address.clone(),
+        contact_id: String::new(),
         title,
         subtitle,
         icon_key: icon_key.to_string(),
         aliases: Vec::new(),
         communication_unavailable: false,
+        sip_address: peer_sip_address,
+        phone_number: String::new(),
     })
 }
 
@@ -2651,7 +2788,7 @@ fn voice_command_outcome(
             body: "Starting local music.".to_string(),
         }),
         VoiceCommandIntent::CallContact => match find_contact(state, contact_name) {
-            Some(contact) if contact.communication_unavailable => Some(VoiceCommandOutcome {
+            Some(contact) if contact.sip_target().is_none() => Some(VoiceCommandOutcome {
                 headline: "Calling needs setup".to_string(),
                 body: "Ask a grown-up to set up calling.".to_string(),
             }),

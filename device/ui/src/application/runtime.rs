@@ -79,6 +79,7 @@ impl UiRuntime {
         self.reconcile_system_overlay_snapshot();
         self.full_snapshots += 1;
         navigator::apply_app_state_route(self, &change.previous_app_state, &change.app_state);
+        navigator::reconcile_selected_contact(self);
         navigator::apply_runtime_preemption(self);
         navigator::reconcile_replay_snapshot(self, previous_playing, &previous_file_path);
         navigator::clamp_focus(self);
@@ -106,6 +107,7 @@ impl UiRuntime {
         self.reconcile_system_overlay_snapshot();
         *self.patches_per_domain.entry(domain).or_insert(0) += 1;
         navigator::apply_app_state_route(self, &change.previous_app_state, &change.app_state);
+        navigator::reconcile_selected_contact(self);
         navigator::apply_runtime_preemption(self);
         navigator::reconcile_replay_snapshot(self, previous_playing, &previous_file_path);
         navigator::clamp_focus(self);
@@ -731,7 +733,10 @@ impl UiRuntime {
                 .selected_playlist
                 .as_ref()
                 .map(|playlist| playlist.id.as_str()),
-            UiScreen::TalkContact | UiScreen::Replay | UiScreen::VoiceNote => self
+            UiScreen::TalkContact
+            | UiScreen::CallMethod
+            | UiScreen::Replay
+            | UiScreen::VoiceNote => self
                 .selected_contact
                 .as_ref()
                 .map(|contact| contact.id.as_str()),
@@ -892,7 +897,7 @@ impl UiRuntime {
             return false;
         };
         let timeline = match self.active_screen {
-            UiScreen::Talk | UiScreen::TalkContact => {
+            UiScreen::Talk | UiScreen::TalkContact | UiScreen::CallMethod => {
                 animation::presets::contact_wheel_roll(item_count, 0, now_ms)
             }
             UiScreen::Setup
@@ -1002,6 +1007,7 @@ impl UiRuntime {
             );
         }
         let static_items: &[&str] = match screen {
+            UiScreen::CallMethod => &["sip", "gsm"],
             UiScreen::Setup => &[
                 "volume",
                 "companion",
@@ -2072,7 +2078,10 @@ mod tests {
         runtime.advance_animations(1_180);
         assert_eq!(runtime.focus_index, 0);
         runtime.handle_input(InputAction::Select, 1_200);
+        runtime.snapshot.call.registered = true;
         runtime.handle_input(InputAction::Select, 1_300);
+        assert_eq!(runtime.active_screen, UiScreen::CallMethod);
+        runtime.handle_input(InputAction::Select, 1_400);
         assert_eq!(
             runtime.take_intents(),
             vec![UiIntent::Call(CallIntent::Start(intents::contact_action(
@@ -2455,14 +2464,18 @@ mod tests {
     }
 
     #[test]
-    fn talk_contact_call_action_still_emits_the_selected_contact() {
+    fn talk_contact_call_action_opens_method_choice_before_dialing() {
         let mama = contact("sip:mama@example.test", "Mama");
         let mut runtime = UiRuntime::default();
         runtime.snapshot.call.contacts = vec![mama.clone()];
         runtime.selected_contact = Some(mama);
         runtime.active_screen = UiScreen::TalkContact;
+        runtime.snapshot.call.registered = true;
 
         runtime.handle_input(InputAction::Select, 100);
+        assert_eq!(runtime.active_screen, UiScreen::CallMethod);
+        assert!(runtime.take_intents().is_empty());
+        runtime.handle_input(InputAction::Select, 200);
 
         assert_eq!(
             runtime.take_intents(),
@@ -2471,6 +2484,7 @@ mod tests {
                 name: "Mama".to_string(),
                 sip_address: String::new(),
                 uri: String::new(),
+                method: yoyopod_protocol::ui::CallMethod::Sip,
             }))]
         );
     }
@@ -2527,6 +2541,113 @@ mod tests {
             active.take_intents(),
             vec![UiIntent::Call(CallIntent::Hangup)]
         );
+    }
+
+    #[test]
+    fn method_choice_wraps_routes_gsm_and_returns_to_the_selected_contact() {
+        let mut dad = contact("sip:dad@example.test", "Dad");
+        dad.phone_number = "+49123456789".into();
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![dad.clone()];
+        runtime.snapshot.call.registered = true;
+        runtime.snapshot.call.gsm_available = true;
+        runtime.selected_contact = Some(dad.clone());
+        runtime.active_screen = UiScreen::TalkContact;
+        runtime.handle_input(InputAction::Select, 100);
+        assert!(!runtime.wants_ptt_passthrough());
+        runtime.handle_input(InputAction::PttPress, 200);
+        runtime.handle_input(InputAction::PttRelease, 300);
+        assert!(runtime.take_intents().is_empty());
+        runtime.handle_input(InputAction::Advance, 400);
+        runtime.advance_animations(580);
+        assert_eq!(runtime.focus_index, 1);
+        runtime.handle_input(InputAction::Select, 600);
+        assert!(matches!(runtime.take_intents().as_slice(),
+            [UiIntent::Call(CallIntent::Start(action))]
+                if action.method == yoyopod_protocol::ui::CallMethod::Gsm && action.id == dad.id));
+        runtime.handle_input(InputAction::Advance, 700);
+        runtime.advance_animations(880);
+        assert_eq!(runtime.focus_index, 0);
+        runtime.handle_input(InputAction::Back, 900);
+        assert_eq!(runtime.active_screen, UiScreen::TalkContact);
+        assert_eq!(runtime.selected_contact, Some(dad));
+        runtime.handle_input(InputAction::Home, 1_000);
+        assert_eq!(runtime.active_screen, UiScreen::Hub);
+        assert!(runtime.selected_contact.is_none());
+    }
+
+    #[test]
+    fn phone_contact_blocks_sip_and_locked_gsm_then_accepts_live_availability() {
+        let mut mama = contact("mama-id", "Mama");
+        mama.phone_number = "+49123456789".into();
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![mama.clone()];
+        runtime.snapshot.call.gsm_unavailable_reason = "SIM locked".into();
+        runtime.selected_contact = Some(mama);
+        runtime.active_screen = UiScreen::TalkContact;
+        runtime.handle_input(InputAction::Select, 100);
+        runtime.handle_input(InputAction::Select, 200);
+        assert!(runtime.take_intents().is_empty());
+        assert_eq!(
+            super::super::accessibility::focused_item(&runtime)
+                .unwrap()
+                .label,
+            "SIP, Not set up"
+        );
+        runtime.handle_input(InputAction::Advance, 300);
+        runtime.advance_animations(480);
+        runtime.handle_input(InputAction::Select, 500);
+        assert!(runtime.take_intents().is_empty());
+        assert_eq!(
+            super::super::accessibility::focused_item(&runtime)
+                .unwrap()
+                .label,
+            "GSM, SIM locked"
+        );
+        for scheme in [
+            crate::theme::ColorScheme::Light,
+            crate::theme::ColorScheme::Dark,
+        ] {
+            runtime.enable_theme_preview(scheme);
+            let element = flatten::flatten(&runtime.scene_graph(510));
+            assert!(contains_text(&element, "SIM locked"));
+        }
+        let mut call = runtime.snapshot.call.clone();
+        call.gsm_available = true;
+        call.gsm_unavailable_reason.clear();
+        runtime.apply_patch(RuntimeSnapshotPatch::Call(call));
+        runtime.handle_input(InputAction::Select, 600);
+        assert!(matches!(runtime.take_intents().as_slice(),
+            [UiIntent::Call(CallIntent::Start(action))] if action.method == yoyopod_protocol::ui::CallMethod::Gsm));
+    }
+
+    #[test]
+    fn open_method_choice_tracks_parent_edits_and_removal_by_stable_contact_id() {
+        let mut dad = contact("sip:old@example.test", "Dad");
+        dad.contact_id = "dad-id".into();
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![dad.clone()];
+        runtime.snapshot.call.registered = true;
+        runtime.selected_contact = Some(dad.clone());
+        runtime.active_screen = UiScreen::TalkContact;
+        runtime.handle_input(InputAction::Select, 100);
+        dad.id = "sip:new@example.test".into();
+        dad.sip_address = dad.id.clone();
+        dad.title = "Papa".into();
+        let mut call = runtime.snapshot.call.clone();
+        call.contacts = vec![dad.clone()];
+        runtime.apply_patch(RuntimeSnapshotPatch::Call(call));
+        assert_eq!(runtime.selected_contact, Some(dad.clone()));
+        runtime.handle_input(InputAction::Select, 200);
+        assert!(matches!(runtime.take_intents().as_slice(),
+            [UiIntent::Call(CallIntent::Start(action))] if action.id == dad.id && action.name == "Papa"));
+        let mut snapshot = runtime.snapshot.clone();
+        snapshot.call.contacts.clear();
+        runtime.apply_snapshot(snapshot);
+        assert_eq!(runtime.active_screen, UiScreen::Talk);
+        assert!(runtime.selected_contact.is_none());
+        runtime.handle_input(InputAction::Select, 300);
+        assert!(runtime.take_intents().is_empty());
     }
 
     #[test]

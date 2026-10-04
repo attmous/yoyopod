@@ -30,16 +30,15 @@ pub fn contact_action(item: &ListItemSnapshot) -> ContactAction {
         name: item.title.clone(),
         sip_address: String::new(),
         uri: String::new(),
+        method: yoyopod_protocol::ui::CallMethod::Sip,
     }
 }
 
 pub fn voice_recipient_action(contact: &ListItemSnapshot) -> Option<VoiceRecipientAction> {
-    if contact.communication_unavailable || contact.id.trim().is_empty() {
-        return None;
-    }
+    let target = contact.sip_target()?;
     Some(VoiceRecipientAction {
         id: contact.id.clone(),
-        recipient_address: contact.id.clone(),
+        recipient_address: target.to_string(),
         recipient_name: contact.title.clone(),
         file_path: String::new(),
     })

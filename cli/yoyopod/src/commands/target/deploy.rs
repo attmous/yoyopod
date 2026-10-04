@@ -127,7 +127,7 @@ pub fn run(
     }
 
     // Install a generated rule for the configured service user. It grants only
-    // the NetworkManager actions required by Phase 1 Wi-Fi controls.
+    // the NetworkManager and ModemManager actions required by device controls.
     let remote_polkit_rule = format!("/tmp/{polkit_rule_name}");
     let scp_status = Command::new("scp")
         .arg(&local_polkit_rule)
@@ -340,7 +340,9 @@ polkit.addRule(function(action, subject) {{
          action.id === "org.freedesktop.NetworkManager.network-control" ||
          action.id === "org.freedesktop.NetworkManager.checkpoint-rollback" ||
          action.id === "org.freedesktop.NetworkManager.wifi.share.protected" ||
-         action.id === "org.freedesktop.NetworkManager.wifi.share.open")) {{
+         action.id === "org.freedesktop.NetworkManager.wifi.share.open" ||
+         action.id === "org.freedesktop.ModemManager1.Voice" ||
+         action.id === "org.freedesktop.ModemManager1.Device.Control")) {{
         return polkit.Result.YES;
     }}
 }});
@@ -602,7 +604,9 @@ mod tests {
         // AP-mode Wi-Fi setup also needs the shared-connection (hotspot) actions.
         assert!(rule.contains("org.freedesktop.NetworkManager.wifi.share.protected"));
         assert!(rule.contains("org.freedesktop.NetworkManager.wifi.share.open"));
-        assert_eq!(rule.matches("action.id ===").count(), 6);
+        assert!(rule.contains("org.freedesktop.ModemManager1.Voice"));
+        assert!(rule.contains("org.freedesktop.ModemManager1.Device.Control"));
+        assert_eq!(rule.matches("action.id ===").count(), 8);
     }
 
     #[test]

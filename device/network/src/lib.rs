@@ -3,6 +3,8 @@ pub mod audio;
 pub mod bluetooth;
 pub mod config;
 pub mod gps;
+pub mod gsm;
+mod gsm_audio;
 pub mod modem;
 pub mod ppp;
 pub mod protocol;

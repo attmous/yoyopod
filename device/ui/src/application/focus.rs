@@ -52,6 +52,7 @@ pub fn focus_count(
         UiScreen::Contacts => snapshot.call.contacts.len(),
         UiScreen::CallHistory => snapshot.call.history.len(),
         UiScreen::TalkContact => options::talk_contact_actions(snapshot, selected_contact).len(),
+        UiScreen::CallMethod => 2,
         UiScreen::Replay => {
             let note_count = selected_contact
                 .or_else(|| snapshot.call.contacts.first())

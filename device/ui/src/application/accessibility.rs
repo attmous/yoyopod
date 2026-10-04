@@ -82,6 +82,23 @@ pub(crate) fn focused_item(runtime: &UiRuntime) -> Option<FocusDescriptor> {
                 Some(static_item(focus, &labels))
             }
         }
+        UiScreen::CallMethod => {
+            let method = if focus == 0 {
+                yoyopod_protocol::ui::CallMethod::Sip
+            } else {
+                yoyopod_protocol::ui::CallMethod::Gsm
+            };
+            let label = if focus == 0 { "SIP" } else { "GSM" };
+            let reason = runtime.selected_contact.as_ref().and_then(|contact| {
+                options::call_method_disabled_reason(snapshot, contact, method)
+            });
+            Some(FocusDescriptor::new(
+                label,
+                reason
+                    .map(|reason| format!("{label}, {reason}"))
+                    .unwrap_or_else(|| label.to_string()),
+            ))
+        }
         UiScreen::VoiceNote => voice_note_item(runtime),
         UiScreen::IncomingCall => Some(static_item(focus, &["Answer call", "Reject call"])),
         UiScreen::OutgoingCall => Some(FocusDescriptor::new("hang_up", "Hang up")),

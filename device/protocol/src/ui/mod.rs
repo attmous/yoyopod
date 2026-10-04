@@ -30,6 +30,7 @@ pub enum UiScreen {
     Contacts,
     CallHistory,
     TalkContact,
+    CallMethod,
     Replay,
     VoiceNote,
     IncomingCall,
@@ -47,7 +48,7 @@ pub enum UiScreen {
 }
 
 impl UiScreen {
-    pub const ALL: [Self; 27] = [
+    pub const ALL: [Self; 28] = [
         Self::Hub,
         Self::Listen,
         Self::Playlists,
@@ -61,6 +62,7 @@ impl UiScreen {
         Self::Contacts,
         Self::CallHistory,
         Self::TalkContact,
+        Self::CallMethod,
         Self::Replay,
         Self::VoiceNote,
         Self::IncomingCall,
@@ -92,6 +94,7 @@ impl UiScreen {
             Self::Contacts => "contacts",
             Self::CallHistory => "call_history",
             Self::TalkContact => "talk_contact",
+            Self::CallMethod => "call_method",
             Self::Replay => "replay",
             Self::VoiceNote => "voice_note",
             Self::IncomingCall => "incoming_call",
@@ -933,6 +936,14 @@ pub struct PlaylistTrackAction {
     pub track_index: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CallMethod {
+    #[default]
+    Sip,
+    Gsm,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ContactAction {
     #[serde(default)]
@@ -943,6 +954,8 @@ pub struct ContactAction {
     pub sip_address: String,
     #[serde(default)]
     pub uri: String,
+    #[serde(default)]
+    pub method: CallMethod,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

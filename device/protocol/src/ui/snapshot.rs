@@ -210,6 +210,10 @@ fn default_music_time_text() -> String {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CallRuntimeSnapshot {
+    #[serde(default)]
+    pub gsm_available: bool,
+    #[serde(default)]
+    pub gsm_unavailable_reason: String,
     #[serde(default = "default_call_state")]
     pub state: String,
     #[serde(default)]
@@ -237,6 +241,8 @@ pub struct CallRuntimeSnapshot {
 impl Default for CallRuntimeSnapshot {
     fn default() -> Self {
         Self {
+            gsm_available: false,
+            gsm_unavailable_reason: String::new(),
             state: default_call_state(),
             registered: false,
             peer_name: String::new(),
@@ -446,6 +452,9 @@ pub struct OverlayRuntimeSnapshot {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ListItemSnapshot {
     pub id: String,
+    /// Stable cloud identity survives changes to a contact's calling addresses.
+    #[serde(default)]
+    pub contact_id: String,
     pub title: String,
     #[serde(default)]
     pub subtitle: String,
@@ -454,6 +463,10 @@ pub struct ListItemSnapshot {
     /// Contacts without a configured communication destination remain browsable.
     #[serde(default)]
     pub communication_unavailable: bool,
+    #[serde(default)]
+    pub sip_address: String,
+    #[serde(default)]
+    pub phone_number: String,
 }
 
 impl ListItemSnapshot {
@@ -465,10 +478,29 @@ impl ListItemSnapshot {
     ) -> Self {
         Self {
             id: id.into(),
+            contact_id: String::new(),
             title: title.into(),
             subtitle: subtitle.into(),
             icon_key: icon_key.into(),
             communication_unavailable: false,
+            sip_address: String::new(),
+            phone_number: String::new(),
+        }
+    }
+
+    pub fn sip_target(&self) -> Option<&str> {
+        if self.communication_unavailable {
+            return None;
+        }
+        if !self.sip_address.trim().is_empty() {
+            Some(self.sip_address.trim())
+        } else if self.id.starts_with("sip:") || self.id.starts_with("sips:") {
+            Some(&self.id)
+        } else if self.phone_number.is_empty() {
+            // Local bootstrap contacts historically use their SIP alias as ID.
+            Some(self.id.as_str()).filter(|id| !id.is_empty())
+        } else {
+            None
         }
     }
 }

@@ -98,6 +98,7 @@ fn title_for_screen(
         UiScreen::Contacts => "More People".to_string(),
         UiScreen::CallHistory => "Recents".to_string(),
         UiScreen::TalkContact => talk_contact_title(snapshot, focus_index, selected_contact),
+        UiScreen::CallMethod => "Call with".to_string(),
         UiScreen::Replay => "Replay".to_string(),
         UiScreen::VoiceNote => voice_note_title(snapshot, focus_index),
         UiScreen::IncomingCall | UiScreen::OutgoingCall | UiScreen::InCall => {
@@ -127,6 +128,7 @@ fn deck_focus_for_screen(screen: UiScreen, home_focus: Option<usize>) -> Option<
         | UiScreen::Contacts
         | UiScreen::CallHistory
         | UiScreen::TalkContact
+        | UiScreen::CallMethod
         | UiScreen::Replay
         | UiScreen::VoiceNote
         | UiScreen::IncomingCall

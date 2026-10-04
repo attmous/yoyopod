@@ -36,6 +36,7 @@ pub const ROUTES: [Route; UiScreen::ALL.len()] = [
     route(UiScreen::Contacts),
     route(UiScreen::CallHistory),
     route(UiScreen::TalkContact),
+    route(UiScreen::CallMethod),
     route(UiScreen::Replay),
     route(UiScreen::VoiceNote),
     route(UiScreen::IncomingCall),
@@ -246,10 +247,12 @@ fn dynamic_action_intent_kinds(kind: DynamicActionKind) -> &'static [IntentKindL
         &[IntentKindLiteral::new("settings", "companion_set")];
     const SETUP_THEME_INTENTS: &[IntentKindLiteral] =
         &[IntentKindLiteral::new("settings", "theme_set")];
+    const CALL_METHOD_INTENTS: &[IntentKindLiteral] = &[IntentKindLiteral::new("call", "start")];
 
     match kind {
         DynamicActionKind::Ask => ASK_INTENTS,
         DynamicActionKind::TalkContact => TALK_CONTACT_INTENTS,
+        DynamicActionKind::CallMethod => CALL_METHOD_INTENTS,
         DynamicActionKind::Replay => REPLAY_INTENTS,
         DynamicActionKind::VoiceNote => VOICE_NOTE_INTENTS,
         DynamicActionKind::SetupCompanion => SETUP_COMPANION_INTENTS,
@@ -319,6 +322,9 @@ const ASK_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
 }];
 const TALK_CONTACT_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
     kind: DynamicActionKind::TalkContact,
+}];
+const CALL_METHOD_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
+    kind: DynamicActionKind::CallMethod,
 }];
 const REPLAY_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
     kind: DynamicActionKind::Replay,
@@ -420,6 +426,7 @@ const fn select_targets(screen: UiScreen) -> &'static [SelectionTarget] {
         UiScreen::VoiceNote => VOICE_NOTE_SELECT,
         UiScreen::Contacts => CONTACTS_SELECT,
         UiScreen::TalkContact => TALK_CONTACT_SELECT,
+        UiScreen::CallMethod => CALL_METHOD_SELECT,
         UiScreen::Replay => REPLAY_SELECT,
         UiScreen::CallHistory => CALL_HISTORY_SELECT,
         UiScreen::IncomingCall => INCOMING_SELECT,
@@ -516,6 +523,7 @@ const fn focus_policy(screen: UiScreen) -> FocusPolicy {
         | UiScreen::Listen
         | UiScreen::Talk
         | UiScreen::TalkContact
+        | UiScreen::CallMethod
         | UiScreen::Replay
         | UiScreen::VoiceNote
         | UiScreen::Stopwatch
@@ -574,7 +582,7 @@ mod tests {
     #[test]
     fn every_screen_has_a_registered_route_and_hub_has_six_destinations() {
         validate_routes().expect("all screens must have exactly one route");
-        assert_eq!(UiScreen::ALL.len(), 27);
+        assert_eq!(UiScreen::ALL.len(), 28);
         assert_eq!(route_for(UiScreen::Hub).select.len(), 6);
         assert_eq!(screen_capabilities().len(), UiScreen::ALL.len());
     }

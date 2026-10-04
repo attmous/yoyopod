@@ -24,6 +24,7 @@ pub enum RuntimeEvent {
     MediaSnapshot(Value),
     VoipSnapshot(Value),
     NetworkSnapshot(Value),
+    GsmCallSnapshot(Value),
     LocationFix(Value),
     WifiState(Value),
     WifiChangeCandidate(Value),
@@ -107,6 +108,7 @@ impl RuntimeEvent {
                 state.resolve_overlay_for(WorkerDomain::Network);
                 state.apply_network_snapshot(snapshot);
             }
+            Self::GsmCallSnapshot(snapshot) => state.apply_gsm_call_snapshot(snapshot),
             Self::LocationFix(_) => {}
             Self::WifiState(_)
             | Self::WifiChangeCandidate(_)
@@ -267,6 +269,20 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         )],
         RuntimeEvent::MediaSnapshot(snapshot) => commands_for_media_snapshot(snapshot),
         RuntimeEvent::VoipSnapshot(snapshot) => commands_for_voip_snapshot(state, snapshot),
+        RuntimeEvent::GsmCallSnapshot(snapshot)
+            if state.call.method == yoyopod_protocol::ui::CallMethod::Gsm =>
+        {
+            vec![cloud_telemetry_command(
+                "call.state",
+                json!({
+                    "entity": "call.state", "value": snapshot["state"],
+                    "attrs": {"call_state": snapshot["state"], "call_method": "gsm",
+                        "active_call_peer": snapshot["peer_number"], "duration_seconds": snapshot["duration_seconds"],
+                        "muted": snapshot["muted"]},
+                    "ts": current_epoch_seconds(),
+                }),
+            )]
+        }
         RuntimeEvent::NetworkSnapshot(snapshot) => commands_for_network_snapshot(snapshot),
         RuntimeEvent::LocationFix(fix) => vec![worker_command(
             WorkerDomain::Cloud,
@@ -415,6 +431,7 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
             }
         }
         RuntimeEvent::WorkerReady { .. }
+        | RuntimeEvent::GsmCallSnapshot(_)
         | RuntimeEvent::CloudSnapshot(_)
         | RuntimeEvent::WorkerError { .. }
         | RuntimeEvent::WorkerExited { .. }
@@ -532,6 +549,7 @@ fn network_event_from_message(message_type: &str, payload: Value) -> RuntimeEven
             domain: WorkerDomain::Network,
         },
         "network.snapshot" | "network.health" => RuntimeEvent::NetworkSnapshot(payload),
+        "gsm.call_state" => RuntimeEvent::GsmCallSnapshot(payload),
         "network.location" => RuntimeEvent::LocationFix(payload),
         "wifi_state" => RuntimeEvent::WifiState(payload),
         "wifi_change_candidate" => RuntimeEvent::WifiChangeCandidate(payload),
@@ -804,6 +822,41 @@ fn commands_for_music_intent(state: &RuntimeState, intent: &MusicIntent) -> Vec<
 }
 
 fn commands_for_call_intent(state: &RuntimeState, intent: &CallIntent) -> Vec<RuntimeCommand> {
+    use yoyopod_protocol::ui::CallMethod;
+    if let CallIntent::Start(action) = intent {
+        if !matches!(state.call.state, CallState::Idle | CallState::Error) {
+            return Vec::new();
+        }
+        let Some(target) = state.approved_call_target(&action.id, action.method) else {
+            return Vec::new();
+        };
+        return match action.method {
+            CallMethod::Sip => vec![worker_command(
+                WorkerDomain::Voip,
+                "voip.dial",
+                json!({"uri":target}),
+            )],
+            CallMethod::Gsm if state.call.gsm_available => vec![
+                worker_command(
+                    WorkerDomain::Voip,
+                    "voip.stop_focus_prompt_playback",
+                    empty_payload(),
+                ),
+                worker_command(WorkerDomain::Media, "media.pause", empty_payload()),
+                worker_command(WorkerDomain::Network, "gsm.dial", json!({"number":target})),
+            ],
+            CallMethod::Gsm => Vec::new(),
+        };
+    }
+    if state.call.method == CallMethod::Gsm {
+        let (command, payload) = match intent {
+            CallIntent::Hangup | CallIntent::Reject => ("gsm.hangup", empty_payload()),
+            CallIntent::ToggleMute => ("gsm.set_mute", json!({"muted":!state.call.muted})),
+            CallIntent::Answer => return Vec::new(),
+            CallIntent::Start(_) => unreachable!(),
+        };
+        return vec![worker_command(WorkerDomain::Network, command, payload)];
+    }
     match intent {
         CallIntent::Answer => vec![worker_command(
             WorkerDomain::Voip,
@@ -825,22 +878,7 @@ fn commands_for_call_intent(state: &RuntimeState, intent: &CallIntent) -> Vec<Ru
             "voip.set_mute",
             json!({ "muted": !state.call.muted }),
         )],
-        CallIntent::Start(action) => contact_uri(action)
-            .filter(|uri| {
-                !state
-                    .call
-                    .contacts
-                    .iter()
-                    .any(|contact| contact.id == *uri && contact.communication_unavailable)
-            })
-            .map(|uri| {
-                vec![worker_command(
-                    WorkerDomain::Voip,
-                    "voip.dial",
-                    json!({ "uri": uri }),
-                )]
-            })
-            .unwrap_or_default(),
+        CallIntent::Start(_) => unreachable!(),
     }
 }
 
@@ -1021,11 +1059,12 @@ fn commands_for_voice_transcript(state: &RuntimeState, payload: &Value) -> Vec<R
         return match response {
             VoiceConfirmationResponse::Yes => state
                 .pending_voice_call_confirmation_contact()
-                .map(|contact| {
+                .and_then(|contact| contact.sip_target())
+                .map(|uri| {
                     vec![worker_command(
                         WorkerDomain::Voip,
                         "voip.dial",
-                        json!({ "uri": contact.id }),
+                        json!({ "uri": uri }),
                     )]
                 })
                 .unwrap_or_default(),
@@ -1130,12 +1169,12 @@ fn commands_for_voice_command(
         )],
         VoiceCommandIntent::CallContact => state
             .contact_for_voice_label(contact_name)
-            .filter(|contact| !contact.communication_unavailable)
-            .map(|contact| {
+            .and_then(|contact| contact.sip_target())
+            .map(|uri| {
                 vec![worker_command(
                     WorkerDomain::Voip,
                     "voip.dial",
-                    json!({ "uri": contact.id }),
+                    json!({ "uri": uri }),
                 )]
             })
             .unwrap_or_default(),
@@ -1474,15 +1513,24 @@ fn commands_for_media_snapshot(snapshot: &Value) -> Vec<RuntimeCommand> {
 fn commands_for_voip_snapshot(state: &RuntimeState, snapshot: &Value) -> Vec<RuntimeCommand> {
     let mut commands = Vec::new();
     let call_state = string_field(snapshot, "call_state").unwrap_or_else(|| "idle".to_string());
-    commands.push(cloud_telemetry_command(
-        "call.state",
-        json!({
-            "entity": "call.state",
-            "value": call_state,
-            "attrs": snapshot,
-            "ts": current_epoch_seconds(),
-        }),
-    ));
+    if state.call.method == yoyopod_protocol::ui::CallMethod::Gsm && call_state == "incoming" {
+        return vec![worker_command(
+            WorkerDomain::Voip,
+            "voip.reject",
+            empty_payload(),
+        )];
+    }
+    if state.call.method != yoyopod_protocol::ui::CallMethod::Gsm {
+        commands.push(cloud_telemetry_command(
+            "call.state",
+            json!({
+                "entity": "call.state",
+                "value": call_state,
+                "attrs": snapshot,
+                "ts": current_epoch_seconds(),
+            }),
+        ));
+    }
     if let Some(command) = auto_send_voice_note_command(state, snapshot) {
         commands.push(command);
     }
@@ -2234,6 +2282,111 @@ mod tests {
         };
         assert_eq!(domain, WorkerDomain::Ui);
         assert!(message.contains("unknown UI event type ui.nope"));
+    }
+
+    #[test]
+    fn call_methods_use_current_parent_approved_destinations_and_reject_stale_ids() {
+        use yoyopod_protocol::ui::CallMethod;
+        let mut state = RuntimeState::default();
+        RuntimeEvent::CloudConfig(json!({"contacts": {"entries": [
+            {"id": "dad-id", "name": "Dad", "sip_address": "sip:dad@example.test",
+             "phone_number": "+49123456789", "can_call": true},
+            {"id": "blocked-id", "name": "Blocked", "phone_number": "+49123456780", "can_call": false}
+        ]}})).apply(&mut state);
+        state.call.gsm_available = true;
+        let mut action = ContactAction {
+            id: "sip:dad@example.test".into(),
+            sip_address: "sip:unapproved@example.test".into(),
+            uri: "+49999999999".into(),
+            ..ContactAction::default()
+        };
+        assert!(
+            matches!(commands_for_call_intent(&state, &CallIntent::Start(action.clone())).as_slice(),
+            [RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voip, envelope }]
+                if envelope.payload["uri"] == "sip:dad@example.test")
+        );
+        action.method = CallMethod::Gsm;
+        let commands = commands_for_call_intent(&state, &CallIntent::Start(action.clone()));
+        assert!(matches!(commands.last().unwrap(),
+            RuntimeCommand::WorkerCommand { domain: WorkerDomain::Network, envelope }
+                if envelope.message_type == "gsm.dial" && envelope.payload["number"] == "+49123456789"));
+        state.apply_ui_intent(&UiIntent::Call(CallIntent::Start(action.clone())));
+        assert_eq!(state.call.method, CallMethod::Gsm);
+        RuntimeEvent::GsmCallSnapshot(json!({"available": true, "state": "idle"}))
+            .apply(&mut state);
+        assert_eq!(
+            state.call.state,
+            CallState::Outgoing,
+            "discovery queued before dial must not cancel it"
+        );
+        assert!(commands_for_call_intent(&state, &CallIntent::Start(action.clone())).is_empty());
+        state.call.state = CallState::Idle;
+        state.call.gsm_available = false;
+        assert!(commands_for_call_intent(&state, &CallIntent::Start(action.clone())).is_empty());
+        state.call.gsm_available = true;
+        action.id = "blocked-id".into();
+        assert!(commands_for_call_intent(&state, &CallIntent::Start(action.clone())).is_empty());
+        action.id = "sip:dad@example.test".into();
+        RuntimeEvent::CloudConfig(json!({"contacts": {"entries": []}})).apply(&mut state);
+        assert!(commands_for_call_intent(&state, &CallIntent::Start(action)).is_empty());
+    }
+
+    #[test]
+    fn gsm_owns_active_call_controls_and_is_not_overwritten_by_sip_updates() {
+        use yoyopod_protocol::ui::CallMethod;
+        let mut state = RuntimeState::default();
+        state.call.method = CallMethod::Gsm;
+        RuntimeEvent::GsmCallSnapshot(json!({"available": true, "state": "active",
+            "peer_number": "+49123456789", "duration_seconds": 65, "muted": true}))
+        .apply(&mut state);
+        RuntimeEvent::VoipSnapshot(json!({"registered": true, "call_state": "idle",
+            "active_call_peer": "sip:other@example.test", "muted": false}))
+        .apply(&mut state);
+        assert_eq!(state.call.state, CallState::Active);
+        assert_eq!(state.call.peer_address, "+49123456789");
+        assert_eq!(state.call.duration_text, "01:05");
+        assert!(state.call.muted);
+        assert!(state.call.registered);
+        assert!(commands_for_voip_snapshot(&state, &json!({"call_state": "idle"})).is_empty());
+        let telemetry = commands_for_event(
+            &state,
+            &RuntimeEvent::GsmCallSnapshot(
+                json!({"state": "active", "peer_number": "+49123456789"}),
+            ),
+        );
+        assert!(
+            matches!(telemetry.as_slice(), [RuntimeCommand::WorkerCommand {domain: WorkerDomain::Cloud, envelope}]
+            if envelope.payload["payload"]["value"] == "active")
+        );
+        for (intent, command) in [
+            (CallIntent::Hangup, "gsm.hangup"),
+            (CallIntent::ToggleMute, "gsm.set_mute"),
+        ] {
+            assert!(
+                matches!(commands_for_call_intent(&state, &intent).as_slice(),
+                [RuntimeCommand::WorkerCommand { domain: WorkerDomain::Network, envelope }]
+                    if envelope.message_type == command)
+            );
+        }
+        assert!(
+            matches!(commands_for_voip_snapshot(&state, &json!({"call_state": "incoming"})).as_slice(),
+            [RuntimeCommand::WorkerCommand { domain: WorkerDomain::Voip, envelope }]
+                if envelope.message_type == "voip.reject")
+        );
+        RuntimeEvent::GsmCallSnapshot(json!({"available": true, "state": "idle"}))
+            .apply(&mut state);
+        assert_eq!(state.call.method, CallMethod::Sip);
+        RuntimeEvent::VoipSnapshot(
+            json!({"call_state": "active", "active_call_peer": "sip:dad@example.test"}),
+        )
+        .apply(&mut state);
+        RuntimeEvent::GsmCallSnapshot(
+            json!({"available": false, "unavailable_reason": "SIM locked", "state": "idle"}),
+        )
+        .apply(&mut state);
+        assert_eq!(state.call.state, CallState::Active);
+        assert_eq!(state.call.peer_address, "sip:dad@example.test");
+        assert_eq!(state.call.gsm_unavailable_reason, "SIM locked");
     }
 
     #[test]

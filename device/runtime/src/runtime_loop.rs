@@ -539,7 +539,7 @@ mod tests {
     }
 
     #[test]
-    fn cloud_phone_contacts_remain_browsable_without_becoming_call_targets() {
+    fn cloud_phone_contacts_preserve_gsm_targets_without_becoming_sip_targets() {
         let mut runtime = RuntimeLoop::new(RuntimeState::default());
         let mut io = FakeLoopIo {
             messages: vec![(
@@ -563,9 +563,12 @@ mod tests {
         assert_eq!(contacts[0].id, "sip:dad@example.test");
         assert_eq!(contacts[1].id, "mama");
         assert_eq!(contacts[1].title, "Mama");
-        assert!(contacts[1].communication_unavailable);
+        assert!(!contacts[1].communication_unavailable);
+        assert!(contacts[1].sip_target().is_none());
+        assert_eq!(contacts[1].phone_number, "+4912345678");
         assert_eq!(contacts[2].id, "mahmoud");
-        assert!(contacts[2].communication_unavailable);
+        assert!(!contacts[2].communication_unavailable);
+        assert!(contacts[2].sip_target().is_none());
     }
 
     #[test]

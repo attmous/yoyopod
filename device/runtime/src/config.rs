@@ -101,6 +101,8 @@ pub struct ContactRuntimeConfig {
     pub name: String,
     pub display_name: String,
     pub sip_address: String,
+    #[serde(default)]
+    pub phone_number: String,
     pub favorite: bool,
     pub aliases: Vec<String>,
 }
@@ -608,6 +610,7 @@ impl PeopleRuntimeConfig {
         self.contacts
             .iter()
             .map(|contact| crate::state::ListItem {
+                contact_id: contact.id.clone(),
                 id: if contact.sip_address.is_empty() {
                     contact.id.clone()
                 } else {
@@ -617,7 +620,10 @@ impl PeopleRuntimeConfig {
                 subtitle: String::new(),
                 icon_key: format!("mono:{}", talk_monogram(&contact.display_name)),
                 aliases: contact.aliases.clone(),
-                communication_unavailable: contact.sip_address.is_empty(),
+                communication_unavailable: contact.sip_address.is_empty()
+                    && contact.phone_number.is_empty(),
+                sip_address: contact.sip_address.clone(),
+                phone_number: contact.phone_number.clone(),
             })
             .collect()
     }
@@ -856,6 +862,7 @@ fn contact_config_from_value(value: &Value) -> Option<ContactRuntimeConfig> {
         name,
         display_name,
         sip_address,
+        phone_number: string_field(value, "phone_number").unwrap_or_default(),
         favorite: value
             .get("favorite")
             .and_then(Value::as_bool)

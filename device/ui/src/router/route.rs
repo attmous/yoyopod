@@ -61,6 +61,7 @@ pub enum ListKind {
 pub enum DynamicActionKind {
     Ask,
     TalkContact,
+    CallMethod,
     Replay,
     VoiceNote,
     SetupCompanion,
