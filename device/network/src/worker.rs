@@ -11,7 +11,8 @@ use crate::bluetooth::{
     UnavailableBluetoothController,
 };
 use crate::config::NetworkHostConfig;
-use crate::gsm::{normalize_phone_number, GsmCommand, GsmWorker};
+use crate::gsm::{normalize_phone_number, GsmCommand, GsmEvent, GsmWorker};
+use crate::gsm_calls::CallManagerWireEvent;
 use crate::modem::{ModemController, Sim7600ModemController};
 use crate::protocol::{
     audio_route_local_event, audio_state_event, audio_state_result, bluetooth_state_event,
@@ -26,6 +27,9 @@ use crate::wifi::{
     NetworkManagerWifiController, UnavailableWifiController, WifiActivateProfileRequest,
     WifiAddProfileRequest, WifiChangeOperation, WifiChangeStart, WifiController,
     WifiOperationError, WifiUpdateIpv4Request, WifiUpdateProfileRequest,
+};
+use yoyopod_protocol::call::{
+    CallAction, CallCommand, CallPhase, CallTransport, CallUpdate, RejectReason, SessionKey,
 };
 
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -245,7 +249,8 @@ where
 {
     let mut pending_wifi_change = None;
     let mut provisioning: Option<WifiProvisioner> = None;
-    let mut gsm_dial_pending = false;
+    let mut gsm_generation = None;
+    let mut gsm_sessions = Vec::new();
     write_envelope(output, &ready_event(&runtime.snapshot().config_dir))?;
     write_envelope(output, &snapshot_event(runtime.snapshot()))?;
     emit_wifi_state(
@@ -273,6 +278,15 @@ where
     emit_startup_snapshots(output, &mut runtime)?;
 
     loop {
+        if let Some(gsm) = gsm.as_ref() {
+            drain_gsm_events(
+                output,
+                &mut runtime,
+                gsm,
+                &mut gsm_generation,
+                &mut gsm_sessions,
+            )?;
+        }
         match input_rx.recv_timeout(poll_interval) {
             Ok(Ok(line)) => {
                 if line.trim().is_empty() {
@@ -298,57 +312,37 @@ where
                     continue;
                 }
 
-                if envelope.message_type.starts_with("gsm.") {
-                    let result = match (gsm.as_ref(), envelope.message_type.as_str()) {
-                        (Some(gsm), "gsm.dial") => envelope
-                            .payload
-                            .get("number")
-                            .and_then(serde_json::Value::as_str)
-                            .ok_or_else(|| anyhow::anyhow!("Missing GSM number"))
-                            .and_then(|number| {
-                                let number = normalize_phone_number(number)?;
-                                runtime
-                                    .suspend_for_voice_command()
-                                    .map_err(|error| anyhow::anyhow!(error.message))?;
-                                eprintln!("Cellular data suspended for GSM call");
-                                gsm_dial_pending = true;
-                                let result = gsm.send(GsmCommand::Dial(number));
-                                if result.is_err() {
-                                    gsm_dial_pending = false;
-                                    runtime.resume_after_voice();
-                                }
-                                emit_pending_snapshots(output, &mut runtime)?;
-                                result
-                            }),
-                        (Some(gsm), "gsm.hangup") => gsm.send(GsmCommand::Hangup),
-                        (Some(gsm), "gsm.set_mute") => envelope
-                            .payload
-                            .get("muted")
-                            .and_then(serde_json::Value::as_bool)
-                            .ok_or_else(|| anyhow::anyhow!("Missing mute state"))
-                            .and_then(|muted| gsm.send(GsmCommand::Mute(muted))),
-                        _ => Err(anyhow::anyhow!("GSM call command unavailable")),
-                    };
+                if envelope.message_type.starts_with("gsm.")
+                    || envelope.message_type.starts_with("call.")
+                    || envelope.message_type == "network.configure"
+                {
+                    let request_id = envelope.request_id.clone();
+                    let result = gsm
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("GSM worker unavailable"))
+                        .and_then(|gsm| {
+                            enqueue_gsm_command(
+                                &mut runtime,
+                                gsm,
+                                gsm_generation,
+                                &gsm_sessions,
+                                &envelope,
+                            )
+                        });
                     if let Err(error) = result {
-                        eprintln!("GSM command rejected: {error:#}");
-                        if runtime.voice_suspended() {
-                            // A rejected second dial or mute must not hide the
-                            // existing call or release its modem ownership.
-                            continue;
-                        }
                         write_envelope(
                             output,
-                            &WorkerEnvelope::event(
-                                "gsm.call_state",
-                                serde_json::json!({
-                                    "available":false, "unavailable_reason":"Unavailable", "state":"error"
-                                }),
+                            &WorkerEnvelope::error(
+                                "call.error",
+                                request_id,
+                                "gsm_command_rejected",
+                                format!("{error:#}"),
                             ),
                         )?;
                     }
+                    emit_pending_snapshots(output, &mut runtime)?;
                     continue;
                 }
-
                 match handle_command(
                     &mut runtime,
                     wifi.as_mut(),
@@ -387,19 +381,6 @@ where
                 return Err(error.into());
             }
             Err(RecvTimeoutError::Timeout) => {
-                if let Some(gsm) = gsm.as_ref() {
-                    for state in gsm.drain() {
-                        let finished = gsm_session_finished(&mut gsm_dial_pending, &state.state);
-                        write_envelope(
-                            output,
-                            &WorkerEnvelope::event("gsm.call_state", serde_json::to_value(state)?),
-                        )?;
-                        if finished && runtime.voice_suspended() {
-                            eprintln!("GSM call ended; resuming cellular data");
-                            runtime.resume_after_voice();
-                        }
-                    }
-                }
                 runtime.tick();
                 emit_pending_snapshots(output, &mut runtime)?;
                 service_pending_wifi_change(output, wifi.as_mut(), &mut pending_wifi_change)?;
@@ -426,9 +407,224 @@ where
     Ok(())
 }
 
+fn enqueue_gsm_command<C: ModemController>(
+    runtime: &mut NetworkRuntime<C>,
+    gsm: &GsmWorker,
+    generation: Option<u64>,
+    sessions: &[CallUpdate],
+    envelope: &WorkerEnvelope,
+) -> Result<()> {
+    let request_id = envelope
+        .request_id
+        .clone()
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("GSM command requires request_id"))?;
+    if envelope.message_type == "network.configure" {
+        let generation = envelope
+            .payload
+            .get("worker_generation")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| anyhow::anyhow!("Missing worker_generation"))?;
+        let pcm_sample_rate_hz = match envelope.payload.get("gsm_pcm_sample_rate_hz") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(value) => Some(
+                value
+                    .as_u64()
+                    .filter(|rate| matches!(rate, 8000 | 16000))
+                    .ok_or_else(|| anyhow::anyhow!("Invalid GSM PCM sample rate"))?
+                    as u32,
+            ),
+        };
+        return gsm.send(GsmCommand::Configure {
+            request_id,
+            generation,
+            pcm_sample_rate_hz,
+        });
+    }
+    let key: SessionKey = serde_json::from_value(
+        envelope
+            .payload
+            .get("key")
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("GSM command requires session key"))?,
+    )?;
+    anyhow::ensure!(
+        key.transport == CallTransport::Gsm && Some(key.generation) == generation,
+        "Unknown or stale GSM generation"
+    );
+    let (command, acquire) = match envelope.message_type.as_str() {
+        "call.dial" | "gsm.dial" => {
+            let number = envelope
+                .payload
+                .get("address")
+                .or_else(|| envelope.payload.get("number"))
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| anyhow::anyhow!("Missing GSM number"))?;
+            anyhow::ensure!(
+                !sessions.iter().any(|session| session.key == key),
+                "GSM session already exists"
+            );
+            (
+                GsmCommand::DialSession {
+                    request_id,
+                    key: key.clone(),
+                    number: normalize_phone_number(number)?,
+                },
+                true,
+            )
+        }
+        _ => {
+            let action = match envelope.message_type.as_str() {
+                "call.action" => {
+                    serde_json::from_value::<CallCommand>(envelope.payload.clone())?.action
+                }
+                "gsm.answer" => CallAction::Answer,
+                "gsm.reject" => CallAction::Reject(serde_json::from_value::<RejectReason>(
+                    envelope
+                        .payload
+                        .get("reason")
+                        .cloned()
+                        .ok_or_else(|| anyhow::anyhow!("Missing reject reason"))?,
+                )?),
+                "gsm.hangup" => CallAction::Hangup,
+                "gsm.set_mute" => CallAction::SetMute(
+                    envelope
+                        .payload
+                        .get("muted")
+                        .and_then(serde_json::Value::as_bool)
+                        .ok_or_else(|| anyhow::anyhow!("Missing mute state"))?,
+                ),
+                _ => anyhow::bail!("Unknown GSM command"),
+            };
+            let acquire = action == CallAction::Answer;
+            if acquire {
+                anyhow::ensure!(
+                    sessions
+                        .iter()
+                        .any(|session| session.key == key && session.phase == CallPhase::Ringing),
+                    "GSM session is not ringing"
+                );
+            }
+            (
+                GsmCommand::Action {
+                    request_id,
+                    command: CallCommand {
+                        key: key.clone(),
+                        action,
+                    },
+                },
+                acquire,
+            )
+        }
+    };
+    if acquire {
+        runtime
+            .suspend_for_voice_session(&key)
+            .map_err(|error| anyhow::anyhow!(error.message))?;
+    }
+    let result = gsm.send(command);
+    if acquire && result.is_err() {
+        runtime.resume_after_voice_session(&key);
+    }
+    result
+}
+
+fn drain_gsm_events<C: ModemController, W: Write>(
+    output: &mut W,
+    runtime: &mut NetworkRuntime<C>,
+    gsm: &GsmWorker,
+    generation: &mut Option<u64>,
+    sessions: &mut Vec<CallUpdate>,
+) -> Result<()> {
+    for event in gsm.drain_events() {
+        match event {
+            GsmEvent::Configured {
+                request_id,
+                generation: configured,
+                error,
+            } => {
+                if let Some(error) = error {
+                    write_envelope(
+                        output,
+                        &WorkerEnvelope::error(
+                            "network.configure",
+                            Some(request_id),
+                            "gsm_configuration_failed",
+                            error,
+                        ),
+                    )?;
+                } else {
+                    *generation = Some(configured);
+                    sessions.clear();
+                    write_envelope(
+                        output,
+                        &WorkerEnvelope::result(
+                            "network.configured",
+                            Some(request_id),
+                            serde_json::json!({"worker_generation":configured}),
+                        ),
+                    )?;
+                }
+            }
+            GsmEvent::Call(CallManagerWireEvent::Offer(offer))
+                if Some(offer.key.generation) == *generation =>
+            {
+                // Offers alone never pause data, open PCM, or acquire device policy.
+                write_envelope(
+                    output,
+                    &WorkerEnvelope::event("call.offer", serde_json::to_value(offer)?),
+                )?;
+            }
+            GsmEvent::Call(CallManagerWireEvent::Update(update))
+                if Some(update.key.generation) == *generation =>
+            {
+                if update.phase == CallPhase::Ended {
+                    runtime.resume_after_voice_session(&update.key);
+                    sessions.retain(|session| session.key != update.key);
+                } else if let Some(existing) = sessions
+                    .iter_mut()
+                    .find(|session| session.key == update.key)
+                {
+                    *existing = update.clone();
+                } else {
+                    sessions.push(update.clone());
+                }
+                write_envelope(
+                    output,
+                    &WorkerEnvelope::event("call.update", serde_json::to_value(update)?),
+                )?;
+            }
+            GsmEvent::Completed {
+                request_id,
+                key,
+                error,
+                voice_held,
+            } if Some(key.generation) == *generation => {
+                if !voice_held {
+                    runtime.resume_after_voice_session(&key);
+                }
+                let payload = serde_json::json!({"key":key,"ok":error.is_none(),"error":error,"voice_held":voice_held});
+                write_envelope(
+                    output,
+                    &WorkerEnvelope::result("call.result", Some(request_id), payload),
+                )?;
+            }
+            _ => {} // Old-generation completion cannot release a current lease.
+        }
+    }
+    for state in gsm.drain() {
+        write_envelope(
+            output,
+            &WorkerEnvelope::event("gsm.call_state", serde_json::to_value(state)?),
+        )?;
+    }
+    Ok(())
+}
+
 /// Ignore availability snapshots queued before a pending dial. The GSM worker
 /// acknowledges each attempt with outgoing/active/error before idle can resume
 /// packet data, so stale idle events cannot restart recovery during dialing.
+#[cfg(test)]
 fn gsm_session_finished(dial_pending: &mut bool, state: &str) -> bool {
     match state {
         "outgoing" | "active" => {

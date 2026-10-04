@@ -95,6 +95,7 @@ pub struct NetworkRuntime<C> {
     last_published_snapshot: Option<NetworkRuntimeSnapshot>,
     tracking: TrackingEngine,
     voice_suspended: bool,
+    voice_session: Option<SessionKey>,
 }
 
 impl<C> NetworkRuntime<C>
@@ -151,6 +152,7 @@ where
             last_published_snapshot: None,
             tracking: TrackingEngine::default(),
             voice_suspended: false,
+            voice_session: None,
         }
     }
 
@@ -162,12 +164,19 @@ where
         self.voice_suspended
     }
 
-    pub fn suspend_for_voice_session(&mut self, _key: &SessionKey) -> Result<(), RuntimeCommandError> {
-        self.suspend_for_voice_command()
+    pub fn suspend_for_voice_session(
+        &mut self,
+        key: &SessionKey,
+    ) -> Result<(), RuntimeCommandError> {
+        self.suspend_for_voice_command()?;
+        self.voice_session = Some(key.clone());
+        Ok(())
     }
 
-    pub fn resume_after_voice_session(&mut self, _key: &SessionKey) {
-        self.resume_after_voice();
+    pub fn resume_after_voice_session(&mut self, key: &SessionKey) {
+        if self.voice_session.as_ref() == Some(key) {
+            self.resume_after_voice();
+        }
     }
 
     /// Quiesce cellular data before handing the shared AT interface to voice.
@@ -200,6 +209,7 @@ where
     pub fn resume_after_voice(&mut self) {
         if self.voice_suspended {
             self.voice_suspended = false;
+            self.voice_session = None;
             if self.config.enabled {
                 let now_ms = now_ms();
                 if let Err(error) = self.resume_data_at(now_ms) {
@@ -975,11 +985,28 @@ mod tests {
     #[test]
     fn gsm_other_session_terminal_and_old_generation_cannot_resume_owned_data() {
         use yoyopod_protocol::call::CallTransport;
-        let a = SessionKey { transport: CallTransport::Gsm, generation: 7, call_id: "A".into() };
-        let b = SessionKey { call_id: "B".into(), ..a.clone() };
-        let old_a = SessionKey { generation: 6, ..a.clone() };
+        let a = SessionKey {
+            transport: CallTransport::Gsm,
+            generation: 7,
+            call_id: "A".into(),
+        };
+        let b = SessionKey {
+            call_id: "B".into(),
+            ..a.clone()
+        };
+        let old_a = SessionKey {
+            generation: 6,
+            ..a.clone()
+        };
         for enabled in [false, true] {
-            let mut runtime = NetworkRuntime::new("config", NetworkHostConfig { enabled, ..Default::default() }, RecordingController::default());
+            let mut runtime = NetworkRuntime::new(
+                "config",
+                NetworkHostConfig {
+                    enabled,
+                    ..Default::default()
+                },
+                RecordingController::default(),
+            );
             runtime.suspend_for_voice_session(&a).unwrap();
             assert!(runtime.suspend_for_voice_session(&b).is_err());
             runtime.resume_after_voice_session(&b);
@@ -989,8 +1016,14 @@ mod tests {
             runtime.resume_after_voice_session(&a);
             runtime.resume_after_voice_session(&a);
             assert!(!runtime.voice_suspended());
-            if enabled { assert_eq!(runtime.controller.calls, ["suspend/release_AT", "open", "facts", "start_ppp"]); }
-            else { assert_eq!(runtime.controller.calls, ["suspend/release_AT"]); }
+            if enabled {
+                assert_eq!(
+                    runtime.controller.calls,
+                    ["suspend/release_AT", "open", "facts", "start_ppp"]
+                );
+            } else {
+                assert_eq!(runtime.controller.calls, ["suspend/release_AT"]);
+            }
         }
     }
 

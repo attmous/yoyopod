@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 
-use crate::transport::{LineTransport, SerialLineTransport};
+use std::os::unix::process::CommandExt;
 
 /// SIM7600 USB PCM is signed 16-bit mono at 8 or 16 kHz. The modem's USB audio
 /// interface is distinct from its AT and packet-data interfaces. ALSA's named
@@ -71,73 +71,67 @@ fn interface_port(interface: &str) -> Option<String> {
         })
 }
 
-fn pcm_command(command: &str) -> Result<String> {
-    let at_port = interface_port("if02").context("No modem AT port")?;
-    let mut transport = SerialLineTransport::new(at_port, 115_200, Duration::from_secs(2));
-    transport.open()?;
-    let response = transport.send_command(command, None)?;
-    if !response.lines().any(|line| line.trim() == "OK") {
-        bail!("USB call audio unavailable");
-    }
-    Ok(response)
+pub struct PreparedUsbPcm {
+    receiver: Box<dyn serialport::SerialPort>,
+    transmitter: Box<dyn serialport::SerialPort>,
+    pub port: std::path::PathBuf,
+    sample_rate: u32,
 }
 
+fn relay_command(kind: &str, sample_rate: u32) -> Result<Command> {
+    let mut command = Command::new(std::env::current_exe()?);
+    command.args([
+        "--gsm-audio-relay-parent",
+        &std::process::id().to_string(),
+        "--gsm-audio-relay",
+        kind,
+        "--gsm-audio-sample-rate",
+        &sample_rate.to_string(),
+    ]);
+    command.process_group(0).stderr(Stdio::inherit());
+    Ok(command)
+}
 impl UsbPcmAudio {
     pub fn available() -> bool {
-        interface_port("if02").is_some()
-            && interface_port("if04").is_some()
+        interface_port("if04").is_some()
             && Path::new("/usr/bin/arecord").exists()
             && Path::new("/usr/bin/aplay").exists()
     }
 
-    pub fn start() -> Result<Self> {
+    /// Prepare USB only. Never opens microphone/speaker or sends modem AT commands.
+    pub fn prepare(sample_rate: u32) -> Result<PreparedUsbPcm> {
+        anyhow::ensure!(
+            matches!(sample_rate, 8000 | 16000),
+            "Explicit GSM PCM format required"
+        );
         let port = interface_port("if04").context("No modem USB audio port")?;
-        let mut receiver = serialport::new(port, 921_600)
+        let receiver = serialport::new(&port, 921_600)
             .timeout(Duration::from_millis(100))
             .open()?;
-        let mut transmitter = receiver.try_clone()?;
-        let sample_rate = match pcm_command("AT+CPCMFRM?") {
-            Ok(response) if response.lines().any(|line| line.starts_with("+CPCMFRM: 1")) => "16000",
-            _ => "8000",
-        };
-        let mut recording = Command::new("/usr/bin/arecord")
-            .args([
-                "-q",
-                "-D",
-                "capture",
-                "--buffer-time=100000",
-                "--period-time=20000",
-                "-t",
-                "raw",
-                "-f",
-                "S16_LE",
-                "-r",
-                sample_rate,
-                "-c",
-                "1",
-            ])
+        let transmitter = receiver.try_clone()?;
+        Ok(PreparedUsbPcm {
+            receiver,
+            transmitter,
+            port: std::fs::canonicalize(port)?,
+            sample_rate,
+        })
+    }
+
+    pub fn start(prepared: PreparedUsbPcm) -> Result<Self> {
+        let PreparedUsbPcm {
+            mut receiver,
+            mut transmitter,
+            sample_rate,
+            ..
+        } = prepared;
+        let mut recording = relay_command("capture", sample_rate)?
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
             .spawn()
             .context("Open call microphone")?;
-        let mut playback = match Command::new("/usr/bin/aplay")
-            .args([
-                "-q",
-                "-D",
-                "playback",
-                "--buffer-time=100000",
-                "--period-time=20000",
-                "-t",
-                "raw",
-                "-f",
-                "S16_LE",
-                "-r",
-                sample_rate,
-                "-c",
-                "1",
-            ])
+        let mut playback = match relay_command("playback", sample_rate)?
             .stdin(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stdout(Stdio::null())
             .spawn()
         {
             Ok(child) => child,
@@ -147,13 +141,6 @@ impl UsbPcmAudio {
                 return Err(error.into());
             }
         };
-        if let Err(error) = pcm_command("AT+CPCMREG=1") {
-            let _ = recording.kill();
-            let _ = recording.wait();
-            let _ = playback.kill();
-            let _ = playback.wait();
-            return Err(error);
-        }
         let stop = Arc::new(AtomicBool::new(false));
         let muted = Arc::new(AtomicBool::new(false));
         let mut capture = recording
@@ -339,6 +326,5 @@ impl Drop for UsbPcmAudio {
         for thread in self.threads.drain(..) {
             let _ = thread.join();
         }
-        let _ = pcm_command("AT+CPCMREG=0");
     }
 }
