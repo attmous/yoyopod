@@ -6,6 +6,7 @@ pub mod gps;
 pub mod gsm;
 pub mod gsm_calls;
 mod gsm_audio;
+pub mod gsm_audio_helper;
 pub mod modem;
 pub mod ppp;
 pub mod protocol;

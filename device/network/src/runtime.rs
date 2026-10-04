@@ -5,6 +5,7 @@ use serde_json::Value;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use uuid::Uuid;
+use yoyopod_protocol::call::SessionKey;
 
 use crate::config::NetworkHostConfig;
 use crate::gps::GpsFix;
@@ -159,6 +160,14 @@ where
 
     pub fn voice_suspended(&self) -> bool {
         self.voice_suspended
+    }
+
+    pub fn suspend_for_voice_session(&mut self, _key: &SessionKey) -> Result<(), RuntimeCommandError> {
+        self.suspend_for_voice_command()
+    }
+
+    pub fn resume_after_voice_session(&mut self, _key: &SessionKey) {
+        self.resume_after_voice();
     }
 
     /// Quiesce cellular data before handing the shared AT interface to voice.
@@ -962,6 +971,28 @@ fn current_rfc3339() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gsm_other_session_terminal_and_old_generation_cannot_resume_owned_data() {
+        use yoyopod_protocol::call::CallTransport;
+        let a = SessionKey { transport: CallTransport::Gsm, generation: 7, call_id: "A".into() };
+        let b = SessionKey { call_id: "B".into(), ..a.clone() };
+        let old_a = SessionKey { generation: 6, ..a.clone() };
+        for enabled in [false, true] {
+            let mut runtime = NetworkRuntime::new("config", NetworkHostConfig { enabled, ..Default::default() }, RecordingController::default());
+            runtime.suspend_for_voice_session(&a).unwrap();
+            assert!(runtime.suspend_for_voice_session(&b).is_err());
+            runtime.resume_after_voice_session(&b);
+            runtime.resume_after_voice_session(&old_a);
+            assert!(runtime.voice_suspended());
+            assert_eq!(runtime.controller.calls, ["suspend/release_AT"]);
+            runtime.resume_after_voice_session(&a);
+            runtime.resume_after_voice_session(&a);
+            assert!(!runtime.voice_suspended());
+            if enabled { assert_eq!(runtime.controller.calls, ["suspend/release_AT", "open", "facts", "start_ppp"]); }
+            else { assert_eq!(runtime.controller.calls, ["suspend/release_AT"]); }
+        }
+    }
 
     #[derive(Default)]
     struct RecordingController {
