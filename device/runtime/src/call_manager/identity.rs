@@ -2,19 +2,18 @@ use super::{CallTransport, ContactIdentity};
 
 fn phone(value: &str) -> Option<String> {
     let value = value.trim();
-    if !value.starts_with('+') {
-        return None;
-    }
-    let mut digits = String::from("+");
-    for c in value[1..].chars() {
+    let (prefix, body) = value
+        .strip_prefix('+')
+        .map_or(("", value), |body| ("+", body));
+    let mut digits = prefix.to_owned();
+    for c in body.chars() {
         if c.is_ascii_digit() {
             digits.push(c);
         } else if !matches!(c, ' ' | '-' | '(' | ')' | '.') {
             return None;
         }
     }
-    let count = digits.len() - 1;
-    ((7..=15).contains(&count) && !digits.starts_with("+0")).then_some(digits)
+    (digits.len() > prefix.len()).then_some(digits)
 }
 fn sip(value: &str) -> Option<String> {
     let value = value.trim();

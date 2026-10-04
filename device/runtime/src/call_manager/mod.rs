@@ -72,6 +72,8 @@ pub enum CallEffect {
 }
 struct Owned {
     key: SessionKey,
+    contact: ContactIdentity,
+    answer_dispatched: bool,
     phase: CallPhase,
     incoming: bool,
     address: String,
@@ -118,6 +120,10 @@ impl CallManager {
     }
     pub fn session(&self) -> Option<&SessionKey> {
         self.owned.as_ref().map(|s| &s.key)
+    }
+    /// Stable identity captured at admission; directory changes cannot retarget a call.
+    pub fn admitted_identity(&self) -> Option<&ContactIdentity> {
+        self.owned.as_ref().map(|s| &s.contact)
     }
     pub fn phase(&self) -> Option<CallPhase> {
         self.owned.as_ref().map(|s| s.phase.clone())
@@ -239,14 +245,24 @@ impl CallManager {
                     &offer.address,
                     &context.contacts,
                 );
-                let approved = contact.is_some_and(|c| policy::admits(&self.mode, c));
-                if !approved || context.shutdown || self.shutdown {
+                let Some(contact) = contact else {
                     return self.reject(offer.key, RejectReason::Unapproved);
-                }
-                if self.owned.is_some() {
+                };
+                if self.owned.is_some()
+                    || context.shutdown
+                    || self.shutdown
+                    || !policy::admits(&self.mode, contact)
+                {
                     return self.reject(offer.key, RejectReason::Busy);
                 }
-                self.admit(offer.key, offer.address, true, now_ms, &mut effects);
+                self.admit(
+                    offer.key,
+                    offer.address,
+                    contact.clone(),
+                    true,
+                    now_ms,
+                    &mut effects,
+                );
             }
             CallManagerEvent::RequestOutgoing {
                 key,
@@ -259,16 +275,16 @@ impl CallManager {
                 {
                     return effects;
                 }
-                let approved =
+                let contact =
                     identity::match_contact(key.transport.clone(), &address, &context.contacts)
-                        .is_some_and(|c| c.contact_id == contact_id);
-                if !approved || context.shutdown || self.shutdown {
+                        .filter(|c| c.contact_id == contact_id);
+                let Some(contact) = contact else {
                     return self.reject(key, RejectReason::Unapproved);
-                }
-                if self.owned.is_some() {
+                };
+                if self.owned.is_some() || context.shutdown || self.shutdown {
                     return self.reject(key, RejectReason::Busy);
                 }
-                self.admit(key, address, false, now_ms, &mut effects);
+                self.admit(key, address, contact.clone(), false, now_ms, &mut effects);
             }
             CallManagerEvent::AudioPrepared { key, ok } => {
                 if self.session() != Some(&key) || self.phase() != Some(CallPhase::Preparing) {
@@ -410,6 +426,31 @@ impl CallManager {
             }
             CallManagerEvent::SetMode(mode) => {
                 self.mode = mode;
+                if self.mode == DeviceMode::DoNotDisturb
+                    && self.owned.as_ref().is_some_and(|s| {
+                        s.incoming
+                            && !s.contact.priority
+                            && !s.answer_dispatched
+                            && matches!(
+                                s.phase,
+                                CallPhase::Preparing | CallPhase::Ringing | CallPhase::Answering
+                            )
+                    })
+                {
+                    self.answer_after_stop = false;
+                    self.ending(
+                        now_ms,
+                        Some(CallAction::Reject(RejectReason::Busy)),
+                        &mut effects,
+                    );
+                    if effects
+                        .iter()
+                        .any(|effect| matches!(effect, CallEffect::StopRingtone(_)))
+                    {
+                        self.ringtone_deadline = now_ms.saturating_add(self.operation_timeout_ms);
+                    }
+                    return effects;
+                }
                 if !policy::audible(&self.mode) {
                     self.stop_ring(&mut effects);
                 } else if self.phase() == Some(CallPhase::Ringing)
@@ -476,6 +517,7 @@ impl CallManager {
         &mut self,
         key: SessionKey,
         address: String,
+        contact: ContactIdentity,
         incoming: bool,
         now: u64,
         effects: &mut Vec<CallEffect>,
@@ -483,6 +525,8 @@ impl CallManager {
         self.activity_generation = self.activity_generation.saturating_add(1);
         self.owned = Some(Owned {
             key: key.clone(),
+            contact,
+            answer_dispatched: false,
             phase: CallPhase::Preparing,
             incoming,
             address,
@@ -512,7 +556,8 @@ impl CallManager {
         effects.push(CallEffect::Publish);
     }
     fn dispatch_answer(&mut self, effects: &mut Vec<CallEffect>) {
-        let s = self.owned.as_ref().unwrap();
+        let s = self.owned.as_mut().unwrap();
+        s.answer_dispatched = true;
         effects.push(CallEffect::Transport(CallCommand {
             key: s.key.clone(),
             action: CallAction::Answer,

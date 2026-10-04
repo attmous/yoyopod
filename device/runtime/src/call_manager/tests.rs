@@ -641,3 +641,313 @@ fn stop_completion_retires_late_start_result() {
         .is_empty());
     assert_eq!(m.phase(), Some(CallPhase::Answering));
 }
+fn ordinary_preparing() -> CallManager {
+    let mut m = CallManager::new(DeviceMode::Normal, 8_000, 30_000);
+    m.handle(offer("a"), &context(false), 0);
+    m
+}
+fn busy(key: SessionKey) -> CallEffect {
+    CallEffect::Transport(CallCommand {
+        key,
+        action: CallAction::Reject(RejectReason::Busy),
+    })
+}
+#[test]
+fn dnd_ordinary_preparing_terminates_busy() {
+    let mut m = ordinary_preparing();
+    let e = m.handle(
+        CallManagerEvent::SetMode(DeviceMode::DoNotDisturb),
+        &context(false),
+        1,
+    );
+    assert_eq!(e, vec![busy(key("a")), CallEffect::Publish]);
+    assert_eq!(m.phase(), Some(CallPhase::Ending));
+    assert_eq!(m.session(), Some(&key("a")));
+}
+#[test]
+fn dnd_ordinary_ringing_terminates_busy() {
+    let mut m = ordinary_preparing();
+    m.handle(
+        CallManagerEvent::AudioPrepared {
+            key: key("a"),
+            ok: true,
+        },
+        &context(false),
+        1,
+    );
+    let e = m.handle(
+        CallManagerEvent::SetMode(DeviceMode::DoNotDisturb),
+        &context(false),
+        2,
+    );
+    assert_eq!(
+        e,
+        vec![
+            CallEffect::StopRingtone(RingtoneRequest { key: key("a") }),
+            busy(key("a")),
+            CallEffect::Publish
+        ]
+    );
+    assert_eq!(m.phase(), Some(CallPhase::Ending));
+}
+#[test]
+fn dnd_cancels_queued_answer_before_preparation_finishes() {
+    let mut m = ordinary_preparing();
+    action(&mut m, CallAction::Answer);
+    m.handle(
+        CallManagerEvent::SetMode(DeviceMode::DoNotDisturb),
+        &context(false),
+        3,
+    );
+    assert!(m
+        .handle(
+            CallManagerEvent::AudioPrepared {
+                key: key("a"),
+                ok: true
+            },
+            &context(false),
+            4
+        )
+        .is_empty());
+    assert_eq!(m.phase(), Some(CallPhase::Ending));
+}
+#[test]
+fn dnd_cancels_answer_waiting_for_ringtone_release() {
+    let mut m = ordinary_preparing();
+    m.handle(
+        CallManagerEvent::AudioPrepared {
+            key: key("a"),
+            ok: true,
+        },
+        &context(false),
+        1,
+    );
+    action(&mut m, CallAction::Answer);
+    let e = m.handle(
+        CallManagerEvent::SetMode(DeviceMode::DoNotDisturb),
+        &context(false),
+        3,
+    );
+    assert_eq!(e, vec![busy(key("a")), CallEffect::Publish]);
+    assert!(m
+        .handle(
+            CallManagerEvent::RingtoneStopped {
+                key: key("a"),
+                ok: true
+            },
+            &context(false),
+            4
+        )
+        .is_empty());
+    assert_eq!(m.phase(), Some(CallPhase::Ending));
+}
+#[test]
+fn dnd_keeps_already_dispatched_ordinary_answer() {
+    let mut m = CallManager::new(DeviceMode::Silent, 8_000, 30_000);
+    m.handle(offer("a"), &context(false), 0);
+    m.handle(
+        CallManagerEvent::AudioPrepared {
+            key: key("a"),
+            ok: true,
+        },
+        &context(false),
+        1,
+    );
+    action(&mut m, CallAction::Answer);
+    assert_eq!(
+        m.handle(
+            CallManagerEvent::SetMode(DeviceMode::DoNotDisturb),
+            &context(false),
+            3
+        ),
+        vec![CallEffect::Publish]
+    );
+    assert_eq!(m.phase(), Some(CallPhase::Answering));
+}
+#[test]
+fn dnd_uses_admitted_priority_despite_directory_edits() {
+    let mut ordinary = ordinary_preparing();
+    ordinary.handle(
+        CallManagerEvent::SetMode(DeviceMode::DoNotDisturb),
+        &context(true),
+        1,
+    );
+    assert_eq!(ordinary.phase(), Some(CallPhase::Ending));
+    let mut priority = CallManager::new(DeviceMode::Normal, 8_000, 30_000);
+    priority.handle(offer("a"), &context(true), 0);
+    priority.handle(
+        CallManagerEvent::SetMode(DeviceMode::DoNotDisturb),
+        &context(false),
+        1,
+    );
+    assert_eq!(priority.phase(), Some(CallPhase::Preparing));
+}
+#[test]
+fn known_dnd_offer_has_only_busy_rejection() {
+    let mut m = CallManager::new(DeviceMode::DoNotDisturb, 8_000, 30_000);
+    assert_eq!(
+        m.handle(offer("a"), &context(false), 0),
+        vec![busy(key("a"))]
+    );
+    assert!(m.session().is_none());
+}
+#[test]
+fn known_shutdown_offer_has_only_busy_rejection() {
+    let mut m = CallManager::new(DeviceMode::Normal, 8_000, 30_000);
+    let mut c = context(false);
+    c.shutdown = true;
+    assert_eq!(m.handle(offer("a"), &c, 0), vec![busy(key("a"))]);
+    m.handle(CallManagerEvent::Shutdown, &context(false), 1);
+    assert_eq!(
+        m.handle(offer("b"), &context(false), 2),
+        vec![busy(key("b"))]
+    );
+}
+#[test]
+fn known_second_ordinary_dnd_offer_has_only_busy_rejection() {
+    let mut m = CallManager::new(DeviceMode::DoNotDisturb, 8_000, 30_000);
+    m.handle(offer("a"), &context(true), 0);
+    assert_eq!(
+        m.handle(offer("b"), &context(false), 1),
+        vec![busy(key("b"))]
+    );
+    assert_eq!(m.session(), Some(&key("a")));
+}
+#[test]
+fn unknown_shutdown_offer_still_has_only_unapproved_rejection() {
+    let mut m = CallManager::new(DeviceMode::DoNotDisturb, 8_000, 30_000);
+    let mut c = context(false);
+    c.shutdown = true;
+    let e = m.handle(
+        CallManagerEvent::Offer(CallOffer {
+            key: key("a"),
+            address: "sip:stranger@example.test".into(),
+        }),
+        &c,
+        0,
+    );
+    assert_eq!(
+        e,
+        vec![CallEffect::Transport(CallCommand {
+            key: key("a"),
+            action: CallAction::Reject(RejectReason::Unapproved)
+        })]
+    );
+}
+#[test]
+fn canonical_national_numbers_match_without_country_guessing() {
+    let mut c = context(false);
+    c.contacts[0].phone_number = "0123456".into();
+    assert!(identity::match_contact(CallTransport::Gsm, "(012) 34-56", &c.contacts).is_some());
+    for value in ["123456", "+49123456", "0049123456"] {
+        assert!(identity::match_contact(CallTransport::Gsm, value, &c.contacts).is_none());
+    }
+    c.contacts[0].phone_number = "123".into();
+    assert!(identity::match_contact(CallTransport::Gsm, "123", &c.contacts).is_some());
+}
+#[test]
+fn malformed_phone_numbers_are_not_identities() {
+    let mut c = context(false);
+    for value in ["", "+", "() - .", "++123", "12+34", "12x34"] {
+        c.contacts[0].phone_number = value.into();
+        assert!(identity::match_contact(CallTransport::Gsm, value, &c.contacts).is_none());
+    }
+}
+#[test]
+fn admitted_identity_is_stable_snapshot() {
+    let mut m = ordinary_preparing();
+    let original = m.admitted_identity().unwrap().clone();
+    let mut edited = context(true);
+    edited.contacts[0].name = "Changed".into();
+    edited.contacts[0].sip_address = "sip:other@example.test".into();
+    m.handle(CallManagerEvent::SetMode(DeviceMode::Silent), &edited, 1);
+    assert_eq!(m.admitted_identity(), Some(&original));
+}
+#[test]
+fn dnd_preserves_active_ordinary_and_outgoing() {
+    let mut active = CallManager::new(DeviceMode::Silent, 8_000, 30_000);
+    active.handle(offer("a"), &context(false), 0);
+    active.handle(
+        CallManagerEvent::AudioPrepared {
+            key: key("a"),
+            ok: true,
+        },
+        &context(false),
+        1,
+    );
+    action(&mut active, CallAction::Answer);
+    active.handle(update(CallPhase::Active, 1), &context(false), 3);
+    assert_eq!(
+        active.handle(
+            CallManagerEvent::SetMode(DeviceMode::DoNotDisturb),
+            &context(false),
+            4
+        ),
+        vec![CallEffect::Publish]
+    );
+    assert_eq!(active.phase(), Some(CallPhase::Active));
+    let mut outgoing = CallManager::new(DeviceMode::Normal, 8_000, 30_000);
+    outgoing.handle(
+        CallManagerEvent::RequestOutgoing {
+            key: key("a"),
+            contact_id: "dad".into(),
+            address: "sip:dad@example.test".into(),
+        },
+        &context(false),
+        0,
+    );
+    assert_eq!(
+        outgoing.handle(
+            CallManagerEvent::SetMode(DeviceMode::DoNotDisturb),
+            &context(false),
+            1
+        ),
+        vec![CallEffect::Publish]
+    );
+    assert_eq!(outgoing.phase(), Some(CallPhase::Preparing));
+}
+#[test]
+fn silent_stops_and_normal_restarts_pending_ordinary_alert() {
+    let mut m = ordinary_preparing();
+    m.handle(
+        CallManagerEvent::AudioPrepared {
+            key: key("a"),
+            ok: true,
+        },
+        &context(false),
+        1,
+    );
+    let e = m.handle(
+        CallManagerEvent::SetMode(DeviceMode::Silent),
+        &context(false),
+        2,
+    );
+    assert_eq!(
+        e,
+        vec![
+            CallEffect::StopRingtone(RingtoneRequest { key: key("a") }),
+            CallEffect::Publish
+        ]
+    );
+    m.handle(
+        CallManagerEvent::RingtoneStopped {
+            key: key("a"),
+            ok: true,
+        },
+        &context(false),
+        3,
+    );
+    let e = m.handle(
+        CallManagerEvent::SetMode(DeviceMode::Normal),
+        &context(false),
+        4,
+    );
+    assert_eq!(
+        e,
+        vec![
+            CallEffect::StartRingtone(RingtoneRequest { key: key("a") }),
+            CallEffect::Publish
+        ]
+    );
+    assert_eq!(m.phase(), Some(CallPhase::Ringing));
+}
