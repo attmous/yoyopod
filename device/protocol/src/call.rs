@@ -7,9 +7,10 @@ pub enum CallTransport {
     Sip,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum DeviceMode {
+    #[default]
     Normal,
     Silent,
     DoNotDisturb,
@@ -52,11 +53,6 @@ pub enum CallAction {
     SetMute(bool),
 }
 
-impl Default for DeviceMode {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 /// Worker-owned identity for one call in one supervised worker generation.
 /// All fields are required on the wire; `call_id` must contain non-whitespace text.
