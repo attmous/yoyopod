@@ -49,6 +49,19 @@ impl Default for RecoveryPolicy {
 }
 
 const DEFAULT_LIVE_FACT_POLL_INTERVAL_MS: u64 = 5_000;
+const LOCATION_REQUEST_POLL_INTERVAL: Duration = Duration::from_secs(1);
+
+#[derive(Debug)]
+struct PendingLocationRequest {
+    command_id: String,
+    deadline: Instant,
+}
+
+#[derive(Debug)]
+pub struct LocationRequestResult {
+    pub command_id: String,
+    pub result: Result<LocationFixEvent, RuntimeCommandError>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeCommandError {
@@ -75,6 +88,9 @@ pub struct NetworkRuntime<C> {
     last_live_fact_poll_at_ms: Option<u64>,
     pending_snapshots: VecDeque<NetworkRuntimeSnapshot>,
     pending_location_events: VecDeque<LocationFixEvent>,
+    pending_location_requests: VecDeque<PendingLocationRequest>,
+    pending_location_results: VecDeque<LocationRequestResult>,
+    last_location_request_poll: Option<Instant>,
     last_published_snapshot: Option<NetworkRuntimeSnapshot>,
     tracking: TrackingEngine,
     voice_suspended: bool,
@@ -128,6 +144,9 @@ where
             last_live_fact_poll_at_ms: None,
             pending_snapshots: VecDeque::new(),
             pending_location_events: VecDeque::new(),
+            pending_location_requests: VecDeque::new(),
+            pending_location_results: VecDeque::new(),
+            last_location_request_poll: None,
             last_published_snapshot: None,
             tracking: TrackingEngine::default(),
             voice_suspended: false,
@@ -152,6 +171,7 @@ where
             .suspend_for_voice()
             .map_err(RuntimeCommandError::from_modem_error)?;
         self.voice_suspended = true;
+        self.fail_location_requests(Self::voice_busy_error());
         self.clear_ppp();
         self.snapshot.state = if self.snapshot.registered {
             NetworkLifecycleState::Registered
@@ -230,6 +250,10 @@ where
         self.pending_location_events.drain(..).collect()
     }
 
+    pub fn drain_location_results(&mut self) -> Vec<LocationRequestResult> {
+        self.pending_location_results.drain(..).collect()
+    }
+
     pub fn start(&mut self) -> &NetworkRuntimeSnapshot {
         self.start_at(now_ms())
     }
@@ -277,7 +301,11 @@ where
             let _ = self.poll_ppp_health(now_ms, false);
             let _ = self.refresh_live_facts_if_due(now_ms, false);
         }
-        self.sample_location_if_due(now_ms);
+        let acquiring_location = !self.pending_location_requests.is_empty();
+        self.poll_location_requests_at(now_ms, Instant::now());
+        if !acquiring_location {
+            self.sample_location_if_due(now_ms);
+        }
 
         if self.snapshot.retryable
             && self
@@ -348,35 +376,111 @@ where
         &mut self,
         command_id: String,
         timeout: Duration,
-    ) -> Result<LocationFixEvent, RuntimeCommandError> {
+    ) -> Result<(), RuntimeCommandError> {
+        self.request_location_at(command_id, timeout, Instant::now())
+    }
+
+    fn request_location_at(
+        &mut self,
+        command_id: String,
+        timeout: Duration,
+        now: Instant,
+    ) -> Result<(), RuntimeCommandError> {
         self.require_data_access()?;
+        if !self.config.enabled {
+            return Err(RuntimeCommandError {
+                code: "network_disabled".to_string(),
+                message: "Cellular networking is disabled".to_string(),
+            });
+        }
         if !self.config.gps_enabled {
             return Err(RuntimeCommandError {
                 code: "gps_disabled".to_string(),
                 message: "GNSS is disabled".to_string(),
             });
         }
-        let started = Instant::now();
-        loop {
-            match self.read_gps_fix_at(now_ms())? {
-                Some(fix) => {
-                    return Ok(LocationFixEvent::from_gps(
-                        &fix,
-                        Uuid::new_v4().to_string(),
-                        "on_demand",
-                        Some(command_id),
-                        current_rfc3339(),
-                    ));
-                }
-                None if started.elapsed() >= timeout => {
-                    return Err(RuntimeCommandError {
-                        code: "gps_fix_timeout".to_string(),
-                        message: "No valid GNSS fix was acquired before the request timed out"
-                            .to_string(),
+        if self
+            .pending_location_requests
+            .iter()
+            .any(|request| request.command_id == command_id)
+        {
+            return Err(RuntimeCommandError {
+                code: "location_request_pending".to_string(),
+                message: "This location request is already pending".to_string(),
+            });
+        }
+        if self.pending_location_requests.is_empty() {
+            self.last_location_request_poll = None;
+        }
+        self.pending_location_requests
+            .push_back(PendingLocationRequest {
+                command_id,
+                deadline: now + timeout,
+            });
+        Ok(())
+    }
+
+    fn poll_location_requests_at(&mut self, now_ms: u64, now: Instant) {
+        // Acquisition spans worker ticks. Never wait/sleep for a fix here:
+        // stdin must remain available for call controls and other commands.
+        let mut pending = VecDeque::new();
+        for request in self.pending_location_requests.drain(..) {
+            if now >= request.deadline {
+                self.pending_location_results
+                    .push_back(LocationRequestResult {
+                        command_id: request.command_id,
+                        result: Err(RuntimeCommandError {
+                            code: "gps_fix_timeout".to_string(),
+                            message: "No valid GNSS fix was acquired before the request timed out"
+                                .to_string(),
+                        }),
                     });
-                }
-                None => std::thread::sleep(Duration::from_secs(1)),
+            } else {
+                pending.push_back(request);
             }
+        }
+        self.pending_location_requests = pending;
+        if self.pending_location_requests.is_empty()
+            || self.voice_suspended
+            || self.last_location_request_poll.is_some_and(|last| {
+                now.saturating_duration_since(last) < LOCATION_REQUEST_POLL_INTERVAL
+            })
+        {
+            return;
+        }
+        self.last_location_request_poll = Some(now);
+        match self.read_gps_fix_at(now_ms) {
+            Ok(Some(fix)) => {
+                for request in self.pending_location_requests.drain(..) {
+                    self.pending_location_results
+                        .push_back(LocationRequestResult {
+                            command_id: request.command_id.clone(),
+                            result: Ok(LocationFixEvent::from_gps(
+                                &fix,
+                                Uuid::new_v4().to_string(),
+                                "on_demand",
+                                Some(request.command_id),
+                                current_rfc3339(),
+                            )),
+                        });
+                }
+            }
+            Ok(None) => {}
+            Err(error) => self.fail_location_requests(error),
+        }
+    }
+
+    pub fn poll_location_requests(&mut self) {
+        self.poll_location_requests_at(now_ms(), Instant::now());
+    }
+
+    fn fail_location_requests(&mut self, error: RuntimeCommandError) {
+        for request in self.pending_location_requests.drain(..) {
+            self.pending_location_results
+                .push_back(LocationRequestResult {
+                    command_id: request.command_id,
+                    result: Err(error.clone()),
+                });
         }
     }
 
@@ -399,6 +503,10 @@ where
     }
 
     pub fn shutdown_at(&mut self, now_ms: u64) -> &NetworkRuntimeSnapshot {
+        self.fail_location_requests(RuntimeCommandError {
+            code: "network_stopped".to_string(),
+            message: "The network worker stopped before acquiring a location".to_string(),
+        });
         self.voice_suspended = false;
         if self.snapshot.ppp.up {
             self.snapshot.state = NetworkLifecycleState::PppStopping;
@@ -733,6 +841,9 @@ impl NetworkRuntime<NoopModemController> {
             last_live_fact_poll_at_ms: None,
             pending_snapshots: VecDeque::new(),
             pending_location_events: VecDeque::new(),
+            pending_location_requests: VecDeque::new(),
+            pending_location_results: VecDeque::new(),
+            last_location_request_poll: None,
             last_published_snapshot: None,
             tracking: TrackingEngine::default(),
             voice_suspended: false,
@@ -857,6 +968,7 @@ mod tests {
         calls: Vec<&'static str>,
         fail_suspend: bool,
         unregistered: bool,
+        gps_results: VecDeque<Result<Option<GpsFix>, ModemError>>,
     }
 
     impl ModemController for RecordingController {
@@ -910,7 +1022,7 @@ mod tests {
         }
         fn query_gps(&mut self) -> Result<Option<GpsFix>, ModemError> {
             self.calls.push("gps");
-            Ok(None)
+            self.gps_results.pop_front().unwrap_or(Ok(None))
         }
         fn reset(&mut self) -> Result<(), ModemError> {
             self.calls.push("reset/CFUN");
@@ -924,6 +1036,222 @@ mod tests {
                 Ok(())
             }
         }
+    }
+
+    #[test]
+    fn location_acquisition_returns_control_before_gsm_handoff() {
+        let config = NetworkHostConfig {
+            enabled: true,
+            gps_enabled: true,
+            ..Default::default()
+        };
+        let mut runtime = NetworkRuntime::new("config", config, RecordingController::default());
+        let result =
+            runtime.request_location_command("location-1".into(), Duration::from_millis(1));
+        assert!(
+            result.is_ok(),
+            "location acquisition must be queued, not awaited: {result:?}"
+        );
+        assert!(
+            runtime.controller.calls.is_empty(),
+            "enqueuing a location must not query GNSS"
+        );
+        runtime.suspend_for_voice_command().unwrap();
+        assert_eq!(runtime.controller.calls, ["suspend/release_AT"]);
+        let results = runtime.drain_location_results();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].command_id, "location-1");
+        assert_eq!(
+            results[0].result.as_ref().unwrap_err().code,
+            "gsm_call_in_progress"
+        );
+        runtime.tick_at(u64::MAX);
+        assert_eq!(runtime.controller.calls, ["suspend/release_AT"]);
+        assert!(runtime.drain_location_results().is_empty());
+    }
+
+    fn location_runtime() -> NetworkRuntime<RecordingController> {
+        NetworkRuntime::new(
+            "config",
+            NetworkHostConfig {
+                enabled: true,
+                gps_enabled: true,
+                ..Default::default()
+            },
+            RecordingController::default(),
+        )
+    }
+
+    #[test]
+    fn location_ticks_retry_at_one_second_and_timeout_each_request_once() {
+        let mut runtime = location_runtime();
+        let now = Instant::now();
+        runtime
+            .request_location_at(
+                "first".into(),
+                Duration::from_secs(90),
+                now + Duration::from_secs(1),
+            )
+            .unwrap();
+        runtime
+            .request_location_at(
+                "second".into(),
+                Duration::from_secs(90),
+                now + Duration::from_secs(2),
+            )
+            .unwrap();
+        for time in [2_000, 2_100, 2_999, 3_000] {
+            runtime.poll_location_requests_at(time, now + Duration::from_millis(time));
+        }
+        assert_eq!(runtime.controller.calls, ["gps", "gps"]);
+        assert!(runtime.drain_location_results().is_empty());
+        runtime.poll_location_requests_at(91_000, now + Duration::from_millis(91_000));
+        let results = runtime.drain_location_results();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].command_id, "first");
+        assert_eq!(
+            results[0].result.as_ref().unwrap_err().code,
+            "gps_fix_timeout"
+        );
+        runtime.poll_location_requests_at(92_000, now + Duration::from_millis(92_000));
+        let results = runtime.drain_location_results();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].command_id, "second");
+        assert_eq!(
+            results[0].result.as_ref().unwrap_err().code,
+            "gps_fix_timeout"
+        );
+        runtime.poll_location_requests_at(93_000, now + Duration::from_millis(93_000));
+        assert!(runtime.drain_location_results().is_empty());
+    }
+
+    #[test]
+    fn location_fix_completes_all_pending_requests_with_distinct_correlated_fixes() {
+        let mut runtime = location_runtime();
+        let now = Instant::now();
+        runtime.controller.gps_results.push_back(Ok(None));
+        runtime.controller.gps_results.push_back(Ok(Some(GpsFix {
+            lat: 52.5,
+            lng: 13.4,
+            altitude: 40.0,
+            speed: 0.0,
+            timestamp: None,
+        })));
+        for id in ["first", "second"] {
+            runtime
+                .request_location_at(
+                    id.into(),
+                    Duration::from_secs(90),
+                    now + Duration::from_secs(1),
+                )
+                .unwrap();
+        }
+        runtime.poll_location_requests_at(1_000, now + Duration::from_millis(1_000));
+        assert!(runtime.drain_location_results().is_empty());
+        runtime.poll_location_requests_at(2_000, now + Duration::from_millis(2_000));
+        let results = runtime.drain_location_results();
+        assert_eq!(results.len(), 2);
+        for (result, id) in results.iter().zip(["first", "second"]) {
+            let fix = result.result.as_ref().unwrap();
+            assert_eq!(result.command_id, id);
+            assert_eq!(fix.command_id.as_deref(), Some(id));
+            assert_eq!(fix.reason, "on_demand");
+            assert_eq!(fix.latitude, 52.5);
+        }
+        assert_ne!(
+            results[0].result.as_ref().unwrap().fix_id,
+            results[1].result.as_ref().unwrap().fix_id
+        );
+        runtime.poll_location_requests_at(3_000, now + Duration::from_millis(3_000));
+        assert!(runtime.drain_location_results().is_empty());
+        assert_eq!(runtime.controller.calls, ["gps", "gps"]);
+    }
+
+    #[test]
+    fn pending_location_failures_remain_correlated_for_modem_error_and_shutdown() {
+        let mut runtime = location_runtime();
+        let now = Instant::now();
+        runtime
+            .request_location_at(
+                "modem-error".into(),
+                Duration::from_secs(90),
+                now + Duration::from_secs(1),
+            )
+            .unwrap();
+        runtime
+            .controller
+            .gps_results
+            .push_back(Err(ModemError::fatal("serial_error", "AT failed")));
+        runtime.poll_location_requests_at(1_000, now + Duration::from_millis(1_000));
+        let results = runtime.drain_location_results();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].command_id, "modem-error");
+        assert_eq!(results[0].result.as_ref().unwrap_err().code, "serial_error");
+        runtime
+            .request_location_at(
+                "shutdown".into(),
+                Duration::from_secs(90),
+                now + Duration::from_secs(2),
+            )
+            .unwrap();
+        runtime.shutdown_at(2_100);
+        let results = runtime.drain_location_results();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].command_id, "shutdown");
+        assert_eq!(
+            results[0].result.as_ref().unwrap_err().code,
+            "network_stopped"
+        );
+        assert!(runtime.drain_location_results().is_empty());
+    }
+
+    #[test]
+    fn disabled_gnss_and_duplicate_location_requests_are_rejected_without_io() {
+        let mut runtime = location_runtime();
+        let now = Instant::now();
+        runtime
+            .request_location_at(
+                "first".into(),
+                Duration::from_secs(90),
+                now + Duration::from_secs(1),
+            )
+            .unwrap();
+        assert_eq!(
+            runtime
+                .request_location_at(
+                    "first".into(),
+                    Duration::from_secs(90),
+                    now + Duration::from_secs(1)
+                )
+                .unwrap_err()
+                .code,
+            "location_request_pending"
+        );
+        runtime.config.gps_enabled = false;
+        assert_eq!(
+            runtime
+                .request_location_at(
+                    "disabled-gps".into(),
+                    Duration::from_secs(90),
+                    now + Duration::from_secs(1)
+                )
+                .unwrap_err()
+                .code,
+            "gps_disabled"
+        );
+        runtime.config.enabled = false;
+        assert_eq!(
+            runtime
+                .request_location_at(
+                    "disabled-network".into(),
+                    Duration::from_secs(90),
+                    now + Duration::from_secs(1)
+                )
+                .unwrap_err()
+                .code,
+            "network_disabled"
+        );
+        assert!(runtime.controller.calls.is_empty());
     }
 
     #[test]

@@ -417,6 +417,10 @@ where
                 break;
             }
         }
+        // Keep pending acquisition moving even when normal commands arrive
+        // more often than recv_timeout's idle interval. Each poll returns.
+        runtime.poll_location_requests();
+        emit_pending_snapshots(output, &mut runtime)?;
     }
 
     Ok(())
@@ -561,10 +565,7 @@ where
                 return Ok(LoopControl::Continue);
             };
             match runtime.request_location_command(command_id, Duration::from_secs(90)) {
-                Ok(fix) => {
-                    write_envelope(output, &location_fix_event(&fix))?;
-                    write_envelope(output, &location_result(envelope.request_id, &fix))?;
-                }
+                Ok(()) => {}
                 Err(error) => emit_command_error(output, envelope.request_id, error)?,
             }
             emit_pending_snapshots(output, runtime)?;
@@ -1250,6 +1251,16 @@ where
     for fix in runtime.drain_location_events() {
         write_envelope(output, &location_fix_event(&fix))?;
     }
+    for completion in runtime.drain_location_results() {
+        let request_id = Some(completion.command_id);
+        match completion.result {
+            Ok(fix) => {
+                write_envelope(output, &location_fix_event(&fix))?;
+                write_envelope(output, &location_result(request_id, &fix))?;
+            }
+            Err(error) => emit_command_error(output, request_id, error)?,
+        }
+    }
     Ok(())
 }
 
@@ -1316,6 +1327,240 @@ mod tests {
         WifiSecurity, WifiState, WifiStateStatus,
     };
     use std::io::Cursor;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct NoFixModem {
+        gps_queries: Arc<Mutex<usize>>,
+        fix: Option<crate::gps::GpsFix>,
+    }
+
+    impl ModemController for NoFixModem {
+        fn open(&mut self) -> Result<(), crate::modem::ModemError> {
+            Ok(())
+        }
+        fn close(&mut self) -> Result<(), crate::modem::ModemError> {
+            Ok(())
+        }
+        fn probe(&mut self) -> Result<bool, crate::modem::ModemError> {
+            Ok(true)
+        }
+        fn initialize(
+            &mut self,
+            _: bool,
+        ) -> Result<crate::modem::ModemRegistration, crate::modem::ModemError> {
+            self.refresh_facts()
+        }
+        fn refresh_facts(
+            &mut self,
+        ) -> Result<crate::modem::ModemRegistration, crate::modem::ModemError> {
+            Ok(crate::modem::ModemRegistration {
+                sim_ready: true,
+                registered: true,
+                carrier: "Test".into(),
+                network_type: "LTE".into(),
+                signal_csq: Some(26),
+            })
+        }
+        fn start_ppp(
+            &mut self,
+            _: Option<&str>,
+            _: u64,
+        ) -> Result<crate::modem::PppLink, crate::modem::ModemError> {
+            Ok(crate::modem::PppLink {
+                interface: "ppp0".into(),
+                pid: None,
+                default_route_owned: false,
+            })
+        }
+        fn stop_ppp(&mut self) -> Result<(), crate::modem::ModemError> {
+            Ok(())
+        }
+        fn ppp_health(&mut self) -> Result<crate::modem::PppHealth, crate::modem::ModemError> {
+            Ok(crate::modem::PppHealth::Up(self.start_ppp(None, 0)?))
+        }
+        fn query_gps(&mut self) -> Result<Option<crate::gps::GpsFix>, crate::modem::ModemError> {
+            *self.gps_queries.lock().unwrap() += 1;
+            Ok(self.fix.clone())
+        }
+        fn reset(&mut self) -> Result<(), crate::modem::ModemError> {
+            Ok(())
+        }
+        fn suspend_for_voice(&mut self) -> Result<(), crate::modem::ModemError> {
+            Ok(())
+        }
+    }
+
+    struct RecordingGsmBackend(Arc<Mutex<Vec<String>>>);
+
+    impl crate::gsm::GsmBackend for RecordingGsmBackend {
+        fn refresh(&mut self) -> Result<crate::gsm::GsmCallState> {
+            Ok(crate::gsm::GsmCallState {
+                available: true,
+                ..Default::default()
+            })
+        }
+        fn dial(&mut self, number: &str) -> Result<()> {
+            self.0.lock().unwrap().push(format!("dial:{number}"));
+            Ok(())
+        }
+        fn hangup(&mut self) -> Result<()> {
+            self.0.lock().unwrap().push("hangup".into());
+            Ok(())
+        }
+        fn mute(&mut self, muted: bool) -> Result<()> {
+            self.0.lock().unwrap().push(format!("mute:{muted}"));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn no_fix_location_does_not_delay_wifi_or_gsm_commands() {
+        let config_dir = tempfile::tempdir().unwrap();
+        let modem = NoFixModem::default();
+        let gps_queries = modem.gps_queries.clone();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let (tx, rx) = mpsc::channel();
+        for (message_type, id, payload) in [
+            (
+                "network.request_location",
+                "location",
+                serde_json::json!({}),
+            ),
+            ("wifi_refresh", "wifi", serde_json::json!({})),
+            (
+                "gsm.dial",
+                "dial",
+                serde_json::json!({"number": "+49123456789"}),
+            ),
+            ("gsm.set_mute", "mute", serde_json::json!({"muted": true})),
+            ("gsm.hangup", "hangup", serde_json::json!({})),
+            ("worker.stop", "stop", serde_json::json!({})),
+        ] {
+            tx.send(Ok(String::from_utf8(
+                WorkerEnvelope::command(message_type, Some(id.into()), payload)
+                    .encode()
+                    .unwrap(),
+            )
+            .unwrap()))
+                .unwrap();
+        }
+        drop(tx);
+        let mut output = Vec::new();
+        run_with_runtime_loop(
+            NetworkRuntime::new(
+                config_dir.path().display().to_string(),
+                NetworkHostConfig {
+                    enabled: true,
+                    gps_enabled: true,
+                    ..Default::default()
+                },
+                modem,
+            ),
+            rx,
+            &mut output,
+            Duration::from_millis(1),
+            Box::new(FakeWifiController {
+                state: fake_state(),
+                fail_scan: false,
+                pending_change: false,
+            }),
+            Box::new(UnavailableBluetoothController),
+            AudioManager::open(config_dir.path().to_str().unwrap()),
+            Some(GsmWorker::with_backend(RecordingGsmBackend(calls.clone()))),
+        )
+        .unwrap();
+        let envelopes: Vec<_> = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| WorkerEnvelope::decode(line.as_bytes()).unwrap())
+            .collect();
+        assert!(envelopes
+            .iter()
+            .any(|envelope| envelope.kind == EnvelopeKind::Result
+                && envelope.request_id.as_deref() == Some("wifi")));
+        let location: Vec<_> = envelopes
+            .iter()
+            .filter(|envelope| envelope.request_id.as_deref() == Some("location"))
+            .collect();
+        assert_eq!(location.len(), 1);
+        assert_eq!(location[0].kind, EnvelopeKind::Error);
+        assert_eq!(
+            location[0].payload["code"].as_str().unwrap(),
+            "gsm_call_in_progress"
+        );
+        assert!(*gps_queries.lock().unwrap() >= 1);
+        assert!(calls.lock().unwrap().starts_with(&[
+            "dial:+49123456789".into(),
+            "mute:true".into(),
+            "hangup".into()
+        ]));
+    }
+
+    #[test]
+    fn deferred_location_fix_event_precedes_its_correlated_success_result() {
+        let config_dir = tempfile::tempdir().unwrap();
+        let modem = NoFixModem {
+            fix: Some(crate::gps::GpsFix {
+                lat: 52.5,
+                lng: 13.4,
+                altitude: 40.0,
+                speed: 0.0,
+                timestamp: None,
+            }),
+            ..Default::default()
+        };
+        let (tx, rx) = mpsc::channel();
+        for (message_type, id) in [
+            ("network.request_location", "location"),
+            ("worker.stop", "stop"),
+        ] {
+            tx.send(Ok(String::from_utf8(
+                WorkerEnvelope::command(message_type, Some(id.into()), serde_json::json!({}))
+                    .encode()
+                    .unwrap(),
+            )
+            .unwrap()))
+                .unwrap();
+        }
+        drop(tx);
+        let mut output = Vec::new();
+        run_with_runtime_loop(
+            NetworkRuntime::new(
+                config_dir.path().display().to_string(),
+                NetworkHostConfig {
+                    enabled: true,
+                    gps_enabled: true,
+                    ..Default::default()
+                },
+                modem,
+            ),
+            rx,
+            &mut output,
+            Duration::from_millis(1),
+            Box::new(UnavailableWifiController),
+            Box::new(UnavailableBluetoothController),
+            AudioManager::open(config_dir.path().to_str().unwrap()),
+            None,
+        )
+        .unwrap();
+        let envelopes: Vec<_> = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| WorkerEnvelope::decode(line.as_bytes()).unwrap())
+            .filter(|envelope| envelope.message_type == "network.location")
+            .collect();
+        assert_eq!(envelopes.len(), 2);
+        assert_eq!(envelopes[0].kind, EnvelopeKind::Event);
+        assert_eq!(envelopes[0].payload["commandId"], "location");
+        assert_eq!(envelopes[0].payload["reason"], "on_demand");
+        assert_eq!(envelopes[1].kind, EnvelopeKind::Result);
+        assert_eq!(envelopes[1].request_id.as_deref(), Some("location"));
+        assert_eq!(
+            envelopes[1].payload["fix_id"],
+            envelopes[0].payload["fixId"]
+        );
+    }
 
     #[test]
     fn stale_idle_does_not_resume_data_before_dial_acknowledgement() {
