@@ -17,7 +17,7 @@ The user agreed to the following policies during brainstorming:
 | --- | --- |
 | Unknown, withheld, or unmatchable caller | Reject immediately and silently; do not wake the display, ring, pause playback, or interrupt recording. |
 | A call is ringing, preparing, connecting, active, or ending | Reject an additional call as busy and preserve the existing session, across either transport. |
-| Saved caller and no call in progress | Admit, interrupt competing activities, wake the display, and show the incoming-call screen immediately. |
+| Saved caller and no call in progress | Apply device mode and priority policy; if admitted, interrupt competing activities, wake the display, and show the incoming-call screen immediately. |
 | Music playing | Pause without losing the track or position; remain paused after every call outcome until the user restarts playback. |
 | Music already paused/stopped | Preserve that state. |
 | Recording or assistant activity | Interrupt it, preserve usable voice-note audio as an unsent draft, and cancel pending assistant work. Do not restart automatically. |
@@ -35,11 +35,53 @@ stale loading screen or reopen recording/assistant activity. If the prior
 screen cannot be restored, use Home. Resume ordinary display inactivity rules
 after cleanup rather than immediately blanking the restored screen.
 
+## Device modes and priority contacts
+
+Device mode is an explicit runtime policy with three values. Mode applies to
+incoming call admission and alerting; it does not mute an accepted conversation
+or prevent the user from starting an outgoing call.
+
+| Mode | Ordinary saved contact | Priority saved contact |
+| --- | --- | --- |
+| Normal | Admit with audible ringing and display wake. | Admit with audible ringing and display wake. |
+| Silent | Admit without audible ringing; wake and show Accept / Cancel. | Admit without audible ringing; wake and show Accept / Cancel. |
+| Do Not Disturb | Reject as busy without waking, ringing, or interrupting activities. | Admit without audible ringing; wake and show Accept / Cancel. |
+
+Unknown/withheld callers always fail admission in every mode. Priority never
+overrides an existing call, shutdown, or failed caller identification. An
+admitted silent call still pauses music and interrupts recording/assistant
+activity, as agreed; a mode-rejected call leaves all those activities untouched.
+Silent means no incoming-call tone, spoken caller announcement, or equivalent
+audible alert on any configured output, including Bluetooth.
+
+Represent priority as a per-contact boolean, default false, applying to all
+that contact's GSM and SIP addresses. Preserve it through contact parsing,
+storage, updates, and worker/UI snapshots wherever contact records round-trip.
+Older records with no priority field remain non-priority. Omission on replacement
+updates must not accidentally retain a previous priority grant.
+
+Expose mode selection and contact priority editing through existing device
+Settings/contact flows, with current mode visible while selecting it. Persist
+these settings using the existing settings and mutable contact ownership;
+fresh/default mode is Normal. Missing mode configuration defaults to Normal;
+malformed stored mode is reported and uses Do Not Disturb as a safe fallback.
+Do not infer mode solely from volume being zero or create a second contact store.
+Dashboard editing and synchronization are not added by this feature.
+
+Changing mode during an active call does not terminate it or mute its audio.
+For a pending incoming session, entering Silent stops audible alerts immediately.
+Entering Do Not Disturb terminates a non-priority incoming session as busy;
+a priority session remains available without sound. Returning to Normal may
+ring a still-pending admitted session after audio readiness. Once an answer has
+been dispatched, finish that operation rather than race it with a mode-change
+rejection. Mode changes never resurrect previously rejected calls. Priority
+changes apply to future offers, consistent with fixed admitted contact identity.
+
 ## Scope and exclusions
 
 This change includes incoming GSM discovery/answering, shared admission and
-session policy, controlled ringing, audio interruption, display preemption,
-and robust termination/recovery. Existing outgoing GSM/SIP calls must acquire
+session policy, device modes and priority settings, controlled ringing, audio
+interruption, display preemption, and robust termination/recovery. Existing outgoing GSM/SIP calls must acquire
 the same session ownership so incoming calls cannot disturb them.
 
 Call waiting, holding, conferencing, automatic music resume, and automatic
@@ -111,14 +153,17 @@ may transition any non-idle state to Ending. Error is an outcome with cleanup,
 not a permanent session lock.
 
 1. On an offer, reject unknown identities silently. Reject known identities
-   as busy if ownership exists or shutdown has started.
+   as busy if ownership exists or shutdown has started. Then apply device
+   mode: reject non-priority contacts as busy in Do Not Disturb; otherwise
+   admit with the audible/silent alert policy specified above.
 2. Reserve ownership atomically for an admitted offer. Capture the prior UI
    context and invalidate pending assistant/prompt results. Wake and show the
    incoming screen immediately, while audio interruption is prepared.
 3. Pause music, stop voice playback, and finalize/cancel recording without
-   sending it. Start ringing only after competing audio has released ownership.
+   sending it. Start audible ringing only in Normal mode and only after
+   competing audio has released ownership. Silent admission skips alert playback.
    Accept can be queued during preparation, but never answers before readiness.
-4. Accept stops ringing, prepares the transport/audio route, then sends a
+4. Accept stops any ringing, prepares the transport/audio route, then sends a
    targeted answer. Show Connecting until the backend confirms Active. Cancel
    targets the admitted session and enters Ending.
 5. Terminal events stop ringing, release microphone/speaker ownership, restore
@@ -169,8 +214,11 @@ by the manager. Reset focus once on a new session, not on every snapshot.
 Call gestures consume their input so they cannot trigger an underlying action.
 
 Use a default 8-second bounded deadline for each preparation/action/cleanup
-operation, matching the current runtime command timeout scale. Incoming
-ringing otherwise lasts until user action or transport termination. Deadline
+operation, matching the current runtime command timeout scale. The incoming
+decision window ends on user action, transport termination, or the configured
+`calling.ring_duration_seconds` deadline (currently 30 seconds), for both audible
+and silent offers. On expiry, terminate the incoming session and restore the UI.
+Operation deadline
 failure enters Ending and attempts targeted termination. Do not release
 ownership while a backend may still own live audio: if normal termination
 cannot be confirmed, supervised recovery of the responsible worker must
@@ -187,7 +235,9 @@ using current Rust tracing conventions; diagnostics are not synchronized call lo
 Meaningful Rust tests should verify the state machine and effects using fake
 workers: contacts matching; silent rejection without side effects; competing
 offers across both transports; outgoing ownership; pause without auto-resume;
-draft preservation; cancellation of late assistant output; display priority
+draft preservation; cancellation of late assistant output; every device-mode
+and contact-priority combination; mode changes while ringing/answering/active;
+settings persistence and missing priority fields; display priority
 and focus; remote hangup racing answer; duplicate actions; stale updates;
 deadline failures; worker restart; and shutdown.
 
@@ -198,7 +248,9 @@ commands, and observed results.
 
 On Pi, exercise known/unknown/withheld GSM and SIP callers, incoming discovery
 during packet data, Accept/Cancel with the physical button, display wake,
-music/recording/assistant interruption, simultaneous/second calls, remote
+music/recording/assistant interruption, Silent and Do Not Disturb with both
+ordinary and priority contacts, mode persistence across restart, silent output
+on built-in/Bluetooth routes, simultaneous/second calls, remote
 hangup during answering, audio-route failure, transport loss, and worker
 recovery. Confirm no audible alert or UI interruption for rejected callers,
 no disturbance of an existing call, no automatic playback restart, and correct
