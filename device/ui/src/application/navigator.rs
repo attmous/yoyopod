@@ -367,7 +367,11 @@ fn go_back_from_call_screen(runtime: &mut UiRuntime) {
 }
 
 fn emit_call_start(runtime: &mut UiRuntime, item: &ListItemSnapshot) {
-    if !item.can_call {
+    if !item.can_call
+        || !runtime.snapshot.call.contacts.iter().any(|contact| {
+            contact.id == item.id && contact.can_call && !contact.communication_unavailable
+        })
+    {
         return;
     }
     runtime

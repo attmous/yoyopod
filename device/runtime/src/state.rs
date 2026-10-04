@@ -2577,9 +2577,10 @@ fn recent_call_history_item(value: &Value, contacts: &[ListItem]) -> Option<List
 
     let outcome = string_field(value, "outcome").unwrap_or_default();
     let duration_seconds = u64_field(value, "duration_seconds").unwrap_or(0);
-    let title = contacts
+    let contact = contacts
         .iter()
-        .find(|contact| contact.id == peer_sip_address)
+        .find(|contact| contact.id == peer_sip_address);
+    let title = contact
         .map(|contact| contact.title.clone())
         .unwrap_or_else(|| peer_sip_address.clone());
     let subtitle = match outcome.as_str() {
@@ -2607,12 +2608,12 @@ fn recent_call_history_item(value: &Value, contacts: &[ListItem]) -> Option<List
         subtitle,
         icon_key: icon_key.to_string(),
         aliases: Vec::new(),
-        communication_unavailable: false,
+        communication_unavailable: contact.is_none_or(|contact| contact.communication_unavailable),
         sip_address: peer_sip_address,
         phone_number: String::new(),
         can_receive: true,
         priority: false,
-        can_call: true,
+        can_call: contact.is_some_and(|contact| contact.can_call),
     })
 }
 
@@ -3025,4 +3026,26 @@ fn worker_payload(worker: &WorkerHealth) -> Value {
         "protocol_errors": worker.protocol_errors,
         "last_reason": worker.last_reason,
     })
+}
+
+#[cfg(test)]
+mod history_permission_tests {
+    use super::*;
+    #[test]
+    fn history_requires_current_saved_call_permission() {
+        let contacts=crate::config::PeopleRuntimeConfig {contacts:crate::config::contact_configs_from_value(&json!({"contacts":[{"id":"dad","sip_address":"sip:dad@example.test","can_call":false}]}))}.to_contact_items();
+        let item = recent_call_history_item(
+            &json!({"peer_sip_address":"sip:dad@example.test"}),
+            &contacts,
+        )
+        .unwrap();
+        assert!(!item.can_call);
+        let unknown = recent_call_history_item(
+            &json!({"peer_sip_address":"sip:unknown@example.test"}),
+            &contacts,
+        )
+        .unwrap();
+        assert!(!unknown.can_call);
+        assert!(unknown.communication_unavailable);
+    }
 }

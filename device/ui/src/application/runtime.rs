@@ -2464,6 +2464,22 @@ mod tests {
     }
 
     #[test]
+    fn revoked_and_unknown_history_peers_do_not_emit_outgoing_intents() {
+        for known in [true, false] {
+            let mut dad = contact("sip:dad@example.test", "Dad");
+            let mut runtime = UiRuntime::default();
+            runtime.snapshot.call.history = vec![dad.clone()];
+            dad.can_call = false;
+            if known {
+                runtime.snapshot.call.contacts = vec![dad];
+            }
+            runtime.active_screen = UiScreen::CallHistory;
+            runtime.handle_input(InputAction::Select, 100);
+            assert!(runtime.take_intents().is_empty());
+        }
+    }
+
+    #[test]
     fn sip_choice_uses_backend_readiness_without_requiring_registration() {
         let dad = contact("sip:dad@example.test", "Dad");
         let mut runtime = UiRuntime::default();

@@ -58,6 +58,9 @@ impl Default for DeviceMode {
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Worker-owned identity for one call in one supervised worker generation.
+/// All fields are required on the wire; `call_id` must contain non-whitespace text.
+/// Transport serializes as the snake_case string `gsm` or `sip`.
 pub struct SessionKey {
     pub transport: CallTransport,
     pub generation: u64,
@@ -83,6 +86,9 @@ pub struct CallUpdate {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Targets exactly the supplied session; receivers must never infer the current call.
+/// Actions use snake_case serde enum encoding (for example `"answer"` or
+/// `{ "reject": "busy" }`).
 pub struct CallCommand {
     pub key: SessionKey,
     pub action: CallAction,
