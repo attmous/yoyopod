@@ -4,6 +4,7 @@ pub mod bluetooth;
 pub mod config;
 pub mod gps;
 pub mod gsm;
+pub mod gsm_calls;
 mod gsm_audio;
 pub mod modem;
 pub mod ppp;
