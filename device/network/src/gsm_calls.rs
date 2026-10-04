@@ -119,6 +119,14 @@ mod tests {
     use super::*;
     use yoyopod_protocol::call::CallTransport;
 
+    #[test]
+    fn gsm_waiting_offer_can_be_rejected_without_admitting_a_second_call() {
+        let mut registry = GsmCallRegistry::new(7);
+        let events = registry.observe("/call/B", CallDirection::Incoming, CallPhase::Waiting, "+49123456789");
+        assert_eq!(offer(&events).key, update(&events).key);
+        assert_eq!(update(&events).phase, CallPhase::Waiting);
+    }
+
     fn offer(events: &[CallManagerWireEvent]) -> &CallOffer {
         events
             .iter()

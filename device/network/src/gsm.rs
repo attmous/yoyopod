@@ -327,6 +327,7 @@ struct CleanupEvidence {
     uncertain: std::collections::HashSet<String>,
 }
 impl CleanupEvidence {
+    fn observe_initial(&mut self, _path: &str, _phase: &CallPhase) {}
     fn failed(&mut self, path: &str) {
         self.uncertain.insert(path.into());
     }
@@ -980,6 +981,18 @@ impl GsmBackend for ModemManagerVoice {
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn gsm_synthetic_terminal_after_failed_hangup_and_restart_is_not_cleanup_proof() {
+        let mut evidence = CleanupEvidence::default();
+        evidence.failed("/call/A");
+        assert!(!evidence.terminal_is_trusted("/call/A"));
+        let mut restarted = CleanupEvidence::default();
+        restarted.observe_initial("/call/A", &CallPhase::Ended);
+        assert!(!restarted.terminal_is_trusted("/call/A"), "restart forgot that native termination was unproven");
+        restarted.confirmed("/call/A");
+        assert!(restarted.terminal_is_trusted("/call/A"));
+    }
 
     #[test]
     fn gsm_targeted_result_waits_for_backend_execution_and_busy_preserves_owner_audio() {

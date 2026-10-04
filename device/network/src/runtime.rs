@@ -164,6 +164,10 @@ where
         self.voice_suspended
     }
 
+    pub fn require_voice_reconciliation(&mut self) {}
+
+    pub fn confirm_voice_reconciliation(&mut self) {}
+
     pub fn suspend_for_voice_session(
         &mut self,
         key: &SessionKey,
@@ -982,6 +986,25 @@ fn current_rfc3339() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gsm_restart_blocks_all_data_io_until_native_reconciliation() {
+        let mut runtime = NetworkRuntime::new("config", NetworkHostConfig { enabled: true, ..Default::default() }, RecordingController::default());
+        runtime.require_voice_reconciliation();
+        runtime.start_at(1000); runtime.tick_at(2000);
+        assert!(runtime.controller.calls.is_empty(), "restart touched AT before native call reconciliation");
+        assert!(runtime.health_command().is_err());
+        assert!(runtime.reset_modem_command().is_err());
+        runtime.confirm_voice_reconciliation(); runtime.start_at(3000);
+        assert!(!runtime.controller.calls.is_empty());
+    }
+
+    #[test]
+    fn gsm_shutdown_releases_control_without_global_ath() {
+        let mut runtime = NetworkRuntime::new("config", NetworkHostConfig::default(), RecordingController::default());
+        runtime.shutdown_at(1000);
+        assert_eq!(runtime.controller.calls, ["suspend/release_AT"]);
+    }
 
     #[test]
     fn gsm_other_session_terminal_and_old_generation_cannot_resume_owned_data() {
