@@ -32,16 +32,20 @@ mod interruption_tests {
             true
         }
     }
-    struct Ipc(Arc<Mutex<Vec<Vec<Value>>>>);
+    struct Ipc(Arc<Mutex<Vec<Vec<Value>>>>, bool);
     impl MpvIpcTransport for Ipc {
         fn connect(&mut self) -> Result<()> {
+            self.1 = true;
             Ok(())
         }
         fn connected(&self) -> bool {
-            true
+            self.1
         }
-        fn disconnect(&mut self) {}
+        fn disconnect(&mut self) {
+            self.1 = false;
+        }
         fn send_command(&mut self, args: &[Value], _: Duration) -> Result<Value> {
+            anyhow::ensure!(self.1, "IPC disconnected");
             self.0.lock().unwrap().push(args.to_vec());
             let data = match args.get(1).and_then(Value::as_str) {
                 Some("playlist") => {
@@ -66,7 +70,7 @@ mod interruption_tests {
         let commands = Arc::new(Mutex::new(Vec::new()));
         let mut runtime = MpvRuntime::with_clients(
             Box::new(Process(log.clone())),
-            Box::new(Ipc(commands.clone())),
+            Box::new(Ipc(commands.clone(), true)),
             Default::default(),
         );
         let track = Track {
@@ -123,6 +127,96 @@ mod interruption_tests {
             "seek retained position before releasing pause"
         );
         assert_eq!(runtime.time_position_ms(), 12_000);
+    }
+    fn suspended_runtime() -> (MpvRuntime, Arc<Mutex<Vec<Vec<Value>>>>) {
+        let commands = Arc::new(Mutex::new(Vec::new()));
+        let mut runtime = MpvRuntime::with_clients(
+            Box::new(Process(Default::default())),
+            Box::new(Ipc(commands.clone(), true)),
+            Default::default(),
+        );
+        runtime.connected = true;
+        runtime.suspend_for_call().unwrap();
+        commands.lock().unwrap().clear();
+        (runtime, commands)
+    }
+    #[test]
+    fn suspended_stop_then_play_or_reselection_reconnects() {
+        for select_new in [false, true] {
+            let (mut runtime, _) = suspended_runtime();
+            runtime.stop_playback().unwrap();
+            let result = if select_new {
+                runtime.load_tracks(&["new.mp3".into()])
+            } else {
+                runtime.play()
+            };
+            assert!(
+                result.is_ok(),
+                "explicit playback after Stop must reconnect: {result:?}"
+            );
+        }
+    }
+    #[test]
+    fn newer_pause_stop_and_reselection_retire_pending_unpause() {
+        for action in ["pause", "stop", "reselect"] {
+            let (mut runtime, commands) = suspended_runtime();
+            runtime.play().unwrap();
+            match action {
+                "pause" => runtime.pause().unwrap(),
+                "stop" => runtime.stop_playback().unwrap(),
+                _ => runtime.load_tracks(&["new.mp3".into()]).unwrap(),
+            }
+            commands.lock().unwrap().clear();
+            runtime.handle_raw_event(json!({"event":"file-loaded"}));
+            assert!(
+                !commands
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|c| (action != "pause" && c.first() == Some(&json!("seek")))
+                        || *c == vec![json!("set_property"), json!("pause"), json!(false)]),
+                "old reconstruction emitted commands after {action}"
+            );
+            if action == "pause" {
+                assert_eq!(runtime.playback_state(), PlaybackState::Paused);
+            }
+        }
+    }
+    #[test]
+    fn all_reselection_paths_apply_latest_route_and_volume_before_loading() {
+        for action in ["tracks", "playlist", "playlist_track"] {
+            let (mut runtime, commands) = suspended_runtime();
+            runtime.set_audio_device("alsa/latest").unwrap();
+            runtime.set_volume(23).unwrap();
+            match action {
+                "tracks" => runtime.load_tracks(&["new.mp3".into()]).unwrap(),
+                "playlist" => runtime.load_playlist_file("new.m3u").unwrap(),
+                _ => runtime.load_playlist_track("new.m3u", 1).unwrap(),
+            }
+            let commands = commands.lock().unwrap();
+            let load = commands
+                .iter()
+                .position(|c| {
+                    matches!(
+                        c.first().and_then(Value::as_str),
+                        Some("loadfile" | "loadlist")
+                    )
+                })
+                .unwrap();
+            for command in [
+                vec![
+                    json!("set_property"),
+                    json!("audio-device"),
+                    json!("alsa/latest"),
+                ],
+                vec![json!("set_property"), json!("volume"), json!(23)],
+            ] {
+                assert!(
+                    commands[..load].contains(&command),
+                    "latest setting missing before {action}: {command:?}"
+                );
+            }
+        }
     }
 }
 
@@ -653,6 +747,7 @@ impl Default for MpvRuntimeStartupPolicy {
 }
 
 pub struct MpvRuntime {
+    requested_playback: PlaybackState,
     selected_volume: Option<i32>,
     selected_output: Option<String>,
     suspended: Option<(Vec<String>, usize, i64)>,
@@ -671,12 +766,24 @@ pub struct MpvRuntime {
 }
 
 impl MpvRuntime {
-    fn prepare_explicit_load(&mut self) -> Result<()> {
-        if self.suspended.is_some() {
+    fn prepare_explicit_playback(&mut self) -> Result<()> {
+        if !self.is_connected() {
+            self.connected = false;
             self.start()?;
-            self.suspended = None;
-            self.resume_position = None;
         }
+        if let Some(volume) = self.selected_volume {
+            self.command(&[json!("set_property"), json!("volume"), json!(volume)])?;
+        }
+        if let Some(output) = self.selected_output.clone() {
+            self.command(&[json!("set_property"), json!("audio-device"), json!(output)])?;
+        }
+        Ok(())
+    }
+    fn prepare_explicit_load(&mut self) -> Result<()> {
+        self.prepare_explicit_playback()?;
+        self.suspended = None;
+        self.resume_position = None;
+        self.requested_playback = PlaybackState::Playing;
         Ok(())
     }
     pub fn new(config: MediaConfig) -> Self {
@@ -694,6 +801,7 @@ impl MpvRuntime {
         startup: MpvRuntimeStartupPolicy,
     ) -> Self {
         Self {
+            requested_playback: PlaybackState::Stopped,
             suspended: None,
             resume_position: None,
             selected_volume: None,
@@ -795,6 +903,11 @@ impl MpvRuntime {
         let Some(event) = MpvEvent::from_value(raw) else {
             return events;
         };
+        if matches!(event, MpvEvent::FileLoaded)
+            && self.requested_playback == PlaybackState::Stopped
+        {
+            return events;
+        }
         if let Some((path, position)) = self.resume_position.clone() {
             if !matches!(event, MpvEvent::FileLoaded)
                 || self
@@ -814,19 +927,20 @@ impl MpvRuntime {
                     json!("absolute+exact"),
                 ])
                 .is_err()
-                || self
-                    .command(&[json!("set_property"), json!("pause"), json!(false)])
-                    .is_err()
+                || (self.requested_playback == PlaybackState::Playing
+                    && self
+                        .command(&[json!("set_property"), json!("pause"), json!(false)])
+                        .is_err())
             {
                 return events;
             }
             self.resume_position = None;
             let _ = self.prime_track_cache();
             self.cached_time_position_ms = position;
-            self.playback_state = PlaybackState::Playing;
+            self.playback_state = self.requested_playback;
             return vec![
                 MediaRuntimeEvent::TrackChanged(self.current_track.clone()),
-                MediaRuntimeEvent::PlaybackStateChanged(PlaybackState::Playing),
+                MediaRuntimeEvent::PlaybackStateChanged(self.requested_playback),
                 MediaRuntimeEvent::TimePositionChanged(position),
             ];
         }
@@ -841,10 +955,10 @@ impl MpvRuntime {
                 if previous_track != self.current_track {
                     events.push(MediaRuntimeEvent::TrackChanged(self.current_track.clone()));
                 }
-                if self.playback_state != PlaybackState::Playing {
-                    self.playback_state = PlaybackState::Playing;
+                if self.playback_state != self.requested_playback {
+                    self.playback_state = self.requested_playback;
                     events.push(MediaRuntimeEvent::PlaybackStateChanged(
-                        PlaybackState::Playing,
+                        self.requested_playback,
                     ));
                 }
             }
@@ -1023,6 +1137,8 @@ impl MediaRuntime for MpvRuntime {
     }
 
     fn play(&mut self) -> Result<()> {
+        self.prepare_explicit_playback()?;
+        self.requested_playback = PlaybackState::Playing;
         if let Some((paths, index, position)) = self.suspended.clone() {
             self.start()?;
             if let Some(volume) = self.selected_volume {
@@ -1051,6 +1167,8 @@ impl MediaRuntime for MpvRuntime {
     }
 
     fn pause(&mut self) -> Result<()> {
+        self.requested_playback = PlaybackState::Paused;
+        self.playback_state = PlaybackState::Paused;
         if self.suspended.is_some() {
             return Ok(());
         }
@@ -1058,7 +1176,9 @@ impl MediaRuntime for MpvRuntime {
     }
 
     fn stop_playback(&mut self) -> Result<()> {
-        if self.suspended.is_some() {
+        self.resume_position = None;
+        self.requested_playback = PlaybackState::Stopped;
+        if !self.is_connected() {
             self.suspended = None;
             self.clear_track_cache();
             self.playback_state = PlaybackState::Stopped;

@@ -1929,6 +1929,17 @@ fn copy_str_to_c_buffer(value: &str, out: *mut c_char, out_size: u32) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recorder_close_uses_pinned_void_abi() {
+        fn declared_type<T>(_: impl FnOnce(&super::LinphoneApi) -> Option<T>) -> &'static str {
+            std::any::type_name::<T>()
+        }
+        assert_eq!(
+            declared_type(|api| api.recorder_close),
+            std::any::type_name::<unsafe extern "C" fn(*mut super::LinphoneRecorder)>(),
+            "Liblinphone5.2 close returns void, not status"
+        );
+    }
     use super::playback_gain_db;
 
     #[test]
