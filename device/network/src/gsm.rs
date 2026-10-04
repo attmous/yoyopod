@@ -1444,7 +1444,21 @@ mod tests {
         let bus = PrivateBus::start();
         let owner = bus.connection();
         let (mut backend, _) = old_native_backend(&bus, &owner);
-        let expected = owner.unique_name().unwrap().as_str().to_owned();
+        let second_bus = PrivateBus::start();
+        let second_owner = second_bus.connection();
+        let (second_backend, _) = old_native_backend(&second_bus, &second_owner);
+        assert_eq!(owner.unique_name(), second_owner.unique_name());
+        assert_ne!(
+            serde_json::to_value(backend.reconciliation().unwrap()).unwrap()["native_owner"],
+            serde_json::to_value(second_backend.reconciliation().unwrap()).unwrap()["native_owner"],
+            "unique names reused across bus lifetimes must not share cleanup identity"
+        );
+        let expected = serde_json::to_value(backend.reconciliation().unwrap()).unwrap()
+            ["native_owner"]
+            .clone();
+        assert!(expected
+            .as_str()
+            .is_some_and(|token| token.contains(owner.unique_name().unwrap().as_str())));
         let fact = serde_json::to_value(backend.reconciliation().unwrap()).unwrap();
         assert_eq!(
             fact["native_owner"], expected,
