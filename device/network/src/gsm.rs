@@ -457,6 +457,7 @@ impl ModemManagerVoice {
             }
             let proxy = Proxy::new(&connection, DESTINATION, path.as_str(), MODEM_INTERFACE)?;
             let ports: Vec<(String, u32)> = proxy.get_property("Ports")?;
+            drop(proxy);
             self.isolated = isolated_voice_backend(
                 &version,
                 model,
@@ -532,6 +533,7 @@ impl ModemManagerVoice {
             VOICE_INTERFACE,
         )?;
         let paths: Vec<OwnedObjectPath> = voice.get_property("Calls")?;
+        drop(voice);
         let old = self.registry()?.tracked();
         for path in &paths {
             self.observe_path(path.as_str())?;
@@ -890,10 +892,10 @@ impl GsmBackend for ModemManagerVoice {
         );
         self.pending_events.extend(events);
         self.audio_deadline = Some(Instant::now() + Duration::from_secs(8));
-        if let Err(error) = self
+        let start_result = self
             .proxy_for(path.as_str())?
-            .call::<_, _, ()>("Start", &())
-        {
+            .call::<_, _, ()>("Start", &());
+        if let Err(error) = start_result {
             self.cleanup.failed(path.as_str());
             return Err(error.into());
         }
@@ -927,7 +929,8 @@ impl GsmBackend for ModemManagerVoice {
                     }
                 }
                 self.audio_deadline = Some(Instant::now() + Duration::from_secs(8));
-                if let Err(error) = self.proxy_for(&path)?.call::<_, _, ()>("Accept", &()) {
+                let accept_result = self.proxy_for(&path)?.call::<_, _, ()>("Accept", &());
+                if let Err(error) = accept_result {
                     self.cleanup.failed(&path);
                     return Err(error.into());
                 }

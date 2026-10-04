@@ -866,6 +866,7 @@ impl NetworkRuntime<NoopModemController> {
             last_published_snapshot: None,
             tracking: TrackingEngine::default(),
             voice_suspended: false,
+            voice_session: None,
         }
     }
 }
