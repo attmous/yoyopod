@@ -171,6 +171,7 @@ impl MediaRuntimeFactory for MpvRuntimeFactory {
 }
 
 pub struct MediaHost {
+    configured_output: Option<String>,
     pub(crate) alert_output: String,
     pub(crate) alert_volume: u8,
     pub(crate) audio_fence: yoyopod_protocol::audio::AudioCallFence,
@@ -199,6 +200,7 @@ impl Default for MediaHost {
 impl MediaHost {
     pub fn with_factory(factory: Box<dyn MediaRuntimeFactory>) -> Self {
         Self {
+            configured_output: None,
             alert_output: "alsa/default".into(),
             alert_volume: 100,
             audio_fence: Default::default(),
@@ -247,6 +249,10 @@ impl MediaHost {
             .ok_or_else(|| anyhow!("media host is not configured"))?;
         let mut runtime = self.factory.build(&config)?;
         runtime.start()?;
+        if let Some(output) = &self.configured_output {
+            runtime.set_audio_device(output)?;
+        }
+        runtime.set_volume(config.default_volume)?;
         self.connected = runtime.is_connected();
         self.backend_state = if self.connected {
             "connected".to_string()
@@ -318,7 +324,9 @@ impl MediaHost {
     }
 
     pub fn pause(&mut self) -> Result<()> {
-        self.ensure_runtime_started()?;
+        if self.runtime.is_none() {
+            return Ok(());
+        }
         self.runtime_mut()?.pause()
     }
 
@@ -328,7 +336,9 @@ impl MediaHost {
     }
 
     pub fn stop_playback(&mut self) -> Result<()> {
-        self.ensure_runtime_started()?;
+        if self.runtime.is_none() {
+            return Ok(());
+        }
         self.runtime_mut()?.stop_playback()
     }
 
@@ -343,12 +353,20 @@ impl MediaHost {
     }
 
     pub fn set_volume(&mut self, volume: i32) -> Result<()> {
-        self.ensure_runtime_started()?;
+        if let Some(config) = self.config.as_mut() {
+            config.default_volume = volume.clamp(0, 100);
+        }
+        if self.runtime.is_none() {
+            return Ok(());
+        }
         self.runtime_mut()?.set_volume(volume)
     }
 
     pub fn set_audio_device(&mut self, device: &str) -> Result<()> {
-        self.ensure_runtime_started()?;
+        self.configured_output = Some(device.to_string());
+        if self.runtime.is_none() {
+            return Ok(());
+        }
         self.runtime_mut()?.set_audio_device(device)
     }
 
