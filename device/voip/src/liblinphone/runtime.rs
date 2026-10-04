@@ -18,6 +18,26 @@ const TRUE: c_int = 1;
 const LINPHONE_REASON_DECLINED: c_int = 3;
 const LINPHONE_REASON_BUSY: c_int = 6;
 
+// Chat message callbacks can also fire synchronously during core_stop. Their
+// references are library-owned, so suppress callback work while teardown owns
+// STATE instead of allowing a reentrant mutex acquisition.
+static STOPPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+struct StoppingCallbacks;
+impl StoppingCallbacks {
+    fn enter() -> Self {
+        STOPPING.store(true, std::sync::atomic::Ordering::Release);
+        Self
+    }
+}
+impl Drop for StoppingCallbacks {
+    fn drop(&mut self) {
+        STOPPING.store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+fn callbacks_stopping() -> bool {
+    STOPPING.load(std::sync::atomic::Ordering::Acquire)
+}
+
 static VERSION: &[u8] = b"yoyopod-voip-host-liblinphone/0.1.0\0";
 static STATE: Lazy<std::sync::Mutex<state::ShimState>> =
     Lazy::new(|| std::sync::Mutex::new(state::ShimState::new()));
@@ -1022,6 +1042,7 @@ unsafe fn add_auth_info(state: &state::ShimState, api: &LinphoneApi, config: &Ac
 }
 
 fn stop_locked(state: &mut state::ShimState) {
+    let _stopping = StoppingCallbacks::enter();
     let api = match state.api.clone() {
         Some(api) => api,
         None => {
@@ -1278,6 +1299,9 @@ unsafe extern "C" fn on_registration_state_changed(
     registration_state: c_int,
     message: *const c_char,
 ) {
+    if callbacks_stopping() {
+        return;
+    }
     let Ok(state) = STATE.lock() else {
         return;
     };
@@ -1299,6 +1323,9 @@ unsafe extern "C" fn on_call_state_changed(
     call_state: c_int,
     message: *const c_char,
 ) {
+    if callbacks_stopping() {
+        return;
+    }
     let Ok(mut state) = STATE.lock() else {
         return;
     };
@@ -1424,6 +1451,9 @@ unsafe extern "C" fn on_chat_room_chat_message_received(
     _chat_room: *mut LinphoneChatRoom,
     event_log: *mut LinphoneEventLog,
 ) {
+    if callbacks_stopping() {
+        return;
+    }
     let Some((api, message)) = STATE.lock().ok().and_then(|state| {
         let api = state.api.clone()?;
         let get_message = api.event_log_get_chat_message?;
@@ -1440,6 +1470,9 @@ unsafe extern "C" fn on_message_state_changed(
     message: *mut LinphoneChatMessage,
     message_state: c_int,
 ) {
+    if callbacks_stopping() {
+        return;
+    }
     let Ok(mut state) = STATE.lock() else {
         return;
     };
@@ -1468,6 +1501,9 @@ unsafe extern "C" fn on_message_state_changed(
 }
 
 fn queue_message_received(message: *mut LinphoneChatMessage) {
+    if callbacks_stopping() {
+        return;
+    }
     let Ok(mut state) = STATE.lock() else {
         return;
     };
@@ -1846,12 +1882,6 @@ fn copy_str_to_fixed<const N: usize>(value: &str, out: &mut [c_char; N]) {
     }
 }
 
-fn c_array_to_string<const N: usize>(value: &[c_char; N]) -> String {
-    unsafe { CStr::from_ptr(value.as_ptr()) }
-        .to_string_lossy()
-        .into_owned()
-}
-
 fn copy_str_to_c_buffer(value: &str, out: *mut c_char, out_size: u32) -> bool {
     if out.is_null() || out_size == 0 {
         return false;
@@ -1966,5 +1996,26 @@ pub fn apply_session_call(command: &yoyopod_protocol::call::CallCommand) -> Resu
         Ok(())
     } else {
         Err("native session action failed".into())
+    }
+}
+
+#[cfg(test)]
+mod shutdown_tests {
+    use super::*;
+
+    #[test]
+    fn teardown_callbacks_return_before_locking_state_or_reading_native_handles() {
+        let _state = STATE.lock().unwrap();
+        {
+            let _stopping = StoppingCallbacks::enter();
+            unsafe {
+                on_registration_state_changed(ptr::null_mut(), 0, ptr::null());
+                on_call_state_changed(ptr::null_mut(), ptr::null_mut(), 0, ptr::null());
+                on_message_state_changed(ptr::null_mut(), 0);
+                on_chat_room_chat_message_received(ptr::null_mut(), ptr::null_mut());
+            }
+            queue_message_received(ptr::null_mut());
+        }
+        assert!(!callbacks_stopping());
     }
 }
