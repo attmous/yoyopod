@@ -13,15 +13,35 @@ pub struct GsmCallRegistry {
     generation: u64,
     next_id: u64,
     calls: Vec<(String, SessionKey, Option<CallUpdate>)>,
+    used_ids: std::collections::HashSet<String>,
 }
 
 impl GsmCallRegistry {
-    pub fn observe_audio(&mut self, _key: &SessionKey, _duration_seconds: u64, _muted: bool) -> Option<CallUpdate> { None }
+    pub fn observe_audio(
+        &mut self,
+        key: &SessionKey,
+        duration_seconds: u64,
+        muted: bool,
+    ) -> Option<CallUpdate> {
+        let (_, _, update) = self
+            .calls
+            .iter_mut()
+            .find(|(_, candidate, _)| candidate == key)?;
+        let update = update.as_mut()?;
+        if update.duration_seconds == duration_seconds && update.muted == muted {
+            return None;
+        }
+        update.duration_seconds = duration_seconds;
+        update.muted = muted;
+        update.sequence += 1;
+        Some(update.clone())
+    }
     pub fn new(generation: u64) -> Self {
         Self {
             generation,
             next_id: 0,
             calls: Vec::new(),
+            used_ids: Default::default(),
         }
     }
     pub fn observe(
@@ -37,7 +57,12 @@ impl GsmCallRegistry {
             .iter()
             .position(|(path, _, _)| path == object_path)
             .unwrap_or_else(|| {
-                self.next_id += 1;
+                loop {
+                    self.next_id += 1;
+                    if self.used_ids.insert(format!("gsm-{}", self.next_id)) {
+                        break;
+                    }
+                }
                 let key = SessionKey {
                     transport: CallTransport::Gsm,
                     generation: self.generation,
@@ -66,8 +91,8 @@ impl GsmCallRegistry {
             phase,
             address: number.into(),
             sequence: previous.as_ref().map_or(1, |old| old.sequence + 1),
-            duration_seconds: 0,
-            muted: false,
+            duration_seconds: previous.as_ref().map_or(0, |old| old.duration_seconds),
+            muted: previous.as_ref().is_some_and(|old| old.muted),
         };
         *previous = Some(update.clone());
         events.push(CallManagerWireEvent::Update(update));
@@ -100,6 +125,10 @@ impl GsmCallRegistry {
                 .any(|(candidate, existing, _)| candidate == path || existing == key),
             "GSM session already registered"
         );
+        anyhow::ensure!(
+            self.used_ids.insert(key.call_id.clone()),
+            "GSM session key was already used"
+        );
         self.calls.push((path.into(), key.clone(), None));
         Ok(())
     }
@@ -115,6 +144,13 @@ impl GsmCallRegistry {
             .find(|(_, candidate, _)| candidate == key)
             .and_then(|(_, _, update)| update.as_ref())
     }
+
+    pub fn is_fresh_key(&self, key: &SessionKey) -> bool {
+        key.transport == CallTransport::Gsm
+            && key.generation == self.generation
+            && !key.call_id.trim().is_empty()
+            && !self.used_ids.contains(&key.call_id)
+    }
 }
 
 #[cfg(test)]
@@ -128,20 +164,41 @@ mod tests {
         let key = outgoing(9);
         registry.register_outgoing(&key, "/call/1").unwrap();
         registry.remove(&key);
-        assert!(registry.register_outgoing(&key, "/call/2").is_err(), "late command could target replacement session");
+        assert!(
+            registry.register_outgoing(&key, "/call/2").is_err(),
+            "late command could target replacement session"
+        );
     }
 
     #[test]
     fn gsm_owned_mute_and_duration_are_sequenced_without_reoffering() {
         let mut registry = GsmCallRegistry::new(9);
-        let events = registry.observe("/call/1", CallDirection::Incoming, CallPhase::Ringing, "+49123456789");
+        let events = registry.observe(
+            "/call/1",
+            CallDirection::Incoming,
+            CallPhase::Ringing,
+            "+49123456789",
+        );
         let key = offer(&events).key.clone();
-        let update = registry.observe_audio(&key, 3, true).expect("audio metadata update");
-        assert_eq!(update.duration_seconds, 3); assert!(update.muted); assert_eq!(update.sequence, 2);
+        let update = registry
+            .observe_audio(&key, 3, true)
+            .expect("audio metadata update");
+        assert_eq!(update.duration_seconds, 3);
+        assert!(update.muted);
+        assert_eq!(update.sequence, 2);
         assert!(registry.observe_audio(&key, 3, true).is_none());
-        let active = registry.observe("/call/1", CallDirection::Incoming, CallPhase::Active, "+49123456789");
-        let CallManagerWireEvent::Update(active) = &active[0] else { panic!("update") };
-        assert_eq!(active.duration_seconds, 3); assert!(active.muted); assert_eq!(active.sequence, 3);
+        let active = registry.observe(
+            "/call/1",
+            CallDirection::Incoming,
+            CallPhase::Active,
+            "+49123456789",
+        );
+        let CallManagerWireEvent::Update(active) = &active[0] else {
+            panic!("update")
+        };
+        assert_eq!(active.duration_seconds, 3);
+        assert!(active.muted);
+        assert_eq!(active.sequence, 3);
     }
 
     #[test]

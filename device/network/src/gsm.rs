@@ -18,7 +18,8 @@ const MODEM_INTERFACE: &str = "org.freedesktop.ModemManager1.Modem";
 const VOICE_INTERFACE: &str = "org.freedesktop.ModemManager1.Modem.Voice";
 const CALL_INTERFACE: &str = "org.freedesktop.ModemManager1.Call";
 
-// Test-first capability scaffold: unknown backends are never trusted.
+// MM 1.24's generic AT implementation falls back to global +CHUP. Only the
+// pinned SIMTech QMI class has verified source-level per-native-ID termination.
 fn isolated_voice_backend(
     version: &str,
     model: &str,
@@ -114,9 +115,21 @@ pub struct GsmReconciliation {
     pub audio_released: bool,
 }
 
+pub struct GsmObservation {
+    pub availability: GsmCallState,
+    pub calls: Vec<CallManagerWireEvent>,
+}
+
 /// ModemManager owns modem discovery and call control; the network worker never
 /// competes with its QMI control channel or hard-codes a transient modem index.
 pub trait GsmBackend: Send + 'static {
+    fn refresh_observation(&mut self) -> Result<GsmObservation> {
+        let availability = self.refresh()?;
+        Ok(GsmObservation {
+            availability,
+            calls: self.drain_call_events(),
+        })
+    }
     fn reconciliation(&self) -> Option<GsmReconciliation> {
         None
     }
@@ -241,8 +254,13 @@ impl GsmWorker {
                     Err(mpsc::RecvTimeoutError::Timeout) => Ok(()),
                 };
                 let mut refresh_ok = true;
-                let mut state = match backend.refresh() {
-                    Ok(state) => state,
+                let mut state = match backend.refresh_observation() {
+                    Ok(observation) => {
+                        for event in observation.calls {
+                            let _ = send_events.send(GsmEvent::Call(event));
+                        }
+                        observation.availability
+                    }
                     Err(error) => {
                         refresh_ok = false;
                         eprintln!("GSM state refresh failed: {error:#}");
@@ -780,6 +798,16 @@ impl ModemManagerVoice {
             self.registry.as_mut().expect("configured").remove(&key);
         }
         self.pending_events.extend(events);
+        if self.owner.as_ref() == Some(&key) && self.audio.is_some() {
+            if let Some(update) = self.registry.as_mut().expect("configured").observe_audio(
+                &key,
+                self.cached.duration_seconds,
+                self.cached.muted,
+            ) {
+                self.pending_events
+                    .push(CallManagerWireEvent::Update(update));
+            }
+        }
         Ok(())
     }
 
@@ -956,6 +984,10 @@ impl GsmBackend for ModemManagerVoice {
             "Unknown or stale GSM generation"
         );
         anyhow::ensure!(self.owner.is_none(), "GSM voice already owned");
+        anyhow::ensure!(
+            self.registry()?.is_fresh_key(key),
+            "GSM session key is stale or already used"
+        );
         anyhow::ensure!(
             self.registry()?.tracked().is_empty() && self.cleanup.uncertain.is_empty(),
             "GSM native reconciliation required before dialing"

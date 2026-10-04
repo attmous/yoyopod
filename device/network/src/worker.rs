@@ -641,25 +641,6 @@ fn drain_gsm_events<C: ModemController, W: Write>(
     Ok(())
 }
 
-/// Ignore availability snapshots queued before a pending dial. The GSM worker
-/// acknowledges each attempt with outgoing/active/error before idle can resume
-/// packet data, so stale idle events cannot restart recovery during dialing.
-#[cfg(test)]
-fn gsm_session_finished(dial_pending: &mut bool, state: &str) -> bool {
-    match state {
-        "outgoing" | "active" => {
-            *dial_pending = false;
-            false
-        }
-        "error" => {
-            *dial_pending = false;
-            true
-        }
-        "idle" => !*dial_pending,
-        _ => false,
-    }
-}
-
 enum LoopControl {
     Continue,
     Shutdown,
@@ -1834,22 +1815,6 @@ mod tests {
             envelopes[1].payload["fix_id"],
             envelopes[0].payload["fixId"]
         );
-    }
-
-    #[test]
-    fn stale_idle_does_not_resume_data_before_dial_acknowledgement() {
-        let mut pending = true;
-        assert!(!gsm_session_finished(&mut pending, "idle"));
-        assert!(pending);
-        assert!(!gsm_session_finished(&mut pending, "outgoing"));
-        assert!(!pending);
-        assert!(!gsm_session_finished(&mut pending, "active"));
-        assert!(gsm_session_finished(&mut pending, "idle"));
-
-        pending = true;
-        assert!(gsm_session_finished(&mut pending, "error"));
-        assert!(!pending);
-        assert!(gsm_session_finished(&mut pending, "idle"));
     }
 
     struct FakeWifiController {

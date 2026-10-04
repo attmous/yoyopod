@@ -217,7 +217,7 @@ where
     }
 
     pub fn resume_after_voice(&mut self) {
-        if self.voice_suspended || self.voice_reconciliation_pending {
+        if self.voice_suspended {
             self.voice_suspended = false;
             self.voice_session = None;
             if self.config.enabled && !self.voice_reconciliation_pending {
