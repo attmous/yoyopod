@@ -127,6 +127,7 @@ Current approved-contacts behaviour:
   Wi-Fi continues running, and cellular data resumes after hang-up or dial failure.
   Normal data resumption reopens the AT port and checks registration without
   enabling the already-running radio/GNSS again. Data faults log their recovery code.
+  Startup GPS setup first checks `AT+CGPS?` and leaves an active GPS session running.
   Deployment grants only voice and device-control
   ModemManager actions to the runtime service user.
   ModemManager's secondary PIN2/PUK2 restrictions do not block ordinary voice;
