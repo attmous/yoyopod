@@ -1440,8 +1440,7 @@ mod tests {
     fn gsm_native_owner_fact_precedes_session_events_and_survives_invalidation() {
         let bus = PrivateBus::start();
         let owner = bus.connection();
-        let client = bus.connection();
-        let mut backend = old_native_backend(client, &owner);
+        let (mut backend, _) = old_native_backend(&bus, &owner);
         let expected = owner.unique_name().unwrap().as_str().to_owned();
         let fact = serde_json::to_value(backend.reconciliation().unwrap()).unwrap();
         assert_eq!(
