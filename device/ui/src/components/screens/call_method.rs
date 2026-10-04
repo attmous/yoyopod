@@ -19,7 +19,7 @@ pub fn scene(
             .map(|contact| contact.title.to_uppercase())
             .unwrap_or_default(),
         actions: [
-            (CallMethod::Sip, "sip", "SIP", "wifi"),
+            (CallMethod::Sip, "sip", "SIP", "setup_wifi"),
             (CallMethod::Gsm, "gsm", "GSM", "call"),
         ]
         .into_iter()
@@ -30,7 +30,7 @@ pub fn scene(
                 subtitle: contact
                     .and_then(|contact| call_method_disabled_reason(snapshot, contact, method))
                     .unwrap_or(match method {
-                        CallMethod::Sip => "Wi-Fi call",
+                        CallMethod::Sip => "Internet call",
                         CallMethod::Gsm => "Mobile call",
                     })
                     .to_string(),
