@@ -79,16 +79,26 @@ fn run_runtime_inner(config: &RuntimeConfig, hardware: &str, config_dir: &Path) 
             return Err(error);
         }
     };
-    send_startup_commands(&mut workers, config);
     send_initial_runtime_snapshot(&mut workers, &state);
 
     let mut runtime = RuntimeLoop::new(state);
+    let generation = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_micros() as u64;
+    runtime.configure_workers(&mut workers, config, generation);
+    send_startup_commands(&mut workers, config);
     while !shutdown.load(Ordering::SeqCst) && !runtime.shutdown_requested() {
         forward_screenshot_requests(&screenshot_signals, &mut workers, config);
         runtime.run_once(&mut workers);
         thread::sleep(Duration::from_millis(20));
     }
 
+    runtime.begin_shutdown(&mut workers, 0);
+    while runtime.shutdown_cleanup_pending() {
+        runtime.run_once(&mut workers);
+        thread::sleep(Duration::from_millis(20));
+    }
     workers.stop_all(Duration::from_secs(1));
     Ok(())
 }
@@ -100,6 +110,12 @@ fn start_workers(
     config_dir: &Path,
 ) -> Result<RuntimeState> {
     let mut state = RuntimeState::default();
+    state.call_ring_duration_ms = config.call_ring_duration_ms;
+    state.display_brightness = config.ui.brightness as f32;
+    state.audio_route = json!({"media_device": config.media.alsa_device, "media_volume": config.media.default_volume,
+        "alert_volume": config.voip.output_volume, "voip_playback_device": config.voip.playback_dev_id,
+        "voip_ringer_device":config.voip.ringer_dev_id,"voip_media_device":config.voip.media_dev_id,
+        "voip_capture_device": config.voip.capture_dev_id});
     state.seed_contacts(config.people.to_contact_items());
     state.configure_call_preferences(config.call_mode_file.clone());
     state.configure_app_log_file(config.log_file.clone());
@@ -382,6 +398,11 @@ fn install_ctrlc_handler() -> Result<Arc<AtomicBool>> {
     ctrlc::set_handler(move || {
         handler_flag.store(true, Ordering::SeqCst);
     })?;
+    #[cfg(unix)]
+    signal_hook::flag::register(
+        signal_hook::consts::SIGTERM,
+        Arc::clone(SHUTDOWN_FLAG.get().expect("shutdown flag initialized")),
+    )?;
     Ok(Arc::clone(
         SHUTDOWN_FLAG.get().expect("shutdown flag initialized"),
     ))
@@ -405,18 +426,6 @@ fn send_startup_commands(workers: &mut WorkerSupervisor, config: &RuntimeConfig)
     workers.send_command(WorkerDomain::Network, "network.query_gps", json!({}));
     workers.send_command(WorkerDomain::Power, "power.health", json!({}));
     workers.send_command(WorkerDomain::Voice, "voice.health", json!({}));
-    workers.send_command(
-        WorkerDomain::Media,
-        "media.configure",
-        config.media.to_worker_payload(),
-    );
-    workers.send_command(WorkerDomain::Media, "media.start", json!({}));
-    workers.send_command(
-        WorkerDomain::Voip,
-        "voip.configure",
-        config.voip.to_worker_payload(),
-    );
-    workers.send_command(WorkerDomain::Voip, "voip.register", json!({}));
 }
 
 fn send_initial_runtime_snapshot(workers: &mut WorkerSupervisor, state: &RuntimeState) {

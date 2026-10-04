@@ -10,7 +10,7 @@ use crate::playback::VoiceNotePlayback;
 use crate::runtime_snapshot::RuntimeSnapshot;
 use crate::voice_notes::VoiceNoteSession;
 use serde_json::json;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::ErrorKind;
 use yoyopod_protocol::call::{
@@ -83,6 +83,7 @@ const MAX_VOICE_NOTE_DURATION_MS: i32 = 60_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackendEvent {
+    Cleanup(SessionKey),
     Offer(CallOffer),
     Update(CallUpdate),
     RegistrationChanged {
@@ -127,6 +128,7 @@ pub struct VoipHost {
     config: Option<VoipConfig>,
     worker_generation: u64,
     sessions: BTreeMap<String, CallUpdate>,
+    released_sessions: BTreeSet<String>,
     backend_started: bool,
     registered: bool,
     registration_state: String,
@@ -148,6 +150,7 @@ impl Default for VoipHost {
             config: None,
             worker_generation: 0,
             sessions: BTreeMap::new(),
+            released_sessions: BTreeSet::new(),
             backend_started: false,
             registered: false,
             registration_state: "none".to_string(),
@@ -225,6 +228,29 @@ impl VoipHost {
     pub fn set_worker_generation(&mut self, generation: u64) {
         self.worker_generation = generation;
         self.sessions.clear();
+        self.released_sessions.clear();
+    }
+
+    /// Admission is explicit runtime policy. Raw native offers never create history.
+    pub fn admit_session(&mut self, key: &SessionKey) -> Result<(), String> {
+        if key.transport != CallTransport::Sip || key.generation != self.worker_generation {
+            return Err("stale admission".into());
+        }
+        let session = self
+            .sessions
+            .get(&key.call_id)
+            .ok_or("unknown admission key")?;
+        if session.phase == CallPhase::Ended || session.direction != CallDirection::Incoming {
+            return Err("inadmissible native session".into());
+        }
+        if self.call.active_call_id() == Some(key.call_id.as_str()) {
+            return Ok(());
+        }
+        if self.call.active_call_id().is_some() {
+            return Err("another admitted call owns history".into());
+        }
+        self.call.incoming(&key.call_id, &session.address);
+        Ok(())
     }
 
     pub fn apply_call<B: VoipRuntimeBackend + ?Sized>(
@@ -245,6 +271,12 @@ impl VoipHost {
             return Err("call already ended".into());
         }
         backend.apply_call(command)?;
+        if self.call.active_call_id() == Some(command.key.call_id.as_str())
+            && matches!(command.action, CallAction::Reject(_))
+        {
+            self.call.clear_with_state_and_action("end", "reject");
+            self.record_finished_call_history();
+        }
         if let CallAction::SetMute(muted) = command.action {
             if let Some(session) = self.sessions.get_mut(&command.key.call_id) {
                 session.muted = muted;
@@ -268,6 +300,7 @@ impl VoipHost {
             return Err("invalid, duplicate or stale outgoing session key".into());
         }
         backend.make_session_call(key, address)?;
+        self.call.start_outgoing(&key.call_id, address);
         self.sessions.insert(
             key.call_id.clone(),
             CallUpdate {
@@ -692,11 +725,23 @@ impl VoipHost {
         &mut self,
         backend: &mut B,
     ) -> Result<Vec<BackendEvent>, String> {
-        let events: Vec<BackendEvent> = backend
-            .iterate()?
-            .into_iter()
-            .filter_map(|event| self.translate_backend_event(event))
-            .collect();
+        let mut events = vec![];
+        for event in backend.iterate()? {
+            let released = match &event {
+                BackendEvent::CallStateChanged { call_id, state } if state == "released" => {
+                    self.sessions.get(call_id).map(|s| s.key.clone())
+                }
+                _ => None,
+            };
+            if let Some(event) = self.translate_backend_event(event) {
+                events.push(event);
+            }
+            if let Some(key) = released {
+                if self.released_sessions.insert(key.call_id.clone()) {
+                    events.push(BackendEvent::Cleanup(key));
+                }
+            }
+        }
         for event in &events {
             self.apply_backend_event(event);
         }
@@ -717,7 +762,8 @@ impl VoipHost {
                     self.registered = false;
                 }
             }
-            BackendEvent::Offer(_)
+            BackendEvent::Cleanup(_)
+            | BackendEvent::Offer(_)
             | BackendEvent::Update(_)
             | BackendEvent::IncomingCall { .. } => {}
             BackendEvent::CallStateChanged { call_id, state } => {
@@ -1148,6 +1194,45 @@ mod recording_tests {
         );
         let envelope = crate::worker::backend_event_envelope(events[0].clone());
         assert_eq!(envelope.message_type, "call.offer");
+    }
+
+    #[test]
+    fn admitted_history_and_released_cleanup_are_explicit_and_keyed() {
+        let mut host = VoipHost::default();
+        host.set_worker_generation(7);
+        let mut backend = LocalRecordingBackend::default();
+        backend.events = vec![incoming("a"), incoming("b")];
+        host.poll_backend_events(&mut backend).unwrap();
+        assert!(host.call.active_call_id().is_none());
+        host.admit_session(&command("a", 7, CallAction::Answer).key)
+            .unwrap();
+        assert_eq!(host.call.active_call_id(), Some("a"));
+        assert!(host
+            .admit_session(&command("b", 7, CallAction::Answer).key)
+            .is_err());
+        backend.events = vec![
+            state("b", "end"),
+            state("b", "released"),
+            state("a", "connected"),
+            state("a", "end"),
+        ];
+        let events = host.poll_backend_events(&mut backend).unwrap();
+        assert!(events
+            .iter()
+            .any(|e| matches!(e,BackendEvent::Cleanup(key) if key.call_id=="b")));
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e,BackendEvent::Cleanup(key) if key.call_id=="a")));
+        assert_eq!(host.call.session_payload()["history_outcome"], "completed");
+        backend.events = vec![state("a", "released"), state("a", "released")];
+        let events = host.poll_backend_events(&mut backend).unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e,BackendEvent::Cleanup(key) if key.call_id=="a"))
+                .count(),
+            1
+        );
     }
 
     #[test]

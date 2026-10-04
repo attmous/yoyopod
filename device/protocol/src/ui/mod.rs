@@ -716,6 +716,7 @@ impl MusicIntent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallIntent {
+    Session(crate::call::CallCommand),
     Answer,
     Reject,
     Hangup,
@@ -726,6 +727,7 @@ pub enum CallIntent {
 impl CallIntent {
     fn from_parts(action: &str, payload: &Value) -> Result<Self, ProtocolError> {
         match normalized(action).as_str() {
+            "session" => Ok(Self::Session(decode_payload(payload.clone())?)),
             "answer" => Ok(Self::Answer),
             "reject" => Ok(Self::Reject),
             "hangup" => Ok(Self::Hangup),
@@ -739,6 +741,7 @@ impl CallIntent {
 
     fn action_name(&self) -> &'static str {
         match self {
+            Self::Session(_) => "session",
             Self::Answer => "answer",
             Self::Reject => "reject",
             Self::Hangup => "hangup",
@@ -749,8 +752,45 @@ impl CallIntent {
 
     fn payload(&self) -> Value {
         match self {
+            Self::Session(command) => payload(command),
             Self::Start(action) => payload(action),
             _ => empty_payload(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod keyed_call_intent_tests {
+    use super::*;
+    use crate::call::*;
+    #[test]
+    fn session_controls_roundtrip_and_require_the_displayed_key() {
+        let key = SessionKey {
+            transport: CallTransport::Gsm,
+            generation: 17,
+            call_id: "displayed-a".into(),
+        };
+        for action in [
+            CallAction::Answer,
+            CallAction::Reject(RejectReason::Cancelled),
+            CallAction::Hangup,
+            CallAction::SetMute(true),
+        ] {
+            let intent = CallIntent::Session(CallCommand {
+                key: key.clone(),
+                action,
+            });
+            assert_eq!(
+                CallIntent::from_parts(intent.action_name(), &intent.payload()).unwrap(),
+                intent
+            );
+        }
+        for payload in [
+            serde_json::json!({"action":"answer"}),
+            serde_json::json!({"key":{"transport":"gsm","generation":17},"action":"answer"}),
+            serde_json::json!({"key":{"transport":"gsm","generation":17,"call_id":" "},"action":"answer"}),
+        ] {
+            assert!(CallIntent::from_parts("session", &payload).is_err());
         }
     }
 }

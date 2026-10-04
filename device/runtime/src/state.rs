@@ -246,6 +246,11 @@ impl Default for MediaState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallRuntimeState {
+    pub managed: bool,
+    pub session: Option<yoyopod_protocol::call::SessionKey>,
+    pub session_phase: Option<yoyopod_protocol::call::CallPhase>,
+    pub accept_enabled: bool,
+    pub alert_audible: bool,
     pub method: yoyopod_protocol::ui::CallMethod,
     pub sip_available: bool,
     pub gsm_available: bool,
@@ -268,6 +273,11 @@ pub struct CallRuntimeState {
 impl Default for CallRuntimeState {
     fn default() -> Self {
         Self {
+            managed: false,
+            session: None,
+            session_phase: None,
+            accept_enabled: false,
+            alert_audible: false,
             method: yoyopod_protocol::ui::CallMethod::Sip,
             sip_available: false,
             gsm_available: false,
@@ -730,6 +740,9 @@ pub struct OverlayRuntimeState {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeState {
+    pub call_ring_duration_ms: u64,
+    pub display_brightness: f32,
+    pub audio_route: Value,
     pub current_screen: UiScreen,
     pub focus_prompt_request_id: Option<String>,
     pub media: MediaState,
@@ -761,6 +774,9 @@ pub struct RuntimeState {
 impl Default for RuntimeState {
     fn default() -> Self {
         Self {
+            call_ring_duration_ms: 30_000,
+            display_brightness: 1.0,
+            audio_route: json!({}),
             current_screen: UiScreen::Hub,
             focus_prompt_request_id: None,
             media: MediaState::default(),
@@ -1225,6 +1241,10 @@ impl RuntimeState {
     }
 
     pub fn apply_audio_route_local(&mut self, route: &Value) {
+        if let (Some(current), Some(update)) = (self.audio_route.as_object_mut(), route.as_object())
+        {
+            current.extend(update.clone());
+        }
         if let Some(volume) = i32_field(route, "media_volume") {
             self.media.volume = volume.clamp(0, 100);
         }
@@ -1244,7 +1264,7 @@ impl RuntimeState {
         if let Some(registration_state) = string_field(snapshot, "registration_state") {
             self.call.registration_state = registration_state;
         }
-        if self.call.method != yoyopod_protocol::ui::CallMethod::Gsm {
+        if !self.call.managed && self.call.method != yoyopod_protocol::ui::CallMethod::Gsm {
             if let Some(call_state) = snapshot.get("call_state") {
                 self.call.state = call_state
                     .as_str()
@@ -1331,6 +1351,9 @@ impl RuntimeState {
     }
 
     pub fn apply_ui_intent(&mut self, intent: &UiIntent) {
+        if self.call.managed && matches!(intent, UiIntent::Call(_)) {
+            return;
+        }
         if let UiIntent::Call(yoyopod_protocol::ui::CallIntent::Start(action)) = intent {
             let Some(target) = self
                 .approved_call_target(&action.id, action.method)
@@ -1394,6 +1417,9 @@ impl RuntimeState {
             .unwrap_or(false);
         self.call.gsm_unavailable_reason =
             string_field(snapshot, "unavailable_reason").unwrap_or_default();
+        if self.call.managed {
+            return;
+        }
         let status = string_field(snapshot, "state").unwrap_or_else(|| "idle".to_string());
         if self.call.method != yoyopod_protocol::ui::CallMethod::Gsm {
             return;
@@ -2120,6 +2146,10 @@ impl RuntimeState {
                 "recent_tracks": list_payload(&self.media.recent_tracks),
             },
             "call": {
+                "session": self.call.session,
+                "session_phase": self.call.session_phase,
+                "accept_enabled": self.call.accept_enabled,
+                "alert_audible": self.call.alert_audible,
                 "sip_available": self.call.sip_available,
                 "gsm_available": self.call.gsm_available,
                 "gsm_unavailable_reason": self.call.gsm_unavailable_reason,

@@ -252,6 +252,7 @@ where
     let mut gsm_generation = None;
     let mut gsm_sessions = Vec::new();
     let mut gsm_startup_reconciled = gsm.is_none();
+    let mut gsm_recovery_quarantined = false;
     if gsm.is_some() {
         runtime.require_voice_reconciliation();
     }
@@ -290,6 +291,7 @@ where
                 &mut gsm_generation,
                 &mut gsm_sessions,
                 &mut gsm_startup_reconciled,
+                gsm_recovery_quarantined,
             )?;
         }
         match input_rx.recv_timeout(poll_interval) {
@@ -321,6 +323,15 @@ where
                     || envelope.message_type.starts_with("call.")
                     || envelope.message_type == "network.configure"
                 {
+                    if envelope.message_type == "network.configure"
+                        && envelope.payload["recovery_quarantined"] == true
+                    {
+                        // An old MM authorization/native dispatch can survive the dead client.
+                        // This lifetime's empty cache cannot prove that operation drained.
+                        gsm_recovery_quarantined = true;
+                        gsm_startup_reconciled = false;
+                        runtime.require_voice_reconciliation();
+                    }
                     let request_id = envelope.request_id.clone();
                     let result = gsm
                         .as_ref()
@@ -541,11 +552,13 @@ fn drain_gsm_events<C: ModemController, W: Write>(
     generation: &mut Option<u64>,
     sessions: &mut Vec<CallUpdate>,
     startup_reconciled: &mut bool,
+    recovery_quarantined: bool,
 ) -> Result<()> {
     for event in gsm.drain_events() {
         match event {
             GsmEvent::Reconciled(reconciled) if Some(reconciled.generation) == *generation => {
-                if !*startup_reconciled
+                if !recovery_quarantined
+                    && !*startup_reconciled
                     && reconciled.native_calls_quiescent
                     && reconciled.audio_released
                 {
@@ -1751,6 +1764,57 @@ mod tests {
             "mute:true".into(),
             "hangup".into()
         ]));
+    }
+
+    #[test]
+    fn quarantined_replacement_empty_cache_cannot_start_cellular_data() {
+        let config_dir = tempfile::tempdir().unwrap();
+        let modem = NoFixModem::default();
+        let queries = modem.gps_queries.clone();
+        let mut runtime = NetworkRuntime::with_controller(
+            config_dir.path().to_str().unwrap(),
+            crate::config::NetworkConfig {
+                enabled: true,
+                ..Default::default()
+            },
+            modem,
+        );
+        runtime.require_voice_reconciliation();
+        let gsm = GsmWorker::with_backend(RecordingGsmBackend(Arc::new(Mutex::new(vec![]))));
+        gsm.send(GsmCommand::Configure {
+            request_id: "restart".into(),
+            generation: 7,
+            pcm_sample_rate_hz: None,
+        })
+        .unwrap();
+        let mut generation = None;
+        let mut sessions = vec![];
+        let mut reconciled = false;
+        let mut output = vec![];
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !String::from_utf8_lossy(&output).contains("call.reconciled")
+            && Instant::now() < deadline
+        {
+            drain_gsm_events(
+                &mut output,
+                &mut runtime,
+                &gsm,
+                &mut generation,
+                &mut sessions,
+                &mut reconciled,
+                true,
+            )
+            .unwrap();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(String::from_utf8_lossy(&output).contains("call.reconciled"));
+        assert!(
+            !reconciled,
+            "a replacement empty MM cache is not an operation-drain barrier"
+        );
+        assert!(runtime.suspend_for_voice_command().is_err());
+        assert!(!runtime.snapshot().connected);
+        assert_eq!(*queries.lock().unwrap(), 0);
     }
 
     #[test]

@@ -1,4 +1,5 @@
 //! Pure call ownership, admission, and lifecycle policy. Effects are executed by runtime.
+pub mod effects;
 pub mod identity;
 mod policy;
 #[cfg(test)]
@@ -70,6 +71,7 @@ pub enum CallEffect {
         generation: u64,
     },
 }
+#[derive(Debug, Clone)]
 struct Owned {
     key: SessionKey,
     contact: ContactIdentity,
@@ -83,6 +85,7 @@ struct Owned {
     pending: bool,
     acknowledgements: Vec<String>,
 }
+#[derive(Debug, Clone)]
 pub struct CallManager {
     mode: DeviceMode,
     operation_timeout_ms: u64,
@@ -133,6 +136,21 @@ impl CallManager {
     }
     pub fn alert_audible(&self) -> bool {
         self.audible
+    }
+    pub fn incoming(&self) -> bool {
+        self.owned.as_ref().is_some_and(|s| s.incoming)
+    }
+    pub fn accept_enabled(&self) -> bool {
+        self.owned.as_ref().is_some_and(|s| {
+            s.incoming
+                && !s.queued_answer
+                && matches!(s.phase, CallPhase::Preparing | CallPhase::Ringing)
+        })
+    }
+    pub fn remaining_ring_ms(&self, now_ms: u64) -> u64 {
+        self.owned
+            .as_ref()
+            .map_or(0, |s| s.ring_deadline.saturating_sub(now_ms))
     }
     fn current_generation(&mut self, key: &SessionKey) -> bool {
         if key.call_id.trim().is_empty() {

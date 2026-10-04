@@ -7,10 +7,13 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 use yoyopod_protocol::ui::UiCommand;
 
+use crate::call_manager::effects::CallOperationLedger;
+use crate::call_manager::{CallManager, CallManagerEvent};
 use crate::event::{commands_for_event, runtime_event_from_worker, RuntimeCommand};
 use crate::protocol::{EnvelopeKind, WorkerEnvelope};
 use crate::state::{RuntimeState, WorkerDomain, WorkerState};
 use crate::worker::{WorkerProtocolError, WorkerSupervisor};
+mod calls;
 
 const WORKER_DOMAINS: [WorkerDomain; 7] = [
     WorkerDomain::Ui,
@@ -31,6 +34,8 @@ struct PendingWorkerCommand {
 }
 
 pub trait LoopIo {
+    /// Success includes reaping the old worker and owned helper resources.
+    fn recover_worker(&mut self, domain: WorkerDomain) -> Result<(), String>;
     fn drain_worker_messages(&mut self) -> Vec<(WorkerDomain, WorkerEnvelope)>;
     fn drain_worker_protocol_errors(&mut self) -> Vec<(WorkerDomain, WorkerProtocolError)>;
     fn send_worker_envelope(&mut self, domain: WorkerDomain, envelope: WorkerEnvelope) -> bool;
@@ -44,14 +49,30 @@ pub struct RuntimeLoop {
     state: RuntimeState,
     shutdown_requested: bool,
     pending_worker_commands: HashMap<(WorkerDomain, String), PendingWorkerCommand>,
+    manager: CallManager,
+    call_operations: CallOperationLedger,
+    calls: calls::CallIntegration,
+    clock_origin: Instant,
+    now_ms: u64,
 }
 
 impl RuntimeLoop {
-    pub fn new(state: RuntimeState) -> Self {
+    pub fn new(mut state: RuntimeState) -> Self {
+        state.call.managed = true;
+        let manager = CallManager::new(
+            state.settings.device_mode.clone(),
+            8_000,
+            state.call_ring_duration_ms,
+        );
         Self {
             state,
             shutdown_requested: false,
             pending_worker_commands: HashMap::new(),
+            manager,
+            call_operations: Default::default(),
+            calls: Default::default(),
+            clock_origin: Instant::now(),
+            now_ms: 0,
         }
     }
 
@@ -64,6 +85,11 @@ impl RuntimeLoop {
     }
 
     pub fn run_once(&mut self, io: &mut impl LoopIo) -> usize {
+        self.run_once_at(io, self.clock_origin.elapsed().as_millis() as u64)
+    }
+
+    pub fn run_once_at(&mut self, io: &mut impl LoopIo, now_ms: u64) -> usize {
+        self.now_ms = self.now_ms.max(now_ms);
         let started = Instant::now();
         let mut processed = 0;
         let mut protocol_faults = HashMap::<WorkerDomain, String>::new();
@@ -76,10 +102,18 @@ impl RuntimeLoop {
         }
 
         for (domain, envelope) in io.drain_worker_messages() {
+            if self.intercept_call_message(io, domain, &envelope) {
+                processed += 1;
+                continue;
+            }
             self.resolve_correlated_worker_result(io, domain, &envelope);
             let Some(event) = runtime_event_from_worker(domain, envelope) else {
                 continue;
             };
+            if self.intercept_call_event(io, &event) {
+                processed += 1;
+                continue;
+            }
 
             for command in commands_for_event(&self.state, &event) {
                 self.dispatch_command(io, command);
@@ -87,6 +121,12 @@ impl RuntimeLoop {
 
             let before = self.state.clone();
             event.apply(&mut self.state);
+            if self.manager.mode() != self.state.settings.device_mode {
+                self.handle_call(
+                    io,
+                    CallManagerEvent::SetMode(self.state.settings.device_mode.clone()),
+                );
+            }
             if self.state != before {
                 self.send_runtime_snapshot_patches(io, &before);
             }
@@ -103,6 +143,11 @@ impl RuntimeLoop {
         self.state.last_loop_duration_ms = started.elapsed().as_millis() as u64;
         self.process_pending_power_shutdown(io);
         self.expire_correlated_worker_commands(io);
+        for operation in self.call_operations.expired(self.now_ms) {
+            self.finish_call_operation(io, operation, false, &json!({}));
+        }
+        self.handle_call(io, CallManagerEvent::Tick);
+        self.confirm_call_cleanup(io);
         self.send_tick(io);
 
         processed
@@ -117,6 +162,7 @@ impl RuntimeLoop {
         let state_file = self.state.power.safety.config.shutdown_state_file.clone();
         let command = self.state.power.safety.config.shutdown_command.clone();
         let payload = self.state.power_shutdown_state_payload(now_seconds);
+        self.begin_shutdown(io, self.now_ms);
         let _ = io.send_worker_envelope(
             WorkerDomain::Power,
             WorkerEnvelope::command(
@@ -132,10 +178,22 @@ impl RuntimeLoop {
     }
 
     fn dispatch_command(&mut self, io: &mut impl LoopIo, command: RuntimeCommand) {
+        if self.block_call_conflicting_command(io, &command) {
+            return;
+        }
         match command {
             RuntimeCommand::WorkerCommand { domain, envelope } => {
-                let _ = io.send_worker_envelope(domain, envelope);
+                let id = envelope.request_id.clone();
+                if !io.send_worker_envelope(domain, envelope) {
+                    if let Some(operation) =
+                        id.and_then(|id| self.call_operations.take(domain, &id))
+                    {
+                        self.finish_call_operation(io, operation, false, &json!({}));
+                    }
+                }
             }
+            RuntimeCommand::RequestCall(action) => self.request_outgoing(io, action),
+            RuntimeCommand::RecoverWorker { domain } => self.recover_call_worker(io, domain),
             RuntimeCommand::CorrelatedWorkerCommand {
                 domain,
                 mut envelope,
@@ -167,7 +225,7 @@ impl RuntimeLoop {
                 let _ = io.append_app_log(&self.state.app_log_file, &line);
             }
             RuntimeCommand::Shutdown => {
-                self.shutdown_requested = true;
+                self.begin_shutdown(io, self.now_ms);
             }
         }
     }
@@ -272,6 +330,9 @@ fn safe_worker_error_code(payload: &Value) -> String {
 }
 
 impl LoopIo for WorkerSupervisor {
+    fn recover_worker(&mut self, domain: WorkerDomain) -> Result<(), String> {
+        self.restart(domain)
+    }
     fn drain_worker_messages(&mut self) -> Vec<(WorkerDomain, WorkerEnvelope)> {
         WORKER_DOMAINS
             .into_iter()
@@ -378,12 +439,24 @@ mod tests {
 
     fn assert_no_local_call_interruption(sent: &[(WorkerDomain, WorkerEnvelope)]) {
         for (domain, envelope) in sent {
-            assert!(!matches!(envelope.message_type.as_str(),
-                "media.pause" | "media.interrupt_for_call" | "media.ringtone_start" |
-                "voip.interrupt_for_call" | "voice.cancel" | "voice.cancel_focus_prompt" |
-                "ui.set_backlight"));
+            assert!(!matches!(
+                envelope.message_type.as_str(),
+                "media.pause"
+                    | "media.interrupt_for_call"
+                    | "media.ringtone_start"
+                    | "voip.interrupt_for_call"
+                    | "voice.cancel"
+                    | "voice.cancel_focus_prompt"
+                    | "ui.set_backlight"
+            ));
             if *domain == WorkerDomain::Ui {
-                assert_ne!(envelope.payload.pointer("/call/state").and_then(Value::as_str), Some("incoming"));
+                assert_ne!(
+                    envelope
+                        .payload
+                        .pointer("/call/state")
+                        .and_then(Value::as_str),
+                    Some("incoming")
+                );
             }
         }
     }
@@ -393,16 +466,26 @@ mod tests {
         for (domain, transport) in [(WorkerDomain::Voip, "sip"), (WorkerDomain::Network, "gsm")] {
             let mut runtime = RuntimeLoop::new(RuntimeState::default());
             let mut io = FakeLoopIo::default();
-            io.messages.push((domain, WorkerEnvelope::event("call.offer", json!({
-                "key":{"transport":transport,"generation":1,"call_id":"unknown"},
-                "address":"withheld"
-            }))));
+            io.messages.push((
+                domain,
+                WorkerEnvelope::event(
+                    "call.offer",
+                    json!({
+                        "key":{"transport":transport,"generation":1,"call_id":"unknown"},
+                        "address":"withheld"
+                    }),
+                ),
+            ));
             runtime.run_once(&mut io);
             assert_no_local_call_interruption(&io.sent);
-            assert!(io.sent.iter().any(|(sent_domain, envelope)| *sent_domain == domain &&
-                envelope.message_type == "call.action" &&
-                envelope.payload["action"]["reject"] == "unapproved"),
-                "raw unknown offer requires an isolated rejection");
+            assert!(
+                io.sent
+                    .iter()
+                    .any(|(sent_domain, envelope)| *sent_domain == domain
+                        && envelope.message_type == "call.action"
+                        && envelope.payload["action"]["reject"] == "unapproved"),
+                "raw unknown offer requires an isolated rejection"
+            );
         }
     }
 
@@ -414,16 +497,20 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct FakeLoopIo {
-        messages: Vec<(WorkerDomain, WorkerEnvelope)>,
+    pub(super) struct FakeLoopIo {
+        pub(super) messages: Vec<(WorkerDomain, WorkerEnvelope)>,
         protocol_errors: Vec<(WorkerDomain, WorkerProtocolError)>,
-        sent: Vec<(WorkerDomain, WorkerEnvelope)>,
+        pub(super) sent: Vec<(WorkerDomain, WorkerEnvelope)>,
         app_log: Vec<(String, String)>,
-        recovered: Vec<WorkerDomain>,
-        fail_send: Vec<String>,
+        pub(super) recovered: Vec<WorkerDomain>,
+        pub(super) fail_send: Vec<String>,
     }
 
     impl LoopIo for FakeLoopIo {
+        fn recover_worker(&mut self, domain: WorkerDomain) -> Result<(), String> {
+            self.recovered.push(domain);
+            Ok(())
+        }
         fn drain_worker_messages(&mut self) -> Vec<(WorkerDomain, WorkerEnvelope)> {
             std::mem::take(&mut self.messages)
         }

@@ -191,6 +191,19 @@ where
             .map_err(anyhow::Error::msg)?;
     }
     match envelope.message_type.as_str() {
+        "call.admit" => {
+            let key = serde_json::from_value(envelope.payload["key"].clone())?;
+            host.admit_session(&key).map_err(anyhow::Error::msg)?;
+            write_envelope_to(
+                output,
+                &WorkerEnvelope::result(
+                    "call.admit",
+                    envelope.request_id,
+                    json!({"accepted":true}),
+                ),
+            )?;
+            write_session_snapshot(host, output)?;
+        }
         "voip.interrupt_for_call" => {
             let request = serde_json::from_value(envelope.payload)?;
             let draft = backend.with_backend(|b| host.interrupt_for_call(b, &request))?;
@@ -871,6 +884,9 @@ fn session_snapshot_envelope(host: &VoipHost) -> WorkerEnvelope {
 
 pub fn backend_event_envelope(event: host::BackendEvent) -> WorkerEnvelope {
     match event {
+        host::BackendEvent::Cleanup(key) => {
+            WorkerEnvelope::event("call.cleanup", json!({"key": key, "released":true}))
+        }
         host::BackendEvent::Offer(offer) => WorkerEnvelope::event("call.offer", json!(offer)),
         host::BackendEvent::Update(update) => WorkerEnvelope::event("call.update", json!(update)),
         host::BackendEvent::RegistrationChanged { state, reason } => WorkerEnvelope::event(
