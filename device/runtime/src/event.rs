@@ -183,6 +183,16 @@ pub fn runtime_event_from_worker(
 
     match kind {
         EnvelopeKind::Error
+            if domain == WorkerDomain::Network
+                && message_type == "network.error"
+                && request_id.is_some() =>
+        {
+            // The loop resolves correlated command failures into cloud NACKs.
+            // An unavailable fix or rejected request does not mean this
+            // worker process is unhealthy, including a late command reply.
+            Some(RuntimeEvent::Ignored)
+        }
+        EnvelopeKind::Error
             if matches!(
                 message_type.as_str(),
                 "wifi_error" | "bluetooth_error" | "audio_error"
