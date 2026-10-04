@@ -1145,6 +1145,196 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
+    struct PrivateBus {
+        daemon: std::process::Child,
+        address: String,
+    }
+    impl PrivateBus {
+        fn start() -> Self {
+            use std::io::BufRead;
+            let mut daemon = std::process::Command::new("/usr/bin/dbus-daemon")
+                .args(["--session", "--nofork", "--print-address=1"])
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .expect("private test D-Bus daemon");
+            let mut address = String::new();
+            std::io::BufReader::new(daemon.stdout.take().unwrap())
+                .read_line(&mut address)
+                .unwrap();
+            Self {
+                daemon,
+                address: address.trim().into(),
+            }
+        }
+        fn connection(&self) -> Connection {
+            Builder::address(self.address.as_str())
+                .unwrap()
+                .method_timeout(Duration::from_secs(3))
+                .build()
+                .unwrap()
+        }
+    }
+    impl Drop for PrivateBus {
+        fn drop(&mut self) {
+            let _ = self.daemon.kill();
+            let _ = self.daemon.wait();
+        }
+    }
+
+    struct ReplacementCall(Arc<std::sync::atomic::AtomicUsize>);
+    #[zbus::interface(name = "org.freedesktop.ModemManager1.Call")]
+    impl ReplacementCall {
+        fn hangup(&self) {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    struct EmptyCalls {
+        gate: Mutex<Option<(Sender<()>, Receiver<()>)>>,
+    }
+    #[zbus::interface(name = "org.freedesktop.ModemManager1.Modem.Voice")]
+    impl EmptyCalls {
+        #[zbus(property)]
+        fn calls(&self) -> Vec<OwnedObjectPath> {
+            if let Some((entered, release)) = self.gate.lock().unwrap().take() {
+                entered.send(()).unwrap();
+                release.recv_timeout(Duration::from_secs(3)).unwrap();
+            }
+            Vec::new()
+        }
+    }
+    fn old_native_backend(bus: &PrivateBus, old: &Connection) -> (ModemManagerVoice, SessionKey) {
+        use yoyopod_protocol::call::{CallDirection, CallTransport};
+        let mut backend = ModemManagerVoice::default();
+        backend.configure(7, None).unwrap();
+        backend.connection = Some(bus.connection());
+        backend.service_owner = Some(old.unique_name().unwrap().to_string());
+        backend.isolated = true;
+        backend.modem = Some(OwnedObjectPath::try_from("/modem/0").unwrap());
+        let key = SessionKey {
+            transport: CallTransport::Gsm,
+            generation: 7,
+            call_id: "old-A".into(),
+        };
+        let registry = backend.registry.as_mut().unwrap();
+        registry.register_outgoing(&key, "/call/0").unwrap();
+        registry.observe(
+            "/call/0",
+            CallDirection::Outgoing,
+            CallPhase::Active,
+            "+49123456789",
+        );
+        backend.owner = Some(key.clone());
+        (backend, key)
+    }
+    fn allow_replacement(connection: &Connection) {
+        use zbus::fdo::RequestNameFlags;
+        connection
+            .request_name_with_flags(
+                DESTINATION,
+                RequestNameFlags::AllowReplacement | RequestNameFlags::DoNotQueue,
+            )
+            .unwrap();
+    }
+    fn replace_owner(connection: &Connection) {
+        use zbus::fdo::RequestNameFlags;
+        connection
+            .request_name_with_flags(
+                DESTINATION,
+                RequestNameFlags::ReplaceExisting | RequestNameFlags::DoNotQueue,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn gsm_owner_replacement_cannot_retarget_queued_old_key_or_captured_call_proxy() {
+        let bus = PrivateBus::start();
+        let old = bus.connection();
+        let replacement = bus.connection();
+        let old_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let replacement_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        old.object_server()
+            .at("/call/0", ReplacementCall(old_calls.clone()))
+            .unwrap();
+        replacement
+            .object_server()
+            .at("/call/0", ReplacementCall(replacement_calls.clone()))
+            .unwrap();
+        allow_replacement(&old);
+        let (mut backend, key) = old_native_backend(&bus, &old);
+        backend.ensure_control().unwrap();
+        let captured = backend.proxy_for("/call/0").unwrap();
+        replace_owner(&replacement);
+        // The real proxy builder must remain bound even if replacement occurs
+        // after validation, not merely reject when a pre-action poll sees it.
+        captured.call::<_, _, ()>("Hangup", &()).unwrap();
+        drop(captured);
+        assert_eq!(
+            replacement_calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "captured proxy followed the well-known name to a replacement call"
+        );
+        assert!(backend
+            .apply_call(&CallCommand {
+                key: key.clone(),
+                action: yoyopod_protocol::call::CallAction::Hangup
+            })
+            .is_err());
+        assert!(backend.owns_voice(&key));
+        assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+        assert_eq!(
+            replacement_calls.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+    }
+
+    #[test]
+    fn gsm_owner_replacement_during_empty_calls_scan_is_not_old_cleanup_evidence() {
+        let bus = PrivateBus::start();
+        let old = bus.connection();
+        let replacement = bus.connection();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        old.object_server()
+            .at(
+                "/modem/0",
+                EmptyCalls {
+                    gate: Mutex::new(Some((entered_tx, release_rx))),
+                },
+            )
+            .unwrap();
+        replacement
+            .object_server()
+            .at(
+                "/modem/0",
+                EmptyCalls {
+                    gate: Mutex::new(None),
+                },
+            )
+            .unwrap();
+        allow_replacement(&old);
+        let (mut backend, key) = old_native_backend(&bus, &old);
+        backend.ensure_control().unwrap();
+        let scan = thread::spawn(move || {
+            let result = backend.reconcile_paths();
+            (backend, result)
+        });
+        entered_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("scan reached old owner's Calls getter");
+        replace_owner(&replacement);
+        release_tx.send(()).unwrap();
+        let (mut backend, result) = scan.join().unwrap();
+        assert!(
+            result.is_err(),
+            "owner changed during scan but empty Calls was treated as old cleanup proof"
+        );
+        assert!(backend.owns_voice(&key));
+        assert_eq!(backend.registry().unwrap().path_for(&key), Some("/call/0"));
+        assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+        assert!(!backend.drain_call_events().iter().any(|event| matches!(event, CallManagerWireEvent::Update(update) if update.phase == CallPhase::Ended)));
+    }
+
     #[test]
     fn gsm_terminal_cleanup_keeps_release_fact_when_object_deletion_fails() {
         use yoyopod_protocol::call::{CallDirection, CallTransport};
