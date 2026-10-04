@@ -1306,7 +1306,13 @@ impl RuntimeState {
             .call
             .contacts
             .iter()
-            .find(|contact| contact.phone_number == self.call.peer_address)
+            .find(|contact| {
+                contact
+                    .phone_number
+                    .chars()
+                    .filter(char::is_ascii_digit)
+                    .eq(self.call.peer_address.chars().filter(char::is_ascii_digit))
+            })
             .map(|contact| contact.title.clone())
             .unwrap_or_else(|| self.call.peer_address.clone());
         self.call.muted = snapshot

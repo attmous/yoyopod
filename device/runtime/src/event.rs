@@ -624,6 +624,10 @@ fn commands_for_ui_focus_changed(
     changed: &UiFocusChanged,
 ) -> Vec<RuntimeCommand> {
     if !state.settings.speak_names
+        || matches!(
+            state.call.state,
+            CallState::Incoming | CallState::Outgoing | CallState::Active
+        )
         || changed.request_id.trim().is_empty()
         || changed.label.trim().is_empty()
     {
@@ -838,8 +842,18 @@ fn commands_for_call_intent(state: &RuntimeState, intent: &CallIntent) -> Vec<Ru
             )],
             CallMethod::Gsm if state.call.gsm_available => vec![
                 worker_command(
+                    WorkerDomain::Voice,
+                    "voice.cancel_focus_prompt",
+                    empty_payload(),
+                ),
+                worker_command(
                     WorkerDomain::Voip,
                     "voip.stop_focus_prompt_playback",
+                    empty_payload(),
+                ),
+                worker_command(
+                    WorkerDomain::Voip,
+                    "voip.stop_voice_note_playback",
                     empty_payload(),
                 ),
                 worker_command(WorkerDomain::Media, "media.pause", empty_payload()),
@@ -1138,7 +1152,12 @@ fn commands_for_voice_focus_prompt_result(
     request_id: Option<&str>,
     payload: &Value,
 ) -> Vec<RuntimeCommand> {
-    if request_id.is_none() || state.focus_prompt_request_id.as_deref() != request_id {
+    if matches!(
+        state.call.state,
+        CallState::Incoming | CallState::Outgoing | CallState::Active
+    ) || request_id.is_none()
+        || state.focus_prompt_request_id.as_deref() != request_id
+    {
         return Vec::new();
     }
     let Some(file_path) = string_field(payload, "audio_path") else {
@@ -2335,6 +2354,10 @@ mod tests {
     fn gsm_owns_active_call_controls_and_is_not_overwritten_by_sip_updates() {
         use yoyopod_protocol::ui::CallMethod;
         let mut state = RuntimeState::default();
+        RuntimeEvent::CloudConfig(json!({"contacts": {"entries": [
+            {"id": "dad-id", "name": "Dad", "phone_number": "+49 (123) 456-789", "can_call": true}
+        ]}}))
+        .apply(&mut state);
         state.call.method = CallMethod::Gsm;
         RuntimeEvent::GsmCallSnapshot(json!({"available": true, "state": "active",
             "peer_number": "+49123456789", "duration_seconds": 65, "muted": true}))
@@ -2344,9 +2367,19 @@ mod tests {
         .apply(&mut state);
         assert_eq!(state.call.state, CallState::Active);
         assert_eq!(state.call.peer_address, "+49123456789");
+        assert_eq!(state.call.peer_name, "Dad");
         assert_eq!(state.call.duration_text, "01:05");
         assert!(state.call.muted);
         assert!(state.call.registered);
+        let changed = UiFocusChanged::new("call-focus", "Mute");
+        state.focus_prompt_request_id = Some("call-focus".into());
+        assert!(commands_for_ui_focus_changed(&state, &changed).is_empty());
+        assert!(commands_for_voice_focus_prompt_result(
+            &state,
+            Some("call-focus"),
+            &json!({"audio_path":"/tmp/late-prompt.wav"})
+        )
+        .is_empty());
         assert!(commands_for_voip_snapshot(&state, &json!({"call_state": "idle"})).is_empty());
         let telemetry = commands_for_event(
             &state,
