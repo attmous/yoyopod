@@ -61,6 +61,13 @@ impl<B: CloudMqttBackend> CloudHost<B> {
         }
     }
 
+    pub fn set_contact_priority(
+        &mut self,
+        change: &yoyopod_protocol::call::ContactPrioritySet,
+    ) -> Result<Vec<Value>> {
+        crate::contacts::set_contact_priority(&self.config, change)
+    }
+
     pub fn config_dir(&self) -> &str {
         &self.config_dir
     }
@@ -75,6 +82,7 @@ impl<B: CloudMqttBackend> CloudHost<B> {
     }
 
     pub fn start(&mut self) -> Result<()> {
+        crate::contacts::initialize_contacts_store(&self.config)?;
         if self.snapshot.provisioning_state == "invalid_provisioning" {
             self.persist_status();
             return Ok(());

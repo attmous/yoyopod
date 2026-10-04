@@ -2759,6 +2759,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "signal-hook",
+ "tempfile",
  "thiserror",
  "time",
  "yoyopod-protocol",

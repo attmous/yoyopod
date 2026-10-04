@@ -20,6 +20,7 @@ pub enum RuntimeEvent {
     },
     CloudSnapshot(Value),
     CloudConfig(Value),
+    ContactsUpdated(Value),
     CloudCommand(Value),
     MediaSnapshot(Value),
     VoipSnapshot(Value),
@@ -94,6 +95,12 @@ impl RuntimeEvent {
                 if let Some(contacts) = crate::config::cloud_contact_items(config) {
                     state.seed_contacts(contacts);
                 }
+            }
+            Self::ContactsUpdated(payload) => {
+                let people = crate::config::PeopleRuntimeConfig {
+                    contacts: crate::config::contact_configs_from_value(payload),
+                };
+                state.seed_contacts(people.to_contact_items());
             }
             Self::CloudCommand(_) => {}
             Self::MediaSnapshot(snapshot) => {
@@ -276,6 +283,7 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
     match event {
         RuntimeEvent::UiIntent(intent) => commands_for_ui_intent(state, intent),
         RuntimeEvent::UiInput(payload) => commands_for_ui_input(state, payload),
+        RuntimeEvent::ContactsUpdated(_) => Vec::new(),
         RuntimeEvent::CloudCommand(command) => commands_for_cloud_command(command),
         RuntimeEvent::CloudConfig(config) => {
             let mut commands = vec![worker_command(
@@ -526,6 +534,7 @@ fn cloud_event_from_message(message_type: &str, payload: Value) -> RuntimeEvent 
             domain: WorkerDomain::Cloud,
         },
         "cloud.snapshot" | "cloud.health" => RuntimeEvent::CloudSnapshot(payload),
+        "cloud.contacts_updated" => RuntimeEvent::ContactsUpdated(payload),
         "cloud.config" => payload
             .get("config")
             .cloned()
@@ -783,8 +792,12 @@ fn commands_for_settings_intent(
             "wifi_provisioning_stop",
             empty_payload(),
         )],
+        SettingsIntent::ContactPrioritySet(change) => vec![worker_command(
+            WorkerDomain::Cloud,
+            "cloud.contact_priority_set",
+            serde_json::to_value(change).expect("typed contact priority"),
+        )],
         SettingsIntent::DeviceModeSet(_)
-        | SettingsIntent::ContactPrioritySet(_)
         | SettingsIntent::CompanionSet(_)
         | SettingsIntent::ThemeSet(_)
         | SettingsIntent::SpeakNamesToggle => Vec::new(),
@@ -1948,6 +1961,41 @@ mod tests {
         ListItemAction, MusicIntent, PlaylistTrackAction, SettingsIntent, SystemIntent, UiEvent,
         UiFocusChanged,
     };
+
+    #[test]
+    fn local_contacts_update_preserves_favorite_and_incoming_only_permissions() {
+        let mut state = RuntimeState::default();
+        let event = RuntimeEvent::ContactsUpdated(json!({"contacts":[
+            {"id":"ordinary", "name":"Ordinary", "sip_address":"sip:ordinary@example.test", "favorite":false},
+            {"id":"dad", "name":"Dad", "sip_address":"sip:dad@example.test", "phone_number":"+4912345", "favorite":true, "is_primary":false, "priority":true, "can_call":false, "can_receive":false}
+        ]}));
+        event.apply(&mut state);
+        let items = &state.call.contacts;
+        assert_eq!(items[0].contact_id, "dad"); // Favorite stays favorite without cloud remapping.
+        assert!(items[0].priority);
+        assert!(!items[0].can_call);
+        assert!(!items[0].can_receive);
+        assert_eq!(state.call_context(false).contacts.len(), 2);
+        assert_eq!(
+            state.call_context(false).contacts[0].phone_number,
+            "+4912345"
+        );
+        assert_eq!(state.ui_snapshot().call.contacts[0].contact_id, "dad");
+        let commands = commands_for_event(
+            &state,
+            &RuntimeEvent::UiIntent(UiIntent::Settings(
+                yoyopod_protocol::ui::SettingsIntent::ContactPrioritySet(
+                    yoyopod_protocol::call::ContactPrioritySet {
+                        contact_id: "dad".into(),
+                        priority: false,
+                    },
+                ),
+            )),
+        );
+        assert!(
+            matches!(&commands[0], RuntimeCommand::WorkerCommand { domain: WorkerDomain::Cloud, envelope } if envelope.message_type == "cloud.contact_priority_set" && envelope.payload["priority"] == false)
+        );
+    }
 
     #[test]
     fn sip_backend_readiness_reaches_the_ui_independently_of_registration() {

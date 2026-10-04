@@ -101,6 +101,7 @@ fn start_workers(
 ) -> Result<RuntimeState> {
     let mut state = RuntimeState::default();
     state.seed_contacts(config.people.to_contact_items());
+    state.configure_call_preferences(config.call_mode_file.clone());
     state.configure_app_log_file(config.log_file.clone());
     state.configure_media_volume(config.media.default_volume);
     state.configure_voice_note_store_dir(config.voip.voice_note_store_dir.clone());

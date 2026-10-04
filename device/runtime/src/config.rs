@@ -24,6 +24,7 @@ const VOICE_WORKER_DEFAULT: &str = "device/speech/build/yoyopod-speech-host";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeConfig {
+    pub call_mode_file: String,
     pub ui: UiConfig,
     pub media: MediaRuntimeConfig,
     pub power: PowerRuntimeConfig,
@@ -187,6 +188,14 @@ impl RuntimeConfig {
         );
 
         Ok(Self {
+            call_mode_file: resolve_runtime_path(
+                &runtime_root,
+                string_at(
+                    &calling,
+                    &["calling", "mode_file"],
+                    "data/device/call-policy.json",
+                ),
+            ),
             ui: UiConfig {
                 hardware: string_at_env(
                     &hardware,

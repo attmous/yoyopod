@@ -1,6 +1,7 @@
 # Communication calling policy and non-secret account identity.
 
 calling:
+  mode_file: data/device/call-policy.json
   priority_over_music: true
   auto_answer: false
   ring_duration_seconds: 30

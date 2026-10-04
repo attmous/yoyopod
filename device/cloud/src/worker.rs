@@ -181,6 +181,28 @@ fn handle_command<B: CloudMqttBackend>(
     envelope: WorkerEnvelope,
 ) -> Result<LoopControl> {
     let request_id = envelope.request_id.clone();
+    if envelope.message_type == "cloud.contact_priority_set" {
+        let result =
+            serde_json::from_value::<yoyopod_protocol::call::ContactPrioritySet>(envelope.payload)
+                .map_err(anyhow::Error::from)
+                .and_then(|change| host.set_contact_priority(&change));
+        return Ok(LoopControl::Continue(match result {
+            Ok(contacts) => vec![
+                WorkerEnvelope::event("cloud.contacts_updated", json!({"contacts": contacts})),
+                WorkerEnvelope::result(
+                    "cloud.contact_priority_set",
+                    request_id,
+                    json!({"ok": true}),
+                ),
+            ],
+            Err(error) => vec![WorkerEnvelope::error(
+                "cloud.contact_priority_set",
+                request_id,
+                "contact_priority_failed",
+                error.to_string(),
+            )],
+        }));
+    }
     if envelope.message_type == "cloud.fetch_config" {
         return match host.fetch_config_now() {
             Ok(Some(config)) => Ok(LoopControl::Continue(vec![
@@ -368,4 +390,82 @@ fn string_field(value: &Value, key: &str) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn unprovisioned_owner_initializes_seed_before_local_edit() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("config/people")).unwrap();
+        std::fs::write(
+            root.path().join("config/people/contacts.seed.yaml"),
+            "contacts:\n  - name: Dad\n    sip_address: sip:dad@example.test\n",
+        )
+        .unwrap();
+        let config = CloudHostConfig {
+            runtime_root: root.path().to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+        let mut host = CloudHost::new("config", config, RumqttBackend::default());
+        host.start().unwrap();
+        let command = WorkerEnvelope::command(
+            "cloud.contact_priority_set",
+            Some("seed".into()),
+            json!({"contact_id":"sip:dad@example.test", "priority":true}),
+        );
+        let LoopControl::Continue(envelopes) = handle_command(&mut host, command).unwrap() else {
+            panic!("unexpected shutdown");
+        };
+        assert_eq!(envelopes[1].kind, EnvelopeKind::Result);
+        assert_eq!(envelopes[0].payload["contacts"][0]["priority"], true);
+    }
+
+    #[test]
+    fn local_priority_command_works_offline_and_correlates_failures() {
+        let root = tempfile::tempdir().unwrap();
+        let config = CloudHostConfig {
+            runtime_root: root.path().to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+        crate::contacts::persist_contacts(&config, &json!({"contacts":{"entries":[{"id":"dad", "name":"Dad", "sip_address":"sip:dad@example.test", "can_call":false, "can_receive":true}]}})).unwrap();
+        let mut host = CloudHost::new("config", config, RumqttBackend::default());
+        let command = WorkerEnvelope::command(
+            "cloud.contact_priority_set",
+            Some("priority-1".into()),
+            json!({"contact_id":"dad", "priority":true}),
+        );
+        let LoopControl::Continue(envelopes) = handle_command(&mut host, command).unwrap() else {
+            panic!("unexpected shutdown");
+        };
+        assert_eq!(envelopes.len(), 2);
+        assert_eq!(envelopes[0].message_type, "cloud.contacts_updated");
+        assert_eq!(envelopes[0].payload["contacts"][0]["priority"], true);
+        assert_eq!(envelopes[1].kind, EnvelopeKind::Result);
+        assert_eq!(envelopes[1].request_id.as_deref(), Some("priority-1"));
+        for value in [json!("true"), Value::Null, json!(1)] {
+            let command = WorkerEnvelope::command(
+                "cloud.contact_priority_set",
+                Some("invalid".into()),
+                json!({"contact_id":"dad", "priority":value}),
+            );
+            let LoopControl::Continue(envelopes) = handle_command(&mut host, command).unwrap()
+            else {
+                panic!("unexpected shutdown");
+            };
+            assert_eq!(envelopes.len(), 1);
+            assert_eq!(envelopes[0].kind, EnvelopeKind::Error);
+            assert_eq!(envelopes[0].request_id.as_deref(), Some("invalid"));
+        }
+        let command = WorkerEnvelope::command(
+            "cloud.contact_priority_set",
+            Some("missing-boolean".into()),
+            json!({"contact_id":"dad"}),
+        );
+        let LoopControl::Continue(envelopes) = handle_command(&mut host, command).unwrap() else {
+            panic!("unexpected shutdown");
+        };
+        assert_eq!(envelopes[0].kind, EnvelopeKind::Error);
+    }
 }

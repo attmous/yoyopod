@@ -711,6 +711,8 @@ pub struct RuntimeState {
     pub voice: VoiceRuntimeState,
     pub power: PowerRuntimeState,
     pub settings: SettingsRuntimeState,
+    pub call_mode_file: std::path::PathBuf,
+    pub call_preferences_error: Option<String>,
     pub network: NetworkRuntimeState,
     /// On-device Wi‑Fi onboarding (AP mode + captive portal) state, populated
     /// from `wifi_provisioning_state` events emitted by the network worker.
@@ -740,6 +742,8 @@ impl Default for RuntimeState {
             voice: VoiceRuntimeState::default(),
             power: PowerRuntimeState::default(),
             settings: SettingsRuntimeState::default(),
+            call_mode_file: "data/device/call-policy.json".into(),
+            call_preferences_error: None,
             network: NetworkRuntimeState::default(),
             wifi_setup: WifiSetupRuntimeSnapshot::default(),
             cloud: CloudRuntimeState::default(),
@@ -760,6 +764,7 @@ impl Default for RuntimeState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsRuntimeState {
+    pub device_mode: yoyopod_protocol::call::DeviceMode,
     pub companion: String,
     pub theme: String,
     pub speak_names: bool,
@@ -768,6 +773,7 @@ pub struct SettingsRuntimeState {
 impl Default for SettingsRuntimeState {
     fn default() -> Self {
         Self {
+            device_mode: Default::default(),
             companion: "Bunny".to_string(),
             theme: "Light".to_string(),
             speak_names: true,
@@ -776,6 +782,38 @@ impl Default for SettingsRuntimeState {
 }
 
 impl RuntimeState {
+    pub fn configure_call_preferences(&mut self, path: impl Into<std::path::PathBuf>) {
+        self.call_mode_file = path.into();
+        match crate::call_preferences::load_mode(&self.call_mode_file) {
+            Ok(mode) => {
+                self.settings.device_mode = mode;
+                self.call_preferences_error = None;
+            }
+            Err(error) => {
+                eprintln!("warning: {error}; using Do Not Disturb");
+                self.settings.device_mode = yoyopod_protocol::call::DeviceMode::DoNotDisturb;
+                self.call_preferences_error = Some(error);
+            }
+        }
+    }
+
+    pub fn call_context(&self, shutdown: bool) -> crate::call_manager::CallContext {
+        crate::call_manager::CallContext {
+            contacts: self
+                .call
+                .contacts
+                .iter()
+                .map(|contact| crate::call_manager::ContactIdentity {
+                    contact_id: contact.contact_id.clone(),
+                    name: contact.title.clone(),
+                    sip_address: contact.sip_address.clone(),
+                    phone_number: contact.phone_number.clone(),
+                    priority: contact.priority,
+                })
+                .collect(),
+            shutdown,
+        }
+    }
     pub fn record_worker_protocol_error(
         &mut self,
         domain: WorkerDomain,
@@ -1440,8 +1478,19 @@ impl RuntimeState {
     fn apply_settings_intent(&mut self, intent: &yoyopod_protocol::ui::SettingsIntent) {
         use yoyopod_protocol::ui::SettingsIntent;
         match intent {
-            // Session preferences are inactive until the call manager is integrated.
-            SettingsIntent::DeviceModeSet(_) | SettingsIntent::ContactPrioritySet(_) => {}
+            SettingsIntent::DeviceModeSet(mode) => {
+                match crate::call_preferences::save_mode(&self.call_mode_file, mode.clone()) {
+                    Ok(()) => {
+                        self.settings.device_mode = mode.clone();
+                        self.call_preferences_error = None;
+                    }
+                    Err(error) => {
+                        eprintln!("call mode persistence failed: {error}");
+                        self.call_preferences_error = Some(error);
+                    }
+                }
+            }
+            SettingsIntent::ContactPrioritySet(_) => {}
             // The network worker owns the configured safety cap and publishes
             // the applied level immediately after cycling it.
             SettingsIntent::VolumeStep => {}
@@ -2083,6 +2132,7 @@ impl RuntimeState {
                 "pages": self.setup_pages(),
             },
             "settings": {
+                "device_mode": self.settings.device_mode,
                 "volume_level": volume_level(self.media.volume),
                 "companion": self.settings.companion,
                 "theme": self.settings.theme,
