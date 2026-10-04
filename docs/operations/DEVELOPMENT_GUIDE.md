@@ -118,6 +118,11 @@ Current approved-contacts behaviour:
 - contacts may include both `sip_address` and `phone_number`
 - Talk → contact → Call opens a SIP/GSM method wheel. SIP uses the approved
   `sip_address`; GSM uses the approved `phone_number`. Voice notes still use SIP.
+- SIP selection follows the running Liblinphone backend, independently of
+  registrar registration. Direct outgoing SIP calls remain available without a
+  registered device account; destinations that require authentication still need
+  valid account credentials. Missing contact addresses and a stopped backend
+  disable the SIP choice.
 - unavailable methods remain visible with a short reason (such as “SIM locked”)
 - GSM requires ModemManager voice support on the SIM7600, an unlocked SIM,
   cellular voice registration, and the modem's USB PCM audio interface.

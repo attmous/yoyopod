@@ -46,7 +46,12 @@ pub fn call_method_disabled_reason<'a>(
         yoyopod_protocol::ui::CallMethod::Sip if contact.sip_target().is_none() => {
             Some("Not set up")
         }
-        yoyopod_protocol::ui::CallMethod::Sip if !snapshot.call.registered => Some("Offline"),
+        // Direct SIP calls can use a running backend without registrar registration.
+        yoyopod_protocol::ui::CallMethod::Sip
+            if !snapshot.call.sip_available && !snapshot.call.registered =>
+        {
+            Some("Offline")
+        }
         yoyopod_protocol::ui::CallMethod::Gsm if contact.phone_number.trim().is_empty() => {
             Some("No phone number")
         }

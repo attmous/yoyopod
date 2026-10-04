@@ -229,6 +229,7 @@ impl Default for MediaState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallRuntimeState {
     pub method: yoyopod_protocol::ui::CallMethod,
+    pub sip_available: bool,
     pub gsm_available: bool,
     pub gsm_unavailable_reason: String,
     pub gsm_start_pending: bool,
@@ -250,6 +251,7 @@ impl Default for CallRuntimeState {
     fn default() -> Self {
         Self {
             method: yoyopod_protocol::ui::CallMethod::Sip,
+            sip_available: false,
             gsm_available: false,
             gsm_unavailable_reason: String::new(),
             gsm_start_pending: false,
@@ -975,6 +977,7 @@ impl RuntimeState {
                 "progress_permille": self.media.progress_permille,
             },
             "voip": {
+                "sip_available": self.call.sip_available,
                 "registered": self.call.registered,
                 "registration_state": self.call.registration_state,
                 "call_state": self.call.state.as_str(),
@@ -1124,6 +1127,13 @@ impl RuntimeState {
     pub fn apply_voip_snapshot(&mut self, snapshot: &Value) {
         if let Some(registered) = snapshot.get("registered").and_then(Value::as_bool) {
             self.call.registered = registered;
+        }
+        if let Some(available) = snapshot
+            .get("lifecycle")
+            .and_then(|lifecycle| lifecycle.get("backend_available"))
+            .and_then(Value::as_bool)
+        {
+            self.call.sip_available = available;
         }
         if let Some(registration_state) = string_field(snapshot, "registration_state") {
             self.call.registration_state = registration_state;
@@ -1980,6 +1990,7 @@ impl RuntimeState {
                 "recent_tracks": list_payload(&self.media.recent_tracks),
             },
             "call": {
+                "sip_available": self.call.sip_available,
                 "gsm_available": self.call.gsm_available,
                 "gsm_unavailable_reason": self.call.gsm_unavailable_reason,
                 "state": self.call.state.as_str(),
@@ -2362,6 +2373,7 @@ impl RuntimeState {
                 "volume": self.media.volume,
             },
             "voip": {
+                "sip_available": self.call.sip_available,
                 "registered": self.call.registered,
                 "registration_state": self.call.registration_state,
                 "call_state": self.call.state.as_str(),

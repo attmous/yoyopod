@@ -144,6 +144,11 @@ impl RuntimeEvent {
             }
             Self::WorkerExited { domain, reason } => {
                 state.mark_worker(*domain, WorkerState::Stopped, reason.clone());
+                if *domain == WorkerDomain::Voip {
+                    state.call.sip_available = false;
+                    state.call.registered = false;
+                    state.call.registration_state = "none".to_string();
+                }
                 if *domain == WorkerDomain::Voice {
                     state.mark_ask_unavailable();
                 }
@@ -1906,6 +1911,49 @@ mod tests {
         ListItemAction, MusicIntent, PlaylistTrackAction, SettingsIntent, SystemIntent, UiEvent,
         UiFocusChanged,
     };
+
+    #[test]
+    fn sip_backend_readiness_reaches_the_ui_independently_of_registration() {
+        let mut state = RuntimeState::default();
+        RuntimeEvent::VoipSnapshot(json!({
+            "registered": false,
+            "registration_state": "none",
+            "lifecycle": {"state": "local_ready", "backend_available": true},
+        }))
+        .apply(&mut state);
+        assert!(state.call.sip_available);
+        assert!(!state.call.registered);
+        let snapshot = state.ui_snapshot_payload();
+        assert_eq!(snapshot["call"]["sip_available"], true);
+        assert_eq!(snapshot["call"]["registered"], false);
+
+        RuntimeEvent::VoipSnapshot(json!({
+            "registered": false,
+            "lifecycle": {"state": "failed", "backend_available": false},
+        }))
+        .apply(&mut state);
+        assert!(!state.call.sip_available);
+        assert_eq!(state.ui_snapshot_payload()["call"]["sip_available"], false);
+    }
+
+    #[test]
+    fn exiting_sip_worker_clears_call_readiness_and_registration() {
+        let mut state = RuntimeState::default();
+        RuntimeEvent::VoipSnapshot(json!({
+            "registered": true,
+            "registration_state": "ok",
+            "lifecycle": {"backend_available": true},
+        }))
+        .apply(&mut state);
+        RuntimeEvent::WorkerExited {
+            domain: WorkerDomain::Voip,
+            reason: "test exit".to_string(),
+        }
+        .apply(&mut state);
+        assert!(!state.call.sip_available);
+        assert!(!state.call.registered);
+        assert_eq!(state.call.registration_state, "none");
+    }
 
     #[test]
     fn focus_change_routes_through_cancellable_prompt_pipeline() {

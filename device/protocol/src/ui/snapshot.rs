@@ -211,6 +211,8 @@ fn default_music_time_text() -> String {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CallRuntimeSnapshot {
     #[serde(default)]
+    pub sip_available: bool,
+    #[serde(default)]
     pub gsm_available: bool,
     #[serde(default)]
     pub gsm_unavailable_reason: String,
@@ -241,6 +243,7 @@ pub struct CallRuntimeSnapshot {
 impl Default for CallRuntimeSnapshot {
     fn default() -> Self {
         Self {
+            sip_available: false,
             gsm_available: false,
             gsm_unavailable_reason: String::new(),
             state: default_call_state(),

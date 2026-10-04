@@ -2464,6 +2464,54 @@ mod tests {
     }
 
     #[test]
+    fn sip_choice_uses_backend_readiness_without_requiring_registration() {
+        let dad = contact("sip:dad@example.test", "Dad");
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.call.contacts = vec![dad.clone()];
+        runtime.selected_contact = Some(dad.clone());
+        runtime.active_screen = UiScreen::TalkContact;
+        runtime.handle_input(InputAction::Select, 100);
+        runtime.handle_input(InputAction::Select, 200);
+        assert!(runtime.take_intents().is_empty());
+        assert_eq!(
+            super::super::accessibility::focused_item(&runtime)
+                .unwrap()
+                .label,
+            "SIP, Offline"
+        );
+
+        let mut call = runtime.snapshot.call.clone();
+        call.sip_available = true;
+        assert!(!call.registered);
+        runtime.apply_patch(RuntimeSnapshotPatch::Call(call));
+        assert_eq!(
+            super::super::accessibility::focused_item(&runtime)
+                .unwrap()
+                .label,
+            "SIP"
+        );
+        runtime.handle_input(InputAction::Select, 400);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Call(CallIntent::Start(intents::contact_action(
+                &dad
+            )))]
+        );
+
+        let mut call = runtime.snapshot.call.clone();
+        call.sip_available = false;
+        runtime.apply_patch(RuntimeSnapshotPatch::Call(call));
+        runtime.handle_input(InputAction::Select, 600);
+        assert!(runtime.take_intents().is_empty());
+        assert_eq!(
+            super::super::accessibility::focused_item(&runtime)
+                .unwrap()
+                .label,
+            "SIP, Offline"
+        );
+    }
+
+    #[test]
     fn talk_contact_call_action_opens_method_choice_before_dialing() {
         let mama = contact("sip:mama@example.test", "Mama");
         let mut runtime = UiRuntime::default();
