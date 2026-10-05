@@ -202,6 +202,7 @@ impl GsmWorker {
                 }
                 let command = queued
                     .map(|(epoch, command)| (epoch == backend.selected_modem_epoch(), command));
+                let mut completion = None;
                 let command = match command {
                     Ok((
                         false,
@@ -210,7 +211,7 @@ impl GsmWorker {
                             command,
                         },
                     )) => {
-                        let _ = send_events.send(GsmEvent::Completed {
+                        completion = Some(GsmEvent::Completed {
                             request_id,
                             voice_held: backend.owns_voice(&command.key),
                             key: command.key,
@@ -224,7 +225,7 @@ impl GsmWorker {
                             request_id, key, ..
                         },
                     )) => {
-                        let _ = send_events.send(GsmEvent::Completed {
+                        completion = Some(GsmEvent::Completed {
                             request_id,
                             voice_held: backend.owns_voice(&key),
                             key,
@@ -288,7 +289,7 @@ impl GsmWorker {
                             .err()
                             .map(|error| format!("{error:#}"));
                         let voice_held = backend.owns_voice(&command.key);
-                        let _ = send_events.send(GsmEvent::Completed {
+                        completion = Some(GsmEvent::Completed {
                             request_id,
                             key: command.key,
                             error,
@@ -306,7 +307,7 @@ impl GsmWorker {
                             .err()
                             .map(|error| format!("{error:#}"));
                         let voice_held = backend.owns_voice(&key);
-                        let _ = send_events.send(GsmEvent::Completed {
+                        completion = Some(GsmEvent::Completed {
                             request_id,
                             key,
                             error,
@@ -352,6 +353,11 @@ impl GsmWorker {
                 // Publish generation-to-native-owner evidence before session facts.
                 for event in call_events {
                     let _ = send_events.send(GsmEvent::Call(event));
+                }
+                // Loss and native facts must close the outer data barrier before
+                // a keyed completion can decide whether its reservation releases.
+                if let Some(completion) = completion {
+                    let _ = send_events.send(completion);
                 }
                 if let Err(error) = result {
                     eprintln!("GSM call command failed: {error:#}");
