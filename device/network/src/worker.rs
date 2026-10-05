@@ -646,7 +646,9 @@ fn drain_gsm_events<C: ModemController, W: Write>(
                 if Some(update.key.generation) == *generation =>
             {
                 if update.phase == CallPhase::Ended {
-                    runtime.resume_after_voice_session(&update.key);
+                    if *startup_reconciled {
+                        runtime.resume_after_voice_session(&update.key);
+                    }
                     sessions.retain(|session| session.key != update.key);
                 } else if let Some(existing) = sessions
                     .iter_mut()
@@ -667,7 +669,7 @@ fn drain_gsm_events<C: ModemController, W: Write>(
                 error,
                 voice_held,
             } if Some(key.generation) == *generation => {
-                if !voice_held {
+                if !voice_held && *startup_reconciled {
                     runtime.resume_after_voice_session(&key);
                 }
                 let payload = serde_json::json!({"key":key,"ok":error.is_none(),"error":error,"voice_held":voice_held});

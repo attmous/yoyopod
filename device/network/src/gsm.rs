@@ -594,6 +594,15 @@ impl ModemManagerVoice {
 
     fn removal_signal(&mut self, message: &zbus::Message) {
         let header = message.header();
+        if header.sender().map(|s| s.as_str()) == self.service_owner.as_deref()
+            && header.path().map(|p| p.as_str()) == self.modem.as_ref().map(|p| p.as_str())
+            && header.interface().map(|s| s.as_str()) == Some(VOICE_INTERFACE)
+            && header.member().map(|s| s.as_str()) == Some("CallAdded")
+        {
+            // A new native object invalidates the previous idle proof even if
+            // removal follows before the next Calls scan can observe its key.
+            self.idle_calls_proven = false;
+        }
         if header.sender().map(|s| s.as_str()) != self.service_owner.as_deref()
             || header.interface().map(|s| s.as_str()) != Some("org.freedesktop.DBus.ObjectManager")
             || header.member().map(|s| s.as_str()) != Some("InterfacesRemoved")
@@ -839,6 +848,9 @@ impl ModemManagerVoice {
     }
     fn ensure_control(&mut self) -> Result<()> {
         self.verify_service_owner()?;
+        if self.signals.is_some() {
+            self.check_selected_modem()?;
+        }
         anyhow::ensure!(
             !self.modem_lost,
             "Selected modem lost; native reconciliation required"
@@ -869,7 +881,13 @@ impl ModemManagerVoice {
         // the request still invalidates quiescence before registry mutation.
         self.verify_service_owner()?;
         self.check_selected_modem()?;
-        let paths = result?;
+        let paths = match result {
+            Ok(paths) => paths,
+            Err(error) => {
+                self.idle_calls_proven = false;
+                return Err(error.into());
+            }
+        };
         self.idle_calls_proven = paths.is_empty();
         let old = self.registry()?.tracked();
         for path in &paths {
@@ -986,7 +1004,7 @@ impl ModemManagerVoice {
             self.audio_deadline = None;
         }
         let result = self.proxy_for(&path)?.call::<_, _, ()>("Hangup", &());
-        self.verify_service_owner()?;
+        self.ensure_control()?;
         match result {
             Ok(()) => {
                 self.cleanup.confirmed(&path);
@@ -1177,9 +1195,12 @@ impl ModemManagerVoice {
             return Ok(());
         }
         if self.prepared_audio.is_none() {
-            self.prepared_audio = Some(UsbPcmAudio::prepare(self.sample_rate(Some(path))?)?);
+            let rate = self.sample_rate(Some(path))?;
+            self.ensure_control()?;
+            self.prepared_audio = Some(UsbPcmAudio::prepare(rate)?);
         }
         let audio_port: String = self.proxy_for(path)?.get_property("AudioPort")?;
+        self.ensure_control()?;
         if audio_port.is_empty() {
             anyhow::ensure!(
                 self.audio_deadline
@@ -1380,12 +1401,13 @@ impl GsmBackend for ModemManagerVoice {
         )?;
         self.owner = Some(key.clone());
         self.prepared_audio = Some(prepared);
+        self.ensure_control()?;
         let properties = HashMap::from([("number", Value::from(number))]);
         let path: OwnedObjectPath = match voice.call("CreateCall", &(properties,)) {
             Ok(path) => path,
             Err(error) => {
                 self.uncertain_create = Some(key.clone());
-                self.verify_service_owner()?;
+                self.ensure_control()?;
                 return Err(error.into());
             }
         };
@@ -1393,7 +1415,7 @@ impl GsmBackend for ModemManagerVoice {
             .as_mut()
             .context("Not configured")?
             .register_outgoing(key, path.as_str())?;
-        self.verify_service_owner()?;
+        self.ensure_control()?;
         let events = self.registry.as_mut().expect("configured").observe(
             path.as_str(),
             yoyopod_protocol::call::CallDirection::Outgoing,
@@ -1405,7 +1427,7 @@ impl GsmBackend for ModemManagerVoice {
         let start_result = self
             .proxy_for(path.as_str())?
             .call::<_, _, ()>("Start", &());
-        self.verify_service_owner()?;
+        self.ensure_control()?;
         if let Err(error) = start_result {
             self.cleanup.failed(path.as_str());
             return Err(error.into());
@@ -1440,7 +1462,10 @@ impl GsmBackend for ModemManagerVoice {
                     "GSM call is not ringing"
                 );
                 self.owner = Some(command.key.clone());
-                let preparation = self.sample_rate(Some(&path)).and_then(UsbPcmAudio::prepare);
+                let preparation = self.sample_rate(Some(&path)).and_then(|rate| {
+                    self.ensure_control()?;
+                    UsbPcmAudio::prepare(rate)
+                });
                 match preparation {
                     Ok(prepared) => self.prepared_audio = Some(prepared),
                     Err(error) => {
@@ -1449,8 +1474,9 @@ impl GsmBackend for ModemManagerVoice {
                     }
                 }
                 self.audio_deadline = Some(Instant::now() + Duration::from_secs(8));
+                self.ensure_control()?;
                 let accept_result = self.proxy_for(&path)?.call::<_, _, ()>("Accept", &());
-                self.verify_service_owner()?;
+                self.ensure_control()?;
                 if let Err(error) = accept_result {
                     self.cleanup.failed(&path);
                     return Err(error.into());
@@ -1594,12 +1620,14 @@ mod tests {
 
     const TEST_MODEM0: &str = "/org/freedesktop/ModemManager1/Modem/0";
     const TEST_MODEM2: &str = "/org/freedesktop/ModemManager1/Modem/2";
-    struct ReconnectManager;
+    struct ReconnectManager {
+        version: &'static str,
+    }
     #[zbus::interface(name = "org.freedesktop.ModemManager1")]
     impl ReconnectManager {
         #[zbus(property)]
         fn version(&self) -> &str {
-            "1.24.0"
+            self.version
         }
     }
     struct ReconnectModem;
@@ -1688,7 +1716,10 @@ mod tests {
             .unwrap();
         owner
             .object_server()
-            .at("/org/freedesktop/ModemManager1", ReconnectManager)
+            .at(
+                "/org/freedesktop/ModemManager1",
+                ReconnectManager { version: "1.24.0" },
+            )
             .unwrap();
         let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         owner
@@ -1755,6 +1786,18 @@ mod tests {
             .unique_name()
             .unwrap()
             .to_string();
+        let outgoing_key = SessionKey {
+            transport: yoyopod_protocol::call::CallTransport::Gsm,
+            generation: 7,
+            call_id: "runtime-outgoing-11".into(),
+        };
+        backend
+            .registry
+            .as_mut()
+            .unwrap()
+            .register_outgoing(&outgoing_key, "/call/outgoing")
+            .unwrap();
+        backend.registry.as_mut().unwrap().remove(&outgoing_key);
         let events = backend.registry.as_mut().unwrap().observe(
             "/call/reused",
             yoyopod_protocol::call::CallDirection::Incoming,
@@ -1804,6 +1847,32 @@ mod tests {
             panic!("offer")
         };
         assert_ne!(first.key, next.key);
+        assert!(
+            !backend.registry().unwrap().is_fresh_key(&outgoing_key),
+            "rediscovery reset the outgoing watermark"
+        );
+        let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        owner
+            .object_server()
+            .at("/call/reused", ReplacementCall(hits.clone()))
+            .unwrap();
+        assert!(backend
+            .apply_call(&CallCommand {
+                key: first.key.clone(),
+                action: yoyopod_protocol::call::CallAction::Hangup
+            })
+            .is_err());
+        backend
+            .apply_call(&CallCommand {
+                key: next.key.clone(),
+                action: yoyopod_protocol::call::CallAction::Hangup,
+            })
+            .unwrap();
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "fresh logical key did not address the replacement native path exactly once"
+        );
     }
     #[test]
     fn gsm_reconnect_missing_signal_confirms_absence_but_keeps_dirty_identity() {
@@ -2132,6 +2201,57 @@ mod tests {
         };
         assert!(error.is_none());
         assert_eq!(invoked.lock().unwrap().as_slice(), ["dial"]);
+    }
+
+    #[test]
+    fn gsm_reconnect_replacement_profile_gate_and_pending_native_addition_remain_closed() {
+        let bus = PrivateBus::start();
+        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        remove_reconnect_modem(&owner);
+        backend.next_recovery = None;
+        let _ = backend.refresh();
+        assert!(backend.clean_rediscovery);
+        owner
+            .object_server()
+            .interface::<_, ReconnectManager>("/org/freedesktop/ModemManager1")
+            .unwrap()
+            .get_mut()
+            .version = "1.25.0";
+        add_reconnect_modem(&owner, TEST_MODEM2);
+        backend.next_discovery = None;
+        backend.refresh().unwrap();
+        assert!(!backend.cached.available);
+        assert!(!backend.isolated);
+        assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+
+        let bus = PrivateBus::start();
+        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        owner
+            .emit_signal(
+                None::<&str>,
+                TEST_MODEM0,
+                VOICE_INTERFACE,
+                "CallAdded",
+                &(OwnedObjectPath::try_from("/org/freedesktop/ModemManager1/Call/9").unwrap(),),
+            )
+            .unwrap();
+        let added = backend
+            .signals
+            .as_ref()
+            .unwrap()
+            .messages
+            .recv_timeout(Duration::from_secs(3))
+            .unwrap();
+        backend.removal_signal(&added);
+        assert!(
+            !backend.idle_calls_proven,
+            "unreconciled CallAdded retained stale idle proof"
+        );
+        remove_reconnect_modem(&owner);
+        backend.next_recovery = None;
+        let _ = backend.refresh();
+        assert!(backend.modem_lost);
+        assert!(!backend.clean_rediscovery);
     }
     fn replace_owner(connection: &Connection) {
         use zbus::fdo::RequestNameFlags;
