@@ -1324,9 +1324,11 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            let mut runtime = UiRuntime::default();
-            runtime.active_screen = UiScreen::Setup;
-            runtime.focus_index = 7;
+            let mut runtime = UiRuntime {
+                active_screen: UiScreen::Setup,
+                focus_index: 7,
+                ..Default::default()
+            };
             runtime.handle_input(InputAction::Select, 10);
             assert_eq!(runtime.active_screen, UiScreen::SetupCallMode);
             for _ in 0..index {
@@ -1344,8 +1346,10 @@ mod tests {
 
     #[test]
     fn selecting_dnd_emits_only_mode_intent() {
-        let mut runtime = UiRuntime::default();
-        runtime.focus_index = 2;
+        let mut runtime = UiRuntime {
+            focus_index: 2,
+            ..Default::default()
+        };
         super::navigator::select_call_mode(&mut runtime);
         assert_eq!(
             runtime.take_intents(),
@@ -1361,8 +1365,10 @@ mod tests {
 
     #[test]
     fn settings_contact_removal_does_not_mutate_another_contact_or_recreate_deleted_id() {
-        let mut runtime = UiRuntime::default();
-        runtime.active_screen = UiScreen::SetupContacts;
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::SetupContacts,
+            ..Default::default()
+        };
         let mut a = ListItemSnapshot::new("sip:a@test", "Same", "", "mono:S");
         a.contact_id = "a".into();
         let mut b = a.clone();
@@ -1381,8 +1387,10 @@ mod tests {
 
     #[test]
     fn settings_priority_is_updated_only_by_authoritative_patch_and_missing_id_is_disabled() {
-        let mut runtime = UiRuntime::default();
-        runtime.active_screen = UiScreen::SetupContacts;
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::SetupContacts,
+            ..Default::default()
+        };
         runtime.snapshot.call.contacts =
             vec![ListItemSnapshot::new("sip:x@test", "X", "", "mono:X")];
         runtime.handle_input(InputAction::Select, 1);
@@ -1406,8 +1414,10 @@ mod tests {
 
     #[test]
     fn settings_root_reaches_eight_items_and_wraps() {
-        let mut runtime = UiRuntime::default();
-        runtime.active_screen = UiScreen::Setup;
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::Setup,
+            ..Default::default()
+        };
         assert_eq!(
             crate::application::focus::focus_count(
                 UiScreen::Setup,
@@ -1426,8 +1436,10 @@ mod tests {
 
     #[test]
     fn settings_contacts_select_emits_only_stable_priority_intent() {
-        let mut runtime = UiRuntime::default();
-        runtime.active_screen = UiScreen::SetupContacts;
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::SetupContacts,
+            ..Default::default()
+        };
         let mut a = ListItemSnapshot::new("sip:a@test", "Same", "", "mono:S");
         a.contact_id = "a".into();
         let mut b = a.clone();
