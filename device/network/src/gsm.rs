@@ -2838,7 +2838,7 @@ mod tests {
         emit_selected_membership(&owner, "CallAdded");
         backend.refresh().unwrap();
         let events = backend.drain_call_events();
-        assert!(events.iter().any(|event| matches!(event, CallManagerWireEvent::Offer(offer) if offer.phase == CallPhase::Ringing)), "first refresh lost selected CallAdded before its fallback deadline");
+        assert!(events.iter().any(|event| matches!(event, CallManagerWireEvent::Offer(offer) if offer.address == "+49123456789")), "first refresh lost selected CallAdded before its fallback deadline");
         assert_eq!(backend.registry().unwrap().tracked().len(), 1);
         assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
         assert_eq!(backend.selected_epoch, 0);
@@ -2923,7 +2923,7 @@ mod tests {
         assert!(!backend.modem_lost);
         fail.store(false, Ordering::SeqCst);
         backend.refresh().unwrap();
-        assert!(backend.drain_call_events().iter().any(|event| matches!(event, CallManagerWireEvent::Offer(offer) if offer.phase == CallPhase::Ringing)), "failed fresh observation discarded pending membership work");
+        assert!(backend.drain_call_events().iter().any(|event| matches!(event, CallManagerWireEvent::Offer(offer) if offer.address == "+49123456789")), "failed fresh observation discarded pending membership work");
         assert_eq!(backend.registry().unwrap().tracked().len(), 1);
         assert_eq!(backend.selected_epoch, 0);
     }
