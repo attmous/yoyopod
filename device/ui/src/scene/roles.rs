@@ -81,6 +81,10 @@ pub(crate) const ASK_PROGRESS_FILL: &str = "ask_progress_fill";
 
 pub(crate) const CALL_OVERLAY: &str = "call_overlay";
 pub(crate) const CALL_STATE: &str = "call_state";
+pub(crate) const CALL_ADDRESS: &str = "call_address";
+pub(crate) const CALL_CANCEL: &str = "call_cancel";
+pub(crate) const CALL_ACCEPT_LABEL: &str = "call_accept_label";
+pub(crate) const CALL_CANCEL_LABEL: &str = "call_cancel_label";
 pub(crate) const CALL_AVATAR: &str = "call_avatar";
 pub(crate) const CALL_AVATAR_INITIAL: &str = "call_avatar_initial";
 pub(crate) const CALL_AVATAR_SM: &str = "call_avatar_sm";

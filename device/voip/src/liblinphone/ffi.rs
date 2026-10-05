@@ -119,7 +119,55 @@ unsafe extern "C" {
     fn dlerror() -> *const c_char;
 }
 
+pub struct SavedFileApi {
+    pub create_content: unsafe extern "C" fn(*mut LinphoneFactory) -> *mut LinphoneContent,
+    pub unref_content: unsafe extern "C" fn(*mut LinphoneContent),
+    pub set_type: unsafe extern "C" fn(*mut LinphoneContent, *const c_char),
+    pub set_subtype: unsafe extern "C" fn(*mut LinphoneContent, *const c_char),
+    pub add_parameter: unsafe extern "C" fn(*mut LinphoneContent, *const c_char, *const c_char),
+    pub set_name: unsafe extern "C" fn(*mut LinphoneContent, *const c_char),
+    pub set_size: unsafe extern "C" fn(*mut LinphoneContent, usize),
+    pub create_message: unsafe extern "C" fn(
+        *mut LinphoneChatRoom,
+        *mut LinphoneContent,
+    ) -> *mut LinphoneChatMessage,
+    pub unref_message: unsafe extern "C" fn(*mut LinphoneChatMessage),
+    pub remove_callbacks:
+        unsafe extern "C" fn(*mut LinphoneChatMessage, *mut LinphoneChatMessageCbs),
+}
+
+impl SavedFileApi {
+    // Pinned 5.2 c-factory.h/c-content.h/c-chat-room.h/c-chat-message.h.
+    // Missing saved-file support must not disable ordinary recorder messages.
+    unsafe fn load(library: *mut c_void) -> Option<Self> {
+        unsafe {
+            Some(Self {
+                create_content: optional_symbol(library, c"linphone_factory_create_content")?,
+                unref_content: optional_symbol(library, c"linphone_content_unref")?,
+                set_type: optional_symbol(library, c"linphone_content_set_type")?,
+                set_subtype: optional_symbol(library, c"linphone_content_set_subtype")?,
+                add_parameter: optional_symbol(
+                    library,
+                    c"linphone_content_add_content_type_parameter",
+                )?,
+                set_name: optional_symbol(library, c"linphone_content_set_name")?,
+                set_size: optional_symbol(library, c"linphone_content_set_size")?,
+                create_message: optional_symbol(
+                    library,
+                    c"linphone_chat_room_create_file_transfer_message",
+                )?,
+                unref_message: optional_symbol(library, c"linphone_chat_message_unref")?,
+                remove_callbacks: optional_symbol(
+                    library,
+                    c"linphone_chat_message_remove_callbacks",
+                )?,
+            })
+        }
+    }
+}
+
 pub struct LinphoneApi {
+    pub saved_file: Option<SavedFileApi>,
     pub factory_get: unsafe extern "C" fn() -> *mut LinphoneFactory,
     pub factory_create_core_3: unsafe extern "C" fn(
         *mut LinphoneFactory,
@@ -318,6 +366,7 @@ impl LinphoneApi {
     pub unsafe fn load() -> Result<Arc<Self>, String> {
         let library = unsafe { open_liblinphone()? };
         Ok(Arc::new(Self {
+            saved_file: unsafe { SavedFileApi::load(library) },
             factory_get: unsafe { required_symbol(library, c"linphone_factory_get")? },
             factory_create_core_3: unsafe {
                 required_symbol(library, c"linphone_factory_create_core_3")?

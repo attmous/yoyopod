@@ -14,6 +14,7 @@ pub fn is_audio_start(message_type: &str) -> bool {
             | "voip.play_focus_prompt"
             | "voip.resume_voice_note_playback"
             | "voip.send_voice_note"
+            | "voip.send_saved_voice_note"
             | "media.start"
             | "media.play"
             | "media.resume"
@@ -41,6 +42,9 @@ pub struct AudioCallFence {
 }
 
 impl AudioCallFence {
+    pub fn is_reserved(&self) -> bool {
+        self.active.is_some()
+    }
     pub fn is_current(&self, request: &InterruptForCall) -> bool {
         self.active.as_ref() == Some(request)
     }

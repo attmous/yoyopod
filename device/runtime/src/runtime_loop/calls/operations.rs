@@ -249,6 +249,14 @@ impl RuntimeLoop {
                                 r.voip_prepared = true;
                                 if let Some(path) = payload["draft_path"].as_str() {
                                     self.state.voice.interrupted_draft_path = Some(path.to_owned());
+                                    if let Some(draft) = self.state.voice.interrupted_draft.as_mut()
+                                    {
+                                        draft.duration_ms = payload["draft_duration_ms"]
+                                            .as_i64()
+                                            .unwrap_or(draft.duration_ms as i64)
+                                            .clamp(0, i32::MAX as i64)
+                                            as i32;
+                                    }
                                 }
                             }
                             OperationPurpose::CancelSpeech => r.speech_cancelled = true,

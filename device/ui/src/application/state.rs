@@ -18,6 +18,8 @@ pub struct UiRuntime {
     pub(crate) snapshot: RuntimeSnapshot,
     pub(crate) active_screen: UiScreen,
     pub(crate) screen_stack: Vec<HistoryEntry>,
+    pub(crate) interrupted_navigation: Option<(yoyopod_protocol::call::SessionKey, HistoryEntry)>,
+    pub(crate) call_wake_pending: bool,
     pub(crate) focus_index: usize,
     pub(crate) home_mode: HomeMode,
     pub(crate) last_input_ms: Option<u64>,
@@ -358,6 +360,8 @@ impl Default for UiRuntime {
             snapshot: RuntimeSnapshot::default(),
             active_screen: UiScreen::Hub,
             screen_stack: Vec::new(),
+            interrupted_navigation: None,
+            call_wake_pending: false,
             focus_index: 0,
             home_mode: HomeMode::Idle,
             last_input_ms: None,
@@ -396,6 +400,9 @@ impl Default for UiRuntime {
 
 impl UiRuntime {
     pub(crate) fn voice_note_phase(&self) -> String {
+        if self.snapshot.voice.interrupted_draft_path.is_some() {
+            return super::options::voice_note_phase(&self.snapshot);
+        }
         let phase = self.snapshot.voice.phase.trim().to_ascii_lowercase();
         if self.snapshot.voice.capture_in_flight
             || self.snapshot.voice.ptt_active
@@ -415,6 +422,14 @@ impl UiRuntime {
             .as_ref()
             .or_else(|| self.snapshot.call.contacts.first())?;
         intents::voice_recipient_action(contact)
+    }
+
+    pub(crate) fn saved_draft_action(&self) -> Option<VoiceFileAction> {
+        Some(VoiceFileAction {
+            file_path: self.snapshot.voice.interrupted_draft_path.clone()?,
+            duration_ms: self.snapshot.voice.interrupted_draft_duration_ms,
+            ..Default::default()
+        })
     }
 
     pub(crate) fn replay_notes(&self) -> &[VoiceNoteSummarySnapshot] {

@@ -206,7 +206,17 @@ where
             render_state: &mut render_state,
             input_events: &mut input_events,
         };
-        if handle_app_event(outcome.event, &mut context)? {
+        let handled = match handle_app_event(outcome.event, &mut context) {
+            Ok(handled) => handled,
+            Err(error) => {
+                outbound::emit_event(
+                    context.output,
+                    UiEvent::Error(UiError::new(UiErrorCode::WorkerError, error.to_string())),
+                )?;
+                return Err(error);
+            }
+        };
+        if handled {
             shutdown_complete_emitted = true;
             break;
         }
@@ -424,6 +434,7 @@ where
         }
     }
 
+    apply_call_wake(context.ui_runtime, context.button_machine, context.display)?;
     if let Some(event) = render_if_dirty(
         context.ui_runtime,
         context.display,
@@ -433,6 +444,23 @@ where
         outbound::emit_event(context.output, event)?;
     }
     Ok(false)
+}
+
+fn apply_call_wake<D: DisplayDevice>(
+    runtime: &mut UiRuntime,
+    button: &mut OneButtonMachine,
+    display: &mut D,
+) -> Result<()> {
+    if !runtime.call_wake_pending {
+        return Ok(());
+    }
+    button.cancel_current_gesture();
+    if !router::is_call_screen(runtime.active_screen()) {
+        anyhow::bail!("call display unavailable: fatal UI error");
+    }
+    display.set_backlight(1.0)?;
+    runtime.call_wake_pending = false;
+    Ok(())
 }
 
 fn status_bar_preview_enabled() -> bool {

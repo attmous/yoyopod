@@ -8,6 +8,16 @@ pub fn runtime_preemption_for_display(
     snapshot: &RuntimeSnapshot,
     loading_visible: bool,
 ) -> Option<UiScreen> {
+    // Recoverable operations must not hide admitted ownership. A fatal display
+    // failure remains visible and must never be reported as a successful wake.
+    if snapshot.overlay.error.trim().is_empty() || snapshot.overlay.retryable {
+        match snapshot.call.state.as_str() {
+            "incoming" => return Some(UiScreen::IncomingCall),
+            "outgoing" => return Some(UiScreen::OutgoingCall),
+            "active" => return Some(UiScreen::InCall),
+            _ => {}
+        }
+    }
     if !snapshot.overlay.error.trim().is_empty() {
         return Some(UiScreen::Error);
     }

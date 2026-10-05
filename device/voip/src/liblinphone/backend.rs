@@ -293,6 +293,17 @@ impl VoipRuntimeBackend for LiblinphoneBackend {
         .map_err(|error| error.to_string())?;
         Ok(c_string(&message_id))
     }
+
+    fn send_saved_voice_note(
+        &mut self,
+        sip_address: &str,
+        file_path: &str,
+    ) -> Result<String, String> {
+        runtime::send_saved_voice_note(sip_address, file_path)
+    }
+    fn saved_transfer_uses_path(&self, path: &str) -> bool {
+        runtime::saved_transfer_uses_path(path)
+    }
 }
 
 pub fn native_event_to_backend_event(event: &YoyopodLiblinphoneEvent) -> Option<BackendEvent> {

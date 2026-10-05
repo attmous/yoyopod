@@ -17,6 +17,16 @@ pub fn talk_contact_actions(
     snapshot: &RuntimeSnapshot,
     selected_contact: Option<&ListItemSnapshot>,
 ) -> Vec<TalkContactAction> {
+    if snapshot.voice.interrupted_draft_path.is_some() {
+        return vec![
+            TalkContactAction {
+                kind: "review_draft",
+            },
+            TalkContactAction {
+                kind: "discard_draft",
+            },
+        ];
+    }
     if selected_contact
         .or_else(|| snapshot.call.contacts.first())
         .is_some_and(|contact| contact.communication_unavailable)
@@ -74,6 +84,11 @@ pub fn call_method_disabled_reason<'a>(
 }
 
 pub fn voice_note_action_count(snapshot: &RuntimeSnapshot) -> usize {
+    if snapshot.voice.interrupted_draft_path.is_some()
+        && matches!(voice_note_phase(snapshot).as_str(), "review" | "failed")
+    {
+        return 3;
+    }
     match voice_note_phase(snapshot).as_str() {
         "review" => 3,
         "failed" => 2,
@@ -81,7 +96,14 @@ pub fn voice_note_action_count(snapshot: &RuntimeSnapshot) -> usize {
     }
 }
 
-fn voice_note_phase(snapshot: &RuntimeSnapshot) -> String {
+pub(crate) fn voice_note_phase(snapshot: &RuntimeSnapshot) -> String {
+    if snapshot.voice.interrupted_draft_path.is_some() {
+        return if snapshot.voice.interrupted_draft_phase.is_empty() {
+            "review".into()
+        } else {
+            snapshot.voice.interrupted_draft_phase.clone()
+        };
+    }
     let phase = snapshot.voice.phase.trim().to_ascii_lowercase();
     if snapshot.voice.capture_in_flight || snapshot.voice.ptt_active || phase == "recording" {
         return "recording".to_string();

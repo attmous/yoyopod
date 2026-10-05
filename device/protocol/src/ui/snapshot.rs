@@ -313,6 +313,16 @@ pub struct VoiceNoteSummarySnapshot {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VoiceRuntimeSnapshot {
+    #[serde(default)]
+    pub interrupted_draft_path: Option<String>,
+    #[serde(default)]
+    pub interrupted_draft_recipient: Option<super::VoiceRecipientAction>,
+    #[serde(default)]
+    pub interrupted_draft_duration_ms: i32,
+    #[serde(default)]
+    pub interrupted_draft_phase: String,
+    #[serde(default)]
+    pub interrupted_draft_send_allowed: bool,
     #[serde(default = "default_voice_phase")]
     pub phase: String,
     #[serde(default = "default_voice_headline")]
@@ -344,6 +354,11 @@ pub struct VoiceRuntimeSnapshot {
 impl Default for VoiceRuntimeSnapshot {
     fn default() -> Self {
         Self {
+            interrupted_draft_path: None,
+            interrupted_draft_recipient: None,
+            interrupted_draft_duration_ms: 0,
+            interrupted_draft_phase: String::new(),
+            interrupted_draft_send_allowed: false,
             phase: default_voice_phase(),
             headline: default_voice_headline(),
             body: default_voice_body(),

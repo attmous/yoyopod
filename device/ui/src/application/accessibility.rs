@@ -20,6 +20,9 @@ impl FocusDescriptor {
 }
 
 pub(crate) fn focused_item(runtime: &UiRuntime) -> Option<FocusDescriptor> {
+    if runtime.snapshot.call.session.is_some() {
+        return None;
+    }
     let snapshot = &runtime.snapshot;
     let focus = runtime.focus_index;
     match runtime.active_screen {
@@ -108,6 +111,8 @@ pub(crate) fn focused_item(runtime: &UiRuntime) -> Option<FocusDescriptor> {
                         "call" => "Call",
                         "record" => "Hold to record",
                         "replay" => "Replay",
+                        "review_draft" => "Review draft",
+                        "discard_draft" => "Discard draft",
                         _ => "",
                     })
                     .collect::<Vec<_>>();

@@ -288,6 +288,7 @@ pub unsafe extern "C" fn yoyopod_liblinphone_iterate() {
     if let Some((api, core)) = snapshot {
         unsafe { (api.core_iterate)(core) };
     }
+    retire_saved_messages();
 }
 
 #[no_mangle]
@@ -736,6 +737,106 @@ pub unsafe extern "C" fn yoyopod_liblinphone_send_voice_note(
     -1
 }
 
+pub(super) fn send_saved_voice_note(sip_address: &str, file_path: &str) -> Result<String, String> {
+    if !crate::voice_notes::usable_wav(file_path) {
+        return Err("saved recording is missing or unusable".into());
+    }
+    let path = CString::new(file_path).map_err(|_| "saved recording path contains NUL")?;
+    let name = std::path::Path::new(file_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or("saved recording has no filename")?;
+    let name = CString::new(name).map_err(|_| "saved recording name contains NUL")?;
+    let size = usize::try_from(
+        std::fs::metadata(file_path)
+            .map_err(|e| e.to_string())?
+            .len(),
+    )
+    .map_err(|_| "saved recording too large")?;
+    let (api, id, message) = create_chat_message(sip_address, |state, api, room| {
+        if state.saved_messages.len() >= 8 {
+            return Err("saved transfers still pending; retry when one completes".into());
+        }
+        let saved = api
+            .saved_file
+            .as_ref()
+            .ok_or("installed Liblinphone lacks saved-file voice messaging")?;
+        let content = unsafe { (saved.create_content)(state.factory) };
+        if content.is_null() {
+            return Err("could not allocate saved-file content".into());
+        }
+        // 5.2 create_file_transfer_message copies generic content into FileContent.
+        // add_content alone would take an invalid voice FileContent cast here.
+        let message = unsafe {
+            (saved.set_type)(content, c"audio".as_ptr());
+            (saved.set_subtype)(content, c"wav".as_ptr());
+            (saved.add_parameter)(content, c"voice-recording".as_ptr(), c"yes".as_ptr());
+            (saved.set_name)(content, name.as_ptr());
+            (saved.set_size)(content, size);
+            (api.content_set_file_path)(content, path.as_ptr());
+            let message = (saved.create_message)(room, content);
+            (saved.unref_content)(content);
+            message
+        };
+        if message.is_null() {
+            return Err("could not create saved-file message".into());
+        }
+        state.saved_messages.push(message);
+        state
+            .saved_message_paths
+            .insert(message as usize, file_path.into());
+        Ok(message)
+    })?;
+    // Send can synchronously call back into STATE. Keep caller reference, callback
+    // userdata and WAV stable until shutdown; upload does not eagerly copy bytes.
+    unsafe {
+        (api.chat_message_send)(message);
+    }
+    retire_saved_messages();
+    Ok(id)
+}
+
+fn saved_message_terminal(native_state: c_int) -> bool {
+    // Pinned 5.2 enums/chat-message-enums.h. FileTransferDone (5) is NOT terminal.
+    matches!(native_state, 2 | 3 | 6 | 7)
+}
+
+pub(super) fn saved_transfer_uses_path(path: &str) -> bool {
+    STATE.lock().map_or(true, |state| {
+        state.saved_message_paths.values().any(|v| v == path)
+    })
+}
+
+fn retire_saved_messages() {
+    let Some((api, callbacks, retired)) = STATE.lock().ok().and_then(|mut state| {
+        let api = state.api.clone()?;
+        let retired = std::mem::take(&mut state.saved_messages_to_retire);
+        for message in &retired {
+            state.saved_message_paths.remove(&(*message as usize));
+        }
+        state
+            .saved_messages
+            .retain(|message| !retired.contains(message));
+        Some((api, state.message_cbs, retired))
+    }) else {
+        return;
+    };
+    let Some(saved) = api.saved_file.as_ref() else {
+        return;
+    };
+    for message in retired {
+        unsafe {
+            (saved.remove_callbacks)(message, callbacks);
+            let data = (api.chat_message_get_user_data)(message);
+            (api.chat_message_set_user_data)(message, ptr::null_mut());
+            if !data.is_null() {
+                drop(CString::from_raw(data.cast::<c_char>()));
+            }
+            (saved.unref_message)(message);
+        }
+    }
+}
+
 struct AccountConfig {
     sip_server: String,
     sip_username: String,
@@ -1064,6 +1165,19 @@ fn stop_locked(state: &mut state::ShimState) {
         }
     }
     cleanup_recorder(state);
+    if let Some(saved) = api.saved_file.as_ref() {
+        for message in state.saved_messages.drain(..) {
+            unsafe {
+                (saved.remove_callbacks)(message, state.message_cbs);
+                let data = (api.chat_message_get_user_data)(message);
+                (api.chat_message_set_user_data)(message, ptr::null_mut());
+                if !data.is_null() {
+                    drop(CString::from_raw(data.cast::<c_char>()));
+                }
+                (saved.unref_message)(message);
+            }
+        }
+    }
     state.calls = Default::default();
     state.current_call = ptr::null_mut();
     unsafe {
@@ -1533,6 +1647,12 @@ unsafe extern "C" fn on_message_state_changed(
         };
         fill_message_event_common(&mut state, &api, &mut downloaded, message);
         state.queue.push(downloaded);
+    }
+    if saved_message_terminal(message_state)
+        && state.saved_messages.contains(&message)
+        && !state.saved_messages_to_retire.contains(&message)
+    {
+        state.saved_messages_to_retire.push(message);
     }
 }
 

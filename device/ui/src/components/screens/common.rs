@@ -165,8 +165,32 @@ pub fn call_overlay_model(
     };
 
     CallOverlayModel {
+        address: format!(
+            "{} · {}",
+            if snapshot
+                .call
+                .session
+                .as_ref()
+                .is_some_and(|s| s.transport == yoyopod_protocol::call::CallTransport::Gsm)
+            {
+                "GSM"
+            } else {
+                "VoIP"
+            },
+            snapshot.call.peer_address
+        ),
+        accept_enabled: snapshot.call.accept_enabled,
         kind,
         state: match kind {
+            CallOverlayKind::Incoming
+                if snapshot.call.session_phase
+                    == Some(yoyopod_protocol::call::CallPhase::Answering)
+                    || !snapshot.call.accept_enabled
+                        && snapshot.call.session_phase
+                            == Some(yoyopod_protocol::call::CallPhase::Preparing) =>
+            {
+                "CONNECTING..."
+            }
             CallOverlayKind::Incoming => "INCOMING",
             CallOverlayKind::Outgoing => "CALLING...",
             CallOverlayKind::Active => "IN CALL",

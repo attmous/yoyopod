@@ -23,11 +23,17 @@ const RUNTIME_LINK_ERROR: &str = "Lost runtime link";
 #[cfg(test)]
 mod call_interruption_regressions {
     use super::*;
-    use yoyopod_protocol::call::{CallAction, CallCommand, CallTransport, RejectReason, SessionKey};
+    use yoyopod_protocol::call::{
+        CallAction, CallCommand, CallTransport, RejectReason, SessionKey,
+    };
     use yoyopod_protocol::ui::CallIntent;
 
     fn incoming(runtime: &mut UiRuntime) -> SessionKey {
-        let key = SessionKey { transport: CallTransport::Sip, generation: 1, call_id: "a".into() };
+        let key = SessionKey {
+            transport: CallTransport::Sip,
+            generation: 1,
+            call_id: "a".into(),
+        };
         runtime.snapshot.call.state = "incoming".into();
         runtime.snapshot.call.session = Some(key.clone());
         runtime.snapshot.call.accept_enabled = true;
@@ -41,7 +47,10 @@ mod call_interruption_regressions {
             incoming(&mut runtime);
             runtime.snapshot.overlay.loading = loading;
             runtime.system_overlay.loading_visible = true;
-            if !loading { runtime.snapshot.overlay.error = "retry".into(); runtime.snapshot.overlay.retryable = true; }
+            if !loading {
+                runtime.snapshot.overlay.error = "retry".into();
+                runtime.snapshot.overlay.retryable = true;
+            }
             navigator::apply_runtime_preemption(&mut runtime);
             assert_eq!(runtime.active_screen, UiScreen::IncomingCall);
         }
@@ -57,7 +66,13 @@ mod call_interruption_regressions {
         navigator::apply_runtime_preemption(&mut runtime);
         assert_eq!(runtime.focus_index, 1);
         runtime.handle_input(InputAction::Select, 200);
-        assert_eq!(runtime.take_intents(), vec![UiIntent::Call(CallIntent::Session(CallCommand { key, action: CallAction::Reject(RejectReason::Cancelled) }))]);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Call(CallIntent::Session(CallCommand {
+                key,
+                action: CallAction::Reject(RejectReason::Cancelled)
+            }))]
+        );
     }
 
     #[test]
@@ -70,6 +85,145 @@ mod call_interruption_regressions {
         runtime.handle_input(InputAction::PttPress, 200);
         runtime.handle_input(InputAction::PttRelease, 300);
         assert_eq!(runtime.take_intents().len(), 1);
+    }
+
+    #[test]
+    fn preparing_accept_and_answering_cancel_keep_original_key_and_disable_duplicates() {
+        use yoyopod_protocol::call::CallPhase;
+        let mut runtime = UiRuntime::default();
+        let a = incoming(&mut runtime);
+        runtime.snapshot.call.session_phase = Some(CallPhase::Preparing);
+        navigator::apply_runtime_preemption(&mut runtime);
+        runtime.handle_input(InputAction::Select, 1);
+        let queued = runtime.take_intents();
+        runtime.snapshot.call.accept_enabled = false;
+        runtime.snapshot.call.session_phase = Some(CallPhase::Answering);
+        navigator::apply_runtime_preemption(&mut runtime);
+        runtime.handle_input(InputAction::Select, 2);
+        assert!(runtime.take_intents().is_empty());
+        let model = crate::components::screens::common::call_overlay_model(
+            &runtime.snapshot,
+            crate::scene::CallOverlayKind::Incoming,
+            0,
+        );
+        assert_eq!(model.state, "CONNECTING...");
+        assert!(!model.accept_enabled);
+        runtime.handle_input(InputAction::Back, 3);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Call(CallIntent::Session(CallCommand {
+                key: a.clone(),
+                action: CallAction::Reject(RejectReason::Cancelled)
+            }))]
+        );
+        let mut b = a.clone();
+        b.call_id = "b".into();
+        runtime.snapshot.call.session = Some(b);
+        navigator::apply_runtime_preemption(&mut runtime);
+        assert_eq!(
+            queued,
+            vec![UiIntent::Call(CallIntent::Session(CallCommand {
+                key: a,
+                action: CallAction::Answer
+            }))]
+        );
+    }
+
+    #[test]
+    fn phases_keep_one_restore_entry_and_restart_inactivity_after_ambient_wake() {
+        let mut runtime = UiRuntime::default();
+        runtime.home_mode = HomeMode::Ambient;
+        runtime.focus_index = 2;
+        incoming(&mut runtime);
+        navigator::apply_runtime_preemption(&mut runtime);
+        assert_eq!(runtime.home_mode, HomeMode::Focused);
+        assert!(runtime.call_wake_pending);
+        for phase in ["incoming", "active", "incoming"] {
+            runtime.snapshot.call.state = phase.into();
+            navigator::apply_runtime_preemption(&mut runtime);
+            assert!(runtime.screen_stack.is_empty());
+        }
+        runtime.snapshot.call.state = "idle".into();
+        runtime.snapshot.call.session = None;
+        navigator::apply_runtime_preemption(&mut runtime);
+        assert_eq!(runtime.active_screen, UiScreen::Hub);
+        assert_eq!(runtime.focus_index, 2);
+        assert_eq!(runtime.last_input_ms, None);
+        runtime.advance_home_state(100_000);
+        assert_eq!(runtime.last_input_ms, Some(100_000));
+        assert_ne!(runtime.home_mode, HomeMode::Ambient);
+    }
+
+    #[test]
+    fn fatal_is_not_a_call_route_and_rejected_calls_do_not_preempt() {
+        let mut runtime = UiRuntime::default();
+        incoming(&mut runtime);
+        runtime.snapshot.overlay.error = "fatal display error".into();
+        runtime.snapshot.overlay.retryable = false;
+        navigator::apply_runtime_preemption(&mut runtime);
+        assert_eq!(runtime.active_screen, UiScreen::Error);
+        let mut rejected = UiRuntime::default();
+        rejected.active_screen = UiScreen::Listen;
+        navigator::apply_runtime_preemption(&mut rejected);
+        assert_eq!(rejected.active_screen, UiScreen::Listen);
+    }
+
+    #[test]
+    fn unsafe_restoration_falls_back_and_saved_review_never_records_or_sends() {
+        for screen in [
+            UiScreen::Loading,
+            UiScreen::Error,
+            UiScreen::Ask,
+            UiScreen::VoiceNote,
+            UiScreen::Replay,
+        ] {
+            let mut runtime = UiRuntime::default();
+            runtime.active_screen = screen;
+            incoming(&mut runtime);
+            navigator::apply_runtime_preemption(&mut runtime);
+            runtime.snapshot.call.state = "idle".into();
+            runtime.snapshot.call.session = None;
+            navigator::apply_runtime_preemption(&mut runtime);
+            assert_eq!(runtime.active_screen, UiScreen::Hub);
+        }
+        let mut runtime = UiRuntime::default();
+        runtime.snapshot.voice.interrupted_draft_path = Some("owned-a.wav".into());
+        runtime.snapshot.voice.interrupted_draft_phase = "review".into();
+        runtime.active_screen = UiScreen::TalkContact;
+        runtime.handle_input(InputAction::Select, 1);
+        assert_eq!(runtime.active_screen, UiScreen::VoiceNote);
+        assert!(runtime.take_intents().is_empty());
+        runtime.handle_input(InputAction::Select, 2);
+        assert!(
+            runtime.take_intents().is_empty(),
+            "deleted recipient cannot send"
+        );
+        runtime.focus_index = 1;
+        runtime.handle_input(InputAction::Select, 3);
+        assert!(
+            matches!(runtime.take_intents().as_slice(), [UiIntent::Voice(yoyopod_protocol::ui::VoiceIntent::Play(Some(action)))] if action.file_path == "owned-a.wav")
+        );
+        runtime.focus_index = 2;
+        runtime.handle_input(InputAction::Select, 4);
+        assert!(
+            matches!(runtime.take_intents().as_slice(), [UiIntent::Voice(yoyopod_protocol::ui::VoiceIntent::SavedDiscard(action))] if action.file_path == "owned-a.wav")
+        );
+    }
+
+    #[test]
+    fn silent_incoming_never_announces_focus_or_recoverable_overlay() {
+        let mut runtime = UiRuntime::default();
+        incoming(&mut runtime);
+        runtime.snapshot.settings.speak_names = true;
+        runtime.snapshot.call.alert_audible = false;
+        runtime.snapshot.overlay.error = "retry".into();
+        runtime.snapshot.overlay.retryable = true;
+        navigator::apply_runtime_preemption(&mut runtime);
+        runtime.refresh_focus_accessibility();
+        runtime.advance_system_overlay(70_000);
+        runtime.handle_input(InputAction::Advance, 70_100);
+        assert!(runtime.take_accessibility_events().is_empty());
+        assert!(runtime.take_intents().is_empty());
     }
 }
 const FLASHLIGHT_TIMEOUT_MS: u64 = 300_000;
@@ -416,6 +570,9 @@ impl UiRuntime {
     }
 
     pub fn advance_system_overlay(&mut self, now_ms: u64) -> bool {
+        if self.snapshot.call.session.is_some() {
+            return false;
+        }
         if let Some(preview) = self.system_overlay_preview {
             self.enforce_system_overlay_preview();
             let previous_step = self.system_overlay.spinner_step;
@@ -2817,6 +2974,20 @@ mod tests {
 
     #[test]
     fn call_overlays_cycle_and_activate_every_visible_control() {
+        use yoyopod_protocol::call::{
+            CallAction, CallCommand, CallTransport, RejectReason, SessionKey,
+        };
+        let key = SessionKey {
+            transport: CallTransport::Sip,
+            generation: 1,
+            call_id: "displayed".into(),
+        };
+        let intent = |action| {
+            UiIntent::Call(CallIntent::Session(CallCommand {
+                key: key.clone(),
+                action,
+            }))
+        };
         let mama = contact("sip:mama@example.test", "Mama");
 
         let mut incoming = UiRuntime::default();
@@ -2824,6 +2995,8 @@ mod tests {
         incoming.snapshot.call.peer_name = mama.title.clone();
         incoming.snapshot.call.peer_address = mama.id.clone();
         incoming.snapshot.call.state = "incoming".to_string();
+        incoming.snapshot.call.session = Some(key.clone());
+        incoming.snapshot.call.accept_enabled = true;
         incoming.active_screen = UiScreen::IncomingCall;
 
         incoming.handle_input(InputAction::Advance, 100);
@@ -2831,42 +3004,35 @@ mod tests {
         incoming.handle_input(InputAction::Select, 200);
         assert_eq!(
             incoming.take_intents(),
-            vec![UiIntent::Call(CallIntent::Reject)]
+            vec![intent(CallAction::Reject(RejectReason::Cancelled))]
         );
         incoming.handle_input(InputAction::Advance, 300);
         assert_eq!(incoming.focus_index, 0);
         incoming.handle_input(InputAction::Select, 400);
-        assert_eq!(
-            incoming.take_intents(),
-            vec![UiIntent::Call(CallIntent::Answer)]
-        );
+        assert_eq!(incoming.take_intents(), vec![intent(CallAction::Answer)]);
 
         let mut outgoing = UiRuntime::default();
         outgoing.snapshot.call.state = "outgoing".to_string();
+        outgoing.snapshot.call.session = Some(key.clone());
         outgoing.active_screen = UiScreen::OutgoingCall;
         outgoing.handle_input(InputAction::Advance, 100);
         assert_eq!(outgoing.focus_index, 0);
         outgoing.handle_input(InputAction::Select, 200);
-        assert_eq!(
-            outgoing.take_intents(),
-            vec![UiIntent::Call(CallIntent::Hangup)]
-        );
+        assert_eq!(outgoing.take_intents(), vec![intent(CallAction::Hangup)]);
 
         let mut active = UiRuntime::default();
         active.snapshot.call.state = "active".to_string();
+        active.snapshot.call.session = Some(key.clone());
         active.active_screen = UiScreen::InCall;
         active.handle_input(InputAction::Select, 100);
         assert_eq!(
             active.take_intents(),
-            vec![UiIntent::Call(CallIntent::ToggleMute)]
+            vec![intent(CallAction::SetMute(true))]
         );
         active.handle_input(InputAction::Advance, 200);
         assert_eq!(active.focus_index, 1);
         active.handle_input(InputAction::Select, 300);
-        assert_eq!(
-            active.take_intents(),
-            vec![UiIntent::Call(CallIntent::Hangup)]
-        );
+        assert_eq!(active.take_intents(), vec![intent(CallAction::Hangup)]);
     }
 
     #[test]

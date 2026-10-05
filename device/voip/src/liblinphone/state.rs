@@ -32,6 +32,10 @@ pub struct ShimState {
     pub configured_lime_server_url: String,
     pub attached_chat_rooms: Vec<*mut LinphoneChatRoom>,
     pub message_counter: u64,
+    /// Bounded caller refs; terminal callbacks queue retirement after native returns.
+    pub saved_messages: Vec<*mut super::ffi::LinphoneChatMessage>,
+    pub saved_messages_to_retire: Vec<*mut super::ffi::LinphoneChatMessage>,
+    pub saved_message_paths: std::collections::BTreeMap<usize, String>,
     pub queue: EventQueue,
 }
 

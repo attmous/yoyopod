@@ -800,6 +800,8 @@ mod keyed_call_intent_tests {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VoiceIntent {
+    SavedSend(VoiceFileAction),
+    SavedDiscard(VoiceFileAction),
     AskStart,
     AskStop,
     AskCancel,
@@ -823,6 +825,8 @@ impl VoiceIntent {
     fn from_parts(action: &str, payload: &Value) -> Result<Self, ProtocolError> {
         match normalized(action).as_str() {
             "ask_start" | "begin_ask" => Ok(Self::AskStart),
+            "saved_send" => Ok(Self::SavedSend(decode_payload(payload.clone())?)),
+            "saved_discard" => Ok(Self::SavedDiscard(decode_payload(payload.clone())?)),
             "ask_stop" | "finish_ask" => Ok(Self::AskStop),
             "ask_cancel" => Ok(Self::AskCancel),
             "capture_start" | "start_recording" => {
@@ -852,6 +856,8 @@ impl VoiceIntent {
     fn action_name(&self) -> &'static str {
         match self {
             Self::AskStart => "ask_start",
+            Self::SavedSend(_) => "saved_send",
+            Self::SavedDiscard(_) => "saved_discard",
             Self::AskStop => "ask_stop",
             Self::AskCancel => "ask_cancel",
             Self::CaptureStart(_) => "capture_start",
@@ -876,6 +882,7 @@ impl VoiceIntent {
             Self::CaptureStart(action) | Self::CaptureStartAndSend(action) | Self::Send(action) => {
                 payload(action)
             }
+            Self::SavedSend(action) | Self::SavedDiscard(action) => payload(action),
             Self::CaptureToggle(Some(action)) => payload(action),
             Self::Play(Some(action)) | Self::PlayLatest(action) | Self::Delete(action) => {
                 payload(action)

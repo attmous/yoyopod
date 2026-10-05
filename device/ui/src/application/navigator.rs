@@ -12,6 +12,122 @@ use super::state::HomeMode;
 use super::{focus, intents, options, UiRuntime, UiScreen};
 
 pub fn apply_runtime_preemption(runtime: &mut UiRuntime) {
+    if let Some(key) = runtime.snapshot.call.session.clone() {
+        if matches!(
+            runtime.snapshot.call.state.as_str(),
+            "incoming" | "outgoing" | "active"
+        ) {
+            let new_session = runtime
+                .interrupted_navigation
+                .as_ref()
+                .is_none_or(|(old, _)| old != &key);
+            if new_session {
+                remove_flashlight_route(runtime);
+                let entry = runtime
+                    .interrupted_navigation
+                    .take()
+                    .map(|(_, entry)| entry)
+                    .unwrap_or_else(|| {
+                        crate::router::history::HistoryEntry::new(
+                            runtime.active_screen,
+                            runtime.focus_index,
+                            if matches!(
+                                runtime.active_screen,
+                                UiScreen::Talk | UiScreen::Contacts | UiScreen::SetupContacts
+                            ) {
+                                runtime
+                                    .snapshot
+                                    .call
+                                    .contacts
+                                    .get(runtime.focus_index)
+                                    .map(|c| c.contact_id.clone())
+                            } else {
+                                runtime
+                                    .selected_contact
+                                    .as_ref()
+                                    .map(|c| c.contact_id.clone())
+                                    .or_else(|| {
+                                        runtime.selected_playlist.as_ref().map(|p| p.id.clone())
+                                    })
+                            },
+                        )
+                    });
+                runtime.interrupted_navigation = Some((key, entry));
+                runtime.pending_wheel_roll = None;
+                runtime.home_mode = HomeMode::Focused;
+                runtime.last_input_ms = None;
+                runtime.focus_index = 0;
+                runtime.call_wake_pending = true;
+                runtime.accessibility_events.clear();
+                runtime.scene_revision = runtime.scene_revision.wrapping_add(1);
+            }
+            if let Some(screen) = runtime_preemption_for_display(
+                &runtime.snapshot,
+                runtime.system_overlay.loading_visible,
+            ) {
+                let old = runtime.active_screen;
+                runtime.active_screen = screen;
+                reset_transient_screen_if_left(runtime, old);
+            }
+            return;
+        }
+    }
+    if runtime.snapshot.call.state == "idle" {
+        if let Some((_, entry)) = runtime.interrupted_navigation.take() {
+            let directory_screen = matches!(
+                entry.screen,
+                UiScreen::Talk | UiScreen::Contacts | UiScreen::SetupContacts
+            );
+            let directory_focus = entry.selected_id.as_ref().and_then(|id| {
+                runtime
+                    .snapshot
+                    .call
+                    .contacts
+                    .iter()
+                    .position(|c| &c.contact_id == id)
+            });
+            let valid_selection = match entry.screen {
+                UiScreen::TalkContact | UiScreen::CallMethod | UiScreen::Replay => {
+                    runtime.selected_contact.is_some()
+                }
+                UiScreen::PlaylistTracks => runtime.selected_playlist.as_ref().is_some_and(|p| {
+                    runtime
+                        .snapshot
+                        .music
+                        .playlists
+                        .iter()
+                        .any(|v| v.id == p.id)
+                }),
+                _ => true,
+            };
+            let safe = valid_selection
+                && (!directory_screen || entry.selected_id.is_none() || directory_focus.is_some())
+                && !is_overlay_screen(entry.screen)
+                && !is_call_screen(entry.screen)
+                && !matches!(
+                    entry.screen,
+                    UiScreen::Ask | UiScreen::VoiceNote | UiScreen::Replay | UiScreen::Flashlight
+                );
+            runtime.active_screen = if safe { entry.screen } else { UiScreen::Hub };
+            runtime.focus_index = if safe {
+                if directory_screen {
+                    directory_focus.unwrap_or(entry.focus_index)
+                } else {
+                    entry.focus_index
+                }
+            } else {
+                0
+            };
+            if !safe {
+                runtime.screen_stack.clear();
+            }
+            runtime.home_mode = HomeMode::Focused;
+            runtime.last_input_ms = None;
+            runtime.pending_wheel_roll = None;
+            clamp_focus(runtime);
+            return;
+        }
+    }
     if let Some(screen) =
         runtime_preemption_for_display(&runtime.snapshot, runtime.system_overlay.loading_visible)
     {
@@ -44,6 +160,9 @@ pub fn apply_app_state_route(
     previous_app_state: &UiScreen,
     app_state: &UiScreen,
 ) {
+    if runtime.interrupted_navigation.is_some() {
+        return;
+    }
     if app_state == previous_app_state {
         return;
     }
@@ -100,6 +219,10 @@ pub fn select_focused(runtime: &mut UiRuntime, now_ms: u64) {
 }
 
 pub fn go_home(runtime: &mut UiRuntime) {
+    if is_call_screen(runtime.active_screen) {
+        go_back_from_call_screen(runtime);
+        return;
+    }
     if runtime.active_screen == UiScreen::Replay {
         leave_replay(runtime);
     }
@@ -188,6 +311,11 @@ pub fn reconcile_selected_contact(runtime: &mut UiRuntime) {
 
 fn apply_selection_target(runtime: &mut UiRuntime, target: SelectionTarget) {
     match target {
+        SelectionTarget::PushScreen(UiScreen::Talk)
+            if runtime.snapshot.voice.interrupted_draft_path.is_some() =>
+        {
+            push_screen(runtime, UiScreen::VoiceNote)
+        }
         SelectionTarget::PushScreen(screen) => push_screen(runtime, screen),
         SelectionTarget::EmitIntent(template) => emit_static_intent(runtime, template),
         SelectionTarget::PushWithIntent { screen, intent } => {
@@ -203,6 +331,25 @@ fn apply_selection_target(runtime: &mut UiRuntime, target: SelectionTarget) {
 }
 
 fn emit_static_intent(runtime: &mut UiRuntime, template: IntentTemplate) {
+    use yoyopod_protocol::call::{CallAction, RejectReason};
+    let action = match template {
+        IntentTemplate::CallAnswer => {
+            if !runtime.snapshot.call.accept_enabled {
+                return;
+            }
+            Some(CallAction::Answer)
+        }
+        IntentTemplate::CallReject => Some(CallAction::Reject(RejectReason::Cancelled)),
+        IntentTemplate::CallHangup => Some(CallAction::Hangup),
+        IntentTemplate::CallToggleMute => Some(CallAction::SetMute(!runtime.snapshot.call.muted)),
+        _ => None,
+    };
+    if let Some(action) = action {
+        if let Some(intent) = intents::session_action(&runtime.snapshot, action) {
+            runtime.intents.push(intent);
+        }
+        return;
+    }
     if let Some(intent) = static_intent_template(template) {
         runtime.intents.push(intent);
     }
@@ -400,9 +547,9 @@ fn emit_back_intent(runtime: &mut UiRuntime, policy: BackPolicy) {
 
 fn go_back_from_call_screen(runtime: &mut UiRuntime) {
     match runtime.active_screen {
-        UiScreen::IncomingCall => runtime.intents.push(UiIntent::Call(CallIntent::Reject)),
+        UiScreen::IncomingCall => emit_static_intent(runtime, IntentTemplate::CallReject),
         UiScreen::OutgoingCall | UiScreen::InCall => {
-            runtime.intents.push(UiIntent::Call(CallIntent::Hangup));
+            emit_static_intent(runtime, IntentTemplate::CallHangup);
         }
         _ => {}
     }
@@ -430,6 +577,14 @@ fn select_talk_contact_action(runtime: &mut UiRuntime) {
         return;
     };
     match action.kind {
+        "review_draft" => push_screen(runtime, UiScreen::VoiceNote),
+        "discard_draft" => {
+            if let Some(action) = runtime.saved_draft_action() {
+                runtime
+                    .intents
+                    .push(UiIntent::Voice(VoiceIntent::SavedDiscard(action)));
+            }
+        }
         "call" => {
             push_screen(runtime, UiScreen::CallMethod);
         }
@@ -598,6 +753,30 @@ fn reset_replay_state(runtime: &mut UiRuntime) {
 }
 
 fn select_voice_note(runtime: &mut UiRuntime) {
+    if let Some(action) = runtime.saved_draft_action() {
+        match runtime.voice_note_phase().as_str() {
+            "review" | "failed" => match runtime.focus_index {
+                0 if runtime.snapshot.voice.interrupted_draft_send_allowed => runtime
+                    .intents
+                    .push(UiIntent::Voice(VoiceIntent::SavedSend(action))),
+                1 => runtime
+                    .intents
+                    .push(UiIntent::Voice(VoiceIntent::Play(Some(action)))),
+                2 => runtime
+                    .intents
+                    .push(UiIntent::Voice(VoiceIntent::SavedDiscard(action))),
+                _ => {}
+            },
+            "sent" => {
+                runtime
+                    .intents
+                    .push(UiIntent::Voice(VoiceIntent::SavedDiscard(action)));
+                pop_screen_or_hub(runtime);
+            }
+            _ => {}
+        }
+        return;
+    }
     match runtime.voice_note_phase().as_str() {
         "ready" => pop_screen_or_hub(runtime),
         "recording" => runtime

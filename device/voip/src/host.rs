@@ -71,6 +71,16 @@ pub trait VoipRuntimeBackend {
         duration_ms: i32,
         mime_type: &str,
     ) -> Result<String, String>;
+    fn send_saved_voice_note(
+        &mut self,
+        _sip_address: &str,
+        _file_path: &str,
+    ) -> Result<String, String> {
+        Err("saved voice-note sending unavailable in this backend".into())
+    }
+    fn saved_transfer_uses_path(&self, _path: &str) -> bool {
+        false
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -124,6 +134,8 @@ pub enum BackendEvent {
 #[derive(Debug)]
 pub struct VoipHost {
     interrupted_draft: Option<String>,
+    finalized_draft_source: Option<(String, i32)>,
+    discarded_draft_path: Option<String>,
     audio_fence: yoyopod_protocol::audio::AudioCallFence,
     config: Option<VoipConfig>,
     worker_generation: u64,
@@ -146,6 +158,8 @@ impl Default for VoipHost {
     fn default() -> Self {
         Self {
             interrupted_draft: None,
+            finalized_draft_source: None,
+            discarded_draft_path: None,
             audio_fence: Default::default(),
             config: None,
             worker_generation: 0,
@@ -186,7 +200,13 @@ impl VoipHost {
         {
             return Ok(Some(path));
         }
-        let duration = match backend.finalize_voice_recording_for_call() {
+        let duration = match self
+            .finalized_draft_source
+            .as_ref()
+            .filter(|(source, _)| source == &path)
+            .map(|(_, duration)| Ok(*duration))
+            .unwrap_or_else(|| backend.finalize_voice_recording_for_call())
+        {
             Ok(duration) => duration,
             Err(error) => {
                 self.voice_note.reset();
@@ -198,9 +218,16 @@ impl VoipHost {
             self.voice_note.reset();
             return Ok(None);
         }
+        self.finalized_draft_source = Some((path.clone(), duration));
+        let saved_path = crate::voice_notes::preserve_interrupted_wav(&path)?;
+        self.voice_note.start_recording(&saved_path);
         self.voice_note.finish_recording(duration);
-        self.interrupted_draft = Some(path.clone());
-        Ok(Some(path))
+        self.interrupted_draft = Some(saved_path.clone());
+        self.finalized_draft_source = None;
+        if !self.message_store.references_file(&path) {
+            let _ = fs::remove_file(&path);
+        }
+        Ok(Some(saved_path))
     }
     pub fn release_call(&mut self, request: &yoyopod_protocol::call::InterruptForCall) -> bool {
         self.audio_fence.release(request)
@@ -344,7 +371,7 @@ impl VoipHost {
     }
 
     pub fn session_snapshot_payload(&self) -> serde_json::Value {
-        RuntimeSnapshot {
+        let mut payload = RuntimeSnapshot {
             configured: self.config.is_some(),
             backend_started: self.backend_started,
             registered: self.registered,
@@ -358,7 +385,9 @@ impl VoipHost {
             pending_outbound_messages: self.outbound_message_ids.len(),
             message_store: &self.message_store,
         }
-        .payload()
+        .payload();
+        payload["discarded_draft_path"] = json!(self.discarded_draft_path);
+        payload
     }
 
     pub fn iterate_interval_ms(&self) -> u64 {
@@ -556,6 +585,9 @@ impl VoipHost {
         backend: &mut B,
         file_path: &str,
     ) -> Result<(), String> {
+        if self.interrupted_draft.is_some() {
+            return Err("handle interrupted draft before recording".into());
+        }
         backend.start_voice_recording(file_path)?;
         self.voice_note.start_recording(file_path);
         Ok(())
@@ -609,6 +641,77 @@ impl VoipHost {
         mime_type: &str,
         client_id: &str,
     ) -> Result<String, String> {
+        if self.interrupted_draft.is_some() {
+            return Err("interrupted draft requires explicit saved send".into());
+        }
+        self.send_voice_note_from(
+            backend,
+            sip_address,
+            file_path,
+            duration_ms,
+            mime_type,
+            client_id,
+            false,
+        )
+    }
+
+    pub fn send_saved_voice_note<B: VoipRuntimeBackend + ?Sized>(
+        &mut self,
+        backend: &mut B,
+        sip_address: &str,
+        file_path: &str,
+        duration_ms: i32,
+        mime_type: &str,
+        client_id: &str,
+    ) -> Result<String, String> {
+        if self.audio_fence.is_reserved() || self.interrupted_draft.as_deref() != Some(file_path) {
+            return Err("saved draft is unavailable or call owns audio".into());
+        }
+        self.send_voice_note_from(
+            backend,
+            sip_address,
+            file_path,
+            duration_ms,
+            mime_type,
+            client_id,
+            true,
+        )
+    }
+
+    /// Availability is explicit; message-store and async upload bytes are retained.
+    pub fn discard_saved_voice_note<B: VoipRuntimeBackend + ?Sized>(
+        &mut self,
+        backend: &B,
+        path: &str,
+    ) -> Result<(), String> {
+        if self.interrupted_draft.as_deref() != Some(path) {
+            return Err("stale saved draft".into());
+        }
+        if !backend.saved_transfer_uses_path(path) && !self.message_store.references_file(path) {
+            match fs::remove_file(path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == ErrorKind::NotFound => {}
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        self.interrupted_draft = None;
+        self.discarded_draft_path = Some(path.into());
+        if self.voice_note.payload()["file_path"].as_str() == Some(path) {
+            self.voice_note.reset();
+        }
+        Ok(())
+    }
+
+    fn send_voice_note_from<B: VoipRuntimeBackend + ?Sized>(
+        &mut self,
+        backend: &mut B,
+        sip_address: &str,
+        file_path: &str,
+        duration_ms: i32,
+        mime_type: &str,
+        client_id: &str,
+        saved: bool,
+    ) -> Result<String, String> {
         let client_id = client_id.trim();
         if client_id.is_empty() {
             return Err("voip voice note requires client_id".to_string());
@@ -632,23 +735,26 @@ impl VoipHost {
         }) {
             eprintln!("failed to persist accepted outgoing VoIP voice note: {error}");
         }
-        let backend_id =
-            match backend.send_voice_note(sip_address, file_path, duration_ms, mime_type) {
-                Ok(message_id) => message_id,
-                Err(error) => {
-                    self.voice_note.fail(client_id);
-                    self.last_message = Some(MessageSessionState::failed(client_id, &error));
-                    if let Err(store_error) = self
-                        .message_store
-                        .update_delivery(client_id, "failed", file_path)
-                    {
-                        eprintln!(
-                            "failed to persist local voice-note delivery failure: {store_error}"
-                        );
-                    }
-                    return Ok(client_id.to_string());
+        let backend_id = match if saved && !crate::voice_notes::usable_wav(file_path) {
+            Err("saved WAV missing or unusable".into())
+        } else if saved {
+            backend.send_saved_voice_note(sip_address, file_path)
+        } else {
+            backend.send_voice_note(sip_address, file_path, duration_ms, mime_type)
+        } {
+            Ok(message_id) => message_id,
+            Err(error) => {
+                self.voice_note.fail(client_id);
+                self.last_message = Some(MessageSessionState::failed(client_id, &error));
+                if let Err(store_error) = self
+                    .message_store
+                    .update_delivery(client_id, "failed", file_path)
+                {
+                    eprintln!("failed to persist local voice-note delivery failure: {store_error}");
                 }
-            };
+                return Ok(client_id.to_string());
+            }
+        };
         if let Err(error) =
             self.outbound_message_ids
                 .remember(&backend_id, client_id, "voip voice note")
@@ -700,14 +806,33 @@ impl VoipHost {
         self.voice_note_playback.refresh()
     }
 
-    pub fn delete_voice_note(&mut self, message_id: &str) -> Result<bool, String> {
+    pub fn delete_voice_note<B: VoipRuntimeBackend + ?Sized>(
+        &mut self,
+        backend: &B,
+        message_id: &str,
+    ) -> Result<bool, String> {
+        if self
+            .message_store
+            .voice_note_file(message_id)
+            .is_some_and(|path| backend.saved_transfer_uses_path(path))
+        {
+            return Err(
+                "voice transfer is still using this recording; retry deletion after completion"
+                    .into(),
+            );
+        }
         let Some(file_path) = self.message_store.delete_voice_note(message_id)? else {
             return Ok(false);
         };
         if self.voice_note_playback.payload()["file_path"].as_str() == Some(file_path.as_str()) {
             self.voice_note_playback.stop();
         }
-        if !file_path.trim().is_empty() {
+        // Saved files may still be read by an asynchronous native transfer or
+        // another outgoing retry record. Availability/deletion never moves bytes.
+        if !file_path.trim().is_empty()
+            && self.interrupted_draft.as_deref() != Some(file_path.as_str())
+            && !self.message_store.references_file(&file_path)
+        {
             match fs::remove_file(&file_path) {
                 Ok(()) => {}
                 Err(error) if error.kind() == ErrorKind::NotFound => {}
@@ -1040,7 +1165,11 @@ mod recording_tests {
             !backend.recording,
             "capture must be released before readiness"
         );
-        assert_eq!(draft.as_deref(), path.to_str());
+        assert_ne!(draft.as_deref(), path.to_str());
+        assert_eq!(
+            std::fs::read(draft.as_ref().unwrap()).unwrap(),
+            sample_wav()
+        );
         assert_eq!(host.voice_note.payload()["state"], "recorded");
         assert_eq!(host.voice_note.payload()["message_id"], "");
         assert_eq!(backend.sends, 0);
@@ -1048,7 +1177,8 @@ mod recording_tests {
             host.interrupt_for_call(&mut backend, &request).unwrap(),
             draft
         );
-        std::fs::remove_file(path).unwrap();
+        assert!(!path.exists());
+        std::fs::remove_file(draft.unwrap()).unwrap();
     }
 
     #[derive(Default)]

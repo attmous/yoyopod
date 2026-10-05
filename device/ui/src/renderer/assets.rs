@@ -226,6 +226,10 @@ fn required_layout_roles() -> Vec<&'static str> {
         roles::BUTTON_TITLE,
         roles::CALL_OVERLAY,
         roles::CALL_STATE,
+        roles::CALL_ADDRESS,
+        roles::CALL_CANCEL,
+        roles::CALL_ACCEPT_LABEL,
+        roles::CALL_CANCEL_LABEL,
         roles::CALL_AVATAR,
         roles::CALL_AVATAR_INITIAL,
         roles::CALL_AVATAR_SM,
@@ -466,6 +470,7 @@ fn required_selected_theme_roles() -> Vec<&'static str> {
         roles::REPLAY_PLAY,
         roles::REPLAY_NEXT,
         roles::CALL_ANSWER,
+        roles::CALL_CANCEL,
         roles::CALL_MUTE,
         roles::CALL_HANGUP,
         roles::CALL_HANGUP_CENTER,
@@ -711,7 +716,7 @@ mod tests {
         );
         assert_eq!(
             (avatar.x, avatar.y, avatar.width, avatar.height),
-            (76, 48, 88, 88)
+            (84, 46, 72, 72)
         );
         assert_eq!(answer.width, 44);
         assert_eq!(hangup.width, 44);

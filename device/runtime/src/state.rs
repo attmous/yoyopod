@@ -323,9 +323,18 @@ impl VoiceNoteSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InterruptedDraft {
+    pub recipient: VoiceRecipientAction,
+    pub duration_ms: i32,
+    pub mime_type: String,
+    pub phase: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VoiceRuntimeState {
     pub activity_generation: u64,
     pub interrupted_draft_path: Option<String>,
+    pub interrupted_draft: Option<InterruptedDraft>,
     pub phase: String,
     pub headline: String,
     pub body: String,
@@ -360,6 +369,7 @@ impl Default for VoiceRuntimeState {
         Self {
             activity_generation: 0,
             interrupted_draft_path: None,
+            interrupted_draft: None,
             phase: "idle".to_string(),
             headline: "Ask".to_string(),
             body: "Ask me anything...".to_string(),
@@ -394,6 +404,17 @@ impl Default for VoiceRuntimeState {
 impl VoiceRuntimeState {
     /// Call admission invokes this before sending any stop/save command.
     pub fn invalidate_for_call(&mut self) -> u64 {
+        if self.interrupted_draft_path.is_none() {
+            self.interrupted_draft =
+                self.pending_voice_recipient
+                    .clone()
+                    .map(|recipient| InterruptedDraft {
+                        recipient,
+                        duration_ms: self.duration_ms,
+                        mime_type: self.mime_type.clone(),
+                        phase: "review".into(),
+                    });
+        }
         self.activity_generation = self.activity_generation.saturating_add(1);
         self.auto_send_after_capture = false;
         self.pending_voice_recipient = None;
@@ -501,6 +522,7 @@ impl VoiceRuntimeState {
         *self = Self {
             activity_generation: self.activity_generation,
             interrupted_draft_path: self.interrupted_draft_path.clone(),
+            interrupted_draft: self.interrupted_draft.clone(),
             voice_note_store_dir: store_dir,
             command_settings,
             capture_settings,
@@ -915,6 +937,15 @@ impl RuntimeState {
         })
     }
 
+    pub fn can_send_interrupted_draft(&self) -> bool {
+        self.call.state == CallState::Idle
+            && self.voice.interrupted_draft_path.is_some()
+            && self.voice.interrupted_draft.as_ref().is_some_and(|d| {
+                matches!(d.phase.as_str(), "review" | "failed")
+                    && self.is_approved_voice_recipient(&d.recipient)
+            })
+    }
+
     pub fn configure_voice_note_store_dir(&mut self, voice_note_store_dir: impl Into<String>) {
         let voice_note_store_dir = voice_note_store_dir.into();
         if !voice_note_store_dir.trim().is_empty() {
@@ -1306,6 +1337,14 @@ impl RuntimeState {
                 .collect();
         }
         if let Some(voice_note) = snapshot.get("voice_note") {
+            if self.voice.interrupted_draft_path.is_some()
+                && self.voice.interrupted_draft_path.as_deref()
+                    == snapshot["discarded_draft_path"].as_str()
+            {
+                self.voice.interrupted_draft_path = None;
+                self.voice.interrupted_draft = None;
+                self.voice.reset_draft();
+            }
             if self.voice.ask_capture_active {
                 self.apply_ask_capture_snapshot(voice_note);
             } else {
@@ -1486,6 +1525,9 @@ impl RuntimeState {
                     .set_interaction("idle", "Ask", "Ask me anything...");
             }
             VoiceIntent::CaptureStart(action) | VoiceIntent::CaptureStartAndSend(action) => {
+                if self.voice.interrupted_draft_path.is_some() {
+                    return;
+                }
                 if !self.is_approved_voice_recipient(action) {
                     return;
                 }
@@ -1514,6 +1556,9 @@ impl RuntimeState {
                 }
             }
             VoiceIntent::Send(action) => {
+                if self.voice.interrupted_draft_path.is_some() {
+                    return;
+                }
                 if !self.is_approved_voice_recipient(action)
                     || (action.file_path.trim().is_empty()
                         && self.voice.file_path.trim().is_empty())
@@ -1559,6 +1604,22 @@ impl RuntimeState {
                 self.voice.playback_duration_ms = 0;
             }
             VoiceIntent::Discard => self.voice.reset_draft(),
+            VoiceIntent::SavedSend(action) => {
+                if self.can_send_interrupted_draft()
+                    && self.voice.interrupted_draft_path.as_deref()
+                        == Some(action.file_path.as_str())
+                {
+                    if let Some(draft) = self.voice.interrupted_draft.as_mut() {
+                        draft.phase = "sending".into();
+                    }
+                }
+            }
+            VoiceIntent::SavedDiscard(action) => {
+                if self.voice.interrupted_draft_path.as_deref() != Some(action.file_path.as_str()) {
+                    return;
+                }
+                // Clear only on the host's matching discarded_draft_path proof.
+            }
             VoiceIntent::CaptureCancel | VoiceIntent::Delete(_) | VoiceIntent::MarkSeen(_) => {}
         }
     }
@@ -1769,6 +1830,17 @@ impl RuntimeState {
             "failed" | "error" => "failed",
             _ => "idle",
         };
+        if self.voice.interrupted_draft_path.as_deref() == voice_note["file_path"].as_str() {
+            if let Some(draft) = self.voice.interrupted_draft.as_mut() {
+                // Idle/recording updates and later captures cannot erase saved ownership.
+                if matches!(phase, "review" | "sending" | "sent" | "failed") {
+                    draft.phase = phase.into();
+                    draft.duration_ms = i32_field(voice_note, "duration_ms")
+                        .unwrap_or(draft.duration_ms)
+                        .max(0);
+                }
+            }
+        }
 
         if phase == "idle" {
             self.voice.reset_draft();
@@ -2054,6 +2126,11 @@ impl RuntimeState {
                 "voice_notes_by_contact": voice_note_queue_payload(&self.call.voice_notes_by_contact),
             },
             "voice": {
+                "interrupted_draft_path": self.voice.interrupted_draft_path,
+                "interrupted_draft_recipient": self.voice.interrupted_draft.as_ref().map(|d| &d.recipient),
+                "interrupted_draft_duration_ms": self.voice.interrupted_draft.as_ref().map(|d| d.duration_ms).unwrap_or(0),
+                "interrupted_draft_phase": self.voice.interrupted_draft.as_ref().map(|d| d.phase.as_str()).unwrap_or("review"),
+                "interrupted_draft_send_allowed": self.can_send_interrupted_draft(),
                 "phase": self.voice.phase,
                 "headline": self.voice.headline,
                 "body": voice_body_text(&self.voice),

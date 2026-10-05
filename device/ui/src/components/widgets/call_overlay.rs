@@ -31,22 +31,28 @@ pub fn call_overlay(model: &CallOverlayModel) -> Element {
                 model,
             ))
             .child(label(roles::CALL_NAME).text(&model.name))
+            .child(label(roles::CALL_ADDRESS).text(&model.address))
     };
 
     match model.kind {
         CallOverlayKind::Incoming => overlay
+            .child(
+                call_button(
+                    roles::CALL_ANSWER,
+                    "answer_sm",
+                    MINT,
+                    model.focus_index == 0,
+                )
+                .opacity(if model.accept_enabled { 255 } else { 100 }),
+            )
             .child(call_button(
-                roles::CALL_ANSWER,
-                "answer_sm",
-                MINT,
-                model.focus_index == 0,
-            ))
-            .child(call_button(
-                roles::CALL_HANGUP,
+                roles::CALL_CANCEL,
                 "close_sm",
                 TOMATO,
                 model.focus_index == 1,
-            )),
+            ))
+            .child(label(roles::CALL_ACCEPT_LABEL).text("Accept"))
+            .child(label(roles::CALL_CANCEL_LABEL).text("Cancel")),
         CallOverlayKind::Outgoing => overlay.child(call_button(
             roles::CALL_HANGUP_CENTER,
             "close_sm",
@@ -89,6 +95,8 @@ mod tests {
 
     fn model(kind: CallOverlayKind) -> CallOverlayModel {
         CallOverlayModel {
+            address: "VoIP · sip:mama@example.test".into(),
+            accept_enabled: true,
             kind,
             state: "INCOMING".to_string(),
             name: "Mama".to_string(),
@@ -111,7 +119,7 @@ mod tests {
         let hangup = overlay
             .children
             .iter()
-            .find(|child| child.role == Some(roles::CALL_HANGUP))
+            .find(|child| child.role == Some(roles::CALL_CANCEL))
             .expect("hangup control");
 
         assert_eq!(answer.props.selected, Some(true));

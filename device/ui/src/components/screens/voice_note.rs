@@ -38,6 +38,27 @@ pub fn scene(props: &VoiceNoteProps) -> Scene {
 }
 
 fn buttons(snapshot: &RuntimeSnapshot) -> Vec<DeckItem> {
+    if snapshot.voice.interrupted_draft_path.is_some() {
+        let send = if snapshot.voice.interrupted_draft_send_allowed {
+            "Send"
+        } else {
+            "Send unavailable"
+        };
+        return match voice_note_phase(snapshot).as_str() {
+            "sending" => vec![button("sending", "Sending", "voice_note")],
+            "sent" => vec![button("sent", "Sent", "check")],
+            "failed" => vec![
+                button("retry", send, "retry"),
+                button("play", "Review", "play"),
+                button("discard", "Discard", "close"),
+            ],
+            _ => vec![
+                button("send", send, "check"),
+                button("play", "Review", "play"),
+                button("discard", "Discard", "close"),
+            ],
+        };
+    }
     match voice_note_phase(snapshot).as_str() {
         "review" => vec![
             button("send", "Send", "check"),
@@ -66,6 +87,13 @@ fn button(key: &'static str, title: &'static str, icon_key: &'static str) -> Dec
 }
 
 fn voice_note_phase(snapshot: &RuntimeSnapshot) -> String {
+    if snapshot.voice.interrupted_draft_path.is_some() {
+        return if snapshot.voice.interrupted_draft_phase.is_empty() {
+            "review".into()
+        } else {
+            snapshot.voice.interrupted_draft_phase.clone()
+        };
+    }
     let phase = snapshot.voice.phase.trim().to_ascii_lowercase();
     if snapshot.voice.capture_in_flight || snapshot.voice.ptt_active || phase == "recording" {
         return "recording".to_string();

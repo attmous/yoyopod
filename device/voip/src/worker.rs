@@ -186,6 +186,7 @@ where
             | "voip.play_focus_prompt"
             | "voip.resume_voice_note_playback"
             | "voip.send_voice_note"
+            | "voip.send_saved_voice_note"
     ) {
         host.permit_audio_start(&envelope.payload)
             .map_err(anyhow::Error::msg)?;
@@ -212,7 +213,7 @@ where
                 &WorkerEnvelope::result(
                     "voip.interrupt_for_call",
                     envelope.request_id,
-                    json!({"key":request.key,"activity_generation":request.activity_generation,"audio_released":true,"draft_path":draft}),
+                    json!({"key":request.key,"activity_generation":request.activity_generation,"audio_released":true,"draft_path":draft,"draft_duration_ms":host.session_snapshot_payload()["voice_note"]["duration_ms"]}),
                 ),
             )?;
             write_session_snapshot(host, output)?;
@@ -550,7 +551,20 @@ where
             )?;
             write_session_snapshot(host, output)?;
         }
-        "voip.send_voice_note" => {
+        "voip.discard_saved_voice_note" => {
+            let path = envelope.payload["file_path"].as_str().unwrap_or_default();
+            backend.with_backend(|b| host.discard_saved_voice_note(b, path))?;
+            write_envelope_to(
+                output,
+                &WorkerEnvelope::result(
+                    "voip.discard_saved_voice_note",
+                    envelope.request_id,
+                    json!({"discarded":true}),
+                ),
+            )?;
+            write_session_snapshot(host, output)?;
+        }
+        "voip.send_voice_note" | "voip.send_saved_voice_note" => {
             let uri = envelope.payload["uri"].as_str().unwrap_or("").trim();
             let file_path = envelope.payload["file_path"].as_str().unwrap_or("").trim();
             let mime_type = envelope.payload["mime_type"].as_str().unwrap_or("").trim();
@@ -571,19 +585,30 @@ where
                 ))?;
             } else {
                 let message_id = backend.with_backend(|backend_ref| {
-                    host.send_voice_note(
-                        backend_ref,
-                        uri,
-                        file_path,
-                        duration_ms as i32,
-                        mime_type,
-                        client_id,
-                    )
+                    if envelope.message_type == "voip.send_saved_voice_note" {
+                        host.send_saved_voice_note(
+                            backend_ref,
+                            uri,
+                            file_path,
+                            duration_ms as i32,
+                            mime_type,
+                            client_id,
+                        )
+                    } else {
+                        host.send_voice_note(
+                            backend_ref,
+                            uri,
+                            file_path,
+                            duration_ms as i32,
+                            mime_type,
+                            client_id,
+                        )
+                    }
                 })?;
                 write_envelope_to(
                     output,
                     &WorkerEnvelope::result(
-                        "voip.send_voice_note",
+                        envelope.message_type,
                         envelope.request_id,
                         json!({"message_id": message_id}),
                     ),
@@ -762,9 +787,7 @@ where
                     ),
                 )?;
             } else {
-                let deleted = host
-                    .delete_voice_note(message_id)
-                    .map_err(|error| anyhow!(error))?;
+                let deleted = backend.with_backend(|b| host.delete_voice_note(b, message_id))?;
                 write_envelope_to(
                     output,
                     &WorkerEnvelope::result(

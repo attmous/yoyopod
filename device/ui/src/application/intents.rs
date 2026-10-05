@@ -3,6 +3,18 @@ use yoyopod_protocol::ui::{
     VoiceNoteSummarySnapshot, VoiceRecipientAction,
 };
 
+pub fn session_action(
+    snapshot: &yoyopod_protocol::ui::RuntimeSnapshot,
+    action: yoyopod_protocol::call::CallAction,
+) -> Option<yoyopod_protocol::ui::UiIntent> {
+    Some(yoyopod_protocol::ui::UiIntent::Call(
+        yoyopod_protocol::ui::CallIntent::Session(yoyopod_protocol::call::CallCommand {
+            key: snapshot.call.session.clone()?,
+            action,
+        }),
+    ))
+}
+
 pub fn list_item_action(item: &ListItemSnapshot) -> ListItemAction {
     ListItemAction {
         id: item.id.clone(),

@@ -932,6 +932,7 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
         )],
         VoiceIntent::AskCancel => cancel_active_ask_commands(),
         VoiceIntent::CaptureStart(action) | VoiceIntent::CaptureStartAndSend(action) => {
+            if state.voice.interrupted_draft_path.is_some() { return Vec::new(); }
             if !state.is_approved_voice_recipient(action) {
                 return Vec::new();
             }
@@ -965,6 +966,7 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             }
         }
         VoiceIntent::Send(action) => {
+            if state.voice.interrupted_draft_path.is_some() { return Vec::new(); }
             if !state.is_approved_voice_recipient(action) {
                 return Vec::new();
             }
@@ -1060,6 +1062,20 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             })
             .unwrap_or_default(),
         VoiceIntent::Discard => Vec::new(),
+        VoiceIntent::SavedSend(action) => {
+            if !state.can_send_interrupted_draft() || state.voice.interrupted_draft_path.as_deref() != Some(action.file_path.as_str()) { return Vec::new(); }
+            let draft = state.voice.interrupted_draft.as_ref().expect("checked draft");
+            vec![worker_command(WorkerDomain::Voip, "voip.send_saved_voice_note", json!({
+                "uri": voice_recipient_uri(&draft.recipient),
+                "file_path": state.voice.interrupted_draft_path,
+                "duration_ms": draft.duration_ms.max(0), "mime_type": draft.mime_type,
+                "client_id": new_voice_note_client_id(),
+            }))]
+        }
+        VoiceIntent::SavedDiscard(action) => {
+            if state.voice.interrupted_draft_path.as_deref() != Some(action.file_path.as_str()) { return Vec::new(); }
+            vec![worker_command(WorkerDomain::Voip, "voip.discard_saved_voice_note", json!({"file_path": state.voice.interrupted_draft_path}))]
+        }
     }
 }
 
@@ -2464,6 +2480,25 @@ mod tests {
                         && envelope.message_type == "voip.send_voice_note"
             )
         }));
+    }
+
+    #[test]
+    fn interrupted_draft_blocks_replacement_capture() {
+        let mut state = RuntimeState::default();
+        RuntimeEvent::CloudConfig(json!({"contacts": {"entries": [{
+            "id":"mama", "name":"Mama", "sip_address":"sip:mama@example.test", "can_call":true
+        }]}}))
+        .apply(&mut state);
+        state.voice.interrupted_draft_path = Some("saved.wav".into());
+        let action = VoiceRecipientAction {
+            id: "sip:mama@example.test".into(),
+            recipient_address: "sip:mama@example.test".into(),
+            ..Default::default()
+        };
+        assert!(
+            commands_for_voice_intent(&state, &VoiceIntent::CaptureStart(action)).is_empty(),
+            "pending draft must be handled before recorder replacement"
+        );
     }
 
     #[test]

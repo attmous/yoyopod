@@ -126,6 +126,12 @@ pub(crate) fn actions(
     snapshot: &RuntimeSnapshot,
     selected_contact: Option<&ListItemSnapshot>,
 ) -> Vec<DeckItem> {
+    if snapshot.voice.interrupted_draft_path.is_some() {
+        return vec![
+            action("review_draft", "Review draft", "play", None),
+            action("discard_draft", "Discard draft", "close", None),
+        ];
+    }
     if selected_contact.is_some_and(|contact| contact.communication_unavailable) {
         return Vec::new();
     }

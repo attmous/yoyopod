@@ -180,6 +180,17 @@ impl MessageStore {
         Ok(Some(removed.local_file_path))
     }
 
+    pub fn voice_note_file(&self, message_id: &str) -> Option<&str> {
+        self.messages
+            .iter()
+            .find(|m| m.id == message_id && m.kind == "voice_note")
+            .map(|m| m.local_file_path.as_str())
+    }
+
+    pub fn references_file(&self, path: &str) -> bool {
+        self.messages.iter().any(|m| m.local_file_path == path)
+    }
+
     pub fn summary_payload(&self) -> Value {
         json!({
             "unread_voice_notes": self.unread_voice_note_count(),

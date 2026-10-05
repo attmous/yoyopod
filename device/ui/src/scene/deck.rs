@@ -224,6 +224,8 @@ impl StopwatchVisualPhase {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallOverlayModel {
+    pub address: String,
+    pub accept_enabled: bool,
     pub kind: CallOverlayKind,
     pub state: String,
     pub name: String,

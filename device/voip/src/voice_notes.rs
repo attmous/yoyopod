@@ -1,5 +1,49 @@
 use serde_json::json;
 
+const SAVED_PREFIX: &str = ".yoyopod-interrupted-";
+
+pub fn is_saved_draft_path(path: &str) -> bool {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .is_some_and(|name| name.starts_with(SAVED_PREFIX))
+}
+
+/// Reserve a never-overwritten file on the same filesystem. Wall-clock rollback
+/// and recorder path reuse cannot retarget a displayed draft or an HTTP upload.
+pub fn preserve_interrupted_wav(source: &str) -> Result<String, String> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let parent = std::path::Path::new(source)
+        .parent()
+        .ok_or("draft has no parent")?;
+    for _ in 0..1024 {
+        let path = parent.join(format!(
+            "{SAVED_PREFIX}{}-{}.wav",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let mut output = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.to_string()),
+        };
+        let result = std::fs::File::open(source)
+            .and_then(|mut input| std::io::copy(&mut input, &mut output))
+            .and_then(|_| output.sync_all());
+        if let Err(e) = result {
+            let _ = std::fs::remove_file(&path);
+            return Err(e.to_string());
+        }
+        return Ok(path.to_string_lossy().into_owned());
+    }
+    Err("could not reserve unique interrupted recording".into())
+}
+
 /// Check closed RIFF/WAVE chunks without reading the captured audio into RAM.
 pub fn usable_wav(path: &str) -> bool {
     use std::io::{Read, Seek, SeekFrom};
