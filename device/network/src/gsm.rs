@@ -855,12 +855,14 @@ impl ModemManagerVoice {
         let Some(modem) = self.modem.as_ref() else {
             return Ok(());
         };
-        let voice = Proxy::new(
+        let voice: Proxy<'_> = zbus::blocking::proxy::Builder::new(
             self.connection.as_ref().context("No modem connection")?,
-            self.bound_owner()?.to_owned(),
-            modem.as_str(),
-            VOICE_INTERFACE,
-        )?;
+        )
+        .destination(self.bound_owner()?.to_owned())?
+        .path(modem.as_str())?
+        .interface(VOICE_INTERFACE)?
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()?;
         let result = voice.get_property::<Vec<OwnedObjectPath>>("Calls");
         drop(voice);
         // A response belongs to the bound unique owner, but owner loss during
@@ -1889,10 +1891,20 @@ mod tests {
         entering.recv_timeout(Duration::from_secs(3)).unwrap();
         // Voice getter is outstanding; remove only Modem to avoid its read lock.
         owner
-            .object_server()
-            .remove::<ReconnectModem, _>(TEST_MODEM0)
+            .emit_signal(
+                None::<&str>,
+                "/org/freedesktop/ModemManager1",
+                "org.freedesktop.DBus.ObjectManager",
+                "InterfacesRemoved",
+                &(
+                    OwnedObjectPath::try_from(TEST_MODEM0).unwrap(),
+                    vec![MODEM_INTERFACE],
+                ),
+            )
             .unwrap();
-        add_reconnect_modem(&owner, TEST_MODEM2);
+        // Let the subscribed signal reach the independent collector before
+        // releasing the deliberately outstanding old Calls response.
+        thread::sleep(Duration::from_millis(20));
         release.send(()).unwrap();
         let (mut backend, result) = scan.join().unwrap();
         assert!(result.is_err());
