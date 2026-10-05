@@ -211,7 +211,7 @@ fn draw_runtime(
         .apply(engine.render(&request.scene_graph, now_ms))
         .unwrap();
     renderer
-        .flush(framebuffer, crate::RenderMode::Full)
+        .flush(framebuffer, crate::RenderMode::FullRedraw)
         .unwrap();
     runtime.mark_clean();
 }
