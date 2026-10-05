@@ -1714,6 +1714,7 @@ mod tests {
         reads: Arc<std::sync::atomic::AtomicUsize>,
         gate: PropertyGate,
         fail: Arc<std::sync::atomic::AtomicBool>,
+        paths: Arc<Mutex<Vec<OwnedObjectPath>>>,
     }
     #[zbus::interface(name = "org.freedesktop.ModemManager1.Modem.Voice")]
     impl ReconnectVoice {
@@ -1724,6 +1725,7 @@ mod tests {
         #[zbus(property)]
         async fn calls(&self) -> zbus::fdo::Result<Vec<OwnedObjectPath>> {
             self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let paths = self.paths.lock().unwrap().clone();
             let gate = self.gate.lock().unwrap().take();
             if let Some((entered, release)) = gate {
                 entered.send(()).unwrap();
@@ -1741,7 +1743,7 @@ mod tests {
             if self.fail.load(Ordering::SeqCst) {
                 return Err(zbus::fdo::Error::Failed("transient read error".into()));
             }
-            Ok(Vec::new())
+            Ok(paths)
         }
     }
     fn reconnect_fixture(
@@ -1797,6 +1799,7 @@ mod tests {
                     reads: reads.clone(),
                     gate: Arc::new(Mutex::new(None)),
                     fail: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    paths: Arc::new(Mutex::new(Vec::new())),
                 },
             )
             .unwrap();
@@ -1841,6 +1844,7 @@ mod tests {
                     reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                     gate: Arc::new(Mutex::new(None)),
                     fail: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    paths: Arc::new(Mutex::new(Vec::new())),
                 },
             )
             .unwrap();
@@ -2441,6 +2445,103 @@ mod tests {
             backend.modem.as_ref().map(|p| p.as_str()),
             Some(TEST_MODEM2)
         );
+    }
+
+    #[test]
+    fn gsm_reconnect_new_call_added_during_old_empty_calls_scan_blocks_clean_loss() {
+        let bus = PrivateBus::start();
+        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        let token = backend.reconciliation().unwrap().native_owner;
+        let connection_name = backend
+            .connection
+            .as_ref()
+            .unwrap()
+            .unique_name()
+            .unwrap()
+            .to_owned();
+        assert!(backend.idle_calls_proven);
+        let (entered, entering) = mpsc::channel();
+        let (release, releasing) = mpsc::channel();
+        let interface = owner
+            .object_server()
+            .interface::<_, ReconnectVoice>(TEST_MODEM0)
+            .unwrap();
+        *interface.get().gate.lock().unwrap() = Some((entered, releasing));
+        let paths = interface.get().paths.clone();
+
+        // Forward the actual retained subscription messages while acknowledging
+        // that CallAdded has entered the actor's receiver before its old property
+        // response is released. This fixes the ordering without a timing sleep.
+        let (forward, forwarded) = mpsc::channel();
+        let source = std::mem::replace(&mut backend.signals.as_mut().unwrap().messages, forwarded);
+        let (delivered, delivery) = mpsc::channel();
+        let relay = thread::spawn(move || {
+            while let Ok(message) = source.recv_timeout(Duration::from_secs(3)) {
+                let added = message.header().member().map(|m| m.as_str()) == Some("CallAdded");
+                if forward.send(message).is_err() {
+                    break;
+                }
+                if added {
+                    let _ = delivered.send(());
+                }
+            }
+        });
+        let scan = thread::spawn(move || {
+            let result = backend.reconcile_paths();
+            (backend, result)
+        });
+        entering.recv_timeout(Duration::from_secs(3)).unwrap();
+        let added_path =
+            OwnedObjectPath::try_from("/org/freedesktop/ModemManager1/Call/9").unwrap();
+        paths.lock().unwrap().push(added_path.clone());
+        owner
+            .emit_signal(
+                None::<&str>,
+                TEST_MODEM0,
+                VOICE_INTERFACE,
+                "CallAdded",
+                &(added_path,),
+            )
+            .unwrap();
+        delivery.recv_timeout(Duration::from_secs(3)).unwrap();
+        release.send(()).unwrap();
+        let (mut backend, result) = scan.join().unwrap();
+        assert!(result.is_ok());
+        assert!(
+            !backend.idle_calls_proven,
+            "older Calls=[] overwrote newer native addition evidence"
+        );
+        assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+        assert!(backend.registry().unwrap().tracked().is_empty());
+        assert!(!backend.drain_call_events().iter().any(|event| matches!(event, CallManagerWireEvent::Update(update) if update.phase == CallPhase::Ended)));
+
+        // Loss occurs before another successful Calls scan, so a replacement's
+        // empty property cannot certify the unresolved old addition as released.
+        remove_reconnect_modem(&owner);
+        backend.next_recovery = None;
+        let _ = backend.refresh();
+        assert!(backend.modem_lost);
+        assert!(!backend.clean_rediscovery);
+        assert!(!backend.cached.available);
+        assert_eq!(backend.selected_epoch, 1);
+        assert_eq!(backend.take_modem_loss(), Some(7));
+        add_reconnect_modem(&owner, TEST_MODEM2);
+        backend.next_discovery = None;
+        let _ = backend.refresh();
+        assert!(!backend.cached.available);
+        assert_ne!(
+            backend.modem.as_ref().map(|p| p.as_str()),
+            Some(TEST_MODEM2)
+        );
+        assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+        assert_eq!(backend.reconciliation().unwrap().native_owner, token);
+        assert_eq!(backend.generation, Some(7));
+        assert_eq!(
+            backend.connection.as_ref().unwrap().unique_name().unwrap(),
+            &connection_name
+        );
+        drop(backend);
+        relay.join().unwrap();
     }
     fn replace_owner(connection: &Connection) {
         use zbus::fdo::RequestNameFlags;
