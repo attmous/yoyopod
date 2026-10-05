@@ -523,6 +523,7 @@ mod tests {
         app_log: Vec<(String, String)>,
         pub(super) recovered: Vec<WorkerDomain>,
         pub(super) fail_send: Vec<String>,
+        pub(super) system_shutdowns: Vec<String>,
     }
 
     impl LoopIo for FakeLoopIo {
@@ -552,7 +553,8 @@ mod tests {
             Ok(())
         }
 
-        fn request_system_shutdown(&mut self, _command: &str) -> Result<(), String> {
+        fn request_system_shutdown(&mut self, command: &str) -> Result<(), String> {
+            self.system_shutdowns.push(command.to_owned());
             Ok(())
         }
 

@@ -754,3 +754,31 @@ fn queued_empty_scan_cannot_confirm_new_outgoing_cleanup() {
         .iter()
         .any(|(_, e)| e.message_type == "media.release_call"));
 }
+
+#[test]
+fn emergency_power_shutdown_does_not_wait_for_failed_native_cleanup() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Gsm);
+    offer(&mut runtime, &mut io, &key, 0);
+    prepare(&mut runtime, &mut io, 1);
+    io.fail_send.push("call.action".into());
+    io.fail_send.push("media.ringtone_stop".into());
+    runtime.state.power.safety.shutdown_pending = true;
+    runtime.state.power.safety.shutdown_execute_at_seconds = 0;
+    runtime.run_once_at(&mut io, 2);
+    assert!(runtime.shutdown_requested());
+    assert_eq!(runtime.manager.phase(), Some(CallPhase::Ending));
+    assert_eq!(
+        io.system_shutdowns.len(),
+        1,
+        "power deadline must dispatch shutdown in this loop"
+    );
+    assert!(
+        io.recovered.is_empty(),
+        "emergency shutdown must not wait for worker reconstruction"
+    );
+    assert_eq!(
+        runtime.manager.session(),
+        Some(&key),
+        "failed cleanup never fabricates release"
+    );
+}
