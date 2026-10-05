@@ -762,17 +762,17 @@ stored phone/SIP address matching, unsent draft handling, configured decision
 timeout, Busy rejection policy, and local priority replacement behavior. Explicitly
 state dashboard log sync is deferred and record actual GSM carrier behavior.
 
-- [ ] Add a parametrized end-to-end fake-loop matrix that sends typed offers
+- [x] Add a parametrized end-to-end fake-loop matrix that sends typed offers
   through actual event decoding for both transports and asserts worker command
   keys and UI projections. Cover all modes, permissions, priority, Unknown,
   music/recording/assistant state, second call, caller hangup during Answer,
   failed readiness, cleanup retry, worker restart, and shutdown. No tests that
   merely serialize implementation output back into itself.
-- [ ] Verify formatting: `cargo fmt --manifest-path device/Cargo.toml --all -- --check`.
-- [ ] Run `cargo check --manifest-path device/Cargo.toml --workspace --locked`.
-- [ ] Run affected crate tests once after final integration:
+- [x] Verify formatting: `cargo fmt --manifest-path device/Cargo.toml --all -- --check`.
+- [x] Run `cargo check --manifest-path device/Cargo.toml --workspace --locked`.
+- [x] Run affected crate tests once after final integration:
   `cargo test --manifest-path device/Cargo.toml -p yoyopod-protocol -p yoyopod-runtime -p yoyopod-cloud -p yoyopod-media -p yoyopod-voip -p yoyopod-network -p yoyopod-speech -p yoyopod-ui --locked`.
-- [ ] Run `cargo clippy --manifest-path device/Cargo.toml --workspace --all-targets --locked`
+- [x] Run `cargo clippy --manifest-path device/Cargo.toml --workspace --all-targets --locked`
   in supported environment. If Windows native/network dependencies prevent
   checks, record the exact limitation and run through existing supported CI;
   do not count a skipped build as passing. CI must compile native LVGL,
@@ -827,6 +827,6 @@ transport identity, audio readiness, and cleanup interfaces are tightly coupled
 and native lifetime mistakes can affect real calls. Native execution in this
 chat is also available with a final independent review.
 
-Tasks 1–9 are implemented and task-reviewed. Task 10 source integration and validation are in progress; final independent review and hardware acceptance remain pending. When execution starts, keep each task's files
+Tasks 1–9 are implemented and task-reviewed. Task 10 source integration and host validation are complete; final independent review and hardware acceptance remain pending. Keep each task's files
 owned by its assigned worker and do not revert others' changes. No deployment
 or merge is implied by completion of this plan document.

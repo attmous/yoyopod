@@ -879,12 +879,14 @@ fn power_deadline_preempts_pending_recovery_without_resource_proof() {
 
 #[test]
 fn overdue_decoded_accept_never_answers_before_tick() {
+    let mut late_answers = vec![];
     for transport in [CallTransport::Sip, CallTransport::Gsm] {
         for now in [30_000, 30_001] {
             for silent in [false, true] {
                 let (mut runtime, mut io, key) = fixture(transport.clone());
                 if silent {
                     runtime.state.settings.device_mode = yoyopod_protocol::call::DeviceMode::Silent;
+                    runtime = RuntimeLoop::new(runtime.state);
                 }
                 offer(&mut runtime, &mut io, &key, 0);
                 prepare(&mut runtime, &mut io, 1);
@@ -895,20 +897,24 @@ fn overdue_decoded_accept_never_answers_before_tick() {
                 if !silent {
                     respond(&mut runtime, &mut io, "media.ringtone_stop", now);
                 }
-                assert_eq!(
-                    native_count(&io, "answer"),
-                    0,
-                    "{transport:?} silent={silent} now={now}"
-                );
-                assert_eq!(runtime.manager.phase(), Some(CallPhase::Ending));
+                if native_count(&io, "answer") != 0
+                    || runtime.manager.phase() != Some(CallPhase::Ending)
+                {
+                    late_answers.push(format!("{transport:?} silent={silent} now={now}"));
+                }
                 assert_eq!(runtime.manager.session(), Some(&key));
             }
         }
     }
+    assert!(
+        late_answers.is_empty(),
+        "late native answers: {late_answers:?}"
+    );
 }
 
 #[test]
 fn overdue_decoded_stop_cannot_complete_answer_operation() {
+    let mut late_answers = vec![];
     for transport in [CallTransport::Sip, CallTransport::Gsm] {
         for now in [8_100, 8_101] {
             let (mut runtime, mut io, key) = fixture(transport.clone());
@@ -917,11 +923,19 @@ fn overdue_decoded_stop_cannot_complete_answer_operation() {
             respond(&mut runtime, &mut io, "media.ringtone_start", 2);
             control(&mut runtime, &mut io, &key, CallAction::Answer, 100);
             respond(&mut runtime, &mut io, "media.ringtone_stop", now);
-            assert_eq!(native_count(&io, "answer"), 0, "{transport:?} now={now}");
+            if native_count(&io, "answer") != 0
+                || runtime.manager.phase() != Some(CallPhase::Ending)
+            {
+                late_answers.push(format!("{transport:?} now={now}"));
+            }
             assert_eq!(runtime.manager.phase(), Some(CallPhase::Ending));
             assert_eq!(runtime.manager.session(), Some(&key));
         }
     }
+    assert!(
+        late_answers.is_empty(),
+        "late native answers: {late_answers:?}"
+    );
 }
 
 #[test]
@@ -930,6 +944,7 @@ fn queued_preparing_overdue_readiness_retains_cleanup_owner() {
         for now in [8_000, 8_001, 30_000, 30_001] {
             let (mut runtime, mut io, key) = fixture(transport.clone());
             runtime.state.settings.device_mode = yoyopod_protocol::call::DeviceMode::Silent;
+            runtime = RuntimeLoop::new(runtime.state);
             offer(&mut runtime, &mut io, &key, 0);
             control(&mut runtime, &mut io, &key, CallAction::Answer, 1);
             for name in [
