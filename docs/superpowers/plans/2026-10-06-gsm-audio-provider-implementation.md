@@ -10,7 +10,7 @@
 
 **Spec:** [Approved GSM audio provider specification](../specs/2026-10-06-gsm-audio-provider-design.md), approved 2026-10-06; content committed at `7a65ffa8247f4c4a0ecadfe4b4786d0fee9b905d` before approval-status metadata.
 
-**Status:** Written plan for user review. No provider implementation or maintenance action is authorized by presenting this plan. The coordinator commits the plan; the plan writer changes only this document.
+**Status:** Written plan approved by the user on 2026-10-06 ("ok fix it"). Execute using the selected Subagent-driven method. The framing-feasibility prerequisite still governs provider maintenance and hardware acceptance.
 
 ## Global Constraints
 
@@ -615,4 +615,4 @@ Coverage: provider lifetimes/callbacks/constructor/updater/port release → Task
 
 The five Review Focus inputs each have explicit negative tests in their owning tasks. Token/helper/type/JSON names are shared above; no package/image/dependency signature or framing proof is invented. Remaining real evidence is deliberately gated: signed lock resolution, exact firmware framing/readback/reset observations, matching clean builds and incoming/outgoing hardware results.
 
-After the coordinator saves/commits this plan, the user reviews the written plan before any provider task begins. Preserve Subagent-driven execution and its per-task fresh review gates. This plan does not repeat authorization for the already-approved reconnect-only deployment, which keeps the stock provider unchanged.
+The user approved this written plan on 2026-10-06. Preserve Subagent-driven execution and its per-task fresh review gates. This plan does not repeat authorization for the already-approved reconnect-only deployment, which keeps the stock provider unchanged.
