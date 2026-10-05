@@ -474,6 +474,10 @@ struct ModemSignals {
     connection: Connection,
     messages: Receiver<zbus::Message>,
     evidence_gap: Arc<std::sync::atomic::AtomicBool>,
+    progress: Arc<(
+        std::sync::Mutex<zbus::message::Sequence>,
+        std::sync::Condvar,
+    )>,
     #[cfg(test)]
     pause_before_forward: Arc<std::sync::Mutex<Option<(Sender<()>, Receiver<()>)>>>,
     thread: Option<JoinHandle<()>>,
@@ -489,11 +493,25 @@ impl ModemSignals {
             .sender(owner.to_owned())?
             .path_namespace("/org/freedesktop/ModemManager1")?
             .build();
-        let mut stream =
-            zbus::blocking::MessageIterator::for_match_rule(rule, &connection, Some(128))?;
+        // This ordered stream includes this connection's method replies. The
+        // exact-owner bus match still admits only our native signal namespace;
+        // the stream does not request other connections' traffic.
+        let mut stream = zbus::blocking::MessageIterator::from(&connection);
+        connection.call_method(
+            Some("org.freedesktop.DBus"),
+            "/org/freedesktop/DBus",
+            Some("org.freedesktop.DBus"),
+            "AddMatch",
+            &rule.to_string(),
+        )?;
         let (sender, messages) = mpsc::sync_channel(capacity);
         let evidence_gap = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let thread_gap = evidence_gap.clone();
+        let progress = Arc::new((
+            std::sync::Mutex::new(zbus::message::Sequence::default()),
+            std::sync::Condvar::new(),
+        ));
+        let thread_progress = progress.clone();
         #[cfg(test)]
         let pause_before_forward =
             Arc::new(std::sync::Mutex::new(None::<(Sender<()>, Receiver<()>)>));
@@ -503,10 +521,21 @@ impl ModemSignals {
             for message in &mut stream {
                 let Ok(message) = message else {
                     thread_gap.store(true, Ordering::SeqCst);
+                    thread_progress.1.notify_all();
                     break;
                 };
+                let position = message.recv_position();
+                let relevant = match rule.matches(&message) {
+                    Ok(relevant) => relevant,
+                    Err(_) => {
+                        thread_gap.store(true, Ordering::SeqCst);
+                        false
+                    }
+                };
                 #[cfg(test)]
-                if message.header().member().map(|m| m.as_str()) == Some("InterfacesRemoved") {
+                if relevant
+                    && message.header().member().map(|m| m.as_str()) == Some("InterfacesRemoved")
+                {
                     let gate = thread_pause.lock().unwrap().take();
                     if let Some((entered, release)) = gate {
                         let _ = entered.send(());
@@ -516,23 +545,47 @@ impl ModemSignals {
                 // Keep the retained subscription alive through a property storm.
                 // A missing removal can hide a reused native incarnation, so any
                 // gap permanently quarantines this backend's native evidence.
-                match sender.try_send(message) {
-                    Ok(()) => {}
-                    Err(mpsc::TrySendError::Full(_)) => {
-                        thread_gap.store(true, Ordering::SeqCst);
+                if relevant {
+                    match sender.try_send(message) {
+                        Ok(()) => {}
+                        Err(mpsc::TrySendError::Full(_)) => {
+                            thread_gap.store(true, Ordering::SeqCst);
+                        }
+                        Err(mpsc::TrySendError::Disconnected(_)) => break,
                     }
-                    Err(mpsc::TrySendError::Disconnected(_)) => break,
                 }
+                // ACK only after relevant evidence was forwarded or a gap was
+                // latched. Sequence is zbus's receive order on this connection.
+                *thread_progress.0.lock().unwrap() = position;
+                thread_progress.1.notify_all();
             }
         });
         Ok(Self {
             connection,
             messages,
             evidence_gap,
+            progress,
             #[cfg(test)]
             pause_before_forward,
             thread: Some(thread),
         })
+    }
+
+    fn wait_through(&self, position: zbus::message::Sequence) -> Result<()> {
+        let (lock, changed) = &*self.progress;
+        let progress = lock
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Signal collector progress poisoned"))?;
+        let (progress, _) = changed
+            .wait_timeout_while(progress, Duration::from_secs(5), |processed| {
+                *processed < position && !self.evidence_gap.load(Ordering::SeqCst)
+            })
+            .map_err(|_| anyhow::anyhow!("Signal collector progress poisoned"))?;
+        if *progress < position || self.evidence_gap.load(Ordering::SeqCst) {
+            self.evidence_gap.store(true, Ordering::SeqCst);
+            bail!("Native signal collector progress unproven");
+        }
+        Ok(())
     }
 }
 impl Drop for ModemSignals {
@@ -678,17 +731,30 @@ impl ModemManagerVoice {
         }
         anyhow::ensure!(!self.modem_lost, "Selected modem lost");
         let modem = self.modem.as_ref().context("No selected modem")?.clone();
-        let manager = Proxy::new(
-            self.connection.as_ref().context("No connection")?,
-            self.bound_owner()?.to_owned(),
-            "/org/freedesktop/ModemManager1",
-            "org.freedesktop.DBus.ObjectManager",
-        )?;
-        let objects: ManagedObjects = manager.call("GetManagedObjects", &())?;
-        drop(manager);
+        let reply = self
+            .connection
+            .as_ref()
+            .context("No connection")?
+            .call_method(
+                Some(self.bound_owner()?),
+                "/org/freedesktop/ModemManager1",
+                Some("org.freedesktop.DBus.ObjectManager"),
+                "GetManagedObjects",
+                &(),
+            )?;
+        let signals = self
+            .signals
+            .as_ref()
+            .context("No retained native signal collector")?;
+        if let Err(error) = signals.wait_through(reply.recv_position()) {
+            // Missing progress cannot establish old-lifetime quiescence.
+            self.verify_service_owner()?;
+            return Err(error);
+        }
+        let objects: ManagedObjects = reply.body().deserialize()?;
         self.verify_service_owner()?;
-        // Removal can arrive while OM prepares its snapshot. Recheck the
-        // subscribed incarnation boundary after this delayed native response.
+        // The collector has now forwarded every native signal received before
+        // this exact OM reply. Consume that ordered evidence before its facts.
         let messages: Vec<_> = self
             .signals
             .as_ref()
