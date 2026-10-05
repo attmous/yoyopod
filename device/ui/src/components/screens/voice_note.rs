@@ -412,4 +412,49 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn retained_draft_announcements_identify_each_focused_action_and_permission() {
+        use crate::application::accessibility::focused_item;
+        use yoyopod_protocol::call::SessionKey;
+
+        for (phase, allowed, titles) in [
+            ("review", true, ["Send", "Review", "Discard"]),
+            ("review", false, ["Send unavailable", "Review", "Discard"]),
+            ("failed", true, ["Send", "Review", "Discard"]),
+            ("unknown", true, ["Send again", "Review", "Discard"]),
+            ("unknown", false, ["Send unavailable", "Review", "Discard"]),
+        ] {
+            let mut runtime = retained_draft(phase, allowed);
+            for title in titles {
+                let expected = if phase == "unknown" {
+                    format!("Delivery unknown · {title}")
+                } else {
+                    title.to_string()
+                };
+                assert_eq!(focused_item(&runtime).unwrap().label, expected);
+                assert_eq!(runtime.active_title(), expected);
+                runtime.handle_input(InputAction::Advance, 1_020);
+            }
+            runtime.snapshot.call.session = Some(SessionKey {
+                call_id: "call-a".into(),
+                generation: 1,
+                transport: yoyopod_protocol::call::CallTransport::Sip,
+            });
+            assert!(
+                focused_item(&runtime).is_none(),
+                "calls still suppress speech"
+            );
+        }
+
+        let mut ordinary = UiRuntime {
+            active_screen: UiScreen::VoiceNote,
+            ..Default::default()
+        };
+        ordinary.snapshot.voice.phase = "review".into();
+        for title in ["Send", "Play", "Again"] {
+            assert_eq!(focused_item(&ordinary).unwrap().label, title);
+            ordinary.handle_input(InputAction::Advance, 1_020);
+        }
+    }
 }
