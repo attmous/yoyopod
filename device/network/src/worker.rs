@@ -1572,6 +1572,7 @@ mod tests {
     };
     use std::io::Cursor;
     use std::sync::{Arc, Mutex};
+    use std::thread;
 
     #[derive(Default)]
     struct NoFixModem {
