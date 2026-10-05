@@ -202,6 +202,12 @@ pub fn runtime_event_from_worker(
     domain: WorkerDomain,
     envelope: WorkerEnvelope,
 ) -> Option<RuntimeEvent> {
+    if envelope.kind == EnvelopeKind::Event && envelope.message_type == "worker.exited" {
+        return Some(RuntimeEvent::WorkerExited {
+            domain,
+            reason: worker_exit_reason(&envelope.payload),
+        });
+    }
     if domain == WorkerDomain::Ui {
         return Some(runtime_event_from_ui_envelope(envelope));
     }

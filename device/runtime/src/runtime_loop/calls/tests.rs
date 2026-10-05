@@ -240,6 +240,40 @@ fn decoded_stale_updates_cannot_change_projection_or_native_release() {
 }
 
 #[test]
+fn decoded_active_ui_exit_terminates_exact_session_and_stale_ready_stays_fenced() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Sip);
+    runtime.handle_call(
+        &mut io,
+        CallManagerEvent::SetMode(yoyopod_protocol::call::DeviceMode::Silent),
+    );
+    offer(&mut runtime, &mut io, &key, 0);
+    prepare(&mut runtime, &mut io, 1);
+    control(&mut runtime, &mut io, &key, CallAction::Answer, 2);
+    io.messages.push((WorkerDomain::Voip, WorkerEnvelope::event("call.update", json!({
+        "key":key, "direction":"incoming", "phase":"active", "address":"sip:dad@example.test", "sequence":1, "duration_seconds":1, "muted":false
+    }))));
+    runtime.run_once_at(&mut io, 3);
+    assert_eq!(runtime.manager.phase(), Some(CallPhase::Active));
+    io.messages.push((
+        WorkerDomain::Ui,
+        WorkerEnvelope::event("worker.exited", json!({"reason":"fatal"})),
+    ));
+    io.messages.push((
+        WorkerDomain::Ui,
+        WorkerEnvelope::event(
+            "ui.ready",
+            json!({"display":{"width":240,"height":280},"schema_version":4}),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 4);
+    assert_eq!(runtime.manager.phase(), Some(CallPhase::Ending));
+    assert!(runtime.calls.ui_unavailable);
+    assert!(io.sent.iter().any(|(_, e)| e.message_type == "call.action"
+        && e.payload["action"] == "hangup"
+        && e.payload["key"] == json!(key)));
+}
+
+#[test]
 fn decoded_fatal_ui_failure_cancels_queued_answer_and_blocks_admission() {
     let (mut runtime, mut io, key) = fixture(CallTransport::Sip);
     offer(&mut runtime, &mut io, &key, 0);
