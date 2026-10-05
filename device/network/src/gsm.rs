@@ -659,6 +659,17 @@ impl ModemManagerVoice {
         let objects: ManagedObjects = manager.call("GetManagedObjects", &())?;
         drop(manager);
         self.verify_service_owner()?;
+        // Removal can arrive while OM prepares its snapshot. Recheck the
+        // subscribed incarnation boundary after this delayed native response.
+        let messages: Vec<_> = self
+            .signals
+            .as_ref()
+            .map(|signals| signals.messages.try_iter().collect())
+            .unwrap_or_default();
+        for message in messages {
+            self.removal_signal(&message);
+        }
+        anyhow::ensure!(!self.modem_lost, "Selected modem lost");
         if !objects.get(&modem).is_some_and(|interfaces| {
             interfaces.contains_key(MODEM_INTERFACE) && interfaces.contains_key(VOICE_INTERFACE)
         }) {
@@ -1698,9 +1709,10 @@ mod tests {
             1
         }
     }
+    type PropertyGate = Arc<Mutex<Option<(Sender<()>, Receiver<()>)>>>;
     struct ReconnectVoice {
         reads: Arc<std::sync::atomic::AtomicUsize>,
-        gate: Arc<Mutex<Option<(Sender<()>, Receiver<()>)>>>,
+        gate: PropertyGate,
         fail: Arc<std::sync::atomic::AtomicBool>,
     }
     #[zbus::interface(name = "org.freedesktop.ModemManager1.Modem.Voice")]
