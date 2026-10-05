@@ -180,3 +180,7 @@ fn validate_explicit_source_dir(explicit_source: Option<&Path>) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "refresh_tests.rs"]
+mod refresh_tests;
