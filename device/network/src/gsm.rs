@@ -528,6 +528,7 @@ struct ModemManagerVoice {
     loss_pending: bool,
     clean_rediscovery: bool,
     idle_calls_proven: bool,
+    native_addition_revision: u64,
     initial_scan: bool,
     service_owner: Option<String>,
     service_bus_id: Option<String>,
@@ -616,6 +617,10 @@ impl ModemManagerVoice {
         {
             // A new native object invalidates the previous idle proof even if
             // removal follows before the next Calls scan can observe its key.
+            self.native_addition_revision = self
+                .native_addition_revision
+                .checked_add(1)
+                .expect("native addition revision exhausted");
             self.idle_calls_proven = false;
         }
         if header.sender().map(|s| s.as_str()) != self.service_owner.as_deref()
@@ -908,6 +913,7 @@ impl ModemManagerVoice {
 
     fn reconcile_paths(&mut self) -> Result<()> {
         self.verify_service_owner()?;
+        let addition_revision = self.native_addition_revision;
         let Some(modem) = self.modem.as_ref() else {
             return Ok(());
         };
@@ -932,6 +938,13 @@ impl ModemManagerVoice {
                 return Err(error.into());
             }
         };
+        // A newer addition consumed by the post-response checks makes this
+        // Calls snapshot stale. Preserve its unresolved ownership evidence
+        // until a fresh scan instead of certifying idle or deleting old keys.
+        if self.native_addition_revision != addition_revision {
+            self.idle_calls_proven = false;
+            return Ok(());
+        }
         self.idle_calls_proven = paths.is_empty();
         let old = self.registry()?.tracked();
         for path in &paths {
@@ -939,6 +952,10 @@ impl ModemManagerVoice {
         }
         self.verify_service_owner()?;
         self.check_selected_modem()?;
+        if self.native_addition_revision != addition_revision {
+            self.idle_calls_proven = false;
+            return Ok(());
+        }
         for (path, key) in old {
             if !paths.iter().any(|candidate| candidate.as_str() == path) {
                 self.object_deleted(&path, &key);
