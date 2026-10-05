@@ -534,7 +534,7 @@ mod tests {
 
     #[test]
     fn network_child_builder_restores_supported_overrides_after_env_reset() {
-        for uid in [0, 1000] {
+        for uid in [1000, 0] {
             let launch: Launch = serde_json::from_value(serde_json::json!({
                 "socket":"/unused", "token":"test", "supervisor":1,
                 "uid":uid, "gid":1000, "groups":[44,1000], "bind_cap":true,

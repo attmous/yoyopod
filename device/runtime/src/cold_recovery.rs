@@ -168,9 +168,16 @@ mod tests {
             #include <pthread.h>
             #include <fcntl.h>
             #include <unistd.h>
-            static void *hold(void *unused) { sleep(60); return 0; }
+            #include <stdio.h>
+            static int resource;
+            static void *hold(void *unused) {
+                char byte;
+                if (read(0, &byte, 1) == 1 && fcntl(resource, F_GETFD) >= 0)
+                    dprintf(1, "resource-open\n");
+                sleep(60); return 0;
+            }
             int main(int argc, char **argv) {
-                if (argc != 2 || open(argv[1], O_RDONLY) < 0) return 2;
+                if (argc != 2 || (resource = open(argv[1], O_RDONLY)) < 0) return 2;
                 pthread_t thread;
                 if (pthread_create(&thread, 0, hold, 0)) return 3;
                 pthread_exit(0);
@@ -181,7 +188,14 @@ mod tests {
         assert!(compiler.wait().unwrap().success());
         let resource = dir.path().join("test-resource");
         std::fs::write(&resource, b"ordinary test resource").unwrap();
-        let child = FixtureChild(Command::new(&executable).arg(&resource).spawn().unwrap());
+        let mut child = FixtureChild(
+            Command::new(&executable)
+                .arg(&resource)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap(),
+        );
         let proc = std::path::PathBuf::from(format!("/proc/{}", child.0.id()));
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {
@@ -197,14 +211,16 @@ mod tests {
             .map(|task| task.unwrap().path())
             .collect();
         assert!(tasks.len() > 1, "fixture must retain a live sibling");
-        let held = tasks.iter().any(|task| {
-            std::fs::read_dir(task.join("fd"))
-                .unwrap()
-                .any(|fd| std::fs::read_link(fd.unwrap().path()).ok().as_ref() == Some(&resource))
-        });
-        assert!(
-            held,
-            "live sibling must still hold the ordinary test resource"
+        child.0.stdin.as_mut().unwrap().write_all(b"?").unwrap();
+        let mut held = String::new();
+        std::io::BufRead::read_line(
+            &mut std::io::BufReader::new(child.0.stdout.take().unwrap()),
+            &mut held,
+        )
+        .unwrap();
+        assert_eq!(
+            held, "resource-open\n",
+            "sibling must prove its descriptor remains valid after leader exit"
         );
         assert!(std::fs::read_link(proc.join("exe")).is_err());
         let proof = prove_process_resources(&proc, child.0.id());
@@ -212,6 +228,31 @@ mod tests {
         assert!(
             proof.is_err(),
             "zombie leader is not whole-process resource absence: {proof:?}"
+        );
+    }
+    #[test]
+    fn zombie_leader_empty_fd_view_does_not_prove_thread_group_absence() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("fd")).unwrap();
+        std::fs::write(
+            dir.path().join("status"),
+            "State:\tZ (zombie)\nKthread:\t0\nThreads:\t2\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("task/10/fd")).unwrap();
+        std::fs::create_dir_all(dir.path().join("task/11/fd")).unwrap();
+        std::fs::write(
+            dir.path().join("task/10/status"),
+            "State:\tZ (zombie)\nKthread:\t0\n",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("/usr/bin/resource-holder", dir.path().join("task/11/exe"))
+            .unwrap();
+        std::os::unix::fs::symlink("/dev/snd/test-fixture", dir.path().join("task/11/fd/3"))
+            .unwrap();
+        assert!(
+            prove_process_resources(dir.path(), 10).is_err(),
+            "readable leader-only view must not hide a sibling resource"
         );
     }
 }
