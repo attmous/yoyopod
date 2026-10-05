@@ -34,7 +34,7 @@ jq -e --arg digest "${MM_IMAGE##*@}" '[.manifests[]|select(.platform.os=="linux"
 fetch "$base/dists/trixie/InRelease" "$work/InRelease"
 actual_uri=$(cat "$work/InRelease.uri")
 [[ "$actual_uri" =~ ^https://snapshot.debian.org/file/[0-9a-f]{40}/InRelease$ || "$actual_uri" == "$base/dists/trixie/InRelease" ]] || fail 'unexpected actual snapshot metadata URI'
-archive_signer=$(signer /usr/share/keyrings/debian-archive-keyring.gpg "$work/InRelease" "$work/archive-signature.txt")
+archive_signer=$(signer /usr/share/keyrings/debian-archive-keyring.gpg "$work/InRelease" "$work/archive-signature.txt" archive)
 grep -qx 'Codename: trixie' "$work/InRelease" || fail 'unexpected Debian suite'
 for kind in packages sources; do
     if [[ "$kind" == packages ]]; then path=main/binary-arm64/Packages.xz; else path=main/source/Sources.xz; fi
@@ -94,11 +94,12 @@ jq -n --arg image "$MM_IMAGE" --arg snapshot "$snapshot" --arg base "$base/" \
      toolchain:{gcc:$gcc,meson:$meson,dpkg:$dpkg,image_manifest_sha256:$image_manifest_sha256,image_index_sha256:$image_index_sha256},patches:[]}
     ' > "$work/lock.json"
 validate_schema "$work/lock.json"
+validate_request_paths "$work/lock.json" "$base"
 mkdir -p "$(dirname "$output")"
 cp -- "$work/lock.json" "$output"
 # Keep genuine acquisition evidence together with the lock. No arbitrary files
 # from the runner host are mounted/passed to the container.
 evidence="$(dirname "$output")/acquisition"
 mkdir -p "$evidence"
-cp "$work/bootstrap.txt" "$work/installed.tsv" "$work/archive-signature.txt" "$work/descriptor-signature.txt" "$work/InRelease" "$work/InRelease.uri" "$work/packages.xz" "$work/packages.xz.uri" "$work/sources.xz" "$work/sources.xz.uri" "$dsc" "$evidence/"
+cp "$work/bootstrap.txt" "$work/installed.tsv" "$work/archive-signature.txt" "$work/archive-signature.txt.fingerprints" "$work/descriptor-signature.txt" "$work/InRelease" "$work/InRelease.uri" "$work/packages.xz" "$work/packages.xz.uri" "$work/sources.xz" "$work/sources.xz.uri" "$dsc" "$evidence/"
 echo "Resolved verified Debian ARM64 lock: $output"

@@ -52,10 +52,21 @@ Debian quilt series remains in the authenticated Debian source archive.
 
 Each signed metadata/source record keeps `request_uri` for its fixed dated
 snapshot path and `uri` for the actual final HTTPS download URI, including
-snapshot's content-addressed `/file/<hash>/<name>` redirects. Validation binds
-the request to the recorded snapshot, restricts the final URI to the official
-snapshot origin/path, verifies all SHA256 bytes and rejects further changed
-redirects. Signed Release/Sources indexes authenticate the original paths.
+snapshot's content-addressed `/file/<hash>/<name>` redirects. Validation requires
+the exact release/ARM64 Packages/Sources request paths for each metadata kind
+and binds the descriptor metadata request/final URI/hash to its source entry.
+It reissues every original dated request over HTTPS, verifies the response
+SHA256 and effective URI against the pins, and checks those same bindings on
+cache hits. Editable URI sidecars cannot authorize the relationship. The final
+URI is restricted to the official snapshot origin/path; signed Release/Sources
+indexes authenticate the index and source paths.
+
+Successful archive `gpgv` verification may yield multiple legitimate signers.
+The scalar archive signer pin is the lexicographically first fingerprint in
+the nonempty freshly verified set, sorted with the C locale. Acquisition and
+validation recompute the same policy; full signature statuses/fingerprint sets
+are retained in the evidence and signature report. Descriptors separately
+require exactly one verified signer. No failed signature is ignored.
 
 Validation rejects unknown fields and absent/invalid pins before fetching.
 It checks the executing image evidence, keyrings, signed indexes, actual
@@ -64,6 +75,19 @@ source and dependency archive. Cached bytes are always rechecked. Source is
 reconstructed only after verification; previous modified source is replaced.
 Tests mutate a real resolved candidate, invoke the real validator and require
 nonzero status without a staged source directory for every invalid candidate.
+They include altered per-kind/descriptor paths, coordinated snapshot/request
+prefix changes, valid cached reconstruction and invalid cached provenance.
+
+Before native lock acquisition, focused regressions may run with a genuine
+dated InRelease and the archive keyring extracted from the digest-pinned image:
+
+```sh
+bash tests/test-source-lock.sh --archive-signature KEYRING INRELEASE EXPECTED_SIGNER
+bash tests/test-source-lock.sh --request-provenance KEYRING INRELEASE REQUEST_URI FINAL_URI
+```
+
+These exercise actual gpgv and the validator's actual HTTPS/cache helper. They
+do not substitute for the native positive lock and full mutation suite.
 
 ## Resolution status
 

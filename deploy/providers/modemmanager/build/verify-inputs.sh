@@ -5,22 +5,37 @@ set -euo pipefail
 fail() { echo "input verification: $*" >&2; return 1; }
 hash() { sha256sum "$1" | cut -d ' ' -f 1; }
 fetch() {
-    local uri=$1 destination=$2 expected=${3:-}
-    if [[ ! -f "$destination" ]]; then
+    local uri=$1 destination=$2 expected=${3:-} pinned_final=${4:-}
+    if [[ -f "$destination" && -n "$expected" ]]; then
+        [[ $(hash "$destination") == "$expected" ]] || { fail "cached hash mismatch: $uri"; return 1; }
+    fi
+    # A URI sidecar cannot authenticate a dated snapshot request. Reissue the
+    # original HTTPS request and check its response bytes/effective URI on every
+    # validation, including when the pinned bytes already exist in this cache.
+    if [[ ! -f "$destination" || -n "$pinned_final" ]]; then
         curl --fail --location --proto '=https' --proto-redir '=https' \
             --retry 3 --connect-timeout 30 --max-time 600 --write-out '%{url_effective}' \
-            "$uri" -o "$destination.tmp" > "$destination.uri.tmp"
-        mv -- "$destination.tmp" "$destination"
-        mv -- "$destination.uri.tmp" "$destination.uri"
+            "$uri" -o "$destination.tmp" > "$destination.uri.tmp" || return 1
+        [[ -z "$expected" || $(hash "$destination.tmp") == "$expected" ]] || { fail "response hash mismatch: $uri"; return 1; }
+        [[ -z "$pinned_final" || $(cat "$destination.uri.tmp") == "$pinned_final" ]] || { fail "dated request effective URI mismatch: $uri"; return 1; }
+        mv -- "$destination.tmp" "$destination" || return 1
+        mv -- "$destination.uri.tmp" "$destination.uri" || return 1
+        printf '%s' "$uri" > "$destination.request-uri"
     fi
     [[ -z "$expected" || $(hash "$destination") == "$expected" ]] || fail "hash mismatch: $uri"
 }
 signer() {
-    local keyring=$1 input=$2 status=$3
+    local keyring=$1 input=$2 status=$3 policy=${4:-descriptor}
     gpgv --status-fd 1 --keyring "$keyring" "$input" > "$status" || return 1
-    awk '$1 == "[GNUPG:]" && $2 == "VALIDSIG" {print $3}' "$status" | sort -u > "$status.fingerprints"
-    [[ $(wc -l < "$status.fingerprints") == 1 ]] || { fail "expected one verified signer: $input"; return 1; }
-    cat "$status.fingerprints"
+    awk '$1 == "[GNUPG:]" && $2 == "VALIDSIG" {print $3}' "$status" | LC_ALL=C sort -u > "$status.fingerprints"
+    case "$policy" in
+        archive) [[ -s "$status.fingerprints" ]] || { fail "no verified archive signers: $input"; return 1; } ;;
+        descriptor) [[ $(wc -l < "$status.fingerprints") == 1 ]] || { fail "expected one verified descriptor signer: $input"; return 1; } ;;
+        *) fail 'unknown signature policy'; return 1 ;;
+    esac
+    # Scalar lock field follows a deterministic policy; the full verified set
+    # remains in status.fingerprints and is included in signature evidence.
+    head -n 1 "$status.fingerprints"
 }
 package_index() {
     # Derived only from the Release-hash-verified Packages file.
@@ -87,9 +102,21 @@ validate_schema() {
     ' "$1" > /dev/null || fail 'missing, unknown or invalid lock fields'
 }
 
+validate_request_paths() {
+    local lock=$1 base=$2
+    jq -e --arg base "$base/" '
+      all(.signed_metadata[]|select(.kind!="dsc");
+        .request_uri == ($base + (if .kind=="release" then "dists/trixie/InRelease"
+          elif .kind=="packages" then "dists/trixie/main/binary-arm64/Packages.xz"
+          elif .kind=="sources" then "dists/trixie/main/source/Sources.xz" else "invalid" end)))
+      and ([.sources[]|select(.name=="modemmanager_1.24.0-1+deb13u1.dsc")][0] as $dsc |
+        any(.signed_metadata[]; .kind=="dsc" and .request_uri==$dsc.request_uri and .uri==$dsc.uri and .sha256==$dsc.sha256))
+    ' "$lock" >/dev/null || fail 'metadata kind or descriptor request binding mismatch'
+}
+
 verify_inputs() {
     [[ $# == 2 ]] || fail 'usage: verify-inputs.sh LOCK CACHE_DIR'
-    local lock cache root snapshot base kind uri expected name archive_signer dsc_signer dsc staged
+    local lock cache root snapshot base kind request_uri uri expected name archive_signer dsc_signer dsc staged
     lock=$(realpath "$1")
     cache=$(realpath -m "$2")
     root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -100,6 +127,7 @@ verify_inputs() {
     jq -e --arg base "$base/" 'all(.signed_metadata[],.sources[];
         (.request_uri|startswith($base)) and (.uri|test("^https://snapshot[.]debian[.]org/(file/[0-9a-f]{40}/[^/?#]+|archive/debian/[0-9]{8}T[0-9]{6}Z/[^?#]+)$")))' \
         "$lock" >/dev/null || fail 'snapshot request/final URI mismatch'
+    validate_request_paths "$lock" "$base"
     [[ $(dpkg --print-architecture) == arm64 ]] || fail 'requires native Debian ARM64 environment'
     [[ ${MM_IMAGE:-} == $(jq -r .image "$lock") ]] || fail 'executing image digest does not match lock'
     [[ $(hash "${MM_IMAGE_INDEX:?official image index required}") == $(jq -r .toolchain.image_index_sha256 "$lock") ]] || fail 'image index bytes mismatch'
@@ -113,11 +141,11 @@ verify_inputs() {
     # Each invocation rechecks bytes and signatures, including cached bytes.
     for kind in release packages sources; do
         uri=$(jq -r --arg kind "$kind" '.signed_metadata[]|select(.kind==$kind)|.uri' "$lock")
+        request_uri=$(jq -r --arg kind "$kind" '.signed_metadata[]|select(.kind==$kind)|.request_uri' "$lock")
         expected=$(jq -r --arg kind "$kind" '.signed_metadata[]|select(.kind==$kind)|.sha256' "$lock")
-        fetch "$uri" "$cache/metadata/$kind" "$expected"
-        [[ $(cat "$cache/metadata/$kind.uri") == "$uri" ]] || fail 'signed metadata redirect mismatch'
+        fetch "$request_uri" "$cache/metadata/$kind" "$expected" "$uri"
     done
-    archive_signer=$(signer /usr/share/keyrings/debian-archive-keyring.gpg "$cache/metadata/release" "$cache/metadata/archive-signature.txt")
+    archive_signer=$(signer /usr/share/keyrings/debian-archive-keyring.gpg "$cache/metadata/release" "$cache/metadata/archive-signature.txt" archive)
     jq -e --arg signer "$archive_signer" 'all(.signed_metadata[]|select(.kind!="dsc"); .signer_fingerprint==$signer)' "$lock" >/dev/null || fail 'archive signer mismatch'
     grep -qx 'Codename: trixie' "$cache/metadata/release" || fail 'unexpected Debian suite'
     for kind in packages sources; do
@@ -140,15 +168,15 @@ verify_inputs() {
     ' "$lock" >/dev/null || fail 'source missing from signed Sources index'
     jq -e 'any(.sources[]; .name=="modemmanager_1.24.0.orig.tar.xz" and .sha256=="63ded4c0f3936bb0db5ae35ef1dfd57c5d5b4dd8a5cdaa7fb2182255218c9168")
       and any(.sources[]; .name=="modemmanager_1.24.0-1+deb13u1.debian.tar.xz" and .sha256=="0362e74213576b3f830b344f139407843a6caf6b9ae892c5a085a340da6999f2")' "$lock" >/dev/null || fail 'unexpected baseline source archives'
-    while IFS=$'\t' read -r name uri expected; do
-        fetch "$uri" "$cache/downloads/$name" "$expected"
-        [[ $(cat "$cache/downloads/$name.uri") == "$uri" ]] || fail 'source archive redirect mismatch'
-    done < <(jq -r '.sources[]|[.name,.uri,.sha256]|@tsv' "$lock")
+    while IFS=$'\t' read -r name request_uri uri expected; do
+        fetch "$request_uri" "$cache/downloads/$name" "$expected" "$uri"
+    done < <(jq -r '.sources[]|[.name,.request_uri,.uri,.sha256]|@tsv' "$lock")
     name=modemmanager_1.24.0-1+deb13u1.dsc
     dsc="$cache/downloads/$name"
     dsc_signer=$(signer /usr/share/keyrings/debian-keyring.gpg "$dsc" "$cache/metadata/descriptor-signature.txt")
     jq -e --arg signer "$dsc_signer" --arg uri "$(jq -r --arg name "$name" '.sources[]|select(.name==$name)|.uri' "$lock")" \
-        --arg sha "$(hash "$cache/downloads/$name")" 'any(.signed_metadata[]; .kind=="dsc" and .signer_fingerprint==$signer and .uri==$uri and .sha256==$sha)' "$lock" >/dev/null || fail 'descriptor signer/hash mismatch'
+        --arg request_uri "$(jq -r --arg name "$name" '.sources[]|select(.name==$name)|.request_uri' "$lock")" \
+        --arg sha "$(hash "$cache/downloads/$name")" 'any(.signed_metadata[]; .kind=="dsc" and .signer_fingerprint==$signer and .request_uri==$request_uri and .uri==$uri and .sha256==$sha)' "$lock" >/dev/null || fail 'descriptor signer/hash/request mismatch'
     dscverify --keyring /usr/share/keyrings/debian-keyring.gpg "$dsc"
     while IFS=$'\t' read -r package version architecture expected; do
         uri=$(jq -er --arg name "$package" --arg version "$version" --arg arch "$architecture" '.[]|select(.name==$name and .version==$version and .architecture==$arch)|.filename' "$cache/metadata/packages.json")
@@ -165,7 +193,11 @@ verify_inputs() {
     mv -- "$staged/source" "$cache/source"
     rmdir "$staged"
     jq -n --arg archive "$archive_signer" --arg descriptor "$dsc_signer" --arg lock "$(hash "$lock")" \
-       '{schema_version:1,source_lock_sha256:$lock,archive_signer_fingerprint:$archive,descriptor_signer_fingerprint:$descriptor}' > "$cache/signature-report.json"
+       --rawfile archive_set "$cache/metadata/archive-signature.txt.fingerprints" \
+       --slurpfile pins "$lock" \
+       '{schema_version:1,source_lock_sha256:$lock,archive_signer_fingerprint:$archive,
+         archive_signer_fingerprints:($archive_set|split("\n")|map(select(length>0))),descriptor_signer_fingerprint:$descriptor,
+         snapshot:$pins[0].snapshot,validated_requests:([$pins[0].signed_metadata[],$pins[0].sources[]]|map({request_uri,uri,sha256}))}' > "$cache/signature-report.json"
     echo "Verified source staged at $cache/source"
 }
 
