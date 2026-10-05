@@ -486,6 +486,15 @@ impl RuntimeLoop {
         // Publish policy immediately, before any effect can synchronously fail and recurse.
         self.project_call();
         self.send_runtime_snapshot_patches(io, &before);
+        if before.call.state != self.state.call.state
+            || before.call.session != self.state.call.session
+        {
+            self.dispatch_command(io,RuntimeCommand::WorkerCommand{domain:WorkerDomain::Cloud,
+                envelope:WorkerEnvelope::command("cloud.publish_telemetry",None,json!({"topic_suffix":"call.state","qos":0,
+                    "payload":{"entity":"call.state","value":self.state.call.state.as_str(),
+                        "attrs":{"call_state":self.state.call.state.as_str(),"active_call_peer":self.state.call.peer_address,
+                            "session":self.state.call.session},"ts":crate::runtime_loop::current_epoch_seconds()}}))});
+        }
         for effect in effects {
             self.execute_call_effect(io, effect);
         }

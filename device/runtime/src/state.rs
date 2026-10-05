@@ -98,22 +98,6 @@ impl CallState {
             Self::Error => "error",
         }
     }
-
-    fn from_worker_state(raw: &str) -> Self {
-        let normalized = raw.trim().to_ascii_lowercase();
-        if normalized.starts_with("outgoing_") {
-            return Self::Outgoing;
-        }
-
-        match normalized.as_str() {
-            "incoming" => Self::Incoming,
-            "outgoing" => Self::Outgoing,
-            "connected" | "streams_running" | "paused" | "paused_by_remote"
-            | "updated_by_remote" | "active" => Self::Active,
-            "error" => Self::Error,
-            _ => Self::Idle,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -246,7 +230,6 @@ impl Default for MediaState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallRuntimeState {
-    pub managed: bool,
     pub session: Option<yoyopod_protocol::call::SessionKey>,
     pub session_phase: Option<yoyopod_protocol::call::CallPhase>,
     pub accept_enabled: bool,
@@ -255,7 +238,6 @@ pub struct CallRuntimeState {
     pub sip_available: bool,
     pub gsm_available: bool,
     pub gsm_unavailable_reason: String,
-    pub gsm_start_pending: bool,
     pub registered: bool,
     pub registration_state: String,
     pub state: CallState,
@@ -273,7 +255,6 @@ pub struct CallRuntimeState {
 impl Default for CallRuntimeState {
     fn default() -> Self {
         Self {
-            managed: false,
             session: None,
             session_phase: None,
             accept_enabled: false,
@@ -282,7 +263,6 @@ impl Default for CallRuntimeState {
             sip_available: false,
             gsm_available: false,
             gsm_unavailable_reason: String::new(),
-            gsm_start_pending: false,
             registered: false,
             registration_state: "none".to_string(),
             state: CallState::Idle,
@@ -1266,23 +1246,6 @@ impl RuntimeState {
         if let Some(registration_state) = string_field(snapshot, "registration_state") {
             self.call.registration_state = registration_state;
         }
-        if !self.call.managed && self.call.method != yoyopod_protocol::ui::CallMethod::Gsm {
-            if let Some(call_state) = snapshot.get("call_state") {
-                self.call.state = call_state
-                    .as_str()
-                    .map(CallState::from_worker_state)
-                    .unwrap_or(CallState::Idle);
-            }
-            if let Some(active_call_peer) = string_field(snapshot, "active_call_peer") {
-                self.call.peer_address = active_call_peer.clone();
-                self.call.peer_name = active_call_peer;
-            }
-            self.call.duration_text =
-                call_duration_text(snapshot, self.call.state).unwrap_or_default();
-            if let Some(muted) = snapshot.get("muted").and_then(Value::as_bool) {
-                self.call.muted = muted;
-            }
-        }
         if let Some(contacts) = snapshot.get("contacts").and_then(Value::as_array) {
             self.call.contacts = contacts
                 .iter()
@@ -1353,37 +1316,8 @@ impl RuntimeState {
     }
 
     pub fn apply_ui_intent(&mut self, intent: &UiIntent) {
-        if self.call.managed && matches!(intent, UiIntent::Call(_)) {
+        if matches!(intent, UiIntent::Call(_)) {
             return;
-        }
-        if let UiIntent::Call(yoyopod_protocol::ui::CallIntent::Start(action)) = intent {
-            let Some(target) = self
-                .approved_call_target(&action.id, action.method)
-                .map(str::to_owned)
-            else {
-                return;
-            };
-            if !matches!(self.call.state, CallState::Idle | CallState::Error) {
-                return;
-            }
-            if action.method == yoyopod_protocol::ui::CallMethod::Gsm && !self.call.gsm_available {
-                return;
-            }
-            self.call.method = action.method;
-            if action.method == yoyopod_protocol::ui::CallMethod::Gsm {
-                self.call.gsm_start_pending = true;
-                self.call.state = CallState::Outgoing;
-                self.call.peer_address = target;
-                self.call.peer_name = self
-                    .call
-                    .contacts
-                    .iter()
-                    .find(|contact| contact.id == action.id)
-                    .map(|contact| contact.title.clone())
-                    .unwrap_or_default();
-                self.call.duration_text.clear();
-                self.call.muted = false;
-            }
         }
         match intent {
             UiIntent::Voice(intent) => self.apply_voice_intent(intent),
@@ -1419,56 +1353,6 @@ impl RuntimeState {
             .unwrap_or(false);
         self.call.gsm_unavailable_reason =
             string_field(snapshot, "unavailable_reason").unwrap_or_default();
-        if self.call.managed {
-            return;
-        }
-        let status = string_field(snapshot, "state").unwrap_or_else(|| "idle".to_string());
-        if self.call.method != yoyopod_protocol::ui::CallMethod::Gsm {
-            return;
-        }
-        // Ignore an idle discovery event queued before this dial. The worker
-        // publishes outgoing or error for every dial before its next poll.
-        if self.call.gsm_start_pending && status == "idle" {
-            return;
-        }
-        self.call.gsm_start_pending = false;
-        if status == "error" {
-            self.overlay = OverlayRuntimeState {
-                error: "gsm_call_failed".to_string(),
-                code: "gsm_call_failed".to_string(),
-                source: "call.start".to_string(),
-                ..OverlayRuntimeState::default()
-            };
-        } else if self.overlay.loading {
-            self.resolve_overlay_for(WorkerDomain::Network);
-        }
-        self.call.state = CallState::from_worker_state(&status);
-        self.call.peer_address = string_field(snapshot, "peer_number").unwrap_or_default();
-        self.call.peer_name = self
-            .call
-            .contacts
-            .iter()
-            .find(|contact| {
-                contact
-                    .phone_number
-                    .chars()
-                    .filter(char::is_ascii_digit)
-                    .eq(self.call.peer_address.chars().filter(char::is_ascii_digit))
-            })
-            .map(|contact| contact.title.clone())
-            .unwrap_or_else(|| self.call.peer_address.clone());
-        self.call.muted = snapshot
-            .get("muted")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        self.call.duration_text = snapshot
-            .get("duration_seconds")
-            .and_then(Value::as_u64)
-            .map(format_duration_text)
-            .unwrap_or_default();
-        if status == "idle" {
-            self.call.method = yoyopod_protocol::ui::CallMethod::Sip;
-        }
     }
 
     fn begin_overlay_operation(&mut self, intent: &UiIntent) {
@@ -2664,17 +2548,6 @@ fn media_time_text(value_ms: i64, known_length_ms: i64) -> String {
     }
     let total_seconds = value_ms.max(0) / 1000;
     format!("{}:{:02}", total_seconds / 60, total_seconds % 60)
-}
-
-fn call_duration_text(snapshot: &Value, call_state: CallState) -> Option<String> {
-    if call_state != CallState::Active {
-        return None;
-    }
-
-    snapshot
-        .get("call_session")
-        .and_then(|session| u64_field(session, "duration_seconds"))
-        .map(format_duration_text)
 }
 
 fn recent_call_history_item(value: &Value, contacts: &[ListItem]) -> Option<ListItem> {

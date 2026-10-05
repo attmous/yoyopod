@@ -331,20 +331,6 @@ pub fn commands_for_event(state: &RuntimeState, event: &RuntimeEvent) -> Vec<Run
         }
         RuntimeEvent::MediaSnapshot(snapshot) => commands_for_media_snapshot(snapshot),
         RuntimeEvent::VoipSnapshot(snapshot) => commands_for_voip_snapshot(state, snapshot),
-        RuntimeEvent::GsmCallSnapshot(snapshot)
-            if state.call.method == yoyopod_protocol::ui::CallMethod::Gsm =>
-        {
-            vec![cloud_telemetry_command(
-                "call.state",
-                json!({
-                    "entity": "call.state", "value": snapshot["state"],
-                    "attrs": {"call_state": snapshot["state"], "call_method": "gsm",
-                        "active_call_peer": snapshot["peer_number"], "duration_seconds": snapshot["duration_seconds"],
-                        "muted": snapshot["muted"]},
-                    "ts": current_epoch_seconds(),
-                }),
-            )]
-        }
         RuntimeEvent::NetworkSnapshot(snapshot) => commands_for_network_snapshot(snapshot),
         RuntimeEvent::LocationFix(fix) => vec![worker_command(
             WorkerDomain::Cloud,
@@ -2410,66 +2396,19 @@ mod tests {
         }
     }
     #[test]
-    fn gsm_owns_active_call_controls_and_is_not_overwritten_by_sip_updates() {
-        use yoyopod_protocol::ui::CallMethod;
+    fn transport_snapshots_update_availability_without_promoting_calls() {
         let mut state = RuntimeState::default();
-        RuntimeEvent::CloudConfig(json!({"contacts": {"entries": [
-            {"id": "dad-id", "name": "Dad", "phone_number": "+49 (123) 456-789", "can_call": true}
-        ]}}))
-        .apply(&mut state);
-        state.call.method = CallMethod::Gsm;
-        RuntimeEvent::GsmCallSnapshot(json!({"available": true, "state": "active",
-            "peer_number": "+49123456789", "duration_seconds": 65, "muted": true}))
-        .apply(&mut state);
-        RuntimeEvent::VoipSnapshot(json!({"registered": true, "call_state": "idle",
-            "active_call_peer": "sip:other@example.test", "muted": false}))
-        .apply(&mut state);
-        assert_eq!(state.call.state, CallState::Active);
-        assert_eq!(state.call.peer_address, "+49123456789");
-        assert_eq!(state.call.peer_name, "Dad");
-        assert_eq!(state.call.duration_text, "01:05");
-        assert!(state.call.muted);
-        assert!(state.call.registered);
-        let changed = UiFocusChanged::new("call-focus", "Mute");
-        state.focus_prompt_request_id = Some("call-focus".into());
-        assert!(commands_for_ui_focus_changed(&state, &changed).is_empty());
-        assert!(commands_for_voice_focus_prompt_result(
-            &state,
-            Some("call-focus"),
-            &json!({"audio_path":"/tmp/late-prompt.wav"})
-        )
-        .is_empty());
-        assert!(commands_for_voip_snapshot(&state, &json!({"call_state": "idle"})).is_empty());
-        let telemetry = commands_for_event(
-            &state,
-            &RuntimeEvent::GsmCallSnapshot(
-                json!({"state": "active", "peer_number": "+49123456789"}),
-            ),
-        );
-        assert!(
-            matches!(telemetry.as_slice(), [RuntimeCommand::WorkerCommand {domain: WorkerDomain::Cloud, envelope}]
-            if envelope.payload["payload"]["value"] == "active")
-        );
-        for intent in [CallIntent::Hangup, CallIntent::ToggleMute] {
-            assert!(commands_for_call_intent(&state, &intent).is_empty());
-        }
-        assert!(commands_for_voip_snapshot(&state, &json!({"call_state":"incoming"})).is_empty());
-        RuntimeEvent::GsmCallSnapshot(json!({"available": true, "state": "idle"}))
-            .apply(&mut state);
-        assert_eq!(state.call.method, CallMethod::Sip);
-        RuntimeEvent::VoipSnapshot(
-            json!({"call_state": "active", "active_call_peer": "sip:dad@example.test"}),
-        )
-        .apply(&mut state);
         RuntimeEvent::GsmCallSnapshot(
-            json!({"available": false, "unavailable_reason": "SIM locked", "state": "idle"}),
+            json!({"available":true,"state":"active","peer_number":"+49123456789"}),
         )
         .apply(&mut state);
-        assert_eq!(state.call.state, CallState::Active);
-        assert_eq!(state.call.peer_address, "sip:dad@example.test");
-        assert_eq!(state.call.gsm_unavailable_reason, "SIM locked");
+        RuntimeEvent::VoipSnapshot(json!({"registered":true,"call_state":"incoming","active_call_peer":"sip:raw@example.test"})).apply(&mut state);
+        assert!(state.call.gsm_available);
+        assert!(state.call.registered);
+        assert_eq!(state.call.state, CallState::Idle);
+        assert!(state.call.peer_address.is_empty());
+        assert!(commands_for_voip_snapshot(&state, &json!({"call_state":"incoming"})).is_empty());
     }
-
     #[test]
     fn held_recording_snapshot_auto_sends_once_to_the_captured_recipient() {
         let mut state = RuntimeState::default();

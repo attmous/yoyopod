@@ -58,7 +58,6 @@ pub struct RuntimeLoop {
 
 impl RuntimeLoop {
     pub fn new(mut state: RuntimeState) -> Self {
-        state.call.managed = true;
         let manager = CallManager::new(
             state.settings.device_mode.clone(),
             8_000,
