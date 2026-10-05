@@ -1838,6 +1838,24 @@ mod tests {
     }
 
     #[test]
+    fn gsm_reconnect_stale_or_missing_runtime_dial_epoch_cannot_acquire_data() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let gsm = GsmWorker::with_backend(RecordingGsmBackend(calls.clone()));
+        for epoch in [None, Some(99)] {
+            let modem = NoFixModem::default();
+            let opened = modem.opened.clone();
+            let mut runtime = NetworkRuntime::new("test", NetworkHostConfig::default(), modem);
+            let mut payload = serde_json::json!({"key":{"transport":"gsm","generation":7,"call_id":"runtime-outgoing-1"},"address":"+49123456789"});
+            if let Some(epoch) = epoch { payload["admission_epoch"] = serde_json::json!(epoch); }
+            let result = enqueue_gsm_command(&mut runtime, &gsm, Some(7), &[], &WorkerEnvelope::command("call.dial", Some("old".into()), payload));
+            assert!(result.is_err(), "unversioned or stale originating-runtime intent was admitted");
+            assert!(!runtime.voice_suspended());
+            assert_eq!(*opened.lock().unwrap(), 0);
+        }
+        assert!(calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
     fn deferred_location_fix_event_precedes_its_correlated_success_result() {
         let config_dir = tempfile::tempdir().unwrap();
         let modem = NoFixModem {

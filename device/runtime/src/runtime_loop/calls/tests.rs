@@ -1226,6 +1226,23 @@ fn queued_empty_scan_cannot_confirm_new_outgoing_cleanup() {
 }
 
 #[test]
+fn gsm_reconnect_dial_keeps_epoch_captured_before_delayed_audio_readiness() {
+    let (mut runtime, mut io, _) = fixture(CallTransport::Gsm);
+    io.messages.push((WorkerDomain::Network, WorkerEnvelope::event("call.reconciled", json!({
+        "generation":1,"native_owner":"bus/owner","admission_epoch":4,"native_calls_quiescent":true,"audio_released":true
+    }))));
+    runtime.run_once_at(&mut io, 0);
+    runtime.request_outgoing(&mut io, ContactAction { id:"sip:dad@example.test".into(), method:CallMethod::Gsm, ..Default::default() });
+    io.messages.push((WorkerDomain::Network, WorkerEnvelope::event("call.reconciled", json!({
+        "generation":1,"native_owner":"bus/owner","admission_epoch":5,"native_calls_quiescent":true,"audio_released":true
+    }))));
+    runtime.run_once_at(&mut io, 1);
+    prepare(&mut runtime, &mut io, 2);
+    let dial = &io.sent.iter().find(|(_, e)| e.message_type == "call.dial").unwrap().1;
+    assert_eq!(dial.payload["admission_epoch"], 4, "delayed old intent was stamped with replacement epoch or no epoch");
+}
+
+#[test]
 fn emergency_power_shutdown_does_not_wait_for_failed_native_cleanup() {
     let (mut runtime, mut io, key) = fixture(CallTransport::Gsm);
     offer(&mut runtime, &mut io, &key, 0);
