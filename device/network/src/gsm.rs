@@ -467,6 +467,7 @@ impl CleanupEvidence {
 struct ModemSignals {
     connection: Connection,
     messages: Receiver<zbus::Message>,
+    evidence_gap: Arc<std::sync::atomic::AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
 impl ModemSignals {
@@ -483,19 +484,30 @@ impl ModemSignals {
         let mut stream =
             zbus::blocking::MessageIterator::for_match_rule(rule, &connection, Some(128))?;
         let (sender, messages) = mpsc::sync_channel(capacity);
+        let evidence_gap = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let thread_gap = evidence_gap.clone();
         let thread = thread::spawn(move || {
             for message in &mut stream {
-                let Ok(message) = message else { break };
-                // Property storms cannot block shutdown. Tracked-object polling recovers
-                // lost property changes; additions/deletions use the cached Calls property.
-                if sender.try_send(message).is_err() {
+                let Ok(message) = message else {
+                    thread_gap.store(true, Ordering::SeqCst);
                     break;
+                };
+                // Keep the retained subscription alive through a property storm.
+                // A missing removal can hide a reused native incarnation, so any
+                // gap permanently quarantines this backend's native evidence.
+                match sender.try_send(message) {
+                    Ok(()) => {}
+                    Err(mpsc::TrySendError::Full(_)) => {
+                        thread_gap.store(true, Ordering::SeqCst);
+                    }
+                    Err(mpsc::TrySendError::Disconnected(_)) => break,
                 }
             }
         });
         Ok(Self {
             connection,
             messages,
+            evidence_gap,
             thread: Some(thread),
         })
     }
@@ -811,6 +823,24 @@ impl ModemManagerVoice {
     }
 
     fn verify_service_owner(&mut self) -> Result<()> {
+        if !self.service_invalidated
+            && self
+                .signals
+                .as_ref()
+                .is_some_and(|signals| signals.evidence_gap.swap(false, Ordering::SeqCst))
+        {
+            self.invalidate_service_owner();
+            self.modem_lost = true;
+            self.clean_rediscovery = false;
+            self.loss_pending = true;
+            self.selected_epoch = self
+                .selected_epoch
+                .checked_add(1)
+                .expect("modem epoch exhausted");
+            self.cached.unavailable_reason =
+                "GSM signal evidence lost; native reconciliation required".into();
+            bail!("{}", self.cached.unavailable_reason);
+        }
         let expected = self.bound_owner()?.to_owned();
         let current =
             Self::current_service_owner(self.connection.as_ref().context("No modem connection")?);
