@@ -1359,6 +1359,122 @@ mod tests {
             )
             .unwrap();
     }
+
+    const TEST_MODEM0: &str = "/org/freedesktop/ModemManager1/Modem/0";
+    const TEST_MODEM2: &str = "/org/freedesktop/ModemManager1/Modem/2";
+    struct ReconnectManager;
+    #[zbus::interface(name = "org.freedesktop.ModemManager1")]
+    impl ReconnectManager {
+        #[zbus(property)]
+        fn version(&self) -> &str { "1.24.0" }
+    }
+    struct ReconnectModem;
+    #[zbus::interface(name = "org.freedesktop.ModemManager1.Modem")]
+    impl ReconnectModem {
+        #[zbus(property)]
+        fn model(&self) -> &str { "SIM7600" }
+        #[zbus(property)]
+        fn plugin(&self) -> &str { "simtech" }
+        #[zbus(property)]
+        fn primary_port(&self) -> &str { "cdc-wdm0" }
+        #[zbus(property)]
+        fn ports(&self) -> Vec<(String, u32)> { vec![("cdc-wdm0".into(), 6)] }
+        #[zbus(property)]
+        fn state(&self) -> i32 { 8 }
+        #[zbus(property)]
+        fn unlock_required(&self) -> u32 { 1 }
+    }
+    struct ReconnectVoice {
+        reads: Arc<std::sync::atomic::AtomicUsize>,
+        gate: Mutex<Option<(Sender<()>, Receiver<()>)>>,
+    }
+    #[zbus::interface(name = "org.freedesktop.ModemManager1.Modem.Voice")]
+    impl ReconnectVoice {
+        #[zbus(property)]
+        fn emergency_only(&self) -> bool { false }
+        #[zbus(property)]
+        fn calls(&self) -> Vec<OwnedObjectPath> {
+            self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if let Some((entered, release)) = self.gate.lock().unwrap().take() {
+                entered.send(()).unwrap();
+                release.recv_timeout(Duration::from_secs(3)).unwrap();
+            }
+            Vec::new()
+        }
+    }
+    fn reconnect_fixture(bus: &PrivateBus) -> (Connection, ModemManagerVoice, Arc<std::sync::atomic::AtomicUsize>) {
+        let owner = bus.connection();
+        owner.object_server().at("/org/freedesktop/ModemManager1", zbus::fdo::ObjectManager).unwrap();
+        owner.object_server().at("/org/freedesktop/ModemManager1", ReconnectManager).unwrap();
+        let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        owner.object_server().at(TEST_MODEM0, ReconnectModem).unwrap();
+        owner.object_server().at(TEST_MODEM0, ReconnectVoice { reads: reads.clone(), gate: Mutex::new(None) }).unwrap();
+        allow_replacement(&owner);
+        let mut backend = ModemManagerVoice::default();
+        backend.configure(7, None).unwrap();
+        backend.connection = Some(bus.connection());
+        assert!(backend.refresh().unwrap().available);
+        (owner, backend, reads)
+    }
+    fn remove_reconnect_modem(owner: &Connection) {
+        owner.object_server().remove::<ReconnectModem, _>(TEST_MODEM0).unwrap();
+        owner.object_server().remove::<ReconnectVoice, _>(TEST_MODEM0).unwrap();
+    }
+    fn add_reconnect_modem(owner: &Connection, path: &str) {
+        owner.object_server().at(path, ReconnectModem).unwrap();
+        owner.object_server().at(path, ReconnectVoice { reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)), gate: Mutex::new(None) }).unwrap();
+    }
+    #[test]
+    fn gsm_reconnect_clean_same_owner_retains_connection_and_registry() {
+        let bus = PrivateBus::start();
+        let (owner, mut backend, old_reads) = reconnect_fixture(&bus);
+        let token = backend.reconciliation().unwrap().native_owner;
+        let connection_name = backend.connection.as_ref().unwrap().unique_name().unwrap().to_string();
+        let events = backend.registry.as_mut().unwrap().observe("/call/reused", yoyopod_protocol::call::CallDirection::Incoming, CallPhase::Ringing, "+49123456789");
+        let CallManagerWireEvent::Offer(first) = &events[0] else { panic!("offer") };
+        backend.registry.as_mut().unwrap().remove(&first.key);
+        remove_reconnect_modem(&owner);
+        let _ = backend.refresh();
+        assert!(!backend.cached.available, "removed selected modem must immediately become unavailable");
+        add_reconnect_modem(&owner, TEST_MODEM2);
+        let before = old_reads.load(std::sync::atomic::Ordering::SeqCst);
+        backend.next_discovery = None;
+        backend.refresh().unwrap();
+        assert_eq!(backend.modem.as_ref().map(|path| path.as_str()), Some(TEST_MODEM2), "idle same-owner modem never rediscovered");
+        assert!(backend.cached.available);
+        assert_eq!(old_reads.load(std::sync::atomic::Ordering::SeqCst), before);
+        assert_eq!(backend.reconciliation().unwrap().native_owner, token);
+        assert_eq!(backend.generation, Some(7));
+        assert_eq!(backend.connection.as_ref().unwrap().unique_name().unwrap().as_str(), connection_name);
+        let next = backend.registry.as_mut().unwrap().observe("/call/reused", yoyopod_protocol::call::CallDirection::Incoming, CallPhase::Ringing, "+49123456789");
+        let CallManagerWireEvent::Offer(next) = &next[0] else { panic!("offer") };
+        assert_ne!(first.key, next.key);
+    }
+    #[test]
+    fn gsm_reconnect_missing_signal_confirms_absence_but_keeps_dirty_identity() {
+        let bus = PrivateBus::start();
+        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        let events = backend.registry.as_mut().unwrap().observe("/call/old", yoyopod_protocol::call::CallDirection::Incoming, CallPhase::Ringing, "+49123456789");
+        let CallManagerWireEvent::Offer(offer) = &events[0] else { panic!("offer") };
+        let key = offer.key.clone();
+        backend.owner = Some(key.clone());
+        remove_reconnect_modem(&owner);
+        // Deliberately consume the real signal: property failure must confirm absence.
+        let _ = backend.signals.as_ref().unwrap().messages.recv_timeout(Duration::from_secs(2));
+        backend.signals.as_ref().unwrap().messages.try_iter().for_each(drop);
+        backend.next_recovery = None;
+        let _ = backend.refresh();
+        assert!(!backend.cached.available);
+        assert_eq!(backend.registry().unwrap().latest(&key).unwrap().phase, CallPhase::Ending, "loss did not retain uncertain old lifetime as Ending");
+        add_reconnect_modem(&owner, TEST_MODEM2);
+        backend.next_discovery = None;
+        let _ = backend.refresh();
+        assert_eq!(backend.registry().unwrap().path_for(&key), Some("/call/old"));
+        assert!(backend.owns_voice(&key));
+        assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+        assert!(!backend.drain_call_events().iter().any(|event| matches!(event, CallManagerWireEvent::Update(update) if update.phase == CallPhase::Ended)));
+        assert_ne!(backend.modem.as_ref().map(|path| path.as_str()), Some(TEST_MODEM2));
+    }
     fn replace_owner(connection: &Connection) {
         use zbus::fdo::RequestNameFlags;
         connection
