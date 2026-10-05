@@ -611,7 +611,8 @@ struct ModemManagerVoice {
     loss_pending: bool,
     clean_rediscovery: bool,
     idle_calls_proven: bool,
-    native_addition_revision: u64,
+    native_membership_revision: u64,
+    membership_reconcile_pending: bool,
     initial_scan: bool,
     service_owner: Option<String>,
     service_bus_id: Option<String>,
@@ -696,15 +697,21 @@ impl ModemManagerVoice {
         if header.sender().map(|s| s.as_str()) == self.service_owner.as_deref()
             && header.path().map(|p| p.as_str()) == self.modem.as_ref().map(|p| p.as_str())
             && header.interface().map(|s| s.as_str()) == Some(VOICE_INTERFACE)
-            && header.member().map(|s| s.as_str()) == Some("CallAdded")
+            && matches!(
+                header.member().map(|s| s.as_str()),
+                Some("CallAdded" | "CallDeleted")
+            )
         {
-            // A new native object invalidates the previous idle proof even if
-            // removal follows before the next Calls scan can observe its key.
-            self.native_addition_revision = self
-                .native_addition_revision
+            // Every drain retains membership work. Neither an older Calls
+            // snapshot nor a failed fresh observation may acknowledge it.
+            self.native_membership_revision = self
+                .native_membership_revision
                 .checked_add(1)
-                .expect("native addition revision exhausted");
-            self.idle_calls_proven = false;
+                .expect("native membership revision exhausted");
+            self.membership_reconcile_pending = true;
+            if header.member().map(|s| s.as_str()) == Some("CallAdded") {
+                self.idle_calls_proven = false;
+            }
         }
         if header.sender().map(|s| s.as_str()) != self.service_owner.as_deref()
             || header.interface().map(|s| s.as_str()) != Some("org.freedesktop.DBus.ObjectManager")
@@ -1009,7 +1016,7 @@ impl ModemManagerVoice {
 
     fn reconcile_paths(&mut self) -> Result<()> {
         self.verify_service_owner()?;
-        let addition_revision = self.native_addition_revision;
+        let membership_revision = self.native_membership_revision;
         let Some(modem) = self.modem.as_ref() else {
             return Ok(());
         };
@@ -1034,10 +1041,10 @@ impl ModemManagerVoice {
                 return Err(error.into());
             }
         };
-        // A newer addition consumed by the post-response checks makes this
+        // A newer membership change consumed by the post-response checks makes this
         // Calls snapshot stale. Preserve its unresolved ownership evidence
         // until a fresh scan instead of certifying idle or deleting old keys.
-        if self.native_addition_revision != addition_revision {
+        if self.native_membership_revision != membership_revision {
             self.idle_calls_proven = false;
             return Ok(());
         }
@@ -1048,7 +1055,7 @@ impl ModemManagerVoice {
         }
         self.verify_service_owner()?;
         self.check_selected_modem()?;
-        if self.native_addition_revision != addition_revision {
+        if self.native_membership_revision != membership_revision {
             self.idle_calls_proven = false;
             return Ok(());
         }
@@ -1057,6 +1064,7 @@ impl ModemManagerVoice {
                 self.object_deleted(&path, &key);
             }
         }
+        self.membership_reconcile_pending = false;
         Ok(())
     }
 
@@ -1418,7 +1426,6 @@ impl ModemManagerVoice {
             .as_ref()
             .map(|signals| signals.messages.try_iter().collect())
             .unwrap_or_default();
-        let mut reconcile = false;
         for message in messages {
             self.removal_signal(&message);
             if self.modem_lost {
@@ -1429,9 +1436,6 @@ impl ModemManagerVoice {
                 continue;
             }
             match header.member().map(|member| member.as_str()) {
-                Some("CallAdded" | "CallDeleted") => {
-                    reconcile = true;
-                }
                 Some("PropertiesChanged" | "StateChanged") => {
                     if let Some(path) = header.path() {
                         if self
@@ -1449,7 +1453,9 @@ impl ModemManagerVoice {
         }
         // Bounded Calls-property recovery handles missed signals and bus bursts;
         // this is not global D-Bus enumeration. Tracked properties poll at 500ms.
-        if reconcile || self.next_recovery.is_none_or(|next| Instant::now() >= next) {
+        if self.membership_reconcile_pending
+            || self.next_recovery.is_none_or(|next| Instant::now() >= next)
+        {
             self.reconcile_paths()?;
             self.refresh_availability()?;
             self.next_recovery = Some(Instant::now() + Duration::from_secs(3));
