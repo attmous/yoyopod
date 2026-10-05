@@ -653,6 +653,57 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "native-lvgl")]
+    fn same_session_fatal_patch_after_wake_reports_call_display_failure() {
+        let mut runtime = UiRuntime::default();
+        let mut snapshot = yoyopod_protocol::ui::RuntimeSnapshot::default();
+        snapshot.call.state = "incoming".into();
+        snapshot.call.session = Some(yoyopod_protocol::call::SessionKey {
+            transport: yoyopod_protocol::call::CallTransport::Sip,
+            generation: 1,
+            call_id: "a".into(),
+        });
+        let mut display = WakeDisplay::default();
+        let mut button = TestButton::default();
+        let mut machine = OneButtonMachine::new(ButtonTiming::default());
+        let mut render = RenderState::open(240, 280).unwrap();
+        let mut output = Vec::new();
+        let mut input_events = 0;
+        let mut context = AppEventContext {
+            output: &mut output,
+            display: &mut display,
+            button: &mut button,
+            ui_runtime: &mut runtime,
+            button_machine: &mut machine,
+            render_state: &mut render,
+            input_events: &mut input_events,
+        };
+        handle_app_event(
+            dispatcher::AppEvent::RuntimeSnapshot(snapshot),
+            &mut context,
+        )
+        .unwrap();
+        assert_eq!(context.display.calls, 1);
+        assert!(!context.ui_runtime.call_wake_pending);
+        let fatal = yoyopod_protocol::ui::RuntimeSnapshotPatch::Overlay(
+            yoyopod_protocol::ui::OverlayRuntimeSnapshot {
+                error: "fatal renderer".into(),
+                retryable: false,
+                ..Default::default()
+            },
+        );
+        let result = handle_app_event(dispatcher::AppEvent::RuntimePatch(fatal), &mut context);
+        assert!(
+            result.is_err(),
+            "same-key fatal patch must reach worker error reporting after successful wake"
+        );
+        assert_eq!(
+            context.display.calls, 1,
+            "fatal validation must not repeat wake"
+        );
+    }
+
+    #[test]
     fn call_wake_cancels_pressed_and_released_gestures_and_reports_driver_failure() {
         for held in [true, false] {
             let mut runtime = UiRuntime {

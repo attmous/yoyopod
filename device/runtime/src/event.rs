@@ -2507,6 +2507,70 @@ mod tests {
     }
 
     #[test]
+    fn sending_draft_worker_exit_exposes_unknown_outcome_and_explicit_retry() {
+        let mut state = RuntimeState::default();
+        RuntimeEvent::CloudConfig(json!({"contacts":{"entries":[{"id":"mama","name":"Mama","sip_address":"sip:mama@example.test","can_call":true}]}})).apply(&mut state);
+        state.voice.pending_voice_recipient = Some(VoiceRecipientAction {
+            id: "mama".into(),
+            recipient_address: "sip:mama@example.test".into(),
+            ..Default::default()
+        });
+        state.voice.duration_ms = 420;
+        state.voice.invalidate_for_call();
+        state.voice.interrupted_draft_path = Some("owned.wav".into());
+        let action = VoiceFileAction {
+            file_path: "owned.wav".into(),
+            message_id: state.voice.interrupted_draft.as_ref().unwrap().id.clone(),
+            ..Default::default()
+        };
+        let send = RuntimeEvent::UiIntent(UiIntent::Voice(VoiceIntent::SavedSend(action.clone())));
+        assert!(commands_for_event(&state, &send).iter().any(|c| matches!(c, RuntimeCommand::WorkerCommand { envelope, .. } if envelope.message_type == "voip.send_saved_voice_note")));
+        send.apply(&mut state);
+        assert_eq!(
+            state.voice.interrupted_draft.as_ref().unwrap().phase,
+            "sending"
+        );
+        let exit = RuntimeEvent::WorkerExited {
+            domain: WorkerDomain::Voip,
+            reason: "process exited".into(),
+        };
+        exit.apply(&mut state);
+        let replacement = RuntimeEvent::VoipSnapshot(json!({"voice_note":{"state":"idle"}}));
+        replacement.apply(&mut state);
+        assert_eq!(
+            state.voice.interrupted_draft.as_ref().unwrap().phase,
+            "unknown",
+            "a dead sender cannot complete; receipt is unknown, not failed"
+        );
+        assert_eq!(
+            state.voice.interrupted_draft_path.as_deref(),
+            Some("owned.wav")
+        );
+        assert_eq!(
+            state.voice.interrupted_draft.as_ref().unwrap().id,
+            action.message_id
+        );
+        assert_eq!(
+            state.voice.interrupted_draft.as_ref().unwrap().duration_ms,
+            420
+        );
+        assert!(!commands_for_event(&state, &replacement).iter().any(|c| matches!(c, RuntimeCommand::WorkerCommand { envelope, .. } if envelope.message_type.contains("send") || envelope.message_type.contains("recording"))));
+        for intent in [
+            VoiceIntent::SavedPlay(action.clone()),
+            VoiceIntent::SavedDiscard(action.clone()),
+            VoiceIntent::SavedSend(action.clone()),
+        ] {
+            assert!(!commands_for_voice_intent(&state, &intent).is_empty());
+        }
+        RuntimeEvent::CloudConfig(json!({"contacts":{"entries":[]}})).apply(&mut state);
+        assert!(
+            commands_for_event(&state, &send).is_empty(),
+            "retry rechecks current permission"
+        );
+        assert!(!commands_for_voice_intent(&state, &VoiceIntent::SavedDiscard(action)).is_empty());
+    }
+
+    #[test]
     fn saved_draft_keeps_metadata_across_resets_and_rechecks_recipient_and_identity() {
         let mut state = RuntimeState::default();
         RuntimeEvent::CloudConfig(json!({"contacts":{"entries":[{"id":"mama","name":"Mama","sip_address":"sip:mama@example.test","can_call":true}]}})).apply(&mut state);
