@@ -109,6 +109,7 @@ unsafe extern "C" {
     pub fn lv_deinit();
     pub fn lv_tick_inc(tick_period: u32);
     pub fn lv_timer_handler() -> u32;
+    pub fn lv_refr_now(display: *mut lv_display_t);
 
     pub fn lv_display_create(hor_res: i32, ver_res: i32) -> *mut lv_display_t;
     pub fn lv_display_delete(display: *mut lv_display_t);

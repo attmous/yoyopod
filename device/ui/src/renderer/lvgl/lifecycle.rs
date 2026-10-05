@@ -107,9 +107,18 @@ impl NativeLvglFacade {
 
     pub(crate) fn render_frame(&mut self, framebuffer: &mut Framebuffer) -> Result<()> {
         self.ensure_display_registered(framebuffer)?;
-        self.flush_target.framebuffer = framebuffer as *mut Framebuffer;
         self.invalidate_active_screen()?;
+        let display = self
+            .display
+            .context("LVGL display missing after registration")?;
+        self.flush_target.framebuffer = framebuffer as *mut Framebuffer;
         self.tick_lvgl();
+        unsafe {
+            // A timer tick can return before the periodic refresh is due. Finish
+            // this display's invalidated areas while the framebuffer is borrowed.
+            ffi::lv_refr_now(display.as_ptr());
+        }
+        self.flush_target.framebuffer = ptr::null_mut();
         Ok(())
     }
 

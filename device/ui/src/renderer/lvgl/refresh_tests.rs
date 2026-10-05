@@ -34,6 +34,15 @@ fn completed_native_frames_have_current_shadow_pixels_within_refresh_period() {
             "completed frame must contain the changed color before the periodic refresh is due"
         );
     }
+    assert!(facade.flush_target.framebuffer.is_null());
+    framebuffer.clear(0xaaaa);
+    unsafe {
+        // A later LVGL callback must no longer borrow the returned framebuffer.
+        ffi::lv_obj_invalidate(object.as_ptr());
+        ffi::lv_tick_inc(33);
+        let _ = ffi::lv_timer_handler();
+    }
+    assert!(framebuffer.pixels().iter().all(|pixel| *pixel == 0xaaaa));
 }
 
 fn render_with_one_ms_tick(facade: &mut NativeLvglFacade, framebuffer: &mut Framebuffer) {
