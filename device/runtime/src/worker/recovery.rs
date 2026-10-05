@@ -21,7 +21,7 @@ impl WorkerSupervisor {
     fn recover_with(
         &mut self,
         domain: WorkerDomain,
-        reap: impl FnOnce(&str, Option<u32>) -> Result<(), String> + Send + 'static,
+        reap: impl FnOnce(&str, Option<u32>, Option<u64>) -> Result<(), String> + Send + 'static,
     ) -> Result<RecoveryStatus, String> {
         if !self.specs.contains_key(&domain) {
             return Err("worker has no startup specification".into());
@@ -63,7 +63,11 @@ impl WorkerSupervisor {
                         worker.child.kill().map_err(|e| e.to_string())?;
                     }
                     worker.child.wait().map_err(|e| e.to_string())?;
-                    reap(&worker.lifetime_token, worker.owner_uid)
+                    reap(
+                        &worker.lifetime_token,
+                        worker.owner_uid,
+                        worker.runtime_start,
+                    )
                 })();
                 let _ = tx.send(result);
             })
@@ -127,7 +131,7 @@ mod helpers;
 #[cfg(target_os = "linux")]
 use helpers::reap_owned_helpers;
 #[cfg(not(target_os = "linux"))]
-fn reap_owned_helpers(_: &str, _: Option<u32>) -> Result<(), String> {
+fn reap_owned_helpers(_: &str, _: Option<u32>, _: Option<u64>) -> Result<(), String> {
     Err("worker resource reconciliation requires Linux pidfds/procfs".into())
 }
 
@@ -157,7 +161,7 @@ mod tests {
             .lifetime_token
             .clone();
         supervisor
-            .recover_with(WorkerDomain::Media, |_, _| {
+            .recover_with(WorkerDomain::Media, |_, _, _| {
                 Err("injected census failure".into())
             })
             .unwrap();
@@ -172,7 +176,7 @@ mod tests {
         );
         let (tx, rx) = mpsc::channel();
         supervisor
-            .recover_with(WorkerDomain::Media, move |seen, _| {
+            .recover_with(WorkerDomain::Media, move |seen, _, _| {
                 tx.send(seen.to_owned()).unwrap();
                 Err("still uncertain".into())
             })
@@ -211,11 +215,22 @@ fn unprivileged_owner(status: &str) -> Result<Option<u32>, String> {
     Ok((!privileged).then_some(uids[0]))
 }
 
-pub(super) fn worker_command(program: &str) -> Result<(Command, Option<u32>), String> {
+pub(super) fn worker_command(
+    program: &str,
+    domain: WorkerDomain,
+) -> Result<(Command, Option<u32>, Option<u64>), String> {
     #[cfg(target_os = "linux")]
     {
         let status = std::fs::read_to_string("/proc/self/status").map_err(|e| e.to_string())?;
-        let owner = unprivileged_owner(&status)?;
+        let runtime_start = helpers::runtime_birth(&status)?;
+        let owner = if matches!(
+            domain,
+            WorkerDomain::Media | WorkerDomain::Voip | WorkerDomain::Voice
+        ) {
+            unprivileged_owner(&status)?
+        } else {
+            None
+        };
         if owner.is_some() {
             // setpriv execs the worker in place: Child/pidfd identity is unchanged.
             // Missing executable or rejected NNP setup fails startup, never falls back.
@@ -223,10 +238,15 @@ pub(super) fn worker_command(program: &str) -> Result<(Command, Option<u32>), St
                 .map_err(|e| format!("worker requires /usr/bin/setpriv: {e}"))?;
             let mut command = Command::new("/usr/bin/setpriv");
             command.args(["--no-new-privs", "--", program]);
-            return Ok((command, owner));
+            return Ok((command, owner, Some(runtime_start)));
         }
+        return Ok((Command::new(program), None, Some(runtime_start)));
     }
-    Ok((Command::new(program), None))
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = domain;
+        Ok((Command::new(program), None, None))
+    }
 }
 
 #[cfg(all(test, target_os = "linux"))]
@@ -256,8 +276,22 @@ mod credentials_tests {
         assert!(unprivileged_owner("Uid: 1000").is_err());
     }
     #[test]
+    fn privilege_escalating_domains_do_not_receive_uid_exclusion() {
+        for domain in [
+            WorkerDomain::Network,
+            WorkerDomain::Power,
+            WorkerDomain::Ui,
+            WorkerDomain::Cloud,
+        ] {
+            let (command, owner, birth) = worker_command("/bin/true", domain).unwrap();
+            assert_eq!(command.get_program(), "/bin/true");
+            assert_eq!(owner, None);
+            assert!(birth.is_some());
+        }
+    }
+    #[test]
     fn worker_launch_binds_no_new_privileges_before_exec() {
-        let (mut command, owner) = worker_command("/bin/cat").unwrap();
+        let (mut command, owner, _) = worker_command("/bin/cat", WorkerDomain::Media).unwrap();
         let output = command.arg("/proc/self/status").output().unwrap();
         assert!(output.status.success());
         if owner.is_some() {

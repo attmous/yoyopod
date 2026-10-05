@@ -86,6 +86,26 @@ impl RuntimeLoop {
             }
         }
         self.call_operations.invalidate_domain(domain);
+        if let Some(r) = self.calls.resources.as_mut() {
+            // An old success cannot survive a failed or pending retirement.
+            match domain {
+                WorkerDomain::Media => {
+                    r.media_prepared = false;
+                    r.media_released = false;
+                    r.alert_stopped = false;
+                    r.route_ready = false;
+                }
+                WorkerDomain::Voip => {
+                    r.voip_prepared = false;
+                    r.voip_released = false;
+                    if r.interruption.key.transport == CallTransport::Sip {
+                        r.native_released = false;
+                    }
+                }
+                WorkerDomain::Voice => r.speech_cancelled = false,
+                _ => (),
+            }
+        }
         self.calls.recovering.insert(domain);
         let status = io.recover_worker(domain);
         self.finish_worker_recovery(io, domain, status);

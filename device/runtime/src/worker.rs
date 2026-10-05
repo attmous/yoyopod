@@ -50,6 +50,7 @@ pub struct WorkerSupervisor {
 struct WorkerProcess {
     lifetime_token: String,
     owner_uid: Option<u32>,
+    runtime_start: Option<u64>,
     child: Child,
     stdin: ChildStdin,
     messages: Receiver<WorkerEnvelope>,
@@ -66,9 +67,17 @@ impl WorkerSupervisor {
             return false;
         }
 
-        let Ok((mut command, owner_uid)) = recovery::worker_command(&spec.argv[0]) else {
-            return false;
-        };
+        let (mut command, owner_uid, runtime_start) =
+            match recovery::worker_command(&spec.argv[0], spec.domain) {
+                Ok(launch) => launch,
+                Err(reason) => {
+                    eprintln!(
+                        "worker launch rejected ({}): {reason}",
+                        spec.domain.as_str()
+                    );
+                    return false;
+                }
+            };
         let lifetime_token = format!(
             "{}-{}-{}",
             std::process::id(),
@@ -108,6 +117,7 @@ impl WorkerSupervisor {
             WorkerProcess {
                 lifetime_token,
                 owner_uid,
+                runtime_start,
                 child,
                 stdin,
                 messages,
