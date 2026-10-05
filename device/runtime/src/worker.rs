@@ -10,6 +10,9 @@ use serde_json::{json, Value};
 use crate::protocol::{EnvelopeKind, WorkerEnvelope, SUPPORTED_SCHEMA_VERSION};
 use crate::state::WorkerDomain;
 
+mod recovery;
+pub use recovery::RecoveryStatus;
+
 pub const MAX_PRESERVED_READY_MESSAGES: usize = 32;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +43,8 @@ pub struct WorkerProtocolError {
 pub struct WorkerSupervisor {
     workers: HashMap<WorkerDomain, WorkerProcess>,
     specs: HashMap<WorkerDomain, WorkerSpec>,
+    retiring: HashMap<WorkerDomain, recovery::Retirement>,
+    starting: HashMap<WorkerDomain, Instant>,
 }
 
 struct WorkerProcess {
@@ -54,7 +59,9 @@ struct WorkerProcess {
 
 impl WorkerSupervisor {
     pub fn start(&mut self, spec: WorkerSpec) -> bool {
-        if spec.argv.is_empty() || self.workers.contains_key(&spec.domain) {
+        if spec.argv.is_empty()
+            || (self.workers.contains_key(&spec.domain) || self.retiring.contains_key(&spec.domain))
+        {
             return false;
         }
 
@@ -109,35 +116,10 @@ impl WorkerSupervisor {
         true
     }
 
-    /// Reconstruct only this process. Old channels and user commands are discarded.
-    pub fn restart(&mut self, domain: WorkerDomain) -> Result<(), String> {
-        self.restart_with_reaper(domain, reap_owned_helpers)
-    }
-
-    fn restart_with_reaper(&mut self, domain: WorkerDomain, reap: impl FnOnce(&str) -> Result<(), String>) -> Result<(), String> {
-        let spec = self
-            .specs
-            .get(&domain)
-            .cloned()
-            .ok_or("worker has no startup specification")?;
-        if let Some(mut worker) = self.workers.remove(&domain) {
-            if matches!(worker.child.try_wait(), Ok(None)) {
-                worker.child.kill().map_err(|e| e.to_string())?;
-            }
-            worker.child.wait().map_err(|e| e.to_string())?;
-            reap(&worker.lifetime_token)?;
-        }
-        if !self.start(spec) {
-            return Err("replacement worker could not start".into());
-        }
-        let ready = format!("{}.ready", domain.as_str());
-        if !self.wait_for_ready(domain, &ready, Duration::from_secs(3)) {
-            return Err("replacement worker readiness timed out".into());
-        }
-        Ok(())
-    }
-
     pub fn send_envelope(&mut self, domain: WorkerDomain, envelope: WorkerEnvelope) -> bool {
+        if self.starting.contains_key(&domain) || self.retiring.contains_key(&domain) {
+            return false;
+        }
         if envelope.kind != EnvelopeKind::Command {
             return false;
         }
@@ -164,6 +146,9 @@ impl WorkerSupervisor {
     }
 
     pub fn drain_messages(&mut self, domain: WorkerDomain, limit: usize) -> Vec<WorkerEnvelope> {
+        if self.starting.contains_key(&domain) {
+            return Vec::new();
+        }
         let Some(worker) = self.workers.get_mut(&domain) else {
             return Vec::new();
         };
@@ -435,72 +420,9 @@ fn all_worker_domains() -> [WorkerDomain; 7] {
 
 /// Children inherit a supervisor-created lifetime token through helper exec.
 /// It remains discoverable after reparenting, unlike a PPID-only census.
-#[cfg(target_os = "linux")]
-fn reap_owned_helpers(token: &str) -> Result<(), String> {
-    let expected = format!("YOYOPOD_WORKER_LIFETIME={token}");
-    let deadline = Instant::now() + Duration::from_secs(2);
-    loop {
-        let mut found = false;
-        for entry in std::fs::read_dir("/proc")
-            .map_err(|e| e.to_string())?
-            .flatten()
-        {
-            let Some(pid) = entry
-                .file_name()
-                .to_str()
-                .and_then(|s| s.parse::<u32>().ok())
-            else {
-                continue;
-            };
-            let Ok(environment) = std::fs::read(entry.path().join("environ")) else {
-                continue;
-            };
-            if !environment
-                .split(|b| *b == 0)
-                .any(|item| item == expected.as_bytes())
-            {
-                continue;
-            }
-            found = true;
-            // Fixed executable/argv, only a process with this exact inherited token.
-            let _ = Command::new("/bin/kill")
-                .args(["-KILL", "--", &pid.to_string()])
-                .status();
-        }
-        if !found {
-            return Ok(());
-        }
-        if Instant::now() >= deadline {
-            return Err("old worker audio helpers did not release".into());
-        }
-        thread::sleep(Duration::from_millis(10));
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn reap_owned_helpers(_token: &str) -> Result<(), String> {
-    Err("worker resource reconciliation requires Linux procfs".into())
-}
-
 #[cfg(all(test, target_os = "linux"))]
 mod recovery_tests {
     use super::*;
-    #[test]
-    fn failed_reap_retains_worker_for_retry() {
-        let mut supervisor = WorkerSupervisor::default();
-        assert!(supervisor.start(WorkerSpec::new(WorkerDomain::Media, "/bin/sh", ["-c".into(), "sleep 60".into()])));
-        let token = supervisor.workers[&WorkerDomain::Media].lifetime_token.clone();
-        assert!(supervisor.restart_with_reaper(WorkerDomain::Media, |_| Err("injected census failure".into())).is_err());
-        let mut retried = false;
-        let result = supervisor.restart_with_reaper(WorkerDomain::Media, |seen| {
-            assert_eq!(seen, token);
-            retried = true;
-            Err("still uncertain".into())
-        });
-        assert!(retried, "retry must reconcile the original lifetime again");
-        assert!(result.is_err());
-        supervisor.stop_all(Duration::ZERO);
-    }
     #[test]
     fn recovery_reaps_orphan_audio_helper_before_restarting_worker() {
         let dir = tempfile::tempdir().unwrap();
@@ -563,7 +485,11 @@ mod recovery_tests {
                 .success(),
             "orphan intentionally survives worker death"
         );
-        supervisor.restart(WorkerDomain::Media).unwrap();
+        let mut progress = supervisor.recover_worker(WorkerDomain::Media).unwrap();
+        while progress == RecoveryStatus::Pending {
+            thread::sleep(Duration::from_millis(10));
+            progress = supervisor.poll_recovery(WorkerDomain::Media).unwrap();
+        }
         assert!(
             Command::new("flock")
                 .arg("-n")

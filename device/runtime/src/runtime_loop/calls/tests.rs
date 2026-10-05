@@ -787,10 +787,47 @@ fn emergency_power_shutdown_does_not_wait_for_failed_native_cleanup() {
 fn already_due_power_preempts_worker_reconstruction() {
     let (mut runtime, mut io, key) = fixture(CallTransport::Sip);
     offer(&mut runtime, &mut io, &key, 0);
-    io.messages.push((WorkerDomain::Voip, WorkerEnvelope::event("worker.exited", json!({"code":1}))));
+    io.messages.push((
+        WorkerDomain::Voip,
+        WorkerEnvelope::event("worker.exited", json!({"code":1})),
+    ));
     runtime.state.power.safety.shutdown_pending = true;
     runtime.state.power.safety.shutdown_execute_at_seconds = 0;
     runtime.run_once_at(&mut io, 2);
     assert_eq!(io.system_shutdowns.len(), 1);
-    assert!(io.recovered.is_empty(), "due power must precede worker recovery");
+    assert!(
+        io.recovered.is_empty(),
+        "due power must precede worker recovery"
+    );
+}
+
+#[test]
+fn power_deadline_preempts_pending_recovery_without_resource_proof() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Sip);
+    offer(&mut runtime, &mut io, &key, 0);
+    prepare(&mut runtime, &mut io, 1);
+    io.recovery_pending = true;
+    io.messages.push((
+        WorkerDomain::Voip,
+        WorkerEnvelope::event("worker.exited", json!({"code":1})),
+    ));
+    runtime.run_once_at(&mut io, 2);
+    assert_eq!(io.recovered, vec![WorkerDomain::Voip]);
+    assert_eq!(runtime.calls.generations[&WorkerDomain::Voip], 1);
+    assert!(!runtime.calls.resources.as_ref().unwrap().native_released);
+    let polls = io.recovery_polls;
+    let sent = io.sent.len();
+    runtime.state.power.safety.shutdown_pending = true;
+    runtime.state.power.safety.shutdown_execute_at_seconds = 0;
+    // A queued completion during shutdown must not reconstruct/configure/release.
+    io.recovery_pending = false;
+    runtime.run_once_at(&mut io, 3);
+    assert_eq!(io.system_shutdowns.len(), 1);
+    assert_eq!(io.recovery_polls, polls);
+    assert_eq!(runtime.calls.generations[&WorkerDomain::Voip], 1);
+    assert_eq!(runtime.manager.session(), Some(&key));
+    assert!(!io.sent[sent..].iter().any(|(_, e)| matches!(
+        e.message_type.as_str(),
+        "voip.configure" | "voip.release_call" | "media.release_call"
+    )));
 }

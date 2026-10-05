@@ -1,7 +1,11 @@
 //! Retain ownership until native and local resource release is proven.
 use super::*;
+use crate::worker::RecoveryStatus;
 impl RuntimeLoop {
     pub(in crate::runtime_loop) fn confirm_call_cleanup(&mut self, io: &mut impl LoopIo) {
+        if !self.calls.recovering.is_empty() {
+            return;
+        }
         if self.manager.phase() != Some(CallPhase::Ending) {
             return;
         }
@@ -54,7 +58,7 @@ impl RuntimeLoop {
         io: &mut impl LoopIo,
         domain: WorkerDomain,
     ) {
-        if self.shutdown_requested {
+        if self.shutdown_requested || self.calls.recovering.contains(&domain) {
             return;
         }
         let attempts = self.calls.recoveries.entry(domain).or_default();
@@ -67,7 +71,6 @@ impl RuntimeLoop {
             return;
         }
         *attempts += 1;
-        let generation = *self.calls.generations.get(&domain).unwrap_or(&1);
         if domain == WorkerDomain::Network {
             self.calls.native_guard.quarantine();
             if let Some(r) = self
@@ -83,14 +86,43 @@ impl RuntimeLoop {
             }
         }
         self.call_operations.invalidate_domain(domain);
-        if let Err(reason) = io.recover_worker(domain) {
-            self.state.mark_worker(
-                domain,
-                WorkerState::Degraded,
-                format!("call recovery failed: {reason}"),
-            );
+        self.calls.recovering.insert(domain);
+        let status = io.recover_worker(domain);
+        self.finish_worker_recovery(io, domain, status);
+    }
+
+    pub(in crate::runtime_loop) fn poll_call_recoveries(&mut self, io: &mut impl LoopIo) {
+        if self.shutdown_requested {
             return;
         }
+        for domain in self.calls.recovering.clone() {
+            let status = io.poll_worker_recovery(domain);
+            self.finish_worker_recovery(io, domain, status);
+        }
+    }
+
+    fn finish_worker_recovery(
+        &mut self,
+        io: &mut impl LoopIo,
+        domain: WorkerDomain,
+        status: Result<RecoveryStatus, String>,
+    ) {
+        match status {
+            Ok(RecoveryStatus::Pending) => return,
+            Err(reason) => {
+                self.calls.recovering.remove(&domain);
+                self.state.mark_worker(
+                    domain,
+                    WorkerState::Degraded,
+                    format!("call recovery failed: {reason}"),
+                );
+                return;
+            }
+            Ok(RecoveryStatus::Ready) => {
+                self.calls.recovering.remove(&domain);
+            }
+        }
+        let generation = *self.calls.generations.get(&domain).unwrap_or(&1);
         self.calls.generations.insert(
             domain,
             generation

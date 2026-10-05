@@ -12,7 +12,7 @@ use crate::call_manager::{CallManager, CallManagerEvent};
 use crate::event::{commands_for_event, runtime_event_from_worker, RuntimeCommand};
 use crate::protocol::{EnvelopeKind, WorkerEnvelope};
 use crate::state::{RuntimeState, WorkerDomain, WorkerState};
-use crate::worker::{WorkerProtocolError, WorkerSupervisor};
+use crate::worker::{RecoveryStatus, WorkerProtocolError, WorkerSupervisor};
 mod calls;
 
 const WORKER_DOMAINS: [WorkerDomain; 7] = [
@@ -34,8 +34,9 @@ struct PendingWorkerCommand {
 }
 
 pub trait LoopIo {
-    /// Success includes reaping the old worker and owned helper resources.
-    fn recover_worker(&mut self, domain: WorkerDomain) -> Result<(), String>;
+    /// Pending is scheduling only; Ready proves old resources gone and replacement ready.
+    fn recover_worker(&mut self, domain: WorkerDomain) -> Result<RecoveryStatus, String>;
+    fn poll_worker_recovery(&mut self, domain: WorkerDomain) -> Result<RecoveryStatus, String>;
     fn drain_worker_messages(&mut self) -> Vec<(WorkerDomain, WorkerEnvelope)>;
     fn drain_worker_protocol_errors(&mut self) -> Vec<(WorkerDomain, WorkerProtocolError)>;
     fn send_worker_envelope(&mut self, domain: WorkerDomain, envelope: WorkerEnvelope) -> bool;
@@ -97,6 +98,7 @@ impl RuntimeLoop {
 
     pub fn run_once_at(&mut self, io: &mut impl LoopIo, now_ms: u64) -> usize {
         self.now_ms = self.now_ms.max(now_ms);
+        self.process_pending_power_shutdown(io);
         let started = Instant::now();
         let mut processed = 0;
         let mut protocol_faults = HashMap::<WorkerDomain, String>::new();
@@ -150,6 +152,7 @@ impl RuntimeLoop {
         self.state.loop_iterations += 1;
         self.state.last_loop_duration_ms = started.elapsed().as_millis() as u64;
         self.process_pending_power_shutdown(io);
+        self.poll_call_recoveries(io);
         self.expire_correlated_worker_commands(io);
         for operation in self.call_operations.expired(self.now_ms) {
             self.finish_call_operation(io, operation, false, &json!({}));
@@ -349,8 +352,11 @@ fn safe_worker_error_code(payload: &Value) -> String {
 }
 
 impl LoopIo for WorkerSupervisor {
-    fn recover_worker(&mut self, domain: WorkerDomain) -> Result<(), String> {
-        self.restart(domain)
+    fn recover_worker(&mut self, domain: WorkerDomain) -> Result<RecoveryStatus, String> {
+        WorkerSupervisor::recover_worker(self, domain)
+    }
+    fn poll_worker_recovery(&mut self, domain: WorkerDomain) -> Result<RecoveryStatus, String> {
+        self.poll_recovery(domain)
     }
     fn drain_worker_messages(&mut self) -> Vec<(WorkerDomain, WorkerEnvelope)> {
         WORKER_DOMAINS
@@ -522,14 +528,28 @@ mod tests {
         pub(super) sent: Vec<(WorkerDomain, WorkerEnvelope)>,
         app_log: Vec<(String, String)>,
         pub(super) recovered: Vec<WorkerDomain>,
+        pub(super) recovery_pending: bool,
+        pub(super) recovery_polls: usize,
         pub(super) fail_send: Vec<String>,
         pub(super) system_shutdowns: Vec<String>,
     }
 
     impl LoopIo for FakeLoopIo {
-        fn recover_worker(&mut self, domain: WorkerDomain) -> Result<(), String> {
+        fn recover_worker(&mut self, domain: WorkerDomain) -> Result<RecoveryStatus, String> {
             self.recovered.push(domain);
-            Ok(())
+            Ok(if self.recovery_pending {
+                RecoveryStatus::Pending
+            } else {
+                RecoveryStatus::Ready
+            })
+        }
+        fn poll_worker_recovery(&mut self, _: WorkerDomain) -> Result<RecoveryStatus, String> {
+            self.recovery_polls += 1;
+            Ok(if self.recovery_pending {
+                RecoveryStatus::Pending
+            } else {
+                RecoveryStatus::Ready
+            })
         }
         fn drain_worker_messages(&mut self) -> Vec<(WorkerDomain, WorkerEnvelope)> {
             std::mem::take(&mut self.messages)

@@ -2756,6 +2756,7 @@ dependencies = [
  "anyhow",
  "clap",
  "ctrlc",
+ "rustix 1.1.4",
  "serde",
  "serde_json",
  "serde_yaml",
