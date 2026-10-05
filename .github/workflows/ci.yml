@@ -7,6 +7,14 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   workflow_dispatch:
+    inputs:
+      provider_inputs:
+        description: Verify Debian ARM64 ModemManager source inputs only
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -14,6 +22,7 @@ concurrency:
 
 jobs:
   changes:
+    if: ${{ !inputs.provider_inputs }}
     runs-on: ubuntu-latest
     outputs:
       slot_arm64: ${{ steps.filter.outputs.slot_arm64 }}
@@ -82,6 +91,7 @@ jobs:
         run: uv run --extra dev python scripts/quality.py gate
 
   rust-device-arm64:
+    if: ${{ !inputs.provider_inputs }}
     runs-on: ubuntu-24.04-arm
     env:
       RUST_ARTIFACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -171,6 +181,61 @@ jobs:
         with:
           name: yoyopod-rust-device-arm64-${{ env.RUST_ARTIFACT_SHA }}
           path: device/target/yoyopod-rust-device-arm64-${{ env.RUST_ARTIFACT_SHA }}.tar.gz
+          if-no-files-found: error
+
+  provider-inputs-arm64:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.provider_inputs }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      PROVIDER_INPUT_SHA: ${{ github.sha }}
+    steps:
+      - name: Check out exact source input commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Acquire and validate signed source inputs on native ARM
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          test "$(git rev-parse HEAD)" = "$PROVIDER_INPUT_SHA"
+          evidence="$GITHUB_WORKSPACE/.artifacts/mm-inputs/$PROVIDER_INPUT_SHA"
+          mkdir -p "$evidence"
+          docker buildx imagetools inspect docker.io/library/debian:trixie-slim --raw > "$evidence/image-index.json"
+          arm_digest=$(jq -er '[.manifests[] | select(.platform.os=="linux" and .platform.architecture=="arm64")] | if length==1 then .[0].digest else error("ambiguous ARM64 image") end' "$evidence/image-index.json")
+          image="docker.io/library/debian@$arm_digest"
+          docker buildx imagetools inspect "$image" --raw > "$evidence/image-manifest.json"
+          docker pull --platform linux/arm64 "$image"
+          jq -n --arg sha "$PROVIDER_INPUT_SHA" --arg run "$GITHUB_RUN_ID" --arg image "$image" \
+            '{schema_version:1,repo_sha:$sha,ci_run_id:$run,image:$image}' > "$evidence/execution.json"
+          # Mount only this provider's authored files and the evidence directory.
+          # No repository Git credentials, Docker socket or host secrets enter.
+          docker run --rm --platform linux/arm64 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/deploy/providers/modemmanager,target=/provider,readonly" \
+            --mount "type=bind,source=$evidence,target=/evidence" \
+            --env "MM_IMAGE=$image" \
+            --env MM_IMAGE_INDEX=/evidence/image-index.json \
+            --env MM_IMAGE_MANIFEST=/evidence/image-manifest.json \
+            --workdir /provider "$image" bash -c '
+              set -euo pipefail
+              bash build/resolve-lock.sh /evidence/source-lock.json 2>&1 | tee /evidence/resolution.log
+              bash build/verify-inputs.sh /evidence/source-lock.json /evidence/verified 2>&1 | tee /evidence/verification.log
+              bash tests/test-source-lock.sh /evidence/source-lock.json 2>&1 | tee /evidence/tests.log
+            '
+
+      - name: Upload source input evidence for exact commit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yoyopod-modemmanager-input-evidence-${{ github.sha }}
+          path: |
+            .artifacts/mm-inputs/${{ github.sha }}/*.json
+            .artifacts/mm-inputs/${{ github.sha }}/*.log
+            .artifacts/mm-inputs/${{ github.sha }}/acquisition/*
+            .artifacts/mm-inputs/${{ github.sha }}/verified/signature-report.json
+            .artifacts/mm-inputs/${{ github.sha }}/verified/metadata/*signature*
           if-no-files-found: error
 
   slot-arm64:
