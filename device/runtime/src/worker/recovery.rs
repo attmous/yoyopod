@@ -21,7 +21,7 @@ impl WorkerSupervisor {
     fn recover_with(
         &mut self,
         domain: WorkerDomain,
-        reap: impl FnOnce(&str) -> Result<(), String> + Send + 'static,
+        reap: impl FnOnce(&str, Option<u32>) -> Result<(), String> + Send + 'static,
     ) -> Result<RecoveryStatus, String> {
         if !self.specs.contains_key(&domain) {
             return Err("worker has no startup specification".into());
@@ -63,7 +63,7 @@ impl WorkerSupervisor {
                         worker.child.kill().map_err(|e| e.to_string())?;
                     }
                     worker.child.wait().map_err(|e| e.to_string())?;
-                    reap(&worker.lifetime_token)
+                    reap(&worker.lifetime_token, worker.owner_uid)
                 })();
                 let _ = tx.send(result);
             })
@@ -127,7 +127,7 @@ mod helpers;
 #[cfg(target_os = "linux")]
 use helpers::reap_owned_helpers;
 #[cfg(not(target_os = "linux"))]
-fn reap_owned_helpers(_: &str) -> Result<(), String> {
+fn reap_owned_helpers(_: &str, _: Option<u32>) -> Result<(), String> {
     Err("worker resource reconciliation requires Linux pidfds/procfs".into())
 }
 
@@ -157,7 +157,7 @@ mod tests {
             .lifetime_token
             .clone();
         supervisor
-            .recover_with(WorkerDomain::Media, |_| {
+            .recover_with(WorkerDomain::Media, |_, _| {
                 Err("injected census failure".into())
             })
             .unwrap();
@@ -172,7 +172,7 @@ mod tests {
         );
         let (tx, rx) = mpsc::channel();
         supervisor
-            .recover_with(WorkerDomain::Media, move |seen| {
+            .recover_with(WorkerDomain::Media, move |seen, _| {
                 tx.send(seen.to_owned()).unwrap();
                 Err("still uncertain".into())
             })
@@ -181,5 +181,89 @@ mod tests {
         assert_eq!(rx.recv().unwrap(), token);
         assert!(supervisor.retiring.contains_key(&WorkerDomain::Media));
         assert!(!supervisor.workers.contains_key(&WorkerDomain::Media));
+    }
+}
+
+/// Only a non-root, single-UID process with no current/inheritable/ambient
+/// capabilities can establish this boundary. NNP then prevents setuid/file-cap
+/// exec from escaping it; privileged launches require the complete census.
+#[cfg(target_os = "linux")]
+fn unprivileged_owner(status: &str) -> Result<Option<u32>, String> {
+    let fields: HashMap<_, _> = status
+        .lines()
+        .filter_map(|line| line.split_once(':'))
+        .collect();
+    let uids = fields
+        .get("Uid")
+        .ok_or("missing process UID proof")?
+        .split_whitespace()
+        .map(str::parse::<u32>)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    if uids.len() != 4 {
+        return Err("incomplete process UID proof".into());
+    }
+    let mut privileged = uids[0] == 0 || uids.iter().any(|uid| *uid != uids[0]);
+    for name in ["CapInh", "CapPrm", "CapEff", "CapAmb"] {
+        let value = fields.get(name).ok_or("missing process capability proof")?;
+        privileged |= u64::from_str_radix(value.trim(), 16).map_err(|e| e.to_string())? != 0;
+    }
+    Ok((!privileged).then_some(uids[0]))
+}
+
+pub(super) fn worker_command(program: &str) -> Result<(Command, Option<u32>), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let status = std::fs::read_to_string("/proc/self/status").map_err(|e| e.to_string())?;
+        let owner = unprivileged_owner(&status)?;
+        if owner.is_some() {
+            // setpriv execs the worker in place: Child/pidfd identity is unchanged.
+            // Missing executable or rejected NNP setup fails startup, never falls back.
+            std::fs::metadata("/usr/bin/setpriv")
+                .map_err(|e| format!("worker requires /usr/bin/setpriv: {e}"))?;
+            let mut command = Command::new("/usr/bin/setpriv");
+            command.args(["--no-new-privs", "--", program]);
+            return Ok((command, owner));
+        }
+    }
+    Ok((Command::new(program), None))
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod credentials_tests {
+    use super::*;
+    #[test]
+    fn uid_boundary_requires_all_credentials_and_zero_gain_capabilities() {
+        let status = "Uid:\t1000 1000 1000 1000\nCapInh:\t0\nCapPrm:\t0\nCapEff:\t0\nCapAmb:\t0\n";
+        assert_eq!(unprivileged_owner(status).unwrap(), Some(1000));
+        for field in ["CapInh", "CapPrm", "CapEff", "CapAmb"] {
+            assert_eq!(
+                unprivileged_owner(
+                    &status.replace(&format!("{field}:\t0"), &format!("{field}:\t1"))
+                )
+                .unwrap(),
+                None
+            );
+        }
+        assert_eq!(
+            unprivileged_owner(&status.replace("1000 1000 1000 1000", "1000 1000 0 1000")).unwrap(),
+            None
+        );
+        assert_eq!(
+            unprivileged_owner(&status.replace("1000", "0")).unwrap(),
+            None
+        );
+        assert!(unprivileged_owner("Uid: 1000").is_err());
+    }
+    #[test]
+    fn worker_launch_binds_no_new_privileges_before_exec() {
+        let (mut command, owner) = worker_command("/bin/cat").unwrap();
+        let output = command.arg("/proc/self/status").output().unwrap();
+        assert!(output.status.success());
+        if owner.is_some() {
+            let status = String::from_utf8(output.stdout).unwrap();
+            assert!(status.lines().any(|line| line == "NoNewPrivs:\t1"));
+            assert_eq!(unprivileged_owner(&status).unwrap(), owner);
+        }
     }
 }

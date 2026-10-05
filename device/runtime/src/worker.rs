@@ -49,6 +49,7 @@ pub struct WorkerSupervisor {
 
 struct WorkerProcess {
     lifetime_token: String,
+    owner_uid: Option<u32>,
     child: Child,
     stdin: ChildStdin,
     messages: Receiver<WorkerEnvelope>,
@@ -65,7 +66,9 @@ impl WorkerSupervisor {
             return false;
         }
 
-        let mut command = Command::new(&spec.argv[0]);
+        let Ok((mut command, owner_uid)) = recovery::worker_command(&spec.argv[0]) else {
+            return false;
+        };
         let lifetime_token = format!(
             "{}-{}-{}",
             std::process::id(),
@@ -104,6 +107,7 @@ impl WorkerSupervisor {
             spec.domain,
             WorkerProcess {
                 lifetime_token,
+                owner_uid,
                 child,
                 stdin,
                 messages,

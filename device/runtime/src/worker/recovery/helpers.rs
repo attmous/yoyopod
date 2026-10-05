@@ -47,7 +47,23 @@ fn kill_if_owned(
     Ok(true)
 }
 
-pub(super) fn reap_owned_helpers(token: &str) -> Result<(), String> {
+fn outside_owner(status: &str, owner: u32) -> Result<bool, String> {
+    let value = status
+        .lines()
+        .find_map(|line| line.strip_prefix("Uid:"))
+        .ok_or("missing UID census")?;
+    let uids = value
+        .split_whitespace()
+        .map(str::parse::<u32>)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    if uids.len() != 4 {
+        return Err("incomplete UID census".into());
+    }
+    Ok(uids.iter().all(|uid| *uid != owner))
+}
+
+pub(super) fn reap_owned_helpers(token: &str, owner_uid: Option<u32>) -> Result<(), String> {
     let expected = format!("YOYOPOD_WORKER_LIFETIME={token}");
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
@@ -77,6 +93,25 @@ pub(super) fn reap_owned_helpers(token: &str) -> Result<(), String> {
                     continue;
                 }
             };
+            if let Some(uid) = owner_uid {
+                let status = fs::read_to_string(entry.path().join("status"));
+                // /proc directory ownership may change with dumpability: use the
+                // actual four kernel credential UIDs, checked against the pidfd.
+                if handle.exited()? {
+                    continue;
+                }
+                match status
+                    .map_err(|e| e.to_string())
+                    .and_then(|s| outside_owner(&s, uid))
+                {
+                    Ok(true) => continue,
+                    Ok(false) => (),
+                    Err(e) => {
+                        error = Some(format!("incomplete process ownership census: {e}"));
+                        continue;
+                    }
+                }
+            }
             match kill_if_owned(
                 &handle,
                 fs::read(entry.path().join("environ")),
