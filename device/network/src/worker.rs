@@ -556,6 +556,17 @@ fn drain_gsm_events<C: ModemController, W: Write>(
 ) -> Result<()> {
     for event in gsm.drain_events() {
         match event {
+            GsmEvent::ModemLost { generation: lost } if Some(lost) == *generation => {
+                // Quiesce existing PPP/AT before arming the admission barrier.
+                // An already suspended keyed lease belongs to the old session.
+                if !runtime.voice_suspended() {
+                    if let Err(error) = runtime.suspend_for_voice_command() {
+                        eprintln!("GSM modem loss data suspension failed: {}", error.message);
+                    }
+                }
+                *startup_reconciled = false;
+                runtime.require_voice_reconciliation();
+            }
             GsmEvent::Reconciled(reconciled) if Some(reconciled.generation) == *generation => {
                 if !recovery_quarantined
                     && !*startup_reconciled
@@ -564,7 +575,8 @@ fn drain_gsm_events<C: ModemController, W: Write>(
                 {
                     *startup_reconciled = true;
                     runtime.confirm_voice_reconciliation();
-                    runtime.start();
+                    if runtime.voice_suspended() { runtime.resume_after_voice(); }
+                    else { runtime.start(); }
                 }
                 write_envelope(
                     output,

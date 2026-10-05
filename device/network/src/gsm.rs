@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{atomic::{AtomicU64, Ordering}, Arc};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -95,6 +96,7 @@ pub enum GsmCommand {
 pub enum GsmEvent {
     Call(CallManagerWireEvent),
     Reconciled(GsmReconciliation),
+    ModemLost { generation: u64 },
     Completed {
         request_id: String,
         key: SessionKey,
@@ -124,6 +126,8 @@ pub struct GsmObservation {
 /// ModemManager owns modem discovery and call control; the network worker never
 /// competes with its QMI control channel or hard-codes a transient modem index.
 pub trait GsmBackend: Send + 'static {
+    fn selected_modem_epoch(&self) -> u64 { 0 }
+    fn take_modem_loss(&mut self) -> Option<u64> { None }
     fn refresh_observation(&mut self) -> Result<GsmObservation> {
         let availability = self.refresh()?;
         Ok(GsmObservation {
@@ -156,7 +160,8 @@ pub trait GsmBackend: Send + 'static {
 }
 
 pub struct GsmWorker {
-    commands: Sender<GsmCommand>,
+    commands: Sender<(u64, GsmCommand)>,
+    selected_epoch: Arc<AtomicU64>,
     states: Receiver<GsmCallState>,
     events: Receiver<GsmEvent>,
     thread: Option<JoinHandle<()>>,
@@ -171,11 +176,34 @@ impl GsmWorker {
         let (commands, receive_commands) = mpsc::channel();
         let (send_states, states) = mpsc::channel();
         let (send_events, events) = mpsc::channel();
+        let selected_epoch = Arc::new(AtomicU64::new(backend.selected_modem_epoch()));
+        let thread_epoch = selected_epoch.clone();
         let thread = thread::spawn(move || {
             let mut previous = None;
             let mut previous_reconciliation = None;
             loop {
-                let command = receive_commands.recv_timeout(Duration::from_millis(500));
+                let queued = receive_commands.recv_timeout(Duration::from_millis(500));
+                // Observe removal before dispatch, including commands accepted while a
+                // previous bounded native request was waiting for its response.
+                let preflight = backend.refresh_observation();
+                thread_epoch.store(backend.selected_modem_epoch(), Ordering::SeqCst);
+                if let Some(generation) = backend.take_modem_loss() {
+                    let _ = send_events.send(GsmEvent::ModemLost { generation });
+                }
+                let command = queued.map(|(epoch, command)| (epoch == backend.selected_modem_epoch(), command));
+                let command = match command {
+                    Ok((false, GsmCommand::Action { request_id, command })) => {
+                        let _ = send_events.send(GsmEvent::Completed { request_id, voice_held: backend.owns_voice(&command.key), key: command.key, error: Some("Selected modem lifetime ended; command fenced".into()) });
+                        Err(mpsc::RecvTimeoutError::Timeout)
+                    }
+                    Ok((false, GsmCommand::DialSession { request_id, key, .. })) => {
+                        let _ = send_events.send(GsmEvent::Completed { request_id, voice_held: backend.owns_voice(&key), key, error: Some("Selected modem lifetime ended; command fenced".into()) });
+                        Err(mpsc::RecvTimeoutError::Timeout)
+                    }
+                    Ok((false, GsmCommand::Dial(_) | GsmCommand::Hangup | GsmCommand::Mute(_))) => Err(mpsc::RecvTimeoutError::Timeout),
+                    Ok((_, command)) => Ok(command),
+                    Err(error) => Err(error),
+                };
                 let dial_attempt = matches!(&command, Ok(GsmCommand::Dial(_)));
                 let result = match command {
                     Ok(GsmCommand::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -256,6 +284,7 @@ impl GsmWorker {
                 };
                 let mut refresh_ok = true;
                 let mut call_events = Vec::new();
+                if let Ok(observation) = preflight { call_events.extend(observation.calls); }
                 let mut state = match backend.refresh_observation() {
                     Ok(observation) => {
                         call_events.extend(observation.calls);
@@ -271,6 +300,10 @@ impl GsmWorker {
                     }
                 };
                 call_events.extend(backend.drain_call_events());
+                thread_epoch.store(backend.selected_modem_epoch(), Ordering::SeqCst);
+                if let Some(generation) = backend.take_modem_loss() {
+                    let _ = send_events.send(GsmEvent::ModemLost { generation });
+                }
                 if let Some(mut reconciled) = backend.reconciliation() {
                     if !refresh_ok {
                         reconciled.native_calls_quiescent = false;
@@ -301,6 +334,7 @@ impl GsmWorker {
         });
         Self {
             commands,
+            selected_epoch,
             states,
             events,
             thread: Some(thread),
@@ -309,7 +343,7 @@ impl GsmWorker {
 
     pub fn send(&self, command: GsmCommand) -> Result<()> {
         self.commands
-            .send(command)
+            .send((self.selected_epoch.load(Ordering::SeqCst), command))
             .context("GSM worker unavailable")
     }
 
@@ -323,7 +357,7 @@ impl GsmWorker {
 
 impl Drop for GsmWorker {
     fn drop(&mut self) {
-        let _ = self.commands.send(GsmCommand::Stop);
+        let _ = self.commands.send((self.selected_epoch.load(Ordering::SeqCst), GsmCommand::Stop));
         // The call backend has a bounded D-Bus timeout and releases call audio
         // when stopped; the network worker must not leave an orphan call.
         if let Some(thread) = self.thread.take() {
@@ -430,6 +464,11 @@ impl Drop for ModemSignals {
 
 #[derive(Default)]
 struct ModemManagerVoice {
+    selected_epoch: u64,
+    modem_lost: bool,
+    loss_pending: bool,
+    clean_rediscovery: bool,
+    idle_calls_proven: bool,
     initial_scan: bool,
     service_owner: Option<String>,
     service_bus_id: Option<String>,
@@ -458,6 +497,67 @@ struct ModemManagerVoice {
 }
 
 impl ModemManagerVoice {
+    fn selected_modem_lost(&mut self) {
+        if self.modem_lost { return; }
+        self.clean_rediscovery = self.idle_calls_proven
+            && self.registry.as_ref().is_some_and(|r| r.tracked().is_empty())
+            && self.terminating.is_empty() && self.owner.is_none()
+            && self.uncertain_create.is_none() && self.cleanup.uncertain.is_empty()
+            && self.audio.is_none() && self.prepared_audio.is_none()
+            && self.audio_deadline.is_none() && self.pending_events.is_empty();
+        self.modem_lost = true;
+        self.loss_pending = true;
+        self.selected_epoch = self.selected_epoch.checked_add(1).expect("modem epoch exhausted");
+        self.isolated = false;
+        self.idle_calls_proven = false;
+        self.cached.available = false;
+        self.cached.unavailable_reason = "Selected modem lost; native reconciliation required".into();
+        self.audio.take();
+        self.prepared_audio.take();
+        self.pending_events.clear();
+        if let Some(registry) = self.registry.as_mut() {
+            for (path, key) in registry.tracked() {
+                self.cleanup.failed(&path);
+                if let Some(old) = registry.latest(&key).cloned() {
+                    self.pending_events.extend(registry.observe(&path, old.direction, CallPhase::Ending, &old.address));
+                }
+            }
+        }
+        if self.clean_rediscovery {
+            self.modem = None;
+            self.initial_scan = true;
+            self.next_discovery = Some(Instant::now() + Duration::from_secs(3));
+        }
+    }
+
+    fn removal_signal(&mut self, message: &zbus::Message) {
+        let header = message.header();
+        if header.sender().map(|s| s.as_str()) != self.service_owner.as_deref()
+            || header.interface().map(|s| s.as_str()) != Some("org.freedesktop.DBus.ObjectManager")
+            || header.member().map(|s| s.as_str()) != Some("InterfacesRemoved") { return; }
+        if let Ok((path, interfaces)) = message.body().deserialize::<(OwnedObjectPath, Vec<String>)>() {
+            if self.modem.as_ref() == Some(&path) && interfaces.iter().any(|i| i == MODEM_INTERFACE || i == VOICE_INTERFACE) {
+                self.selected_modem_lost();
+            }
+        }
+    }
+
+    fn check_selected_modem(&mut self) -> Result<()> {
+        self.verify_service_owner()?;
+        let messages: Vec<_> = self.signals.as_ref().map(|s| s.messages.try_iter().collect()).unwrap_or_default();
+        for message in messages { self.removal_signal(&message); }
+        anyhow::ensure!(!self.modem_lost, "Selected modem lost");
+        let modem = self.modem.as_ref().context("No selected modem")?.clone();
+        let manager = Proxy::new(self.connection.as_ref().context("No connection")?, self.bound_owner()?.to_owned(), "/org/freedesktop/ModemManager1", "org.freedesktop.DBus.ObjectManager")?;
+        let objects: ManagedObjects = manager.call("GetManagedObjects", &())?;
+        drop(manager);
+        self.verify_service_owner()?;
+        if !objects.get(&modem).is_some_and(|interfaces| interfaces.contains_key(MODEM_INTERFACE) && interfaces.contains_key(VOICE_INTERFACE)) {
+            self.selected_modem_lost();
+        }
+        anyhow::ensure!(!self.modem_lost, "Selected modem lost");
+        Ok(())
+    }
     fn connection(&mut self) -> Result<&Connection> {
         if self.connection.is_none() {
             self.connection = Some(
@@ -552,6 +652,8 @@ impl ModemManagerVoice {
             self.cached.available = reason.is_none();
             self.cached.unavailable_reason = reason.unwrap_or_default().into();
             self.modem = Some(path);
+            self.modem_lost = false;
+            self.clean_rediscovery = false;
             // Discovery enumerates once. The Voice Calls property and signals are
             // used afterwards; no repeated global managed-object enumeration.
             self.reconcile_paths()?;
@@ -652,6 +754,7 @@ impl ModemManagerVoice {
     }
     fn ensure_control(&mut self) -> Result<()> {
         self.verify_service_owner()?;
+        anyhow::ensure!(!self.modem_lost, "Selected modem lost; native reconciliation required");
         anyhow::ensure!(
             self.isolated,
             "Isolated GSM control unsupported; refusing unsafe modem fallback"
@@ -670,16 +773,20 @@ impl ModemManagerVoice {
             modem.as_str(),
             VOICE_INTERFACE,
         )?;
-        let paths: Vec<OwnedObjectPath> = voice.get_property("Calls")?;
+        let result = voice.get_property::<Vec<OwnedObjectPath>>("Calls");
         drop(voice);
         // A response belongs to the bound unique owner, but owner loss during
         // the request still invalidates quiescence before registry mutation.
         self.verify_service_owner()?;
+        self.check_selected_modem()?;
+        let paths = result?;
+        self.idle_calls_proven = paths.is_empty();
         let old = self.registry()?.tracked();
         for path in &paths {
             self.observe_path(path.as_str())?;
         }
         self.verify_service_owner()?;
+        self.check_selected_modem()?;
         for (path, key) in old {
             if !paths.iter().any(|candidate| candidate.as_str() == path) {
                 self.object_deleted(&path, &key);
@@ -769,6 +876,7 @@ impl ModemManagerVoice {
         let emergency: bool = voice.get_property("EmergencyOnly")?;
         self.verify_service_owner()?;
         let reason = voice_service_unavailable_reason(state, lock, true, emergency);
+        self.check_selected_modem()?;
         self.cached.available = reason.is_none();
         self.cached.unavailable_reason = reason.unwrap_or_default().into();
         if !self.cleanup.uncertain.is_empty() || self.uncertain_create.is_some() {
@@ -813,6 +921,7 @@ impl ModemManagerVoice {
         let number: String = proxy.get_property("Number")?;
         drop(proxy);
         self.verify_service_owner()?;
+        self.check_selected_modem()?;
         let direction = match native_direction {
             1 => CallDirection::Incoming,
             2 => CallDirection::Outgoing,
@@ -1009,7 +1118,77 @@ impl ModemManagerVoice {
     }
 }
 
+impl ModemManagerVoice {
+    fn refresh_selected(&mut self) -> Result<GsmCallState> {
+        if self.modem_lost && !self.clean_rediscovery { return Ok(self.cached.clone()); }
+        if self.generation.is_none() {
+            self.cached.unavailable_reason = "GSM worker is not configured".into();
+            return Ok(self.cached.clone());
+        }
+        if self.modem.is_none()
+            && self
+                .next_discovery
+                .is_none_or(|next| Instant::now() >= next)
+        {
+            self.discover()?;
+        }
+        if self.modem.is_none() {
+            return Ok(self.cached.clone());
+        }
+        self.verify_service_owner()?;
+        let messages: Vec<_> = self
+            .signals
+            .as_ref()
+            .map(|signals| signals.messages.try_iter().collect())
+            .unwrap_or_default();
+        let mut reconcile = false;
+        for message in messages {
+            self.removal_signal(&message);
+            if self.modem_lost { return Ok(self.cached.clone()); }
+            let header = message.header();
+            if header.sender().map(|sender| sender.as_str()) != self.service_owner.as_deref() {
+                continue;
+            }
+            match header.member().map(|member| member.as_str()) {
+                Some("CallAdded" | "CallDeleted") => {
+                    reconcile = true;
+                }
+                Some("PropertiesChanged" | "StateChanged") => {
+                    if let Some(path) = header.path() {
+                        if self
+                            .registry()?
+                            .tracked()
+                            .iter()
+                            .any(|(known, _)| known == path.as_str())
+                        {
+                            self.observe_path(path.as_str())?;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        // Bounded Calls-property recovery handles missed signals and bus bursts;
+        // this is not global D-Bus enumeration. Tracked properties poll at 500ms.
+        if reconcile || self.next_recovery.is_none_or(|next| Instant::now() >= next) {
+            self.reconcile_paths()?;
+            self.refresh_availability()?;
+            self.next_recovery = Some(Instant::now() + Duration::from_secs(3));
+        } else {
+            for (path, _) in self.registry()?.tracked() {
+                self.observe_path(&path)?;
+            }
+        }
+        Ok(self.cached.clone())
+    }
+
+}
+
 impl GsmBackend for ModemManagerVoice {
+    fn selected_modem_epoch(&self) -> u64 { self.selected_epoch }
+    fn take_modem_loss(&mut self) -> Option<u64> {
+        if std::mem::take(&mut self.loss_pending) { self.generation } else { None }
+    }
     fn reconciliation(&self) -> Option<GsmReconciliation> {
         Some(GsmReconciliation {
             generation: self.generation?,
@@ -1019,6 +1198,8 @@ impl GsmBackend for ModemManagerVoice {
                 .zip(self.service_owner.as_ref())
                 .map(|(bus, owner)| format!("{bus}/{owner}")),
             native_calls_quiescent: !self.service_invalidated
+                && !self.modem_lost
+                && self.idle_calls_proven
                 && self.service_owner.is_some()
                 && self.service_bus_id.is_some()
                 && self.isolated
@@ -1059,63 +1240,13 @@ impl GsmBackend for ModemManagerVoice {
     }
 
     fn refresh(&mut self) -> Result<GsmCallState> {
-        if self.generation.is_none() {
-            self.cached.unavailable_reason = "GSM worker is not configured".into();
-            return Ok(self.cached.clone());
+        let result = self.refresh_selected();
+        if result.is_err() && self.modem.is_some() && !self.modem_lost && !self.service_invalidated {
+            // A timeout or permission failure is not proof of disappearance.
+            // Confirm the selected interfaces through the retained owner's OM.
+            let _ = self.check_selected_modem();
         }
-        if self.modem.is_none()
-            && self
-                .next_discovery
-                .is_none_or(|next| Instant::now() >= next)
-        {
-            self.discover()?;
-        }
-        if self.modem.is_none() {
-            return Ok(self.cached.clone());
-        }
-        self.verify_service_owner()?;
-        let messages: Vec<_> = self
-            .signals
-            .as_ref()
-            .map(|signals| signals.messages.try_iter().collect())
-            .unwrap_or_default();
-        let mut reconcile = false;
-        for message in messages {
-            let header = message.header();
-            if header.sender().map(|sender| sender.as_str()) != self.service_owner.as_deref() {
-                continue;
-            }
-            match header.member().map(|member| member.as_str()) {
-                Some("CallAdded" | "CallDeleted") => {
-                    reconcile = true;
-                }
-                Some("PropertiesChanged" | "StateChanged") => {
-                    if let Some(path) = header.path() {
-                        if self
-                            .registry()?
-                            .tracked()
-                            .iter()
-                            .any(|(known, _)| known == path.as_str())
-                        {
-                            self.observe_path(path.as_str())?;
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        // Bounded Calls-property recovery handles missed signals and bus bursts;
-        // this is not global D-Bus enumeration. Tracked properties poll at 500ms.
-        if reconcile || self.next_recovery.is_none_or(|next| Instant::now() >= next) {
-            self.reconcile_paths()?;
-            self.refresh_availability()?;
-            self.next_recovery = Some(Instant::now() + Duration::from_secs(3));
-        } else {
-            for (path, _) in self.registry()?.tracked() {
-                self.observe_path(&path)?;
-            }
-        }
-        Ok(self.cached.clone())
+        result
     }
 
     fn dial_session(&mut self, key: &SessionKey, number: &str) -> Result<()> {
