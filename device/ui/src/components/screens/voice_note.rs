@@ -211,11 +211,11 @@ mod tests {
     fn retained_draft_phase_and_permission_labels_preserve_existing_actions() {
         for (phase, allowed, key, title, count) in [
             ("review", true, "send", "Send", 3),
-            ("review", false, "send", "Send unavailable", 3),
+            ("review", false, "send", "Send", 3),
             ("failed", true, "retry", "Send", 3),
-            ("failed", false, "retry", "Send unavailable", 3),
-            ("unknown", true, "retry", "Send again", 3),
-            ("unknown", false, "retry", "Send unavailable", 3),
+            ("failed", false, "retry", "Send", 3),
+            ("unknown", true, "retry", "Retry", 3),
+            ("unknown", false, "retry", "Send", 3),
             ("sending", false, "sending", "Sending", 1),
             ("sent", false, "sent", "Sent", 1),
         ] {
@@ -240,6 +240,39 @@ mod tests {
                 _ if allowed => assert!(matches!(intents.as_slice(),
                     [UiIntent::Voice(VoiceIntent::SavedSend(_))])),
                 _ => assert!(intents.is_empty(), "unavailable send cannot dispatch"),
+            }
+        }
+    }
+
+    #[test]
+    fn retained_draft_visible_context_and_metadata_follow_focused_action() {
+        for (phase, allowed, labels, visible_labels) in [
+            ("review", true, ["Send", "Review", "Discard"], ["Send", "Review", "Discard"]),
+            ("review", false, ["Send unavailable", "Review", "Discard"], ["Send unavailable", "Review", "Discard"]),
+            ("failed", true, ["Send", "Review", "Discard"], ["Send", "Review", "Discard"]),
+            ("unknown", true, ["Send again", "Review", "Discard"], ["Resend", "Review", "Discard"]),
+            ("unknown", false, ["Send unavailable", "Review", "Discard"], ["No Send", "Review", "Discard"]),
+            ("sending", false, ["Sending"; 3], ["Sending"; 3]),
+            ("sent", false, ["Sent"; 3], ["Sent"; 3]),
+        ] {
+            let mut runtime = retained_draft(phase, allowed);
+            let count = if matches!(phase, "sending" | "sent") { 1 } else { 3 };
+            for focus in 0..count {
+                assert_eq!(runtime.focus_index, focus);
+                let rendered = flatten::flatten(&runtime.scene_graph(1_000));
+                if phase == "unknown" {
+                    assert_eq!(elements_with_role(&rendered, "media_wheel_header_title")[0]
+                        .props.text.as_deref(), Some("Delivery unknown"));
+                    assert_eq!(elements_with_role(&rendered, "media_wheel_header_counter")[0]
+                        .props.text.as_deref(), Some(visible_labels[focus]));
+                    assert_eq!(runtime.active_title(), "Delivery unknown");
+                } else {
+                    assert_eq!(elements_with_role(&rendered, "context_label")[0]
+                        .props.text.as_deref(), Some(visible_labels[focus]));
+                    assert_eq!(runtime.active_title(), labels[focus]);
+                }
+                runtime.handle_input(InputAction::Advance, 1_020);
+                assert!(runtime.take_intents().is_empty(), "advance never sends/captures");
             }
         }
     }
