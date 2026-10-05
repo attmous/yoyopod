@@ -1,3 +1,4 @@
+use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
@@ -20,11 +21,45 @@ extern "C" fn native_test_tick() -> u32 {
     NATIVE_TEST_TICK.load(Ordering::Relaxed)
 }
 
-// Keep these native cases in one test on its owning thread. The native suite
-// must use --test-threads=1, since worker tests also initialize/deinitialize
-// LVGL's process-global state.
 #[test]
 fn completed_native_frames_have_current_shadow_pixels_within_refresh_period() {
+    const CHILD_MARKER: &str = "YOYOPOD_NATIVE_REFRESH_TEST_CHILD";
+    const COMPLETED: &str = "NATIVE_REFRESH_CASE_COMPLETED";
+    if std::env::var(CHILD_MARKER).as_deref() == Ok("1") {
+        native_frame_completion_cases();
+        println!("{COMPLETED}");
+        return;
+    }
+    // Isolate LVGL process-global init/deinit from existing worker tests. The
+    // exact selection and completion marker prove the child ran this case,
+    // rather than silently succeeding with zero selected tests.
+    let output = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            concat!(
+                module_path!(),
+                "::completed_native_frames_have_current_shadow_pixels_within_refresh_period"
+            ),
+            "--nocapture",
+        ])
+        .env(CHILD_MARKER, "1")
+        .output()
+        .expect("spawn isolated native refresh test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "native child failed:\n{stdout}\n{stderr}"
+    );
+    assert!(
+        stdout.contains(COMPLETED),
+        "native child did not complete the case:\n{stdout}\n{stderr}"
+    );
+}
+
+// All native cases run on the child test's owning thread, one initialized
+// facade at a time. No LVGL calls occur in the parent test process.
+fn native_frame_completion_cases() {
     let mut facade = NativeLvglFacade::open(None).unwrap();
     let mut framebuffer = Framebuffer::new(240, 280);
     facade.ensure_display_registered(&framebuffer).unwrap();
