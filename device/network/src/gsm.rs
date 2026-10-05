@@ -2848,6 +2848,7 @@ mod tests {
         assert_eq!(backend.registry().unwrap().tracked().len(), 1);
         assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
         assert_eq!(backend.selected_epoch, 0);
+        assert!(!backend.membership_reconcile_pending);
     }
 
     #[test]
@@ -2886,6 +2887,7 @@ mod tests {
         assert!(backend.drain_call_events().iter().any(|event| matches!(event, CallManagerWireEvent::Update(update) if update.key == key && update.phase == CallPhase::Ended)));
         assert!(backend.reconciliation().unwrap().native_calls_quiescent);
         assert_eq!(backend.selected_epoch, 0);
+        assert!(!backend.membership_reconcile_pending);
     }
 
     #[test]
@@ -2921,17 +2923,20 @@ mod tests {
         assert!(result.is_ok());
         assert!(!backend.idle_calls_proven);
         assert!(backend.drain_call_events().is_empty());
+        assert!(backend.membership_reconcile_pending);
         fail.store(true, Ordering::SeqCst);
         assert!(
             backend.refresh().is_err(),
             "stale snapshot discarded membership work instead of attempting a fresh scan"
         );
         assert!(!backend.modem_lost);
+        assert!(backend.membership_reconcile_pending);
         fail.store(false, Ordering::SeqCst);
         backend.refresh().unwrap();
         assert!(backend.drain_call_events().iter().any(|event| matches!(event, CallManagerWireEvent::Offer(offer) if offer.address == "+49123456789")), "failed fresh observation discarded pending membership work");
         assert_eq!(backend.registry().unwrap().tracked().len(), 1);
         assert_eq!(backend.selected_epoch, 0);
+        assert!(!backend.membership_reconcile_pending);
     }
 
     fn replace_owner(connection: &Connection) {
