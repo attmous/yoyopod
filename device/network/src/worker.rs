@@ -1542,11 +1542,14 @@ mod tests {
     #[derive(Default)]
     struct NoFixModem {
         gps_queries: Arc<Mutex<usize>>,
+        opened: Arc<Mutex<usize>>,
+        ppp_starts: Arc<Mutex<usize>>,
         fix: Option<crate::gps::GpsFix>,
     }
 
     impl ModemController for NoFixModem {
         fn open(&mut self) -> Result<(), crate::modem::ModemError> {
+            *self.opened.lock().unwrap() += 1;
             Ok(())
         }
         fn close(&mut self) -> Result<(), crate::modem::ModemError> {
@@ -1577,6 +1580,7 @@ mod tests {
             _: Option<&str>,
             _: u64,
         ) -> Result<crate::modem::PppLink, crate::modem::ModemError> {
+            *self.ppp_starts.lock().unwrap() += 1;
             Ok(crate::modem::PppLink {
                 interface: "ppp0".into(),
                 pid: None,
@@ -1771,9 +1775,11 @@ mod tests {
         let config_dir = tempfile::tempdir().unwrap();
         let modem = NoFixModem::default();
         let queries = modem.gps_queries.clone();
-        let mut runtime = NetworkRuntime::with_controller(
+        let opened = modem.opened.clone();
+        let ppp = modem.ppp_starts.clone();
+        let mut runtime = NetworkRuntime::new(
             config_dir.path().to_str().unwrap(),
-            crate::config::NetworkConfig {
+            crate::config::NetworkHostConfig {
                 enabled: true,
                 ..Default::default()
             },
@@ -1815,6 +1821,8 @@ mod tests {
         assert!(runtime.suspend_for_voice_command().is_err());
         assert!(!runtime.snapshot().connected);
         assert_eq!(*queries.lock().unwrap(), 0);
+        assert_eq!(*opened.lock().unwrap(), 0);
+        assert_eq!(*ppp.lock().unwrap(), 0);
     }
 
     #[test]

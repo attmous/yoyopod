@@ -64,13 +64,21 @@ impl RuntimeLoop {
             8_000,
             state.call_ring_duration_ms,
         );
+        let (native_guard, error) = crate::call_manager::native_guard::NativeOperationGuard::load(
+            &state.native_call_guard_file,
+        );
+        if let Some(error) = error {
+            state.mark_worker(WorkerDomain::Network, WorkerState::Degraded, error);
+        }
+        let mut calls = calls::CallIntegration::default();
+        calls.native_guard = native_guard;
         Self {
             state,
             shutdown_requested: false,
             pending_worker_commands: HashMap::new(),
             manager,
             call_operations: Default::default(),
-            calls: Default::default(),
+            calls,
             clock_origin: Instant::now(),
             now_ms: 0,
         }
@@ -121,6 +129,7 @@ impl RuntimeLoop {
 
             let before = self.state.clone();
             event.apply(&mut self.state);
+            self.project_call();
             if self.manager.mode() != self.state.settings.device_mode {
                 self.handle_call(
                     io,
@@ -184,6 +193,18 @@ impl RuntimeLoop {
         match command {
             RuntimeCommand::WorkerCommand { domain, envelope } => {
                 let id = envelope.request_id.clone();
+                if domain == WorkerDomain::Network
+                    && matches!(envelope.message_type.as_str(), "call.action" | "call.dial")
+                {
+                    if !self.guard_native_dispatch(&envelope) {
+                        if let Some(operation) =
+                            id.and_then(|id| self.call_operations.take(domain, &id))
+                        {
+                            self.finish_call_operation(io, operation, false, &json!({}));
+                        }
+                        return;
+                    }
+                }
                 if !io.send_worker_envelope(domain, envelope) {
                     if let Some(operation) =
                         id.and_then(|id| self.call_operations.take(domain, &id))

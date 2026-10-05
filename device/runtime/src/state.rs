@@ -740,6 +740,7 @@ pub struct OverlayRuntimeState {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeState {
+    pub native_call_guard_file: std::path::PathBuf,
     pub call_ring_duration_ms: u64,
     pub display_brightness: f32,
     pub audio_route: Value,
@@ -774,6 +775,7 @@ pub struct RuntimeState {
 impl Default for RuntimeState {
     fn default() -> Self {
         Self {
+            native_call_guard_file: Default::default(),
             call_ring_duration_ms: 30_000,
             display_brightness: 1.0,
             audio_route: json!({}),

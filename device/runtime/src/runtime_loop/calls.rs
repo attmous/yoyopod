@@ -32,6 +32,7 @@ struct Resources {
 
 #[derive(Debug, Clone)]
 pub(super) struct CallIntegration {
+    pub(super) native_guard: crate::call_manager::native_guard::NativeOperationGuard,
     resources: Option<Resources>,
     generations: HashMap<WorkerDomain, u64>,
     startup: HashMap<WorkerDomain, Vec<WorkerEnvelope>>,
@@ -44,6 +45,7 @@ pub(super) struct CallIntegration {
 impl Default for CallIntegration {
     fn default() -> Self {
         Self {
+            native_guard: Default::default(),
             resources: None,
             generations: [
                 (WorkerDomain::Voip, 1),
@@ -122,11 +124,12 @@ impl RuntimeLoop {
                 envelope.payload["worker_generation"] = json!(self.calls.generations[&domain]);
                 envelope.payload["recovery_quarantined"] = json!(
                     domain == WorkerDomain::Network
-                        && self
-                            .calls
-                            .resources
-                            .as_ref()
-                            .is_some_and(|r| r.recovery_quarantined)
+                        && (self.calls.native_guard.quarantined()
+                            || self
+                                .calls
+                                .resources
+                                .as_ref()
+                                .is_some_and(|r| r.recovery_quarantined))
                 );
                 envelope.request_id = Some(format!(
                     "configure-{}-{}",
@@ -168,6 +171,39 @@ impl RuntimeLoop {
             && self.calls.generations.get(&domain) == Some(&key.generation)
     }
 
+    pub(super) fn guard_native_dispatch(&mut self, envelope: &WorkerEnvelope) -> bool {
+        let Ok(key) = serde_json::from_value::<SessionKey>(envelope.payload["key"].clone()) else {
+            return false;
+        };
+        match self
+            .calls
+            .native_guard
+            .before_dispatch(&key, self.calls.native_owner.as_deref())
+        {
+            Ok(()) => true,
+            Err(error) => {
+                self.state.mark_worker(
+                    WorkerDomain::Network,
+                    WorkerState::Degraded,
+                    format!("native call dispatch blocked: {error}"),
+                );
+                false
+            }
+        }
+    }
+
+    fn clear_native_guard(&mut self) {
+        if let Err(error) = self
+            .calls
+            .native_guard
+            .clear_if_released(self.manager.session().is_none() && self.calls.resources.is_none())
+        {
+            self.calls.native_guard.quarantine();
+            self.state
+                .mark_worker(WorkerDomain::Network, WorkerState::Degraded, error);
+        }
+    }
+
     pub(super) fn intercept_call_message(
         &mut self,
         io: &mut impl LoopIo,
@@ -194,6 +230,10 @@ impl RuntimeLoop {
                         serde_json::from_value::<CallUpdate>(envelope.payload.clone())
                     {
                         if self.valid_key(domain, &update.key) {
+                            let before = self.state.clone();
+                            if domain == WorkerDomain::Network && update.phase == CallPhase::Ended {
+                                self.calls.native_guard.terminal(&update.key);
+                            }
                             if self.manager.session() == Some(&update.key) {
                                 // GSM Ended is emitted after native terminal proof AND local PCM join.
                                 // SIP Ended retains refs; its distinct Released fact is required.
@@ -212,6 +252,8 @@ impl RuntimeLoop {
                                 );
                             }
                             self.handle_call(io, CallManagerEvent::Update(update));
+                            self.send_runtime_snapshot_patches(io, &before);
+                            self.clear_native_guard();
                         }
                     }
                 }
@@ -342,12 +384,17 @@ impl RuntimeLoop {
                 | "gsm.set_mute"
         );
         let start = yoyopod_protocol::audio::is_audio_start(&envelope.message_type);
+        let audio_test = matches!(
+            envelope.message_type.as_str(),
+            "audio_test_output" | "audio_test_input"
+        );
         let stale = start
             && envelope.payload["voice_activity_generation"].as_u64()
                 != Some(self.state.voice.activity_generation);
         let blocked = legacy_call
             || stale
-            || (start && (self.manager.session().is_some() || self.shutdown_requested));
+            || ((start || audio_test)
+                && (self.manager.session().is_some() || self.shutdown_requested));
         if blocked {
             if let RuntimeCommand::CorrelatedWorkerCommand {
                 command_id,
@@ -362,7 +409,10 @@ impl RuntimeLoop {
     }
 
     pub(super) fn request_outgoing(&mut self, io: &mut impl LoopIo, action: ContactAction) {
-        if self.manager.session().is_some() || self.shutdown_requested {
+        if self.manager.session().is_some()
+            || self.shutdown_requested
+            || self.calls.native_guard.blocked()
+        {
             return;
         }
         let Some(address) = self
@@ -408,7 +458,10 @@ impl RuntimeLoop {
         let before = self.state.clone();
         let effects = self.manager.handle(
             event,
-            &self.state.call_context(self.shutdown_requested),
+            &self.state.call_context(
+                self.shutdown_requested
+                    || (self.manager.session().is_none() && self.calls.native_guard.blocked()),
+            ),
             self.now_ms,
         );
         // Publish policy immediately, before any effect can synchronously fail and recurse.
@@ -420,7 +473,14 @@ impl RuntimeLoop {
         self.confirm_call_cleanup(io);
     }
 
-    fn project_call(&mut self) {
+    pub(super) fn project_call(&mut self) {
+        if self.calls.native_guard.quarantined() {
+            self.state.call.gsm_available = false;
+            self.state.call.gsm_unavailable_reason = "native call recovery required".into();
+            self.state.overlay.error = "native_call_recovery_required".into();
+            self.state.overlay.code = "native_call_recovery_required".into();
+            self.state.overlay.message = "Call recovery required".into();
+        }
         self.state.call.session = self.manager.session().cloned();
         self.state.call.session_phase = self.manager.phase();
         self.state.call.accept_enabled = self.manager.accept_enabled();
@@ -452,486 +512,6 @@ impl RuntimeLoop {
             self.state.call.muted = false;
         }
     }
-
-    fn execute_call_effect(&mut self, io: &mut impl LoopIo, effect: CallEffect) {
-        let command = match effect {
-            CallEffect::PrepareAudio(mut request) => {
-                if self.manager.session() != Some(&request.key)
-                    || self.manager.phase() != Some(CallPhase::Preparing)
-                {
-                    return;
-                }
-                request.voice_activity_generation = self.state.voice.invalidate_for_call();
-                self.state.focus_prompt_request_id = None;
-                self.calls.resources = Some(Resources {
-                    interruption: request.clone(),
-                    media_prepared: false,
-                    voip_prepared: false,
-                    speech_cancelled: !self.calls.voice_enabled,
-                    route_ready: false,
-                    native_released: false,
-                    alert_stopped: true,
-                    releases_started: false,
-                    media_released: false,
-                    voip_released: false,
-                    native_owner: self.calls.native_owner.clone(),
-                    recovery_quarantined: false,
-                });
-                // This signal is bookkeeping only; raw offers never populate history.
-                if request.key.transport == CallTransport::Sip && self.manager.incoming() {
-                    let admit = self.call_operations.command(
-                        &request.key,
-                        OperationPurpose::Admit,
-                        WorkerDomain::Voip,
-                        "call.admit",
-                        json!({"key": request.key}),
-                        self.now_ms,
-                    );
-                    self.dispatch_command(io, admit);
-                }
-                let commands = [
-                    self.call_operations
-                        .interrupt(&request, WorkerDomain::Media, self.now_ms),
-                    self.call_operations
-                        .interrupt(&request, WorkerDomain::Voip, self.now_ms),
-                    self.call_operations.command(
-                        &request.key,
-                        OperationPurpose::AlertRoute,
-                        WorkerDomain::Media,
-                        "media.set_alert_output",
-                        self.state.audio_route.clone(),
-                        self.now_ms,
-                    ),
-                ];
-                for command in commands {
-                    self.dispatch_command(io, command);
-                }
-                if self.calls.voice_enabled {
-                    let cancel = self.call_operations.command(
-                        &request.key,
-                        OperationPurpose::CancelSpeech,
-                        WorkerDomain::Voice,
-                        "voice.cancel",
-                        json!({}),
-                        self.now_ms,
-                    );
-                    self.dispatch_command(io, cancel);
-                }
-                return;
-            }
-            CallEffect::StartRingtone(mut request) => {
-                if self.manager.session() != Some(&request.key) {
-                    return;
-                }
-                request.lease_ms = self.manager.remaining_ring_ms(self.now_ms);
-                if request.lease_ms == 0 {
-                    self.handle_call(io, CallManagerEvent::Tick);
-                    return;
-                }
-                request.operation_generation = self.call_operations.next_alert(&request.key);
-                if let Some(r) = self.calls.resources.as_mut() {
-                    r.alert_stopped = false;
-                }
-                self.call_operations.command(
-                    &request.key,
-                    OperationPurpose::StartRingtone(request.operation_generation),
-                    WorkerDomain::Media,
-                    "media.ringtone_start",
-                    json!(request),
-                    self.now_ms,
-                )
-            }
-            CallEffect::StopRingtone(mut request) => {
-                let Some(epoch) = self.call_operations.stop_alert(&request.key) else {
-                    return;
-                };
-                request.operation_generation = epoch;
-                self.call_operations.command(
-                    &request.key,
-                    OperationPurpose::StopRingtone(epoch),
-                    WorkerDomain::Media,
-                    "media.ringtone_stop",
-                    json!(request),
-                    self.now_ms,
-                )
-            }
-            CallEffect::Transport(command) => {
-                let domain = domain_for(&command.key.transport);
-                if !self.valid_key(domain, &command.key) {
-                    return;
-                }
-                let purpose = if self.manager.session() == Some(&command.key) {
-                    OperationPurpose::Native(command.action.clone())
-                } else {
-                    OperationPurpose::Secondary(command.action.clone(), 0)
-                };
-                self.call_operations.command(
-                    &command.key,
-                    purpose,
-                    domain,
-                    "call.action",
-                    json!(command),
-                    self.now_ms,
-                )
-            }
-            CallEffect::Dial { key, address } => {
-                if self.manager.session() != Some(&key)
-                    || self.manager.phase() != Some(CallPhase::Outgoing)
-                {
-                    return;
-                }
-                self.call_operations.command(
-                    &key,
-                    OperationPurpose::Dial,
-                    domain_for(&key.transport),
-                    "call.dial",
-                    json!({"key": key, "address": address}),
-                    self.now_ms,
-                )
-            }
-            CallEffect::WakeDisplay(key) => {
-                if self.manager.session() != Some(&key) {
-                    return;
-                }
-                RuntimeCommand::WorkerCommand {
-                    domain: WorkerDomain::Ui,
-                    envelope: UiCommand::SetBacklight {
-                        brightness: self.state.display_brightness,
-                    }
-                    .into_envelope(),
-                }
-            }
-            CallEffect::RecoverTransport {
-                transport,
-                generation,
-            } => {
-                let domain = domain_for(&transport);
-                if self.calls.generations[&domain] != generation {
-                    return;
-                }
-                RuntimeCommand::RecoverWorker { domain }
-            }
-            CallEffect::RestoreUi(key) => {
-                self.call_operations.invalidate(&key);
-                self.calls.resources = None;
-                self.calls.recoveries.clear();
-                return;
-            }
-            CallEffect::Publish => return,
-        };
-        self.dispatch_command(io, command);
-    }
-
-    pub(super) fn finish_call_operation(
-        &mut self,
-        io: &mut impl LoopIo,
-        operation: PendingOperation,
-        ok: bool,
-        payload: &Value,
-    ) {
-        if !self.call_operations.is_current(&operation) {
-            return;
-        }
-        if let OperationPurpose::Secondary(action, attempt) = &operation.purpose {
-            if !ok && *attempt < 1 && self.valid_key(operation.domain, &operation.key) {
-                let command = CallCommand {
-                    key: operation.key.clone(),
-                    action: action.clone(),
-                };
-                let retry = self.call_operations.command(
-                    &operation.key,
-                    OperationPurpose::Secondary(action.clone(), attempt + 1),
-                    operation.domain,
-                    "call.action",
-                    json!(command),
-                    self.now_ms,
-                );
-                self.dispatch_command(io, retry);
-            } else if !ok {
-                self.state.mark_worker(
-                    operation.domain,
-                    WorkerState::Degraded,
-                    "secondary call rejection failed; primary retained",
-                );
-            }
-            return;
-        }
-        if self.manager.session() != Some(&operation.key) {
-            return;
-        }
-        match operation.purpose {
-            OperationPurpose::PrepareMedia
-            | OperationPurpose::PrepareVoip
-            | OperationPurpose::CancelSpeech
-            | OperationPurpose::AlertRoute => {
-                if ok {
-                    if let Some(r) = self.calls.resources.as_mut() {
-                        match operation.purpose {
-                            OperationPurpose::PrepareMedia => {
-                                r.media_prepared = true;
-                                if matches!(
-                                    self.state.media.playback_state.as_str(),
-                                    "playing" | "paused"
-                                ) {
-                                    self.state.media.playback_state = "paused".into();
-                                }
-                            }
-                            OperationPurpose::PrepareVoip => {
-                                r.voip_prepared = true;
-                                if let Some(path) = payload["draft_path"].as_str() {
-                                    self.state.voice.interrupted_draft_path = Some(path.to_owned());
-                                }
-                            }
-                            OperationPurpose::CancelSpeech => r.speech_cancelled = true,
-                            OperationPurpose::AlertRoute => r.route_ready = true,
-                            _ => {}
-                        }
-                    }
-                    if self.calls.resources.as_ref().is_some_and(|r| {
-                        r.media_prepared && r.voip_prepared && r.speech_cancelled && r.route_ready
-                    }) {
-                        self.handle_call(
-                            io,
-                            CallManagerEvent::AudioPrepared {
-                                key: operation.key,
-                                ok: true,
-                            },
-                        );
-                    }
-                } else {
-                    self.end_for_audio_failure(io);
-                    self.recover_call_worker(io, operation.domain);
-                }
-            }
-            OperationPurpose::StartRingtone(_) => {
-                self.handle_call(
-                    io,
-                    CallManagerEvent::RingtoneStarted {
-                        key: operation.key,
-                        ok,
-                    },
-                );
-                if !ok {
-                    self.recover_call_worker(io, WorkerDomain::Media);
-                }
-            }
-            OperationPurpose::StopRingtone(_) => {
-                if let Some(r) = self.calls.resources.as_mut() {
-                    r.alert_stopped = ok;
-                }
-                self.handle_call(
-                    io,
-                    CallManagerEvent::RingtoneStopped {
-                        key: operation.key,
-                        ok,
-                    },
-                );
-                if !ok {
-                    self.recover_call_worker(io, WorkerDomain::Media);
-                }
-            }
-            OperationPurpose::ReleaseMedia | OperationPurpose::ReleaseVoip => {
-                if let Some(r) = self.calls.resources.as_mut() {
-                    if operation.purpose == OperationPurpose::ReleaseMedia {
-                        r.media_released = ok;
-                    } else {
-                        r.voip_released = ok;
-                    }
-                }
-                if !ok {
-                    self.recover_call_worker(io, operation.domain);
-                }
-            }
-            OperationPurpose::Admit if !ok => self.end_for_audio_failure(io),
-            _ => {
-                if let Some(event) =
-                    crate::call_manager::effects::CallOperationLedger::native_event(&operation, ok)
-                {
-                    self.handle_call(io, event);
-                }
-            }
-        }
-        self.confirm_call_cleanup(io);
-    }
-
-    fn end_for_audio_failure(&mut self, io: &mut impl LoopIo) {
-        if let Some(key) = self.manager.session().cloned() {
-            self.handle_call(
-                io,
-                CallManagerEvent::UserAction(CallCommand {
-                    key,
-                    action: CallAction::Hangup,
-                }),
-            );
-        }
-    }
-
-    pub(super) fn confirm_call_cleanup(&mut self, io: &mut impl LoopIo) {
-        if self.manager.phase() != Some(CallPhase::Ending) {
-            return;
-        }
-        let Some(r) = self.calls.resources.as_mut() else {
-            return;
-        };
-        if !r.native_released
-            || !r.alert_stopped
-            || !r.media_prepared
-            || !r.voip_prepared
-            || !r.speech_cancelled
-        {
-            return;
-        }
-        if !r.releases_started {
-            r.releases_started = true;
-            let request = r.interruption.clone();
-            let mut commands = Vec::new();
-            if !r.media_released {
-                commands.push(self.call_operations.command(
-                    &request.key,
-                    OperationPurpose::ReleaseMedia,
-                    WorkerDomain::Media,
-                    "media.release_call",
-                    json!(request),
-                    self.now_ms,
-                ));
-            }
-            if !r.voip_released {
-                commands.push(self.call_operations.command(
-                    &request.key,
-                    OperationPurpose::ReleaseVoip,
-                    WorkerDomain::Voip,
-                    "voip.release_call",
-                    json!(request),
-                    self.now_ms,
-                ));
-            }
-            for command in commands {
-                self.dispatch_command(io, command);
-            }
-        } else if r.media_released && r.voip_released {
-            let key = r.interruption.key.clone();
-            self.handle_call(io, CallManagerEvent::CleanupConfirmed(key));
-        }
-    }
-
-    pub(super) fn recover_call_worker(&mut self, io: &mut impl LoopIo, domain: WorkerDomain) {
-        if self.shutdown_requested {
-            return;
-        }
-        let attempts = self.calls.recoveries.entry(domain).or_default();
-        if *attempts >= 2 {
-            self.state.mark_worker(
-                domain,
-                WorkerState::Degraded,
-                "call recovery requires intervention",
-            );
-            return;
-        }
-        *attempts += 1;
-        let generation = *self.calls.generations.get(&domain).unwrap_or(&1);
-        if domain == WorkerDomain::Network {
-            if let Some(r) = self
-                .calls
-                .resources
-                .as_mut()
-                .filter(|r| r.interruption.key.transport == CallTransport::Gsm)
-            {
-                // MM authorization/dispatch can outlive its client with no proved total deadline.
-                // Preserve uncertainty in the replacement's startup gate as well as this owner.
-                r.recovery_quarantined = true;
-                r.native_released = false;
-            }
-        }
-        self.call_operations.invalidate_domain(domain);
-        if let Err(reason) = io.recover_worker(domain) {
-            self.state.mark_worker(
-                domain,
-                WorkerState::Degraded,
-                format!("call recovery failed: {reason}"),
-            );
-            return;
-        }
-        self.calls.generations.insert(
-            domain,
-            generation
-                .checked_add(1)
-                .expect("worker generation exhausted"),
-        );
-        self.configure_call_worker(io, domain);
-        if let Some(r) = self.calls.resources.as_mut() {
-            r.releases_started = false;
-            if domain == WorkerDomain::Media {
-                r.media_prepared = false;
-                r.media_released = false;
-                r.route_ready = false;
-                r.alert_stopped = true;
-            } else if domain == WorkerDomain::Voip {
-                r.voip_prepared = false;
-                r.voip_released = false;
-                // Successful supervisor recovery joined all old native/helper processes.
-                if r.interruption.key.transport == CallTransport::Sip {
-                    r.native_released = true;
-                }
-            } else if domain == WorkerDomain::Voice {
-                r.speech_cancelled = false;
-            }
-            let request = r.interruption.clone();
-            if matches!(domain, WorkerDomain::Media | WorkerDomain::Voip) {
-                let interrupt = self
-                    .call_operations
-                    .interrupt(&request, domain, self.now_ms);
-                self.dispatch_command(io, interrupt);
-            }
-            if domain == WorkerDomain::Media {
-                for command in crate::event::commands_for_event(
-                    &self.state,
-                    &RuntimeEvent::AudioRouteLocal(self.state.audio_route.clone()),
-                ) {
-                    if matches!(&command, RuntimeCommand::WorkerCommand { domain: WorkerDomain::Media, envelope }
-                        if envelope.message_type != "media.set_alert_output")
-                    {
-                        self.dispatch_command(io, command);
-                    }
-                }
-                self.handle_call(
-                    io,
-                    CallManagerEvent::RingtoneStopped {
-                        key: request.key.clone(),
-                        ok: true,
-                    },
-                );
-                let route = self.call_operations.command(
-                    &request.key,
-                    OperationPurpose::AlertRoute,
-                    domain,
-                    "media.set_alert_output",
-                    self.state.audio_route.clone(),
-                    self.now_ms,
-                );
-                self.dispatch_command(io, route);
-            } else if domain == WorkerDomain::Voip {
-                self.dispatch_command(
-                    io,
-                    RuntimeCommand::WorkerCommand {
-                        domain,
-                        envelope: WorkerEnvelope::command(
-                            "voip.set_audio_devices",
-                            None,
-                            self.state.audio_route.clone(),
-                        ),
-                    },
-                );
-            } else if domain == WorkerDomain::Voice {
-                let cancel = self.call_operations.command(
-                    &request.key,
-                    OperationPurpose::CancelSpeech,
-                    domain,
-                    "voice.cancel",
-                    json!({}),
-                    self.now_ms,
-                );
-                self.dispatch_command(io, cancel);
-            }
-        }
-    }
 }
+mod operations;
+mod recovery;

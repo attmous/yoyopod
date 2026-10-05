@@ -24,6 +24,7 @@ const VOICE_WORKER_DEFAULT: &str = "device/speech/build/yoyopod-speech-host";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeConfig {
+    pub native_call_guard_file: String,
     pub call_ring_duration_ms: u64,
     pub call_mode_file: String,
     pub ui: UiConfig,
@@ -189,6 +190,14 @@ impl RuntimeConfig {
         );
 
         Ok(Self {
+            native_call_guard_file: resolve_runtime_path(
+                &runtime_root,
+                string_at(
+                    &calling,
+                    &["calling", "native_operation_guard_file"],
+                    "data/device/native-call-guard.json",
+                ),
+            ),
             call_ring_duration_ms: uint_at(&calling, &["calling", "ring_duration_seconds"], 30)
                 .saturating_mul(1000),
             call_mode_file: resolve_runtime_path(

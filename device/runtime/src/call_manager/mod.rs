@@ -1,6 +1,7 @@
 //! Pure call ownership, admission, and lifecycle policy. Effects are executed by runtime.
 pub mod effects;
 pub mod identity;
+pub mod native_guard;
 mod policy;
 #[cfg(test)]
 mod tests;

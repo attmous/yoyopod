@@ -110,6 +110,7 @@ fn start_workers(
     config_dir: &Path,
 ) -> Result<RuntimeState> {
     let mut state = RuntimeState::default();
+    state.native_call_guard_file = config.native_call_guard_file.clone().into();
     state.call_ring_duration_ms = config.call_ring_duration_ms;
     state.display_brightness = config.ui.brightness as f32;
     state.audio_route = json!({"media_device": config.media.alsa_device, "media_volume": config.media.default_volume,

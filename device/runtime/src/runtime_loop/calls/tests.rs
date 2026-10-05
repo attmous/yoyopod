@@ -412,3 +412,253 @@ fn outgoing_permissions_and_audio_commands_are_enforced_at_dispatch() {
     assert_eq!(io.sent.len(), before);
     assert_eq!(runtime.state().call.session.as_ref(), Some(&key));
 }
+
+#[test]
+fn configured_modes_and_paused_or_stopped_music_survive_all_cleanup() {
+    use crate::call_manager::DeviceMode;
+    for mode in [DeviceMode::Silent, DeviceMode::DoNotDisturb] {
+        let (mut runtime, mut io, key) = fixture(CallTransport::Sip);
+        runtime.state.settings.device_mode = mode.clone();
+        runtime = RuntimeLoop::new(runtime.state);
+        offer(&mut runtime, &mut io, &key, 0);
+        if mode == DeviceMode::DoNotDisturb {
+            assert!(runtime.state().call.session.is_none());
+            assert!(!io.sent.iter().any(|(_, e)| matches!(
+                e.message_type.as_str(),
+                "ui.set_backlight" | "media.interrupt_for_call" | "voice.cancel"
+            )));
+        } else {
+            prepare(&mut runtime, &mut io, 1);
+            assert!(runtime.state().call.session.is_some());
+            assert!(!io
+                .sent
+                .iter()
+                .any(|(_, e)| e.message_type == "media.ringtone_start"));
+        }
+    }
+    for playback in ["paused", "stopped"] {
+        let (mut runtime, mut io, key) = fixture(CallTransport::Gsm);
+        runtime.state.media.playback_state = playback.into();
+        offer(&mut runtime, &mut io, &key, 0);
+        terminal(&mut runtime, &mut io, &key, 1);
+        prepare(&mut runtime, &mut io, 2);
+        release(&mut runtime, &mut io, &key, 3);
+        assert_eq!(runtime.state().media.playback_state, playback);
+        assert_eq!(runtime.state().media.position_ms, 12_345);
+    }
+}
+
+#[test]
+fn matching_stop_failure_recovers_media_before_cleanup_and_retired_reply_is_ignored() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Gsm);
+    offer(&mut runtime, &mut io, &key, 0);
+    prepare(&mut runtime, &mut io, 1);
+    respond(&mut runtime, &mut io, "media.ringtone_start", 2);
+    control(&mut runtime, &mut io, &key, CallAction::Answer, 3);
+    let stop = io
+        .sent
+        .iter()
+        .rev()
+        .find(|(_, e)| e.message_type == "media.ringtone_stop")
+        .unwrap()
+        .1
+        .clone();
+    io.messages.push((
+        WorkerDomain::Media,
+        WorkerEnvelope::error(
+            "media.error",
+            stop.request_id.clone(),
+            "command_failed",
+            "release failed",
+        ),
+    ));
+    runtime.run_once_at(&mut io, 4);
+    assert_eq!(io.recovered, vec![WorkerDomain::Media]);
+    assert_eq!(native_count(&io, "answer"), 0);
+    assert_eq!(runtime.state().call.session.as_ref(), Some(&key));
+    io.messages.push((
+        WorkerDomain::Media,
+        WorkerEnvelope::result(
+            "media.ringtone_stop",
+            stop.request_id,
+            json!({"key":key,"operation_generation":1,"ok":true}),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 5);
+    assert_eq!(native_count(&io, "answer"), 0);
+    terminal(&mut runtime, &mut io, &key, 6);
+    respond(&mut runtime, &mut io, "media.interrupt_for_call", 7);
+    respond(&mut runtime, &mut io, "media.set_alert_output", 8);
+    release(&mut runtime, &mut io, &key, 9);
+    assert!(runtime.state().call.session.is_none());
+}
+
+#[test]
+fn failed_release_retries_only_unreleased_audio_resource() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Gsm);
+    offer(&mut runtime, &mut io, &key, 0);
+    terminal(&mut runtime, &mut io, &key, 1);
+    prepare(&mut runtime, &mut io, 2);
+    respond(&mut runtime, &mut io, "media.release_call", 3);
+    let command = io
+        .sent
+        .iter()
+        .rev()
+        .find(|(_, e)| e.message_type == "voip.release_call")
+        .unwrap()
+        .1
+        .clone();
+    io.messages.push((
+        WorkerDomain::Voip,
+        WorkerEnvelope::error("voip.error", command.request_id, "command_failed", "failed"),
+    ));
+    runtime.run_once_at(&mut io, 4);
+    assert_eq!(io.recovered, vec![WorkerDomain::Voip]);
+    respond(&mut runtime, &mut io, "voip.interrupt_for_call", 5);
+    assert_eq!(
+        io.sent
+            .iter()
+            .filter(|(_, e)| e.message_type == "media.release_call")
+            .count(),
+        1
+    );
+    respond(&mut runtime, &mut io, "voip.release_call", 6);
+    assert!(runtime.state().call.session.is_none());
+}
+
+#[test]
+fn runtime_outgoing_rechecks_permission_address_and_reserves_before_dial() {
+    let (mut runtime, mut io, _) = fixture(CallTransport::Sip);
+    let mut action = ContactAction {
+        id: "unknown".into(),
+        uri: "sip:dad@example.test".into(),
+        ..Default::default()
+    };
+    runtime.request_outgoing(&mut io, action.clone());
+    assert!(runtime.manager.session().is_none());
+    action.id = "sip:dad@example.test".into();
+    runtime.state.call.contacts[0].can_call = false;
+    runtime.request_outgoing(&mut io, action.clone());
+    assert!(runtime.manager.session().is_none());
+    runtime.state.call.contacts[0].can_call = true;
+    action.uri = "sip:attacker@example.test".into();
+    runtime.request_outgoing(&mut io, action);
+    let key = runtime.manager.session().cloned().unwrap();
+    assert!(!io.sent.iter().any(|(_, e)| e.message_type == "call.dial"));
+    prepare(&mut runtime, &mut io, 1);
+    assert!(io.sent.iter().any(|(_, e)| e.message_type == "call.dial"
+        && e.payload["key"] == json!(key)
+        && e.payload["address"] == "sip:dad@example.test"));
+}
+
+#[test]
+fn stale_stamped_audio_and_remote_resume_are_blocked_during_ownership() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Sip);
+    let stale = RuntimeCommand::WorkerCommand {
+        domain: WorkerDomain::Media,
+        envelope: WorkerEnvelope::command(
+            "media.resume",
+            None,
+            json!({"voice_activity_generation":0}),
+        ),
+    };
+    offer(&mut runtime, &mut io, &key, 0);
+    io.messages.push((
+        WorkerDomain::Cloud,
+        WorkerEnvelope::event(
+            "cloud.command",
+            json!({"command":{"command":"resume","command_id":"remote-play"}}),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 1);
+    assert!(io.sent.iter().any(|(_, e)| e.message_type == "cloud.ack"
+        && e.payload["command_id"] == "remote-play"
+        && e.payload["ok"] == false));
+    terminal(&mut runtime, &mut io, &key, 2);
+    prepare(&mut runtime, &mut io, 3);
+    release(&mut runtime, &mut io, &key, 4);
+    let before = io.sent.len();
+    runtime.dispatch_command(&mut io, stale);
+    assert_eq!(
+        io.sent.len(),
+        before,
+        "a delayed old start cannot be restamped after call release"
+    );
+}
+
+#[test]
+fn persisted_native_dispatch_quarantines_both_transports_on_runtime_restart() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("native.json");
+    let (mut runtime, mut io, _) = fixture(CallTransport::Gsm);
+    runtime.state.native_call_guard_file = path.clone();
+    runtime = RuntimeLoop::new(runtime.state);
+    runtime.request_outgoing(
+        &mut io,
+        ContactAction {
+            id: "sip:dad@example.test".into(),
+            method: CallMethod::Gsm,
+            ..Default::default()
+        },
+    );
+    prepare(&mut runtime, &mut io, 1);
+    assert!(path.exists(), "durable marker precedes native dial");
+    assert!(io.sent.iter().any(|(_, e)| e.message_type == "call.dial"));
+    let mut restarted = RuntimeLoop::new(runtime.state.clone());
+    let mut replacement = FakeLoopIo::default();
+    restarted.calls.startup.insert(
+        WorkerDomain::Network,
+        vec![WorkerEnvelope::command(
+            "network.configure",
+            None,
+            json!({}),
+        )],
+    );
+    restarted.configure_call_worker(&mut replacement, WorkerDomain::Network);
+    assert!(replacement
+        .sent
+        .iter()
+        .any(|(_, e)| e.message_type == "network.configure"
+            && e.payload["recovery_quarantined"] == true));
+    for transport in [CallTransport::Sip, CallTransport::Gsm] {
+        let key = SessionKey {
+            transport,
+            generation: 1,
+            call_id: "new".into(),
+        };
+        offer(&mut restarted, &mut replacement, &key, 2);
+        assert!(restarted.manager.session().is_none());
+    }
+    assert!(!replacement.sent.iter().any(|(_, e)| matches!(
+        e.message_type.as_str(),
+        "media.interrupt_for_call" | "ui.set_backlight" | "call.dial"
+    )));
+    assert!(path.exists());
+}
+
+#[test]
+fn dirty_marker_write_failure_prevents_the_actual_native_envelope() {
+    let directory = tempfile::tempdir().unwrap();
+    let blocker = directory.path().join("blocker");
+    std::fs::write(&blocker, "file").unwrap();
+    let (mut runtime, mut io, _) = fixture(CallTransport::Gsm);
+    // Initially clean path; make the parent unwritable only after load.
+    let path = directory.path().join("future/native.json");
+    runtime.state.native_call_guard_file = path;
+    runtime = RuntimeLoop::new(runtime.state);
+    std::fs::write(directory.path().join("future"), "file").unwrap();
+    runtime.request_outgoing(
+        &mut io,
+        ContactAction {
+            id: "sip:dad@example.test".into(),
+            method: CallMethod::Gsm,
+            ..Default::default()
+        },
+    );
+    prepare(&mut runtime, &mut io, 1);
+    assert!(!io
+        .sent
+        .iter()
+        .any(|(_, e)| e.message_type == "call.dial" || e.message_type == "call.action"));
+    assert!(runtime.calls.native_guard.quarantined());
+}
