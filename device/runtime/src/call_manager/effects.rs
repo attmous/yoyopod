@@ -59,6 +59,10 @@ impl CallOperationLedger {
         payload: Value,
         now_ms: u64,
     ) -> RuntimeCommand {
+        if purpose == OperationPurpose::AlertRoute {
+            self.operations
+                .retain(|p| p.key != *key || p.purpose != OperationPurpose::AlertRoute);
+        }
         if matches!(
             purpose,
             OperationPurpose::Dial

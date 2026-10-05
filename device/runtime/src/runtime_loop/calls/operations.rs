@@ -75,6 +75,10 @@ impl RuntimeLoop {
                 if self.manager.session() != Some(&request.key) {
                     return;
                 }
+                if !self.calls.resources.as_ref().is_some_and(|r| r.route_ready) {
+                    self.calls.pending_alert = Some(request);
+                    return;
+                }
                 request.lease_ms = self.manager.remaining_ring_ms(self.now_ms);
                 if request.lease_ms == 0 {
                     self.handle_call(io, CallManagerEvent::Tick);
@@ -94,6 +98,16 @@ impl RuntimeLoop {
                 )
             }
             CallEffect::StopRingtone(mut request) => {
+                if self.calls.pending_alert.take().is_some() {
+                    self.handle_call(
+                        io,
+                        CallManagerEvent::RingtoneStopped {
+                            key: request.key,
+                            ok: true,
+                        },
+                    );
+                    return;
+                }
                 let Some(epoch) = self.call_operations.stop_alert(&request.key) else {
                     return;
                 };
@@ -166,6 +180,7 @@ impl RuntimeLoop {
             CallEffect::RestoreUi(key) => {
                 self.call_operations.invalidate(&key);
                 self.calls.resources = None;
+                self.calls.pending_alert = None;
                 self.clear_native_guard();
                 self.calls.recoveries.clear();
                 return;
@@ -182,6 +197,7 @@ impl RuntimeLoop {
         ok: bool,
         payload: &Value,
     ) {
+        let before = self.state.clone();
         if !self.call_operations.is_current(&operation) {
             return;
         }
@@ -251,6 +267,15 @@ impl RuntimeLoop {
                             },
                         );
                     }
+                    if operation.purpose == OperationPurpose::AlertRoute {
+                        if let Some(request) = self.calls.pending_alert.take() {
+                            if self.manager.phase() == Some(CallPhase::Ringing)
+                                && self.manager.alert_audible()
+                            {
+                                self.execute_call_effect(io, CallEffect::StartRingtone(request));
+                            }
+                        }
+                    }
                 } else {
                     self.end_for_audio_failure(io);
                     self.recover_call_worker(io, operation.domain);
@@ -296,6 +321,11 @@ impl RuntimeLoop {
                 }
             }
             OperationPurpose::Admit if !ok => self.end_for_audio_failure(io),
+            OperationPurpose::Native(CallAction::SetMute(muted))
+                if ok && self.manager.phase() == Some(CallPhase::Active) =>
+            {
+                self.state.call.muted = muted;
+            }
             _ => {
                 if let Some(event) =
                     crate::call_manager::effects::CallOperationLedger::native_event(&operation, ok)
@@ -305,6 +335,7 @@ impl RuntimeLoop {
             }
         }
         self.confirm_call_cleanup(io);
+        self.send_runtime_snapshot_patches(io, &before);
     }
 
     pub(in crate::runtime_loop) fn end_for_audio_failure(&mut self, io: &mut impl LoopIo) {

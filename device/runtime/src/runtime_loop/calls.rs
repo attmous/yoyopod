@@ -41,6 +41,7 @@ pub(super) struct CallIntegration {
     serial: u64,
     voice_enabled: bool,
     shutdown_deadline: Option<u64>,
+    pending_alert: Option<crate::call_manager::RingtoneRequest>,
 }
 impl Default for CallIntegration {
     fn default() -> Self {
@@ -60,6 +61,7 @@ impl Default for CallIntegration {
             serial: 0,
             voice_enabled: true,
             shutdown_deadline: None,
+            pending_alert: None,
         }
     }
 }
@@ -314,6 +316,30 @@ impl RuntimeLoop {
         event: &RuntimeEvent,
     ) -> bool {
         match event {
+            RuntimeEvent::AudioRouteLocal(route) if self.manager.session().is_some() => {
+                let before = self.state.clone();
+                self.state.apply_audio_route_local(route);
+                for command in crate::event::commands_for_event(&self.state, event) {
+                    if !matches!(&command,RuntimeCommand::WorkerCommand{envelope,..} if envelope.message_type=="media.set_alert_output")
+                    {
+                        self.dispatch_command(io, command);
+                    }
+                }
+                if let Some(r) = self.calls.resources.as_mut() {
+                    r.route_ready = false;
+                    let command = self.call_operations.command(
+                        &r.interruption.key,
+                        OperationPurpose::AlertRoute,
+                        WorkerDomain::Media,
+                        "media.set_alert_output",
+                        self.state.audio_route.clone(),
+                        self.now_ms,
+                    );
+                    self.dispatch_command(io, command);
+                }
+                self.send_runtime_snapshot_patches(io, &before);
+                true
+            }
             RuntimeEvent::UiIntent(UiIntent::Call(CallIntent::Session(command))) => {
                 self.handle_call(io, CallManagerEvent::UserAction(command.clone()));
                 true

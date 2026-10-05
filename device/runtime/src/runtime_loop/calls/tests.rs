@@ -662,3 +662,69 @@ fn dirty_marker_write_failure_prevents_the_actual_native_envelope() {
         .any(|(_, e)| e.message_type == "call.dial" || e.message_type == "call.action"));
     assert!(runtime.calls.native_guard.quarantined());
 }
+
+#[test]
+fn latest_route_ack_controls_initial_alert_and_return_normal_lease() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Sip);
+    offer(&mut runtime, &mut io, &key, 0);
+    let old = io
+        .sent
+        .iter()
+        .find(|(_, e)| e.message_type == "media.set_alert_output")
+        .unwrap()
+        .1
+        .clone();
+    runtime.intercept_call_event(
+        &mut io,
+        &RuntimeEvent::AudioRouteLocal(json!({"media_device":"alsa/latest","alert_volume":37})),
+    );
+    for name in [
+        "media.interrupt_for_call",
+        "voip.interrupt_for_call",
+        "voice.cancel",
+    ] {
+        respond(&mut runtime, &mut io, name, 1);
+    }
+    io.messages.push((
+        WorkerDomain::Media,
+        WorkerEnvelope::result("media.set_alert_output", old.request_id, json!({"ok":true})),
+    ));
+    runtime.run_once_at(&mut io, 2);
+    assert!(!io
+        .sent
+        .iter()
+        .any(|(_, e)| e.message_type == "media.ringtone_start"));
+    respond(&mut runtime, &mut io, "media.set_alert_output", 3);
+    respond(&mut runtime, &mut io, "media.ringtone_start", 4);
+    runtime.handle_call(
+        &mut io,
+        CallManagerEvent::SetMode(crate::call_manager::DeviceMode::Silent),
+    );
+    respond(&mut runtime, &mut io, "media.ringtone_stop", 5);
+    runtime.now_ms = 20_000;
+    runtime.intercept_call_event(
+        &mut io,
+        &RuntimeEvent::AudioRouteLocal(json!({"media_device":"alsa/new","alert_volume":21})),
+    );
+    runtime.handle_call(
+        &mut io,
+        CallManagerEvent::SetMode(crate::call_manager::DeviceMode::Normal),
+    );
+    assert_eq!(
+        io.sent
+            .iter()
+            .filter(|(_, e)| e.message_type == "media.ringtone_start")
+            .count(),
+        1
+    );
+    respond(&mut runtime, &mut io, "media.set_alert_output", 20_001);
+    let start = &io
+        .sent
+        .iter()
+        .rev()
+        .find(|(_, e)| e.message_type == "media.ringtone_start")
+        .unwrap()
+        .1;
+    assert_eq!(start.payload["lease_ms"], 9_999);
+    assert_eq!(start.payload["operation_generation"], 2);
+}
