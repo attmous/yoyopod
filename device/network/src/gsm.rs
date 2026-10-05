@@ -1435,20 +1435,19 @@ impl ModemManagerVoice {
             if header.sender().map(|sender| sender.as_str()) != self.service_owner.as_deref() {
                 continue;
             }
-            match header.member().map(|member| member.as_str()) {
-                Some("PropertiesChanged" | "StateChanged") => {
-                    if let Some(path) = header.path() {
-                        if self
-                            .registry()?
-                            .tracked()
-                            .iter()
-                            .any(|(known, _)| known == path.as_str())
-                        {
-                            self.observe_path(path.as_str())?;
-                        }
+            if let Some("PropertiesChanged" | "StateChanged") =
+                header.member().map(|member| member.as_str())
+            {
+                if let Some(path) = header.path() {
+                    if self
+                        .registry()?
+                        .tracked()
+                        .iter()
+                        .any(|(known, _)| known == path.as_str())
+                    {
+                        self.observe_path(path.as_str())?;
                     }
                 }
-                _ => {}
             }
         }
         // Bounded Calls-property recovery handles missed signals and bus bursts;
