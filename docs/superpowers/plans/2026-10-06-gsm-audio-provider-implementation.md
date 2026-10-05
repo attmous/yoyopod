@@ -48,7 +48,7 @@ The current `rust-device-arm64` job in `.github/workflows/ci.yml` uses `ubuntu-2
 
 | Task owner | Exact repository files and responsibility |
 | --- | --- |
-| 1: source/build-input owner | Create `deploy/providers/modemmanager/source-lock.json`, `build/resolve-lock.sh`, `build/verify-inputs.sh`, `tests/test-source-lock.sh`, `README.md`. Genuine lock acquisition/validation, not placeholder scaffolding. |
+| 1: source/build-input owner | Create `deploy/providers/modemmanager/source-lock.json`, `build/resolve-lock.sh`, `build/verify-inputs.sh`, `tests/test-source-lock.sh`, `README.md`. Add only a fixed native ARM input-validation hook to `.github/workflows/ci.yml` because the existing x86 build host cannot execute ARM containers. Genuine lock acquisition/validation, not placeholder scaffolding. |
 | 2: generic provider owner | Create `patches/series`, `patches/0002-yoyopod-voice-audio-lifecycle.patch`, `tests/provider-fixture.h`, `tests/provider-fixture.c`, `tests/test-voice-audio.c`, `build/test.sh`. Modify extracted upstream `src/mm-iface-modem-voice.c`, `src/mm-iface-modem-voice.h`, `src/meson.build`, `src/tests/meson.build` only through the patch/staging recipe. |
 | 3: SIMTech/package owner | Create `patches/0003-yoyopod-simtech-pcm-readback.patch`, `patches/0004-yoyopod-audio-contract-tests.patch`, `tests/test-simtech-audio.c`, `build/build.sh`, `build/compare.sh`, `profile.json`, `manifest.schema.json`; update source lock/series/README. Modify extracted `src/plugins/simtech/mm-shared-simtech.c`, Debian changelog/rules and test registration through recorded patches. |
 | 4: profile/readiness owner | Create `device/network/src/gsm_provider.rs`; modify `device/network/src/{lib.rs,gsm.rs,worker.rs}`, `device/network/Cargo.toml`, `device/Cargo.lock`, `device/runtime/src/runtime_loop/calls.rs`, `device/runtime/src/runtime_loop/calls/{operations.rs,tests.rs}`, `device/ui/src/components/screens/common.rs` and inline model tests. Profile/current-metadata gate, correlated failure visibility, runtime action/projection guard and existing incoming state-label reason. |
@@ -82,6 +82,8 @@ Receipt origin SHA/run may precede a profile-only final artifact. Runtime compar
 **Interfaces:** `resolve-lock.sh OUTPUT_JSON` resolves literal pins in an ARM build environment; `verify-inputs.sh LOCK CACHE_DIR` verifies provenance/hashes and stages the exact source; both exit nonzero on missing/mismatching evidence. Later `build/test.sh` and `build/build.sh` consume that verified source and lock.
 
 Consumes: exact upstream source version/archives and official signed Debian snapshot indexes. Produces: reviewed literal `source-lock.json`, verified source in `CACHE_DIR/source/` and `CACHE_DIR/signature-report.json`; stdout is diagnostic only, never the source of build pins.
+
+**Execution ruling (2026-10-06):** The available x86 build host has no ARM emulator; actual ARM container execution fails. Use the existing `CI` workflow's native ARM runner for this task. Add one boolean `workflow_dispatch` input `provider_inputs` (default false) and a narrowly gated native ARM job that runs only source-lock acquisition, the real validator and its tests in the pinned Debian ARM64 image, then uploads source-lock/signature/test evidence for the exact checkout SHA. When selected, skip the unrelated Rust job; ordinary CI behavior stays available by default. This evidence artifact is a build-input/report transfer, never a deployable provider artifact or a second deployment selector. Task 6 incorporates this hook into the final single Rust/provider bundle flow. The coordinator alone pushes/dispatches and transfers results; the implementer requests that execution after committing its fixed hook/scripts. No privileged binfmt installation or Pi build is needed.
 
 - [ ] **Step 1: Write a failing lock-validation test.** The shell test resolves a real candidate lock once, makes invalid copies in `mktemp -d`, and invokes the actual validator:
 
@@ -486,7 +488,7 @@ For incoming, keep fresh Ringing format→prepare→fenced Accept. For outgoing,
 
 ### Task 6: Bind provider and nine Rust binaries in one exact-SHA artifact
 
-**Files/ownership:** Task 6 row. Keep job name/artifact selector and nine binary paths; do not enable disabled slot/release jobs.
+**Files/ownership:** Task 6 row. Keep job name/artifact selector and nine binary paths; incorporate Task 1's fixed source-lock validation hook, and do not enable disabled slot/release jobs.
 
 **Interfaces:** `build/bundle.sh --repo-sha SHA --ci-run-id RUN --provider DIR --rust-root DIR --out TAR` verifies provider schema/hashes, includes `providers/modemmanager/` and writes artifact `manifest.json`. Consumers receive exactly one tar and manifest; runtime receives compact expected provider manifest via compile-time environment before Cargo build.
 
