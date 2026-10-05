@@ -20,8 +20,9 @@ extern "C" fn native_test_tick() -> u32 {
     NATIVE_TEST_TICK.load(Ordering::Relaxed)
 }
 
-// This is the only test that initializes LVGL. Keep native cases in this one
-// test, on its owning thread: LVGL has process-global initialization/teardown.
+// Keep these native cases in one test on its owning thread. The native suite
+// must use --test-threads=1, since worker tests also initialize/deinitialize
+// LVGL's process-global state.
 #[test]
 fn completed_native_frames_have_current_shadow_pixels_within_refresh_period() {
     let mut facade = NativeLvglFacade::open(None).unwrap();
