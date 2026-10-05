@@ -36,10 +36,7 @@ fn completed_native_frames_have_current_shadow_pixels_within_refresh_period() {
     let output = Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
-            concat!(
-                module_path!(),
-                "::completed_native_frames_have_current_shadow_pixels_within_refresh_period"
-            ),
+            "renderer::lvgl::lifecycle::refresh_tests::completed_native_frames_have_current_shadow_pixels_within_refresh_period",
             "--nocapture",
         ])
         .env(CHILD_MARKER, "1")
