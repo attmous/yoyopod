@@ -253,6 +253,11 @@ fn preparing_accept_is_queued_and_original_audio_epoch_is_preserved() {
 fn remote_end_during_preparation_retains_owner_until_physical_release() {
     for transport in [CallTransport::Sip, CallTransport::Gsm] {
         let (mut runtime, mut io, key) = fixture(transport);
+        runtime.manager = crate::call_manager::CallManager::new(
+            yoyopod_protocol::call::DeviceMode::Normal,
+            8_000,
+            1_000,
+        );
         offer(&mut runtime, &mut io, &key, 0);
         terminal(&mut runtime, &mut io, &key, 1);
         assert!(runtime.state().call.session.is_some());
@@ -870,4 +875,334 @@ fn power_deadline_preempts_pending_recovery_without_resource_proof() {
         e.message_type.as_str(),
         "voip.configure" | "voip.release_call" | "media.release_call"
     )));
+}
+
+#[test]
+fn overdue_decoded_accept_never_answers_before_tick() {
+    for transport in [CallTransport::Sip, CallTransport::Gsm] {
+        for now in [30_000, 30_001] {
+            for silent in [false, true] {
+                let (mut runtime, mut io, key) = fixture(transport.clone());
+                if silent {
+                    runtime.state.settings.device_mode = yoyopod_protocol::call::DeviceMode::Silent;
+                }
+                offer(&mut runtime, &mut io, &key, 0);
+                prepare(&mut runtime, &mut io, 1);
+                if !silent {
+                    respond(&mut runtime, &mut io, "media.ringtone_start", 2);
+                }
+                control(&mut runtime, &mut io, &key, CallAction::Answer, now);
+                if !silent {
+                    respond(&mut runtime, &mut io, "media.ringtone_stop", now);
+                }
+                assert_eq!(
+                    native_count(&io, "answer"),
+                    0,
+                    "{transport:?} silent={silent} now={now}"
+                );
+                assert_eq!(runtime.manager.phase(), Some(CallPhase::Ending));
+                assert_eq!(runtime.manager.session(), Some(&key));
+            }
+        }
+    }
+}
+
+#[test]
+fn overdue_decoded_stop_cannot_complete_answer_operation() {
+    for transport in [CallTransport::Sip, CallTransport::Gsm] {
+        for now in [8_100, 8_101] {
+            let (mut runtime, mut io, key) = fixture(transport.clone());
+            offer(&mut runtime, &mut io, &key, 0);
+            prepare(&mut runtime, &mut io, 1);
+            respond(&mut runtime, &mut io, "media.ringtone_start", 2);
+            control(&mut runtime, &mut io, &key, CallAction::Answer, 100);
+            respond(&mut runtime, &mut io, "media.ringtone_stop", now);
+            assert_eq!(native_count(&io, "answer"), 0, "{transport:?} now={now}");
+            assert_eq!(runtime.manager.phase(), Some(CallPhase::Ending));
+            assert_eq!(runtime.manager.session(), Some(&key));
+        }
+    }
+}
+
+#[test]
+fn queued_preparing_overdue_readiness_retains_cleanup_owner() {
+    for transport in [CallTransport::Sip, CallTransport::Gsm] {
+        for now in [8_000, 8_001, 30_000, 30_001] {
+            let (mut runtime, mut io, key) = fixture(transport.clone());
+            runtime.state.settings.device_mode = yoyopod_protocol::call::DeviceMode::Silent;
+            offer(&mut runtime, &mut io, &key, 0);
+            control(&mut runtime, &mut io, &key, CallAction::Answer, 1);
+            for name in [
+                "media.interrupt_for_call",
+                "voip.interrupt_for_call",
+                "media.set_alert_output",
+            ] {
+                respond(&mut runtime, &mut io, name, 2);
+            }
+            respond(&mut runtime, &mut io, "voice.cancel", now);
+            assert_eq!(native_count(&io, "answer"), 0, "{transport:?} now={now}");
+            assert_eq!(runtime.manager.phase(), Some(CallPhase::Ending));
+            assert_eq!(runtime.manager.session(), Some(&key));
+            terminal(&mut runtime, &mut io, &key, now + 1);
+            release(&mut runtime, &mut io, &key, now + 2);
+            assert!(
+                runtime.manager.session().is_none(),
+                "late genuine proof must remain usable"
+            );
+        }
+    }
+}
+
+#[test]
+fn early_decision_stop_may_complete_after_original_decision_boundary() {
+    for transport in [CallTransport::Sip, CallTransport::Gsm] {
+        let (mut runtime, mut io, key) = fixture(transport);
+        runtime.manager = crate::call_manager::CallManager::new(
+            yoyopod_protocol::call::DeviceMode::Normal,
+            8_000,
+            1_000,
+        );
+        offer(&mut runtime, &mut io, &key, 0);
+        prepare(&mut runtime, &mut io, 1);
+        respond(&mut runtime, &mut io, "media.ringtone_start", 2);
+        control(&mut runtime, &mut io, &key, CallAction::Answer, 999);
+        assert_eq!(runtime.manager.phase(), Some(CallPhase::Answering));
+        respond(&mut runtime, &mut io, "media.ringtone_stop", 1_001);
+        assert_eq!(native_count(&io, "answer"), 1);
+        assert_eq!(runtime.manager.phase(), Some(CallPhase::Answering));
+    }
+}
+
+#[test]
+fn decoded_offer_policy_matrix_preserves_rejected_activity() {
+    use yoyopod_protocol::call::DeviceMode;
+    for transport in [CallTransport::Sip, CallTransport::Gsm] {
+        for mode in [
+            DeviceMode::Normal,
+            DeviceMode::Silent,
+            DeviceMode::DoNotDisturb,
+        ] {
+            for priority in [false, true] {
+                for can_call in [false, true] {
+                    for identity in ["saved", "unknown", "withheld", "ambiguous"] {
+                        for activity in [
+                            "playing",
+                            "paused",
+                            "stopped",
+                            "recording",
+                            "assistant",
+                            "voice_playback",
+                        ] {
+                            let (mut runtime, mut io, key) = fixture(transport.clone());
+                            runtime.state.settings.device_mode = mode.clone();
+                            runtime.state.media.playback_state =
+                                if matches!(activity, "playing" | "paused" | "stopped") {
+                                    activity.into()
+                                } else {
+                                    "stopped".into()
+                                };
+                            runtime.state.voice.phase = match activity {
+                                "recording" => "recording",
+                                "assistant" => "thinking",
+                                _ => "idle",
+                            }
+                            .into();
+                            runtime.state.voice.ask_capture_active = activity == "assistant";
+                            runtime.state.voice.playback_active = activity == "voice_playback";
+                            let previous_voice = runtime.state.voice.clone();
+                            let previous_media = runtime.state.media.playback_state.clone();
+                            let mut contact = json!({"id":"dad", "name":"Dad", "sip_address":"sip:dad@example.test", "phone_number":"+49123456789", "priority":priority, "can_call":can_call});
+                            let mut contacts = vec![contact.clone()];
+                            if identity == "ambiguous" {
+                                contact["id"] = json!("duplicate");
+                                contacts.push(contact);
+                            }
+                            RuntimeEvent::ContactsUpdated(json!({"contacts":contacts}))
+                                .apply(&mut runtime.state);
+                            runtime = RuntimeLoop::new(runtime.state);
+                            let address = match identity {
+                                "withheld" => "",
+                                "unknown" => "stranger",
+                                _ if transport == CallTransport::Sip => "sip:dad@example.test",
+                                _ => "+49123456789",
+                            };
+                            io.messages.push((
+                                domain_for(&transport),
+                                WorkerEnvelope::event(
+                                    "call.offer",
+                                    json!({"key":key,"address":address}),
+                                ),
+                            ));
+                            runtime.run_once_at(&mut io, 0);
+                            let admitted = identity == "saved"
+                                && (mode != DeviceMode::DoNotDisturb || priority);
+                            assert_eq!(runtime.state().call.session.as_ref() == Some(&key), admitted, "{transport:?} {mode:?} priority={priority} permission={can_call} {identity} {activity}");
+                            if admitted {
+                                assert!(runtime.state().call.accept_enabled);
+                                prepare(&mut runtime, &mut io, 1);
+                                assert_eq!(
+                                    io.sent
+                                        .iter()
+                                        .any(|(_, e)| e.message_type == "media.ringtone_start"),
+                                    mode == DeviceMode::Normal
+                                );
+                                assert!(io
+                                    .sent
+                                    .iter()
+                                    .any(|(_, e)| e.message_type == "voice.cancel"));
+                                assert!(io
+                                    .sent
+                                    .iter()
+                                    .any(|(_, e)| e.message_type == "voip.interrupt_for_call"));
+                            } else {
+                                assert_eq!(runtime.state().media.playback_state, previous_media);
+                                assert_eq!(runtime.state().voice, previous_voice);
+                                assert!(!io.sent.iter().any(|(_, e)| matches!(
+                                    e.message_type.as_str(),
+                                    "ui.set_backlight"
+                                        | "media.interrupt_for_call"
+                                        | "voip.interrupt_for_call"
+                                        | "voice.cancel"
+                                        | "media.ringtone_start"
+                                )));
+                                assert_eq!(native_count(&io, "answer"), 0);
+                                assert!(io
+                                    .sent
+                                    .iter()
+                                    .any(|(_, e)| e.message_type == "call.action"
+                                        && e.payload["key"] == json!(key)));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn decoded_second_offer_and_remote_end_during_answer_preserve_primary() {
+    for transport in [CallTransport::Sip, CallTransport::Gsm] {
+        for second in [CallTransport::Sip, CallTransport::Gsm] {
+            let (mut runtime, mut io, key) = fixture(transport.clone());
+            offer(&mut runtime, &mut io, &key, 0);
+            prepare(&mut runtime, &mut io, 1);
+            respond(&mut runtime, &mut io, "media.ringtone_start", 2);
+            control(&mut runtime, &mut io, &key, CallAction::Answer, 3);
+            let secondary = SessionKey {
+                transport: second,
+                generation: 1,
+                call_id: "b".into(),
+            };
+            offer(&mut runtime, &mut io, &secondary, 4);
+            assert_eq!(runtime.manager.session(), Some(&key));
+            assert!(io.sent.iter().any(|(_, e)| e.message_type == "call.action"
+                && e.payload["key"] == json!(secondary)
+                && e.payload["action"]
+                    == json!(CallAction::Reject(
+                        yoyopod_protocol::call::RejectReason::Busy
+                    ))));
+            terminal(&mut runtime, &mut io, &key, 5);
+            respond(&mut runtime, &mut io, "media.ringtone_stop", 6);
+            assert_eq!(native_count(&io, "answer"), 0);
+            assert_eq!(runtime.manager.session(), Some(&key));
+            release(&mut runtime, &mut io, &key, 7);
+            assert!(runtime.manager.session().is_none());
+        }
+    }
+}
+
+#[test]
+fn overdue_accept_and_final_readiness_batch_cannot_gain_new_window() {
+    for transport in [CallTransport::Sip, CallTransport::Gsm] {
+        for now in [30_000, 30_001] {
+            for accept_first in [false, true] {
+                let (mut runtime, mut io, key) = fixture(transport.clone());
+                offer(&mut runtime, &mut io, &key, 0);
+                for name in [
+                    "media.interrupt_for_call",
+                    "voip.interrupt_for_call",
+                    "media.set_alert_output",
+                ] {
+                    respond(&mut runtime, &mut io, name, 1);
+                }
+                let (domain, command) = io
+                    .sent
+                    .iter()
+                    .rev()
+                    .find(|(_, e)| e.message_type == "voice.cancel")
+                    .unwrap()
+                    .clone();
+                let mut payload = command.payload;
+                payload["cancelled"] = json!(true);
+                let readiness = (
+                    domain,
+                    WorkerEnvelope::result("voice.cancelled", command.request_id, payload),
+                );
+                let accept = (
+                    WorkerDomain::Ui,
+                    WorkerEnvelope::event(
+                        "ui.intent",
+                        UiIntent::Call(CallIntent::Session(CallCommand {
+                            key: key.clone(),
+                            action: CallAction::Answer,
+                        }))
+                        .to_event_payload(),
+                    ),
+                );
+                if accept_first {
+                    io.messages.extend([accept, readiness]);
+                } else {
+                    io.messages.extend([readiness, accept]);
+                }
+                runtime.run_once_at(&mut io, now);
+                assert_eq!(native_count(&io, "answer"), 0);
+                assert_eq!(runtime.manager.phase(), Some(CallPhase::Ending));
+                assert_eq!(runtime.manager.session(), Some(&key));
+            }
+        }
+    }
+}
+
+#[test]
+fn original_decision_deadline_survives_mode_and_route_restart() {
+    for transport in [CallTransport::Sip, CallTransport::Gsm] {
+        for now in [30_000, 30_001] {
+            let (mut runtime, mut io, key) = fixture(transport.clone());
+            offer(&mut runtime, &mut io, &key, 0);
+            prepare(&mut runtime, &mut io, 1);
+            respond(&mut runtime, &mut io, "media.ringtone_start", 2);
+            runtime.state.settings.device_mode = yoyopod_protocol::call::DeviceMode::Silent;
+            runtime.handle_call(
+                &mut io,
+                CallManagerEvent::SetMode(yoyopod_protocol::call::DeviceMode::Silent),
+            );
+            respond(&mut runtime, &mut io, "media.ringtone_stop", 3);
+            runtime.now_ms = 20_000;
+            runtime.intercept_call_event(
+                &mut io,
+                &RuntimeEvent::AudioRouteLocal(
+                    json!({"media_device":"alsa/latest","alert_volume":37}),
+                ),
+            );
+            runtime.state.settings.device_mode = yoyopod_protocol::call::DeviceMode::Normal;
+            runtime.handle_call(
+                &mut io,
+                CallManagerEvent::SetMode(yoyopod_protocol::call::DeviceMode::Normal),
+            );
+            respond(&mut runtime, &mut io, "media.set_alert_output", 20_001);
+            let start = io
+                .sent
+                .iter()
+                .rev()
+                .find(|(_, e)| e.message_type == "media.ringtone_start")
+                .unwrap();
+            assert_eq!(start.1.payload["lease_ms"], 9_999);
+            respond(&mut runtime, &mut io, "media.ringtone_start", 20_002);
+            control(&mut runtime, &mut io, &key, CallAction::Answer, now);
+            respond(&mut runtime, &mut io, "media.ringtone_stop", now);
+            assert_eq!(native_count(&io, "answer"), 0);
+            assert_eq!(runtime.manager.session(), Some(&key));
+        }
+    }
 }

@@ -10,3 +10,5 @@ Product capability contracts and subsystem feature notes live here.
 - [`WIFI_ONBOARDING.md`](WIFI_ONBOARDING.md) - on-device Wi-Fi setup: AP mode + QR + captive portal, its timeouts, security model, and deploy requirements
 
 For shared audio device behavior, also read [`../hardware/AUDIO_STACK.md`](../hardware/AUDIO_STACK.md).
+
+- [`CALL_MANAGER.md`](CALL_MANAGER.md) - saved-contact GSM/SIP admission, modes, interruption, recovery and pending hardware acceptance

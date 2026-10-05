@@ -103,6 +103,9 @@ impl RuntimeLoop {
     pub fn run_once_at(&mut self, io: &mut impl LoopIo, now_ms: u64) -> usize {
         self.now_ms = self.now_ms.max(now_ms);
         self.process_pending_power_shutdown(io);
+        // Expire decisions and operations before queued input can advance a session.
+        // Results still run below so late native terminal/resource proof remains usable.
+        self.handle_call(io, CallManagerEvent::Tick);
         let started = Instant::now();
         let mut processed = 0;
         let mut protocol_faults = HashMap::<WorkerDomain, String>::new();

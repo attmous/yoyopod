@@ -827,7 +827,6 @@ transport identity, audio readiness, and cleanup interfaces are tightly coupled
 and native lifetime mistakes can affect real calls. Native execution in this
 chat is also available with a final independent review.
 
-Implementation has not started. Review approval and execution-method selection
-remain the next user decisions. When execution starts, keep each task's files
+Tasks 1–9 are implemented and task-reviewed. Task 10 source integration and validation are in progress; final independent review and hardware acceptance remain pending. When execution starts, keep each task's files
 owned by its assigned worker and do not revert others' changes. No deployment
 or merge is implied by completion of this plan document.
