@@ -1640,11 +1640,21 @@ mod tests {
             false
         }
         #[zbus(property)]
-        fn calls(&self) -> zbus::fdo::Result<Vec<OwnedObjectPath>> {
+        async fn calls(&self) -> zbus::fdo::Result<Vec<OwnedObjectPath>> {
             self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            if let Some((entered, release)) = self.gate.lock().unwrap().take() {
+            let gate = self.gate.lock().unwrap().take();
+            if let Some((entered, release)) = gate {
                 entered.send(()).unwrap();
-                release.recv_timeout(Duration::from_secs(3)).unwrap();
+                let deadline = Instant::now() + Duration::from_secs(3);
+                loop {
+                    match release.try_recv() {
+                        Ok(()) => break,
+                        Err(mpsc::TryRecvError::Empty) if Instant::now() < deadline => {
+                            async_io::Timer::after(Duration::from_millis(5)).await;
+                        }
+                        _ => return Err(zbus::fdo::Error::Failed("fixture gate expired".into())),
+                    }
+                }
             }
             if self.fail.load(Ordering::SeqCst) {
                 return Err(zbus::fdo::Error::Failed("transient read error".into()));
