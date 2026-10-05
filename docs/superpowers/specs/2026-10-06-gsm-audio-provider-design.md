@@ -1,9 +1,9 @@
 # GSM audio metadata provider
 
-Date: 2026-10-06. Status: written specification for user review.
+Date: 2026-10-06. Status: written specification approved by the user.
 
-The provider approach has been approved for specification. This document has
-not yet received written-spec approval. It defines a new provider extension;
+The user approved this written specification on 2026-10-06. It defines a new
+provider extension;
 approval of the original call manager and Rust reconnect work does not approve
 this extension's implementation plan or installation of a system package.
 
