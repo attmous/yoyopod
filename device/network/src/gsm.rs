@@ -471,6 +471,9 @@ struct ModemSignals {
 }
 impl ModemSignals {
     fn start(connection: &Connection, owner: &str) -> Result<Self> {
+        Self::start_with_capacity(connection, owner, 128)
+    }
+    fn start_with_capacity(connection: &Connection, owner: &str, capacity: usize) -> Result<Self> {
         let connection = connection.clone();
         let rule = zbus::MatchRule::builder()
             .msg_type(zbus::message::Type::Signal)
@@ -479,7 +482,7 @@ impl ModemSignals {
             .build();
         let mut stream =
             zbus::blocking::MessageIterator::for_match_rule(rule, &connection, Some(128))?;
-        let (sender, messages) = mpsc::sync_channel(128);
+        let (sender, messages) = mpsc::sync_channel(capacity);
         let thread = thread::spawn(move || {
             for message in &mut stream {
                 let Ok(message) = message else { break };
@@ -1716,6 +1719,17 @@ mod tests {
         ModemManagerVoice,
         Arc<std::sync::atomic::AtomicUsize>,
     ) {
+        reconnect_fixture_capacity(bus, deadline, 128)
+    }
+    fn reconnect_fixture_capacity(
+        bus: &PrivateBus,
+        deadline: Duration,
+        capacity: usize,
+    ) -> (
+        Connection,
+        ModemManagerVoice,
+        Arc<std::sync::atomic::AtomicUsize>,
+    ) {
         let owner = bus.connection();
         owner
             .object_server()
@@ -1753,6 +1767,14 @@ mod tests {
                 .method_timeout(deadline)
                 .build()
                 .unwrap(),
+        );
+        backend.signals = Some(
+            ModemSignals::start_with_capacity(
+                backend.connection.as_ref().unwrap(),
+                owner.unique_name().unwrap().as_str(),
+                capacity,
+            )
+            .unwrap(),
         );
         assert!(backend.refresh().unwrap().available);
         (owner, backend, reads)
@@ -2304,7 +2326,7 @@ mod tests {
     #[test]
     fn gsm_reconnect_signal_overflow_keeps_subscription_and_invalidates_native_evidence() {
         let bus = PrivateBus::start();
-        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        let (owner, mut backend, _) = reconnect_fixture_capacity(&bus, Duration::from_secs(3), 1);
         let events = backend.registry.as_mut().unwrap().observe(
             "/call/owned",
             yoyopod_protocol::call::CallDirection::Incoming,
@@ -2319,7 +2341,7 @@ mod tests {
         let token = backend.reconciliation().unwrap().native_owner;
         // The actor deliberately does not drain while its subscribed private
         // bus receives more messages than the internal native queue can hold.
-        for _ in 0..600 {
+        for _ in 0..3 {
             owner
                 .emit_signal(
                     None::<&str>,
