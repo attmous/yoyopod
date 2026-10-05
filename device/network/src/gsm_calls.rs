@@ -17,6 +17,10 @@ pub struct GsmCallRegistry {
 }
 
 impl GsmCallRegistry {
+    pub fn can_observe(&self, path: &str) -> bool {
+        self.calls.len() < yoyopod_protocol::call::MAX_LIVE_CALLS
+            || self.calls.iter().any(|(existing, _, _)| existing == path)
+    }
     pub fn observe_audio(
         &mut self,
         key: &SessionKey,
@@ -52,9 +56,7 @@ impl GsmCallRegistry {
         number: &str,
     ) -> Vec<CallManagerWireEvent> {
         let mut events = Vec::new();
-        if self.calls.len() >= yoyopod_protocol::call::MAX_LIVE_CALLS
-            && !self.calls.iter().any(|(path, _, _)| path == object_path)
-        {
+        if !self.can_observe(object_path) {
             return events;
         }
         let index = self
@@ -164,6 +166,43 @@ impl GsmCallRegistry {
 mod tests {
     use super::*;
     use yoyopod_protocol::call::CallTransport;
+
+    #[test]
+    fn registry_pressure_preserves_live_keys_and_releases_capacity() {
+        let mut registry = GsmCallRegistry::new(7);
+        for index in 0..yoyopod_protocol::call::MAX_LIVE_CALLS {
+            registry.observe(
+                &format!("/call/{index}"),
+                CallDirection::Incoming,
+                CallPhase::Ringing,
+                "+49123456789",
+            );
+        }
+        let key = registry.tracked()[0].1.clone();
+        for index in 64..10_000 {
+            assert!(registry
+                .observe(
+                    &format!("/call/{index}"),
+                    CallDirection::Incoming,
+                    CallPhase::Ringing,
+                    "+49123456789"
+                )
+                .is_empty());
+        }
+        assert_eq!(registry.tracked().len(), 64);
+        assert_eq!(registry.path_for(&key), Some("/call/0"));
+        assert!(registry.observe_audio(&key, 10, true).is_some());
+        registry.remove(&key).unwrap();
+        assert!(registry.path_for(&key).is_none());
+        let next = registry.observe(
+            "/call/new",
+            CallDirection::Incoming,
+            CallPhase::Ringing,
+            "+49123456789",
+        );
+        assert_ne!(offer(&next).key, key);
+        assert_eq!(registry.tracked().len(), 64);
+    }
 
     #[test]
     fn gsm_outgoing_key_cannot_be_reused_after_removal() {

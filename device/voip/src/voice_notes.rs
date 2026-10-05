@@ -12,6 +12,13 @@ pub fn is_saved_draft_path(path: &str) -> bool {
 /// Reserve a never-overwritten file on the same filesystem. Wall-clock rollback
 /// and recorder path reuse cannot retarget a displayed draft or an HTTP upload.
 pub fn preserve_interrupted_wav(source: &str) -> Result<String, String> {
+    preserve_with_reservation(source, |_, _| {})
+}
+
+fn preserve_with_reservation(
+    source: &str,
+    reserved: impl Fn(&std::path::Path, &std::fs::File),
+) -> Result<String, String> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let parent = std::path::Path::new(source)
@@ -36,6 +43,7 @@ pub fn preserve_interrupted_wav(source: &str) -> Result<String, String> {
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(e.to_string()),
         };
+        reserved(&path, &output);
         let result = std::fs::File::open(source)
             .and_then(|mut input| std::io::copy(&mut input, &mut output))
             .and_then(|_| output.sync_all());
@@ -60,7 +68,7 @@ fn private_draft_directory(parent: &std::path::Path) -> Result<std::path::PathBu
     let builder = std::fs::DirBuilder::new();
     #[cfg(unix)]
     {
-        use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+        use std::os::unix::fs::MetadataExt;
         let metadata = std::fs::symlink_metadata(parent).map_err(|e| e.to_string())?;
         if !metadata.is_dir()
             || metadata.uid() != unsafe { libc::geteuid() }
@@ -72,7 +80,7 @@ fn private_draft_directory(parent: &std::path::Path) -> Result<std::path::PathBu
         }
     }
     #[cfg(unix)]
-    let mut builder = {
+    let builder = {
         use std::os::unix::fs::DirBuilderExt;
         let mut builder = builder;
         builder.mode(0o700);
@@ -267,6 +275,48 @@ impl VoiceNoteSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn permissive_umask_still_reserves_private_empty_draft_before_bytes() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        const CHILD: &str = "YOYOPOD_TEST_PRIVATE_DRAFT";
+        if std::env::var_os(CHILD).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "voice_notes::tests::permissive_umask_still_reserves_private_empty_draft_before_bytes", "--nocapture"])
+                .env(CHILD, "1").status().unwrap();
+            assert!(status.success());
+            return;
+        }
+        // Isolated test process: changing the process umask cannot affect other tests.
+        unsafe {
+            libc::umask(0);
+        }
+        let parent =
+            std::env::temp_dir().join(format!("yoyopod-private-draft-{}", std::process::id()));
+        std::fs::create_dir(&parent).unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let source = parent.join("source.wav");
+        std::fs::write(&source, b"private audio bytes").unwrap();
+        let copy = preserve_with_reservation(source.to_str().unwrap(), |path, file| {
+            let metadata = file.metadata().unwrap();
+            assert_eq!(metadata.len(), 0);
+            assert_eq!(metadata.mode() & 0o777, 0o600);
+            assert_eq!(
+                std::fs::metadata(path.parent().unwrap()).unwrap().mode() & 0o777,
+                0o700
+            );
+        })
+        .unwrap();
+        assert_eq!(std::fs::read(copy).unwrap(), b"private audio bytes");
+        let directory = parent.join(".yoyopod-drafts");
+        let count = std::fs::read_dir(&directory).unwrap().count();
+        assert!(preserve_interrupted_wav(parent.join("missing.wav").to_str().unwrap()).is_err());
+        assert_eq!(std::fs::read_dir(&directory).unwrap().count(), count);
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(preserve_interrupted_wav(source.to_str().unwrap()).is_err());
+        std::fs::remove_dir_all(parent).unwrap();
+    }
 
     #[test]
     fn recording_metrics_are_clamped_and_published_at_ten_hertz() {

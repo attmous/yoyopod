@@ -516,6 +516,59 @@ pub fn dispatch_internal() -> anyhow::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn real_subreaper_drains_adopted_session_escape_to_echild() {
+        const CHILD: &str = "YOYOPOD_TEST_SUBREAPER";
+        if std::env::var_os(CHILD).is_none() {
+            let status = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "network_owner::tests::real_subreaper_drains_adopted_session_escape_to_echild",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .status()
+                .unwrap();
+            assert!(status.success());
+            return;
+        }
+        assert_eq!(
+            unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) },
+            0
+        );
+        let mut parent = Command::new("/bin/sh")
+            .args(["-c", "setsid sleep 60 & echo $!; wait"])
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut line = String::new();
+        std::io::BufRead::read_line(
+            &mut std::io::BufReader::new(parent.stdout.take().unwrap()),
+            &mut line,
+        )
+        .unwrap();
+        let pid = rustix::process::Pid::from_raw(line.trim().parse().unwrap()).unwrap();
+        let leaf = rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).unwrap();
+        drain_children().unwrap();
+        assert!(children().unwrap().is_empty());
+        assert_eq!(
+            unsafe { libc::waitpid(-1, std::ptr::null_mut(), libc::WNOHANG) },
+            -1
+        );
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ECHILD)
+        );
+        use std::os::fd::AsRawFd;
+        let mut poll = libc::pollfd {
+            fd: leaf.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        assert_eq!(unsafe { libc::poll(&mut poll, 1, 0) }, 1);
+        assert_ne!(poll.revents & libc::POLLIN, 0);
+    }
     #[test]
     fn denied_or_lost_control_never_becomes_drain_proof() {
         for denied in [true, false] {

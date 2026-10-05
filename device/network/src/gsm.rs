@@ -803,6 +803,10 @@ impl ModemManagerVoice {
 
     fn observe_path(&mut self, path: &str) -> Result<()> {
         use yoyopod_protocol::call::CallDirection;
+        anyhow::ensure!(
+            self.registry()?.can_observe(path),
+            "GSM registry capacity exhausted; ownership remains uncertain"
+        );
         let proxy = self.proxy_for(path)?;
         let state: i32 = proxy.get_property("State")?;
         let native_direction: i32 = proxy.get_property("Direction")?;
@@ -1237,12 +1241,8 @@ impl GsmBackend for ModemManagerVoice {
         }
     }
     fn dial(&mut self, number: &str) -> Result<()> {
-        let key = SessionKey {
-            transport: yoyopod_protocol::call::CallTransport::Gsm,
-            generation: self.generation.context("Not configured")?,
-            call_id: uuid::Uuid::new_v4().to_string(),
-        };
-        self.dial_session(&key, number)
+        let _ = number;
+        bail!("GSM dialing requires a runtime-owned canonical session key")
     }
     fn hangup(&mut self) -> Result<()> {
         if let Some(key) = self.owner.clone() {

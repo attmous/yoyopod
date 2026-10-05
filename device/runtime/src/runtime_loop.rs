@@ -315,6 +315,7 @@ impl RuntimeLoop {
             return;
         };
         draft.phase = "sending".into();
+        draft.send_attempt = Some(request_id.clone());
         envelope.request_id = Some(request_id.clone());
         self.saved_send = Some((request_id, draft_id, self.now_ms.saturating_add(8_000)));
         self.send_runtime_snapshot_patches(io, &before);
@@ -330,6 +331,21 @@ impl RuntimeLoop {
         domain: WorkerDomain,
         envelope: &WorkerEnvelope,
     ) -> bool {
+        if domain == WorkerDomain::Voip && envelope.message_type == "voip.snapshot" {
+            if let Some((request, _, _)) = &self.saved_send {
+                let note = &envelope.payload["voice_note"];
+                if note["message_id"].as_str() == Some(request)
+                    && matches!(
+                        note["state"].as_str(),
+                        Some("sent" | "delivered" | "failed" | "error")
+                    )
+                {
+                    // Keep the draft's attempt fence after settling the pending request.
+                    // Late snapshots from a previous attempt cannot mutate its successor.
+                    self.saved_send = None;
+                }
+            }
+        }
         if domain != WorkerDomain::Voip
             || !matches!(envelope.kind, EnvelopeKind::Result | EnvelopeKind::Error)
         {
@@ -776,6 +792,34 @@ mod tests {
             .sent
             .iter()
             .all(|(_, envelope)| envelope.message_type != "cloud.ack"));
+    }
+
+    #[test]
+    fn settings_priority_timeout_accepts_late_correlated_success() {
+        let mut runtime = RuntimeLoop::new(RuntimeState::default());
+        let mut io = FakeLoopIo::default();
+        let request = request_priority(&mut runtime, &mut io, "dad", true);
+        runtime.run_once_at(&mut io, 8001);
+        assert!(!runtime
+            .state
+            .priority_write
+            .as_ref()
+            .unwrap()
+            .error
+            .is_empty());
+        io.messages.push((
+            WorkerDomain::Cloud,
+            WorkerEnvelope::result(
+                "cloud.contact_priority_set",
+                Some(request),
+                json!({"ok":true}),
+            ),
+        ));
+        runtime.run_once_at(&mut io, 8002);
+        let write = runtime.state.priority_write.as_ref().unwrap();
+        assert!(!write.pending);
+        assert!(write.error.is_empty());
+        assert!(write.priority);
     }
 
     #[test]

@@ -325,6 +325,7 @@ impl VoiceNoteSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterruptedDraft {
     pub id: String,
+    pub send_attempt: Option<String>,
     pub needs_copy: bool,
     pub recipient: VoiceRecipientAction,
     pub duration_ms: i32,
@@ -412,6 +413,7 @@ impl VoiceRuntimeState {
                     .clone()
                     .map(|recipient| InterruptedDraft {
                         id: format!("draft-{}", self.activity_generation.saturating_add(1)),
+                        send_attempt: None,
                         needs_copy: false,
                         recipient,
                         duration_ms: self.duration_ms,
@@ -1855,7 +1857,12 @@ impl RuntimeState {
         if self.voice.interrupted_draft_path.as_deref() == voice_note["file_path"].as_str() {
             if let Some(draft) = self.voice.interrupted_draft.as_mut() {
                 // Idle/recording updates and later captures cannot erase saved ownership.
-                if matches!(phase, "review" | "sending" | "sent" | "failed") {
+                if matches!(phase, "review" | "sending" | "sent" | "failed")
+                    && draft
+                        .send_attempt
+                        .as_deref()
+                        .is_none_or(|attempt| voice_note["message_id"].as_str() == Some(attempt))
+                {
                     draft.phase = phase.into();
                     draft.duration_ms = i32_field(voice_note, "duration_ms")
                         .unwrap_or(draft.duration_ms)

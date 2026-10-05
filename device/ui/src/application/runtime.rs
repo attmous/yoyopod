@@ -1753,6 +1753,36 @@ mod tests {
     }
 
     #[test]
+    fn priority_retry_preserves_original_value_after_late_directory_commit() {
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::SetupContacts,
+            ..Default::default()
+        };
+        let mut contact = ListItemSnapshot::new("sip:a@test", "Dad", "", "mono:S");
+        contact.contact_id = "dad".into();
+        contact.priority = true;
+        runtime.snapshot.call.contacts = vec![contact];
+        runtime.snapshot.settings.priority_write =
+            Some(yoyopod_protocol::ui::ContactPriorityWriteSnapshot {
+                request_id: "attempt".into(),
+                contact_id: "dad".into(),
+                priority: true,
+                pending: false,
+                error: "Could not confirm priority. Select to retry.".into(),
+            });
+        runtime.handle_input(InputAction::Select, 100);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Settings(SettingsIntent::ContactPrioritySet(
+                yoyopod_protocol::call::ContactPrioritySet {
+                    contact_id: "dad".into(),
+                    priority: true
+                }
+            ))]
+        );
+    }
+
+    #[test]
     fn settings_contacts_select_emits_only_stable_priority_intent() {
         let mut runtime = UiRuntime {
             active_screen: UiScreen::SetupContacts,

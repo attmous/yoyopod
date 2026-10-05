@@ -2093,6 +2093,30 @@ fn copy_str_to_c_buffer(value: &str, out: *mut c_char, out_size: u32) -> bool {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn native_admission_address_never_becomes_a_valid_truncated_contact() {
+        use super::*;
+        let saved_prefix = format!("sip:{}@example.test", "a".repeat(238));
+        assert_eq!(saved_prefix.len(), 255);
+        let mut event = YoyopodLiblinphoneEvent {
+            event_type: event::EVENT_INCOMING_CALL,
+            ..Default::default()
+        };
+        copy_str_to_fixed("sip-incoming-1", &mut event.call_id);
+        copy_admission_identity(
+            &format!("{saved_prefix}.attacker"),
+            &mut event.peer_sip_address,
+        );
+        let converted = crate::liblinphone::backend::native_event_to_backend_event(&event).unwrap();
+        assert!(
+            matches!(converted, crate::host::BackendEvent::IncomingCall { from_uri, .. } if from_uri.is_empty())
+        );
+        copy_admission_identity(&saved_prefix, &mut event.peer_sip_address);
+        let converted = crate::liblinphone::backend::native_event_to_backend_event(&event).unwrap();
+        assert!(
+            matches!(converted, crate::host::BackendEvent::IncomingCall { from_uri, .. } if from_uri == saved_prefix)
+        );
+    }
+    #[test]
     fn recorder_close_uses_pinned_void_abi() {
         fn declared_type<T>(_: impl FnOnce(&super::LinphoneApi) -> Option<T>) -> &'static str {
             std::any::type_name::<T>()
@@ -2125,16 +2149,25 @@ unsafe fn suppress_native_alerts(api: &LinphoneApi, core: *mut LinphoneCore) {
         // Liblinphone 5.2.0 coreapi/misc.c checks [sound] tone_indications
         // before ToneManager plays its call-waiting/error indications.
         let config = (api.core_get_config)(core);
+        enforce_incoming_policy(api, config);
+        (api.config_set_int)(config, c"sound".as_ptr(), c"tone_indications".as_ptr(), 0);
+        if let Some(disable) = api.core_enable_call_tone_indications {
+            disable(core, FALSE);
+        }
+    }
+}
+
+pub(super) unsafe fn enforce_incoming_policy(
+    api: &LinphoneApi,
+    config: *mut super::ffi::LinphoneConfig,
+) {
+    unsafe {
         (api.config_set_int)(
             config,
             c"sip".as_ptr(),
             c"incoming_calls_early_media".as_ptr(),
             0,
         );
-        (api.config_set_int)(config, c"sound".as_ptr(), c"tone_indications".as_ptr(), 0);
-        if let Some(disable) = api.core_enable_call_tone_indications {
-            disable(core, FALSE);
-        }
     }
 }
 
@@ -2145,7 +2178,10 @@ pub fn make_named_call(id: &str, address: &str) -> Result<(), String> {
     let address = CString::new(address).map_err(|e| e.to_string())?;
     {
         let mut state = STATE.lock().map_err(|e| e.to_string())?;
-        if state.calls.get(id).is_some() || state.pending_outgoing_id.is_some() {
+        if state.calls.is_full()
+            || state.calls.get(id).is_some()
+            || state.pending_outgoing_id.is_some()
+        {
             return Err("duplicate/pending call ID".into());
         }
         state.pending_outgoing_id = Some(id.into());

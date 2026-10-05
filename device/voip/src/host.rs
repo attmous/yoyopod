@@ -1415,6 +1415,11 @@ mod recording_tests {
     fn test_directory() -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!("yoyopod-voip-tests-{}", std::process::id()));
         std::fs::create_dir_all(&path).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
         path
     }
     fn incoming(id: &str) -> BackendEvent {

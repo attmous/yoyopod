@@ -37,6 +37,28 @@ pub fn recover(path: &Path, legacy_attested: bool) -> Result<String, String> {
             return Err("modem control device still present".into());
         }
     }
+    // Require no non-hub USB peripherals during this offline ceremony. A modem
+    // may still be enumerated even when no serial/control driver is attached.
+    for entry in std::fs::read_dir("/sys/bus/usb/devices").map_err(|e| e.to_string())? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        match std::fs::read_to_string(path.join("bDeviceClass")) {
+            Ok(class) if class.trim() == "09" => {}
+            Ok(_) => {
+                return Err("disconnect all non-hub USB peripherals before cold recovery".into())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // USB interfaces do not have device descriptors.
+                if path
+                    .join("idVendor")
+                    .try_exists()
+                    .map_err(|e| e.to_string())?
+                {
+                    return Err("incomplete USB device proof".into());
+                }
+            }
+            Err(e) => return Err(format!("incomplete USB device proof: {e}")),
+        }
+    }
     prove_stopped_resources()?;
     let boot =
         std::fs::read_to_string("/proc/sys/kernel/random/boot_id").map_err(|e| e.to_string())?;
@@ -91,7 +113,7 @@ fn prove_stopped_resources() -> Result<(), String> {
             match std::fs::read_link(descriptor.map_err(|e| e.to_string())?.path()) {
                 Ok(target) => {
                     let target = target.to_string_lossy();
-                    if target.starts_with("/dev/snd/pcm")
+                    if target.starts_with("/dev/snd/")
                         || target.starts_with("/dev/ttyUSB")
                         || target.starts_with("/dev/cdc-wdm")
                     {

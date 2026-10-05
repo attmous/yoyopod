@@ -18,6 +18,12 @@ impl Retirement {
         // Never join a census thread on the shutdown path. If it owns the lock,
         // it is already killing/reaping this child; otherwise request kill now.
         if let Ok(mut worker) = self.worker.try_lock() {
+            #[cfg(target_os = "linux")]
+            if worker.network_owner.is_some() {
+                // Retirement retains the privileged control owner and original
+                // launcher until authenticated drain. Never kill sudo first.
+                return;
+            }
             if matches!(worker.child.try_wait(), Ok(None)) {
                 let _ = worker.child.kill();
             }

@@ -139,6 +139,53 @@ pub struct SavedFileApi {
 #[cfg(test)]
 mod saved_file_tests {
     use super::*;
+    #[test]
+    fn incoming_policy_overrides_native_factory_true_and_reconfiguration() {
+        unsafe {
+            let api = LinphoneApi::load().unwrap();
+            let library = open_liblinphone().unwrap();
+            let create: unsafe extern "C" fn(*const c_char) -> *mut LinphoneConfig =
+                required_symbol(library, c"linphone_config_new_from_buffer").unwrap();
+            let read: unsafe extern "C" fn(
+                *const LinphoneConfig,
+                *const c_char,
+                *const c_char,
+                c_int,
+            ) -> c_int = required_symbol(library, c"linphone_config_get_int").unwrap();
+            let unref: unsafe extern "C" fn(*mut LinphoneConfig) =
+                required_symbol(library, c"linphone_config_unref").unwrap();
+            let config = create(c"[sip]\nincoming_calls_early_media=1\n".as_ptr());
+            assert!(!config.is_null());
+            assert_eq!(
+                read(
+                    config,
+                    c"sip".as_ptr(),
+                    c"incoming_calls_early_media".as_ptr(),
+                    -1
+                ),
+                1
+            );
+            for _ in 0..2 {
+                super::super::runtime::enforce_incoming_policy(&api, config);
+                assert_eq!(
+                    read(
+                        config,
+                        c"sip".as_ptr(),
+                        c"incoming_calls_early_media".as_ptr(),
+                        -1
+                    ),
+                    0
+                );
+                (api.config_set_int)(
+                    config,
+                    c"sip".as_ptr(),
+                    c"incoming_calls_early_media".as_ptr(),
+                    1,
+                );
+            }
+            unref(config);
+        }
+    }
 
     #[test]
     fn native_saved_file_symbols_and_content_strings_use_pinned_abi() {

@@ -306,7 +306,9 @@ impl RuntimeLoop {
             RuntimeEvent::WorkerReady {
                 domain: WorkerDomain::Ui,
             } => {
-                self.calls.ui_unavailable = false;
+                // Ready carries no process lifetime. Buffered stdout from a dead
+                // UI cannot undo fatal admission fencing. A full runtime restart
+                // verifies a fresh UI during supervised startup before admission.
                 false
             }
             RuntimeEvent::WorkerExited {
@@ -351,6 +353,9 @@ impl RuntimeLoop {
             }
             RuntimeEvent::UiIntent(UiIntent::Call(_)) => true,
             RuntimeEvent::WorkerExited { domain, .. } => {
+                if *domain == WorkerDomain::Voip {
+                    self.finish_saved_send(io, "unknown");
+                }
                 if self.calls.resources.is_some()
                     && matches!(
                         domain,

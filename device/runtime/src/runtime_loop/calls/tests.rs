@@ -109,6 +109,111 @@ fn decoded_saved_send_failures_preserve_exact_draft_with_honest_outcome() {
 }
 
 #[test]
+fn decoded_saved_retry_ignores_old_results_and_terminal_snapshots() {
+    let (mut runtime, mut io, action) = saved_send_fixture();
+    let send = |runtime: &mut RuntimeLoop, io: &mut FakeLoopIo, now| {
+        io.messages.push((
+            WorkerDomain::Ui,
+            WorkerEnvelope::event(
+                "ui.intent",
+                UiIntent::Voice(yoyopod_protocol::ui::VoiceIntent::SavedSend(action.clone()))
+                    .to_event_payload(),
+            ),
+        ));
+        runtime.run_once_at(io, now);
+        io.sent
+            .iter()
+            .rev()
+            .find(|(_, e)| e.message_type == "voip.send_saved_voice_note")
+            .unwrap()
+            .1
+            .request_id
+            .clone()
+            .unwrap()
+    };
+    let old = send(&mut runtime, &mut io, 1);
+    runtime.run_once_at(&mut io, 8_002);
+    assert_eq!(
+        runtime
+            .state
+            .voice
+            .interrupted_draft
+            .as_ref()
+            .unwrap()
+            .phase,
+        "unknown"
+    );
+    let current = send(&mut runtime, &mut io, 8_003);
+    assert_ne!(old, current);
+    for phase in ["sent", "failed", "sending", "review"] {
+        io.messages.push((
+            WorkerDomain::Voip,
+            WorkerEnvelope::event(
+                "voip.snapshot",
+                json!({"voice_note": {
+                    "file_path":"owned.wav", "message_id":old, "state":phase
+                }}),
+            ),
+        ));
+    }
+    io.messages.push((
+        WorkerDomain::Voip,
+        WorkerEnvelope::result(
+            "voip.send_saved_voice_note",
+            Some(old.clone()),
+            json!({"accepted":true}),
+        ),
+    ));
+    io.messages.push((
+        WorkerDomain::Voip,
+        WorkerEnvelope::error(
+            "voip.send_saved_voice_note",
+            Some(old),
+            "saved_send_not_started",
+            "late",
+        ),
+    ));
+    runtime.run_once_at(&mut io, 8_004);
+    assert_eq!(
+        runtime
+            .state
+            .voice
+            .interrupted_draft
+            .as_ref()
+            .unwrap()
+            .phase,
+        "sending"
+    );
+    assert_eq!(runtime.saved_send.as_ref().unwrap().0, current);
+    io.messages.push((
+        WorkerDomain::Voip,
+        WorkerEnvelope::event(
+            "voip.snapshot",
+            json!({"voice_note": {
+                "file_path":"owned.wav", "message_id":current, "state":"failed"
+            }}),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 8_005);
+    assert_eq!(
+        runtime
+            .state
+            .voice
+            .interrupted_draft
+            .as_ref()
+            .unwrap()
+            .phase,
+        "failed"
+    );
+    assert!(runtime.saved_send.is_none());
+    assert!(runtime.state.can_send_interrupted_draft());
+    assert_eq!(
+        runtime.state.voice.interrupted_draft_path.as_deref(),
+        Some("owned.wav")
+    );
+}
+
+#[test]
 fn decoded_stale_updates_cannot_change_projection_or_native_release() {
     let (mut runtime, mut io, key) = fixture(CallTransport::Gsm);
     offer(&mut runtime, &mut io, &key, 0);
@@ -148,6 +253,23 @@ fn decoded_fatal_ui_failure_cancels_queued_answer_and_blocks_admission() {
     ));
     runtime.run_once_at(&mut io, 2);
     assert_eq!(runtime.manager.phase(), Some(CallPhase::Ending));
+    runtime.intercept_call_event(
+        &mut io,
+        &RuntimeEvent::WorkerExited {
+            domain: WorkerDomain::Ui,
+            reason: "fatal".into(),
+        },
+    );
+    runtime.intercept_call_event(
+        &mut io,
+        &RuntimeEvent::WorkerReady {
+            domain: WorkerDomain::Ui,
+        },
+    );
+    assert!(
+        runtime.calls.ui_unavailable,
+        "buffered Ready has no current-lifetime proof"
+    );
     assert!(io
         .sent
         .iter()
