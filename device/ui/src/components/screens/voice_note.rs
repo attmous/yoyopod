@@ -216,7 +216,7 @@ mod tests {
             let buttons = elements_with_role(&rendered, "button");
             assert_eq!(buttons.len(), 1, "one centered action at focus {focus}");
             assert_eq!(buttons[0].key, Some(Key::Static(key)));
-            assert_eq!(buttons[0].props.selected, Some(true));
+            assert_eq!(buttons[0].props.scale_permille, Some(1000));
             let tile = layout.resolve_role("button", 0).unwrap();
             let label = layout.resolve_role("button_title", 0).unwrap();
             assert_eq!(tile.x * 2 + tile.width, 240, "tile stays centered");
