@@ -1221,3 +1221,21 @@ fn original_decision_deadline_survives_mode_and_route_restart() {
         }
     }
 }
+
+#[test]
+fn early_queued_decision_may_finish_preparation_after_decision_window() {
+    for transport in [CallTransport::Sip, CallTransport::Gsm] {
+        let (mut runtime, mut io, key) = fixture(transport);
+        runtime.manager = crate::call_manager::CallManager::new(
+            yoyopod_protocol::call::DeviceMode::Silent,
+            8_000,
+            1_000,
+        );
+        runtime.state.settings.device_mode = yoyopod_protocol::call::DeviceMode::Silent;
+        offer(&mut runtime, &mut io, &key, 0);
+        control(&mut runtime, &mut io, &key, CallAction::Answer, 999);
+        prepare(&mut runtime, &mut io, 1_001);
+        assert_eq!(native_count(&io, "answer"), 1);
+        assert_eq!(runtime.manager.phase(), Some(CallPhase::Answering));
+    }
+}

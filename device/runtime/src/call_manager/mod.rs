@@ -512,6 +512,7 @@ impl CallManager {
                     {
                         self.ending(now_ms, Some(CallAction::Hangup), &mut effects);
                     } else if s.incoming
+                        && !s.queued_answer
                         && matches!(phase, CallPhase::Preparing | CallPhase::Ringing)
                         && now_ms >= s.ring_deadline
                     {
