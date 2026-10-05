@@ -1630,7 +1630,8 @@ mod tests {
     }
     struct ReconnectVoice {
         reads: Arc<std::sync::atomic::AtomicUsize>,
-        gate: Mutex<Option<(Sender<()>, Receiver<()>)>>,
+        gate: Arc<Mutex<Option<(Sender<()>, Receiver<()>)>>>,
+        fail: Arc<std::sync::atomic::AtomicBool>,
     }
     #[zbus::interface(name = "org.freedesktop.ModemManager1.Modem.Voice")]
     impl ReconnectVoice {
@@ -1639,17 +1640,30 @@ mod tests {
             false
         }
         #[zbus(property)]
-        fn calls(&self) -> Vec<OwnedObjectPath> {
+        fn calls(&self) -> zbus::fdo::Result<Vec<OwnedObjectPath>> {
             self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if let Some((entered, release)) = self.gate.lock().unwrap().take() {
                 entered.send(()).unwrap();
                 release.recv_timeout(Duration::from_secs(3)).unwrap();
             }
-            Vec::new()
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(zbus::fdo::Error::Failed("transient read error".into()));
+            }
+            Ok(Vec::new())
         }
     }
     fn reconnect_fixture(
         bus: &PrivateBus,
+    ) -> (
+        Connection,
+        ModemManagerVoice,
+        Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        reconnect_fixture_timeout(bus, Duration::from_secs(3))
+    }
+    fn reconnect_fixture_timeout(
+        bus: &PrivateBus,
+        deadline: Duration,
     ) -> (
         Connection,
         ModemManagerVoice,
@@ -1675,14 +1689,21 @@ mod tests {
                 TEST_MODEM0,
                 ReconnectVoice {
                     reads: reads.clone(),
-                    gate: Mutex::new(None),
+                    gate: Arc::new(Mutex::new(None)),
+                    fail: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 },
             )
             .unwrap();
         allow_replacement(&owner);
         let mut backend = ModemManagerVoice::default();
         backend.configure(7, None).unwrap();
-        backend.connection = Some(bus.connection());
+        backend.connection = Some(
+            Builder::address(bus.address.as_str())
+                .unwrap()
+                .method_timeout(deadline)
+                .build()
+                .unwrap(),
+        );
         assert!(backend.refresh().unwrap().available);
         (owner, backend, reads)
     }
@@ -1704,7 +1725,8 @@ mod tests {
                 path,
                 ReconnectVoice {
                     reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-                    gate: Mutex::new(None),
+                    gate: Arc::new(Mutex::new(None)),
+                    fail: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 },
             )
             .unwrap();
@@ -1823,6 +1845,271 @@ mod tests {
             backend.modem.as_ref().map(|path| path.as_str()),
             Some(TEST_MODEM2)
         );
+    }
+
+    #[test]
+    fn gsm_reconnect_blocked_old_calls_removal_never_manufactures_release() {
+        let bus = PrivateBus::start();
+        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        let events = backend.registry.as_mut().unwrap().observe(
+            "/call/old",
+            yoyopod_protocol::call::CallDirection::Incoming,
+            CallPhase::Ringing,
+            "+49123456789",
+        );
+        let CallManagerWireEvent::Offer(offer) = &events[0] else {
+            panic!("offer")
+        };
+        let key = offer.key.clone();
+        backend.owner = Some(key.clone());
+        let (entered, entering) = mpsc::channel();
+        let (release, releasing) = mpsc::channel();
+        *owner
+            .object_server()
+            .interface::<_, ReconnectVoice>(TEST_MODEM0)
+            .unwrap()
+            .get()
+            .gate
+            .lock()
+            .unwrap() = Some((entered, releasing));
+        let scan = thread::spawn(move || {
+            let result = backend.reconcile_paths();
+            (backend, result)
+        });
+        entering.recv_timeout(Duration::from_secs(3)).unwrap();
+        // Voice getter is outstanding; remove only Modem to avoid its read lock.
+        owner
+            .object_server()
+            .remove::<ReconnectModem, _>(TEST_MODEM0)
+            .unwrap();
+        add_reconnect_modem(&owner, TEST_MODEM2);
+        release.send(()).unwrap();
+        let (mut backend, result) = scan.join().unwrap();
+        assert!(result.is_err());
+        assert!(backend.modem_lost);
+        assert!(backend.owns_voice(&key));
+        assert_eq!(
+            backend.registry().unwrap().latest(&key).unwrap().phase,
+            CallPhase::Ending
+        );
+        assert_eq!(
+            backend.registry().unwrap().path_for(&key),
+            Some("/call/old")
+        );
+        assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+        assert!(!backend.drain_call_events().iter().any(|event| matches!(event, CallManagerWireEvent::Update(update) if update.phase == CallPhase::Ended)));
+    }
+
+    #[test]
+    fn gsm_reconnect_old_object_present_error_or_timeout_is_not_disappearance() {
+        for timeout in [false, true] {
+            let bus = PrivateBus::start();
+            let (owner, mut backend, _) = reconnect_fixture_timeout(
+                &bus,
+                if timeout {
+                    Duration::from_millis(100)
+                } else {
+                    Duration::from_secs(3)
+                },
+            );
+            let interface = owner
+                .object_server()
+                .interface::<_, ReconnectVoice>(TEST_MODEM0)
+                .unwrap();
+            let (release, releasing) = mpsc::channel();
+            let (entered, entering) = mpsc::channel();
+            if timeout {
+                // Preserve the signal connection; only shorten this fixture's method deadline.
+                *interface.get().gate.lock().unwrap() = Some((entered, releasing));
+            } else {
+                interface.get().fail.store(true, Ordering::SeqCst);
+            }
+            backend.next_recovery = None;
+            let scan = thread::spawn(move || {
+                let result = backend.refresh();
+                (backend, result)
+            });
+            if timeout {
+                entering.recv_timeout(Duration::from_secs(3)).unwrap();
+            }
+            let (backend, result) = scan.join().unwrap();
+            if timeout {
+                release.send(()).unwrap();
+            }
+            assert!(result.is_err());
+            assert!(
+                !backend.modem_lost,
+                "general native read failure invented a modem-loss transition"
+            );
+            assert_eq!(backend.selected_epoch, 0);
+            assert_eq!(
+                backend.modem.as_ref().map(|path| path.as_str()),
+                Some(TEST_MODEM0)
+            );
+        }
+    }
+
+    #[test]
+    fn gsm_reconnect_uncertain_create_cleanup_deadline_and_pending_fact_fail_closed() {
+        for blocker in 0..4 {
+            let bus = PrivateBus::start();
+            let (owner, mut backend, _) = reconnect_fixture(&bus);
+            let key = SessionKey {
+                transport: yoyopod_protocol::call::CallTransport::Gsm,
+                generation: 7,
+                call_id: "runtime-outgoing-9".into(),
+            };
+            match blocker {
+                0 => {
+                    backend.uncertain_create = Some(key.clone());
+                    backend.owner = Some(key.clone());
+                }
+                1 => backend.cleanup.failed("/call/uncertain"),
+                2 => backend.audio_deadline = Some(Instant::now() + Duration::from_secs(8)),
+                _ => {
+                    backend.pending_events = backend.registry.as_mut().unwrap().observe(
+                        "/call/pending",
+                        yoyopod_protocol::call::CallDirection::Incoming,
+                        CallPhase::Ringing,
+                        "+49123456789",
+                    );
+                }
+            }
+            remove_reconnect_modem(&owner);
+            backend.next_recovery = None;
+            let _ = backend.refresh();
+            assert!(backend.modem_lost);
+            assert!(!backend.clean_rediscovery);
+            add_reconnect_modem(&owner, TEST_MODEM2);
+            backend.next_discovery = None;
+            let _ = backend.refresh();
+            assert!(!backend.cached.available);
+            assert_ne!(
+                backend.modem.as_ref().map(|path| path.as_str()),
+                Some(TEST_MODEM2)
+            );
+            assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+            if blocker == 0 {
+                assert!(backend.owns_voice(&key));
+                assert_eq!(backend.uncertain_create.as_ref(), Some(&key));
+            }
+            if blocker == 1 {
+                assert!(backend.cleanup.uncertain.contains("/call/uncertain"));
+            }
+        }
+    }
+
+    #[test]
+    fn gsm_reconnect_native_queue_fences_old_answer_hangup_and_dial() {
+        struct QueuedBackend {
+            epoch: Arc<AtomicU64>,
+            gate: Option<(Sender<()>, Receiver<()>)>,
+            invoked: Arc<Mutex<Vec<String>>>,
+        }
+        impl GsmBackend for QueuedBackend {
+            fn selected_modem_epoch(&self) -> u64 {
+                self.epoch.load(Ordering::SeqCst)
+            }
+            fn refresh(&mut self) -> Result<GsmCallState> {
+                if let Some((entered, release)) = self.gate.take() {
+                    entered.send(())?;
+                    release.recv_timeout(Duration::from_secs(3))?;
+                }
+                Ok(GsmCallState::default())
+            }
+            fn apply_call(&mut self, command: &CallCommand) -> Result<()> {
+                self.invoked
+                    .lock()
+                    .unwrap()
+                    .push(format!("{:?}", command.action));
+                Ok(())
+            }
+            fn dial_session(&mut self, _: &SessionKey, _: &str) -> Result<()> {
+                self.invoked.lock().unwrap().push("dial".into());
+                Ok(())
+            }
+            fn dial(&mut self, _: &str) -> Result<()> {
+                Ok(())
+            }
+            fn hangup(&mut self) -> Result<()> {
+                Ok(())
+            }
+            fn mute(&mut self, _: bool) -> Result<()> {
+                Ok(())
+            }
+        }
+        let epoch = Arc::new(AtomicU64::new(0));
+        let invoked = Arc::new(Mutex::new(Vec::new()));
+        let (entered, entering) = mpsc::channel();
+        let (release, releasing) = mpsc::channel();
+        let worker = GsmWorker::with_backend(QueuedBackend {
+            epoch: epoch.clone(),
+            invoked: invoked.clone(),
+            gate: Some((entered, releasing)),
+        });
+        let key = SessionKey {
+            transport: yoyopod_protocol::call::CallTransport::Gsm,
+            generation: 7,
+            call_id: "runtime-outgoing-1".into(),
+        };
+        worker
+            .send(GsmCommand::Action {
+                request_id: "answer-old".into(),
+                command: CallCommand {
+                    key: key.clone(),
+                    action: yoyopod_protocol::call::CallAction::Answer,
+                },
+            })
+            .unwrap();
+        entering.recv_timeout(Duration::from_secs(3)).unwrap();
+        worker
+            .send(GsmCommand::Action {
+                request_id: "hangup-old".into(),
+                command: CallCommand {
+                    key: key.clone(),
+                    action: yoyopod_protocol::call::CallAction::Hangup,
+                },
+            })
+            .unwrap();
+        worker
+            .send(GsmCommand::DialSession {
+                request_id: "dial-old".into(),
+                key: key.clone(),
+                number: "+49123456789".into(),
+            })
+            .unwrap();
+        epoch.store(1, Ordering::SeqCst);
+        release.send(()).unwrap();
+        for _ in 0..3 {
+            let GsmEvent::Completed {
+                key: reported,
+                error,
+                ..
+            } = worker.events.recv_timeout(Duration::from_secs(3)).unwrap()
+            else {
+                panic!("keyed result")
+            };
+            assert_eq!(reported, key);
+            assert!(error.is_some());
+        }
+        assert!(invoked.lock().unwrap().is_empty());
+        worker
+            .send_at_epoch(
+                GsmCommand::DialSession {
+                    request_id: "dial-fresh".into(),
+                    key,
+                    number: "+49123456789".into(),
+                },
+                1,
+            )
+            .unwrap();
+        let GsmEvent::Completed { error, .. } =
+            worker.events.recv_timeout(Duration::from_secs(3)).unwrap()
+        else {
+            panic!("fresh result")
+        };
+        assert!(error.is_none());
+        assert_eq!(invoked.lock().unwrap().as_slice(), ["dial"]);
     }
     fn replace_owner(connection: &Connection) {
         use zbus::fdo::RequestNameFlags;

@@ -1578,6 +1578,7 @@ mod tests {
         gps_queries: Arc<Mutex<usize>>,
         opened: Arc<Mutex<usize>>,
         ppp_starts: Arc<Mutex<usize>>,
+        voice_suspends: Arc<Mutex<usize>>,
         fix: Option<crate::gps::GpsFix>,
     }
 
@@ -1635,6 +1636,7 @@ mod tests {
             Ok(())
         }
         fn suspend_for_voice(&mut self) -> Result<(), crate::modem::ModemError> {
+            *self.voice_suspends.lock().unwrap() += 1;
             Ok(())
         }
     }
@@ -1887,6 +1889,180 @@ mod tests {
             assert_eq!(*opened.lock().unwrap(), 0);
         }
         assert!(calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn gsm_reconnect_worker_loss_suspends_data_and_resumes_once_only_after_clean_fact() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        struct LossBackend {
+            mode: Arc<AtomicU64>,
+            reported: bool,
+        }
+        impl crate::gsm::GsmBackend for LossBackend {
+            fn refresh(&mut self) -> Result<crate::gsm::GsmCallState> {
+                Ok(Default::default())
+            }
+            fn selected_modem_epoch(&self) -> u64 {
+                u64::from(self.mode.load(Ordering::SeqCst) > 0)
+            }
+            fn take_modem_loss(&mut self) -> Option<u64> {
+                if self.mode.load(Ordering::SeqCst) > 0 && !self.reported {
+                    self.reported = true;
+                    Some(7)
+                } else {
+                    None
+                }
+            }
+            fn reconciliation(&self) -> Option<crate::gsm::GsmReconciliation> {
+                Some(crate::gsm::GsmReconciliation {
+                    generation: 7,
+                    admission_epoch: self.selected_modem_epoch(),
+                    native_owner: Some("same/owner".into()),
+                    native_calls_quiescent: self.mode.load(Ordering::SeqCst) != 1,
+                    audio_released: true,
+                })
+            }
+            fn dial(&mut self, _: &str) -> Result<()> {
+                Ok(())
+            }
+            fn hangup(&mut self) -> Result<()> {
+                Ok(())
+            }
+            fn mute(&mut self, _: bool) -> Result<()> {
+                Ok(())
+            }
+        }
+        for owned in [false, true] {
+            let modem = NoFixModem::default();
+            let suspends = modem.voice_suspends.clone();
+            let opens = modem.opened.clone();
+            let mut runtime = NetworkRuntime::new(
+                "test",
+                NetworkHostConfig {
+                    enabled: true,
+                    ..Default::default()
+                },
+                modem,
+            );
+            runtime.start();
+            let key = SessionKey {
+                transport: CallTransport::Gsm,
+                generation: 7,
+                call_id: "runtime-outgoing-1".into(),
+            };
+            if owned {
+                runtime.suspend_for_voice_session(&key).unwrap();
+            }
+            let mode = Arc::new(AtomicU64::new(0));
+            let gsm = GsmWorker::with_backend(LossBackend {
+                mode: mode.clone(),
+                reported: false,
+            });
+            let mut generation = Some(7);
+            let mut sessions = Vec::new();
+            let mut reconciled = true;
+            let mut quarantine = false;
+            let mut output = Vec::new();
+            // Establish initial ordinary reconciliation before transition.
+            gsm.send(GsmCommand::Mute(false)).unwrap();
+            let initial_deadline = Instant::now() + Duration::from_secs(3);
+            while !String::from_utf8_lossy(&output).contains("call.reconciled")
+                && Instant::now() < initial_deadline
+            {
+                drain_gsm_events(
+                    &mut output,
+                    &mut runtime,
+                    &gsm,
+                    &mut generation,
+                    &mut sessions,
+                    &mut reconciled,
+                    &mut quarantine,
+                )
+                .unwrap();
+                thread::sleep(Duration::from_millis(5));
+            }
+            mode.store(1, Ordering::SeqCst);
+            gsm.send(GsmCommand::Mute(false)).unwrap();
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while reconciled && Instant::now() < deadline {
+                drain_gsm_events(
+                    &mut output,
+                    &mut runtime,
+                    &gsm,
+                    &mut generation,
+                    &mut sessions,
+                    &mut reconciled,
+                    &mut quarantine,
+                )
+                .unwrap();
+                thread::sleep(Duration::from_millis(5));
+            }
+            assert!(!reconciled);
+            assert!(runtime.voice_suspended());
+            assert_eq!(*suspends.lock().unwrap(), 1);
+            assert!(runtime
+                .suspend_for_voice_session(&SessionKey {
+                    call_id: "runtime-outgoing-2".into(),
+                    ..key.clone()
+                })
+                .is_err());
+            let before = *opens.lock().unwrap();
+            if owned {
+                // No fresh native proof is possible for this dirty lifetime.
+                gsm.send(GsmCommand::Mute(false)).unwrap();
+                thread::sleep(Duration::from_millis(20));
+                drain_gsm_events(
+                    &mut output,
+                    &mut runtime,
+                    &gsm,
+                    &mut generation,
+                    &mut sessions,
+                    &mut reconciled,
+                    &mut quarantine,
+                )
+                .unwrap();
+                assert!(!reconciled);
+                assert_eq!(*opens.lock().unwrap(), before);
+                runtime.resume_after_voice_session(&SessionKey {
+                    call_id: "wrong".into(),
+                    ..key.clone()
+                });
+                assert!(runtime.voice_suspended());
+            } else {
+                mode.store(2, Ordering::SeqCst);
+                gsm.send(GsmCommand::Mute(false)).unwrap();
+                let deadline = Instant::now() + Duration::from_secs(3);
+                while !reconciled && Instant::now() < deadline {
+                    drain_gsm_events(
+                        &mut output,
+                        &mut runtime,
+                        &gsm,
+                        &mut generation,
+                        &mut sessions,
+                        &mut reconciled,
+                        &mut quarantine,
+                    )
+                    .unwrap();
+                    thread::sleep(Duration::from_millis(5));
+                }
+                assert!(reconciled);
+                assert!(!runtime.voice_suspended());
+                assert_eq!(*opens.lock().unwrap(), before + 1);
+                gsm.send(GsmCommand::Mute(false)).unwrap();
+                thread::sleep(Duration::from_millis(20));
+                drain_gsm_events(
+                    &mut output,
+                    &mut runtime,
+                    &gsm,
+                    &mut generation,
+                    &mut sessions,
+                    &mut reconciled,
+                    &mut quarantine,
+                )
+                .unwrap();
+                assert_eq!(*opens.lock().unwrap(), before + 1);
+            }
+        }
     }
 
     #[test]
