@@ -217,6 +217,10 @@ impl RuntimeLoop {
         domain: WorkerDomain,
         envelope: &WorkerEnvelope,
     ) -> bool {
+        if self.calls.recovering.contains(&domain) {
+            // Messages already drained before retirement still belong to its old lifetime.
+            return true;
+        }
         if let Some((operation, ok)) = self.call_operations.result(domain, envelope) {
             self.finish_call_operation(io, operation, ok, &envelope.payload);
             return true;

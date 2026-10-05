@@ -64,7 +64,7 @@ pub(super) fn reap_owned_helpers(token: &str) -> Result<(), String> {
             let Some(pid) = entry
                 .file_name()
                 .to_str()
-                .and_then(|s| s.parse::<u32>().ok())
+                .and_then(|s| s.parse::<i32>().ok())
                 .and_then(Pid::from_raw)
             else {
                 continue;
