@@ -54,7 +54,10 @@ struct WorkerProcess {
     network_owner: Option<crate::network_owner::NetworkOwner>,
     lifetime_token: String,
     owner_uid: Option<u32>,
+    #[cfg(target_os = "linux")]
     expected_owner_uid: Option<u32>,
+    #[cfg(target_os = "linux")]
+    credential_verification_failed: bool,
     runtime_start: Option<u64>,
     child: Child,
     stdin: ChildStdin,
@@ -83,6 +86,8 @@ impl WorkerSupervisor {
                     return false;
                 }
             };
+        #[cfg(not(target_os = "linux"))]
+        let _ = owner_uid;
         let lifetime_token = format!(
             "{}-{}-{}-{}",
             std::process::id(),
@@ -145,8 +150,11 @@ impl WorkerSupervisor {
                 #[cfg(target_os = "linux")]
                 network_owner,
                 lifetime_token,
-                owner_uid,
+                owner_uid: None,
+                #[cfg(target_os = "linux")]
                 expected_owner_uid: owner_uid,
+                #[cfg(target_os = "linux")]
+                credential_verification_failed: false,
                 runtime_start,
                 child,
                 stdin,

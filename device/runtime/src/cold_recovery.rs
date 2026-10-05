@@ -82,6 +82,30 @@ fn prove_stopped_resources() -> Result<(), String> {
 }
 
 fn prove_process_resources(proc: &Path, pid: u32) -> Result<(), String> {
+    let tasks = process_tasks(proc)?;
+    for task in &tasks {
+        prove_task_resources(task, pid)?;
+    }
+    if tasks != process_tasks(proc)? {
+        return Err(format!("thread group changed during resource proof: {pid}"));
+    }
+    Ok(())
+}
+
+fn process_tasks(proc: &Path) -> Result<Vec<std::path::PathBuf>, String> {
+    let mut tasks = std::fs::read_dir(proc.join("task"))
+        .map_err(|e| format!("incomplete thread-group proof: {e}"))?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    if tasks.is_empty() {
+        return Err("empty thread-group census".into());
+    }
+    tasks.sort_unstable();
+    Ok(tasks)
+}
+
+fn prove_task_resources(proc: &Path, pid: u32) -> Result<(), String> {
     match std::fs::read_link(proc.join("exe")) {
         Ok(exe) => {
             let name = exe.file_name().unwrap_or_default().to_string_lossy();
@@ -93,26 +117,18 @@ fn prove_process_resources(proc: &Path, pid: u32) -> Result<(), String> {
             }
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            // Kernel threads/zombies have no executable and no user descriptors.
-            let status = match std::fs::read_to_string(proc.join("status")) {
-                Ok(status) => status,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-                Err(e) => return Err(e.to_string()),
-            };
-            if !status
-                .lines()
-                .any(|line| line == "Kthread:\t1" || line.starts_with("State:\tZ"))
-            {
+            // A zombie leader may retain live siblings and an inaccessible FD
+            // table. Only kernel threads can omit exe; zombies/races fail closed.
+            let status = std::fs::read_to_string(proc.join("status"))
+                .map_err(|e| format!("incomplete task status proof: {e}"))?;
+            if !status.lines().any(|line| line == "Kthread:\t1") {
                 return Err(format!("incomplete executable proof for {pid}"));
             }
         }
         Err(e) => return Err(format!("incomplete process proof: {e}")),
     }
-    let descriptors = match std::fs::read_dir(proc.join("fd")) {
-        Ok(descriptors) => descriptors,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(format!("incomplete resource proof: {e}")),
-    };
+    let descriptors = std::fs::read_dir(proc.join("fd"))
+        .map_err(|e| format!("incomplete resource proof: {e}"))?;
     for descriptor in descriptors {
         match std::fs::read_link(descriptor.map_err(|e| e.to_string())?.path()) {
             Ok(target) => {
@@ -124,7 +140,6 @@ fn prove_process_resources(proc: &Path, pid: u32) -> Result<(), String> {
                     return Err(format!("audio/modem resource remains open in {pid}"));
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(format!("incomplete descriptor proof: {e}")),
         }
     }
@@ -254,5 +269,22 @@ mod tests {
             prove_process_resources(dir.path(), 10).is_err(),
             "readable leader-only view must not hide a sibling resource"
         );
+    }
+
+    #[test]
+    fn each_task_requires_readable_resources_including_nonleader_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        for tid in [10, 11] {
+            let task = dir.path().join(format!("task/{tid}"));
+            std::fs::create_dir_all(task.join("fd")).unwrap();
+            std::os::unix::fs::symlink("/usr/bin/ordinary-process", task.join("exe")).unwrap();
+        }
+        assert!(prove_process_resources(dir.path(), 10).is_ok());
+        let fd = dir.path().join("task/11/fd/3");
+        std::os::unix::fs::symlink("/dev/snd/test-fixture", &fd).unwrap();
+        assert!(prove_process_resources(dir.path(), 10).is_err());
+        std::fs::remove_file(fd).unwrap();
+        std::fs::remove_dir(dir.path().join("task/11/fd")).unwrap();
+        assert!(prove_process_resources(dir.path(), 10).is_err());
     }
 }

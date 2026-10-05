@@ -2,7 +2,9 @@
 //! The owner is a subreaper, not a process-name/ancestry census. Only its kernel
 //! children (including adopted descendants) can be signalled. ECHILD proves drain.
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::io::{Read, Write};
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -12,6 +14,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Launch {
     socket: PathBuf,
     token: String,
@@ -22,7 +25,72 @@ struct Launch {
     bind_cap: bool,
     program: String,
     args: Vec<String>,
+    environment: NetworkEnvironment,
     fixture: bool,
+}
+
+// Network config.rs and audio.rs are the supported configuration readers.
+// Never carry PATH, loader variables, or arbitrary caller-selected names across
+// sudo. Values retain absent/empty/non-UTF8 semantics of those actual readers.
+const NETWORK_ENVIRONMENT: [&str; 16] = [
+    "YOYOPOD_CONFIG_BOARD",
+    "YOYOPOD_NETWORK_ENABLED",
+    "YOYOPOD_MODEM_PORT",
+    "YOYOPOD_MODEM_PPP_PORT",
+    "YOYOPOD_MODEM_BAUD",
+    "YOYOPOD_MODEM_APN",
+    "YOYOPOD_MODEM_GPS_ENABLED",
+    "YOYOPOD_MODEM_PPP_TIMEOUT",
+    "YOYOPOD_ALSA_DEVICE",
+    "YOYOPOD_LOCAL_CAPTURE_DEVICE",
+    "YOYOPOD_PLAYBACK_DEVICE",
+    "YOYOPOD_RINGER_DEVICE",
+    "YOYOPOD_CAPTURE_DEVICE",
+    "YOYOPOD_MEDIA_DEVICE",
+    "YOYOPOD_AUDIO_SETTINGS_FILE",
+    "YOYOPOD_ASOUND_CONFIG",
+];
+
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct NetworkEnvironment(BTreeMap<String, Option<Vec<u8>>>);
+
+impl NetworkEnvironment {
+    fn capture(mut read: impl FnMut(&str) -> Option<std::ffi::OsString>) -> Self {
+        Self(
+            NETWORK_ENVIRONMENT
+                .into_iter()
+                .map(|name| {
+                    (
+                        name.to_owned(),
+                        read(name).map(|value| value.as_bytes().to_vec()),
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    fn apply(&self, command: &mut Command) -> Result<(), String> {
+        if self.0.len() != NETWORK_ENVIRONMENT.len()
+            || self
+                .0
+                .keys()
+                .any(|name| !NETWORK_ENVIRONMENT.contains(&name.as_str()))
+            || self.0.values().flatten().any(|value| value.contains(&0))
+        {
+            return Err("invalid Network configuration environment snapshot".into());
+        }
+        for (name, value) in &self.0 {
+            if let Some(value) = value {
+                command.env(name, std::ffi::OsString::from_vec(value.clone()));
+            } else {
+                // Absence is explicit, so guardian/sudo defaults cannot replace
+                // an unset supervisor override with a different value.
+                command.env_remove(name);
+            }
+        }
+        Ok(())
+    }
 }
 
 pub struct NetworkOwner {
@@ -120,6 +188,7 @@ impl NetworkOwner {
             bind_cap: caps[0] == 0x400,
             program: program.into(),
             args: args.to_vec(),
+            environment: NetworkEnvironment::capture(|name| std::env::var_os(name)),
             fixture,
         };
         let executable = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -328,6 +397,7 @@ fn worker_command(launch: &Launch) -> Result<Command, String> {
         command.env("YOYOPOD_NETWORK_CREDENTIALS", serde_json::json!({"uid":launch.uid,"gid":launch.gid,"groups":launch.groups,"cap":if launch.bind_cap {0x400} else {0}}).to_string());
         command
     };
+    launch.environment.apply(&mut command)?;
     if launch.fixture {
         command.arg("--network-owner-fixture-worker");
     } else {
@@ -604,6 +674,46 @@ mod tests {
                 }
             );
         }
+    }
+
+    #[test]
+    fn network_environment_snapshot_preserves_bytes_and_rejects_unlisted_or_incomplete_input() {
+        let captured = NetworkEnvironment::capture(|name| match name {
+            "YOYOPOD_MODEM_APN" => Some("  custom.apn  ".into()),
+            "YOYOPOD_AUDIO_SETTINGS_FILE" => Some("".into()),
+            "YOYOPOD_ASOUND_CONFIG" => Some(std::ffi::OsString::from_vec(b"/tmp/\xff".to_vec())),
+            _ => None,
+        });
+        let encoded = serde_json::to_string(&captured).unwrap();
+        let mut decoded: NetworkEnvironment = serde_json::from_str(&encoded).unwrap();
+        let mut child = Command::new("/usr/bin/env");
+        child.env_clear().arg("-0"); // Model the cleared environment after sudo.
+        decoded.apply(&mut child).unwrap();
+        let output = child.output().unwrap();
+        assert!(output.status.success());
+        let values: Vec<_> = output.stdout.split(|byte| *byte == 0).collect();
+        assert!(values.contains(&b"YOYOPOD_MODEM_APN=  custom.apn  ".as_slice()));
+        assert!(values.contains(&b"YOYOPOD_AUDIO_SETTINGS_FILE=".as_slice()));
+        assert!(values.contains(&b"YOYOPOD_ASOUND_CONFIG=/tmp/\xff".as_slice()));
+        assert!(!values
+            .iter()
+            .any(|value| value.starts_with(b"YOYOPOD_NETWORK_ENABLED=")));
+        for key in [
+            "PATH",
+            "LD_PRELOAD",
+            "YOYOPOD_NETWORK_CREDENTIALS",
+            "UNKNOWN",
+        ] {
+            decoded.0.insert(key.into(), Some(b"injected".to_vec()));
+            assert!(decoded.apply(&mut Command::new("/bin/true")).is_err());
+            decoded.0.remove(key);
+        }
+        decoded
+            .0
+            .insert("YOYOPOD_MODEM_APN".into(), Some(b"nul\0value".to_vec()));
+        assert!(decoded.apply(&mut Command::new("/bin/true")).is_err());
+        decoded.0.remove("YOYOPOD_MODEM_APN");
+        assert!(decoded.apply(&mut Command::new("/bin/true")).is_err());
     }
 
     #[test]

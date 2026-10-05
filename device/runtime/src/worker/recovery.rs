@@ -331,18 +331,32 @@ fn ordinary_executable(program: &str) -> Result<(), String> {
 
 pub(super) fn verify_worker_credentials(worker: &mut WorkerProcess) -> Result<(), String> {
     #[cfg(target_os = "linux")]
-    if let Some(owner) = worker.owner_uid.take() {
+    if let Some(owner) = worker.expected_owner_uid {
+        // Expected identity belongs to the lifetime. A failed proof can never
+        // erase that requirement or restore a narrower census on a later ready.
+        worker.owner_uid = None;
+        if worker.credential_verification_failed {
+            return Err("audio worker credential verification previously failed".into());
+        }
+        worker.credential_verification_failed = true;
         let status = std::fs::read_to_string(format!("/proc/{}/status", worker.child.id()))
             .map_err(|e| e.to_string())?;
-        if unprivileged_owner(&status)? != Some(owner)
-            || !status.lines().any(|line| line == "NoNewPrivs:\t1")
-        {
-            return Err("audio worker post-exec credential proof failed".into());
-        }
+        verify_audio_status(&status, owner)?;
+        worker.credential_verification_failed = false;
         worker.owner_uid = Some(owner);
     }
     #[cfg(not(target_os = "linux"))]
     let _ = worker;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn verify_audio_status(status: &str, expected: u32) -> Result<(), String> {
+    if unprivileged_owner(status)? != Some(expected)
+        || !status.lines().any(|line| line == "NoNewPrivs:\t1")
+    {
+        return Err("audio worker post-exec credential proof failed".into());
+    }
     Ok(())
 }
 
@@ -373,6 +387,14 @@ mod credentials_tests {
             "failed proof must not disable subsequent verification"
         );
         assert!(worker.owner_uid.is_none());
+        let (tx, rx) = mpsc::channel();
+        supervisor
+            .recover_with(WorkerDomain::Media, move |_, scope, _| {
+                tx.send(scope).unwrap();
+                Err("test retains full-census obligation".into())
+            })
+            .unwrap();
+        assert_eq!(rx.recv_timeout(Duration::from_secs(3)).unwrap(), None);
     }
 
     #[test]
@@ -416,6 +438,9 @@ mod credentials_tests {
             None
         );
         assert!(unprivileged_owner("Uid: 1000").is_err());
+        assert!(verify_audio_status("Uid: 1000", 1000).is_err());
+        assert!(verify_audio_status(&format!("{status}NoNewPrivs:\t1\n"), 1000).is_ok());
+        assert!(verify_audio_status(&format!("{status}NoNewPrivs:\t0\n"), 1000).is_err());
     }
     #[test]
     fn privilege_escalating_domains_do_not_receive_uid_exclusion() {
