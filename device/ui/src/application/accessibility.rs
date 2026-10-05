@@ -62,16 +62,25 @@ pub(crate) fn focused_item(runtime: &UiRuntime) -> Option<FocusDescriptor> {
             focus,
             "No contacts yet. Ask a grown-up!",
         ),
-        UiScreen::SetupContacts => snapshot.call.contacts.get(focus).map(|contact| {
-            FocusDescriptor::new(
-                contact.contact_id.clone(),
-                format!(
-                    "{}, {}",
-                    contact.title,
-                    crate::components::screens::setup::priority_subtitle(snapshot, contact)
-                ),
-            )
-        }),
+        UiScreen::SetupContacts => {
+            if snapshot.call.contacts.is_empty() {
+                Some(FocusDescriptor::new(
+                    "empty",
+                    "No contacts yet. Ask a grown-up!",
+                ))
+            } else {
+                snapshot.call.contacts.get(focus).map(|contact| {
+                    FocusDescriptor::new(
+                        contact.contact_id.clone(),
+                        format!(
+                            "{}, {}",
+                            contact.title,
+                            crate::components::screens::setup::priority_subtitle(snapshot, contact)
+                        ),
+                    )
+                })
+            }
+        }
         UiScreen::SetupCallMode => choice_item(
             focus,
             &["Normal", "Silent", "Do Not Disturb"],
