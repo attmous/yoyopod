@@ -60,7 +60,7 @@ fn outside_owner(status: &str, owner: u32) -> Result<bool, String> {
     if uids.len() != 4 {
         return Err("incomplete UID census".into());
     }
-    Ok(uids.iter().all(|uid| *uid != owner))
+    Ok(uids.iter().any(|uid| *uid != owner))
 }
 
 pub(super) fn reap_owned_helpers(token: &str, owner_uid: Option<u32>) -> Result<(), String> {
@@ -119,7 +119,7 @@ pub(super) fn reap_owned_helpers(token: &str, owner_uid: Option<u32>) -> Result<
             ) {
                 Ok(true) => owned.push(handle),
                 Ok(false) => (),
-                Err(e) => error = Some(e),
+                Err(e) => error = Some(format!("pid {}: {e}", pid.as_raw_nonzero())),
             }
         }
         // Even when another entry failed, wait for every helper already signalled.
