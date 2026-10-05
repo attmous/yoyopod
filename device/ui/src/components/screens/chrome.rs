@@ -195,10 +195,13 @@ fn talk_contact_title(
 }
 
 fn voice_note_title(snapshot: &RuntimeSnapshot, focus_index: usize) -> String {
-    if snapshot.voice.interrupted_draft_path.is_some()
-        && snapshot.voice.interrupted_draft_phase == "unknown"
-    {
-        return "Delivery unknown".into();
+    if snapshot.voice.interrupted_draft_path.is_some() {
+        let title = super::voice_note::action_title(snapshot, focus_index);
+        return if snapshot.voice.interrupted_draft_phase == "unknown" {
+            format!("Delivery unknown · {title}")
+        } else {
+            title
+        };
     }
     let titles: &[&str] = match voice_note_phase(snapshot).as_str() {
         "review" => &["Send", "Play", "Again"],
