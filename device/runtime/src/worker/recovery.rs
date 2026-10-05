@@ -268,7 +268,7 @@ pub(super) fn worker_command(
         } else {
             None
         };
-        if owner.is_some() {
+        if let Some(uid) = owner {
             // setpriv execs the worker in place: Child/pidfd identity is unchanged.
             // Missing executable or rejected NNP setup fails startup, never falls back.
             ordinary_executable("/usr/bin/setpriv")?;
@@ -281,7 +281,7 @@ pub(super) fn worker_command(
                 "--",
                 program,
             ]);
-            command.env("YOYOPOD_AUDIO_OWNER_UID", owner.unwrap().to_string());
+            command.env("YOYOPOD_AUDIO_OWNER_UID", uid.to_string());
             return Ok((command, owner, Some(runtime_start)));
         }
         Ok((Command::new(program), None, Some(runtime_start)))
@@ -331,15 +331,15 @@ fn ordinary_executable(program: &str) -> Result<(), String> {
 
 pub(super) fn verify_worker_credentials(worker: &mut WorkerProcess) -> Result<(), String> {
     #[cfg(target_os = "linux")]
-    if let Some(owner) = worker.owner_uid {
+    if let Some(owner) = worker.owner_uid.take() {
         let status = std::fs::read_to_string(format!("/proc/{}/status", worker.child.id()))
             .map_err(|e| e.to_string())?;
         if unprivileged_owner(&status)? != Some(owner)
             || !status.lines().any(|line| line == "NoNewPrivs:\t1")
         {
-            worker.owner_uid = None;
             return Err("audio worker post-exec credential proof failed".into());
         }
+        worker.owner_uid = Some(owner);
     }
     #[cfg(not(target_os = "linux"))]
     let _ = worker;
