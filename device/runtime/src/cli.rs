@@ -109,14 +109,16 @@ fn start_workers(
     hardware: &str,
     config_dir: &Path,
 ) -> Result<RuntimeState> {
-    let mut state = RuntimeState::default();
-    state.native_call_guard_file = config.native_call_guard_file.clone().into();
-    state.call_ring_duration_ms = config.call_ring_duration_ms;
-    state.display_brightness = config.ui.brightness as f32;
-    state.audio_route = json!({"media_device": config.media.alsa_device, "media_volume": config.media.default_volume,
+    let mut state = RuntimeState {
+        native_call_guard_file: config.native_call_guard_file.clone().into(),
+        call_ring_duration_ms: config.call_ring_duration_ms,
+        display_brightness: config.ui.brightness as f32,
+        audio_route: json!({"media_device": config.media.alsa_device, "media_volume": config.media.default_volume,
         "alert_volume": config.voip.output_volume, "voip_playback_device": config.voip.playback_dev_id,
         "voip_ringer_device":config.voip.ringer_dev_id,"voip_media_device":config.voip.media_dev_id,
-        "voip_capture_device": config.voip.capture_dev_id});
+        "voip_capture_device": config.voip.capture_dev_id}),
+        ..Default::default()
+    };
     state.seed_contacts(config.people.to_contact_items());
     state.configure_call_preferences(config.call_mode_file.clone());
     state.configure_app_log_file(config.log_file.clone());

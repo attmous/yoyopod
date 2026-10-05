@@ -728,3 +728,29 @@ fn latest_route_ack_controls_initial_alert_and_return_normal_lease() {
     assert_eq!(start.payload["lease_ms"], 9_999);
     assert_eq!(start.payload["operation_generation"], 2);
 }
+
+#[test]
+fn queued_empty_scan_cannot_confirm_new_outgoing_cleanup() {
+    let (mut runtime, mut io, _) = fixture(CallTransport::Gsm);
+    runtime.calls.native_owner = Some("bus/owner".into());
+    runtime.request_outgoing(
+        &mut io,
+        ContactAction {
+            id: "sip:dad@example.test".into(),
+            method: CallMethod::Gsm,
+            ..Default::default()
+        },
+    );
+    let key = runtime.manager.session().cloned().unwrap();
+    prepare(&mut runtime, &mut io, 1);
+    io.messages.push((WorkerDomain::Network,WorkerEnvelope::event("call.reconciled",json!({
+        "generation":1,"native_owner":"bus/owner","native_calls_quiescent":true,"audio_released":true}))));
+    runtime.run_once_at(&mut io, 2);
+    control(&mut runtime, &mut io, &key, CallAction::Hangup, 3);
+    respond(&mut runtime, &mut io, "call.action", 4);
+    assert_eq!(runtime.manager.session(), Some(&key));
+    assert!(!io
+        .sent
+        .iter()
+        .any(|(_, e)| e.message_type == "media.release_call"));
+}

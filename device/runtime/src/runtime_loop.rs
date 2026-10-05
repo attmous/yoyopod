@@ -195,15 +195,14 @@ impl RuntimeLoop {
                 let id = envelope.request_id.clone();
                 if domain == WorkerDomain::Network
                     && matches!(envelope.message_type.as_str(), "call.action" | "call.dial")
+                    && !self.guard_native_dispatch(&envelope)
                 {
-                    if !self.guard_native_dispatch(&envelope) {
-                        if let Some(operation) =
-                            id.and_then(|id| self.call_operations.take(domain, &id))
-                        {
-                            self.finish_call_operation(io, operation, false, &json!({}));
-                        }
-                        return;
+                    if let Some(operation) =
+                        id.and_then(|id| self.call_operations.take(domain, &id))
+                    {
+                        self.finish_call_operation(io, operation, false, &json!({}));
                     }
+                    return;
                 }
                 if !io.send_worker_envelope(domain, envelope) {
                     if let Some(operation) =

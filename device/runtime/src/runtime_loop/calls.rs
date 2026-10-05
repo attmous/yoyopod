@@ -177,11 +177,14 @@ impl RuntimeLoop {
         let Ok(key) = serde_json::from_value::<SessionKey>(envelope.payload["key"].clone()) else {
             return false;
         };
-        match self
+        let native_owner = self
             .calls
-            .native_guard
-            .before_dispatch(&key, self.calls.native_owner.as_deref())
-        {
+            .resources
+            .as_ref()
+            .filter(|r| r.interruption.key == key)
+            .map(|r| r.native_owner.as_deref())
+            .unwrap_or(self.calls.native_owner.as_deref());
+        match self.calls.native_guard.before_dispatch(&key, native_owner) {
             Ok(()) => true,
             Err(error) => {
                 self.state.mark_worker(
@@ -277,26 +280,16 @@ impl RuntimeLoop {
                     }
                 }
                 "call.reconciled"
-                    if domain == WorkerDomain::Network && envelope.kind == EnvelopeKind::Event =>
+                    if domain == WorkerDomain::Network
+                        && envelope.kind == EnvelopeKind::Event
+                        && envelope.payload["generation"].as_u64()
+                            == self.calls.generations.get(&domain).copied() =>
                 {
-                    if envelope.payload["generation"].as_u64()
-                        == self.calls.generations.get(&domain).copied()
-                    {
-                        self.calls.native_owner =
-                            envelope.payload["native_owner"].as_str().map(str::to_owned);
-                        if let Some(r) = self.calls.resources.as_mut() {
-                            if r.interruption.key.transport == CallTransport::Gsm
-                                && !r.recovery_quarantined
-                                && r.native_owner.is_some()
-                                && r.native_owner == self.calls.native_owner
-                                && envelope.payload["native_calls_quiescent"] == true
-                                && envelope.payload["audio_released"] == true
-                            {
-                                r.native_released = true;
-                            }
-                        }
-                        self.confirm_call_cleanup(io);
-                    }
+                    self.calls.native_owner =
+                        envelope.payload["native_owner"].as_str().map(str::to_owned);
+                    // A pre-dispatch empty-cache observation can be queued behind a new
+                    // outgoing request. Only the exact key's terminal fact releases it.
+                    // Recovery uncertainty survives even same-owner empty observations.
                 }
                 _ => {}
             }
