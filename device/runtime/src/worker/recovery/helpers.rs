@@ -60,7 +60,17 @@ fn outside_owner(status: &str, owner: u32) -> Result<bool, String> {
     if uids.len() != 4 {
         return Err("incomplete UID census".into());
     }
-    Ok(uids.iter().any(|uid| *uid != owner))
+    let nnp = status
+        .lines()
+        .find_map(|line| line.strip_prefix("NoNewPrivs:"))
+        .ok_or("missing no-new-privileges census")?
+        .trim();
+    if !matches!(nnp, "0" | "1") {
+        return Err("invalid no-new-privileges census".into());
+    }
+    // NNP is irreversible and inherited. A process without it cannot belong to
+    // this launch, including nondumpable same-UID SSH/login processes.
+    Ok(uids.iter().any(|uid| *uid != owner) || nnp == "0")
 }
 
 pub(super) fn reap_owned_helpers(token: &str, owner_uid: Option<u32>) -> Result<(), String> {
