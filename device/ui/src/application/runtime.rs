@@ -19,6 +19,59 @@ use super::state::{DirtyState, HomeMode, SystemOverlayPreview, UiRuntime};
 use super::{input_router, navigator, snapshot, UiScreen};
 
 const RUNTIME_LINK_ERROR: &str = "Lost runtime link";
+
+#[cfg(test)]
+mod call_interruption_regressions {
+    use super::*;
+    use yoyopod_protocol::call::{CallAction, CallCommand, CallTransport, RejectReason, SessionKey};
+    use yoyopod_protocol::ui::CallIntent;
+
+    fn incoming(runtime: &mut UiRuntime) -> SessionKey {
+        let key = SessionKey { transport: CallTransport::Sip, generation: 1, call_id: "a".into() };
+        runtime.snapshot.call.state = "incoming".into();
+        runtime.snapshot.call.session = Some(key.clone());
+        runtime.snapshot.call.accept_enabled = true;
+        key
+    }
+
+    #[test]
+    fn call_interruption_wins_recoverable_error_and_loading() {
+        for loading in [true, false] {
+            let mut runtime = UiRuntime::default();
+            incoming(&mut runtime);
+            runtime.snapshot.overlay.loading = loading;
+            runtime.system_overlay.loading_visible = true;
+            if !loading { runtime.snapshot.overlay.error = "retry".into(); runtime.snapshot.overlay.retryable = true; }
+            navigator::apply_runtime_preemption(&mut runtime);
+            assert_eq!(runtime.active_screen, UiScreen::IncomingCall);
+        }
+    }
+
+    #[test]
+    fn call_interruption_duration_preserves_cancel_and_emits_displayed_key() {
+        let mut runtime = UiRuntime::default();
+        let key = incoming(&mut runtime);
+        navigator::apply_runtime_preemption(&mut runtime);
+        runtime.handle_input(InputAction::Advance, 100);
+        assert_eq!(runtime.focus_index, 1);
+        navigator::apply_runtime_preemption(&mut runtime);
+        assert_eq!(runtime.focus_index, 1);
+        runtime.handle_input(InputAction::Select, 200);
+        assert_eq!(runtime.take_intents(), vec![UiIntent::Call(CallIntent::Session(CallCommand { key, action: CallAction::Reject(RejectReason::Cancelled) }))]);
+    }
+
+    #[test]
+    fn call_interruption_home_cancels_without_escaping_or_ptt() {
+        let mut runtime = UiRuntime::default();
+        incoming(&mut runtime);
+        navigator::apply_runtime_preemption(&mut runtime);
+        runtime.handle_input(InputAction::Home, 100);
+        assert_eq!(runtime.active_screen, UiScreen::IncomingCall);
+        runtime.handle_input(InputAction::PttPress, 200);
+        runtime.handle_input(InputAction::PttRelease, 300);
+        assert_eq!(runtime.take_intents().len(), 1);
+    }
+}
 const FLASHLIGHT_TIMEOUT_MS: u64 = 300_000;
 const WATCH_ORBIT_DIRTY_REGION: DirtyRegion = DirtyRegion {
     x: 2,
