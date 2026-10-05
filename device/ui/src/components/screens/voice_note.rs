@@ -39,7 +39,11 @@ pub fn scene(props: &VoiceNoteProps) -> Scene {
 
 fn buttons(snapshot: &RuntimeSnapshot) -> Vec<DeckItem> {
     if snapshot.voice.interrupted_draft_path.is_some() {
-        let send = if snapshot.voice.interrupted_draft_send_allowed {
+        let send = if snapshot.voice.interrupted_draft_send_allowed
+            && snapshot.voice.interrupted_draft_phase == "unknown"
+        {
+            "Send again"
+        } else if snapshot.voice.interrupted_draft_send_allowed {
             "Send"
         } else {
             "Send unavailable"
@@ -47,7 +51,7 @@ fn buttons(snapshot: &RuntimeSnapshot) -> Vec<DeckItem> {
         return match voice_note_phase(snapshot).as_str() {
             "sending" => vec![button("sending", "Sending", "voice_note")],
             "sent" => vec![button("sent", "Sent", "check")],
-            "failed" => vec![
+            "failed" | "unknown" => vec![
                 button("retry", send, "retry"),
                 button("play", "Review", "play"),
                 button("discard", "Discard", "close"),

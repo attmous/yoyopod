@@ -41,6 +41,63 @@ mod call_interruption_regressions {
     }
 
     #[test]
+    fn replacement_sender_unknown_draft_offers_review_discard_and_explicit_retry() {
+        use yoyopod_protocol::ui::{VoiceIntent, VoiceRuntimeSnapshot};
+        let mut runtime = UiRuntime {
+            active_screen: UiScreen::VoiceNote,
+            ..Default::default()
+        };
+        let mut voice = VoiceRuntimeSnapshot {
+            interrupted_draft_path: Some("owned.wav".into()),
+            interrupted_draft_id: "draft-a".into(),
+            interrupted_draft_phase: "review".into(),
+            interrupted_draft_send_allowed: true,
+            ..Default::default()
+        };
+        runtime.apply_patch(RuntimeSnapshotPatch::Voice(voice.clone()));
+        runtime.handle_input(InputAction::Select, 100);
+        assert!(
+            matches!(runtime.take_intents().as_slice(), [UiIntent::Voice(VoiceIntent::SavedSend(action))] if action.file_path == "owned.wav" && action.message_id == "draft-a")
+        );
+        voice.interrupted_draft_phase = "sending".into();
+        voice.interrupted_draft_send_allowed = false;
+        runtime.apply_patch(RuntimeSnapshotPatch::Voice(voice.clone()));
+        runtime.handle_input(InputAction::Select, 200);
+        assert!(runtime.take_intents().is_empty());
+        voice.interrupted_draft_phase = "unknown".into();
+        voice.interrupted_draft_send_allowed = true;
+        runtime.apply_patch(RuntimeSnapshotPatch::Voice(voice.clone()));
+        assert!(
+            runtime.take_intents().is_empty(),
+            "replacement does not send or capture"
+        );
+        assert_eq!(
+            super::super::options::voice_note_action_count(&runtime.snapshot),
+            3
+        );
+        runtime.handle_input(InputAction::Advance, 300);
+        runtime.handle_input(InputAction::Select, 310);
+        assert!(
+            matches!(runtime.take_intents().as_slice(), [UiIntent::Voice(VoiceIntent::SavedPlay(action))] if action.message_id == "draft-a")
+        );
+        runtime.handle_input(InputAction::Advance, 400);
+        runtime.handle_input(InputAction::Select, 410);
+        assert!(
+            matches!(runtime.take_intents().as_slice(), [UiIntent::Voice(VoiceIntent::SavedDiscard(action))] if action.message_id == "draft-a")
+        );
+        runtime.active_screen = UiScreen::VoiceNote;
+        runtime.focus_index = 0;
+        runtime.handle_input(InputAction::Select, 500);
+        assert!(
+            matches!(runtime.take_intents().as_slice(), [UiIntent::Voice(VoiceIntent::SavedSend(action))] if action.message_id == "draft-a")
+        );
+        voice.interrupted_draft_send_allowed = false;
+        runtime.apply_patch(RuntimeSnapshotPatch::Voice(voice));
+        runtime.handle_input(InputAction::Select, 600);
+        assert!(runtime.take_intents().is_empty());
+    }
+
+    #[test]
     fn call_interruption_wins_recoverable_error_and_loading() {
         for loading in [true, false] {
             let mut runtime = UiRuntime::default();

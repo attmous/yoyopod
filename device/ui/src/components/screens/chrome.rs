@@ -195,6 +195,11 @@ fn talk_contact_title(
 }
 
 fn voice_note_title(snapshot: &RuntimeSnapshot, focus_index: usize) -> String {
+    if snapshot.voice.interrupted_draft_path.is_some()
+        && snapshot.voice.interrupted_draft_phase == "unknown"
+    {
+        return "Delivery unknown".into();
+    }
     let titles: &[&str] = match voice_note_phase(snapshot).as_str() {
         "review" => &["Send", "Play", "Again"],
         "failed" => &["Retry", "Again"],

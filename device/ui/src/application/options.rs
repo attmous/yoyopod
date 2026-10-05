@@ -85,7 +85,10 @@ pub fn call_method_disabled_reason<'a>(
 
 pub fn voice_note_action_count(snapshot: &RuntimeSnapshot) -> usize {
     if snapshot.voice.interrupted_draft_path.is_some()
-        && matches!(voice_note_phase(snapshot).as_str(), "review" | "failed")
+        && matches!(
+            voice_note_phase(snapshot).as_str(),
+            "review" | "failed" | "unknown"
+        )
     {
         return 3;
     }

@@ -945,7 +945,7 @@ impl RuntimeState {
         self.call.state == CallState::Idle
             && self.voice.interrupted_draft_path.is_some()
             && self.voice.interrupted_draft.as_ref().is_some_and(|d| {
-                matches!(d.phase.as_str(), "review" | "failed")
+                matches!(d.phase.as_str(), "review" | "failed" | "unknown")
                     && self.is_approved_voice_recipient(&d.recipient)
             })
     }

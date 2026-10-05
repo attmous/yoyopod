@@ -171,6 +171,13 @@ impl RuntimeEvent {
             Self::WorkerExited { domain, reason } => {
                 state.mark_worker(*domain, WorkerState::Stopped, reason.clone());
                 if *domain == WorkerDomain::Voip {
+                    if let Some(draft) = state.voice.interrupted_draft.as_mut() {
+                        if draft.phase == "sending" {
+                            // Process death cannot establish whether the peer received it.
+                            // Preserve ownership, but require a new explicit retry decision.
+                            draft.phase = "unknown".into();
+                        }
+                    }
                     state.call.sip_available = false;
                     state.call.registered = false;
                     state.call.registration_state = "none".to_string();

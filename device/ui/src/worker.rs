@@ -451,13 +451,15 @@ fn apply_call_wake<D: DisplayDevice>(
     button: &mut OneButtonMachine,
     display: &mut D,
 ) -> Result<()> {
+    if (runtime.snapshot.call.session.is_some() || runtime.call_wake_pending)
+        && !router::is_call_screen(runtime.active_screen())
+    {
+        anyhow::bail!("call display unavailable: fatal UI error");
+    }
     if !runtime.call_wake_pending {
         return Ok(());
     }
     button.cancel_current_gesture();
-    if !router::is_call_screen(runtime.active_screen()) {
-        anyhow::bail!("call display unavailable: fatal UI error");
-    }
     display.set_backlight(1.0)?;
     runtime.call_wake_pending = false;
     Ok(())

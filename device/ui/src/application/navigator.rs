@@ -761,7 +761,7 @@ fn reset_replay_state(runtime: &mut UiRuntime) {
 fn select_voice_note(runtime: &mut UiRuntime) {
     if let Some(action) = runtime.saved_draft_action() {
         match runtime.voice_note_phase().as_str() {
-            "review" | "failed" => match runtime.focus_index {
+            "review" | "failed" | "unknown" => match runtime.focus_index {
                 0 if runtime.snapshot.voice.interrupted_draft_send_allowed => runtime
                     .intents
                     .push(UiIntent::Voice(VoiceIntent::SavedSend(action))),
