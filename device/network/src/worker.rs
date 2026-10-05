@@ -2222,6 +2222,182 @@ mod tests {
     }
 
     #[test]
+    fn gsm_reconnect_operation_detected_loss_precedes_completion_and_preserves_keyed_data() {
+        struct OperationLoss {
+            key: SessionKey,
+            lost: bool,
+            loss_pending: bool,
+            ending_pending: bool,
+        }
+        impl crate::gsm::GsmBackend for OperationLoss {
+            fn refresh(&mut self) -> Result<crate::gsm::GsmCallState> {
+                Ok(Default::default())
+            }
+            fn selected_modem_epoch(&self) -> u64 {
+                u64::from(self.lost)
+            }
+            fn take_modem_loss(&mut self) -> Option<u64> {
+                if std::mem::take(&mut self.loss_pending) {
+                    Some(7)
+                } else {
+                    None
+                }
+            }
+            fn reconciliation(&self) -> Option<crate::gsm::GsmReconciliation> {
+                Some(crate::gsm::GsmReconciliation {
+                    generation: 7,
+                    admission_epoch: self.selected_modem_epoch(),
+                    native_owner: Some("same/owner".into()),
+                    native_calls_quiescent: false,
+                    audio_released: true,
+                })
+            }
+            fn apply_call(&mut self, command: &CallCommand) -> Result<()> {
+                assert_eq!(command.key, self.key);
+                assert_eq!(command.action, CallAction::Answer);
+                // Preflight completed in the old lifetime. The selected-modem
+                // control check now detects loss before Answer claims ownership.
+                self.lost = true;
+                self.loss_pending = true;
+                self.ending_pending = true;
+                anyhow::bail!("selected modem lost inside Answer before native ownership")
+            }
+            fn drain_call_events(&mut self) -> Vec<CallManagerWireEvent> {
+                if std::mem::take(&mut self.ending_pending) {
+                    vec![CallManagerWireEvent::Update(CallUpdate {
+                        key: self.key.clone(),
+                        direction: yoyopod_protocol::call::CallDirection::Incoming,
+                        phase: CallPhase::Ending,
+                        address: "+49123456789".into(),
+                        sequence: 2,
+                        duration_seconds: 0,
+                        muted: false,
+                    })]
+                } else {
+                    vec![]
+                }
+            }
+            fn dial(&mut self, _: &str) -> Result<()> {
+                Ok(())
+            }
+            fn hangup(&mut self) -> Result<()> {
+                Ok(())
+            }
+            fn mute(&mut self, _: bool) -> Result<()> {
+                Ok(())
+            }
+        }
+        let modem = NoFixModem::default();
+        let opens = modem.opened.clone();
+        let suspends = modem.voice_suspends.clone();
+        let mut runtime = NetworkRuntime::new(
+            "test",
+            NetworkHostConfig {
+                enabled: true,
+                ..Default::default()
+            },
+            modem,
+        );
+        runtime.start();
+        let key = SessionKey {
+            transport: CallTransport::Gsm,
+            generation: 7,
+            call_id: "gsm-1".into(),
+        };
+        let gsm = GsmWorker::with_backend(OperationLoss {
+            key: key.clone(),
+            lost: false,
+            loss_pending: false,
+            ending_pending: false,
+        });
+        let mut sessions = vec![CallUpdate {
+            key: key.clone(),
+            direction: yoyopod_protocol::call::CallDirection::Incoming,
+            phase: CallPhase::Ringing,
+            address: "+49123456789".into(),
+            sequence: 1,
+            duration_seconds: 0,
+            muted: false,
+        }];
+        enqueue_gsm_command(
+            &mut runtime,
+            &gsm,
+            Some(7),
+            &sessions,
+            &WorkerEnvelope::command(
+                "call.action",
+                Some("answer-loss".into()),
+                serde_json::json!({"key":key,"action":"answer","admission_epoch":0}),
+            ),
+        )
+        .unwrap();
+        assert!(runtime.voice_suspended());
+        let before = *opens.lock().unwrap();
+        let mut generation = Some(7);
+        let mut reconciled = true;
+        let mut quarantine = false;
+        let mut output = vec![];
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !String::from_utf8_lossy(&output).contains("answer-loss") && Instant::now() < deadline
+        {
+            drain_gsm_events(
+                &mut output,
+                &mut runtime,
+                &gsm,
+                &mut generation,
+                &mut sessions,
+                &mut reconciled,
+                &mut quarantine,
+            )
+            .unwrap();
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(String::from_utf8_lossy(&output).contains("answer-loss"));
+        assert_eq!(
+            *opens.lock().unwrap(),
+            before,
+            "operation completion transiently reopened data before its pending loss barrier"
+        );
+        assert_eq!(
+            *suspends.lock().unwrap(),
+            1,
+            "loss reacquired a keyless suspension after dropping the old keyed lease"
+        );
+        assert!(!reconciled);
+        assert!(runtime.voice_suspended());
+        assert_eq!(sessions[0].phase, CallPhase::Ending);
+        let events: Vec<_> = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| WorkerEnvelope::decode(line.as_bytes()).unwrap())
+            .collect();
+        let ending = events
+            .iter()
+            .position(|e| e.message_type == "call.update")
+            .unwrap();
+        let completed = events
+            .iter()
+            .position(|e| e.request_id.as_deref() == Some("answer-loss"))
+            .unwrap();
+        assert!(
+            ending < completed,
+            "operation result preceded its dirty native lifetime fact"
+        );
+        runtime.resume_after_voice_session(&SessionKey {
+            call_id: "wrong-key".into(),
+            ..key.clone()
+        });
+        assert!(runtime.voice_suspended());
+        // Probe correlation without reopening data: the loss barrier remains armed.
+        runtime.resume_after_voice_session(&key);
+        assert!(
+            !runtime.voice_suspended(),
+            "old keyed reservation was replaced by a keyless suspension"
+        );
+        assert_eq!(*opens.lock().unwrap(), before);
+    }
+
+    #[test]
     fn deferred_location_fix_event_precedes_its_correlated_success_result() {
         let config_dir = tempfile::tempdir().unwrap();
         let modem = NoFixModem {
