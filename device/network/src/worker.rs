@@ -291,7 +291,7 @@ where
                 &mut gsm_generation,
                 &mut gsm_sessions,
                 &mut gsm_startup_reconciled,
-                gsm_recovery_quarantined,
+                &mut gsm_recovery_quarantined,
             )?;
         }
         match input_rx.recv_timeout(poll_interval) {
@@ -533,12 +533,30 @@ fn enqueue_gsm_command<C: ModemController>(
             )
         }
     };
+    let admission_epoch = if acquire {
+        let epoch = envelope
+            .payload
+            .get("admission_epoch")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| anyhow::anyhow!("GSM admission requires acknowledged modem epoch"))?;
+        anyhow::ensure!(
+            epoch == gsm.admission_epoch(),
+            "Selected modem lifetime changed; stale admission intent"
+        );
+        Some(epoch)
+    } else {
+        None
+    };
     if acquire {
         runtime
             .suspend_for_voice_session(&key)
             .map_err(|error| anyhow::anyhow!(error.message))?;
     }
-    let result = gsm.send(command);
+    let result = if let Some(epoch) = admission_epoch {
+        gsm.send_at_epoch(command, epoch)
+    } else {
+        gsm.send(command)
+    };
     if acquire && result.is_err() {
         runtime.resume_after_voice_session(&key);
     }
@@ -552,31 +570,35 @@ fn drain_gsm_events<C: ModemController, W: Write>(
     generation: &mut Option<u64>,
     sessions: &mut Vec<CallUpdate>,
     startup_reconciled: &mut bool,
-    recovery_quarantined: bool,
+    recovery_quarantined: &mut bool,
 ) -> Result<()> {
     for event in gsm.drain_events() {
         match event {
             GsmEvent::ModemLost { generation: lost } if Some(lost) == *generation => {
                 // Quiesce existing PPP/AT before arming the admission barrier.
                 // An already suspended keyed lease belongs to the old session.
-                if !runtime.voice_suspended() {
+                if *startup_reconciled && !runtime.voice_suspended() {
                     if let Err(error) = runtime.suspend_for_voice_command() {
                         eprintln!("GSM modem loss data suspension failed: {}", error.message);
+                        *recovery_quarantined = true;
                     }
                 }
                 *startup_reconciled = false;
                 runtime.require_voice_reconciliation();
             }
             GsmEvent::Reconciled(reconciled) if Some(reconciled.generation) == *generation => {
-                if !recovery_quarantined
+                if !*recovery_quarantined
                     && !*startup_reconciled
                     && reconciled.native_calls_quiescent
                     && reconciled.audio_released
                 {
                     *startup_reconciled = true;
                     runtime.confirm_voice_reconciliation();
-                    if runtime.voice_suspended() { runtime.resume_after_voice(); }
-                    else { runtime.start(); }
+                    if runtime.voice_suspended() {
+                        runtime.resume_after_voice();
+                    } else {
+                        runtime.start();
+                    }
                 }
                 write_envelope(
                     output,
@@ -1624,6 +1646,7 @@ mod tests {
             Some(crate::gsm::GsmReconciliation {
                 native_owner: Some(":test.1".into()),
                 generation: 7,
+                admission_epoch: 0,
                 native_calls_quiescent: true,
                 audio_released: true,
             })
@@ -1707,7 +1730,7 @@ mod tests {
                 (
                     "gsm.dial",
                     "dial",
-                    serde_json::json!({"key":key,"number": "+49123456789"}),
+                    serde_json::json!({"key":key,"number": "+49123456789","admission_epoch":0}),
                 ),
                 (
                     "gsm.set_mute",
@@ -1820,7 +1843,7 @@ mod tests {
                 &mut generation,
                 &mut sessions,
                 &mut reconciled,
-                true,
+                &mut true,
             )
             .unwrap();
             std::thread::sleep(Duration::from_millis(5));
@@ -1846,9 +1869,20 @@ mod tests {
             let opened = modem.opened.clone();
             let mut runtime = NetworkRuntime::new("test", NetworkHostConfig::default(), modem);
             let mut payload = serde_json::json!({"key":{"transport":"gsm","generation":7,"call_id":"runtime-outgoing-1"},"address":"+49123456789"});
-            if let Some(epoch) = epoch { payload["admission_epoch"] = serde_json::json!(epoch); }
-            let result = enqueue_gsm_command(&mut runtime, &gsm, Some(7), &[], &WorkerEnvelope::command("call.dial", Some("old".into()), payload));
-            assert!(result.is_err(), "unversioned or stale originating-runtime intent was admitted");
+            if let Some(epoch) = epoch {
+                payload["admission_epoch"] = serde_json::json!(epoch);
+            }
+            let result = enqueue_gsm_command(
+                &mut runtime,
+                &gsm,
+                Some(7),
+                &[],
+                &WorkerEnvelope::command("call.dial", Some("old".into()), payload),
+            );
+            assert!(
+                result.is_err(),
+                "unversioned or stale originating-runtime intent was admitted"
+            );
             assert!(!runtime.voice_suspended());
             assert_eq!(*opened.lock().unwrap(), 0);
         }

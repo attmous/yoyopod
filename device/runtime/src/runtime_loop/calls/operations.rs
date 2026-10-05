@@ -51,6 +51,7 @@ impl RuntimeLoop {
                     media_released: false,
                     voip_released: false,
                     native_owner: self.calls.native_owner.clone(),
+                    gsm_admission_epoch: self.calls.gsm_admission_epoch,
                     recovery_quarantined: false,
                 });
                 // This signal is bookkeeping only; raw offers never populate history.
@@ -155,12 +156,23 @@ impl RuntimeLoop {
                 } else {
                     OperationPurpose::Secondary(command.action.clone(), 0)
                 };
+                let mut payload = json!(command);
+                if command.key.transport == CallTransport::Gsm
+                    && command.action == CallAction::Answer
+                {
+                    payload["admission_epoch"] = json!(self
+                        .calls
+                        .resources
+                        .as_ref()
+                        .filter(|r| r.interruption.key == command.key)
+                        .and_then(|r| r.gsm_admission_epoch));
+                }
                 self.call_operations.command(
                     &command.key,
                     purpose,
                     domain,
                     "call.action",
-                    json!(command),
+                    payload,
                     self.now_ms,
                 )
             }
@@ -175,7 +187,8 @@ impl RuntimeLoop {
                     OperationPurpose::Dial,
                     domain_for(&key.transport),
                     "call.dial",
-                    json!({"key": key, "address": address}),
+                    json!({"key": key, "address": address, "admission_epoch": self.calls.resources.as_ref()
+                        .filter(|r| r.interruption.key == key).and_then(|r| r.gsm_admission_epoch)}),
                     self.now_ms,
                 )
             }

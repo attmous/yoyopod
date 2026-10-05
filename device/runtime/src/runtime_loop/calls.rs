@@ -27,6 +27,7 @@ struct Resources {
     media_released: bool,
     voip_released: bool,
     native_owner: Option<String>,
+    gsm_admission_epoch: Option<u64>,
     recovery_quarantined: bool,
 }
 
@@ -39,6 +40,7 @@ pub(super) struct CallIntegration {
     recoveries: HashMap<WorkerDomain, u8>,
     recovering: std::collections::HashSet<WorkerDomain>,
     native_owner: Option<String>,
+    gsm_admission_epoch: Option<u64>,
     serial: u64,
     voice_enabled: bool,
     shutdown_deadline: Option<u64>,
@@ -61,6 +63,7 @@ impl Default for CallIntegration {
             recoveries: HashMap::new(),
             recovering: Default::default(),
             native_owner: None,
+            gsm_admission_epoch: None,
             serial: 0,
             voice_enabled: true,
             shutdown_deadline: None,
@@ -281,6 +284,7 @@ impl RuntimeLoop {
                 {
                     self.calls.native_owner =
                         envelope.payload["native_owner"].as_str().map(str::to_owned);
+                    self.calls.gsm_admission_epoch = envelope.payload["admission_epoch"].as_u64();
                     // A pre-dispatch empty-cache observation can be queued behind a new
                     // outgoing request. Only the exact key's terminal fact releases it.
                     // Recovery uncertainty survives even same-owner empty observations.
