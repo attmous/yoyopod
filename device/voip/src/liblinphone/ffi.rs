@@ -147,7 +147,7 @@ mod saved_file_tests {
             let create: unsafe extern "C" fn(*const c_char) -> *mut c_void =
                 required_symbol(library, c"linphone_config_new_from_buffer").unwrap();
             let read: unsafe extern "C" fn(
-                *const LinphoneConfig,
+                *const c_void,
                 *const c_char,
                 *const c_char,
                 c_int,
