@@ -187,8 +187,8 @@ mod tests {
             static int resource;
             static void *hold(void *unused) {
                 char byte;
-                if (read(0, &byte, 1) == 1 && fcntl(resource, F_GETFD) >= 0)
-                    dprintf(1, "resource-open\n");
+                if (read(0, &byte, 1) == 1)
+                    dprintf(1, fcntl(resource, F_GETFD) >= 0 ? "resource-open\n" : "resource-closed\n");
                 sleep(60); return 0;
             }
             int main(int argc, char **argv) {

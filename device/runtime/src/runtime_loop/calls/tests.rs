@@ -145,6 +145,13 @@ fn decoded_saved_expired_attempt_cannot_reopen_sending() {
         );
         assert!(runtime.saved_send.is_none());
         assert!(runtime.state.can_send_interrupted_draft());
+        assert_eq!(
+            io.sent
+                .iter()
+                .filter(|(_, e)| e.message_type == "voip.send_saved_voice_note")
+                .count(),
+            1
+        );
     }
     io.messages.push((
         WorkerDomain::Voip,
@@ -231,6 +238,17 @@ fn decoded_saved_retry_ignores_old_results_and_terminal_snapshots() {
             .phase,
         "unknown"
     );
+    io.messages.push((
+        WorkerDomain::Voip,
+        WorkerEnvelope::event(
+            "voip.snapshot",
+            json!({"voice_note": {
+                "file_path":"owned.wav", "message_id":old, "state":"sending"
+            }}),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 8_002);
+    assert!(runtime.state.can_send_interrupted_draft());
     let current = send(&mut runtime, &mut io, 8_003);
     assert_ne!(old, current);
     for phase in ["sent", "failed", "sending", "review"] {
