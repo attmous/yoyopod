@@ -875,8 +875,8 @@ impl ModemManagerVoice {
             self.modem = Some(path);
             self.modem_lost = false;
             self.clean_rediscovery = false;
-            // Discovery enumerates once. The Voice Calls property and signals are
-            // used afterwards; no repeated global managed-object enumeration.
+            // Subsequent Calls scans use the selected Voice property. Native
+            // observations still fence selected incarnation through ordered OM.
             self.reconcile_paths()?;
             self.initial_scan = false;
             break;
@@ -1410,6 +1410,9 @@ impl ModemManagerVoice {
             return Ok(self.cached.clone());
         }
         self.verify_service_owner()?;
+        // Cached availability is also an admission fact. A nonblocking drain
+        // cannot publish it while the collector has not forwarded older loss.
+        self.check_selected_modem()?;
         let messages: Vec<_> = self
             .signals
             .as_ref()
