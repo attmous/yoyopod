@@ -9,10 +9,11 @@ this extension's implementation plan or installation of a system package.
 
 ## Purpose and preserved behavior
 
-Make incoming GSM audio readiness provable before the existing targeted Accept,
-then expose the actual activated audio port for that same call. Correct the
-Debian ModemManager SIMTech provider rather than supplying an assumed PCM rate
-in Rust. The supported device remains Pi Zero 2W, Whisplay, PiSugar 3, and the
+Restore both outgoing and incoming GSM with provider-owned format evidence
+before targeted Start or Accept, then expose the actual activated audio port
+for that same call. Correct the Debian ModemManager SIMTech provider rather
+than supplying an assumed PCM rate in Rust. The supported device remains
+Pi Zero 2W, Whisplay, PiSugar 3, and the
 qualified SIM7600G-H firmware/provider combination.
 
 The [original call-manager specification](2026-10-04-call-manager-design.md)
@@ -84,6 +85,35 @@ installed firmware. Selection acknowledgement, matching readback, and a
 qualified framing profile establish configured format; they do not constitute
 an independent measurement of a live stream or prove intelligible audio.
 
+The current outgoing path also needs repair. It prepares PCM before
+`CreateCall`, using `sample_rate(None)`, while the normal runtime supplies no
+configured rate. It therefore fails before creating a Call even if the
+provider's incoming metadata is corrected. The constructor/lifetime correction
+must serve outgoing Calls too, and Rust must create the owned object before
+reading its format, preparing PCM and dispatching targeted Start.
+
+The scratch `gsm-outgoing-incoming-explanation.md` records the exact-source
+history. Earlier code at `310c08d8` created/started the native call first; the
+audio path at `83a326dc` used a direct if02 AT rate query and `CPCMREG` command,
+an if04 PCM bridge, and an implicit 8 kHz fallback. That different route is
+consistent with the user's earlier real outgoing audio success. The exact
+revision and transport used for that successful call are not established.
+`7f0675bc` removed direct AT and fallback ownership. This extension does not
+restore them or treat the earlier success as evidence of today's metadata or
+provider qualification.
+
+In this exact provider, `Voice.CreateCall` constructs, exports and lists an
+UNKNOWN QMI Call object; it does not dial. Native QMI Dial occurs in
+`Call.Start`. UNKNOWN `Call.Hangup` is rejected. `Voice.DeleteCall` removes an
+object from the exported call list and does not end a native modem call. These
+distinctions are requirements for the outgoing ordering and cleanup below,
+not permission to delete a potentially started call. The source-backed
+[creation path](https://sources.debian.org/src/modemmanager/1.24.0-1%2Bdeb13u1/src/mm-iface-modem-voice.c/#L670),
+[Start/native Dial](https://sources.debian.org/src/modemmanager/1.24.0-1%2Bdeb13u1/src/mm-call-qmi.c/#L138),
+[UNKNOWN Hangup gate](https://sources.debian.org/src/modemmanager/1.24.0-1%2Bdeb13u1/src/mm-base-call.c/#L697)
+and [DeleteCall implementation](https://sources.debian.org/src/modemmanager/1.24.0-1%2Bdeb13u1/src/mm-call-list.c/#L172)
+define this boundary.
+
 ## Chosen evidence contract
 
 The provider establishes configuration through its own existing AT transport.
@@ -110,7 +140,7 @@ qualification, before this tuple/profile is accepted. The known rate command
 does not supply that framing evidence. A candidate package can expose the
 dictionary so its propagation and reset invalidation can be tested while
 qualification is pending. This remains an implementation claim under test,
-not a qualified wire-format claim: Rust must keep GSM Accept disabled until
+not a qualified wire-format claim: Rust must keep GSM Start/Accept disabled until
 the framing and reset/lifecycle gates pass in the tracked profile. Existing
 Call properties need no new public qualification property. A qualified static
 profile interprets current provider evidence; it never substitutes for the
@@ -118,7 +148,7 @@ setter/readback.
 
 Unsupported commands, timeout, modem error, cancellation or unexpected response
 leave format unknown. Missing qualification keeps the format ineligible for
-Accept even when a candidate provider dictionary is present. There is no
+Start/Accept even when a candidate provider dictionary is present. There is no
 guessed 8 kHz, static `gsm_pcm_sample_rate_hz` override, independent serial reader, or
 arbitrary-AT diagnostic route.
 
@@ -128,7 +158,7 @@ arbitrary-AT diagnostic route.
 | --- | --- |
 | ModemManager generic voice core | Configuration generation, configured format lifetime, shared active channel lifetime, Call property propagation and invalidation. |
 | Shared SIMTech plugin | Fixed selection/readback task and successful owner-managed channel activation; consume real command results. |
-| Existing QMI Call implementation | Native call identity, signaling, Accept and native-ID EndCall. Its constructor/class is preserved. |
+| Existing QMI Call implementation | Native call identity, signaling, Start/Accept and native-ID EndCall. Its constructor/class is preserved. |
 | Rust network owner | Immutable unique D-Bus owner/modem/call and epoch fences, current metadata reads, qualified profile checks, exact-call actions, bounded audio readiness and recovery. |
 | Rust runtime call manager | Existing contact/mode admission, foreground session, activity/UI coordination and cleanup policy. |
 | CLI and CI | Exact-commit artifacts, package/profile provenance, preflight, dev maintenance and rollback. They do not own runtime call behavior. |
@@ -174,11 +204,13 @@ does not send `CPCMREG=1`. Calls created while another active channel exists
 can inherit shared active settings under existing provider semantics; the
 runtime still rejects a competing offer as busy and does not use its port.
 
-After a targeted Accept and native Active, successful SIMTech channel setup
-returns the actual discovered port and a referenced current configured
+After a targeted Start or Accept, successful owner-managed SIMTech channel
+setup returns the actual discovered port and a referenced current configured
 format. Update that existing Call after the asynchronous activation completes.
 An activation error publishes no port even if generic in-call setup otherwise
-reports success. Native Active alone is not audio readiness.
+reports success. Outgoing setup may occur while native signaling is Dialing;
+Rust keeps capture/playback closed until native Active and current port/format
+readiness both hold. Native Active alone is not audio readiness.
 
 Successful last-channel cleanup explicitly clears the port's connected state,
 then releases active port/format references. It preserves configured format
@@ -216,13 +248,13 @@ case, not an assumption that USB reset always creates a new object.
 An in-memory property cannot prove continuity through a reset invisible to
 ModemManager. Qualification must show that the supported device/firmware reset
 paths produce provider invalidation/reinitialization and externally visible
-metadata loss before stale state can qualify another Accept. If that cannot
-be demonstrated, this profile is not accepted and GSM acceptance remains
+metadata loss before stale state can qualify another Start/Accept. If that
+cannot be demonstrated, this profile is not accepted and GSM acceptance remains
 closed. Adding a new safe reset observer or provider guarded-acceptance API
 would be a separate reviewed extension; this spec does not assume either.
 
-Existing Call properties do not provide an atomic compare-generation-and-Accept
-transaction. Rust binds fresh reads and every method call to the exact immutable
+Existing Call properties do not provide an atomic comparison of generation
+with Start/Accept dispatch. Rust binds fresh reads and every method call to the exact immutable
 unique D-Bus owner, modem path, Call path/native identity and native session
 epoch. Owner/interface/lifecycle changes and metadata loss invalidate the
 selection. Reused paths, replacement owners, old snapshots and late method
@@ -232,17 +264,64 @@ properties from a prior initialization are never a recovery shortcut.
 
 ## Rust consumption contract
 
-Before dispatching the existing exact-call Accept, the native network owner
-must freshly read this Ringing Call's qualified 16 kHz PCM/s16le format from
+Incoming: before dispatching the existing exact-call Accept, the native network
+owner must freshly read this Ringing Call's qualified 16 kHz PCM/s16le format from
 the pinned provider and pass existing modem/owner/session fences. Port absence
 at this stage is expected for the first call. Unknown format/profile produces
 an explicit audio-readiness failure through existing session handling; it
 cannot answer using a configured constant. Ringing, contact admission, modes,
 button UI and local alert ownership retain their original policies.
 
-After native Active, wait at most the existing 8-second action/readiness
-deadline for compatible format and this same Call's actual nonempty
-`AudioPort`. Check that port against the same owned modem's current AUDIO port
+Outgoing uses the same qualified constructor format without a static rate or
+new public PCM interface. Its required ordering is:
+
+1. Acquire the existing canonical runtime/native session key, foreground
+   ownership and cellular-data reservation before creating a provider object.
+   Check cancellation, current immutable daemon owner/modem admission epoch
+   and collector/loss fences before dispatching any native action.
+2. Mark Create uncertainty under that key before exact-owner `Voice.CreateCall`.
+   Creation exports an UNKNOWN QMI Call but does not dial. A failed, timed-out
+   or lost Create result keeps ownership/uncertainty for reconciliation; it
+   must not create again or infer clean release from a new owner's empty list.
+3. Immediately bind the exact returned Call path and owner to the already
+   reserved key before clearing Create uncertainty or starting other work.
+   Validate the created object's direction/state/identity against that key.
+   A created-but-unstarted UNKNOWN object remains Preparing and is never
+   offered as an incoming call or rebound to another session.
+4. Freshly read this UNKNOWN Call's configured format from the qualified
+   provider, applying the same current generation/profile and owner fences as
+   incoming. Prepare the PCM endpoint with that format while microphone and
+   playback remain closed. Missing/stale format or failed preparation cannot
+   dispatch Start.
+5. Immediately before targeted `Call.Start`, recheck the selected modem epoch,
+   immutable unique owner, exact key/path, cancellation, collector/loss state
+   and native UNKNOWN state. Mark Start pending before dispatch. Only this
+   exact current owned object may Start; an old epoch never Starts. Remote
+   dialing cannot occur before audio preparation and these gates pass.
+
+Pre-Start failure/cancellation uses a distinct exact-object cleanup path.
+`Call.Hangup` cannot clean an UNKNOWN object in this provider. Use the existing
+same-owner `Voice.DeleteCall` only when that keyed object is freshly proven
+UNKNOWN and Start has **never** been dispatched. Retain deletion uncertainty,
+session/data ownership and prepared resources until same-owner keyed absence
+is established and local PCM relay/capture/playback resource joins complete.
+Normal call cleanup retains the native D-Bus signal collector, its same
+connection/subscriptions and immutable owner. Rebinding, stopping or joining
+that collector is not native release proof. Successful DeleteCall alone is
+not proof that the full native owner is clean.
+
+Once Start is pending/dispatched, or its result/native state is uncertain,
+never use DeleteCall as native termination even if a later state read says
+UNKNOWN. A method failure does not prove the remote side was untouched.
+Call-path reuse, owner/proxy loss, unresolved Create/Start or failed cleanup
+keeps the native session in Ending/quarantine until the existing owner-bound
+termination/reconciliation/recovery establishes release. Active/potentially
+started calls retain targeted QMI native-ID EndCall; DeleteCall does not replace
+it. Do not release the session key or resume cellular data on a dirty outcome.
+
+For either direction, after native Active, wait at most the existing 8-second
+action/readiness deadline for compatible format and this same Call's actual
+nonempty `AudioPort`. Check that port against the same owned modem's current AUDIO port
 inventory; do not hard-code a ttyUSB index or infer readiness from port
 classification. Open the audio pipeline only after the current Call,
 generation/owner fences and port/format all agree. Metadata loss, timeout or
@@ -304,7 +383,7 @@ identity. Candidate installation validates identity, provenance and supported
 candidate scope; it does not require hardware framing/reset evidence to exist
 before the corrected provider reaches the bench. A profile remains
 `qualification_pending` until its tracked framing and reset/lifecycle evidence
-is complete and reviewed. Rust treats this status as ineligible for Accept.
+is complete and reviewed. Rust treats this status as ineligible for Start/Accept.
 Unknown firmware, stock or unknown package, mismatching executable/hash,
 missing build provenance, or absent qualification also fail closed. Matching a
 model name alone is insufficient. These are internal profile/deployment
@@ -347,9 +426,9 @@ qualification procedure explicitly. The stages have separate outcomes:
 | Stage | Gate and reported outcome |
 | --- | --- |
 | Candidate ready to install | Locked source/build inputs, provider tests, reproducibility, exact artifact/package hashes, known candidate identity and rollback are valid. Hardware framing/reset qualification may still be pending. |
-| Candidate installed for qualification | Package installation, running identity, fresh initialization, setter/readback and ordinary Rust/native-owner startup checks pass. If framing/reset evidence is incomplete, report `installed, qualification pending`; GSM Accept remains disabled. This is not a full provider/audio qualification pass. |
-| Profile qualified for Accept | Reviewed tracked evidence establishes exact framing and reset/lifecycle invalidation for the installed package bytes and modem/firmware. The matching exact-SHA Rust artifact can enable existing targeted Accept under all normal owner/session fences. |
-| Feature accepted | First/second-call, bidirectional audio, targeted cleanup and reconnect functional tests pass after the profile qualification gate. This is the final feature gate, not a prerequisite for installing the candidate. |
+| Candidate installed for qualification | Package installation, running identity, fresh initialization, setter/readback and ordinary Rust/native-owner startup checks pass. If framing/reset evidence is incomplete, report `installed, qualification pending`; GSM Start/Accept remain disabled. This is not a full provider/audio qualification pass. |
+| Profile qualified for Start/Accept | Reviewed tracked evidence establishes exact framing and reset/lifecycle invalidation for the installed package bytes and modem/firmware. The matching exact-SHA Rust artifact can enable existing targeted Start/Accept under all normal owner/session fences. |
+| Feature accepted | First/second incoming calls, outgoing dialing, bidirectional audio, targeted cleanup and reconnect functional tests pass after the profile qualification gate. This is the final feature gate, not a prerequisite for installing the candidate. |
 
 Preflight and staging complete before any service is stopped:
 
@@ -384,7 +463,7 @@ Require a new unique D-Bus owner, actual running executable/package identity,
 fresh modem initialization and successful current-generation selection/readback.
 Only then install/start the exact-SHA dev Rust artifact and verify startup and
 native-owner discovery/identity health. When qualification is pending, verify
-that the native owner keeps Accept closed; this expected fail-closed result
+that the native owner keeps Start/Accept closed; this expected fail-closed result
 does not trigger rollback. Missing framing/reset qualification alone reports
 `installed, qualification pending` and preserves the validated candidate for
 the reviewed evidence-gathering procedure. Do not report PCM readiness or
@@ -398,18 +477,18 @@ propagation; call-free disable/re-enable or observed reprobe/reset can check
 invalidation. No arbitrary AT/debug access, manual provider replacement,
 independent serial reader or new public API is introduced. Framing evidence
 must be primary vendor evidence or an explicitly reviewed bench procedure
-that preserves the same ownership/security boundary and keeps GSM Accept
+that preserves the same ownership/security boundary and keeps GSM Start/Accept
 disabled. If no such bench procedure is available, qualification remains
 pending; that is not permission to bypass the gate.
 
-Commit the reviewed qualification evidence/profile before enabling Accept.
+Commit the reviewed qualification evidence/profile before enabling Start/Accept.
 Produce the matching exact-SHA CI artifact and validate it through the normal
 deploy path. Evidence can carry forward only when the locked provider inputs,
 rebuilt package bytes/hashes and modem/firmware identity are unchanged; a
 profile-only evidence update need not change package revision. The final
 artifact still binds provider and Rust manifests to its one repo SHA/run.
 Changed provider bytes require new qualification and the explicit maintenance
-path again. First/second-call audio testing follows this profile gate.
+path again. Incoming and outgoing audio testing follow this profile gate.
 
 Keep SIP/media and modem/data behavior under the existing runtime ownership
 rules; no parallel daemon, hand-copied executable,
@@ -421,7 +500,7 @@ Rust native owner while restoring the exact prior package closure and
 service/config state through the package manager. Allow downgrade only for
 that captured closure. Restart the single prior normal provider, require a new
 owner and fresh initialization, then restore the prior exact Rust deployment.
-An unqualified prior provider remains ineligible for GSM Accept. If rollback
+An unqualified prior provider remains ineligible for GSM Start/Accept. If rollback
 cannot verify a coherent provider/native-owner state, keep GSM acceptance
 disabled and report the failed stage and recoverable saved identities; do not
 declare success or release a dirty native session as clean.
@@ -443,7 +522,7 @@ not prove the contract. Run upstream tests as well as these regressions:
 | --- | --- |
 | First initialization, setter ACK and readback `1` | First incoming Ringing Call has configured candidate format and empty port; qualification remains a separate Rust gate before Accept; no premature `CPCMREG=1`. |
 | Unsupported command, setter error/timeout, readback error/timeout/`0`/malformed/duplicate, or cancellation | Format remains unknown; no fallback and no publication from capability flags. |
-| Call created before selection finishes; incoming and outgoing generic constructors | Current successful format reaches the exported Call; constructors do not overwrite it with NULL. |
+| Call created before selection finishes; incoming and outgoing generic constructors | Current successful format reaches the exported Call; constructors do not overwrite it with NULL; outgoing UNKNOWN receives format before Start/native Dial. |
 | Native Active before channel completion | Existing Call gains the actual port and compatible format only after successful activation. Failed activation leaves port empty despite generic setup success. |
 | Ongoing versus terminated Calls; shared activation | Ongoing Calls update, ordinary terminal updates are skipped, and one terminal Call does not disconnect a channel still in use. |
 | Last-channel cleanup and two subsequent incoming calls | Connected state is released once; configured format survives; each next Ringing Call begins with empty port. |
@@ -457,30 +536,45 @@ format/port loss, a present candidate dictionary with pending qualification,
 unknown profile identity, wrong modem AUDIO port, readiness timeout, old
 owner/reused path/session epoch, and targeted cleanup/reconnect.
 Retain the existing immutable owner/epoch tests and original call-manager
-acceptance coverage. CLI tests must prove opt-in behavior, no-call/lane guards,
+acceptance coverage. Outgoing ownership tests must exercise the real ordered
+helpers with fake native/audio effects at every boundary:
+
+| Outgoing boundary | Required observation |
+| --- | --- |
+| Before Create, cancellation or lost modem epoch | Existing key/data reservation is reconciled without Create, Start or an unowned object. |
+| Create dispatched, result pending/error/lost owner | Create uncertainty retains exact key/data ownership; no replay, no new-owner empty-list cleanup proof and no Start. |
+| Create returns UNKNOWN | Exact path binds to its existing key before Create uncertainty clears; collector refresh cannot offer it as incoming or change session ownership. |
+| Format read/PCM preparation fails or cancels before Start | Only the same-owner keyed, proven never-started UNKNOWN object uses DeleteCall; no Hangup of UNKNOWN or native Dial; release waits for absence plus local PCM resource joins while retaining the native signal collector. |
+| Preparation succeeds, then cancellation/epoch loss/path reuse before dispatch | Fresh gate blocks Start; uncertain identity retains Ending/quarantine rather than deleting a replacement object. |
+| Start pending, method failure, native state uncertainty or owner loss | Never downgrade to DeleteCall cleanup, including a later UNKNOWN read; retain ownership until targeted termination/recovery proves release. |
+| Valid current key, qualified format and successful preparation | Targeted Start occurs once only after gates; Active port/readiness and QMI native-ID EndCall work without a static rate. |
+
+CLI tests must prove opt-in behavior, no-call/lane guards,
 complete staging before stop, dependency/manifest rejection and exact rollback
-ordering, plus `qualification_pending` installation without Accept, a false
+ordering, plus `qualification_pending` installation without Start/Accept, a false
 audio pass or automatic rollback. Run Rust formatting, appropriate workspace
 checks and affected crate tests. Provider tests do not replace Rust owner tests.
 
 Hardware qualification first installs a validated candidate under the reviewed
 maintenance/qualification scope, then gathers framing/reset evidence with
-Accept disabled, and finally runs functional call acceptance after the tracked
-profile is qualified. Each stage uses the pushed full-SHA CI artifact and the
-authorized CLI path; build neither Rust nor ModemManager on the Pi. Base
+Start/Accept disabled, and finally runs calls in both directions after the
+tracked profile is qualified. Each stage uses the pushed full-SHA CI artifact
+and authorized CLI path; build neither Rust nor ModemManager on the Pi. Base
 `yoyopod target validate` stages can check deployment/runtime stability. GSM
 call/audio acceptance is a recorded manual hardware test until its dedicated
 validator exists; the current VoIP/cloud-voice stubs do not establish a pass.
 
 | Hardware sequence | Required evidence |
 | --- | --- |
-| Candidate installation while qualification is pending | Package identity/init/selection and Rust/native-owner health pass; Accept stays disabled; result says `installed, qualification pending`, not full audio success. |
-| Framing and reset/lifecycle qualification | Reviewed evidence is complete for the exact package bytes and modem/firmware before the tracked profile becomes eligible for Accept. |
+| Candidate installation while qualification is pending | Package identity/init/selection and Rust/native-owner health pass; Start/Accept stay disabled; result says `installed, qualification pending`, not full audio success. |
+| Framing and reset/lifecycle qualification | Reviewed evidence is complete for the exact package bytes and modem/firmware before the tracked profile becomes eligible for Start/Accept. |
 | Fresh boot/provider init | Exact running provider/package/profile and unique owner; current setter/readback success; no stale format or active port. |
 | First saved-contact incoming call | First Ringing Call exposes format before physical-button Accept; runtime admission/mode/UI behavior matches the original specification. |
 | Targeted Accept, native Active and delayed port | Same native Call and owner; actual AUDIO port appears after activation; audio starts only when all readiness checks pass. |
 | Conversation and targeted end | Both directions are intelligible on the supported Whisplay route; exact native-ID EndCall terminates only the owned call; microphone/speaker and data handoff clean up. |
 | Second incoming call after cleanup | Format is already available with empty port; Accept, activation, intelligibility and targeted cleanup succeed again without reusing activation. |
+| Outgoing call after clean release | Same-key Create exports UNKNOWN without remote ringing; qualified format is read and PCM prepared before targeted Start; actual Active port, bidirectional intelligibility and native-ID EndCall then succeed without a configured-rate override. |
+| Outgoing pre-Start cancellation/audio failure | No remote Dial; only proven unstarted UNKNOWN uses keyed DeleteCall; exact absence/local PCM resource joins precede session/data release without replacing the retained native signal collector. |
 | Observed disconnect/reset and reconnect | Metadata invalidation and a fresh generation/selection/readback are visible; old call results are ignored; no session releases ownership while backend audio may remain live. |
 | Failed/unsupported selection and unknown identity fixtures | Acceptance stays closed, diagnosis identifies missing evidence, and no guessed format or global hangup appears. |
 
@@ -499,10 +593,10 @@ documented rate-selection command. It has not supplied trusted descriptor
 signature verification, qualified exact PCM framing for the installed
 firmware, a successful live `CPCMFRM?` response from that firmware, proof that
 its supported reset paths invalidate provider/Rust evidence, two matching clean
-package builds, or first/second-call bidirectional hardware results. Build and
+package builds, or incoming/outgoing bidirectional hardware results. Build and
 provenance gates precede candidate installation; framing/reset gates precede
-Accept; functional audio gates follow qualified Accept. They are not presumed
-successes or one impossible preinstallation prerequisite. Wiring/power remains
+Start/Accept; functional audio gates follow qualified native control. They are
+not presumed successes or one impossible preinstallation prerequisite. Wiring/power remains
 unconfirmed and cannot be used as a diagnosed cause.
 
 If primary vendor framing evidence is unavailable, bench qualification must be
@@ -518,7 +612,8 @@ unaccepted and GSM audio acceptance stays closed.
 | --- | --- | --- |
 | Provider-owned setter plus readback | Current configuration evidence with fixed bounded commands and one modem owner. | Adds firmware/readback qualification and provider maintenance; setter-only ACK is weaker evidence and is not selected. |
 | Separate configured format and active channel | First-call pre-Accept metadata and second-call readiness survive ordinary cleanup while resets invalidate both. | Needs explicit lifecycle/callback tests; one forever-cached format or a constructor-only patch fails these requirements. |
-| Existing Call properties and QMI class | Preserves targeted signaling and security/public API boundary. | No atomic generation-and-Accept method; acceptance requires demonstrated lifecycle visibility and immutable Rust fences. |
+| Existing Call properties and QMI class | Preserves targeted signaling and security/public API boundary. | No atomic generation-and-Start/Accept method; acceptance requires demonstrated lifecycle visibility and immutable Rust fences. |
+| Create owned outgoing UNKNOWN before PCM preparation | Constructor metadata serves outbound without dialing before readiness. | Requires exact-key creation uncertainty and proven unstarted DeleteCall cleanup; preparing before Create cannot read per-call provider format. |
 | Exact Debian patch and package closure | Narrow source scope and repeatable rollback. | Must rebase/requalify security updates; a full provider upgrade has broader compatibility scope and no demonstrated fix here. |
 | Provider inside the exact-SHA Rust artifact | One provenance/selection path binds provider and native consumer. | Larger artifact and ARM Debian build; separate independently selected artifacts are not used. |
 
