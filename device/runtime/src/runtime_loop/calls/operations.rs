@@ -182,13 +182,21 @@ impl RuntimeLoop {
                 {
                     return;
                 }
+                let mut payload = json!({"key":key,"address":address});
+                if key.transport == CallTransport::Gsm {
+                    payload["admission_epoch"] = json!(self
+                        .calls
+                        .resources
+                        .as_ref()
+                        .filter(|r| r.interruption.key == key)
+                        .and_then(|r| r.gsm_admission_epoch));
+                }
                 self.call_operations.command(
                     &key,
                     OperationPurpose::Dial,
                     domain_for(&key.transport),
                     "call.dial",
-                    json!({"key": key, "address": address, "admission_epoch": self.calls.resources.as_ref()
-                        .filter(|r| r.interruption.key == key).and_then(|r| r.gsm_admission_epoch)}),
+                    payload,
                     self.now_ms,
                 )
             }

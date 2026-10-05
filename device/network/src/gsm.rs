@@ -2049,7 +2049,7 @@ mod tests {
 
     #[test]
     fn gsm_reconnect_uncertain_create_cleanup_deadline_and_pending_fact_fail_closed() {
-        for blocker in 0..4 {
+        for blocker in 0..7 {
             let bus = PrivateBus::start();
             let (owner, mut backend, _) = reconnect_fixture(&bus);
             let key = SessionKey {
@@ -2064,9 +2064,35 @@ mod tests {
                 }
                 1 => backend.cleanup.failed("/call/uncertain"),
                 2 => backend.audio_deadline = Some(Instant::now() + Duration::from_secs(8)),
-                _ => {
+                3 => {
                     backend.pending_events = backend.registry.as_mut().unwrap().observe(
                         "/call/pending",
+                        yoyopod_protocol::call::CallDirection::Incoming,
+                        CallPhase::Ringing,
+                        "+49123456789",
+                    );
+                }
+                4 => {
+                    backend
+                        .registry
+                        .as_mut()
+                        .unwrap()
+                        .register_outgoing(&key, "/call/active")
+                        .unwrap();
+                    backend.registry.as_mut().unwrap().observe(
+                        "/call/active",
+                        yoyopod_protocol::call::CallDirection::Outgoing,
+                        CallPhase::Active,
+                        "+49123456789",
+                    );
+                    backend.owner = Some(key.clone());
+                }
+                5 => {
+                    backend.terminating.insert("/call/terminating".into());
+                }
+                _ => {
+                    backend.registry.as_mut().unwrap().observe(
+                        "/call/unowned",
                         yoyopod_protocol::call::CallDirection::Incoming,
                         CallPhase::Ringing,
                         "+49123456789",
@@ -2093,6 +2119,20 @@ mod tests {
             }
             if blocker == 1 {
                 assert!(backend.cleanup.uncertain.contains("/call/uncertain"));
+            }
+            if blocker == 4 {
+                assert!(backend.owns_voice(&key));
+                assert_eq!(
+                    backend.registry().unwrap().latest(&key).unwrap().phase,
+                    CallPhase::Ending
+                );
+                assert_eq!(
+                    backend.registry().unwrap().path_for(&key),
+                    Some("/call/active")
+                );
+            }
+            if blocker == 5 {
+                assert!(backend.terminating.contains("/call/terminating"));
             }
         }
     }
@@ -2259,6 +2299,84 @@ mod tests {
         let _ = backend.refresh();
         assert!(backend.modem_lost);
         assert!(!backend.clean_rediscovery);
+    }
+
+    #[test]
+    fn gsm_reconnect_signal_overflow_keeps_subscription_and_invalidates_native_evidence() {
+        let bus = PrivateBus::start();
+        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        let events = backend.registry.as_mut().unwrap().observe(
+            "/call/owned",
+            yoyopod_protocol::call::CallDirection::Incoming,
+            CallPhase::Active,
+            "+49123456789",
+        );
+        let CallManagerWireEvent::Update(update) = &events[0] else {
+            panic!("active update")
+        };
+        let key = update.key.clone();
+        backend.owner = Some(key.clone());
+        let token = backend.reconciliation().unwrap().native_owner;
+        // The actor deliberately does not drain while its subscribed private
+        // bus receives more messages than the internal native queue can hold.
+        for _ in 0..600 {
+            owner
+                .emit_signal(
+                    None::<&str>,
+                    TEST_MODEM0,
+                    MODEM_INTERFACE,
+                    "StateChanged",
+                    &(8i32, 8i32, 0u32),
+                )
+                .unwrap();
+        }
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !backend
+            .signals
+            .as_ref()
+            .unwrap()
+            .thread
+            .as_ref()
+            .unwrap()
+            .is_finished()
+            && Instant::now() < deadline
+        {
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            !backend
+                .signals
+                .as_ref()
+                .unwrap()
+                .thread
+                .as_ref()
+                .unwrap()
+                .is_finished(),
+            "native queue overflow silently killed retained signal subscription"
+        );
+        let _ = backend.refresh();
+        assert!(!backend.cached.available);
+        assert!(backend.service_invalidated);
+        assert_eq!(backend.selected_epoch, 1);
+        assert_eq!(backend.take_modem_loss(), Some(7));
+        assert_eq!(backend.reconciliation().unwrap().native_owner, token);
+        assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+        assert!(backend.owns_voice(&key));
+        assert_eq!(
+            backend.registry().unwrap().path_for(&key),
+            Some("/call/owned")
+        );
+        assert_eq!(
+            backend.registry().unwrap().latest(&key).unwrap().phase,
+            CallPhase::Ending
+        );
+        add_reconnect_modem(&owner, TEST_MODEM2);
+        backend.next_discovery = None;
+        let _ = backend.refresh();
+        assert_ne!(
+            backend.modem.as_ref().map(|p| p.as_str()),
+            Some(TEST_MODEM2)
+        );
     }
     fn replace_owner(connection: &Connection) {
         use zbus::fdo::RequestNameFlags;
