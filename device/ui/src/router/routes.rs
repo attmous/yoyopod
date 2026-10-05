@@ -47,6 +47,7 @@ pub const ROUTES: [Route; UiScreen::ALL.len()] = [
     route(UiScreen::SetupCompanion),
     route(UiScreen::SetupContacts),
     route(UiScreen::SetupTheme),
+    route(UiScreen::SetupCallMode),
     route(UiScreen::SetupAbout),
     route(UiScreen::SetupWifi),
     route(UiScreen::Loading),
@@ -247,6 +248,10 @@ fn dynamic_action_intent_kinds(kind: DynamicActionKind) -> &'static [IntentKindL
         &[IntentKindLiteral::new("settings", "companion_set")];
     const SETUP_THEME_INTENTS: &[IntentKindLiteral] =
         &[IntentKindLiteral::new("settings", "theme_set")];
+    const SETUP_CALL_MODE_INTENTS: &[IntentKindLiteral] =
+        &[IntentKindLiteral::new("settings", "device_mode_set")];
+    const SETUP_PRIORITY_INTENTS: &[IntentKindLiteral] =
+        &[IntentKindLiteral::new("settings", "contact_priority_set")];
     const CALL_METHOD_INTENTS: &[IntentKindLiteral] = &[IntentKindLiteral::new("call", "start")];
 
     match kind {
@@ -257,6 +262,8 @@ fn dynamic_action_intent_kinds(kind: DynamicActionKind) -> &'static [IntentKindL
         DynamicActionKind::VoiceNote => VOICE_NOTE_INTENTS,
         DynamicActionKind::SetupCompanion => SETUP_COMPANION_INTENTS,
         DynamicActionKind::SetupTheme => SETUP_THEME_INTENTS,
+        DynamicActionKind::SetupCallMode => SETUP_CALL_MODE_INTENTS,
+        DynamicActionKind::SetupContactPriority => SETUP_PRIORITY_INTENTS,
     }
 }
 
@@ -353,6 +360,7 @@ const SETUP_SELECT: &[SelectionTarget] = &[
         intent: IntentTemplate::SettingsWifiSetupStart,
     },
     SelectionTarget::PushScreen(UiScreen::SetupAbout),
+    SelectionTarget::PushScreen(UiScreen::SetupCallMode),
 ];
 const SETUP_VOLUME_SELECT: &[SelectionTarget] = &[SelectionTarget::PopScreen];
 const SETUP_COMPANION_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
@@ -360,6 +368,12 @@ const SETUP_COMPANION_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAct
 }];
 const SETUP_THEME_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
     kind: DynamicActionKind::SetupTheme,
+}];
+const SETUP_CALL_MODE_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
+    kind: DynamicActionKind::SetupCallMode,
+}];
+const SETUP_PRIORITY_SELECT: &[SelectionTarget] = &[SelectionTarget::DynamicAction {
+    kind: DynamicActionKind::SetupContactPriority,
 }];
 const NO_SELECT: &[SelectionTarget] = &[SelectionTarget::Noop];
 
@@ -435,7 +449,9 @@ const fn select_targets(screen: UiScreen) -> &'static [SelectionTarget] {
         UiScreen::Setup => SETUP_SELECT,
         UiScreen::SetupVolume => SETUP_VOLUME_SELECT,
         UiScreen::SetupCompanion => SETUP_COMPANION_SELECT,
-        UiScreen::SetupContacts | UiScreen::SetupAbout | UiScreen::SetupWifi => NO_SELECT,
+        UiScreen::SetupContacts => SETUP_PRIORITY_SELECT,
+        UiScreen::SetupCallMode => SETUP_CALL_MODE_SELECT,
+        UiScreen::SetupAbout | UiScreen::SetupWifi => NO_SELECT,
         UiScreen::SetupTheme => SETUP_THEME_SELECT,
         UiScreen::Loading | UiScreen::Error => NO_SELECT,
     }
@@ -533,6 +549,7 @@ const fn focus_policy(screen: UiScreen) -> FocusPolicy {
         | UiScreen::SetupVolume
         | UiScreen::SetupCompanion
         | UiScreen::SetupContacts
+        | UiScreen::SetupCallMode
         | UiScreen::SetupTheme
         | UiScreen::SetupAbout => FocusPolicy::Wrap,
         UiScreen::Contacts | UiScreen::CallHistory => FocusPolicy::Clamp,
@@ -582,7 +599,7 @@ mod tests {
     #[test]
     fn every_screen_has_a_registered_route_and_hub_has_six_destinations() {
         validate_routes().expect("all screens must have exactly one route");
-        assert_eq!(UiScreen::ALL.len(), 28);
+        assert_eq!(UiScreen::ALL.len(), 29);
         assert_eq!(route_for(UiScreen::Hub).select.len(), 6);
         assert_eq!(screen_capabilities().len(), UiScreen::ALL.len());
     }

@@ -177,7 +177,21 @@ impl Default for MusicRuntimeSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContactPriorityWriteSnapshot {
+    pub request_id: String,
+    pub contact_id: String,
+    pub priority: bool,
+    pub pending: bool,
+    #[serde(default)]
+    pub error: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SettingsRuntimeSnapshot {
+    #[serde(default)]
+    pub device_mode_error: String,
+    #[serde(default)]
+    pub priority_write: Option<ContactPriorityWriteSnapshot>,
     #[serde(default)]
     pub device_mode: DeviceMode,
     #[serde(default = "default_volume_level")]
@@ -198,6 +212,8 @@ impl Default for SettingsRuntimeSnapshot {
     fn default() -> Self {
         Self {
             device_mode: DeviceMode::default(),
+            device_mode_error: String::new(),
+            priority_write: None,
             volume_level: default_volume_level(),
             companion: default_companion(),
             theme: default_theme(),

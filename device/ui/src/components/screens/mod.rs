@@ -111,6 +111,7 @@ pub fn scene_for_screen(
         | UiScreen::SetupVolume
         | UiScreen::SetupCompanion
         | UiScreen::SetupContacts
+        | UiScreen::SetupCallMode
         | UiScreen::SetupTheme
         | UiScreen::SetupAbout
         | UiScreen::SetupWifi => setup::scene(screen, snapshot, focus, defaults.clone()),

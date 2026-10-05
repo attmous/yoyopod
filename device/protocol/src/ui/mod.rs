@@ -6,10 +6,10 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 pub use snapshot::{
-    CallRuntimeSnapshot, HubCardSnapshot, HubRuntimeSnapshot, ListItemSnapshot,
-    MusicRuntimeSnapshot, NetworkRuntimeSnapshot, OverlayRuntimeSnapshot, PowerPageSnapshot,
-    PowerRuntimeSnapshot, RuntimeSnapshot, RuntimeSnapshotDomain, RuntimeSnapshotPatch,
-    SettingsRuntimeSnapshot, VoiceNoteSummarySnapshot, VoiceRuntimeSnapshot,
+    CallRuntimeSnapshot, ContactPriorityWriteSnapshot, HubCardSnapshot, HubRuntimeSnapshot,
+    ListItemSnapshot, MusicRuntimeSnapshot, NetworkRuntimeSnapshot, OverlayRuntimeSnapshot,
+    PowerPageSnapshot, PowerRuntimeSnapshot, RuntimeSnapshot, RuntimeSnapshotDomain,
+    RuntimeSnapshotPatch, SettingsRuntimeSnapshot, VoiceNoteSummarySnapshot, VoiceRuntimeSnapshot,
     WifiSetupRuntimeSnapshot,
 };
 
@@ -42,6 +42,7 @@ pub enum UiScreen {
     SetupCompanion,
     SetupContacts,
     SetupTheme,
+    SetupCallMode,
     SetupAbout,
     SetupWifi,
     Loading,
@@ -49,7 +50,7 @@ pub enum UiScreen {
 }
 
 impl UiScreen {
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 29] = [
         Self::Hub,
         Self::Listen,
         Self::Playlists,
@@ -74,6 +75,7 @@ impl UiScreen {
         Self::SetupCompanion,
         Self::SetupContacts,
         Self::SetupTheme,
+        Self::SetupCallMode,
         Self::SetupAbout,
         Self::SetupWifi,
         Self::Loading,
@@ -106,6 +108,7 @@ impl UiScreen {
             Self::SetupCompanion => "setup_companion",
             Self::SetupContacts => "setup_contacts",
             Self::SetupTheme => "setup_theme",
+            Self::SetupCallMode => "setup_call_mode",
             Self::SetupAbout => "setup_about",
             Self::SetupWifi => "setup_wifi",
             Self::Loading => "loading",

@@ -57,11 +57,32 @@ pub(crate) fn focused_item(runtime: &UiRuntime) -> Option<FocusDescriptor> {
             format!("stopwatch_action_{}", runtime.focus_index),
             runtime.stopwatch_action_label(runtime.focus_index),
         )),
-        UiScreen::Talk | UiScreen::Contacts | UiScreen::SetupContacts => list_or_empty(
+        UiScreen::Talk | UiScreen::Contacts => list_or_empty(
             &snapshot.call.contacts,
             focus,
             "No contacts yet. Ask a grown-up!",
         ),
+        UiScreen::SetupContacts => snapshot.call.contacts.get(focus).map(|contact| {
+            FocusDescriptor::new(
+                contact.contact_id.clone(),
+                format!(
+                    "{}, {}",
+                    contact.title,
+                    crate::components::screens::setup::priority_subtitle(snapshot, contact)
+                ),
+            )
+        }),
+        UiScreen::SetupCallMode => choice_item(
+            focus,
+            &["Normal", "Silent", "Do Not Disturb"],
+            crate::components::screens::setup::mode_label(&snapshot.settings.device_mode),
+        )
+        .map(|mut descriptor| {
+            if !snapshot.settings.device_mode_error.is_empty() {
+                descriptor.label.push_str(", Save failed. Select to retry.");
+            }
+            descriptor
+        }),
         UiScreen::CallHistory => list_or_empty(&snapshot.call.history, focus, "No recent calls"),
         UiScreen::TalkContact => {
             let actions =
@@ -210,6 +231,10 @@ fn setup_root_item(snapshot: &RuntimeSnapshot, focus: usize) -> Option<FocusDesc
         // (and About gets clamped to it).
         "Wi-Fi".to_string(),
         "About".to_string(),
+        format!(
+            "Call mode, {}",
+            crate::components::screens::setup::mode_label(&snapshot.settings.device_mode)
+        ),
     ];
     let index = focus.min(labels.len().saturating_sub(1));
     labels
@@ -292,7 +317,7 @@ mod tests {
         // get clamped to the wrong one.
         let count =
             crate::application::focus::focus_count(UiScreen::Setup, &snapshot, None, None, 0);
-        assert_eq!(count, 7);
+        assert_eq!(count, 8);
         assert!(
             setup_root_item(&snapshot, count - 1).is_some(),
             "the last setup row must have an accessibility label"

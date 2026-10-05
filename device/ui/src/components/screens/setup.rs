@@ -24,7 +24,11 @@ pub fn scene(
             setup_root_items(snapshot),
             focus,
             Some(SceneContext::SetupCounter(SetupCounterModel {
-                text: format!("{}/7", focus % 7 + 1),
+                text: format!(
+                    "{}/{}",
+                    focus % setup_root_items(snapshot).len() + 1,
+                    setup_root_items(snapshot).len()
+                ),
             })),
         ),
         UiScreen::SetupCompanion => wheel_scene(
@@ -40,6 +44,13 @@ pub fn scene(
             contact_items(snapshot),
             focus,
             context("CONTACTS"),
+        ),
+        UiScreen::SetupCallMode => wheel_scene(
+            screen,
+            defaults,
+            call_mode_items(snapshot),
+            focus,
+            context("CALL MODE"),
         ),
         UiScreen::SetupTheme => wheel_scene(
             screen,
@@ -187,6 +198,13 @@ fn setup_root_items(snapshot: &RuntimeSnapshot) -> Vec<WheelItemModel> {
             false,
         ),
         setup_item("About", battery, "setup_about", CREAM_2, false),
+        setup_item(
+            "Call mode",
+            mode_label(&snapshot.settings.device_mode),
+            "setup_speak",
+            CREAM_2,
+            false,
+        ),
     ]
 }
 
@@ -248,13 +266,78 @@ fn contact_items(snapshot: &RuntimeSnapshot) -> Vec<WheelItemModel> {
         .map(|(index, contact)| {
             setup_item(
                 &contact.title,
-                "companion app",
+                priority_subtitle(snapshot, contact),
                 "setup_contacts",
                 [0xA9A6E5, 0xF3A9A2, 0x9FB89A, 0xE8B66A][index % 4],
                 true,
             )
         })
         .collect()
+}
+
+pub(crate) fn priority_subtitle(
+    snapshot: &RuntimeSnapshot,
+    contact: &yoyopod_protocol::ui::ListItemSnapshot,
+) -> String {
+    if contact.contact_id.trim().is_empty() {
+        "Priority unavailable".to_string()
+    } else if let Some(write) = snapshot
+        .settings
+        .priority_write
+        .as_ref()
+        .filter(|write| write.contact_id == contact.contact_id)
+    {
+        if write.pending {
+            format!(
+                "Priority {} - Saving",
+                if contact.priority { "On" } else { "Off" }
+            )
+        } else if !write.error.is_empty() {
+            format!(
+                "Priority {} - Save failed",
+                if contact.priority { "On" } else { "Off" }
+            )
+        } else {
+            format!("Priority {}", if contact.priority { "On" } else { "Off" })
+        }
+    } else {
+        format!("Priority {}", if contact.priority { "On" } else { "Off" })
+    }
+}
+
+pub(crate) fn mode_label(mode: &yoyopod_protocol::call::DeviceMode) -> &'static str {
+    use yoyopod_protocol::call::DeviceMode;
+    match mode {
+        DeviceMode::Normal => "Normal",
+        DeviceMode::Silent => "Silent",
+        DeviceMode::DoNotDisturb => "Do Not Disturb",
+    }
+}
+
+fn call_mode_items(snapshot: &RuntimeSnapshot) -> Vec<WheelItemModel> {
+    use yoyopod_protocol::call::DeviceMode;
+    [
+        DeviceMode::Normal,
+        DeviceMode::Silent,
+        DeviceMode::DoNotDisturb,
+    ]
+    .iter()
+    .map(|mode| {
+        let current = *mode == snapshot.settings.device_mode;
+        let subtitle = if !snapshot.settings.device_mode_error.is_empty() {
+            if current {
+                "current - Save failed"
+            } else {
+                "Save failed - retry"
+            }
+        } else if current {
+            "current"
+        } else {
+            ""
+        };
+        setup_item(mode_label(mode), subtitle, "setup_speak", CREAM_2, true)
+    })
+    .collect()
 }
 
 fn theme_items(snapshot: &RuntimeSnapshot) -> Vec<WheelItemModel> {
@@ -344,11 +427,72 @@ mod tests {
     use crate::scene::defaults_for;
 
     #[test]
-    fn setup_root_is_a_seven_item_coral_wheel() {
+    fn call_mode_wheel_marks_only_committed_mode_and_keeps_failure_retryable() {
+        use yoyopod_protocol::call::DeviceMode;
+        let mut snapshot = RuntimeSnapshot::default();
+        snapshot.settings.device_mode = DeviceMode::Silent;
+        let items = call_mode_items(&snapshot);
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| item.title.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Normal", "Silent", "Do Not Disturb"]
+        );
+        assert_eq!(items[1].subtitle, "current");
+        assert!(items[2].subtitle.is_empty());
+        snapshot.settings.device_mode_error = "Could not save".into();
+        let items = call_mode_items(&snapshot);
+        assert!(items[1].subtitle.contains("current"));
+        assert!(items[2].subtitle.contains("retry"));
+        let scene = scene(
+            UiScreen::SetupCallMode,
+            &snapshot,
+            2,
+            defaults_for(UiScreen::SetupCallMode),
+        );
+        assert_eq!(scene.decks[0].items.len(), 3);
+        assert_eq!(scene.decks[0].focus_policy, FocusPolicy::Wrap);
+    }
+
+    #[test]
+    fn priority_wheel_displays_committed_state_during_write_and_failure() {
+        let mut snapshot = RuntimeSnapshot::default();
+        let mut contact =
+            yoyopod_protocol::ui::ListItemSnapshot::new("sip:a@test", "A", "", "mono:A");
+        contact.contact_id = "a".into();
+        snapshot.call.contacts.push(contact);
+        snapshot.settings.priority_write =
+            Some(yoyopod_protocol::ui::ContactPriorityWriteSnapshot {
+                request_id: "r".into(),
+                contact_id: "a".into(),
+                priority: true,
+                pending: true,
+                error: String::new(),
+            });
+        assert_eq!(
+            contact_items(&snapshot)[0].subtitle,
+            "Priority Off - Saving"
+        );
+        snapshot.settings.priority_write.as_mut().unwrap().pending = false;
+        snapshot.settings.priority_write.as_mut().unwrap().error = "failed".into();
+        assert_eq!(
+            contact_items(&snapshot)[0].subtitle,
+            "Priority Off - Save failed"
+        );
+        snapshot.call.contacts[0].priority = true;
+        assert_eq!(
+            contact_items(&snapshot)[0].subtitle,
+            "Priority On - Save failed"
+        );
+    }
+
+    #[test]
+    fn setup_root_is_an_eight_item_coral_wheel() {
         let snapshot = RuntimeSnapshot::default();
         let scene = scene(UiScreen::Setup, &snapshot, 0, defaults_for(UiScreen::Setup));
         assert_eq!(scene.backdrop, Backdrop::Solid(STAGE_CORAL));
-        assert_eq!(scene.decks[0].items.len(), 7);
+        assert_eq!(scene.decks[0].items.len(), 8);
         // Every wheel item must be reachable: the focus count that bounds
         // navigation has to match the number of rendered items, or trailing
         // items (like Wi-Fi) become unselectable and get skipped.
@@ -364,7 +508,7 @@ mod tests {
                 .as_ref()
                 .and_then(SceneContext::setup_counter)
                 .map(|value| value.text.as_str()),
-            Some("1/7")
+            Some("1/8")
         );
     }
 

@@ -69,11 +69,11 @@ pub fn focus_count(
         UiScreen::IncomingCall => 2,
         UiScreen::OutgoingCall => 1,
         UiScreen::InCall => 2,
-        UiScreen::Setup => 7,
+        UiScreen::Setup => crate::router::route_for(UiScreen::Setup).select.len(),
         UiScreen::SetupVolume => 1,
         UiScreen::SetupCompanion => 5,
         UiScreen::SetupContacts => snapshot.call.contacts.len(),
-        UiScreen::SetupTheme => 3,
+        UiScreen::SetupTheme | UiScreen::SetupCallMode => 3,
         UiScreen::SetupAbout => 5,
         _ => 0,
     }

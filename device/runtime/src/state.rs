@@ -733,6 +733,7 @@ pub struct RuntimeState {
     pub settings: SettingsRuntimeState,
     pub call_mode_file: std::path::PathBuf,
     pub call_preferences_error: Option<String>,
+    pub priority_write: Option<yoyopod_protocol::ui::ContactPriorityWriteSnapshot>,
     pub network: NetworkRuntimeState,
     /// On-device Wi‑Fi onboarding (AP mode + captive portal) state, populated
     /// from `wifi_provisioning_state` events emitted by the network worker.
@@ -768,6 +769,7 @@ impl Default for RuntimeState {
             settings: SettingsRuntimeState::default(),
             call_mode_file: "data/device/call-policy.json".into(),
             call_preferences_error: None,
+            priority_write: None,
             network: NetworkRuntimeState::default(),
             wifi_setup: WifiSetupRuntimeSnapshot::default(),
             cloud: CloudRuntimeState::default(),
@@ -2075,6 +2077,8 @@ impl RuntimeState {
             },
             "settings": {
                 "device_mode": self.settings.device_mode,
+                "device_mode_error": self.call_preferences_error.as_ref().map(|_| "Could not save call mode. Select to retry.").unwrap_or_default(),
+                "priority_write": self.priority_write,
                 "volume_level": volume_level(self.media.volume),
                 "companion": self.settings.companion,
                 "theme": self.settings.theme,

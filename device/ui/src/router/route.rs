@@ -66,6 +66,8 @@ pub enum DynamicActionKind {
     VoiceNote,
     SetupCompanion,
     SetupTheme,
+    SetupCallMode,
+    SetupContactPriority,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

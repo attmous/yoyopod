@@ -65,6 +65,7 @@ impl UiRuntime {
     }
 
     pub fn apply_snapshot(&mut self, snapshot: RuntimeSnapshot) {
+        let settings_contact_id = self.settings_focused_contact_id();
         let pending_identity = self.pending_wheel_identity();
         let previous_playing = self.snapshot.voice.playback_active;
         let previous_file_path = self.snapshot.voice.playback_file_path.clone();
@@ -84,12 +85,14 @@ impl UiRuntime {
         navigator::reconcile_replay_snapshot(self, previous_playing, &previous_file_path);
         navigator::clamp_focus(self);
         self.reconcile_pending_wheel_roll(pending_identity);
+        self.reconcile_settings_contact_focus(settings_contact_id);
         self.dirty.mark_full();
         self.refresh_focus_accessibility();
     }
 
     pub fn apply_patch(&mut self, patch: RuntimeSnapshotPatch) {
         let domain = patch.domain();
+        let settings_contact_id = self.settings_focused_contact_id();
         let pending_identity = self.pending_wheel_identity();
         let previous_screen = self.active_screen;
         let previous_focus = self.focus_index;
@@ -112,6 +115,7 @@ impl UiRuntime {
         navigator::reconcile_replay_snapshot(self, previous_playing, &previous_file_path);
         navigator::clamp_focus(self);
         self.reconcile_pending_wheel_roll(pending_identity);
+        self.reconcile_settings_contact_focus(settings_contact_id);
         self.dirty.mark_patch_domain(change.domain);
         if self.active_screen != previous_screen || self.screen_stack.len() != previous_stack_len {
             self.dirty.navigation = true;
@@ -120,6 +124,44 @@ impl UiRuntime {
             self.dirty.focus = true;
         }
         self.refresh_focus_accessibility();
+    }
+
+    fn settings_focused_contact_id(&self) -> Option<String> {
+        (self.active_screen == UiScreen::SetupContacts)
+            .then(|| {
+                self.snapshot
+                    .call
+                    .contacts
+                    .get(self.focus_index)
+                    .map(|contact| contact.contact_id.clone())
+            })
+            .flatten()
+    }
+
+    fn reconcile_settings_contact_focus(&mut self, previous: Option<String>) {
+        if self.active_screen != UiScreen::SetupContacts {
+            return;
+        }
+        let Some(id) = previous.filter(|id| !id.is_empty()) else {
+            return;
+        };
+        if let Some(index) = self
+            .snapshot
+            .call
+            .contacts
+            .iter()
+            .position(|contact| contact.contact_id == id)
+        {
+            self.focus_index = index;
+        } else {
+            navigator::go_back_or_emit(self);
+            if self.active_screen != UiScreen::Setup {
+                self.active_screen = UiScreen::Setup;
+            }
+            self.focus_index = 2;
+            self.pending_wheel_roll = None;
+            self.dirty.navigation = true;
+        }
     }
 
     pub fn handle_input(&mut self, action: InputAction, now_ms: u64) {
@@ -903,6 +945,7 @@ impl UiRuntime {
             UiScreen::Setup
             | UiScreen::SetupCompanion
             | UiScreen::SetupContacts
+            | UiScreen::SetupCallMode
             | UiScreen::SetupTheme => animation::presets::setup_wheel_roll(item_count, 0, now_ms),
             UiScreen::Playlists | UiScreen::PlaylistTracks | UiScreen::RecentTracks => {
                 animation::presets::media_wheel_roll(item_count, 0, now_ms)
@@ -1014,10 +1057,13 @@ impl UiRuntime {
                 "contacts",
                 "theme",
                 "speak_names",
+                "wifi",
                 "about",
+                "call_mode",
             ],
             UiScreen::SetupCompanion => &["blob", "owl", "cat", "bunny", "robot"],
             UiScreen::SetupTheme => &["light", "dark", "auto"],
+            UiScreen::SetupCallMode => &["normal", "silent", "do_not_disturb"],
             _ => &[],
         };
         if !static_items.is_empty() {
@@ -1040,7 +1086,18 @@ impl UiRuntime {
             UiScreen::SetupContacts => &self.snapshot.call.contacts,
             _ => return None,
         };
-        Some(items.iter().map(|item| item.id.clone()).collect())
+        Some(
+            items
+                .iter()
+                .map(|item| {
+                    if screen == UiScreen::SetupContacts {
+                        item.contact_id.clone()
+                    } else {
+                        item.id.clone()
+                    }
+                })
+                .collect(),
+        )
     }
 }
 
@@ -1257,10 +1314,110 @@ mod tests {
     }
 
     #[test]
+    fn settings_each_call_mode_select_emits_only_typed_intent_and_keeps_commit() {
+        use yoyopod_protocol::call::DeviceMode;
+        for (index, mode) in [
+            DeviceMode::Normal,
+            DeviceMode::Silent,
+            DeviceMode::DoNotDisturb,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut runtime = UiRuntime::default();
+            runtime.active_screen = UiScreen::Setup;
+            runtime.focus_index = 7;
+            runtime.handle_input(InputAction::Select, 10);
+            assert_eq!(runtime.active_screen, UiScreen::SetupCallMode);
+            for _ in 0..index {
+                super::navigator::advance_focus(&mut runtime);
+            }
+            runtime.handle_input(InputAction::Select, 20);
+            assert_eq!(
+                runtime.take_intents(),
+                vec![UiIntent::Settings(SettingsIntent::DeviceModeSet(mode))]
+            );
+            assert_eq!(runtime.snapshot.settings.device_mode, DeviceMode::Normal);
+            assert_eq!(runtime.active_screen, UiScreen::SetupCallMode);
+        }
+    }
+
+    #[test]
+    fn selecting_dnd_emits_only_mode_intent() {
+        let mut runtime = UiRuntime::default();
+        runtime.focus_index = 2;
+        super::navigator::select_call_mode(&mut runtime);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Settings(SettingsIntent::DeviceModeSet(
+                yoyopod_protocol::call::DeviceMode::DoNotDisturb
+            ))]
+        );
+        assert_eq!(
+            runtime.snapshot.settings.device_mode,
+            yoyopod_protocol::call::DeviceMode::Normal
+        );
+    }
+
+    #[test]
+    fn settings_contact_removal_does_not_mutate_another_contact_or_recreate_deleted_id() {
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::SetupContacts;
+        let mut a = ListItemSnapshot::new("sip:a@test", "Same", "", "mono:S");
+        a.contact_id = "a".into();
+        let mut b = a.clone();
+        b.contact_id = "b".into();
+        b.id = "sip:b@test".into();
+        runtime.snapshot.call.contacts = vec![a.clone(), b];
+        runtime.focus_index = 1;
+        let mut call = runtime.snapshot.call.clone();
+        call.contacts = vec![a];
+        runtime.apply_patch(RuntimeSnapshotPatch::Call(call));
+        runtime.handle_input(InputAction::Select, 100);
+        assert!(runtime.take_intents().is_empty());
+        assert_eq!(runtime.snapshot.call.contacts.len(), 1);
+        assert!(!runtime.snapshot.call.contacts[0].priority);
+    }
+
+    #[test]
+    fn settings_priority_is_updated_only_by_authoritative_patch_and_missing_id_is_disabled() {
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::SetupContacts;
+        runtime.snapshot.call.contacts =
+            vec![ListItemSnapshot::new("sip:x@test", "X", "", "mono:X")];
+        runtime.handle_input(InputAction::Select, 1);
+        assert!(runtime.take_intents().is_empty());
+        runtime.snapshot.call.contacts[0].contact_id = "x".into();
+        let mut call = runtime.snapshot.call.clone();
+        call.contacts[0].priority = true;
+        runtime.apply_patch(RuntimeSnapshotPatch::Call(call));
+        runtime.handle_input(InputAction::Select, 2);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Settings(SettingsIntent::ContactPrioritySet(
+                yoyopod_protocol::call::ContactPrioritySet {
+                    contact_id: "x".into(),
+                    priority: false
+                }
+            ))]
+        );
+        assert!(runtime.snapshot.call.contacts[0].priority);
+    }
+
+    #[test]
     fn settings_root_reaches_eight_items_and_wraps() {
         let mut runtime = UiRuntime::default();
         runtime.active_screen = UiScreen::Setup;
-        assert_eq!(crate::application::focus::focus_count(UiScreen::Setup, &runtime.snapshot, None, None, 0), 8);
+        assert_eq!(
+            crate::application::focus::focus_count(
+                UiScreen::Setup,
+                &runtime.snapshot,
+                None,
+                None,
+                0
+            ),
+            8
+        );
         for expected in [1, 2, 3, 4, 5, 6, 7, 0] {
             super::navigator::advance_focus(&mut runtime);
             assert_eq!(runtime.focus_index, expected);
@@ -1279,8 +1436,21 @@ mod tests {
         runtime.snapshot.call.contacts = vec![a, b];
         runtime.focus_index = 1;
         runtime.handle_input(InputAction::Select, 100);
-        assert_eq!(runtime.take_intents(), vec![UiIntent::Settings(SettingsIntent::ContactPrioritySet(yoyopod_protocol::call::ContactPrioritySet { contact_id: "b".into(), priority: true }))]);
-        assert!(runtime.snapshot.call.contacts.iter().all(|contact| !contact.priority));
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Settings(SettingsIntent::ContactPrioritySet(
+                yoyopod_protocol::call::ContactPrioritySet {
+                    contact_id: "b".into(),
+                    priority: true
+                }
+            ))]
+        );
+        assert!(runtime
+            .snapshot
+            .call
+            .contacts
+            .iter()
+            .all(|contact| !contact.priority));
     }
 
     #[test]

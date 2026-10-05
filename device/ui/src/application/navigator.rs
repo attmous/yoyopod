@@ -293,7 +293,49 @@ fn select_dynamic_action(runtime: &mut UiRuntime, kind: DynamicActionKind) {
         DynamicActionKind::VoiceNote => select_voice_note(runtime),
         DynamicActionKind::SetupCompanion => select_setup_companion(runtime),
         DynamicActionKind::SetupTheme => select_setup_theme(runtime),
+        DynamicActionKind::SetupCallMode => select_call_mode(runtime),
+        DynamicActionKind::SetupContactPriority => select_contact_priority(runtime),
     }
+}
+
+pub fn select_call_mode(runtime: &mut UiRuntime) {
+    use yoyopod_protocol::call::DeviceMode;
+    let modes = [
+        DeviceMode::Normal,
+        DeviceMode::Silent,
+        DeviceMode::DoNotDisturb,
+    ];
+    if let Some(mode) = modes.get(runtime.focus_index) {
+        runtime
+            .intents
+            .push(UiIntent::Settings(SettingsIntent::DeviceModeSet(
+                mode.clone(),
+            )));
+    }
+}
+
+fn select_contact_priority(runtime: &mut UiRuntime) {
+    let Some(contact) = runtime.snapshot.call.contacts.get(runtime.focus_index) else {
+        return;
+    };
+    if contact.contact_id.trim().is_empty()
+        || runtime
+            .snapshot
+            .settings
+            .priority_write
+            .as_ref()
+            .is_some_and(|write| write.pending)
+    {
+        return;
+    }
+    runtime
+        .intents
+        .push(UiIntent::Settings(SettingsIntent::ContactPrioritySet(
+            yoyopod_protocol::call::ContactPrioritySet {
+                contact_id: contact.contact_id.clone(),
+                priority: !contact.priority,
+            },
+        )));
 }
 
 const COMPANIONS: [&str; 5] = ["Blob", "Owl", "Cat", "Bunny", "Robot"];

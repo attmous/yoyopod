@@ -49,6 +49,8 @@ pub trait LoopIo {
 pub struct RuntimeLoop {
     state: RuntimeState,
     shutdown_requested: bool,
+    priority_write_sequence: u64,
+    priority_write_deadline_ms: Option<u64>,
     pending_worker_commands: HashMap<(WorkerDomain, String), PendingWorkerCommand>,
     manager: CallManager,
     call_operations: CallOperationLedger,
@@ -75,6 +77,8 @@ impl RuntimeLoop {
         Self {
             state,
             shutdown_requested: false,
+            priority_write_sequence: 0,
+            priority_write_deadline_ms: None,
             pending_worker_commands: HashMap::new(),
             manager,
             call_operations: Default::default(),
@@ -112,6 +116,10 @@ impl RuntimeLoop {
 
         for (domain, envelope) in io.drain_worker_messages() {
             if self.intercept_call_message(io, domain, &envelope) {
+                processed += 1;
+                continue;
+            }
+            if self.resolve_priority_write(io, domain, &envelope) {
                 processed += 1;
                 continue;
             }
@@ -154,6 +162,12 @@ impl RuntimeLoop {
         self.process_pending_power_shutdown(io);
         self.poll_call_recoveries(io);
         self.expire_correlated_worker_commands(io);
+        if self
+            .priority_write_deadline_ms
+            .is_some_and(|deadline| deadline <= self.now_ms)
+        {
+            self.finish_priority_write(io, "Could not confirm priority save. Select to retry.");
+        }
         for operation in self.call_operations.expired(self.now_ms) {
             self.finish_call_operation(io, operation, false, &json!({}));
         }
@@ -194,6 +208,12 @@ impl RuntimeLoop {
         }
         match command {
             RuntimeCommand::WorkerCommand { domain, envelope } => {
+                if domain == WorkerDomain::Cloud
+                    && envelope.message_type == "cloud.contact_priority_set"
+                {
+                    self.dispatch_priority_write(io, envelope);
+                    return;
+                }
                 let id = envelope.request_id.clone();
                 if domain == WorkerDomain::Network
                     && matches!(envelope.message_type.as_str(), "call.action" | "call.dial")
@@ -250,6 +270,76 @@ impl RuntimeLoop {
                 self.begin_shutdown(io, self.now_ms);
             }
         }
+    }
+
+    fn dispatch_priority_write(&mut self, io: &mut impl LoopIo, mut envelope: WorkerEnvelope) {
+        if self.priority_write_deadline_ms.is_some() {
+            return;
+        }
+        let Ok(change) = serde_json::from_value::<yoyopod_protocol::call::ContactPrioritySet>(
+            envelope.payload.clone(),
+        ) else {
+            return;
+        };
+        if change.contact_id.trim().is_empty() {
+            return;
+        }
+        self.priority_write_sequence += 1;
+        let request_id = format!("ui-priority-{}", self.priority_write_sequence);
+        envelope.request_id = Some(request_id.clone());
+        let before = self.state.clone();
+        self.state.priority_write = Some(yoyopod_protocol::ui::ContactPriorityWriteSnapshot {
+            request_id,
+            contact_id: change.contact_id,
+            priority: change.priority,
+            pending: true,
+            error: String::new(),
+        });
+        self.priority_write_deadline_ms = Some(self.now_ms.saturating_add(8_000));
+        self.send_runtime_snapshot_patches(io, &before);
+        if !io.send_worker_envelope(WorkerDomain::Cloud, envelope) {
+            self.finish_priority_write(io, "Could not save priority. Select to retry.");
+        }
+    }
+
+    fn resolve_priority_write(
+        &mut self,
+        io: &mut impl LoopIo,
+        domain: WorkerDomain,
+        envelope: &WorkerEnvelope,
+    ) -> bool {
+        if domain != WorkerDomain::Cloud
+            || envelope.message_type != "cloud.contact_priority_set"
+            || !matches!(envelope.kind, EnvelopeKind::Result | EnvelopeKind::Error)
+        {
+            return false;
+        }
+        let matches = self.state.priority_write.as_ref().is_some_and(|write| {
+            write.pending && envelope.request_id.as_ref() == Some(&write.request_id)
+        });
+        if matches {
+            let success = envelope.kind == EnvelopeKind::Result
+                && envelope.payload.get("ok").and_then(Value::as_bool) == Some(true);
+            self.finish_priority_write(
+                io,
+                if success {
+                    ""
+                } else {
+                    "Could not save priority. Select to retry."
+                },
+            );
+        }
+        true
+    }
+
+    fn finish_priority_write(&mut self, io: &mut impl LoopIo, error: &str) {
+        let before = self.state.clone();
+        self.priority_write_deadline_ms = None;
+        if let Some(write) = self.state.priority_write.as_mut() {
+            write.pending = false;
+            write.error = error.to_string();
+        }
+        self.send_runtime_snapshot_patches(io, &before);
     }
 
     fn resolve_correlated_worker_result(
@@ -486,15 +576,206 @@ mod tests {
         }
     }
 
+    fn request_priority(
+        runtime: &mut RuntimeLoop,
+        io: &mut FakeLoopIo,
+        id: &str,
+        priority: bool,
+    ) -> String {
+        runtime.dispatch_command(
+            io,
+            RuntimeCommand::WorkerCommand {
+                domain: WorkerDomain::Cloud,
+                envelope: WorkerEnvelope::command(
+                    "cloud.contact_priority_set",
+                    None,
+                    json!({"contact_id":id,"priority":priority}),
+                ),
+            },
+        );
+        runtime
+            .state
+            .priority_write
+            .as_ref()
+            .unwrap()
+            .request_id
+            .clone()
+    }
+
+    #[test]
+    fn settings_priority_feedback_requires_matching_writer_domain_type_and_request() {
+        let mut runtime = RuntimeLoop::new(RuntimeState::default());
+        let mut io = FakeLoopIo::default();
+        let id = request_priority(&mut runtime, &mut io, "b", true);
+        let before = runtime.state.call.contacts.clone();
+        for (domain, kind, request) in [
+            (WorkerDomain::Voip, "cloud.contact_priority_set", id.clone()),
+            (WorkerDomain::Cloud, "unrelated", id.clone()),
+            (
+                WorkerDomain::Cloud,
+                "cloud.contact_priority_set",
+                "other".into(),
+            ),
+        ] {
+            let result = WorkerEnvelope::result(kind, Some(request), json!({"ok":true}));
+            runtime.resolve_priority_write(&mut io, domain, &result);
+            assert!(runtime.state.priority_write.as_ref().unwrap().pending);
+        }
+        let error = WorkerEnvelope::error(
+            "cloud.contact_priority_set",
+            Some(id),
+            "contact_priority_failed",
+            "private path",
+        );
+        io.messages.push((WorkerDomain::Cloud, error));
+        runtime.run_once_at(&mut io, 1);
+        let write = runtime.state.ui_snapshot().settings.priority_write.unwrap();
+        assert_eq!(write.contact_id, "b");
+        assert!(write.priority);
+        assert!(!write.pending);
+        assert!(!write.error.is_empty());
+        assert!(!write.error.contains("private"));
+        assert_eq!(runtime.state.call.contacts, before);
+        assert_eq!(runtime.state.cloud_worker.state, WorkerState::Stopped);
+        assert!(io
+            .sent
+            .iter()
+            .all(|(_, envelope)| envelope.message_type != "cloud.ack"));
+        let retry = request_priority(&mut runtime, &mut io, "b", true);
+        assert_ne!(retry, write.request_id);
+    }
+
+    #[test]
+    fn settings_priority_result_never_optimistically_changes_contacts_and_commit_is_authoritative()
+    {
+        let mut runtime = RuntimeLoop::new(RuntimeState::default());
+        let mut io = FakeLoopIo::default();
+        crate::event::RuntimeEvent::ContactsUpdated(json!({"contacts":[{"id":"a","name":"Same","sip_address":"sip:a@test","priority":false},{"id":"b","name":"Same","sip_address":"sip:b@test","priority":false}]})).apply(&mut runtime.state);
+        let id = request_priority(&mut runtime, &mut io, "b", true);
+        runtime.resolve_priority_write(
+            &mut io,
+            WorkerDomain::Cloud,
+            &WorkerEnvelope::result("cloud.contact_priority_set", Some(id), json!({"ok":true})),
+        );
+        assert!(runtime
+            .state
+            .call
+            .contacts
+            .iter()
+            .all(|contact| !contact.priority));
+        io.messages.push((WorkerDomain::Cloud, WorkerEnvelope::event("cloud.contacts_updated", json!({"contacts":[{"id":"a","name":"Same","sip_address":"sip:a@test","priority":false},{"id":"b","name":"Same","sip_address":"sip:b@test","priority":true}]}))));
+        runtime.run_once_at(&mut io, 1);
+        assert!(!runtime.state.call.contacts[0].priority);
+        assert!(runtime.state.call.contacts[1].priority);
+        assert!(io
+            .sent
+            .iter()
+            .all(|(_, envelope)| envelope.message_type != "cloud.ack"));
+    }
+
+    #[test]
+    fn settings_priority_dispatch_failure_and_timeout_are_recoverable_without_late_settlement() {
+        let mut runtime = RuntimeLoop::new(RuntimeState::default());
+        let mut io = FakeLoopIo::default();
+        io.fail_send.push("cloud.contact_priority_set".into());
+        request_priority(&mut runtime, &mut io, "deleted", true);
+        assert!(!runtime.state.priority_write.as_ref().unwrap().pending);
+        assert!(!runtime
+            .state
+            .priority_write
+            .as_ref()
+            .unwrap()
+            .error
+            .is_empty());
+        io.fail_send.clear();
+        let old = request_priority(&mut runtime, &mut io, "deleted", true);
+        runtime.run_once_at(&mut io, 8000);
+        assert!(!runtime.state.priority_write.as_ref().unwrap().pending);
+        let current = request_priority(&mut runtime, &mut io, "a", false);
+        runtime.resolve_priority_write(
+            &mut io,
+            WorkerDomain::Cloud,
+            &WorkerEnvelope::result("cloud.contact_priority_set", Some(old), json!({"ok":true})),
+        );
+        assert!(runtime.state.priority_write.as_ref().unwrap().pending);
+        assert_eq!(
+            runtime.state.priority_write.as_ref().unwrap().request_id,
+            current
+        );
+        assert!(runtime.state.call.contacts.is_empty());
+    }
+
+    #[test]
+    fn settings_failed_mode_write_projects_recoverable_error_without_changing_manager() {
+        use yoyopod_protocol::call::DeviceMode;
+        let root = tempfile::tempdir().unwrap();
+        let blocker = root.path().join("blocker");
+        std::fs::write(&blocker, "file").unwrap();
+        let state = RuntimeState {
+            call_mode_file: blocker.join("mode.json"),
+            ..Default::default()
+        };
+        let mut runtime = RuntimeLoop::new(state);
+        let mut io = FakeLoopIo::default();
+        let intent = yoyopod_protocol::ui::UiIntent::Settings(
+            yoyopod_protocol::ui::SettingsIntent::DeviceModeSet(DeviceMode::Silent),
+        );
+        io.messages.push((
+            WorkerDomain::Ui,
+            yoyopod_protocol::ui::UiEvent::Intent(intent.clone()).into_envelope(),
+        ));
+        runtime.run_once_at(&mut io, 1);
+        assert_eq!(runtime.manager.mode(), DeviceMode::Normal);
+        let settings = runtime.state.ui_snapshot().settings;
+        assert_eq!(settings.device_mode, DeviceMode::Normal);
+        assert!(!settings.device_mode_error.is_empty());
+        runtime.state.call_mode_file = root.path().join("mode.json");
+        io.messages.push((
+            WorkerDomain::Ui,
+            yoyopod_protocol::ui::UiEvent::Intent(intent).into_envelope(),
+        ));
+        runtime.run_once_at(&mut io, 2);
+        assert_eq!(runtime.manager.mode(), DeviceMode::Silent);
+        assert!(runtime
+            .state
+            .ui_snapshot()
+            .settings
+            .device_mode_error
+            .is_empty());
+        assert_eq!(
+            crate::call_preferences::load_mode(&runtime.state.call_mode_file).unwrap(),
+            DeviceMode::Silent
+        );
+    }
+
     #[test]
     fn settings_priority_write_has_its_own_request_id() {
         let mut runtime = RuntimeLoop::new(RuntimeState::default());
-        let event = crate::event::RuntimeEvent::UiIntent(yoyopod_protocol::ui::UiIntent::Settings(yoyopod_protocol::ui::SettingsIntent::ContactPrioritySet(yoyopod_protocol::call::ContactPrioritySet { contact_id: "b".into(), priority: true })));
+        let event = crate::event::RuntimeEvent::UiIntent(yoyopod_protocol::ui::UiIntent::Settings(
+            yoyopod_protocol::ui::SettingsIntent::ContactPrioritySet(
+                yoyopod_protocol::call::ContactPrioritySet {
+                    contact_id: "b".into(),
+                    priority: true,
+                },
+            ),
+        ));
         let mut io = FakeLoopIo::default();
-        for command in commands_for_event(runtime.state(), &event) { runtime.dispatch_command(&mut io, command); }
-        let command = io.sent.iter().find(|(_, envelope)| envelope.message_type == "cloud.contact_priority_set").unwrap();
-        assert!(command.1.request_id.is_some(), "UI priority writes need dedicated correlation");
-        assert!(io.sent.iter().all(|(_, envelope)| envelope.message_type != "cloud.ack"));
+        for command in commands_for_event(runtime.state(), &event) {
+            runtime.dispatch_command(&mut io, command);
+        }
+        let command = io
+            .sent
+            .iter()
+            .find(|(_, envelope)| envelope.message_type == "cloud.contact_priority_set")
+            .unwrap();
+        assert!(
+            command.1.request_id.is_some(),
+            "UI priority writes need dedicated correlation"
+        );
+        assert!(io
+            .sent
+            .iter()
+            .all(|(_, envelope)| envelope.message_type != "cloud.ack"));
     }
 
     #[test]

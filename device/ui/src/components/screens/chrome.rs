@@ -109,6 +109,7 @@ fn title_for_screen(
         UiScreen::SetupCompanion => "Companion".to_string(),
         UiScreen::SetupContacts => "Contacts".to_string(),
         UiScreen::SetupTheme => "Theme".to_string(),
+        UiScreen::SetupCallMode => "Call mode".to_string(),
         UiScreen::SetupAbout => "About".to_string(),
         UiScreen::SetupWifi => "Wi-Fi".to_string(),
         UiScreen::Loading => "Loading".to_string(),
@@ -141,6 +142,7 @@ fn deck_focus_for_screen(screen: UiScreen, home_focus: Option<usize>) -> Option<
         | UiScreen::SetupVolume
         | UiScreen::SetupCompanion
         | UiScreen::SetupContacts
+        | UiScreen::SetupCallMode
         | UiScreen::SetupTheme
         | UiScreen::SetupAbout
         | UiScreen::SetupWifi => Some(5),
