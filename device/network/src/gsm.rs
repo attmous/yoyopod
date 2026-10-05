@@ -470,6 +470,9 @@ impl CleanupEvidence {
     }
 }
 
+#[cfg(test)]
+type CollectorGate = Arc<std::sync::Mutex<Option<(Sender<()>, Receiver<()>)>>>;
+
 struct ModemSignals {
     connection: Connection,
     messages: Receiver<zbus::Message>,
@@ -479,7 +482,7 @@ struct ModemSignals {
         std::sync::Condvar,
     )>,
     #[cfg(test)]
-    pause_before_forward: Arc<std::sync::Mutex<Option<(Sender<()>, Receiver<()>)>>>,
+    pause_before_forward: CollectorGate,
     thread: Option<JoinHandle<()>>,
 }
 impl ModemSignals {
@@ -571,16 +574,20 @@ impl ModemSignals {
         })
     }
 
-    fn wait_through(&self, position: zbus::message::Sequence) -> Result<()> {
+    fn wait_through(&self, position: zbus::message::Sequence, deadline: Duration) -> Result<()> {
         let (lock, changed) = &*self.progress;
-        let progress = lock
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Signal collector progress poisoned"))?;
+        let progress = lock.lock().map_err(|_| {
+            self.evidence_gap.store(true, Ordering::SeqCst);
+            anyhow::anyhow!("Signal collector progress poisoned")
+        })?;
         let (progress, _) = changed
-            .wait_timeout_while(progress, Duration::from_secs(5), |processed| {
+            .wait_timeout_while(progress, deadline, |processed| {
                 *processed < position && !self.evidence_gap.load(Ordering::SeqCst)
             })
-            .map_err(|_| anyhow::anyhow!("Signal collector progress poisoned"))?;
+            .map_err(|_| {
+                self.evidence_gap.store(true, Ordering::SeqCst);
+                anyhow::anyhow!("Signal collector progress poisoned")
+            })?;
         if *progress < position || self.evidence_gap.load(Ordering::SeqCst) {
             self.evidence_gap.store(true, Ordering::SeqCst);
             bail!("Native signal collector progress unproven");
@@ -746,7 +753,7 @@ impl ModemManagerVoice {
             .signals
             .as_ref()
             .context("No retained native signal collector")?;
-        if let Err(error) = signals.wait_through(reply.recv_position()) {
+        if let Err(error) = signals.wait_through(reply.recv_position(), Duration::from_secs(5)) {
             // Missing progress cannot establish old-lifetime quiescence.
             self.verify_service_owner()?;
             return Err(error);
@@ -2709,6 +2716,67 @@ mod tests {
         backend.next_recovery = None;
         let _ = backend.refresh();
         assert!(!backend.cached.available);
+        assert_eq!(
+            backend.modem.as_ref().map(|p| p.as_str()),
+            Some(TEST_MODEM0)
+        );
+        drop(backend);
+    }
+
+    #[test]
+    fn gsm_reconnect_collector_progress_timeout_permanently_quarantines_old_identity() {
+        let bus = PrivateBus::start();
+        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        let token = backend.reconciliation().unwrap().native_owner;
+        let (entered, entering) = mpsc::channel();
+        let (release, releasing) = mpsc::channel();
+        *backend
+            .signals
+            .as_ref()
+            .unwrap()
+            .pause_before_forward
+            .lock()
+            .unwrap() = Some((entered, releasing));
+        remove_reconnect_modem(&owner);
+        entering.recv_timeout(Duration::from_secs(3)).unwrap();
+        add_reconnect_modem(&owner, TEST_MODEM0);
+        let reply = backend
+            .connection
+            .as_ref()
+            .unwrap()
+            .call_method(
+                Some(backend.bound_owner().unwrap()),
+                "/org/freedesktop/ModemManager1",
+                Some("org.freedesktop.DBus.ObjectManager"),
+                "GetManagedObjects",
+                &(),
+            )
+            .unwrap();
+        let result = backend
+            .signals
+            .as_ref()
+            .unwrap()
+            .wait_through(reply.recv_position(), Duration::from_millis(100));
+        release.send(()).unwrap();
+        assert!(
+            result.is_err(),
+            "paused collector supplied no ordered native evidence"
+        );
+        assert!(backend.verify_service_owner().is_err());
+        assert!(backend.service_invalidated);
+        assert!(backend.modem_lost);
+        assert!(!backend.clean_rediscovery);
+        assert_eq!(backend.selected_epoch, 1);
+        assert_eq!(backend.take_modem_loss(), Some(7));
+        add_reconnect_modem(&owner, TEST_MODEM2);
+        backend.next_recovery = None;
+        backend.next_discovery = None;
+        let _ = backend.refresh();
+        assert!(backend.signals.is_some());
+        assert!(!backend.cached.available);
+        assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+        assert_eq!(backend.reconciliation().unwrap().native_owner, token);
+        assert_eq!(backend.generation, Some(7));
         assert_eq!(
             backend.modem.as_ref().map(|p| p.as_str()),
             Some(TEST_MODEM0)
