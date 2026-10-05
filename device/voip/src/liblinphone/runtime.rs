@@ -2157,10 +2157,7 @@ unsafe fn suppress_native_alerts(api: &LinphoneApi, core: *mut LinphoneCore) {
     }
 }
 
-pub(super) unsafe fn enforce_incoming_policy(
-    api: &LinphoneApi,
-    config: *mut super::ffi::LinphoneConfig,
-) {
+pub(super) unsafe fn enforce_incoming_policy(api: &LinphoneApi, config: *mut std::ffi::c_void) {
     unsafe {
         (api.config_set_int)(
             config,

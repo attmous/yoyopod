@@ -144,7 +144,7 @@ mod saved_file_tests {
         unsafe {
             let api = LinphoneApi::load().unwrap();
             let library = open_liblinphone().unwrap();
-            let create: unsafe extern "C" fn(*const c_char) -> *mut LinphoneConfig =
+            let create: unsafe extern "C" fn(*const c_char) -> *mut c_void =
                 required_symbol(library, c"linphone_config_new_from_buffer").unwrap();
             let read: unsafe extern "C" fn(
                 *const LinphoneConfig,
@@ -152,7 +152,7 @@ mod saved_file_tests {
                 *const c_char,
                 c_int,
             ) -> c_int = required_symbol(library, c"linphone_config_get_int").unwrap();
-            let unref: unsafe extern "C" fn(*mut LinphoneConfig) =
+            let unref: unsafe extern "C" fn(*mut c_void) =
                 required_symbol(library, c"linphone_config_unref").unwrap();
             let config = create(c"[sip]\nincoming_calls_early_media=1\n".as_ptr());
             assert!(!config.is_null());
