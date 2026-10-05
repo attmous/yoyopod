@@ -487,6 +487,17 @@ mod tests {
     }
 
     #[test]
+    fn settings_priority_write_has_its_own_request_id() {
+        let mut runtime = RuntimeLoop::new(RuntimeState::default());
+        let event = crate::event::RuntimeEvent::UiIntent(yoyopod_protocol::ui::UiIntent::Settings(yoyopod_protocol::ui::SettingsIntent::ContactPrioritySet(yoyopod_protocol::call::ContactPrioritySet { contact_id: "b".into(), priority: true })));
+        let mut io = FakeLoopIo::default();
+        for command in commands_for_event(runtime.state(), &event) { runtime.dispatch_command(&mut io, command); }
+        let command = io.sent.iter().find(|(_, envelope)| envelope.message_type == "cloud.contact_priority_set").unwrap();
+        assert!(command.1.request_id.is_some(), "UI priority writes need dedicated correlation");
+        assert!(io.sent.iter().all(|(_, envelope)| envelope.message_type != "cloud.ack"));
+    }
+
+    #[test]
     fn managed_unknown_offers_reject_without_local_interruption() {
         for (domain, transport) in [(WorkerDomain::Voip, "sip"), (WorkerDomain::Network, "gsm")] {
             let mut runtime = RuntimeLoop::new(RuntimeState::default());
