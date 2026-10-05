@@ -141,7 +141,6 @@ mod saved_file_tests {
     use super::*;
 
     #[test]
-    #[ignore = "requires genuine Liblinphone 5.2 runtime shared libraries; run explicitly with --ignored"]
     fn native_saved_file_symbols_and_content_strings_use_pinned_abi() {
         let api = unsafe { LinphoneApi::load() }.expect("genuine native library");
         let saved = api

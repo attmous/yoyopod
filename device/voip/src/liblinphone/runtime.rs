@@ -788,7 +788,8 @@ pub(super) fn send_saved_voice_note(sip_address: &str, file_path: &str) -> Resul
         Ok(message)
     })?;
     // Send can synchronously call back into STATE. Keep caller reference, callback
-    // userdata and WAV stable until shutdown; upload does not eagerly copy bytes.
+    // userdata until deferred terminal retirement; upload does not eagerly copy bytes.
+    // The owned WAV remains protected by pending transfer and replay references.
     unsafe {
         (api.chat_message_send)(message);
     }
