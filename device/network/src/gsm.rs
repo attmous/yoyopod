@@ -474,6 +474,8 @@ struct ModemSignals {
     connection: Connection,
     messages: Receiver<zbus::Message>,
     evidence_gap: Arc<std::sync::atomic::AtomicBool>,
+    #[cfg(test)]
+    pause_before_forward: Arc<std::sync::Mutex<Option<(Sender<()>, Receiver<()>)>>>,
     thread: Option<JoinHandle<()>>,
 }
 impl ModemSignals {
@@ -492,12 +494,25 @@ impl ModemSignals {
         let (sender, messages) = mpsc::sync_channel(capacity);
         let evidence_gap = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let thread_gap = evidence_gap.clone();
+        #[cfg(test)]
+        let pause_before_forward =
+            Arc::new(std::sync::Mutex::new(None::<(Sender<()>, Receiver<()>)>));
+        #[cfg(test)]
+        let thread_pause = pause_before_forward.clone();
         let thread = thread::spawn(move || {
             for message in &mut stream {
                 let Ok(message) = message else {
                     thread_gap.store(true, Ordering::SeqCst);
                     break;
                 };
+                #[cfg(test)]
+                if message.header().member().map(|m| m.as_str()) == Some("InterfacesRemoved") {
+                    let gate = thread_pause.lock().unwrap().take();
+                    if let Some((entered, release)) = gate {
+                        let _ = entered.send(());
+                        let _ = release.recv_timeout(Duration::from_secs(3));
+                    }
+                }
                 // Keep the retained subscription alive through a property storm.
                 // A missing removal can hide a reused native incarnation, so any
                 // gap permanently quarantines this backend's native evidence.
@@ -514,6 +529,8 @@ impl ModemSignals {
             connection,
             messages,
             evidence_gap,
+            #[cfg(test)]
+            pause_before_forward,
             thread: Some(thread),
         })
     }
@@ -2566,6 +2583,73 @@ mod tests {
         drop(backend);
         relay.join().unwrap();
     }
+    #[test]
+    fn gsm_reconnect_paused_collector_fences_same_path_replacement_before_old_cleanup() {
+        let bus = PrivateBus::start();
+        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        let token = backend.reconciliation().unwrap().native_owner;
+        let events = backend.registry.as_mut().unwrap().observe(
+            "/call/old",
+            yoyopod_protocol::call::CallDirection::Incoming,
+            CallPhase::Ringing,
+            "+49123456789",
+        );
+        let CallManagerWireEvent::Offer(offer) = &events[0] else {
+            panic!("offer")
+        };
+        let key = offer.key.clone();
+        backend.owner = Some(key.clone());
+        let (entered, entering) = mpsc::channel();
+        let (release, releasing) = mpsc::channel();
+        *backend
+            .signals
+            .as_ref()
+            .unwrap()
+            .pause_before_forward
+            .lock()
+            .unwrap() = Some((entered, releasing));
+        remove_reconnect_modem(&owner);
+        entering.recv_timeout(Duration::from_secs(3)).unwrap();
+        add_reconnect_modem(&owner, TEST_MODEM0);
+        let (finished, finish) = mpsc::channel();
+        let scan = thread::spawn(move || {
+            let result = backend.reconcile_paths();
+            let _ = finished.send(());
+            (backend, result)
+        });
+        let completed_while_paused = finish.recv_timeout(Duration::from_millis(100)).is_ok();
+        // Always release and join before assertions, including the RED case.
+        release.send(()).unwrap();
+        let (mut backend, result) = scan.join().unwrap();
+        assert!(
+            !completed_while_paused,
+            "native cleanup accepted replacement facts before collector forwarded earlier removal"
+        );
+        assert!(result.is_err());
+        assert!(backend.modem_lost);
+        assert!(!backend.clean_rediscovery);
+        assert_eq!(backend.selected_epoch, 1);
+        assert_eq!(backend.take_modem_loss(), Some(7));
+        assert_eq!(
+            backend.registry().unwrap().path_for(&key),
+            Some("/call/old")
+        );
+        assert!(backend.owns_voice(&key));
+        assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+        assert_eq!(backend.reconciliation().unwrap().native_owner, token);
+        assert_eq!(backend.generation, Some(7));
+        assert!(!backend.drain_call_events().iter().any(|event| matches!(event, CallManagerWireEvent::Update(update) if update.phase == CallPhase::Ended)));
+        add_reconnect_modem(&owner, TEST_MODEM2);
+        backend.next_recovery = None;
+        let _ = backend.refresh();
+        assert!(!backend.cached.available);
+        assert_eq!(
+            backend.modem.as_ref().map(|p| p.as_str()),
+            Some(TEST_MODEM0)
+        );
+        drop(backend);
+    }
+
     fn replace_owner(connection: &Connection) {
         use zbus::fdo::RequestNameFlags;
         connection
