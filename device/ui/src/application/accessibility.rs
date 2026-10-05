@@ -218,6 +218,14 @@ fn voice_play_pause_label(snapshot: &RuntimeSnapshot) -> &'static str {
 }
 
 fn voice_note_item(runtime: &UiRuntime) -> Option<FocusDescriptor> {
+    if runtime.snapshot.voice.interrupted_draft_path.is_some() {
+        // Retained draft metadata shares the scene's full action label, including
+        // send permission and delivery uncertainty, rather than capture actions.
+        return Some(FocusDescriptor::new(
+            format!("item_{}", runtime.focus_index),
+            runtime.active_title(),
+        ));
+    }
     let labels: &[&str] = match runtime.voice_note_phase().as_str() {
         "review" => &["Send", "Play", "Again"],
         "failed" => &["Retry", "Again"],
