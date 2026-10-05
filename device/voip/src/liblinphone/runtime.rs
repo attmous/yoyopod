@@ -801,6 +801,19 @@ fn saved_message_terminal(native_state: c_int) -> bool {
     matches!(native_state, 2 | 3 | 6 | 7)
 }
 
+#[cfg(test)]
+mod saved_retirement_tests {
+    use super::*;
+    #[test]
+    fn native_upload_completion_does_not_release_message_ownership() {
+        assert!(!saved_message_terminal(5));
+        assert!(!saved_message_terminal(8));
+        for terminal in [2, 3, 6, 7] {
+            assert!(saved_message_terminal(terminal));
+        }
+    }
+}
+
 pub(super) fn saved_transfer_uses_path(path: &str) -> bool {
     STATE.lock().map_or(true, |state| {
         state.saved_message_paths.values().any(|v| v == path)

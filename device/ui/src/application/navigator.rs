@@ -22,6 +22,7 @@ pub fn apply_runtime_preemption(runtime: &mut UiRuntime) {
                 .as_ref()
                 .is_none_or(|(old, _)| old != &key);
             if new_session {
+                runtime.call_answer_queued = None;
                 remove_flashlight_route(runtime);
                 let entry = runtime
                     .interrupted_navigation
@@ -60,6 +61,9 @@ pub fn apply_runtime_preemption(runtime: &mut UiRuntime) {
                 runtime.call_wake_pending = true;
                 runtime.accessibility_events.clear();
                 runtime.scene_revision = runtime.scene_revision.wrapping_add(1);
+            }
+            if runtime.call_answer_queued == runtime.snapshot.call.session {
+                runtime.snapshot.call.accept_enabled = false;
             }
             if let Some(screen) = runtime_preemption_for_display(
                 &runtime.snapshot,
@@ -337,6 +341,8 @@ fn emit_static_intent(runtime: &mut UiRuntime, template: IntentTemplate) {
             if !runtime.snapshot.call.accept_enabled {
                 return;
             }
+            runtime.call_answer_queued = runtime.snapshot.call.session.clone();
+            runtime.snapshot.call.accept_enabled = false;
             Some(CallAction::Answer)
         }
         IntentTemplate::CallReject => Some(CallAction::Reject(RejectReason::Cancelled)),
@@ -761,7 +767,7 @@ fn select_voice_note(runtime: &mut UiRuntime) {
                     .push(UiIntent::Voice(VoiceIntent::SavedSend(action))),
                 1 => runtime
                     .intents
-                    .push(UiIntent::Voice(VoiceIntent::Play(Some(action)))),
+                    .push(UiIntent::Voice(VoiceIntent::SavedPlay(action))),
                 2 => runtime
                     .intents
                     .push(UiIntent::Voice(VoiceIntent::SavedDiscard(action))),

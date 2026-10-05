@@ -66,6 +66,46 @@ fn prepare(runtime: &mut RuntimeLoop, io: &mut FakeLoopIo, now: u64) {
         respond(runtime, io, name, now);
     }
 }
+
+#[test]
+fn failed_copy_retains_correlated_draft_ownership_without_audio_readiness() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Sip);
+    runtime.state.voice.pending_voice_recipient =
+        Some(yoyopod_protocol::ui::VoiceRecipientAction {
+            id: "dad".into(),
+            recipient_address: "sip:dad@example.test".into(),
+            ..Default::default()
+        });
+    offer(&mut runtime, &mut io, &key, 0);
+    let (_, command) = io
+        .sent
+        .iter()
+        .rev()
+        .find(|(_, e)| e.message_type == "voip.interrupt_for_call")
+        .unwrap()
+        .clone();
+    let mut payload = command.payload;
+    payload["audio_released"] = json!(false);
+    payload["draft_recovery_source"] = json!("finalized-source.wav");
+    payload["draft_duration_ms"] = json!(420);
+    io.messages.push((
+        WorkerDomain::Voip,
+        WorkerEnvelope::result("voip.interrupt_for_call", command.request_id, payload),
+    ));
+    runtime.run_once_at(&mut io, 1);
+    assert_eq!(
+        runtime.state.voice.interrupted_draft_path.as_deref(),
+        Some("finalized-source.wav")
+    );
+    let draft = runtime.state.voice.interrupted_draft.as_ref().unwrap();
+    assert!(draft.needs_copy);
+    assert_eq!(draft.duration_ms, 420);
+    assert!(!runtime.calls.resources.as_ref().unwrap().voip_prepared);
+    assert!(!io
+        .sent
+        .iter()
+        .any(|(_, e)| e.message_type == "call.action" && e.payload["action"] == "answer"));
+}
 fn control(
     runtime: &mut RuntimeLoop,
     io: &mut FakeLoopIo,

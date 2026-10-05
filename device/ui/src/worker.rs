@@ -623,6 +623,69 @@ fn screen_changed_if_needed(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Default)]
+    struct WakeDisplay {
+        calls: usize,
+        fail: bool,
+    }
+    impl DisplayDevice for WakeDisplay {
+        fn width(&self) -> usize {
+            240
+        }
+        fn height(&self) -> usize {
+            280
+        }
+        fn flush_full_frame(&mut self, _: &Framebuffer) -> Result<()> {
+            Ok(())
+        }
+        fn flush_region(&mut self, _: &Framebuffer, _: crate::DirtyRegion) -> Result<()> {
+            Ok(())
+        }
+        fn set_backlight(&mut self, brightness: f32) -> Result<()> {
+            assert!(brightness > 0.0);
+            self.calls += 1;
+            if self.fail {
+                anyhow::bail!("backlight failed");
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn call_wake_cancels_pressed_and_released_gestures_and_reports_driver_failure() {
+        for held in [true, false] {
+            let mut runtime = UiRuntime {
+                active_screen: UiScreen::IncomingCall,
+                call_wake_pending: true,
+                ..Default::default()
+            };
+            let mut machine = OneButtonMachine::new(ButtonTiming::default());
+            machine.observe(true, 0);
+            machine.observe(true, 60);
+            if !held {
+                machine.observe(false, 150);
+                machine.observe(false, 210);
+            }
+            let mut display = WakeDisplay::default();
+            apply_call_wake(&mut runtime, &mut machine, &mut display).unwrap();
+            assert_eq!(display.calls, 1);
+            assert!(machine.observe(false, 300).is_empty());
+            assert!(machine.observe(false, 360).is_empty());
+            assert!(machine.observe(false, 1_000).is_empty());
+            apply_call_wake(&mut runtime, &mut machine, &mut display).unwrap();
+            assert_eq!(display.calls, 1);
+            runtime.call_wake_pending = true;
+            display.fail = true;
+            assert!(apply_call_wake(&mut runtime, &mut machine, &mut display).is_err());
+            assert!(
+                runtime.call_wake_pending,
+                "failure never becomes successful wake"
+            );
+            runtime.active_screen = UiScreen::Error;
+            assert!(apply_call_wake(&mut runtime, &mut machine, &mut display).is_err());
+        }
+    }
     #[cfg(feature = "native-lvgl")]
     use crate::hardware::mock::MockDisplay;
     #[cfg(feature = "native-lvgl")]

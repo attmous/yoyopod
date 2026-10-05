@@ -90,14 +90,11 @@ impl OneButtonMachine {
     }
 
     pub fn cancel_current_gesture(&mut self) {
-        if !self.debounced_pressed {
-            return;
-        }
         self.press_start_ms = None;
         self.pending_single_tap_ms = None;
         self.double_tap_candidate = false;
         self.hold_back_fired = false;
-        self.cancel_until_release = true;
+        self.cancel_until_release = self.debounced_pressed || self.raw_pressed;
     }
 
     pub fn observe(&mut self, pressed: bool, now_ms: u64) -> Vec<InputEvent> {
@@ -199,6 +196,9 @@ impl OneButtonMachine {
     fn handle_press(&mut self, now_ms: u64) -> Vec<InputEvent> {
         let mut events = Vec::new();
         self.debounced_pressed = true;
+        if self.cancel_until_release {
+            return events;
+        }
         self.cancel_until_release = false;
         self.double_tap_candidate = self
             .pending_single_tap_ms

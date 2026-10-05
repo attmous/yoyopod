@@ -207,14 +207,19 @@ where
         }
         "voip.interrupt_for_call" => {
             let request = serde_json::from_value(envelope.payload)?;
-            let draft = backend.with_backend(|b| host.interrupt_for_call(b, &request))?;
+            let result = backend.with_backend(|b| host.interrupt_for_call(b, &request));
+            let recovery = host.draft_recovery_source();
+            let payload = match result {
+                Ok(draft) => {
+                    json!({"key":request.key,"activity_generation":request.activity_generation,"audio_released":true,"draft_path":draft,"draft_duration_ms":host.session_snapshot_payload()["voice_note"]["duration_ms"]})
+                }
+                Err(_) => {
+                    json!({"key":request.key,"activity_generation":request.activity_generation,"audio_released":false,"draft_recovery_source":recovery.as_ref().map(|(path,_)| path),"draft_duration_ms":recovery.as_ref().map(|(_,duration)| duration)})
+                }
+            };
             write_envelope_to(
                 output,
-                &WorkerEnvelope::result(
-                    "voip.interrupt_for_call",
-                    envelope.request_id,
-                    json!({"key":request.key,"activity_generation":request.activity_generation,"audio_released":true,"draft_path":draft,"draft_duration_ms":host.session_snapshot_payload()["voice_note"]["duration_ms"]}),
-                ),
+                &WorkerEnvelope::result("voip.interrupt_for_call", envelope.request_id, payload),
             )?;
             write_session_snapshot(host, output)?;
         }
@@ -553,6 +558,10 @@ where
         }
         "voip.discard_saved_voice_note" => {
             let path = envelope.payload["file_path"].as_str().unwrap_or_default();
+            if envelope.payload["recovery_source"].as_bool() == Some(true) {
+                host.adopt_finalized_source_for_discard(path)
+                    .map_err(anyhow::Error::msg)?;
+            }
             backend.with_backend(|b| host.discard_saved_voice_note(b, path))?;
             write_envelope_to(
                 output,
@@ -586,14 +595,44 @@ where
             } else {
                 let message_id = backend.with_backend(|backend_ref| {
                     if envelope.message_type == "voip.send_saved_voice_note" {
-                        host.send_saved_voice_note(
+                        let restored;
+                        let file_path =
+                            if envelope.payload["recovery_source"].as_bool() == Some(true) {
+                                match host.restore_finalized_source(file_path, duration_ms as i32) {
+                                    Ok(path) => {
+                                        restored = path;
+                                        restored.as_str()
+                                    }
+                                    Err(_) => {
+                                        host.mark_saved_source_failed(
+                                            file_path,
+                                            duration_ms as i32,
+                                            mime_type,
+                                            client_id,
+                                        );
+                                        return Ok(client_id.to_string());
+                                    }
+                                }
+                            } else {
+                                file_path
+                            };
+                        let result = host.send_saved_voice_note(
                             backend_ref,
                             uri,
                             file_path,
                             duration_ms as i32,
                             mime_type,
                             client_id,
-                        )
+                        );
+                        if result.is_err() {
+                            host.mark_saved_source_failed(
+                                file_path,
+                                duration_ms as i32,
+                                mime_type,
+                                client_id,
+                            );
+                        }
+                        result.or_else(|_| Ok(client_id.to_string()))
                     } else {
                         host.send_voice_note(
                             backend_ref,

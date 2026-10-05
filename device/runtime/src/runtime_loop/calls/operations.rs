@@ -228,6 +228,21 @@ impl RuntimeLoop {
         if self.manager.session() != Some(&operation.key) {
             return;
         }
+        if matches!(operation.purpose, OperationPurpose::PrepareVoip) && !ok {
+            if let Some(path) = payload["draft_recovery_source"].as_str() {
+                if self.state.voice.interrupted_draft_path.is_none() {
+                    self.state.voice.interrupted_draft_path = Some(path.into());
+                    if let Some(draft) = self.state.voice.interrupted_draft.as_mut() {
+                        draft.needs_copy = true;
+                        draft.duration_ms = payload["draft_duration_ms"]
+                            .as_i64()
+                            .unwrap_or(0)
+                            .clamp(0, i32::MAX as i64)
+                            as i32;
+                    }
+                }
+            }
+        }
         match operation.purpose {
             OperationPurpose::PrepareMedia
             | OperationPurpose::PrepareVoip

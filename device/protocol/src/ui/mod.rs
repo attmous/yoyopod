@@ -801,6 +801,7 @@ mod keyed_call_intent_tests {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VoiceIntent {
     SavedSend(VoiceFileAction),
+    SavedPlay(VoiceFileAction),
     SavedDiscard(VoiceFileAction),
     AskStart,
     AskStop,
@@ -826,6 +827,7 @@ impl VoiceIntent {
         match normalized(action).as_str() {
             "ask_start" | "begin_ask" => Ok(Self::AskStart),
             "saved_send" => Ok(Self::SavedSend(decode_payload(payload.clone())?)),
+            "saved_play" => Ok(Self::SavedPlay(decode_payload(payload.clone())?)),
             "saved_discard" => Ok(Self::SavedDiscard(decode_payload(payload.clone())?)),
             "ask_stop" | "finish_ask" => Ok(Self::AskStop),
             "ask_cancel" => Ok(Self::AskCancel),
@@ -857,6 +859,7 @@ impl VoiceIntent {
         match self {
             Self::AskStart => "ask_start",
             Self::SavedSend(_) => "saved_send",
+            Self::SavedPlay(_) => "saved_play",
             Self::SavedDiscard(_) => "saved_discard",
             Self::AskStop => "ask_stop",
             Self::AskCancel => "ask_cancel",
@@ -882,7 +885,9 @@ impl VoiceIntent {
             Self::CaptureStart(action) | Self::CaptureStartAndSend(action) | Self::Send(action) => {
                 payload(action)
             }
-            Self::SavedSend(action) | Self::SavedDiscard(action) => payload(action),
+            Self::SavedSend(action) | Self::SavedPlay(action) | Self::SavedDiscard(action) => {
+                payload(action)
+            }
             Self::CaptureToggle(Some(action)) => payload(action),
             Self::Play(Some(action)) | Self::PlayLatest(action) | Self::Delete(action) => {
                 payload(action)

@@ -136,6 +136,38 @@ pub struct SavedFileApi {
         unsafe extern "C" fn(*mut LinphoneChatMessage, *mut LinphoneChatMessageCbs),
 }
 
+#[cfg(test)]
+mod saved_file_tests {
+    use super::*;
+
+    #[test]
+    fn native_saved_file_symbols_and_content_strings_use_pinned_abi() {
+        let api = unsafe { LinphoneApi::load() }.expect("genuine native library");
+        let saved = api
+            .saved_file
+            .as_ref()
+            .expect("pinned5.2 file transfer capability");
+        unsafe {
+            let factory = (api.factory_get)();
+            let content = (saved.create_content)(factory);
+            assert!(!content.is_null());
+            (saved.set_type)(content, c"audio".as_ptr());
+            (saved.set_subtype)(content, c"wav".as_ptr());
+            (saved.add_parameter)(content, c"voice-recording".as_ptr(), c"yes".as_ptr());
+            (saved.set_name)(content, c"saved.wav".as_ptr());
+            (saved.set_size)(content, 128);
+            (api.content_set_file_path)(content, c"/tmp/owned-saved.wav".as_ptr());
+            assert_eq!(CStr::from_ptr((api.content_get_type)(content)), c"audio");
+            assert_eq!(CStr::from_ptr((api.content_get_subtype)(content)), c"wav");
+            assert_eq!(
+                CStr::from_ptr((api.content_get_file_path)(content)),
+                c"/tmp/owned-saved.wav"
+            );
+            (saved.unref_content)(content);
+        }
+    }
+}
+
 impl SavedFileApi {
     // Pinned 5.2 c-factory.h/c-content.h/c-chat-room.h/c-chat-message.h.
     // Missing saved-file support must not disable ordinary recorder messages.

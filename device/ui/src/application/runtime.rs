@@ -131,9 +131,11 @@ mod call_interruption_regressions {
 
     #[test]
     fn phases_keep_one_restore_entry_and_restart_inactivity_after_ambient_wake() {
-        let mut runtime = UiRuntime::default();
-        runtime.home_mode = HomeMode::Ambient;
-        runtime.focus_index = 2;
+        let mut runtime = UiRuntime {
+            home_mode: HomeMode::Ambient,
+            focus_index: 2,
+            ..Default::default()
+        };
         incoming(&mut runtime);
         navigator::apply_runtime_preemption(&mut runtime);
         assert_eq!(runtime.home_mode, HomeMode::Focused);
@@ -162,8 +164,10 @@ mod call_interruption_regressions {
         runtime.snapshot.overlay.retryable = false;
         navigator::apply_runtime_preemption(&mut runtime);
         assert_eq!(runtime.active_screen, UiScreen::Error);
-        let mut rejected = UiRuntime::default();
-        rejected.active_screen = UiScreen::Listen;
+        let mut rejected = UiRuntime {
+            active_screen: UiScreen::Listen,
+            ..Default::default()
+        };
         navigator::apply_runtime_preemption(&mut rejected);
         assert_eq!(rejected.active_screen, UiScreen::Listen);
     }
@@ -177,8 +181,10 @@ mod call_interruption_regressions {
             UiScreen::VoiceNote,
             UiScreen::Replay,
         ] {
-            let mut runtime = UiRuntime::default();
-            runtime.active_screen = screen;
+            let mut runtime = UiRuntime {
+                active_screen: screen,
+                ..Default::default()
+            };
             incoming(&mut runtime);
             navigator::apply_runtime_preemption(&mut runtime);
             runtime.snapshot.call.state = "idle".into();
@@ -201,7 +207,7 @@ mod call_interruption_regressions {
         runtime.focus_index = 1;
         runtime.handle_input(InputAction::Select, 3);
         assert!(
-            matches!(runtime.take_intents().as_slice(), [UiIntent::Voice(yoyopod_protocol::ui::VoiceIntent::Play(Some(action)))] if action.file_path == "owned-a.wav")
+            matches!(runtime.take_intents().as_slice(), [UiIntent::Voice(yoyopod_protocol::ui::VoiceIntent::SavedPlay(action))] if action.file_path == "owned-a.wav")
         );
         runtime.focus_index = 2;
         runtime.handle_input(InputAction::Select, 4);

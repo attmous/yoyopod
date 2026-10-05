@@ -992,6 +992,10 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
                 }),
             )]
         }
+        VoiceIntent::SavedPlay(action) => {
+            if !state.matches_interrupted_draft(action) { return Vec::new(); }
+            commands_for_voice_intent(state, &VoiceIntent::Play(Some(action.clone())))
+        }
         VoiceIntent::Play(action) => action
             .as_ref()
             .and_then(voice_file_path)
@@ -1063,18 +1067,19 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
             .unwrap_or_default(),
         VoiceIntent::Discard => Vec::new(),
         VoiceIntent::SavedSend(action) => {
-            if !state.can_send_interrupted_draft() || state.voice.interrupted_draft_path.as_deref() != Some(action.file_path.as_str()) { return Vec::new(); }
+            if !state.can_send_interrupted_draft() || !state.matches_interrupted_draft(action) { return Vec::new(); }
             let draft = state.voice.interrupted_draft.as_ref().expect("checked draft");
             vec![worker_command(WorkerDomain::Voip, "voip.send_saved_voice_note", json!({
                 "uri": voice_recipient_uri(&draft.recipient),
                 "file_path": state.voice.interrupted_draft_path,
+                "recovery_source": draft.needs_copy,
                 "duration_ms": draft.duration_ms.max(0), "mime_type": draft.mime_type,
                 "client_id": new_voice_note_client_id(),
             }))]
         }
         VoiceIntent::SavedDiscard(action) => {
-            if state.voice.interrupted_draft_path.as_deref() != Some(action.file_path.as_str()) { return Vec::new(); }
-            vec![worker_command(WorkerDomain::Voip, "voip.discard_saved_voice_note", json!({"file_path": state.voice.interrupted_draft_path}))]
+            if !state.matches_interrupted_draft(action) { return Vec::new(); }
+            vec![worker_command(WorkerDomain::Voip, "voip.discard_saved_voice_note", json!({"file_path": state.voice.interrupted_draft_path,"recovery_source":state.voice.interrupted_draft.as_ref().is_some_and(|d| d.needs_copy)}))]
         }
     }
 }
@@ -2499,6 +2504,65 @@ mod tests {
             commands_for_voice_intent(&state, &VoiceIntent::CaptureStart(action)).is_empty(),
             "pending draft must be handled before recorder replacement"
         );
+    }
+
+    #[test]
+    fn saved_draft_keeps_metadata_across_resets_and_rechecks_recipient_and_identity() {
+        let mut state = RuntimeState::default();
+        RuntimeEvent::CloudConfig(json!({"contacts":{"entries":[{"id":"mama","name":"Mama","sip_address":"sip:mama@example.test","can_call":true}]}})).apply(&mut state);
+        state.voice.pending_voice_recipient = Some(VoiceRecipientAction {
+            id: "mama".into(),
+            recipient_address: "sip:mama@example.test".into(),
+            ..Default::default()
+        });
+        state.voice.duration_ms = 420;
+        state.voice.invalidate_for_call();
+        state.voice.interrupted_draft_path = Some("unique-b.wav".into());
+        let before = state.voice.interrupted_draft.clone();
+        state.apply_ui_intent(&UiIntent::Voice(VoiceIntent::Discard));
+        state.voice.invalidate_for_call();
+        assert_eq!(state.voice.interrupted_draft, before);
+        let action = VoiceFileAction {
+            file_path: "unique-b.wav".into(),
+            message_id: state.voice.interrupted_draft.as_ref().unwrap().id.clone(),
+            ..Default::default()
+        };
+        assert!(commands_for_voice_intent(&state, &VoiceIntent::SavedSend(action.clone())).iter().any(|c| matches!(c, RuntimeCommand::WorkerCommand{envelope,..} if envelope.message_type == "voip.send_saved_voice_note" && envelope.payload["uri"] == "sip:mama@example.test")));
+        let stale = VoiceFileAction {
+            file_path: "unique-a.wav".into(),
+            ..Default::default()
+        };
+        assert!(
+            commands_for_voice_intent(&state, &VoiceIntent::SavedSend(stale.clone())).is_empty()
+        );
+        assert!(
+            commands_for_voice_intent(&state, &VoiceIntent::SavedPlay(stale.clone())).is_empty()
+        );
+        state.apply_ui_intent(&UiIntent::Voice(VoiceIntent::SavedDiscard(stale)));
+        assert_eq!(
+            state.voice.interrupted_draft_path.as_deref(),
+            Some("unique-b.wav")
+        );
+        RuntimeEvent::CloudConfig(json!({"contacts":{"entries":[]}})).apply(&mut state);
+        assert!(
+            commands_for_voice_intent(&state, &VoiceIntent::SavedSend(action.clone())).is_empty()
+        );
+        assert!(state.voice.interrupted_draft.is_some());
+        state.apply_ui_intent(&UiIntent::Voice(VoiceIntent::SavedDiscard(action)));
+        assert!(
+            state.voice.interrupted_draft.is_some(),
+            "discard requires host proof"
+        );
+        RuntimeEvent::VoipSnapshot(
+            json!({"voice_note":{"state":"idle"},"discarded_draft_path":"unique-a.wav"}),
+        )
+        .apply(&mut state);
+        assert!(state.voice.interrupted_draft.is_some());
+        RuntimeEvent::VoipSnapshot(
+            json!({"voice_note":{"state":"idle"},"discarded_draft_path":"unique-b.wav"}),
+        )
+        .apply(&mut state);
+        assert!(state.voice.interrupted_draft.is_none());
     }
 
     #[test]

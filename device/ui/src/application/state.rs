@@ -20,6 +20,7 @@ pub struct UiRuntime {
     pub(crate) screen_stack: Vec<HistoryEntry>,
     pub(crate) interrupted_navigation: Option<(yoyopod_protocol::call::SessionKey, HistoryEntry)>,
     pub(crate) call_wake_pending: bool,
+    pub(crate) call_answer_queued: Option<yoyopod_protocol::call::SessionKey>,
     pub(crate) focus_index: usize,
     pub(crate) home_mode: HomeMode,
     pub(crate) last_input_ms: Option<u64>,
@@ -362,6 +363,7 @@ impl Default for UiRuntime {
             screen_stack: Vec::new(),
             interrupted_navigation: None,
             call_wake_pending: false,
+            call_answer_queued: None,
             focus_index: 0,
             home_mode: HomeMode::Idle,
             last_input_ms: None,
@@ -427,6 +429,7 @@ impl UiRuntime {
     pub(crate) fn saved_draft_action(&self) -> Option<VoiceFileAction> {
         Some(VoiceFileAction {
             file_path: self.snapshot.voice.interrupted_draft_path.clone()?,
+            message_id: self.snapshot.voice.interrupted_draft_id.clone(),
             duration_ms: self.snapshot.voice.interrupted_draft_duration_ms,
             ..Default::default()
         })

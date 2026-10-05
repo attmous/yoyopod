@@ -136,6 +136,7 @@ pub struct VoipHost {
     interrupted_draft: Option<String>,
     finalized_draft_source: Option<(String, i32)>,
     discarded_draft_path: Option<String>,
+    restored_draft_source: Option<String>,
     audio_fence: yoyopod_protocol::audio::AudioCallFence,
     config: Option<VoipConfig>,
     worker_generation: u64,
@@ -160,6 +161,7 @@ impl Default for VoipHost {
             interrupted_draft: None,
             finalized_draft_source: None,
             discarded_draft_path: None,
+            restored_draft_source: None,
             audio_fence: Default::default(),
             config: None,
             worker_generation: 0,
@@ -185,6 +187,19 @@ impl VoipHost {
         &mut self,
         backend: &mut B,
         request: &yoyopod_protocol::call::InterruptForCall,
+    ) -> Result<Option<String>, String> {
+        self.interrupt_for_call_with_copy(
+            backend,
+            request,
+            crate::voice_notes::preserve_interrupted_wav,
+        )
+    }
+
+    fn interrupt_for_call_with_copy<B: VoipRuntimeBackend + ?Sized>(
+        &mut self,
+        backend: &mut B,
+        request: &yoyopod_protocol::call::InterruptForCall,
+        preserve: impl FnOnce(&str) -> Result<String, String>,
     ) -> Result<Option<String>, String> {
         self.audio_fence.interrupt(request)?;
         self.voice_note_playback.stop_checked()?;
@@ -219,7 +234,7 @@ impl VoipHost {
             return Ok(None);
         }
         self.finalized_draft_source = Some((path.clone(), duration));
-        let saved_path = crate::voice_notes::preserve_interrupted_wav(&path)?;
+        let saved_path = preserve(&path)?;
         self.voice_note.start_recording(&saved_path);
         self.voice_note.finish_recording(duration);
         self.interrupted_draft = Some(saved_path.clone());
@@ -231,6 +246,57 @@ impl VoipHost {
     }
     pub fn release_call(&mut self, request: &yoyopod_protocol::call::InterruptForCall) -> bool {
         self.audio_fence.release(request)
+    }
+
+    pub fn draft_recovery_source(&self) -> Option<(String, i32)> {
+        self.finalized_draft_source.clone()
+    }
+
+    pub fn restore_finalized_source(
+        &mut self,
+        source: &str,
+        duration_ms: i32,
+    ) -> Result<String, String> {
+        if self.interrupted_draft.is_some()
+            || (self.voice_note.is_recording() && self.finalized_draft_source.is_none())
+            || !crate::voice_notes::usable_wav(source)
+        {
+            return Err("finalized source unavailable or another draft owns recorder".into());
+        }
+        self.finalized_draft_source = Some((source.into(), duration_ms));
+        let path = crate::voice_notes::preserve_interrupted_wav(source)?;
+        self.interrupted_draft = Some(path.clone());
+        self.restored_draft_source = Some(source.into());
+        self.finalized_draft_source = None;
+        self.voice_note.start_recording(&path);
+        self.voice_note.finish_recording(duration_ms);
+        if !self.message_store.references_file(source) {
+            let _ = fs::remove_file(source);
+        }
+        Ok(path)
+    }
+
+    pub fn mark_saved_source_failed(
+        &mut self,
+        source: &str,
+        duration_ms: i32,
+        mime: &str,
+        client_id: &str,
+    ) {
+        self.voice_note
+            .start_sending(source, duration_ms, mime, client_id);
+        self.voice_note.fail(client_id);
+    }
+
+    pub fn adopt_finalized_source_for_discard(&mut self, source: &str) -> Result<(), String> {
+        if self.interrupted_draft.is_some()
+            || (self.voice_note.is_recording() && self.finalized_draft_source.is_none())
+        {
+            return Err("another draft owns recorder".into());
+        }
+        self.interrupted_draft = Some(source.into());
+        self.finalized_draft_source = None;
+        Ok(())
     }
     pub fn permit_audio_start(&self, payload: &serde_json::Value) -> Result<(), String> {
         self.audio_fence
@@ -387,6 +453,8 @@ impl VoipHost {
         }
         .payload();
         payload["discarded_draft_path"] = json!(self.discarded_draft_path);
+        payload["restored_draft_source"] = json!(self.restored_draft_source);
+        payload["restored_draft_path"] = json!(self.interrupted_draft);
         payload
     }
 
@@ -585,7 +653,7 @@ impl VoipHost {
         backend: &mut B,
         file_path: &str,
     ) -> Result<(), String> {
-        if self.interrupted_draft.is_some() {
+        if self.interrupted_draft.is_some() || self.finalized_draft_source.is_some() {
             return Err("handle interrupted draft before recording".into());
         }
         backend.start_voice_recording(file_path)?;
@@ -648,8 +716,7 @@ impl VoipHost {
             backend,
             sip_address,
             file_path,
-            duration_ms,
-            mime_type,
+            (duration_ms, mime_type),
             client_id,
             false,
         )
@@ -664,6 +731,7 @@ impl VoipHost {
         mime_type: &str,
         client_id: &str,
     ) -> Result<String, String> {
+        self.restore_saved_voice_note(file_path, duration_ms, false)?;
         if self.audio_fence.is_reserved() || self.interrupted_draft.as_deref() != Some(file_path) {
             return Err("saved draft is unavailable or call owns audio".into());
         }
@@ -671,8 +739,7 @@ impl VoipHost {
             backend,
             sip_address,
             file_path,
-            duration_ms,
-            mime_type,
+            (duration_ms, mime_type),
             client_id,
             true,
         )
@@ -684,6 +751,7 @@ impl VoipHost {
         backend: &B,
         path: &str,
     ) -> Result<(), String> {
+        self.restore_saved_voice_note(path, 0, true)?;
         if self.interrupted_draft.as_deref() != Some(path) {
             return Err("stale saved draft".into());
         }
@@ -702,16 +770,43 @@ impl VoipHost {
         Ok(())
     }
 
+    /// Only the runtime's explicit owned-draft commands use this recovery seam.
+    /// UI file/recipient input never goes directly to this host operation.
+    fn restore_saved_voice_note(
+        &mut self,
+        path: &str,
+        duration_ms: i32,
+        discard: bool,
+    ) -> Result<(), String> {
+        if self.interrupted_draft.as_deref() == Some(path) {
+            return Ok(());
+        }
+        if self.interrupted_draft.is_some()
+            || self.voice_note.is_recording()
+            || self.finalized_draft_source.is_some()
+            || !crate::voice_notes::is_saved_draft_path(path)
+            || (!discard && !crate::voice_notes::usable_wav(path))
+        {
+            return Err(
+                "saved draft cannot be restored over another owner or from invalid source".into(),
+            );
+        }
+        self.interrupted_draft = Some(path.into());
+        self.voice_note.start_recording(path);
+        self.voice_note.finish_recording(duration_ms.max(0));
+        Ok(())
+    }
+
     fn send_voice_note_from<B: VoipRuntimeBackend + ?Sized>(
         &mut self,
         backend: &mut B,
         sip_address: &str,
         file_path: &str,
-        duration_ms: i32,
-        mime_type: &str,
+        media: (i32, &str),
         client_id: &str,
         saved: bool,
     ) -> Result<String, String> {
+        let (duration_ms, mime_type) = media;
         let client_id = client_id.trim();
         if client_id.is_empty() {
             return Err("voip voice note requires client_id".to_string());
@@ -1183,6 +1278,9 @@ mod recording_tests {
 
     #[derive(Default)]
     struct LocalRecordingBackend {
+        saved_sends: usize,
+        fail_saved_send: bool,
+        pending_saved_path: Option<String>,
         fail_stop: bool,
         zero_duration: bool,
         sends: usize,
@@ -1193,6 +1291,21 @@ mod recording_tests {
     }
 
     impl VoipRuntimeBackend for LocalRecordingBackend {
+        fn saved_transfer_uses_path(&self, path: &str) -> bool {
+            self.pending_saved_path.as_deref() == Some(path)
+        }
+        fn send_saved_voice_note(
+            &mut self,
+            _recipient: &str,
+            path: &str,
+        ) -> Result<String, String> {
+            self.saved_sends += 1;
+            if self.fail_saved_send {
+                return Err("upload failed".into());
+            }
+            self.pending_saved_path = Some(path.into());
+            Ok(format!("saved-{}", self.saved_sends))
+        }
         fn start(&mut self, config: &VoipConfig) -> Result<(), String> {
             if config.has_sip_account() {
                 return Err("test backend expected local-only config".to_string());
@@ -1287,6 +1400,150 @@ mod recording_tests {
             call_id: id.into(),
             from_uri: "sip:same@example.test".into(),
         }
+    }
+
+    #[test]
+    fn saved_send_recovers_host_without_capture_and_retains_async_bytes_until_last_delete() {
+        let source = std::env::temp_dir().join(format!("saved-source-{}.wav", std::process::id()));
+        std::fs::write(&source, sample_wav()).unwrap();
+        let path = crate::voice_notes::preserve_interrupted_wav(source.to_str().unwrap()).unwrap();
+        let mut host = VoipHost::default(); // replacement worker, no recorder/draft metadata
+        let mut backend = LocalRecordingBackend::default();
+        host.send_saved_voice_note(
+            &mut backend,
+            "sip:mama@example.test",
+            &path,
+            420,
+            "audio/wav",
+            "c1",
+        )
+        .unwrap();
+        assert_eq!(backend.saved_sends, 1);
+        assert_eq!(backend.sends, 0);
+        assert!(!backend.recording);
+        assert_eq!(host.voice_note.payload()["state"], "sending");
+        assert!(host
+            .start_voice_recording(&mut backend, "replacement.wav")
+            .is_err());
+        host.discard_saved_voice_note(&backend, &path).unwrap();
+        assert!(std::path::Path::new(&path).exists());
+        assert!(host.delete_voice_note(&backend, "c1").is_err());
+        assert!(host.message_store.voice_note_file("c1").is_some());
+        backend.pending_saved_path = None;
+        assert!(host.delete_voice_note(&backend, "c1").unwrap());
+        assert!(!std::path::Path::new(&path).exists());
+        std::fs::remove_file(source).unwrap();
+    }
+
+    #[test]
+    fn saved_send_failure_retry_and_stale_identity_preserve_owned_source() {
+        let source = std::env::temp_dir().join(format!("saved-failure-{}.wav", std::process::id()));
+        std::fs::write(&source, sample_wav()).unwrap();
+        let a = crate::voice_notes::preserve_interrupted_wav(source.to_str().unwrap()).unwrap();
+        let b = crate::voice_notes::preserve_interrupted_wav(source.to_str().unwrap()).unwrap();
+        assert_ne!(a, b);
+        let mut host = VoipHost::default();
+        let mut backend = LocalRecordingBackend {
+            fail_saved_send: true,
+            ..Default::default()
+        };
+        host.send_saved_voice_note(
+            &mut backend,
+            "sip:mama@example.test",
+            &b,
+            420,
+            "audio/wav",
+            "f1",
+        )
+        .unwrap();
+        assert_eq!(host.voice_note.payload()["state"], "failed");
+        assert!(host
+            .send_saved_voice_note(
+                &mut backend,
+                "sip:mama@example.test",
+                &a,
+                420,
+                "audio/wav",
+                "stale"
+            )
+            .is_err());
+        assert!(host.discard_saved_voice_note(&backend, &a).is_err());
+        backend.fail_saved_send = false;
+        host.send_saved_voice_note(
+            &mut backend,
+            "sip:mama@example.test",
+            &b,
+            420,
+            "audio/wav",
+            "f2",
+        )
+        .unwrap();
+        assert_eq!(backend.saved_sends, 2);
+        assert_eq!(backend.sends, 0);
+        host.discard_saved_voice_note(&backend, &b).unwrap();
+        backend.pending_saved_path = None;
+        host.delete_voice_note(&backend, "f2").unwrap();
+        assert!(
+            std::path::Path::new(&b).exists(),
+            "retry metadata still references source"
+        );
+        host.delete_voice_note(&backend, "f1").unwrap();
+        assert!(!std::path::Path::new(&b).exists());
+        std::fs::remove_file(a).unwrap();
+        std::fs::remove_file(source).unwrap();
+    }
+
+    #[test]
+    fn copy_failure_retains_finalized_source_for_replacement_host_without_capture() {
+        let source = std::env::temp_dir().join(format!("copy-failure-{}.wav", std::process::id()));
+        std::fs::write(&source, sample_wav()).unwrap();
+        let mut host = VoipHost::default();
+        let mut backend = LocalRecordingBackend {
+            started: true,
+            ..Default::default()
+        };
+        host.start_voice_recording(&mut backend, source.to_str().unwrap())
+            .unwrap();
+        let request = yoyopod_protocol::call::InterruptForCall {
+            key: command("a", 1, CallAction::Answer).key,
+            activity_generation: 1,
+            voice_activity_generation: 3,
+        };
+        assert!(host
+            .interrupt_for_call_with_copy(&mut backend, &request, |_| Err("disk full".into()))
+            .is_err());
+        assert!(!backend.recording);
+        let (path, duration) = host.draft_recovery_source().expect("owned recovery source");
+        assert_eq!(std::fs::read(&path).unwrap(), sample_wav());
+        drop(host);
+        let mut replacement = VoipHost::default();
+        let copied = replacement
+            .restore_finalized_source(&path, duration)
+            .unwrap();
+        replacement
+            .send_saved_voice_note(
+                &mut backend,
+                "sip:mama@example.test",
+                &copied,
+                duration,
+                "audio/wav",
+                "recovered",
+            )
+            .unwrap();
+        assert_eq!(backend.saved_sends, 1);
+        assert!(!backend.recording);
+        assert_eq!(
+            replacement.session_snapshot_payload()["restored_draft_source"],
+            path
+        );
+        backend.pending_saved_path = None;
+        replacement
+            .discard_saved_voice_note(&backend, &copied)
+            .unwrap();
+        replacement
+            .delete_voice_note(&backend, "recovered")
+            .unwrap();
+        assert!(!source.exists());
     }
     fn state(id: &str, value: &str) -> BackendEvent {
         BackendEvent::CallStateChanged {

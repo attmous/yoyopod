@@ -324,6 +324,8 @@ impl VoiceNoteSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterruptedDraft {
+    pub id: String,
+    pub needs_copy: bool,
     pub recipient: VoiceRecipientAction,
     pub duration_ms: i32,
     pub mime_type: String,
@@ -409,6 +411,8 @@ impl VoiceRuntimeState {
                 self.pending_voice_recipient
                     .clone()
                     .map(|recipient| InterruptedDraft {
+                        id: format!("draft-{}", self.activity_generation.saturating_add(1)),
+                        needs_copy: false,
                         recipient,
                         duration_ms: self.duration_ms,
                         mime_type: self.mime_type.clone(),
@@ -946,6 +950,20 @@ impl RuntimeState {
             })
     }
 
+    pub fn matches_interrupted_draft(
+        &self,
+        action: &yoyopod_protocol::ui::VoiceFileAction,
+    ) -> bool {
+        self.voice.interrupted_draft_path.as_deref() == Some(action.file_path.as_str())
+            && self
+                .voice
+                .interrupted_draft
+                .as_ref()
+                .map(|d| d.id.as_str())
+                .unwrap_or_default()
+                == action.message_id
+    }
+
     pub fn configure_voice_note_store_dir(&mut self, voice_note_store_dir: impl Into<String>) {
         let voice_note_store_dir = voice_note_store_dir.into();
         if !voice_note_store_dir.trim().is_empty() {
@@ -1339,6 +1357,17 @@ impl RuntimeState {
         if let Some(voice_note) = snapshot.get("voice_note") {
             if self.voice.interrupted_draft_path.is_some()
                 && self.voice.interrupted_draft_path.as_deref()
+                    == snapshot["restored_draft_source"].as_str()
+            {
+                if let Some(path) = snapshot["restored_draft_path"].as_str() {
+                    self.voice.interrupted_draft_path = Some(path.into());
+                    if let Some(draft) = self.voice.interrupted_draft.as_mut() {
+                        draft.needs_copy = false;
+                    }
+                }
+            }
+            if self.voice.interrupted_draft_path.is_some()
+                && self.voice.interrupted_draft_path.as_deref()
                     == snapshot["discarded_draft_path"].as_str()
             {
                 self.voice.interrupted_draft_path = None;
@@ -1568,6 +1597,11 @@ impl RuntimeState {
                 self.voice.phase = "sending".to_string();
                 self.voice.status_text = "Sending...".to_string();
             }
+            VoiceIntent::SavedPlay(action) => {
+                if self.matches_interrupted_draft(action) {
+                    self.apply_voice_intent(&VoiceIntent::Play(Some(action.clone())));
+                }
+            }
             VoiceIntent::Play(action) => {
                 self.voice.playback_active = true;
                 self.voice.playback_paused = false;
@@ -1605,19 +1639,13 @@ impl RuntimeState {
             }
             VoiceIntent::Discard => self.voice.reset_draft(),
             VoiceIntent::SavedSend(action) => {
-                if self.can_send_interrupted_draft()
-                    && self.voice.interrupted_draft_path.as_deref()
-                        == Some(action.file_path.as_str())
-                {
+                if self.can_send_interrupted_draft() && self.matches_interrupted_draft(action) {
                     if let Some(draft) = self.voice.interrupted_draft.as_mut() {
                         draft.phase = "sending".into();
                     }
                 }
             }
-            VoiceIntent::SavedDiscard(action) => {
-                if self.voice.interrupted_draft_path.as_deref() != Some(action.file_path.as_str()) {
-                    return;
-                }
+            VoiceIntent::SavedDiscard(_) => {
                 // Clear only on the host's matching discarded_draft_path proof.
             }
             VoiceIntent::CaptureCancel | VoiceIntent::Delete(_) | VoiceIntent::MarkSeen(_) => {}
@@ -2126,6 +2154,7 @@ impl RuntimeState {
                 "voice_notes_by_contact": voice_note_queue_payload(&self.call.voice_notes_by_contact),
             },
             "voice": {
+                "interrupted_draft_id": self.voice.interrupted_draft.as_ref().map(|d| d.id.as_str()).unwrap_or_default(),
                 "interrupted_draft_path": self.voice.interrupted_draft_path,
                 "interrupted_draft_recipient": self.voice.interrupted_draft.as_ref().map(|d| &d.recipient),
                 "interrupted_draft_duration_ms": self.voice.interrupted_draft.as_ref().map(|d| d.duration_ms).unwrap_or(0),
