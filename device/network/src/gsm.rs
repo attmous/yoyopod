@@ -948,10 +948,14 @@ impl ModemManagerVoice {
         // DeleteCall failure must not discard the data-lease release fact.
         self.pending_events.extend(events);
         delete()?;
-        self.registry
+        if let Some(path) = self
+            .registry
             .as_mut()
             .context("Not configured")?
-            .remove(key);
+            .remove(key)
+        {
+            self.terminating.remove(&path);
+        }
         Ok(())
     }
 
@@ -1326,6 +1330,9 @@ impl GsmBackend for ModemManagerVoice {
                 && self.isolated
                 && self.modem.is_some()
                 && self.registry.as_ref()?.tracked().is_empty()
+                && self.terminating.is_empty()
+                && self.owner.is_none()
+                && self.audio_deadline.is_none()
                 && self.uncertain_create.is_none()
                 && self.cleanup.uncertain.is_empty(),
             audio_released: self.audio.is_none() && self.prepared_audio.is_none(),

@@ -2069,6 +2069,159 @@ mod tests {
     }
 
     #[test]
+    fn gsm_reconnect_actor_backlog_completion_retains_keyed_lease_until_clean_recovery() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        struct BacklogBackend {
+            mode: Arc<AtomicU64>,
+            gate: Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>,
+            loss_reported: bool,
+            dials: Arc<AtomicU64>,
+        }
+        impl crate::gsm::GsmBackend for BacklogBackend {
+            fn refresh(&mut self) -> Result<crate::gsm::GsmCallState> {
+                if let Some((entered, release)) = self.gate.take() {
+                    entered.send(())?;
+                    release.recv_timeout(Duration::from_secs(3))?;
+                }
+                Ok(Default::default())
+            }
+            fn selected_modem_epoch(&self) -> u64 {
+                u64::from(self.mode.load(Ordering::SeqCst) > 0)
+            }
+            fn take_modem_loss(&mut self) -> Option<u64> {
+                if self.selected_modem_epoch() > 0 && !self.loss_reported {
+                    self.loss_reported = true;
+                    Some(7)
+                } else {
+                    None
+                }
+            }
+            fn reconciliation(&self) -> Option<crate::gsm::GsmReconciliation> {
+                Some(crate::gsm::GsmReconciliation {
+                    generation: 7,
+                    admission_epoch: self.selected_modem_epoch(),
+                    native_owner: Some("same/owner".into()),
+                    native_calls_quiescent: self.mode.load(Ordering::SeqCst) == 2,
+                    audio_released: true,
+                })
+            }
+            fn dial_session(&mut self, _: &SessionKey, _: &str) -> Result<()> {
+                self.dials.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+            fn dial(&mut self, _: &str) -> Result<()> {
+                Ok(())
+            }
+            fn hangup(&mut self) -> Result<()> {
+                Ok(())
+            }
+            fn mute(&mut self, _: bool) -> Result<()> {
+                Ok(())
+            }
+        }
+        let mode = Arc::new(AtomicU64::new(0));
+        let dials = Arc::new(AtomicU64::new(0));
+        let (entered, entering) = mpsc::channel();
+        let (release, releasing) = mpsc::channel();
+        let gsm = GsmWorker::with_backend(BacklogBackend {
+            mode: mode.clone(),
+            gate: Some((entered, releasing)),
+            loss_reported: false,
+            dials: dials.clone(),
+        });
+        let modem = NoFixModem::default();
+        let opens = modem.opened.clone();
+        let suspends = modem.voice_suspends.clone();
+        let mut runtime = NetworkRuntime::new(
+            "test",
+            NetworkHostConfig {
+                enabled: true,
+                ..Default::default()
+            },
+            modem,
+        );
+        runtime.start();
+        let key = SessionKey {
+            transport: CallTransport::Gsm,
+            generation: 7,
+            call_id: "runtime-outgoing-1".into(),
+        };
+        enqueue_gsm_command(
+            &mut runtime,
+            &gsm,
+            Some(7),
+            &[],
+            &WorkerEnvelope::command(
+                "call.dial",
+                Some("queued-old".into()),
+                serde_json::json!({"key":key,"address":"+49123456789","admission_epoch":0}),
+            ),
+        )
+        .unwrap();
+        entering.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert!(runtime.voice_suspended());
+        assert_eq!(*suspends.lock().unwrap(), 1);
+        mode.store(1, Ordering::SeqCst);
+        release.send(()).unwrap();
+        let mut generation = Some(7);
+        let mut sessions = vec![];
+        let mut reconciled = true;
+        let mut quarantine = false;
+        let mut output = vec![];
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !String::from_utf8_lossy(&output).contains("queued-old") && Instant::now() < deadline
+        {
+            drain_gsm_events(
+                &mut output,
+                &mut runtime,
+                &gsm,
+                &mut generation,
+                &mut sessions,
+                &mut reconciled,
+                &mut quarantine,
+            )
+            .unwrap();
+            thread::sleep(Duration::from_millis(5));
+        }
+        let completed = String::from_utf8_lossy(&output)
+            .lines()
+            .map(|line| WorkerEnvelope::decode(line.as_bytes()).unwrap())
+            .find(|event| event.request_id.as_deref() == Some("queued-old"))
+            .unwrap();
+        assert_eq!(completed.payload["ok"], false);
+        assert_eq!(completed.payload["voice_held"], false);
+        assert_eq!(completed.payload["key"], serde_json::json!(key));
+        assert_eq!(dials.load(Ordering::SeqCst), 0);
+        assert!(!reconciled);
+        assert!(
+            runtime.voice_suspended(),
+            "never-started keyed failure discarded the loss suspension reservation"
+        );
+        let before = *opens.lock().unwrap();
+        mode.store(2, Ordering::SeqCst);
+        gsm.send(GsmCommand::Mute(false)).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !reconciled && Instant::now() < deadline {
+            drain_gsm_events(
+                &mut output,
+                &mut runtime,
+                &gsm,
+                &mut generation,
+                &mut sessions,
+                &mut reconciled,
+                &mut quarantine,
+            )
+            .unwrap();
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(reconciled);
+        assert!(!runtime.voice_suspended());
+        assert_eq!(*opens.lock().unwrap(), before + 1);
+        assert_eq!(dials.load(Ordering::SeqCst), 0);
+        assert_eq!(*suspends.lock().unwrap(), 1);
+    }
+
+    #[test]
     fn deferred_location_fix_event_precedes_its_correlated_success_result() {
         let config_dir = tempfile::tempdir().unwrap();
         let modem = NoFixModem {
