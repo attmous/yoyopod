@@ -1257,6 +1257,33 @@ mod tests {
     }
 
     #[test]
+    fn settings_root_reaches_eight_items_and_wraps() {
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::Setup;
+        assert_eq!(crate::application::focus::focus_count(UiScreen::Setup, &runtime.snapshot, None, None, 0), 8);
+        for expected in [1, 2, 3, 4, 5, 6, 7, 0] {
+            super::navigator::advance_focus(&mut runtime);
+            assert_eq!(runtime.focus_index, expected);
+        }
+    }
+
+    #[test]
+    fn settings_contacts_select_emits_only_stable_priority_intent() {
+        let mut runtime = UiRuntime::default();
+        runtime.active_screen = UiScreen::SetupContacts;
+        let mut a = ListItemSnapshot::new("sip:a@test", "Same", "", "mono:S");
+        a.contact_id = "a".into();
+        let mut b = a.clone();
+        b.contact_id = "b".into();
+        b.id = "sip:b@test".into();
+        runtime.snapshot.call.contacts = vec![a, b];
+        runtime.focus_index = 1;
+        runtime.handle_input(InputAction::Select, 100);
+        assert_eq!(runtime.take_intents(), vec![UiIntent::Settings(SettingsIntent::ContactPrioritySet(yoyopod_protocol::call::ContactPrioritySet { contact_id: "b".into(), priority: true }))]);
+        assert!(runtime.snapshot.call.contacts.iter().all(|contact| !contact.priority));
+    }
+
+    #[test]
     fn focused_home_card_emits_one_spoken_label_per_focus_change() {
         let mut runtime = UiRuntime::default();
 
