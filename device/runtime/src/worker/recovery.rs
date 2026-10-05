@@ -13,6 +13,18 @@ pub(super) struct Retirement {
     result: Option<Receiver<Result<(), String>>>,
 }
 
+impl Retirement {
+    pub(super) fn request_stop(&self) {
+        // Never join a census thread on the shutdown path. If it owns the lock,
+        // it is already killing/reaping this child; otherwise request kill now.
+        if let Ok(mut worker) = self.worker.try_lock() {
+            if matches!(worker.child.try_wait(), Ok(None)) {
+                let _ = worker.child.kill();
+            }
+        }
+    }
+}
+
 impl WorkerSupervisor {
     pub fn recover_worker(&mut self, domain: WorkerDomain) -> Result<RecoveryStatus, String> {
         self.recover_with(domain, reap_owned_helpers)
@@ -240,7 +252,7 @@ pub(super) fn worker_command(
             command.args(["--no-new-privs", "--", program]);
             return Ok((command, owner, Some(runtime_start)));
         }
-        return Ok((Command::new(program), None, Some(runtime_start)));
+        Ok((Command::new(program), None, Some(runtime_start)))
     }
     #[cfg(not(target_os = "linux"))]
     {

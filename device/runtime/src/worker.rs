@@ -1,6 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -14,6 +15,7 @@ mod recovery;
 pub use recovery::RecoveryStatus;
 
 pub const MAX_PRESERVED_READY_MESSAGES: usize = 32;
+static NEXT_LIFETIME: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkerSpec {
@@ -79,13 +81,16 @@ impl WorkerSupervisor {
                 }
             };
         let lifetime_token = format!(
-            "{}-{}-{}",
+            "{}-{}-{}-{}",
             std::process::id(),
             spec.domain.as_str(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
-                .as_nanos()
+                .as_nanos(),
+            NEXT_LIFETIME
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+                .expect("worker lifetime counter exhausted")
         );
         command
             .args(&spec.argv[1..])
@@ -181,6 +186,9 @@ impl WorkerSupervisor {
     }
 
     pub fn stop_all(&mut self, grace: Duration) {
+        for retirement in self.retiring.values() {
+            retirement.request_stop();
+        }
         for domain in all_worker_domains() {
             let _ = self.send_command(domain, "worker.stop", json!({}));
         }
