@@ -1787,6 +1787,23 @@ mod tests {
 
     const TEST_MODEM0: &str = "/org/freedesktop/ModemManager1/Modem/0";
     const TEST_MODEM2: &str = "/org/freedesktop/ModemManager1/Modem/2";
+    const TEST_RINGING_CALL: &str = "/org/freedesktop/ModemManager1/Call/42";
+    struct ReconnectRingingCall;
+    #[zbus::interface(name = "org.freedesktop.ModemManager1.Call")]
+    impl ReconnectRingingCall {
+        #[zbus(property)]
+        fn state(&self) -> i32 {
+            3
+        }
+        #[zbus(property)]
+        fn direction(&self) -> i32 {
+            1
+        }
+        #[zbus(property)]
+        fn number(&self) -> &str {
+            "+49123456789"
+        }
+    }
     struct ReconnectManager {
         version: &'static str,
     }
@@ -2785,6 +2802,130 @@ mod tests {
             Some(TEST_MODEM0)
         );
         drop(backend);
+    }
+
+    fn emit_selected_membership(owner: &Connection, member: &str) {
+        owner
+            .emit_signal(
+                None::<&str>,
+                TEST_MODEM0,
+                VOICE_INTERFACE,
+                member,
+                &(OwnedObjectPath::try_from(TEST_RINGING_CALL).unwrap(),),
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn gsm_reconnect_membership_added_is_offered_on_first_refresh_before_fallback() {
+        let bus = PrivateBus::start();
+        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        backend.next_recovery = Some(Instant::now() + Duration::from_secs(3600));
+        owner
+            .object_server()
+            .at(TEST_RINGING_CALL, ReconnectRingingCall)
+            .unwrap();
+        let interface = owner
+            .object_server()
+            .interface::<_, ReconnectVoice>(TEST_MODEM0)
+            .unwrap();
+        interface
+            .get()
+            .paths
+            .lock()
+            .unwrap()
+            .push(OwnedObjectPath::try_from(TEST_RINGING_CALL).unwrap());
+        emit_selected_membership(&owner, "CallAdded");
+        backend.refresh().unwrap();
+        let events = backend.drain_call_events();
+        assert!(events.iter().any(|event| matches!(event, CallManagerWireEvent::Offer(offer) if offer.phase == CallPhase::Ringing)), "first refresh lost selected CallAdded before its fallback deadline");
+        assert_eq!(backend.registry().unwrap().tracked().len(), 1);
+        assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+        assert_eq!(backend.selected_epoch, 0);
+    }
+
+    #[test]
+    fn gsm_reconnect_membership_deleted_reconciles_on_first_refresh_before_fallback() {
+        let bus = PrivateBus::start();
+        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        owner
+            .object_server()
+            .at(TEST_RINGING_CALL, ReconnectRingingCall)
+            .unwrap();
+        let interface = owner
+            .object_server()
+            .interface::<_, ReconnectVoice>(TEST_MODEM0)
+            .unwrap();
+        let paths = interface.get().paths.clone();
+        paths
+            .lock()
+            .unwrap()
+            .push(OwnedObjectPath::try_from(TEST_RINGING_CALL).unwrap());
+        backend.reconcile_paths().unwrap();
+        let key = backend.registry().unwrap().tracked()[0].1.clone();
+        backend.drain_call_events();
+        backend.next_recovery = Some(Instant::now() + Duration::from_secs(3600));
+        paths.lock().unwrap().clear();
+        owner
+            .object_server()
+            .remove::<ReconnectRingingCall, _>(TEST_RINGING_CALL)
+            .unwrap();
+        emit_selected_membership(&owner, "CallDeleted");
+        let result = backend.refresh();
+        assert!(
+            result.is_ok(),
+            "CallDeleted was lost and refresh polled an already deleted native object: {result:?}"
+        );
+        assert!(backend.registry().unwrap().tracked().is_empty());
+        assert!(backend.drain_call_events().iter().any(|event| matches!(event, CallManagerWireEvent::Update(update) if update.key == key && update.phase == CallPhase::Ended)));
+        assert!(backend.reconciliation().unwrap().native_calls_quiescent);
+        assert_eq!(backend.selected_epoch, 0);
+    }
+
+    #[test]
+    fn gsm_reconnect_membership_work_survives_stale_snapshot_and_failed_fresh_scan() {
+        let bus = PrivateBus::start();
+        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        backend.next_recovery = Some(Instant::now() + Duration::from_secs(3600));
+        owner
+            .object_server()
+            .at(TEST_RINGING_CALL, ReconnectRingingCall)
+            .unwrap();
+        let interface = owner
+            .object_server()
+            .interface::<_, ReconnectVoice>(TEST_MODEM0)
+            .unwrap();
+        let paths = interface.get().paths.clone();
+        let fail = interface.get().fail.clone();
+        let (entered, entering) = mpsc::channel();
+        let (release, releasing) = mpsc::channel();
+        *interface.get().gate.lock().unwrap() = Some((entered, releasing));
+        let scan = thread::spawn(move || {
+            let result = backend.reconcile_paths();
+            (backend, result)
+        });
+        entering.recv_timeout(Duration::from_secs(3)).unwrap();
+        paths
+            .lock()
+            .unwrap()
+            .push(OwnedObjectPath::try_from(TEST_RINGING_CALL).unwrap());
+        emit_selected_membership(&owner, "CallAdded");
+        release.send(()).unwrap();
+        let (mut backend, result) = scan.join().unwrap();
+        assert!(result.is_ok());
+        assert!(!backend.idle_calls_proven);
+        assert!(backend.drain_call_events().is_empty());
+        fail.store(true, Ordering::SeqCst);
+        assert!(
+            backend.refresh().is_err(),
+            "stale snapshot discarded membership work instead of attempting a fresh scan"
+        );
+        assert!(!backend.modem_lost);
+        fail.store(false, Ordering::SeqCst);
+        backend.refresh().unwrap();
+        assert!(backend.drain_call_events().iter().any(|event| matches!(event, CallManagerWireEvent::Offer(offer) if offer.phase == CallPhase::Ringing)), "failed fresh observation discarded pending membership work");
+        assert_eq!(backend.registry().unwrap().tracked().len(), 1);
+        assert_eq!(backend.selected_epoch, 0);
     }
 
     fn replace_owner(connection: &Connection) {
