@@ -782,3 +782,15 @@ fn emergency_power_shutdown_does_not_wait_for_failed_native_cleanup() {
         "failed cleanup never fabricates release"
     );
 }
+
+#[test]
+fn already_due_power_preempts_worker_reconstruction() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Sip);
+    offer(&mut runtime, &mut io, &key, 0);
+    io.messages.push((WorkerDomain::Voip, WorkerEnvelope::event("worker.exited", json!({"code":1}))));
+    runtime.state.power.safety.shutdown_pending = true;
+    runtime.state.power.safety.shutdown_execute_at_seconds = 0;
+    runtime.run_once_at(&mut io, 2);
+    assert_eq!(io.system_shutdowns.len(), 1);
+    assert!(io.recovered.is_empty(), "due power must precede worker recovery");
+}

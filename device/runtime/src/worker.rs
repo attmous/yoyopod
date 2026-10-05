@@ -111,6 +111,10 @@ impl WorkerSupervisor {
 
     /// Reconstruct only this process. Old channels and user commands are discarded.
     pub fn restart(&mut self, domain: WorkerDomain) -> Result<(), String> {
+        self.restart_with_reaper(domain, reap_owned_helpers)
+    }
+
+    fn restart_with_reaper(&mut self, domain: WorkerDomain, reap: impl FnOnce(&str) -> Result<(), String>) -> Result<(), String> {
         let spec = self
             .specs
             .get(&domain)
@@ -121,7 +125,7 @@ impl WorkerSupervisor {
                 worker.child.kill().map_err(|e| e.to_string())?;
             }
             worker.child.wait().map_err(|e| e.to_string())?;
-            reap_owned_helpers(&worker.lifetime_token)?;
+            reap(&worker.lifetime_token)?;
         }
         if !self.start(spec) {
             return Err("replacement worker could not start".into());
@@ -481,6 +485,22 @@ fn reap_owned_helpers(_token: &str) -> Result<(), String> {
 #[cfg(all(test, target_os = "linux"))]
 mod recovery_tests {
     use super::*;
+    #[test]
+    fn failed_reap_retains_worker_for_retry() {
+        let mut supervisor = WorkerSupervisor::default();
+        assert!(supervisor.start(WorkerSpec::new(WorkerDomain::Media, "/bin/sh", ["-c".into(), "sleep 60".into()])));
+        let token = supervisor.workers[&WorkerDomain::Media].lifetime_token.clone();
+        assert!(supervisor.restart_with_reaper(WorkerDomain::Media, |_| Err("injected census failure".into())).is_err());
+        let mut retried = false;
+        let result = supervisor.restart_with_reaper(WorkerDomain::Media, |seen| {
+            assert_eq!(seen, token);
+            retried = true;
+            Err("still uncertain".into())
+        });
+        assert!(retried, "retry must reconcile the original lifetime again");
+        assert!(result.is_err());
+        supervisor.stop_all(Duration::ZERO);
+    }
     #[test]
     fn recovery_reaps_orphan_audio_helper_before_restarting_worker() {
         let dir = tempfile::tempdir().unwrap();
