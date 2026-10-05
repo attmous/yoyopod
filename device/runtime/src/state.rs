@@ -1858,6 +1858,12 @@ impl RuntimeState {
             if let Some(draft) = self.voice.interrupted_draft.as_mut() {
                 // Idle/recording updates and later captures cannot erase saved ownership.
                 if matches!(phase, "review" | "sending" | "sent" | "failed")
+                    // Attempt identity survives settlement, but only explicit
+                    // dispatch/retry may enter Sending. Delayed nonterminal
+                    // snapshots cannot undo a timeout or terminal outcome.
+                    && (draft.send_attempt.is_none()
+                        || matches!(phase, "sent" | "failed")
+                        || (draft.phase == "sending" && phase == "sending"))
                     && draft
                         .send_attempt
                         .as_deref()

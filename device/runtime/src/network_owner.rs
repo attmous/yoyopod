@@ -289,38 +289,7 @@ fn drain_children() -> Result<(), String> {
     }
 }
 
-fn run_owner(launch: Launch) -> Result<(), String> {
-    if unsafe { libc::geteuid() } != 0 {
-        return Err("Network lifetime owner must run after sudo escalation".into());
-    }
-    let valid_program = std::path::Path::new(&launch.program)
-        .file_name()
-        .is_some_and(|name| name == "yoyopod-network-host");
-    if !valid_program && !launch.fixture {
-        return Err("only the Network worker is supported".into());
-    }
-    if launch.token.is_empty() || launch.token.len() > 256 {
-        return Err("invalid Network lifetime".into());
-    }
-    let mut stream = UnixStream::connect(&launch.socket).map_err(|e| e.to_string())?;
-    let peer = credentials(&stream)?;
-    if peer.uid != launch.uid || peer.pid as u32 != launch.supervisor {
-        return Err("Network supervisor authentication failed".into());
-    }
-    stream
-        .write_all(launch.token.as_bytes())
-        .map_err(|e| e.to_string())?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(3)))
-        .map_err(|e| e.to_string())?;
-    let mut start = [0; 6];
-    stream.read_exact(&mut start).map_err(|e| e.to_string())?;
-    if &start != b"START\n" {
-        return Err("Network start not authorized".into());
-    }
-    if unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) } != 0 {
-        return Err(std::io::Error::last_os_error().to_string());
-    }
+fn worker_command(launch: &Launch) -> Result<Command, String> {
     let groups = launch
         .groups
         .iter()
@@ -369,6 +338,42 @@ fn run_owner(launch: Launch) -> Result<(), String> {
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
+    Ok(command)
+}
+
+fn run_owner(launch: Launch) -> Result<(), String> {
+    if unsafe { libc::geteuid() } != 0 {
+        return Err("Network lifetime owner must run after sudo escalation".into());
+    }
+    let valid_program = std::path::Path::new(&launch.program)
+        .file_name()
+        .is_some_and(|name| name == "yoyopod-network-host");
+    if !valid_program && !launch.fixture {
+        return Err("only the Network worker is supported".into());
+    }
+    if launch.token.is_empty() || launch.token.len() > 256 {
+        return Err("invalid Network lifetime".into());
+    }
+    let mut stream = UnixStream::connect(&launch.socket).map_err(|e| e.to_string())?;
+    let peer = credentials(&stream)?;
+    if peer.uid != launch.uid || peer.pid as u32 != launch.supervisor {
+        return Err("Network supervisor authentication failed".into());
+    }
+    stream
+        .write_all(launch.token.as_bytes())
+        .map_err(|e| e.to_string())?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .map_err(|e| e.to_string())?;
+    let mut start = [0; 6];
+    stream.read_exact(&mut start).map_err(|e| e.to_string())?;
+    if &start != b"START\n" {
+        return Err("Network start not authorized".into());
+    }
+    if unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) } != 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    let mut command = worker_command(&launch)?;
     stream
         .set_read_timeout(Some(Duration::from_millis(50)))
         .map_err(|e| e.to_string())?;
@@ -526,6 +531,80 @@ pub fn dispatch_internal() -> anyhow::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn network_child_builder_restores_supported_overrides_after_env_reset() {
+        for uid in [0, 1000] {
+            let launch: Launch = serde_json::from_value(serde_json::json!({
+                "socket":"/unused", "token":"test", "supervisor":1,
+                "uid":uid, "gid":1000, "groups":[44,1000], "bind_cap":true,
+                "program":"/usr/bin/yoyopod-network-host", "args":["--config-dir","config"],
+                "fixture":false,
+                "environment": {
+                    "YOYOPOD_CONFIG_BOARD": [114,112,105],
+                    "YOYOPOD_NETWORK_ENABLED": [116,114,117,101],
+                    "YOYOPOD_MODEM_PORT": [47,100,101,118,47,116,116,121,85,83,66,50],
+                    "YOYOPOD_MODEM_PPP_PORT": null,
+                    "YOYOPOD_MODEM_BAUD": [49,49,53,50,48,48],
+                    "YOYOPOD_MODEM_APN": [116,101,115,116,46,97,112,110],
+                    "YOYOPOD_MODEM_GPS_ENABLED": [102,97,108,115,101],
+                    "YOYOPOD_MODEM_PPP_TIMEOUT": [54,48],
+                    "YOYOPOD_ALSA_DEVICE": [104,119,58,50],
+                    "YOYOPOD_LOCAL_CAPTURE_DEVICE": [],
+                    "YOYOPOD_PLAYBACK_DEVICE": [65,76,83,65,58,32,120],
+                    "YOYOPOD_RINGER_DEVICE": [65,76,83,65,58,32,114],
+                    "YOYOPOD_CAPTURE_DEVICE": [65,76,83,65,58,32,99],
+                    "YOYOPOD_MEDIA_DEVICE": [65,76,83,65,58,32,109],
+                    "YOYOPOD_AUDIO_SETTINGS_FILE": [],
+                    "YOYOPOD_ASOUND_CONFIG": [47,116,109,112,47,255]
+                }
+            }))
+            .unwrap();
+            let command = worker_command(&launch).unwrap();
+            let env: std::collections::BTreeMap<_, _> = command.get_envs().collect();
+            for (key, expected) in [
+                ("YOYOPOD_CONFIG_BOARD", Some("rpi")),
+                ("YOYOPOD_NETWORK_ENABLED", Some("true")),
+                ("YOYOPOD_MODEM_PORT", Some("/dev/ttyUSB2")),
+                ("YOYOPOD_MODEM_PPP_PORT", None),
+                ("YOYOPOD_MODEM_BAUD", Some("115200")),
+                ("YOYOPOD_MODEM_APN", Some("test.apn")),
+                ("YOYOPOD_MODEM_GPS_ENABLED", Some("false")),
+                ("YOYOPOD_MODEM_PPP_TIMEOUT", Some("60")),
+                ("YOYOPOD_ALSA_DEVICE", Some("hw:2")),
+                ("YOYOPOD_LOCAL_CAPTURE_DEVICE", Some("")),
+                ("YOYOPOD_PLAYBACK_DEVICE", Some("ALSA: x")),
+                ("YOYOPOD_RINGER_DEVICE", Some("ALSA: r")),
+                ("YOYOPOD_CAPTURE_DEVICE", Some("ALSA: c")),
+                ("YOYOPOD_MEDIA_DEVICE", Some("ALSA: m")),
+                ("YOYOPOD_AUDIO_SETTINGS_FILE", Some("")),
+            ] {
+                assert_eq!(
+                    env.get(std::ffi::OsStr::new(key)),
+                    Some(&expected.map(std::ffi::OsStr::new)),
+                    "{key} at child boundary, uid={uid}"
+                );
+            }
+            use std::os::unix::ffi::OsStrExt;
+            assert_eq!(
+                env.get(std::ffi::OsStr::new("YOYOPOD_ASOUND_CONFIG"))
+                    .unwrap()
+                    .unwrap()
+                    .as_bytes(),
+                b"/tmp/\xff"
+            );
+            assert!(!env.contains_key(std::ffi::OsStr::new("PATH")));
+            assert!(!env.contains_key(std::ffi::OsStr::new("LD_PRELOAD")));
+            assert_eq!(
+                command.get_program(),
+                if uid == 0 {
+                    "/usr/bin/yoyopod-network-host"
+                } else {
+                    "/usr/bin/setpriv"
+                }
+            );
+        }
+    }
 
     #[test]
     fn real_subreaper_drains_adopted_session_escape_to_echild() {

@@ -350,6 +350,51 @@ pub(super) fn verify_worker_credentials(worker: &mut WorkerProcess) -> Result<()
 mod credentials_tests {
     use super::*;
     #[test]
+    fn failed_audio_verification_remains_required_on_second_verification() {
+        let mut supervisor = WorkerSupervisor::default();
+        assert!(supervisor.start(WorkerSpec::new(
+            WorkerDomain::Media,
+            "/bin/sleep",
+            ["60".into()]
+        )));
+        let worker = supervisor.workers.get_mut(&WorkerDomain::Media).unwrap();
+        // This real child can never have this expected UID. An unsuccessful
+        // proof must discard the census scope, not the verification requirement.
+        worker.owner_uid = Some(u32::MAX);
+        worker.expected_owner_uid = Some(u32::MAX);
+        let first = verify_worker_credentials(worker);
+        assert!(worker.owner_uid.is_none());
+        let second = verify_worker_credentials(worker);
+        worker.child.kill().unwrap();
+        worker.child.wait().unwrap();
+        assert!(first.is_err());
+        assert!(
+            second.is_err(),
+            "failed proof must not disable subsequent verification"
+        );
+        assert!(worker.owner_uid.is_none());
+    }
+
+    #[test]
+    fn unreadable_audio_credentials_remain_unverified_after_reap() {
+        let mut supervisor = WorkerSupervisor::default();
+        assert!(supervisor.start(WorkerSpec::new(
+            WorkerDomain::Media,
+            "/bin/sleep",
+            ["60".into()]
+        )));
+        let worker = supervisor.workers.get_mut(&WorkerDomain::Media).unwrap();
+        worker.owner_uid = Some(1000);
+        worker.expected_owner_uid = Some(1000);
+        worker.child.kill().unwrap();
+        worker.child.wait().unwrap();
+        assert!(verify_worker_credentials(worker).is_err());
+        assert!(worker.owner_uid.is_none());
+        assert!(verify_worker_credentials(worker).is_err());
+        assert!(worker.owner_uid.is_none());
+    }
+
+    #[test]
     fn uid_boundary_requires_all_credentials_and_zero_gain_capabilities() {
         let status = "Uid:\t1000 1000 1000 1000\nCapInh:\t0\nCapPrm:\t0\nCapEff:\t0\nCapAmb:\t0\n";
         assert_eq!(unprivileged_owner(status).unwrap(), Some(1000));

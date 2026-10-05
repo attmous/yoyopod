@@ -109,6 +109,94 @@ fn decoded_saved_send_failures_preserve_exact_draft_with_honest_outcome() {
 }
 
 #[test]
+fn decoded_saved_expired_attempt_cannot_reopen_sending() {
+    let (mut runtime, mut io, action) = saved_send_fixture();
+    io.messages.push((
+        WorkerDomain::Ui,
+        WorkerEnvelope::event(
+            "ui.intent",
+            UiIntent::Voice(yoyopod_protocol::ui::VoiceIntent::SavedSend(action.clone()))
+                .to_event_payload(),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 1);
+    let attempt = runtime.saved_send.as_ref().unwrap().0.clone();
+    runtime.run_once_at(&mut io, 8_002);
+    for (now, phase) in [(8_003, "sending"), (16_004, "review"), (24_005, "sending")] {
+        io.messages.push((
+            WorkerDomain::Voip,
+            WorkerEnvelope::event(
+                "voip.snapshot",
+                json!({"voice_note": {
+                    "file_path":"owned.wav", "message_id":attempt, "state":phase
+                }}),
+            ),
+        ));
+        runtime.run_once_at(&mut io, now);
+        assert_eq!(
+            runtime
+                .state
+                .voice
+                .interrupted_draft
+                .as_ref()
+                .unwrap()
+                .phase,
+            "unknown"
+        );
+        assert!(runtime.saved_send.is_none());
+        assert!(runtime.state.can_send_interrupted_draft());
+    }
+    io.messages.push((
+        WorkerDomain::Voip,
+        WorkerEnvelope::event(
+            "voip.snapshot",
+            json!({"voice_note": {
+                "file_path":"owned.wav", "message_id":attempt, "state":"delivered"
+            }}),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 24_006);
+    assert_eq!(
+        runtime
+            .state
+            .voice
+            .interrupted_draft
+            .as_ref()
+            .unwrap()
+            .phase,
+        "sent"
+    );
+    io.messages.push((
+        WorkerDomain::Voip,
+        WorkerEnvelope::event(
+            "voip.snapshot",
+            json!({"voice_note": {
+                "file_path":"owned.wav", "message_id":attempt, "state":"sending"
+            }}),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 24_007);
+    assert_eq!(
+        runtime
+            .state
+            .voice
+            .interrupted_draft
+            .as_ref()
+            .unwrap()
+            .phase,
+        "sent"
+    );
+    assert_eq!(
+        runtime.state.voice.interrupted_draft.as_ref().unwrap().id,
+        action.message_id
+    );
+    assert_eq!(
+        runtime.state.voice.interrupted_draft_path.as_deref(),
+        Some("owned.wav")
+    );
+}
+
+#[test]
 fn decoded_saved_retry_ignores_old_results_and_terminal_snapshots() {
     let (mut runtime, mut io, action) = saved_send_fixture();
     let send = |runtime: &mut RuntimeLoop, io: &mut FakeLoopIo, now| {

@@ -76,54 +76,142 @@ fn prove_stopped_resources() -> Result<(), String> {
         let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
             continue;
         };
-        let proc = entry.path();
-        match std::fs::read_link(proc.join("exe")) {
-            Ok(exe) => {
-                let name = exe.file_name().unwrap_or_default().to_string_lossy();
-                if pid != std::process::id()
-                    && (name.starts_with("yoyopod-") || name == "ModemManager")
-                {
-                    return Err(format!(
-                        "old runtime/worker/native owner still running: {pid}"
-                    ));
-                }
+        prove_process_resources(&entry.path(), pid)?;
+    }
+    Ok(())
+}
+
+fn prove_process_resources(proc: &Path, pid: u32) -> Result<(), String> {
+    match std::fs::read_link(proc.join("exe")) {
+        Ok(exe) => {
+            let name = exe.file_name().unwrap_or_default().to_string_lossy();
+            if pid != std::process::id() && (name.starts_with("yoyopod-") || name == "ModemManager")
+            {
+                return Err(format!(
+                    "old runtime/worker/native owner still running: {pid}"
+                ));
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                // Kernel threads/zombies have no executable and no user descriptors.
-                let status = match std::fs::read_to_string(proc.join("status")) {
-                    Ok(status) => status,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-                    Err(e) => return Err(e.to_string()),
-                };
-                if !status
-                    .lines()
-                    .any(|line| line == "Kthread:\t1" || line.starts_with("State:\tZ"))
-                {
-                    return Err(format!("incomplete executable proof for {pid}"));
-                }
-            }
-            Err(e) => return Err(format!("incomplete process proof: {e}")),
         }
-        let descriptors = match std::fs::read_dir(proc.join("fd")) {
-            Ok(descriptors) => descriptors,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(format!("incomplete resource proof: {e}")),
-        };
-        for descriptor in descriptors {
-            match std::fs::read_link(descriptor.map_err(|e| e.to_string())?.path()) {
-                Ok(target) => {
-                    let target = target.to_string_lossy();
-                    if target.starts_with("/dev/snd/")
-                        || target.starts_with("/dev/ttyUSB")
-                        || target.starts_with("/dev/cdc-wdm")
-                    {
-                        return Err(format!("audio/modem resource remains open in {pid}"));
-                    }
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(format!("incomplete descriptor proof: {e}")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // Kernel threads/zombies have no executable and no user descriptors.
+            let status = match std::fs::read_to_string(proc.join("status")) {
+                Ok(status) => status,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+                Err(e) => return Err(e.to_string()),
+            };
+            if !status
+                .lines()
+                .any(|line| line == "Kthread:\t1" || line.starts_with("State:\tZ"))
+            {
+                return Err(format!("incomplete executable proof for {pid}"));
             }
+        }
+        Err(e) => return Err(format!("incomplete process proof: {e}")),
+    }
+    let descriptors = match std::fs::read_dir(proc.join("fd")) {
+        Ok(descriptors) => descriptors,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("incomplete resource proof: {e}")),
+    };
+    for descriptor in descriptors {
+        match std::fs::read_link(descriptor.map_err(|e| e.to_string())?.path()) {
+            Ok(target) => {
+                let target = target.to_string_lossy();
+                if target.starts_with("/dev/snd/")
+                    || target.starts_with("/dev/ttyUSB")
+                    || target.starts_with("/dev/cdc-wdm")
+                {
+                    return Err(format!("audio/modem resource remains open in {pid}"));
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("incomplete descriptor proof: {e}")),
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::process::{Child, Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    struct FixtureChild(Child);
+    impl Drop for FixtureChild {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    #[test]
+    fn zombie_leader_with_live_resource_holder_cannot_prove_cold_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let executable = dir.path().join("leader-exit");
+        // A real pthread leader exit is isolated from Rust's multithreaded test
+        // harness. This fixture opens only a temporary ordinary file, never PCM.
+        let mut compiler = Command::new("cc")
+            .args(["-x", "c", "-pthread", "-o"])
+            .arg(&executable)
+            .arg("-")
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        compiler
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(
+                br#"
+            #include <pthread.h>
+            #include <fcntl.h>
+            #include <unistd.h>
+            static void *hold(void *unused) { sleep(60); return 0; }
+            int main(int argc, char **argv) {
+                if (argc != 2 || open(argv[1], O_RDONLY) < 0) return 2;
+                pthread_t thread;
+                if (pthread_create(&thread, 0, hold, 0)) return 3;
+                pthread_exit(0);
+            }
+        "#,
+            )
+            .unwrap();
+        assert!(compiler.wait().unwrap().success());
+        let resource = dir.path().join("test-resource");
+        std::fs::write(&resource, b"ordinary test resource").unwrap();
+        let child = FixtureChild(Command::new(&executable).arg(&resource).spawn().unwrap());
+        let proc = std::path::PathBuf::from(format!("/proc/{}", child.0.id()));
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let status = std::fs::read_to_string(proc.join("status")).unwrap();
+            if status.lines().any(|line| line.starts_with("State:\tZ")) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "fixture leader did not exit");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let tasks: Vec<_> = std::fs::read_dir(proc.join("task"))
+            .unwrap()
+            .map(|task| task.unwrap().path())
+            .collect();
+        assert!(tasks.len() > 1, "fixture must retain a live sibling");
+        let held = tasks.iter().any(|task| {
+            std::fs::read_dir(task.join("fd"))
+                .unwrap()
+                .any(|fd| std::fs::read_link(fd.unwrap().path()).ok().as_ref() == Some(&resource))
+        });
+        assert!(
+            held,
+            "live sibling must still hold the ordinary test resource"
+        );
+        assert!(std::fs::read_link(proc.join("exe")).is_err());
+        let proof = prove_process_resources(&proc, child.0.id());
+        drop(child); // Always kill/reap the isolated group before asserting proof.
+        assert!(
+            proof.is_err(),
+            "zombie leader is not whole-process resource absence: {proof:?}"
+        );
+    }
 }
