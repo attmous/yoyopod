@@ -1082,6 +1082,7 @@ fn commands_for_voice_intent(state: &RuntimeState, intent: &VoiceIntent) -> Vec<
                 "recovery_source": draft.needs_copy,
                 "duration_ms": draft.duration_ms.max(0), "mime_type": draft.mime_type,
                 "client_id": new_voice_note_client_id(),
+                "draft_id": draft.id,
             }))]
         }
         VoiceIntent::SavedDiscard(action) => {
@@ -2533,6 +2534,8 @@ mod tests {
         let send = RuntimeEvent::UiIntent(UiIntent::Voice(VoiceIntent::SavedSend(action.clone())));
         assert!(commands_for_event(&state, &send).iter().any(|c| matches!(c, RuntimeCommand::WorkerCommand { envelope, .. } if envelope.message_type == "voip.send_saved_voice_note")));
         send.apply(&mut state);
+        // Dispatch is now tested at RuntimeLoop; model a correlated in-flight send here.
+        state.voice.interrupted_draft.as_mut().unwrap().phase = "sending".into();
         assert_eq!(
             state.voice.interrupted_draft.as_ref().unwrap().phase,
             "sending"
@@ -2712,6 +2715,7 @@ mod tests {
             RuntimeEvent::CloudConfig(json!({"contacts":{"entries":entries}})).apply(&mut state);
             assert!(commands_for_event(&state, &send).is_empty());
             send.apply(&mut state);
+
             assert_eq!(state.voice.phase, "review");
             assert_eq!(state.voice.status_text, "Ready to send");
             assert_eq!(state.voice.file_path, "/tmp/review.wav");

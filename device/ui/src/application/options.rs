@@ -17,7 +17,11 @@ pub fn talk_contact_actions(
     snapshot: &RuntimeSnapshot,
     selected_contact: Option<&ListItemSnapshot>,
 ) -> Vec<TalkContactAction> {
-    if snapshot.voice.interrupted_draft_path.is_some() {
+    if snapshot.voice.interrupted_draft_path.is_some()
+        && selected_contact
+            .or_else(|| snapshot.call.contacts.first())
+            .is_none()
+    {
         return vec![
             TalkContactAction {
                 kind: "review_draft",
@@ -42,11 +46,22 @@ pub fn talk_contact_actions(
     }
     if let Some(contact) = selected_contact.or_else(|| snapshot.call.contacts.first()) {
         if contact.sip_target().is_some() {
-            if contact.can_call && contact.can_receive {
+            if contact.can_call
+                && contact.can_receive
+                && snapshot.voice.interrupted_draft_path.is_none()
+            {
                 actions.push(TalkContactAction { kind: "record" });
             }
             actions.push(TalkContactAction { kind: "replay" });
         }
+    }
+    if snapshot.voice.interrupted_draft_path.is_some() {
+        actions.push(TalkContactAction {
+            kind: "review_draft",
+        });
+        actions.push(TalkContactAction {
+            kind: "discard_draft",
+        });
     }
     actions
 }

@@ -315,11 +315,6 @@ pub fn reconcile_selected_contact(runtime: &mut UiRuntime) {
 
 fn apply_selection_target(runtime: &mut UiRuntime, target: SelectionTarget) {
     match target {
-        SelectionTarget::PushScreen(UiScreen::Talk)
-            if runtime.snapshot.voice.interrupted_draft_path.is_some() =>
-        {
-            push_screen(runtime, UiScreen::VoiceNote)
-        }
         SelectionTarget::PushScreen(screen) => push_screen(runtime, screen),
         SelectionTarget::EmitIntent(template) => emit_static_intent(runtime, template),
         SelectionTarget::PushWithIntent { screen, intent } => {
@@ -412,6 +407,13 @@ fn select_dynamic_list_item(runtime: &mut UiRuntime, kind: ListKind) {
             }
         }
         ListKind::Contacts => {
+            if runtime.active_screen == UiScreen::Talk
+                && runtime.focus_index == runtime.snapshot.call.contacts.len()
+                && runtime.snapshot.voice.interrupted_draft_path.is_some()
+            {
+                push_screen(runtime, UiScreen::VoiceNote);
+                return;
+            }
             if let Some(item) = runtime
                 .snapshot
                 .call
@@ -486,7 +488,15 @@ fn select_contact_priority(runtime: &mut UiRuntime) {
         .push(UiIntent::Settings(SettingsIntent::ContactPrioritySet(
             yoyopod_protocol::call::ContactPrioritySet {
                 contact_id: contact.contact_id.clone(),
-                priority: !contact.priority,
+                priority: runtime
+                    .snapshot
+                    .settings
+                    .priority_write
+                    .as_ref()
+                    .filter(|write| {
+                        write.contact_id == contact.contact_id && !write.error.is_empty()
+                    })
+                    .map_or(!contact.priority, |write| write.priority),
             },
         )));
 }

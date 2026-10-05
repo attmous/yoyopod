@@ -16,6 +16,7 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    yoyopod_protocol::process::verify_network_credentials()?;
     let args = Args::parse();
     if let Some(relay) = args.gsm_audio_relay.as_deref() {
         return yoyopod_network::gsm_audio_helper::run(

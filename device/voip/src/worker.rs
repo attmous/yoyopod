@@ -574,6 +574,18 @@ where
             write_session_snapshot(host, output)?;
         }
         "voip.send_voice_note" | "voip.send_saved_voice_note" => {
+            if envelope.message_type == "voip.send_saved_voice_note" && !backend.is_running() {
+                write_envelope_to(
+                    output,
+                    &WorkerEnvelope::error(
+                        "voip.send_saved_voice_note",
+                        envelope.request_id,
+                        "saved_send_not_started",
+                        "VoIP backend is unavailable; no native send attempted",
+                    ),
+                )?;
+                return Ok(LoopAction::Continue);
+            }
             let uri = envelope.payload["uri"].as_str().unwrap_or("").trim();
             let file_path = envelope.payload["file_path"].as_str().unwrap_or("").trim();
             let mime_type = envelope.payload["mime_type"].as_str().unwrap_or("").trim();

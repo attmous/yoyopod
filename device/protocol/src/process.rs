@@ -41,6 +41,7 @@ pub fn bound_command_with_lease(
 
 /// Called before normal worker argument parsing; never invokes a shell.
 pub fn dispatch_audio_helper(allowed_programs: &[&str]) -> std::io::Result<()> {
+    verify_audio_credentials()?;
     let mut args = std::env::args().skip(1);
     let mode = args.next();
     if !matches!(
@@ -115,6 +116,99 @@ pub fn dispatch_audio_helper(allowed_programs: &[&str]) -> std::io::Result<()> {
         let _ = program;
         unreachable!("parent binding rejects unsupported platforms")
     }
+}
+
+/// Runs before native startup or helper dispatch. The supervisor supplies the
+/// expected owner; no audio child is allowed to run with inherited privileges.
+pub fn verify_audio_credentials() -> std::io::Result<()> {
+    #[cfg(target_os = "linux")]
+    if let Ok(owner) = std::env::var("YOYOPOD_AUDIO_OWNER_UID") {
+        let owner = owner.parse::<u32>().map_err(std::io::Error::other)?;
+        let status = std::fs::read_to_string("/proc/self/status")?;
+        let fields: std::collections::HashMap<_, _> = status
+            .lines()
+            .filter_map(|line| line.split_once(':'))
+            .collect();
+        let uids: Vec<_> = fields
+            .get("Uid")
+            .ok_or_else(|| std::io::Error::other("missing UIDs"))?
+            .split_whitespace()
+            .collect();
+        let expected = owner.to_string();
+        let valid = owner != 0
+            && uids.len() == 4
+            && uids.iter().all(|uid| *uid == expected)
+            && fields
+                .get("NoNewPrivs")
+                .is_some_and(|value| value.trim() == "1")
+            && ["CapInh", "CapPrm", "CapEff", "CapAmb"].iter().all(|key| {
+                fields
+                    .get(key)
+                    .is_some_and(|value| u64::from_str_radix(value.trim(), 16) == Ok(0))
+            });
+        if !valid {
+            return Err(std::io::Error::other(
+                "audio post-exec credentials are not the required zero-capability NNP owner",
+            ));
+        }
+        if std::env::args().nth(1).as_deref() == Some("--audio-credential-proof") {
+            println!("{status}");
+            std::process::exit(0);
+        }
+    }
+    Ok(())
+}
+
+pub fn verify_network_credentials() -> std::io::Result<()> {
+    #[cfg(target_os = "linux")]
+    if let Ok(expected) = std::env::var("YOYOPOD_NETWORK_CREDENTIALS") {
+        let expected: serde_json::Value =
+            serde_json::from_str(&expected).map_err(std::io::Error::other)?;
+        let status = std::fs::read_to_string("/proc/self/status")?;
+        let fields: std::collections::HashMap<_, _> = status
+            .lines()
+            .filter_map(|line| line.split_once(':'))
+            .collect();
+        for (field, key, count) in [("Uid", "uid", 4), ("Gid", "gid", 4)] {
+            let values = fields
+                .get(field)
+                .ok_or_else(|| std::io::Error::other("missing Network credentials"))?
+                .split_whitespace()
+                .collect::<Vec<_>>();
+            let expected = expected[key]
+                .as_u64()
+                .ok_or_else(|| std::io::Error::other("invalid Network owner"))?
+                .to_string();
+            if values.len() != count || values.iter().any(|v| *v != expected) {
+                return Err(std::io::Error::other("Network owner credentials changed"));
+            }
+        }
+        let groups = fields
+            .get("Groups")
+            .ok_or_else(|| std::io::Error::other("missing groups"))?
+            .split_whitespace()
+            .map(str::parse::<u32>)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(std::io::Error::other)?;
+        let expected_groups: Vec<u32> =
+            serde_json::from_value(expected["groups"].clone()).map_err(std::io::Error::other)?;
+        let cap = expected["cap"]
+            .as_u64()
+            .ok_or_else(|| std::io::Error::other("missing cap"))?;
+        if groups != expected_groups
+            || fields.get("NoNewPrivs").is_none_or(|v| v.trim() != "0")
+            || ["CapInh", "CapPrm", "CapEff", "CapAmb"].iter().any(|key| {
+                fields
+                    .get(key)
+                    .is_none_or(|v| u64::from_str_radix(v.trim(), 16) != Ok(cap))
+            })
+        {
+            return Err(std::io::Error::other(
+                "Network groups/capabilities/NNP contract changed",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Arm parent death before exec, then verify the parent to close the spawn/arm race.

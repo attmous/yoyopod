@@ -50,6 +50,8 @@ pub struct WorkerSupervisor {
 }
 
 struct WorkerProcess {
+    #[cfg(target_os = "linux")]
+    network_owner: Option<crate::network_owner::NetworkOwner>,
     lifetime_token: String,
     owner_uid: Option<u32>,
     runtime_start: Option<u64>,
@@ -99,7 +101,26 @@ impl WorkerSupervisor {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
 
-        let Ok(mut child) = command.spawn() else {
+        #[cfg(target_os = "linux")]
+        let (spawned, network_owner) = if spec.domain == WorkerDomain::Network {
+            match crate::network_owner::NetworkOwner::launch(
+                &spec.argv[0],
+                &spec.argv[1..],
+                &lifetime_token,
+                false,
+            ) {
+                Ok((owner, child)) => (Ok(child), Some(owner)),
+                Err(error) => {
+                    eprintln!("Network guardian launch rejected: {error}");
+                    return false;
+                }
+            }
+        } else {
+            (command.spawn(), None)
+        };
+        #[cfg(not(target_os = "linux"))]
+        let spawned = command.spawn();
+        let Ok(mut child) = spawned else {
             return false;
         };
         let Some(stdin) = child.stdin.take() else {
@@ -120,6 +141,8 @@ impl WorkerSupervisor {
         self.workers.insert(
             spec.domain,
             WorkerProcess {
+                #[cfg(target_os = "linux")]
+                network_owner,
                 lifetime_token,
                 owner_uid,
                 runtime_start,
@@ -207,7 +230,18 @@ impl WorkerSupervisor {
             thread::sleep(Duration::from_millis(10));
         }
 
-        for worker in self.workers.values_mut() {
+        for (_, mut worker) in self.workers.drain() {
+            #[cfg(target_os = "linux")]
+            if worker.network_owner.is_some() {
+                // Power/shutdown never joins privileged cleanup. This thread owns
+                // both the retained control proof and original Child until exit.
+                thread::spawn(move || {
+                    if worker.network_owner.as_mut().unwrap().drain().is_ok() {
+                        let _ = worker.child.wait();
+                    }
+                });
+                continue;
+            }
             if matches!(worker.child.try_wait(), Ok(None)) {
                 let _ = worker.child.kill();
             }
@@ -222,9 +256,14 @@ impl WorkerSupervisor {
         ready_type: &str,
         timeout: Duration,
     ) -> bool {
-        self.wait_for_message(domain, timeout, |message| {
+        let ready = self.wait_for_message(domain, timeout, |message| {
             message.message_type == ready_type
-        })
+        });
+        ready
+            && self
+                .workers
+                .get_mut(&domain)
+                .is_some_and(|worker| recovery::verify_worker_credentials(worker).is_ok())
     }
 
     pub fn wait_for_message(

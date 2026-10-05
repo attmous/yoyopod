@@ -56,6 +56,7 @@ pub enum CallManagerEvent {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallEffect {
+    AcceptedUpdate(CallUpdate),
     Transport(CallCommand),
     Dial {
         key: SessionKey,
@@ -95,6 +96,7 @@ pub struct CallManager {
     terminal: Vec<SessionKey>,
     sequences: Vec<(SessionKey, u64)>,
     generations: Vec<(CallTransport, u64)>,
+    watermarks: [[u64; 2]; 2],
     audible: bool,
     activity_generation: u64,
     shutdown: bool,
@@ -113,6 +115,7 @@ impl CallManager {
             terminal: vec![],
             sequences: vec![],
             generations: vec![],
+            watermarks: [[0; 2]; 2],
             audible: false,
             activity_generation: 0,
             shutdown: false,
@@ -154,7 +157,7 @@ impl CallManager {
             .map_or(0, |s| s.ring_deadline.saturating_sub(now_ms))
     }
     fn current_generation(&mut self, key: &SessionKey) -> bool {
-        if key.call_id.trim().is_empty() {
+        if call_ordinal(&key.transport, &key.call_id).is_none() {
             return false;
         }
         if let Some((_, generation)) = self
@@ -165,15 +168,34 @@ impl CallManager {
             if key.generation < *generation {
                 return false;
             }
+            if key.generation == *generation {
+                return true;
+            }
             *generation = key.generation;
         } else {
             self.generations
                 .push((key.transport.clone(), key.generation));
         }
+        self.watermarks[usize::from(key.transport == CallTransport::Sip)] = [0; 2];
         self.terminal
             .retain(|k| k.transport != key.transport || k.generation >= key.generation);
         self.sequences
             .retain(|(k, _)| k.transport != key.transport || k.generation >= key.generation);
+        true
+    }
+    fn reserve_key(&mut self, key: &SessionKey) -> bool {
+        if !self.current_generation(key) {
+            return false;
+        }
+        let (namespace, serial) =
+            call_ordinal(&key.transport, &key.call_id).expect("validated identity");
+        let watermark =
+            &mut self.watermarks[usize::from(key.transport == CallTransport::Sip)][namespace];
+        if serial <= *watermark || self.sequences.len() >= MAX_LIVE_CALLS * 2 {
+            return false;
+        }
+        *watermark = serial;
+        self.sequences.push((key.clone(), 0));
         true
     }
     fn reject(&mut self, key: SessionKey, reason: RejectReason) -> Vec<CallEffect> {
@@ -259,7 +281,7 @@ impl CallManager {
             }
 
             CallManagerEvent::Offer(offer) => {
-                if !self.current_generation(&offer.key)
+                if !self.reserve_key(&offer.key)
                     || self.terminal.contains(&offer.key)
                     || self.session() == Some(&offer.key)
                 {
@@ -294,7 +316,7 @@ impl CallManager {
                 contact_id,
                 address,
             } => {
-                if !self.current_generation(&key)
+                if !self.reserve_key(&key)
                     || self.terminal.contains(&key)
                     || self.session() == Some(&key)
                 {
@@ -379,9 +401,17 @@ impl CallManager {
                     }
                     *sequence = update.sequence;
                 } else {
-                    self.sequences.push((update.key.clone(), update.sequence));
+                    return effects; // An update cannot allocate/recreate an identity.
                 }
+                if self.terminal.contains(&update.key) && update.phase != CallPhase::Ended {
+                    return effects;
+                }
+                effects.push(CallEffect::AcceptedUpdate(update.clone()));
                 if self.session() != Some(&update.key) {
+                    if update.phase == CallPhase::Ended {
+                        self.sequences.retain(|(key, _)| *key != update.key);
+                        self.terminal.retain(|key| *key != update.key);
+                    }
                     return effects;
                 }
                 if update.phase == CallPhase::Ended {
@@ -422,6 +452,8 @@ impl CallManager {
                 {
                     self.stop_ring(&mut effects);
                     self.owned = None;
+                    self.sequences.retain(|(candidate, _)| *candidate != key);
+                    self.terminal.retain(|candidate| *candidate != key);
                     self.ring_start_pending = false;
                     self.ring_stop_pending = false;
                     self.answer_after_stop = false;

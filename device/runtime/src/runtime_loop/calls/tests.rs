@@ -2,6 +2,169 @@ use super::*;
 use crate::runtime_loop::tests::FakeLoopIo;
 use crate::state::RuntimeState;
 
+fn saved_send_fixture() -> (
+    RuntimeLoop,
+    FakeLoopIo,
+    yoyopod_protocol::ui::VoiceFileAction,
+) {
+    let mut state = RuntimeState::default();
+    RuntimeEvent::CloudConfig(json!({"contacts":{"entries":[{"id":"dad","name":"Dad","sip_address":"sip:dad@example.test","can_call":true}]}})).apply(&mut state);
+    state.voice.pending_voice_recipient = Some(yoyopod_protocol::ui::VoiceRecipientAction {
+        id: "dad".into(),
+        recipient_address: "sip:dad@example.test".into(),
+        ..Default::default()
+    });
+    state.voice.invalidate_for_call();
+    state.voice.interrupted_draft_path = Some("owned.wav".into());
+    let action = yoyopod_protocol::ui::VoiceFileAction {
+        file_path: "owned.wav".into(),
+        message_id: state.voice.interrupted_draft.as_ref().unwrap().id.clone(),
+        ..Default::default()
+    };
+    (RuntimeLoop::new(state), FakeLoopIo::default(), action)
+}
+
+#[test]
+fn decoded_saved_send_failures_preserve_exact_draft_with_honest_outcome() {
+    for dispatch_failure in [true, false] {
+        let (mut runtime, mut io, action) = saved_send_fixture();
+        if dispatch_failure {
+            io.fail_send.push("voip.send_saved_voice_note".into());
+        }
+        io.messages.push((
+            WorkerDomain::Ui,
+            WorkerEnvelope::event(
+                "ui.intent",
+                UiIntent::Voice(yoyopod_protocol::ui::VoiceIntent::SavedSend(action.clone()))
+                    .to_event_payload(),
+            ),
+        ));
+        runtime.run_once_at(&mut io, 1);
+        if !dispatch_failure {
+            assert_eq!(
+                runtime
+                    .state
+                    .voice
+                    .interrupted_draft
+                    .as_ref()
+                    .unwrap()
+                    .phase,
+                "sending"
+            );
+            let request = io
+                .sent
+                .iter()
+                .find(|(_, e)| e.message_type == "voip.send_saved_voice_note")
+                .unwrap()
+                .1
+                .request_id
+                .clone();
+            io.messages.push((
+                WorkerDomain::Voip,
+                WorkerEnvelope::error(
+                    "voip.send_saved_voice_note",
+                    Some("stale".into()),
+                    "saved_send_not_started",
+                    "unavailable",
+                ),
+            ));
+            runtime.run_once_at(&mut io, 2);
+            assert_eq!(
+                runtime
+                    .state
+                    .voice
+                    .interrupted_draft
+                    .as_ref()
+                    .unwrap()
+                    .phase,
+                "sending"
+            );
+            io.messages.push((
+                WorkerDomain::Voip,
+                WorkerEnvelope::error(
+                    "voip.send_saved_voice_note",
+                    request,
+                    "saved_send_not_started",
+                    "unavailable",
+                ),
+            ));
+            runtime.run_once_at(&mut io, 3);
+        }
+        let draft = runtime.state.voice.interrupted_draft.as_ref().unwrap();
+        assert_eq!(draft.id, action.message_id);
+        assert_eq!(
+            draft.phase,
+            if dispatch_failure {
+                "unknown"
+            } else {
+                "failed"
+            }
+        );
+        assert!(runtime.state.can_send_interrupted_draft());
+        assert_eq!(
+            runtime.state.voice.interrupted_draft_path.as_deref(),
+            Some("owned.wav")
+        );
+    }
+}
+
+#[test]
+fn decoded_stale_updates_cannot_change_projection_or_native_release() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Gsm);
+    offer(&mut runtime, &mut io, &key, 0);
+    for (sequence, phase, muted, seconds) in [
+        (20, CallPhase::Active, false, 60),
+        (19, CallPhase::Ended, true, 10),
+        (20, CallPhase::Ended, true, 10),
+    ] {
+        io.messages.push((
+            WorkerDomain::Network,
+            WorkerEnvelope::event(
+                "call.update",
+                json!({
+                    "key":key, "direction":"incoming", "phase":phase, "address":"+49123456789",
+                    "duration_seconds":seconds, "muted":muted, "sequence":sequence
+                }),
+            ),
+        ));
+        runtime.run_once_at(&mut io, 1);
+    }
+    assert!(!runtime.state.call.muted);
+    assert_eq!(runtime.state.call.duration_text, "1:00");
+    assert!(!runtime.calls.resources.as_ref().unwrap().native_released);
+}
+
+#[test]
+fn decoded_fatal_ui_failure_cancels_queued_answer_and_blocks_admission() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Sip);
+    offer(&mut runtime, &mut io, &key, 0);
+    control(&mut runtime, &mut io, &key, CallAction::Answer, 1);
+    io.messages.push((
+        WorkerDomain::Ui,
+        WorkerEnvelope::event(
+            "ui.error",
+            json!({"code":"worker_error", "message":"call display unavailable: fatal UI error"}),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 2);
+    assert_eq!(runtime.manager.phase(), Some(CallPhase::Ending));
+    assert!(io
+        .sent
+        .iter()
+        .any(|(_, e)| e.message_type == "call.action" && e.payload["action"] == "hangup"));
+    prepare(&mut runtime, &mut io, 3);
+    assert!(!io
+        .sent
+        .iter()
+        .any(|(_, e)| e.message_type == "call.action" && e.payload["action"] == "answer"));
+    terminal(&mut runtime, &mut io, &key, 4);
+    release(&mut runtime, &mut io, &key, 5);
+    let mut next = key;
+    next.call_id = "runtime-outgoing-4".into();
+    offer(&mut runtime, &mut io, &next, 6);
+    assert!(runtime.manager.session().is_none());
+}
+
 fn fixture(transport: CallTransport) -> (RuntimeLoop, FakeLoopIo, SessionKey) {
     let mut state = RuntimeState::default();
     state.media.playback_state = "playing".into();
@@ -13,7 +176,7 @@ fn fixture(transport: CallTransport) -> (RuntimeLoop, FakeLoopIo, SessionKey) {
     let key = SessionKey {
         transport,
         generation: 1,
-        call_id: "a".into(),
+        call_id: "runtime-outgoing-1".into(),
     };
     (RuntimeLoop::new(state), FakeLoopIo::default(), key)
 }
@@ -281,7 +444,7 @@ fn old_displayed_intent_cannot_act_on_next_owned_session() {
     prepare(&mut runtime, &mut io, 2);
     release(&mut runtime, &mut io, &key, 3);
     let next = SessionKey {
-        call_id: "b".into(),
+        call_id: "runtime-outgoing-2".into(),
         ..key.clone()
     };
     offer(&mut runtime, &mut io, &next, 4);
@@ -318,7 +481,7 @@ fn secondary_failure_never_recovers_primary_or_frees_gsm_handoff() {
         &mut runtime,
         &mut io,
         &SessionKey {
-            call_id: "b".into(),
+            call_id: "runtime-outgoing-2".into(),
             ..key
         },
         2,
@@ -669,7 +832,7 @@ fn persisted_native_dispatch_quarantines_both_transports_on_runtime_restart() {
         let key = SessionKey {
             transport,
             generation: 1,
-            call_id: "new".into(),
+            call_id: "runtime-outgoing-3".into(),
         };
         offer(&mut restarted, &mut replacement, &key, 2);
         assert!(restarted.manager.session().is_none());
@@ -1107,7 +1270,7 @@ fn decoded_second_offer_and_remote_end_during_answer_preserve_primary() {
             let secondary = SessionKey {
                 transport: second,
                 generation: 1,
-                call_id: "b".into(),
+                call_id: "runtime-outgoing-2".into(),
             };
             offer(&mut runtime, &mut io, &secondary, 4);
             assert_eq!(runtime.manager.session(), Some(&key));

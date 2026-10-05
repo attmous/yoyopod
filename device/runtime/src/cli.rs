@@ -32,10 +32,26 @@ pub struct Args {
     pub dry_run: bool,
     #[arg(long, default_value = "whisplay")]
     pub hardware: String,
+    /// Offline only: attest complete Pi AND modem power removal, reboot with modem disconnected.
+    #[arg(long)]
+    pub recover_gsm_after_physical_cold_reset: bool,
+    /// Explicit operator provenance for a marker written before boot IDs were recorded.
+    #[arg(long, requires = "recover_gsm_after_physical_cold_reset")]
+    pub attest_legacy_marker_cold_reset: bool,
 }
 
 pub fn run(args: Args) -> Result<String> {
     let config = RuntimeConfig::load(&args.config_dir)?;
+    if args.recover_gsm_after_physical_cold_reset {
+        #[cfg(target_os = "linux")]
+        return crate::cold_recovery::recover(
+            Path::new(&config.native_call_guard_file),
+            args.attest_legacy_marker_cold_reset,
+        )
+        .map_err(anyhow::Error::msg);
+        #[cfg(not(target_os = "linux"))]
+        bail!("cold recovery requires the target Linux maintenance environment");
+    }
     if args.dry_run {
         return Ok(serde_json::to_string_pretty(&config)?);
     }

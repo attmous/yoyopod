@@ -12,6 +12,8 @@ struct DirtyMarker {
     version: u8,
     key: SessionKey,
     native_owner: Option<String>,
+    #[serde(default)]
+    boot_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -80,6 +82,9 @@ impl NativeOperationGuard {
                         version: 1,
                         key: key.clone(),
                         native_owner: native_owner.map(str::to_owned),
+                        boot_id: std::fs::read_to_string("/proc/sys/kernel/random/boot_id")
+                            .ok()
+                            .map(|value| value.trim().to_owned()),
                     },
                 ) {
                     self.quarantined = true;
@@ -108,6 +113,47 @@ impl NativeOperationGuard {
         self.dirty = false;
         Ok(())
     }
+}
+
+/// Called only by the trusted offline maintenance entrypoint after resource
+/// proof. The receipt is durable before the dirty path is atomically retired.
+pub(crate) fn retire_after_cold_reset(
+    path: &Path,
+    boot_id: &str,
+    legacy_attested: bool,
+) -> Result<PathBuf, String> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let marker: DirtyMarker = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    if marker.version != 1 || marker.key.transport != super::CallTransport::Gsm {
+        return Err("invalid native recovery marker".into());
+    }
+    if marker.boot_id.as_deref() == Some(boot_id) || (marker.boot_id.is_none() && !legacy_attested)
+    {
+        return Err("cold boot fence not established".into());
+    }
+    let receipt = path.with_extension(format!("cold-reset-{boot_id}.json"));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&receipt).map_err(|e| e.to_string())?;
+    let payload = serde_json::json!({"version":1,"previous_marker":marker,"recovery_boot_id":boot_id,
+        "operator_attested_full_physical_reset":true,"legacy_provenance_attested":legacy_attested,
+        "runtime_and_native_owners_stopped":true,"modem_disconnected":true,"resources_verified_closed":true});
+    file.write_all(&serde_json::to_vec_pretty(&payload).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    file.sync_all().map_err(|e| e.to_string())?;
+    sync_parent(&receipt)?;
+    let archive = path.with_extension(format!("retired-{boot_id}.json"));
+    if archive.exists() {
+        return Err("recovery archive already exists".into());
+    }
+    std::fs::rename(path, &archive).map_err(|e| e.to_string())?;
+    sync_parent(path)?;
+    Ok(receipt)
 }
 
 fn write_dirty(path: &Path, marker: &DirtyMarker) -> Result<(), String> {
@@ -171,6 +217,52 @@ fn sync_parent(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cold_reset_retires_durably_but_cannot_unfence_the_old_runtime() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("guard.json");
+        let marker = DirtyMarker {
+            version: 1,
+            key: key("old"),
+            native_owner: Some("old-bus/:1.4".into()),
+            boot_id: Some("old-boot".into()),
+        };
+        write_dirty(&path, &marker).unwrap();
+        let (mut old_runtime, _) = NativeOperationGuard::load(&path);
+        assert!(retire_after_cold_reset(&path, "old-boot", false).is_err());
+        assert!(path.exists());
+        let receipt = retire_after_cold_reset(&path, "new-boot", false).unwrap();
+        assert!(receipt.exists());
+        let proof: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(receipt).unwrap()).unwrap();
+        assert_eq!(proof["previous_marker"]["native_owner"], "old-bus/:1.4");
+        assert!(!NativeOperationGuard::load(&path).0.blocked());
+        old_runtime.terminal(&marker.key);
+        old_runtime.clear_if_released(true).unwrap();
+        assert!(old_runtime
+            .before_dispatch(&marker.key, Some("old-bus/:1.4"))
+            .is_err());
+        assert!(old_runtime.quarantined());
+    }
+
+    #[test]
+    fn legacy_cold_reset_requires_explicit_provenance() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("guard.json");
+        write_dirty(
+            &path,
+            &DirtyMarker {
+                version: 1,
+                key: key("old"),
+                native_owner: None,
+                boot_id: None,
+            },
+        )
+        .unwrap();
+        assert!(retire_after_cold_reset(&path, "new-boot", false).is_err());
+        assert!(path.exists());
+        assert!(retire_after_cold_reset(&path, "new-boot", true).is_ok());
+    }
     fn key(id: &str) -> SessionKey {
         SessionKey {
             transport: crate::call_manager::CallTransport::Gsm,

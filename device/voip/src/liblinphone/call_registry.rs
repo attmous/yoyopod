@@ -17,11 +17,14 @@ impl<H> SessionRegistry<H> {
         }
     }
     pub fn insert(&mut self, call_id: String, handle: H) -> Result<(), String> {
-        if call_id.is_empty() || self.calls.contains_key(&call_id) {
+        if call_id.is_empty() || self.calls.contains_key(&call_id) || self.is_full() {
             return Err("empty or duplicate call ID".into());
         }
         self.calls.insert(call_id, handle);
         Ok(())
+    }
+    pub fn is_full(&self) -> bool {
+        self.calls.len() >= yoyopod_protocol::call::MAX_LIVE_CALLS
     }
     pub fn get(&self, call_id: &str) -> Option<&H> {
         self.calls.get(call_id)

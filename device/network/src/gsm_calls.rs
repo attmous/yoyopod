@@ -13,7 +13,7 @@ pub struct GsmCallRegistry {
     generation: u64,
     next_id: u64,
     calls: Vec<(String, SessionKey, Option<CallUpdate>)>,
-    used_ids: std::collections::HashSet<String>,
+    outgoing_watermark: u64,
 }
 
 impl GsmCallRegistry {
@@ -41,7 +41,7 @@ impl GsmCallRegistry {
             generation,
             next_id: 0,
             calls: Vec::new(),
-            used_ids: Default::default(),
+            outgoing_watermark: 0,
         }
     }
     pub fn observe(
@@ -52,17 +52,17 @@ impl GsmCallRegistry {
         number: &str,
     ) -> Vec<CallManagerWireEvent> {
         let mut events = Vec::new();
+        if self.calls.len() >= yoyopod_protocol::call::MAX_LIVE_CALLS
+            && !self.calls.iter().any(|(path, _, _)| path == object_path)
+        {
+            return events;
+        }
         let index = self
             .calls
             .iter()
             .position(|(path, _, _)| path == object_path)
             .unwrap_or_else(|| {
-                loop {
-                    self.next_id += 1;
-                    if self.used_ids.insert(format!("gsm-{}", self.next_id)) {
-                        break;
-                    }
-                }
+                self.next_id = self.next_id.checked_add(1).expect("GSM serial exhausted");
                 let key = SessionKey {
                     transport: CallTransport::Gsm,
                     generation: self.generation,
@@ -126,9 +126,13 @@ impl GsmCallRegistry {
             "GSM session already registered"
         );
         anyhow::ensure!(
-            self.used_ids.insert(key.call_id.clone()),
-            "GSM session key was already used"
+            self.is_fresh_key(key),
+            "GSM session key was already used or registry full"
         );
+        self.outgoing_watermark =
+            yoyopod_protocol::call::call_ordinal(&key.transport, &key.call_id)
+                .unwrap()
+                .1;
         self.calls.push((path.into(), key.clone(), None));
         Ok(())
     }
@@ -149,7 +153,10 @@ impl GsmCallRegistry {
         key.transport == CallTransport::Gsm
             && key.generation == self.generation
             && !key.call_id.trim().is_empty()
-            && !self.used_ids.contains(&key.call_id)
+            && self.calls.len() < yoyopod_protocol::call::MAX_LIVE_CALLS
+            && yoyopod_protocol::call::call_ordinal(&key.transport, &key.call_id).is_some_and(
+                |(namespace, serial)| namespace == 1 && serial > self.outgoing_watermark,
+            )
     }
 }
 
@@ -236,7 +243,7 @@ mod tests {
         SessionKey {
             transport: CallTransport::Gsm,
             generation,
-            call_id: "runtime-outgoing".into(),
+            call_id: "runtime-outgoing-1".into(),
         }
     }
 

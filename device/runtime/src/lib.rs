@@ -1,7 +1,11 @@
 pub mod cli;
+#[cfg(target_os = "linux")]
+mod cold_recovery;
 pub mod config;
 pub mod event;
 pub mod logging;
+#[cfg(target_os = "linux")]
+pub mod network_owner;
 pub mod protocol;
 pub mod runtime_loop;
 pub mod state;

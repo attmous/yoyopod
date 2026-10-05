@@ -1337,7 +1337,7 @@ mod tests {
         let key = SessionKey {
             transport: CallTransport::Gsm,
             generation: 7,
-            call_id: "old-A".into(),
+            call_id: "runtime-outgoing-1".into(),
         };
         let registry = backend.registry.as_mut().unwrap();
         registry.register_outgoing(&key, "/call/0").unwrap();
@@ -1528,7 +1528,7 @@ mod tests {
         let key = SessionKey {
             transport: CallTransport::Gsm,
             generation: 7,
-            call_id: "A".into(),
+            call_id: "runtime-outgoing-1".into(),
         };
         let mut backend = ModemManagerVoice::default();
         backend.configure(7, None).unwrap();

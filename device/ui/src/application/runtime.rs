@@ -28,6 +28,51 @@ mod call_interruption_regressions {
     };
     use yoyopod_protocol::ui::CallIntent;
 
+    #[test]
+    fn retained_draft_preserves_contact_call_navigation() {
+        for method in [0, 1] {
+            let mut runtime = UiRuntime {
+                active_screen: UiScreen::Hub,
+                focus_index: 1,
+                ..Default::default()
+            };
+            runtime.home_mode = HomeMode::Focused;
+            runtime.snapshot.voice.interrupted_draft_path = Some("owned.wav".into());
+            runtime.snapshot.voice.interrupted_draft_id = "draft-a".into();
+
+            let mut contact =
+                yoyopod_protocol::ui::ListItemSnapshot::new("other", "Other", "", "mono:O");
+            contact.sip_address = "sip:other@example.test".into();
+            contact.phone_number = "+49123456789".into();
+            contact.can_call = true;
+            runtime.snapshot.call.contacts.push(contact);
+            runtime.snapshot.call.sip_available = true;
+            runtime.snapshot.call.gsm_available = true;
+            runtime.handle_input(InputAction::Select, 1);
+            assert_eq!(runtime.active_screen, UiScreen::Talk);
+            runtime.handle_input(InputAction::Select, 2);
+            assert_eq!(runtime.active_screen, UiScreen::TalkContact);
+            runtime.handle_input(InputAction::Select, 3);
+            assert_eq!(runtime.active_screen, UiScreen::CallMethod);
+            runtime.focus_index = method;
+            runtime.handle_input(InputAction::Select, 4);
+            assert!(runtime
+                .take_intents()
+                .iter()
+                .any(|i| matches!(i, UiIntent::Call(CallIntent::Start(_)))));
+            assert_eq!(runtime.snapshot.voice.interrupted_draft_id, "draft-a");
+            assert_eq!(
+                runtime.snapshot.voice.interrupted_draft_path.as_deref(),
+                Some("owned.wav")
+            );
+            runtime.snapshot.call.contacts.clear();
+            runtime.active_screen = UiScreen::Talk;
+            runtime.focus_index = 0;
+            runtime.handle_input(InputAction::Select, 5);
+            assert_eq!(runtime.active_screen, UiScreen::VoiceNote);
+        }
+    }
+
     fn incoming(runtime: &mut UiRuntime) -> SessionKey {
         let key = SessionKey {
             transport: CallTransport::Sip,

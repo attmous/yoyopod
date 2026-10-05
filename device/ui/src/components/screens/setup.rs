@@ -292,10 +292,15 @@ pub(crate) fn priority_subtitle(
                 "Priority {} - Saving",
                 if contact.priority { "On" } else { "Off" }
             )
-        } else if !write.error.is_empty() {
+        } else if !write.error.is_empty() && write.priority != contact.priority {
             format!(
-                "Priority {} - Save failed",
-                if contact.priority { "On" } else { "Off" }
+                "Priority {} - {}",
+                if contact.priority { "On" } else { "Off" },
+                if write.error.starts_with("Could not confirm") {
+                    "Unconfirmed"
+                } else {
+                    "Save failed"
+                }
             )
         } else {
             format!("Priority {}", if contact.priority { "On" } else { "Off" })
@@ -481,10 +486,7 @@ mod tests {
             "Priority Off - Save failed"
         );
         snapshot.call.contacts[0].priority = true;
-        assert_eq!(
-            contact_items(&snapshot)[0].subtitle,
-            "Priority On - Save failed"
-        );
+        assert_eq!(contact_items(&snapshot)[0].subtitle, "Priority On");
     }
 
     #[test]

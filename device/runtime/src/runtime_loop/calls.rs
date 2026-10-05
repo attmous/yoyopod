@@ -43,6 +43,7 @@ pub(super) struct CallIntegration {
     voice_enabled: bool,
     shutdown_deadline: Option<u64>,
     pending_alert: Option<crate::call_manager::RingtoneRequest>,
+    ui_unavailable: bool,
 }
 impl Default for CallIntegration {
     fn default() -> Self {
@@ -64,6 +65,7 @@ impl Default for CallIntegration {
             voice_enabled: true,
             shutdown_deadline: None,
             pending_alert: None,
+            ui_unavailable: false,
         }
     }
 }
@@ -217,6 +219,14 @@ impl RuntimeLoop {
         domain: WorkerDomain,
         envelope: &WorkerEnvelope,
     ) -> bool {
+        if domain == WorkerDomain::Ui
+            && envelope.message_type == "ui.error"
+            && envelope.payload["code"] == "worker_error"
+        {
+            // This code is emitted only on fatal handle_app_event failure, before exit.
+            self.calls.ui_unavailable = true;
+            self.end_for_audio_failure(io);
+        }
         if self.calls.recovering.contains(&domain) {
             // Messages already drained before retirement still belong to its old lifetime.
             return true;
@@ -241,29 +251,7 @@ impl RuntimeLoop {
                         serde_json::from_value::<CallUpdate>(envelope.payload.clone())
                     {
                         if self.valid_key(domain, &update.key) {
-                            let before = self.state.clone();
-                            if domain == WorkerDomain::Network && update.phase == CallPhase::Ended {
-                                self.calls.native_guard.terminal(&update.key);
-                            }
-                            if self.manager.session() == Some(&update.key) {
-                                // GSM Ended is emitted after native terminal proof AND local PCM join.
-                                // SIP Ended retains refs; its distinct Released fact is required.
-                                if update.phase == CallPhase::Ended
-                                    && domain == WorkerDomain::Network
-                                {
-                                    if let Some(r) = self.calls.resources.as_mut() {
-                                        r.native_released = true;
-                                    }
-                                }
-                                self.state.call.muted = update.muted;
-                                self.state.call.duration_text = format!(
-                                    "{}:{:02}",
-                                    update.duration_seconds / 60,
-                                    update.duration_seconds % 60
-                                );
-                            }
                             self.handle_call(io, CallManagerEvent::Update(update));
-                            self.send_runtime_snapshot_patches(io, &before);
                             self.clear_native_guard();
                         }
                     }
@@ -315,6 +303,20 @@ impl RuntimeLoop {
         event: &RuntimeEvent,
     ) -> bool {
         match event {
+            RuntimeEvent::WorkerReady {
+                domain: WorkerDomain::Ui,
+            } => {
+                self.calls.ui_unavailable = false;
+                false
+            }
+            RuntimeEvent::WorkerExited {
+                domain: WorkerDomain::Ui,
+                ..
+            } => {
+                self.calls.ui_unavailable = true;
+                self.end_for_audio_failure(io);
+                false
+            }
             RuntimeEvent::AudioRouteLocal(route) if self.manager.session().is_some() => {
                 let before = self.state.clone();
                 self.state.apply_audio_route_local(route);
@@ -435,6 +437,7 @@ impl RuntimeLoop {
 
     pub(super) fn request_outgoing(&mut self, io: &mut impl LoopIo, action: ContactAction) {
         if self.manager.session().is_some()
+            || self.calls.ui_unavailable
             || self.shutdown_requested
             || self.calls.native_guard.blocked()
         {
@@ -485,6 +488,7 @@ impl RuntimeLoop {
             event,
             &self.state.call_context(
                 self.shutdown_requested
+                    || self.calls.ui_unavailable
                     || (self.manager.session().is_none() && self.calls.native_guard.blocked()),
             ),
             self.now_ms,

@@ -3,7 +3,68 @@ fn key(id: &str) -> SessionKey {
     SessionKey {
         transport: CallTransport::Sip,
         generation: 1,
-        call_id: id.into(),
+        call_id: format!(
+            "runtime-outgoing-{}",
+            id.bytes().fold(0u64, |n, byte| n * 128 + u64::from(byte))
+        ),
+    }
+}
+
+#[test]
+fn sustained_retirement_keeps_bounded_state_and_replayed_keys_dead() {
+    let mut manager = CallManager::new(DeviceMode::Normal, 8_000, 30_000);
+    for serial in 1..=10_000 {
+        let key = SessionKey {
+            transport: CallTransport::Sip,
+            generation: 1,
+            call_id: format!("sip-incoming-{serial}"),
+        };
+        manager.handle(
+            CallManagerEvent::Offer(CallOffer {
+                key: key.clone(),
+                address: "unknown".into(),
+            }),
+            &context(false),
+            serial,
+        );
+        manager.handle(
+            CallManagerEvent::Update(CallUpdate {
+                key: key.clone(),
+                direction: CallDirection::Incoming,
+                phase: CallPhase::Ended,
+                address: "unknown".into(),
+                duration_seconds: 0,
+                muted: false,
+                sequence: 1,
+            }),
+            &context(false),
+            serial,
+        );
+        assert!(
+            manager.terminal.len() <= 1 && manager.sequences.len() <= 1,
+            "retired identity memory grew"
+        );
+        assert!(manager
+            .handle(
+                CallManagerEvent::Offer(CallOffer {
+                    key: key.clone(),
+                    address: "sip:dad@example.test".into()
+                }),
+                &context(false),
+                serial
+            )
+            .is_empty());
+        assert!(manager
+            .handle(
+                CallManagerEvent::UserAction(CallCommand {
+                    key,
+                    action: CallAction::Answer
+                }),
+                &context(false),
+                serial
+            )
+            .is_empty());
+        assert!(manager.session().is_none());
     }
 }
 fn context(priority: bool) -> CallContext {
@@ -281,7 +342,7 @@ fn in_phase(phase: CallPhase) -> CallManager {
         action(&mut m, CallAction::Hangup);
     }
     if phase == CallPhase::Outgoing {
-        m.owned = None;
+        m = CallManager::new(DeviceMode::Silent, 8_000, 30_000);
         m.handle(
             CallManagerEvent::RequestOutgoing {
                 key: key("a"),

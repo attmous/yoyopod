@@ -1511,6 +1511,17 @@ unsafe extern "C" fn on_call_state_changed(
     let id = match existing_id {
         Some(id) => id,
         None => {
+            if state.calls.is_full() {
+                // No new identity/retained ref is allocated under pressure. Native
+                // early media is disabled; decline never admits an audio owner.
+                drop(state);
+                if mapped == event::CALL_INCOMING {
+                    unsafe {
+                        (api.call_decline)(call, LINPHONE_REASON_BUSY);
+                    }
+                }
+                return;
+            }
             // Never resurrect a released/unknown pointer on a late terminal callback.
             if matches!(
                 mapped,
@@ -1523,6 +1534,9 @@ unsafe extern "C" fn on_call_state_changed(
             } else {
                 state.pending_outgoing_id.take()
             };
+            if mapped != event::CALL_INCOMING && pending.is_none() {
+                return; // Late non-initial callbacks cannot mint another call identity.
+            }
             let id = if let Some(id) = pending {
                 id
             } else {
@@ -1564,7 +1578,7 @@ unsafe extern "C" fn on_call_state_changed(
     // IDs are validated before registration; this copy cannot truncate.
     copy_str_to_fixed(&id, &mut event.call_id);
     let address = unsafe { (api.call_get_remote_address)(call) };
-    copy_str_to_fixed(
+    copy_admission_identity(
         &build_address_uri(&api, address),
         &mut event.peer_sip_address,
     );
@@ -2053,6 +2067,15 @@ fn copy_str_to_fixed<const N: usize>(value: &str, out: &mut [c_char; N]) {
     }
 }
 
+/// A truncated address must never become the address of a different saved contact.
+fn copy_admission_identity<const N: usize>(value: &str, out: &mut [c_char; N]) {
+    if value.len() >= N || value.contains('\0') {
+        *out = [0; N];
+    } else {
+        copy_str_to_fixed(value, out);
+    }
+}
+
 fn copy_str_to_c_buffer(value: &str, out: *mut c_char, out_size: u32) -> bool {
     if out.is_null() || out_size == 0 {
         return false;
@@ -2102,6 +2125,12 @@ unsafe fn suppress_native_alerts(api: &LinphoneApi, core: *mut LinphoneCore) {
         // Liblinphone 5.2.0 coreapi/misc.c checks [sound] tone_indications
         // before ToneManager plays its call-waiting/error indications.
         let config = (api.core_get_config)(core);
+        (api.config_set_int)(
+            config,
+            c"sip".as_ptr(),
+            c"incoming_calls_early_media".as_ptr(),
+            0,
+        );
         (api.config_set_int)(config, c"sound".as_ptr(), c"tone_indications".as_ptr(), 0);
         if let Some(disable) = api.core_enable_call_tone_indications {
             disable(core, FALSE);

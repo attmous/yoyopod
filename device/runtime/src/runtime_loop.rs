@@ -51,6 +51,7 @@ pub struct RuntimeLoop {
     shutdown_requested: bool,
     priority_write_sequence: u64,
     priority_write_deadline_ms: Option<u64>,
+    saved_send: Option<(String, String, u64)>,
     pending_worker_commands: HashMap<(WorkerDomain, String), PendingWorkerCommand>,
     manager: CallManager,
     call_operations: CallOperationLedger,
@@ -79,6 +80,7 @@ impl RuntimeLoop {
             shutdown_requested: false,
             priority_write_sequence: 0,
             priority_write_deadline_ms: None,
+            saved_send: None,
             pending_worker_commands: HashMap::new(),
             manager,
             call_operations: Default::default(),
@@ -118,6 +120,10 @@ impl RuntimeLoop {
         }
 
         for (domain, envelope) in io.drain_worker_messages() {
+            if self.resolve_saved_send(io, domain, &envelope) {
+                processed += 1;
+                continue;
+            }
             if self.intercept_call_message(io, domain, &envelope) {
                 processed += 1;
                 continue;
@@ -166,6 +172,13 @@ impl RuntimeLoop {
         self.poll_call_recoveries(io);
         self.expire_correlated_worker_commands(io);
         if self
+            .saved_send
+            .as_ref()
+            .is_some_and(|(_, _, deadline)| *deadline <= self.now_ms)
+        {
+            self.finish_saved_send(io, "unknown");
+        }
+        if self
             .priority_write_deadline_ms
             .is_some_and(|deadline| deadline <= self.now_ms)
         {
@@ -211,6 +224,12 @@ impl RuntimeLoop {
         }
         match command {
             RuntimeCommand::WorkerCommand { domain, envelope } => {
+                if domain == WorkerDomain::Voip
+                    && envelope.message_type == "voip.send_saved_voice_note"
+                {
+                    self.dispatch_saved_send(io, envelope);
+                    return;
+                }
                 if domain == WorkerDomain::Cloud
                     && envelope.message_type == "cloud.contact_priority_set"
                 {
@@ -275,6 +294,87 @@ impl RuntimeLoop {
         }
     }
 
+    fn dispatch_saved_send(&mut self, io: &mut impl LoopIo, mut envelope: WorkerEnvelope) {
+        let Some(draft_id) = envelope.payload["draft_id"].as_str().map(str::to_owned) else {
+            return;
+        };
+        let Some(request_id) = envelope.payload["client_id"].as_str().map(str::to_owned) else {
+            return;
+        };
+        if self.saved_send.is_some() || !self.state.can_send_interrupted_draft() {
+            return;
+        }
+        let before = self.state.clone();
+        let Some(draft) = self
+            .state
+            .voice
+            .interrupted_draft
+            .as_mut()
+            .filter(|draft| draft.id == draft_id)
+        else {
+            return;
+        };
+        draft.phase = "sending".into();
+        envelope.request_id = Some(request_id.clone());
+        self.saved_send = Some((request_id, draft_id, self.now_ms.saturating_add(8_000)));
+        self.send_runtime_snapshot_patches(io, &before);
+        if !io.send_worker_envelope(WorkerDomain::Voip, envelope) {
+            // A failed pipe write may have delivered a complete line: do not claim non-delivery.
+            self.finish_saved_send(io, "unknown");
+        }
+    }
+
+    fn resolve_saved_send(
+        &mut self,
+        io: &mut impl LoopIo,
+        domain: WorkerDomain,
+        envelope: &WorkerEnvelope,
+    ) -> bool {
+        if domain != WorkerDomain::Voip
+            || !matches!(envelope.kind, EnvelopeKind::Result | EnvelopeKind::Error)
+        {
+            return false;
+        }
+        let matches = self
+            .saved_send
+            .as_ref()
+            .is_some_and(|(request, _, _)| envelope.request_id.as_ref() == Some(request));
+        if !matches {
+            return false;
+        }
+        if envelope.kind == EnvelopeKind::Error {
+            self.finish_saved_send(
+                io,
+                if envelope.payload["code"] == "saved_send_not_started" {
+                    "failed"
+                } else {
+                    "unknown"
+                },
+            );
+        } else {
+            // Acceptance is not delivery. Retain the bounded uncertainty deadline
+            // until a host snapshot settles the owned draft (or expose Unknown).
+        }
+        true
+    }
+
+    fn finish_saved_send(&mut self, io: &mut impl LoopIo, phase: &str) {
+        let Some((_, id, _)) = self.saved_send.take() else {
+            return;
+        };
+        let before = self.state.clone();
+        if let Some(draft) = self
+            .state
+            .voice
+            .interrupted_draft
+            .as_mut()
+            .filter(|draft| draft.id == id && draft.phase == "sending")
+        {
+            draft.phase = phase.into();
+        }
+        self.send_runtime_snapshot_patches(io, &before);
+    }
+
     fn dispatch_priority_write(&mut self, io: &mut impl LoopIo, mut envelope: WorkerEnvelope) {
         if self.priority_write_deadline_ms.is_some() {
             return;
@@ -317,9 +417,11 @@ impl RuntimeLoop {
         {
             return false;
         }
-        let matches = self.state.priority_write.as_ref().is_some_and(|write| {
-            write.pending && envelope.request_id.as_ref() == Some(&write.request_id)
-        });
+        let matches = self
+            .state
+            .priority_write
+            .as_ref()
+            .is_some_and(|write| envelope.request_id.as_ref() == Some(&write.request_id));
         if matches {
             let success = envelope.kind == EnvelopeKind::Result
                 && envelope.payload.get("ok").and_then(Value::as_bool) == Some(true);
@@ -791,7 +893,7 @@ mod tests {
                 WorkerEnvelope::event(
                     "call.offer",
                     json!({
-                        "key":{"transport":transport,"generation":1,"call_id":"unknown"},
+                        "key":{"transport":transport,"generation":1,"call_id":"runtime-outgoing-1"},
                         "address":"withheld"
                     }),
                 ),

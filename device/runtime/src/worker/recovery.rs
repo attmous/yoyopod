@@ -66,6 +66,25 @@ impl WorkerSupervisor {
             .spawn(move || {
                 let result = (|| {
                     let mut worker = worker.lock().map_err(|_| "retiring worker lock poisoned")?;
+                    #[cfg(target_os = "linux")]
+                    if let Some(owner) = worker.network_owner.as_mut() {
+                        // The privileged original owner must prove ECHILD BEFORE
+                        // reaping its sudo launcher. No token census crosses sudo.
+                        owner.drain()?;
+                        let deadline = Instant::now() + Duration::from_secs(2);
+                        while worker
+                            .child
+                            .try_wait()
+                            .map_err(|e| e.to_string())?
+                            .is_none()
+                        {
+                            if Instant::now() >= deadline {
+                                return Err("drained Network launcher not reaped".into());
+                            }
+                            thread::sleep(Duration::from_millis(10));
+                        }
+                        return Ok(());
+                    }
                     if worker
                         .child
                         .try_wait()
@@ -126,7 +145,7 @@ impl WorkerSupervisor {
                 preserve_ready_backlog(&mut worker.pending_messages, message);
             }
         }
-        if found && !worker_has_exited(worker) {
+        if found && !worker_has_exited(worker) && verify_worker_credentials(worker).is_ok() {
             self.starting.remove(&domain);
             return Ok(RecoveryStatus::Ready);
         }
@@ -239,17 +258,24 @@ pub(super) fn worker_command(
             domain,
             WorkerDomain::Media | WorkerDomain::Voip | WorkerDomain::Voice
         ) {
-            unprivileged_owner(&status)?
+            audio_owner(&status)?
         } else {
             None
         };
         if owner.is_some() {
             // setpriv execs the worker in place: Child/pidfd identity is unchanged.
             // Missing executable or rejected NNP setup fails startup, never falls back.
-            std::fs::metadata("/usr/bin/setpriv")
-                .map_err(|e| format!("worker requires /usr/bin/setpriv: {e}"))?;
+            ordinary_executable("/usr/bin/setpriv")?;
+            ordinary_executable(program)?;
             let mut command = Command::new("/usr/bin/setpriv");
-            command.args(["--no-new-privs", "--", program]);
+            command.args([
+                "--inh-caps=-all",
+                "--ambient-caps=-all",
+                "--no-new-privs",
+                "--",
+                program,
+            ]);
+            command.env("YOYOPOD_AUDIO_OWNER_UID", owner.unwrap().to_string());
             return Ok((command, owner, Some(runtime_start)));
         }
         Ok((Command::new(program), None, Some(runtime_start)))
@@ -259,6 +285,59 @@ pub(super) fn worker_command(
         let _ = domain;
         Ok((Command::new(program), None, None))
     }
+}
+
+#[cfg(target_os = "linux")]
+fn audio_owner(status: &str) -> Result<Option<u32>, String> {
+    let uid = status
+        .lines()
+        .find_map(|line| line.strip_prefix("Uid:"))
+        .ok_or("missing UIDs")?
+        .split_whitespace()
+        .map(str::parse::<u32>)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    if uid.len() != 4 {
+        return Err("incomplete UIDs".into());
+    }
+    if uid[0] == 0 || uid.iter().any(|id| *id != uid[0]) {
+        return Ok(None);
+    }
+    Ok(Some(uid[0]))
+}
+
+#[cfg(target_os = "linux")]
+fn ordinary_executable(program: &str) -> Result<(), String> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = std::fs::metadata(program).map_err(|e| e.to_string())?;
+    if !metadata.is_file() || metadata.mode() & 0o6000 != 0 {
+        return Err("audio executable must be an ordinary non-setid file".into());
+    }
+    let proof = Command::new("/usr/sbin/getcap")
+        .arg(program)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !proof.status.success() || !proof.stdout.is_empty() {
+        return Err("audio executable file capabilities could not be excluded".into());
+    }
+    Ok(())
+}
+
+pub(super) fn verify_worker_credentials(worker: &mut WorkerProcess) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    if let Some(owner) = worker.owner_uid {
+        let status = std::fs::read_to_string(format!("/proc/{}/status", worker.child.id()))
+            .map_err(|e| e.to_string())?;
+        if unprivileged_owner(&status)? != Some(owner)
+            || !status.lines().any(|line| line == "NoNewPrivs:\t1")
+        {
+            worker.owner_uid = None;
+            return Err("audio worker post-exec credential proof failed".into());
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = worker;
+    Ok(())
 }
 
 #[cfg(all(test, target_os = "linux"))]

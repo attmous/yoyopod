@@ -73,7 +73,7 @@ pub fn scene(props: &TalkProps) -> Scene {
 }
 
 fn contact_items(snapshot: &RuntimeSnapshot) -> Vec<DeckItem> {
-    snapshot
+    let mut items: Vec<_> = snapshot
         .call
         .contacts
         .iter()
@@ -90,7 +90,21 @@ fn contact_items(snapshot: &RuntimeSnapshot) -> Vec<DeckItem> {
                 },
             }),
         })
-        .collect()
+        .collect();
+    if snapshot.voice.interrupted_draft_path.is_some() {
+        items.push(DeckItem {
+            key: Key::Static("saved_draft"),
+            render: ItemRender::Wheel(WheelItemModel {
+                title: "Saved draft".into(),
+                subtitle: "Review or send".into(),
+                variant: WheelItemVariant::Action {
+                    icon_key: "play".into(),
+                    badge: None,
+                },
+            }),
+        });
+    }
+    items
 }
 
 pub(crate) fn contact_color(index: usize) -> u32 {

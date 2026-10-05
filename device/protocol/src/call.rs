@@ -1,5 +1,23 @@
 use serde::{Deserialize, Serialize};
 
+/// All producers publish serially in each namespace. A retired serial is never
+/// reused within a worker generation; each transport has a separate watermark.
+pub const MAX_LIVE_CALLS: usize = 64;
+
+pub fn call_ordinal(transport: &CallTransport, id: &str) -> Option<(usize, u64)> {
+    let incoming = match transport {
+        CallTransport::Sip => "sip-incoming-",
+        CallTransport::Gsm => "gsm-",
+    };
+    let (namespace, serial) = if let Some(serial) = id.strip_prefix(incoming) {
+        (0, serial)
+    } else {
+        (1, id.strip_prefix("runtime-outgoing-")?)
+    };
+    let value = serial.parse::<u64>().ok()?;
+    (value != 0 && value.to_string() == serial).then_some((namespace, value))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CallTransport {

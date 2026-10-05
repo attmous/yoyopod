@@ -48,7 +48,10 @@ pub fn focus_count(
         UiScreen::NowPlaying => 3,
         UiScreen::Stopwatch => 1,
         UiScreen::Flashlight => 0,
-        UiScreen::Talk => snapshot.call.contacts.len(),
+        UiScreen::Talk => {
+            snapshot.call.contacts.len()
+                + usize::from(snapshot.voice.interrupted_draft_path.is_some())
+        }
         UiScreen::Contacts => snapshot.call.contacts.len(),
         UiScreen::CallHistory => snapshot.call.history.len(),
         UiScreen::TalkContact => options::talk_contact_actions(snapshot, selected_contact).len(),

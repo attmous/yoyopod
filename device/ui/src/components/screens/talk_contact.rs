@@ -126,7 +126,7 @@ pub(crate) fn actions(
     snapshot: &RuntimeSnapshot,
     selected_contact: Option<&ListItemSnapshot>,
 ) -> Vec<DeckItem> {
-    if snapshot.voice.interrupted_draft_path.is_some() {
+    if snapshot.voice.interrupted_draft_path.is_some() && selected_contact.is_none() {
         return vec![
             action("review_draft", "Review draft", "play", None),
             action("discard_draft", "Discard draft", "close", None),
@@ -167,6 +167,11 @@ pub(crate) fn actions(
     }
     if selected_contact.is_some_and(|contact| !contact.can_call || !contact.can_receive) {
         items.retain(|item| item.key != Key::Static("record"));
+    }
+    if snapshot.voice.interrupted_draft_path.is_some() {
+        items.retain(|item| item.key != Key::Static("record"));
+        items.push(action("review_draft", "Review draft", "play", None));
+        items.push(action("discard_draft", "Discard draft", "close", None));
     }
     items
 }

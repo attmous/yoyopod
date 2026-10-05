@@ -7,6 +7,30 @@ impl RuntimeLoop {
         effect: CallEffect,
     ) {
         let command = match effect {
+            CallEffect::AcceptedUpdate(update) => {
+                let before = self.state.clone();
+                if update.key.transport == CallTransport::Gsm && update.phase == CallPhase::Ended {
+                    self.calls.native_guard.terminal(&update.key);
+                    if let Some(r) = self
+                        .calls
+                        .resources
+                        .as_mut()
+                        .filter(|r| r.interruption.key == update.key)
+                    {
+                        r.native_released = true;
+                    }
+                }
+                if self.manager.session() == Some(&update.key) {
+                    self.state.call.muted = update.muted;
+                    self.state.call.duration_text = format!(
+                        "{}:{:02}",
+                        update.duration_seconds / 60,
+                        update.duration_seconds % 60
+                    );
+                }
+                self.send_runtime_snapshot_patches(io, &before);
+                return;
+            }
             CallEffect::PrepareAudio(mut request) => {
                 if self.manager.session() != Some(&request.key)
                     || self.manager.phase() != Some(CallPhase::Preparing)

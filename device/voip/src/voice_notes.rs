@@ -17,17 +17,21 @@ pub fn preserve_interrupted_wav(source: &str) -> Result<String, String> {
     let parent = std::path::Path::new(source)
         .parent()
         .ok_or("draft has no parent")?;
+    let parent = private_draft_directory(parent)?;
     for _ in 0..1024 {
         let path = parent.join(format!(
             "{SAVED_PREFIX}{}-{}.wav",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        let mut output = match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
         {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+        }
+        let mut output = match options.open(&path) {
             Ok(file) => file,
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(e.to_string()),
@@ -42,6 +46,55 @@ pub fn preserve_interrupted_wav(source: &str) -> Result<String, String> {
         return Ok(path.to_string_lossy().into_owned());
     }
     Err("could not reserve unique interrupted recording".into())
+}
+
+fn private_draft_directory(parent: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let directory = if parent
+        .file_name()
+        .is_some_and(|name| name == ".yoyopod-drafts")
+    {
+        parent.to_path_buf()
+    } else {
+        parent.join(".yoyopod-drafts")
+    };
+    let builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+        let metadata = std::fs::symlink_metadata(parent).map_err(|e| e.to_string())?;
+        if !metadata.is_dir()
+            || metadata.uid() != unsafe { libc::geteuid() }
+            || metadata.mode() & 0o022 != 0
+        {
+            return Err(
+                "draft parent must be an owned directory without group/other write access".into(),
+            );
+        }
+    }
+    #[cfg(unix)]
+    let mut builder = {
+        use std::os::unix::fs::DirBuilderExt;
+        let mut builder = builder;
+        builder.mode(0o700);
+        builder
+    };
+    match builder.create(&directory) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e.to_string()),
+    }
+    let metadata = std::fs::symlink_metadata(&directory).map_err(|e| e.to_string())?;
+    if !metadata.is_dir() {
+        return Err("draft directory must not be a symlink or other file".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o077 != 0 {
+            return Err("draft directory must be private and owned by the worker".into());
+        }
+    }
+    Ok(directory)
 }
 
 /// Check closed RIFF/WAVE chunks without reading the captured audio into RAM.

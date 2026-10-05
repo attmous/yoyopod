@@ -10,7 +10,7 @@ use crate::playback::VoiceNotePlayback;
 use crate::runtime_snapshot::RuntimeSnapshot;
 use crate::voice_notes::VoiceNoteSession;
 use serde_json::json;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::ErrorKind;
 use yoyopod_protocol::call::{
@@ -141,7 +141,7 @@ pub struct VoipHost {
     config: Option<VoipConfig>,
     worker_generation: u64,
     sessions: BTreeMap<String, CallUpdate>,
-    released_sessions: BTreeSet<String>,
+    watermarks: [u64; 2],
     backend_started: bool,
     registered: bool,
     registration_state: String,
@@ -166,7 +166,7 @@ impl Default for VoipHost {
             config: None,
             worker_generation: 0,
             sessions: BTreeMap::new(),
-            released_sessions: BTreeSet::new(),
+            watermarks: [0; 2],
             backend_started: false,
             registered: false,
             registration_state: "none".to_string(),
@@ -319,9 +319,12 @@ impl VoipHost {
     }
 
     pub fn set_worker_generation(&mut self, generation: u64) {
+        if generation <= self.worker_generation {
+            return;
+        }
         self.worker_generation = generation;
         self.sessions.clear();
-        self.released_sessions.clear();
+        self.watermarks = [0; 2];
     }
 
     /// Admission is explicit runtime policy. Raw native offers never create history.
@@ -389,9 +392,15 @@ impl VoipHost {
             || key.call_id.trim().is_empty()
             || key.call_id.starts_with("sip-incoming-")
             || self.sessions.contains_key(&key.call_id)
+            || self.sessions.len() >= yoyopod_protocol::call::MAX_LIVE_CALLS
+            || !yoyopod_protocol::call::call_ordinal(&key.transport, &key.call_id)
+                .is_some_and(|(namespace, serial)| namespace == 1 && serial > self.watermarks[1])
         {
             return Err("invalid, duplicate or stale outgoing session key".into());
         }
+        self.watermarks[1] = yoyopod_protocol::call::call_ordinal(&key.transport, &key.call_id)
+            .unwrap()
+            .1;
         backend.make_session_call(key, address)?;
         self.call.start_outgoing(&key.call_id, address);
         self.sessions.insert(
@@ -957,7 +966,7 @@ impl VoipHost {
                 events.push(event);
             }
             if let Some(key) = released {
-                if self.released_sessions.insert(key.call_id.clone()) {
+                if self.sessions.remove(&key.call_id).is_some() {
                     events.push(BackendEvent::Cleanup(key));
                 }
             }
@@ -1078,9 +1087,17 @@ impl VoipHost {
     fn translate_backend_event(&mut self, event: BackendEvent) -> Option<BackendEvent> {
         Some(match event {
             BackendEvent::IncomingCall { call_id, from_uri } => {
-                if self.sessions.contains_key(&call_id) {
+                let Some((0, serial)) =
+                    yoyopod_protocol::call::call_ordinal(&CallTransport::Sip, &call_id)
+                else {
+                    return None;
+                };
+                if serial <= self.watermarks[0]
+                    || self.sessions.len() >= yoyopod_protocol::call::MAX_LIVE_CALLS
+                {
                     return None;
                 }
+                self.watermarks[0] = serial;
                 let key = SessionKey {
                     transport: CallTransport::Sip,
                     generation: self.worker_generation,
@@ -1217,12 +1234,12 @@ mod recording_tests {
                 ..Default::default()
             };
             let path =
-                std::env::temp_dir().join(format!("call-draft-{case}-{}.wav", std::process::id()));
+                test_directory().join(format!("call-draft-{case}-{}.wav", std::process::id()));
             std::fs::write(&path, [1u8; 100]).unwrap();
             host.start_voice_recording(&mut backend, path.to_str().unwrap())
                 .unwrap();
             let request = yoyopod_protocol::call::InterruptForCall {
-                key: command("a", 1, CallAction::Answer).key,
+                key: command("sip-incoming-1", 1, CallAction::Answer).key,
                 activity_generation: 1,
                 voice_activity_generation: 3,
             };
@@ -1246,12 +1263,12 @@ mod recording_tests {
             started: true,
             ..Default::default()
         };
-        let path = std::env::temp_dir().join(format!("call-draft-{}.wav", std::process::id()));
+        let path = test_directory().join(format!("call-draft-{}.wav", std::process::id()));
         std::fs::write(&path, sample_wav()).unwrap();
         host.start_voice_recording(&mut backend, path.to_str().unwrap())
             .unwrap();
         let request = yoyopod_protocol::call::InterruptForCall {
-            key: command("a", 1, CallAction::Answer).key,
+            key: command("sip-incoming-1", 1, CallAction::Answer).key,
             activity_generation: 1,
             voice_activity_generation: 3,
         };
@@ -1395,6 +1412,11 @@ mod recording_tests {
         }
     }
 
+    fn test_directory() -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!("yoyopod-voip-tests-{}", std::process::id()));
+        std::fs::create_dir_all(&path).unwrap();
+        path
+    }
     fn incoming(id: &str) -> BackendEvent {
         BackendEvent::IncomingCall {
             call_id: id.into(),
@@ -1403,8 +1425,60 @@ mod recording_tests {
     }
 
     #[test]
+    fn unavailable_saved_send_worker_returns_correlated_pre_native_failure() {
+        let mut host = VoipHost::default();
+        let mut backend = LocalRecordingBackend::default();
+        let command = crate::protocol::WorkerEnvelope::command(
+            "voip.send_saved_voice_note",
+            Some("send-1".into()),
+            json!({"draft_id":"draft-1","uri":"sip:a@test","file_path":"owned.wav","mime_type":"audio/wav","duration_ms":420,"client_id":"send-1"}),
+        );
+        let input = command.encode().unwrap();
+        let mut output = Vec::new();
+        crate::worker::run_worker(
+            std::io::Cursor::new(input),
+            &mut output,
+            &mut Vec::new(),
+            &mut host,
+            &mut backend,
+        )
+        .unwrap();
+        let envelopes: Vec<crate::protocol::WorkerEnvelope> = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| crate::protocol::WorkerEnvelope::decode(line.as_bytes()).unwrap())
+            .collect();
+        assert!(envelopes
+            .iter()
+            .any(|e| e.request_id.as_deref() == Some("send-1")
+                && e.payload["code"] == "saved_send_not_started"));
+        assert_eq!(backend.sends, 0);
+    }
+
+    #[test]
+    fn released_sip_sessions_are_bounded_and_old_incoming_cannot_reappear() {
+        let mut host = VoipHost::default();
+        let mut backend = LocalRecordingBackend::default();
+        for serial in 1..=10_000 {
+            let id = format!("sip-incoming-{serial}");
+            backend.events = vec![incoming(&id), state(&id, "end"), state(&id, "released")];
+            host.poll_backend_events(&mut backend).unwrap();
+            assert!(
+                host.sessions.is_empty(),
+                "Released must retire the full update"
+            );
+        }
+        backend.events = vec![
+            incoming("sip-incoming-1"),
+            state("sip-incoming-1", "connected"),
+        ];
+        assert!(host.poll_backend_events(&mut backend).unwrap().is_empty());
+        assert!(host.sessions.is_empty());
+    }
+
+    #[test]
     fn saved_send_recovers_host_without_capture_and_retains_async_bytes_until_last_delete() {
-        let source = std::env::temp_dir().join(format!("saved-source-{}.wav", std::process::id()));
+        let source = test_directory().join(format!("saved-source-{}.wav", std::process::id()));
         std::fs::write(&source, sample_wav()).unwrap();
         let path = crate::voice_notes::preserve_interrupted_wav(source.to_str().unwrap()).unwrap();
         let mut host = VoipHost::default(); // replacement worker, no recorder/draft metadata
@@ -1437,7 +1511,7 @@ mod recording_tests {
 
     #[test]
     fn saved_send_failure_retry_and_stale_identity_preserve_owned_source() {
-        let source = std::env::temp_dir().join(format!("saved-failure-{}.wav", std::process::id()));
+        let source = test_directory().join(format!("saved-failure-{}.wav", std::process::id()));
         std::fs::write(&source, sample_wav()).unwrap();
         let a = crate::voice_notes::preserve_interrupted_wav(source.to_str().unwrap()).unwrap();
         let b = crate::voice_notes::preserve_interrupted_wav(source.to_str().unwrap()).unwrap();
@@ -1495,7 +1569,7 @@ mod recording_tests {
 
     #[test]
     fn copy_failure_retains_finalized_source_for_replacement_host_without_capture() {
-        let source = std::env::temp_dir().join(format!("copy-failure-{}.wav", std::process::id()));
+        let source = test_directory().join(format!("copy-failure-{}.wav", std::process::id()));
         std::fs::write(&source, sample_wav()).unwrap();
         let mut host = VoipHost::default();
         let mut backend = LocalRecordingBackend {
@@ -1505,7 +1579,7 @@ mod recording_tests {
         host.start_voice_recording(&mut backend, source.to_str().unwrap())
             .unwrap();
         let request = yoyopod_protocol::call::InterruptForCall {
-            key: command("a", 1, CallAction::Answer).key,
+            key: command("sip-incoming-1", 1, CallAction::Answer).key,
             activity_generation: 1,
             voice_activity_generation: 3,
         };
@@ -1566,15 +1640,20 @@ mod recording_tests {
     fn incoming_offers_and_secondary_terminal_never_replace_foreground() {
         let mut host = VoipHost::default();
         host.set_worker_generation(7);
-        host.call.start_outgoing("a", "sip:primary@example.test");
-        host.call.apply_call_state("a", "connected");
+        host.call
+            .start_outgoing("sip-incoming-1", "sip:primary@example.test");
+        host.call.apply_call_state("sip-incoming-1", "connected");
         let mut backend = LocalRecordingBackend::default();
-        backend.events = vec![incoming("b"), state("b", "incoming"), state("b", "end")];
+        backend.events = vec![
+            incoming("sip-incoming-2"),
+            state("sip-incoming-2", "incoming"),
+            state("sip-incoming-2", "end"),
+        ];
         let events = host.poll_backend_events(&mut backend).unwrap();
-        assert_eq!(host.call.active_call_id(), Some("a"));
+        assert_eq!(host.call.active_call_id(), Some("sip-incoming-1"));
         assert_eq!(host.call.state(), "connected");
         assert!(
-            matches!(&events[0], BackendEvent::Offer(offer) if offer.key.call_id == "b" && offer.key.generation == 7)
+            matches!(&events[0], BackendEvent::Offer(offer) if offer.key.call_id == "sip-incoming-2" && offer.key.generation == 7)
         );
         assert!(
             matches!(&events[2], BackendEvent::Update(update) if update.phase == CallPhase::Ended && update.sequence == 2)
@@ -1588,35 +1667,38 @@ mod recording_tests {
         let mut host = VoipHost::default();
         host.set_worker_generation(7);
         let mut backend = LocalRecordingBackend::default();
-        backend.events = vec![incoming("a"), incoming("b")];
+        backend.events = vec![incoming("sip-incoming-1"), incoming("sip-incoming-2")];
         host.poll_backend_events(&mut backend).unwrap();
         assert!(host.call.active_call_id().is_none());
-        host.admit_session(&command("a", 7, CallAction::Answer).key)
+        host.admit_session(&command("sip-incoming-1", 7, CallAction::Answer).key)
             .unwrap();
-        assert_eq!(host.call.active_call_id(), Some("a"));
+        assert_eq!(host.call.active_call_id(), Some("sip-incoming-1"));
         assert!(host
-            .admit_session(&command("b", 7, CallAction::Answer).key)
+            .admit_session(&command("sip-incoming-2", 7, CallAction::Answer).key)
             .is_err());
         backend.events = vec![
-            state("b", "end"),
-            state("b", "released"),
-            state("a", "connected"),
-            state("a", "end"),
+            state("sip-incoming-2", "end"),
+            state("sip-incoming-2", "released"),
+            state("sip-incoming-1", "connected"),
+            state("sip-incoming-1", "end"),
         ];
         let events = host.poll_backend_events(&mut backend).unwrap();
         assert!(events
             .iter()
-            .any(|e| matches!(e,BackendEvent::Cleanup(key) if key.call_id=="b")));
+            .any(|e| matches!(e,BackendEvent::Cleanup(key) if key.call_id=="sip-incoming-2")));
         assert!(!events
             .iter()
-            .any(|e| matches!(e,BackendEvent::Cleanup(key) if key.call_id=="a")));
+            .any(|e| matches!(e,BackendEvent::Cleanup(key) if key.call_id=="sip-incoming-1")));
         assert_eq!(host.call.session_payload()["history_outcome"], "completed");
-        backend.events = vec![state("a", "released"), state("a", "released")];
+        backend.events = vec![
+            state("sip-incoming-1", "released"),
+            state("sip-incoming-1", "released"),
+        ];
         let events = host.poll_backend_events(&mut backend).unwrap();
         assert_eq!(
             events
                 .iter()
-                .filter(|e| matches!(e,BackendEvent::Cleanup(key) if key.call_id=="a"))
+                .filter(|e| matches!(e,BackendEvent::Cleanup(key) if key.call_id=="sip-incoming-1"))
                 .count(),
             1
         );
@@ -1628,13 +1710,13 @@ mod recording_tests {
         let mut host = VoipHost::default();
         host.set_worker_generation(7);
         let mut backend = LocalRecordingBackend::default();
-        backend.events = vec![incoming("a"), incoming("b")];
+        backend.events = vec![incoming("sip-incoming-1"), incoming("sip-incoming-2")];
         host.poll_backend_events(&mut backend).unwrap();
         assert_eq!(host.call.active_call_id(), None);
         for cmd in [
-            command("a", 7, CallAction::Answer),
-            command("b", 7, CallAction::Reject(RejectReason::Busy)),
-            command("a", 7, CallAction::Hangup),
+            command("sip-incoming-1", 7, CallAction::Answer),
+            command("sip-incoming-2", 7, CallAction::Reject(RejectReason::Busy)),
+            command("sip-incoming-1", 7, CallAction::Hangup),
         ] {
             host.apply_call(&mut backend, &cmd).unwrap();
         }
@@ -1644,18 +1726,27 @@ mod recording_tests {
                 .iter()
                 .map(|c| c.key.call_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["a", "b", "a"]
+            vec!["sip-incoming-1", "sip-incoming-2", "sip-incoming-1"]
         );
         assert!(host
-            .apply_call(&mut backend, &command("a", 6, CallAction::Answer))
+            .apply_call(
+                &mut backend,
+                &command("sip-incoming-1", 6, CallAction::Answer)
+            )
             .is_err());
         assert!(host
-            .apply_call(&mut backend, &command("unknown", 7, CallAction::Hangup))
+            .apply_call(
+                &mut backend,
+                &command("sip-incoming-99", 7, CallAction::Hangup)
+            )
             .is_err());
-        backend.events = vec![state("a", "end")];
+        backend.events = vec![state("sip-incoming-1", "end")];
         host.poll_backend_events(&mut backend).unwrap();
         assert!(host
-            .apply_call(&mut backend, &command("a", 7, CallAction::Answer))
+            .apply_call(
+                &mut backend,
+                &command("sip-incoming-1", 7, CallAction::Answer)
+            )
             .is_err());
         assert_eq!(backend.commands.len(), 3);
     }
@@ -1665,7 +1756,7 @@ mod recording_tests {
         use yoyopod_protocol::call::RejectReason;
         let mut host = VoipHost::default();
         let mut backend = LocalRecordingBackend {
-            events: vec![incoming("a"), incoming("b")],
+            events: vec![incoming("sip-incoming-1"), incoming("sip-incoming-2")],
             ..Default::default()
         };
         let mut commands = vec![
@@ -1681,10 +1772,10 @@ mod recording_tests {
             ),
         ];
         for (index, cmd) in [
-            command("a", 7, CallAction::Answer),
-            command("b", 7, CallAction::Reject(RejectReason::Busy)),
-            command("a", 7, CallAction::Hangup),
-            command("a", 6, CallAction::Answer),
+            command("sip-incoming-1", 7, CallAction::Answer),
+            command("sip-incoming-2", 7, CallAction::Reject(RejectReason::Busy)),
+            command("sip-incoming-1", 7, CallAction::Hangup),
+            command("sip-incoming-1", 6, CallAction::Answer),
             command("missing", 7, CallAction::Answer),
         ]
         .into_iter()
@@ -1721,11 +1812,11 @@ mod recording_tests {
         let mut host = VoipHost::default();
         let mut backend = LocalRecordingBackend::default();
         backend.events = vec![
-            incoming("offer"),
-            state("offer", "incoming"),
-            state("offer", "early_updated_by_remote"),
-            state("offer", "early_updating"),
-            state("offer", "transitional"),
+            incoming("sip-incoming-3"),
+            state("sip-incoming-3", "incoming"),
+            state("sip-incoming-3", "early_updated_by_remote"),
+            state("sip-incoming-3", "early_updating"),
+            state("sip-incoming-3", "transitional"),
         ];
         let events = host.poll_backend_events(&mut backend).unwrap();
         for event in events.into_iter().skip(1) {
@@ -1735,8 +1826,11 @@ mod recording_tests {
         }
         assert_eq!(host.call.active_call_id(), None);
         assert!(backend.commands.is_empty());
-        host.apply_call(&mut backend, &command("offer", 0, CallAction::Hangup))
-            .unwrap();
+        host.apply_call(
+            &mut backend,
+            &command("sip-incoming-3", 0, CallAction::Hangup),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1744,10 +1838,10 @@ mod recording_tests {
         let mut host = VoipHost::default();
         let mut backend = LocalRecordingBackend::default();
         backend.events = vec![
-            incoming("b"),
-            state("b", "end"),
-            incoming("b"),
-            state("b", "connected"),
+            incoming("sip-incoming-2"),
+            state("sip-incoming-2", "end"),
+            incoming("sip-incoming-2"),
+            state("sip-incoming-2", "connected"),
         ];
         let events = host.poll_backend_events(&mut backend).unwrap();
         assert_eq!(
@@ -1757,7 +1851,7 @@ mod recording_tests {
                 .count(),
             1
         );
-        assert_eq!(host.sessions["b"].phase, CallPhase::Ended);
+        assert_eq!(host.sessions["sip-incoming-2"].phase, CallPhase::Ended);
     }
     #[test]
     fn held_recording_has_a_hard_sixty_second_limit() {

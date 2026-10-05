@@ -1638,13 +1638,7 @@ impl RuntimeState {
                 self.voice.playback_duration_ms = 0;
             }
             VoiceIntent::Discard => self.voice.reset_draft(),
-            VoiceIntent::SavedSend(action) => {
-                if self.can_send_interrupted_draft() && self.matches_interrupted_draft(action) {
-                    if let Some(draft) = self.voice.interrupted_draft.as_mut() {
-                        draft.phase = "sending".into();
-                    }
-                }
-            }
+            VoiceIntent::SavedSend(_) => {} // The correlated dispatch owns Sending/Failed/Unknown.
             VoiceIntent::SavedDiscard(_) => {
                 // Clear only on the host's matching discarded_draft_path proof.
             }
