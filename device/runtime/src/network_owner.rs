@@ -561,6 +561,11 @@ mod tests {
         let pid = rustix::process::Pid::from_raw(line.trim().parse().unwrap()).unwrap();
         let leaf = rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).unwrap();
         drain_children().unwrap();
+        // The guardian's waitpid loop already reaped this retained Child.
+        assert_eq!(
+            parent.wait().unwrap_err().raw_os_error(),
+            Some(libc::ECHILD)
+        );
         assert!(children().unwrap().is_empty());
         assert_eq!(
             unsafe { libc::waitpid(-1, std::ptr::null_mut(), libc::WNOHANG) },
