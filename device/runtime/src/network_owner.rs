@@ -225,11 +225,21 @@ impl Drop for NetworkOwner {
 }
 
 fn children() -> Result<Vec<i32>, String> {
-    std::fs::read_to_string(format!("/proc/self/task/{}/children", std::process::id()))
-        .map_err(|e| e.to_string())?
-        .split_whitespace()
-        .map(|id| id.parse::<i32>().map_err(|e| e.to_string()))
-        .collect()
+    let mut children = Vec::new();
+    for task in std::fs::read_dir("/proc/self/task").map_err(|e| e.to_string())? {
+        let path = task.map_err(|e| e.to_string())?.path().join("children");
+        let owned = match std::fs::read_to_string(path) {
+            Ok(owned) => owned,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.to_string()),
+        };
+        for id in owned.split_whitespace() {
+            children.push(id.parse::<i32>().map_err(|e| e.to_string())?);
+        }
+    }
+    children.sort_unstable();
+    children.dedup();
+    Ok(children)
 }
 
 fn drain_children() -> Result<(), String> {

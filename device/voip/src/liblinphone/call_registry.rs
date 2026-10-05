@@ -81,6 +81,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn capacity_refusal_preserves_live_handles_and_release_removes_ownership() {
+        let mut calls = SessionRegistry::new();
+        for id in 0..64 {
+            calls.insert(id.to_string(), id).unwrap();
+        }
+        assert!(calls.is_full());
+        for id in 64..10_000 {
+            assert!(calls.insert(id.to_string(), id).is_err());
+        }
+        assert_eq!(calls.get("0"), Some(&0));
+        assert_eq!(calls.remove("0"), Some(0));
+        assert!(calls.get("0").is_none());
+        assert!(!calls.is_full());
+        calls.insert("10000".into(), 10000).unwrap();
+        assert_eq!(calls.get("1"), Some(&1));
+    }
+
+    #[test]
     fn duplicate_insertion_and_removal_drop_each_owned_handle_once() {
         use std::{cell::Cell, rc::Rc};
         struct Handle(Rc<Cell<usize>>);

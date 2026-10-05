@@ -191,10 +191,13 @@ impl CallManager {
             call_ordinal(&key.transport, &key.call_id).expect("validated identity");
         let watermark =
             &mut self.watermarks[usize::from(key.transport == CallTransport::Sip)][namespace];
-        if serial <= *watermark || self.sequences.len() >= MAX_LIVE_CALLS * 2 {
+        if serial <= *watermark {
             return false;
         }
         *watermark = serial;
+        if self.sequences.len() >= MAX_LIVE_CALLS * 2 {
+            return false;
+        }
         self.sequences.push((key.clone(), 0));
         true
     }
@@ -475,7 +478,10 @@ impl CallManager {
                 if let Some((_, latest)) =
                     self.generations.iter_mut().find(|(t, _)| *t == transport)
                 {
-                    *latest = (*latest).max(generation.saturating_add(1));
+                    if *latest <= generation {
+                        *latest = generation.saturating_add(1);
+                        self.watermarks[usize::from(transport == CallTransport::Sip)] = [0; 2];
+                    }
                 } else {
                     self.generations
                         .push((transport.clone(), generation.saturating_add(1)));
