@@ -89,8 +89,57 @@ bash tests/test-source-lock.sh --request-provenance KEYRING INRELEASE REQUEST_UR
 These exercise actual gpgv and the validator's actual HTTPS/cache helper. They
 do not substitute for the native positive lock and full mutation suite.
 
-## Resolution status
+## Validated literal inputs
 
-The first native acquisition is pending. No placeholder source lock is
-committed. Actual resolution values, signatures and behavioral test results
-must be reviewed before accepting this task or adding provider build work.
+[Native CI run 37394089751](https://github.com/attmous/yoyopod/actions/runs/37394089751)
+passed on exact checkout `1b29d51decb1367e89eb093b6353b5abfd491159`.
+The tracked `source-lock.json` is a byte-for-byte copy of its validated output,
+SHA256 `0d304d4b12c3505bcba9d55cc8cd18d2f459f76eafe7031ffcce334f9bc79a6f`.
+The run executed the three resolver/validator/full-suite commands above. It
+passed positive and cached source reconstruction and rejected all 28 malformed
+lock candidates before staging source, including coordinated snapshot changes
+and invalid cached provenance.
+
+- Official Debian ARM64 image:
+  `docker.io/library/debian@sha256:da496358bd6934d2bd6a563a33176a2e50eff5490c54b4ac6fb051b69fef4071`.
+  Raw child-manifest SHA256 equals that digest; official index SHA256 is
+  `a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a`.
+- Fixed snapshot: `20261006T000000Z`, now historical at resolution.
+  Source changelog epoch: `1754902287`.
+- Toolchain: GCC `14.2.0`, Meson `1.7.0`, dpkg `1.22.22`.
+  The lock records all 385 installed dependency versions, architectures and
+  package hashes from authenticated Packages bytes.
+- Archive keyring: Debian package `debian-archive-keyring=2025.1`;
+  keyring file SHA256
+  `506b815cbb32d9b6066b4a2aa524071e071761e7e7f68c3ac74f3061ba852017`.
+  Maintainer keyring: `debian-keyring=2025.07.26`; file SHA256
+  `052303f4083e56def3c82a94b16954e41bbd96b81624fc5a275791d2540bef2d`.
+- Initial signed certificate closure includes `ca-certificates=20250419`,
+  package SHA256
+  `ef590f89563aa4b46c8260d49d1cea0fc1b181d19e8df3782694706adf05c184`.
+
+Verified archive signer set:
+
+```text
+41587F7DB8C774BCCF131416762F67A0B2C39DE4
+4CB50190207B4758A3F73A796ED0E7B82643E131
+B8E5F13176D2A7A75220028078DBA3BC47EF2265
+```
+
+Descriptor signer: `796DB393DC3FF40222B6EA22D3EBB5966BB99196`.
+The scalar archive pin is the first verified fingerprint above. Actual dated
+request paths, final content-addressed HTTPS URIs and metadata/source hashes
+are retained in the lock and signature report; no URI mapping was inferred.
+
+| Verified source file | SHA256 |
+| --- | --- |
+| `modemmanager_1.24.0-1+deb13u1.dsc` | `40fad1bfeb286fcbeaf449286585f765e96b01c4e53dd3a80108e627624237e2` |
+| `modemmanager_1.24.0.orig.tar.xz` | `63ded4c0f3936bb0db5ae35ef1dfd57c5d5b4dd8a5cdaa7fb2182255218c9168` |
+| `modemmanager_1.24.0-1+deb13u1.debian.tar.xz` | `0362e74213576b3f830b344f139407843a6caf6b9ae892c5a085a340da6999f2` |
+
+Input-evidence artifact ID `11383061442`, ZIP SHA256
+`513fe16b8bdde18d63036467f242f99f98b9287f7be28673e1d23af634f50f71`.
+Signature-report SHA256:
+`871d91b10c7a12e35cc854bd33e07eedc748e321223adea58d1fa4984c254cb7`.
+This establishes source/build-input provenance. Provider patching, package
+builds, reproducibility and modem/audio qualification are later tasks.
