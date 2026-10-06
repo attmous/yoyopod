@@ -4,6 +4,38 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 test_dir=$(mktemp -d)
 trap 'rm -rf -- "$test_dir"' EXIT
+if [[ ${1:-} == --source-publication ]]; then
+    [[ $# == 4 ]] || { echo 'usage: test-source-lock.sh --source-publication LOCK DOWNLOADS_DIR ARCHIVE_SIGNERS' >&2; exit 1; }
+    source build/verify-inputs.sh
+    lock=$(realpath "$2")
+    downloads=$(realpath "$3")
+    cache="$test_dir/publication"
+    mkdir -p "$cache/metadata" "$cache/unrelated"
+    touch "$cache/unrelated/sentinel"
+    cp -- "$4" "$cache/metadata/archive-signature.txt.fingerprints"
+    while IFS=$'\t' read -r name expected; do
+        [[ $(hash "$downloads/$name") == "$expected" ]] || { echo 'FAIL: source fixture hash mismatch' >&2; exit 1; }
+    done < <(jq -r '.sources[]|[.name,.sha256]|@tsv' "$lock")
+    archive=$(jq -r '.signed_metadata[]|select(.kind=="release")|.signer_fingerprint' "$lock")
+    descriptor=$(jq -r '.signed_metadata[]|select(.kind=="dsc")|.signer_fingerprint' "$lock")
+    dsc="$downloads/modemmanager_1.24.0-1+deb13u1.dsc"
+    publish_verified_source "$lock" "$dsc" "$cache" "$archive" "$descriptor"
+    [[ -s "$cache/source/debian/control" && -s "$cache/source/debian/patches/series" ]]
+    [[ $(dpkg-parsechangelog -l "$cache/source/debian/changelog" -S Timestamp) == $(jq -r .source_date_epoch "$lock") ]]
+    jq -e --arg hash "$(hash "$lock")" --arg archive "$archive" --arg descriptor "$descriptor" \
+        '.source_lock_sha256==$hash and .archive_signer_fingerprint==$archive and .descriptor_signer_fingerprint==$descriptor
+         and (.archive_signer_fingerprints|length)>0 and (.validated_requests|length)==7' "$cache/signature-report.json" >/dev/null
+    echo 'PASS: genuine source and signature report published with exact source epoch'
+    touch "$cache/source/local-build-mutation"
+    publish_verified_source "$lock" "$dsc" "$cache" "$archive" "$descriptor"
+    [[ ! -e "$cache/source/local-build-mutation" && -f "$cache/unrelated/sentinel" ]]
+    [[ -z $(find "$cache" -maxdepth 1 -type d -name 'staging.*' -print) ]]
+    while IFS=$'\t' read -r name expected; do
+        [[ $(hash "$downloads/$name") == "$expected" ]] || { echo 'FAIL: publication changed source archive' >&2; exit 1; }
+    done < <(jq -r '.sources[]|[.name,.sha256]|@tsv' "$lock")
+    echo 'PASS: repeated publication reconstructs source and confines staging cleanup'
+    exit 0
+fi
 if [[ ${1:-} == --source-date ]]; then
     [[ $# == 3 ]] || { echo 'usage: test-source-lock.sh --source-date DEBIAN_ARCHIVE EXPECTED_EPOCH' >&2; exit 1; }
     source build/verify-inputs.sh

@@ -125,9 +125,34 @@ validate_request_paths() {
     ' "$lock" >/dev/null || fail 'metadata kind or descriptor request binding mismatch'
 }
 
+publish_verified_source() {
+    local lock=$1 dsc=$2 cache=$3 archive_signer=$4 dsc_signer=$5 staged epoch
+    # Never preserve previously modified build sources as verified input.
+    staged=$(mktemp -d "$cache/staging.XXXXXX") || return 1
+    if ! dpkg-source --no-check -x "$dsc" "$staged/source"; then rm -rf -- "$staged"; return 1; fi
+    epoch=$(dpkg-parsechangelog -l "$staged/source/debian/changelog" -S Timestamp) || { rm -rf -- "$staged"; return 1; }
+    [[ "$epoch" == $(jq -r .source_date_epoch "$lock") ]] || { rm -rf -- "$staged"; fail 'extracted source date mismatch'; return 1; }
+    # Finalize the report before publishing source. dpkg-source creates a
+    # sibling orig archive inside staging as well as the extracted source.
+    jq -n --arg archive "$archive_signer" --arg descriptor "$dsc_signer" --arg lock "$(hash "$lock")" \
+       --rawfile archive_set "$cache/metadata/archive-signature.txt.fingerprints" \
+       --slurpfile pins "$lock" \
+       '{schema_version:1,source_lock_sha256:$lock,archive_signer_fingerprint:$archive,
+         archive_signer_fingerprints:($archive_set|split("\n")|map(select(length>0))),descriptor_signer_fingerprint:$descriptor,
+         snapshot:$pins[0].snapshot,validated_requests:([$pins[0].signed_metadata[],$pins[0].sources[]]|map({request_uri,uri,sha256}))}' > "$staged/signature-report.json" \
+         || { rm -rf -- "$staged"; return 1; }
+    rm -rf -- "$cache/source"
+    mv -- "$staged/source" "$cache/source" || { rm -rf -- "$staged"; return 1; }
+    mv -- "$staged/signature-report.json" "$cache/signature-report.json" || { rm -rf -- "$staged"; return 1; }
+    # Remove only our mktemp directory and dpkg-source's sibling copy, keeping
+    # the authenticated original downloads and all unrelated cache data.
+    rm -rf -- "$staged"
+    echo "Verified source staged at $cache/source"
+}
+
 verify_inputs() {
     [[ $# == 2 ]] || fail 'usage: verify-inputs.sh LOCK CACHE_DIR'
-    local lock cache root snapshot base kind request_uri uri expected name archive_signer dsc_signer dsc staged
+    local lock cache root snapshot base kind request_uri uri expected name archive_signer dsc_signer dsc
     lock=$(realpath "$1")
     cache=$(realpath -m "$2")
     root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -197,19 +222,7 @@ verify_inputs() {
     while IFS=$'\t' read -r name expected; do
         [[ $(hash "$root/$name") == "$expected" ]] || fail "local patch hash mismatch: $name"
     done < <(jq -r '.patches[]|[.path,.sha256]|@tsv' "$lock")
-    # Never preserve previously modified build sources as verified input.
-    staged=$(mktemp -d "$cache/staging.XXXXXX")
-    dpkg-source --no-check -x "$dsc" "$staged/source"
-    rm -rf -- "$cache/source"
-    mv -- "$staged/source" "$cache/source"
-    rmdir "$staged"
-    jq -n --arg archive "$archive_signer" --arg descriptor "$dsc_signer" --arg lock "$(hash "$lock")" \
-       --rawfile archive_set "$cache/metadata/archive-signature.txt.fingerprints" \
-       --slurpfile pins "$lock" \
-       '{schema_version:1,source_lock_sha256:$lock,archive_signer_fingerprint:$archive,
-         archive_signer_fingerprints:($archive_set|split("\n")|map(select(length>0))),descriptor_signer_fingerprint:$descriptor,
-         snapshot:$pins[0].snapshot,validated_requests:([$pins[0].signed_metadata[],$pins[0].sources[]]|map({request_uri,uri,sha256}))}' > "$cache/signature-report.json"
-    echo "Verified source staged at $cache/source"
+    publish_verified_source "$lock" "$dsc" "$cache" "$archive_signer" "$dsc_signer"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then verify_inputs "$@"; fi
