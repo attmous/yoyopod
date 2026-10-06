@@ -4,6 +4,17 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 test_dir=$(mktemp -d)
 trap 'rm -rf -- "$test_dir"' EXIT
+if [[ ${1:-} == --source-date ]]; then
+    [[ $# == 3 ]] || { echo 'usage: test-source-lock.sh --source-date DEBIAN_ARCHIVE EXPECTED_EPOCH' >&2; exit 1; }
+    source build/verify-inputs.sh
+    check_source_date "$2" "$3" "$test_dir"
+    echo "PASS: genuine Debian changelog epoch $3"
+    if check_source_date "$2" 1 "$test_dir"; then
+        echo 'FAIL: accepted changed source date' >&2; exit 1
+    fi
+    echo 'PASS: rejected changed source date'
+    exit 0
+fi
 # Focused signature regression can execute without ARM/package tooling. Inputs
 # must be genuine signed Debian metadata and its trusted archive keyring.
 if [[ ${1:-} == --archive-signature ]]; then

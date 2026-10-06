@@ -66,6 +66,17 @@ release_hash() {
         section && $3==path {print $1}' "$release"
 }
 
+check_source_date() {
+    local archive=$1 locked_epoch=$2 scratch=$3 changelog epoch
+    # A /dev/stdin tar pipe yields EOF in dpkg's changelog parser. Preserve the
+    # identical changelog bytes in a seekable regular file before parsing.
+    changelog=$(mktemp "$scratch/source-changelog.XXXXXX") || return 1
+    tar -xOf "$archive" debian/changelog > "$changelog" || { rm -f -- "$changelog"; return 1; }
+    epoch=$(dpkg-parsechangelog -l "$changelog" -S Timestamp) || { rm -f -- "$changelog"; return 1; }
+    rm -f -- "$changelog"
+    [[ "$epoch" == "$locked_epoch" ]] || fail 'source date mismatch'
+}
+
 validate_schema() {
     jq -e '
       def exact($fields): type == "object" and (keys == ($fields|sort));
@@ -178,6 +189,7 @@ verify_inputs() {
         --arg request_uri "$(jq -r --arg name "$name" '.sources[]|select(.name==$name)|.request_uri' "$lock")" \
         --arg sha "$(hash "$cache/downloads/$name")" 'any(.signed_metadata[]; .kind=="dsc" and .signer_fingerprint==$signer and .request_uri==$request_uri and .uri==$uri and .sha256==$sha)' "$lock" >/dev/null || fail 'descriptor signer/hash/request mismatch'
     dscverify --keyring /usr/share/keyrings/debian-keyring.gpg "$dsc"
+    check_source_date "$cache/downloads/modemmanager_1.24.0-1+deb13u1.debian.tar.xz" "$(jq -r .source_date_epoch "$lock")" "$cache/metadata"
     while IFS=$'\t' read -r package version architecture expected; do
         uri=$(jq -er --arg name "$package" --arg version "$version" --arg arch "$architecture" '.[]|select(.name==$name and .version==$version and .architecture==$arch)|.filename' "$cache/metadata/packages.json")
         fetch "$base/$uri" "$cache/downloads/${uri##*/}" "$expected"
@@ -185,7 +197,6 @@ verify_inputs() {
     while IFS=$'\t' read -r name expected; do
         [[ $(hash "$root/$name") == "$expected" ]] || fail "local patch hash mismatch: $name"
     done < <(jq -r '.patches[]|[.path,.sha256]|@tsv' "$lock")
-    [[ $(tar -xOf "$cache/downloads/modemmanager_1.24.0-1+deb13u1.debian.tar.xz" debian/changelog | dpkg-parsechangelog -l /dev/stdin -S Timestamp) == $(jq -r .source_date_epoch "$lock") ]] || fail 'source date mismatch'
     # Never preserve previously modified build sources as verified input.
     staged=$(mktemp -d "$cache/staging.XXXXXX")
     dpkg-source --no-check -x "$dsc" "$staged/source"
