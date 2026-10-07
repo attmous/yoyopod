@@ -1,0 +1,50 @@
+name: Time security
+
+on:
+  pull_request:
+    paths:
+      - 'device/**'
+      - '.github/workflows/time-security.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'device/**'
+      - '.github/workflows/time-security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  features:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Reject vulnerable time parsing features
+        run: |
+          cargo metadata --manifest-path device/Cargo.toml --locked \
+            --all-features --format-version 1 > time-metadata.json
+          jq -e '
+            [.packages[] | select(.name == "time") | .id] as $ids
+            | [.resolve.nodes[] | select(.id as $id | $ids | index($id))] as $time
+            | if ($time | length) == 0 then
+                error("time is missing from the resolved workspace graph")
+              elif any($time[]; .features | index("parsing")) then
+                error("time parsing is enabled: reassess RUSTSEC-2026-0009 before merging")
+              else $time[] | {id, features} end
+          ' time-metadata.json
+      - name: Show all-target time feature consumers
+        run: cargo tree --manifest-path device/Cargo.toml --workspace --locked --all-features --target all --edges features --invert time
+      - name: Test network timestamp handling
+        run: cargo test --manifest-path device/Cargo.toml -p yoyopod-network --lib gps::tests --locked
+
+  network-msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.82.0
+      - name: Check network library and binaries at their declared MSRV
+        run: cargo check --manifest-path device/Cargo.toml -p yoyopod-network --lib --bins --locked
