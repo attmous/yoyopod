@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'www/**'
+      - 'docsite/website/**'
       - 'docsite/website-vision/**'
       - 'deploy/web/**'
       - 'scripts/build_web.mjs'
@@ -16,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        dir: [www, docsite/website-vision]
+        dir: [www, docsite/website, docsite/website-vision]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
