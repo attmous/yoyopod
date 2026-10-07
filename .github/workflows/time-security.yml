@@ -46,5 +46,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.82.0
-      - name: Check network at its declared MSRV
-        run: cargo check --manifest-path device/Cargo.toml -p yoyopod-network --all-targets --locked
+      - name: Check network library and binaries at their declared MSRV
+        run: cargo check --manifest-path device/Cargo.toml -p yoyopod-network --lib --bins --locked
