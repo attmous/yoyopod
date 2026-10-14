@@ -1,0 +1,62 @@
+Description: Register real voice lifecycle regressions against daemon sources
+Author: yoyopod contributors
+Origin: other, yoyopod
+Forwarded: not-needed
+Last-Update: 2026-10-06
+
+diff --git a/src/meson.build b/src/meson.build
+index f88d905a..00d3f0d8 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -255,7 +255,6 @@ subdir('plugins')
+ 
+ # ModemManager daemon
+ sources = files(
+-  'main.c',
+   'mm-auth-provider.c',
+   'mm-base-bearer.c',
+   'mm-base-call.c',
+@@ -291,7 +290,6 @@ sources = files(
+   'mm-iface-modem-signal.c',
+   'mm-iface-modem-simple.c',
+   'mm-iface-modem-time.c',
+-  'mm-iface-modem-voice.c',
+   'mm-log-helpers.c',
+   'mm-plugin.c',
+   'mm-plugin-manager.c',
+@@ -369,9 +367,13 @@ if enable_mbim
+   )
+ endif
+ 
++voice_test_sources = sources + builtin_sources
++voice_test_deps = deps
++voice_test_c_args = c_args
++
+ executable(
+   'ModemManager',
+-  sources: [sources, builtin_sources],
++  sources: [sources, builtin_sources, 'main.c', 'mm-iface-modem-voice.c'],
+   include_directories: [ top_inc, plugins_inc ],
+   dependencies: deps,
+   c_args: c_args,
+diff --git a/src/tests/meson.build b/src/tests/meson.build
+index a6a1ae72..efca859b 100644
+--- a/src/tests/meson.build
++++ b/src/tests/meson.build
+@@ -1,6 +1,16 @@
+ # SPDX-License-Identifier: GPL-2.0-or-later
+ # Copyright (C) 2021 Iñigo Martinez <inigomartinez@gmail.com>
+ 
++voice_audio_test = executable(
++  'test-voice-audio',
++  sources: voice_test_sources + files('provider-fixture.c', 'test-voice-audio.c'),
++  include_directories: [top_inc, src_inc, plugins_inc],
++  dependencies: voice_test_deps,
++  c_args: voice_test_c_args,
++  link_whole: builtin_plugins,
++)
++test('test-voice-audio', voice_audio_test, suite: 'yoyopod-provider', timeout: 120)
++
+ test_units = {
+   'at-serial-port': libport_dep,
+   'cbm-part': libhelpers_dep,
