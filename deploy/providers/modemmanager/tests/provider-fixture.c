@@ -9,6 +9,12 @@
 #include "plugins/simtech/mm-broadband-modem-qmi-simtech.h"
 #include "mm-kernel-device-generic.h"
 #include "mm-call-qmi.h"
+#include "mm-serial-parsers.h"
+#include <pty.h>
+#include <termios.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
 
 struct _VoiceFixture {
     GTestDBus *bus;
@@ -25,6 +31,17 @@ struct _VoiceFixture {
     guint end_call_count;
     guint8 end_call_id;
     guint transport_tasks;
+    gboolean qmi_missing;
+    GHashTable *at_counts;
+    gchar *readback;
+    gchar *hold_command;
+    GTask *held_at;
+    gboolean lifecycle_done;
+    gboolean lifecycle_success;
+    GError *lifecycle_error;
+    MMPortSerialAt *pty_port;
+    int pty_master;
+    gboolean blocker_done;
 };
 
 typedef struct {
@@ -35,6 +52,9 @@ typedef struct {
     GCancellable *cancellable;
 } FixtureChannel;
 
+static void fixture_return_at (GTask *task);
+void __real_mm_base_modem_at_command_full (MMBaseModem *, MMIfacePortAt *, const gchar *, guint, gboolean, gboolean, GCancellable *, GAsyncReadyCallback, gpointer);
+const gchar *__real_mm_base_modem_at_command_full_finish (MMBaseModem *, GAsyncResult *, GError **);
 static void fixture_support_ready (MMIfaceModemVoice *self, GAsyncResult *res, gboolean *done);
 
 static void
@@ -92,10 +112,10 @@ fixture_support_ready (MMIfaceModemVoice *self, GAsyncResult *res, gboolean *don
 
 /* Only fixed transport effects are replaced. Real Simtech callbacks consume
  * source-object-bound tasks; no modem state or Call behavior is reimplemented. */
-void
-__wrap_mm_base_modem_at_command (MMBaseModem *self, const gchar *command,
-                                 guint timeout, gboolean cached,
-                                 GAsyncReadyCallback callback, gpointer user_data)
+static void
+fixture_at (MMBaseModem *self, const gchar *command,
+            guint timeout, gboolean cached, GCancellable *cancellable,
+            GAsyncReadyCallback callback, gpointer user_data)
 {
     VoiceFixture *f = g_object_get_data (G_OBJECT (self), "voice-fixture");
     GTask *task;
@@ -104,7 +124,16 @@ __wrap_mm_base_modem_at_command (MMBaseModem *self, const gchar *command,
 
     g_assert_nonnull (f);
     g_assert_cmpuint (timeout, ==, 3);
-    task = g_task_new (self, NULL, callback, user_data);
+    g_hash_table_replace (f->at_counts, g_strdup (command),
+                          GUINT_TO_POINTER (GPOINTER_TO_UINT (g_hash_table_lookup (f->at_counts, command)) + 1));
+    if (f->pty_port && (!g_strcmp0 (command, "+CPCMREG=1") || !g_strcmp0 (command, "+CPCMREG=0"))) {
+        g_assert_false (cached);
+        __real_mm_base_modem_at_command_full (self, MM_IFACE_PORT_AT (f->pty_port), command,
+                                             timeout, cached, FALSE, cancellable, callback, user_data);
+        return;
+    }
+    task = g_task_new (self, cancellable, callback, user_data);
+    g_object_set_data (G_OBJECT (task), "fixture-at", GINT_TO_POINTER (1));
     fixture_track_transport (f, task);
     if (!g_strcmp0 (command, "+CPCMREG=1") || !g_strcmp0 (command, "+CPCMREG=0")) {
         gboolean cleanup = !g_strcmp0 (command, "+CPCMREG=0");
@@ -124,21 +153,62 @@ __wrap_mm_base_modem_at_command (MMBaseModem *self, const gchar *command,
         reply = "+CPCMREG: (0,1)";
     else if (!g_strcmp0 (command, "+CPCMFRM=?"))
         reply = "+CPCMFRM: (0,1)";
-    else
-        g_assert_cmpstr (command, ==, "+CPCMFRM=1");
-    g_assert_cmpint (cached, ==, g_strcmp0 (command, "+CPCMFRM=1") != 0);
+    else if (!g_strcmp0 (command, "+CPCMFRM?"))
+        reply = f->readback;
+    else if (g_strcmp0 (command, "+CPCMFRM=1") && g_strcmp0 (command, "+CLCC=1") && g_strcmp0 (command, "+CLCC=0"))
+        g_assert_not_reached ();
+    g_assert_cmpint (cached, ==, (!g_strcmp0 (command, "+CLCC=?") ||
+                                !g_strcmp0 (command, "+CPCMREG=?") ||
+                                !g_strcmp0 (command, "+CPCMFRM=?")));
     g_task_set_task_data (task, g_strdup (reply), g_free);
+    if (!g_strcmp0 (command, f->hold_command)) {
+        g_assert_null (f->held_at);
+        f->held_at = task;
+        g_clear_pointer (&f->hold_command, g_free);
+        return;
+    }
+    fixture_return_at (task);
+}
+
+static void
+fixture_return_at (GTask *task)
+{
     g_task_return_boolean (task, TRUE);
     g_object_unref (task);
+}
+
+void
+__wrap_mm_base_modem_at_command (MMBaseModem *self, const gchar *command, guint timeout,
+                                gboolean cached, GAsyncReadyCallback callback, gpointer user_data)
+{
+    fixture_at (self, command, timeout, cached, NULL, callback, user_data);
+}
+
+void
+__wrap_mm_base_modem_at_command_full (MMBaseModem *self, MMIfacePortAt *port,
+                                     const gchar *command, guint timeout, gboolean cached,
+                                     gboolean raw, GCancellable *cancellable,
+                                     GAsyncReadyCallback callback, gpointer user_data)
+{
+    g_assert_false (raw);
+    fixture_at (self, command, timeout, cached, cancellable, callback, user_data);
 }
 
 const gchar *
 __wrap_mm_base_modem_at_command_finish (MMBaseModem *self, GAsyncResult *res, GError **error)
 {
     g_assert_true (g_task_is_valid (res, self));
+    if (!g_object_get_data (G_OBJECT (res), "fixture-at"))
+        return __real_mm_base_modem_at_command_full_finish (self, res, error);
     if (!g_task_propagate_boolean (G_TASK (res), error))
         return NULL;
     return g_task_get_task_data (G_TASK (res));
+}
+
+const gchar *
+__wrap_mm_base_modem_at_command_full_finish (MMBaseModem *self, GAsyncResult *res, GError **error)
+{
+    return __wrap_mm_base_modem_at_command_finish (self, res, error);
 }
 
 MMPortQmi *
@@ -156,7 +226,7 @@ __wrap_mm_port_qmi_peek_client (MMPortQmi *port, QmiService service, guint flag)
     g_assert_nonnull (f);
     g_assert_cmpint (service, ==, QMI_SERVICE_VOICE);
     g_assert_cmpint (flag, ==, MM_PORT_QMI_FLAG_DEFAULT);
-    return QMI_CLIENT (f->qmi_client);
+    return f->qmi_missing ? NULL : QMI_CLIENT (f->qmi_client);
 }
 
 void
@@ -197,15 +267,17 @@ drain (void)
 }
 
 VoiceFixture *
-voice_fixture_new (void)
+voice_fixture_new_uninitialized (void)
 {
     VoiceFixture *f = g_new0 (VoiceFixture, 1);
     GError *error = NULL;
-    gboolean supported = FALSE;
     const gchar *drivers[] = { "fixture", NULL };
     GDBusConnectionFlags flags = G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
                                  G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION;
 
+    f->at_counts = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+    f->readback = g_strdup ("+CPCMFRM: 1");
+    f->pty_master = -1;
     f->bus = g_test_dbus_new (G_TEST_DBUS_NONE);
     g_test_dbus_up (f->bus);
     f->server = g_dbus_connection_new_for_address_sync (g_test_dbus_get_bus_address (f->bus), flags, NULL, NULL, &error);
@@ -213,11 +285,11 @@ voice_fixture_new (void)
     f->client = g_dbus_connection_new_for_address_sync (g_test_dbus_get_bus_address (f->bus), flags, NULL, NULL, &error);
     g_assert_no_error (error);
     f->voice = MM_IFACE_MODEM_VOICE (mm_broadband_modem_qmi_simtech_new ("fixture", "/fixture", drivers, "simtech", 0, 0));
-    f->calls = mm_call_list_new (MM_BASE_MODEM (f->voice));
     g_object_set (f->voice, MM_BASE_MODEM_CONNECTION, f->server,
-                  MM_IFACE_MODEM_VOICE_CALL_LIST, f->calls, NULL);
+                  NULL);
     f->channels = g_ptr_array_new_with_free_func ((GDestroyNotify) fixture_channel_free);
     g_object_set_data (G_OBJECT (f->voice), "voice-fixture", f);
+    fixture_grab_port (f, "tty", "fixture-at", MM_PORT_TYPE_AT);
     fixture_grab_port (f, "tty", "fixture-audio", MM_PORT_TYPE_AUDIO);
     fixture_grab_port (f, "usbmisc", "fixture-qmi", MM_PORT_TYPE_QMI);
     fixture_grab_port (f, "net", "fixture-net", MM_PORT_TYPE_NET);
@@ -230,11 +302,21 @@ voice_fixture_new (void)
     g_object_set_data (G_OBJECT (f->qmi_client), "voice-fixture", f);
     g_assert_true (mm_base_modem_organize_ports (MM_BASE_MODEM (f->voice), &error));
     g_assert_no_error (error);
+    f->owned_calls = g_ptr_array_new_with_free_func (g_object_unref);
+    return f;
+}
+
+VoiceFixture *
+voice_fixture_new (void)
+{
+    VoiceFixture *f = voice_fixture_new_uninitialized ();
+    gboolean supported = FALSE;
+    f->calls = mm_call_list_new (MM_BASE_MODEM (f->voice));
+    g_object_set (f->voice, MM_IFACE_MODEM_VOICE_CALL_LIST, f->calls, NULL);
     MM_IFACE_MODEM_VOICE_GET_IFACE (f->voice)->check_support (
         f->voice, (GAsyncReadyCallback) fixture_support_ready, &supported);
     while (!supported)
         g_main_context_iteration (NULL, TRUE);
-    f->owned_calls = g_ptr_array_new_with_free_func (g_object_unref);
     return f;
 }
 
@@ -243,6 +325,8 @@ voice_fixture_free (VoiceFixture *f)
 {
     guint i;
     gpointer weak_voice = f->voice;
+    g_assert_null (f->held_at);
+    mm_iface_modem_voice_shutdown (f->voice);
     for (i = 0; i < f->owned_calls->len; i++)
         mm_base_call_unexport (g_ptr_array_index (f->owned_calls, i));
     g_object_set (f->voice, MM_IFACE_MODEM_VOICE_CALL_LIST, NULL,
@@ -266,6 +350,13 @@ voice_fixture_free (VoiceFixture *f)
     drain ();
     g_test_dbus_down (f->bus);
     g_object_unref (f->bus);
+    g_clear_object (&f->pty_port);
+    if (f->pty_master >= 0)
+        close (f->pty_master);
+    g_hash_table_unref (f->at_counts);
+    g_free (f->readback);
+    g_free (f->hold_command);
+    g_clear_error (&f->lifecycle_error);
     g_free (f->last_port);
     g_free (f);
 }
@@ -276,6 +367,11 @@ MMPort *voice_fixture_audio_port (VoiceFixture *f) { return f->port; }
 static MMBaseCall *
 add_call (VoiceFixture *f, MMBaseCall *call)
 {
+    MMCallList *current = NULL;
+    g_object_get (f->voice, MM_IFACE_MODEM_VOICE_CALL_LIST, &current, NULL);
+    g_assert_nonnull (current);
+    g_assert_true (f->calls == current);
+    g_object_unref (current);
     mm_base_call_export (call);
     mm_call_list_add_call (f->calls, call);
     g_ptr_array_add (f->owned_calls, call);
@@ -354,15 +450,21 @@ voice_fixture_read_port (VoiceFixture *f, MMBaseCall *call)
 
 /* Synthetic test format; this makes no modem framing or qualification claim. */
 void
-voice_fixture_publish_active (VoiceFixture *f)
+voice_fixture_publish_active_rate (VoiceFixture *f, guint rate)
 {
     MMVoiceAudioToken token = mm_iface_modem_voice_audio_begin_channel (f->voice);
     MMCallAudioFormat *format = mm_call_audio_format_new ();
     mm_call_audio_format_set_encoding (format, "pcm");
     mm_call_audio_format_set_resolution (format, "s16le");
-    mm_call_audio_format_set_rate (format, 16000);
+    mm_call_audio_format_set_rate (format, rate);
     g_assert_true (mm_iface_modem_voice_audio_commit_channel (f->voice, token, f->port, format));
     g_object_unref (format);
+}
+
+void
+voice_fixture_publish_active (VoiceFixture *f)
+{
+    voice_fixture_publish_active_rate (f, 16000);
 }
 
 static void
@@ -384,7 +486,7 @@ fixture_cleanup_ready (MMIfaceModemVoice *self, GAsyncResult *res, FixtureChanne
 }
 
 static MMVoiceAudioToken
-fixture_start_channel (VoiceFixture *f, gboolean cleanup)
+fixture_start_channel (VoiceFixture *f, gboolean cleanup, gboolean wait)
 {
     InCallEventContext *ctx = get_in_call_event_context (f->voice);
     FixtureChannel *channel = g_new0 (FixtureChannel, 1);
@@ -404,6 +506,8 @@ fixture_start_channel (VoiceFixture *f, gboolean cleanup)
                        (GAsyncReadyCallback) fixture_setup_ready, channel);
     }
     /* The actual Simtech 100ms timer reaches the wrapped fixed transport. */
+    if (!wait)
+        return channel->token;
     while (!channel->transport && !channel->done)
         g_main_context_iteration (NULL, TRUE);
     g_assert_nonnull (channel->transport);
@@ -413,13 +517,13 @@ fixture_start_channel (VoiceFixture *f, gboolean cleanup)
 MMVoiceAudioToken
 voice_fixture_start_channel (VoiceFixture *f)
 {
-    return fixture_start_channel (f, FALSE);
+    return fixture_start_channel (f, FALSE, TRUE);
 }
 
 MMVoiceAudioToken
 voice_fixture_start_cleanup (VoiceFixture *f)
 {
-    return fixture_start_channel (f, TRUE);
+    return fixture_start_channel (f, TRUE, TRUE);
 }
 
 void
@@ -498,4 +602,238 @@ voice_fixture_assert_exhaustion (VoiceFixture *f)
     token = mm_iface_modem_voice_audio_begin_configuration (f->voice);
     g_assert_cmpuint (token.operation, ==, 0);
     g_assert_null (ctx->configured_audio_format);
+}
+
+/* Task3 integration uses public lifecycle entry/finish pairs, never vfunc replacements. */
+static void
+fixture_initialize_ready (MMIfaceModemVoice *self, GAsyncResult *res, VoiceFixture *f)
+{
+    MMCallList *list = NULL;
+    f->lifecycle_success = mm_iface_modem_voice_initialize_finish (self, res, &f->lifecycle_error);
+    g_object_get (self, MM_IFACE_MODEM_VOICE_CALL_LIST, &list, NULL);
+    /* Always bind the current production list, including NULL on failure.
+     * Never retain a pre-initialization list as a fallback. */
+    g_clear_object (&f->calls);
+    f->calls = list;
+    if (f->lifecycle_success)
+        g_assert_nonnull (f->calls);
+    f->lifecycle_done = TRUE;
+}
+
+static void
+fixture_enable_ready (MMIfaceModemVoice *self, GAsyncResult *res, VoiceFixture *f)
+{
+    f->lifecycle_success = mm_iface_modem_voice_enable_finish (self, res, &f->lifecycle_error);
+    f->lifecycle_done = TRUE;
+}
+
+static void
+fixture_disable_ready (MMIfaceModemVoice *self, GAsyncResult *res, VoiceFixture *f)
+{
+    f->lifecycle_success = mm_iface_modem_voice_disable_finish (self, res, &f->lifecycle_error);
+    f->lifecycle_done = TRUE;
+}
+
+void
+voice_fixture_begin_initialize (VoiceFixture *f)
+{
+    f->lifecycle_done = FALSE;
+    g_clear_error (&f->lifecycle_error);
+    mm_iface_modem_voice_initialize (f->voice, NULL,
+                                    (GAsyncReadyCallback) fixture_initialize_ready, f);
+}
+
+static void
+fixture_wait_lifecycle_done (VoiceFixture *f)
+{
+    while (!f->lifecycle_done)
+        g_main_context_iteration (NULL, TRUE);
+}
+
+void
+voice_fixture_wait_lifecycle (VoiceFixture *f)
+{
+    fixture_wait_lifecycle_done (f);
+    g_assert_no_error (f->lifecycle_error);
+    g_assert_true (f->lifecycle_success);
+}
+
+void
+voice_fixture_wait_lifecycle_failure (VoiceFixture *f, GQuark domain, gint code)
+{
+    fixture_wait_lifecycle_done (f);
+    g_assert_false (f->lifecycle_success);
+    g_assert_error (f->lifecycle_error, domain, code);
+}
+
+void
+voice_fixture_initialize (VoiceFixture *f)
+{
+    voice_fixture_begin_initialize (f);
+    voice_fixture_wait_lifecycle (f);
+}
+
+void
+voice_fixture_enable (VoiceFixture *f)
+{
+    f->qmi_missing = TRUE;
+    f->lifecycle_done = FALSE;
+    g_clear_error (&f->lifecycle_error);
+    mm_iface_modem_voice_enable (f->voice, NULL, (GAsyncReadyCallback) fixture_enable_ready, f);
+    voice_fixture_wait_lifecycle (f);
+    f->qmi_missing = FALSE;
+}
+
+void
+voice_fixture_disable (VoiceFixture *f)
+{
+    f->qmi_missing = TRUE;
+    f->lifecycle_done = FALSE;
+    g_clear_error (&f->lifecycle_error);
+    mm_iface_modem_voice_disable (f->voice, (GAsyncReadyCallback) fixture_disable_ready, f);
+    voice_fixture_wait_lifecycle (f);
+    f->qmi_missing = FALSE;
+}
+
+void
+voice_fixture_set_readback (VoiceFixture *f, const gchar *reply)
+{
+    g_free (f->readback);
+    f->readback = g_strdup (reply);
+}
+
+guint
+voice_fixture_at_count (VoiceFixture *f, const gchar *command)
+{
+    return GPOINTER_TO_UINT (g_hash_table_lookup (f->at_counts, command));
+}
+
+void
+voice_fixture_hold_at (VoiceFixture *f, const gchar *command)
+{
+    g_free (f->hold_command);
+    f->hold_command = g_strdup (command);
+}
+
+void
+voice_fixture_wait_held_at (VoiceFixture *f)
+{
+    while (!f->held_at && !f->lifecycle_done)
+        g_main_context_iteration (NULL, TRUE);
+    g_assert_nonnull (f->held_at);
+}
+
+void
+voice_fixture_release_at (VoiceFixture *f, gboolean success)
+{
+    GTask *task = g_steal_pointer (&f->held_at);
+    g_assert_nonnull (task);
+    if (success)
+        fixture_return_at (task);
+    else {
+        g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_FAILED, "fixture AT ERROR");
+        g_object_unref (task);
+    }
+}
+
+static gboolean
+fixture_stop_wait (gpointer data)
+{
+    *((gboolean *) data) = TRUE;
+    return G_SOURCE_REMOVE;
+}
+
+void
+voice_fixture_run_timers (VoiceFixture *f)
+{
+    gboolean done = FALSE;
+    /* Cross the actual plugin's 100 ms timer, without replacing that timer. */
+    g_timeout_add (200, fixture_stop_wait, &done);
+    while (!done)
+        g_main_context_iteration (NULL, TRUE);
+}
+
+MMVoiceAudioToken
+voice_fixture_schedule_channel (VoiceFixture *f, gboolean cleanup)
+{
+    return fixture_start_channel (f, cleanup, FALSE);
+}
+
+static void
+fixture_blocker_ready (MMBaseModem *self, GAsyncResult *res, VoiceFixture *f)
+{
+    g_autoptr(GError) error = NULL;
+    g_assert_nonnull (__real_mm_base_modem_at_command_full_finish (self, res, &error));
+    g_assert_no_error (error);
+    f->blocker_done = TRUE;
+}
+
+static gchar *
+fixture_read_peer (VoiceFixture *f)
+{
+    GString *bytes = g_string_new (NULL);
+    gchar buf[256];
+    ssize_t n;
+    while ((n = read (f->pty_master, buf, sizeof (buf))) > 0)
+        g_string_append_len (bytes, buf, n);
+    g_assert_true (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK));
+    return g_string_free (bytes, FALSE);
+}
+
+void
+voice_fixture_assert_real_queue_cancellation (VoiceFixture *f)
+{
+    int slave;
+    struct termios settings;
+    g_autoptr(GError) error = NULL;
+    g_autofree gchar *first = NULL;
+    g_autofree gchar *after = NULL;
+    guint i;
+
+    /* Adapt upstream test-qcdm-serial-port's PTY/fd setup for the real AT class.
+     * This port is only an off-device transport peer; the real modem remains
+     * the source object of every AT task and every plugin callback. */
+    g_assert_cmpint (openpty (&f->pty_master, &slave, NULL, NULL, NULL), ==, 0);
+    g_assert_cmpint (tcgetattr (slave, &settings), ==, 0);
+    cfmakeraw (&settings);
+    g_assert_cmpint (tcsetattr (slave, TCSANOW, &settings), ==, 0);
+    g_assert_cmpint (fcntl (f->pty_master, F_SETFL, O_NONBLOCK), ==, 0);
+    f->pty_port = g_object_new (MM_TYPE_PORT_SERIAL_AT,
+                               MM_PORT_DEVICE, "fixture-pty",
+                               MM_PORT_SUBSYS, MM_PORT_SUBSYS_TTY,
+                               MM_PORT_TYPE, MM_PORT_TYPE_AT,
+                               MM_PORT_SERIAL_FD, slave,
+                               MM_PORT_SERIAL_SEND_DELAY, (guint64) 0,
+                               MM_PORT_SERIAL_AT_INIT_SEQUENCE_ENABLED, FALSE, NULL);
+    mm_port_serial_at_set_response_parser (f->pty_port, mm_serial_parser_v1_parse,
+                                           mm_serial_parser_v1_new (), mm_serial_parser_v1_destroy);
+    g_assert_true (mm_port_serial_open (MM_PORT_SERIAL (f->pty_port), &error));
+    g_assert_no_error (error);
+
+    /* A genuine uncancelled in-flight fixed command occupies the serial queue.
+     * Its response is withheld by the PTY peer, not by a transport model. */
+    __real_mm_base_modem_at_command_full (MM_BASE_MODEM (f->voice), MM_IFACE_PORT_AT (f->pty_port),
+                                         "+CPCMREG=1", 3, FALSE, FALSE, NULL,
+                                         (GAsyncReadyCallback) fixture_blocker_ready, f);
+    voice_fixture_run_timers (f);
+    first = fixture_read_peer (f);
+    g_assert_cmpstr (first, ==, "AT+CPCMREG=1\r");
+    voice_fixture_schedule_channel (f, TRUE);
+    voice_fixture_run_timers (f);
+    g_assert_cmpuint (voice_fixture_at_count (f, "+CPCMREG=0"), ==, 1);
+    voice_fixture_schedule_channel (f, FALSE);
+    voice_fixture_run_timers (f);
+    g_assert_cmpuint (voice_fixture_at_count (f, "+CPCMREG=1"), ==, 1);
+    g_assert_cmpint (write (f->pty_master, "\r\nOK\r\n", 6), ==, 6);
+    voice_fixture_run_timers (f);
+    g_assert_true (f->blocker_done);
+    after = fixture_read_peer (f);
+    /* Canceled cleanup must never have emitted bytes, even when queued. */
+    g_assert_null (strstr (after, "AT+CPCMREG=0"));
+    g_assert_cmpstr (after, ==, "AT+CPCMREG=1\r");
+    g_assert_cmpint (write (f->pty_master, "\r\nOK\r\n", 6), ==, 6);
+    voice_fixture_run_timers (f);
+    for (i = 0; i < f->channels->len; i++)
+        g_assert_true (((FixtureChannel *) g_ptr_array_index (f->channels, i))->done);
+    mm_port_serial_close (MM_PORT_SERIAL (f->pty_port));
 }

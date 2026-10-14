@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 case "$*" in
-    '--filter test-voice-audio') mode=focused ;;
+    '--filter test-voice-audio') mode=focused; focused_test=test-voice-audio ;;
+    '--filter test-simtech-audio') mode=simtech; focused_test=test-simtech-audio ;;
     '--upstream') mode=upstream ;;
-    *) echo 'usage: build/test.sh --filter test-voice-audio | --upstream' >&2; exit 2 ;;
+    *) echo 'usage: build/test.sh --filter test-voice-audio | --filter test-simtech-audio | --upstream' >&2; exit 2 ;;
 esac
 root=$(cd "$(dirname "$0")/.." && pwd)
 work=/evidence/tests
@@ -17,13 +18,16 @@ cmp "$root/patches/series" "$work/locked-series"
 while IFS= read -r patch_name; do
     patch --batch --fuzz=0 -d "$source_dir" -p1 < "$root/patches/$patch_name"
 done < "$work/locked-series"
-cp "$root/tests/provider-fixture.h" "$root/tests/provider-fixture.c" "$root/tests/test-voice-audio.c" "$source_dir/src/tests/"
+# The recorded test patch is the build input; canonical sources must match it.
+for test_source in provider-fixture.h provider-fixture.c test-voice-audio.c test-simtech-audio.c; do
+    cmp "$root/tests/$test_source" "$source_dir/src/tests/$test_source"
+done
 build_dir="$work/build-$mode"
 # A repeat may not reuse binaries built from previous source/fixture bytes.
 test ! -e "$build_dir"
 meson setup "$build_dir" "$source_dir" -Dtests=true -Dbuiltin_plugins=true -Dgtk_doc=false -Dat_command_via_dbus=false
-if [[ "$mode" == focused ]]; then
-    meson test -C "$build_dir" --print-errorlogs test-voice-audio
+if [[ "$mode" != upstream ]]; then
+    meson test -C "$build_dir" --print-errorlogs "$focused_test"
 else
     # Upstream private-bus activation needs the daemon and GIR/typelib outputs,
     # which are not dependencies of the test executables themselves.

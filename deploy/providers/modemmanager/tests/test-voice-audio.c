@@ -10,9 +10,9 @@ test_ongoing_update (void)
     VoiceFixture *f = voice_fixture_new ();
     MMBaseCall *ringing = voice_fixture_incoming (f, "+49123456789");
     MMBaseCall *unknown = voice_fixture_outgoing (f, "+49123456780");
-    voice_fixture_publish_active (f);
-    g_assert_cmpuint (voice_fixture_read_format (f, ringing), ==, 16000);
-    g_assert_cmpuint (voice_fixture_read_format (f, unknown), ==, 16000);
+    voice_fixture_publish_active_rate (f, 8000);
+    g_assert_cmpuint (voice_fixture_read_format (f, ringing), ==, 8000);
+    g_assert_cmpuint (voice_fixture_read_format (f, unknown), ==, 8000);
     g_assert_cmpstr (voice_fixture_read_port (f, ringing), ==, "fixture-audio");
     voice_fixture_free (f);
 }
@@ -22,9 +22,10 @@ test_terminal_update (void)
 {
     VoiceFixture *f = voice_fixture_new ();
     MMBaseCall *call = voice_fixture_incoming (f, "+49123456789");
+    guint terminal_rate = voice_fixture_read_format (f, call);
     mm_base_call_change_state (call, MM_CALL_STATE_TERMINATED, MM_CALL_STATE_REASON_TERMINATED);
-    voice_fixture_publish_active (f);
-    g_assert_cmpuint (voice_fixture_read_format (f, call), ==, 0);
+    voice_fixture_publish_active_rate (f, 8000);
+    g_assert_cmpuint (voice_fixture_read_format (f, call), ==, terminal_rate);
     g_assert_cmpstr (voice_fixture_read_port (f, call), ==, "");
     voice_fixture_free (f);
 }

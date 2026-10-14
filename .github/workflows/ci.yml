@@ -285,11 +285,13 @@ jobs:
               test "$(jq -r .snapshot /evidence/bootstrap/source-lock.json)" = "$(jq -r .snapshot source-lock.json)"
               focused=0
               bash build/test.sh --filter test-voice-audio 2>&1 | tee /evidence/focused.log || focused=$?
+              simtech=0
+              bash build/test.sh --filter test-simtech-audio 2>&1 | tee /evidence/simtech.log || simtech=$?
               upstream=0
               bash build/test.sh --upstream 2>&1 | tee /evidence/upstream.log || upstream=$?
-              jq -n --argjson focused "$focused" --argjson upstream "$upstream" \
-                "{focused_exit: \$focused, upstream_exit: \$upstream}" > /evidence/results.json
-              test "$focused" = 0 && test "$upstream" = 0
+              jq -n --argjson focused "$focused" --argjson simtech "$simtech" --argjson upstream "$upstream" \
+                "{focused_exit: \$focused, simtech_exit: \$simtech, upstream_exit: \$upstream}" > /evidence/results.json
+              test "$focused" = 0 && test "$simtech" = 0 && test "$upstream" = 0
             '
 
       - name: Upload exact commit provider test evidence

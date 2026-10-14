@@ -2380,7 +2380,11 @@
   "patches": [
     {
       "path": "patches/0002-yoyopod-voice-audio-lifecycle.patch",
-      "sha256": "3c7aed7ece122c319968593e8a039cf35bbfacdc9aa02afaf07b3ec3844c5814"
+      "sha256": "283b577c00bf6a3e711d30bdd6a1e56e93e3c59f59c4f9254fd14723fecb0d55"
+    },
+    {
+      "path": "patches/0004-yoyopod-audio-contract-tests.patch",
+      "sha256": "4efbf4c2e76184ecc871f6eea361562154c48d3b09e43280ac906cea3754d09a"
     }
   ]
 }

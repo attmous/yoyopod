@@ -25,4 +25,20 @@ void voice_fixture_assert_native_hangup (VoiceFixture *f, MMBaseCall *call, guin
 
 void voice_fixture_assert_exhaustion (VoiceFixture *f);
 
+VoiceFixture *voice_fixture_new_uninitialized (void);
+void voice_fixture_begin_initialize (VoiceFixture *f);
+void voice_fixture_wait_lifecycle (VoiceFixture *f);
+void voice_fixture_wait_lifecycle_failure (VoiceFixture *f, GQuark domain, gint code);
+void voice_fixture_initialize (VoiceFixture *f);
+void voice_fixture_enable (VoiceFixture *f);
+void voice_fixture_disable (VoiceFixture *f);
+void voice_fixture_set_readback (VoiceFixture *f, const gchar *reply);
+guint voice_fixture_at_count (VoiceFixture *f, const gchar *command);
+void voice_fixture_hold_at (VoiceFixture *f, const gchar *command);
+void voice_fixture_wait_held_at (VoiceFixture *f);
+void voice_fixture_release_at (VoiceFixture *f, gboolean success);
+void voice_fixture_run_timers (VoiceFixture *f);
+MMVoiceAudioToken voice_fixture_schedule_channel (VoiceFixture *f, gboolean cleanup);
+void voice_fixture_assert_real_queue_cancellation (VoiceFixture *f);
+void voice_fixture_publish_active_rate (VoiceFixture *f, guint rate);
 #endif
