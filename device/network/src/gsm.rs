@@ -161,6 +161,9 @@ pub trait GsmBackend: Send + 'static {
     fn apply_call(&mut self, _command: &CallCommand) -> Result<()> {
         bail!("Session control unavailable")
     }
+    fn apply_call_with_request(&mut self, _request_id: &str, command: &CallCommand) -> Result<()> {
+        self.apply_call(command)
+    }
     fn dial_session(&mut self, _key: &SessionKey, _number: &str) -> Result<()> {
         bail!("Session dialing unavailable")
     }
@@ -169,6 +172,45 @@ pub trait GsmBackend: Send + 'static {
     }
 }
 
+// Per-action diagnostics only: no polling, modem reads, or protocol output.
+// Identity comes from cached registry/owner facts; JSON escapes native errors.
+struct GsmActionDiagnostic<'a> {
+    request_id: &'a str,
+    command: &'a CallCommand,
+    native_id: Option<String>,
+    native_owner: Option<String>,
+    // None at the worker boundary: only the native backend knows dispatch.
+    native_accept_dispatched: Option<bool>,
+}
+
+impl GsmActionDiagnostic<'_> {
+    fn record(&self, stage: &str, outcome: &str, error: Option<&anyhow::Error>) {
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "event": "gsm_action",
+                "request_id": self.request_id,
+                "key": self.command.key,
+                "native_id": self.native_id,
+                "native_owner": self.native_owner,
+                "operation": self.command.action,
+                "stage": stage,
+                "outcome": outcome,
+                "native_accept_dispatched": self.native_accept_dispatched,
+                "error": error.map(|error| format!("{error:#}")),
+            })
+        );
+    }
+
+    fn observe<T>(&self, stage: &str, result: Result<T>) -> Result<T> {
+        self.record(
+            stage,
+            if result.is_ok() { "ok" } else { "error" },
+            result.as_ref().err(),
+        );
+        result
+    }
+}
 pub struct GsmWorker {
     commands: Sender<(u64, GsmCommand)>,
     selected_epoch: Arc<AtomicU64>,
@@ -284,8 +326,19 @@ impl GsmWorker {
                         request_id,
                         command,
                     }) => {
-                        let error = backend
-                            .apply_call(&command)
+                        let diagnostic = GsmActionDiagnostic {
+                            request_id: &request_id,
+                            command: &command,
+                            native_id: None,
+                            native_owner: backend
+                                .reconciliation()
+                                .and_then(|fact| fact.native_owner),
+                            native_accept_dispatched: None,
+                        };
+                        diagnostic.record("command", "dispatch", None);
+                        let result = backend.apply_call_with_request(&request_id, &command);
+                        let error = diagnostic
+                            .observe("command", result)
                             .err()
                             .map(|error| format!("{error:#}"));
                         let voice_held = backend.owns_voice(&command.key);
@@ -1610,65 +1663,91 @@ impl GsmBackend for ModemManagerVoice {
     }
 
     fn apply_call(&mut self, command: &CallCommand) -> Result<()> {
+        self.apply_call_with_request("", command)
+    }
+    fn apply_call_with_request(&mut self, request_id: &str, command: &CallCommand) -> Result<()> {
         use yoyopod_protocol::call::CallAction;
-        let path = self.path_for(&command.key)?;
-        self.ensure_control()?;
-        match command.action {
-            CallAction::Answer => {
-                anyhow::ensure!(self.owner.is_none(), "GSM voice already owned");
-                anyhow::ensure!(
-                    self.cleanup.uncertain.is_empty()
-                        && self
-                            .registry()?
-                            .tracked()
-                            .iter()
-                            .all(|(_, key)| key == &command.key),
-                    "GSM native reconciliation required before answering"
-                );
-                let update = self
-                    .registry()?
-                    .latest(&command.key)
-                    .context("Unobserved call")?;
-                anyhow::ensure!(
-                    update.phase == CallPhase::Ringing,
-                    "GSM call is not ringing"
-                );
-                self.owner = Some(command.key.clone());
-                let preparation = self.sample_rate(Some(&path)).and_then(|rate| {
-                    self.ensure_control()?;
-                    UsbPcmAudio::prepare(rate)
-                });
-                match preparation {
-                    Ok(prepared) => self.prepared_audio = Some(prepared),
-                    Err(error) => {
-                        let _ = self.targeted_hangup(&command.key);
+        let mut diagnostic = GsmActionDiagnostic {
+            request_id,
+            command,
+            native_id: self
+                .registry
+                .as_ref()
+                .and_then(|registry| registry.path_for(&command.key))
+                .map(str::to_owned),
+            native_owner: self.reconciliation().and_then(|fact| fact.native_owner),
+            native_accept_dispatched: Some(false),
+        };
+        let result = (|| {
+            let path = diagnostic.observe("session_lookup", self.path_for(&command.key))?;
+            diagnostic.observe("session_control", self.ensure_control())?;
+            match command.action {
+                CallAction::Answer => {
+                    anyhow::ensure!(self.owner.is_none(), "GSM voice already owned");
+                    anyhow::ensure!(
+                        self.cleanup.uncertain.is_empty()
+                            && self
+                                .registry()?
+                                .tracked()
+                                .iter()
+                                .all(|(_, key)| key == &command.key),
+                        "GSM native reconciliation required before answering"
+                    );
+                    let update = self
+                        .registry()?
+                        .latest(&command.key)
+                        .context("Unobserved call")?;
+                    anyhow::ensure!(
+                        update.phase == CallPhase::Ringing,
+                        "GSM call is not ringing"
+                    );
+                    self.owner = Some(command.key.clone());
+                    let preparation = diagnostic
+                        .observe("audio_metadata", self.sample_rate(Some(&path)))
+                        .and_then(|rate| {
+                            diagnostic.observe("pcm_control", self.ensure_control())?;
+                            diagnostic.observe("pcm_prepare", UsbPcmAudio::prepare(rate))
+                        });
+                    match preparation {
+                        Ok(prepared) => self.prepared_audio = Some(prepared),
+                        Err(error) => {
+                            let _ = self.targeted_hangup(&command.key);
+                            return Err(error);
+                        }
+                    }
+                    self.audio_deadline = Some(Instant::now() + Duration::from_secs(8));
+                    diagnostic.observe("accept_control", self.ensure_control())?;
+                    let proxy = diagnostic.observe("accept_proxy", self.proxy_for(&path))?;
+                    diagnostic.native_accept_dispatched = Some(true);
+                    diagnostic.record("native_accept", "dispatch", None);
+                    let accept_result = diagnostic.observe(
+                        "native_accept",
+                        proxy.call::<_, _, ()>("Accept", &()).map_err(Into::into),
+                    );
+                    drop(proxy);
+                    diagnostic.observe("accept_response_control", self.ensure_control())?;
+                    if let Err(error) = accept_result {
+                        self.cleanup.failed(&path);
                         return Err(error);
                     }
+                    Ok(())
                 }
-                self.audio_deadline = Some(Instant::now() + Duration::from_secs(8));
-                self.ensure_control()?;
-                let accept_result = self.proxy_for(&path)?.call::<_, _, ()>("Accept", &());
-                self.ensure_control()?;
-                if let Err(error) = accept_result {
-                    self.cleanup.failed(&path);
-                    return Err(error.into());
+                CallAction::Reject(_) | CallAction::Hangup => self.targeted_hangup(&command.key),
+                CallAction::SetMute(muted) => {
+                    anyhow::ensure!(
+                        self.owner.as_ref() == Some(&command.key),
+                        "GSM session does not own audio"
+                    );
+                    self.audio
+                        .as_ref()
+                        .context("No GSM call audio")?
+                        .set_mute(muted);
+                    self.cached.muted = muted;
+                    Ok(())
                 }
-                Ok(())
             }
-            CallAction::Reject(_) | CallAction::Hangup => self.targeted_hangup(&command.key),
-            CallAction::SetMute(muted) => {
-                anyhow::ensure!(
-                    self.owner.as_ref() == Some(&command.key),
-                    "GSM session does not own audio"
-                );
-                self.audio
-                    .as_ref()
-                    .context("No GSM call audio")?
-                    .set_mute(muted);
-                self.cached.muted = muted;
-                Ok(())
-            }
-        }
+        })();
+        diagnostic.observe("backend_action", result)
     }
     fn dial(&mut self, number: &str) -> Result<()> {
         let _ = number;
@@ -1733,6 +1812,193 @@ mod tests {
         }
     }
 
+    struct DiagnosticCall {
+        pcm_format: bool,
+    }
+    #[zbus::interface(name = "org.freedesktop.ModemManager1.Call")]
+    impl DiagnosticCall {
+        #[zbus(property)]
+        fn state(&self) -> i32 {
+            3
+        }
+        #[zbus(property)]
+        fn direction(&self) -> i32 {
+            1
+        }
+        #[zbus(property)]
+        fn number(&self) -> &str {
+            "+49123456789"
+        }
+        #[zbus(property)]
+        fn audio_format(&self) -> zbus::fdo::Result<HashMap<String, zvariant::OwnedValue>> {
+            if !self.pcm_format {
+                return Err(zbus::fdo::Error::Failed("metadata\n\"root cause\"".into()));
+            }
+            Ok(HashMap::from([
+                ("rate".into(), 8000_u32.into()),
+                ("encoding".into(), zvariant::Str::from("pcm").into()),
+                ("resolution".into(), zvariant::Str::from("s16le").into()),
+            ]))
+        }
+        fn accept(&self) {
+            panic!("preparation failure must precede native Accept");
+        }
+        fn hangup(&self) -> zbus::fdo::Result<()> {
+            eprintln!("fixture-targeted-hangup:{TEST_RINGING_CALL}");
+            Err(zbus::fdo::Error::Failed(
+                "cleanup failure must not replace preparation error".into(),
+            ))
+        }
+    }
+
+    // Removing an error-stage log, losing request/key correlation, swallowing the
+    // original error, or dispatching Accept before preparation must fail this test.
+    #[test]
+    fn gsm_answer_diagnostics_preserve_keyed_failure_before_targeted_cleanup() {
+        const CHILD: &str = "YOYOPOD_TEST_ACCEPT_DIAGNOSTIC";
+        const REQUEST: &str = "accept-request\n\"quoted\"";
+        if let Ok(scenario) = std::env::var(CHILD) {
+            let bus = PrivateBus::start();
+            let (owner, mut backend, _) = reconnect_fixture(&bus);
+            let pcm_format = scenario == "pcm";
+            if pcm_format {
+                assert!(
+                    !UsbPcmAudio::available(),
+                    "off-Pi fixture must not own real PCM hardware"
+                );
+            }
+            owner
+                .object_server()
+                .at(TEST_RINGING_CALL, DiagnosticCall { pcm_format })
+                .unwrap();
+            owner
+                .object_server()
+                .interface::<_, ReconnectVoice>(TEST_MODEM0)
+                .unwrap()
+                .get()
+                .paths
+                .lock()
+                .unwrap()
+                .push(OwnedObjectPath::try_from(TEST_RINGING_CALL).unwrap());
+            backend.next_recovery = None;
+            backend.refresh().unwrap();
+            let key = backend.registry().unwrap().tracked()[0].1.clone();
+            backend.drain_call_events();
+            let worker = GsmWorker::with_backend(backend);
+            worker
+                .send(GsmCommand::Action {
+                    request_id: REQUEST.into(),
+                    command: CallCommand {
+                        key: key.clone(),
+                        action: yoyopod_protocol::call::CallAction::Answer,
+                    },
+                })
+                .unwrap();
+            loop {
+                if let GsmEvent::Completed {
+                    request_id,
+                    key: completed,
+                    error,
+                    voice_held,
+                } = worker.events.recv_timeout(Duration::from_secs(5)).unwrap()
+                {
+                    assert_eq!(request_id, REQUEST);
+                    assert_eq!(completed, key);
+                    let error = error.unwrap();
+                    assert!(!error.contains("cleanup failure"));
+                    if pcm_format {
+                        assert_eq!(error, "GSM USB PCM or ALSA tools unavailable");
+                    } else {
+                        assert!(error.contains("metadata\n\"root cause\""), "{error}");
+                    }
+                    assert!(
+                        voice_held,
+                        "uncertain targeted cleanup must retain keyed ownership"
+                    );
+                    break;
+                }
+            }
+            return;
+        }
+        for (scenario, stage, error_text) in [
+            ("metadata", "audio_metadata", "metadata\n\"root cause\""),
+            (
+                "pcm",
+                "pcm_prepare",
+                "GSM USB PCM or ALSA tools unavailable",
+            ),
+        ] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "gsm::tests::gsm_answer_diagnostics_preserve_keyed_failure_before_targeted_cleanup", "--nocapture"])
+                .env(CHILD, scenario).output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let stderr = String::from_utf8(output.stderr).unwrap();
+            let records: Vec<(usize, serde_json::Value)> = stderr
+                .lines()
+                .enumerate()
+                .filter(|(_, line)| line.starts_with('{'))
+                .map(|(index, line)| {
+                    (
+                        index,
+                        serde_json::from_str::<serde_json::Value>(line)
+                            .expect("single escaped JSON log line"),
+                    )
+                })
+                .filter(|(_, record)| record["event"] == "gsm_action")
+                .collect();
+            let (failed_at, failure) = records
+                .iter()
+                .find(|(_, record)| record["stage"] == stage && record["outcome"] == "error")
+                .unwrap_or_else(|| panic!("missing {stage} failure diagnostics: {stderr}"));
+            assert_eq!(failure["request_id"], REQUEST);
+            assert_eq!(failure["key"]["transport"], "gsm");
+            assert_eq!(failure["key"]["generation"], 7);
+            assert_eq!(failure["key"]["call_id"], "gsm-1");
+            assert_eq!(failure["native_id"], TEST_RINGING_CALL);
+            assert!(failure["native_owner"]
+                .as_str()
+                .is_some_and(|owner| owner.contains("/:")));
+            assert_eq!(failure["operation"], "answer");
+            assert_eq!(failure["native_accept_dispatched"], false);
+            assert!(failure["error"].as_str().unwrap().contains(error_text));
+            let cleanup_at = stderr
+                .lines()
+                .position(|line| line.starts_with("fixture-targeted-hangup:"))
+                .unwrap();
+            assert!(
+                *failed_at < cleanup_at,
+                "failure evidence must precede native cleanup"
+            );
+            let completion = records
+                .iter()
+                .find(|(_, record)| record["stage"] == "command" && record["outcome"] == "error")
+                .unwrap();
+            assert_eq!(completion.1["error"], failure["error"]);
+            assert!(
+                records
+                    .iter()
+                    .any(|(_, record)| record["stage"] == "command"
+                        && record["outcome"] == "dispatch")
+            );
+            assert!(!records
+                .iter()
+                .any(|(_, record)| record["stage"] == "native_accept"));
+            assert!(
+                !stderr.contains("+49123456789"),
+                "diagnostics leaked a phone number"
+            );
+            assert!(
+                !String::from_utf8(output.stdout)
+                    .unwrap()
+                    .contains("gsm_action"),
+                "stdout is protocol-owned"
+            );
+        }
+    }
     struct ReplacementCall(Arc<std::sync::atomic::AtomicUsize>);
     #[zbus::interface(name = "org.freedesktop.ModemManager1.Call")]
     impl ReplacementCall {
