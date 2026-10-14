@@ -64,7 +64,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
      }
  
      ctx->step++;
-@@ -2091,9 +2094,59 @@
+@@ -2091,9 +2094,60 @@
      GCancellable      *setup_cancellable;
      GCancellable      *cleanup_cancellable;
      gboolean           in_call_state;
@@ -75,6 +75,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
 +    gboolean           exhausted;
 +    gboolean           configuration_pending;
 +    gboolean           channel_pending;
++    gboolean           audio_exports_suspended;
 +    MMCallAudioFormat *configured_audio_format;
 +    /* Active channel references; never the configured-format cache. */
      MMPort            *audio_port;
@@ -124,7 +125,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
  
  static void
  in_call_event_context_free (InCallEventContext *ctx)
-@@ -2108,8 +2161,10 @@
+@@ -2108,8 +2162,10 @@
          g_cancellable_cancel (ctx->setup_cancellable);
          g_clear_object (&ctx->setup_cancellable);
      }
@@ -135,7 +136,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
      g_slice_free (InCallEventContext, ctx);
  }
  
-@@ -2125,6 +2180,12 @@
+@@ -2125,6 +2181,12 @@
      if (!ctx) {
          /* Create context and keep it as object data */
          ctx = g_slice_new0 (InCallEventContext);
@@ -148,70 +149,208 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
          g_object_set_qdata_full (
              G_OBJECT (self),
              in_call_event_context_quark,
-@@ -2139,9 +2200,10 @@
- call_list_foreach_audio_settings (MMBaseCall         *call,
-                                   InCallEventContext *ctx)
- {
+@@ -2135,43 +2197,397 @@
+     return ctx;
+ }
+ 
+-static void
+-call_list_foreach_audio_settings (MMBaseCall         *call,
+-                                  InCallEventContext *ctx)
+-{
 -    if (mm_base_call_get_state (call) != MM_CALL_STATE_TERMINATED)
 -        return;
 -    mm_base_call_change_audio_settings (call, ctx->audio_port, ctx->audio_format);
-+    if (mm_base_call_get_state (call) == MM_CALL_STATE_TERMINATED)
++/* Snapshot the update so reentrant property notifications cannot let an old
++ * walk overwrite a newer generation/operation. Hold references through notify. */
++typedef struct {
++    MMIfaceModemVoice *self;
++    InCallEventContext *ctx;
++    guint64 generation, configuration_operation, channel_operation;
++    gboolean suspended;
++    gboolean clear;
++    MMPort *port;
++    MMCallAudioFormat *format;
++    GCancellable *operation;
++} VoiceAudioUpdate;
++
++static gboolean
++voice_audio_update_is_current (VoiceAudioUpdate *update)
++{
++    InCallEventContext *ctx = peek_in_call_event_context (update->self);
++    return ctx && ctx == update->ctx && ctx->generation == update->generation &&
++        ctx->configuration_operation == update->configuration_operation &&
++        ctx->channel_operation == update->channel_operation &&
++        ctx->audio_exports_suspended == update->suspended &&
++        (!update->suspended ||
++         (voice_audio_accepting (update->self, ctx) && ctx->channel_pending &&
++          update->operation && !g_cancellable_is_cancelled (update->operation) &&
++          (ctx->setup_cancellable == update->operation || ctx->cleanup_cancellable == update->operation)));
++}
++
++static void
++voice_audio_collect_call (MMBaseCall *call, GPtrArray *calls)
++{
++    g_ptr_array_add (calls, g_object_ref (call));
++}
++
++static void
++call_list_apply_audio_settings (MMBaseCall *call, VoiceAudioUpdate *update)
++{
++    gboolean terminal = mm_base_call_get_state (call) == MM_CALL_STATE_TERMINATED;
++
++    if (!voice_audio_update_is_current (update))
 +        return;
-+    mm_base_call_change_audio_settings (call, ctx->audio_port,
-+                                        ctx->audio_format ? ctx->audio_format : ctx->configured_audio_format);
++    if (terminal && !update->clear && !update->suspended)
++        return;
++    /* Deliver notifications after both property writes. Invalidation inside a
++     * notify then clears them without a following stale write from this call. */
++    g_object_freeze_notify (G_OBJECT (call));
++    if (update->suspended && !update->clear) {
++        /* Export-only hold: change_audio_settings(NULL) would disconnect the
++         * shared port and release the Call's ownership. Keep both untouched. */
++        mm_gdbus_call_set_audio_port (MM_GDBUS_CALL (call), "");
++        if (!terminal && voice_audio_update_is_current (update))
++            mm_gdbus_call_set_audio_format (MM_GDBUS_CALL (call),
++                                            mm_call_audio_format_get_dictionary (update->format));
++    } else
++        mm_base_call_change_audio_settings (call, update->clear ? NULL : update->port,
++                                            terminal ? NULL : update->format);
++    g_object_thaw_notify (G_OBJECT (call));
++}
++
++static void
++voice_audio_collect_port (GPtrArray *ports, MMPort *port)
++{
++    guint i;
++    if (!port)
++        return;
++    for (i = 0; i < ports->len; i++)
++        if (g_ptr_array_index (ports, i) == port)
++            return;
++    g_ptr_array_add (ports, g_object_ref (port));
++}
++
++static void
++voice_audio_update_calls (MMIfaceModemVoice *self, MMBaseCall *single, gboolean clear,
++                          MMPort *frozen_port)
++{
++    InCallEventContext *ctx = peek_in_call_event_context (self);
++    g_autoptr(MMCallList) list = NULL;
++    g_autoptr(MMPort) port = NULL;
++    g_autoptr(MMCallAudioFormat) format = NULL;
++    g_autoptr(GCancellable) operation = NULL;
++    g_autoptr(GPtrArray) calls = g_ptr_array_new_with_free_func (g_object_unref);
++    g_autoptr(GPtrArray) ports = g_ptr_array_new_with_free_func (g_object_unref);
++    VoiceAudioUpdate update;
++    guint i;
++
++    if (!ctx) {
++        if (frozen_port)
++            g_object_thaw_notify (G_OBJECT (frozen_port));
++        return;
++    }
++    if (ctx->audio_port)
++        port = g_object_ref (ctx->audio_port);
++    if (!clear && !ctx->audio_exports_suspended && ctx->audio_format)
++        format = g_object_ref (ctx->audio_format);
++    else if (ctx->configured_audio_format)
++        format = g_object_ref (ctx->configured_audio_format);
++    if (ctx->audio_exports_suspended) {
++        operation = mm_iface_modem_voice_audio_ref_channel_cancellable (self, FALSE);
++        if (!operation)
++            operation = mm_iface_modem_voice_audio_ref_channel_cancellable (self, TRUE);
++    }
++    update = (VoiceAudioUpdate) { self, ctx, ctx->generation,
++        ctx->configuration_operation, ctx->channel_operation,
++        ctx->audio_exports_suspended, clear, port, format, operation };
++    if (single)
++        voice_audio_collect_call (single, calls);
++    else {
++        g_object_get (self, MM_IFACE_MODEM_VOICE_CALL_LIST, &list, NULL);
++        if (list)
++            mm_call_list_foreach (list, (MMCallListForeachFunc) voice_audio_collect_call, calls);
++    }
++    /* Snapshot exact ownership, including terminal Calls retaining an older
++     * port and suspended Calls whose exported AudioPort is deliberately empty. */
++    voice_audio_collect_port (ports, frozen_port);
++    voice_audio_collect_port (ports, port);
++    for (i = 0; i < calls->len; i++) {
++        MMBaseCall *call = g_ptr_array_index (calls, i);
++        g_autoptr(MMPort) owned = mm_base_call_ref_audio_port (call);
++        voice_audio_collect_port (ports, owned);
++        g_object_freeze_notify (G_OBJECT (call));
++    }
++    for (i = 0; i < ports->len; i++) {
++        MMPort *owned = g_ptr_array_index (ports, i);
++        if (owned != frozen_port)
++            g_object_freeze_notify (G_OBJECT (owned));
++    }
++    for (i = 0; i < calls->len; i++)
++        call_list_apply_audio_settings (g_ptr_array_index (calls, i), &update);
++    /* Context and paired Call exports are now settled. Connected observers may
++     * invalidate/commit, with all Calls still frozen and no later stale writes. */
++    for (i = 0; i < ports->len; i++)
++        g_object_thaw_notify (G_OBJECT (g_ptr_array_index (ports, i)));
++    for (i = 0; i < calls->len; i++)
++        g_object_thaw_notify (G_OBJECT (g_ptr_array_index (calls, i)));
  }
  
  static void
-@@ -2155,10 +2217,8 @@
-     g_object_get (MM_BASE_MODEM (self),
-                   MM_IFACE_MODEM_VOICE_CALL_LIST, &list,
-                   NULL);
+ update_audio_settings_in_ongoing_calls (MMIfaceModemVoice *self)
+ {
+-    MMCallList         *list = NULL;
+-    InCallEventContext *ctx;
+-
+-    ctx = get_in_call_event_context (self);
+-
+-    g_object_get (MM_BASE_MODEM (self),
+-                  MM_IFACE_MODEM_VOICE_CALL_LIST, &list,
+-                  NULL);
 -    if (!list) {
 -        mm_obj_warn (self, "cannot update audio settings in active calls: missing internal call list");
 -        return;
 -    }
-+    if (!list)
-+        return; /* Configuration may precede the initial Call list. */
- 
-     mm_call_list_foreach (list, (MMCallListForeachFunc) call_list_foreach_audio_settings, ctx);
-     g_clear_object (&list);
-@@ -2171,7 +2231,196 @@
-     InCallEventContext *ctx;
- 
-     ctx = get_in_call_event_context (self);
+-
+-    mm_call_list_foreach (list, (MMCallListForeachFunc) call_list_foreach_audio_settings, ctx);
+-    g_clear_object (&list);
+-}
+-
+-static void
+-update_audio_settings_in_call (MMIfaceModemVoice *self,
+-                               MMBaseCall        *call)
+-{
+-    InCallEventContext *ctx;
+-
+-    ctx = get_in_call_event_context (self);
 -    mm_base_call_change_audio_settings (call, ctx->audio_port, ctx->audio_format);
-+    mm_base_call_change_audio_settings (call, ctx->audio_port,
-+                                        ctx->audio_format ? ctx->audio_format : ctx->configured_audio_format);
++    voice_audio_update_calls (self, NULL, FALSE, NULL);
 +}
 +
 +static void
-+call_list_clear_audio_settings (MMBaseCall *call, InCallEventContext *ctx)
++update_audio_settings_in_call (MMIfaceModemVoice *self, MMBaseCall *call)
 +{
-+    /* Cleanup releases every surviving Call's port, including terminal Calls.
-+     * Only ongoing Calls receive the current configured format. */
-+    mm_base_call_change_audio_settings (
-+        call, NULL, (ctx && mm_base_call_get_state (call) != MM_CALL_STATE_TERMINATED) ?
-+        ctx->configured_audio_format : NULL);
++    get_in_call_event_context (self);
++    voice_audio_update_calls (self, call, FALSE, NULL);
 +}
 +
 +static void
-+voice_audio_clear_call_properties (MMIfaceModemVoice *self, InCallEventContext *ctx)
++voice_audio_clear_call_properties (MMIfaceModemVoice *self, MMPort *frozen_port)
 +{
-+    g_autoptr(MMCallList) list = NULL;
-+
-+    g_object_get (self, MM_IFACE_MODEM_VOICE_CALL_LIST, &list, NULL);
-+    if (list)
-+        mm_call_list_foreach (list, (MMCallListForeachFunc) call_list_clear_audio_settings, ctx);
++    voice_audio_update_calls (self, NULL, TRUE, frozen_port);
 +}
 +
 +void
 +mm_iface_modem_voice_audio_invalidate (MMIfaceModemVoice *self)
 +{
 +    InCallEventContext *ctx = peek_in_call_event_context (self);
++    g_autoptr(MMPort) old_port = NULL;
++    g_autoptr(GCancellable) setup = NULL;
++    g_autoptr(GCancellable) cleanup = NULL;
 +
 +    if (!ctx)
 +        return;
-+    /* Fence callbacks before cancellation or changes to observable objects. */
++    /* Detach all owned state before observable cancellation/port notifications.
++     * Those observers may start new work; this invocation never clears it. */
 +    ctx->accepting_results = FALSE;
 +    if (ctx->generation == G_MAXUINT64)
 +        ctx->exhausted = TRUE;
@@ -219,22 +358,27 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
 +        ctx->generation++;
 +    ctx->configuration_pending = FALSE;
 +    ctx->channel_pending = FALSE;
++    ctx->audio_exports_suspended = FALSE;
 +    if (ctx->check_id) {
 +        g_source_remove (ctx->check_id);
 +        ctx->check_id = 0;
 +    }
-+    if (ctx->setup_cancellable)
-+        g_cancellable_cancel (ctx->setup_cancellable);
-+    if (ctx->cleanup_cancellable)
-+        g_cancellable_cancel (ctx->cleanup_cancellable);
-+    g_clear_object (&ctx->setup_cancellable);
-+    g_clear_object (&ctx->cleanup_cancellable);
-+    voice_audio_disconnect (ctx);
-+    g_clear_object (&ctx->audio_port);
++    setup = g_steal_pointer (&ctx->setup_cancellable);
++    cleanup = g_steal_pointer (&ctx->cleanup_cancellable);
++    old_port = g_steal_pointer (&ctx->audio_port);
 +    g_clear_object (&ctx->audio_format);
 +    g_clear_object (&ctx->configured_audio_format);
 +    ctx->in_call_state = FALSE;
-+    voice_audio_clear_call_properties (self, NULL);
++    if (old_port) {
++        g_object_freeze_notify (G_OBJECT (old_port));
++        if (mm_port_get_connected (old_port))
++            mm_port_set_connected (old_port, FALSE);
++    }
++    voice_audio_clear_call_properties (self, old_port);
++    if (setup)
++        g_cancellable_cancel (setup);
++    if (cleanup)
++        g_cancellable_cancel (cleanup);
 +}
 +
 +static gboolean
@@ -264,6 +408,27 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
 +    g_clear_object (&ctx->configured_audio_format);
 +    update_audio_settings_in_ongoing_calls (self);
 +    return (MMVoiceAudioToken) { ctx->generation, ctx->configuration_operation };
++}
++
++MMVoiceAudioToken
++mm_iface_modem_voice_audio_get_configuration_token (MMIfaceModemVoice *self)
++{
++    InCallEventContext *ctx = peek_in_call_event_context (self);
++    if (!voice_audio_accepting (self, ctx) || ctx->exhausted ||
++        !ctx->configured_audio_format || !ctx->generation || !ctx->configuration_operation)
++        return (MMVoiceAudioToken) { 0, 0 };
++    return (MMVoiceAudioToken) { ctx->generation, ctx->configuration_operation };
++}
++
++gboolean
++mm_iface_modem_voice_audio_configuration_is_current (MMIfaceModemVoice *self,
++                                                      MMVoiceAudioToken token,
++                                                      gboolean require_pending)
++{
++    InCallEventContext *ctx = peek_in_call_event_context (self);
++    return voice_audio_accepting (self, ctx) && token.generation && token.operation &&
++        token.generation == ctx->generation && token.operation == ctx->configuration_operation &&
++        (!require_pending || ctx->configuration_pending);
 +}
 +
 +gboolean
@@ -336,22 +501,57 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
 +}
 +
 +gboolean
++mm_iface_modem_voice_audio_suspend_channel (MMIfaceModemVoice *self,
++                                             GCancellable *operation,
++                                             gboolean cleanup,
++                                             MMVoiceAudioToken *configuration)
++{
++    InCallEventContext *ctx = peek_in_call_event_context (self);
++    MMVoiceAudioToken captured = { 0, 0 };
++    g_autoptr(GCancellable) current = mm_iface_modem_voice_audio_ref_channel_cancellable (self, cleanup);
++
++    if (configuration)
++        *configuration = captured;
++    if (!operation || current != operation)
++        return FALSE;
++    captured = (MMVoiceAudioToken) { ctx->generation, ctx->configuration_operation };
++    ctx->audio_exports_suspended = TRUE;
++    update_audio_settings_in_ongoing_calls (self);
++    /* Property notifications may have invalidated or committed a new channel. */
++    g_clear_object (&current);
++    current = mm_iface_modem_voice_audio_ref_channel_cancellable (self, cleanup);
++    ctx = peek_in_call_event_context (self);
++    if (!current || current != operation || !ctx || !ctx->audio_exports_suspended ||
++        !mm_iface_modem_voice_audio_configuration_is_current (self, captured, FALSE))
++        return FALSE;
++    if (configuration)
++        *configuration = captured;
++    return TRUE;
++}
++
++gboolean
 +mm_iface_modem_voice_audio_commit_channel (MMIfaceModemVoice *self,
 +                                          MMVoiceAudioToken token,
 +                                          MMPort *port,
 +                                          MMCallAudioFormat *format)
 +{
 +    InCallEventContext *ctx = peek_in_call_event_context (self);
++    g_autoptr(MMPort) old_port = NULL;
 +
 +    if (!voice_audio_channel_matches (self, ctx, token) || !ctx->channel_pending)
 +        return FALSE;
++    if (ctx->audio_port) {
++        old_port = g_object_ref (ctx->audio_port);
++        g_object_freeze_notify (G_OBJECT (old_port));
++    }
 +    ctx->channel_pending = FALSE;
++    ctx->audio_exports_suspended = FALSE;
 +    if (ctx->audio_port != port)
 +        voice_audio_disconnect (ctx);
 +    g_set_object (&ctx->audio_port, port);
 +    g_set_object (&ctx->audio_format, format);
 +    ctx->in_call_state = TRUE;
-+    update_audio_settings_in_ongoing_calls (self);
++    voice_audio_update_calls (self, NULL, FALSE, old_port);
 +    return TRUE;
 +}
 +
@@ -360,20 +560,26 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
 +                                         MMVoiceAudioToken token)
 +{
 +    InCallEventContext *ctx = peek_in_call_event_context (self);
++    g_autoptr(MMPort) old_port = NULL;
 +
 +    if (!voice_audio_channel_matches (self, ctx, token) || !ctx->channel_pending)
 +        return FALSE;
++    if (ctx->audio_port) {
++        old_port = g_object_ref (ctx->audio_port);
++        g_object_freeze_notify (G_OBJECT (old_port));
++    }
 +    ctx->channel_pending = FALSE;
++    ctx->audio_exports_suspended = FALSE;
 +    voice_audio_disconnect (ctx);
 +    g_clear_object (&ctx->audio_port);
 +    g_clear_object (&ctx->audio_format);
 +    ctx->in_call_state = FALSE;
-+    voice_audio_clear_call_properties (self, ctx);
++    voice_audio_clear_call_properties (self, old_port);
 +    return TRUE;
  }
  
  static void
-@@ -2201,49 +2450,60 @@
+@@ -2201,49 +2617,62 @@
  
  static void
  in_call_cleanup_ready (MMIfaceModemVoice *self,
@@ -411,6 +617,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
 -
 -    g_clear_object (&ctx->cleanup_cancellable);
 +        /* Property notifications during commit/clear may start a new operation. */
++        ctx = peek_in_call_event_context (self);
 +        if (voice_audio_channel_matches (self, ctx, *token) &&
 +            ctx->cleanup_cancellable == g_task_get_cancellable (G_TASK (res))) {
 +            ctx->channel_pending = FALSE;
@@ -459,6 +666,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
 -
 -    g_clear_object (&ctx->setup_cancellable);
 +        /* Property notifications during commit/clear may start a new operation. */
++        ctx = peek_in_call_event_context (self);
 +        if (voice_audio_channel_matches (self, ctx, *token) &&
 +            ctx->setup_cancellable == g_task_get_cancellable (G_TASK (res))) {
 +            ctx->channel_pending = FALSE;
@@ -469,7 +677,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
  }
  
  static gboolean
-@@ -2252,9 +2512,12 @@
+@@ -2252,9 +2681,12 @@
      InCallEventContext *ctx;
      MMCallList         *list = NULL;
      guint               n_calls_in_call = 0;
@@ -482,7 +690,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
  
      g_object_get (MM_BASE_MODEM (self),
                    MM_IFACE_MODEM_VOICE_CALL_LIST, &list,
-@@ -2267,40 +2530,42 @@
+@@ -2267,40 +2699,42 @@
      mm_call_list_foreach (list, (MMCallListForeachFunc) call_list_foreach_count_in_call, &n_calls_in_call);
  
      /* Need to setup in-call events? */
@@ -537,7 +745,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
          goto out;
      }
  
-@@ -2315,7 +2580,7 @@
+@@ -2315,7 +2749,7 @@
      InCallEventContext *ctx;
  
      ctx = get_in_call_event_context (self);
@@ -546,7 +754,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
          return;
  
      /* Process check for in-call events in an idle, so that we can combine
-@@ -2716,6 +2981,8 @@
+@@ -2716,6 +3150,8 @@
      DisablingContext *ctx;
      GTask *task;
  
@@ -555,7 +763,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
      ctx = g_new0 (DisablingContext, 1);
      ctx->step = DISABLING_STEP_FIRST;
  
-@@ -2879,6 +3146,13 @@
+@@ -2879,6 +3315,13 @@
  {
      EnablingContext *ctx;
      GTask *task;
@@ -569,7 +777,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
  
      ctx = g_new0 (EnablingContext, 1);
      ctx->step = ENABLING_STEP_FIRST;
-@@ -3104,6 +3378,13 @@
+@@ -3104,6 +3547,13 @@
      MmGdbusModemVoice *skeleton = NULL;
      GTask *task;
  
@@ -583,7 +791,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
      /* Did we already create it? */
      g_object_get (self,
                    MM_IFACE_MODEM_VOICE_DBUS_SKELETON, &skeleton,
-@@ -3137,6 +3418,8 @@
+@@ -3137,6 +3587,8 @@
  void
  mm_iface_modem_voice_shutdown (MMIfaceModemVoice *self)
  {
@@ -595,7 +803,7 @@ diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
 diff --git a/src/mm-iface-modem-voice.h b/src/mm-iface-modem-voice.h
 --- a/src/mm-iface-modem-voice.h
 +++ b/src/mm-iface-modem-voice.h
-@@ -33,6 +33,21 @@
+@@ -33,6 +33,28 @@
  #define MM_IFACE_MODEM_VOICE_CALL_LIST                           "iface-modem-voice-call-list"
  #define MM_IFACE_MODEM_VOICE_PERIODIC_CALL_LIST_CHECK_DISABLED   "iface-modem-voice-periodic-call-list-check-disabled"
  #define MM_IFACE_MODEM_VOICE_INDICATION_CALL_LIST_RELOAD_ENABLED "iface-modem-voice-indication-call-list-reload-enabled"
@@ -608,6 +816,13 @@ diff --git a/src/mm-iface-modem-voice.h b/src/mm-iface-modem-voice.h
 +
 +MMVoiceAudioToken mm_iface_modem_voice_audio_begin_configuration (MMIfaceModemVoice *self);
 +void mm_iface_modem_voice_audio_invalidate (MMIfaceModemVoice *self);
++MMVoiceAudioToken mm_iface_modem_voice_audio_get_configuration_token (MMIfaceModemVoice *self);
++gboolean mm_iface_modem_voice_audio_configuration_is_current (MMIfaceModemVoice *self,
++                                                              MMVoiceAudioToken token,
++                                                              gboolean require_pending);
++gboolean mm_iface_modem_voice_audio_suspend_channel (MMIfaceModemVoice *self,
++                                                     GCancellable *operation,
++                                                     gboolean cleanup, MMVoiceAudioToken *configuration);
 +gboolean mm_iface_modem_voice_audio_publish_configured (MMIfaceModemVoice *self, MMVoiceAudioToken token, MMCallAudioFormat *format);
 +MMCallAudioFormat *mm_iface_modem_voice_audio_dup_configured (MMIfaceModemVoice *self);
 +MMVoiceAudioToken mm_iface_modem_voice_audio_begin_channel (MMIfaceModemVoice *self);
@@ -617,3 +832,31 @@ diff --git a/src/mm-iface-modem-voice.h b/src/mm-iface-modem-voice.h
  
  struct _MMIfaceModemVoiceInterface {
      GTypeInterface g_iface;
+diff --git a/src/mm-base-call.c b/src/mm-base-call.c
+--- a/src/mm-base-call.c
++++ b/src/mm-base-call.c
+@@ -115,6 +115,13 @@
+ 
+ /*****************************************************************************/
+ /* Update audio settings */
++
++/* Private daemon ownership access for deferred audio-property notifications. */
++MMPort *
++mm_base_call_ref_audio_port (MMBaseCall *self)
++{
++    return self->priv->audio_port ? g_object_ref (self->priv->audio_port) : NULL;
++}
+ 
+ void
+ mm_base_call_change_audio_settings (MMBaseCall        *self,
+diff --git a/src/mm-base-call.h b/src/mm-base-call.h
+--- a/src/mm-base-call.h
++++ b/src/mm-base-call.h
+@@ -128,6 +128,7 @@
+                                         MMCallState new_state,
+                                         MMCallStateReason reason);
+ 
++MMPort *mm_base_call_ref_audio_port (MMBaseCall *self);
+ void         mm_base_call_change_audio_settings (MMBaseCall        *self,
+                                                  MMPort            *audio_port,
+                                                  MMCallAudioFormat *audio_format);

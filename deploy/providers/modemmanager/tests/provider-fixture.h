@@ -41,4 +41,17 @@ void voice_fixture_run_timers (VoiceFixture *f);
 MMVoiceAudioToken voice_fixture_schedule_channel (VoiceFixture *f, gboolean cleanup);
 void voice_fixture_assert_real_queue_cancellation (VoiceFixture *f);
 void voice_fixture_publish_active_rate (VoiceFixture *f, guint rate);
+void voice_fixture_begin_enable (VoiceFixture *f);
+void voice_fixture_fail_next_at (VoiceFixture *f, const gchar *command, GQuark domain, gint code);
+void voice_fixture_cancel_held_at (VoiceFixture *f);
+MMVoiceAudioToken voice_fixture_configuration_token (VoiceFixture *f);
+void voice_fixture_release_at_error (VoiceFixture *f, GQuark domain, gint code);
+void voice_fixture_invalidate_on_publication (VoiceFixture *f, MMBaseCall *call);
+guint voice_fixture_publication_invalidations (VoiceFixture *f);
+void voice_fixture_assert_candidate_format (VoiceFixture *f, MMBaseCall *call);
+void voice_fixture_hold_channel_ready (VoiceFixture *f, MMVoiceAudioToken token);
+void voice_fixture_deliver_channel_ready (VoiceFixture *f, MMVoiceAudioToken token);
+void voice_fixture_assert_reentrant_suspension (VoiceFixture *f);
+void voice_fixture_assert_replacement_delay (VoiceFixture *f);
+void voice_fixture_assert_connected_reentrancy (VoiceFixture *f, gboolean terminal_old_port);
 #endif

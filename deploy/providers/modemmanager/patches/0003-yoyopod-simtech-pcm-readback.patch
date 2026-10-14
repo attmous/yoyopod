@@ -1,0 +1,805 @@
+Description: Confirm SIMTech PCM selection and serialize audio transitions
+ Publish candidate metadata only after fixed selection ACK and exact readback.
+ Retain physical response ownership across supersession and fail closed on
+ uncertain transport lifetime. This does not qualify firmware USB framing.
+Author: yoyopod contributors
+Origin: other, yoyopod
+Forwarded: not-needed
+Last-Update: 2026-10-15
+
+diff --git a/src/plugins/simtech/mm-shared-simtech.c b/src/plugins/simtech/mm-shared-simtech.c
+--- a/src/plugins/simtech/mm-shared-simtech.c
++++ b/src/plugins/simtech/mm-shared-simtech.c
+@@ -60,6 +60,12 @@
+     GRegex                     *missed_call_regex;
+     GRegex                     *cring_regex;
+     GRegex                     *rxdtmf_regex;
++    /* A response of uncertain ownership cannot be repaired by a new token. */
++    gboolean                    audio_failed;
++    gboolean                    audio_configuring;
++    GTask                      *audio_physical;
++    GTask                      *audio_pending;
++    guint                       audio_delay;
+ } Private;
+ 
+ static void
+@@ -111,6 +117,180 @@
+ }
+ 
+ /*****************************************************************************/
++/* Source-owned PCM selection/readback. This describes a candidate format, not
++ * qualification of USB framing or firmware audio behavior. */
++
++typedef struct {
++    MMVoiceAudioToken token;
++    gboolean selected;
++} AudioConfiguration;
++
++static void
++voice_audio_fail_closed (MMSharedSimtech *self)
++{
++    get_private (self)->audio_failed = TRUE;
++    mm_iface_modem_voice_audio_invalidate (MM_IFACE_MODEM_VOICE (self));
++}
++
++static gboolean
++configuration_current (GTask *task, gboolean pending)
++{
++    MMSharedSimtech *self = g_task_get_source_object (task);
++    AudioConfiguration *ctx = g_task_get_task_data (task);
++    return !get_private (self)->audio_failed &&
++        !g_cancellable_is_cancelled (g_task_get_cancellable (task)) &&
++        mm_iface_modem_voice_audio_configuration_is_current (
++            MM_IFACE_MODEM_VOICE (self), ctx->token, pending);
++}
++
++static gboolean
++configuration_envelope_stale (GTask *task, gboolean pending)
++{
++    if (configuration_current (task, pending))
++        return FALSE;
++    g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_CANCELLED,
++                             "Voice audio lifecycle is no longer current");
++    g_object_unref (task);
++    return TRUE;
++}
++
++static gboolean
++configuration_envelope_begin (GTask *task, gboolean preserve_configured)
++{
++    MMSharedSimtech *self = g_task_get_source_object (task);
++    Private *priv = get_private (self);
++    AudioConfiguration *ctx = g_new0 (AudioConfiguration, 1);
++    g_task_set_check_cancellable (task, FALSE);
++    g_task_set_task_data (task, ctx, g_free);
++    if (priv->audio_failed || priv->audio_configuring || priv->audio_physical) {
++        voice_audio_fail_closed (self);
++        return !configuration_envelope_stale (task, FALSE);
++    }
++    if (preserve_configured)
++        ctx->token = mm_iface_modem_voice_audio_get_configuration_token (MM_IFACE_MODEM_VOICE (self));
++    if (!ctx->token.operation)
++        ctx->token = mm_iface_modem_voice_audio_begin_configuration (MM_IFACE_MODEM_VOICE (self));
++    return !configuration_envelope_stale (task, FALSE);
++}
++
++static void
++configuration_marker (GTask *task, gboolean success)
++{
++    AudioConfiguration *ctx = g_task_get_task_data (task);
++    mm_obj_msg (g_task_get_source_object (task),
++                "voice-audio contract=1 generation=%" G_GUINT64_FORMAT
++                " operation=%" G_GUINT64_FORMAT " selection=%s readback=%s",
++                ctx->token.generation, ctx->token.operation,
++                ctx->selected ? "ok" : "failed",
++                success ? "ok" : (ctx->selected ? "failed" : "not-run"));
++}
++
++static void
++configuration_failed (GTask *task, GError *error)
++{
++    MMSharedSimtech *self = g_task_get_source_object (task);
++    AudioConfiguration *ctx = g_task_get_task_data (task);
++    Private *priv = get_private (self);
++
++    /* Bind the failure to the attempted operation, before invalidating it.
++     * Cancellation is an outcome too; owner/token identity still gates logging. */
++    if (!priv->audio_failed && mm_iface_modem_voice_audio_configuration_is_current (
++            MM_IFACE_MODEM_VOICE (self), ctx->token, TRUE))
++        configuration_marker (task, FALSE);
++    priv->audio_configuring = FALSE;
++    voice_audio_fail_closed (self);
++    if (error)
++        g_task_return_error (task, error);
++    else
++        g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_FAILED,
++                                 "PCM configuration was not confirmed");
++    g_object_unref (task);
++}
++
++static void
++cpcmfrm_readback_ready (MMBaseModem *self, GAsyncResult *res, GTask *task)
++{
++    GError *error = NULL;
++    const gchar *response = mm_base_modem_at_command_finish (self, res, &error);
++    g_autofree gchar *normalized = response ? g_strdup (response) : NULL;
++    g_autoptr(MMCallAudioFormat) format = NULL;
++    AudioConfiguration *ctx = g_task_get_task_data (task);
++    Private *priv = get_private (MM_SHARED_SIMTECH (self));
++
++    /* Exact single selector result; no duplicate lines, inferred rates or
++     * acceptance of a partial/unsuccessful command completion. */
++    if (!response || !configuration_current (task, TRUE) ||
++        g_strcmp0 (g_strstrip (normalized), "+CPCMFRM: 1")) {
++        configuration_failed (task, error);
++        return;
++    }
++    format = mm_call_audio_format_new ();
++    mm_call_audio_format_set_encoding (format, "pcm");
++    mm_call_audio_format_set_resolution (format, "s16le");
++    mm_call_audio_format_set_rate (format, 16000);
++    if (!mm_iface_modem_voice_audio_publish_configured (MM_IFACE_MODEM_VOICE (self), ctx->token, format) ||
++        !configuration_current (task, FALSE)) {
++        configuration_failed (task, NULL);
++        return;
++    }
++    priv->audio_configuring = FALSE;
++    configuration_marker (task, TRUE);
++    g_task_return_boolean (task, TRUE);
++    g_object_unref (task);
++}
++
++static void
++cpcmfrm_selection_ready (MMBaseModem *self, GAsyncResult *res, GTask *task)
++{
++    GError *error = NULL;
++    const gchar *response = mm_base_modem_at_command_finish (self, res, &error);
++    AudioConfiguration *ctx = g_task_get_task_data (task);
++
++    if (!response || !configuration_current (task, TRUE)) {
++        configuration_failed (task, error);
++        return;
++    }
++    ctx->selected = TRUE;
++    mm_base_modem_at_command_full (self,
++        MM_IFACE_PORT_AT (mm_base_modem_peek_port_primary (self)),
++        "+CPCMFRM?", 3, FALSE, FALSE, g_task_get_cancellable (task),
++        (GAsyncReadyCallback) cpcmfrm_readback_ready, task);
++}
++
++static void
++configure_voice_audio (MMSharedSimtech *self, MMVoiceAudioToken token,
++                       GAsyncReadyCallback callback, gpointer user_data)
++{
++    Private *priv = get_private (self);
++    g_autoptr(GCancellable) cancellable = g_cancellable_new ();
++    GTask *task = g_task_new (self, cancellable, callback, user_data);
++    AudioConfiguration *ctx = g_new0 (AudioConfiguration, 1);
++
++    g_task_set_check_cancellable (task, FALSE);
++    g_task_set_task_data (task, ctx, g_free);
++    if (priv->audio_failed || priv->audio_configuring || priv->audio_physical) {
++        /* Never put a selection behind an unresolved physical transition. */
++        voice_audio_fail_closed (self);
++        g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_WRONG_STATE,
++                                 "Audio transport admission is closed");
++        g_object_unref (task);
++        return;
++    }
++    ctx->token = token;
++    if (!configuration_current (task, TRUE)) {
++        g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_CANCELLED,
++                                 "PCM configuration owner is no longer current");
++        g_object_unref (task);
++        return;
++    }
++    priv->audio_configuring = TRUE;
++    mm_base_modem_at_command_full (MM_BASE_MODEM (self),
++        MM_IFACE_PORT_AT (mm_base_modem_peek_port_primary (MM_BASE_MODEM (self))),
++        "+CPCMFRM=1", 3, FALSE, FALSE, cancellable,
++        (GAsyncReadyCallback) cpcmfrm_selection_ready, task);
++}
++
++/*****************************************************************************/
+ /* GPS trace received */
+ 
+ static void
+@@ -708,7 +888,16 @@
+                                                           GAsyncResult       *res,
+                                                           GError            **error)
+ {
+-    return g_task_propagate_boolean (G_TASK (res), error);
++    if (!g_task_propagate_boolean (G_TASK (res), error))
++        return FALSE;
++    /* The real task may have completed before a reset, with its callback still
++     * queued. Revalidate at the consumer's finish boundary as well. */
++    if (g_task_get_task_data (G_TASK (res)) && !configuration_current (G_TASK (res), FALSE)) {
++        g_set_error_literal (error, MM_CORE_ERROR, MM_CORE_ERROR_CANCELLED,
++                             "Voice audio lifecycle is no longer current");
++        return FALSE;
++    }
++    return TRUE;
+ }
+ 
+ static void
+@@ -716,11 +905,15 @@
+                                        GAsyncResult      *res,
+                                        GTask             *task)
+ {
+-    GError *error = NULL;
+-
+-    if (!common_voice_enable_disable_unsolicited_events_finish (self, res, &error)) {
++    g_autoptr(GError) error = NULL;
++    gboolean success;
++
++    success = common_voice_enable_disable_unsolicited_events_finish (self, res, &error);
++    if (configuration_envelope_stale (task, FALSE))
++        return;
++    if (!success) {
+         mm_obj_warn (self, "couldn't enable Simtech-specific voice unsolicited events: %s", error->message);
+-        g_error_free (error);
++        g_clear_error (&error);
+     }
+ 
+     g_task_return_boolean (task, TRUE);
+@@ -732,14 +925,18 @@
+                                               GAsyncResult      *res,
+                                               GTask             *task)
+ {
+-    GError  *error = NULL;
+-    Private *priv;
+-
+-    priv = get_private (MM_SHARED_SIMTECH (self));
+-
+-    if (!priv->iface_modem_voice_parent->enable_unsolicited_events_finish (self, res, &error)) {
++    g_autoptr(GError) error = NULL;
++    gboolean success;
++    Private *priv;
++
++    priv = get_private (MM_SHARED_SIMTECH (self));
++
++    success = priv->iface_modem_voice_parent->enable_unsolicited_events_finish (self, res, &error);
++    if (configuration_envelope_stale (task, FALSE))
++        return;
++    if (!success) {
+         mm_obj_warn (self, "couldn't enable parent voice unsolicited events: %s", error->message);
+-        g_error_free (error);
++        g_clear_error (&error);
+     }
+ 
+     /* our own enabling next */
+@@ -749,6 +946,23 @@
+                                                     task);
+ }
+ 
++static void
++voice_audio_refresh_ready (MMSharedSimtech *self, GAsyncResult *res, GTask *task)
++{
++    Private *priv = get_private (self);
++    GError *error = NULL;
++    if (!g_task_propagate_boolean (G_TASK (res), &error)) {
++        g_task_return_error (task, error);
++        g_object_unref (task);
++        return;
++    }
++    if (configuration_envelope_stale (task, FALSE))
++        return;
++    priv->iface_modem_voice_parent->enable_unsolicited_events (
++        MM_IFACE_MODEM_VOICE (self),
++        (GAsyncReadyCallback) parent_voice_enable_unsolicited_events_ready, task);
++}
++
+ void
+ mm_shared_simtech_voice_enable_unsolicited_events (MMIfaceModemVoice   *self,
+                                                    GAsyncReadyCallback  callback,
+@@ -757,12 +971,30 @@
+     Private *priv;
+     GTask   *task;
+ 
+-    task = g_task_new (self, NULL, callback, user_data);
++    task = g_task_new (self, mm_base_modem_peek_cancellable (MM_BASE_MODEM (self)), callback, user_data);
++    if (!configuration_envelope_begin (task, TRUE))
++        return;
+ 
+     priv = get_private (MM_SHARED_SIMTECH (self));
+     g_assert (priv->iface_modem_voice_parent);
+     g_assert (priv->iface_modem_voice_parent->enable_unsolicited_events);
+     g_assert (priv->iface_modem_voice_parent->enable_unsolicited_events_finish);
++
++    if (priv->audio_failed) {
++        g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_WRONG_STATE,
++                                 "Audio transport admission is closed");
++        g_object_unref (task);
++        return;
++    }
++    if (priv->cpcmfrm_support == FEATURE_SUPPORTED) {
++        g_autoptr(MMCallAudioFormat) configured = mm_iface_modem_voice_audio_dup_configured (self);
++        if (!configured) {
++            configure_voice_audio (MM_SHARED_SIMTECH (self),
++                                   ((AudioConfiguration *) g_task_get_task_data (task))->token,
++                                   (GAsyncReadyCallback) voice_audio_refresh_ready, task);
++            return;
++        }
++    }
+ 
+     /* chain up parent's enable first */
+     priv->iface_modem_voice_parent->enable_unsolicited_events (
+@@ -987,7 +1219,16 @@
+                                                          GAsyncResult       *res,
+                                                          GError            **error)
+ {
+-    return g_task_propagate_boolean (G_TASK (res), error);
++    if (!g_task_propagate_boolean (G_TASK (res), error))
++        return FALSE;
++    /* The real task may have completed before a reset, with its callback still
++     * queued. Revalidate at the consumer's finish boundary as well. */
++    if (g_task_get_task_data (G_TASK (res)) && !configuration_current (G_TASK (res), FALSE)) {
++        g_set_error_literal (error, MM_CORE_ERROR, MM_CORE_ERROR_CANCELLED,
++                             "Voice audio lifecycle is no longer current");
++        return FALSE;
++    }
++    return TRUE;
+ }
+ 
+ static void
+@@ -995,14 +1236,18 @@
+                                              GAsyncResult      *res,
+                                              GTask             *task)
+ {
+-    GError  *error = NULL;
+-    Private *priv;
+-
+-    priv = get_private (MM_SHARED_SIMTECH (self));
+-
+-    if (!priv->iface_modem_voice_parent->setup_unsolicited_events_finish (self, res, &error)) {
++    g_autoptr(GError) error = NULL;
++    gboolean success;
++    Private *priv;
++
++    priv = get_private (MM_SHARED_SIMTECH (self));
++
++    success = priv->iface_modem_voice_parent->setup_unsolicited_events_finish (self, res, &error);
++    if (configuration_envelope_stale (task, FALSE))
++        return;
++    if (!success) {
+         mm_obj_warn (self, "couldn't setup parent voice unsolicited events: %s", error->message);
+-        g_error_free (error);
++        g_clear_error (&error);
+     }
+ 
+     /* our own setup next */
+@@ -1020,7 +1265,18 @@
+     Private *priv;
+     GTask   *task;
+ 
+-    task = g_task_new (self, NULL, callback, user_data);
++    task = g_task_new (self, mm_base_modem_peek_cancellable (MM_BASE_MODEM (self)), callback, user_data);
++    priv = get_private (MM_SHARED_SIMTECH (self));
++    if (priv->audio_failed || priv->audio_configuring || priv->audio_physical) {
++        /* Setup success is not audio evidence. Preserve generic enable's
++         * noncritical rejection path without running handlers/parent work. */
++        voice_audio_fail_closed (MM_SHARED_SIMTECH (self));
++        g_task_return_boolean (task, TRUE);
++        g_object_unref (task);
++        return;
++    }
++    if (!configuration_envelope_begin (task, TRUE))
++        return;
+ 
+     priv = get_private (MM_SHARED_SIMTECH (self));
+     g_assert (priv->iface_modem_voice_parent);
+@@ -1037,105 +1293,191 @@
+ /*****************************************************************************/
+ /* In-call audio channel setup/cleanup */
+ 
++typedef struct {
++    gboolean setup;
++    GCancellable *operation;
++    MMVoiceAudioToken configuration;
++    MMPort *port;
++    MMCallAudioFormat *format;
++} AudioChannel;
++
++static void
++channel_free (AudioChannel *ctx)
++{
++    g_clear_object (&ctx->operation);
++    g_clear_object (&ctx->port);
++    g_clear_object (&ctx->format);
++    g_free (ctx);
++}
++
+ gboolean
+-mm_shared_simtech_voice_setup_in_call_audio_channel_finish (MMIfaceModemVoice  *self,
+-                                                            GAsyncResult       *res,
+-                                                            MMPort            **audio_port,   /* optional */
+-                                                            MMCallAudioFormat **audio_format, /* optional */
+-                                                            GError            **error)
+-{
+-    Private *priv;
+-
+-    priv = get_private (MM_SHARED_SIMTECH (self));
+-
++mm_shared_simtech_voice_setup_in_call_audio_channel_finish (MMIfaceModemVoice *self,
++                                                            GAsyncResult *res,
++                                                            MMPort **audio_port,
++                                                            MMCallAudioFormat **audio_format,
++                                                            GError **error)
++{
++    AudioChannel *ctx = g_task_get_task_data (G_TASK (res));
++    if (audio_port)
++        *audio_port = NULL;
++    if (audio_format)
++        *audio_format = NULL;
+     if (!g_task_propagate_boolean (G_TASK (res), error))
+         return FALSE;
+-
+-    if (audio_format)
+-        *audio_format = NULL;
+-
+-    if (audio_port) {
+-        if (priv->cpcmreg_support == FEATURE_SUPPORTED)
+-            *audio_port = MM_PORT (mm_base_modem_get_port_audio (MM_BASE_MODEM (self)));
++    if (audio_port && ctx->port)
++        *audio_port = g_object_ref (ctx->port);
++    if (audio_format && ctx->format)
++        *audio_format = g_object_ref (ctx->format);
++    return TRUE;
++}
++
++gboolean
++mm_shared_simtech_voice_cleanup_in_call_audio_channel_finish (MMIfaceModemVoice *self,
++                                                              GAsyncResult *res,
++                                                              GError **error)
++{
++    return g_task_propagate_boolean (G_TASK (res), error);
++}
++
++static gboolean
++channel_current (GTask *task)
++{
++    MMSharedSimtech *self = g_task_get_source_object (task);
++    AudioChannel *ctx = g_task_get_task_data (task);
++    g_autoptr(GCancellable) current = mm_iface_modem_voice_audio_ref_channel_cancellable (
++        MM_IFACE_MODEM_VOICE (self), !ctx->setup);
++    return !get_private (self)->audio_failed && current && current == ctx->operation &&
++        mm_iface_modem_voice_audio_configuration_is_current (
++            MM_IFACE_MODEM_VOICE (self), ctx->configuration, FALSE);
++}
++
++static void
++channel_reject (GTask *task)
++{
++    g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_CANCELLED,
++                             "Audio channel operation is no longer current");
++    g_object_unref (task);
++}
++
++static void channel_schedule (MMSharedSimtech *self);
++
++static void
++cpcmreg_set_ready (MMBaseModem *modem, GAsyncResult *res, GTask *task)
++{
++    g_autoptr(GObject) owner = g_object_ref (G_OBJECT (modem));
++    MMSharedSimtech *self = MM_SHARED_SIMTECH (modem);
++    Private *priv = get_private (self);
++    AudioChannel *ctx = g_task_get_task_data (task);
++    GError *error = NULL;
++    const gchar *response = mm_base_modem_at_command_finish (modem, res, &error);
++
++    g_assert (priv->audio_physical == task);
++    /* Keep the submitted response wait alive across logical supersession.
++     * Only its real ACK permits a newer physical command/commit. */
++    if (!response || priv->audio_failed ||
++        !mm_iface_modem_voice_audio_configuration_is_current (
++            MM_IFACE_MODEM_VOICE (self), ctx->configuration, FALSE))
++        voice_audio_fail_closed (self);
++    priv->audio_physical = NULL;
++    if (priv->audio_failed) {
++        if (error)
++            g_task_return_error (task, error);
+         else
+-            *audio_port = NULL;
+-    }
+-
+-    return TRUE;
+-}
+-
+-gboolean
+-mm_shared_simtech_voice_cleanup_in_call_audio_channel_finish (MMIfaceModemVoice  *self,
+-                                                              GAsyncResult       *res,
+-                                                              GError            **error)
+-{
+-    return g_task_propagate_boolean (G_TASK (res), error);
+-}
+-
+-static void
+-cpcmreg_set_ready (MMBaseModem  *self,
+-                   GAsyncResult *res,
+-                   GTask        *task)
+-{
+-    GError *error = NULL;
+-
+-    if (!mm_base_modem_at_command_finish (self, res, &error))
+-        g_task_return_error (task, error);
+-    else
++            g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_FAILED,
++                                     "Audio physical transition was not confirmed");
++        g_object_unref (task);
++    } else if (!channel_current (task))
++        channel_reject (task);
++    else {
++        if (ctx->setup) {
++            ctx->format = mm_iface_modem_voice_audio_dup_configured (MM_IFACE_MODEM_VOICE (self));
++            /* get_port_audio already returns an owned reference. */
++            ctx->port = MM_PORT (mm_base_modem_get_port_audio (modem));
++        }
+         g_task_return_boolean (task, TRUE);
+-    g_object_unref (task);
++        g_object_unref (task);
++    }
++    channel_schedule (self);
+ }
+ 
+ static gboolean
+ call_audio_channel_set (gpointer user_data)
+ {
+-    GTask        *task;
+-    MMBaseModem  *modem;
+-    gboolean     setup;
+-
+-    task = G_TASK (user_data);
+-    setup = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (task), "setup"));
+-
+-    if (g_task_return_error_if_cancelled (task)) {
+-        g_object_unref (task);
++    MMSharedSimtech *self = MM_SHARED_SIMTECH (user_data);
++    Private *priv = get_private (self);
++    GTask *task = g_steal_pointer (&priv->audio_pending);
++    AudioChannel *ctx;
++
++    priv->audio_delay = 0;
++    if (!task)
+         return G_SOURCE_REMOVE;
+-    }
+-
+-    modem = g_task_get_source_object (task);
+-    mm_base_modem_at_command (modem,
+-                              setup ? "+CPCMREG=1" : "+CPCMREG=0",
+-                              3,
+-                              FALSE,
+-                              (GAsyncReadyCallback) cpcmreg_set_ready,
+-                              task);
++    if (!channel_current (task)) {
++        channel_reject (task);
++        return G_SOURCE_REMOVE;
++    }
++    ctx = g_task_get_task_data (task);
++    priv->audio_physical = task;
++    /* Once submitted, use the modem lifetime cancellation only. Cancelling a
++     * queued/in-flight serial request can leave its late response undrained. */
++    mm_base_modem_at_command_full (MM_BASE_MODEM (self),
++        MM_IFACE_PORT_AT (mm_base_modem_peek_port_primary (MM_BASE_MODEM (self))),
++        ctx->setup ? "+CPCMREG=1" : "+CPCMREG=0", 3, FALSE, FALSE,
++        NULL, /* _full selects the modem cancellable when no child is supplied. */
++        (GAsyncReadyCallback) cpcmreg_set_ready, task);
+     return G_SOURCE_REMOVE;
+ }
+ 
+ static void
+-common_setup_cleanup_in_call_audio_channel (MMSharedSimtech     *self,
+-                                            gboolean             setup,
+-                                            GAsyncReadyCallback  callback,
+-                                            gpointer             user_data)
+-{
+-    GTask        *task;
+-    Private      *priv;
+-    GCancellable *cancellable;
+-
+-    priv = get_private (MM_SHARED_SIMTECH (self));
+-
+-    cancellable = mm_base_modem_peek_cancellable (MM_BASE_MODEM (self));
+-    task = g_task_new (self, cancellable, callback, user_data);
+-    g_object_set_data (G_OBJECT (task), "setup", GINT_TO_POINTER (setup));
+-
+-    /* Do nothing if CPCMREG isn't supported */
++channel_schedule (MMSharedSimtech *self)
++{
++    Private *priv = get_private (self);
++    if (priv->audio_failed && priv->audio_pending) {
++        GTask *task = g_steal_pointer (&priv->audio_pending);
++        channel_reject (task);
++    }
++    if (priv->audio_pending && !priv->audio_physical && !priv->audio_delay)
++        priv->audio_delay = g_timeout_add_full (G_PRIORITY_DEFAULT, 100,
++            call_audio_channel_set, g_object_ref (self), g_object_unref);
++}
++
++static void
++common_setup_cleanup_in_call_audio_channel (MMSharedSimtech *self,
++                                            gboolean setup,
++                                            GAsyncReadyCallback callback,
++                                            gpointer user_data)
++{
++    Private *priv = get_private (self);
++    GTask *task = g_task_new (self, NULL, callback, user_data);
++    AudioChannel *ctx = g_new0 (AudioChannel, 1);
++
++    ctx->setup = setup;
++    g_task_set_task_data (task, ctx, (GDestroyNotify) channel_free);
++    if (priv->audio_failed || priv->audio_configuring) {
++        channel_reject (task);
++        return;
++    }
+     if (priv->cpcmreg_support != FEATURE_SUPPORTED) {
+         g_task_return_boolean (task, TRUE);
+         g_object_unref (task);
+         return;
+     }
+-
+-    /* Some models (like SIM7600) need to wait a bit before they can accept +CPCMREG */
+-    g_timeout_add (100, (GSourceFunc)call_audio_channel_set, task);
++    ctx->operation = mm_iface_modem_voice_audio_ref_channel_cancellable (
++        MM_IFACE_MODEM_VOICE (self), !setup);
++    if (!mm_iface_modem_voice_audio_suspend_channel (
++            MM_IFACE_MODEM_VOICE (self), ctx->operation, !setup, &ctx->configuration)) {
++        channel_reject (task);
++        return;
++    }
++    if (priv->audio_pending) {
++        GTask *previous = g_steal_pointer (&priv->audio_pending);
++        if (priv->audio_delay) {
++            g_source_remove (priv->audio_delay);
++            priv->audio_delay = 0;
++        }
++        channel_reject (previous);
++    }
++    priv->audio_pending = task;
++    channel_schedule (self);
+ }
+ 
+ void
+@@ -1162,21 +1504,29 @@
+                                               GAsyncResult       *res,
+                                               GError            **error)
+ {
+-    return g_task_propagate_boolean (G_TASK (res), error);
+-}
+-
+-static void
+-cpcmfrm_set_ready (MMBaseModem  *self,
+-                   GAsyncResult *res,
+-                   GTask        *task)
+-{
+-    GError *error = NULL;
+-
+-    if (!mm_base_modem_at_command_finish (self, res, &error))
+-        g_task_return_error (task, error);
++    if (!g_task_propagate_boolean (G_TASK (res), error))
++        return FALSE;
++    /* The real task may have completed before a reset, with its callback still
++     * queued. Revalidate at the consumer's finish boundary as well. */
++    if (g_task_get_task_data (G_TASK (res)) && !configuration_current (G_TASK (res), FALSE)) {
++        g_set_error_literal (error, MM_CORE_ERROR, MM_CORE_ERROR_CANCELLED,
++                             "Voice audio lifecycle is no longer current");
++        return FALSE;
++    }
++    return TRUE;
++}
++
++static void
++cpcmfrm_configuration_ready (MMSharedSimtech *self, GAsyncResult *res, GTask *task)
++{
++    g_autoptr(GError) error = NULL;
++    gboolean success = g_task_propagate_boolean (G_TASK (res), &error);
++    if (!success)
++        g_task_return_error (task, g_steal_pointer (&error));
+     else {
++        if (configuration_envelope_stale (task, FALSE))
++            return;
+         g_task_return_boolean (task, TRUE);
+-        mm_obj_dbg (self, "USB audio 16k sample rate turned on");
+     }
+     g_object_unref (task);
+ }
+@@ -1187,19 +1537,19 @@
+                                     GTask            *task)
+ {
+     Private *priv;
+-
+-    priv = get_private (MM_SHARED_SIMTECH (self));
+-
+-    priv->cpcmfrm_support = (mm_base_modem_at_command_finish (MM_BASE_MODEM (self), res, NULL) ?
+-                             FEATURE_SUPPORTED : FEATURE_NOT_SUPPORTED);
++    gboolean supported;
++
++    priv = get_private (MM_SHARED_SIMTECH (self));
++
++    supported = !!mm_base_modem_at_command_finish (MM_BASE_MODEM (self), res, NULL);
++    if (configuration_envelope_stale (task, TRUE))
++        return;
++    priv->cpcmfrm_support = supported ? FEATURE_SUPPORTED : FEATURE_NOT_SUPPORTED;
+         
+     if (priv->cpcmfrm_support == FEATURE_SUPPORTED) {
+-        mm_base_modem_at_command (MM_BASE_MODEM (self),
+-                                  "+CPCMFRM=1",
+-                                  3,
+-                                  FALSE,
+-                                  (GAsyncReadyCallback) cpcmfrm_set_ready,
+-                                  task);
++        configure_voice_audio (MM_SHARED_SIMTECH (self),
++                               ((AudioConfiguration *) g_task_get_task_data (task))->token,
++                               (GAsyncReadyCallback) cpcmfrm_configuration_ready, task);
+     } else {
+         g_task_return_boolean (task, TRUE);
+         g_object_unref (task);
+@@ -1212,11 +1562,14 @@
+                             GTask            *task)
+ {
+     Private *priv;
+-
+-    priv = get_private (MM_SHARED_SIMTECH (self));
+-
+-    priv->cpcmreg_support = (mm_base_modem_at_command_finish (MM_BASE_MODEM (self), res, NULL) ?
+-                             FEATURE_SUPPORTED : FEATURE_NOT_SUPPORTED);
++    gboolean supported;
++
++    priv = get_private (MM_SHARED_SIMTECH (self));
++
++    supported = !!mm_base_modem_at_command_finish (MM_BASE_MODEM (self), res, NULL);
++    if (configuration_envelope_stale (task, TRUE))
++        return;
++    priv->cpcmreg_support = supported ? FEATURE_SUPPORTED : FEATURE_NOT_SUPPORTED;
+     mm_obj_dbg (self, "modem %s USB audio control", (priv->cpcmreg_support == FEATURE_SUPPORTED) ? "supports" : "doesn't support");
+ 
+     /* If USB Audio not supported, we won't check and set its formats */
+@@ -1247,6 +1600,8 @@
+     priv = get_private (MM_SHARED_SIMTECH (self));
+ 
+     response = mm_base_modem_at_command_finish (MM_BASE_MODEM (self), res, NULL);
++    if (configuration_envelope_stale (task, TRUE))
++        return;
+     if (response && !mm_simtech_parse_clcc_test (response, &clcc_urc_supported, &error)) {
+         mm_obj_dbg (self, "failed checking CLCC URC support: %s", error->message);
+         g_clear_error (&error);
+@@ -1260,6 +1615,8 @@
+                   MM_IFACE_MODEM_VOICE_PERIODIC_CALL_LIST_CHECK_DISABLED, (priv->clcc_urc_support == FEATURE_SUPPORTED),
+                   NULL);
+ 
++    if (configuration_envelope_stale (task, TRUE))
++        return;
+     mm_base_modem_at_command (MM_BASE_MODEM (self),
+                               "+CPCMREG=?",
+                               3,
+@@ -1274,11 +1631,15 @@
+                                   GTask             *task)
+ {
+     Private *priv;
+-    GError  *error = NULL;
+-
+-    priv = get_private (MM_SHARED_SIMTECH (self));
+-    if (!priv->iface_modem_voice_parent->check_support_finish (self, res, &error)) {
+-        g_task_return_error (task, error);
++    g_autoptr(GError) error = NULL;
++    gboolean supported;
++
++    priv = get_private (MM_SHARED_SIMTECH (self));
++    supported = priv->iface_modem_voice_parent->check_support_finish (self, res, &error);
++    if (configuration_envelope_stale (task, TRUE))
++        return;
++    if (!supported) {
++        g_task_return_error (task, g_steal_pointer (&error));
+         g_object_unref (task);
+         return;
+     }
+@@ -1300,7 +1661,9 @@
+     Private *priv;
+     GTask   *task;
+ 
+-    task = g_task_new (self, NULL, callback, user_data);
++    task = g_task_new (self, mm_base_modem_peek_cancellable (MM_BASE_MODEM (self)), callback, user_data);
++    if (!configuration_envelope_begin (task, FALSE))
++        return;
+ 
+     priv = get_private (MM_SHARED_SIMTECH (self));
+     g_assert (priv->iface_modem_voice_parent);

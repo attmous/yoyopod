@@ -146,10 +146,13 @@ test_stale_setup_preserves_new_task_and_port (void)
     publish_synthetic_configuration (f);
     call = voice_fixture_incoming (f, "+49123456789");
     old = voice_fixture_start_channel (f);
+    /* Settle physical ACK first, hold only actual generic-result delivery. */
+    voice_fixture_hold_channel_ready (f, old);
+    voice_fixture_complete_channel (f, old, TRUE);
     mm_iface_modem_voice_audio_invalidate (voice);
     publish_synthetic_configuration (f);
     current = voice_fixture_start_channel (f);
-    voice_fixture_complete_channel (f, old, TRUE);
+    voice_fixture_deliver_channel_ready (f, old);
     g_assert_true (voice_fixture_channel_pending (f, current));
     g_assert_cmpstr (voice_fixture_read_port (f, call), ==, "");
     voice_fixture_complete_channel (f, current, TRUE);
@@ -159,9 +162,11 @@ test_stale_setup_preserves_new_task_and_port (void)
     /* Reverse completion order: a stale setup must not disconnect the same
      * port object already committed by its replacement. */
     old = voice_fixture_start_channel (f);
+    voice_fixture_hold_channel_ready (f, old);
+    voice_fixture_complete_channel (f, old, TRUE);
     current = voice_fixture_start_channel (f);
     voice_fixture_complete_channel (f, current, TRUE);
-    voice_fixture_complete_channel (f, old, TRUE);
+    voice_fixture_deliver_channel_ready (f, old);
     g_assert_true (mm_port_get_connected (voice_fixture_audio_port (f)));
     g_assert_cmpstr (voice_fixture_read_port (f, call), ==, "fixture-audio");
     voice_fixture_cleanup_last_channel (f);
@@ -179,9 +184,11 @@ test_stale_cleanup_preserves_new_channel (void)
     setup = voice_fixture_start_channel (f);
     voice_fixture_complete_channel (f, setup, TRUE);
     cleanup = voice_fixture_start_cleanup (f);
+    voice_fixture_hold_channel_ready (f, cleanup);
+    voice_fixture_complete_channel (f, cleanup, TRUE);
     setup = voice_fixture_start_channel (f);
     voice_fixture_complete_channel (f, setup, TRUE);
-    voice_fixture_complete_channel (f, cleanup, TRUE);
+    voice_fixture_deliver_channel_ready (f, cleanup);
     g_assert_false (mm_iface_modem_voice_audio_clear_channel (voice_fixture_voice (f), cleanup));
     g_assert_true (mm_port_get_connected (voice_fixture_audio_port (f)));
     g_assert_cmpstr (voice_fixture_read_port (f, call), ==, "fixture-audio");
@@ -202,7 +209,7 @@ test_failed_activation_has_no_port (void)
     voice_fixture_complete_channel (f, setup, FALSE);
     g_assert_cmpstr (voice_fixture_read_port (f, call), ==, "");
     g_assert_false (mm_port_get_connected (voice_fixture_audio_port (f)));
-    g_assert_cmpuint (voice_fixture_read_format (f, call), ==, 16000);
+    g_assert_cmpuint (voice_fixture_read_format (f, call), ==, 0);
     voice_fixture_free (f);
 }
 
@@ -267,6 +274,8 @@ test_observed_invalidity_and_operation_cancellation (void)
     old = voice_fixture_start_channel (f);
     first = mm_iface_modem_voice_audio_ref_channel_cancellable (voice, FALSE);
     g_assert_nonnull (first);
+    voice_fixture_hold_channel_ready (f, old);
+    voice_fixture_complete_channel (f, old, TRUE);
     current = voice_fixture_start_channel (f);
     second = mm_iface_modem_voice_audio_ref_channel_cancellable (voice, FALSE);
     g_assert_nonnull (second);
@@ -280,7 +289,7 @@ test_observed_invalidity_and_operation_cancellation (void)
     g_assert_cmpuint (voice_fixture_read_format (f, call), ==, 0);
     g_assert_cmpstr (voice_fixture_read_port (f, call), ==, "");
     voice_fixture_complete_channel (f, current, TRUE);
-    voice_fixture_complete_channel (f, old, TRUE);
+    voice_fixture_deliver_channel_ready (f, old);
     g_assert_cmpstr (voice_fixture_read_port (f, call), ==, "");
     voice_fixture_free (f);
 }
