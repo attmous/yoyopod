@@ -17,4 +17,12 @@ const gchar *voice_fixture_read_port (VoiceFixture *f, MMBaseCall *call);
 void voice_fixture_cleanup_last_channel (VoiceFixture *f);
 void voice_fixture_publish_active (VoiceFixture *f);
 
+MMVoiceAudioToken voice_fixture_start_channel (VoiceFixture *f);
+MMVoiceAudioToken voice_fixture_start_cleanup (VoiceFixture *f);
+void voice_fixture_complete_channel (VoiceFixture *f, MMVoiceAudioToken token, gboolean success);
+gboolean voice_fixture_channel_pending (VoiceFixture *f, MMVoiceAudioToken token);
+void voice_fixture_assert_native_hangup (VoiceFixture *f, MMBaseCall *call, guint8 call_id);
+
+void voice_fixture_assert_exhaustion (VoiceFixture *f);
+
 #endif

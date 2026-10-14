@@ -25,5 +25,5 @@ meson setup "$build_dir" "$source_dir" -Dtests=true -Dbuiltin_plugins=true -Dgtk
 if [[ "$mode" == focused ]]; then
     meson test -C "$build_dir" --print-errorlogs test-voice-audio
 else
-    meson test -C "$build_dir" --print-errorlogs --exclude-suite yoyopod-provider
+    meson test -C "$build_dir" --print-errorlogs --no-suite yoyopod-provider
 fi

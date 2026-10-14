@@ -1,14 +1,626 @@
-Description: Register real voice lifecycle regressions against daemon sources
+Description: Separate configured voice audio from active channels and fence callbacks
+ Preserve configured format across call teardown, normalize live Calls, fence
+ stale configuration/channel results and retain the selected modem audio port.
+ Private regressions link the actual daemon/provider sources.
 Author: yoyopod contributors
 Origin: other, yoyopod
 Forwarded: not-needed
-Last-Update: 2026-10-06
+Last-Update: 2026-10-14
 
+diff --git a/src/mm-base-modem.c b/src/mm-base-modem.c
+--- a/src/mm-base-modem.c
++++ b/src/mm-base-modem.c
+@@ -1022,7 +1022,10 @@
+ {
+     g_return_if_fail (MM_IS_BASE_MODEM (self));
+ 
+-    self->priv->reprobe = reprobe;
++    if (self->priv->reprobe != reprobe) {
++        self->priv->reprobe = reprobe;
++        g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_REPROBE]);
++    }
+ }
+ 
+ gboolean
+@@ -1684,6 +1687,7 @@
+     self->priv->qcdm = (qcdm ? g_object_ref (qcdm) : NULL);
+     self->priv->gps_control = (gps_control ? g_object_ref (gps_control) : NULL);
+     self->priv->gps = (gps ? g_object_ref (gps) : NULL);
++    self->priv->audio = (audio ? g_object_ref (audio) : NULL);
+ 
+     /* Append net ports to the final list of data ports, but only if the modem
+      * supports them */
+diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
+--- a/src/mm-iface-modem-voice.c
++++ b/src/mm-iface-modem-voice.c
+@@ -1831,18 +1831,21 @@
+                                    GTask             *task)
+ {
+     InCallSetupContext *ctx;
+-    GError             *error = NULL;
++    g_autoptr(GError) error = NULL;
++    g_autoptr(MMPort) port = NULL;
++    g_autoptr(MMCallAudioFormat) format = NULL;
+ 
+     ctx = g_task_get_task_data (task);
+-
++    /* A failing finish may have produced partial outputs. They never become
++     * active settings, and cancellation must only release these local refs. */
+     if (!MM_IFACE_MODEM_VOICE_GET_IFACE (self)->setup_in_call_audio_channel_finish (
+-            self,
+-            res,
+-            &ctx->audio_port,
+-            &ctx->audio_format,
+-            &error)) {
+-        mm_obj_warn (self, "couldn't setup in-call audio channel: %s", error->message);
+-        g_clear_error (&error);
++            self, res, &port, &format, &error)) {
++        if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++            mm_obj_warn (self, "couldn't setup in-call audio channel: %s", error->message);
++    } else if (!g_task_get_cancellable (task) ||
++               !g_cancellable_is_cancelled (g_task_get_cancellable (task))) {
++        g_set_object (&ctx->audio_port, port);
++        g_set_object (&ctx->audio_format, format);
+     }
+ 
+     ctx->step++;
+@@ -2091,9 +2094,59 @@
+     GCancellable      *setup_cancellable;
+     GCancellable      *cleanup_cancellable;
+     gboolean           in_call_state;
++    guint64            generation;
++    guint64            configuration_operation;
++    guint64            channel_operation;
++    gboolean           accepting_results;
++    gboolean           exhausted;
++    gboolean           configuration_pending;
++    gboolean           channel_pending;
++    MMCallAudioFormat *configured_audio_format;
++    /* Active channel references; never the configured-format cache. */
+     MMPort            *audio_port;
+     MMCallAudioFormat *audio_format;
+ } InCallEventContext;
++
++static InCallEventContext *
++peek_in_call_event_context (MMIfaceModemVoice *self)
++{
++    return in_call_event_context_quark ?
++        g_object_get_qdata (G_OBJECT (self), in_call_event_context_quark) : NULL;
++}
++
++static gboolean
++voice_audio_owner_available (MMIfaceModemVoice *self)
++{
++    GCancellable *modem = mm_base_modem_peek_cancellable (MM_BASE_MODEM (self));
++
++    /* Initial configuration runs while valid is FALSE. Reprobe and cancellation
++     * instead close admission immediately, before asynchronous disable/invalidity. */
++    return !mm_base_modem_get_reprobe (MM_BASE_MODEM (self)) &&
++        modem && !g_cancellable_is_cancelled (modem);
++}
++
++static gboolean
++voice_audio_accepting (MMIfaceModemVoice *self, InCallEventContext *ctx)
++{
++    return ctx && ctx->accepting_results && voice_audio_owner_available (self);
++}
++
++static void
++voice_audio_owner_changed (MMIfaceModemVoice *self, GParamSpec *pspec)
++{
++    if ((!g_strcmp0 (pspec->name, MM_BASE_MODEM_VALID) &&
++         !mm_base_modem_get_valid (MM_BASE_MODEM (self))) ||
++        (!g_strcmp0 (pspec->name, MM_BASE_MODEM_REPROBE) &&
++         mm_base_modem_get_reprobe (MM_BASE_MODEM (self))))
++        mm_iface_modem_voice_audio_invalidate (self);
++}
++
++static void
++voice_audio_disconnect (InCallEventContext *ctx)
++{
++    if (ctx->audio_port && mm_port_get_connected (ctx->audio_port))
++        mm_port_set_connected (ctx->audio_port, FALSE);
++}
+ 
+ static void
+ in_call_event_context_free (InCallEventContext *ctx)
+@@ -2108,8 +2161,10 @@
+         g_cancellable_cancel (ctx->setup_cancellable);
+         g_clear_object (&ctx->setup_cancellable);
+     }
++    voice_audio_disconnect (ctx);
+     g_clear_object (&ctx->audio_port);
+     g_clear_object (&ctx->audio_format);
++    g_clear_object (&ctx->configured_audio_format);
+     g_slice_free (InCallEventContext, ctx);
+ }
+ 
+@@ -2125,6 +2180,12 @@
+     if (!ctx) {
+         /* Create context and keep it as object data */
+         ctx = g_slice_new0 (InCallEventContext);
++        ctx->generation = 1;
++        ctx->accepting_results = voice_audio_owner_available (self);
++        g_signal_connect (self, "notify::" MM_BASE_MODEM_VALID,
++                          G_CALLBACK (voice_audio_owner_changed), NULL);
++        g_signal_connect (self, "notify::" MM_BASE_MODEM_REPROBE,
++                          G_CALLBACK (voice_audio_owner_changed), NULL);
+         g_object_set_qdata_full (
+             G_OBJECT (self),
+             in_call_event_context_quark,
+@@ -2139,9 +2200,10 @@
+ call_list_foreach_audio_settings (MMBaseCall         *call,
+                                   InCallEventContext *ctx)
+ {
+-    if (mm_base_call_get_state (call) != MM_CALL_STATE_TERMINATED)
+-        return;
+-    mm_base_call_change_audio_settings (call, ctx->audio_port, ctx->audio_format);
++    if (mm_base_call_get_state (call) == MM_CALL_STATE_TERMINATED)
++        return;
++    mm_base_call_change_audio_settings (call, ctx->audio_port,
++                                        ctx->audio_format ? ctx->audio_format : ctx->configured_audio_format);
+ }
+ 
+ static void
+@@ -2155,10 +2217,8 @@
+     g_object_get (MM_BASE_MODEM (self),
+                   MM_IFACE_MODEM_VOICE_CALL_LIST, &list,
+                   NULL);
+-    if (!list) {
+-        mm_obj_warn (self, "cannot update audio settings in active calls: missing internal call list");
+-        return;
+-    }
++    if (!list)
++        return; /* Configuration may precede the initial Call list. */
+ 
+     mm_call_list_foreach (list, (MMCallListForeachFunc) call_list_foreach_audio_settings, ctx);
+     g_clear_object (&list);
+@@ -2171,7 +2231,196 @@
+     InCallEventContext *ctx;
+ 
+     ctx = get_in_call_event_context (self);
+-    mm_base_call_change_audio_settings (call, ctx->audio_port, ctx->audio_format);
++    mm_base_call_change_audio_settings (call, ctx->audio_port,
++                                        ctx->audio_format ? ctx->audio_format : ctx->configured_audio_format);
++}
++
++static void
++call_list_clear_audio_settings (MMBaseCall *call, InCallEventContext *ctx)
++{
++    /* Cleanup releases every surviving Call's port, including terminal Calls.
++     * Only ongoing Calls receive the current configured format. */
++    mm_base_call_change_audio_settings (
++        call, NULL, (ctx && mm_base_call_get_state (call) != MM_CALL_STATE_TERMINATED) ?
++        ctx->configured_audio_format : NULL);
++}
++
++static void
++voice_audio_clear_call_properties (MMIfaceModemVoice *self, InCallEventContext *ctx)
++{
++    g_autoptr(MMCallList) list = NULL;
++
++    g_object_get (self, MM_IFACE_MODEM_VOICE_CALL_LIST, &list, NULL);
++    if (list)
++        mm_call_list_foreach (list, (MMCallListForeachFunc) call_list_clear_audio_settings, ctx);
++}
++
++void
++mm_iface_modem_voice_audio_invalidate (MMIfaceModemVoice *self)
++{
++    InCallEventContext *ctx = peek_in_call_event_context (self);
++
++    if (!ctx)
++        return;
++    /* Fence callbacks before cancellation or changes to observable objects. */
++    ctx->accepting_results = FALSE;
++    if (ctx->generation == G_MAXUINT64)
++        ctx->exhausted = TRUE;
++    else
++        ctx->generation++;
++    ctx->configuration_pending = FALSE;
++    ctx->channel_pending = FALSE;
++    if (ctx->check_id) {
++        g_source_remove (ctx->check_id);
++        ctx->check_id = 0;
++    }
++    if (ctx->setup_cancellable)
++        g_cancellable_cancel (ctx->setup_cancellable);
++    if (ctx->cleanup_cancellable)
++        g_cancellable_cancel (ctx->cleanup_cancellable);
++    g_clear_object (&ctx->setup_cancellable);
++    g_clear_object (&ctx->cleanup_cancellable);
++    voice_audio_disconnect (ctx);
++    g_clear_object (&ctx->audio_port);
++    g_clear_object (&ctx->audio_format);
++    g_clear_object (&ctx->configured_audio_format);
++    ctx->in_call_state = FALSE;
++    voice_audio_clear_call_properties (self, NULL);
++}
++
++static gboolean
++voice_audio_next_operation (MMIfaceModemVoice *self, InCallEventContext *ctx,
++                            guint64 *operation)
++{
++    if (ctx->exhausted || *operation == G_MAXUINT64) {
++        ctx->exhausted = TRUE;
++        mm_iface_modem_voice_audio_invalidate (self);
++        return FALSE;
++    }
++    ++*operation;
++    return TRUE;
++}
++
++MMVoiceAudioToken
++mm_iface_modem_voice_audio_begin_configuration (MMIfaceModemVoice *self)
++{
++    InCallEventContext *ctx = get_in_call_event_context (self);
++
++    if (!voice_audio_owner_available (self) ||
++        !voice_audio_next_operation (self, ctx, &ctx->configuration_operation))
++        return (MMVoiceAudioToken) { 0, 0 };
++    ctx->accepting_results = TRUE;
++    ctx->configuration_pending = TRUE;
++    /* A failed refresh must not reuse the preceding configuration. */
++    g_clear_object (&ctx->configured_audio_format);
++    update_audio_settings_in_ongoing_calls (self);
++    return (MMVoiceAudioToken) { ctx->generation, ctx->configuration_operation };
++}
++
++gboolean
++mm_iface_modem_voice_audio_publish_configured (MMIfaceModemVoice *self,
++                                              MMVoiceAudioToken token,
++                                              MMCallAudioFormat *format)
++{
++    InCallEventContext *ctx = peek_in_call_event_context (self);
++
++    if (!voice_audio_accepting (self, ctx) || !ctx->configuration_pending ||
++        token.generation != ctx->generation || token.operation != ctx->configuration_operation)
++        return FALSE;
++    ctx->configuration_pending = FALSE;
++    g_set_object (&ctx->configured_audio_format, format);
++    update_audio_settings_in_ongoing_calls (self);
++    return TRUE;
++}
++
++MMCallAudioFormat *
++mm_iface_modem_voice_audio_dup_configured (MMIfaceModemVoice *self)
++{
++    InCallEventContext *ctx = peek_in_call_event_context (self);
++
++    return (voice_audio_accepting (self, ctx) && ctx->configured_audio_format) ?
++        g_object_ref (ctx->configured_audio_format) : NULL;
++}
++
++MMVoiceAudioToken
++mm_iface_modem_voice_audio_begin_channel (MMIfaceModemVoice *self)
++{
++    InCallEventContext *ctx = get_in_call_event_context (self);
++
++    if (!voice_audio_accepting (self, ctx) ||
++        !voice_audio_next_operation (self, ctx, &ctx->channel_operation))
++        return (MMVoiceAudioToken) { 0, 0 };
++    ctx->channel_pending = TRUE;
++    /* Fence first, then cancel. Old completions must not clear these pointers. */
++    if (ctx->setup_cancellable)
++        g_cancellable_cancel (ctx->setup_cancellable);
++    if (ctx->cleanup_cancellable)
++        g_cancellable_cancel (ctx->cleanup_cancellable);
++    g_clear_object (&ctx->setup_cancellable);
++    g_clear_object (&ctx->cleanup_cancellable);
++    return (MMVoiceAudioToken) { ctx->generation, ctx->channel_operation };
++}
++
++static gboolean
++voice_audio_channel_matches (MMIfaceModemVoice *self, InCallEventContext *ctx, MMVoiceAudioToken token)
++{
++    return voice_audio_accepting (self, ctx) && token.generation == ctx->generation &&
++        token.operation && token.operation == ctx->channel_operation;
++}
++
++GCancellable *
++mm_iface_modem_voice_audio_ref_channel_cancellable (MMIfaceModemVoice *self,
++                                                   gboolean cleanup)
++{
++    InCallEventContext *ctx = peek_in_call_event_context (self);
++    GCancellable *operation;
++    GCancellable *modem;
++
++    if (!voice_audio_accepting (self, ctx) || !ctx->channel_pending)
++        return NULL;
++    modem = mm_base_modem_peek_cancellable (MM_BASE_MODEM (self));
++    operation = cleanup ? ctx->cleanup_cancellable : ctx->setup_cancellable;
++    if (!modem || g_cancellable_is_cancelled (modem) ||
++        !operation || g_cancellable_is_cancelled (operation))
++        return NULL;
++    return g_object_ref (operation);
++}
++
++gboolean
++mm_iface_modem_voice_audio_commit_channel (MMIfaceModemVoice *self,
++                                          MMVoiceAudioToken token,
++                                          MMPort *port,
++                                          MMCallAudioFormat *format)
++{
++    InCallEventContext *ctx = peek_in_call_event_context (self);
++
++    if (!voice_audio_channel_matches (self, ctx, token) || !ctx->channel_pending)
++        return FALSE;
++    ctx->channel_pending = FALSE;
++    if (ctx->audio_port != port)
++        voice_audio_disconnect (ctx);
++    g_set_object (&ctx->audio_port, port);
++    g_set_object (&ctx->audio_format, format);
++    ctx->in_call_state = TRUE;
++    update_audio_settings_in_ongoing_calls (self);
++    return TRUE;
++}
++
++gboolean
++mm_iface_modem_voice_audio_clear_channel (MMIfaceModemVoice *self,
++                                         MMVoiceAudioToken token)
++{
++    InCallEventContext *ctx = peek_in_call_event_context (self);
++
++    if (!voice_audio_channel_matches (self, ctx, token) || !ctx->channel_pending)
++        return FALSE;
++    ctx->channel_pending = FALSE;
++    voice_audio_disconnect (ctx);
++    g_clear_object (&ctx->audio_port);
++    g_clear_object (&ctx->audio_format);
++    ctx->in_call_state = FALSE;
++    voice_audio_clear_call_properties (self, ctx);
++    return TRUE;
+ }
+ 
+ static void
+@@ -2201,49 +2450,60 @@
+ 
+ static void
+ in_call_cleanup_ready (MMIfaceModemVoice *self,
+-                       GAsyncResult      *res)
+-{
+-    GError             *error = NULL;
++                       GAsyncResult *res,
++                       MMVoiceAudioToken *token)
++{
++    g_autoptr(GError) error = NULL;
+     InCallEventContext *ctx;
+-
+-    ctx = get_in_call_event_context (self);
+-
+-    if (!in_call_cleanup_finish (self, res, &error)) {
+-        /* ignore cancelled operations */
+-        if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    gboolean success;
++
++    success = in_call_cleanup_finish (self, res, &error);
++    ctx = peek_in_call_event_context (self);
++    if (voice_audio_channel_matches (self, ctx, *token) &&
++        ctx->cleanup_cancellable == g_task_get_cancellable (G_TASK (res))) {
++        if (success)
++            mm_iface_modem_voice_audio_clear_channel (self, *token);
++        else if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+             mm_obj_warn (self, "cannot cleanup in-call modem state: %s", error->message);
+-        g_clear_error (&error);
+-    } else {
+-        mm_obj_dbg (self, "modem is no longer in-call state");
+-        ctx->in_call_state = FALSE;
+-        g_clear_object (&ctx->audio_port);
+-        g_clear_object (&ctx->audio_format);
+-    }
+-
+-    g_clear_object (&ctx->cleanup_cancellable);
++        /* Property notifications during commit/clear may start a new operation. */
++        if (voice_audio_channel_matches (self, ctx, *token) &&
++            ctx->cleanup_cancellable == g_task_get_cancellable (G_TASK (res))) {
++            ctx->channel_pending = FALSE;
++            g_clear_object (&ctx->cleanup_cancellable);
++        }
++    }
++    g_free (token);
+ }
+ 
+ static void
+ in_call_setup_ready (MMIfaceModemVoice *self,
+-                     GAsyncResult      *res)
+-{
+-    GError             *error = NULL;
++                     GAsyncResult *res,
++                     MMVoiceAudioToken *token)
++{
++    g_autoptr(GError) error = NULL;
++    g_autoptr(MMPort) port = NULL;
++    g_autoptr(MMCallAudioFormat) format = NULL;
+     InCallEventContext *ctx;
+-
+-    ctx = get_in_call_event_context (self);
+-
+-    if (!in_call_setup_finish (self, res, &ctx->audio_port, &ctx->audio_format, &error)) {
+-        /* ignore cancelled operations */
+-        if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    gboolean success;
++
++    /* Always consume finish outputs locally. A stale result owns no live port
++     * connection and may only release its own references. Never recreate state. */
++    success = in_call_setup_finish (self, res, &port, &format, &error);
++    ctx = peek_in_call_event_context (self);
++    if (voice_audio_channel_matches (self, ctx, *token) &&
++        ctx->setup_cancellable == g_task_get_cancellable (G_TASK (res))) {
++        if (success)
++            mm_iface_modem_voice_audio_commit_channel (self, *token, port, format);
++        else if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+             mm_obj_warn (self, "cannot setup in-call modem state: %s", error->message);
+-        g_clear_error (&error);
+-    } else {
+-        mm_obj_dbg (self, "modem is now in-call state");
+-        ctx->in_call_state = TRUE;
+-        update_audio_settings_in_ongoing_calls (self);
+-    }
+-
+-    g_clear_object (&ctx->setup_cancellable);
++        /* Property notifications during commit/clear may start a new operation. */
++        if (voice_audio_channel_matches (self, ctx, *token) &&
++            ctx->setup_cancellable == g_task_get_cancellable (G_TASK (res))) {
++            ctx->channel_pending = FALSE;
++            g_clear_object (&ctx->setup_cancellable);
++        }
++    }
++    g_free (token);
+ }
+ 
+ static gboolean
+@@ -2252,9 +2512,12 @@
+     InCallEventContext *ctx;
+     MMCallList         *list = NULL;
+     guint               n_calls_in_call = 0;
++    MMVoiceAudioToken  *token;
+ 
+     ctx = get_in_call_event_context (self);
+     ctx->check_id = 0;
++    if (!ctx->accepting_results)
++        return G_SOURCE_REMOVE;
+ 
+     g_object_get (MM_BASE_MODEM (self),
+                   MM_IFACE_MODEM_VOICE_CALL_LIST, &list,
+@@ -2267,40 +2530,42 @@
+     mm_call_list_foreach (list, (MMCallListForeachFunc) call_list_foreach_count_in_call, &n_calls_in_call);
+ 
+     /* Need to setup in-call events? */
+-    if (n_calls_in_call > 0 && !ctx->in_call_state) {
++    if (n_calls_in_call > 0 && (!ctx->in_call_state || ctx->cleanup_cancellable)) {
+         /* if setup already ongoing, do nothing */
+         if (ctx->setup_cancellable)
+             goto out;
+ 
+-        /* cancel ongoing cleanup if any */
+-        if (ctx->cleanup_cancellable) {
+-            g_cancellable_cancel (ctx->cleanup_cancellable);
+-            g_clear_object (&ctx->cleanup_cancellable);
++        token = g_new (MMVoiceAudioToken, 1);
++        *token = mm_iface_modem_voice_audio_begin_channel (self);
++        if (!token->operation) {
++            g_free (token);
++            goto out;
+         }
+ 
+         /* run setup */
+         mm_obj_dbg (self, "setting up in-call state...");
+         ctx->setup_cancellable = g_cancellable_new ();
+-        in_call_setup (self, ctx->setup_cancellable, (GAsyncReadyCallback) in_call_setup_ready, NULL);
++        in_call_setup (self, ctx->setup_cancellable, (GAsyncReadyCallback) in_call_setup_ready, token);
+         goto out;
+     }
+ 
+     /* Need to cleanup in-call events? */
+-    if (n_calls_in_call == 0 && ctx->in_call_state) {
++    if (n_calls_in_call == 0 && (ctx->in_call_state || ctx->setup_cancellable)) {
+         /* if cleanup already ongoing, do nothing */
+         if (ctx->cleanup_cancellable)
+             goto out;
+ 
+-        /* cancel ongoing setup if any */
+-        if (ctx->setup_cancellable) {
+-            g_cancellable_cancel (ctx->setup_cancellable);
+-            g_clear_object (&ctx->setup_cancellable);
++        token = g_new (MMVoiceAudioToken, 1);
++        *token = mm_iface_modem_voice_audio_begin_channel (self);
++        if (!token->operation) {
++            g_free (token);
++            goto out;
+         }
+ 
+         /* run cleanup */
+         mm_obj_dbg (self, "cleaning up in-call state...");
+         ctx->cleanup_cancellable = g_cancellable_new ();
+-        in_call_cleanup (self, ctx->cleanup_cancellable, (GAsyncReadyCallback) in_call_cleanup_ready, NULL);
++        in_call_cleanup (self, ctx->cleanup_cancellable, (GAsyncReadyCallback) in_call_cleanup_ready, token);
+         goto out;
+     }
+ 
+@@ -2315,7 +2580,7 @@
+     InCallEventContext *ctx;
+ 
+     ctx = get_in_call_event_context (self);
+-    if (ctx->check_id)
++    if (!ctx->accepting_results || ctx->check_id)
+         return;
+ 
+     /* Process check for in-call events in an idle, so that we can combine
+@@ -2716,6 +2981,8 @@
+     DisablingContext *ctx;
+     GTask *task;
+ 
++    mm_iface_modem_voice_audio_invalidate (self);
++
+     ctx = g_new0 (DisablingContext, 1);
+     ctx->step = DISABLING_STEP_FIRST;
+ 
+@@ -2879,6 +3146,13 @@
+ {
+     EnablingContext *ctx;
+     GTask *task;
++
++    /* First enable preserves configuration obtained during initialization. */
++    {
++        InCallEventContext *audio = get_in_call_event_context (self);
++        if (!audio->exhausted && voice_audio_owner_available (self))
++            audio->accepting_results = TRUE;
++    }
+ 
+     ctx = g_new0 (EnablingContext, 1);
+     ctx->step = ENABLING_STEP_FIRST;
+@@ -3104,6 +3378,13 @@
+     MmGdbusModemVoice *skeleton = NULL;
+     GTask *task;
+ 
++    mm_iface_modem_voice_audio_invalidate (self);
++    {
++        InCallEventContext *audio = get_in_call_event_context (self);
++        if (!audio->exhausted && voice_audio_owner_available (self))
++            audio->accepting_results = TRUE;
++    }
++
+     /* Did we already create it? */
+     g_object_get (self,
+                   MM_IFACE_MODEM_VOICE_DBUS_SKELETON, &skeleton,
+@@ -3137,6 +3418,8 @@
+ void
+ mm_iface_modem_voice_shutdown (MMIfaceModemVoice *self)
+ {
++    mm_iface_modem_voice_audio_invalidate (self);
++
+     /* Unexport DBus interface and remove the skeleton */
+     mm_gdbus_object_skeleton_set_modem_voice (MM_GDBUS_OBJECT_SKELETON (self), NULL);
+     g_object_set (self,
+diff --git a/src/mm-iface-modem-voice.h b/src/mm-iface-modem-voice.h
+--- a/src/mm-iface-modem-voice.h
++++ b/src/mm-iface-modem-voice.h
+@@ -33,6 +33,21 @@
+ #define MM_IFACE_MODEM_VOICE_CALL_LIST                           "iface-modem-voice-call-list"
+ #define MM_IFACE_MODEM_VOICE_PERIODIC_CALL_LIST_CHECK_DISABLED   "iface-modem-voice-periodic-call-list-check-disabled"
+ #define MM_IFACE_MODEM_VOICE_INDICATION_CALL_LIST_RELOAD_ENABLED "iface-modem-voice-indication-call-list-reload-enabled"
++
++/* Configuration outlives a call channel. Tokens are private to the daemon. */
++typedef struct {
++    guint64 generation;
++    guint64 operation;
++} MMVoiceAudioToken;
++
++MMVoiceAudioToken mm_iface_modem_voice_audio_begin_configuration (MMIfaceModemVoice *self);
++void mm_iface_modem_voice_audio_invalidate (MMIfaceModemVoice *self);
++gboolean mm_iface_modem_voice_audio_publish_configured (MMIfaceModemVoice *self, MMVoiceAudioToken token, MMCallAudioFormat *format);
++MMCallAudioFormat *mm_iface_modem_voice_audio_dup_configured (MMIfaceModemVoice *self);
++MMVoiceAudioToken mm_iface_modem_voice_audio_begin_channel (MMIfaceModemVoice *self);
++gboolean mm_iface_modem_voice_audio_commit_channel (MMIfaceModemVoice *self, MMVoiceAudioToken token, MMPort *port, MMCallAudioFormat *format);
++GCancellable *mm_iface_modem_voice_audio_ref_channel_cancellable (MMIfaceModemVoice *self, gboolean cleanup);
++gboolean mm_iface_modem_voice_audio_clear_channel (MMIfaceModemVoice *self, MMVoiceAudioToken token);
+ 
+ struct _MMIfaceModemVoiceInterface {
+     GTypeInterface g_iface;
 diff --git a/src/meson.build b/src/meson.build
-index f88d905a..00d3f0d8 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -255,7 +255,6 @@ subdir('plugins')
+@@ -255,7 +255,6 @@
  
  # ModemManager daemon
  sources = files(
@@ -16,7 +628,7 @@ index f88d905a..00d3f0d8 100644
    'mm-auth-provider.c',
    'mm-base-bearer.c',
    'mm-base-call.c',
-@@ -291,7 +290,6 @@ sources = files(
+@@ -291,7 +290,6 @@
    'mm-iface-modem-signal.c',
    'mm-iface-modem-simple.c',
    'mm-iface-modem-time.c',
@@ -24,7 +636,7 @@ index f88d905a..00d3f0d8 100644
    'mm-log-helpers.c',
    'mm-plugin.c',
    'mm-plugin-manager.c',
-@@ -369,9 +367,13 @@ if enable_mbim
+@@ -369,9 +367,13 @@
    )
  endif
  
@@ -40,13 +652,12 @@ index f88d905a..00d3f0d8 100644
    dependencies: deps,
    c_args: c_args,
 diff --git a/src/tests/meson.build b/src/tests/meson.build
-index a6a1ae72..efca859b 100644
 --- a/src/tests/meson.build
 +++ b/src/tests/meson.build
-@@ -1,6 +1,16 @@
+@@ -1,5 +1,23 @@
  # SPDX-License-Identifier: GPL-2.0-or-later
  # Copyright (C) 2021 Iñigo Martinez <inigomartinez@gmail.com>
- 
++
 +voice_audio_test = executable(
 +  'test-voice-audio',
 +  sources: voice_test_sources + files('provider-fixture.c', 'test-voice-audio.c'),
@@ -54,9 +665,16 @@ index a6a1ae72..efca859b 100644
 +  dependencies: voice_test_deps,
 +  c_args: voice_test_c_args,
 +  link_whole: builtin_plugins,
++  link_args: [
++    '-Wl,--wrap=mm_base_modem_at_command',
++    '-Wl,--wrap=mm_base_modem_at_command_finish',
++    '-Wl,--wrap=mm_broadband_modem_qmi_peek_port_qmi',
++    '-Wl,--wrap=mm_port_qmi_peek_client',
++    '-Wl,--wrap=qmi_client_voice_end_call',
++    '-Wl,--wrap=qmi_client_voice_end_call_finish',
++  ],
 +)
 +test('test-voice-audio', voice_audio_test, suite: 'yoyopod-provider', timeout: 120)
-+
+ 
  test_units = {
    'at-serial-port': libport_dep,
-   'cbm-part': libhelpers_dep,

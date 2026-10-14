@@ -2380,7 +2380,7 @@
   "patches": [
     {
       "path": "patches/0002-yoyopod-voice-audio-lifecycle.patch",
-      "sha256": "53a96c576364a61c029954550c1009bcd310928c3da79820bbb3360b82f3bde5"
+      "sha256": "3c7aed7ece122c319968593e8a039cf35bbfacdc9aa02afaf07b3ec3844c5814"
     }
   ]
 }
