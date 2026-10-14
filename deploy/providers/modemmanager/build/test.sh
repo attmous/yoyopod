@@ -25,5 +25,10 @@ meson setup "$build_dir" "$source_dir" -Dtests=true -Dbuiltin_plugins=true -Dgtk
 if [[ "$mode" == focused ]]; then
     meson test -C "$build_dir" --print-errorlogs test-voice-audio
 else
-    meson test -C "$build_dir" --print-errorlogs --no-suite yoyopod-provider
+    # Upstream private-bus activation needs the daemon and GIR/typelib outputs,
+    # which are not dependencies of the test executables themselves.
+    meson compile -C "$build_dir"
+    GI_TYPELIB_PATH="$build_dir/libmm-glib" \
+    LD_LIBRARY_PATH="$build_dir/libmm-glib" \
+        meson test -C "$build_dir" --print-errorlogs --no-suite yoyopod-provider
 fi
