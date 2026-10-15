@@ -143,3 +143,60 @@ Signature-report SHA256:
 `871d91b10c7a12e35cc854bd33e07eedc748e321223adea58d1fa4984c254cb7`.
 This establishes source/build-input provenance. Provider patching, package
 builds, reproducibility and modem/audio qualification are later tasks.
+
+## Candidate package evidence (qualification pending)
+
+The producer software milestone is closed at `bb189f172516a95b9203cd8d4f5bbf853e2ee01c`:
+13 generic, 35 SIMTech and 32 upstream native cases passed. The tracked candidate
+profile describes the observed SIM7600G-H identity and candidate dictionary only;
+`qualification_pending` and empty evidence do not establish firmware framing,
+reset qualification, consumer eligibility, installation or successful calls.
+
+Packaging uses the same signed source and exact installed dependency lock. The
+source package preserves authenticated Debian 0001 followed by unchanged local
+0002–0004. The tracked local series stays local-only. `build/build.sh` records the
+exact Debian rules/changelog overlay as `debian-packaging.diff`, also inside
+`debian/yoyopod-inputs/`; it is not a quilt patch against already changed Debian
+metadata. Hardening remains `+all`, AT over D-Bus is disabled, and builtin plugins
+match the native-tested link configuration. Normal service, polkit and D-Bus
+configuration are preserved. All upstream/focused tests execute in the actual
+Debian build; private test buses and the built daemon/GIR/typelib are used.
+
+Fixed interfaces, executed inside a fresh locked native ARM container:
+
+```sh
+bash build/build.sh --lock source-lock.json --repo-sha FULL_SHA --ci-run-id RUN --out /evidence/output
+bash build/compare.sh FIRST SECOND
+```
+
+The build path is always `/build/modemmanager-1.24.0`. SOURCE_DATE_EPOCH comes from
+the source lock. Repository/run identity and profile do not enter package bytes.
+The recipe, overlays, canonical tests, complete patch series, original archives,
+`.dsc`, corresponding dependency sources and copyright notices are retained and
+hashed. The daemon hash comes from the actual extracted runtime package executable.
+The strict schema, jq checks and Python standard-library validator reject unknown
+fields, duplicate JSON keys, tampered files, traversal, symlinks and unlisted files.
+
+The runtime closure starts from produced `modemmanager` and `libmm-glib0` control
+records (`dpkg-deb -f`), follows Depends/Pre-Depends including alternatives/Provides,
+and includes only selected locked ARM64/all packages from authenticated Packages.
+It does not ship the unrelated build tool closure. Exact source packages are
+resolved from authenticated Sources records, hash/size checked and accompanied by
+binary copyright notices. An unavailable dependency/source fails closed with
+NEEDS_CONTEXT; the recipe never changes the lock or installs missing tools.
+
+`provider_packages=true` is an optional interim native CI evidence mode. Two fresh
+containers build at identical internal paths. The second sees the first output
+read-only solely for comparison after its build. Both complete manifests and all
+package/corresponding-source bytes must match. Run-specific buildinfo/changes/log
+comparisons remain factual and are reported separately; differences there are
+not claimed reproducible. Failed or ambiguous builds upload diagnostic logs,
+manifests and hashes only, never candidate `.deb` or source payloads. Success
+uploads matching evidence for the exact checkout SHA. This is not a deployment
+selector; Task 6 must integrate into the single nine-binary Rust artifact.
+
+Local checks: `python3 tests/test-packaging.py` and `bash -n` for the fixed shell
+entrypoints. The symlink case must run without skipping on native Linux. Native
+package/reproducibility results, scoped review, artifact integration, consumer
+and installer gates remain required. Do not install or initiate calls from this
+packaging evidence. Task 8's framing-feasibility/maintenance gate still applies.

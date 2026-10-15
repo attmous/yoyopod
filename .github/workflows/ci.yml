@@ -12,6 +12,10 @@ on:
         description: Verify Debian ARM64 ModemManager source inputs only
         type: boolean
         default: false
+      provider_packages:
+        description: Build and compare locked native ARM64 provider package evidence only
+        type: boolean
+        default: false
       provider_tests:
         description: Run locked native ARM64 ModemManager provider tests only
         type: boolean
@@ -26,7 +30,7 @@ concurrency:
 
 jobs:
   changes:
-    if: ${{ !inputs.provider_inputs && !inputs.provider_tests }}
+    if: ${{ !inputs.provider_inputs && !inputs.provider_tests && !inputs.provider_packages }}
     runs-on: ubuntu-latest
     outputs:
       slot_arm64: ${{ steps.filter.outputs.slot_arm64 }}
@@ -95,7 +99,7 @@ jobs:
         run: uv run --extra dev python scripts/quality.py gate
 
   rust-device-arm64:
-    if: ${{ !inputs.provider_inputs && !inputs.provider_tests }}
+    if: ${{ !inputs.provider_inputs && !inputs.provider_tests && !inputs.provider_packages }}
     runs-on: ubuntu-24.04-arm
     env:
       RUST_ARTIFACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -304,6 +308,146 @@ jobs:
             .artifacts/mm-tests/${{ github.sha }}/*.log
             .artifacts/mm-tests/${{ github.sha }}/tests/inputs/signature-report.json
             .artifacts/mm-tests/${{ github.sha }}/tests/build-*/meson-logs/*
+          if-no-files-found: error
+
+  provider-packages-arm64:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.provider_packages }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    env:
+      PROVIDER_PACKAGE_SHA: ${{ github.sha }}
+    steps:
+      - name: Check out exact package evidence commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Create protected container ownership state
+        id: package-container-state
+        run: |
+          set -euo pipefail
+          state=$(mktemp -d "$RUNNER_TEMP/mm-package-state.XXXXXX")
+          echo "directory=$state" >> "$GITHUB_OUTPUT"
+          bash deploy/providers/modemmanager/tests/test-container-state.sh | tee "$state/quiescence-tests.log"
+
+      - name: Exercise actual host collector with harmless outside canaries
+        run: |
+          set -euo pipefail
+          evidence="$GITHUB_WORKSPACE/.artifacts/mm-packages/$PROVIDER_PACKAGE_SHA"
+          mkdir -p "$evidence/diagnostics"
+          python3 deploy/providers/modemmanager/tests/test-diagnostic-collector.py 2>&1 | tee "$evidence/diagnostics/collector-tests.log"
+
+      - name: Build twice in separate locked native ARM containers
+        id: package-build
+        env:
+          CONTAINER_STATE: ${{ steps.package-container-state.outputs.directory }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          test "$(git rev-parse HEAD)" = "$PROVIDER_PACKAGE_SHA"
+          provider="$GITHUB_WORKSPACE/deploy/providers/modemmanager"
+          state="$CONTAINER_STATE"
+          source "$provider/build/container-state.sh"
+          trap 'container_quiesce_all "$state" > "$state/exit-cleanup.log" 2>&1 || true' EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          evidence="$GITHUB_WORKSPACE/.artifacts/mm-packages/$PROVIDER_PACKAGE_SHA"
+          mkdir -p "$evidence/images" "$evidence/first" "$evidence/second" "$evidence/diagnostics"
+          image=$(jq -er .image "$provider/source-lock.json")
+          index=$(jq -er .toolchain.image_index_sha256 "$provider/source-lock.json")
+          child=$(jq -er .toolchain.image_manifest_sha256 "$provider/source-lock.json")
+          docker buildx imagetools inspect "docker.io/library/debian@sha256:$index" --raw > "$evidence/images/image-index.json"
+          docker buildx imagetools inspect "$image" --raw > "$evidence/images/image-manifest.json"
+          test "$(sha256sum "$evidence/images/image-index.json" | cut -d ' ' -f 1)" = "$index"
+          test "$(sha256sum "$evidence/images/image-manifest.json" | cut -d ' ' -f 1)" = "$child"
+          test "$image" = "docker.io/library/debian@sha256:$child"
+          test "$(jq -er '[.manifests[] | select(.platform.os=="linux" and .platform.architecture=="arm64")] | if length==1 then .[0].digest else error("ambiguous ARM64 child") end' "$evidence/images/image-index.json")" = "sha256:$child"
+          docker pull --platform linux/arm64 "$image"
+          failed=0
+          for build in first second; do
+            result=0
+            comparison_mount=()
+            if test "$build" = second; then
+              comparison_mount=(--mount "type=bind,source=$evidence/first,target=/first,readonly")
+            fi
+            # Identical internal paths; no writable checkout, host credentials,
+            # Docker socket, shared cache, package install, or hardware devices.
+            container_begin "$state" "$build"
+            timeout --signal=TERM --kill-after=5s 60s docker create --cidfile "$state/$build.cid" --platform linux/arm64 \
+              --mount "type=bind,source=$provider,target=/provider,readonly" \
+              --mount "type=bind,source=$evidence/images,target=/images,readonly" \
+              --mount "type=bind,source=$evidence/$build,target=/evidence" \
+              --env "MM_IMAGE=$image" \
+              --env MM_IMAGE_INDEX=/images/image-index.json \
+              --env MM_IMAGE_MANIFEST=/images/image-manifest.json \
+              --env "PROVIDER_REPO_SHA=$PROVIDER_PACKAGE_SHA" \
+              --env "PROVIDER_CI_RUN_ID=$GITHUB_RUN_ID" \
+              --env "PROVIDER_BUILD=$build" \
+              "${comparison_mount[@]}" \
+              --workdir /provider "$image" bash -c '
+                set -euo pipefail
+                bash build/resolve-lock.sh /evidence/bootstrap/source-lock.json > /evidence/bootstrap.log 2>&1
+                test "$(jq -r .snapshot /evidence/bootstrap/source-lock.json)" = "$(jq -r .snapshot source-lock.json)"
+                bash build/build.sh --lock source-lock.json --repo-sha "$PROVIDER_REPO_SHA" --ci-run-id "$PROVIDER_CI_RUN_ID" --out /evidence/output
+                if test "$PROVIDER_BUILD" = second; then
+                  bash build/compare.sh /first/output /evidence/output > /evidence/comparison.log 2>&1
+                fi
+              ' > "$state/$build-create.log" 2>&1 || result=$?
+            if test "$result" = 0; then
+              container_start "$state" "$build" > "$evidence/$build/execution.log" 2>&1 || result=$?
+            fi
+            # No evidence read or second build sees the first output until the
+            # exact owned CID is positively stopped/removed/absent.
+            if ! container_quiesce_one "$state" "$build"; then
+              failed=1
+              break
+            fi
+            jq -n --arg sha "$PROVIDER_PACKAGE_SHA" --arg run "$GITHUB_RUN_ID" --arg build "$build" --argjson status "$result" \
+              '{schema_version:1,repo_sha:$sha,ci_run_id:$run,build:$build,exit_status:$status}' > "$evidence/diagnostics/$build.json"
+            test "$result" = 0 || failed=1
+          done
+          test "$failed" = 0
+          # The second locked container compares after its independent build;
+          # the first output is read-only and never used as a build input.
+          # The host collector independently checks comparison bytes later.
+
+      - name: Materialize confined evidence in a fresh host-only upload tree
+        id: collect-package-evidence
+        if: always()
+        env:
+          PACKAGE_BUILD_OUTCOME: ${{ steps.package-build.outcome }}
+          CONTAINER_STATE: ${{ steps.package-container-state.outputs.directory }}
+        run: |
+          set -euo pipefail
+          # This fresh parent is outside all container mounts. Even rejection
+          # diagnostics can only be uploaded from paths created by this helper.
+          upload_parent=$(mktemp -d "$RUNNER_TEMP/mm-package-upload.XXXXXX")
+          upload_root="$upload_parent/upload"
+          echo "upload_root=$upload_root" >> "$GITHUB_OUTPUT"
+          mode=failure
+          if test "$PACKAGE_BUILD_OUTCOME" = success; then mode=success; fi
+          source deploy/providers/modemmanager/build/container-state.sh
+          container_collect_after_quiescence "$CONTAINER_STATE" \
+            "$GITHUB_WORKSPACE/.artifacts/mm-packages/$PROVIDER_PACKAGE_SHA" "$upload_root" "$mode"
+
+      - name: Upload failed build diagnostics only
+        if: ${{ always() && steps.collect-package-evidence.outputs.upload_root != '' && (failure() || cancelled()) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: yoyopod-modemmanager-package-diagnostics-${{ github.sha }}
+          path: ${{ steps.collect-package-evidence.outputs.upload_root }}/diagnostics/
+          if-no-files-found: error
+
+      - name: Upload matching candidate package and source evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yoyopod-modemmanager-package-evidence-${{ github.sha }}
+          path: |
+            ${{ steps.collect-package-evidence.outputs.upload_root }}/candidate/
+            ${{ steps.collect-package-evidence.outputs.upload_root }}/diagnostics/
+            ${{ steps.collect-package-evidence.outputs.upload_root }}/images/
           if-no-files-found: error
 
   slot-arm64:

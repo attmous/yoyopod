@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "profile_id": "sim7600g-h-le20b04sim7600g22-simtech-pcm-v1",
+  "qualification": "qualification_pending",
+  "modem": {
+    "manufacturer": "QUALCOMM INCORPORATED",
+    "model": "SIMCOM_SIM7600G-H",
+    "revision": "LE20B04SIM7600G22",
+    "hardware_revision": "10000",
+    "plugin": "simtech"
+  },
+  "qmi_primary_type": 6,
+  "format": {
+    "encoding": "pcm",
+    "resolution": "s16le",
+    "rate": 16000,
+    "channels": 1
+  },
+  "contract_revision": 1,
+  "evidence": []
+}
