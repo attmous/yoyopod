@@ -50,6 +50,20 @@ cp /build/final-series "$out/source/patches/series"
 for file in provider-fixture.c provider-fixture.h test-voice-audio.c test-simtech-audio.c; do
     cmp "$root/tests/$file" "$source/src/tests/$file"
 done
+# BEGIN pre-build source reference
+# dpkg-source --after-build unapplies quilt patches. Preserve these exact
+# verified build inputs outside its working tree before dpkg-buildpackage.
+reference_files=(src/mm-iface-modem-voice.c src/mm-iface-modem-voice.h src/mm-base-call.c src/mm-base-call.h src/mm-base-modem.c src/plugins/simtech/mm-shared-simtech.c src/meson.build src/tests/meson.build)
+source_reference="$out/source/pre-build-reference"
+mkdir -- "$source_reference"
+for file in "${reference_files[@]}"; do
+    mkdir -p -- "$(dirname -- "$source_reference/$file")"
+    cp -- "$source/$file" "$source_reference/$file"
+done
+(cd "$source_reference" && sha256sum "${reference_files[@]}" > SHA256SUMS)
+chmod -R a-w -- "$source_reference"
+# END pre-build source reference
+bash "$root/tests/test-source-reference.sh" > "$out/reports/source-reference-tests.log" 2>&1
 # Record exact build-only overlays. Keep authenticated package/service/polkit files.
 cp "$source/debian/rules" /build/original-rules
 cp "$source/debian/changelog" /build/original-changelog
@@ -86,7 +100,7 @@ cp "$lock" "$source/debian/yoyopod-inputs/source-lock.json"
 for file in build.sh compare.sh validate-manifest.sh package.py collect-evidence.py container-state.sh resolve-lock.sh verify-inputs.sh test.sh; do
     cp "$root/build/$file" "$source/debian/yoyopod-inputs/build/$file"
 done
-for file in provider-fixture.c provider-fixture.h test-voice-audio.c test-simtech-audio.c test-packaging.py test-diagnostic-collector.py test-container-state.sh; do
+for file in provider-fixture.c provider-fixture.h test-voice-audio.c test-simtech-audio.c test-packaging.py test-diagnostic-collector.py test-container-state.sh test-source-reference.sh; do
     cp "$root/tests/$file" "$source/debian/yoyopod-inputs/tests/$file"
 done
 mkdir -p "$source/debian/yoyopod-inputs/tests/fixtures"
@@ -134,9 +148,13 @@ for file in provider-fixture.c provider-fixture.h test-voice-audio.c test-simtec
 done
 cmp "$out/source/debian.rules" /build/reconstructed/debian/rules
 cmp "$out/source/debian.changelog" /build/reconstructed/debian/changelog
-for file in src/mm-iface-modem-voice.c src/mm-iface-modem-voice.h src/mm-base-call.c src/mm-base-call.h src/mm-base-modem.c src/plugins/simtech/mm-shared-simtech.c src/meson.build src/tests/meson.build; do
-    cmp "$source/$file" "/build/reconstructed/$file"
+# BEGIN reconstructed source comparison
+# Check the immutable pre-build bytes, not dpkg-source's unpatched work tree.
+(cd "$source_reference" && sha256sum --check --strict SHA256SUMS)
+for file in "${reference_files[@]}"; do
+    cmp "$source_reference/$file" "/build/reconstructed/$file"
 done
+# END reconstructed source comparison
 python3 "$root/build/package.py" closure "$lock" /build/inputs /build "$out"
 # The daemon digest is measured from the produced runtime package executable.
 mkdir /build/daemon
