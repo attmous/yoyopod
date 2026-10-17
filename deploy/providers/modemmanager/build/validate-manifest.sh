@@ -3,7 +3,7 @@ set -euo pipefail
 [[ $# == 1 ]] || exit 2
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 jq -e '
-  def exact($keys): type == "object" and keys == ($keys|sort);
+  def exact($expected): type == "object" and keys == ($expected|sort);
   def digest: type == "string" and test("^[0-9a-f]{64}$");
   def file: type == "string" and length > 0
     and (explode|all(. >= 32 and . != 127 and . != 92 and . != 58))

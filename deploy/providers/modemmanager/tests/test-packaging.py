@@ -3,6 +3,8 @@
 import importlib.util
 import json
 import os
+import shutil
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -43,6 +45,49 @@ class PackagingTests(unittest.TestCase):
             (root / "packages/modemmanager.deb").write_bytes(b"TAMPERED SYNTHETIC PAYLOAD")
             with self.assertRaisesRegex(ValueError, "hash mismatch"):
                 packaging.validate_manifest(root)
+
+    def test_actual_shell_manifest_validator(self):
+        if os.name == "nt" and not shutil.which("jq"):
+            self.skipTest("jq unavailable on Windows; actual shell validation requires native execution")
+        self.assertIsNotNone(shutil.which("jq"), "native jq is required")
+        validator = ROOT / "build/validate-manifest.sh"
+        # Execute the actual jq filter independently so Python cannot mask a
+        # weakened exact-key check, then execute the complete shell wrapper.
+        query = validator.read_text().split("jq -e '\n", 1)[1].split("\n' ", 1)[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.bundle(Path(tmp))
+            manifest = packaging.read_json(root / "manifest.json")
+
+            def check_query(value, accepted):
+                result = subprocess.run(["jq", "-e", query], input=json.dumps(value),
+                                        text=True, capture_output=True, check=False)
+                self.assertEqual(result.returncode, 0 if accepted else 1,
+                                 result.stdout + result.stderr)
+
+            check_query(manifest, True)
+            for location in (None, "packages", "source_files", "reports"):
+                for mutation in ("unknown", "missing"):
+                    changed = json.loads(json.dumps(manifest))
+                    record = changed if location is None else changed[location][0]
+                    if mutation == "unknown":
+                        record["unexpected"] = True
+                    else:
+                        del record["ci_run_id" if location is None else "file"]
+                    with self.subTest(location=location, mutation=mutation):
+                        check_query(changed, False)
+
+            result = subprocess.run(["bash", str(validator), str(root)],
+                                    text=True, capture_output=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            # jq accepts duplicate keys, so the wrapper must still reach its
+            # strict Python second stage and refuse this otherwise-valid input.
+            file = root / "manifest.json"
+            file.write_text(file.read_text().replace(
+                '"ci_run_id": "123",', '"ci_run_id": "999", "ci_run_id": "123",'))
+            result = subprocess.run(["bash", str(validator), str(root)],
+                                    text=True, capture_output=True, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("duplicate JSON", result.stderr)
 
     def test_duplicate_json_key_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
