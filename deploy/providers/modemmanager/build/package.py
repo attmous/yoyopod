@@ -45,7 +45,16 @@ def safe_file(root, name):
     return current
 
 
-def validate_profile(profile):
+def _qualification_path(name):
+    check(isinstance(name, str) and name.startswith("source/qualification/")
+          and "\\" not in name and ":" not in name
+          and not any(ord(char) < 32 or ord(char) == 127 for char in name)
+          and all(part not in ("", ".", "..") for part in name.split("/")),
+          "invalid qualification evidence path")
+    return name[len("source/"):]
+
+
+def _profile_records(profile):
     expected = {"schema_version": 1,
                 "profile_id": "sim7600g-h-le20b04sim7600g22-simtech-pcm-v1",
                 "qualification": "qualification_pending",
@@ -54,9 +63,114 @@ def validate_profile(profile):
                 "qmi_primary_type": 6,
                 "format": {"encoding": "pcm", "resolution": "s16le", "rate": 16000, "channels": 1},
                 "contract_revision": 1, "evidence": []}
+    exact(profile, expected)
+    identity = {key: value for key, value in profile.items() if key not in ("qualification", "evidence")}
+    expected_identity = {key: value for key, value in expected.items() if key in identity}
     # Compare JSON encodings too: Python considers True equal to 1.
-    check(json.dumps(profile, sort_keys=True) == json.dumps(expected, sort_keys=True),
-          "candidate profile fields/identity/status mismatch; qualification needs separate review")
+    check(json.dumps(identity, sort_keys=True) == json.dumps(expected_identity, sort_keys=True),
+          "candidate profile fields/identity mismatch")
+    records = profile["evidence"]
+    check(isinstance(records, list), "invalid evidence list")
+    if profile["qualification"] == "qualification_pending":
+        check(records == [], "pending profile must have no evidence")
+        return records
+    check(profile["qualification"] == "qualified" and len(records) == 2,
+          "qualified profile requires framing and lifecycle evidence")
+    kinds = []
+    for record in records:
+        exact(record, ["kind", "path", "sha256", "modem", "provider_inputs_sha256"])
+        check(record["kind"] in ("framing", "lifecycle"), "invalid evidence kind")
+        kinds.append(record["kind"])
+        _qualification_path(record["path"])
+        for field in ("sha256", "provider_inputs_sha256"):
+            check(isinstance(record[field], str) and re.fullmatch(DIGEST, record[field]),
+                  "invalid evidence digest")
+        check(json.dumps(record["modem"], sort_keys=True) == json.dumps(profile["modem"], sort_keys=True),
+              "evidence modem identity mismatch")
+    check(set(kinds) == {"framing", "lifecycle"}, "duplicate/missing evidence kind")
+    return records
+
+
+def _provider_inputs_digest(manifest):
+    # Internal only: caller must validate the complete manifest and real bytes.
+    keys = ("source_version", "package_version", "architecture", "source_lock_sha256",
+            "patch_series_sha256", "daemon_sha256", "packages", "source_files")
+    value = {key: manifest[key] for key in keys}
+    value["packages"] = sorted(value["packages"], key=lambda item: item["name"])
+    value["source_files"] = sorted(
+        (item for item in value["source_files"]
+         if not item["file"].startswith("source/qualification/")), key=lambda item: item["file"])
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
+                                     separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _validate_profile_context(profile, root, manifest):
+    records = _profile_records(profile)
+    referenced = {record["path"] for record in records}
+    staged = {item["file"] for item in manifest["source_files"]
+              if item["file"].startswith("source/qualification/")}
+    check(staged == referenced, "unreferenced/missing qualification evidence")
+    check(not any(item["file"].startswith("source/qualification/")
+                  for kind in ("packages", "reports") for item in manifest[kind]),
+          "qualification evidence outside source_files")
+    binding = _provider_inputs_digest(manifest)
+    for record in records:
+        check(digest(safe_file(root, record["path"])) == record["sha256"], "evidence hash mismatch")
+        check(record["provider_inputs_sha256"] == binding, "evidence provider input mismatch")
+
+
+def validate_profile(profile, root=None):
+    records = _profile_records(profile)
+    if records:
+        check(root is not None, "qualified profile requires completed output context")
+        validate_manifest(root)
+        actual = read_json(safe_file(root, "profile.json"))
+        check(json.dumps(profile, sort_keys=True) == json.dumps(actual, sort_keys=True),
+              "profile differs from validated output")
+
+
+def provider_inputs_sha256(root):
+    return _provider_inputs_digest(validate_manifest(root))
+
+
+def _regular_directory(path):
+    path = Path(path).absolute()
+    for parent in (*reversed(path.parents), path):
+        check(not parent.is_symlink() and parent.is_dir(), "nonregular/symlink directory")
+    return path
+
+
+def stage_profile(checkout, output):
+    """Stage referenced bytes only; qualified acceptance awaits full manifest validation.
+
+    Checkout is read-only and output is exclusively owned by the fixed build.
+    Neither tree may be concurrently mutated by another process.
+    """
+    checkout, output = _regular_directory(checkout), _regular_directory(output)
+    profile_path = safe_file(checkout, "profile.json")
+    profile = read_json(profile_path)
+    records = _profile_records(profile)
+    staged = set()
+    for record in records:
+        relative = _qualification_path(record["path"])
+        source = safe_file(checkout, relative)
+        check(digest(source) == record["sha256"], "evidence hash mismatch")
+        if record["path"] in staged:
+            continue
+        target = output / record["path"]
+        current = output
+        for part in Path(record["path"]).parts[:-1]:
+            current /= part
+            if not current.exists() and not current.is_symlink():
+                current.mkdir()
+            _regular_directory(current)
+        # Exclusive creation refuses any existing leaf, including links/special files.
+        with target.open("xb") as stream, source.open("rb") as incoming:
+            shutil.copyfileobj(incoming, stream)
+        check(digest(safe_file(output, record["path"])) == record["sha256"], "staged evidence hash mismatch")
+        staged.add(record["path"])
+    with (output / "profile.json").open("xb") as stream:
+        stream.write(profile_path.read_bytes())
 
 
 def read_json(path):
@@ -74,7 +188,7 @@ def exact(obj, keys):
 
 
 def validate_manifest(root):
-    root = Path(root)
+    root = _regular_directory(root)
     manifest = read_json(safe_file(root, "manifest.json"))
     exact(manifest, ["schema_version", "repo_sha", "ci_run_id", "source_version", "package_version",
                      "architecture", "source_lock_sha256", "patch_series_sha256", "profile_sha256",
@@ -106,7 +220,6 @@ def validate_manifest(root):
     check(all(item["version"] == VERSION for item in manifest["packages"]
               if item["name"] in ("modemmanager", "libmm-glib0")), "candidate package version")
     check(digest(safe_file(root, "profile.json")) == manifest["profile_sha256"], "profile hash mismatch")
-    validate_profile(read_json(root / "profile.json"))
     for field, name in (("source_lock_sha256", "source/source-lock.json"),
                         ("patch_series_sha256", "source/patches/series")):
         check(digest(safe_file(root, name)) == manifest[field], "input binding mismatch")
@@ -120,6 +233,7 @@ def validate_manifest(root):
         safe_file(root, name)
         actual.add(name)
     check(actual == seen, "unmanifested/missing output file")
+    _validate_profile_context(read_json(safe_file(root, "profile.json")), root, manifest)
     return manifest
 
 
@@ -331,6 +445,7 @@ def manifest(out_path, sha, run, daemon_hash):
 if __name__ == "__main__":
     try:
         action, *args = sys.argv[1:]
-        {"validate": validate_manifest, "compare": compare, "closure": closure, "manifest": manifest}[action](*args)
+        {"validate": validate_manifest, "compare": compare, "closure": closure, "manifest": manifest,
+         "stage-profile": stage_profile}[action](*args)
     except (ValueError, KeyError, TypeError, OSError, subprocess.CalledProcessError) as error:
         sys.exit("provider packaging: " + str(error))

@@ -200,3 +200,48 @@ entrypoints. The symlink case must run without skipping on native Linux. Native
 package/reproducibility results, scoped review, artifact integration, consumer
 and installer gates remain required. Do not install or initiate calls from this
 packaging evidence. Task 8's framing-feasibility/maintenance gate still applies.
+
+
+## Profile-only qualification carry-forward contract
+
+The tracked profile remains `qualification_pending` with `evidence: []`. Future
+promotion still requires Task 8 semantic evidence review and real framing and
+lifecycle proof. Structural validation and hashes do not establish that proof or
+authorize hardware use. The following software contract is prepared before first
+package publication so promotion does not require changing immutable package
+inputs or reusing a published version for different bytes.
+
+A qualified profile retains the exact existing identity, framing and contract
+fields, and has exactly one `framing` and one `lifecycle` record. Each record has
+exactly `kind`, `path`, `sha256`, `modem`, and `provider_inputs_sha256`; `modem` is
+the same five-field fingerprint as the profile, with strict JSON types. Both
+records may refer to the same evidence file. Status-only promotion is rejected.
+
+A record path is canonical `source/qualification/<file>` in completed output.
+The fixed build stages only referenced, hash-verified regular bytes from
+`qualification/<file>` in the read-only provider checkout. Source/destination
+roots, ancestors and leaves reject links or special files. Evidence is listed in
+manifest `source_files`; that subtree must contain exactly the referenced paths
+(deduplicated when both records use the same file). Pending output has no evidence
+rows. These files and profile.json never enter Debian source-package input
+folders or the explicit immutable recipe whitelist. Do not redistribute vendor
+PDFs; future reviewed evidence records contain references and measurements.
+
+For the later Rust consumer, `provider_inputs_sha256` is SHA256 of UTF-8 JSON,
+with sorted object keys, `ensure_ascii=False`, compact comma/colon separators and
+no trailing newline. Its object contains exactly `source_version`,
+`package_version`, `architecture`, `source_lock_sha256`, `patch_series_sha256`,
+`daemon_sha256`, `packages`, and `source_files`. Package rows retain their complete
+existing fields and sort by `name`; source rows retain `file`/`sha256` and sort by
+`file`, excluding only `source/qualification/` rows. Repo SHA, run ID, profile,
+reports and qualification evidence are excluded; recipe, complete corresponding
+source, dependencies, licenses and package bytes remain bound.
+
+`package.py` exposes this digest only from a fully validated output root. A valid
+pending output provides the noncircular input binding for preparing later
+reviewed records. Final qualified validation independently validates all actual
+manifest bytes, the exact evidence set, each evidence hash and both records'
+input digests. Public qualified-profile validation also requires completed output
+context and equality with its actual hashed profile; caller metadata alone cannot
+pass. Staging by itself is not qualified-profile acceptance. No new manifest
+fields or runtime control interface are introduced.

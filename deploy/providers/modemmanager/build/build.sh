@@ -30,7 +30,7 @@ source=/build/modemmanager-1.24.0
 mv /build/inputs/source "$source"
 cp /build/inputs/downloads/modemmanager_1.24.0.orig.tar.xz /build/
 cp "$lock" "$out/source/source-lock.json"
-cp "$root/profile.json" "$out/profile.json"
+python3 "$root/build/package.py" stage-profile "$root" "$out"
 cp "$root/manifest.schema.json" "$out/source/manifest.schema.json"
 cp -a "$root/patches" "$out/source/patches"
 # Debian's 0001 is already applied by the authenticated dpkg-source extraction.
