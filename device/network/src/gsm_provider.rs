@@ -11,83 +11,135 @@ const SOURCE_VERSION: &str = "1.24.0-1+deb13u1";
 const RECEIPT_DIR: &str = "/var/lib/yoyopod/providers/modemmanager";
 const MODEM_INTERFACE: &str = "org.freedesktop.ModemManager1.Modem";
 
+/// Qualification recorded by the trusted compiled profile, never inferred from metadata.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Qualification {
+    /// Candidate inputs exist, but framing and lifecycle evidence is not qualified.
     QualificationPending,
+    /// Both reviewed evidence records bind the compiled provider inputs and modem.
     Qualified,
 }
 
+/// Exact modem identity covered by the profile and its qualification records.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModemFingerprint {
+    /// Manufacturer reported by the selected modem.
     pub manufacturer: String,
+    /// Reported product identity, including its hardware variant.
     pub model: String,
+    /// Firmware build covered by the evidence.
     pub revision: String,
+    /// Reported hardware revision covered by the evidence.
     pub hardware_revision: String,
+    /// ModemManager plugin implementing the selected modem.
     pub plugin: String,
 }
+/// Profile format requirements; these do not substitute for a current Call dictionary.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PcmFormat {
+    /// Sample encoding required by the contract.
     pub encoding: String,
+    /// Sample representation and byte order.
     pub resolution: String,
+    /// Required samples per second, verified separately against live metadata.
     pub rate: u32,
+    /// Number of channels covered by the profile.
     pub channels: u32,
 }
+/// One reviewed framing or lifecycle record bound by the expected manifest.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QualificationRecord {
+    /// Evidence category: framing or lifecycle.
     pub kind: String,
+    /// Canonical manifest path beneath `source/qualification/`.
     pub path: String,
+    /// SHA256 of the referenced evidence bytes.
     pub sha256: String,
+    /// Exact firmware and hardware identity covered by those bytes.
     pub modem: ModemFingerprint,
+    /// Canonical digest binding immutable provider source and package inputs.
     pub provider_inputs_sha256: String,
 }
+/// Embedded, hash-bound profile governing qualification, independent of an older receipt.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderProfile {
+    /// Shared JSON schema version accepted by this consumer.
     pub schema_version: u32,
+    /// Pinned modem/PCM contract identifier.
     pub profile_id: String,
+    /// Whether the compiled evidence authorizes format eligibility.
     pub qualification: Qualification,
+    /// Hardware and firmware for which the contract applies.
     pub modem: ModemFingerprint,
+    /// Required ModemManager type of the primary QMI control port.
     pub qmi_primary_type: u32,
+    /// Required PCM shape, not proof of current Call configuration.
     pub format: PcmFormat,
+    /// Revision of the provider's metadata and lifecycle contract.
     pub contract_revision: u32,
+    /// Exact framing/lifecycle records required for a qualified profile.
     pub evidence: Vec<QualificationRecord>,
     #[serde(skip)]
     source_sha256: String,
 }
+/// Raw-byte binding for one file in the validated provider output.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FileRecord {
+    /// Confined relative path within the provider output.
     pub file: String,
+    /// SHA256 of that file's bytes.
     pub sha256: String,
 }
+/// One exact Debian package in the validated offline provider closure.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PackageRecord {
+    /// Confined relative path to the package archive.
     pub file: String,
+    /// SHA256 of the archive, distinct from the daemon executable hash.
     pub sha256: String,
+    /// Debian package identifier.
     pub name: String,
+    /// Full Debian package version, including the provider revision where applicable.
     pub version: String,
+    /// Package architecture, including architecture-independent packages.
     pub architecture: String,
 }
+/// CI-validated build manifest compiled into the consumer as its expected identity.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderManifest {
+    /// Shared JSON schema version accepted by this consumer.
     pub schema_version: u32,
+    /// Exact source checkout used to produce the manifest.
     pub repo_sha: String,
+    /// Build run that produced the validated output.
     pub ci_run_id: String,
+    /// Pinned upstream/Debian source version.
     pub source_version: String,
+    /// Required provider runtime package version.
     pub package_version: String,
+    /// Target architecture of the daemon build.
     pub architecture: String,
+    /// SHA256 of the authenticated source/dependency lock bytes.
     pub source_lock_sha256: String,
+    /// SHA256 of the ordered local patch-series bytes.
     pub patch_series_sha256: String,
+    /// SHA256 of the exact embedded profile bytes.
     pub profile_sha256: String,
+    /// SHA256 of the actual packaged daemon executable, not its Debian archive.
     pub daemon_sha256: String,
+    /// Complete immutable package closure and its archive hashes.
     pub packages: Vec<PackageRecord>,
+    /// Corresponding source and referenced qualification file bindings.
     pub source_files: Vec<FileRecord>,
+    /// Build/test evidence files excluded from the immutable input digest.
     pub reports: Vec<FileRecord>,
 }
 
@@ -97,23 +149,47 @@ struct ReceiptProof {
     manifest_sha256: String,
     running: RunningIdentity,
 }
+/// Current provider snapshot cross-checked against a protected maintenance receipt.
+///
+/// The installed-file hash alone never proves which executable the process runs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProviderIdentity {
+    /// Installed daemon package version read with fixed dpkg-query arguments.
     pub package_version: String,
+    /// Installed daemon package architecture.
     pub architecture: String,
+    /// Maintenance-attested running executable hash bound to this exact process.
     pub running_daemon_sha256: String,
+    /// Current selected modem's firmware, hardware and plugin identity.
     pub modem: ModemFingerprint,
+    /// Current primary control port, checked against the QMI inventory entry.
     pub primary_port: String,
+    /// Current port names paired with ModemManager port-type values.
     pub ports: Vec<(String, u32)>,
+    /// D-Bus instance identifier, distinguishing bus lifetimes.
     pub bus_id: String,
+    /// Captured unique service owner, never a replacement behind a well-known name.
     pub unique_owner: String,
+    /// Process identifier resolved for that unique owner.
     pub pid: u32,
+    /// Readable process start-time ticks distinguishing PID reuse.
     pub process_start_ticks: u64,
+    /// Fresh hash of the fixed installed daemon path.
     pub installed_executable_sha256: String,
+    /// Verified raw-byte hash of the receipt's protected copied manifest.
     pub receipt_manifest_sha256: String,
     receipt: ReceiptProof,
 }
+/// Read-only identity source for the existing native connection and selected modem.
+///
+/// Production uses fixed package/file reads, readable process stat and a root-owned
+/// receipt. It neither reads privileged running-exe bytes nor elevates privileges,
+/// restarts the provider or refreshes maintenance attestation.
 pub trait ProviderIdentityReader: Send {
+    /// Cross-check the captured owner/process before and after reading its identity.
+    ///
+    /// Returns an error for unreadable, unprotected, missing or changed evidence.
+    /// Failure closes eligibility; it is not proof that a native call was released.
     fn read(
         &self,
         connection: &Connection,
@@ -121,10 +197,15 @@ pub trait ProviderIdentityReader: Send {
         modem_path: &str,
     ) -> Result<ProviderIdentity>;
 }
+/// Privately constructed proof of qualified baseline and exact current format checks.
+///
+/// This snapshot is not durable admission: callers still enforce the SessionKey,
+/// native owner and epoch, current AudioPort/inventory, and native Active fences.
 pub struct VerifiedPcm {
     rate: u32,
 }
 impl VerifiedPcm {
+    /// Samples per second proven by the checked current dictionary, without a fallback.
     pub fn sample_rate_hz(&self) -> u32 {
         self.rate
     }
@@ -345,6 +426,15 @@ impl ProviderProfile {
         Ok(())
     }
 }
+/// Check trusted compiled profile/build bindings against current protected process proof.
+///
+/// Success permits only baseline admission to Create a keyed UNKNOWN object after
+/// clean-idle/key/owner/epoch checks; it requires no Call and cannot authorize
+/// Start, Accept or PCM startup. The compiled profile controls qualification even
+/// when an older receipt carries identical immutable provider inputs.
+///
+/// Returns an error on pending qualification, mismatched identity or missing valid
+/// receipt proof. This pure check performs no control or native ownership cleanup.
 pub fn provider_baseline_eligible(
     profile: &ProviderProfile,
     expected: &ProviderManifest,
@@ -399,6 +489,15 @@ pub fn provider_baseline_eligible(
     );
     Ok(())
 }
+/// Check baseline eligibility and a freshly read exact Call `pcm`/`s16le`/16000 dictionary.
+///
+/// The caller binds that dictionary to the current Call path and SessionKey and
+/// retains native owner/epoch fences across preparation and control. Success does
+/// not establish native Active or authorize audio without current endpoint proof.
+/// The caller must also freshly check native voice readiness (modem state,
+/// lock and emergency policy) before control.
+/// Missing, mistyped or incompatible metadata returns an error without a rate
+/// fallback or any claim of native release; this function performs no D-Bus I/O.
 pub fn eligible_format(
     profile: &ProviderProfile,
     expected: &ProviderManifest,
