@@ -1546,6 +1546,9 @@ impl ModemManagerVoice {
 
     fn reconcile_paths(&mut self) -> Result<()> {
         self.verify_service_owner()?;
+        // Account for already-received membership evidence before the fresh
+        // Calls snapshot; the post-read checks still reject concurrent changes.
+        self.check_selected_modem()?;
         let membership_revision = self.native_membership_revision;
         let Some(modem) = self.modem.as_ref() else {
             return Ok(());
