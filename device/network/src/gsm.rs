@@ -2461,12 +2461,20 @@ mod tests {
     type PropertyGate = Arc<Mutex<Option<(Sender<()>, Receiver<()>)>>>;
     struct ReconnectVoice {
         reads: Arc<std::sync::atomic::AtomicUsize>,
+        creates: Arc<std::sync::atomic::AtomicUsize>,
         gate: PropertyGate,
         fail: Arc<std::sync::atomic::AtomicBool>,
         paths: Arc<Mutex<Vec<OwnedObjectPath>>>,
     }
     #[zbus::interface(name = "org.freedesktop.ModemManager1.Modem.Voice")]
     impl ReconnectVoice {
+        fn create_call(
+            &self,
+            _properties: HashMap<String, zvariant::OwnedValue>,
+        ) -> OwnedObjectPath {
+            self.creates.fetch_add(1, Ordering::SeqCst);
+            OwnedObjectPath::try_from("/org/freedesktop/ModemManager1/Call/99").unwrap()
+        }
         #[zbus(property)]
         fn emergency_only(&self) -> bool {
             false
@@ -2546,6 +2554,7 @@ mod tests {
                 TEST_MODEM0,
                 ReconnectVoice {
                     reads: reads.clone(),
+                    creates: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                     gate: Arc::new(Mutex::new(None)),
                     fail: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                     paths: Arc::new(Mutex::new(Vec::new())),
@@ -2583,6 +2592,35 @@ mod tests {
             .object_server()
             .remove::<ReconnectVoice, _>(TEST_MODEM0)
             .unwrap();
+    }
+
+    #[test]
+    fn gsm_outgoing_qualified_clean_idle_dispatches_create_without_a_call_format() {
+        let bus = PrivateBus::start();
+        let (owner, mut backend, _) = reconnect_fixture(&bus);
+        backend.configure(9, None).unwrap();
+        assert!(backend.refresh().unwrap().available);
+        assert!(backend.registry().unwrap().tracked().is_empty());
+        assert!(backend.prepared_audio.is_none());
+        let voice = owner
+            .object_server()
+            .interface::<_, ReconnectVoice>(TEST_MODEM0)
+            .unwrap();
+        assert!(voice.get().paths.lock().unwrap().is_empty());
+        let creates = voice.get().creates.clone();
+        let key = SessionKey {
+            transport: yoyopod_protocol::call::CallTransport::Gsm,
+            generation: 9,
+            call_id: "runtime-outgoing-1".into(),
+        };
+        let result = backend.dial_session(&key, "+49123456789");
+        // This baseline asserts real RPC dispatch only. Ordered returned-UNKNOWN,
+        // PCM preparation and Start fixtures follow after the genuine RED gate.
+        assert_eq!(
+            creates.load(Ordering::SeqCst),
+            1,
+            "qualified idle did not dispatch CreateCall: {result:?}"
+        );
     }
 
     #[test]
@@ -3359,6 +3397,7 @@ mod tests {
                 path,
                 ReconnectVoice {
                     reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                    creates: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                     gate: Arc::new(Mutex::new(None)),
                     fail: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                     paths: Arc::new(Mutex::new(Vec::new())),
