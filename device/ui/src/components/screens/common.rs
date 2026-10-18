@@ -232,3 +232,33 @@ fn row_model(item: &ListItemSnapshot) -> RowModel {
         selected: false,
     }
 }
+
+#[cfg(test)]
+mod gsm_provider_tests {
+    use super::*;
+    use yoyopod_protocol::call::{CallPhase, CallTransport, SessionKey};
+
+    #[test]
+    fn gsm_provider_blocked_incoming_uses_existing_state_slot_and_focus() {
+        let mut snapshot = yoyopod_protocol::ui::RuntimeSnapshot::default();
+        snapshot.call.session = Some(SessionKey {
+            transport: CallTransport::Gsm,
+            generation: 9,
+            call_id: "gsm-incoming-1".into(),
+        });
+        snapshot.call.accept_enabled = false;
+        snapshot.call.gsm_available = false;
+        snapshot.call.gsm_unavailable_reason = "Audio unavailable".into();
+        for phase in [CallPhase::Preparing, CallPhase::Ringing, CallPhase::Ending] {
+            snapshot.call.session_phase = Some(phase);
+            let model = call_overlay_model(&snapshot, CallOverlayKind::Incoming, 0);
+            assert!(!model.accept_enabled);
+            assert_eq!(model.state, "Audio unavailable");
+            assert_eq!(model.focus_index, 0);
+            assert_eq!(
+                call_overlay_model(&snapshot, CallOverlayKind::Incoming, 1).focus_index,
+                1
+            );
+        }
+    }
+}

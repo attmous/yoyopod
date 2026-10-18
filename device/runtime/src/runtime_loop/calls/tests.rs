@@ -588,6 +588,135 @@ fn native_count(io: &FakeLoopIo, action: &str) -> usize {
 }
 
 #[test]
+fn gsm_provider_pending_projection_and_answer_guard_agree() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Gsm);
+    runtime.state.call.gsm_available = false;
+    runtime.state.call.gsm_unavailable_reason = "Audio unavailable".into();
+    offer(&mut runtime, &mut io, &key, 100);
+    assert!(!runtime.state().call.accept_enabled);
+    control(&mut runtime, &mut io, &key, CallAction::Answer, 110);
+    prepare(&mut runtime, &mut io, 120);
+    assert_eq!(native_count(&io, "answer"), 0);
+    assert_eq!(
+        runtime.state().call.gsm_unavailable_reason,
+        "Audio unavailable"
+    );
+    control(
+        &mut runtime,
+        &mut io,
+        &key,
+        CallAction::Reject(yoyopod_protocol::call::RejectReason::Cancelled),
+        130,
+    );
+    assert!(io.sent.iter().any(|(_, e)| e.message_type == "call.action"
+        && e.payload["key"] == json!(key)
+        && e.payload["action"]
+            == json!(CallAction::Reject(
+                yoyopod_protocol::call::RejectReason::Cancelled
+            ))));
+}
+
+#[test]
+fn gsm_provider_metadata_loss_blocks_current_answer_but_preserves_stale_key_fence() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Gsm);
+    offer(&mut runtime, &mut io, &key, 100);
+    prepare(&mut runtime, &mut io, 110);
+    assert!(runtime.state().call.accept_enabled);
+    io.messages.push((
+        WorkerDomain::Network,
+        WorkerEnvelope::event(
+            "gsm.call_state",
+            json!({"state":"incoming","available":false,"unavailable_reason":"Audio unavailable"}),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 120);
+    assert!(!runtime.state().call.accept_enabled);
+    let mut stale = key.clone();
+    stale.call_id = "old-display".into();
+    control(&mut runtime, &mut io, &stale, CallAction::Answer, 130);
+    assert_eq!(runtime.state().call.session_phase, Some(CallPhase::Ringing));
+    control(&mut runtime, &mut io, &key, CallAction::Answer, 140);
+    assert_eq!(runtime.state().call.session_phase, Some(CallPhase::Ringing));
+    respond(&mut runtime, &mut io, "media.ringtone_start", 150);
+    assert_eq!(native_count(&io, "answer"), 0);
+    assert_eq!(runtime.state().call.session.as_ref(), Some(&key));
+    control(
+        &mut runtime,
+        &mut io,
+        &key,
+        CallAction::Reject(yoyopod_protocol::call::RejectReason::Cancelled),
+        160,
+    );
+    assert!(io.sent.iter().any(|(_, e)| e.message_type == "call.action"
+        && e.payload["key"] == json!(key)
+        && e.payload["action"]
+            == json!(CallAction::Reject(
+                yoyopod_protocol::call::RejectReason::Cancelled
+            ))));
+}
+
+#[test]
+fn gsm_provider_wrong_result_preserves_answer_then_matching_failure_stays_visible() {
+    let (mut runtime, mut io, key) = fixture(CallTransport::Gsm);
+    offer(&mut runtime, &mut io, &key, 100);
+    control(&mut runtime, &mut io, &key, CallAction::Answer, 110);
+    prepare(&mut runtime, &mut io, 120);
+    assert_eq!(native_count(&io, "answer"), 1);
+    let (_, command) = io
+        .sent
+        .iter()
+        .rev()
+        .find(|(_, e)| e.message_type == "call.action" && e.payload["action"] == "answer")
+        .unwrap()
+        .clone();
+    let mut wrong = key.clone();
+    wrong.call_id = "stale-call".into();
+    for wrong_key in [json!(wrong), Value::Null] {
+        io.messages.push((
+            WorkerDomain::Network,
+            WorkerEnvelope::result(
+                "call.result",
+                command.request_id.clone(),
+                json!({"key":wrong_key,"ok":false,"error":"stale failure","voice_held":true}),
+            ),
+        ));
+        runtime.run_once_at(&mut io, 130);
+        assert_ne!(runtime.state().call.session_phase, Some(CallPhase::Ending));
+        assert_ne!(
+            runtime.state().call.gsm_unavailable_reason,
+            "Call audio failed"
+        );
+    }
+    io.messages.push((
+        WorkerDomain::Network,
+        WorkerEnvelope::result(
+            "call.result",
+            command.request_id,
+            json!({"key":key,"ok":false,"error":"PCM preparation failed","voice_held":true}),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 140);
+    assert_eq!(
+        runtime.state().call.gsm_unavailable_reason,
+        "Call audio failed"
+    );
+    assert_ne!(runtime.state().call.state, CallState::Active);
+    io.messages.push((
+        WorkerDomain::Network,
+        WorkerEnvelope::event(
+            "gsm.call_state",
+            json!({"state":"incoming","available":true,"unavailable_reason":""}),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 150);
+    assert_eq!(
+        runtime.state().call.gsm_unavailable_reason,
+        "Call audio failed"
+    );
+    assert_eq!(runtime.state().call.session.as_ref(), Some(&key));
+}
+
+#[test]
 fn readiness_and_matching_stop_precede_native_answer_for_both_transports() {
     for transport in [CallTransport::Sip, CallTransport::Gsm] {
         let (mut runtime, mut io, key) = fixture(transport);

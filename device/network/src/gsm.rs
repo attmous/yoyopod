@@ -2238,6 +2238,160 @@ mod tests {
             .remove::<ReconnectVoice, _>(TEST_MODEM0)
             .unwrap();
     }
+
+    struct LifecycleCall {
+        rate: Arc<std::sync::atomic::AtomicU32>,
+    }
+    #[zbus::interface(name = "org.freedesktop.ModemManager1.Call")]
+    impl LifecycleCall {
+        #[zbus(property)]
+        fn state(&self) -> i32 {
+            3
+        }
+        #[zbus(property)]
+        fn direction(&self) -> i32 {
+            1
+        }
+        #[zbus(property)]
+        fn number(&self) -> &str {
+            "+49123456789"
+        }
+        #[zbus(property)]
+        fn audio_format(&self) -> HashMap<String, zvariant::OwnedValue> {
+            let rate = self.rate.load(Ordering::SeqCst);
+            if rate == 0 {
+                return HashMap::new();
+            }
+            HashMap::from([
+                (
+                    "encoding".into(),
+                    zvariant::OwnedValue::from(zvariant::Str::from("pcm")),
+                ),
+                (
+                    "resolution".into(),
+                    zvariant::OwnedValue::from(zvariant::Str::from("s16le")),
+                ),
+                ("rate".into(), zvariant::OwnedValue::from(rate)),
+            ])
+        }
+        #[zbus(property)]
+        fn audio_port(&self) -> &str {
+            ""
+        }
+    }
+    struct LifecycleFixture {
+        owner: Connection,
+        backend: ModemManagerVoice,
+        rate: Arc<std::sync::atomic::AtomicU32>,
+        _bus: PrivateBus,
+    }
+    impl LifecycleFixture {
+        fn new_qualified() -> Self {
+            let bus = PrivateBus::start();
+            let (owner, mut backend, _) = reconnect_fixture(&bus);
+            let rate = Arc::new(std::sync::atomic::AtomicU32::new(16000));
+            owner
+                .object_server()
+                .at(TEST_RINGING_CALL, LifecycleCall { rate: rate.clone() })
+                .unwrap();
+            owner
+                .object_server()
+                .interface::<_, ReconnectVoice>(TEST_MODEM0)
+                .unwrap()
+                .get()
+                .paths
+                .lock()
+                .unwrap()
+                .push(OwnedObjectPath::try_from(TEST_RINGING_CALL).unwrap());
+            backend.reconcile_paths().unwrap();
+            backend.drain_call_events();
+            Self {
+                owner,
+                backend,
+                rate,
+                _bus: bus,
+            }
+        }
+        fn epoch(&self) -> u64 {
+            self.backend.selected_modem_epoch()
+        }
+        fn emit_modem_state(&self, state: i32) {
+            self.owner
+                .emit_signal(
+                    None::<&str>,
+                    TEST_MODEM0,
+                    MODEM_INTERFACE,
+                    "StateChanged",
+                    &(8i32, state, 0u32),
+                )
+                .unwrap();
+            self.owner
+                .emit_signal(
+                    None::<&str>,
+                    TEST_MODEM0,
+                    "org.freedesktop.DBus.Properties",
+                    "PropertiesChanged",
+                    &(
+                        MODEM_INTERFACE,
+                        HashMap::from([("State", zvariant::OwnedValue::from(state))]),
+                        Vec::<String>::new(),
+                    ),
+                )
+                .unwrap();
+        }
+        fn emit_call_format(&self, rate: Option<u32>) {
+            self.rate.store(rate.unwrap_or(0), Ordering::SeqCst);
+            let format = LifecycleCall {
+                rate: self.rate.clone(),
+            }
+            .audio_format();
+            self.owner
+                .emit_signal(
+                    None::<&str>,
+                    TEST_RINGING_CALL,
+                    "org.freedesktop.DBus.Properties",
+                    "PropertiesChanged",
+                    &(
+                        CALL_INTERFACE,
+                        HashMap::from([("AudioFormat", zvariant::Value::from(format))]),
+                        Vec::<String>::new(),
+                    ),
+                )
+                .unwrap();
+        }
+        fn flush_through_reply(&mut self) -> Result<()> {
+            self.backend.check_selected_modem()
+        }
+        fn refresh(&mut self) -> Result<()> {
+            self.backend.refresh().map(|_| ())
+        }
+        fn old_epoch_can_control(&mut self, epoch: u64) -> bool {
+            self.backend.ensure_control().is_ok() && self.backend.selected_modem_epoch() == epoch
+        }
+    }
+    #[test]
+    fn gsm_provider_same_owner_path_reenable_does_not_restore_old_admission() {
+        let mut fixture = LifecycleFixture::new_qualified();
+        let old = fixture.epoch();
+        assert!(fixture.old_epoch_can_control(old));
+        fixture.emit_modem_state(4);
+        fixture.emit_call_format(None);
+        fixture.emit_modem_state(8);
+        fixture.emit_call_format(Some(16000));
+        // A production loss may make this control barrier itself return an error;
+        // it must nevertheless consume ordered evidence and retain dirty ownership.
+        let _ = fixture.flush_through_reply();
+        fixture.refresh().unwrap();
+        assert!(fixture.epoch() > old);
+        assert!(!fixture.old_epoch_can_control(old));
+        assert!(
+            !fixture
+                .backend
+                .reconciliation()
+                .unwrap()
+                .native_calls_quiescent
+        );
+    }
     fn add_reconnect_modem(owner: &Connection, path: &str) {
         owner.object_server().at(path, ReconnectModem).unwrap();
         owner
