@@ -88,11 +88,14 @@ pub fn run(ctx: &TargetContext, args: ScreenshotArgs) -> Result<i32> {
         PathBuf::from(&args.out)
     };
     if let Some(parent) = local_target.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("create {}", parent.display()))?;
+        std::fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     let scp_status = Command::new("scp")
-        .arg(format!("{}:{}", ctx.conn.ssh_target(), ctx.pi.screenshot_path))
+        .arg(format!(
+            "{}:{}",
+            ctx.conn.ssh_target(),
+            ctx.pi.screenshot_path
+        ))
         .arg(&local_target)
         .status()
         .context("spawn scp")?;

@@ -51,8 +51,8 @@ impl RawConfig {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let text = std::fs::read_to_string(path)
-            .with_context(|| format!("read {}", path.display()))?;
+        let text =
+            std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
         let parsed: Self = serde_yaml::from_str(&text)
             .with_context(|| format!("parse YAML at {}", path.display()))?;
         Ok(parsed)
@@ -106,10 +106,7 @@ pub fn resolve_connection(
     RemoteConnection {
         host: coerce(host_flag.map(str::to_owned).or(yaml_host), ""),
         user: coerce(user_flag.map(str::to_owned).or(yaml_user), ""),
-        project_dir: coerce(
-            project_dir_flag.map(str::to_owned),
-            &pi.project_dir,
-        ),
+        project_dir: coerce(project_dir_flag.map(str::to_owned), &pi.project_dir),
         branch: coerce(branch_flag.map(str::to_owned).or(yaml_branch), "main"),
     }
 }
@@ -185,41 +182,58 @@ pub fn resolve_pi_paths(base: &RawConfig, local: &RawConfig) -> PiPaths {
         }
         default.to_string()
     };
-    let pick_list = |bv: &Option<Vec<String>>, lv: &Option<Vec<String>>, default: &[String]| -> Vec<String> {
-        if let Some(v) = lv {
-            let normalized: Vec<String> = v
-                .iter()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            if !normalized.is_empty() {
-                return normalized;
+    let pick_list =
+        |bv: &Option<Vec<String>>, lv: &Option<Vec<String>>, default: &[String]| -> Vec<String> {
+            if let Some(v) = lv {
+                let normalized: Vec<String> = v
+                    .iter()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if !normalized.is_empty() {
+                    return normalized;
+                }
             }
-        }
-        if let Some(v) = bv {
-            let normalized: Vec<String> = v
-                .iter()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            if !normalized.is_empty() {
-                return normalized;
+            if let Some(v) = bv {
+                let normalized: Vec<String> = v
+                    .iter()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if !normalized.is_empty() {
+                    return normalized;
+                }
             }
-        }
-        default.to_vec()
-    };
+            default.to_vec()
+        };
 
     let lane = resolve_lane(base, local);
 
     pi.project_dir = pick_str(&base.project_dir, &local.project_dir, &lane.dev_checkout);
     pi.start_cmd = pick_str(&base.start_cmd, &local.start_cmd, &pi.start_cmd);
     pi.log_file = pick_str(&base.log_file, &local.log_file, &pi.log_file);
-    pi.error_log_file = pick_str(&base.error_log_file, &local.error_log_file, &pi.error_log_file);
+    pi.error_log_file = pick_str(
+        &base.error_log_file,
+        &local.error_log_file,
+        &pi.error_log_file,
+    );
     let default_pid = format!("{}/yoyopod.pid", lane.dev_state.trim_end_matches('/'));
     pi.pid_file = pick_str(&base.pid_file, &local.pid_file, &default_pid);
-    pi.screenshot_path = pick_str(&base.screenshot_path, &local.screenshot_path, &pi.screenshot_path);
-    pi.startup_marker = pick_str(&base.startup_marker, &local.startup_marker, &pi.startup_marker);
-    pi.kill_processes = pick_list(&base.kill_processes, &local.kill_processes, &pi.kill_processes);
+    pi.screenshot_path = pick_str(
+        &base.screenshot_path,
+        &local.screenshot_path,
+        &pi.screenshot_path,
+    );
+    pi.startup_marker = pick_str(
+        &base.startup_marker,
+        &local.startup_marker,
+        &pi.startup_marker,
+    );
+    pi.kill_processes = pick_list(
+        &base.kill_processes,
+        &local.kill_processes,
+        &pi.kill_processes,
+    );
     pi.rsync_exclude = pick_list(&base.rsync_exclude, &local.rsync_exclude, &pi.rsync_exclude);
     pi
 }
@@ -300,11 +314,7 @@ mod tests {
     #[test]
     fn lane_override_only_in_local() {
         let tmp = tempdir().unwrap();
-        write(
-            tmp.path(),
-            "local.yaml",
-            "lane:\n  dev_root: /srv/dev\n",
-        );
+        write(tmp.path(), "local.yaml", "lane:\n  dev_root: /srv/dev\n");
         let base = RawConfig::default();
         let local = RawConfig::load_optional(&tmp.path().join("local.yaml")).unwrap();
         let lane = resolve_lane(&base, &local);
@@ -340,6 +350,9 @@ mod tests {
         let base = RawConfig::default();
         let local = RawConfig::load_optional(&tmp.path().join("local.yaml")).unwrap();
         let pi = resolve_pi_paths(&base, &local);
-        assert_eq!(pi.rsync_exclude, vec!["foo/".to_string(), "bar/".to_string()]);
+        assert_eq!(
+            pi.rsync_exclude,
+            vec!["foo/".to_string(), "bar/".to_string()]
+        );
     }
 }

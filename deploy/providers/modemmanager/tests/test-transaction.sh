@@ -71,6 +71,13 @@ echo 'PASS actual all-modem helper rejects secondary call/read error/new-owner e
 echo 'PASS actual pre-stop config check rejects unsupported ownership/special mode and accepts ordinary metadata'
 (
   # This harmless process remains classifiable after its executable is unlinked.
+  # Restrict the scan's read effect to this fixture child; unrelated host owners
+  # (including privileged unreadable processes) are outside this fixture inventory.
+  eval "$(declare -f provider_process_executable | sed '1s/provider_process_executable/provider_fixture_process_executable/')"
+  provider_process_executable() {
+    [[ "$1" == "/proc/$child" ]] || return 1
+    provider_fixture_process_executable "$1"
+  }
   cp -- /bin/sleep "$stage/yoyopod-runtime"
   "$stage/yoyopod-runtime" 30 & child=$!
   trap 'kill "$child" 2>/dev/null || :; wait "$child" 2>/dev/null || :' EXIT
@@ -85,6 +92,17 @@ echo 'PASS actual pre-stop config check rejects unsupported ownership/special mo
   # timeout's production flags are fixed; replace only the systemctl wait effect.
   timeout() { while [[ "$1" != systemctl ]]; do shift; done; "$@"; }
   ! stop_native yoyopod-dev.service
+  # The production helper must also retain its unknown-relevant status when only
+  # this child's executable read fails; its actual comm remains readable.
+  readlink() {
+    if [[ "${1:-}" == -- && "${2:-}" == "/proc/$child/exe" ]]; then return 1; fi
+    command readlink "$@"
+  }
+  status=0
+  provider_process_executable "/proc/$child" >/dev/null || status=$?
+  [[ "$status" == 2 ]]
+  ! stop_native yoyopod-dev.service
+  unset -f readlink
   kill "$child"; wait "$child" 2>/dev/null || :
   trap - EXIT
   stop_native yoyopod-dev.service

@@ -91,10 +91,7 @@ mod tests {
     #[test]
     fn tilde_slash_with_backslash() {
         // backslash gets doubled, so input `~/a\b` becomes `"$HOME/a\\b"`
-        assert_eq!(
-            shell_quote_preserving_home("~/a\\b"),
-            r#""$HOME/a\\b""#
-        );
+        assert_eq!(shell_quote_preserving_home("~/a\\b"), r#""$HOME/a\\b""#);
     }
 
     #[test]
