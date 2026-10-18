@@ -914,7 +914,7 @@ provider_main() (
   local package_attempt_state=not_attempted
   verify_stage "$provider_stage" && require_dev_no_calls "$dev_service" "$prod_service" || return 1
   provider_phase "$provider_stage" capturing || return 1
-  trap 'failure_reason="interrupted"; trap - INT TERM HUP; if [[ "$prior_ready" == true ]]; then provider_rollback "$provider_stage" "$dev_service"; else write_recovery_record "$provider_stage"; fi; exit 2' INT TERM HUP
+  trap 'failure_reason="interrupted"; trap - INT TERM HUP; if [[ "$prior_ready" == true ]]; then provider_rollback "$provider_stage" "$dev_service" || :; else write_recovery_record "$provider_stage" || :; fi; exit 2' INT TERM HUP
   capture_prior "$provider_stage" || return 1
   provider_phase "$provider_stage" staged || return 1
   provider_pre_stop || return 1
