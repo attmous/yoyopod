@@ -273,6 +273,21 @@ impl RuntimeLoop {
         if self.manager.session() != Some(&operation.key) {
             return;
         }
+        if operation.domain == WorkerDomain::Network
+            && operation.key.transport == CallTransport::Gsm
+            && operation.purpose == OperationPurpose::Native(CallAction::Answer)
+            && !ok
+            && payload["ok"].as_bool() == Some(false)
+            && payload["error"].is_string()
+            && serde_json::from_value::<SessionKey>(payload["key"].clone())
+                .ok()
+                .as_ref()
+                == Some(&operation.key)
+        {
+            self.calls.gsm_answer_failure = Some(operation.key.clone());
+            self.state.call.gsm_available = false;
+            self.state.call.gsm_unavailable_reason = "Call audio failed".into();
+        }
         if matches!(operation.purpose, OperationPurpose::PrepareVoip) && !ok {
             if let Some(path) = payload["draft_recovery_source"].as_str() {
                 if self.state.voice.interrupted_draft_path.is_none() {

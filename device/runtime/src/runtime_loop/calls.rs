@@ -46,6 +46,7 @@ pub(super) struct CallIntegration {
     shutdown_deadline: Option<u64>,
     pending_alert: Option<crate::call_manager::RingtoneRequest>,
     ui_unavailable: bool,
+    gsm_answer_failure: Option<SessionKey>,
 }
 impl Default for CallIntegration {
     fn default() -> Self {
@@ -69,6 +70,7 @@ impl Default for CallIntegration {
             shutdown_deadline: None,
             pending_alert: None,
             ui_unavailable: false,
+            gsm_answer_failure: None,
         }
     }
 }
@@ -348,6 +350,16 @@ impl RuntimeLoop {
                 true
             }
             RuntimeEvent::UiIntent(UiIntent::Call(CallIntent::Session(command))) => {
+                if command.action == CallAction::Answer
+                    && command.key.transport == CallTransport::Gsm
+                    && self.manager.session() == Some(&command.key)
+                    && !self.state.call.gsm_available
+                {
+                    if self.state.call.gsm_unavailable_reason.is_empty() {
+                        self.state.call.gsm_unavailable_reason = "Audio unavailable".into();
+                    }
+                    return true;
+                }
                 self.handle_call(io, CallManagerEvent::UserAction(command.clone()));
                 true
             }
@@ -521,6 +533,14 @@ impl RuntimeLoop {
     }
 
     pub(super) fn project_call(&mut self) {
+        if self.calls.gsm_answer_failure.as_ref() == self.manager.session()
+            && self.calls.gsm_answer_failure.is_some()
+        {
+            self.state.call.gsm_available = false;
+            self.state.call.gsm_unavailable_reason = "Call audio failed".into();
+        } else {
+            self.calls.gsm_answer_failure = None;
+        }
         if self.calls.native_guard.quarantined() {
             self.state.call.gsm_available = false;
             self.state.call.gsm_unavailable_reason = "native call recovery required".into();
@@ -530,7 +550,10 @@ impl RuntimeLoop {
         }
         self.state.call.session = self.manager.session().cloned();
         self.state.call.session_phase = self.manager.phase();
-        self.state.call.accept_enabled = self.manager.accept_enabled();
+        self.state.call.accept_enabled = self.manager.accept_enabled()
+            && self.manager.session().is_none_or(|key| {
+                key.transport != CallTransport::Gsm || self.state.call.gsm_available
+            });
         self.state.call.alert_audible = self.manager.alert_audible();
         if let Some(key) = self.manager.session() {
             self.state.call.method = if key.transport == CallTransport::Gsm {

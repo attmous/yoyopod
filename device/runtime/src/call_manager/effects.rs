@@ -145,7 +145,26 @@ impl CallOperationLedger {
         if !matches!(envelope.kind, EnvelopeKind::Result | EnvelopeKind::Error) {
             return None;
         }
-        let operation = self.take(domain, envelope.request_id.as_deref()?)?;
+        let request_id = envelope.request_id.as_deref()?;
+        if envelope.kind == EnvelopeKind::Result && domain == WorkerDomain::Network {
+            let pending = self
+                .operations
+                .iter()
+                .find(|p| p.domain == domain && p.request_id == request_id)?;
+            if matches!(
+                pending.purpose,
+                OperationPurpose::Native(_)
+                    | OperationPurpose::Dial
+                    | OperationPurpose::Secondary(_, _)
+            ) && serde_json::from_value::<SessionKey>(envelope.payload["key"].clone())
+                .ok()
+                .as_ref()
+                != Some(&pending.key)
+            {
+                return None;
+            }
+        }
+        let operation = self.take(domain, request_id)?;
         let mut ok = envelope.kind == EnvelopeKind::Result
             && envelope.payload.get("ok").and_then(Value::as_bool) != Some(false);
         let p = &envelope.payload;

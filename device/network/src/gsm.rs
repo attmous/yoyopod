@@ -13,7 +13,7 @@ use serde::Serialize;
 use yoyopod_protocol::call::{CallCommand, CallPhase, SessionKey};
 use zbus::blocking::{connection::Builder, Connection, Proxy};
 use zbus::fdo::ManagedObjects;
-use zvariant::{OwnedObjectPath, Value};
+use zvariant::OwnedObjectPath;
 
 use crate::gsm_audio::UsbPcmAudio;
 
@@ -21,6 +21,15 @@ const DESTINATION: &str = "org.freedesktop.ModemManager1";
 const MODEM_INTERFACE: &str = "org.freedesktop.ModemManager1.Modem";
 const VOICE_INTERFACE: &str = "org.freedesktop.ModemManager1.Modem.Voice";
 const CALL_INTERFACE: &str = "org.freedesktop.ModemManager1.Call";
+
+fn audio_inventory_contains(ports: &[(String, u32)], audio_port: &str) -> bool {
+    let name = audio_port.strip_prefix("/dev/").unwrap_or(audio_port);
+    !name.is_empty()
+        && !name.contains('/')
+        && ports
+            .iter()
+            .any(|(port, kind)| *kind == 8 && port.strip_prefix("/dev/").unwrap_or(port) == name)
+}
 
 // MM 1.24's generic AT implementation falls back to global +CHUP. Only the
 // pinned SIMTech QMI class has verified source-level per-native-ID termination.
@@ -676,7 +685,11 @@ struct ModemManagerVoice {
     signals: Option<ModemSignals>,
     registry: Option<crate::gsm_calls::GsmCallRegistry>,
     generation: Option<u64>,
-    pcm_sample_rate_hz: Option<u32>,
+    provider: crate::gsm_provider::ProviderGate,
+    provider_identity: Option<crate::gsm_provider::ProviderIdentity>,
+    provider_invalidated: bool,
+    format_admission: Option<(SessionKey, u64, u32)>,
+    owned_audio_port: Option<String>,
     isolated: bool,
     pending_events: Vec<CallManagerWireEvent>,
     owner: Option<SessionKey>,
@@ -694,6 +707,82 @@ struct ModemManagerVoice {
 }
 
 impl ModemManagerVoice {
+    fn invalidate_provider_audio(&mut self) {
+        if self.provider_invalidated || self.modem_lost || self.service_invalidated {
+            return;
+        }
+        self.provider_invalidated = true;
+        self.loss_pending = true;
+        self.selected_epoch = self
+            .selected_epoch
+            .checked_add(1)
+            .expect("modem epoch exhausted");
+        self.provider_identity = None;
+        self.format_admission = None;
+        self.owned_audio_port = None;
+        self.audio.take();
+        self.prepared_audio.take();
+        self.audio_deadline = None;
+        self.cached.available = false;
+        self.cached.unavailable_reason = "Audio unavailable".into();
+        // The same signaling objects remain usable for targeted termination.
+        // Neither recovered metadata nor stopped local PCM proves native release.
+        if let Some(registry) = self.registry.as_mut() {
+            for (path, key) in registry.tracked() {
+                self.cleanup.failed(&path);
+                if let Some(old) = registry.latest(&key).cloned() {
+                    self.pending_events.extend(registry.observe(
+                        &path,
+                        old.direction,
+                        CallPhase::Ending,
+                        &old.address,
+                    ));
+                }
+            }
+        }
+    }
+
+    fn provider_baseline(&mut self) -> Result<crate::gsm_provider::ProviderIdentity> {
+        let result = self.provider.read(
+            self.connection.as_ref().context("No modem connection")?,
+            self.bound_owner()?,
+            self.modem.as_ref().context("No modem")?.as_str(),
+        );
+        let actual = match result {
+            Ok(actual) => actual,
+            Err(error) => {
+                if self.provider_identity.is_some() {
+                    self.invalidate_provider_audio();
+                }
+                self.cached.available = false;
+                self.cached.unavailable_reason = "Audio unavailable".into();
+                return Err(error);
+            }
+        };
+        self.check_selected_modem()?;
+        if self
+            .provider_identity
+            .as_ref()
+            .is_some_and(|old| old != &actual)
+        {
+            self.invalidate_provider_audio();
+        }
+        if self.provider_invalidated {
+            anyhow::ensure!(
+                self.idle_calls_proven
+                    && self.registry()?.tracked().is_empty()
+                    && self.owner.is_none()
+                    && self.terminating.is_empty()
+                    && self.uncertain_create.is_none()
+                    && self.cleanup.uncertain.is_empty(),
+                "GSM old audio lifetime requires clean native reconciliation"
+            );
+            self.provider_invalidated = false;
+        }
+        self.provider_identity = Some(actual.clone());
+        Ok(actual)
+    }
+
     fn selected_modem_lost(&mut self) {
         if self.modem_lost {
             return;
@@ -713,10 +802,16 @@ impl ModemManagerVoice {
             && self.pending_events.is_empty();
         self.modem_lost = true;
         self.loss_pending = true;
-        self.selected_epoch = self
-            .selected_epoch
-            .checked_add(1)
-            .expect("modem epoch exhausted");
+        if !self.provider_invalidated {
+            self.selected_epoch = self
+                .selected_epoch
+                .checked_add(1)
+                .expect("modem epoch exhausted");
+        }
+        self.provider_invalidated = true;
+        self.provider_identity = None;
+        self.format_admission = None;
+        self.owned_audio_port = None;
         self.isolated = false;
         self.idle_calls_proven = false;
         self.cached.available = false;
@@ -747,6 +842,99 @@ impl ModemManagerVoice {
 
     fn removal_signal(&mut self, message: &zbus::Message) {
         let header = message.header();
+        if header.sender().map(|s| s.as_str()) == self.service_owner.as_deref() {
+            let path = header.path().map(|p| p.as_str());
+            let modem = self.modem.as_ref().map(|p| p.as_str().to_owned());
+            if path == modem.as_deref()
+                && header.interface().map(|i| i.as_str()) == Some(MODEM_INTERFACE)
+                && header.member().map(|m| m.as_str()) == Some("StateChanged")
+            {
+                if message
+                    .body()
+                    .deserialize::<(i32, i32, u32)>()
+                    .map_or(true, |(old, new, _)| old < 6 || new < 6)
+                {
+                    self.invalidate_provider_audio();
+                }
+            }
+            if header.interface().map(|i| i.as_str()) == Some("org.freedesktop.DBus.Properties")
+                && header.member().map(|m| m.as_str()) == Some("PropertiesChanged")
+            {
+                if let Ok((interface, changed, invalidated)) = message.body().deserialize::<(
+                    String,
+                    HashMap<String, zvariant::OwnedValue>,
+                    Vec<String>,
+                )>() {
+                    let unknown = |name: &str| invalidated.iter().any(|s| s == name);
+                    let modem_loss = path == modem.as_deref()
+                        && (interface == MODEM_INTERFACE
+                            && (unknown("State")
+                                || changed
+                                    .get("State")
+                                    .is_some_and(|v| i32::try_from(v).map_or(true, |s| s < 6)))
+                            || interface == VOICE_INTERFACE
+                                && (unknown("EmergencyOnly")
+                                    || changed
+                                        .get("EmergencyOnly")
+                                        .is_some_and(|v| bool::try_from(v).unwrap_or(true))));
+                    let owned_path = self
+                        .owner
+                        .as_ref()
+                        .and_then(|key| self.registry.as_ref()?.path_for(key));
+                    let tracked = path.is_some_and(|p| {
+                        self.registry
+                            .as_ref()
+                            .is_some_and(|r| r.tracked().iter().any(|(known, _)| known == p))
+                    });
+                    let mut format_loss = false;
+                    if tracked && interface == CALL_INTERFACE {
+                        format_loss = unknown("AudioFormat");
+                        if let Some(value) = changed.get("AudioFormat") {
+                            format_loss |= value
+                                .try_clone()
+                                .ok()
+                                .and_then(|v| {
+                                    HashMap::<String, zvariant::OwnedValue>::try_from(v).ok()
+                                })
+                                .is_none_or(|format| {
+                                    !crate::gsm_provider::current_format_matches(&format)
+                                });
+                        }
+                    }
+                    let port_loss = path == owned_path
+                        && self.owned_audio_port.is_some()
+                        && (unknown("AudioPort")
+                            || changed.get("AudioPort").is_some_and(|v| {
+                                <&str>::try_from(v).ok() != self.owned_audio_port.as_deref()
+                            }));
+                    let inventory_loss = path == modem.as_deref()
+                        && self.owned_audio_port.is_some()
+                        && interface == MODEM_INTERFACE
+                        && (unknown("Ports")
+                            || changed.get("Ports").is_some_and(|value| {
+                                value
+                                    .try_clone()
+                                    .ok()
+                                    .and_then(|v| Vec::<(String, u32)>::try_from(v).ok())
+                                    .is_none_or(|ports| {
+                                        !audio_inventory_contains(
+                                            &ports,
+                                            self.owned_audio_port.as_deref().unwrap(),
+                                        )
+                                    })
+                            }));
+                    if modem_loss || format_loss || port_loss || inventory_loss {
+                        self.invalidate_provider_audio();
+                    }
+                } else if path == modem.as_deref()
+                    || self.owner.as_ref().is_some_and(|key| {
+                        self.registry.as_ref().and_then(|r| r.path_for(key)) == path
+                    })
+                {
+                    self.invalidate_provider_audio();
+                }
+            }
+        }
         if header.sender().map(|s| s.as_str()) == self.service_owner.as_deref()
             && header.path().map(|p| p.as_str()) == self.modem.as_ref().map(|p| p.as_str())
             && header.interface().map(|s| s.as_str()) == Some(VOICE_INTERFACE)
@@ -835,6 +1023,14 @@ impl ModemManagerVoice {
             interfaces.contains_key(MODEM_INTERFACE) && interfaces.contains_key(VOICE_INTERFACE)
         }) {
             self.selected_modem_lost();
+        } else if objects
+            .get(&modem)
+            .and_then(|i| i.get(MODEM_INTERFACE))
+            .and_then(|p| p.get("State"))
+            .and_then(|v| i32::try_from(v).ok())
+            .is_none_or(|state| state < 6)
+        {
+            self.invalidate_provider_audio();
         }
         anyhow::ensure!(!self.modem_lost, "Selected modem lost");
         Ok(())
@@ -969,7 +1165,18 @@ impl ModemManagerVoice {
     }
 
     fn invalidate_service_owner(&mut self) {
+        if !self.service_invalidated && !self.modem_lost && !self.provider_invalidated {
+            self.selected_epoch = self
+                .selected_epoch
+                .checked_add(1)
+                .expect("modem epoch exhausted");
+            self.loss_pending = true;
+        }
         self.service_invalidated = true;
+        self.provider_invalidated = true;
+        self.provider_identity = None;
+        self.format_admission = None;
+        self.owned_audio_port = None;
         self.isolated = false;
         self.cached.available = false;
         self.cached.unavailable_reason =
@@ -1005,10 +1212,6 @@ impl ModemManagerVoice {
             self.modem_lost = true;
             self.clean_rediscovery = false;
             self.loss_pending = true;
-            self.selected_epoch = self
-                .selected_epoch
-                .checked_add(1)
-                .expect("modem epoch exhausted");
             self.cached.unavailable_reason =
                 "GSM signal evidence lost; native reconciliation required".into();
             bail!("{}", self.cached.unavailable_reason);
@@ -1145,6 +1348,8 @@ impl ModemManagerVoice {
             // the matching Ended update can be drained by the network worker.
             self.audio.take();
             self.prepared_audio.take();
+            self.format_admission = None;
+            self.owned_audio_port = None;
             self.audio_deadline = None;
             self.active_since = None;
             self.owner = None;
@@ -1208,7 +1413,31 @@ impl ModemManagerVoice {
         let reason = voice_service_unavailable_reason(state, lock, true, emergency);
         self.check_selected_modem()?;
         self.cached.available = reason.is_none();
-        self.cached.unavailable_reason = reason.unwrap_or_default().into();
+        self.cached.unavailable_reason = if reason.is_some() {
+            "Modem unavailable"
+        } else {
+            ""
+        }
+        .into();
+        if self.cached.available {
+            let provider_ready = self.provider_baseline().and_then(|_| {
+                for (path, key) in self.registry()?.tracked() {
+                    if self
+                        .registry()?
+                        .latest(&key)
+                        .is_some_and(|u| u.phase == CallPhase::Ringing)
+                    {
+                        self.sample_rate(&path)?;
+                    }
+                }
+                Ok(())
+            });
+            if let Err(error) = provider_ready {
+                eprintln!("GSM provider audio unavailable: {error:#}");
+                self.cached.available = false;
+                self.cached.unavailable_reason = "Audio unavailable".into();
+            }
+        }
         if !self.cleanup.uncertain.is_empty() || self.uncertain_create.is_some() {
             self.cached.available = false;
             self.cached.unavailable_reason = "GSM native call reconciliation required".into();
@@ -1258,6 +1487,12 @@ impl ModemManagerVoice {
             _ => bail!("Unknown GSM call direction"),
         };
         let mut phase = modem_call_phase(state);
+        if self.provider_invalidated
+            && self.registry()?.tracked().iter().any(|(p, _)| p == path)
+            && phase != CallPhase::Ended
+        {
+            phase = CallPhase::Ending;
+        }
         if self.initial_scan {
             self.cleanup.observe_initial(path, &phase);
         }
@@ -1356,6 +1591,10 @@ impl ModemManagerVoice {
                         self.pending_events.extend(ending);
                         return Ok(());
                     }
+                    if self.audio.is_none() {
+                        // A native Active alone is not audio readiness.
+                        return Ok(());
+                    }
                     self.cached.state = "active".into();
                     let since = self.active_since.get_or_insert_with(Instant::now);
                     self.cached.duration_seconds = since.elapsed().as_secs();
@@ -1386,43 +1625,75 @@ impl ModemManagerVoice {
         Ok(())
     }
 
-    fn sample_rate(&self, path: Option<&str>) -> Result<u32> {
-        if let Some(rate) = self.pcm_sample_rate_hz {
-            return Ok(rate);
-        }
-        if let Some(path) = path {
-            let format: HashMap<String, zvariant::OwnedValue> =
-                self.proxy_for(path)?.get_property("AudioFormat")?;
-            let rate = format
-                .get("rate")
-                .and_then(|value| u32::try_from(value).ok());
-            let encoding = format
-                .get("encoding")
-                .and_then(|v| <&str>::try_from(v).ok());
-            let resolution = format
-                .get("resolution")
-                .and_then(|v| <&str>::try_from(v).ok());
-            if encoding == Some("pcm") && resolution == Some("s16le") {
-                if let Some(rate @ (8000 | 16000)) = rate {
-                    return Ok(rate);
+    fn sample_rate(&mut self, path: &str) -> Result<u32> {
+        self.ensure_control()?;
+        let connection = self
+            .connection
+            .as_ref()
+            .context("No modem connection")?
+            .clone();
+        let owner = self.bound_owner()?.to_owned();
+        let modem = self.modem.as_ref().context("No modem")?.clone();
+        let proxy = Proxy::new(&connection, owner.as_str(), modem.as_str(), MODEM_INTERFACE)?;
+        let state: i32 = proxy.get_property("State")?;
+        let lock: u32 = proxy.get_property("UnlockRequired")?;
+        let emergency: bool =
+            Proxy::new(&connection, owner.as_str(), modem.as_str(), VOICE_INTERFACE)?
+                .get_property("EmergencyOnly")?;
+        self.ensure_control()?;
+        anyhow::ensure!(
+            voice_service_unavailable_reason(state, lock, true, emergency).is_none(),
+            "Modem unavailable"
+        );
+        let epoch = self.selected_epoch;
+        let actual = self.provider_baseline()?;
+        let format: HashMap<String, zvariant::OwnedValue> =
+            self.proxy_for(path)?.get_property("AudioFormat")?;
+        self.ensure_control()?;
+        anyhow::ensure!(
+            epoch == self.selected_epoch && !self.provider_invalidated,
+            "GSM audio lifetime changed"
+        );
+        match self.provider.format(&actual, &format) {
+            Ok(pcm) => Ok(pcm.sample_rate_hz()),
+            Err(error) => {
+                if self.format_admission.is_some() {
+                    self.invalidate_provider_audio();
                 }
+                Err(error)
             }
         }
-        bail!("GSM audio format unavailable: configure verified gsm_pcm_sample_rate_hz")
     }
 
-    fn start_owned_audio(&mut self, _key: &SessionKey, path: &str) -> Result<()> {
+    fn ensure_prepared_current(&mut self, key: &SessionKey, path: &str) -> Result<()> {
+        let rate = self.sample_rate(path)?;
+        anyhow::ensure!(
+            self.format_admission.as_ref() == Some(&(key.clone(), self.selected_epoch, rate)),
+            "GSM prepared audio belongs to an old admission"
+        );
+        Ok(())
+    }
+
+    fn start_owned_audio(&mut self, key: &SessionKey, path: &str) -> Result<()> {
+        self.ensure_prepared_current(key, path)?;
+        let audio_port: String = self.proxy_for(path)?.get_property("AudioPort")?;
+        self.ensure_control()?;
         if let Some(audio) = self.audio.as_mut() {
+            anyhow::ensure!(
+                self.owned_audio_port.as_deref() == Some(audio_port.as_str())
+                    && self.provider_identity.as_ref().is_some_and(|identity| {
+                        audio_inventory_contains(&identity.ports, &audio_port)
+                    }),
+                "GSM active audio endpoint changed"
+            );
             anyhow::ensure!(audio.healthy()?, "GSM audio bridge stopped");
             return Ok(());
         }
         if self.prepared_audio.is_none() {
-            let rate = self.sample_rate(Some(path))?;
+            let rate = self.sample_rate(path)?;
             self.ensure_control()?;
             self.prepared_audio = Some(UsbPcmAudio::prepare(rate)?);
         }
-        let audio_port: String = self.proxy_for(path)?.get_property("AudioPort")?;
-        self.ensure_control()?;
         if audio_port.is_empty() {
             anyhow::ensure!(
                 self.audio_deadline
@@ -1431,6 +1702,13 @@ impl ModemManagerVoice {
             );
             return Ok(());
         }
+        anyhow::ensure!(
+            self.provider_identity
+                .as_ref()
+                .is_some_and(|identity| audio_inventory_contains(&identity.ports, &audio_port)),
+            "GSM AudioPort is absent from current AUDIO inventory"
+        );
+        self.owned_audio_port = Some(audio_port.clone());
         let port = if audio_port.starts_with("/dev/") {
             std::path::PathBuf::from(audio_port)
         } else {
@@ -1509,13 +1787,13 @@ impl ModemManagerVoice {
             || self.next_recovery.is_none_or(|next| Instant::now() >= next)
         {
             self.reconcile_paths()?;
-            self.refresh_availability()?;
             self.next_recovery = Some(Instant::now() + Duration::from_secs(3));
         } else {
             for (path, _) in self.registry()?.tracked() {
                 self.observe_path(&path)?;
             }
         }
+        self.refresh_availability()?;
         Ok(self.cached.clone())
     }
 }
@@ -1558,8 +1836,8 @@ impl GsmBackend for ModemManagerVoice {
     }
     fn configure(&mut self, generation: u64, pcm_sample_rate_hz: Option<u32>) -> Result<()> {
         anyhow::ensure!(
-            pcm_sample_rate_hz.is_none_or(|rate| matches!(rate, 8000 | 16000)),
-            "Invalid GSM PCM sample rate"
+            pcm_sample_rate_hz.is_none(),
+            "GSM PCM rate override bypasses current provider evidence"
         );
         if let Some(current) = self.generation {
             anyhow::ensure!(
@@ -1571,7 +1849,6 @@ impl GsmBackend for ModemManagerVoice {
             );
         }
         self.generation = Some(generation);
-        self.pcm_sample_rate_hz = pcm_sample_rate_hz;
         self.registry = Some(crate::gsm_calls::GsmCallRegistry::new(generation));
         self.initial_scan = true;
         self.modem = None;
@@ -1612,54 +1889,12 @@ impl GsmBackend for ModemManagerVoice {
             "GSM native reconciliation required before dialing"
         );
         self.ensure_control()?;
+        self.refresh_availability()?;
         anyhow::ensure!(self.cached.available, "{}", self.cached.unavailable_reason);
-        // Reserve PCM without microphone/playback before starting the native call.
-        let prepared = UsbPcmAudio::prepare(self.sample_rate(None)?)?;
-        let connection = self.connection.as_ref().context("No modem")?.clone();
-        let modem = self.modem.as_ref().context("No modem")?.clone();
-        let native_owner = self.bound_owner()?.to_owned();
-        let voice = Proxy::new(
-            &connection,
-            native_owner.as_str(),
-            modem.as_str(),
-            VOICE_INTERFACE,
-        )?;
-        self.owner = Some(key.clone());
-        self.prepared_audio = Some(prepared);
-        self.ensure_control()?;
-        let properties = HashMap::from([("number", Value::from(number))]);
-        let path: OwnedObjectPath = match voice.call("CreateCall", &(properties,)) {
-            Ok(path) => path,
-            Err(error) => {
-                self.uncertain_create = Some(key.clone());
-                self.ensure_control()?;
-                return Err(error.into());
-            }
-        };
-        self.registry
-            .as_mut()
-            .context("Not configured")?
-            .register_outgoing(key, path.as_str())?;
-        self.ensure_control()?;
-        let events = self.registry.as_mut().expect("configured").observe(
-            path.as_str(),
-            yoyopod_protocol::call::CallDirection::Outgoing,
-            CallPhase::Outgoing,
-            number,
-        );
-        self.pending_events.extend(events);
-        self.audio_deadline = Some(Instant::now() + Duration::from_secs(8));
-        let start_result = self
-            .proxy_for(path.as_str())?
-            .call::<_, _, ()>("Start", &());
-        self.ensure_control()?;
-        if let Err(error) = start_result {
-            self.cleanup.failed(path.as_str());
-            return Err(error.into());
-        }
-        self.cached.state = "outgoing".into();
-        self.cached.peer_number = number.into();
-        Ok(())
+        let _ = number;
+        // Task 5 supplies Create UNKNOWN -> current format -> prepare -> Start.
+        // Idle baseline never substitutes for a current Call's format proof.
+        bail!("GSM ordered outgoing audio preparation unavailable")
     }
 
     fn apply_call(&mut self, command: &CallCommand) -> Result<()> {
@@ -1703,8 +1938,10 @@ impl GsmBackend for ModemManagerVoice {
                     );
                     self.owner = Some(command.key.clone());
                     let preparation = diagnostic
-                        .observe("audio_metadata", self.sample_rate(Some(&path)))
+                        .observe("audio_metadata", self.sample_rate(&path))
                         .and_then(|rate| {
+                            self.format_admission =
+                                Some((command.key.clone(), self.selected_epoch, rate));
                             diagnostic.observe("pcm_control", self.ensure_control())?;
                             diagnostic.observe("pcm_prepare", UsbPcmAudio::prepare(rate))
                         });
@@ -1717,6 +1954,11 @@ impl GsmBackend for ModemManagerVoice {
                     }
                     self.audio_deadline = Some(Instant::now() + Duration::from_secs(8));
                     diagnostic.observe("accept_control", self.ensure_control())?;
+                    diagnostic.observe(
+                        "accept_format",
+                        self.ensure_prepared_current(&command.key, &path),
+                    )?;
+                    let epoch = self.selected_epoch;
                     let proxy = diagnostic.observe("accept_proxy", self.proxy_for(&path))?;
                     diagnostic.native_accept_dispatched = Some(true);
                     diagnostic.record("native_accept", "dispatch", None);
@@ -1726,6 +1968,10 @@ impl GsmBackend for ModemManagerVoice {
                     );
                     drop(proxy);
                     diagnostic.observe("accept_response_control", self.ensure_control())?;
+                    anyhow::ensure!(
+                        epoch == self.selected_epoch && !self.provider_invalidated,
+                        "GSM Accept response belongs to an old audio lifetime"
+                    );
                     if let Err(error) = accept_result {
                         self.cleanup.failed(&path);
                         return Err(error);
@@ -1835,7 +2081,7 @@ mod tests {
                 return Err(zbus::fdo::Error::Failed("metadata\n\"root cause\"".into()));
             }
             Ok(HashMap::from([
-                ("rate".into(), 8000_u32.into()),
+                ("rate".into(), 16000_u32.into()),
                 ("encoding".into(), zvariant::Str::from("pcm").into()),
                 ("resolution".into(), zvariant::Str::from("s16le").into()),
             ]))
@@ -2089,8 +2335,20 @@ mod tests {
     #[zbus::interface(name = "org.freedesktop.ModemManager1.Modem")]
     impl ReconnectModem {
         #[zbus(property)]
+        fn manufacturer(&self) -> &str {
+            "QUALCOMM INCORPORATED"
+        }
+        #[zbus(property)]
         fn model(&self) -> &str {
-            "SIM7600"
+            "SIMCOM_SIM7600G-H"
+        }
+        #[zbus(property)]
+        fn revision(&self) -> &str {
+            "LE20B04SIM7600G22"
+        }
+        #[zbus(property)]
+        fn hardware_revision(&self) -> &str {
+            "10000"
         }
         #[zbus(property)]
         fn plugin(&self) -> &str {
@@ -2210,6 +2468,7 @@ mod tests {
         allow_replacement(&owner);
         let mut backend = ModemManagerVoice::default();
         backend.configure(7, None).unwrap();
+        backend.provider = crate::gsm_provider::ProviderGate::test_fixture();
         backend.connection = Some(
             Builder::address(bus.address.as_str())
                 .unwrap()
@@ -2237,6 +2496,17 @@ mod tests {
             .object_server()
             .remove::<ReconnectVoice, _>(TEST_MODEM0)
             .unwrap();
+    }
+
+    #[test]
+    fn gsm_provider_normal_account_reader_checks_actual_bus_and_injected_protected_reads() {
+        let bus = PrivateBus::start();
+        let (owner, backend, _) = reconnect_fixture(&bus);
+        crate::gsm_provider::gsm_provider_tests::normal_account_identity_fixture(
+            backend.connection.as_ref().unwrap(),
+            owner.unique_name().unwrap().as_str(),
+            TEST_MODEM0,
+        );
     }
 
     struct LifecycleCall {
@@ -2366,7 +2636,9 @@ mod tests {
             self.backend.refresh().map(|_| ())
         }
         fn old_epoch_can_control(&mut self, epoch: u64) -> bool {
-            self.backend.ensure_control().is_ok() && self.backend.selected_modem_epoch() == epoch
+            self.backend.ensure_control().is_ok()
+                && self.backend.provider_baseline().is_ok()
+                && self.backend.selected_modem_epoch() == epoch
         }
     }
     #[test]

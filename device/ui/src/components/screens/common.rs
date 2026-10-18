@@ -183,6 +183,19 @@ pub fn call_overlay_model(
         kind,
         state: match kind {
             CallOverlayKind::Incoming
+                if !snapshot.call.accept_enabled
+                    && !snapshot.call.gsm_available
+                    && snapshot.call.session.as_ref().is_some_and(|key| {
+                        key.transport == yoyopod_protocol::call::CallTransport::Gsm
+                    }) =>
+            {
+                if snapshot.call.gsm_unavailable_reason.trim().is_empty() {
+                    "Audio unavailable"
+                } else {
+                    snapshot.call.gsm_unavailable_reason.as_str()
+                }
+            }
+            CallOverlayKind::Incoming
                 if snapshot.call.session_phase
                     == Some(yoyopod_protocol::call::CallPhase::Answering)
                     || !snapshot.call.accept_enabled

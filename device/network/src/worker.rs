@@ -441,16 +441,14 @@ fn enqueue_gsm_command<C: ModemController>(
             .get("worker_generation")
             .and_then(serde_json::Value::as_u64)
             .ok_or_else(|| anyhow::anyhow!("Missing worker_generation"))?;
-        let pcm_sample_rate_hz = match envelope.payload.get("gsm_pcm_sample_rate_hz") {
-            None | Some(serde_json::Value::Null) => None,
-            Some(value) => Some(
-                value
-                    .as_u64()
-                    .filter(|rate| matches!(rate, 8000 | 16000))
-                    .ok_or_else(|| anyhow::anyhow!("Invalid GSM PCM sample rate"))?
-                    as u32,
-            ),
-        };
+        anyhow::ensure!(
+            envelope
+                .payload
+                .get("gsm_pcm_sample_rate_hz")
+                .is_none_or(serde_json::Value::is_null),
+            "GSM PCM rate override bypasses current provider evidence"
+        );
+        let pcm_sample_rate_hz = None;
         return gsm.send(GsmCommand::Configure {
             request_id,
             generation,
@@ -1892,6 +1890,47 @@ mod tests {
             assert_eq!(*opened.lock().unwrap(), 0);
         }
         assert!(calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn gsm_provider_rate_override_rejected_but_empty_configuration_remains_valid() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let gsm = GsmWorker::with_backend(RecordingGsmBackend(calls));
+        let mut runtime =
+            NetworkRuntime::new("test", NetworkHostConfig::default(), NoFixModem::default());
+        for rate in [
+            serde_json::json!(8000),
+            serde_json::json!(16000),
+            serde_json::json!("16000"),
+            serde_json::json!(false),
+        ] {
+            assert!(enqueue_gsm_command(
+                &mut runtime,
+                &gsm,
+                None,
+                &[],
+                &WorkerEnvelope::command(
+                    "network.configure",
+                    Some("override".into()),
+                    serde_json::json!({"worker_generation":7,"gsm_pcm_sample_rate_hz":rate})
+                )
+            )
+            .is_err());
+        }
+        for payload in [
+            serde_json::json!({"worker_generation":7}),
+            serde_json::json!({"worker_generation":7,"gsm_pcm_sample_rate_hz":null}),
+        ] {
+            enqueue_gsm_command(
+                &mut runtime,
+                &gsm,
+                None,
+                &[],
+                &WorkerEnvelope::command("network.configure", Some("normal".into()), payload),
+            )
+            .unwrap();
+        }
+        assert!(!runtime.voice_suspended());
     }
 
     #[test]

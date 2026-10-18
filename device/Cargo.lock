@@ -2696,6 +2696,7 @@ dependencies = [
  "proc-macro-crate",
  "serde",
  "serde_json",
+ "sha2",
  "serde_yaml",
  "serialport",
  "tempfile",
